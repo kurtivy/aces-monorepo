@@ -1,6 +1,7 @@
 # User-specific
 .cursor/
 build-guides/
+acestest/
 
 # Dependencies
 node_modules/
