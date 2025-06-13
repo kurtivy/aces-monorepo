@@ -16,8 +16,10 @@ import { lerp, easeInOutCubic } from '../../lib/canvas/math-utils'; // Adjusted 
 interface UseCanvasRendererProps {
   images: ImageInfo[];
   viewState: ViewState;
+  imagesLoaded: boolean; // Added this prop
   onCreateTokenClick: () => void;
   imagePlacementMap: React.MutableRefObject<
+    // Preserved this prop
     Map<string, { image: ImageInfo; x: number; y: number; width: number; height: number }>
   >;
 }
@@ -25,8 +27,9 @@ interface UseCanvasRendererProps {
 export const useCanvasRenderer = ({
   images,
   viewState,
+  imagesLoaded, // Destructure the new prop
   onCreateTokenClick,
-  imagePlacementMap,
+  imagePlacementMap, // Destructure the preserved prop
 }: UseCanvasRendererProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationFrameRef = useRef<number | null>(null);
@@ -46,7 +49,7 @@ export const useCanvasRenderer = ({
   // Preload the logo image
   useEffect(() => {
     const logoImage = new Image();
-    logoImage.src = '/aces-logo.png';
+    logoImage.src = '/aces-logo.png'; // Assuming user fixed this path
     logoImage.onload = () => {
       logoImageRef.current = logoImage;
     };
@@ -99,6 +102,8 @@ export const useCanvasRenderer = ({
   }, [hoveredTokenIndex, onCreateTokenClick]);
 
   useEffect(() => {
+    if (!imagesLoaded) return; // Added this condition
+
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -351,6 +356,7 @@ export const useCanvasRenderer = ({
       }
     };
   }, [
+    imagesLoaded, // Added this to dependencies
     images,
     viewState,
     hoveredTokenIndex,

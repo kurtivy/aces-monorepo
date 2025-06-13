@@ -1,42 +1,42 @@
 'use client';
 
-import React, { useRef, useState, useEffect } from 'react';
+import type React from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import dynamic from 'next/dynamic';
-
-const WebsiteLoader = dynamic(() => import('./website-loader'), { ssr: false });
-import ImageDetailsModal from '../ui/image-details-modal'; // Adjusted path
-import { useImageLoader } from '../../hooks/canvas/use-image-loader'; // Adjusted path
-import { useViewState } from '../../hooks/canvas/use-view-state'; // Adjusted path
-import { useCanvasInteractions } from '../../hooks/canvas/use-canvas-interactions'; // Adjusted path
-import { useCanvasRenderer } from '../../hooks/canvas/use-canvas-renderer'; // Adjusted path
-import HomeButton from '../ui/home-button'; // Adjusted path
-
-import { ImageInfo } from '../../types/canvas'; // Adjusted path
+import ImageDetailsModal from '../ui/image-details-modal';
+import { ElectricLogoIntro } from './electric-logo-intro';
+import { useImageLoader } from '../../hooks/canvas/use-image-loader';
+import { useViewState } from '../../hooks/canvas/use-view-state';
+import { useCanvasInteractions } from '../../hooks/canvas/use-canvas-interactions';
+import { useCanvasRenderer } from '../../hooks/canvas/use-canvas-renderer';
+import HomeButton from '../ui/home-button';
+import type { ImageInfo } from '../../types/canvas';
 
 const InfiniteCanvas = () => {
   const [selectedImage, setSelectedImage] = useState<ImageInfo | null>(null);
+  const [introCompleted, setIntroCompleted] = useState(false);
+  const [canvasReady, setCanvasReady] = useState(false);
+  const [canvasVisible, setCanvasVisible] = useState(false);
   const imagePlacementMapRef = useRef(
     new Map<string, { image: ImageInfo; x: number; y: number; width: number; height: number }>(),
   );
 
   const { images, loadingProgress, imagesLoaded } = useImageLoader();
-  const {
-    viewState,
-    handleWheel,
-    animateViewState,
-    isAnimating,
-    animateToHome,
-  } = // Destructure animateToHome
-    useViewState({});
+  const { viewState, handleWheel, animateViewState, isAnimating, animateToHome } = useViewState({
+    imagesLoaded,
+  });
   const { canvasRef } = useCanvasRenderer({
     images,
     viewState,
-    imagePlacementMap: imagePlacementMapRef,
+    imagesLoaded,
     onCreateTokenClick: () => {
       window.location.href = '/create-token';
     },
+    imagePlacementMap: imagePlacementMapRef,
   });
+
+  const imagesRef = useRef(images);
+  imagesRef.current = images;
 
   const {
     isPanning,
@@ -50,13 +50,14 @@ const InfiniteCanvas = () => {
     handleTouchEnd,
   } = useCanvasInteractions({
     viewState,
+    imagesRef,
     setSelectedImage,
     imagePlacementMap: imagePlacementMapRef,
   });
 
   // Animation loop for view state
   useEffect(() => {
-    if (!isAnimating) return;
+    if (!imagesLoaded || !isAnimating) return;
     let animationFrameId: number;
 
     const animate = () => {
@@ -69,16 +70,13 @@ const InfiniteCanvas = () => {
     return () => {
       cancelAnimationFrame(animationFrameId);
     };
-  }, [animateViewState, isAnimating]);
+  }, [imagesLoaded, animateViewState, isAnimating]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) {
       return;
     }
-    // The handleWheel function expects a React.WheelEvent, but we are passing a native WheelEvent.
-    // The properties used (preventDefault, deltaX, etc.) are available on the native event,
-    // so we can cast to `any` to make TypeScript happy.
     const wheelListener = (e: WheelEvent) => {
       handleWheel(e as unknown as React.WheelEvent<HTMLCanvasElement>);
     };
@@ -95,37 +93,84 @@ const InfiniteCanvas = () => {
     };
   }, []);
 
+  // Prepare the canvas in the background while the intro is still showing
+  useEffect(() => {
+    if (imagesLoaded) {
+      setCanvasReady(true);
+    }
+  }, [imagesLoaded]);
+
   return (
     <>
-      <WebsiteLoader progress={loadingProgress} isComplete={imagesLoaded} />
+      {/* Electric Logo Intro - shows until its own animation is complete */}
       <AnimatePresence>
-        {imagesLoaded && (
-          <motion.div
-            className="fixed inset-0 bg-gradient-to-b from-[#000000] from-0% via-[#000000] via-80% to-[#184D37] to-100%"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 1.2, ease: 'easeInOut' }}
+        {!introCompleted && (
+          <ElectricLogoIntro
+            onComplete={() => {
+              setIntroCompleted(true);
+            }}
+            onBeforeExit={() => {
+              // Make sure canvas is visible before the intro starts to fade out
+              if (imagesLoaded) {
+                setCanvasReady(true);
+                setCanvasVisible(true);
+              }
+            }}
           />
         )}
       </AnimatePresence>
-      <canvas
-        ref={canvasRef}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseLeave}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        className="fixed inset-0 w-full h-full touch-none select-none"
-        style={{
-          cursor: isPanning ? (isDragging ? 'grabbing' : 'grab') : 'pointer',
-          opacity: imagesLoaded ? 1 : 0,
-          transition: 'opacity 1.2s ease-in-out',
-        }}
-      />
+
+      {/* Loading Progress - shows after intro is done, but only if images are still loading */}
+      <AnimatePresence>
+        {introCompleted && !imagesLoaded && (
+          <motion.div
+            className="fixed inset-0 flex items-center justify-center z-40 bg-black"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div className="flex flex-col items-center">
+              <div className="w-16 h-16 border-4 border-t-[#D0B264] border-r-transparent border-b-transparent border-l-transparent rounded-full animate-spin"></div>
+              <p className="mt-4 text-[#D0B264] text-xl">Loading assets...</p>
+              <p className="mt-2 text-white text-lg">{Math.round(loadingProgress)}%</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Main Canvas - positioned behind the intro animation for seamless transition */}
+      <AnimatePresence>
+        {canvasReady && (
+          <motion.div
+            className="fixed inset-0 bg-gradient-to-b from-[#000000] from-0% via-[#000000] via-80% to-[#184D37] to-100%"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: canvasVisible ? 1 : 0 }}
+            transition={{
+              duration: 1.2,
+              ease: 'easeInOut',
+            }}
+            style={{ zIndex: 40 }} // Lower z-index than the intro (50)
+          >
+            <canvas
+              ref={canvasRef}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseLeave}
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+              className="w-full h-full touch-none select-none"
+              style={{
+                cursor: isPanning ? (isDragging ? 'grabbing' : 'grab') : 'pointer',
+              }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <ImageDetailsModal imageInfo={selectedImage} onClose={() => setSelectedImage(null)} />
-      <HomeButton onClick={animateToHome} /> {/* Render the HomeButton */}
+      <HomeButton onClick={animateToHome} />
     </>
   );
 };

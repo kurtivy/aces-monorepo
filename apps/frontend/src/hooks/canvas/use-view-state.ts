@@ -11,20 +11,22 @@ import {
 import { ViewState } from '../../types/canvas'; // Adjusted path
 
 interface UseViewStateProps {
+  imagesLoaded: boolean; // Added this prop
   initialX?: number;
   initialY?: number;
   initialScale?: number;
   panSensitivity?: number;
   animationDuration?: number;
-  panInterpolationFactor?: number;
+  panInterpolationFactor?: number; // Preserved this prop
 }
 
 export const useViewState = ({
+  imagesLoaded, // Destructure the new prop
   initialX = 0,
   initialY = 0,
   initialScale = 1,
   animationDuration = 0.15, // Default animation duration for regular interactions
-  panInterpolationFactor = 0.3,
+  panInterpolationFactor = 0.3, // Preserved this prop
 }: UseViewStateProps) => {
   const [viewState, setViewState] = useState<ViewState>({
     x: initialX,
@@ -41,6 +43,7 @@ export const useViewState = ({
   const velocityY = useRef(0);
   const friction = 0.9; // Adjust this for how quickly scrolling slows down
   const homeAnimationDuration = useRef(0.8); // 800ms for home animation
+  const centeredOnce = useRef(false); // Add this ref
 
   // Set initial view to center the home area
   useEffect(() => {
@@ -48,38 +51,47 @@ export const useViewState = ({
       const canvasWidth = window.innerWidth;
       const canvasHeight = window.innerHeight;
 
-      // Center the home area
-      const homeCenterX = HOME_AREA_WORLD_X + HOME_AREA_WIDTH / 2;
-      const homeCenterY = HOME_AREA_WORLD_Y + HOME_AREA_HEIGHT / 2;
+      // Calculate new x and y to center the HOME_AREA in world coordinates on the screen
+      const screenCenterX = canvasWidth / 2;
+      const screenCenterY = canvasHeight / 2;
 
-      const targetX = canvasWidth / 2 - homeCenterX;
-      const targetY = canvasHeight / 2 - homeCenterY;
+      const newX = screenCenterX - (HOME_AREA_WORLD_X + HOME_AREA_WIDTH / 2) * viewState.scale;
+      const newY = screenCenterY - (HOME_AREA_WORLD_Y + HOME_AREA_HEIGHT / 2) * viewState.scale;
 
       setViewState((prev) => ({
         ...prev,
-        x: targetX,
-        y: targetY,
-        targetX: targetX,
-        targetY: targetY,
+        x: newX,
+        y: newY,
+        targetX: newX,
+        targetY: newY,
       }));
+
+      animationStartTime.current = performance.now();
+      setIsAnimating(true);
     };
 
-    updateCenter();
+    // Only run the centering logic ONCE when the images have finished loading.
+    if (imagesLoaded && !centeredOnce.current) {
+      updateCenter();
+      centeredOnce.current = true; // Mark as done
+    }
+
     window.addEventListener('resize', updateCenter);
     return () => {
       window.removeEventListener('resize', updateCenter);
     };
-  }, []);
+  }, [imagesLoaded]); // Remove viewState.scale from dependencies
 
   const animateToHome = useCallback(() => {
     const canvasWidth = window.innerWidth;
     const canvasHeight = window.innerHeight;
 
-    const homeCenterX = HOME_AREA_WORLD_X + HOME_AREA_WIDTH / 2;
-    const homeCenterY = HOME_AREA_WORLD_Y + HOME_AREA_HEIGHT / 2;
+    // Calculate target x and y to center the HOME_AREA in world coordinates on the screen
+    const screenCenterX = canvasWidth / 2;
+    const screenCenterY = canvasHeight / 2;
 
-    const targetX = canvasWidth / 2 - homeCenterX;
-    const targetY = canvasHeight / 2 - homeCenterY;
+    const targetX = screenCenterX - (HOME_AREA_WORLD_X + HOME_AREA_WIDTH / 2) * initialScale;
+    const targetY = screenCenterY - (HOME_AREA_WORLD_Y + HOME_AREA_HEIGHT / 2) * initialScale;
 
     // Reset velocities to ensure direct animation to home
     velocityX.current = 0;

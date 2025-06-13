@@ -11,8 +11,10 @@ import { LuxuryLogger } from '../../lib/utils/luxury-logger'; // Adjusted path
 
 interface UseCanvasInteractionsProps {
   viewState: ViewState;
+  imagesRef: React.MutableRefObject<ImageInfo[]>; // Added this prop
   setSelectedImage: (image: ImageInfo | null) => void;
   imagePlacementMap: React.MutableRefObject<
+    // Preserved this prop
     Map<string, { image: ImageInfo; x: number; y: number; width: number; height: number }>
   >;
 }
@@ -20,7 +22,7 @@ interface UseCanvasInteractionsProps {
 export const useCanvasInteractions = ({
   viewState,
   setSelectedImage,
-  imagePlacementMap,
+  imagePlacementMap, // Destructure the preserved prop
 }: UseCanvasInteractionsProps) => {
   const [isPanning, setIsPanning] = useState(false);
   const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });

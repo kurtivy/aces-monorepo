@@ -1,4 +1,6 @@
-import InfiniteCanvas from '../components/canvas/infinite-canvas'; // Adjusted path
+'use client';
+
+import InfiniteCanvas from '../components/canvas/infinite-canvas';
 
 export default function Home() {
   return (

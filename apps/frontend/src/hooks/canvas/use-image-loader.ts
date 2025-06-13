@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { ImageInfo } from '../../types/canvas'; // Adjusted path
 import { getImageType, getDisplayDimensions } from '../../lib/canvas/image-type-utils'; // Adjusted path
 import { SAMPLE_METADATA } from '../../data/metadata'; // Adjusted path
-import { IMAGE_PATHS, LOADING_DURATION, UNIT_SIZE } from '../../constants/canvas'; // Adjusted path
+import { IMAGE_PATHS, UNIT_SIZE } from '../../constants/canvas'; // Adjusted path
 import { LuxuryLogger } from '../../lib/utils/luxury-logger'; // Adjusted path
 
 // Helper function to create a luxurious placeholder image
@@ -43,35 +43,6 @@ export const useImageLoader = () => {
   const [images, setImages] = useState<ImageInfo[]>([]);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [imagesLoaded, setImagesLoaded] = useState(false);
-  const loadingStartTimeRef = useRef<number | null>(null);
-  const actualImagesLoadedRef = useRef(0);
-
-  useEffect(() => {
-    loadingStartTimeRef.current = Date.now();
-
-    const updateProgress = () => {
-      if (!loadingStartTimeRef.current) return;
-
-      const elapsed = Date.now() - loadingStartTimeRef.current;
-      const baseProgress = Math.min((elapsed / LOADING_DURATION) * 100, 100);
-
-      const totalProgress = baseProgress;
-      setLoadingProgress(totalProgress);
-
-      if (totalProgress < 100) {
-        requestAnimationFrame(updateProgress);
-      } else {
-        if (actualImagesLoadedRef.current === IMAGE_PATHS.length) {
-          setTimeout(() => {
-            setImagesLoaded(true);
-            LuxuryLogger.log('All images and loading animation complete.', 'info');
-          }, 500);
-        }
-      }
-    };
-
-    requestAnimationFrame(updateProgress);
-  }, []);
 
   useEffect(() => {
     let loadedCount = 0;
@@ -80,9 +51,36 @@ export const useImageLoader = () => {
 
     if (totalImages === 0) {
       LuxuryLogger.log('No image paths provided. Canvas will be empty.', 'warn');
-      setImagesLoaded(true); // Mark as loaded if no images to load
+      setImagesLoaded(true);
+      setLoadingProgress(100);
       return;
     }
+
+    const finishLoading = () => {
+      setImages(loadedImages);
+      // A short delay to allow the 100% to register before the fade-out
+      setTimeout(() => {
+        setImagesLoaded(true);
+        LuxuryLogger.log(`Image loading complete. ${loadedCount}/${totalImages} loaded.`, 'info');
+      }, 500);
+    };
+
+    // Safety net to prevent getting stuck
+    const loadingTimeout = setTimeout(() => {
+      LuxuryLogger.log('Loading timeout reached. Forcing completion.', 'warn');
+      finishLoading();
+    }, 20000); // 20-second timeout
+
+    const updateState = () => {
+      loadedCount++;
+      const progress = (loadedCount / totalImages) * 100;
+      setLoadingProgress(progress);
+
+      if (loadedCount === totalImages) {
+        clearTimeout(loadingTimeout); // All images loaded, cancel safety net
+        finishLoading();
+      }
+    };
 
     IMAGE_PATHS.forEach((path, index) => {
       const img = new Image();
@@ -109,26 +107,11 @@ export const useImageLoader = () => {
           displayHeight: height,
           metadata,
         };
-
-        loadedCount++;
-        actualImagesLoadedRef.current = loadedCount;
-
-        if (loadedCount === totalImages) {
-          setImages(loadedImages);
-          if (loadingProgress >= 100) {
-            setTimeout(() => {
-              setImagesLoaded(true);
-              LuxuryLogger.log('All images loaded successfully.', 'info');
-            }, 500);
-          }
-        }
+        updateState();
       };
 
       const handleError = () => {
         LuxuryLogger.log(`Failed to load image: ${path}. Using placeholder.`, 'error');
-        loadedCount++;
-        actualImagesLoadedRef.current = loadedCount;
-
         const placeholderElement = createLuxuryPlaceholderImage();
 
         loadedImages[index] = {
@@ -145,22 +128,17 @@ export const useImageLoader = () => {
             image: placeholderElement.src,
           },
         };
-
-        if (loadedCount === totalImages) {
-          setImages(loadedImages);
-          if (loadingProgress >= 100) {
-            setTimeout(() => {
-              setImagesLoaded(true);
-              LuxuryLogger.log('All images processed (some with placeholders).', 'info');
-            }, 500);
-          }
-        }
+        updateState();
       };
 
       img.onload = handleLoad;
       img.onerror = handleError;
     });
-  }, [loadingProgress]);
+
+    return () => {
+      clearTimeout(loadingTimeout);
+    };
+  }, []);
 
   return { images, loadingProgress, imagesLoaded };
 };
