@@ -56,6 +56,20 @@ export const useCanvasInteractions = ({
         const createQuadX = homeAreaX + quadWidth; // Top-right quadrant
         const createQuadY = homeAreaY;
 
+        const aboutQuadX = homeAreaX; // Top-left quadrant
+        const aboutQuadY = homeAreaY;
+
+        if (
+          worldX >= aboutQuadX &&
+          worldX < aboutQuadX + quadWidth &&
+          worldY >= aboutQuadY &&
+          worldY < aboutQuadY + quadHeight
+        ) {
+          LuxuryLogger.log('About quadrant clicked! Opening docs.', 'info');
+          window.open('https://docs.aces.fun/', '_blank');
+          return;
+        }
+
         if (
           worldX >= createQuadX &&
           worldX < createQuadX + quadWidth &&
