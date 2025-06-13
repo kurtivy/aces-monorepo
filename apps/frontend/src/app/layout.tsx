@@ -37,7 +37,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${syne.variable} ${spectral.variable} ${jetbrainsMono.variable} font-spectral antialiased`}
+        className={`${syne.variable} ${spectral.variable} ${jetbrainsMono.variable} font-spectral antialiased  bg-black`}
       >
         {children}
       </body>
