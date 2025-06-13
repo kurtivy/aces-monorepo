@@ -1,18 +1,18 @@
-import {
-  UNIT_SIZE,
-  HOME_AREA_WORLD_X,
-  HOME_AREA_WORLD_Y,
-  HOME_AREA_WIDTH,
-  HOME_AREA_HEIGHT,
-} from '../../constants/canvas'; // Adjusted path
 import { ImageInfo } from '../../types/canvas'; // Adjusted path
 
-export const isHomeArea = (x: number, y: number) => {
+export const isHomeArea = (
+  x: number,
+  y: number,
+  homeAreaWorldX: number,
+  homeAreaWorldY: number,
+  homeAreaWidth: number,
+  homeAreaHeight: number,
+) => {
   return (
-    x >= HOME_AREA_WORLD_X &&
-    x < HOME_AREA_WORLD_X + HOME_AREA_WIDTH &&
-    y >= HOME_AREA_WORLD_Y &&
-    y < HOME_AREA_WORLD_Y + HOME_AREA_HEIGHT
+    x >= homeAreaWorldX &&
+    x < homeAreaWorldX + homeAreaWidth &&
+    y >= homeAreaWorldY &&
+    y < homeAreaWorldY + homeAreaHeight
   );
 };
 
@@ -22,14 +22,15 @@ export const isSpaceOccupied = (
   width: number,
   height: number,
   occupiedSpaces: Set<string>,
+  unitSize: number,
 ) => {
-  const cellsX = Math.ceil(width / UNIT_SIZE);
-  const cellsY = Math.ceil(height / UNIT_SIZE);
+  const cellsX = Math.ceil(width / unitSize);
+  const cellsY = Math.ceil(height / unitSize);
 
   for (let i = 0; i < cellsX; i++) {
     for (let j = 0; j < cellsY; j++) {
-      const cellX = Math.floor((x + i * UNIT_SIZE) / UNIT_SIZE);
-      const cellY = Math.floor((y + j * UNIT_SIZE) / UNIT_SIZE);
+      const cellX = Math.floor((x + i * unitSize) / unitSize);
+      const cellY = Math.floor((y + j * unitSize) / unitSize);
       if (occupiedSpaces.has(`${cellX},${cellY}`)) {
         return true;
       }
@@ -44,14 +45,15 @@ export const markSpaceOccupied = (
   width: number,
   height: number,
   occupiedSpaces: Set<string>,
+  unitSize: number,
 ) => {
-  const cellsX = Math.round(width / UNIT_SIZE);
-  const cellsY = Math.round(height / UNIT_SIZE);
+  const cellsX = Math.round(width / unitSize);
+  const cellsY = Math.round(height / unitSize);
 
   for (let i = 0; i < cellsX; i++) {
     for (let j = 0; j < cellsY; j++) {
-      const cellX = Math.round((x + i * UNIT_SIZE) / UNIT_SIZE);
-      const cellY = Math.round((y + j * UNIT_SIZE) / UNIT_SIZE);
+      const cellX = Math.round((x + i * unitSize) / unitSize);
+      const cellY = Math.round((y + j * unitSize) / unitSize);
       occupiedSpaces.add(`${cellX},${cellY}`);
     }
   }
@@ -62,17 +64,31 @@ export const canPlaceImage = (
   y: number,
   imgInfo: ImageInfo,
   currentOccupiedSpaces: Set<string>,
+  unitSize: number,
+  homeAreaWorldX: number,
+  homeAreaWorldY: number,
+  homeAreaWidth: number,
+  homeAreaHeight: number,
 ) => {
-  const cellsX = Math.round(imgInfo.displayWidth / UNIT_SIZE);
-  const cellsY = Math.round(imgInfo.displayHeight / UNIT_SIZE);
+  const cellsX = Math.round(imgInfo.displayWidth / unitSize);
+  const cellsY = Math.round(imgInfo.displayHeight / unitSize);
 
   for (let i = 0; i < cellsX; i++) {
     for (let j = 0; j < cellsY; j++) {
-      const cellX = Math.round((x + i * UNIT_SIZE) / UNIT_SIZE);
-      const cellY = Math.round((y + j * UNIT_SIZE) / UNIT_SIZE);
+      const cellX = Math.round((x + i * unitSize) / unitSize);
+      const cellY = Math.round((y + j * unitSize) / unitSize);
 
       // Check if this cell is part of the home area
-      if (isHomeArea(cellX * UNIT_SIZE, cellY * UNIT_SIZE)) {
+      if (
+        isHomeArea(
+          cellX * unitSize,
+          cellY * unitSize,
+          homeAreaWorldX,
+          homeAreaWorldY,
+          homeAreaWidth,
+          homeAreaHeight,
+        )
+      ) {
         return false;
       }
       // Check if this cell is already occupied by another image
@@ -88,6 +104,11 @@ export const getImageCandidatesForPosition = (
   gridX: number,
   gridY: number,
   imagesRefCurrent: ImageInfo[],
+  unitSize: number,
+  homeAreaWorldX: number,
+  homeAreaWorldY: number,
+  homeAreaWidth: number,
+  homeAreaHeight: number,
 ) => {
   const candidates: ImageInfo[] = [];
 
@@ -95,13 +116,20 @@ export const getImageCandidatesForPosition = (
   // Place a "Create Token" square every 6th available square position
   if (
     Math.abs(gridX * 13 + gridY * 17) % 6 === 0 && // Deterministic but sparse
-    !isHomeArea(gridX * UNIT_SIZE, gridY * UNIT_SIZE) // Ensure it's not in home area
+    !isHomeArea(
+      gridX * unitSize,
+      gridY * unitSize,
+      homeAreaWorldX,
+      homeAreaWorldY,
+      homeAreaWidth,
+      homeAreaHeight,
+    ) // Ensure it's not in home area
   ) {
     candidates.push({
       element: new Image(), // Placeholder, not used for rendering
       type: 'create-token',
-      displayWidth: UNIT_SIZE,
-      displayHeight: UNIT_SIZE,
+      displayWidth: unitSize,
+      displayHeight: unitSize,
       metadata: {
         title: 'Create Token',
         description: 'Create your own unique digital token.',

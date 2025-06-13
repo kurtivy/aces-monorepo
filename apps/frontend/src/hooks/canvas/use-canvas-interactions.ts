@@ -1,11 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
 import { ImageInfo, ViewState } from '../../types/canvas'; // Adjusted path
-import {
-  HOME_AREA_WORLD_X,
-  HOME_AREA_WORLD_Y,
-  HOME_AREA_WIDTH,
-  HOME_AREA_HEIGHT,
-} from '../../constants/canvas'; // Adjusted path
 import { isHomeArea } from '../../lib/canvas/grid-placement'; // Adjusted path
 import { LuxuryLogger } from '../../lib/utils/luxury-logger'; // Adjusted path
 
@@ -17,17 +11,24 @@ interface UseCanvasInteractionsProps {
     // Preserved this prop
     Map<string, { image: ImageInfo; x: number; y: number; width: number; height: number }>
   >;
+  unitSize: number;
 }
 
 export const useCanvasInteractions = ({
   viewState,
   setSelectedImage,
   imagePlacementMap, // Destructure the preserved prop
+  unitSize,
 }: UseCanvasInteractionsProps) => {
   const [isPanning, setIsPanning] = useState(false);
   const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+
+  const homeAreaWidth = unitSize * 3;
+  const homeAreaHeight = unitSize * 2;
+  const homeAreaWorldX = -unitSize;
+  const homeAreaWorldY = -unitSize;
 
   const handleClick = useCallback(
     (event: React.MouseEvent | React.TouchEvent) => {
@@ -41,17 +42,19 @@ export const useCanvasInteractions = ({
       const worldY = (clientY - rect.top - viewState.y) / viewState.scale;
 
       // Check for click within the Home Area
-      if (isHomeArea(worldX, worldY)) {
+      if (
+        isHomeArea(worldX, worldY, homeAreaWorldX, homeAreaWorldY, homeAreaWidth, homeAreaHeight)
+      ) {
         LuxuryLogger.log(`Clicked home area at world: ${worldX}, ${worldY}`, 'info');
 
         // Logic to check for "CREATE" quadrant click
-        const homeAreaX = HOME_AREA_WORLD_X;
-        const homeAreaY = HOME_AREA_WORLD_Y;
-        const homeAreaWidth = HOME_AREA_WIDTH;
-        const homeAreaHeight = HOME_AREA_HEIGHT;
+        const homeAreaX = homeAreaWorldX;
+        const homeAreaY = homeAreaWorldY;
+        const homeAreaWidthValue = homeAreaWidth;
+        const homeAreaHeightValue = homeAreaHeight;
 
-        const quadWidth = homeAreaWidth / 2;
-        const quadHeight = homeAreaHeight / 2;
+        const quadWidth = homeAreaWidthValue / 2;
+        const quadHeight = homeAreaHeightValue / 2;
 
         const createQuadX = homeAreaX + quadWidth; // Top-right quadrant
         const createQuadY = homeAreaY;
@@ -105,7 +108,15 @@ export const useCanvasInteractions = ({
         }
       }
     },
-    [viewState, setSelectedImage, imagePlacementMap],
+    [
+      viewState,
+      setSelectedImage,
+      imagePlacementMap,
+      homeAreaWorldX,
+      homeAreaWorldY,
+      homeAreaWidth,
+      homeAreaHeight,
+    ],
   );
 
   const handleMouseDown = useCallback((event: React.MouseEvent) => {

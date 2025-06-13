@@ -103,6 +103,66 @@ Presented in a handmade oak trunk, this collection is a tribute to the rich heri
     ticker: '$MACALLAN',
     image: '/canvas-images/The-Macallan-Red-Collection-Trunk-40yo-50yo-60yo-Limited-Edition.png',
   },
+  {
+    id: '11',
+    title: 'Andy Warhol, "Marilyn Monroe"',
+    description: `An iconic screenprint of Marilyn Monroe from Andy Warhol's 1967 portfolio. This piece, known as "Marilyn," is one of the most recognizable works of Pop Art.
+
+Warhol's vibrant and stylized depiction of the Hollywood star has become a symbol of celebrity culture and mass media. This particular print is a highly sought-after asset for collectors of post-war and contemporary art.`,
+    date: '2023-10-25',
+    ticker: '$WARHOL',
+    image: '/canvas-images/Marilyn-Black-Buffer.png',
+  },
+  {
+    id: '12',
+    title: '2009 McLaren MP4-24 F1 Car',
+    description: `The actual race-used 2009 McLaren-Mercedes MP4-24, driven by F1 World Champion Lewis Hamilton. This car is one of the earliest examples of a KERS (Kinetic Energy Recovery System) hybrid F1 car.
+
+A masterpiece of aerodynamic engineering, owning this vehicle is to own a significant piece of motorsport history. It represents the cutting-edge of technology from its era and a tangible connection to a legendary driver.`,
+    date: '2023-09-12',
+    ticker: '$MP424',
+    image: '/canvas-images/2009-F1-McLaren-MP4-24.png',
+  },
+  {
+    id: '13',
+    title: 'Tiffany & Co. x Rimowa Luggage',
+    description: `A limited-edition collaboration between two iconic luxury brands: Tiffany & Co. and Rimowa. This 'Cabin' suitcase features Rimowa's classic aluminum grooved design with Tiffany's signature blue accents on the handles, wheels, and interior.
+
+This is a highly coveted travel accessory and a statement piece for discerning collectors of both brands. It blends German engineering with American luxury, creating a unique and desirable asset.`,
+    date: '2023-08-20',
+    ticker: '$TIFRIMOWA',
+    image: '/canvas-images/Tiffany-and-Co-Rimowa.png',
+  },
+  {
+    id: '14',
+    title: 'Hermès Ostrich Birkin 25',
+    description: `An exquisite and highly sought-after Hermès Birkin 25 in rare Ostrich leather with palladium hardware. The Birkin bag is a symbol of ultimate luxury and craftsmanship, with a waiting list that spans years.
+
+This particular example, in the compact 25cm size, is prized for its rarity and exotic material. It is not just a handbag but an investment-grade asset that has consistently outperformed traditional investments.`,
+    date: '2023-07-15',
+    ticker: '$BIRKIN25',
+    image: '/canvas-images/Hermes-Ostrich-Birkin-25.png',
+  },
+  {
+    id: '15',
+    title: 'Kanye West "The College Dropout" Signed Vinyl',
+    description: `A sealed first-pressing of Kanye West's seminal debut album, "The College Dropout," signed by the artist. This album is widely regarded as a classic of the hip-hop genre and a cultural touchstone.
+
+A signed copy of this iconic album is an incredibly rare and valuable piece of music memorabilia. It's a tangible piece of history from one of the most influential artists of his generation.`,
+    date: '2023-06-01',
+    ticker: '$YEEZYCD',
+    image: '/canvas-images/Kanye-West-College-Dropout-Signed.png',
+  },
+  {
+    id: '16',
+    title: 'Keith Haring, "Untitled" (1989)',
+    description: `An original work on paper by the legendary artist Keith Haring from 1989. Haring's work is synonymous with the New York street art scene of the 1980s, and his energetic, graphic style is instantly recognizable.
+
+This piece captures the artist's iconic motifs and social commentary. As a unique work from a pivotal year in his career, it is a significant asset for any collector of urban and contemporary art.`,
+    date: '2023-05-18',
+    ticker: '$HARING89',
+    image: '/canvas-images/Keith-Haring-1989.png',
+  },
   // The original metadata.ts had 24 entries, but the user provided only 10 images in `canvas-images`.
   // I will only include metadata for the images that are actually present.
   // If more images are provided later, this array can be extended.

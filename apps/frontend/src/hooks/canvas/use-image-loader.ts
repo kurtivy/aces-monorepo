@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { ImageInfo } from '../../types/canvas'; // Adjusted path
 import { getImageType, getDisplayDimensions } from '../../lib/canvas/image-type-utils'; // Adjusted path
 import { SAMPLE_METADATA } from '../../data/metadata'; // Adjusted path
-import { IMAGE_PATHS, UNIT_SIZE } from '../../constants/canvas'; // Adjusted path
+import { UNIT_SIZE } from '../../constants/canvas'; // Adjusted path
 import { LuxuryLogger } from '../../lib/utils/luxury-logger'; // Adjusted path
 
 // Helper function to create a luxurious placeholder image
@@ -47,7 +47,7 @@ export const useImageLoader = () => {
   useEffect(() => {
     let loadedCount = 0;
     const loadedImages: ImageInfo[] = [];
-    const totalImages = IMAGE_PATHS.length;
+    const totalImages = SAMPLE_METADATA.length;
 
     if (totalImages === 0) {
       LuxuryLogger.log('No image paths provided. Canvas will be empty.', 'warn');
@@ -82,23 +82,34 @@ export const useImageLoader = () => {
       }
     };
 
-    IMAGE_PATHS.forEach((path, index) => {
+    SAMPLE_METADATA.forEach((metadata, index) => {
+      if (!metadata.image) {
+        LuxuryLogger.log(
+          `Image path is missing for metadata with title: "${metadata.title}". Using placeholder.`,
+          'warn',
+        );
+        const placeholderElement = createLuxuryPlaceholderImage();
+        loadedImages[index] = {
+          element: placeholderElement,
+          type: 'square',
+          displayWidth: UNIT_SIZE,
+          displayHeight: UNIT_SIZE,
+          metadata: {
+            ...metadata,
+            title: `${metadata.title} (Image path missing)`,
+          },
+        };
+        updateState();
+        return;
+      }
+
       const img = new Image();
       img.crossOrigin = 'anonymous';
-      img.src = path;
+      img.src = metadata.image;
 
       const handleLoad = () => {
         const type = getImageType(img.naturalWidth, img.naturalHeight);
         const { width, height } = getDisplayDimensions(type);
-
-        const metadata = SAMPLE_METADATA[index] || {
-          id: `asset-${index}`,
-          title: `Asset ${index + 1}`,
-          description: 'Asset details coming soon',
-          date: new Date().toISOString().split('T')[0],
-          ticker: `$ASSET${index + 1}`,
-          image: path,
-        };
 
         loadedImages[index] = {
           element: img,
@@ -111,22 +122,21 @@ export const useImageLoader = () => {
       };
 
       const handleError = () => {
-        LuxuryLogger.log(`Failed to load image: ${path}. Using placeholder.`, 'error');
+        LuxuryLogger.log(`Failed to load image: ${img.src}. Using placeholder.`, 'error');
         const placeholderElement = createLuxuryPlaceholderImage();
+        const errorMetadata = {
+          ...metadata,
+          title: `${metadata.title} (Loading Failed)`,
+          description: 'This asset failed to load',
+          image: placeholderElement.src,
+        };
 
         loadedImages[index] = {
           element: placeholderElement,
           type: 'square',
           displayWidth: UNIT_SIZE,
           displayHeight: UNIT_SIZE,
-          metadata: {
-            id: `error-${index}`,
-            title: `Asset ${index + 1} (Loading Failed)`,
-            description: 'This asset failed to load',
-            date: new Date().toISOString().split('T')[0],
-            ticker: `$ERROR${index + 1}`,
-            image: placeholderElement.src,
-          },
+          metadata: errorMetadata,
         };
         updateState();
       };

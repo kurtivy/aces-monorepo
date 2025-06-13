@@ -11,12 +11,14 @@ import { useCanvasInteractions } from '../../hooks/canvas/use-canvas-interaction
 import { useCanvasRenderer } from '../../hooks/canvas/use-canvas-renderer';
 import HomeButton from '../ui/home-button';
 import type { ImageInfo } from '../../types/canvas';
+import { getUnitSize } from '../../constants/canvas';
 
 const InfiniteCanvas = () => {
   const [selectedImage, setSelectedImage] = useState<ImageInfo | null>(null);
   const [introCompleted, setIntroCompleted] = useState(false);
   const [canvasReady, setCanvasReady] = useState(false);
   const [canvasVisible, setCanvasVisible] = useState(false);
+  const [unitSize, setUnitSize] = useState(getUnitSize());
   const imagePlacementMapRef = useRef(
     new Map<string, { image: ImageInfo; x: number; y: number; width: number; height: number }>(),
   );
@@ -24,6 +26,7 @@ const InfiniteCanvas = () => {
   const { images, loadingProgress, imagesLoaded } = useImageLoader();
   const { viewState, handleWheel, animateViewState, isAnimating, animateToHome } = useViewState({
     imagesLoaded,
+    unitSize,
   });
   const { canvasRef } = useCanvasRenderer({
     images,
@@ -33,6 +36,7 @@ const InfiniteCanvas = () => {
       window.location.href = '/create-token';
     },
     imagePlacementMap: imagePlacementMapRef,
+    unitSize,
   });
 
   const imagesRef = useRef(images);
@@ -53,6 +57,7 @@ const InfiniteCanvas = () => {
     imagesRef,
     setSelectedImage,
     imagePlacementMap: imagePlacementMapRef,
+    unitSize,
   });
 
   // Animation loop for view state
@@ -91,6 +96,14 @@ const InfiniteCanvas = () => {
     return () => {
       window.history.scrollRestoration = 'auto';
     };
+  }, []);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setUnitSize(getUnitSize());
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   // Prepare the canvas in the background while the intro is still showing

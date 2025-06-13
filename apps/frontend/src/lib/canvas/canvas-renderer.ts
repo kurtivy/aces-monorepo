@@ -1,4 +1,4 @@
-import { HOME_AREA_WIDTH, HOME_AREA_HEIGHT } from '../../constants/canvas'; // Adjusted path
+import { getUnitSize } from '../../constants/canvas';
 
 // Add mouse position tracking
 const mousePositionRef = { x: 0, y: 0 };
@@ -67,6 +67,8 @@ export const drawHomeArea = (
   logoImage: HTMLImageElement | null,
   mouseX: number = 0,
   mouseY: number = 0,
+  homeAreaWidth: number,
+  homeAreaHeight: number,
 ) => {
   // Update mouse position
   mousePositionRef.x = mouseX;
@@ -78,7 +80,7 @@ export const drawHomeArea = (
   const radius = 8;
   ctx.fillStyle = 'rgba(35, 31, 32, 0.95)';
   ctx.beginPath();
-  ctx.roundRect(x, y, HOME_AREA_WIDTH, HOME_AREA_HEIGHT, radius);
+  ctx.roundRect(x, y, homeAreaWidth, homeAreaHeight, radius);
   ctx.fill();
 
   // Draw border
@@ -87,13 +89,13 @@ export const drawHomeArea = (
   ctx.stroke();
 
   // Calculate center position
-  const centerX = x + HOME_AREA_WIDTH / 2;
-  const centerY = y + HOME_AREA_HEIGHT / 2;
+  const centerX = x + homeAreaWidth / 2;
+  const centerY = y + homeAreaHeight / 2;
 
   // Draw the four quadrant buttons
   const drawQuadrantButton = (text: string, quadrant: number) => {
-    const quadWidth = HOME_AREA_WIDTH / 2;
-    const quadHeight = HOME_AREA_HEIGHT / 2;
+    const quadWidth = homeAreaWidth / 2;
+    const quadHeight = homeAreaHeight / 2;
     const isRightSide = quadrant === 1 || quadrant === 3;
     const isBottomHalf = quadrant === 2 || quadrant === 3;
     const quadX = x + (isRightSide ? quadWidth : 0);
@@ -154,7 +156,7 @@ export const drawHomeArea = (
   drawQuadrantButton('Career', 3);
 
   // Draw the circular background for logo
-  const logoSize = HOME_AREA_HEIGHT;
+  const logoSize = homeAreaHeight;
   ctx.fillStyle = '#231F20';
   ctx.beginPath();
   ctx.arc(centerX, centerY, logoSize / 2, 0, Math.PI * 2);

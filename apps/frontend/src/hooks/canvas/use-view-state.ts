@@ -2,16 +2,11 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { lerp, easeInOutCubic } from '../../lib/canvas/math-utils'; // Adjusted path
-import {
-  HOME_AREA_WIDTH,
-  HOME_AREA_HEIGHT,
-  HOME_AREA_WORLD_X,
-  HOME_AREA_WORLD_Y,
-} from '../../constants/canvas'; // Adjusted path
 import { ViewState } from '../../types/canvas'; // Adjusted path
 
 interface UseViewStateProps {
   imagesLoaded: boolean; // Added this prop
+  unitSize: number;
   initialX?: number;
   initialY?: number;
   initialScale?: number;
@@ -22,6 +17,7 @@ interface UseViewStateProps {
 
 export const useViewState = ({
   imagesLoaded, // Destructure the new prop
+  unitSize,
   initialX = 0,
   initialY = 0,
   initialScale = 1,
@@ -36,6 +32,11 @@ export const useViewState = ({
     targetY: initialY,
     targetScale: initialScale,
   });
+
+  const homeAreaWidth = unitSize * 3;
+  const homeAreaHeight = unitSize * 2;
+  const homeAreaWorldX = -unitSize;
+  const homeAreaWorldY = -unitSize;
 
   const [isAnimating, setIsAnimating] = useState(false);
   const animationStartTime = useRef(0);
@@ -55,8 +56,8 @@ export const useViewState = ({
       const screenCenterX = canvasWidth / 2;
       const screenCenterY = canvasHeight / 2;
 
-      const newX = screenCenterX - (HOME_AREA_WORLD_X + HOME_AREA_WIDTH / 2) * viewState.scale;
-      const newY = screenCenterY - (HOME_AREA_WORLD_Y + HOME_AREA_HEIGHT / 2) * viewState.scale;
+      const newX = screenCenterX - (homeAreaWorldX + homeAreaWidth / 2) * viewState.scale;
+      const newY = screenCenterY - (homeAreaWorldY + homeAreaHeight / 2) * viewState.scale;
 
       setViewState((prev) => ({
         ...prev,
@@ -90,8 +91,8 @@ export const useViewState = ({
     const screenCenterX = canvasWidth / 2;
     const screenCenterY = canvasHeight / 2;
 
-    const targetX = screenCenterX - (HOME_AREA_WORLD_X + HOME_AREA_WIDTH / 2) * initialScale;
-    const targetY = screenCenterY - (HOME_AREA_WORLD_Y + HOME_AREA_HEIGHT / 2) * initialScale;
+    const targetX = screenCenterX - (homeAreaWorldX + homeAreaWidth / 2) * initialScale;
+    const targetY = screenCenterY - (homeAreaWorldY + homeAreaHeight / 2) * initialScale;
 
     // Reset velocities to ensure direct animation to home
     velocityX.current = 0;

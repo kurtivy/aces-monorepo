@@ -8,7 +8,6 @@ import {
   canPlaceImage,
   getImageCandidatesForPosition,
 } from '../../lib/canvas/grid-placement'; // Adjusted path
-import { UNIT_SIZE, HOME_AREA_WORLD_X, HOME_AREA_WORLD_Y } from '../../constants/canvas'; // Adjusted path
 import { getDisplayDimensions } from '../../lib/canvas/image-type-utils'; // Adjusted path
 import { useSpaceAnimation } from '../use-space-animation'; // Adjusted path
 import { lerp, easeInOutCubic } from '../../lib/canvas/math-utils'; // Adjusted path
@@ -17,9 +16,9 @@ interface UseCanvasRendererProps {
   images: ImageInfo[];
   viewState: ViewState;
   imagesLoaded: boolean; // Added this prop
+  unitSize: number;
   onCreateTokenClick: () => void;
   imagePlacementMap: React.MutableRefObject<
-    // Preserved this prop
     Map<string, { image: ImageInfo; x: number; y: number; width: number; height: number }>
   >;
 }
@@ -28,6 +27,7 @@ export const useCanvasRenderer = ({
   images,
   viewState,
   imagesLoaded, // Destructure the new prop
+  unitSize,
   onCreateTokenClick,
   imagePlacementMap, // Destructure the preserved prop
 }: UseCanvasRendererProps) => {
@@ -59,18 +59,18 @@ export const useCanvasRenderer = ({
   useEffect(() => {
     if (typeof document !== 'undefined') {
       const canvas = document.createElement('canvas');
-      canvas.width = UNIT_SIZE;
-      canvas.height = UNIT_SIZE;
+      canvas.width = unitSize;
+      canvas.height = unitSize;
       spaceCanvasRef.current = canvas;
     }
-  }, []);
+  }, [unitSize]);
 
   // Initialize space animation
   useSpaceAnimation(spaceCanvasRef, {
     starCount: 0, // Remove white stars as requested
     nebulaCount: 10, // Keep nebula count as is
-    canvasWidth: UNIT_SIZE,
-    canvasHeight: UNIT_SIZE,
+    canvasWidth: unitSize,
+    canvasHeight: unitSize,
   });
 
   // Handle mouse movement for hover detection
@@ -121,15 +121,20 @@ export const useCanvasRenderer = ({
 
     updateCanvasSize();
 
+    const homeAreaWorldX = -unitSize;
+    const homeAreaWorldY = -unitSize;
+    const homeAreaWidth = unitSize * 3;
+    const homeAreaHeight = unitSize * 2;
+
     const drawCreateTokenSquare = (
       x: number,
       y: number,
       hoverProgress: number, // Now accepts a progress value (0 to 1)
     ) => {
-      const size = lerp(UNIT_SIZE, UNIT_SIZE * 1.05, hoverProgress); // Interpolate size
-      const padding = (UNIT_SIZE - size) / 2;
-      const centerX = x + UNIT_SIZE / 2;
-      const centerY = y + UNIT_SIZE / 2;
+      const size = lerp(unitSize, unitSize * 1.05, hoverProgress); // Interpolate size
+      const padding = (unitSize - size) / 2;
+      const centerX = x + unitSize / 2;
+      const centerY = y + unitSize / 2;
       const cornerRadius = 8; // Slightly larger corner radius for a more premium look
 
       ctx.save();
@@ -173,7 +178,7 @@ export const useCanvasRenderer = ({
 
       // Draw inner glow effect
       const innerGlowSize = size - 4;
-      const innerGlowPadding = (UNIT_SIZE - innerGlowSize) / 2;
+      const innerGlowPadding = (unitSize - innerGlowSize) / 2;
 
       ctx.save();
       ctx.beginPath();
@@ -234,7 +239,7 @@ export const useCanvasRenderer = ({
       // Draw logo in a more central position
       if (logoImageRef.current) {
         // Reduced logo size for better spacing
-        const logoSize = lerp(UNIT_SIZE * 0.45, UNIT_SIZE * 0.55, hoverProgress);
+        const logoSize = lerp(unitSize * 0.45, unitSize * 0.55, hoverProgress);
         const logoX = centerX - logoSize / 2;
         // Center the logo vertically
         const logoY = centerY - logoSize / 2;
@@ -265,9 +270,9 @@ export const useCanvasRenderer = ({
       // Gold gradient for text with more contrast
       const textGradient = ctx.createLinearGradient(
         centerX - 70,
-        y + UNIT_SIZE * 0.15,
+        y + unitSize * 0.15,
         centerX + 70,
-        y + UNIT_SIZE * 0.15,
+        y + unitSize * 0.15,
       );
       textGradient.addColorStop(0, '#FFFFFF');
       textGradient.addColorStop(0.5, '#D0B264');
@@ -280,8 +285,8 @@ export const useCanvasRenderer = ({
         'CREATE TOKEN',
         centerX,
         lerp(
-          y + UNIT_SIZE * 0.18, // Higher position
-          y + UNIT_SIZE * 0.16, // Even higher on hover
+          y + unitSize * 0.18, // Higher position
+          y + unitSize * 0.16, // Even higher on hover
           hoverProgress,
         ),
       );
@@ -297,8 +302,8 @@ export const useCanvasRenderer = ({
 
       // Position "COMING SOON" lower in the box
       const comingSoonY = lerp(
-        y + UNIT_SIZE * 0.82, // Lower position
-        y + UNIT_SIZE * 0.84, // Even lower on hover
+        y + unitSize * 0.82, // Lower position
+        y + unitSize * 0.84, // Even lower on hover
         hoverProgress,
       );
 
@@ -397,10 +402,10 @@ export const useCanvasRenderer = ({
       const visibleRight = (-viewState.x + canvasWidth + buffer) * invScale;
       const visibleBottom = (-viewState.y + canvasHeight + buffer) * invScale;
 
-      const gridStartX = Math.floor(visibleLeft / UNIT_SIZE) * UNIT_SIZE;
-      const gridStartY = Math.floor(visibleTop / UNIT_SIZE) * UNIT_SIZE;
-      const gridEndX = Math.ceil(visibleRight / UNIT_SIZE) * UNIT_SIZE;
-      const gridEndY = Math.ceil(visibleBottom / UNIT_SIZE) * UNIT_SIZE;
+      const gridStartX = Math.floor(visibleLeft / unitSize) * unitSize;
+      const gridStartY = Math.floor(visibleTop / unitSize) * unitSize;
+      const gridEndX = Math.ceil(visibleRight / unitSize) * unitSize;
+      const gridEndY = Math.ceil(visibleBottom / unitSize) * unitSize;
 
       imagePlacementMap.current.clear();
       const occupiedSpaces = new Set<string>();
@@ -409,24 +414,33 @@ export const useCanvasRenderer = ({
       // Mark home area as occupied
       for (let i = 0; i < 3; i++) {
         for (let j = 0; j < 2; j++) {
-          const cellX = Math.floor((HOME_AREA_WORLD_X + i * UNIT_SIZE) / UNIT_SIZE);
-          const cellY = Math.floor((HOME_AREA_WORLD_Y + j * UNIT_SIZE) / UNIT_SIZE);
+          const cellX = Math.floor((homeAreaWorldX + i * unitSize) / unitSize);
+          const cellY = Math.floor((homeAreaWorldY + j * unitSize) / unitSize);
           occupiedSpaces.add(`${cellX},${cellY}`);
         }
       }
 
       // Place images in a grid pattern
-      for (let y = gridStartY; y < gridEndY; y += UNIT_SIZE) {
-        for (let x = gridStartX; x < gridEndX; x += UNIT_SIZE) {
-          const gridX = Math.floor(x / UNIT_SIZE);
-          const gridY = Math.floor(y / UNIT_SIZE);
+      for (let y = gridStartY; y < gridEndY; y += unitSize) {
+        for (let x = gridStartX; x < gridEndX; x += unitSize) {
+          const gridX = Math.floor(x / unitSize);
+          const gridY = Math.floor(y / unitSize);
 
           if (occupiedSpaces.has(`${gridX},${gridY}`)) {
             continue;
           }
 
           let placed = false;
-          const candidates = getImageCandidatesForPosition(gridX, gridY, images);
+          const candidates = getImageCandidatesForPosition(
+            gridX,
+            gridY,
+            images,
+            unitSize,
+            homeAreaWorldX,
+            homeAreaWorldY,
+            homeAreaWidth,
+            homeAreaHeight,
+          );
 
           for (const imageInfo of candidates) {
             const { width, height } = getDisplayDimensions(imageInfo.type);
@@ -437,6 +451,11 @@ export const useCanvasRenderer = ({
                 y,
                 { ...imageInfo, displayWidth: width, displayHeight: height },
                 occupiedSpaces,
+                unitSize,
+                homeAreaWorldX,
+                homeAreaWorldY,
+                homeAreaWidth,
+                homeAreaHeight,
               )
             ) {
               const placedItem = { image: imageInfo, x, y, width, height };
@@ -446,14 +465,14 @@ export const useCanvasRenderer = ({
               } else {
                 drawImage(ctx, imageInfo.element, x, y, width, height);
               }
-              markSpaceOccupied(x, y, width, height, occupiedSpaces);
+              markSpaceOccupied(x, y, width, height, occupiedSpaces, unitSize);
               placed = true;
               break;
             }
           }
 
           if (!placed) {
-            markSpaceOccupied(x, y, UNIT_SIZE, UNIT_SIZE, occupiedSpaces);
+            markSpaceOccupied(x, y, unitSize, unitSize, occupiedSpaces, unitSize);
           }
         }
       }
@@ -466,9 +485,9 @@ export const useCanvasRenderer = ({
       createTokenPositions.forEach((pos, index) => {
         if (
           worldMouseX >= pos.worldX &&
-          worldMouseX <= pos.worldX + UNIT_SIZE &&
+          worldMouseX <= pos.worldX + unitSize &&
           worldMouseY >= pos.worldY &&
-          worldMouseY <= pos.worldY + UNIT_SIZE
+          worldMouseY <= pos.worldY + unitSize
         ) {
           newHoveredIndex = index;
           canvas.style.cursor = 'pointer';
@@ -513,11 +532,13 @@ export const useCanvasRenderer = ({
       // Draw home area with logo
       drawHomeArea(
         ctx,
-        HOME_AREA_WORLD_X,
-        HOME_AREA_WORLD_Y,
+        homeAreaWorldX,
+        homeAreaWorldY,
         logoImageRef.current,
         worldMouseX,
         worldMouseY,
+        homeAreaWidth,
+        homeAreaHeight,
       );
 
       // Draw hovered create token squares AFTER the home area (so they appear on top)
@@ -550,6 +571,7 @@ export const useCanvasRenderer = ({
     currentHoverProgress,
     isHoveringToken,
     imagePlacementMap,
+    unitSize,
   ]);
 
   return { canvasRef };
