@@ -123,8 +123,8 @@ export const useCanvasRenderer = ({
 
     const homeAreaWorldX = -unitSize;
     const homeAreaWorldY = -unitSize;
-    const homeAreaWidth = unitSize * 3;
-    const homeAreaHeight = unitSize * 2;
+    const homeAreaWidth = unitSize * 2;
+    const homeAreaHeight = unitSize;
 
     const draw = () => {
       ctx.fillStyle = '#231F20';
@@ -153,8 +153,8 @@ export const useCanvasRenderer = ({
       const createTokenPositions: Array<{ worldX: number; worldY: number }> = [];
 
       // Mark home area as occupied
-      for (let i = 0; i < 3; i++) {
-        for (let j = 0; j < 2; j++) {
+      for (let i = 0; i < 2; i++) {
+        for (let j = 0; j < 1; j++) {
           const cellX = Math.floor((homeAreaWorldX + i * unitSize) / unitSize);
           const cellY = Math.floor((homeAreaWorldY + j * unitSize) / unitSize);
           occupiedSpaces.add(`${cellX},${cellY}`);

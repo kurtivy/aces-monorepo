@@ -33,8 +33,8 @@ export const useViewState = ({
     targetScale: initialScale,
   });
 
-  const homeAreaWidth = unitSize * 3;
-  const homeAreaHeight = unitSize * 2;
+  const homeAreaWidth = unitSize * 2;
+  const homeAreaHeight = unitSize;
   const homeAreaWorldX = -unitSize;
   const homeAreaWorldY = -unitSize;
 

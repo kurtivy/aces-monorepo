@@ -122,8 +122,8 @@ export const ElectricLogoIntro = ({
     const logoSubPaths = parsePathIntoSubPaths();
 
     // Smoother animation durations
-    const outerCircleDuration = 2.5; // seconds
-    const fadeInDuration = 2.5; // seconds (reduced from 3.5)
+    const outerCircleDuration = 1.0; // seconds
+    const fadeInDuration = 1.0; // seconds
 
     const generatePathSet = (
       pathData: string,
@@ -182,12 +182,12 @@ export const ElectricLogoIntro = ({
     setPathData(allPaths);
 
     // Smoother, overlapping animation timing
-    const phase1Start = 500; // Initial delay for outer circle
-    const phase2Start = phase1Start + outerCircleDuration * 1000 - 500; // Start inner elements before outer circle completes
+    const phase1Start = 0; // Initial delay for outer circle
+    const phase2Start = phase1Start + outerCircleDuration * 1000; // Start inner elements right after outer circle completes
 
     // Calculate when the inner elements reach full brightness
-    // This is phase2Start + fadeInDuration (when fade-in completes) + 0.5s additional delay
-    const peakBrightnessTime = phase2Start + fadeInDuration * 1000 + 500; // 0.5s additional delay
+    // This is phase2Start + fadeInDuration (when fade-in completes)
+    const peakBrightnessTime = phase2Start + fadeInDuration * 1000;
 
     const timers = [
       setTimeout(() => setAnimationPhase(1), phase1Start),
@@ -220,7 +220,7 @@ export const ElectricLogoIntro = ({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 1.2, ease: 'easeInOut' }}
+          transition={{ duration: 0.4, ease: 'easeInOut' }}
         >
           <style jsx>{`
             @keyframes drawElectric {
