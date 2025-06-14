@@ -262,20 +262,19 @@ export const useCanvasRenderer = ({
         }
       }
 
-      // Draw non-hovered create token squares first
+      // Draw create token squares with space animation
       createTokenPositions.forEach((pos, index) => {
         const isCurrentlyHovered = index === hoveredTokenIndex;
-        if (!isCurrentlyHovered) {
-          drawCreateTokenSquare(
-            ctx,
-            pos.worldX,
-            pos.worldY,
-            0,
-            unitSize,
-            logoImageRef.current,
-            spaceCanvasRef.current,
-          ); // Non-hovered state
-        }
+        const actualHoverProgress = isCurrentlyHovered ? currentHoverProgress : 0;
+        drawCreateTokenSquare(
+          ctx,
+          pos.worldX,
+          pos.worldY,
+          actualHoverProgress,
+          unitSize,
+          logoImageRef.current,
+          spaceCanvasRef.current,
+        );
       });
 
       // Draw home area with logo
@@ -290,28 +289,13 @@ export const useCanvasRenderer = ({
         homeAreaHeight,
       );
 
-      // Draw hovered create token squares AFTER the home area (so they appear on top)
-      createTokenPositions.forEach((pos, index) => {
-        const isCurrentlyHovered = index === hoveredTokenIndex;
-        if (isCurrentlyHovered) {
-          drawCreateTokenSquare(
-            ctx,
-            pos.worldX,
-            pos.worldY,
-            currentHoverProgress,
-            unitSize,
-            logoImageRef.current,
-            spaceCanvasRef.current,
-          ); // Hovered state
-        }
-      });
-
       ctx.restore();
       animationFrameRef.current = requestAnimationFrame(draw);
     };
 
+    draw();
+
     window.addEventListener('resize', updateCanvasSize);
-    animationFrameRef.current = requestAnimationFrame(draw);
 
     return () => {
       window.removeEventListener('resize', updateCanvasSize);
@@ -320,7 +304,7 @@ export const useCanvasRenderer = ({
       }
     };
   }, [
-    imagesLoaded, // Added this to dependencies
+    imagesLoaded,
     images,
     viewState,
     hoveredTokenIndex,

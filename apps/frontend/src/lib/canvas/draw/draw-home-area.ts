@@ -3,30 +3,115 @@ export const drawHomeArea = (
   x: number,
   y: number,
   logoImage: HTMLImageElement | null,
-  mouseX: number = 0,
-  mouseY: number = 0,
+  mouseX = 0,
+  mouseY = 0,
   homeAreaWidth: number,
   homeAreaHeight: number,
+  spaceCanvas: HTMLCanvasElement | null = null, // Add space canvas parameter
+  animationTime = 0, // For any additional animations
 ) => {
   ctx.save();
 
-  // Draw background
-  const radius = 8;
-  ctx.fillStyle = 'rgba(35, 31, 32, 0.95)';
+  const radius = 12; // Slightly larger radius for premium feel
+
+  // Create clipping region for the background
   ctx.beginPath();
   ctx.roundRect(x, y, homeAreaWidth, homeAreaHeight, radius);
-  ctx.fill();
+  ctx.clip();
 
-  // Draw border
-  ctx.strokeStyle = 'rgba(208, 178, 100, 0.3)';
-  ctx.lineWidth = 5; // Increased border thickness
-  ctx.stroke();
+  // Draw premium dark gradient background (matching create token square)
+  const bgGradient = ctx.createLinearGradient(x, y, x + homeAreaWidth, y + homeAreaHeight);
+  bgGradient.addColorStop(0, '#1A1A1A');
+  bgGradient.addColorStop(1, '#0A0A0A');
+  ctx.fillStyle = bgGradient;
+  ctx.fillRect(x, y, homeAreaWidth, homeAreaHeight);
+
+  // Draw space animation from the separate canvas with reduced opacity
+  if (spaceCanvas) {
+    ctx.globalAlpha = 0.7;
+    ctx.drawImage(spaceCanvas, x, y, homeAreaWidth, homeAreaHeight);
+    ctx.globalAlpha = 1.0;
+  }
+
+  ctx.restore();
 
   // Calculate center position
   const centerX = x + homeAreaWidth / 2;
   const centerY = y + homeAreaHeight / 2;
 
-  // Draw the four quadrant buttons
+  // Draw animated dot pattern for texture (replace the existing dot pattern section)
+  ctx.save();
+  const dotSpacing = 12;
+  const time = animationTime * 0.001; // Convert to seconds
+
+  for (let dotX = x + 6; dotX < x + homeAreaWidth - 6; dotX += dotSpacing) {
+    for (let dotY = y + 6; dotY < y + homeAreaHeight - 6; dotY += dotSpacing) {
+      // Skip dots that would be too close to the center logo area
+      const distanceFromCenter = Math.sqrt(
+        Math.pow(dotX - centerX, 2) + Math.pow(dotY - centerY, 2),
+      );
+      if (distanceFromCenter > homeAreaHeight * 0.35) {
+        // Create subtle animation for each dot
+        const dotIndex = (dotX / dotSpacing) * 100 + dotY / dotSpacing;
+        const animationOffset = Math.sin(time * 2 + dotIndex * 0.1) * 0.3;
+        const opacityPulse = 0.12 + Math.sin(time * 1.5 + dotIndex * 0.05) * 0.06;
+
+        ctx.fillStyle = `rgba(255, 255, 255, ${opacityPulse})`;
+        ctx.beginPath();
+        ctx.arc(dotX + animationOffset, dotY + animationOffset * 0.5, 1.0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+  ctx.restore();
+
+  // Draw premium multi-layered border (matching create token square)
+  ctx.save();
+
+  // Layer 1: Outer glow
+  ctx.shadowColor = 'rgba(208, 178, 100, 0.6)';
+  ctx.shadowBlur = 15;
+  ctx.strokeStyle = 'rgba(208, 178, 100, 0.8)';
+  ctx.lineWidth = 4; // Thick golden border as requested
+  ctx.beginPath();
+  ctx.roundRect(x, y, homeAreaWidth, homeAreaHeight, radius);
+  ctx.stroke();
+
+  // Layer 2: Inner border with gradient
+  ctx.shadowBlur = 0;
+  const borderGradient = ctx.createLinearGradient(x, y, x + homeAreaWidth, y + homeAreaHeight);
+  borderGradient.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+  borderGradient.addColorStop(0.5, 'rgba(208, 178, 100, 0.8)');
+  borderGradient.addColorStop(1, 'rgba(173, 142, 66, 0.9)');
+
+  ctx.strokeStyle = borderGradient;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(x + 2, y + 2, homeAreaWidth - 4, homeAreaHeight - 4, radius - 1);
+  ctx.stroke();
+
+  ctx.restore();
+
+  // Draw quadrant divider lines
+  ctx.save();
+  ctx.strokeStyle = 'rgba(208, 178, 100, 0.4)';
+  ctx.lineWidth = 1.5;
+
+  // Vertical divider line
+  ctx.beginPath();
+  ctx.moveTo(centerX, y + 8); // Start slightly below top border
+  ctx.lineTo(centerX, y + homeAreaHeight - 8); // End slightly above bottom border
+  ctx.stroke();
+
+  // Horizontal divider line
+  ctx.beginPath();
+  ctx.moveTo(x + 8, centerY); // Start slightly right of left border
+  ctx.lineTo(x + homeAreaWidth - 8, centerY); // End slightly left of right border
+  ctx.stroke();
+
+  ctx.restore();
+
+  // Draw the four quadrant buttons with premium styling
   const drawQuadrantButton = (text: string, quadrant: number) => {
     const quadWidth = homeAreaWidth / 2;
     const quadHeight = homeAreaHeight / 2;
@@ -42,78 +127,103 @@ export const drawHomeArea = (
       mouseY >= quadY &&
       mouseY <= quadY + quadHeight;
 
-    // Button background with hover effect
-    ctx.fillStyle = isHovered
-      ? 'rgba(208, 178, 100, 1)' // Brighter gold on hover
-      : 'rgba(208, 178, 100, 0.8)'; // Slightly dimmer gold when not hovered
+    // Button text with premium golden styling
+    ctx.save();
 
-    ctx.beginPath();
-    if (quadrant === 0) {
-      // Top-left
-      ctx.roundRect(quadX, quadY, quadWidth, quadHeight, [radius, 0, 0, 0]);
-    } else if (quadrant === 1) {
-      // Top-right
-      ctx.roundRect(quadX, quadY, quadWidth, quadHeight, [0, radius, 0, 0]);
-    } else if (quadrant === 2) {
-      // Bottom-left
-      ctx.roundRect(quadX, quadY, quadWidth, quadHeight, [0, 0, 0, radius]);
-    } else {
-      // Bottom-right
-      ctx.roundRect(quadX, quadY, quadWidth, quadHeight, [0, 0, radius, 0]);
-    }
-    ctx.fill();
+    // Text glow effect
+    ctx.shadowColor = `rgba(208, 178, 100, ${isHovered ? 0.8 : 0.5})`;
+    ctx.shadowBlur = isHovered ? 8 : 4;
 
-    // Button border
-    ctx.strokeStyle = '#231F20'; // Charcoal border
-    ctx.lineWidth = 2; // Slightly thicker border for better visibility
-    ctx.stroke();
+    // Gold gradient for text (matching create token square)
+    const textGradient = ctx.createLinearGradient(
+      quadX,
+      quadY + quadHeight / 2 - 15,
+      quadX + quadWidth,
+      quadY + quadHeight / 2 + 15,
+    );
+    textGradient.addColorStop(0, '#FFFFFF');
+    textGradient.addColorStop(0.5, '#D0B264');
+    textGradient.addColorStop(1, '#FFFFFF');
 
-    // Button text
-    ctx.fillStyle = '#231F20'; // Charcoal text to match border
-    ctx.font = "700 30px 'Syne', sans-serif"; // Updated to Spectral with weight 700 (bold)
+    ctx.fillStyle = textGradient;
+    ctx.font = `bold ${isHovered ? 32 : 30}px 'Syne'`; // Matching create token square font
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+
     const textX = quadX + quadWidth / 2;
     const textY = quadY + quadHeight / 2;
 
-    // Position text further from center and maintain symmetry
-    const offsetBase = Math.min(quadWidth, quadHeight) * 0.35; // Use 35% of the smaller quadrant dimension
+    // Position text closer to center (reduce offset from 0.25 to 0.1 for much more centered text)
+    const offsetBase = Math.min(quadWidth, quadHeight) * 0.125;
     const textOffsetX = isRightSide ? offsetBase : -offsetBase;
     const textOffsetY = isBottomHalf ? offsetBase : -offsetBase;
+
     ctx.fillText(text, textX + textOffsetX, textY + textOffsetY);
+    ctx.restore();
   };
 
   // Draw all quadrant buttons
-  drawQuadrantButton('About', 0);
-  drawQuadrantButton('Create', 1);
-  drawQuadrantButton('Terms', 2);
-  drawQuadrantButton('Career', 3);
+  drawQuadrantButton('ABOUT', 0);
+  drawQuadrantButton('CREATE', 1);
+  drawQuadrantButton('TERMS', 2);
+  drawQuadrantButton('CAREER', 3);
 
-  // Draw the circular background for logo
-  const logoSize = homeAreaHeight;
-  ctx.fillStyle = '#231F20';
+  // Draw the circular background for logo with premium styling
+  const logoSize = homeAreaHeight * 0.6; // Slightly smaller for better proportions
+
+  // Logo background with gradient
+  const logoGradient = ctx.createRadialGradient(
+    centerX,
+    centerY,
+    0,
+    centerX,
+    centerY,
+    logoSize / 2,
+  );
+  logoGradient.addColorStop(0, '#2A2A2A');
+  logoGradient.addColorStop(1, '#1A1A1A');
+
+  ctx.fillStyle = logoGradient;
   ctx.beginPath();
   ctx.arc(centerX, centerY, logoSize / 2, 0, Math.PI * 2);
   ctx.fill();
 
-  // Add subtle glow around the logo
-  ctx.shadowColor = 'rgba(208, 178, 100, 0.2)';
-  ctx.shadowBlur = 30;
-  ctx.strokeStyle = 'rgba(208, 178, 100, 0.3)';
+  // Add premium glow around the logo
+  ctx.save();
+  ctx.shadowColor = 'rgba(208, 178, 100, 0.4)';
+  ctx.shadowBlur = 20;
+
+  // Multi-layered logo border
+  ctx.strokeStyle = 'rgba(208, 178, 100, 0.6)';
   ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, logoSize / 2, 0, Math.PI * 2);
   ctx.stroke();
+
+  // Inner logo border
   ctx.shadowBlur = 0;
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, logoSize / 2 - 2, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.restore();
 
   // Draw the logo if available
   if (logoImage && logoImage.complete) {
     ctx.save();
     // Create a circular clipping path
     ctx.beginPath();
-    ctx.arc(centerX, centerY, logoSize / 2 - 3, 0, Math.PI * 2);
+    ctx.arc(centerX, centerY, logoSize / 2 - 4, 0, Math.PI * 2);
     ctx.clip();
 
+    // Add logo glow
+    ctx.shadowColor = 'rgba(255, 255, 255, 0.3)';
+    ctx.shadowBlur = 10;
+
     // Calculate dimensions to maintain aspect ratio
-    const scale = (logoSize - 6) / Math.max(logoImage.width, logoImage.height);
+    const scale = (logoSize - 8) / Math.max(logoImage.width, logoImage.height);
     const drawWidth = logoImage.width * scale;
     const drawHeight = logoImage.height * scale;
 
@@ -121,7 +231,8 @@ export const drawHomeArea = (
     const logoX = centerX - drawWidth / 2;
     const logoY = centerY - drawHeight / 2;
 
-    // Draw the logo
+    // Draw the logo with enhanced opacity
+    ctx.globalAlpha = 0.9;
     ctx.drawImage(logoImage, logoX, logoY, drawWidth, drawHeight);
     ctx.restore();
   }
