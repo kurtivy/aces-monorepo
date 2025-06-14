@@ -5,52 +5,82 @@ export const drawImage = (
   y: number,
   width: number,
   height: number,
+  animationProgress = 1, // Default to fully animated (no animation)
+  unitSize = 0, // Not used when animationProgress is 1
 ) => {
   ctx.save();
+
+  // Animation logic - only applies when animationProgress < 1
+  let animatedY = y;
+  let opacity = 1;
+
+  if (animationProgress < 1) {
+    // Rise from bottom
+    const startOffset = 50; // Increased for a more pronounced effect
+    const currentOffset = startOffset * (1 - animationProgress);
+    animatedY = y + currentOffset;
+
+    // Simple fade-in
+    opacity = animationProgress;
+  }
+
+  const scaledWidth = width;
+  const scaledHeight = height;
+  const scaleOffsetX = (width - scaledWidth) / 2;
+  const scaleOffsetY = (height - scaledHeight) / 2;
+
+  // Apply opacity
+  ctx.globalAlpha = opacity;
 
   // Create rounded rectangle clipping path
   const radius = 8;
   ctx.beginPath();
-  ctx.roundRect(x, y, width, height, radius);
+  ctx.roundRect(x + scaleOffsetX, animatedY + scaleOffsetY, scaledWidth, scaledHeight, radius);
   ctx.clip();
 
   // Calculate scale to cover the entire area
-  const scaleX = width / img.naturalWidth;
-  const scaleY = height / img.naturalHeight;
-  const scale = Math.max(scaleX, scaleY);
+  const scaleX = scaledWidth / img.naturalWidth;
+  const scaleY = scaledHeight / img.naturalHeight;
+  const imageScale = Math.max(scaleX, scaleY);
 
-  const scaledWidth = img.naturalWidth * scale;
-  const scaledHeight = img.naturalHeight * scale;
+  const scaledImageWidth = img.naturalWidth * imageScale;
+  const scaledImageHeight = img.naturalHeight * imageScale;
 
   // Center the image
-  const offsetX = x + (width - scaledWidth) / 2;
-  const offsetY = y + (height - scaledHeight) / 2;
+  const offsetX = x + scaleOffsetX + (scaledWidth - scaledImageWidth) / 2;
+  const offsetY = animatedY + scaleOffsetY + (scaledHeight - scaledImageHeight) / 2;
 
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(img, offsetX, offsetY, scaledWidth, scaledHeight);
+  ctx.drawImage(img, offsetX, offsetY, scaledImageWidth, scaledImageHeight);
 
   // Add subtle border
   ctx.restore();
+  ctx.globalAlpha = opacity;
 
   // Create gradient for the border
-  const borderGradient = ctx.createLinearGradient(x, y, x, y + height);
-  borderGradient.addColorStop(0, 'rgba(208, 178, 100, 0.3)'); // Brand gold with higher opacity at top
-  borderGradient.addColorStop(1, 'rgba(208, 178, 100, 0.1)'); // Brand gold with lower opacity at bottom
+  const borderGradient = ctx.createLinearGradient(x, animatedY, x, animatedY + height);
+  borderGradient.addColorStop(0, `rgba(208, 178, 100, ${0.3 * opacity})`);
+  borderGradient.addColorStop(1, `rgba(208, 178, 100, ${0.1 * opacity})`);
 
   ctx.strokeStyle = borderGradient;
   ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.roundRect(x, y, width, height, radius);
+  ctx.roundRect(x + scaleOffsetX, animatedY + scaleOffsetY, scaledWidth, scaledHeight, radius);
   ctx.stroke();
 
   // Add subtle inner shadow/glow
   ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(x + scaleOffsetX, animatedY + scaleOffsetY, scaledWidth, scaledHeight, radius);
   ctx.clip();
-  ctx.shadowColor = 'rgba(208, 178, 100, 0.1)'; // Brand gold with very low opacity
+  ctx.shadowColor = `rgba(208, 178, 100, ${0.1 * opacity})`;
   ctx.shadowBlur = 8;
   ctx.shadowOffsetY = 2;
-  ctx.fillStyle = 'rgba(208, 178, 100, 0.05)';
+  ctx.fillStyle = `rgba(208, 178, 100, ${0.05 * opacity})`;
   ctx.fill();
   ctx.restore();
+
+  // Reset global alpha
+  ctx.globalAlpha = 1;
 };

@@ -1,21 +1,23 @@
 'use client';
 
+import type React from 'react';
+
 import { useRef, useEffect, useState } from 'react';
-import { ImageInfo, ViewState } from '../../types/canvas'; // Adjusted path
+import type { ImageInfo, ViewState } from '../../types/canvas';
 import { drawCreateTokenSquare, drawHomeArea, drawImage } from '../../lib/canvas/draw';
 import {
   markSpaceOccupied,
   canPlaceImage,
   getImageCandidatesForPosition,
-} from '../../lib/canvas/grid-placement'; // Adjusted path
-import { getDisplayDimensions } from '../../lib/canvas/image-type-utils'; // Adjusted path
-import { useSpaceAnimation } from '../use-space-animation'; // Adjusted path
-import { lerp, easeInOutCubic } from '../../lib/canvas/math-utils'; // Adjusted path
+} from '../../lib/canvas/grid-placement';
+import { getDisplayDimensions } from '../../lib/canvas/image-type-utils';
+import { useSpaceAnimation } from '../use-space-animation';
+import { easeInOutCubic } from '../../lib/canvas/math-utils';
 
 interface UseCanvasRendererProps {
   images: ImageInfo[];
   viewState: ViewState;
-  imagesLoaded: boolean; // Added this prop
+  imagesLoaded: boolean;
   unitSize: number;
   onCreateTokenClick: () => void;
   imagePlacementMap: React.MutableRefObject<
@@ -26,10 +28,10 @@ interface UseCanvasRendererProps {
 export const useCanvasRenderer = ({
   images,
   viewState,
-  imagesLoaded, // Destructure the new prop
+  imagesLoaded,
   unitSize,
   onCreateTokenClick,
-  imagePlacementMap, // Destructure the preserved prop
+  imagePlacementMap,
 }: UseCanvasRendererProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationFrameRef = useRef<number | null>(null);
@@ -41,7 +43,11 @@ export const useCanvasRenderer = ({
   const [currentHoverProgress, setCurrentHoverProgress] = useState(0);
   const hoverAnimationStartTime = useRef(0);
   const [isHoveringToken, setIsHoveringToken] = useState(false);
-  const hoverAnimationDuration = 300; // 0.3 seconds for faster hover animation
+  const hoverAnimationDuration = 300;
+
+  // Product entrance animation state
+  const [productAnimationStartTime, setProductAnimationStartTime] = useState<number | null>(null);
+  const [isProductAnimationActive, setIsProductAnimationActive] = useState(false);
 
   // Create a separate canvas for space animation
   const spaceCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -49,7 +55,7 @@ export const useCanvasRenderer = ({
   // Preload the logo image
   useEffect(() => {
     const logoImage = new Image();
-    logoImage.src = '/aces-logo.png'; // Assuming user fixed this path
+    logoImage.src = '/aces-logo.png';
     logoImage.onload = () => {
       logoImageRef.current = logoImage;
     };
@@ -67,11 +73,23 @@ export const useCanvasRenderer = ({
 
   // Initialize space animation
   useSpaceAnimation(spaceCanvasRef, {
-    starCount: 0, // Remove white stars as requested
-    nebulaCount: 3, // Keep nebula count as is
+    starCount: 0,
+    nebulaCount: 3,
     canvasWidth: unitSize,
     canvasHeight: unitSize,
   });
+
+  // Start product animation when images are loaded
+  useEffect(() => {
+    if (imagesLoaded) {
+      const timer = setTimeout(() => {
+        setProductAnimationStartTime(performance.now());
+        setIsProductAnimationActive(true);
+      }, 500); // Add a 500ms delay
+
+      return () => clearTimeout(timer);
+    }
+  }, [imagesLoaded]);
 
   // Handle mouse movement for hover detection
   useEffect(() => {
@@ -102,7 +120,7 @@ export const useCanvasRenderer = ({
   }, [hoveredTokenIndex, onCreateTokenClick]);
 
   useEffect(() => {
-    if (!imagesLoaded) return; // Added this condition
+    if (!imagesLoaded) return;
 
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -127,7 +145,7 @@ export const useCanvasRenderer = ({
     const homeAreaHeight = unitSize;
 
     const draw = () => {
-      ctx.fillStyle = '#231F20';
+      ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       ctx.save();
@@ -151,6 +169,14 @@ export const useCanvasRenderer = ({
       imagePlacementMap.current.clear();
       const occupiedSpaces = new Set<string>();
       const createTokenPositions: Array<{ worldX: number; worldY: number }> = [];
+      const productPlacements: Array<{
+        image: ImageInfo;
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        index: number;
+      }> = [];
 
       // Mark home area as occupied
       for (let i = 0; i < 2; i++) {
@@ -162,6 +188,7 @@ export const useCanvasRenderer = ({
       }
 
       // Place images in a grid pattern
+      let productIndex = 0;
       for (let y = gridStartY; y < gridEndY; y += unitSize) {
         for (let x = gridStartX; x < gridEndX; x += unitSize) {
           const gridX = Math.floor(x / unitSize);
@@ -201,10 +228,19 @@ export const useCanvasRenderer = ({
             ) {
               const placedItem = { image: imageInfo, x, y, width, height };
               imagePlacementMap.current.set(`${gridX},${gridY}`, placedItem);
+
               if (imageInfo.type === 'create-token') {
                 createTokenPositions.push({ worldX: x, worldY: y });
               } else {
-                drawImage(ctx, imageInfo.element, x, y, width, height);
+                // Store product placements for animated rendering
+                productPlacements.push({
+                  image: imageInfo,
+                  x,
+                  y,
+                  width,
+                  height,
+                  index: productIndex++,
+                });
               }
               markSpaceOccupied(x, y, width, height, occupiedSpaces, unitSize);
               placed = true;
@@ -217,6 +253,56 @@ export const useCanvasRenderer = ({
           }
         }
       }
+
+      const STAGGER_DELAY = 60; // 60ms between each item for a distinct effect
+      const MAX_ANIMATION_DURATION = 1500; // Slower start for first items
+      const MIN_ANIMATION_DURATION = 500; // Faster end for last items
+
+      // Check if the overall animation sequence is complete
+      if (isProductAnimationActive && productAnimationStartTime) {
+        const lastItemDelay =
+          productPlacements.length > 0 ? (productPlacements.length - 1) * STAGGER_DELAY : 0;
+        const totalDuration = lastItemDelay + MIN_ANIMATION_DURATION;
+        const elapsed = performance.now() - productAnimationStartTime;
+        if (elapsed > totalDuration) {
+          setIsProductAnimationActive(false);
+        }
+      }
+
+      // Draw products with animation
+      productPlacements.forEach((placement) => {
+        let easedProgress = 1;
+        if (isProductAnimationActive && productAnimationStartTime) {
+          const totalItems = productPlacements.length;
+          const durationRange = MAX_ANIMATION_DURATION - MIN_ANIMATION_DURATION;
+          const itemDuration =
+            totalItems > 1
+              ? MAX_ANIMATION_DURATION - (placement.index / (totalItems - 1)) * durationRange
+              : MAX_ANIMATION_DURATION;
+
+          // Calculate individual product animation progress with stagger
+          const productDelay = placement.index * STAGGER_DELAY;
+          const productElapsed = Math.max(
+            0,
+            performance.now() - (productAnimationStartTime || 0) - productDelay,
+          );
+          const productProgress = Math.min(1, productElapsed / itemDuration);
+
+          // Apply easing
+          easedProgress = easeInOutCubic(productProgress);
+        }
+
+        drawImage(
+          ctx,
+          placement.image.element,
+          placement.x,
+          placement.y,
+          placement.width,
+          placement.height,
+          easedProgress,
+          unitSize,
+        );
+      });
 
       // Check for hover on create token squares
       let newHoveredIndex: number | null = null;
@@ -250,13 +336,11 @@ export const useCanvasRenderer = ({
         const elapsed = performance.now() - hoverAnimationStartTime.current;
         let progress = Math.min(1, elapsed / hoverAnimationDuration);
         if (!isHoveringToken) {
-          progress = 1 - progress; // Reverse for unhover
+          progress = 1 - progress;
         }
-        // Apply easing for smoother transition
         progress = easeInOutCubic(progress);
         setCurrentHoverProgress(progress);
 
-        // If unhover animation is complete, stop animating
         if (!isHoveringToken && progress <= 0) {
           setCurrentHoverProgress(0);
         }
@@ -313,6 +397,8 @@ export const useCanvasRenderer = ({
     isHoveringToken,
     imagePlacementMap,
     unitSize,
+    isProductAnimationActive,
+    productAnimationStartTime,
   ]);
 
   return { canvasRef };

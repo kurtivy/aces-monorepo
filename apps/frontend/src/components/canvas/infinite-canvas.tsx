@@ -155,7 +155,7 @@ const InfiniteCanvas = () => {
       <AnimatePresence>
         {canvasReady && (
           <motion.div
-            className="fixed inset-0 bg-gradient-to-b from-[#000000] from-0% via-[#000000] via-80% to-[#184D37] to-100%"
+            className="fixed inset-0"
             initial={{ opacity: 0 }}
             animate={{ opacity: canvasVisible ? 1 : 0 }}
             transition={{
