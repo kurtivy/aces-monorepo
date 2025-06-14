@@ -25,8 +25,8 @@ export const useCanvasInteractions = ({
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
-  const homeAreaWidth = unitSize * 3;
-  const homeAreaHeight = unitSize * 2;
+  const homeAreaWidth = unitSize * 2;
+  const homeAreaHeight = unitSize;
   const homeAreaWorldX = -unitSize;
   const homeAreaWorldY = -unitSize;
 
