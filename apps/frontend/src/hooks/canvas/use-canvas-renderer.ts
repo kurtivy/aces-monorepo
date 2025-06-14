@@ -68,7 +68,7 @@ export const useCanvasRenderer = ({
   // Initialize space animation
   useSpaceAnimation(spaceCanvasRef, {
     starCount: 0, // Remove white stars as requested
-    nebulaCount: 10, // Keep nebula count as is
+    nebulaCount: 3, // Keep nebula count as is
     canvasWidth: unitSize,
     canvasHeight: unitSize,
   });

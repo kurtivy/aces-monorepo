@@ -8,6 +8,7 @@ export const drawCreateTokenSquare = (
   unitSize: number,
   logoImage: HTMLImageElement | null,
   spaceCanvas: HTMLCanvasElement | null,
+  animationTime = 0, // Add animation time parameter
 ) => {
   const size = lerp(unitSize, unitSize * 1.05, hoverProgress); // Interpolate size
   const padding = (unitSize - size) / 2;
@@ -41,16 +42,35 @@ export const drawCreateTokenSquare = (
     ctx.globalAlpha = 1.0;
   }
 
-  // Draw subtle dot pattern for texture
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
-  const dotSpacing = 10;
-  for (let dotX = x + padding; dotX < x + padding + size; dotX += dotSpacing) {
-    for (let dotY = y + padding; dotY < y + padding + size; dotY += dotSpacing) {
+  // Draw animated dot pattern for texture (replacing the static dots)
+  ctx.save();
+  const dotSpacing = 12;
+  const time = animationTime * 0.001; // Convert to seconds
+
+  for (let dotX = x + padding + 6; dotX < x + padding + size - 6; dotX += dotSpacing) {
+    for (let dotY = y + padding + 6; dotY < y + padding + size - 6; dotY += dotSpacing) {
+      // Skip dots that would be too close to the center logo area (if logo exists)
+      if (logoImage) {
+        const distanceFromCenter = Math.sqrt(
+          Math.pow(dotX - centerX, 2) + Math.pow(dotY - centerY, 2),
+        );
+        if (distanceFromCenter < unitSize * 0.25) {
+          continue; // Skip dots too close to logo
+        }
+      }
+
+      // Create subtle animation for each dot
+      const dotIndex = (dotX / dotSpacing) * 100 + dotY / dotSpacing;
+      const animationOffset = Math.sin(time * 2 + dotIndex * 0.1) * 0.3;
+      const opacityPulse = 0.15 + Math.sin(time * 1.5 + dotIndex * 0.05) * 0.08;
+
+      ctx.fillStyle = `rgba(255, 255, 255, ${opacityPulse})`;
       ctx.beginPath();
-      ctx.arc(dotX, dotY, 0.5, 0, Math.PI * 2);
+      ctx.arc(dotX + animationOffset, dotY + animationOffset * 0.5, 1.2, 0, Math.PI * 2);
       ctx.fill();
     }
   }
+  ctx.restore();
 
   ctx.restore();
 
@@ -132,7 +152,7 @@ export const drawCreateTokenSquare = (
   // "CREATE TOKEN" as a more prominent title
   // Position it higher in the box for better spacing
   const createTokenFontSize = lerp(18, 22, hoverProgress); // Larger font size
-  ctx.font = `bold ${createTokenFontSize}px 'Barlow Condensed'`; // Always bold for title prominence
+  ctx.font = `bold ${createTokenFontSize}px 'Syne'`; // Changed to Syne to match home area
 
   // Text glow effect
   ctx.shadowColor = `rgba(208, 178, 100, ${lerp(0.5, 0.9, hoverProgress)})`;
@@ -164,7 +184,7 @@ export const drawCreateTokenSquare = (
 
   // ADJUSTED: "COMING SOON" with more appropriate letter spacing
   const comingSoonFontSize = lerp(16, 18, hoverProgress); // Larger font size
-  ctx.font = `bold ${comingSoonFontSize}px 'Barlow Condensed'`;
+  ctx.font = `bold ${comingSoonFontSize}px 'Syne'`; // Changed to Syne to match home area
 
   // White color for "COMING SOON" with slight gold tint
   ctx.fillStyle = `rgba(255, 255, 255, ${lerp(0.8, 1.0, hoverProgress)})`;

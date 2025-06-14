@@ -54,7 +54,7 @@ export const drawHomeArea = (
         // Create subtle animation for each dot
         const dotIndex = (dotX / dotSpacing) * 100 + dotY / dotSpacing;
         const animationOffset = Math.sin(time * 2 + dotIndex * 0.1) * 0.3;
-        const opacityPulse = 0.12 + Math.sin(time * 1.5 + dotIndex * 0.05) * 0.06;
+        const opacityPulse = 0.2 + Math.sin(time * 1.5 + dotIndex * 0.05) * 0.1;
 
         ctx.fillStyle = `rgba(255, 255, 255, ${opacityPulse})`;
         ctx.beginPath();
@@ -154,7 +154,7 @@ export const drawHomeArea = (
     const textY = quadY + quadHeight / 2;
 
     // Position text closer to center (reduce offset from 0.25 to 0.1 for much more centered text)
-    const offsetBase = Math.min(quadWidth, quadHeight) * 0.125;
+    const offsetBase = Math.min(quadWidth, quadHeight) * 0.1;
     const textOffsetX = isRightSide ? offsetBase : -offsetBase;
     const textOffsetY = isBottomHalf ? offsetBase : -offsetBase;
 

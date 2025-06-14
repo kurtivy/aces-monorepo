@@ -135,8 +135,8 @@ export function useSpaceAnimation(
   options: UseSpaceAnimationOptions = {},
 ) {
   const {
-    starCount = 100,
-    nebulaCount = 20,
+    starCount = 3,
+    nebulaCount = 1,
     canvasWidth,
     canvasHeight,
     offsetX = 0,
