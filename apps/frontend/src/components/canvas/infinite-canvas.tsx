@@ -4,7 +4,7 @@ import type React from 'react';
 import { useRef, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ImageDetailsModal from '../ui/image-details-modal';
-import { ElectricLogoIntro } from './electric-logo-intro';
+import LoadingScreen from '../loading/loading-screen';
 import { useImageLoader } from '../../hooks/canvas/use-image-loader';
 import { useViewState } from '../../hooks/canvas/use-view-state';
 import { useCanvasInteractions } from '../../hooks/canvas/use-canvas-interactions';
@@ -24,10 +24,11 @@ const InfiniteCanvas = () => {
   );
 
   const { images, loadingProgress, imagesLoaded } = useImageLoader();
-  const { viewState, handleWheel, animateViewState, isAnimating, animateToHome } = useViewState({
-    imagesLoaded,
-    unitSize,
-  });
+  const { viewState, handleWheel, animateViewState, isAnimating, animateToHome, showHomeButton } =
+    useViewState({
+      imagesLoaded,
+      unitSize,
+    });
   const { canvasRef } = useCanvasRenderer({
     images,
     viewState,
@@ -78,6 +79,17 @@ const InfiniteCanvas = () => {
   }, [imagesLoaded, animateViewState, isAnimating]);
 
   useEffect(() => {
+    const timer = setTimeout(() => {
+      if (imagesLoaded) {
+        setCanvasVisible(true);
+      }
+      setIntroCompleted(true);
+    }, 3000); // Show loading screen for 3 seconds
+
+    return () => clearTimeout(timer);
+  }, [imagesLoaded]);
+
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) {
       return;
@@ -115,23 +127,7 @@ const InfiniteCanvas = () => {
 
   return (
     <>
-      {/* Electric Logo Intro - shows until its own animation is complete */}
-      <AnimatePresence>
-        {!introCompleted && (
-          <ElectricLogoIntro
-            onComplete={() => {
-              setIntroCompleted(true);
-            }}
-            onBeforeExit={() => {
-              // Make sure canvas is visible before the intro starts to fade out
-              if (imagesLoaded) {
-                setCanvasReady(true);
-                setCanvasVisible(true);
-              }
-            }}
-          />
-        )}
-      </AnimatePresence>
+      <LoadingScreen isComplete={introCompleted} />
 
       {/* Loading Progress - shows after intro is done, but only if images are still loading */}
       <AnimatePresence>
@@ -183,7 +179,7 @@ const InfiniteCanvas = () => {
       </AnimatePresence>
 
       <ImageDetailsModal imageInfo={selectedImage} onClose={() => setSelectedImage(null)} />
-      <HomeButton onClick={animateToHome} />
+      {introCompleted && showHomeButton && <HomeButton onClick={animateToHome} />}
     </>
   );
 };

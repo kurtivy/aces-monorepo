@@ -32,6 +32,7 @@ export const useViewState = ({
     targetY: initialY,
     targetScale: initialScale,
   });
+  const [showHomeButton, setShowHomeButton] = useState(false);
 
   const homeAreaWidth = unitSize * 2;
   const homeAreaHeight = unitSize;
@@ -82,6 +83,34 @@ export const useViewState = ({
       window.removeEventListener('resize', updateCenter);
     };
   }, [imagesLoaded]); // Remove viewState.scale from dependencies
+
+  useEffect(() => {
+    const canvasWidth = window.innerWidth;
+    const canvasHeight = window.innerHeight;
+
+    // Screen center of the home area
+    const homeAreaCenterX = (homeAreaWorldX + homeAreaWidth / 2) * viewState.scale + viewState.x;
+    const homeAreaCenterY = (homeAreaWorldY + homeAreaHeight / 2) * viewState.scale + viewState.y;
+
+    // Screen center
+    const screenCenterX = canvasWidth / 2;
+    const screenCenterY = canvasHeight / 2;
+
+    // Thresholds for showing the button
+    const panThresholdX = canvasWidth / 4;
+    const panThresholdY = canvasHeight / 4;
+    const scaleThreshold = 0.1; // 10% change in scale
+
+    // Check if panned far enough
+    const isPannedFar =
+      Math.abs(homeAreaCenterX - screenCenterX) > panThresholdX ||
+      Math.abs(homeAreaCenterY - screenCenterY) > panThresholdY;
+
+    // Check if zoomed enough
+    const isZoomedEnough = Math.abs(viewState.scale - initialScale) / initialScale > scaleThreshold;
+
+    setShowHomeButton(isPannedFar || isZoomedEnough);
+  }, [viewState, initialScale, homeAreaWorldX, homeAreaWorldY, homeAreaWidth, homeAreaHeight]);
 
   const animateToHome = useCallback(() => {
     const canvasWidth = window.innerWidth;
@@ -236,6 +265,7 @@ export const useViewState = ({
     animateViewState,
     isAnimating,
     animateToHome, // Export animateToHome
+    showHomeButton, // Export showHomeButton
     targetX: viewState.targetX,
     targetY: viewState.targetY,
     targetScale: viewState.targetScale,
