@@ -10,6 +10,7 @@ import { useViewState } from '../../hooks/canvas/use-view-state';
 import { useCanvasInteractions } from '../../hooks/canvas/use-canvas-interactions';
 import { useCanvasRenderer } from '../../hooks/canvas/use-canvas-renderer';
 import HomeButton from '../ui/home-button';
+import NavMenu from '../ui/nav-menu';
 import type { ImageInfo } from '../../types/canvas';
 import { getUnitSize } from '../../constants/canvas';
 
@@ -127,6 +128,7 @@ const InfiniteCanvas = () => {
 
   return (
     <>
+      <NavMenu />
       <LoadingScreen isComplete={introCompleted} />
 
       {/* Loading Progress - shows after intro is done, but only if images are still loading */}

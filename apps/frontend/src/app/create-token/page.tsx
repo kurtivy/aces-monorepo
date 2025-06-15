@@ -1,18 +1,20 @@
 'use client';
 
 import React from 'react';
+import NavMenu from '../../components/ui/nav-menu';
 
 export default function CreateTokenPage() {
   return (
     <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-4">
+      <NavMenu />
       <div className="max-w-3xl w-full bg-[#231F20] rounded-lg shadow-lg p-8 space-y-6 border border-[#D0B264]/40">
         <h1 className="text-4xl font-syne font-bold text-[#D0B264] text-center mb-4">
           RWA Submission Form
         </h1>
         <p className="text-lg font-spectral text-center text-gray-300 mb-8">
-          Hey, while we haven't officially launched yet, if you have a high-value Real-World Asset
-          (RWA) that you would like to tokenize, submit a form here and maybe you can be part of our
-          launch!
+          Hey, while we haven&apos;t officially launched yet, if you have a high-value Real-World
+          Asset (RWA) that you would like to tokenize, submit a form here and maybe you can be part
+          of our launch!
         </p>
         <div className="w-full bg-[#231F20] rounded-md overflow-hidden">
           <iframe
