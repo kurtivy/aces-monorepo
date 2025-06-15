@@ -16,7 +16,7 @@ const HomeButton: React.FC<HomeButtonProps> = ({ onClick }) => {
 
   return (
     <motion.button
-      className="fixed top-4 left-4 z-50 w-12 h-12 rounded-full bg-black/50 border border-[#D0B264]/40 text-[#D0B264] shadow-lg hover:bg-black/70 hover:border-[#D0B264] transition-all duration-200"
+      className="fixed top-4 left-4 z-50 w-16 h-16 rounded-full bg-black/50 border border-[#D0B264]/40 text-[#D0B264] shadow-lg hover:bg-black/70 hover:border-[#D0B264] transition-all duration-200"
       whileHover={{ scale: 1.1 }}
       whileTap={{ scale: 0.9 }}
       onClick={onClick}
