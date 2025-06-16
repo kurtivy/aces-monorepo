@@ -133,9 +133,10 @@ export const drawHomeArea = (
     // Button text with premium golden styling
     ctx.save();
 
-    // Text glow effect
-    ctx.shadowColor = `rgba(208, 178, 100, ${isHovered ? 0.8 : 0.5})`;
-    ctx.shadowBlur = isHovered ? 8 : 4;
+    // Text glow effect (disabled for Safari artifact fix)
+    ctx.shadowColor = 'transparent'; // Set shadow color to transparent
+    ctx.shadowBlur = 0; // Disable shadow blur
+    ctx.shadowOffsetY = 0; // Ensure no vertical offset
 
     // Gold gradient for text (matching create token square)
     const textGradient = ctx.createLinearGradient(

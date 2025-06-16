@@ -17,7 +17,7 @@ class Star {
     this.x = (Math.random() - 0.5) * 2000;
     this.y = (Math.random() - 0.5) * 2000;
     this.z = 500; // Fixed z position
-    this.speed = Math.random() * 2 + 1; // Variable speed for each star
+    this.speed = Math.random() * 3 + 1.5; // Increased speed for each star
     this.prevX = this.x;
     this.prevY = this.y;
   }
@@ -83,7 +83,7 @@ class NebulaParticle {
     this.y = Math.random() * canvasHeight;
     this.size = Math.random() * 80 + 30; // Increased size for yellow circles
     this.opacity = Math.random() * 0.1 + 0.05;
-    this.speed = Math.random() * 0.5 + 0.1;
+    this.speed = Math.random() * 0.8 + 0.2; // Increased speed
     this.angle = Math.random() * Math.PI * 2;
   }
 
@@ -170,9 +170,16 @@ export function useSpaceAnimation(
     }
 
     let animationFrameId: number;
+    let frameCount = 0;
 
     // Animation loop
     const animate = () => {
+      frameCount++;
+      if (frameCount % 60 === 0) {
+        // Log every 60 frames (approx 1 second) to check if animation is running
+        console.log('Space animation frame:', frameCount);
+      }
+
       // Create a subtle fade effect instead of clearing completely
       ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
       ctx.fillRect(0, 0, width, height);

@@ -1,6 +1,6 @@
-"use client";
+'use client';
 
-import React from "react";
+import React from 'react';
 
 const LoadingStyles: React.FC = () => {
   return (
@@ -28,33 +28,25 @@ const LoadingStyles: React.FC = () => {
 
       @keyframes goldenNeonFlicker {
         0%, 100% {
-          filter: drop-shadow(0 0 2px #fff) 
-                  drop-shadow(0 0 4px #D0B284)
-                  drop-shadow(0 0 6px #D7BF75) 
+          filter: drop-shadow(0 0 4px #D0B284)
                   drop-shadow(0 0 8px #D7BF75)
-                  drop-shadow(0 0 10px rgba(215, 191, 117, 0.4));
+                  drop-shadow(0 0 12px rgba(215, 191, 117, 0.4));
         }
         50% {
-          filter: drop-shadow(0 0 3px #fff) 
-                  drop-shadow(0 0 6px #D0B284)
-                  drop-shadow(0 0 9px #D7BF75) 
+          filter: drop-shadow(0 0 6px #D0B284)
                   drop-shadow(0 0 12px #D7BF75)
-                  drop-shadow(0 0 15px rgba(215, 191, 117, 0.6));
+                  drop-shadow(0 0 18px rgba(215, 191, 117, 0.6));
         }
       }
 
       @keyframes goldenGlow {
         0%, 100% {
-          filter: drop-shadow(0 0 6px #D0B284) 
-                  drop-shadow(0 0 12px #D7BF75)
-                  drop-shadow(0 0 18px rgba(215, 191, 117, 0.3))
-                  drop-shadow(0 0 24px rgba(215, 191, 117, 0.2));
+          filter: drop-shadow(0 0 8px #D7BF75)
+                  drop-shadow(0 0 16px rgba(215, 191, 117, 0.3));
         }
         50% {
-          filter: drop-shadow(0 0 8px #D0B284) 
-                  drop-shadow(0 0 16px #D7BF75)
-                  drop-shadow(0 0 24px rgba(215, 191, 117, 0.4))
-                  drop-shadow(0 0 32px rgba(215, 191, 117, 0.3));
+          filter: drop-shadow(0 0 12px #D7BF75)
+                  drop-shadow(0 0 24px rgba(215, 191, 117, 0.4));
         }
       }
 

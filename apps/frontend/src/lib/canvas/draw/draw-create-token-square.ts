@@ -154,9 +154,10 @@ export const drawCreateTokenSquare = (
   const createTokenFontSize = lerp(unitSize * 0.09, unitSize * 0.11, hoverProgress); // Scaled font size
   ctx.font = `bold ${createTokenFontSize}px 'Syne'`; // Changed to Syne to match home area
 
-  // Text glow effect
-  ctx.shadowColor = `rgba(208, 178, 100, ${lerp(0.5, 0.9, hoverProgress)})`;
-  ctx.shadowBlur = lerp(3, 10, hoverProgress); // Enhanced glow
+  // Text glow effect (disabled for Safari artifact fix)
+  ctx.shadowColor = 'transparent'; // Set shadow color to transparent
+  ctx.shadowBlur = 0; // Disable shadow blur
+  ctx.shadowOffsetY = 0; // Ensure no vertical offset
 
   // Gold gradient for text with more contrast
   const textGradient = ctx.createLinearGradient(
@@ -188,8 +189,9 @@ export const drawCreateTokenSquare = (
 
   // White color for "COMING SOON" with slight gold tint
   ctx.fillStyle = `rgba(255, 255, 255, ${lerp(0.8, 1.0, hoverProgress)})`;
-  ctx.shadowBlur = lerp(2, 5, hoverProgress);
-  ctx.shadowColor = 'rgba(208, 178, 100, 0.5)';
+  ctx.shadowBlur = 0; // Disable shadow blur
+  ctx.shadowColor = 'transparent'; // Set shadow color to transparent
+  ctx.shadowOffsetY = 0; // Ensure no vertical offset
 
   // Position "COMING SOON" lower in the box
   const comingSoonY = lerp(
