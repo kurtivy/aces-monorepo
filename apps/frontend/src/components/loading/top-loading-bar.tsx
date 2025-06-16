@@ -214,18 +214,6 @@ const TopLoadingBar: React.FC<TopLoadingBarProps> = ({
           />
         </motion.div>
       </div>
-
-      {/* Optional subtle text indicator */}
-      {progress < 100 && (
-        <motion.div
-          className="absolute top-2 left-4 text-[#D0B264] text-xs font-syne font-medium"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 0.8 }}
-          transition={{ delay: 0.5 }}
-        >
-          Loading ACES...
-        </motion.div>
-      )}
     </motion.div>
   );
 };

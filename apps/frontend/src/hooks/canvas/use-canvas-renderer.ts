@@ -62,7 +62,7 @@ export const useCanvasRenderer = ({
 
   // Performance optimization: frame throttling for Safari only
   const frameThrottleRef = useRef(0);
-  const targetFPS = isSafari ? 30 : 60; // Lower FPS only for Safari
+  const targetFPS = 60; // Test full 60fps for Safari - with optimizations it should handle it
   const frameInterval = 1000 / targetFPS;
 
   // Create a separate canvas for space animation
@@ -84,7 +84,7 @@ export const useCanvasRenderer = ({
 
   // Performance optimization: cache expensive calculations
   const lastMouseCheck = useRef(0);
-  const mouseCheckInterval = isSafari ? 50 : isFirefox ? 32 : 16; // Different intervals per browser
+  const mouseCheckInterval = isSafari ? 20 : 18; // Firefox and Chrome both get near-optimal responsiveness
 
   // Preload the logo image
   useEffect(() => {
@@ -307,10 +307,9 @@ export const useCanvasRenderer = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Performance optimization: disable image smoothing for Safari only (not Firefox due to rendering issues)
-    if (isSafari) {
-      ctx.imageSmoothingEnabled = false;
-    }
+    // Performance optimization: enable image smoothing for Safari to improve movement quality
+    // Disable only during static rendering to maintain performance
+    ctx.imageSmoothingEnabled = true;
 
     const updateCanvasSize = () => {
       const dpr = window.devicePixelRatio || 1;
@@ -329,15 +328,7 @@ export const useCanvasRenderer = ({
     const homeAreaHeight = unitSize;
 
     const draw = (currentTime: number) => {
-      // Performance optimization: throttle frame rate for Safari only, not Firefox
-      if (isSafari) {
-        const elapsed = currentTime - frameThrottleRef.current;
-        if (elapsed < frameInterval) {
-          animationFrameRef.current = requestAnimationFrame(draw);
-          return;
-        }
-        frameThrottleRef.current = currentTime;
-      }
+      // No frame throttling - test if Safari can handle full 60fps with optimizations
 
       // Stable canvas clearing for all browsers
       ctx.fillStyle = '#000000';
