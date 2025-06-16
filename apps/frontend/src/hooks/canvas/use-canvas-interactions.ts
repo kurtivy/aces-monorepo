@@ -35,6 +35,17 @@ export const useCanvasInteractions = ({
 
   const handleClick = useCallback(
     (event: React.MouseEvent | React.TouchEvent) => {
+      // CRITICAL: Early exit if anything isn't ready (Firefox-specific safeguard)
+      try {
+        if (!viewState || !imagePlacementMap.current || !setSelectedImage) {
+          console.warn('[Firefox] Dependencies not ready for click handling');
+          return;
+        }
+      } catch (error) {
+        console.error('[Firefox] Error checking dependencies:', error);
+        return;
+      }
+
       // FIX: Handle touch events properly for touchend
       let clientX: number;
       let clientY: number;
@@ -101,24 +112,59 @@ export const useCanvasInteractions = ({
 
       let clickedImageInfo: ImageInfo | null = null;
 
-      // Iterate over the placed items to find the one that was clicked
-      for (const placedItem of imagePlacementMap.current.values()) {
-        const { image, x, y, width, height } = placedItem;
+      // Firefox-specific: Additional safety check for placement map
+      if (!imagePlacementMap.current || imagePlacementMap.current.size === 0) {
+        console.warn('[Firefox] Image placement map not ready, ignoring click');
+        return;
+      }
 
-        if (worldX >= x && worldX <= x + width && worldY >= y && worldY <= y + height) {
-          clickedImageInfo = image;
-          break;
+      // Iterate over the placed items to find the one that was clicked
+      try {
+        for (const placedItem of imagePlacementMap.current.values()) {
+          // Firefox-specific: Extra validation
+          if (!placedItem || !placedItem.image) {
+            console.warn('[Firefox] Invalid placed item detected, skipping');
+            continue;
+          }
+
+          const { image, x, y, width, height } = placedItem;
+
+          if (worldX >= x && worldX <= x + width && worldY >= y && worldY <= y + height) {
+            clickedImageInfo = image;
+            break;
+          }
         }
+      } catch (error) {
+        console.warn('[Firefox] Error iterating placement map:', error);
+        return;
       }
 
       if (clickedImageInfo) {
-        if (clickedImageInfo.type === 'create-token') {
-          LuxuryLogger.log(`Create Token Square clicked`, 'info');
-          window.location.href = '/create-token';
-        } else {
-          setSelectedImage(clickedImageInfo);
-          const safeMetadata = getImageMetadata(clickedImageInfo);
-          LuxuryLogger.log(`Product image clicked: ${safeMetadata.title}`, 'info');
+        try {
+          if (clickedImageInfo.type === 'create-token') {
+            LuxuryLogger.log(`Create Token Square clicked`, 'info');
+            window.location.href = '/create-token';
+          } else {
+            setSelectedImage(clickedImageInfo);
+            // Enhanced safe metadata access with Firefox-specific logging
+            const safeMetadata = getImageMetadata(clickedImageInfo);
+            LuxuryLogger.log(`Product image clicked: ${safeMetadata.title}`, 'info');
+
+            // Firefox-specific: Log additional info for debugging
+            if (navigator.userAgent.includes('Firefox')) {
+              console.log('[Firefox] Click processed successfully:', {
+                hasMetadata: !!clickedImageInfo.metadata,
+                safeTitle: safeMetadata.title,
+                originalTitle: clickedImageInfo.metadata?.title,
+              });
+            }
+          }
+        } catch (error) {
+          console.error('[Firefox] Error handling image click:', error);
+          // Fallback: still try to open modal even if logging fails
+          if (clickedImageInfo.type !== 'create-token') {
+            setSelectedImage(clickedImageInfo);
+          }
         }
       }
     },

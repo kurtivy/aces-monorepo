@@ -35,6 +35,30 @@ const isFirefox =
   typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().indexOf('firefox') > -1;
 const needsPerformanceMode = isSafari || isFirefox;
 
+// Define grid tile structure for infinite repetition
+interface GridTile {
+  tileX: number;
+  tileY: number;
+  offsetX: number;
+  offsetY: number;
+}
+
+interface RepeatedPlacement {
+  image: ImageInfo;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  index: number;
+  tileId: string;
+}
+
+interface RepeatedTokenPosition {
+  worldX: number;
+  worldY: number;
+  tileId: string;
+}
+
 export const useCanvasRenderer = ({
   images,
   viewState,
@@ -79,12 +103,27 @@ export const useCanvasRenderer = ({
       index: number;
     }>
   >([]);
+
   const stableCreateTokenPositions = useRef<Array<{ worldX: number; worldY: number }>>([]);
   const placementsCalculated = useRef(false);
 
-  // Performance optimization: cache expensive calculations
+  // INFINITE GRID REPETITION STATE
+  const originalGridBounds = useRef<{
+    startX: number;
+    startY: number;
+    endX: number;
+    endY: number;
+    width: number;
+    height: number;
+  } | null>(null);
+
+  const repeatedPlacements = useRef<Map<string, RepeatedPlacement[]>>(new Map());
+  const repeatedTokens = useRef<Map<string, RepeatedTokenPosition[]>>(new Map());
+  const activeTiles = useRef<Set<string>>(new Set());
+
+  // Performance optimization: mouse check interval
   const lastMouseCheck = useRef(0);
-  const mouseCheckInterval = isSafari ? 20 : 18; // Firefox and Chrome both get near-optimal responsiveness
+  const mouseCheckInterval = isSafari ? 50 : isFirefox ? 32 : 16; // Browser-specific intervals
 
   // Preload the logo image
   useEffect(() => {
@@ -114,6 +153,132 @@ export const useCanvasRenderer = ({
     canvasHeight: unitSize,
   });
 
+  // INFINITE GRID UTILITIES
+  const calculateRequiredTiles = useCallback((currentViewState: ViewState): GridTile[] => {
+    if (!originalGridBounds.current) return [];
+
+    const screenWidth = window.innerWidth;
+    const screenHeight = window.innerHeight;
+    const bufferDistance = 2.5; // 2.5 screen widths/heights
+
+    // Calculate visible area with buffer
+    const viewportLeft = -currentViewState.x / currentViewState.scale;
+    const viewportTop = -currentViewState.y / currentViewState.scale;
+    const viewportRight = viewportLeft + screenWidth / currentViewState.scale;
+    const viewportBottom = viewportTop + screenHeight / currentViewState.scale;
+
+    // Add buffer zone
+    const bufferWidth = (screenWidth / currentViewState.scale) * bufferDistance;
+    const bufferHeight = (screenHeight / currentViewState.scale) * bufferDistance;
+
+    const bufferedLeft = viewportLeft - bufferWidth;
+    const bufferedTop = viewportTop - bufferHeight;
+    const bufferedRight = viewportRight + bufferWidth;
+    const bufferedBottom = viewportBottom + bufferHeight;
+
+    const { startX, startY, width, height } = originalGridBounds.current;
+    const tiles: GridTile[] = [];
+
+    // Calculate which grid tiles we need
+    const tileStartX = Math.floor(bufferedLeft / width);
+    const tileStartY = Math.floor(bufferedTop / height);
+    const tileEndX = Math.ceil(bufferedRight / width);
+    const tileEndY = Math.ceil(bufferedBottom / height);
+
+    for (let tileY = tileStartY; tileY <= tileEndY; tileY++) {
+      for (let tileX = tileStartX; tileX <= tileEndX; tileX++) {
+        // Skip the original tile (0, 0)
+        if (tileX === 0 && tileY === 0) continue;
+
+        tiles.push({
+          tileX,
+          tileY,
+          offsetX: tileX * width,
+          offsetY: tileY * height,
+        });
+      }
+    }
+
+    return tiles;
+  }, []);
+
+  const generateRepeatedPlacementsForTile = useCallback(
+    (
+      tile: GridTile,
+    ): {
+      placements: RepeatedPlacement[];
+      tokens: RepeatedTokenPosition[];
+    } => {
+      const tileId = `${tile.tileX},${tile.tileY}`;
+      const placements: RepeatedPlacement[] = [];
+      const tokens: RepeatedTokenPosition[] = [];
+
+      // Generate repeated product placements
+      stableProductPlacements.current.forEach((original, index) => {
+        placements.push({
+          ...original,
+          x: original.x + tile.offsetX,
+          y: original.y + tile.offsetY,
+          tileId,
+        });
+      });
+
+      // Generate repeated token positions
+      stableCreateTokenPositions.current.forEach((original) => {
+        tokens.push({
+          worldX: original.worldX + tile.offsetX,
+          worldY: original.worldY + tile.offsetY,
+          tileId,
+        });
+      });
+
+      return { placements, tokens };
+    },
+    [],
+  );
+
+  const updateInfiniteGrid = useCallback(
+    (currentViewState: ViewState) => {
+      if (!originalGridBounds.current || !placementsCalculated.current) return;
+
+      const requiredTiles = calculateRequiredTiles(currentViewState);
+      const newActiveTiles = new Set<string>();
+
+      // Process required tiles in batches for performance
+      const batchSize = 4; // Process 4 tiles at a time
+      const tilesToProcess = requiredTiles.filter((tile) => {
+        const tileId = `${tile.tileX},${tile.tileY}`;
+        newActiveTiles.add(tileId);
+        return !repeatedPlacements.current.has(tileId);
+      });
+
+      // Process tiles in batches
+      for (let i = 0; i < tilesToProcess.length; i += batchSize) {
+        const batch = tilesToProcess.slice(i, i + batchSize);
+
+        batch.forEach((tile) => {
+          const tileId = `${tile.tileX},${tile.tileY}`;
+          const { placements, tokens } = generateRepeatedPlacementsForTile(tile);
+
+          repeatedPlacements.current.set(tileId, placements);
+          repeatedTokens.current.set(tileId, tokens);
+        });
+      }
+
+      // Clean up distant tiles to manage memory
+      const tilesToRemove = Array.from(activeTiles.current).filter(
+        (tileId) => !newActiveTiles.has(tileId),
+      );
+      tilesToRemove.forEach((tileId) => {
+        repeatedPlacements.current.delete(tileId);
+        repeatedTokens.current.delete(tileId);
+      });
+
+      activeTiles.current = newActiveTiles;
+    },
+    [calculateRequiredTiles, generateRepeatedPlacementsForTile],
+  );
+
   // CALCULATE PLACEMENTS ONCE - when images load or unitSize changes
   const calculatePlacements = useCallback(() => {
     if (!imagesLoaded || placementsCalculated.current) return;
@@ -135,6 +300,16 @@ export const useCanvasRenderer = ({
     const gridStartY = -gridSize;
     const gridEndX = gridSize;
     const gridEndY = gridSize;
+
+    // Store original grid bounds for infinite repetition
+    originalGridBounds.current = {
+      startX: gridStartX,
+      startY: gridStartY,
+      endX: gridEndX,
+      endY: gridEndY,
+      width: gridEndX - gridStartX,
+      height: gridEndY - gridStartY,
+    };
 
     imagePlacementMap.current.clear();
     const occupiedSpaces = new Set<string>();
@@ -232,6 +407,11 @@ export const useCanvasRenderer = ({
     stableCreateTokenPositions.current = createTokenPositions;
     placementsCalculated.current = true;
 
+    // Clear any existing repeated placements when recalculating
+    repeatedPlacements.current.clear();
+    repeatedTokens.current.clear();
+    activeTiles.current.clear();
+
     // Log image usage statistics for debugging
     const stats = getImageUsageStats();
     console.log('Image Distribution Stats:', {
@@ -246,6 +426,7 @@ export const useCanvasRenderer = ({
           ? ((stats.leastUsedImage.count / stats.mostUsedImage.count) * 100).toFixed(1) + '%'
           : 'N/A',
       performanceMode: needsPerformanceMode ? 'enabled' : 'disabled',
+      gridBounds: originalGridBounds.current,
     });
   }, [imagesLoaded, images, unitSize, imagePlacementMap]);
 
@@ -259,7 +440,19 @@ export const useCanvasRenderer = ({
     placementsCalculated.current = false;
     stableProductPlacements.current = [];
     stableCreateTokenPositions.current = [];
+    // Clear infinite grid state
+    originalGridBounds.current = null;
+    repeatedPlacements.current.clear();
+    repeatedTokens.current.clear();
+    activeTiles.current.clear();
   }, [unitSize]);
+
+  // Update infinite grid when viewport changes
+  useEffect(() => {
+    if (placementsCalculated.current && originalGridBounds.current) {
+      updateInfiniteGrid(viewState);
+    }
+  }, [viewState.x, viewState.y, viewState.scale, updateInfiniteGrid]);
 
   // Start product animation when images are loaded AND canvas is visible
   useEffect(() => {
@@ -283,8 +476,35 @@ export const useCanvasRenderer = ({
       };
     };
 
-    const handleClick = () => {
+    const handleClick = (event: MouseEvent) => {
+      // Check if clicking on original token (with hover effect)
       if (hoveredTokenIndex !== null) {
+        onCreateTokenClick();
+        return;
+      }
+
+      // Check if clicking on repeated token
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = event.clientX - rect.left;
+      const mouseY = event.clientY - rect.top;
+      const worldMouseX = (mouseX - viewState.x) / viewState.scale;
+      const worldMouseY = (mouseY - viewState.y) / viewState.scale;
+
+      let clickedRepeatedToken = false;
+      repeatedTokens.current.forEach((tileTokens) => {
+        tileTokens.forEach((token) => {
+          if (
+            worldMouseX >= token.worldX &&
+            worldMouseX <= token.worldX + unitSize &&
+            worldMouseY >= token.worldY &&
+            worldMouseY <= token.worldY + unitSize
+          ) {
+            clickedRepeatedToken = true;
+          }
+        });
+      });
+
+      if (clickedRepeatedToken) {
         onCreateTokenClick();
       }
     };
@@ -354,20 +574,19 @@ export const useCanvasRenderer = ({
         }
       }
 
-      // Draw products with animation - using STABLE positions
+      // Calculate animation progress once
+      let animationProgress = 0;
+      if (isProductAnimationActive && productAnimationStartTime) {
+        const elapsed = currentTime - productAnimationStartTime;
+        const progress = Math.min(1, elapsed / ANIMATION_DURATION);
+        animationProgress = easeInOutCubic(progress);
+      } else if (productAnimationStartTime) {
+        // Animation has completed, keep images visible
+        animationProgress = 1;
+      }
+
+      // Draw original products with animation - using STABLE positions
       productPlacements.forEach((placement) => {
-        let easedProgress = 0; // Start invisible
-
-        // Show images during and after animation
-        if (isProductAnimationActive && productAnimationStartTime) {
-          const elapsed = currentTime - productAnimationStartTime;
-          const progress = Math.min(1, elapsed / ANIMATION_DURATION);
-          easedProgress = easeInOutCubic(progress);
-        } else if (productAnimationStartTime) {
-          // Animation has completed, keep images visible
-          easedProgress = 1;
-        }
-
         drawImage(
           ctx,
           placement.image.element,
@@ -375,10 +594,29 @@ export const useCanvasRenderer = ({
           placement.y,
           placement.width,
           placement.height,
-          easedProgress,
+          animationProgress,
           unitSize,
         );
       });
+
+      // Draw repeated grid products (always fully visible, no animation)
+      if (animationProgress > 0) {
+        // Only show repeated grids after original animation starts
+        repeatedPlacements.current.forEach((tilePlacements) => {
+          tilePlacements.forEach((placement) => {
+            drawImage(
+              ctx,
+              placement.image.element,
+              placement.x,
+              placement.y,
+              placement.width,
+              placement.height,
+              1, // Always fully visible
+              unitSize,
+            );
+          });
+        });
+      }
 
       // Performance optimization: throttle mouse hit detection
       let newHoveredIndex: number | null = null;
@@ -386,6 +624,7 @@ export const useCanvasRenderer = ({
         const worldMouseX = (mousePositionRef.current.x - viewState.x) / viewState.scale;
         const worldMouseY = (mousePositionRef.current.y - viewState.y) / viewState.scale;
 
+        // Check original create token positions first (these get hover effects)
         createTokenPositions.forEach((pos, index) => {
           if (
             worldMouseX >= pos.worldX &&
@@ -398,8 +637,26 @@ export const useCanvasRenderer = ({
           }
         });
 
-        if (newHoveredIndex === null && hoveredTokenIndex !== null) {
-          canvas.style.cursor = 'grab';
+        // Check repeated create token positions (clickable but no hover effect)
+        if (newHoveredIndex === null) {
+          let foundRepeatedToken = false;
+          repeatedTokens.current.forEach((tileTokens) => {
+            tileTokens.forEach((token) => {
+              if (
+                worldMouseX >= token.worldX &&
+                worldMouseX <= token.worldX + unitSize &&
+                worldMouseY >= token.worldY &&
+                worldMouseY <= token.worldY + unitSize
+              ) {
+                foundRepeatedToken = true;
+                canvas.style.cursor = 'pointer';
+              }
+            });
+          });
+
+          if (!foundRepeatedToken && hoveredTokenIndex !== null) {
+            canvas.style.cursor = 'grab';
+          }
         }
 
         if (newHoveredIndex !== hoveredTokenIndex) {
@@ -426,37 +683,33 @@ export const useCanvasRenderer = ({
         }
       }
 
-      // Draw create token squares with space animation - using STABLE positions
+      // Calculate token animation progress
+      let tokenOpacity = 0;
+      let tokenScale = 0.95;
+
+      if (isProductAnimationActive && productAnimationStartTime) {
+        const elapsed = currentTime - productAnimationStartTime;
+        const tokenDelay = 100;
+        const adjustedElapsed = Math.max(0, elapsed - tokenDelay);
+        const progress = Math.min(1, adjustedElapsed / ANIMATION_DURATION);
+        const easedProgress = easeInOutCubic(progress);
+
+        tokenOpacity = easedProgress;
+        tokenScale = 0.95 + 0.05 * easedProgress;
+      } else if (productAnimationStartTime) {
+        tokenOpacity = 1;
+        tokenScale = 1;
+      }
+
+      // Draw original create token squares with animation
       createTokenPositions.forEach((pos, index) => {
         const isCurrentlyHovered = index === hoveredTokenIndex;
         const actualHoverProgress = isCurrentlyHovered ? currentHoverProgress : 0;
 
-        // Show tokens during and after animation with slight stagger
-        let tokenOpacity = 0; // Start invisible
-        let tokenScale = 0.95; // Start just slightly smaller for a subtle entrance
-
-        if (isProductAnimationActive && productAnimationStartTime) {
-          const elapsed = currentTime - productAnimationStartTime;
-          // Add staggered delay for create token squares (100ms delay)
-          const tokenDelay = 100;
-          const adjustedElapsed = Math.max(0, elapsed - tokenDelay);
-          const progress = Math.min(1, adjustedElapsed / ANIMATION_DURATION);
-          const easedProgress = easeInOutCubic(progress);
-
-          tokenOpacity = easedProgress;
-          tokenScale = 0.95 + 0.05 * easedProgress; // Scale from 0.95 to 1.0 (much more subtle)
-        } else if (productAnimationStartTime) {
-          // Animation has completed, keep tokens visible at full scale
-          tokenOpacity = 1;
-          tokenScale = 1;
-        }
-
-        // Draw if there's any opacity
         if (tokenOpacity > 0) {
           ctx.save();
           ctx.globalAlpha = tokenOpacity;
 
-          // Apply scaling animation
           const centerX = pos.worldX + unitSize / 2;
           const centerY = pos.worldY + unitSize / 2;
           ctx.translate(centerX, centerY);
@@ -476,6 +729,28 @@ export const useCanvasRenderer = ({
           ctx.restore();
         }
       });
+
+      // Draw repeated create token squares (always fully visible, no animation)
+      if (tokenOpacity > 0) {
+        repeatedTokens.current.forEach((tileTokens) => {
+          tileTokens.forEach((token) => {
+            ctx.save();
+            ctx.globalAlpha = 1; // Always fully visible
+
+            drawCreateTokenSquare(
+              ctx,
+              token.worldX,
+              token.worldY,
+              0, // No hover effect for repeated tokens
+              unitSize,
+              logoImageRef.current,
+              spaceCanvasRef.current,
+              currentTime,
+            );
+            ctx.restore();
+          });
+        });
+      }
 
       // Draw home area with logo
       drawHomeArea(

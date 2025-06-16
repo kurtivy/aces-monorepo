@@ -41,14 +41,14 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ isComplete }) => {
           <LoadingStyles />
 
           {/* Main content container */}
-          <div className="flex flex-col items-center justify-center space-y-8 z-20">
-            {/* Neon Logo and Text */}
+          <div className="relative flex flex-col items-center justify-center z-20">
+            {/* Neon Logo and Text - Fixed position */}
             <div className="flex flex-col items-center justify-center space-y-8">
               <NeonLogo />
               <NeonText />
             </div>
 
-            {/* Spinner - shows after neon animation */}
+            {/* Spinner - absolute positioned to not affect layout */}
             <AnimatePresence>
               {showSpinner && (
                 <motion.div
@@ -56,7 +56,7 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ isComplete }) => {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -20 }}
                   transition={{ duration: 0.6, ease: 'easeOut' }}
-                  className="flex flex-col items-center space-y-4 mt-12"
+                  className="absolute top-full mt-12 flex flex-col items-center space-y-4"
                 >
                   {/* Loading spinner */}
                   <div className="relative">
