@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Syne, Spectral, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
+import ErrorBoundary from '../components/error-boundary';
 
 const syne = Syne({
   subsets: ['latin'],
@@ -38,11 +39,13 @@ export default function RootLayout({
     <html lang="en">
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="theme-color" content="#000000" />
+        <meta name="color-scheme" content="dark" />
       </head>
       <body
         className={`${syne.variable} ${spectral.variable} ${jetbrainsMono.variable} font-spectral antialiased  bg-black`}
       >
-        {children}
+        <ErrorBoundary>{children}</ErrorBoundary>
       </body>
     </html>
   );

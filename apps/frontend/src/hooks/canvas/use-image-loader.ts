@@ -66,20 +66,20 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
 
     const finishLoading = () => {
       setImages(loadedImages);
-      // A short delay to allow the 100% to register before the fade-out
+      // Minimal delay to allow the 100% to register before the fade-out
       setTimeout(() => {
         setImagesLoaded(true);
         LuxuryLogger.log(`Image loading complete. ${loadedCount}/${totalImages} loaded.`, 'info');
-      }, 500);
+      }, 100); // Further reduced delay for faster loading
     };
 
-    // Safety net to prevent getting stuck - reasonable timeout for all images
+    // Safety net to prevent getting stuck - more aggressive timeout for better UX
     const loadingTimeout = setTimeout(
       () => {
         LuxuryLogger.log('Loading timeout reached. Forcing completion.', 'warn');
         finishLoading();
       },
-      30000, // 30 seconds for all images
+      15000, // 15 seconds for all images - faster timeout for better UX
     );
 
     const updateState = () => {
@@ -119,20 +119,67 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
       img.src = metadata.image;
 
       const handleLoad = () => {
-        const type = getImageType(img.naturalWidth, img.naturalHeight);
-        const { width: proportionalWidth, height: proportionalHeight } = getDisplayDimensions(
-          type,
-          unitSize,
-        );
+        try {
+          // Firefox sometimes reports 0 dimensions initially - add retry logic
+          const getDimensions = () => {
+            let width = img.naturalWidth || img.width;
+            let height = img.naturalHeight || img.height;
 
-        loadedImages[index] = {
-          element: img,
-          type,
-          displayWidth: proportionalWidth * (unitSize / 200), // Scale based on unitSize
-          displayHeight: proportionalHeight * (unitSize / 200), // Scale based on unitSize
-          metadata,
-        };
-        updateState();
+            // Firefox fallback: if dimensions are still 0, wait and retry
+            if ((width === 0 || height === 0) && img.complete) {
+              setTimeout(() => {
+                width = img.naturalWidth || img.width || 200;
+                height = img.naturalHeight || img.height || 200;
+
+                if (width === 0 || height === 0) {
+                  console.warn('Firefox: Using fallback dimensions for image', img.src);
+                  width = 200;
+                  height = 200;
+                }
+
+                const type = getImageType(width, height);
+                const { width: proportionalWidth, height: proportionalHeight } =
+                  getDisplayDimensions(type, unitSize);
+
+                loadedImages[index] = {
+                  element: img,
+                  type,
+                  displayWidth: proportionalWidth * (unitSize / 200), // Scale based on unitSize
+                  displayHeight: proportionalHeight * (unitSize / 200), // Scale based on unitSize
+                  metadata,
+                };
+                updateState();
+              }, 100);
+              return;
+            }
+
+            // Use fallback dimensions if still problematic
+            if (width === 0 || height === 0) {
+              width = 200;
+              height = 200;
+            }
+
+            const type = getImageType(width, height);
+            const { width: proportionalWidth, height: proportionalHeight } = getDisplayDimensions(
+              type,
+              unitSize,
+            );
+
+            loadedImages[index] = {
+              element: img,
+              type,
+              displayWidth: proportionalWidth * (unitSize / 200), // Scale based on unitSize
+              displayHeight: proportionalHeight * (unitSize / 200), // Scale based on unitSize
+              metadata,
+            };
+            updateState();
+          };
+
+          getDimensions();
+        } catch (error) {
+          console.warn('Image load processing error:', error);
+          handleError(); // Fallback to error handling
+        }
       };
 
       const handleError = () => {

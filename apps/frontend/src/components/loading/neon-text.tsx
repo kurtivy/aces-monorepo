@@ -7,9 +7,9 @@ const NeonText: React.FC = () => {
   const fullText = 'ACES.FUN';
 
   useEffect(() => {
-    // Letter appearance animation
-    const textStartDelay = 2000; // Start after logo animation
-    const letterDelay = 100; // ms between each letter
+    // Letter appearance animation with Firefox-specific timing
+    const textStartDelay = 2200; // Slightly increased delay for Firefox
+    const letterDelay = 120; // Slightly slower for Firefox reliability
 
     const animationTimer = setTimeout(() => {
       const letterInterval = setInterval(() => {
@@ -21,11 +21,30 @@ const NeonText: React.FC = () => {
           return prev;
         });
       }, letterDelay);
-      return () => clearInterval(letterInterval);
+
+      // Cleanup function for the interval
+      const cleanup = () => clearInterval(letterInterval);
+
+      // Firefox-specific: ensure all letters appear even if timing is off
+      const fallbackTimer = setTimeout(
+        () => {
+          if (visibleLetters < fullText.length) {
+            console.warn('Firefox: Forcing complete text display');
+            setVisibleLetters(fullText.length);
+          }
+          cleanup();
+        },
+        letterDelay * fullText.length + 500,
+      );
+
+      return () => {
+        cleanup();
+        clearTimeout(fallbackTimer);
+      };
     }, textStartDelay);
 
     return () => clearTimeout(animationTimer);
-  }, [fullText]);
+  }, [fullText.length]); // Add dependency on fullText.length
 
   return (
     <div className="relative flex items-center justify-center w-full max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg xl:max-w-xl h-auto">
