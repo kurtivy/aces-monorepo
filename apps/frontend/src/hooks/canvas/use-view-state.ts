@@ -143,8 +143,6 @@ export const useViewState = ({
   }, [initialScale]);
 
   const animateViewState = useCallback(() => {
-    if (!isAnimating) return;
-
     const elapsed = performance.now() - animationStartTime.current;
     const currentDuration =
       Math.abs(velocityX.current) < 0.001 && Math.abs(velocityY.current) < 0.001
@@ -160,7 +158,8 @@ export const useViewState = ({
         const newScale = lerp(prev.scale, prev.targetScale, easedProgress);
 
         if (progress === 1) {
-          setIsAnimating(false);
+          // Use a setTimeout to avoid calling setIsAnimating during render
+          setTimeout(() => setIsAnimating(false), 0);
           return {
             x: prev.targetX,
             y: prev.targetY,
@@ -196,7 +195,8 @@ export const useViewState = ({
         Math.abs(newScale - prev.targetScale) < 0.0001;
 
       if (isComplete) {
-        setIsAnimating(false);
+        // Use a setTimeout to avoid calling setIsAnimating during render
+        setTimeout(() => setIsAnimating(false), 0);
         velocityX.current = 0;
         velocityY.current = 0;
         return {
@@ -218,7 +218,7 @@ export const useViewState = ({
         targetScale: prev.targetScale,
       };
     });
-  }, [isAnimating, animationDuration, panInterpolationFactor]);
+  }, [animationDuration, panInterpolationFactor]);
 
   const handleWheel = useCallback(
     (event: React.WheelEvent<HTMLCanvasElement>) => {
