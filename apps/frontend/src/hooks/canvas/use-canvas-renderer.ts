@@ -246,12 +246,9 @@ export const useCanvasRenderer = ({
   // Start product animation when images are loaded AND canvas is visible
   useEffect(() => {
     if (imagesLoaded && placementsCalculated.current && canvasVisible) {
-      const timer = setTimeout(() => {
-        setProductAnimationStartTime(performance.now());
-        setIsProductAnimationActive(true);
-      }, 100);
-
-      return () => clearTimeout(timer);
+      // Start animation immediately for faster loading experience
+      setProductAnimationStartTime(performance.now());
+      setIsProductAnimationActive(true);
     }
   }, [imagesLoaded, placementsCalculated.current, canvasVisible]);
 
@@ -405,21 +402,38 @@ export const useCanvasRenderer = ({
         const isCurrentlyHovered = index === hoveredTokenIndex;
         const actualHoverProgress = isCurrentlyHovered ? currentHoverProgress : 0;
 
-        // Show tokens during and after animation
+        // Show tokens during and after animation with slight stagger
         let tokenOpacity = 0; // Start invisible
+        let tokenScale = 0.95; // Start just slightly smaller for a subtle entrance
+
         if (isProductAnimationActive && productAnimationStartTime) {
           const elapsed = performance.now() - productAnimationStartTime;
-          const progress = Math.min(1, elapsed / ANIMATION_DURATION);
-          tokenOpacity = easeInOutCubic(progress);
+          // Add staggered delay for create token squares (100ms delay)
+          const tokenDelay = 100;
+          const adjustedElapsed = Math.max(0, elapsed - tokenDelay);
+          const progress = Math.min(1, adjustedElapsed / ANIMATION_DURATION);
+          const easedProgress = easeInOutCubic(progress);
+
+          tokenOpacity = easedProgress;
+          tokenScale = 0.95 + 0.05 * easedProgress; // Scale from 0.95 to 1.0 (much more subtle)
         } else if (productAnimationStartTime) {
-          // Animation has completed, keep tokens visible
+          // Animation has completed, keep tokens visible at full scale
           tokenOpacity = 1;
+          tokenScale = 1;
         }
 
         // Draw if there's any opacity
         if (tokenOpacity > 0) {
           ctx.save();
           ctx.globalAlpha = tokenOpacity;
+
+          // Apply scaling animation
+          const centerX = pos.worldX + unitSize / 2;
+          const centerY = pos.worldY + unitSize / 2;
+          ctx.translate(centerX, centerY);
+          ctx.scale(tokenScale, tokenScale);
+          ctx.translate(-centerX, -centerY);
+
           drawCreateTokenSquare(
             ctx,
             pos.worldX,
