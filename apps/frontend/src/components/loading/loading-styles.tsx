@@ -31,11 +31,17 @@ const LoadingStyles: React.FC = () => {
           filter: drop-shadow(0 0 4px #D0B284)
                   drop-shadow(0 0 8px #D7BF75)
                   drop-shadow(0 0 12px rgba(215, 191, 117, 0.4));
+          -webkit-filter: drop-shadow(0 0 4px #D0B284)
+                         drop-shadow(0 0 8px #D7BF75)
+                         drop-shadow(0 0 12px rgba(215, 191, 117, 0.4));
         }
         50% {
           filter: drop-shadow(0 0 6px #D0B284)
                   drop-shadow(0 0 12px #D7BF75)
                   drop-shadow(0 0 18px rgba(215, 191, 117, 0.6));
+          -webkit-filter: drop-shadow(0 0 6px #D0B284)
+                         drop-shadow(0 0 12px #D7BF75)
+                         drop-shadow(0 0 18px rgba(215, 191, 117, 0.6));
         }
       }
 
@@ -43,10 +49,14 @@ const LoadingStyles: React.FC = () => {
         0%, 100% {
           filter: drop-shadow(0 0 8px #D7BF75)
                   drop-shadow(0 0 16px rgba(215, 191, 117, 0.3));
+          -webkit-filter: drop-shadow(0 0 8px #D7BF75)
+                         drop-shadow(0 0 16px rgba(215, 191, 117, 0.3));
         }
         50% {
           filter: drop-shadow(0 0 12px #D7BF75)
                   drop-shadow(0 0 24px rgba(215, 191, 117, 0.4));
+          -webkit-filter: drop-shadow(0 0 12px #D7BF75)
+                         drop-shadow(0 0 24px rgba(215, 191, 117, 0.4));
         }
       }
 
@@ -93,10 +103,16 @@ const LoadingStyles: React.FC = () => {
         animation:
           drawElectric var(--draw-duration) ease-in-out forwards,
           goldenNeonFlicker var(--flicker-speed) infinite ease-in-out;
+        -webkit-animation:
+          drawElectric var(--draw-duration) ease-in-out forwards,
+          goldenNeonFlicker var(--flicker-speed) infinite ease-in-out;
       }
 
       .electric-draw .glow-path {
         animation:
+          drawElectric var(--draw-duration) ease-in-out forwards,
+          goldenGlow var(--flicker-speed) infinite ease-in-out;
+        -webkit-animation:
           drawElectric var(--draw-duration) ease-in-out forwards,
           goldenGlow var(--flicker-speed) infinite ease-in-out;
       }
@@ -105,10 +121,16 @@ const LoadingStyles: React.FC = () => {
         animation:
           fadeIn var(--draw-duration) cubic-bezier(0.4, 0, 0.2, 1) forwards,
           goldenNeonFlicker var(--flicker-speed) infinite ease-in-out;
+        -webkit-animation:
+          fadeIn var(--draw-duration) cubic-bezier(0.4, 0, 0.2, 1) forwards,
+          goldenNeonFlicker var(--flicker-speed) infinite ease-in-out;
       }
 
       .electric-fade .glow-path {
         animation:
+          fadeIn var(--draw-duration) cubic-bezier(0.4, 0, 0.2, 1) forwards,
+          goldenGlow var(--flicker-speed) infinite ease-in-out;
+        -webkit-animation:
           fadeIn var(--draw-duration) cubic-bezier(0.4, 0, 0.2, 1) forwards,
           goldenGlow var(--flicker-speed) infinite ease-in-out;
       }
@@ -116,11 +138,18 @@ const LoadingStyles: React.FC = () => {
       .neon-container {
         transition: transform 0.1s ease-out;
         transform-style: preserve-3d;
+        -webkit-transform-style: preserve-3d;
       }
 
       .neon-text {
         color: #ffffff;
         text-shadow: 
+          0 0 2px #fff,
+          0 0 4px #D0B284,
+          0 0 6px #D7BF75,
+          0 0 8px #D7BF75,
+          0 0 10px rgba(215, 191, 117, 0.4);
+        -webkit-text-shadow: 
           0 0 2px #fff,
           0 0 4px #D0B284,
           0 0 6px #D7BF75,
@@ -147,10 +176,12 @@ const LoadingStyles: React.FC = () => {
         display: inline-block;
         opacity: 0;
         transform: translateY(30px);
+        -webkit-transform: translateY(30px);
       }
 
       .letter.visible {
         animation: slideUpLetter 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        -webkit-animation: slideUpLetter 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
       }
 
       .spray-text {
@@ -161,6 +192,27 @@ const LoadingStyles: React.FC = () => {
 
       .spray-animate {
         animation: sprayPaint 1s ease-out forwards;
+        -webkit-animation: sprayPaint 1s ease-out forwards;
+      }
+
+      /* Browser-specific fallbacks for neon effects */
+      @media screen and (-webkit-min-device-pixel-ratio:0) {
+        /* Safari/Webkit specific styles */
+        .neon-path {
+          -webkit-transform: translateZ(0);
+          transform: translateZ(0);
+        }
+      }
+
+      @-moz-document url-prefix() {
+        /* Firefox specific styles */
+        .neon-path {
+          transform: translateZ(0);
+        }
+        
+        .goldenNeonFlicker, .goldenGlow {
+          animation-timing-function: linear !important;
+        }
       }
       `}
     </style>

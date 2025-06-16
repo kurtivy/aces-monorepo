@@ -28,6 +28,13 @@ interface UseCanvasRendererProps {
   >;
 }
 
+// Detect problematic browsers for performance optimizations
+const isSafari =
+  typeof navigator !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+const isFirefox =
+  typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().indexOf('firefox') > -1;
+const needsPerformanceMode = isSafari || isFirefox;
+
 export const useCanvasRenderer = ({
   images,
   viewState,
@@ -47,11 +54,16 @@ export const useCanvasRenderer = ({
   const [currentHoverProgress, setCurrentHoverProgress] = useState(0);
   const hoverAnimationStartTime = useRef(0);
   const [isHoveringToken, setIsHoveringToken] = useState(false);
-  const hoverAnimationDuration = 300;
+  const hoverAnimationDuration = isSafari ? 200 : 300; // Faster animation only for Safari
 
   // Product entrance animation state
   const [productAnimationStartTime, setProductAnimationStartTime] = useState<number | null>(null);
   const [isProductAnimationActive, setIsProductAnimationActive] = useState(false);
+
+  // Performance optimization: frame throttling for Safari only
+  const frameThrottleRef = useRef(0);
+  const targetFPS = isSafari ? 30 : 60; // Lower FPS only for Safari
+  const frameInterval = 1000 / targetFPS;
 
   // Create a separate canvas for space animation
   const spaceCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -69,6 +81,10 @@ export const useCanvasRenderer = ({
   >([]);
   const stableCreateTokenPositions = useRef<Array<{ worldX: number; worldY: number }>>([]);
   const placementsCalculated = useRef(false);
+
+  // Performance optimization: cache expensive calculations
+  const lastMouseCheck = useRef(0);
+  const mouseCheckInterval = isSafari ? 50 : isFirefox ? 32 : 16; // Different intervals per browser
 
   // Preload the logo image
   useEffect(() => {
@@ -89,10 +105,11 @@ export const useCanvasRenderer = ({
     }
   }, [unitSize]);
 
-  // Initialize space animation
+  // Initialize space animation with browser-specific complexity
+  // Disable space animation for Safari, reduced for Firefox, full for Chrome
   useSpaceAnimation(spaceCanvasRef, {
-    starCount: 0,
-    nebulaCount: 3,
+    starCount: isSafari ? 0 : isFirefox ? 0 : 0, // Disable stars for Safari/Firefox
+    nebulaCount: isSafari ? 0 : isFirefox ? 1 : 3, // Reduced nebula for Firefox
     canvasWidth: unitSize,
     canvasHeight: unitSize,
   });
@@ -228,6 +245,7 @@ export const useCanvasRenderer = ({
         stats.imageStats.length > 0
           ? ((stats.leastUsedImage.count / stats.mostUsedImage.count) * 100).toFixed(1) + '%'
           : 'N/A',
+      performanceMode: needsPerformanceMode ? 'enabled' : 'disabled',
     });
   }, [imagesLoaded, images, unitSize, imagePlacementMap]);
 
@@ -252,7 +270,7 @@ export const useCanvasRenderer = ({
     }
   }, [imagesLoaded, placementsCalculated.current, canvasVisible]);
 
-  // Handle mouse movement for hover detection
+  // Handle mouse movement for hover detection with throttling
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -289,6 +307,11 @@ export const useCanvasRenderer = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // Performance optimization: disable image smoothing for Safari only (not Firefox due to rendering issues)
+    if (isSafari) {
+      ctx.imageSmoothingEnabled = false;
+    }
+
     const updateCanvasSize = () => {
       const dpr = window.devicePixelRatio || 1;
       canvas.width = window.innerWidth * dpr;
@@ -305,7 +328,18 @@ export const useCanvasRenderer = ({
     const homeAreaWidth = unitSize * 2;
     const homeAreaHeight = unitSize;
 
-    const draw = () => {
+    const draw = (currentTime: number) => {
+      // Performance optimization: throttle frame rate for Safari only, not Firefox
+      if (isSafari) {
+        const elapsed = currentTime - frameThrottleRef.current;
+        if (elapsed < frameInterval) {
+          animationFrameRef.current = requestAnimationFrame(draw);
+          return;
+        }
+        frameThrottleRef.current = currentTime;
+      }
+
+      // Stable canvas clearing for all browsers
       ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -317,11 +351,11 @@ export const useCanvasRenderer = ({
       const productPlacements = stableProductPlacements.current;
       const createTokenPositions = stableCreateTokenPositions.current;
 
-      const ANIMATION_DURATION = 600; // Increased from 400ms to 600ms for slower fade-in
+      const ANIMATION_DURATION = isSafari ? 400 : isFirefox ? 500 : 600; // Browser-specific animation speeds
 
       // Check if the overall animation sequence is complete
       if (isProductAnimationActive && productAnimationStartTime) {
-        const elapsed = performance.now() - productAnimationStartTime;
+        const elapsed = currentTime - productAnimationStartTime;
 
         if (elapsed > ANIMATION_DURATION + 100) {
           // Add small buffer
@@ -335,7 +369,7 @@ export const useCanvasRenderer = ({
 
         // Show images during and after animation
         if (isProductAnimationActive && productAnimationStartTime) {
-          const elapsed = performance.now() - productAnimationStartTime;
+          const elapsed = currentTime - productAnimationStartTime;
           const progress = Math.min(1, elapsed / ANIMATION_DURATION);
           easedProgress = easeInOutCubic(progress);
         } else if (productAnimationStartTime) {
@@ -355,36 +389,40 @@ export const useCanvasRenderer = ({
         );
       });
 
-      // Check for hover on create token squares
+      // Performance optimization: throttle mouse hit detection
       let newHoveredIndex: number | null = null;
-      const worldMouseX = (mousePositionRef.current.x - viewState.x) / viewState.scale;
-      const worldMouseY = (mousePositionRef.current.y - viewState.y) / viewState.scale;
+      if (currentTime - lastMouseCheck.current > mouseCheckInterval) {
+        const worldMouseX = (mousePositionRef.current.x - viewState.x) / viewState.scale;
+        const worldMouseY = (mousePositionRef.current.y - viewState.y) / viewState.scale;
 
-      createTokenPositions.forEach((pos, index) => {
-        if (
-          worldMouseX >= pos.worldX &&
-          worldMouseX <= pos.worldX + unitSize &&
-          worldMouseY >= pos.worldY &&
-          worldMouseY <= pos.worldY + unitSize
-        ) {
-          newHoveredIndex = index;
-          canvas.style.cursor = 'pointer';
+        createTokenPositions.forEach((pos, index) => {
+          if (
+            worldMouseX >= pos.worldX &&
+            worldMouseX <= pos.worldX + unitSize &&
+            worldMouseY >= pos.worldY &&
+            worldMouseY <= pos.worldY + unitSize
+          ) {
+            newHoveredIndex = index;
+            canvas.style.cursor = 'pointer';
+          }
+        });
+
+        if (newHoveredIndex === null && hoveredTokenIndex !== null) {
+          canvas.style.cursor = 'grab';
         }
-      });
 
-      if (newHoveredIndex === null && hoveredTokenIndex !== null) {
-        canvas.style.cursor = 'grab';
-      }
+        if (newHoveredIndex !== hoveredTokenIndex) {
+          setHoveredTokenIndex(newHoveredIndex);
+          setIsHoveringToken(newHoveredIndex !== null);
+          hoverAnimationStartTime.current = currentTime;
+        }
 
-      if (newHoveredIndex !== hoveredTokenIndex) {
-        setHoveredTokenIndex(newHoveredIndex);
-        setIsHoveringToken(newHoveredIndex !== null);
-        hoverAnimationStartTime.current = performance.now();
+        lastMouseCheck.current = currentTime;
       }
 
       // Update hover animation progress
       if (isHoveringToken || currentHoverProgress > 0) {
-        const elapsed = performance.now() - hoverAnimationStartTime.current;
+        const elapsed = currentTime - hoverAnimationStartTime.current;
         let progress = Math.min(1, elapsed / hoverAnimationDuration);
         if (!isHoveringToken) {
           progress = 1 - progress;
@@ -407,7 +445,7 @@ export const useCanvasRenderer = ({
         let tokenScale = 0.95; // Start just slightly smaller for a subtle entrance
 
         if (isProductAnimationActive && productAnimationStartTime) {
-          const elapsed = performance.now() - productAnimationStartTime;
+          const elapsed = currentTime - productAnimationStartTime;
           // Add staggered delay for create token squares (100ms delay)
           const tokenDelay = 100;
           const adjustedElapsed = Math.max(0, elapsed - tokenDelay);
@@ -442,6 +480,7 @@ export const useCanvasRenderer = ({
             unitSize,
             logoImageRef.current,
             spaceCanvasRef.current,
+            currentTime,
           );
           ctx.restore();
         }
@@ -453,19 +492,20 @@ export const useCanvasRenderer = ({
         homeAreaWorldX,
         homeAreaWorldY,
         logoImageRef.current,
-        worldMouseX,
-        worldMouseY,
+        (mousePositionRef.current.x - viewState.x) / viewState.scale,
+        (mousePositionRef.current.y - viewState.y) / viewState.scale,
         homeAreaWidth,
         homeAreaHeight,
         null,
-        performance.now(),
+        currentTime,
         unitSize,
       );
 
       ctx.restore();
       animationFrameRef.current = requestAnimationFrame(draw);
     };
-    draw();
+
+    animationFrameRef.current = requestAnimationFrame(draw);
 
     window.addEventListener('resize', updateCanvasSize);
 
