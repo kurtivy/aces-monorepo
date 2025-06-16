@@ -199,7 +199,7 @@ const InfiniteCanvas = () => {
 
       // Firefox-specific timing: ensure neon animation completes fully
       // Watch for animation completion instead of hardcoded timeout
-      const animationDuration = 3200; // Increased to ensure "N" in "FUN" appears
+      const animationDuration = 3700; // Extended by 0.5s for better timing
       const timer = setTimeout(() => {
         if (navigator.userAgent.includes('Firefox')) {
           console.log('[Firefox] Intro animation timer completed, transitioning to ready');
@@ -341,7 +341,7 @@ const InfiniteCanvas = () => {
   return (
     <>
       {/* Navigation Menu - only show when canvas is ready */}
-      {loadingPhase === 'ready' && <NavMenu />}
+      {canvasReady && <NavMenu />}
 
       {/* Initial loading screen */}
       {loadingPhase === 'initial' && (
@@ -379,7 +379,7 @@ const InfiniteCanvas = () => {
 
       {/* Modals and UI */}
       <ImageDetailsModal imageInfo={selectedImage} onClose={() => setSelectedImage(null)} />
-      {loadingPhase === 'ready' && showHomeButton && <HomeButton onClick={animateToHome} />}
+      {canvasReady && showHomeButton && <HomeButton onClick={animateToHome} />}
     </>
   );
 };
