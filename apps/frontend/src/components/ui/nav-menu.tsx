@@ -11,6 +11,8 @@ const navItems = [
   { href: '/terms', label: 'Terms', external: false },
   { href: 'https://docs.aces.fun', label: 'About', external: true },
   { href: '/privacy', label: 'Privacy', external: false },
+  { href: 'https://x.com/acesdotfun', label: 'X', external: true },
+  { href: 'https://t.me', label: 'Telegram', external: true },
 ];
 
 const menuVariants: Variants = {
