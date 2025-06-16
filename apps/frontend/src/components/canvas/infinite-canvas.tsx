@@ -2,7 +2,7 @@
 
 import type React from 'react';
 import { useRef, useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import ImageDetailsModal from '../ui/image-details-modal';
 import LoadingScreen from '../loading/loading-screen';
 import { useImageLoader } from '../../hooks/canvas/use-image-loader';
@@ -143,6 +143,10 @@ const InfiniteCanvas = () => {
     canvas.addEventListener('touchmove', touchMoveListener, { passive: false });
     canvas.addEventListener('touchend', touchEndListener, { passive: false });
 
+    // Ensure canvas can receive focus and events immediately
+    canvas.tabIndex = -1;
+    canvas.focus();
+
     return () => {
       canvas.removeEventListener('wheel', wheelListener);
       canvas.removeEventListener('touchstart', touchStartListener);
@@ -173,33 +177,29 @@ const InfiniteCanvas = () => {
       {/* Show intro animation only if user hasn't seen it this session */}
       {showIntro && <LoadingScreen isComplete={introCompleted} />}
 
-      {/* Main Canvas - positioned behind the intro animation for seamless transition */}
-      <AnimatePresence>
-        {(!showIntro || canvasVisible) && (
-          <motion.div
-            className="fixed inset-0"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{
-              duration: 1.2,
-              ease: 'easeInOut',
-            }}
-            style={{ zIndex: 40 }} // Lower z-index than the intro (50)
-          >
-            <canvas
-              ref={canvasRef}
-              onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-              onMouseLeave={handleMouseLeave}
-              className="w-full h-full touch-none select-none"
-              style={{
-                cursor: isPanning ? (isDragging ? 'grabbing' : 'grab') : 'pointer',
-              }}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Main Canvas - always rendered but opacity controlled by loading state */}
+      <motion.div
+        className="fixed inset-0"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: !showIntro || canvasVisible ? 1 : 0 }}
+        transition={{
+          duration: 1.2,
+          ease: 'easeInOut',
+        }}
+        style={{ zIndex: 40 }} // Lower z-index than the intro (50)
+      >
+        <canvas
+          ref={canvasRef}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseLeave}
+          className="w-full h-full touch-none select-none"
+          style={{
+            cursor: isPanning ? (isDragging ? 'grabbing' : 'grab') : 'pointer',
+          }}
+        />
+      </motion.div>
 
       <ImageDetailsModal imageInfo={selectedImage} onClose={() => setSelectedImage(null)} />
       {(!showIntro || introCompleted) && showHomeButton && <HomeButton onClick={animateToHome} />}

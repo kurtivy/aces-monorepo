@@ -8,6 +8,9 @@ import {
   markSpaceOccupied,
   canPlaceImage,
   getImageCandidatesForPosition,
+  recordImagePlacement,
+  resetGlobalPlacementTracking,
+  getImageUsageStats,
 } from '../../lib/canvas/grid-placement';
 import { getDisplayDimensions } from '../../lib/canvas/image-type-utils';
 import { useSpaceAnimation } from '../use-space-animation';
@@ -98,13 +101,19 @@ export const useCanvasRenderer = ({
   const calculatePlacements = useCallback(() => {
     if (!imagesLoaded || placementsCalculated.current) return;
 
+    // Reset global tracking when recalculating placements
+    resetGlobalPlacementTracking();
+
     const homeAreaWorldX = -unitSize;
     const homeAreaWorldY = -unitSize;
     const homeAreaWidth = unitSize * 2;
     const homeAreaHeight = unitSize;
 
-    // Calculate a reasonable grid area - smaller for mobile performance
-    const gridSize = unitSize * 15; // Increased from 8 to 15 for larger explorable area
+    // Calculate grid area based on number of images to ensure all can be displayed
+    // We have 24 products + create token squares, so we need adequate space
+    const totalProducts = images.length;
+    const estimatedGridCells = Math.ceil(Math.sqrt(totalProducts * 1.5)); // 1.5x for create tokens and spacing
+    const gridSize = unitSize * Math.max(12, estimatedGridCells); // Minimum 12, scales with image count
     const gridStartX = -gridSize;
     const gridStartY = -gridSize;
     const gridEndX = gridSize;
@@ -186,6 +195,9 @@ export const useCanvasRenderer = ({
               });
             }
 
+            // Record this placement for adjacency tracking
+            recordImagePlacement(gridX, gridY, imageInfo);
+
             markSpaceOccupied(x, y, width, height, occupiedSpaces, unitSize);
             placed = true;
             break;
@@ -202,6 +214,21 @@ export const useCanvasRenderer = ({
     stableProductPlacements.current = productPlacements;
     stableCreateTokenPositions.current = createTokenPositions;
     placementsCalculated.current = true;
+
+    // Log image usage statistics for debugging
+    const stats = getImageUsageStats();
+    console.log('Image Distribution Stats:', {
+      totalProducts: productPlacements.length,
+      totalCreateTokens: createTokenPositions.length,
+      totalPlacements: stats.totalPlacements,
+      imageCount: stats.imageStats.length,
+      mostUsed: stats.mostUsedImage,
+      leastUsed: stats.leastUsedImage,
+      distributionBalance:
+        stats.imageStats.length > 0
+          ? ((stats.leastUsedImage.count / stats.mostUsedImage.count) * 100).toFixed(1) + '%'
+          : 'N/A',
+    });
   }, [imagesLoaded, images, unitSize, imagePlacementMap]);
 
   // Calculate placements when ready

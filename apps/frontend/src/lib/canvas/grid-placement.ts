@@ -104,6 +104,46 @@ export const canPlaceImage = (
   return true;
 };
 
+// Global placement tracking to ensure all images are used equally
+let globalImageUsageCount: Map<string, number> = new Map();
+let globalPlacementHistory: Array<{ gridX: number; gridY: number; imageId: string }> = [];
+
+// Reset global tracking (useful for testing or when reloading)
+export const resetGlobalPlacementTracking = () => {
+  globalImageUsageCount = new Map();
+  globalPlacementHistory = [];
+};
+
+// Check if a position is adjacent to any existing placement of the same image
+const isAdjacentToPreviousPlacement = (
+  gridX: number,
+  gridY: number,
+  imageId: string,
+  placementHistory: Array<{ gridX: number; gridY: number; imageId: string }>,
+) => {
+  const adjacentOffsets = [
+    [-1, -1],
+    [-1, 0],
+    [-1, 1],
+    [0, -1],
+    [0, 1],
+    [1, -1],
+    [1, 0],
+    [1, 1],
+  ];
+
+  for (const placement of placementHistory) {
+    if (placement.imageId === imageId) {
+      for (const [dx, dy] of adjacentOffsets) {
+        if (gridX === placement.gridX + dx && gridY === placement.gridY + dy) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+};
+
 export const getImageCandidatesForPosition = (
   gridX: number,
   gridY: number,
@@ -117,9 +157,9 @@ export const getImageCandidatesForPosition = (
   const candidates: ImageInfo[] = [];
 
   // Option 1: Try to place a "Create Token" square
-  // Place a "Create Token" square every 6th available square position
+  // Place a "Create Token" square every 8th available square position (less frequent than before)
   if (
-    Math.abs(gridX * 13 + gridY * 17) % 6 === 0 && // Deterministic but sparse
+    Math.abs(gridX * 13 + gridY * 17) % 8 === 0 && // Deterministic but sparse
     !isHomeArea(
       gridX * unitSize,
       gridY * unitSize,
@@ -142,19 +182,91 @@ export const getImageCandidatesForPosition = (
     });
   }
 
-  // Option 2: Try the primary image based on the deterministic pattern
-  const primaryImageIndex = Math.abs(gridX * 7 + gridY * 11) % imagesRefCurrent.length;
-  const primaryImage = imagesRefCurrent[primaryImageIndex];
-  if (primaryImage) {
-    candidates.push(primaryImage);
-  }
+  // Option 2: Smart distribution of ALL images
+  if (imagesRefCurrent.length > 0) {
+    // Initialize usage count for all images if not done yet
+    for (const img of imagesRefCurrent) {
+      const imageId = img.metadata.id || img.metadata.title;
+      if (!globalImageUsageCount.has(imageId)) {
+        globalImageUsageCount.set(imageId, 0);
+      }
+    }
 
-  // Option 3: Add square images as fallbacks
-  const squareImages = imagesRefCurrent.filter((img) => img.type === 'square');
-  candidates.push(...squareImages);
+    // Find the least used images
+    const sortedImages = [...imagesRefCurrent].sort((a, b) => {
+      const aId = a.metadata.id || a.metadata.title;
+      const bId = b.metadata.id || b.metadata.title;
+      const aCount = globalImageUsageCount.get(aId) || 0;
+      const bCount = globalImageUsageCount.get(bId) || 0;
+
+      // If usage counts are equal, use deterministic pattern for consistency
+      if (aCount === bCount) {
+        return Math.abs(gridX * 7 + gridY * 11) % 2 === 0 ? -1 : 1;
+      }
+
+      return aCount - bCount; // Sort by usage count (ascending)
+    });
+
+    // Try to place the least used images first, avoiding adjacency
+    for (const img of sortedImages) {
+      const imageId = img.metadata.id || img.metadata.title;
+
+      // Check if this image is adjacent to any previous placement of the same image
+      if (!isAdjacentToPreviousPlacement(gridX, gridY, imageId, globalPlacementHistory)) {
+        candidates.push(img);
+      }
+    }
+
+    // If no candidates due to adjacency constraints, fall back to deterministic selection
+    if (candidates.length === 0) {
+      const fallbackIndex = Math.abs(gridX * 7 + gridY * 11) % imagesRefCurrent.length;
+      const fallbackImage = imagesRefCurrent[fallbackIndex];
+      if (fallbackImage) {
+        candidates.push(fallbackImage);
+      }
+    }
+  }
 
   // Filter out duplicates and ensure complete images
   return Array.from(new Set(candidates)).filter(
     (img) => img.type === 'create-token' || img.element.complete,
   );
+};
+
+// Call this function when an image is successfully placed
+export const recordImagePlacement = (gridX: number, gridY: number, imageInfo: ImageInfo) => {
+  const imageId = imageInfo.metadata.id || imageInfo.metadata.title;
+
+  // Update usage count
+  const currentCount = globalImageUsageCount.get(imageId) || 0;
+  globalImageUsageCount.set(imageId, currentCount + 1);
+
+  // Record placement in history
+  globalPlacementHistory.push({ gridX, gridY, imageId });
+
+  // Keep history reasonable size (last 1000 placements)
+  if (globalPlacementHistory.length > 1000) {
+    globalPlacementHistory = globalPlacementHistory.slice(-1000);
+  }
+};
+
+// Get usage statistics for debugging
+export const getImageUsageStats = () => {
+  const stats = Array.from(globalImageUsageCount.entries()).map(([imageId, count]) => ({
+    imageId,
+    count,
+  }));
+
+  return {
+    totalPlacements: globalPlacementHistory.length,
+    imageStats: stats.sort((a, b) => b.count - a.count), // Sort by usage count descending
+    mostUsedImage: stats.reduce((max, current) => (current.count > max.count ? current : max), {
+      imageId: 'none',
+      count: 0,
+    }),
+    leastUsedImage: stats.reduce((min, current) => (current.count < min.count ? current : min), {
+      imageId: 'none',
+      count: Infinity,
+    }),
+  };
 };

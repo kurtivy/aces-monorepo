@@ -52,11 +52,9 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
     let loadedCount = 0;
     const loadedImages: ImageInfo[] = [];
 
-    // If lazy loading is enabled, load only the first 6-8 most important images initially
-    const imagesToLoad = enableLazyLoading
-      ? SAMPLE_METADATA.slice(0, 6) // Load first 6 images for quick start
-      : SAMPLE_METADATA;
-
+    // Load ALL images to ensure complete product showcase
+    // We'll optimize performance through other means (like better caching and smaller initial grid)
+    const imagesToLoad = SAMPLE_METADATA; // Always load all images
     const totalImages = imagesToLoad.length;
 
     if (totalImages === 0) {
@@ -72,22 +70,17 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
       setTimeout(() => {
         setImagesLoaded(true);
         LuxuryLogger.log(`Image loading complete. ${loadedCount}/${totalImages} loaded.`, 'info');
-
-        // If lazy loading, start loading remaining images in the background
-        if (enableLazyLoading && SAMPLE_METADATA.length > imagesToLoad.length) {
-          loadRemainingImages(loadedImages, imagesToLoad.length);
-        }
       }, 500);
     };
 
-    // Safety net to prevent getting stuck - shorter timeout for initial load
+    // Safety net to prevent getting stuck - reasonable timeout for all images
     const loadingTimeout = setTimeout(
       () => {
         LuxuryLogger.log('Loading timeout reached. Forcing completion.', 'warn');
         finishLoading();
       },
-      enableLazyLoading ? 10000 : 20000,
-    ); // 10s for lazy loading, 20s for full loading
+      30000, // 30 seconds for all images
+    );
 
     const updateState = () => {
       loadedCount++;
@@ -169,85 +162,7 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
     return () => {
       clearTimeout(loadingTimeout);
     };
-  }, [unitSize, enableLazyLoading]); // Add enableLazyLoading to dependencies
-
-  // Function to load remaining images in the background
-  const loadRemainingImages = (currentImages: ImageInfo[], startIndex: number) => {
-    const remainingMetadata = SAMPLE_METADATA.slice(startIndex);
-
-    remainingMetadata.forEach((metadata, index) => {
-      const actualIndex = startIndex + index;
-
-      if (!metadata.image) {
-        const placeholderElement = createLuxuryPlaceholderImage(unitSize);
-        const newImage: ImageInfo = {
-          element: placeholderElement,
-          type: 'square',
-          displayWidth: unitSize,
-          displayHeight: unitSize,
-          metadata: {
-            ...metadata,
-            title: `${metadata.title} (Image path missing)`,
-          },
-        };
-
-        setImages((prev) => {
-          const updated = [...prev];
-          updated[actualIndex] = newImage;
-          return updated;
-        });
-        return;
-      }
-
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.src = metadata.image;
-
-      img.onload = () => {
-        const type = getImageType(img.naturalWidth, img.naturalHeight);
-        const { width: proportionalWidth, height: proportionalHeight } = getDisplayDimensions(
-          type,
-          unitSize,
-        );
-
-        const newImage: ImageInfo = {
-          element: img,
-          type,
-          displayWidth: proportionalWidth * (unitSize / 200),
-          displayHeight: proportionalHeight * (unitSize / 200),
-          metadata,
-        };
-
-        setImages((prev) => {
-          const updated = [...prev];
-          updated[actualIndex] = newImage;
-          return updated;
-        });
-      };
-
-      img.onerror = () => {
-        const placeholderElement = createLuxuryPlaceholderImage(unitSize);
-        const newImage: ImageInfo = {
-          element: placeholderElement,
-          type: 'square',
-          displayWidth: unitSize,
-          displayHeight: unitSize,
-          metadata: {
-            ...metadata,
-            title: `${metadata.title} (Loading Failed)`,
-            description: 'This asset failed to load',
-            image: placeholderElement.src,
-          },
-        };
-
-        setImages((prev) => {
-          const updated = [...prev];
-          updated[actualIndex] = newImage;
-          return updated;
-        });
-      };
-    });
-  };
+  }, [unitSize, enableLazyLoading]);
 
   return { images, loadingProgress, imagesLoaded };
 };
