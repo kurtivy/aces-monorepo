@@ -5,7 +5,7 @@ import type React from 'react';
 import { useState, useCallback, useRef } from 'react';
 import type { ImageInfo, ViewState } from '../../types/canvas';
 import { isHomeArea } from '../../lib/canvas/grid-placement';
-import { LuxuryLogger } from '../../lib/utils/luxury-logger';
+import { LuxuryLogger, getImageMetadata } from '../../lib/utils/luxury-logger';
 
 interface UseCanvasInteractionsProps {
   viewState: ViewState;
@@ -117,7 +117,8 @@ export const useCanvasInteractions = ({
           window.location.href = '/create-token';
         } else {
           setSelectedImage(clickedImageInfo);
-          LuxuryLogger.log(`Product image clicked: ${clickedImageInfo.metadata.title}`, 'info');
+          const safeMetadata = getImageMetadata(clickedImageInfo);
+          LuxuryLogger.log(`Product image clicked: ${safeMetadata.title}`, 'info');
         }
       }
     },

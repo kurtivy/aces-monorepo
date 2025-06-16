@@ -186,30 +186,49 @@ export const getImageCandidatesForPosition = (
   if (imagesRefCurrent.length > 0) {
     // Initialize usage count for all images if not done yet
     for (const img of imagesRefCurrent) {
-      const imageId = img.metadata.id || img.metadata.title;
+      // Add null safety for metadata access
+      if (!img.metadata) {
+        console.warn('Image with missing metadata detected, skipping:', img);
+        continue;
+      }
+      const imageId = img.metadata.id || img.metadata.title || 'unknown';
       if (!globalImageUsageCount.has(imageId)) {
         globalImageUsageCount.set(imageId, 0);
       }
     }
 
     // Find the least used images
-    const sortedImages = [...imagesRefCurrent].sort((a, b) => {
-      const aId = a.metadata.id || a.metadata.title;
-      const bId = b.metadata.id || b.metadata.title;
-      const aCount = globalImageUsageCount.get(aId) || 0;
-      const bCount = globalImageUsageCount.get(bId) || 0;
+    const sortedImages = [...imagesRefCurrent]
+      .filter((img) => img.metadata) // Filter out images without metadata
+      .sort((a, b) => {
+        // Additional null safety checks
+        if (!a.metadata || !b.metadata) {
+          console.warn('Image metadata missing during sort');
+          return 0;
+        }
 
-      // If usage counts are equal, use deterministic pattern for consistency
-      if (aCount === bCount) {
-        return Math.abs(gridX * 7 + gridY * 11) % 2 === 0 ? -1 : 1;
-      }
+        const aId = a.metadata.id || a.metadata.title || 'unknown';
+        const bId = b.metadata.id || b.metadata.title || 'unknown';
+        const aCount = globalImageUsageCount.get(aId) || 0;
+        const bCount = globalImageUsageCount.get(bId) || 0;
 
-      return aCount - bCount; // Sort by usage count (ascending)
-    });
+        // If usage counts are equal, use deterministic pattern for consistency
+        if (aCount === bCount) {
+          return Math.abs(gridX * 7 + gridY * 11) % 2 === 0 ? -1 : 1;
+        }
+
+        return aCount - bCount; // Sort by usage count (ascending)
+      });
 
     // Try to place the least used images first, avoiding adjacency
     for (const img of sortedImages) {
-      const imageId = img.metadata.id || img.metadata.title;
+      // Additional null safety check
+      if (!img.metadata) {
+        console.warn('Image metadata missing during placement consideration');
+        continue;
+      }
+
+      const imageId = img.metadata.id || img.metadata.title || 'unknown';
 
       // Check if this image is adjacent to any previous placement of the same image
       if (!isAdjacentToPreviousPlacement(gridX, gridY, imageId, globalPlacementHistory)) {
@@ -221,7 +240,7 @@ export const getImageCandidatesForPosition = (
     if (candidates.length === 0) {
       const fallbackIndex = Math.abs(gridX * 7 + gridY * 11) % imagesRefCurrent.length;
       const fallbackImage = imagesRefCurrent[fallbackIndex];
-      if (fallbackImage) {
+      if (fallbackImage && fallbackImage.metadata) {
         candidates.push(fallbackImage);
       }
     }
@@ -235,7 +254,13 @@ export const getImageCandidatesForPosition = (
 
 // Call this function when an image is successfully placed
 export const recordImagePlacement = (gridX: number, gridY: number, imageInfo: ImageInfo) => {
-  const imageId = imageInfo.metadata.id || imageInfo.metadata.title;
+  // Add null safety for metadata access
+  if (!imageInfo.metadata) {
+    console.warn('Attempting to record placement for image without metadata');
+    return;
+  }
+
+  const imageId = imageInfo.metadata.id || imageInfo.metadata.title || 'unknown';
 
   // Update usage count
   const currentCount = globalImageUsageCount.get(imageId) || 0;

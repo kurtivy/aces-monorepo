@@ -85,7 +85,7 @@ const InfiniteCanvas = () => {
 
   const { viewState, handleWheel, animateViewState, isAnimating, animateToHome, showHomeButton } =
     useViewState({
-      imagesLoaded: loadingPhase === 'ready' && imagesLoaded,
+      imagesLoaded: loadingPhase === 'ready' && imagesLoaded && isHydrated,
       _unitSize: unitSize,
     });
 
@@ -121,6 +121,9 @@ const InfiniteCanvas = () => {
     imagePlacementMap: imagePlacementMapRef,
     unitSize,
   });
+
+  // CRITICAL: Only enable interactions when everything is truly ready
+  const interactionsEnabled = loadingPhase === 'ready' && imagesLoaded && canvasReady && isHydrated;
 
   // Animation loop for view state
   useEffect(() => {
@@ -213,7 +216,7 @@ const InfiniteCanvas = () => {
   // Handle canvas events with Firefox compatibility
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || loadingPhase !== 'ready') return;
+    if (!canvas || !interactionsEnabled) return;
 
     // Firefox-compatible event listeners with error handling
     const wheelListener = (e: WheelEvent) => {
@@ -279,7 +282,14 @@ const InfiniteCanvas = () => {
         console.warn('Event cleanup error:', cleanupError);
       }
     };
-  }, [handleWheel, handleTouchStart, handleTouchMove, handleTouchEnd, canvasRef, loadingPhase]);
+  }, [
+    handleWheel,
+    handleTouchStart,
+    handleTouchMove,
+    handleTouchEnd,
+    canvasRef,
+    interactionsEnabled,
+  ]);
 
   // Handle resize
   useEffect(() => {
@@ -366,13 +376,19 @@ const InfiniteCanvas = () => {
       >
         <canvas
           ref={canvasRef}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseLeave}
+          onMouseDown={interactionsEnabled ? handleMouseDown : undefined}
+          onMouseMove={interactionsEnabled ? handleMouseMove : undefined}
+          onMouseUp={interactionsEnabled ? handleMouseUp : undefined}
+          onMouseLeave={interactionsEnabled ? handleMouseLeave : undefined}
           className="w-full h-full touch-none select-none"
           style={{
-            cursor: isPanning ? (isDragging ? 'grabbing' : 'grab') : 'pointer',
+            cursor: interactionsEnabled
+              ? isPanning
+                ? isDragging
+                  ? 'grabbing'
+                  : 'grab'
+                : 'pointer'
+              : 'default',
           }}
         />
       </motion.div>

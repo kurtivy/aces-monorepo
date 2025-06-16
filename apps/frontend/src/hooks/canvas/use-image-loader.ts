@@ -52,6 +52,13 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
     let loadedCount = 0;
     const loadedImages: ImageInfo[] = [];
 
+    // Clear the loading completion flag at start
+    try {
+      window.localStorage.removeItem('aces-images-loaded');
+    } catch (error) {
+      console.warn('Could not clear image loading flag:', error);
+    }
+
     // Load ALL images to ensure complete product showcase
     // We'll optimize performance through other means (like better caching and smaller initial grid)
     const imagesToLoad = SAMPLE_METADATA; // Always load all images
@@ -61,11 +68,25 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
       LuxuryLogger.log('No image paths provided. Canvas will be empty.', 'warn');
       setImagesLoaded(true);
       setLoadingProgress(100);
+      // Still signal completion even with no images
+      try {
+        window.localStorage.setItem('aces-images-loaded', 'true');
+      } catch (error) {
+        console.warn('Could not set image loading flag for empty state:', error);
+      }
       return;
     }
 
     const finishLoading = () => {
       setImages(loadedImages);
+      // Signal that image metadata loading is complete
+      try {
+        window.localStorage.setItem('aces-images-loaded', 'true');
+        LuxuryLogger.log('Image metadata loading marked as complete', 'info');
+      } catch (error) {
+        console.warn('Could not set image loading flag:', error);
+      }
+
       // Minimal delay to allow the 100% to register before the fade-out
       setTimeout(() => {
         setImagesLoaded(true);
@@ -77,6 +98,13 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
     const loadingTimeout = setTimeout(
       () => {
         LuxuryLogger.log('Loading timeout reached. Forcing completion.', 'warn');
+        // Signal completion even on timeout
+        try {
+          window.localStorage.setItem('aces-images-loaded', 'true');
+          LuxuryLogger.log('Image loading timeout - marked as complete anyway', 'warn');
+        } catch (error) {
+          console.warn('Could not set image loading flag on timeout:', error);
+        }
         finishLoading();
       },
       15000, // 15 seconds for all images - faster timeout for better UX
@@ -94,9 +122,16 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
     };
 
     imagesToLoad.forEach((metadata, index) => {
+      // Enhanced null safety check
+      if (!metadata) {
+        console.warn(`Metadata is null at index ${index}, skipping image`);
+        updateState();
+        return;
+      }
+
       if (!metadata.image) {
         LuxuryLogger.log(
-          `Image path is missing for metadata with title: "${metadata.title}". Using placeholder.`,
+          `Image path is missing for metadata with title: "${metadata.title || 'Unknown'}". Using placeholder.`,
           'warn',
         );
         const placeholderElement = createLuxuryPlaceholderImage(unitSize); // Pass unitSize
@@ -107,7 +142,7 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
           displayHeight: unitSize, // Use unitSize directly for placeholder
           metadata: {
             ...metadata,
-            title: `${metadata.title} (Image path missing)`,
+            title: `${metadata.title || 'Unknown'} (Image path missing)`,
           },
         };
         updateState();
@@ -141,14 +176,20 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
                 const { width: proportionalWidth, height: proportionalHeight } =
                   getDisplayDimensions(type, unitSize);
 
-                loadedImages[index] = {
-                  element: img,
-                  type,
-                  displayWidth: proportionalWidth * (unitSize / 200), // Scale based on unitSize
-                  displayHeight: proportionalHeight * (unitSize / 200), // Scale based on unitSize
-                  metadata,
-                };
-                updateState();
+                // Enhanced null safety check before assignment
+                if (metadata) {
+                  loadedImages[index] = {
+                    element: img,
+                    type,
+                    displayWidth: proportionalWidth * (unitSize / 200), // Scale based on unitSize
+                    displayHeight: proportionalHeight * (unitSize / 200), // Scale based on unitSize
+                    metadata,
+                  };
+                  updateState();
+                } else {
+                  console.warn('Metadata became null during image load processing');
+                  handleError();
+                }
               }, 100);
               return;
             }
@@ -165,14 +206,20 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
               unitSize,
             );
 
-            loadedImages[index] = {
-              element: img,
-              type,
-              displayWidth: proportionalWidth * (unitSize / 200), // Scale based on unitSize
-              displayHeight: proportionalHeight * (unitSize / 200), // Scale based on unitSize
-              metadata,
-            };
-            updateState();
+            // Enhanced null safety check before assignment
+            if (metadata) {
+              loadedImages[index] = {
+                element: img,
+                type,
+                displayWidth: proportionalWidth * (unitSize / 200), // Scale based on unitSize
+                displayHeight: proportionalHeight * (unitSize / 200), // Scale based on unitSize
+                metadata,
+              };
+              updateState();
+            } else {
+              console.warn('Metadata became null during image load processing');
+              handleError();
+            }
           };
 
           getDimensions();
@@ -185,9 +232,17 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
       const handleError = () => {
         LuxuryLogger.log(`Failed to load image: ${img.src}. Using placeholder.`, 'error');
         const placeholderElement = createLuxuryPlaceholderImage(unitSize); // Pass unitSize
+
+        // Enhanced null safety for metadata
+        const safeMetadata = metadata || {
+          title: 'Unknown Item',
+          description: 'This asset failed to load',
+          ticker: '$UNKNOWN',
+        };
+
         const errorMetadata = {
-          ...metadata,
-          title: `${metadata.title} (Loading Failed)`,
+          ...safeMetadata,
+          title: `${safeMetadata.title || 'Unknown'} (Loading Failed)`,
           description: 'This asset failed to load',
           image: placeholderElement.src,
         };

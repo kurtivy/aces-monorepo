@@ -2,7 +2,9 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect } from 'react';
-import { ImageInfo } from '../../types/canvas';
+import Image from 'next/image';
+import type { ImageInfo } from '../../types/canvas';
+import { getImageMetadata } from '../../lib/utils/luxury-logger';
 
 interface ImageDetailsModalProps {
   imageInfo: ImageInfo | null;
@@ -18,7 +20,13 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
     return () => window.removeEventListener('keydown', handleEscape);
   }, [onClose]);
 
-  if (!imageInfo) return null;
+  // Enhanced null safety checks
+  if (!imageInfo) {
+    return null;
+  }
+
+  // Use safe metadata access
+  const safeMetadata = getImageMetadata(imageInfo);
 
   return (
     <AnimatePresence>
@@ -37,23 +45,26 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
           className="bg-black rounded-3xl overflow-hidden max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-6xl w-full shadow-goldGlow border border-[#D0B264]/40 max-h-[90vh]"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex flex-col md:flex-row h-full">
-            {/* Top/Left side - Image */}
-            <div className="w-full md:w-1/2 relative flex items-center justify-center p-4 md:p-8">
-              <div className="relative overflow-hidden max-h-[40vh] md:max-h-[75vh] w-full flex items-center justify-center">
-                <motion.img
-                  initial={{ scale: 1.1 }}
-                  animate={{ scale: 1 }}
-                  transition={{ duration: 0.4, ease: 'easeOut' }}
-                  src={imageInfo.element.src}
-                  alt={imageInfo.metadata.title}
-                  className="max-w-full max-h-full object-contain"
+          <div className="flex flex-col lg:flex-row h-full max-h-[90vh]">
+            {/* Image Section */}
+            <div className="flex-shrink-0 lg:w-1/2 bg-gradient-to-b from-black/60 to-black p-4 sm:p-6 lg:p-8">
+              <div className="relative h-48 sm:h-64 lg:h-full min-h-[200px] max-h-[60vh] lg:max-h-none overflow-hidden rounded-2xl">
+                <Image
+                  src={safeMetadata.image || '/placeholder.png'}
+                  alt={safeMetadata.title}
+                  fill
+                  className="object-contain transition-transform duration-300 hover:scale-105"
+                  sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 40vw"
+                  quality={85}
+                  priority={true} // Load immediately since it's in a modal
+                  placeholder="blur"
+                  blurDataURL="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k="
                 />
               </div>
             </div>
 
-            {/* Bottom/Right side - Content */}
-            <div className="w-full md:w-1/2 p-6 md:p-8 flex flex-col overflow-y-auto">
+            {/* Content Section */}
+            <div className="flex-1 p-4 sm:p-6 lg:p-8 flex flex-col justify-between overflow-y-auto">
               <div className="flex items-start justify-between mb-6">
                 <div className="flex-1">
                   <motion.div
@@ -62,15 +73,15 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                     transition={{ delay: 0.1 }}
                   >
                     <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[#D0B264] mb-2 font-syne tracking-wide">
-                      {imageInfo.metadata.title}
+                      {safeMetadata.title}
                     </h2>
                     <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-1 sm:space-y-0 sm:space-x-2">
                       <span className="text-xl sm:text-2xl lg:text-3xl font-syne text-[#D0B264] font-bold">
-                        {imageInfo.metadata.ticker}
+                        {safeMetadata.ticker}
                       </span>
-                      {imageInfo.metadata.date && (
+                      {safeMetadata.date && (
                         <span className="text-[#FFFFFF]/60 text-xs sm:text-sm font-jetbrains-mono tracking-wide">
-                          • Listed {new Date(imageInfo.metadata.date).toLocaleDateString()}
+                          • Listed {new Date(safeMetadata.date).toLocaleDateString()}
                         </span>
                       )}
                     </div>
@@ -99,7 +110,7 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
               >
                 <div className="prose prose-invert">
                   <p className="text-[#FFFFFF]/80 text-sm sm:text-base leading-relaxed font-spectral tracking-wide">
-                    {imageInfo.metadata.description}
+                    {safeMetadata.description}
                   </p>
                 </div>
               </motion.div>

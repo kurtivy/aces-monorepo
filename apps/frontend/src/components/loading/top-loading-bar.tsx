@@ -103,6 +103,51 @@ const TopLoadingBar: React.FC<TopLoadingBarProps> = ({
             // Overall timeout for image loading
             setTimeout(resolve, 1500);
           }),
+
+          // NEW: Wait for image metadata to be actually loaded
+          new Promise<void>((resolve) => {
+            const checkImageMetadata = () => {
+              try {
+                // Look for signs that the image loader has started working
+                const hasCanvasImages = document.querySelector('canvas');
+
+                // If we detect the image loader is working, wait for it
+                if (hasCanvasImages || document.querySelectorAll('img').length > 0) {
+                  // Check every 100ms for image metadata completion
+                  const metadataCheck = setInterval(() => {
+                    try {
+                      // Look for completion signals from the image loader
+                      const imageLoadComplete =
+                        window.localStorage.getItem('aces-images-loaded') === 'true';
+
+                      if (imageLoadComplete) {
+                        clearInterval(metadataCheck);
+                        resolve();
+                      }
+                    } catch (error) {
+                      console.warn('Metadata check error:', error);
+                    }
+                  }, 100);
+
+                  // Fallback timeout - don't wait forever
+                  setTimeout(() => {
+                    clearInterval(metadataCheck);
+                    console.warn('Image metadata loading timeout - proceeding anyway');
+                    resolve();
+                  }, 3000); // 3 second timeout for metadata loading
+                } else {
+                  // No images detected, proceed immediately
+                  resolve();
+                }
+              } catch (error) {
+                console.warn('Image metadata check failed:', error);
+                resolve();
+              }
+            };
+
+            // Small delay to let image loader initialize
+            setTimeout(checkImageMetadata, 200);
+          }),
         ];
 
         // Progress simulation with Firefox-friendly increments
