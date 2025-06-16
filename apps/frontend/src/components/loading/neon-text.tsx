@@ -1,10 +1,10 @@
-"use client";
+'use client';
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from 'react';
 
 const NeonText: React.FC = () => {
   const [visibleLetters, setVisibleLetters] = useState(0);
-  const fullText = "ACES.FUN";
+  const fullText = 'ACES.FUN';
 
   useEffect(() => {
     // Letter appearance animation
@@ -28,23 +28,20 @@ const NeonText: React.FC = () => {
   }, [fullText]);
 
   return (
-    <div
-      className="relative flex items-center justify-center"
-      style={{ width: 600, height: 120 }}
-    >
-      <svg
-        width="600"
-        height="120"
-        viewBox="0 0 600 120"
-        style={{ overflow: "visible" }}
-      >
-        <text x="50%" y="80" textAnchor="middle" fontSize="72">
-          {fullText.split("").map((letter, index) => {
+    <div className="relative flex items-center justify-center w-full max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg xl:max-w-xl h-auto">
+      <svg className="w-full h-auto" viewBox="0 0 600 120" style={{ overflow: 'visible' }}>
+        <text
+          x="50%"
+          y="80"
+          textAnchor="middle"
+          className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl"
+        >
+          {fullText.split('').map((letter, index) => {
             const isVisible = index < visibleLetters;
             const isAces = index < 4;
-            const color = isAces ? "#D7BF75" : "#ffffff";
-            const fontFamily = isAces ? "'Neue World', serif" : "cursive";
-            const fontWeight = isAces ? "bold" : "normal";
+            const color = isAces ? '#D7BF75' : '#ffffff';
+            const fontFamily = isAces ? "'Neue World', serif" : 'cursive';
+            const fontWeight = isAces ? 'bold' : 'normal';
 
             return (
               <tspan
@@ -55,7 +52,7 @@ const NeonText: React.FC = () => {
                 style={{
                   filter: `drop-shadow(0 0 8px ${color}) drop-shadow(0 0 16px ${color})`,
                   opacity: isVisible ? 1 : 0,
-                  transition: "opacity 0.3s ease-in-out",
+                  transition: 'opacity 0.3s ease-in-out',
                 }}
               >
                 {letter}

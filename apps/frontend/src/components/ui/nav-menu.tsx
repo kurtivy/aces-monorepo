@@ -57,7 +57,7 @@ const NavMenu: React.FC = () => {
       <AnimatePresence mode="wait">
         {isOpen && (
           <motion.div
-            className="bg-black/95 border border-[#D0B264]/40 text-[#D0B264] rounded-lg mr-2 overflow-hidden shadow-lg"
+            className="bg-black/95 border border-[#D0B264]/40 text-[#D0B264] rounded-lg mr-2 overflow-hidden shadow-lg max-w-[calc(100vw-4rem)]"
             variants={menuVariants}
             initial="closed"
             animate="open"
@@ -67,7 +67,7 @@ const NavMenu: React.FC = () => {
               willChange: 'transform, opacity',
             }}
           >
-            <div className="p-4 min-w-[180px]">
+            <div className="p-3 sm:p-4 min-w-[160px] sm:min-w-[180px]">
               <div className="space-y-1">
                 {navItems.map((item, index) => (
                   <motion.div
@@ -82,7 +82,7 @@ const NavMenu: React.FC = () => {
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={() => setIsOpen(false)}
-                        className="block text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 px-3 py-2 text-sm font-medium rounded-md whitespace-nowrap uppercase font-spectral tracking-wide"
+                        className="block text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 px-2 py-1.5 sm:px-3 sm:py-2 text-sm font-medium rounded-md whitespace-nowrap uppercase font-spectral tracking-wide"
                       >
                         {item.label}
                       </a>
@@ -90,7 +90,7 @@ const NavMenu: React.FC = () => {
                       <Link
                         href={item.href}
                         onClick={() => setIsOpen(false)}
-                        className="block text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 px-3 py-2 text-sm font-medium rounded-md whitespace-nowrap uppercase font-spectral tracking-wide"
+                        className="block text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 px-2 py-1.5 sm:px-3 sm:py-2 text-sm font-medium rounded-md whitespace-nowrap uppercase font-spectral tracking-wide"
                       >
                         {item.label}
                       </Link>
@@ -104,7 +104,7 @@ const NavMenu: React.FC = () => {
       </AnimatePresence>
 
       <motion.button
-        className="bg-black/90 border border-[#D0B264]/40 text-[#D0B264] shadow-lg rounded-full w-16 h-16 flex items-center justify-center cursor-pointer flex-shrink-0 hover:bg-black/95 hover:border-[#D0B264] transition-colors duration-150"
+        className="bg-black/90 border border-[#D0B264]/40 text-[#D0B264] shadow-lg rounded-full w-12 h-12 sm:w-16 sm:h-16 flex items-center justify-center cursor-pointer flex-shrink-0 hover:bg-black/95 hover:border-[#D0B264] transition-colors duration-150"
         onClick={() => setIsOpen(!isOpen)}
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
@@ -116,7 +116,11 @@ const NavMenu: React.FC = () => {
           transition={{ duration: 0.2, ease: 'easeInOut' }}
           style={{ willChange: 'transform' }}
         >
-          {isOpen ? <X className="h-8 w-8" /> : <Menu className="h-8 w-8" />}
+          {isOpen ? (
+            <X className="h-6 w-6 sm:h-8 sm:w-8" />
+          ) : (
+            <Menu className="h-6 w-6 sm:h-8 sm:w-8" />
+          )}
         </motion.div>
       </motion.button>
     </div>

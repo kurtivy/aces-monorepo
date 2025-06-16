@@ -16,24 +16,43 @@ import { getUnitSize } from '../../constants/canvas';
 
 const InfiniteCanvas = () => {
   const [selectedImage, setSelectedImage] = useState<ImageInfo | null>(null);
+  const [showIntro, setShowIntro] = useState(true); // Always start with intro
   const [introCompleted, setIntroCompleted] = useState(false);
-  const [canvasReady, setCanvasReady] = useState(false);
   const [canvasVisible, setCanvasVisible] = useState(false);
   const [unitSize, setUnitSize] = useState(getUnitSize());
   const imagePlacementMapRef = useRef(
     new Map<string, { image: ImageInfo; x: number; y: number; width: number; height: number }>(),
   );
 
-  const { images, loadingProgress, imagesLoaded } = useImageLoader();
+  // Check if user has seen intro this session (but not on page refresh)
+  useEffect(() => {
+    // Only skip intro if we're navigating within the same session (not on page refresh)
+    const seenIntroThisSession = sessionStorage.getItem('hasSeenIntro');
+    const isPageRefresh = window.performance.navigation.type === 1; // 1 = reload
+
+    if (seenIntroThisSession === 'true' && !isPageRefresh) {
+      setShowIntro(false);
+      setIntroCompleted(true);
+    } else {
+      // Clear any existing session data on page refresh
+      sessionStorage.removeItem('hasSeenIntro');
+    }
+  }, []);
+
+  const { images, imagesLoaded } = useImageLoader({
+    unitSize,
+    enableLazyLoading: true, // Enable lazy loading for better performance
+  });
   const { viewState, handleWheel, animateViewState, isAnimating, animateToHome, showHomeButton } =
     useViewState({
       imagesLoaded,
-      unitSize,
+      _unitSize: unitSize,
     });
   const { canvasRef } = useCanvasRenderer({
     images,
     viewState,
     imagesLoaded,
+    canvasVisible,
     onCreateTokenClick: () => {
       window.location.href = '/create-token';
     },
@@ -79,30 +98,58 @@ const InfiniteCanvas = () => {
     };
   }, [imagesLoaded, animateViewState, isAnimating]);
 
+  // Handle intro animation and loading completion
   useEffect(() => {
-    const timer = setTimeout(() => {
+    if (!showIntro) {
+      // Skip intro, wait only for loading
       if (imagesLoaded) {
         setCanvasVisible(true);
       }
-      setIntroCompleted(true);
-    }, 3000); // Show loading screen for 3 seconds
+    } else {
+      // First time - run intro animation in parallel with loading
+      const introTimer = setTimeout(() => {
+        setIntroCompleted(true);
+      }, 2800); // 2.8 seconds for intro animation
 
-    return () => clearTimeout(timer);
-  }, [imagesLoaded]);
+      return () => clearTimeout(introTimer);
+    }
+  }, [showIntro, imagesLoaded]);
+
+  // Show canvas when both intro and loading are complete (for first-time users)
+  useEffect(() => {
+    if (showIntro && introCompleted && imagesLoaded) {
+      sessionStorage.setItem('hasSeenIntro', 'true');
+      setCanvasVisible(true);
+    }
+  }, [showIntro, introCompleted, imagesLoaded]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) {
       return;
     }
-    const wheelListener = (e: WheelEvent) => {
+
+    // Create wrapper functions to correctly type native events for React handlers
+    const wheelListener = (e: WheelEvent) =>
       handleWheel(e as unknown as React.WheelEvent<HTMLCanvasElement>);
-    };
+    const touchStartListener = (e: TouchEvent) =>
+      handleTouchStart(e as unknown as React.TouchEvent);
+    const touchMoveListener = (e: TouchEvent) => handleTouchMove(e as unknown as React.TouchEvent);
+    const touchEndListener = (e: TouchEvent) => handleTouchEnd(e as unknown as React.TouchEvent);
+
+    // Add event listeners with passive: false for touch events
     canvas.addEventListener('wheel', wheelListener, { passive: false });
+    canvas.addEventListener('touchstart', touchStartListener, { passive: false });
+    canvas.addEventListener('touchmove', touchMoveListener, { passive: false });
+    canvas.addEventListener('touchend', touchEndListener, { passive: false });
+
     return () => {
       canvas.removeEventListener('wheel', wheelListener);
+      canvas.removeEventListener('touchstart', touchStartListener);
+      canvas.removeEventListener('touchmove', touchMoveListener);
+      canvas.removeEventListener('touchend', touchEndListener);
     };
-  }, [handleWheel, canvasRef]);
+  }, [handleWheel, handleTouchStart, handleTouchMove, handleTouchEnd, canvasRef]);
 
   useEffect(() => {
     window.history.scrollRestoration = 'manual';
@@ -119,43 +166,20 @@ const InfiniteCanvas = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Prepare the canvas in the background while the intro is still showing
-  useEffect(() => {
-    if (imagesLoaded) {
-      setCanvasReady(true);
-    }
-  }, [imagesLoaded]);
-
   return (
     <>
       <NavMenu />
-      <LoadingScreen isComplete={introCompleted} />
 
-      {/* Loading Progress - shows after intro is done, but only if images are still loading */}
-      <AnimatePresence>
-        {introCompleted && !imagesLoaded && (
-          <motion.div
-            className="fixed inset-0 flex items-center justify-center z-40 bg-black"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
-            <div className="flex flex-col items-center">
-              <div className="w-16 h-16 border-4 border-t-[#D0B264] border-r-transparent border-b-transparent border-l-transparent rounded-full animate-spin"></div>
-              <p className="mt-4 text-[#D0B264] text-xl">Loading assets...</p>
-              <p className="mt-2 text-white text-lg">{Math.round(loadingProgress)}%</p>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Show intro animation only if user hasn't seen it this session */}
+      {showIntro && <LoadingScreen isComplete={introCompleted} />}
 
       {/* Main Canvas - positioned behind the intro animation for seamless transition */}
       <AnimatePresence>
-        {canvasReady && (
+        {(!showIntro || canvasVisible) && (
           <motion.div
             className="fixed inset-0"
             initial={{ opacity: 0 }}
-            animate={{ opacity: canvasVisible ? 1 : 0 }}
+            animate={{ opacity: 1 }}
             transition={{
               duration: 1.2,
               ease: 'easeInOut',
@@ -168,9 +192,6 @@ const InfiniteCanvas = () => {
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
               onMouseLeave={handleMouseLeave}
-              onTouchStart={handleTouchStart}
-              onTouchMove={handleTouchMove}
-              onTouchEnd={handleTouchEnd}
               className="w-full h-full touch-none select-none"
               style={{
                 cursor: isPanning ? (isDragging ? 'grabbing' : 'grab') : 'pointer',
@@ -181,7 +202,7 @@ const InfiniteCanvas = () => {
       </AnimatePresence>
 
       <ImageDetailsModal imageInfo={selectedImage} onClose={() => setSelectedImage(null)} />
-      {introCompleted && showHomeButton && <HomeButton onClick={animateToHome} />}
+      {(!showIntro || introCompleted) && showHomeButton && <HomeButton onClick={animateToHome} />}
     </>
   );
 };

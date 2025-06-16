@@ -34,13 +34,13 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.95, opacity: 0 }}
           transition={{ duration: 0.2, ease: 'easeOut' }}
-          className="bg-black rounded-3xl overflow-hidden max-w-6xl w-full shadow-goldGlow border border-[#D0B264]/40 max-h-[90vh]"
+          className="bg-black rounded-3xl overflow-hidden max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-6xl w-full shadow-goldGlow border border-[#D0B264]/40 max-h-[90vh]"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex flex-col lg:flex-row h-full">
-            {/* Left side - Image */}
-            <div className="lg:w-1/2 relative flex items-center justify-center p-4 lg:p-8">
-              <div className="relative overflow-hidden max-h-[60vh] lg:max-h-[75vh] w-full flex items-center justify-center">
+          <div className="flex flex-col md:flex-row h-full">
+            {/* Top/Left side - Image */}
+            <div className="w-full md:w-1/2 relative flex items-center justify-center p-4 md:p-8">
+              <div className="relative overflow-hidden max-h-[40vh] md:max-h-[75vh] w-full flex items-center justify-center">
                 <motion.img
                   initial={{ scale: 1.1 }}
                   animate={{ scale: 1 }}
@@ -49,12 +49,11 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                   alt={imageInfo.metadata.title}
                   className="max-w-full max-h-full object-contain"
                 />
-                {/* Removed image overlay for a "floating" effect */}
               </div>
             </div>
 
-            {/* Right side - Content */}
-            <div className="lg:w-1/2 p-6 lg:p-8 flex flex-col overflow-y-auto">
+            {/* Bottom/Right side - Content */}
+            <div className="w-full md:w-1/2 p-6 md:p-8 flex flex-col overflow-y-auto">
               <div className="flex items-start justify-between mb-6">
                 <div className="flex-1">
                   <motion.div
@@ -62,15 +61,15 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                     animate={{ y: 0, opacity: 1 }}
                     transition={{ delay: 0.1 }}
                   >
-                    <h2 className="text-4xl font-bold text-[#D0B264] mb-2 font-syne tracking-wide">
+                    <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[#D0B264] mb-2 font-syne tracking-wide">
                       {imageInfo.metadata.title}
                     </h2>
-                    <div className="flex items-center space-x-2">
-                      <span className="text-3xl font-syne text-[#D0B264] font-bold">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-1 sm:space-y-0 sm:space-x-2">
+                      <span className="text-xl sm:text-2xl lg:text-3xl font-syne text-[#D0B264] font-bold">
                         {imageInfo.metadata.ticker}
                       </span>
                       {imageInfo.metadata.date && (
-                        <span className="text-[#FFFFFF]/60 text-sm font-jetbrains-mono tracking-wide">
+                        <span className="text-[#FFFFFF]/60 text-xs sm:text-sm font-jetbrains-mono tracking-wide">
                           • Listed {new Date(imageInfo.metadata.date).toLocaleDateString()}
                         </span>
                       )}
@@ -99,7 +98,7 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                 className="flex-1"
               >
                 <div className="prose prose-invert">
-                  <p className="text-[#FFFFFF]/80 text-base leading-relaxed font-spectral tracking-wide">
+                  <p className="text-[#FFFFFF]/80 text-sm sm:text-base leading-relaxed font-spectral tracking-wide">
                     {imageInfo.metadata.description}
                   </p>
                 </div>
@@ -109,9 +108,9 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                 initial={{ y: 20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.3 }}
-                className="mt-8"
+                className="mt-4 sm:mt-8"
               >
-                <button className="w-full bg-gradient-to-r from-[#D0B264] to-[#D0B264]/80 hover:from-[#D0B264]/90 hover:to-[#D0B264]/70 text-[#231F20] font-syne font-bold py-4 px-8 rounded-xl transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98] shadow-goldGlow">
+                <button className="w-full bg-gradient-to-r from-[#D0B264] to-[#D0B264]/80 hover:from-[#D0B264]/90 hover:to-[#D0B264]/70 text-[#231F20] font-syne font-bold py-3 sm:py-4 px-6 sm:px-8 rounded-xl transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98] shadow-goldGlow text-base sm:text-lg">
                   Tokenize Soon!
                 </button>
               </motion.div>
@@ -120,11 +119,11 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                 initial={{ y: 20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.4 }}
-                className="mt-6 flex items-center justify-center space-x-4 text-sm text-[#FFFFFF]/60"
+                className="mt-4 sm:mt-6 flex flex-col sm:flex-row items-center justify-center space-y-2 sm:space-y-0 sm:space-x-4 text-xs sm:text-sm text-[#FFFFFF]/60"
               >
                 <span className="flex items-center font-jetbrains-mono tracking-wide">
                   <svg
-                    className="w-5 h-5 mr-1 text-[#D0B264]"
+                    className="w-4 h-4 sm:w-5 sm:h-5 mr-1 text-[#D0B264]"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -140,7 +139,7 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                 </span>
                 <span className="flex items-center font-jetbrains-mono tracking-wide">
                   <svg
-                    className="w-5 h-5 mr-1 text-[#D0B264]"
+                    className="w-4 h-4 sm:w-5 sm:h-5 mr-1 text-[#D0B264]"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"

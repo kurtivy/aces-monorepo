@@ -1,14 +1,17 @@
+'use client';
+
+import type React from 'react';
+
 import { useState, useCallback, useRef } from 'react';
-import { ImageInfo, ViewState } from '../../types/canvas'; // Adjusted path
-import { isHomeArea } from '../../lib/canvas/grid-placement'; // Adjusted path
-import { LuxuryLogger } from '../../lib/utils/luxury-logger'; // Adjusted path
+import type { ImageInfo, ViewState } from '../../types/canvas';
+import { isHomeArea } from '../../lib/canvas/grid-placement';
+import { LuxuryLogger } from '../../lib/utils/luxury-logger';
 
 interface UseCanvasInteractionsProps {
   viewState: ViewState;
-  imagesRef: React.MutableRefObject<ImageInfo[]>; // Added this prop
+  imagesRef: React.MutableRefObject<ImageInfo[]>;
   setSelectedImage: (image: ImageInfo | null) => void;
   imagePlacementMap: React.MutableRefObject<
-    // Preserved this prop
     Map<string, { image: ImageInfo; x: number; y: number; width: number; height: number }>
   >;
   unitSize: number;
@@ -17,7 +20,7 @@ interface UseCanvasInteractionsProps {
 export const useCanvasInteractions = ({
   viewState,
   setSelectedImage,
-  imagePlacementMap, // Destructure the preserved prop
+  imagePlacementMap,
   unitSize,
 }: UseCanvasInteractionsProps) => {
   const [isPanning, setIsPanning] = useState(false);
@@ -32,8 +35,24 @@ export const useCanvasInteractions = ({
 
   const handleClick = useCallback(
     (event: React.MouseEvent | React.TouchEvent) => {
-      const clientX = 'touches' in event ? event.touches[0].clientX : event.clientX;
-      const clientY = 'touches' in event ? event.touches[0].clientY : event.clientY;
+      // FIX: Handle touch events properly for touchend
+      let clientX: number;
+      let clientY: number;
+
+      if ('touches' in event) {
+        // For touch events, use changedTouches if touches is empty (on touchend)
+        const touch = event.touches[0] || event.changedTouches?.[0];
+        if (!touch) {
+          console.warn('No touch data available');
+          return;
+        }
+        clientX = touch.clientX;
+        clientY = touch.clientY;
+      } else {
+        // Mouse event
+        clientX = event.clientX;
+        clientY = event.clientY;
+      }
 
       const canvas = event.currentTarget as HTMLCanvasElement;
       const rect = canvas.getBoundingClientRect();
@@ -47,20 +66,14 @@ export const useCanvasInteractions = ({
       ) {
         LuxuryLogger.log(`Clicked home area at world: ${worldX}, ${worldY}`, 'info');
 
-        // Logic to check for "CREATE" quadrant click
-        const homeAreaX = homeAreaWorldX;
-        const homeAreaY = homeAreaWorldY;
-        const homeAreaWidthValue = homeAreaWidth;
-        const homeAreaHeightValue = homeAreaHeight;
+        const quadWidth = homeAreaWidth / 2;
+        const quadHeight = homeAreaHeight / 2;
 
-        const quadWidth = homeAreaWidthValue / 2;
-        const quadHeight = homeAreaHeightValue / 2;
+        const createQuadX = homeAreaWorldX + quadWidth;
+        const createQuadY = homeAreaWorldY;
 
-        const createQuadX = homeAreaX + quadWidth; // Top-right quadrant
-        const createQuadY = homeAreaY;
-
-        const aboutQuadX = homeAreaX; // Top-left quadrant
-        const aboutQuadY = homeAreaY;
+        const aboutQuadX = homeAreaWorldX;
+        const aboutQuadY = homeAreaWorldY;
 
         if (
           worldX >= aboutQuadX &&
@@ -83,7 +96,7 @@ export const useCanvasInteractions = ({
           window.location.href = '/create-token';
           return;
         }
-        return; // Clicked home area but not CREATE quadrant
+        return;
       }
 
       let clickedImageInfo: ImageInfo | null = null;
@@ -94,7 +107,7 @@ export const useCanvasInteractions = ({
 
         if (worldX >= x && worldX <= x + width && worldY >= y && worldY <= y + height) {
           clickedImageInfo = image;
-          break; // Found the clicked image
+          break;
         }
       }
 
@@ -172,6 +185,7 @@ export const useCanvasInteractions = ({
 
   const handleTouchStart = useCallback((event: React.TouchEvent) => {
     if (event.touches.length === 1) {
+      event.preventDefault();
       const touch = event.touches[0];
       setIsDragging(false);
       dragStartRef.current = {

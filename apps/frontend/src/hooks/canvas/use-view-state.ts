@@ -1,29 +1,31 @@
 'use client';
 
+import type React from 'react';
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { lerp, easeInOutCubic } from '../../lib/canvas/math-utils'; // Adjusted path
-import { ViewState } from '../../types/canvas'; // Adjusted path
+import { lerp, easeInOutCubic } from '../../lib/canvas/math-utils';
+import type { ViewState } from '../../types/canvas';
 
 interface UseViewStateProps {
-  imagesLoaded: boolean; // Added this prop
-  unitSize: number;
+  imagesLoaded: boolean;
+  _unitSize?: number; // optional, ignored
   initialX?: number;
   initialY?: number;
   initialScale?: number;
   panSensitivity?: number;
   animationDuration?: number;
-  panInterpolationFactor?: number; // Preserved this prop
+  panInterpolationFactor?: number;
 }
 
 export const useViewState = ({
-  imagesLoaded, // Destructure the new prop
-  unitSize,
+  imagesLoaded,
+  _unitSize, // ignored
   initialX = 0,
   initialY = 0,
   initialScale = 1,
-  animationDuration = 0.15, // Default animation duration for regular interactions
-  panInterpolationFactor = 0.3, // Preserved this prop
+  animationDuration = 0.15,
+  panInterpolationFactor = 0.3,
 }: UseViewStateProps) => {
+  void _unitSize; // explicitly ignore _unitSize to satisfy linter
   const [viewState, setViewState] = useState<ViewState>({
     x: initialX,
     y: initialY,
@@ -33,97 +35,99 @@ export const useViewState = ({
     targetScale: initialScale,
   });
   const [showHomeButton, setShowHomeButton] = useState(false);
-
-  const homeAreaWidth = unitSize * 2;
-  const homeAreaHeight = unitSize;
-  const homeAreaWorldX = -unitSize;
-  const homeAreaWorldY = -unitSize;
-
   const [isAnimating, setIsAnimating] = useState(false);
+
   const animationStartTime = useRef(0);
   const velocityX = useRef(0);
   const velocityY = useRef(0);
-  const friction = 0.9; // Adjust this for how quickly scrolling slows down
-  const homeAnimationDuration = useRef(0.8); // 800ms for home animation
-  const centeredOnce = useRef(false); // Add this ref
+  const friction = 0.9;
+  const homeAnimationDuration = useRef(0.8);
+  const centeredOnce = useRef(false);
 
-  // Set initial view to center the home area
+  const canvasWidth = useRef(0);
+  const canvasHeight = useRef(0);
+
+  // Update canvas dimensions on resize
   useEffect(() => {
-    const updateCenter = () => {
-      const canvasWidth = window.innerWidth;
-      const canvasHeight = window.innerHeight;
-
-      // Calculate new x and y to center the HOME_AREA in world coordinates on the screen
-      const screenCenterX = canvasWidth / 2;
-      const screenCenterY = canvasHeight / 2;
-
-      const newX = screenCenterX - (homeAreaWorldX + homeAreaWidth / 2) * viewState.scale;
-      const newY = screenCenterY - (homeAreaWorldY + homeAreaHeight / 2) * viewState.scale;
-
-      setViewState((prev) => ({
-        ...prev,
-        x: newX,
-        y: newY,
-        targetX: newX,
-        targetY: newY,
-      }));
-
-      animationStartTime.current = performance.now();
-      setIsAnimating(true);
+    const updateDimensions = () => {
+      canvasWidth.current = window.innerWidth;
+      canvasHeight.current = window.innerHeight;
     };
 
-    // Only run the centering logic ONCE when the images have finished loading.
-    if (imagesLoaded && !centeredOnce.current) {
-      updateCenter();
-      centeredOnce.current = true; // Mark as done
-    }
-
-    window.addEventListener('resize', updateCenter);
-    return () => {
-      window.removeEventListener('resize', updateCenter);
-    };
-  }, [imagesLoaded]); // Remove viewState.scale from dependencies
+    updateDimensions();
+    window.addEventListener('resize', updateDimensions);
+    return () => window.removeEventListener('resize', updateDimensions);
+  }, []);
 
   useEffect(() => {
-    const canvasWidth = window.innerWidth;
-    const canvasHeight = window.innerHeight;
+    if (!imagesLoaded || centeredOnce.current) return;
 
-    // Screen center of the home area
-    const homeAreaCenterX = (homeAreaWorldX + homeAreaWidth / 2) * viewState.scale + viewState.x;
-    const homeAreaCenterY = (homeAreaWorldY + homeAreaHeight / 2) * viewState.scale + viewState.y;
+    const currentUnitSize = canvasWidth.current < 768 ? 150 : 200;
+    const currentHomeAreaWidth = currentUnitSize * 2;
+    const currentHomeAreaHeight = currentUnitSize;
+    const currentHomeAreaWorldX = -currentUnitSize;
+    const currentHomeAreaWorldY = -currentUnitSize;
 
-    // Screen center
-    const screenCenterX = canvasWidth / 2;
-    const screenCenterY = canvasHeight / 2;
+    const screenCenterX = canvasWidth.current / 2;
+    const screenCenterY = canvasHeight.current / 2;
 
-    // Thresholds for showing the button
-    const panThresholdX = canvasWidth / 4;
-    const panThresholdY = canvasHeight / 4;
-    const scaleThreshold = 0.1; // 10% change in scale
+    const newX = screenCenterX - (currentHomeAreaWorldX + currentHomeAreaWidth / 2) * initialScale;
+    const newY = screenCenterY - (currentHomeAreaWorldY + currentHomeAreaHeight / 2) * initialScale;
 
-    // Check if panned far enough
+    setViewState((prev) => ({
+      ...prev,
+      x: newX,
+      y: newY,
+      targetX: newX,
+      targetY: newY,
+    }));
+
+    centeredOnce.current = true;
+  }, [imagesLoaded, initialScale]);
+
+  useEffect(() => {
+    const currentUnitSize = canvasWidth.current < 768 ? 150 : 200;
+    const currentHomeAreaWidth = currentUnitSize * 2;
+    const currentHomeAreaHeight = currentUnitSize;
+    const currentHomeAreaWorldX = -currentUnitSize;
+    const currentHomeAreaWorldY = -currentUnitSize;
+
+    const homeAreaCenterX =
+      (currentHomeAreaWorldX + currentHomeAreaWidth / 2) * viewState.scale + viewState.x;
+    const homeAreaCenterY =
+      (currentHomeAreaWorldY + currentHomeAreaHeight / 2) * viewState.scale + viewState.y;
+
+    const screenCenterX = canvasWidth.current / 2;
+    const screenCenterY = canvasHeight.current / 2;
+
+    const panThresholdX = canvasWidth.current / 4;
+    const panThresholdY = canvasHeight.current / 4;
+    const scaleThreshold = 0.1;
+
     const isPannedFar =
       Math.abs(homeAreaCenterX - screenCenterX) > panThresholdX ||
       Math.abs(homeAreaCenterY - screenCenterY) > panThresholdY;
 
-    // Check if zoomed enough
     const isZoomedEnough = Math.abs(viewState.scale - initialScale) / initialScale > scaleThreshold;
 
     setShowHomeButton(isPannedFar || isZoomedEnough);
-  }, [viewState, initialScale, homeAreaWorldX, homeAreaWorldY, homeAreaWidth, homeAreaHeight]);
+  }, [viewState.x, viewState.y, viewState.scale, initialScale]);
 
   const animateToHome = useCallback(() => {
-    const canvasWidth = window.innerWidth;
-    const canvasHeight = window.innerHeight;
+    const currentUnitSize = canvasWidth.current < 768 ? 150 : 200;
+    const currentHomeAreaWidth = currentUnitSize * 2;
+    const currentHomeAreaHeight = currentUnitSize;
+    const currentHomeAreaWorldX = -currentUnitSize;
+    const currentHomeAreaWorldY = -currentUnitSize;
 
-    // Calculate target x and y to center the HOME_AREA in world coordinates on the screen
-    const screenCenterX = canvasWidth / 2;
-    const screenCenterY = canvasHeight / 2;
+    const screenCenterX = canvasWidth.current / 2;
+    const screenCenterY = canvasHeight.current / 2;
 
-    const targetX = screenCenterX - (homeAreaWorldX + homeAreaWidth / 2) * initialScale;
-    const targetY = screenCenterY - (homeAreaWorldY + homeAreaHeight / 2) * initialScale;
+    const targetX =
+      screenCenterX - (currentHomeAreaWorldX + currentHomeAreaWidth / 2) * initialScale;
+    const targetY =
+      screenCenterY - (currentHomeAreaWorldY + currentHomeAreaHeight / 2) * initialScale;
 
-    // Reset velocities to ensure direct animation to home
     velocityX.current = 0;
     velocityY.current = 0;
 
@@ -131,39 +135,31 @@ export const useViewState = ({
       ...prev,
       targetX: targetX,
       targetY: targetY,
-      targetScale: initialScale, // Use the initial scale
+      targetScale: initialScale,
     }));
 
     animationStartTime.current = performance.now();
     setIsAnimating(true);
-  }, [initialScale]); // Depend on initialScale
+  }, [initialScale]);
 
   const animateViewState = useCallback(() => {
     if (!isAnimating) return;
 
     const elapsed = performance.now() - animationStartTime.current;
-    // Use longer duration for home animation (when velocities are 0)
     const currentDuration =
       Math.abs(velocityX.current) < 0.001 && Math.abs(velocityY.current) < 0.001
         ? homeAnimationDuration.current
         : animationDuration;
-    let progress = Math.min(1, elapsed / (currentDuration * 1000));
-    progress = easeInOutCubic(progress); // Apply easing function
+    const progress = Math.min(1, elapsed / (currentDuration * 1000));
+    const easedProgress = easeInOutCubic(progress);
 
     setViewState((prev) => {
-      // If velocities are 0, we're doing a direct animation (like to home)
       if (Math.abs(velocityX.current) < 0.001 && Math.abs(velocityY.current) < 0.001) {
-        const newX = lerp(prev.x, prev.targetX, progress);
-        const newY = lerp(prev.y, prev.targetY, progress);
-        const newScale = lerp(prev.scale, prev.targetScale, progress);
+        const newX = lerp(prev.x, prev.targetX, easedProgress);
+        const newY = lerp(prev.y, prev.targetY, easedProgress);
+        const newScale = lerp(prev.scale, prev.targetScale, easedProgress);
 
-        // Check if animation is complete
-        const isComplete =
-          Math.abs(newX - prev.targetX) < 0.1 &&
-          Math.abs(newY - prev.targetY) < 0.1 &&
-          Math.abs(newScale - prev.targetScale) < 0.0001;
-
-        if (isComplete) {
+        if (progress === 1) {
           setIsAnimating(false);
           return {
             x: prev.targetX,
@@ -185,22 +181,18 @@ export const useViewState = ({
         };
       }
 
-      // For velocity-based animations (like scrolling)
       velocityX.current *= friction;
       velocityY.current *= friction;
 
-      const newTargetX = prev.x + velocityX.current;
-      const newTargetY = prev.y + velocityY.current;
-
-      const newX = lerp(prev.x, newTargetX, panInterpolationFactor);
-      const newY = lerp(prev.y, newTargetY, panInterpolationFactor);
-      const newScale = lerp(prev.scale, prev.targetScale, progress);
+      const newX = lerp(prev.x, prev.targetX, panInterpolationFactor);
+      const newY = lerp(prev.y, prev.targetY, panInterpolationFactor);
+      const newScale = lerp(prev.scale, prev.targetScale, easedProgress);
 
       const isComplete =
         Math.abs(velocityX.current) < 0.1 &&
         Math.abs(velocityY.current) < 0.1 &&
-        Math.abs(newX - newTargetX) < 0.1 &&
-        Math.abs(newY - newTargetY) < 0.1 &&
+        Math.abs(newX - prev.targetX) < 0.1 &&
+        Math.abs(newY - prev.targetY) < 0.1 &&
         Math.abs(newScale - prev.targetScale) < 0.0001;
 
       if (isComplete) {
@@ -208,11 +200,11 @@ export const useViewState = ({
         velocityX.current = 0;
         velocityY.current = 0;
         return {
-          x: newTargetX,
-          y: newTargetY,
+          x: prev.targetX,
+          y: prev.targetY,
           scale: prev.targetScale,
-          targetX: newTargetX,
-          targetY: newTargetY,
+          targetX: prev.targetX,
+          targetY: prev.targetY,
           targetScale: prev.targetScale,
         };
       }
@@ -221,8 +213,8 @@ export const useViewState = ({
         x: newX,
         y: newY,
         scale: newScale,
-        targetX: newTargetX,
-        targetY: newTargetY,
+        targetX: prev.targetX,
+        targetY: prev.targetY,
         targetScale: prev.targetScale,
       };
     });
@@ -230,27 +222,30 @@ export const useViewState = ({
 
   const handleWheel = useCallback(
     (event: React.WheelEvent<HTMLCanvasElement>) => {
-      event.preventDefault(); // Prevent default scrolling behavior
+      event.preventDefault();
 
       let deltaX = event.deltaX;
       let deltaY = event.deltaY;
 
       const isTrackpad = event.deltaMode === 0 && Math.abs(event.deltaY) < 100;
-
-      const sensitivity = isTrackpad ? 1.0 : 2.0; // Keep current sensitivity for now
+      const sensitivity = isTrackpad ? 1.0 : 2.0;
       deltaX *= sensitivity;
       deltaY *= sensitivity;
 
-      // Apply zoom scaling
       const zoomFactor = 1 / Math.max(0.1, viewState.scale);
       deltaX *= zoomFactor;
       deltaY *= zoomFactor;
 
-      // Add delta to velocity
-      velocityX.current -= deltaX; // Invert for natural scroll
-      velocityY.current -= deltaY;
+      setViewState((prev) => {
+        const newTargetX = prev.targetX - deltaX;
+        const newTargetY = prev.targetY - deltaY;
+        return {
+          ...prev,
+          targetX: newTargetX,
+          targetY: newTargetY,
+        };
+      });
 
-      // Start animation if not already animating
       if (!isAnimating) {
         animationStartTime.current = performance.now();
         setIsAnimating(true);
@@ -264,8 +259,8 @@ export const useViewState = ({
     handleWheel,
     animateViewState,
     isAnimating,
-    animateToHome, // Export animateToHome
-    showHomeButton, // Export showHomeButton
+    animateToHome,
+    showHomeButton,
     targetX: viewState.targetX,
     targetY: viewState.targetY,
     targetScale: viewState.targetScale,

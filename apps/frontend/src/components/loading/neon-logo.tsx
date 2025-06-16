@@ -118,7 +118,7 @@ const NeonLogo: React.FC = () => {
   if (!pathData) return null;
 
   return (
-    <div className="relative w-[300px] h-[300px] flex items-center justify-center">
+    <div className="relative w-48 h-48 sm:w-64 sm:h-64 md:w-80 md:h-80 lg:w-[300px] lg:h-[300px] flex items-center justify-center">
       <div className="neon-container">
         <svg
           className="w-full h-full overflow-visible"

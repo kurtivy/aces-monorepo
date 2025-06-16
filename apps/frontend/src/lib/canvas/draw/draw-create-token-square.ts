@@ -151,7 +151,7 @@ export const drawCreateTokenSquare = (
 
   // "CREATE TOKEN" as a more prominent title
   // Position it higher in the box for better spacing
-  const createTokenFontSize = lerp(18, 22, hoverProgress); // Larger font size
+  const createTokenFontSize = lerp(unitSize * 0.09, unitSize * 0.11, hoverProgress); // Scaled font size
   ctx.font = `bold ${createTokenFontSize}px 'Syne'`; // Changed to Syne to match home area
 
   // Text glow effect
@@ -160,9 +160,9 @@ export const drawCreateTokenSquare = (
 
   // Gold gradient for text with more contrast
   const textGradient = ctx.createLinearGradient(
-    centerX - 70,
+    centerX - unitSize * 0.35, // Scale gradient start/end
     y + unitSize * 0.15,
-    centerX + 70,
+    centerX + unitSize * 0.35, // Scale gradient start/end
     y + unitSize * 0.15,
   );
   textGradient.addColorStop(0, '#FFFFFF');
@@ -183,7 +183,7 @@ export const drawCreateTokenSquare = (
   );
 
   // ADJUSTED: "COMING SOON" with more appropriate letter spacing
-  const comingSoonFontSize = lerp(16, 18, hoverProgress); // Larger font size
+  const comingSoonFontSize = lerp(unitSize * 0.08, unitSize * 0.09, hoverProgress); // Scaled font size
   ctx.font = `bold ${comingSoonFontSize}px 'Syne'`; // Changed to Syne to match home area
 
   // White color for "COMING SOON" with slight gold tint

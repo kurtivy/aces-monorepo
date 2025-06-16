@@ -1,8 +1,7 @@
 'use client';
 
 import type React from 'react';
-
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import type { ImageInfo, ViewState } from '../../types/canvas';
 import { drawCreateTokenSquare, drawHomeArea, drawImage } from '../../lib/canvas/draw';
 import {
@@ -18,6 +17,7 @@ interface UseCanvasRendererProps {
   images: ImageInfo[];
   viewState: ViewState;
   imagesLoaded: boolean;
+  canvasVisible: boolean;
   unitSize: number;
   onCreateTokenClick: () => void;
   imagePlacementMap: React.MutableRefObject<
@@ -29,6 +29,7 @@ export const useCanvasRenderer = ({
   images,
   viewState,
   imagesLoaded,
+  canvasVisible,
   unitSize,
   onCreateTokenClick,
   imagePlacementMap,
@@ -51,6 +52,20 @@ export const useCanvasRenderer = ({
 
   // Create a separate canvas for space animation
   const spaceCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // STABLE PLACEMENT STORAGE - Calculate once, use many times
+  const stableProductPlacements = useRef<
+    Array<{
+      image: ImageInfo;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      index: number;
+    }>
+  >([]);
+  const stableCreateTokenPositions = useRef<Array<{ worldX: number; worldY: number }>>([]);
+  const placementsCalculated = useRef(false);
 
   // Preload the logo image
   useEffect(() => {
@@ -79,17 +94,139 @@ export const useCanvasRenderer = ({
     canvasHeight: unitSize,
   });
 
-  // Start product animation when images are loaded
+  // CALCULATE PLACEMENTS ONCE - when images load or unitSize changes
+  const calculatePlacements = useCallback(() => {
+    if (!imagesLoaded || placementsCalculated.current) return;
+
+    const homeAreaWorldX = -unitSize;
+    const homeAreaWorldY = -unitSize;
+    const homeAreaWidth = unitSize * 2;
+    const homeAreaHeight = unitSize;
+
+    // Calculate a reasonable grid area - smaller for mobile performance
+    const gridSize = unitSize * 15; // Increased from 8 to 15 for larger explorable area
+    const gridStartX = -gridSize;
+    const gridStartY = -gridSize;
+    const gridEndX = gridSize;
+    const gridEndY = gridSize;
+
+    imagePlacementMap.current.clear();
+    const occupiedSpaces = new Set<string>();
+    const productPlacements: Array<{
+      image: ImageInfo;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      index: number;
+    }> = [];
+    const createTokenPositions: Array<{ worldX: number; worldY: number }> = [];
+
+    // Mark home area as occupied
+    for (let i = 0; i < 2; i++) {
+      for (let j = 0; j < 1; j++) {
+        const cellX = Math.floor((homeAreaWorldX + i * unitSize) / unitSize);
+        const cellY = Math.floor((homeAreaWorldY + j * unitSize) / unitSize);
+        occupiedSpaces.add(`${cellX},${cellY}`);
+      }
+    }
+
+    // Place images in a grid pattern
+    let productIndex = 0;
+    for (let y = gridStartY; y < gridEndY; y += unitSize) {
+      for (let x = gridStartX; x < gridEndX; x += unitSize) {
+        const gridX = Math.floor(x / unitSize);
+        const gridY = Math.floor(y / unitSize);
+
+        if (occupiedSpaces.has(`${gridX},${gridY}`)) {
+          continue;
+        }
+
+        let placed = false;
+        const candidates = getImageCandidatesForPosition(
+          gridX,
+          gridY,
+          images,
+          unitSize,
+          homeAreaWorldX,
+          homeAreaWorldY,
+          homeAreaWidth,
+          homeAreaHeight,
+        );
+
+        for (const imageInfo of candidates) {
+          const { width, height } = getDisplayDimensions(imageInfo.type, unitSize);
+
+          if (
+            canPlaceImage(
+              x,
+              y,
+              { ...imageInfo, displayWidth: width, displayHeight: height },
+              occupiedSpaces,
+              unitSize,
+              homeAreaWorldX,
+              homeAreaWorldY,
+              homeAreaWidth,
+              homeAreaHeight,
+            )
+          ) {
+            const placedItem = { image: imageInfo, x, y, width, height };
+            imagePlacementMap.current.set(`${gridX},${gridY}`, placedItem);
+
+            if (imageInfo.type === 'create-token') {
+              createTokenPositions.push({ worldX: x, worldY: y });
+            } else {
+              productPlacements.push({
+                image: imageInfo,
+                x,
+                y,
+                width,
+                height,
+                index: productIndex++,
+              });
+            }
+
+            markSpaceOccupied(x, y, width, height, occupiedSpaces, unitSize);
+            placed = true;
+            break;
+          }
+        }
+
+        if (!placed) {
+          markSpaceOccupied(x, y, unitSize, unitSize, occupiedSpaces, unitSize);
+        }
+      }
+    }
+
+    // Store stable placements
+    stableProductPlacements.current = productPlacements;
+    stableCreateTokenPositions.current = createTokenPositions;
+    placementsCalculated.current = true;
+  }, [imagesLoaded, images, unitSize, imagePlacementMap]);
+
+  // Calculate placements when ready
   useEffect(() => {
-    if (imagesLoaded) {
+    calculatePlacements();
+  }, [calculatePlacements]);
+
+  // Reset placements when unitSize changes (responsive)
+  useEffect(() => {
+    placementsCalculated.current = false;
+    stableProductPlacements.current = [];
+    stableCreateTokenPositions.current = [];
+  }, [unitSize]);
+
+  // Start product animation when images are loaded AND canvas is visible
+  useEffect(() => {
+    if (imagesLoaded && placementsCalculated.current && canvasVisible) {
       const timer = setTimeout(() => {
         setProductAnimationStartTime(performance.now());
         setIsProductAnimationActive(true);
-      }, 500); // Add a 500ms delay
+      }, 100);
 
       return () => clearTimeout(timer);
     }
-  }, [imagesLoaded]);
+  }, [imagesLoaded, placementsCalculated.current, canvasVisible]);
 
   // Handle mouse movement for hover detection
   useEffect(() => {
@@ -120,7 +257,7 @@ export const useCanvasRenderer = ({
   }, [hoveredTokenIndex, onCreateTokenClick]);
 
   useEffect(() => {
-    if (!imagesLoaded) return;
+    if (!imagesLoaded || !placementsCalculated.current) return;
 
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -152,144 +289,34 @@ export const useCanvasRenderer = ({
       ctx.translate(viewState.x, viewState.y);
       ctx.scale(viewState.scale, viewState.scale);
 
-      const invScale = 1 / viewState.scale;
-      const buffer = 500;
-      const canvasWidth = canvas.width / (window.devicePixelRatio || 1);
-      const canvasHeight = canvas.height / (window.devicePixelRatio || 1);
-      const visibleLeft = (-viewState.x - buffer) * invScale;
-      const visibleTop = (-viewState.y - buffer) * invScale;
-      const visibleRight = (-viewState.x + canvasWidth + buffer) * invScale;
-      const visibleBottom = (-viewState.y + canvasHeight + buffer) * invScale;
+      // Use STABLE placements - no recalculation!
+      const productPlacements = stableProductPlacements.current;
+      const createTokenPositions = stableCreateTokenPositions.current;
 
-      const gridStartX = Math.floor(visibleLeft / unitSize) * unitSize;
-      const gridStartY = Math.floor(visibleTop / unitSize) * unitSize;
-      const gridEndX = Math.ceil(visibleRight / unitSize) * unitSize;
-      const gridEndY = Math.ceil(visibleBottom / unitSize) * unitSize;
-
-      imagePlacementMap.current.clear();
-      const occupiedSpaces = new Set<string>();
-      const createTokenPositions: Array<{ worldX: number; worldY: number }> = [];
-      const productPlacements: Array<{
-        image: ImageInfo;
-        x: number;
-        y: number;
-        width: number;
-        height: number;
-        index: number;
-      }> = [];
-
-      // Mark home area as occupied
-      for (let i = 0; i < 2; i++) {
-        for (let j = 0; j < 1; j++) {
-          const cellX = Math.floor((homeAreaWorldX + i * unitSize) / unitSize);
-          const cellY = Math.floor((homeAreaWorldY + j * unitSize) / unitSize);
-          occupiedSpaces.add(`${cellX},${cellY}`);
-        }
-      }
-
-      // Place images in a grid pattern
-      let productIndex = 0;
-      for (let y = gridStartY; y < gridEndY; y += unitSize) {
-        for (let x = gridStartX; x < gridEndX; x += unitSize) {
-          const gridX = Math.floor(x / unitSize);
-          const gridY = Math.floor(y / unitSize);
-
-          if (occupiedSpaces.has(`${gridX},${gridY}`)) {
-            continue;
-          }
-
-          let placed = false;
-          const candidates = getImageCandidatesForPosition(
-            gridX,
-            gridY,
-            images,
-            unitSize,
-            homeAreaWorldX,
-            homeAreaWorldY,
-            homeAreaWidth,
-            homeAreaHeight,
-          );
-
-          for (const imageInfo of candidates) {
-            const { width, height } = getDisplayDimensions(imageInfo.type);
-
-            if (
-              canPlaceImage(
-                x,
-                y,
-                { ...imageInfo, displayWidth: width, displayHeight: height },
-                occupiedSpaces,
-                unitSize,
-                homeAreaWorldX,
-                homeAreaWorldY,
-                homeAreaWidth,
-                homeAreaHeight,
-              )
-            ) {
-              const placedItem = { image: imageInfo, x, y, width, height };
-              imagePlacementMap.current.set(`${gridX},${gridY}`, placedItem);
-
-              if (imageInfo.type === 'create-token') {
-                createTokenPositions.push({ worldX: x, worldY: y });
-              } else {
-                // Store product placements for animated rendering
-                productPlacements.push({
-                  image: imageInfo,
-                  x,
-                  y,
-                  width,
-                  height,
-                  index: productIndex++,
-                });
-              }
-              markSpaceOccupied(x, y, width, height, occupiedSpaces, unitSize);
-              placed = true;
-              break;
-            }
-          }
-
-          if (!placed) {
-            markSpaceOccupied(x, y, unitSize, unitSize, occupiedSpaces, unitSize);
-          }
-        }
-      }
-
-      const STAGGER_DELAY = 60; // 60ms between each item for a distinct effect
-      const MAX_ANIMATION_DURATION = 1500; // Slower start for first items
-      const MIN_ANIMATION_DURATION = 500; // Faster end for last items
+      const ANIMATION_DURATION = 600; // Increased from 400ms to 600ms for slower fade-in
 
       // Check if the overall animation sequence is complete
       if (isProductAnimationActive && productAnimationStartTime) {
-        const lastItemDelay =
-          productPlacements.length > 0 ? (productPlacements.length - 1) * STAGGER_DELAY : 0;
-        const totalDuration = lastItemDelay + MIN_ANIMATION_DURATION;
         const elapsed = performance.now() - productAnimationStartTime;
-        if (elapsed > totalDuration) {
+
+        if (elapsed > ANIMATION_DURATION + 100) {
+          // Add small buffer
           setIsProductAnimationActive(false);
         }
       }
 
-      // Draw products with animation
+      // Draw products with animation - using STABLE positions
       productPlacements.forEach((placement) => {
-        let easedProgress = 1;
+        let easedProgress = 0; // Start invisible
+
+        // Show images during and after animation
         if (isProductAnimationActive && productAnimationStartTime) {
-          const totalItems = productPlacements.length;
-          const durationRange = MAX_ANIMATION_DURATION - MIN_ANIMATION_DURATION;
-          const itemDuration =
-            totalItems > 1
-              ? MAX_ANIMATION_DURATION - (placement.index / (totalItems - 1)) * durationRange
-              : MAX_ANIMATION_DURATION;
-
-          // Calculate individual product animation progress with stagger
-          const productDelay = placement.index * STAGGER_DELAY;
-          const productElapsed = Math.max(
-            0,
-            performance.now() - (productAnimationStartTime || 0) - productDelay,
-          );
-          const productProgress = Math.min(1, productElapsed / itemDuration);
-
-          // Apply easing
-          easedProgress = easeInOutCubic(productProgress);
+          const elapsed = performance.now() - productAnimationStartTime;
+          const progress = Math.min(1, elapsed / ANIMATION_DURATION);
+          easedProgress = easeInOutCubic(progress);
+        } else if (productAnimationStartTime) {
+          // Animation has completed, keep images visible
+          easedProgress = 1;
         }
 
         drawImage(
@@ -346,19 +373,37 @@ export const useCanvasRenderer = ({
         }
       }
 
-      // Draw create token squares with space animation
+      // Draw create token squares with space animation - using STABLE positions
       createTokenPositions.forEach((pos, index) => {
         const isCurrentlyHovered = index === hoveredTokenIndex;
         const actualHoverProgress = isCurrentlyHovered ? currentHoverProgress : 0;
-        drawCreateTokenSquare(
-          ctx,
-          pos.worldX,
-          pos.worldY,
-          actualHoverProgress,
-          unitSize,
-          logoImageRef.current,
-          spaceCanvasRef.current,
-        );
+
+        // Show tokens during and after animation
+        let tokenOpacity = 0; // Start invisible
+        if (isProductAnimationActive && productAnimationStartTime) {
+          const elapsed = performance.now() - productAnimationStartTime;
+          const progress = Math.min(1, elapsed / ANIMATION_DURATION);
+          tokenOpacity = easeInOutCubic(progress);
+        } else if (productAnimationStartTime) {
+          // Animation has completed, keep tokens visible
+          tokenOpacity = 1;
+        }
+
+        // Draw if there's any opacity
+        if (tokenOpacity > 0) {
+          ctx.save();
+          ctx.globalAlpha = tokenOpacity;
+          drawCreateTokenSquare(
+            ctx,
+            pos.worldX,
+            pos.worldY,
+            actualHoverProgress,
+            unitSize,
+            logoImageRef.current,
+            spaceCanvasRef.current,
+          );
+          ctx.restore();
+        }
       });
 
       // Draw home area with logo
@@ -371,12 +416,14 @@ export const useCanvasRenderer = ({
         worldMouseY,
         homeAreaWidth,
         homeAreaHeight,
+        null,
+        performance.now(),
+        unitSize,
       );
 
       ctx.restore();
       animationFrameRef.current = requestAnimationFrame(draw);
     };
-
     draw();
 
     window.addEventListener('resize', updateCanvasSize);
@@ -389,17 +436,17 @@ export const useCanvasRenderer = ({
     };
   }, [
     imagesLoaded,
-    images,
+    placementsCalculated.current,
     viewState,
     hoveredTokenIndex,
     onCreateTokenClick,
     currentHoverProgress,
     isHoveringToken,
-    imagePlacementMap,
     unitSize,
     isProductAnimationActive,
     productAnimationStartTime,
-  ]);
+    canvasVisible,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return { canvasRef };
 };

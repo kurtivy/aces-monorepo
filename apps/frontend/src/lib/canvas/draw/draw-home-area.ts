@@ -1,3 +1,5 @@
+import { UNIT_SIZE } from '../../../constants/canvas';
+
 export const drawHomeArea = (
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -9,6 +11,7 @@ export const drawHomeArea = (
   homeAreaHeight: number,
   spaceCanvas: HTMLCanvasElement | null = null, // Add space canvas parameter
   animationTime = 0, // For any additional animations
+  unitSize = UNIT_SIZE, // Add unitSize parameter
 ) => {
   ctx.save();
 
@@ -137,16 +140,20 @@ export const drawHomeArea = (
     // Gold gradient for text (matching create token square)
     const textGradient = ctx.createLinearGradient(
       quadX,
-      quadY + quadHeight / 2 - 15,
+      quadY + quadHeight / 2 - homeAreaHeight * 0.1, // Scale gradient start/end
       quadX + quadWidth,
-      quadY + quadHeight / 2 + 15,
+      quadY + quadHeight / 2 + homeAreaHeight * 0.1, // Scale gradient start/end
     );
     textGradient.addColorStop(0, '#FFFFFF');
     textGradient.addColorStop(0.5, '#D0B264');
     textGradient.addColorStop(1, '#FFFFFF');
 
     ctx.fillStyle = textGradient;
-    ctx.font = `bold ${isHovered ? 32 : 30}px 'Syne'`; // Matching create token square font
+    // Mobile-specific font sizing: smaller unitSize (150) gets smaller font, desktop (200) keeps original size
+    const isMobile = unitSize <= 150;
+    const baseFontSize = isMobile ? unitSize * 0.12 : unitSize * 0.15; // Original desktop size
+    const hoverFontSize = isMobile ? unitSize * 0.13 : unitSize * 0.16; // Original desktop size
+    ctx.font = `bold ${isHovered ? hoverFontSize : baseFontSize}px 'Syne'`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 

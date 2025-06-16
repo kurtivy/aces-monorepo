@@ -47,13 +47,15 @@ export const markSpaceOccupied = (
   occupiedSpaces: Set<string>,
   unitSize: number,
 ) => {
-  const cellsX = Math.round(width / unitSize);
-  const cellsY = Math.round(height / unitSize);
+  // Use Math.ceil for cellsX/Y to ensure all partially occupied cells are marked
+  const cellsX = Math.ceil(width / unitSize);
+  const cellsY = Math.ceil(height / unitSize);
 
   for (let i = 0; i < cellsX; i++) {
     for (let j = 0; j < cellsY; j++) {
-      const cellX = Math.round((x + i * unitSize) / unitSize);
-      const cellY = Math.round((y + j * unitSize) / unitSize);
+      // Use Math.floor for cellX/Y to get the top-left grid coordinate
+      const cellX = Math.floor((x + i * unitSize) / unitSize);
+      const cellY = Math.floor((y + j * unitSize) / unitSize);
       occupiedSpaces.add(`${cellX},${cellY}`);
     }
   }
@@ -70,13 +72,15 @@ export const canPlaceImage = (
   homeAreaWidth: number,
   homeAreaHeight: number,
 ) => {
-  const cellsX = Math.round(imgInfo.displayWidth / unitSize);
-  const cellsY = Math.round(imgInfo.displayHeight / unitSize);
+  // Use Math.ceil for cellsX/Y to ensure all cells the image would occupy are checked
+  const cellsX = Math.ceil(imgInfo.displayWidth / unitSize);
+  const cellsY = Math.ceil(imgInfo.displayHeight / unitSize);
 
   for (let i = 0; i < cellsX; i++) {
     for (let j = 0; j < cellsY; j++) {
-      const cellX = Math.round((x + i * unitSize) / unitSize);
-      const cellY = Math.round((y + j * unitSize) / unitSize);
+      // Use Math.floor for cellX/Y to get the top-left grid coordinate
+      const cellX = Math.floor((x + i * unitSize) / unitSize);
+      const cellY = Math.floor((y + j * unitSize) / unitSize);
 
       // Check if this cell is part of the home area
       if (

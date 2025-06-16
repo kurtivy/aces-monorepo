@@ -6,7 +6,7 @@ export const drawImage = (
   width: number,
   height: number,
   animationProgress = 1, // Default to fully animated (no animation)
-  unitSize = 0, // Not used when animationProgress is 1
+  unitSize: number, // Ensure unitSize is used
 ) => {
   ctx.save();
 
@@ -16,7 +16,7 @@ export const drawImage = (
 
   if (animationProgress < 1) {
     // Rise from bottom
-    const startOffset = 50; // Increased for a more pronounced effect
+    const startOffset = unitSize * 0.3; // Make offset relative to unitSize
     const currentOffset = startOffset * (1 - animationProgress);
     animatedY = y + currentOffset;
 

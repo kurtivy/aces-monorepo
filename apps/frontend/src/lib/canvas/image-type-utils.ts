@@ -1,5 +1,4 @@
-import { UNIT_SIZE } from '../../constants/canvas'; // Adjusted path
-import { ImageInfo } from '../../types/canvas'; // Adjusted path
+import type { ImageInfo } from '../../types/canvas';
 
 export const getImageType = (
   width: number,
@@ -17,15 +16,16 @@ export const getImageType = (
   return 'square';
 };
 
-export const getDisplayDimensions = (type: ImageInfo['type']) => {
+// ✅ FIX: Accept unitSize parameter instead of using static UNIT_SIZE
+export const getDisplayDimensions = (type: ImageInfo['type'], unitSize: number) => {
   switch (type) {
     case 'landscape':
-      return { width: UNIT_SIZE * 2, height: UNIT_SIZE };
+      return { width: unitSize * 2, height: unitSize };
     case 'portrait':
-      return { width: UNIT_SIZE, height: UNIT_SIZE * 2 };
+      return { width: unitSize, height: unitSize * 2 };
     case 'create-token':
-      return { width: UNIT_SIZE, height: UNIT_SIZE }; // Create token is always 1x1
+      return { width: unitSize, height: unitSize }; // Create token is always 1x1
     default:
-      return { width: UNIT_SIZE, height: UNIT_SIZE };
+      return { width: unitSize, height: unitSize };
   }
 };
