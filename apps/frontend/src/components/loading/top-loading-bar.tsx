@@ -21,136 +21,30 @@ const TopLoadingBar: React.FC<TopLoadingBarProps> = ({
 
     const checkReadiness = async () => {
       try {
-        // More reliable checks for Firefox compatibility
-        const checks = [
-          // Font loading check with Firefox fallback
-          new Promise<void>((resolve) => {
-            if (document.fonts && typeof document.fonts.ready === 'object') {
-              // Firefox-specific timeout for font loading
-              const fontTimeout = setTimeout(() => {
-                console.warn('Font loading timeout reached, continuing');
-                resolve();
-              }, 1000);
+        // Simple, universal loading check - works consistently across all browsers
 
-              document.fonts.ready
-                .then(() => {
-                  clearTimeout(fontTimeout);
-                  resolve();
-                })
-                .catch(() => {
-                  clearTimeout(fontTimeout);
-                  console.warn('Font loading promise failed, using fallback');
-                  resolve();
-                });
-            } else {
-              // Fallback for older browsers, Firefox issues, or when fonts API is unavailable
-              console.warn('Fonts API not available, using timeout fallback');
-              setTimeout(resolve, 500);
-            }
-          }),
-
-          // Document ready check with Firefox-specific handling
-          new Promise<void>((resolve) => {
-            if (document.readyState === 'complete') {
+        // Single check for document readiness - no browser-specific timing
+        const documentReady = new Promise<void>((resolve) => {
+          if (document.readyState === 'complete') {
+            resolve();
+          } else {
+            const handleLoad = () => {
               resolve();
-            } else {
-              const handleLoad = () => {
-                resolve();
-                window.removeEventListener('load', handleLoad);
-                document.removeEventListener('DOMContentLoaded', handleLoad);
-              };
-
-              // Listen to both events for Firefox reliability
-              window.addEventListener('load', handleLoad);
-              document.addEventListener('DOMContentLoaded', handleLoad);
-
-              // Firefox-specific fallback timeout
-              setTimeout(() => {
-                resolve();
-                window.removeEventListener('load', handleLoad);
-                document.removeEventListener('DOMContentLoaded', handleLoad);
-              }, 2500); // Increased timeout for Firefox
-            }
-          }),
-
-          // Image preloading check (Firefox-specific)
-          new Promise<void>((resolve) => {
-            const images = document.querySelectorAll('img');
-            if (images.length === 0) {
-              resolve();
-              return;
-            }
-
-            let loadedImages = 0;
-            const checkImageLoad = () => {
-              loadedImages++;
-              if (loadedImages >= images.length) {
-                resolve();
-              }
+              window.removeEventListener('load', handleLoad);
+              document.removeEventListener('DOMContentLoaded', handleLoad);
             };
 
-            images.forEach((img) => {
-              if (img.complete) {
-                checkImageLoad();
-              } else {
-                img.onload = checkImageLoad;
-                img.onerror = checkImageLoad; // Still resolve on error
-                // Firefox timeout for stuck images
-                setTimeout(checkImageLoad, 500);
-              }
-            });
+            window.addEventListener('load', handleLoad);
+            document.addEventListener('DOMContentLoaded', handleLoad);
+          }
+        });
 
-            // Overall timeout for image loading
-            setTimeout(resolve, 1500);
-          }),
+        // Universal timeout - same for all browsers (no Firefox-specific workarounds)
+        const universalTimeout = new Promise<void>((resolve) => {
+          setTimeout(resolve, 2000); // Single 2-second maximum wait
+        });
 
-          // NEW: Wait for image metadata to be actually loaded
-          new Promise<void>((resolve) => {
-            const checkImageMetadata = () => {
-              try {
-                // Look for signs that the image loader has started working
-                const hasCanvasImages = document.querySelector('canvas');
-
-                // If we detect the image loader is working, wait for it
-                if (hasCanvasImages || document.querySelectorAll('img').length > 0) {
-                  // Check every 100ms for image metadata completion
-                  const metadataCheck = setInterval(() => {
-                    try {
-                      // Look for completion signals from the image loader
-                      const imageLoadComplete =
-                        window.localStorage.getItem('aces-images-loaded') === 'true';
-
-                      if (imageLoadComplete) {
-                        clearInterval(metadataCheck);
-                        resolve();
-                      }
-                    } catch (error) {
-                      console.warn('Metadata check error:', error);
-                    }
-                  }, 100);
-
-                  // Fallback timeout - don't wait forever
-                  setTimeout(() => {
-                    clearInterval(metadataCheck);
-                    console.warn('Image metadata loading timeout - proceeding anyway');
-                    resolve();
-                  }, 3000); // 3 second timeout for metadata loading
-                } else {
-                  // No images detected, proceed immediately
-                  resolve();
-                }
-              } catch (error) {
-                console.warn('Image metadata check failed:', error);
-                resolve();
-              }
-            };
-
-            // Small delay to let image loader initialize
-            setTimeout(checkImageMetadata, 200);
-          }),
-        ];
-
-        // Progress simulation with Firefox-friendly increments
+        // Simple progress simulation without browser-specific increments
         const progressInterval = setInterval(() => {
           if (!mounted) {
             clearInterval(progressInterval);
@@ -160,20 +54,14 @@ const TopLoadingBar: React.FC<TopLoadingBarProps> = ({
           setProgress((prev) => {
             const elapsed = Date.now() - startTime;
             const timeProgress = Math.min((elapsed / minimumLoadTime) * 100, 85);
-
-            // Firefox-specific: slower, more predictable increments
-            const increment = Math.random() * 1.5 + 0.5; // 0.5-2.0 increment
+            const increment = Math.random() * 2 + 1; // 1-3 increment (consistent across browsers)
             const newProgress = Math.min(Math.max(prev + increment, timeProgress), 95);
-
             return newProgress;
           });
-        }, 120); // Slightly slower for Firefox smoothness
+        }, 100); // Standard 100ms interval for all browsers
 
-        // Wait for all checks with extended timeout for Firefox
-        await Promise.race([
-          Promise.all(checks),
-          new Promise((resolve) => setTimeout(resolve, 4000)), // Extended timeout for Firefox
-        ]);
+        // Wait for document ready OR timeout (whichever comes first)
+        await Promise.race([documentReady, universalTimeout]);
 
         // Ensure minimum load time
         const elapsed = Date.now() - startTime;
@@ -189,7 +77,7 @@ const TopLoadingBar: React.FC<TopLoadingBarProps> = ({
           // Final progress animation to 100%
           setProgress(100);
 
-          // Firefox-specific: slightly longer delay before completion
+          // Standard completion timing for all browsers
           setTimeout(() => {
             if (mounted) {
               setIsComplete(true);
@@ -197,9 +85,9 @@ const TopLoadingBar: React.FC<TopLoadingBarProps> = ({
                 if (mounted) {
                   onLoadingComplete();
                 }
-              }, 500); // Increased delay for Firefox fade-out
+              }, 400); // Standard 400ms delay for all browsers
             }
-          }, 300);
+          }, 200); // Standard 200ms delay for all browsers
         }
       } catch (error) {
         console.warn('Loading check error:', error);
@@ -213,9 +101,9 @@ const TopLoadingBar: React.FC<TopLoadingBarProps> = ({
                 if (mounted) {
                   onLoadingComplete();
                 }
-              }, 500);
+              }, 400);
             }
-          }, 300);
+          }, 200);
         }
       }
     };
@@ -229,6 +117,7 @@ const TopLoadingBar: React.FC<TopLoadingBarProps> = ({
 
   return (
     <motion.div
+      data-testid="top-loading-bar"
       className="fixed top-0 left-0 right-0 z-[70]"
       initial={{ opacity: 1 }}
       animate={{ opacity: isComplete ? 0 : 1 }}
