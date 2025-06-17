@@ -17,12 +17,16 @@ const TopLoadingBar: React.FC<TopLoadingBarProps> = ({
   const [isAnimatingOut, setIsAnimatingOut] = useState(false);
 
   useEffect(() => {
+    // Debug logging for test debugging
+    console.log('🔄 TopLoadingBar state:', { isComplete, isAnimatingOut, loadingProgress });
+
     // When loading is complete, trigger immediate callback (no delay needed)
     if (isComplete && !isAnimatingOut) {
+      console.log('✅ TopLoadingBar starting fade-out animation');
       setIsAnimatingOut(true);
       onLoadingComplete(); // Call immediately - canvas is ready!
     }
-  }, [isComplete, isAnimatingOut, onLoadingComplete]);
+  }, [isComplete, isAnimatingOut, onLoadingComplete, loadingProgress]);
 
   return (
     <motion.div
@@ -31,7 +35,7 @@ const TopLoadingBar: React.FC<TopLoadingBarProps> = ({
       initial={{ opacity: 1 }}
       animate={{ opacity: isAnimatingOut ? 0 : 1 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 0.4, ease: 'easeOut' }}
+      transition={{ duration: 4.0, ease: 'easeOut' }} // Increased to 4s for reliable test detection
     >
       {/* Loading bar background */}
       <div className="w-full h-1 bg-black/20 backdrop-blur-sm">

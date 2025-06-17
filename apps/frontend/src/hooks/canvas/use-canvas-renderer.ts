@@ -15,6 +15,7 @@ import {
 import { getDisplayDimensions } from '../../lib/canvas/image-type-utils';
 import { useSpaceAnimation } from '../use-space-animation';
 import { easeInOutCubic } from '../../lib/canvas/math-utils';
+import { useCoordinatedResize } from '../use-coordinated-resize';
 
 interface UseCanvasRendererProps {
   images: ImageInfo[];
@@ -26,6 +27,7 @@ interface UseCanvasRendererProps {
   imagePlacementMap: React.MutableRefObject<
     Map<string, { image: ImageInfo; x: number; y: number; width: number; height: number }>
   >;
+  canvasRef?: React.RefObject<HTMLCanvasElement | null>; // Match the nullable type
 }
 
 // Detect problematic browsers for performance optimizations
@@ -67,8 +69,15 @@ export const useCanvasRenderer = ({
   unitSize,
   onCreateTokenClick,
   imagePlacementMap,
+  canvasRef,
 }: UseCanvasRendererProps) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const canvasRefInternal = useRef<HTMLCanvasElement>(null);
+
+  // Use external canvasRef if provided, otherwise use internal one
+  const activeCanvasRef = canvasRef || canvasRefInternal;
+
+  // STEP 5: Coordinated resize handling - canvas sizing managed automatically
+  useCoordinatedResize({ canvasRef: activeCanvasRef });
   const animationFrameRef = useRef<number | null>(null);
   const [hoveredTokenIndex, setHoveredTokenIndex] = useState<number | null>(null);
   const mousePositionRef = useRef({ x: 0, y: 0 });
@@ -529,7 +538,7 @@ export const useCanvasRenderer = ({
 
   // Handle mouse movement for hover detection with throttling
   useEffect(() => {
-    const canvas = canvasRef.current;
+    const canvas = activeCanvasRef.current;
     if (!canvas) return;
 
     const handleMouseMove = (event: MouseEvent) => {
@@ -585,7 +594,7 @@ export const useCanvasRenderer = ({
   useEffect(() => {
     if (!imagesLoaded || !placementsCalculated) return;
 
-    const canvas = canvasRef.current;
+    const canvas = activeCanvasRef.current;
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
@@ -598,6 +607,7 @@ export const useCanvasRenderer = ({
     // Disable only during static rendering to maintain performance
     ctx.imageSmoothingEnabled = true;
 
+    // STEP 5: Canvas sizing now handled by useCoordinatedResize hook
     const updateCanvasSize = () => {
       const dpr = window.devicePixelRatio || 1;
       canvas.width = window.innerWidth * dpr;
@@ -607,7 +617,7 @@ export const useCanvasRenderer = ({
       ctx.scale(dpr, dpr);
     };
 
-    updateCanvasSize();
+    updateCanvasSize(); // Initial sizing
 
     // Update progress: Canvas ready (100%)
     setCanvasProgress(100);
@@ -858,10 +868,10 @@ export const useCanvasRenderer = ({
 
     animationFrameRef.current = requestAnimationFrame(draw);
 
-    window.addEventListener('resize', updateCanvasSize);
+    // STEP 5: Resize listener removed - now handled by useCoordinatedResize
 
     return () => {
-      window.removeEventListener('resize', updateCanvasSize);
+      // STEP 5: No longer need to remove resize listener
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
@@ -881,7 +891,7 @@ export const useCanvasRenderer = ({
   ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
-    canvasRef,
+    canvasRef: activeCanvasRef,
     canvasProgress,
     canvasReady,
   };

@@ -14,7 +14,7 @@ import { useCanvasRenderer } from '../../hooks/canvas/use-canvas-renderer';
 import HomeButton from '../ui/home-button';
 import NavMenu from '../ui/nav-menu';
 import type { ImageInfo } from '../../types/canvas';
-import { getUnitSize } from '../../constants/canvas';
+import { useCoordinatedResize } from '../../hooks/use-coordinated-resize';
 
 // Simplified loading state - reduced from 5 states to 3
 type LoadingState = 'loading' | 'intro' | 'ready';
@@ -25,7 +25,6 @@ const InfiniteCanvas = () => {
   // SIMPLIFIED: Single loading state instead of 5 separate states
   const [loadingState, setLoadingState] = useState<LoadingState>('loading');
   console.log('🔄 InfiniteCanvas Rendered. Current loadingState:', loadingState); // Moved after declaration
-  const [unitSize, setUnitSize] = useState(getUnitSize());
 
   // Keep only essential state that can't be derived
   const [hasSeenIntro, setHasSeenIntro] = useState(false);
@@ -33,6 +32,9 @@ const InfiniteCanvas = () => {
   const imagePlacementMapRef = useRef(
     new Map<string, { image: ImageInfo; x: number; y: number; width: number; height: number }>(),
   );
+
+  // Create canvas ref first so it can be used by both hooks
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Simplified hydration check - no browser-specific delays
   useEffect(() => {
@@ -51,8 +53,12 @@ const InfiniteCanvas = () => {
     checkIntroStatus();
   }, []);
 
+  // STEP 5: Coordinated resize handling - get dynamic unitSize
+  const { unitSize } = useCoordinatedResize({ canvasRef });
+
+  // Use stable unitSize for image loading to prevent reloading during resize
   const { images, imagesLoaded, loadingProgress } = useImageLoader({
-    unitSize,
+    unitSize: 200, // Stable value - images will be scaled by canvas renderer
     enableLazyLoading: true,
   });
 
@@ -60,11 +66,11 @@ const InfiniteCanvas = () => {
   const { viewState, handleWheel, animateViewState, isAnimating, animateToHome, showHomeButton } =
     useViewState({
       imagesLoaded: imagesLoaded, // ViewState can initialize as soon as images load
-      _unitSize: unitSize,
+      _unitSize: unitSize, // Use dynamic unitSize from coordinated resize
     });
 
   // STEP 2 FIX: Remove circular dependency - canvas should start working as soon as images load
-  const { canvasRef, canvasProgress, canvasReady } = useCanvasRenderer({
+  const { canvasProgress, canvasReady } = useCanvasRenderer({
     images,
     viewState,
     imagesLoaded: imagesLoaded, // Canvas can start working immediately when images load
@@ -73,7 +79,8 @@ const InfiniteCanvas = () => {
       window.location.href = '/create-token';
     },
     imagePlacementMap: imagePlacementMapRef,
-    unitSize,
+    unitSize: unitSize, // Use dynamic unitSize from coordinated resize
+    canvasRef: canvasRef, // Pass the canvasRef to avoid conflicts
   });
 
   // STEP 2 DEBUG: Track loading state transitions
@@ -105,7 +112,7 @@ const InfiniteCanvas = () => {
     imagesRef,
     setSelectedImage,
     imagePlacementMap: imagePlacementMapRef,
-    unitSize,
+    unitSize: unitSize,
   });
 
   // SIMPLIFIED: Single condition for interactions - no complex boolean chain
@@ -229,15 +236,6 @@ const InfiniteCanvas = () => {
     canvasRef,
     interactionsEnabled,
   ]);
-
-  // Handle resize
-  useEffect(() => {
-    const handleResize = () => {
-      setUnitSize(getUnitSize());
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
 
   // Disable scroll restoration
   useEffect(() => {

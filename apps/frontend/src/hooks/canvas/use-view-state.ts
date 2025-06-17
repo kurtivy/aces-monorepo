@@ -47,17 +47,10 @@ export const useViewState = ({
   const canvasWidth = useRef(0);
   const canvasHeight = useRef(0);
 
-  // Update canvas dimensions on resize
-  useEffect(() => {
-    const updateDimensions = () => {
-      canvasWidth.current = window.innerWidth;
-      canvasHeight.current = window.innerHeight;
-    };
-
-    updateDimensions();
-    window.addEventListener('resize', updateDimensions);
-    return () => window.removeEventListener('resize', updateDimensions);
-  }, []);
+  // STEP 5: Canvas dimensions now managed by useCoordinatedResize hook
+  // Initialize dimensions immediately
+  canvasWidth.current = typeof window !== 'undefined' ? window.innerWidth : 1024;
+  canvasHeight.current = typeof window !== 'undefined' ? window.innerHeight : 768;
 
   useEffect(() => {
     if (!imagesLoaded || centeredOnce.current) return;
