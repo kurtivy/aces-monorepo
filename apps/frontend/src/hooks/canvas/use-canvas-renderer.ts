@@ -74,6 +74,10 @@ export const useCanvasRenderer = ({
   const mousePositionRef = useRef({ x: 0, y: 0 });
   const logoImageRef = useRef<HTMLImageElement | null>(null);
 
+  // Canvas loading progress tracking
+  const [canvasProgress, setCanvasProgress] = useState(0);
+  const [canvasReady, setCanvasReady] = useState(false);
+
   // State for hover animation
   const [currentHoverProgress, setCurrentHoverProgress] = useState(0);
   const hoverAnimationStartTime = useRef(0);
@@ -123,7 +127,7 @@ export const useCanvasRenderer = ({
 
   // Performance optimization: mouse check interval
   const lastMouseCheck = useRef(0);
-  const mouseCheckInterval = isSafari ? 50 : isFirefox ? 32 : 16; // Browser-specific intervals
+  const mouseCheckInterval = isSafari ? 50 : isFirefox ? 50 : 16; // Fix Firefox: match Safari interval
 
   // Preload the logo image
   useEffect(() => {
@@ -145,10 +149,10 @@ export const useCanvasRenderer = ({
   }, [unitSize]);
 
   // Initialize space animation with browser-specific complexity
-  // Disable space animation for Safari, reduced for Firefox, full for Chrome
+  // Disable space animation for Safari/Firefox during loading, full for Chrome
   useSpaceAnimation(spaceCanvasRef, {
     starCount: isSafari ? 0 : isFirefox ? 0 : 0, // Disable stars for Safari/Firefox
-    nebulaCount: isSafari ? 0 : isFirefox ? 1 : 3, // Reduced nebula for Firefox
+    nebulaCount: isSafari ? 0 : isFirefox ? 0 : 3, // FIX: Disable nebula for Firefox during loading
     canvasWidth: unitSize,
     canvasHeight: unitSize,
   });
@@ -283,6 +287,9 @@ export const useCanvasRenderer = ({
   const calculatePlacements = useCallback(() => {
     if (!imagesLoaded || placementsCalculated.current) return;
 
+    // Update progress: Starting placement calculations (40%)
+    setCanvasProgress(40);
+
     // Reset global tracking when recalculating placements
     resetGlobalPlacementTracking();
 
@@ -295,11 +302,23 @@ export const useCanvasRenderer = ({
     // We have 24 products + create token squares, so we need adequate space
     const totalProducts = images.length;
     const estimatedGridCells = Math.ceil(Math.sqrt(totalProducts * 1.5)); // 1.5x for create tokens and spacing
-    const gridSize = unitSize * Math.max(12, estimatedGridCells); // Minimum 12, scales with image count
+
+    // LIMIT grid size to prevent performance issues
+    const maxGridCells = 16; // Maximum 16x16 grid to prevent freeze
+    const actualGridCells = Math.min(Math.max(12, estimatedGridCells), maxGridCells);
+    const gridSize = unitSize * actualGridCells;
     const gridStartX = -gridSize;
     const gridStartY = -gridSize;
     const gridEndX = gridSize;
     const gridEndY = gridSize;
+
+    console.log('Grid calculation:', {
+      totalProducts,
+      estimatedGridCells,
+      actualGridCells,
+      gridSize,
+      totalCells: (actualGridCells * 2) ** 2,
+    });
 
     // Store original grid bounds for infinite repetition
     originalGridBounds.current = {
@@ -334,8 +353,23 @@ export const useCanvasRenderer = ({
 
     // Place images in a grid pattern
     let productIndex = 0;
+    const totalCells = ((gridEndY - gridStartY) / unitSize) * ((gridEndX - gridStartX) / unitSize);
+    let processedCells = 0;
+
+    console.log('Starting placement calculation for', totalCells, 'cells');
+
     for (let y = gridStartY; y < gridEndY; y += unitSize) {
       for (let x = gridStartX; x < gridEndX; x += unitSize) {
+        processedCells++;
+
+        // Update progress every 200 cells to reduce Firefox state updates
+        if (processedCells % 200 === 0) {
+          const progress = 40 + (processedCells / totalCells) * 30; // 40% to 70%
+          setCanvasProgress(Math.min(progress, 69));
+          console.log(
+            `Placement progress: ${processedCells}/${totalCells} cells (${progress.toFixed(1)}%)`,
+          );
+        }
         const gridX = Math.floor(x / unitSize);
         const gridY = Math.floor(y / unitSize);
 
@@ -407,6 +441,14 @@ export const useCanvasRenderer = ({
     stableCreateTokenPositions.current = createTokenPositions;
     placementsCalculated.current = true;
 
+    // Update progress: Placements calculated (70%)
+    setCanvasProgress(70);
+    console.log('✅ Placement calculations complete!', {
+      productPlacements: productPlacements.length,
+      createTokenPositions: createTokenPositions.length,
+      totalProcessed: processedCells,
+    });
+
     // Clear any existing repeated placements when recalculating
     repeatedPlacements.current.clear();
     repeatedTokens.current.clear();
@@ -429,6 +471,13 @@ export const useCanvasRenderer = ({
       gridBounds: originalGridBounds.current,
     });
   }, [imagesLoaded, images, unitSize, imagePlacementMap]);
+
+  // Track images loaded progress
+  useEffect(() => {
+    if (imagesLoaded) {
+      setCanvasProgress(30); // Images loaded, ready for placement calculations
+    }
+  }, [imagesLoaded]);
 
   // Calculate placements when ready
   useEffect(() => {
@@ -527,6 +576,9 @@ export const useCanvasRenderer = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // Update progress: Canvas initializing (80%)
+    setCanvasProgress(80);
+
     // Performance optimization: enable image smoothing for Safari to improve movement quality
     // Disable only during static rendering to maintain performance
     ctx.imageSmoothingEnabled = true;
@@ -541,6 +593,10 @@ export const useCanvasRenderer = ({
     };
 
     updateCanvasSize();
+
+    // Update progress: Canvas ready (100%)
+    setCanvasProgress(100);
+    setCanvasReady(true);
 
     const homeAreaWorldX = -unitSize;
     const homeAreaWorldY = -unitSize;
@@ -795,5 +851,9 @@ export const useCanvasRenderer = ({
     canvasVisible,
   ]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { canvasRef };
+  return {
+    canvasRef,
+    canvasProgress,
+    canvasReady,
+  };
 };

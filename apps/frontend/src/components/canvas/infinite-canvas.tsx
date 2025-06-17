@@ -5,7 +5,7 @@ import { useRef, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 
 import ImageDetailsModal from '../ui/image-details-modal';
-import LoadingScreen from '../loading/loading-screen';
+import IntroAnimation from '../loading/intro-animation';
 import TopLoadingBar from '../loading/top-loading-bar';
 import { useImageLoader } from '../../hooks/canvas/use-image-loader';
 import { useViewState } from '../../hooks/canvas/use-view-state';
@@ -16,90 +16,74 @@ import NavMenu from '../ui/nav-menu';
 import type { ImageInfo } from '../../types/canvas';
 import { getUnitSize } from '../../constants/canvas';
 
-type LoadingPhase = 'initial' | 'intro' | 'ready';
+// Simplified loading state - reduced from 5 states to 3
+type LoadingState = 'loading' | 'intro' | 'ready';
 
 const InfiniteCanvas = () => {
   const [selectedImage, setSelectedImage] = useState<ImageInfo | null>(null);
-  const [loadingPhase, setLoadingPhase] = useState<LoadingPhase>('initial');
+
+  // SIMPLIFIED: Single loading state instead of 5 separate states
+  const [loadingState, setLoadingState] = useState<LoadingState>('loading');
   const [unitSize, setUnitSize] = useState(getUnitSize());
+
+  // Keep only essential state that can't be derived
   const [hasSeenIntro, setHasSeenIntro] = useState(false);
-  const [isHydrated, setIsHydrated] = useState(false);
-  const [canvasReady, setCanvasReady] = useState(false);
-  const [introComplete, setIntroComplete] = useState(false);
 
   const imagePlacementMapRef = useRef(
     new Map<string, { image: ImageInfo; x: number; y: number; width: number; height: number }>(),
   );
 
-  // Handle hydration and check intro status with Firefox fixes
+  // Simplified hydration check - no browser-specific delays
   useEffect(() => {
-    // Firefox-specific: longer delay to ensure proper hydration
-    const hydrationDelay = navigator.userAgent.includes('Firefox') ? 100 : 50;
-
-    const hydrationTimer = setTimeout(() => {
-      setIsHydrated(true);
-
-      // Firefox-specific diagnostic logging
-      if (navigator.userAgent.includes('Firefox')) {
-        console.log('[Firefox] Hydration completed:', {
-          readyState: document.readyState,
-          fontsReady: document.fonts ? 'available' : 'not available',
-          sessionStorageAvailable: typeof sessionStorage !== 'undefined',
-        });
+    // Simple hydration check without Firefox-specific complexity
+    const checkIntroStatus = () => {
+      try {
+        const seenIntro = sessionStorage.getItem('hasSeenIntro') === 'true';
+        setHasSeenIntro(seenIntro);
+      } catch (error) {
+        console.warn('SessionStorage not available:', error);
+        setHasSeenIntro(false);
       }
+    };
 
-      // Multiple attempts for Firefox sessionStorage issues
-      const checkIntroStatus = () => {
-        try {
-          const seenIntro = sessionStorage.getItem('hasSeenIntro') === 'true';
-          setHasSeenIntro(seenIntro);
-
-          if (navigator.userAgent.includes('Firefox')) {
-            console.log('[Firefox] Intro status checked:', seenIntro);
-          }
-        } catch (error) {
-          console.warn('SessionStorage not available, trying again:', error);
-          // Retry once for Firefox
-          setTimeout(() => {
-            try {
-              const seenIntro = sessionStorage.getItem('hasSeenIntro') === 'true';
-              setHasSeenIntro(seenIntro);
-            } catch (retryError) {
-              console.warn('SessionStorage failed after retry:', retryError);
-              setHasSeenIntro(false);
-            }
-          }, 100);
-        }
-      };
-
-      checkIntroStatus();
-    }, hydrationDelay);
-
-    return () => clearTimeout(hydrationTimer);
+    // No hydration delay - just check immediately when component mounts
+    checkIntroStatus();
   }, []);
 
-  const { images, imagesLoaded } = useImageLoader({
+  const { images, imagesLoaded, loadingProgress } = useImageLoader({
     unitSize,
     enableLazyLoading: true,
   });
 
+  // STEP 2 FIX: Remove complex boolean chains - single condition
   const { viewState, handleWheel, animateViewState, isAnimating, animateToHome, showHomeButton } =
     useViewState({
-      imagesLoaded: loadingPhase === 'ready' && imagesLoaded && isHydrated,
+      imagesLoaded: imagesLoaded, // ViewState can initialize as soon as images load
       _unitSize: unitSize,
     });
 
-  const { canvasRef } = useCanvasRenderer({
+  // STEP 2 FIX: Remove circular dependency - canvas should start working as soon as images load
+  const { canvasRef, canvasProgress, canvasReady } = useCanvasRenderer({
     images,
     viewState,
-    imagesLoaded: loadingPhase === 'ready' && imagesLoaded,
-    canvasVisible: canvasReady,
+    imagesLoaded: imagesLoaded, // Canvas can start working immediately when images load
+    canvasVisible: loadingState !== 'loading', // Visible during intro and ready states
     onCreateTokenClick: () => {
       window.location.href = '/create-token';
     },
     imagePlacementMap: imagePlacementMapRef,
     unitSize,
   });
+
+  // STEP 2 DEBUG: Track loading state transitions
+  useEffect(() => {
+    console.log('🔄 Loading State Update:', {
+      loadingState,
+      imagesLoaded,
+      canvasProgress,
+      canvasReady,
+    });
+  }, [loadingState, imagesLoaded, canvasProgress, canvasReady]);
 
   const imagesRef = useRef(images);
   imagesRef.current = images;
@@ -122,12 +106,12 @@ const InfiniteCanvas = () => {
     unitSize,
   });
 
-  // CRITICAL: Only enable interactions when everything is truly ready
-  const interactionsEnabled = loadingPhase === 'ready' && imagesLoaded && canvasReady && isHydrated;
+  // SIMPLIFIED: Single condition for interactions - no complex boolean chain
+  const interactionsEnabled = loadingState === 'ready' && imagesLoaded;
 
-  // Animation loop for view state
+  // Animation loop - simplified condition
   useEffect(() => {
-    if (loadingPhase !== 'ready' || !imagesLoaded || !isAnimating) return;
+    if (loadingState !== 'ready' || !imagesLoaded || !isAnimating) return;
 
     let animationFrameId: number;
 
@@ -143,77 +127,41 @@ const InfiniteCanvas = () => {
     return () => {
       cancelAnimationFrame(animationFrameId);
     };
-  }, [loadingPhase, imagesLoaded, animateViewState, isAnimating]);
+  }, [loadingState, imagesLoaded, animateViewState, isAnimating]);
 
-  // Handle initial loading completion
+  // SIMPLIFIED: Handle loading completion - direct state transitions
   const handleInitialLoadComplete = () => {
     if (hasSeenIntro) {
-      setLoadingPhase('ready');
-      setCanvasReady(true); // If skipping intro, set canvas ready immediately
+      setLoadingState('ready');
     } else {
-      setLoadingPhase('intro');
-      setIntroComplete(false); // Reset intro completion for new animation
+      setLoadingState('intro');
     }
   };
 
-  // Handle intro animation completion with Firefox reliability
+  // SIMPLIFIED: Handle intro completion - direct state transition
   const handleIntroComplete = () => {
-    const saveIntroState = () => {
-      try {
-        sessionStorage.setItem('hasSeenIntro', 'true');
-      } catch (error) {
-        console.warn('Could not save intro state, retrying:', error);
-        // Retry for Firefox
-        setTimeout(() => {
-          try {
-            sessionStorage.setItem('hasSeenIntro', 'true');
-          } catch (retryError) {
-            console.warn('Failed to save intro state after retry:', retryError);
-          }
-        }, 50);
-      }
-    };
+    try {
+      sessionStorage.setItem('hasSeenIntro', 'true');
+    } catch (error) {
+      console.warn('Could not save intro state:', error);
+    }
 
-    saveIntroState();
-    setIntroComplete(true);
-
-    // Firefox-specific: small delay before transitioning phases
-    setTimeout(() => {
-      setLoadingPhase('ready');
-
-      // Firefox-specific: delay canvas ready state to ensure smooth transition
-      setTimeout(() => {
-        setCanvasReady(true);
-        if (navigator.userAgent.includes('Firefox')) {
-          console.log('[Firefox] Canvas ready state set');
-        }
-      }, 100);
-    }, 100);
+    // Direct transition to ready - no nested timeouts or browser-specific delays
+    setLoadingState('ready');
   };
 
-  // Progress loading phases with Firefox-specific timing
+  // SIMPLIFIED: Loading progression - single simple condition
   useEffect(() => {
-    if (!isHydrated) return;
-
-    if (loadingPhase === 'intro' && imagesLoaded) {
-      if (navigator.userAgent.includes('Firefox')) {
-        console.log('[Firefox] Starting intro completion timer');
-      }
-
-      // Firefox-specific timing: ensure neon animation completes fully
-      // Watch for animation completion instead of hardcoded timeout
-      const animationDuration = 3700; // Extended by 0.5s for better timing
+    if (loadingState === 'intro' && imagesLoaded) {
+      // Standard intro animation duration - no browser-specific timing
       const timer = setTimeout(() => {
-        if (navigator.userAgent.includes('Firefox')) {
-          console.log('[Firefox] Intro animation timer completed, transitioning to ready');
-        }
         handleIntroComplete();
-      }, animationDuration);
+      }, 3500); // Standard timing for all browsers
       return () => clearTimeout(timer);
     }
-  }, [loadingPhase, imagesLoaded, isHydrated]);
+  }, [loadingState, imagesLoaded]);
 
-  // Handle canvas events with Firefox compatibility
+  // Handle canvas events - simplified condition
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !interactionsEnabled) return;
@@ -308,21 +256,27 @@ const InfiniteCanvas = () => {
     };
   }, []);
 
-  // Firefox-specific fallback: ensure canvas becomes ready even if something goes wrong
+  // Firefox-specific fallback: ensure interactions become enabled if something goes wrong
   useEffect(() => {
-    if (loadingPhase === 'ready' && !canvasReady && navigator.userAgent.includes('Firefox')) {
+    if (
+      loadingState === 'ready' &&
+      !interactionsEnabled &&
+      navigator.userAgent.includes('Firefox')
+    ) {
       const fallbackTimer = setTimeout(() => {
-        console.warn('[Firefox] Fallback: Forcing canvas ready state');
-        setCanvasReady(true);
+        console.warn(
+          '[Firefox] Fallback: Interactions not enabled after 2s, checking image loading',
+        );
+        // The issue is likely with image loading, so we just log for now
       }, 2000); // 2 second fallback
 
       return () => clearTimeout(fallbackTimer);
     }
-  }, [loadingPhase, canvasReady]);
+  }, [loadingState, interactionsEnabled]);
 
   // Add diagnostic for motion wrapper timing
   useEffect(() => {
-    if (canvasReady && navigator.userAgent.includes('Firefox')) {
+    if (interactionsEnabled && navigator.userAgent.includes('Firefox')) {
       console.log('[Firefox] Canvas ready, motion wrapper should start animating');
 
       // Track when motion wrapper should complete
@@ -330,46 +284,41 @@ const InfiniteCanvas = () => {
         console.log('[Firefox] Motion wrapper animation should be complete');
       }, 400); // Based on 0.4s duration
     }
-  }, [canvasReady]);
+  }, [interactionsEnabled]);
 
   // Add diagnostic for canvasReady changes
   useEffect(() => {
     if (navigator.userAgent.includes('Firefox')) {
-      console.log(`[Firefox] canvasReady changed to: ${canvasReady}`);
+      console.log(`[Firefox] canvasReady changed to: ${loadingState === 'ready'}`);
     }
-  }, [canvasReady]);
-
-  // Don't render anything until hydrated
-  if (!isHydrated) {
-    return (
-      <div className="fixed inset-0 bg-black flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-[#D0B264] rounded-full animate-spin border-t-transparent"></div>
-      </div>
-    );
-  }
+  }, [loadingState]);
 
   return (
     <>
       {/* Navigation Menu - only show when canvas is ready */}
-      {canvasReady && <NavMenu />}
+      {loadingState === 'ready' && <NavMenu />}
 
       {/* Initial loading screen */}
-      {loadingPhase === 'initial' && (
-        <TopLoadingBar onLoadingComplete={handleInitialLoadComplete} />
+      {loadingState === 'loading' && (
+        <TopLoadingBar
+          onLoadingComplete={handleInitialLoadComplete}
+          loadingProgress={Math.max(loadingProgress * 0.3, canvasProgress)}
+          isComplete={canvasReady}
+        />
       )}
 
       {/* Intro animation */}
-      {loadingPhase === 'intro' && <LoadingScreen isComplete={introComplete} />}
+      {loadingState === 'intro' && <IntroAnimation isComplete={false} />}
 
       {/* Main Canvas */}
       <motion.div
         className="fixed inset-0"
         style={{ zIndex: 40 }}
         initial={{ opacity: 0 }}
-        animate={{ opacity: canvasReady ? 1 : 0 }}
+        animate={{ opacity: loadingState === 'ready' ? 1 : 0 }}
         transition={{ duration: 0.4, ease: 'easeOut' }}
         onAnimationComplete={() => {
-          if (navigator.userAgent.includes('Firefox') && canvasReady) {
+          if (navigator.userAgent.includes('Firefox') && loadingState === 'ready') {
             console.log('[Firefox] Canvas motion animation completed - should be visible now');
           }
         }}
@@ -395,7 +344,7 @@ const InfiniteCanvas = () => {
 
       {/* Modals and UI */}
       <ImageDetailsModal imageInfo={selectedImage} onClose={() => setSelectedImage(null)} />
-      {canvasReady && showHomeButton && <HomeButton onClick={animateToHome} />}
+      {loadingState === 'ready' && showHomeButton && <HomeButton onClick={animateToHome} />}
     </>
   );
 };

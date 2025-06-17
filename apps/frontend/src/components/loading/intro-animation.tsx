@@ -7,11 +7,11 @@ import NeonLogo from './neon-logo';
 import NeonText from './neon-text';
 import LoadingStyles from './loading-styles';
 
-interface LoadingScreenProps {
+interface IntroAnimationProps {
   isComplete: boolean;
 }
 
-const LoadingScreen: React.FC<LoadingScreenProps> = ({ isComplete }) => {
+const IntroAnimation: React.FC<IntroAnimationProps> = ({ isComplete }) => {
   const [showSpinner, setShowSpinner] = useState(false);
 
   // Show spinner after neon animation completes (around 2-3 seconds)
@@ -88,4 +88,4 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ isComplete }) => {
   );
 };
 
-export default LoadingScreen;
+export default IntroAnimation;
