@@ -24,6 +24,7 @@ const InfiniteCanvas = () => {
 
   // SIMPLIFIED: Single loading state instead of 5 separate states
   const [loadingState, setLoadingState] = useState<LoadingState>('loading');
+  console.log('🔄 InfiniteCanvas Rendered. Current loadingState:', loadingState); // Moved after declaration
   const [unitSize, setUnitSize] = useState(getUnitSize());
 
   // Keep only essential state that can't be derived
@@ -82,8 +83,9 @@ const InfiniteCanvas = () => {
       imagesLoaded,
       canvasProgress,
       canvasReady,
+      hasSeenIntro, // Add hasSeenIntro to debug
     });
-  }, [loadingState, imagesLoaded, canvasProgress, canvasReady]);
+  }, [loadingState, imagesLoaded, canvasProgress, canvasReady, hasSeenIntro]);
 
   const imagesRef = useRef(images);
   imagesRef.current = images;
@@ -131,6 +133,7 @@ const InfiniteCanvas = () => {
 
   // SIMPLIFIED: Handle loading completion - direct state transitions
   const handleInitialLoadComplete = () => {
+    console.log('✅ handleInitialLoadComplete called. hasSeenIntro:', hasSeenIntro);
     if (hasSeenIntro) {
       setLoadingState('ready');
     } else {
@@ -140,6 +143,7 @@ const InfiniteCanvas = () => {
 
   // SIMPLIFIED: Handle intro completion - direct state transition
   const handleIntroComplete = () => {
+    console.log('✅ handleIntroComplete called. Transitioning to ready.');
     try {
       sessionStorage.setItem('hasSeenIntro', 'true');
     } catch (error) {
@@ -149,17 +153,6 @@ const InfiniteCanvas = () => {
     // Direct transition to ready - no nested timeouts or browser-specific delays
     setLoadingState('ready');
   };
-
-  // SIMPLIFIED: Loading progression - single simple condition
-  useEffect(() => {
-    if (loadingState === 'intro' && imagesLoaded) {
-      // Standard intro animation duration - no browser-specific timing
-      const timer = setTimeout(() => {
-        handleIntroComplete();
-      }, 3500); // Standard timing for all browsers
-      return () => clearTimeout(timer);
-    }
-  }, [loadingState, imagesLoaded]);
 
   // Handle canvas events - simplified condition
   useEffect(() => {
@@ -257,6 +250,9 @@ const InfiniteCanvas = () => {
   // STEP 3 FIX: Removed all unnecessary timers and browser-specific debugging
   // Clean state transitions without timer dependencies
 
+  // Removed: SIMPLIFIED: Loading progression - single simple condition (now handled by IntroAnimation)
+  // Removed: STEP 3 FIX: Removed all unnecessary timers and browser-specific debugging
+
   return (
     <>
       {/* Navigation Menu - only show when canvas is ready */}
@@ -267,12 +263,14 @@ const InfiniteCanvas = () => {
         <TopLoadingBar
           onLoadingComplete={handleInitialLoadComplete}
           loadingProgress={Math.max(loadingProgress * 0.3, canvasProgress)}
-          isComplete={canvasReady}
+          isComplete={imagesLoaded}
         />
       )}
 
       {/* Intro animation */}
-      {loadingState === 'intro' && <IntroAnimation isComplete={false} />}
+      {loadingState === 'intro' && (
+        <IntroAnimation onIntroAnimationComplete={handleIntroComplete} />
+      )}
 
       {/* Main Canvas */}
       <motion.div

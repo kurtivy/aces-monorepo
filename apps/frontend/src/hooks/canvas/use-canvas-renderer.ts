@@ -124,7 +124,7 @@ export const useCanvasRenderer = ({
   >([]);
 
   const stableCreateTokenPositions = useRef<Array<{ worldX: number; worldY: number }>>([]);
-  const placementsCalculated = useRef(false);
+  const [placementsCalculated, setPlacementsCalculated] = useState(false);
 
   // INFINITE GRID REPETITION STATE
   const originalGridBounds = useRef<{
@@ -258,7 +258,7 @@ export const useCanvasRenderer = ({
 
   const updateInfiniteGrid = useCallback(
     (currentViewState: ViewState) => {
-      if (!originalGridBounds.current || !placementsCalculated.current) return;
+      if (!originalGridBounds.current || !placementsCalculated) return;
 
       const requiredTiles = calculateRequiredTiles(currentViewState);
       const newActiveTiles = new Set<string>();
@@ -300,7 +300,7 @@ export const useCanvasRenderer = ({
 
   // CALCULATE PLACEMENTS ONCE - when images load or unitSize changes
   const calculatePlacements = useCallback(() => {
-    if (!imagesLoaded || placementsCalculated.current) return;
+    if (!imagesLoaded || placementsCalculated) return;
 
     // Update progress: Starting placement calculations (40%)
     setCanvasProgress(40);
@@ -454,7 +454,7 @@ export const useCanvasRenderer = ({
     // Store stable placements
     stableProductPlacements.current = productPlacements;
     stableCreateTokenPositions.current = createTokenPositions;
-    placementsCalculated.current = true;
+    setPlacementsCalculated(true);
 
     // Update progress: Placements calculated (70%)
     setCanvasProgress(70);
@@ -501,7 +501,7 @@ export const useCanvasRenderer = ({
 
   // Reset placements when unitSize changes (responsive)
   useEffect(() => {
-    placementsCalculated.current = false;
+    setPlacementsCalculated(false);
     stableProductPlacements.current = [];
     stableCreateTokenPositions.current = [];
     // Clear infinite grid state
@@ -513,19 +513,19 @@ export const useCanvasRenderer = ({
 
   // Update infinite grid when viewport changes
   useEffect(() => {
-    if (placementsCalculated.current && originalGridBounds.current) {
+    if (placementsCalculated && originalGridBounds.current) {
       updateInfiniteGrid(viewState);
     }
   }, [viewState.x, viewState.y, viewState.scale, updateInfiniteGrid]);
 
   // Start product animation when images are loaded AND canvas is visible
   useEffect(() => {
-    if (imagesLoaded && placementsCalculated.current && canvasVisible) {
+    if (imagesLoaded && placementsCalculated && canvasVisible) {
       // Start animation immediately for faster loading experience
       setProductAnimationStartTime(performance.now());
       setIsProductAnimationActive(true);
     }
-  }, [imagesLoaded, placementsCalculated.current, canvasVisible]);
+  }, [imagesLoaded, placementsCalculated, canvasVisible]);
 
   // Handle mouse movement for hover detection with throttling
   useEffect(() => {
@@ -583,7 +583,7 @@ export const useCanvasRenderer = ({
   }, [hoveredTokenIndex, onCreateTokenClick]);
 
   useEffect(() => {
-    if (!imagesLoaded || !placementsCalculated.current) return;
+    if (!imagesLoaded || !placementsCalculated) return;
 
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -868,7 +868,7 @@ export const useCanvasRenderer = ({
     };
   }, [
     imagesLoaded,
-    placementsCalculated.current,
+    placementsCalculated,
     viewState,
     hoveredTokenIndex,
     onCreateTokenClick,
