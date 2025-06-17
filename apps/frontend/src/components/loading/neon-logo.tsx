@@ -104,15 +104,15 @@ const NeonLogo: React.FC = () => {
 
     setPathData(allPaths);
 
-    const phase1Start = 0;
-    const phase2Start = phase1Start + outerCircleDuration * 1000;
+    // STEP 3 FIX: Use single timer instead of multiple phase timers
+    // Start phase 1 immediately, then transition to phase 2 after duration
+    setAnimationPhase(1);
 
-    const timers = [
-      setTimeout(() => setAnimationPhase(1), phase1Start),
-      setTimeout(() => setAnimationPhase(2), phase2Start),
-    ];
+    const phaseTransitionTimer = setTimeout(() => {
+      setAnimationPhase(2);
+    }, outerCircleDuration * 1000);
 
-    return () => timers.forEach(clearTimeout);
+    return () => clearTimeout(phaseTransitionTimer);
   }, []);
 
   if (!pathData) return null;

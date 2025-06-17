@@ -78,19 +78,34 @@ export const useCanvasRenderer = ({
   const [canvasProgress, setCanvasProgress] = useState(0);
   const [canvasReady, setCanvasReady] = useState(false);
 
+  /*
+   * SAFARI PERFORMANCE OPTIMIZATIONS
+   * ================================
+   * Safari requires specific performance optimizations for smooth hover animations:
+   * 1. Frame throttling (30fps vs 60fps) - Prevents laggy hover animations
+   * 2. Faster animation duration (200ms vs 300ms) - Reduces computation time
+   * 3. Linear easing (vs easeInOutCubic) - Reduces mathematical computation
+   * 4. Space animation disabled (see draw-create-token-square.ts)
+   * 5. Shine effects disabled (see draw-create-token-square.ts)
+   *
+   * These are contained to minimize browser-specific code.
+   * TODO Phase 2: Explore feature detection vs user-agent detection
+   */
+
   // State for hover animation
   const [currentHoverProgress, setCurrentHoverProgress] = useState(0);
   const hoverAnimationStartTime = useRef(0);
   const [isHoveringToken, setIsHoveringToken] = useState(false);
-  const hoverAnimationDuration = isSafari ? 200 : 300; // Faster animation only for Safari
+  const hoverAnimationDuration = isSafari ? 200 : 300; // Safari: faster animation for performance
 
   // Product entrance animation state
   const [productAnimationStartTime, setProductAnimationStartTime] = useState<number | null>(null);
   const [isProductAnimationActive, setIsProductAnimationActive] = useState(false);
 
-  // Performance optimization: frame throttling for Safari only
+  // SAFARI PERFORMANCE OPTIMIZATION (Phase 2 TODO: Remove browser-specific code)
+  // Safari canvas performance requires frame throttling for smooth hover animations
   const frameThrottleRef = useRef(0);
-  const targetFPS = 60; // Test full 60fps for Safari - with optimizations it should handle it
+  const targetFPS = isSafari ? 30 : 60; // Safari: 30fps, Others: 60fps
   const frameInterval = 1000 / targetFPS;
 
   // Create a separate canvas for space animation
@@ -604,7 +619,14 @@ export const useCanvasRenderer = ({
     const homeAreaHeight = unitSize;
 
     const draw = (currentTime: number) => {
-      // No frame throttling - test if Safari can handle full 60fps with optimizations
+      // SAFARI PERFORMANCE: Frame throttling required for smooth hover animations
+      if (isSafari) {
+        if (currentTime - frameThrottleRef.current < frameInterval) {
+          animationFrameRef.current = requestAnimationFrame(draw);
+          return;
+        }
+        frameThrottleRef.current = currentTime;
+      }
 
       // Stable canvas clearing for all browsers
       ctx.fillStyle = '#000000';
@@ -724,14 +746,21 @@ export const useCanvasRenderer = ({
         lastMouseCheck.current = currentTime;
       }
 
-      // Update hover animation progress
+      // Update hover animation progress - optimized for Safari
       if (isHoveringToken || currentHoverProgress > 0) {
         const elapsed = currentTime - hoverAnimationStartTime.current;
         let progress = Math.min(1, elapsed / hoverAnimationDuration);
         if (!isHoveringToken) {
           progress = 1 - progress;
         }
-        progress = easeInOutCubic(progress);
+
+        // SAFARI PERFORMANCE: Linear easing reduces computational overhead
+        if (isSafari) {
+          progress = progress; // Linear interpolation for Safari
+        } else {
+          progress = easeInOutCubic(progress);
+        }
+
         setCurrentHoverProgress(progress);
 
         if (!isHoveringToken && progress <= 0) {

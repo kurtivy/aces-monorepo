@@ -208,14 +208,12 @@ const InfiniteCanvas = () => {
 
       canvas.tabIndex = -1;
 
-      // Firefox focus with delay
-      setTimeout(() => {
-        try {
-          canvas.focus();
-        } catch (focusError) {
-          console.warn('Canvas focus error:', focusError);
-        }
-      }, 100);
+      // STEP 3 FIX: Direct canvas focus without timer delay
+      try {
+        canvas.focus();
+      } catch (focusError) {
+        console.warn('Canvas focus error:', focusError);
+      }
     } catch (eventError) {
       console.warn('Event listener setup error:', eventError);
     }
@@ -256,42 +254,8 @@ const InfiniteCanvas = () => {
     };
   }, []);
 
-  // Firefox-specific fallback: ensure interactions become enabled if something goes wrong
-  useEffect(() => {
-    if (
-      loadingState === 'ready' &&
-      !interactionsEnabled &&
-      navigator.userAgent.includes('Firefox')
-    ) {
-      const fallbackTimer = setTimeout(() => {
-        console.warn(
-          '[Firefox] Fallback: Interactions not enabled after 2s, checking image loading',
-        );
-        // The issue is likely with image loading, so we just log for now
-      }, 2000); // 2 second fallback
-
-      return () => clearTimeout(fallbackTimer);
-    }
-  }, [loadingState, interactionsEnabled]);
-
-  // Add diagnostic for motion wrapper timing
-  useEffect(() => {
-    if (interactionsEnabled && navigator.userAgent.includes('Firefox')) {
-      console.log('[Firefox] Canvas ready, motion wrapper should start animating');
-
-      // Track when motion wrapper should complete
-      setTimeout(() => {
-        console.log('[Firefox] Motion wrapper animation should be complete');
-      }, 400); // Based on 0.4s duration
-    }
-  }, [interactionsEnabled]);
-
-  // Add diagnostic for canvasReady changes
-  useEffect(() => {
-    if (navigator.userAgent.includes('Firefox')) {
-      console.log(`[Firefox] canvasReady changed to: ${loadingState === 'ready'}`);
-    }
-  }, [loadingState]);
+  // STEP 3 FIX: Removed all unnecessary timers and browser-specific debugging
+  // Clean state transitions without timer dependencies
 
   return (
     <>
@@ -318,9 +282,8 @@ const InfiniteCanvas = () => {
         animate={{ opacity: loadingState === 'ready' ? 1 : 0 }}
         transition={{ duration: 0.4, ease: 'easeOut' }}
         onAnimationComplete={() => {
-          if (navigator.userAgent.includes('Firefox') && loadingState === 'ready') {
-            console.log('[Firefox] Canvas motion animation completed - should be visible now');
-          }
+          // STEP 3 FIX: Remove browser-specific animation logging
+          // Animation completion is now handled cleanly without debugging timers
         }}
       >
         <canvas

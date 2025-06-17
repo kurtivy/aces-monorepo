@@ -7,44 +7,30 @@ const NeonText: React.FC = () => {
   const fullText = 'ACES.FUN';
 
   useEffect(() => {
-    // Letter appearance animation with Firefox-specific timing
-    const textStartDelay = 2200; // Slightly increased delay for Firefox
-    const letterDelay = 120; // Slightly slower for Firefox reliability
+    // STEP 3 FIX: Consolidate 4 nested timers into single clean animation
+    const textStartDelay = 2200; // Standard delay for all browsers
+    const letterDelay = 120; // Standard timing for all browsers
 
-    const animationTimer = setTimeout(() => {
-      const letterInterval = setInterval(() => {
-        setVisibleLetters((prev) => {
-          if (prev < fullText.length) {
-            return prev + 1;
-          }
-          clearInterval(letterInterval);
-          return prev;
-        });
-      }, letterDelay);
+    // Single timer to start letter animation - no nested complexity
+    const startTimer = setTimeout(() => {
+      let currentLetter = 0;
 
-      // Cleanup function for the interval
-      const cleanup = () => clearInterval(letterInterval);
+      const animateNextLetter = () => {
+        if (currentLetter < fullText.length) {
+          setVisibleLetters(currentLetter + 1);
+          currentLetter++;
 
-      // Firefox-specific: ensure all letters appear even if timing is off
-      const fallbackTimer = setTimeout(
-        () => {
-          if (visibleLetters < fullText.length) {
-            console.warn('Firefox: Forcing complete text display');
-            setVisibleLetters(fullText.length);
-          }
-          cleanup();
-        },
-        letterDelay * fullText.length + 500,
-      );
-
-      return () => {
-        cleanup();
-        clearTimeout(fallbackTimer);
+          // Schedule next letter animation
+          setTimeout(animateNextLetter, letterDelay);
+        }
       };
+
+      // Start the letter animation
+      animateNextLetter();
     }, textStartDelay);
 
-    return () => clearTimeout(animationTimer);
-  }, [fullText.length]); // Add dependency on fullText.length
+    return () => clearTimeout(startTimer);
+  }, [fullText.length]);
 
   return (
     <div className="relative flex items-center justify-center w-full max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg xl:max-w-xl h-auto">
