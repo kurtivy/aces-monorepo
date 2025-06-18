@@ -148,45 +148,33 @@ export const getImageCandidatesForPosition = (
   gridX: number,
   gridY: number,
   imagesRefCurrent: ImageInfo[],
-  unitSize: number,
-  homeAreaWorldX: number,
-  homeAreaWorldY: number,
-  homeAreaWidth: number,
-  homeAreaHeight: number,
-) => {
+): ImageInfo[] => {
+  // PRODUCTION FIX: Filter out any images without metadata early
+  const validImages = imagesRefCurrent.filter((img) => {
+    if (!img || !img.metadata) {
+      console.warn('Filtering out image without metadata in grid placement');
+      return false;
+    }
+    return true;
+  });
+
+  if (validImages.length === 0) {
+    console.warn('No valid images available for grid placement');
+    return [];
+  }
+
   const candidates: ImageInfo[] = [];
 
-  // Option 1: Try to place a "Create Token" square
-  // Place a "Create Token" square every 8th available square position (less frequent than before)
-  if (
-    Math.abs(gridX * 13 + gridY * 17) % 8 === 0 && // Deterministic but sparse
-    !isHomeArea(
-      gridX * unitSize,
-      gridY * unitSize,
-      homeAreaWorldX,
-      homeAreaWorldY,
-      homeAreaWidth,
-      homeAreaHeight,
-    ) // Ensure it's not in home area
-  ) {
-    candidates.push({
-      element: new Image(), // Placeholder, not used for rendering
-      type: 'create-token',
-      displayWidth: unitSize,
-      displayHeight: unitSize,
-      metadata: {
-        title: 'Create Token',
-        description: 'Create your own unique digital token.',
-        ticker: '$CREATE',
-      },
-    });
+  // Option 1: For create-token positions, only return create-token type
+  if (gridX === -1 && gridY === -1) {
+    return validImages.filter((img) => img.type === 'create-token');
   }
 
   // Option 2: Smart distribution of ALL images
-  if (imagesRefCurrent.length > 0) {
+  if (validImages.length > 0) {
     // Initialize usage count for all images if not done yet
-    for (const img of imagesRefCurrent) {
-      // Add null safety for metadata access
+    for (const img of validImages) {
+      // Additional safety check (should be redundant now)
       if (!img.metadata) {
         console.warn('Image with missing metadata detected, skipping:', img);
         continue;
@@ -198,37 +186,24 @@ export const getImageCandidatesForPosition = (
     }
 
     // Find the least used images
-    const sortedImages = [...imagesRefCurrent]
-      .filter((img) => img.metadata) // Filter out images without metadata
-      .sort((a, b) => {
-        // Additional null safety checks
-        if (!a.metadata || !b.metadata) {
-          console.warn('Image metadata missing during sort');
-          return 0;
-        }
+    const sortedImages = [...validImages].sort((a, b) => {
+      // These should now be safe due to filtering above
+      const aId = a.metadata!.id || a.metadata!.title || 'unknown';
+      const bId = b.metadata!.id || b.metadata!.title || 'unknown';
+      const aCount = globalImageUsageCount.get(aId) || 0;
+      const bCount = globalImageUsageCount.get(bId) || 0;
 
-        const aId = a.metadata.id || a.metadata.title || 'unknown';
-        const bId = b.metadata.id || b.metadata.title || 'unknown';
-        const aCount = globalImageUsageCount.get(aId) || 0;
-        const bCount = globalImageUsageCount.get(bId) || 0;
+      // If usage counts are equal, use deterministic pattern for consistency
+      if (aCount === bCount) {
+        return Math.abs(gridX * 7 + gridY * 11) % 2 === 0 ? -1 : 1;
+      }
 
-        // If usage counts are equal, use deterministic pattern for consistency
-        if (aCount === bCount) {
-          return Math.abs(gridX * 7 + gridY * 11) % 2 === 0 ? -1 : 1;
-        }
-
-        return aCount - bCount; // Sort by usage count (ascending)
-      });
+      return aCount - bCount; // Sort by usage count (ascending)
+    });
 
     // Try to place the least used images first, avoiding adjacency
     for (const img of sortedImages) {
-      // Additional null safety check
-      if (!img.metadata) {
-        console.warn('Image metadata missing during placement consideration');
-        continue;
-      }
-
-      const imageId = img.metadata.id || img.metadata.title || 'unknown';
+      const imageId = img.metadata!.id || img.metadata!.title || 'unknown';
 
       // Check if this image is adjacent to any previous placement of the same image
       if (!isAdjacentToPreviousPlacement(gridX, gridY, imageId, globalPlacementHistory)) {
@@ -238,8 +213,8 @@ export const getImageCandidatesForPosition = (
 
     // If no candidates due to adjacency constraints, fall back to deterministic selection
     if (candidates.length === 0) {
-      const fallbackIndex = Math.abs(gridX * 7 + gridY * 11) % imagesRefCurrent.length;
-      const fallbackImage = imagesRefCurrent[fallbackIndex];
+      const fallbackIndex = Math.abs(gridX * 7 + gridY * 11) % validImages.length;
+      const fallbackImage = validImages[fallbackIndex];
       if (fallbackImage && fallbackImage.metadata) {
         candidates.push(fallbackImage);
       }

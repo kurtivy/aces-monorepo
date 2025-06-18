@@ -78,20 +78,43 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
     }
 
     const finishLoading = () => {
-      setImages(loadedImages);
-      // Signal that image metadata loading is complete
-      try {
-        window.localStorage.setItem('aces-images-loaded', 'true');
-        LuxuryLogger.log('Image metadata loading marked as complete', 'info');
-      } catch (error) {
-        console.warn('Could not set image loading flag:', error);
-      }
+      // PRODUCTION FIX: Ensure all images have metadata before setting state
+      const validImages = loadedImages.filter((img, index) => {
+        if (!img || !img.metadata) {
+          console.warn(`Image at index ${index} missing metadata, filtering out`);
+          return false;
+        }
+        return true;
+      });
 
-      // Minimal delay to allow the 100% to register before the fade-out
-      setTimeout(() => {
-        setImagesLoaded(true);
-        LuxuryLogger.log(`Image loading complete. ${loadedCount}/${totalImages} loaded.`, 'info');
-      }, 100); // Further reduced delay for faster loading
+      // Only set images if we have valid metadata for all
+      if (validImages.length > 0) {
+        setImages(validImages);
+        // Signal that image metadata loading is complete
+        try {
+          window.localStorage.setItem('aces-images-loaded', 'true');
+          LuxuryLogger.log(
+            `Image metadata loading marked as complete. ${validImages.length}/${totalImages} valid images.`,
+            'info',
+          );
+        } catch (error) {
+          console.warn('Could not set image loading flag:', error);
+        }
+
+        // Minimal delay to allow the 100% to register before the fade-out
+        setTimeout(() => {
+          setImagesLoaded(true);
+          LuxuryLogger.log(
+            `Image loading complete. ${validImages.length}/${totalImages} loaded.`,
+            'info',
+          );
+        }, 200); // Increased delay for production stability
+      } else {
+        console.warn('No valid images loaded, retrying in 500ms...');
+        setTimeout(() => {
+          finishLoading(); // Retry
+        }, 500);
+      }
     };
 
     // Safety net to prevent getting stuck - more aggressive timeout for better UX
