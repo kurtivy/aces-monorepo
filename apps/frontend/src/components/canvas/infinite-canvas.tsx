@@ -63,11 +63,18 @@ const InfiniteCanvas = () => {
   });
 
   // STEP 2 FIX: Remove complex boolean chains - single condition
-  const { viewState, handleWheel, animateViewState, isAnimating, animateToHome, showHomeButton } =
-    useViewState({
-      imagesLoaded: imagesLoaded, // ViewState can initialize as soon as images load
-      _unitSize: unitSize, // Use dynamic unitSize from coordinated resize
-    });
+  const {
+    viewState,
+    handleWheel,
+    animateViewState,
+    isAnimating,
+    animateToHome,
+    showHomeButton,
+    updateViewState,
+  } = useViewState({
+    imagesLoaded: imagesLoaded, // ViewState can initialize as soon as images load
+    _unitSize: unitSize, // Use dynamic unitSize from coordinated resize
+  });
 
   // STEP 2 FIX: Remove circular dependency - canvas should start working as soon as images load
   const { canvasProgress, canvasReady } = useCanvasRenderer({
@@ -113,6 +120,7 @@ const InfiniteCanvas = () => {
     setSelectedImage,
     imagePlacementMap: imagePlacementMapRef,
     unitSize: unitSize,
+    updateViewState,
   });
 
   // SIMPLIFIED: Single condition for interactions - no complex boolean chain
@@ -136,7 +144,8 @@ const InfiniteCanvas = () => {
     return () => {
       cancelAnimationFrame(animationFrameId);
     };
-  }, [loadingState, imagesLoaded, animateViewState, isAnimating]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingState, imagesLoaded, isAnimating]); // REMOVED animateViewState to break circular dependency
 
   // SIMPLIFIED: Handle loading completion - direct state transitions
   const handleInitialLoadComplete = () => {
@@ -161,12 +170,12 @@ const InfiniteCanvas = () => {
     setLoadingState('ready');
   };
 
-  // Handle canvas events - simplified condition
+  // Handle canvas focus and wheel events only - touch events handled by React
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !interactionsEnabled) return;
 
-    // Firefox-compatible event listeners with error handling
+    // Firefox-compatible wheel event listener
     const wheelListener = (e: WheelEvent) => {
       try {
         handleWheel(e as unknown as React.WheelEvent<HTMLCanvasElement>);
@@ -175,37 +184,9 @@ const InfiniteCanvas = () => {
       }
     };
 
-    const touchStartListener = (e: TouchEvent) => {
-      try {
-        handleTouchStart(e as unknown as React.TouchEvent);
-      } catch (error) {
-        console.warn('Touch start event error:', error);
-      }
-    };
-
-    const touchMoveListener = (e: TouchEvent) => {
-      try {
-        handleTouchMove(e as unknown as React.TouchEvent);
-      } catch (error) {
-        console.warn('Touch move event error:', error);
-      }
-    };
-
-    const touchEndListener = (e: TouchEvent) => {
-      try {
-        handleTouchEnd(e as unknown as React.TouchEvent);
-      } catch (error) {
-        console.warn('Touch end event error:', error);
-      }
-    };
-
-    // Add event listeners with Firefox-compatible options
+    // Add wheel event listener (wheel events don't work well with React handlers)
     try {
       canvas.addEventListener('wheel', wheelListener, { passive: false });
-      canvas.addEventListener('touchstart', touchStartListener, { passive: false });
-      canvas.addEventListener('touchmove', touchMoveListener, { passive: false });
-      canvas.addEventListener('touchend', touchEndListener, { passive: false });
-
       canvas.tabIndex = -1;
 
       // STEP 3 FIX: Direct canvas focus without timer delay
@@ -221,21 +202,11 @@ const InfiniteCanvas = () => {
     return () => {
       try {
         canvas.removeEventListener('wheel', wheelListener);
-        canvas.removeEventListener('touchstart', touchStartListener);
-        canvas.removeEventListener('touchmove', touchMoveListener);
-        canvas.removeEventListener('touchend', touchEndListener);
       } catch (cleanupError) {
         console.warn('Event cleanup error:', cleanupError);
       }
     };
-  }, [
-    handleWheel,
-    handleTouchStart,
-    handleTouchMove,
-    handleTouchEnd,
-    canvasRef,
-    interactionsEnabled,
-  ]);
+  }, [handleWheel, canvasRef, interactionsEnabled]);
 
   // Disable scroll restoration
   useEffect(() => {
@@ -288,6 +259,9 @@ const InfiniteCanvas = () => {
           onMouseMove={interactionsEnabled ? handleMouseMove : undefined}
           onMouseUp={interactionsEnabled ? handleMouseUp : undefined}
           onMouseLeave={interactionsEnabled ? handleMouseLeave : undefined}
+          onTouchStart={interactionsEnabled ? handleTouchStart : undefined}
+          onTouchMove={interactionsEnabled ? handleTouchMove : undefined}
+          onTouchEnd={interactionsEnabled ? handleTouchEnd : undefined}
           className="w-full h-full touch-none select-none"
           style={{
             cursor: interactionsEnabled
@@ -303,7 +277,7 @@ const InfiniteCanvas = () => {
 
       {/* Modals and UI */}
       <ImageDetailsModal imageInfo={selectedImage} onClose={() => setSelectedImage(null)} />
-      {loadingState === 'ready' && showHomeButton && <HomeButton onClick={animateToHome} />}
+      {loadingState === 'ready' && <HomeButton onClick={animateToHome} />}
     </>
   );
 };

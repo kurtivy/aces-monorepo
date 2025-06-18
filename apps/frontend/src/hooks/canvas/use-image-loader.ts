@@ -150,7 +150,13 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
       }
 
       const img = new Image();
-      img.crossOrigin = 'anonymous';
+
+      // MOBILE FIX: Only set crossOrigin for external URLs, not same-domain images
+      // This prevents CORS issues on mobile browsers
+      if (metadata.image && !metadata.image.startsWith('/')) {
+        img.crossOrigin = 'anonymous';
+      }
+
       img.src = metadata.image;
 
       const handleLoad = () => {

@@ -16,6 +16,7 @@ import { getDisplayDimensions } from '../../lib/canvas/image-type-utils';
 import { useSpaceAnimation } from '../use-space-animation';
 import { easeInOutCubic } from '../../lib/canvas/math-utils';
 import { useCoordinatedResize } from '../use-coordinated-resize';
+import { browserUtils, getBrowserPerformanceSettings } from '../../lib/utils/browser-utils';
 
 interface UseCanvasRendererProps {
   images: ImageInfo[];
@@ -30,12 +31,8 @@ interface UseCanvasRendererProps {
   canvasRef?: React.RefObject<HTMLCanvasElement | null>; // Match the nullable type
 }
 
-// Detect problematic browsers for performance optimizations
-const isSafari =
-  typeof navigator !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-const isFirefox =
-  typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().indexOf('firefox') > -1;
-const needsPerformanceMode = isSafari || isFirefox;
+// STEP 7: Centralized browser detection and performance settings
+const browserPerf = getBrowserPerformanceSettings();
 
 // Define grid tile structure for infinite repetition
 interface GridTile {
@@ -105,16 +102,16 @@ export const useCanvasRenderer = ({
   const [currentHoverProgress, setCurrentHoverProgress] = useState(0);
   const hoverAnimationStartTime = useRef(0);
   const [isHoveringToken, setIsHoveringToken] = useState(false);
-  const hoverAnimationDuration = isSafari ? 200 : 300; // Safari: faster animation for performance
+  const hoverAnimationDuration = browserPerf.animationDuration; // Centralized animation duration
 
   // Product entrance animation state
   const [productAnimationStartTime, setProductAnimationStartTime] = useState<number | null>(null);
   const [isProductAnimationActive, setIsProductAnimationActive] = useState(false);
 
-  // SAFARI PERFORMANCE OPTIMIZATION (Phase 2 TODO: Remove browser-specific code)
-  // Safari canvas performance requires frame throttling for smooth hover animations
+  // STEP 7: Centralized browser performance optimization
+  // Browser-specific canvas performance settings from centralized utility
   const frameThrottleRef = useRef(0);
-  const targetFPS = isSafari ? 30 : 60; // Safari: 30fps, Others: 60fps
+  const targetFPS = browserPerf.targetFPS; // Centralized FPS setting
   const frameInterval = 1000 / targetFPS;
 
   // Create a separate canvas for space animation
@@ -151,7 +148,7 @@ export const useCanvasRenderer = ({
 
   // Performance optimization: mouse check interval
   const lastMouseCheck = useRef(0);
-  const mouseCheckInterval = isSafari ? 50 : isFirefox ? 50 : 16; // Fix Firefox: match Safari interval
+  const mouseCheckInterval = browserPerf.mouseCheckInterval; // Centralized mouse check interval
 
   // Preload the logo image
   useEffect(() => {
@@ -172,11 +169,10 @@ export const useCanvasRenderer = ({
     }
   }, [unitSize]);
 
-  // Initialize space animation with browser-specific complexity
-  // Disable space animation for Safari/Firefox during loading, full for Chrome
+  // Initialize space animation with centralized browser-specific settings
   useSpaceAnimation(spaceCanvasRef, {
-    starCount: isSafari ? 0 : isFirefox ? 0 : 0, // Disable stars for Safari/Firefox
-    nebulaCount: isSafari ? 0 : isFirefox ? 0 : 3, // FIX: Disable nebula for Firefox during loading
+    starCount: 0, // Disabled for all browsers during loading
+    nebulaCount: browserPerf.enableSpaceAnimation ? 3 : 0, // Centralized space animation control
     canvasWidth: unitSize,
     canvasHeight: unitSize,
   });
@@ -491,10 +487,10 @@ export const useCanvasRenderer = ({
         stats.imageStats.length > 0
           ? ((stats.leastUsedImage.count / stats.mostUsedImage.count) * 100).toFixed(1) + '%'
           : 'N/A',
-      performanceMode: needsPerformanceMode ? 'enabled' : 'disabled',
+      performanceMode: browserUtils.needsPerformanceMode() ? 'enabled' : 'disabled',
       gridBounds: originalGridBounds.current,
     });
-  }, [imagesLoaded, images, unitSize, imagePlacementMap]);
+  }, [imagesLoaded, images, unitSize]);
 
   // Track images loaded progress
   useEffect(() => {
@@ -520,12 +516,34 @@ export const useCanvasRenderer = ({
     activeTiles.current.clear();
   }, [unitSize]);
 
-  // Update infinite grid when viewport changes
+  // STEP 6 FIX: Optimized infinite grid update with debouncing to prevent excessive calls during animations
+  const lastUpdateRef = useRef(0);
+  const updateDebounceDelay = 100; // 100ms debounce for smooth animations
+
+  // FIX #4: Use ref for viewState to prevent infinite re-renders
+  const viewStateRef = useRef(viewState);
+  viewStateRef.current = viewState;
+
+  // Update infinite grid when viewport changes (with debouncing)
   useEffect(() => {
-    if (placementsCalculated && originalGridBounds.current) {
-      updateInfiniteGrid(viewState);
+    if (!placementsCalculated || !originalGridBounds.current) return;
+
+    const now = performance.now();
+    const timeSinceLastUpdate = now - lastUpdateRef.current;
+
+    // Debounce rapid viewport changes during animations
+    if (timeSinceLastUpdate < updateDebounceDelay) {
+      const timeoutId = setTimeout(() => {
+        updateInfiniteGrid(viewStateRef.current);
+        lastUpdateRef.current = performance.now();
+      }, updateDebounceDelay - timeSinceLastUpdate);
+
+      return () => clearTimeout(timeoutId);
+    } else {
+      updateInfiniteGrid(viewStateRef.current);
+      lastUpdateRef.current = now;
     }
-  }, [viewState.x, viewState.y, viewState.scale, updateInfiniteGrid]);
+  }, [updateInfiniteGrid, placementsCalculated]); // FIX #4: Removed viewState to prevent infinite re-renders
 
   // Start product animation when images are loaded AND canvas is visible
   useEffect(() => {
@@ -629,8 +647,8 @@ export const useCanvasRenderer = ({
     const homeAreaHeight = unitSize;
 
     const draw = (currentTime: number) => {
-      // SAFARI PERFORMANCE: Frame throttling required for smooth hover animations
-      if (isSafari) {
+      // STEP 7: Centralized frame throttling based on browser performance settings
+      if (browserPerf.frameThrottling) {
         if (currentTime - frameThrottleRef.current < frameInterval) {
           animationFrameRef.current = requestAnimationFrame(draw);
           return;
@@ -650,7 +668,7 @@ export const useCanvasRenderer = ({
       const productPlacements = stableProductPlacements.current;
       const createTokenPositions = stableCreateTokenPositions.current;
 
-      const ANIMATION_DURATION = isSafari ? 400 : isFirefox ? 500 : 600; // Browser-specific animation speeds
+      const ANIMATION_DURATION = browserPerf.animationDuration; // Centralized animation duration
 
       // Check if the overall animation sequence is complete
       if (isProductAnimationActive && productAnimationStartTime) {
@@ -764,9 +782,9 @@ export const useCanvasRenderer = ({
           progress = 1 - progress;
         }
 
-        // SAFARI PERFORMANCE: Linear easing reduces computational overhead
-        if (isSafari) {
-          progress = progress; // Linear interpolation for Safari
+        // STEP 7: Centralized easing based on browser performance settings
+        if (browserPerf.useLinearEasing) {
+          progress = progress; // Linear interpolation for performance mode
         } else {
           progress = easeInOutCubic(progress);
         }
