@@ -25,21 +25,11 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('[Error Boundary] Caught error:', error, errorInfo);
 
-    // Firefox-specific error handling
+    // Additional error context for Firefox debugging if needed
     if (typeof window !== 'undefined' && navigator.userAgent.includes('Firefox')) {
-      console.warn('[Firefox] Error caught in boundary:', {
-        message: error.message,
-        stack: error.stack,
-        componentStack: errorInfo.componentStack,
-        userAgent: navigator.userAgent,
-      });
-
-      // Log additional Firefox-specific information
-      console.warn('[Firefox] Document state:', {
-        readyState: document.readyState,
-        fontsReady: document.fonts ? 'available' : 'not available',
-        imagesCount: document.querySelectorAll('img').length,
-      });
+      // Firefox-specific error context available for debugging
+      // Error details: message, stack, componentStack, userAgent
+      // Document state: readyState, fonts availability, images count
     }
   }
 

@@ -16,7 +16,7 @@ class Star {
   constructor() {
     this.x = (Math.random() - 0.5) * 2000;
     this.y = (Math.random() - 0.5) * 2000;
-    this.z = 500; // Fixed z position
+    this.z = 500;
     this.speed = Math.random() * 3 + 1.5; // Increased speed for each star
     this.prevX = this.x;
     this.prevY = this.y;
@@ -170,16 +170,9 @@ export function useSpaceAnimation(
     }
 
     let animationFrameId: number;
-    let frameCount = 0;
 
     // Animation loop
     const animate = () => {
-      frameCount++;
-      if (frameCount % 60 === 0) {
-        // Log every 60 frames (approx 1 second) to check if animation is running
-        console.log('Space animation frame:', frameCount);
-      }
-
       // Create a subtle fade effect instead of clearing completely
       ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
       ctx.fillRect(0, 0, width, height);

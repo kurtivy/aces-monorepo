@@ -17,12 +17,8 @@ const TopLoadingBar: React.FC<TopLoadingBarProps> = ({
   const [isAnimatingOut, setIsAnimatingOut] = useState(false);
 
   useEffect(() => {
-    // Debug logging for test debugging
-    console.log('🔄 TopLoadingBar state:', { isComplete, isAnimatingOut, loadingProgress });
-
     // When loading is complete, trigger immediate callback (no delay needed)
     if (isComplete && !isAnimatingOut) {
-      console.log('✅ TopLoadingBar starting fade-out animation');
       setIsAnimatingOut(true);
       onLoadingComplete(); // Call immediately - canvas is ready!
     }

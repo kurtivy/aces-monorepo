@@ -31,7 +31,6 @@ interface UseCanvasRendererProps {
   canvasRef?: React.RefObject<HTMLCanvasElement | null>; // Match the nullable type
 }
 
-// STEP 7: Centralized browser detection and performance settings
 const browserPerf = getBrowserPerformanceSettings();
 
 // Define grid tile structure for infinite repetition
@@ -73,7 +72,6 @@ export const useCanvasRenderer = ({
   // Use external canvasRef if provided, otherwise use internal one
   const activeCanvasRef = canvasRef || canvasRefInternal;
 
-  // STEP 5: Coordinated resize handling - canvas sizing managed automatically
   useCoordinatedResize({ canvasRef: activeCanvasRef });
   const animationFrameRef = useRef<number | null>(null);
   const [hoveredTokenIndex, setHoveredTokenIndex] = useState<number | null>(null);
@@ -108,8 +106,6 @@ export const useCanvasRenderer = ({
   const [productAnimationStartTime, setProductAnimationStartTime] = useState<number | null>(null);
   const [isProductAnimationActive, setIsProductAnimationActive] = useState(false);
 
-  // STEP 7: Centralized browser performance optimization
-  // Browser-specific canvas performance settings from centralized utility
   const frameThrottleRef = useRef(0);
   const targetFPS = browserPerf.targetFPS; // Centralized FPS setting
   const frameInterval = 1000 / targetFPS;
@@ -117,7 +113,6 @@ export const useCanvasRenderer = ({
   // Create a separate canvas for space animation
   const spaceCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // STABLE PLACEMENT STORAGE - Calculate once, use many times
   const stableProductPlacements = useRef<
     Array<{
       image: ImageInfo;
@@ -132,7 +127,6 @@ export const useCanvasRenderer = ({
   const stableCreateTokenPositions = useRef<Array<{ worldX: number; worldY: number }>>([]);
   const [placementsCalculated, setPlacementsCalculated] = useState(false);
 
-  // INFINITE GRID REPETITION STATE
   const originalGridBounds = useRef<{
     startX: number;
     startY: number;
@@ -177,7 +171,6 @@ export const useCanvasRenderer = ({
     canvasHeight: unitSize,
   });
 
-  // INFINITE GRID UTILITIES
   const calculateRequiredTiles = useCallback((currentViewState: ViewState): GridTile[] => {
     if (!originalGridBounds.current) return [];
 
@@ -303,14 +296,11 @@ export const useCanvasRenderer = ({
     [calculateRequiredTiles, generateRepeatedPlacementsForTile],
   );
 
-  // CALCULATE PLACEMENTS ONCE - when images load or unitSize changes
   const calculatePlacements = useCallback(() => {
     if (!imagesLoaded || placementsCalculated) return;
 
-    // Update progress: Starting placement calculations (40%)
     setCanvasProgress(40);
 
-    // Reset global tracking when recalculating placements
     resetGlobalPlacementTracking();
 
     const homeAreaWorldX = -unitSize;
@@ -318,12 +308,9 @@ export const useCanvasRenderer = ({
     const homeAreaWidth = unitSize * 2;
     const homeAreaHeight = unitSize;
 
-    // Calculate grid area based on number of images to ensure all can be displayed
-    // We have 24 products + create token squares, so we need adequate space
     const totalProducts = images.length;
     const estimatedGridCells = Math.ceil(Math.sqrt(totalProducts * 1.5)); // 1.5x for create tokens and spacing
 
-    // LIMIT grid size to prevent performance issues
     const maxGridCells = 16; // Maximum 16x16 grid to prevent freeze
     const actualGridCells = Math.min(Math.max(12, estimatedGridCells), maxGridCells);
     const gridSize = unitSize * actualGridCells;
@@ -332,15 +319,6 @@ export const useCanvasRenderer = ({
     const gridEndX = gridSize;
     const gridEndY = gridSize;
 
-    console.log('Grid calculation:', {
-      totalProducts,
-      estimatedGridCells,
-      actualGridCells,
-      gridSize,
-      totalCells: (actualGridCells * 2) ** 2,
-    });
-
-    // Store original grid bounds for infinite repetition
     originalGridBounds.current = {
       startX: gridStartX,
       startY: gridStartY,
@@ -362,7 +340,6 @@ export const useCanvasRenderer = ({
     }> = [];
     const createTokenPositions: Array<{ worldX: number; worldY: number }> = [];
 
-    // Mark home area as occupied
     for (let i = 0; i < 2; i++) {
       for (let j = 0; j < 1; j++) {
         const cellX = Math.floor((homeAreaWorldX + i * unitSize) / unitSize);
@@ -371,24 +348,17 @@ export const useCanvasRenderer = ({
       }
     }
 
-    // Place images in a grid pattern
     let productIndex = 0;
     const totalCells = ((gridEndY - gridStartY) / unitSize) * ((gridEndX - gridStartX) / unitSize);
     let processedCells = 0;
-
-    console.log('Starting placement calculation for', totalCells, 'cells');
 
     for (let y = gridStartY; y < gridEndY; y += unitSize) {
       for (let x = gridStartX; x < gridEndX; x += unitSize) {
         processedCells++;
 
-        // Update progress every 200 cells to reduce Firefox state updates
         if (processedCells % 200 === 0) {
           const progress = 40 + (processedCells / totalCells) * 30; // 40% to 70%
           setCanvasProgress(Math.min(progress, 69));
-          console.log(
-            `Placement progress: ${processedCells}/${totalCells} cells (${progress.toFixed(1)}%)`,
-          );
         }
         const gridX = Math.floor(x / unitSize);
         const gridY = Math.floor(y / unitSize);
@@ -441,7 +411,6 @@ export const useCanvasRenderer = ({
               });
             }
 
-            // Record this placement for adjacency tracking
             recordImagePlacement(gridX, gridY, imageInfo);
 
             markSpaceOccupied(x, y, width, height, occupiedSpaces, unitSize);
@@ -456,43 +425,17 @@ export const useCanvasRenderer = ({
       }
     }
 
-    // Store stable placements
     stableProductPlacements.current = productPlacements;
     stableCreateTokenPositions.current = createTokenPositions;
     setPlacementsCalculated(true);
 
-    // Update progress: Placements calculated (70%)
     setCanvasProgress(70);
-    console.log('✅ Placement calculations complete!', {
-      productPlacements: productPlacements.length,
-      createTokenPositions: createTokenPositions.length,
-      totalProcessed: processedCells,
-    });
 
-    // Clear any existing repeated placements when recalculating
     repeatedPlacements.current.clear();
     repeatedTokens.current.clear();
     activeTiles.current.clear();
-
-    // Log image usage statistics for debugging
-    const stats = getImageUsageStats();
-    console.log('Image Distribution Stats:', {
-      totalProducts: productPlacements.length,
-      totalCreateTokens: createTokenPositions.length,
-      totalPlacements: stats.totalPlacements,
-      imageCount: stats.imageStats.length,
-      mostUsed: stats.mostUsedImage,
-      leastUsed: stats.leastUsedImage,
-      distributionBalance:
-        stats.imageStats.length > 0
-          ? ((stats.leastUsedImage.count / stats.mostUsedImage.count) * 100).toFixed(1) + '%'
-          : 'N/A',
-      performanceMode: browserUtils.needsPerformanceMode() ? 'enabled' : 'disabled',
-      gridBounds: originalGridBounds.current,
-    });
   }, [imagesLoaded, images, unitSize]);
 
-  // Track images loaded progress
   useEffect(() => {
     if (imagesLoaded) {
       setCanvasProgress(30); // Images loaded, ready for placement calculations
@@ -516,11 +459,9 @@ export const useCanvasRenderer = ({
     activeTiles.current.clear();
   }, [unitSize]);
 
-  // STEP 6 FIX: Optimized infinite grid update with debouncing to prevent excessive calls during animations
   const lastUpdateRef = useRef(0);
   const updateDebounceDelay = 100; // 100ms debounce for smooth animations
 
-  // FIX #4: Use ref for viewState to prevent infinite re-renders
   const viewStateRef = useRef(viewState);
   viewStateRef.current = viewState;
 
@@ -543,7 +484,7 @@ export const useCanvasRenderer = ({
       updateInfiniteGrid(viewStateRef.current);
       lastUpdateRef.current = now;
     }
-  }, [updateInfiniteGrid, placementsCalculated]); // FIX #4: Removed viewState to prevent infinite re-renders
+  }, [updateInfiniteGrid, placementsCalculated]);
 
   // Start product animation when images are loaded AND canvas is visible
   useEffect(() => {
@@ -625,7 +566,6 @@ export const useCanvasRenderer = ({
     // Disable only during static rendering to maintain performance
     ctx.imageSmoothingEnabled = true;
 
-    // STEP 5: Canvas sizing now handled by useCoordinatedResize hook
     const updateCanvasSize = () => {
       const dpr = window.devicePixelRatio || 1;
       canvas.width = window.innerWidth * dpr;
@@ -647,7 +587,6 @@ export const useCanvasRenderer = ({
     const homeAreaHeight = unitSize;
 
     const draw = (currentTime: number) => {
-      // STEP 7: Centralized frame throttling based on browser performance settings
       if (browserPerf.frameThrottling) {
         if (currentTime - frameThrottleRef.current < frameInterval) {
           animationFrameRef.current = requestAnimationFrame(draw);
@@ -782,7 +721,6 @@ export const useCanvasRenderer = ({
           progress = 1 - progress;
         }
 
-        // STEP 7: Centralized easing based on browser performance settings
         if (browserPerf.useLinearEasing) {
           progress = progress; // Linear interpolation for performance mode
         } else {
@@ -886,10 +824,7 @@ export const useCanvasRenderer = ({
 
     animationFrameRef.current = requestAnimationFrame(draw);
 
-    // STEP 5: Resize listener removed - now handled by useCoordinatedResize
-
     return () => {
-      // STEP 5: No longer need to remove resize listener
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }

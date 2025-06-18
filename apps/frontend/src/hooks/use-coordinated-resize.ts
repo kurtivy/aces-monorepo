@@ -65,7 +65,7 @@ export const useCoordinatedResize = ({ canvasRef }: UseCoordinatedResizeProps = 
         // Restore canvas scaling
         ctx.scale(dpr, dpr);
       } catch (error) {
-        console.warn('Canvas resize error:', error);
+        // Canvas resize error - continue silently
       }
     },
     [canvasRef],
@@ -91,7 +91,6 @@ export const useCoordinatedResize = ({ canvasRef }: UseCoordinatedResizeProps = 
     debounceTimerRef.current = setTimeout(() => {
       const newUnitSize = getUnitSize(newWidth);
 
-      // STEP 5: Coordinated update order
       // 1. Update all resize state in a single batched update
       setResizeState({
         windowWidth: newWidth,
@@ -112,19 +111,12 @@ export const useCoordinatedResize = ({ canvasRef }: UseCoordinatedResizeProps = 
             canvas.style.height = `${newHeight}px`;
             ctx.scale(dpr, dpr);
           } catch (error) {
-            console.warn('Canvas resize error:', error);
+            // Canvas resize error - continue silently
           }
         }
       }
-
-      console.log('🔄 Coordinated resize complete:', {
-        width: newWidth,
-        height: newHeight,
-        unitSize: newUnitSize,
-        timestamp: Date.now(),
-      });
     }, 1000); // Increased to 1000ms for better debouncing in tests
-  }, [canvasRef]); // STEP 6 FIX: Only depend on stable canvasRef
+  }, [canvasRef]);
 
   // Single resize listener setup
   useEffect(() => {
@@ -141,7 +133,7 @@ export const useCoordinatedResize = ({ canvasRef }: UseCoordinatedResizeProps = 
           canvas.style.height = `${resizeState.windowHeight}px`;
           ctx.scale(dpr, dpr);
         } catch (error) {
-          console.warn('Canvas resize error:', error);
+          // Canvas resize error - continue silently
         }
       }
     }
@@ -156,7 +148,7 @@ export const useCoordinatedResize = ({ canvasRef }: UseCoordinatedResizeProps = 
         clearTimeout(debounceTimerRef.current);
       }
     };
-  }, [handleResize]); // STEP 6 FIX: Only depend on stable handleResize
+  }, [handleResize]);
 
   return {
     // For infinite-canvas.tsx

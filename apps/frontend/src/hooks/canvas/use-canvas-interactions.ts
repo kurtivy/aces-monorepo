@@ -41,7 +41,7 @@ export const useCanvasInteractions = ({
       // CRITICAL: Early exit if anything isn't ready (Firefox-specific safeguard)
       try {
         if (!viewState || !imagePlacementMap.current || !setSelectedImage) {
-          console.warn('[Firefox] Dependencies not ready for click handling');
+          // Dependencies not ready for click handling
           return;
         }
       } catch (error) {
@@ -49,7 +49,6 @@ export const useCanvasInteractions = ({
         return;
       }
 
-      // FIX: Handle touch events properly for touchend
       let clientX: number;
       let clientY: number;
 
@@ -57,7 +56,7 @@ export const useCanvasInteractions = ({
         // For touch events, use changedTouches if touches is empty (on touchend)
         const touch = event.touches[0] || event.changedTouches?.[0];
         if (!touch) {
-          console.warn('No touch data available');
+          // No touch data available
           return;
         }
         clientX = touch.clientX;
@@ -117,7 +116,7 @@ export const useCanvasInteractions = ({
 
       // Firefox-specific: Additional safety check for placement map
       if (!imagePlacementMap.current || imagePlacementMap.current.size === 0) {
-        console.warn('[Firefox] Image placement map not ready, ignoring click');
+        // Image placement map not ready, ignoring click
         return;
       }
 
@@ -126,7 +125,7 @@ export const useCanvasInteractions = ({
         for (const placedItem of imagePlacementMap.current.values()) {
           // Firefox-specific: Extra validation
           if (!placedItem || !placedItem.image) {
-            console.warn('[Firefox] Invalid placed item detected, skipping');
+            // Invalid placed item detected, skipping
             continue;
           }
 
@@ -138,7 +137,7 @@ export const useCanvasInteractions = ({
           }
         }
       } catch (error) {
-        console.warn('[Firefox] Error iterating placement map:', error);
+        // Error iterating placement map
         return;
       }
 
@@ -149,18 +148,8 @@ export const useCanvasInteractions = ({
             window.location.href = '/create-token';
           } else {
             setSelectedImage(clickedImageInfo);
-            // Enhanced safe metadata access with Firefox-specific logging
             const safeMetadata = getImageMetadata(clickedImageInfo);
             LuxuryLogger.log(`Product image clicked: ${safeMetadata.title}`, 'info');
-
-            // STEP 7: Centralized browser detection for debugging
-            if (browserUtils.isFirefox()) {
-              console.log('[Firefox] Click processed successfully:', {
-                hasMetadata: !!clickedImageInfo.metadata,
-                safeTitle: safeMetadata.title,
-                originalTitle: clickedImageInfo.metadata?.title,
-              });
-            }
           }
         } catch (error) {
           console.error('[Firefox] Error handling image click:', error);

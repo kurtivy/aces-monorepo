@@ -37,14 +37,10 @@ export const useViewState = ({
   const [showHomeButton, setShowHomeButton] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
 
-  // FIX #2: Prevent multiple setIsAnimating calls with ref-based state tracking
   const isAnimatingRef = useRef(false);
 
-  // FIX #6: Use ref for viewState to prevent home button infinite re-renders
   const viewStateRef = useRef(viewState);
 
-  // FIX #7: Update viewState ref without causing re-renders
-  // Use a direct assignment instead of useEffect to prevent infinite loops
   viewStateRef.current = viewState;
 
   const animationStartTime = useRef(0);
@@ -57,8 +53,6 @@ export const useViewState = ({
   const canvasWidth = useRef(0);
   const canvasHeight = useRef(0);
 
-  // STEP 5: Canvas dimensions now managed by useCoordinatedResize hook
-  // Initialize dimensions immediately
   canvasWidth.current = typeof window !== 'undefined' ? window.innerWidth : 1024;
   canvasHeight.current = typeof window !== 'undefined' ? window.innerHeight : 768;
 
@@ -88,8 +82,6 @@ export const useViewState = ({
     centeredOnce.current = true;
   }, [imagesLoaded, initialScale]);
 
-  // FIX #8: Completely eliminate showHomeButton re-render loop
-  // Move calculation to a callback that's triggered by viewState changes
   const showHomeButtonDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const initialScaleRef = useRef(initialScale);
   initialScaleRef.current = initialScale;
@@ -100,7 +92,6 @@ export const useViewState = ({
       clearTimeout(showHomeButtonDebounceRef.current);
     }
 
-    // Debounce the home button visibility calculation
     showHomeButtonDebounceRef.current = setTimeout(() => {
       const currentUnitSize = canvasWidth.current < 768 ? 150 : 200;
       const currentHomeAreaWidth = currentUnitSize * 2;
@@ -108,7 +99,6 @@ export const useViewState = ({
       const currentHomeAreaWorldX = -currentUnitSize;
       const currentHomeAreaWorldY = -currentUnitSize;
 
-      // Use viewStateRef to prevent infinite re-renders
       const vsRef = viewStateRef.current;
       const homeAreaCenterX =
         (currentHomeAreaWorldX + currentHomeAreaWidth / 2) * vsRef.scale + vsRef.x;
@@ -130,10 +120,9 @@ export const useViewState = ({
         Math.abs(vsRef.scale - initialScaleRef.current) / initialScaleRef.current > scaleThreshold;
 
       setShowHomeButton(isPannedFar || isZoomedEnough);
-    }, 100); // 100ms debounce to prevent rapid updates
-  }, []); // FIX #8: Empty dependency array - no re-renders
+    }, 100);
+  }, []);
 
-  // FIX #9: Update home button visibility when target values change (using refs to prevent infinite loops)
   const prevTargetRef = useRef({
     x: viewState.targetX,
     y: viewState.targetY,
@@ -144,7 +133,6 @@ export const useViewState = ({
     const prev = prevTargetRef.current;
     const current = { x: viewState.targetX, y: viewState.targetY, scale: viewState.targetScale };
 
-    // Only update if values actually changed
     if (prev.x !== current.x || prev.y !== current.y || prev.scale !== current.scale) {
       updateHomeButtonVisibility();
       prevTargetRef.current = current;
@@ -155,7 +143,7 @@ export const useViewState = ({
         clearTimeout(showHomeButtonDebounceRef.current);
       }
     };
-  }); // No dependency array - runs on every render but only updates when values change
+  });
 
   const animateToHome = useCallback(() => {
     const currentUnitSize = canvasWidth.current < 768 ? 150 : 200;
@@ -183,14 +171,12 @@ export const useViewState = ({
     }));
 
     animationStartTime.current = performance.now();
-    // FIX #2: Use ref to prevent multiple setIsAnimating calls
     if (!isAnimatingRef.current) {
       setIsAnimating(true);
       isAnimatingRef.current = true;
     }
   }, [initialScale]);
 
-  // FIX #3: Create stable animation function to prevent infinite re-renders
   const animateViewState = useCallback(() => {
     const elapsed = performance.now() - animationStartTime.current;
     const currentDuration =
@@ -207,7 +193,6 @@ export const useViewState = ({
         const newScale = lerp(prev.scale, prev.targetScale, easedProgress);
 
         if (progress === 1) {
-          // FIX #2 & #5: Prevent multiple setIsAnimating calls and avoid setTimeout
           if (isAnimatingRef.current) {
             setIsAnimating(false);
             isAnimatingRef.current = false;
@@ -247,7 +232,6 @@ export const useViewState = ({
         Math.abs(newScale - prev.targetScale) < 0.0001;
 
       if (isComplete) {
-        // FIX #2 & #5: Prevent multiple setIsAnimating calls and avoid setTimeout
         if (isAnimatingRef.current) {
           setIsAnimating(false);
           isAnimatingRef.current = false;
@@ -273,68 +257,58 @@ export const useViewState = ({
         targetScale: prev.targetScale,
       };
     });
-  }, []); // FIX #3: Empty dependency array for stable callback
+  }, []);
 
-  const handleWheel = useCallback(
-    (event: React.WheelEvent<HTMLCanvasElement>) => {
-      event.preventDefault();
+  const handleWheel = useCallback((event: React.WheelEvent<HTMLCanvasElement>) => {
+    event.preventDefault();
 
-      let deltaX = event.deltaX;
-      let deltaY = event.deltaY;
+    let deltaX = event.deltaX;
+    let deltaY = event.deltaY;
 
-      const isTrackpad = event.deltaMode === 0 && Math.abs(event.deltaY) < 100;
-      const sensitivity = isTrackpad ? 1.0 : 2.0;
-      deltaX *= sensitivity;
-      deltaY *= sensitivity;
+    const isTrackpad = event.deltaMode === 0 && Math.abs(event.deltaY) < 100;
+    const sensitivity = isTrackpad ? 1.0 : 2.0;
+    deltaX *= sensitivity;
+    deltaY *= sensitivity;
 
-      setViewState((prev) => {
-        // Use current scale from prev state instead of viewState.scale to avoid infinite re-renders
-        const zoomFactor = 1 / Math.max(0.1, prev.scale);
-        const adjustedDeltaX = deltaX * zoomFactor;
-        const adjustedDeltaY = deltaY * zoomFactor;
+    setViewState((prev) => {
+      const zoomFactor = 1 / Math.max(0.1, prev.scale);
+      const adjustedDeltaX = deltaX * zoomFactor;
+      const adjustedDeltaY = deltaY * zoomFactor;
 
-        const newTargetX = prev.targetX - adjustedDeltaX;
-        const newTargetY = prev.targetY - adjustedDeltaY;
+      const newTargetX = prev.targetX - adjustedDeltaX;
+      const newTargetY = prev.targetY - adjustedDeltaY;
 
-        return {
-          ...prev,
-          targetX: newTargetX,
-          targetY: newTargetY,
-        };
-      });
-
-      // FIX #2: Prevent multiple setIsAnimating calls
-      if (!isAnimatingRef.current) {
-        animationStartTime.current = performance.now();
-        setIsAnimating(true);
-        isAnimatingRef.current = true;
-      }
-    },
-    [], // FIX #10: Empty dependency array to prevent infinite re-renders (was [isAnimating])
-  );
-
-  const updateViewState = useCallback(
-    (deltaX: number, deltaY: number) => {
-      // Apply sensitivity control to make movement less jumpy
-      const sensitivity = 0.05; // Reduce sensitivity to 5% for much slower mobile movement
-      const adjustedDeltaX = deltaX * sensitivity;
-      const adjustedDeltaY = deltaY * sensitivity;
-
-      setViewState((prev) => ({
+      return {
         ...prev,
-        targetX: prev.targetX + adjustedDeltaX,
-        targetY: prev.targetY + adjustedDeltaY,
-      }));
+        targetX: newTargetX,
+        targetY: newTargetY,
+      };
+    });
 
-      // FIX #2: Prevent multiple setIsAnimating calls
-      if (!isAnimatingRef.current) {
-        animationStartTime.current = performance.now();
-        setIsAnimating(true);
-        isAnimatingRef.current = true;
-      }
-    },
-    [], // FIX #10: Empty dependency array to prevent infinite re-renders in Brave
-  );
+    if (!isAnimatingRef.current) {
+      animationStartTime.current = performance.now();
+      setIsAnimating(true);
+      isAnimatingRef.current = true;
+    }
+  }, []);
+
+  const updateViewState = useCallback((deltaX: number, deltaY: number) => {
+    const sensitivity = 0.05;
+    const adjustedDeltaX = deltaX * sensitivity;
+    const adjustedDeltaY = deltaY * sensitivity;
+
+    setViewState((prev) => ({
+      ...prev,
+      targetX: prev.targetX + adjustedDeltaX,
+      targetY: prev.targetY + adjustedDeltaY,
+    }));
+
+    if (!isAnimatingRef.current) {
+      animationStartTime.current = performance.now();
+      setIsAnimating(true);
+      isAnimatingRef.current = true;
+    }
+  }, []);
 
   return {
     viewState,

@@ -29,7 +29,7 @@ export const safeMetadataAccess = <T>(
   try {
     if (!obj || typeof obj !== 'object' || !('metadata' in obj)) {
       if (context) {
-        console.warn(`Safe metadata access: ${context} - object or metadata is undefined`);
+        // Safe metadata access: context - object or metadata is undefined
       }
       return fallback;
     }
@@ -52,7 +52,6 @@ export const safeMetadataAccess = <T>(
 // Type-safe metadata access for ImageInfo objects
 export const getImageMetadata = (imageInfo: unknown) => {
   if (!imageInfo || typeof imageInfo !== 'object' || !('metadata' in imageInfo)) {
-    console.warn('ImageInfo or metadata is undefined');
     return {
       id: 'unknown',
       title: 'Unknown Item',

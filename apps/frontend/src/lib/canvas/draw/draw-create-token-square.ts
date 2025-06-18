@@ -9,7 +9,6 @@ let lastCacheClear = 0;
 const CACHE_CLEAR_INTERVAL = 30000; // Clear every 30 seconds (less aggressive)
 const MAX_CACHE_SIZE = 100; // Limit cache size to prevent memory issues
 
-// STEP 7: Centralized browser detection - replaces scattered user-agent checks
 const needsPerformanceMode = browserUtils.needsPerformanceMode();
 
 // Create a cached gradient with a unique key that includes position
@@ -110,12 +109,10 @@ export const drawCreateTokenSquare = (
     ctx.globalAlpha = 1.0;
   }
 
-  // Simplified dot pattern for Safari/Firefox performance
-  // For performance mode browsers, only show dots on significant hover and reduce complexity
   const dotThreshold = needsPerformanceMode ? 0.5 : 0.1;
   if (hoverProgress > dotThreshold) {
     ctx.save();
-    const dotSpacing = needsPerformanceMode ? 24 : 16; // Fewer dots for performance mode
+    const dotSpacing = needsPerformanceMode ? 24 : 16;
     const time = animationTime * 0.001;
 
     // Pre-calculate logo exclusion area
@@ -123,7 +120,6 @@ export const drawCreateTokenSquare = (
 
     for (let dotX = x + padding + 8; dotX < x + padding + size - 8; dotX += dotSpacing) {
       for (let dotY = y + padding + 8; dotY < y + padding + size - 8; dotY += dotSpacing) {
-        // Skip dots that would be too close to the center logo area (if logo exists)
         if (logoImage) {
           const distanceFromCenter = Math.sqrt(
             Math.pow(dotX - centerX, 2) + Math.pow(dotY - centerY, 2),
@@ -133,7 +129,6 @@ export const drawCreateTokenSquare = (
           }
         }
 
-        // Simplified animation for each dot
         const baseOpacity = 0.12 * hoverProgress; // Scale with hover progress
 
         // For performance mode browsers, use static opacity
@@ -156,7 +151,6 @@ export const drawCreateTokenSquare = (
 
   ctx.restore();
 
-  // Simplified inner glow effect with position and hover-specific cache key
   const innerGlowSize = size - 4;
   const innerGlowPadding = (unitSize - innerGlowSize) / 2;
 
@@ -190,7 +184,6 @@ export const drawCreateTokenSquare = (
   ctx.fillRect(x + innerGlowPadding, y + innerGlowPadding, innerGlowSize, innerGlowSize);
   ctx.restore();
 
-  // Simplified border - remove shadow blur for Safari/Firefox performance
   // Layer 1: Main border without shadow
   const borderOpacity = lerp(0.6, 0.9, hoverProgress);
   ctx.strokeStyle = `rgba(208, 178, 100, ${borderOpacity})`;
@@ -227,7 +220,6 @@ export const drawCreateTokenSquare = (
     // Center the logo vertically
     const logoY = centerY - logoSize / 2;
 
-    // Simplified logo rendering - remove shadow effects for performance mode
     ctx.save();
     ctx.globalAlpha = lerp(0.85, 1, hoverProgress);
     ctx.drawImage(logoImage, logoX, logoY, logoSize, logoSize);
@@ -239,12 +231,9 @@ export const drawCreateTokenSquare = (
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
-  // "CREATE TOKEN" as a more prominent title
-  // Position it higher in the box for better spacing
   const createTokenFontSize = lerp(unitSize * 0.09, unitSize * 0.11, hoverProgress); // Scaled font size
   ctx.font = `bold ${createTokenFontSize}px 'Syne'`; // Changed to Syne to match home area
 
-  // Simplified text rendering - no shadow effects for performance
   // Gold gradient for text with position-specific cache key
   const textGradientKey = `text-${tokenId}-${unitSize}`;
   const textGradient = getCachedGradient(
@@ -339,7 +328,6 @@ export const drawCreateTokenSquare = (
 
   ctx.restore();
 
-  // Simplified shine effect - disable for performance mode entirely
   const shineThreshold = needsPerformanceMode ? 1.0 : 0.3; // Disable shine for performance mode
   if (hoverProgress > shineThreshold) {
     ctx.save();
@@ -352,7 +340,6 @@ export const drawCreateTokenSquare = (
     const shineX = x + padding + size * lerp(-0.1, 0.2, hoverProgress);
     const shineY = y + padding;
 
-    // Simplified gradient with position-specific cache key
     const shineGradientKey = `shine-${tokenId}-${hoverState}-${shineOpacity.toFixed(3)}`;
     const shineGradient = getCachedGradient(
       ctx,

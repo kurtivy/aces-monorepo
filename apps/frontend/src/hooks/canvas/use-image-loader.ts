@@ -56,7 +56,7 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
     try {
       window.localStorage.removeItem('aces-images-loaded');
     } catch (error) {
-      console.warn('Could not clear image loading flag:', error);
+      // Could not clear image loading flag - continue anyway
     }
 
     // Load ALL images to ensure complete product showcase
@@ -72,16 +72,16 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
       try {
         window.localStorage.setItem('aces-images-loaded', 'true');
       } catch (error) {
-        console.warn('Could not set image loading flag for empty state:', error);
+        // Could not set image loading flag for empty state - continue anyway
       }
       return;
     }
 
     const finishLoading = () => {
       // PRODUCTION FIX: Ensure all images have metadata before setting state
-      const validImages = loadedImages.filter((img, index) => {
+      const validImages = loadedImages.filter((img) => {
         if (!img || !img.metadata) {
-          console.warn(`Image at index ${index} missing metadata, filtering out`);
+          // Image missing metadata, filtering out
           return false;
         }
         return true;
@@ -98,7 +98,7 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
             'info',
           );
         } catch (error) {
-          console.warn('Could not set image loading flag:', error);
+          // Could not set image loading flag - continue anyway
         }
 
         // Minimal delay to allow the 100% to register before the fade-out
@@ -110,7 +110,7 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
           );
         }, 200); // Increased delay for production stability
       } else {
-        console.warn('No valid images loaded, retrying in 500ms...');
+        // No valid images loaded, retrying
         setTimeout(() => {
           finishLoading(); // Retry
         }, 500);
@@ -126,7 +126,7 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
           window.localStorage.setItem('aces-images-loaded', 'true');
           LuxuryLogger.log('Image loading timeout - marked as complete anyway', 'warn');
         } catch (error) {
-          console.warn('Could not set image loading flag on timeout:', error);
+          // Could not set image loading flag on timeout - continue anyway
         }
         finishLoading();
       },
@@ -147,7 +147,7 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
     imagesToLoad.forEach((metadata, index) => {
       // Enhanced null safety check
       if (!metadata) {
-        console.warn(`Metadata is null at index ${index}, skipping image`);
+        // Metadata is null, skipping image
         updateState();
         return;
       }
@@ -196,7 +196,7 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
                 height = img.naturalHeight || img.height || 200;
 
                 if (width === 0 || height === 0) {
-                  console.warn('Firefox: Using fallback dimensions for image', img.src);
+                  // Using fallback dimensions for image
                   width = 200;
                   height = 200;
                 }
@@ -216,7 +216,7 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
                   };
                   updateState();
                 } else {
-                  console.warn('Metadata became null during image load processing');
+                  // Metadata became null during image load processing
                   handleError();
                 }
               }, 100);
@@ -246,14 +246,14 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
               };
               updateState();
             } else {
-              console.warn('Metadata became null during image load processing');
+              // Metadata became null during image load processing
               handleError();
             }
           };
 
           getDimensions();
         } catch (error) {
-          console.warn('Image load processing error:', error);
+          // Image load processing error
           handleError(); // Fallback to error handling
         }
       };

@@ -17,23 +17,15 @@ const IntroAnimation: React.FC<IntroAnimationProps> = ({ onIntroAnimationComplet
 
   // Track when both logo and text animations are complete
   useEffect(() => {
-    console.log('🔄 IntroAnimation State Update:', {
-      logoComplete,
-      textComplete,
-      timestamp: Date.now(),
-    });
-
     if (logoComplete && textComplete) {
-      console.log('✅ Both animations complete, starting completion timer');
-      // TEMPORARY: Add a small delay for Playwright to detect the element
-      const debugTimer = setTimeout(() => {
-        console.log('✅ IntroAnimation complete callback triggered');
+      // Add a small delay for smooth transition
+      const completionTimer = setTimeout(() => {
         if (onIntroAnimationComplete) {
           onIntroAnimationComplete();
         }
-      }, 500); // 500ms delay for debugging
+      }, 500);
 
-      return () => clearTimeout(debugTimer);
+      return () => clearTimeout(completionTimer);
     }
   }, [logoComplete, textComplete, onIntroAnimationComplete]);
 
@@ -44,7 +36,7 @@ const IntroAnimation: React.FC<IntroAnimationProps> = ({ onIntroAnimationComplet
           data-testid="intro-animation"
           initial={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 2.0 }} // Increased for debugging Playwright detection
+          transition={{ duration: 2.0 }}
           className="fixed inset-0 min-h-screen bg-black flex flex-col items-center justify-center overflow-hidden z-50"
         >
           <LoadingStyles />

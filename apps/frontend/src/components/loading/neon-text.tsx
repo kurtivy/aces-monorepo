@@ -11,11 +11,9 @@ const NeonText: React.FC<NeonTextProps> = ({ onComplete }) => {
   const fullText = 'ACES.FUN';
 
   useEffect(() => {
-    // STEP 3 FIX: Consolidate 4 nested timers into single clean animation
     const textStartDelay = 2200; // Standard delay for all browsers
     const letterDelay = 120; // Standard timing for all browsers
 
-    // Single timer to start letter animation - no nested complexity
     const startTimer = setTimeout(() => {
       let currentLetter = 0;
 
@@ -27,12 +25,6 @@ const NeonText: React.FC<NeonTextProps> = ({ onComplete }) => {
           // Schedule next letter animation
           setTimeout(animateNextLetter, letterDelay);
         } else {
-          // All letters are visible, animation complete
-          console.log(
-            '✅ NeonText animation complete after',
-            textStartDelay + fullText.length * letterDelay,
-            'ms',
-          );
           if (onComplete) {
             onComplete();
           }

@@ -187,7 +187,6 @@ export const getImageCandidatesForPosition = (
     // PRODUCTION FIX: Filter out any images without metadata early
     const validImages = imagesRefCurrent.filter((img) => {
       if (!img || !img.metadata) {
-        console.warn('Filtering out image without metadata in grid placement');
         return false;
       }
       return true;
@@ -197,7 +196,7 @@ export const getImageCandidatesForPosition = (
     for (const img of validImages) {
       // Additional safety check (should be redundant now)
       if (!img.metadata) {
-        console.warn('Image with missing metadata detected, skipping:', img);
+        // Image with missing metadata detected, skipping
         continue;
       }
       const imageId = img.metadata.id || img.metadata.title || 'unknown';
@@ -210,7 +209,7 @@ export const getImageCandidatesForPosition = (
     const sortedImages = [...validImages].sort((a, b) => {
       // Additional null safety checks (KEEP PRODUCTION SAFETY)
       if (!a.metadata || !b.metadata) {
-        console.warn('Image metadata missing during sort');
+        // Image metadata missing during sort
         return 0;
       }
 
@@ -231,7 +230,7 @@ export const getImageCandidatesForPosition = (
     for (const img of sortedImages) {
       // Additional null safety check (KEEP PRODUCTION SAFETY)
       if (!img.metadata) {
-        console.warn('Image metadata missing during placement consideration');
+        // Image metadata missing during placement consideration
         continue;
       }
 
@@ -263,7 +262,7 @@ export const getImageCandidatesForPosition = (
 export const recordImagePlacement = (gridX: number, gridY: number, imageInfo: ImageInfo) => {
   // Add null safety for metadata access
   if (!imageInfo.metadata) {
-    console.warn('Attempting to record placement for image without metadata');
+    // Attempting to record placement for image without metadata
     return;
   }
 
