@@ -60,3 +60,11 @@ lerna-debug.log*
 
 # TurboRepo
 .turbo
+
+# Testing and Documentation (Phase 1 work)
+test-results/
+playwright-report/
+zBUGS/
+STEP4_COMPLETION_PLAN.md
+apps/frontend/__tests__/
+playwright.config.ts
