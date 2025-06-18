@@ -100,7 +100,22 @@ export const useCoordinatedResize = ({ canvasRef }: UseCoordinatedResizeProps = 
       });
 
       // 2. Update canvas DOM element size after state update
-      updateCanvasSize(newWidth, newHeight);
+      const canvas = canvasRef?.current;
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          try {
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = newWidth * dpr;
+            canvas.height = newHeight * dpr;
+            canvas.style.width = `${newWidth}px`;
+            canvas.style.height = `${newHeight}px`;
+            ctx.scale(dpr, dpr);
+          } catch (error) {
+            console.warn('Canvas resize error:', error);
+          }
+        }
+      }
 
       console.log('🔄 Coordinated resize complete:', {
         width: newWidth,
@@ -109,13 +124,26 @@ export const useCoordinatedResize = ({ canvasRef }: UseCoordinatedResizeProps = 
         timestamp: Date.now(),
       });
     }, 1000); // Increased to 1000ms for better debouncing in tests
-  }, [updateCanvasSize]);
+  }, [canvasRef]); // STEP 6 FIX: Only depend on stable canvasRef
 
   // Single resize listener setup
   useEffect(() => {
     // Initialize canvas size on mount
-    if (canvasRef?.current) {
-      updateCanvasSize(resizeState.windowWidth, resizeState.windowHeight);
+    const canvas = canvasRef?.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        try {
+          const dpr = window.devicePixelRatio || 1;
+          canvas.width = resizeState.windowWidth * dpr;
+          canvas.height = resizeState.windowHeight * dpr;
+          canvas.style.width = `${resizeState.windowWidth}px`;
+          canvas.style.height = `${resizeState.windowHeight}px`;
+          ctx.scale(dpr, dpr);
+        } catch (error) {
+          console.warn('Canvas resize error:', error);
+        }
+      }
     }
 
     // Add single resize listener
@@ -128,7 +156,7 @@ export const useCoordinatedResize = ({ canvasRef }: UseCoordinatedResizeProps = 
         clearTimeout(debounceTimerRef.current);
       }
     };
-  }, [handleResize, updateCanvasSize, resizeState.windowWidth, resizeState.windowHeight]);
+  }, [handleResize]); // STEP 6 FIX: Only depend on stable handleResize
 
   return {
     // For infinite-canvas.tsx
