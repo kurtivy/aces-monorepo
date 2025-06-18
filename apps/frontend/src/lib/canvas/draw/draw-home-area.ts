@@ -1,4 +1,5 @@
 import { UNIT_SIZE } from '../../../constants/canvas';
+import { browserUtils } from '../../utils/browser-utils';
 
 export const drawHomeArea = (
   ctx: CanvasRenderingContext2D,
@@ -29,8 +30,8 @@ export const drawHomeArea = (
   ctx.fillStyle = bgGradient;
   ctx.fillRect(x, y, homeAreaWidth, homeAreaHeight);
 
-  // Draw space animation from the separate canvas with reduced opacity
-  if (spaceCanvas) {
+  // Draw space animation from the separate canvas with reduced opacity (disabled on mobile)
+  if (spaceCanvas && browserUtils.shouldEnableSpaceAnimation()) {
     ctx.globalAlpha = 0.7;
     ctx.drawImage(spaceCanvas, x, y, homeAreaWidth, homeAreaHeight);
     ctx.globalAlpha = 1.0;
@@ -42,31 +43,33 @@ export const drawHomeArea = (
   const centerX = x + homeAreaWidth / 2;
   const centerY = y + homeAreaHeight / 2;
 
-  // Draw animated dot pattern for texture (replace the existing dot pattern section)
-  ctx.save();
-  const dotSpacing = 12;
-  const time = animationTime * 0.001; // Convert to seconds
+  // Draw animated dot pattern for texture (disabled on mobile for performance)
+  if (browserUtils.shouldUseComplexDotPattern()) {
+    ctx.save();
+    const dotSpacing = 12;
+    const time = animationTime * 0.001; // Convert to seconds
 
-  for (let dotX = x + 6; dotX < x + homeAreaWidth - 6; dotX += dotSpacing) {
-    for (let dotY = y + 6; dotY < y + homeAreaHeight - 6; dotY += dotSpacing) {
-      // Skip dots that would be too close to the center logo area
-      const distanceFromCenter = Math.sqrt(
-        Math.pow(dotX - centerX, 2) + Math.pow(dotY - centerY, 2),
-      );
-      if (distanceFromCenter > homeAreaHeight * 0.35) {
-        // Create subtle animation for each dot
-        const dotIndex = (dotX / dotSpacing) * 100 + dotY / dotSpacing;
-        const animationOffset = Math.sin(time * 2 + dotIndex * 0.1) * 0.3;
-        const opacityPulse = 0.2 + Math.sin(time * 1.5 + dotIndex * 0.05) * 0.1;
+    for (let dotX = x + 6; dotX < x + homeAreaWidth - 6; dotX += dotSpacing) {
+      for (let dotY = y + 6; dotY < y + homeAreaHeight - 6; dotY += dotSpacing) {
+        // Skip dots that would be too close to the center logo area
+        const distanceFromCenter = Math.sqrt(
+          Math.pow(dotX - centerX, 2) + Math.pow(dotY - centerY, 2),
+        );
+        if (distanceFromCenter > homeAreaHeight * 0.35) {
+          // Create subtle animation for each dot
+          const dotIndex = (dotX / dotSpacing) * 100 + dotY / dotSpacing;
+          const animationOffset = Math.sin(time * 2 + dotIndex * 0.1) * 0.3;
+          const opacityPulse = 0.2 + Math.sin(time * 1.5 + dotIndex * 0.05) * 0.1;
 
-        ctx.fillStyle = `rgba(255, 255, 255, ${opacityPulse})`;
-        ctx.beginPath();
-        ctx.arc(dotX + animationOffset, dotY + animationOffset * 0.5, 1.0, 0, Math.PI * 2);
-        ctx.fill();
+          ctx.fillStyle = `rgba(255, 255, 255, ${opacityPulse})`;
+          ctx.beginPath();
+          ctx.arc(dotX + animationOffset, dotY + animationOffset * 0.5, 1.0, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
     }
+    ctx.restore();
   }
-  ctx.restore();
 
   // Draw premium multi-layered border (matching create token square)
   ctx.save();

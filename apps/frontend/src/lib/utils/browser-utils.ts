@@ -88,7 +88,8 @@ export function detectBrowser(): BrowserInfo {
 
 /**
  * Gets browser-specific performance optimizations
- * Consolidates all performance settings that were scattered across components
+ * Simplified approach: Mobile-first, then browser-specific desktop optimizations
+ * Phase 2 Step 5: Reduced browser-specific complexity
  */
 export function getBrowserOptimizations(browser: BrowserInfo): BrowserOptimizations {
   const baseOptimizations: BrowserOptimizations = {
@@ -102,29 +103,42 @@ export function getBrowserOptimizations(browser: BrowserInfo): BrowserOptimizati
     frameThrottling: false,
   };
 
-  // Safari-specific optimizations
-  // Safari struggles with complex canvas animations and requires performance mode
-  if (browser.name === 'safari') {
+  // SIMPLIFIED: All mobile devices get consistent mobile optimizations
+  // Regardless of browser (Safari, Chrome, Firefox mobile all get same treatment)
+  if (browser.isMobile) {
     return {
       ...baseOptimizations,
-      targetFPS: 30, // Reduced frame rate for smooth hover animations
-      animationDuration: 200, // Faster animations to reduce computation time
-      mouseCheckInterval: 50, // Less frequent mouse checks
-      enableSpaceAnimation: false, // Disable space animation entirely
-      enableComplexDotPattern: false, // Simplified dot patterns only
-      useLinearEasing: true, // Linear easing reduces mathematical computation
-      frameThrottling: true, // Enable frame throttling
+      targetFPS: 45, // Testing 45fps for mobile devices (compromise between 30fps conservative and 60fps full)
+      animationDuration: 200, // Faster animations for mobile
+      mouseCheckInterval: 50, // Less frequent touch checks
+      enableSpaceAnimation: false, // Disable space animation on all mobile
+      enableComplexDotPattern: false, // Disable complex dot animations on all mobile
+      useLinearEasing: true, // Simpler easing for mobile performance
+      frameThrottling: true, // Enable frame throttling on all mobile
     };
   }
 
-  // Firefox-specific optimizations
-  // Firefox has different performance characteristics and needs specific tuning
+  // Desktop Safari-specific optimizations (only for desktop Safari now)
+  if (browser.name === 'safari') {
+    return {
+      ...baseOptimizations,
+      targetFPS: 60, // Full frame rate for desktop Safari
+      animationDuration: 300, // Medium speed animations
+      mouseCheckInterval: 50, // Less frequent mouse checks
+      enableSpaceAnimation: false, // Disable space animation for Safari
+      enableComplexDotPattern: false, // Simplified dot patterns for Safari
+      useLinearEasing: true, // Linear easing for Safari performance
+      frameThrottling: false, // No frame throttling for desktop Safari
+    };
+  }
+
+  // Desktop Firefox-specific optimizations
   if (browser.name === 'firefox') {
     return {
       ...baseOptimizations,
-      targetFPS: 60, // Full frame rate (Firefox handles this better than Safari)
+      targetFPS: 60, // Full frame rate for Firefox
       animationDuration: 500, // Medium speed animations
-      mouseCheckInterval: 50, // Match Safari interval for consistency
+      mouseCheckInterval: 50, // Less frequent mouse checks
       enableSpaceAnimation: false, // Disable space animation during loading
       enableComplexDotPattern: false, // Simplified dot patterns
       enableImageSmoothing: true, // Keep image smoothing (Firefox handles this well)
@@ -133,7 +147,7 @@ export function getBrowserOptimizations(browser: BrowserInfo): BrowserOptimizati
     };
   }
 
-  // Chrome/Edge/Brave - full performance (baseline)
+  // Chrome/Edge/Brave desktop - full performance (baseline)
   return baseOptimizations;
 }
 
@@ -167,7 +181,7 @@ export const browserUtils = {
   isFirefox: () => getBrowser().name === 'firefox',
   isChrome: () => getBrowser().name === 'chrome',
   isMobile: () => getBrowser().isMobile,
-  needsPerformanceMode: () => getBrowser().needsPerformanceMode,
+  needsPerformanceMode: () => getBrowser().needsPerformanceMode || getBrowser().isMobile, // All mobile devices need performance mode
 
   // Canvas-specific utilities
   getTargetFPS: () => getBrowserPerformanceSettings().targetFPS,

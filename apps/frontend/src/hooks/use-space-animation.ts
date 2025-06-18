@@ -3,6 +3,7 @@
 import type React from 'react';
 
 import { useEffect } from 'react';
+import { browserUtils } from '../lib/utils/browser-utils';
 
 // Star class for 3D starfield effect
 class Star {
@@ -129,6 +130,7 @@ interface UseSpaceAnimationOptions {
 
 /**
  * Custom hook for creating a 3D space animation on a canvas element
+ * Disabled on mobile devices for better performance
  */
 export function useSpaceAnimation(
   canvasRef: React.RefObject<HTMLCanvasElement | null>,
@@ -144,6 +146,11 @@ export function useSpaceAnimation(
   } = options;
 
   useEffect(() => {
+    // Don't run space animation on mobile devices
+    if (!browserUtils.shouldEnableSpaceAnimation()) {
+      return;
+    }
+
     const canvas = canvasRef.current;
     if (!canvas) return;
 
