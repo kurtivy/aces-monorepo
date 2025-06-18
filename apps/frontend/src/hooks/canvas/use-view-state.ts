@@ -310,7 +310,7 @@ export const useViewState = ({
         isAnimatingRef.current = true;
       }
     },
-    [isAnimating], // REMOVED viewState.scale to prevent infinite re-renders
+    [], // FIX #10: Empty dependency array to prevent infinite re-renders (was [isAnimating])
   );
 
   const updateViewState = useCallback(
@@ -333,7 +333,7 @@ export const useViewState = ({
         isAnimatingRef.current = true;
       }
     },
-    [isAnimating],
+    [], // FIX #10: Empty dependency array to prevent infinite re-renders in Brave
   );
 
   return {
