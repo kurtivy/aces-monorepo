@@ -2,6 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 
+interface NeonLogoProps {
+  onComplete?: () => void;
+}
+
 // Define types for the neon logo
 type NeonPathSet = {
   name: string;
@@ -37,7 +41,7 @@ const PATH_LENGTHS = {
   smileyFace: 1500,
 };
 
-const NeonLogo: React.FC = () => {
+const NeonLogo: React.FC<NeonLogoProps> = ({ onComplete }) => {
   const [animationPhase, setAnimationPhase] = useState(0);
   const [pathData, setPathData] = useState<AllPathSets | null>(null);
 
@@ -112,8 +116,22 @@ const NeonLogo: React.FC = () => {
       setAnimationPhase(2);
     }, outerCircleDuration * 1000);
 
-    return () => clearTimeout(phaseTransitionTimer);
-  }, []);
+    // Calculate total animation duration for onComplete callback
+    // outerCircleDuration (phase 1) + fadeInDuration (phase 2) + small buffer
+    const totalAnimationDuration = (outerCircleDuration + fadeInDuration) * 1000 + 200; // 200ms buffer
+
+    const completionTimer = setTimeout(() => {
+      console.log('✅ NeonLogo animation complete after', totalAnimationDuration, 'ms');
+      if (onComplete) {
+        onComplete();
+      }
+    }, totalAnimationDuration);
+
+    return () => {
+      clearTimeout(phaseTransitionTimer);
+      clearTimeout(completionTimer);
+    };
+  }, [onComplete]);
 
   if (!pathData) return null;
 

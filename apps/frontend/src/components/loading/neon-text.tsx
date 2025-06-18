@@ -2,7 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 
-const NeonText: React.FC = () => {
+interface NeonTextProps {
+  onComplete?: () => void;
+}
+
+const NeonText: React.FC<NeonTextProps> = ({ onComplete }) => {
   const [visibleLetters, setVisibleLetters] = useState(0);
   const fullText = 'ACES.FUN';
 
@@ -22,6 +26,16 @@ const NeonText: React.FC = () => {
 
           // Schedule next letter animation
           setTimeout(animateNextLetter, letterDelay);
+        } else {
+          // All letters are visible, animation complete
+          console.log(
+            '✅ NeonText animation complete after',
+            textStartDelay + fullText.length * letterDelay,
+            'ms',
+          );
+          if (onComplete) {
+            onComplete();
+          }
         }
       };
 
@@ -30,7 +44,7 @@ const NeonText: React.FC = () => {
     }, textStartDelay);
 
     return () => clearTimeout(startTimer);
-  }, [fullText.length]);
+  }, [fullText.length, onComplete]);
 
   return (
     <div className="relative flex items-center justify-center w-full max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg xl:max-w-xl h-auto">
