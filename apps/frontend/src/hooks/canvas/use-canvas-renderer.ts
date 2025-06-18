@@ -398,7 +398,16 @@ export const useCanvasRenderer = ({
         }
 
         let placed = false;
-        const candidates = getImageCandidatesForPosition(gridX, gridY, images);
+        const candidates = getImageCandidatesForPosition(
+          gridX,
+          gridY,
+          images,
+          unitSize,
+          homeAreaWorldX,
+          homeAreaWorldY,
+          homeAreaWidth,
+          homeAreaHeight,
+        );
 
         for (const imageInfo of candidates) {
           const { width, height } = getDisplayDimensions(imageInfo.type, unitSize);

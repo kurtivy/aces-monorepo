@@ -41,6 +41,38 @@ export default function RootLayout({
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="theme-color" content="#000000" />
         <meta name="color-scheme" content="dark" />
+
+        {/* FIX: Brave mobile Web3 compatibility - prevent ethereum injection errors */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              // Prevent Brave mobile Web3 injection errors
+              if (typeof window !== 'undefined') {
+                try {
+                  // If window.ethereum doesn't exist, create a minimal stub to prevent errors
+                  if (!window.ethereum) {
+                    window.ethereum = {
+                      selectedAddress: null,
+                      isConnected: () => false,
+                      request: () => Promise.reject(new Error('No wallet connected')),
+                    };
+                  }
+                  
+                  // Prevent assignment errors by making selectedAddress writable
+                  if (window.ethereum && typeof window.ethereum.selectedAddress === 'undefined') {
+                    Object.defineProperty(window.ethereum, 'selectedAddress', {
+                      value: null,
+                      writable: true,
+                      configurable: true
+                    });
+                  }
+                } catch (error) {
+                  console.warn('Web3 compatibility setup failed:', error);
+                }
+              }
+            `,
+          }}
+        />
       </head>
       <body
         className={`${syne.variable} ${spectral.variable} ${jetbrainsMono.variable} font-spectral antialiased  bg-black`}
