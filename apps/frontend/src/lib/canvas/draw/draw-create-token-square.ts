@@ -1,4 +1,5 @@
 import { lerp } from '../math-utils';
+import { browserUtils } from '../../utils/browser-utils';
 
 // Cache gradients to avoid recreating them every frame (Safari optimization)
 const gradientCache = new Map<string, CanvasGradient>();
@@ -8,12 +9,8 @@ let lastCacheClear = 0;
 const CACHE_CLEAR_INTERVAL = 30000; // Clear every 30 seconds (less aggressive)
 const MAX_CACHE_SIZE = 100; // Limit cache size to prevent memory issues
 
-// Detect Safari/Firefox for performance optimizations
-const isSafari =
-  typeof navigator !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-const isFirefox =
-  typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().indexOf('firefox') > -1;
-const needsPerformanceMode = isSafari || isFirefox;
+// STEP 7: Centralized browser detection - replaces scattered user-agent checks
+const needsPerformanceMode = browserUtils.needsPerformanceMode();
 
 // Create a cached gradient with a unique key that includes position
 const getCachedGradient = (

@@ -6,6 +6,7 @@ import { useState, useCallback, useRef } from 'react';
 import type { ImageInfo, ViewState } from '../../types/canvas';
 import { isHomeArea } from '../../lib/canvas/grid-placement';
 import { LuxuryLogger, getImageMetadata } from '../../lib/utils/luxury-logger';
+import { browserUtils } from '../../lib/utils/browser-utils';
 
 interface UseCanvasInteractionsProps {
   viewState: ViewState;
@@ -15,6 +16,7 @@ interface UseCanvasInteractionsProps {
     Map<string, { image: ImageInfo; x: number; y: number; width: number; height: number }>
   >;
   unitSize: number;
+  updateViewState: (deltaX: number, deltaY: number) => void; // Add callback for view state updates
 }
 
 export const useCanvasInteractions = ({
@@ -22,6 +24,7 @@ export const useCanvasInteractions = ({
   setSelectedImage,
   imagePlacementMap,
   unitSize,
+  updateViewState,
 }: UseCanvasInteractionsProps) => {
   const [isPanning, setIsPanning] = useState(false);
   const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
@@ -150,8 +153,8 @@ export const useCanvasInteractions = ({
             const safeMetadata = getImageMetadata(clickedImageInfo);
             LuxuryLogger.log(`Product image clicked: ${safeMetadata.title}`, 'info');
 
-            // Firefox-specific: Log additional info for debugging
-            if (navigator.userAgent.includes('Firefox')) {
+            // STEP 7: Centralized browser detection for debugging
+            if (browserUtils.isFirefox()) {
               console.log('[Firefox] Click processed successfully:', {
                 hasMetadata: !!clickedImageInfo.metadata,
                 safeTitle: safeMetadata.title,
@@ -180,6 +183,10 @@ export const useCanvasInteractions = ({
   );
 
   const handleMouseDown = useCallback((event: React.MouseEvent) => {
+    // Only handle left mouse button for panning
+    if (event.button !== 0) return;
+
+    event.preventDefault(); // Prevent default mouse behaviors
     setIsDragging(false);
     dragStartRef.current = {
       x: event.clientX,
@@ -194,6 +201,7 @@ export const useCanvasInteractions = ({
     (event: React.MouseEvent) => {
       if (!isPanning) return;
 
+      event.preventDefault(); // Prevent default mouse behaviors during drag
       const deltaX = event.clientX - lastMousePos.x;
       const deltaY = event.clientY - lastMousePos.y;
 
@@ -204,19 +212,27 @@ export const useCanvasInteractions = ({
         }
       }
 
-      viewState.targetX += deltaX;
-      viewState.targetY += deltaY;
+      // Apply mouse movement to canvas panning using callback
+      updateViewState(deltaX, deltaY);
 
       setLastMousePos({ x: event.clientX, y: event.clientY });
     },
-    [isPanning, isDragging, lastMousePos, viewState],
+    [isPanning, isDragging, updateViewState], // Use stable updateViewState callback
   );
 
   const handleMouseUp = useCallback(
     (event: React.MouseEvent) => {
+      // Only handle left mouse button
+      if (event.button !== 0) return;
+
+      event.preventDefault(); // Prevent default mouse behaviors
+
+      // If it was a quick click (not a drag), treat it as a click
       if (!isDragging && dragStartRef.current && Date.now() - dragStartRef.current.time < 200) {
         handleClick(event);
       }
+
+      // Reset panning state
       setIsPanning(false);
       setIsDragging(false);
       dragStartRef.current = null;
@@ -231,8 +247,9 @@ export const useCanvasInteractions = ({
   }, []);
 
   const handleTouchStart = useCallback((event: React.TouchEvent) => {
+    // Only handle single finger touch for panning (no zoom support)
     if (event.touches.length === 1) {
-      event.preventDefault();
+      // Only prevent default if we're actually starting a pan operation
       const touch = event.touches[0];
       setIsDragging(false);
       dragStartRef.current = {
@@ -242,12 +259,28 @@ export const useCanvasInteractions = ({
       };
       setLastMousePos({ x: touch.clientX, y: touch.clientY });
       setIsPanning(true);
+
+      // Prevent default after we've set up panning to avoid conflicts
+      event.preventDefault();
+    } else {
+      // Multiple touches - prevent default to disable zoom/pinch
+      event.preventDefault();
+      setIsPanning(false);
+      setIsDragging(false);
+      dragStartRef.current = null;
     }
   }, []);
 
   const handleTouchMove = useCallback(
     (event: React.TouchEvent) => {
-      if (!isPanning || event.touches.length !== 1) return;
+      // Only handle single finger touch for panning
+      if (!isPanning || event.touches.length !== 1) {
+        // Only prevent default for multi-touch to disable zoom
+        if (event.touches.length > 1) {
+          event.preventDefault();
+        }
+        return;
+      }
 
       const touch = event.touches[0];
       const deltaX = touch.clientX - lastMousePos.x;
@@ -257,22 +290,32 @@ export const useCanvasInteractions = ({
         const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
         if (distance > 5) {
           setIsDragging(true);
+          // Only prevent default once we're actually dragging
+          event.preventDefault();
         }
+      } else if (isDragging) {
+        // Prevent default during active dragging
+        event.preventDefault();
       }
 
-      viewState.targetX += deltaX;
-      viewState.targetY += deltaY;
+      // Apply touch movement to canvas panning using callback
+      updateViewState(deltaX, deltaY);
 
       setLastMousePos({ x: touch.clientX, y: touch.clientY });
     },
-    [isPanning, isDragging, lastMousePos, viewState],
+    [isPanning, isDragging, updateViewState], // Use stable updateViewState callback
   );
 
   const handleTouchEnd = useCallback(
     (event: React.TouchEvent) => {
+      event.preventDefault(); // Prevent default touch behaviors
+
+      // If it was a quick tap (not a drag), treat it as a click
       if (!isDragging && dragStartRef.current && Date.now() - dragStartRef.current.time < 200) {
         handleClick(event);
       }
+
+      // Reset panning state
       setIsPanning(false);
       setIsDragging(false);
       dragStartRef.current = null;
