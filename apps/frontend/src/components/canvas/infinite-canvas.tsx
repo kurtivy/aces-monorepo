@@ -15,6 +15,7 @@ import HomeButton from '../ui/home-button';
 import NavMenu from '../ui/nav-menu';
 import type { ImageInfo } from '../../types/canvas';
 import { useCoordinatedResize } from '../../hooks/use-coordinated-resize';
+import { browserUtils } from '../../lib/utils/browser-utils';
 
 type LoadingState = 'loading' | 'intro' | 'ready';
 
@@ -62,6 +63,7 @@ const InfiniteCanvas = () => {
   } = useViewState({
     imagesLoaded: imagesLoaded,
     _unitSize: unitSize,
+    animationDuration: browserUtils.getAnimationDuration() / 1000, // Convert ms to seconds for useViewState
   });
 
   const { canvasProgress, canvasReady } = useCanvasRenderer({

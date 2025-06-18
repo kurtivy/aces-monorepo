@@ -257,7 +257,7 @@ export const useViewState = ({
         targetScale: prev.targetScale,
       };
     });
-  }, []);
+  }, [animationDuration, panInterpolationFactor]);
 
   const handleWheel = useCallback((event: React.WheelEvent<HTMLCanvasElement>) => {
     event.preventDefault();
