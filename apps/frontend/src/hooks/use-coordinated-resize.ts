@@ -2,6 +2,10 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { getUnitSize } from '../constants/canvas';
+import {
+  addWindowEventListenerSafe,
+  removeWindowEventListenerSafe,
+} from '../lib/utils/event-listener-utils';
 
 interface UseCoordinatedResizeProps {
   canvasRef?: React.RefObject<HTMLCanvasElement | null>;
@@ -72,51 +76,54 @@ export const useCoordinatedResize = ({ canvasRef }: UseCoordinatedResizeProps = 
   );
 
   // Coordinated resize handler
-  const handleResize = useCallback(() => {
-    // Clear existing debounce timer
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-    }
+  const handleResize = useCallback(
+    (_event: Event) => {
+      // Clear existing debounce timer
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
 
-    // Update immediate dimensions for view-state (no debouncing needed for refs)
-    const newWidth = window.innerWidth;
-    const newHeight = window.innerHeight;
+      // Update immediate dimensions for view-state (no debouncing needed for refs)
+      const newWidth = window.innerWidth;
+      const newHeight = window.innerHeight;
 
-    currentDimensions.current = {
-      width: newWidth,
-      height: newHeight,
-    };
+      currentDimensions.current = {
+        width: newWidth,
+        height: newHeight,
+      };
 
-    // Debounce the expensive state updates and canvas operations
-    debounceTimerRef.current = setTimeout(() => {
-      const newUnitSize = getUnitSize(newWidth);
+      // Debounce the expensive state updates and canvas operations
+      debounceTimerRef.current = setTimeout(() => {
+        const newUnitSize = getUnitSize(newWidth);
 
-      // 1. Update all resize state in a single batched update
-      setResizeState({
-        windowWidth: newWidth,
-        windowHeight: newHeight,
-        unitSize: newUnitSize,
-      });
+        // 1. Update all resize state in a single batched update
+        setResizeState({
+          windowWidth: newWidth,
+          windowHeight: newHeight,
+          unitSize: newUnitSize,
+        });
 
-      // 2. Update canvas DOM element size after state update
-      const canvas = canvasRef?.current;
-      if (canvas) {
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          try {
-            const dpr = window.devicePixelRatio || 1;
-            canvas.width = newWidth * dpr;
-            canvas.height = newHeight * dpr;
-            canvas.style.width = `${newWidth}px`;
-            canvas.style.height = `${newHeight}px`;
-            ctx.scale(dpr, dpr);
-          } catch (error) {
-            // Canvas resize error - continue silently
+        // 2. Update canvas DOM element size after state update
+        const canvas = canvasRef?.current;
+        if (canvas) {
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            try {
+              const dpr = window.devicePixelRatio || 1;
+              canvas.width = newWidth * dpr;
+              canvas.height = newHeight * dpr;
+              canvas.style.width = `${newWidth}px`;
+              canvas.style.height = `${newHeight}px`;
+              ctx.scale(dpr, dpr);
+            } catch (error) {
+              // Canvas resize error - continue silently
+            }
           }
         }
-      }
-    }, 1000); // Increased to 1000ms for better debouncing in tests
-  }, [canvasRef]);
+      }, 1000); // Increased to 1000ms for better debouncing in tests
+    },
+    [canvasRef],
+  );
 
   // Single resize listener setup
   useEffect(() => {
@@ -138,12 +145,30 @@ export const useCoordinatedResize = ({ canvasRef }: UseCoordinatedResizeProps = 
       }
     }
 
-    // Add single resize listener
-    window.addEventListener('resize', handleResize);
+    // Phase 2 Step 3 Action 5: Enhanced error handling for window resize events
+    const resizeListenerResult = addWindowEventListenerSafe('resize', handleResize);
+
+    if (!resizeListenerResult.success) {
+      console.warn(
+        '[Phase 2 Step 3] Window resize listener setup failed:',
+        resizeListenerResult.details,
+      );
+      // Coordinated resize will work for initial state, just no dynamic updates
+    } else if (resizeListenerResult.fallbackApplied) {
+      console.info('[Phase 2 Step 3] Window resize listener using fallback strategy');
+    }
 
     return () => {
-      // Cleanup
-      window.removeEventListener('resize', handleResize);
+      // Phase 2 Step 3 Action 5: Enhanced cleanup with error reporting
+      if (resizeListenerResult.success) {
+        const removeResult = removeWindowEventListenerSafe('resize', handleResize);
+        if (!removeResult.success) {
+          console.warn(
+            '[Phase 2 Step 3] Window resize listener cleanup failed:',
+            removeResult.details,
+          );
+        }
+      }
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
       }

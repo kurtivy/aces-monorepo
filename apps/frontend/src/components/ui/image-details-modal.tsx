@@ -1,10 +1,14 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { useEffect } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import Image from 'next/image';
 import type { ImageInfo } from '../../types/canvas';
 import { getImageMetadata } from '../../lib/utils/luxury-logger';
+import {
+  addWindowEventListenerSafe,
+  removeWindowEventListenerSafe,
+} from '../../lib/utils/event-listener-utils';
 
 interface ImageDetailsModalProps {
   imageInfo: ImageInfo | null;
@@ -12,13 +16,57 @@ interface ImageDetailsModalProps {
 }
 
 export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsModalProps) {
+  // Phase 2 Step 3 Action 4: Stabilize onClose to prevent event listener re-registration
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  // Phase 2 Step 3 Action 4: Stable callback that doesn't change on every render
+  const stableOnClose = useCallback(() => {
+    try {
+      onCloseRef.current();
+    } catch (error) {
+      // Modal close error - continue silently
+    }
+  }, []);
+
+  // Phase 2 Step 3 Action 4: Enhanced event listener setup with race condition prevention
   useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+    // Phase 2 Step 3: Early exit if modal is not visible (prevents unnecessary listeners)
+    if (!imageInfo) return;
+
+    const handleEscape = (e: Event) => {
+      const keyboardEvent = e as KeyboardEvent;
+      if (keyboardEvent.key === 'Escape') {
+        stableOnClose();
+      }
     };
-    window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
-  }, [onClose]);
+
+    // Phase 2 Step 3 Action 5: Enhanced error handling for modal keydown events
+    const keydownListenerResult = addWindowEventListenerSafe('keydown', handleEscape);
+
+    if (!keydownListenerResult.success) {
+      console.warn(
+        '[Phase 2 Step 3] Modal keydown listener setup failed:',
+        keydownListenerResult.details,
+      );
+      // Modal will still work via click outside, just no keyboard ESC support
+    } else if (keydownListenerResult.fallbackApplied) {
+      console.info('[Phase 2 Step 3] Modal keydown listener using fallback strategy');
+    }
+
+    return () => {
+      // Phase 2 Step 3 Action 5: Enhanced cleanup with error reporting
+      if (keydownListenerResult.success) {
+        const removeResult = removeWindowEventListenerSafe('keydown', handleEscape);
+        if (!removeResult.success) {
+          console.warn(
+            '[Phase 2 Step 3] Modal keydown listener cleanup failed:',
+            removeResult.details,
+          );
+        }
+      }
+    };
+  }, [imageInfo, stableOnClose]); // Phase 2 Step 3 Action 4: Use stable callback instead of onClose
 
   // Enhanced null safety checks
   if (!imageInfo) {
@@ -35,7 +83,7 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         className="fixed inset-0 bg-black/70 backdrop-blur-xl z-50 flex items-center justify-center p-4 sm:p-8"
-        onClick={onClose}
+        onClick={stableOnClose}
       >
         <motion.div
           initial={{ scale: 0.95, opacity: 0 }}
@@ -88,7 +136,7 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                   </motion.div>
                 </div>
                 <button
-                  onClick={onClose}
+                  onClick={stableOnClose}
                   className="text-[#D0B264]/80 hover:text-[#D0B264] transition-colors p-1"
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

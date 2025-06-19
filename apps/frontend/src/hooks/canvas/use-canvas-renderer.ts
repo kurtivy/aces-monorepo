@@ -17,6 +17,10 @@ import { useSpaceAnimation } from '../use-space-animation';
 import { easeInOutCubic } from '../../lib/canvas/math-utils';
 import { useCoordinatedResize } from '../use-coordinated-resize';
 import { browserUtils, getBrowserPerformanceSettings } from '../../lib/utils/browser-utils';
+import {
+  addEventListenerSafe,
+  removeEventListenerSafe,
+} from '../../lib/utils/event-listener-utils';
 // Note: useAnimationFrame removed - caused scroll timing issues, kept for background animations only
 
 interface UseCanvasRendererProps {
@@ -497,20 +501,30 @@ export const useCanvasRenderer = ({
     }
   }, [imagesLoaded, placementsCalculated, canvasVisible]);
 
-  // Handle mouse movement for hover detection with throttling
+  // Phase 2 Step 3: Enhanced event listener setup with ref change protection
   useEffect(() => {
     const canvas = activeCanvasRef.current;
     if (!canvas) return;
 
-    const handleMouseMove = (event: MouseEvent) => {
-      const rect = canvas.getBoundingClientRect();
+    // Phase 2 Step 3: Store canvas reference for cleanup validation
+    const currentCanvas = canvas;
+
+    const handleMouseMove = (event: Event) => {
+      // Phase 2 Step 3: Validate canvas is still the same element
+      if (activeCanvasRef.current !== currentCanvas) return;
+
+      const mouseEvent = event as MouseEvent;
+      const rect = currentCanvas.getBoundingClientRect();
       mousePositionRef.current = {
-        x: event.clientX - rect.left,
-        y: event.clientY - rect.top,
+        x: mouseEvent.clientX - rect.left,
+        y: mouseEvent.clientY - rect.top,
       };
     };
 
-    const handleClick = (event: MouseEvent) => {
+    const handleClick = (event: Event) => {
+      // Phase 2 Step 3: Validate canvas is still the same element
+      if (activeCanvasRef.current !== currentCanvas) return;
+
       // Check if clicking on original token (with hover effect)
       if (hoveredTokenIndex !== null) {
         onCreateTokenClick();
@@ -518,9 +532,10 @@ export const useCanvasRenderer = ({
       }
 
       // Check if clicking on repeated token
-      const rect = canvas.getBoundingClientRect();
-      const mouseX = event.clientX - rect.left;
-      const mouseY = event.clientY - rect.top;
+      const mouseEvent = event as MouseEvent;
+      const rect = currentCanvas.getBoundingClientRect();
+      const mouseX = mouseEvent.clientX - rect.left;
+      const mouseY = mouseEvent.clientY - rect.top;
       const worldMouseX = (mouseX - viewState.x) / viewState.scale;
       const worldMouseY = (mouseY - viewState.y) / viewState.scale;
 
@@ -543,14 +558,43 @@ export const useCanvasRenderer = ({
       }
     };
 
-    canvas.addEventListener('mousemove', handleMouseMove);
-    canvas.addEventListener('click', handleClick);
+    // Phase 2 Step 3 Action 5: Enhanced error handling for canvas mouse events
+    const mouseMoveResult = addEventListenerSafe(currentCanvas, 'mousemove', handleMouseMove);
+    const clickResult = addEventListenerSafe(currentCanvas, 'click', handleClick);
+
+    if (!mouseMoveResult.success) {
+      console.warn(
+        '[Phase 2 Step 3] Canvas mousemove listener setup failed:',
+        mouseMoveResult.details,
+      );
+      // Canvas will still work, just without hover effects
+    } else if (mouseMoveResult.fallbackApplied) {
+      console.info('[Phase 2 Step 3] Canvas mousemove listener using fallback strategy');
+    }
+
+    if (!clickResult.success) {
+      console.warn('[Phase 2 Step 3] Canvas click listener setup failed:', clickResult.details);
+      // Canvas will still work, just without click interactions
+    } else if (clickResult.fallbackApplied) {
+      console.info('[Phase 2 Step 3] Canvas click listener using fallback strategy');
+    }
 
     return () => {
-      canvas.removeEventListener('mousemove', handleMouseMove);
-      canvas.removeEventListener('click', handleClick);
+      // Phase 2 Step 3 Action 5: Enhanced cleanup with error reporting
+      if (mouseMoveResult.success && currentCanvas) {
+        const removeResult = removeEventListenerSafe(currentCanvas, 'mousemove', handleMouseMove);
+        if (!removeResult.success) {
+          console.warn('[Phase 2 Step 3] Canvas mousemove cleanup failed:', removeResult.details);
+        }
+      }
+      if (clickResult.success && currentCanvas) {
+        const removeResult = removeEventListenerSafe(currentCanvas, 'click', handleClick);
+        if (!removeResult.success) {
+          console.warn('[Phase 2 Step 3] Canvas click cleanup failed:', removeResult.details);
+        }
+      }
     };
-  }, [hoveredTokenIndex, onCreateTokenClick]);
+  }, [hoveredTokenIndex, onCreateTokenClick, viewState, unitSize, activeCanvasRef]); // Phase 2 Step 3: Added activeCanvasRef dependency
 
   useEffect(() => {
     if (!imagesLoaded || !placementsCalculated) return;

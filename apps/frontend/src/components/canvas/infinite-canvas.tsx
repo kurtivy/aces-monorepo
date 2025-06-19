@@ -1,7 +1,7 @@
 'use client';
 
 import type React from 'react';
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 
 import ImageDetailsModal from '../ui/image-details-modal';
@@ -16,6 +16,11 @@ import NavMenu from '../ui/nav-menu';
 import type { ImageInfo } from '../../types/canvas';
 import { useCoordinatedResize } from '../../hooks/use-coordinated-resize';
 import { browserUtils } from '../../lib/utils/browser-utils';
+import {
+  addEventListenerSafe,
+  removeEventListenerSafe,
+} from '../../lib/utils/event-listener-utils';
+import { performEventListenerHealthCheck } from '../../lib/utils/event-listener-utils';
 // Note: useAnimationFrame removed - caused scroll timing issues, kept for background animations only
 
 type LoadingState = 'loading' | 'intro' | 'ready';
@@ -150,37 +155,61 @@ const InfiniteCanvas = () => {
     setLoadingState('ready');
   };
 
+  // Phase 2 Step 3: Enhanced wheel event listener with ref change protection
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !interactionsEnabled) return;
 
-    const wheelListener = (e: WheelEvent) => {
+    // Phase 2 Step 3: Store canvas reference for cleanup validation
+    const currentCanvas = canvas;
+
+    const wheelListener = (e: Event) => {
+      // Phase 2 Step 3: Validate canvas is still the same element
+      if (canvasRef.current !== currentCanvas) return;
+
       try {
         handleWheel(e as unknown as React.WheelEvent<HTMLCanvasElement>);
-      } catch (error) {}
+      } catch (error) {
+        // Wheel handler error - continue silently
+      }
     };
 
-    try {
-      canvas.addEventListener('wheel', wheelListener, { passive: false });
-      canvas.tabIndex = -1;
+    // Phase 2 Step 3 Action 5: Enhanced error handling for wheel event listener
+    const wheelListenerResult = addEventListenerSafe(currentCanvas, 'wheel', wheelListener);
+
+    if (wheelListenerResult.success) {
+      currentCanvas.tabIndex = -1;
 
       try {
-        canvas.focus();
+        currentCanvas.focus();
       } catch (focusError) {
-        // Canvas focus error - continue silently
+        console.warn('[Phase 2 Step 3] Canvas focus failed:', focusError);
       }
-    } catch (eventError) {
-      // Event listener setup error - continue silently
+
+      if (wheelListenerResult.fallbackApplied) {
+        console.info('[Phase 2 Step 3] Wheel event listener using fallback strategy');
+      }
+    } else {
+      console.warn(
+        '[Phase 2 Step 3] Wheel event listener setup failed:',
+        wheelListenerResult.details,
+      );
+      // Continue - canvas interactions will still work without wheel events
     }
 
     return () => {
-      try {
-        canvas.removeEventListener('wheel', wheelListener);
-      } catch (cleanupError) {
-        // Event cleanup error - continue silently
+      // Phase 2 Step 3 Action 5: Enhanced cleanup with error handling
+      if (wheelListenerResult.success && currentCanvas) {
+        const removeResult = removeEventListenerSafe(currentCanvas, 'wheel', wheelListener);
+        if (!removeResult.success) {
+          console.warn(
+            '[Phase 2 Step 3] Wheel event listener cleanup failed:',
+            removeResult.details,
+          );
+        }
       }
     };
-  }, [handleWheel, canvasRef, interactionsEnabled]);
+  }, [handleWheel, canvasRef, interactionsEnabled]); // Phase 2 Step 3: Proper dependency array
 
   // Disable scroll restoration
   useEffect(() => {
@@ -189,6 +218,22 @@ const InfiniteCanvas = () => {
       window.history.scrollRestoration = 'auto';
     };
   }, []);
+
+  // Phase 2 Step 3 Action 4: Stable onClose callback to prevent modal event listener race conditions
+  const handleModalClose = useCallback(() => {
+    setSelectedImage(null);
+  }, []);
+
+  // Phase 2 Step 3 Action 5: Demonstrate enhanced error handling on component mount
+  useEffect(() => {
+    // Run health check to validate enhanced error handling
+    const healthCheck = performEventListenerHealthCheck();
+    console.info('[Phase 2 Step 3 Action 5] Event Listener Health Check:', {
+      passed: healthCheck.passed,
+      failed: healthCheck.failed,
+      details: healthCheck.details,
+    });
+  }, []); // Run once on mount
 
   return (
     <>
@@ -243,7 +288,7 @@ const InfiniteCanvas = () => {
       </motion.div>
 
       {/* Modals and UI */}
-      <ImageDetailsModal imageInfo={selectedImage} onClose={() => setSelectedImage(null)} />
+      <ImageDetailsModal imageInfo={selectedImage} onClose={handleModalClose} />
       {loadingState === 'ready' && <HomeButton onClick={animateToHome} />}
     </>
   );
