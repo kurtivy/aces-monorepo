@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { getBackdropFilterCSS } from '../../lib/utils/browser-utils';
 
 interface TopLoadingBarProps {
   onLoadingComplete: () => void;
@@ -15,6 +16,22 @@ const TopLoadingBar: React.FC<TopLoadingBarProps> = ({
   isComplete,
 }) => {
   const [isAnimatingOut, setIsAnimatingOut] = useState(false);
+  const [backdropStyles, setBackdropStyles] = useState<{
+    backdropFilter?: string;
+    WebkitBackdropFilter?: string;
+    background?: string;
+    boxShadow?: string;
+  }>({
+    // Safe server-side default - no backdrop effects
+    background: 'rgba(0, 0, 0, 0.2)',
+  });
+
+  // Client-side only backdrop detection to prevent hydration mismatch
+  useEffect(() => {
+    // Only run on client after hydration
+    const clientBackdropStyles = getBackdropFilterCSS('sm');
+    setBackdropStyles(clientBackdropStyles);
+  }, []);
 
   useEffect(() => {
     // When loading is complete, trigger immediate callback (no delay needed)
@@ -34,7 +51,16 @@ const TopLoadingBar: React.FC<TopLoadingBarProps> = ({
       transition={{ duration: 4.0, ease: 'easeOut' }} // Increased to 4s for reliable test detection
     >
       {/* Loading bar background */}
-      <div className="w-full h-1 bg-black/20 backdrop-blur-sm">
+      <div
+        className="w-full h-1"
+        style={{
+          // Dynamic backdrop styles with fallbacks
+          backgroundColor: backdropStyles.background || 'rgba(0, 0, 0, 0.2)',
+          backdropFilter: backdropStyles.backdropFilter,
+          WebkitBackdropFilter: backdropStyles.WebkitBackdropFilter,
+          boxShadow: backdropStyles.boxShadow,
+        }}
+      >
         <motion.div
           className="h-full bg-gradient-to-r from-[#D0B264] via-[#D7BF75] to-[#D0B264] relative overflow-hidden"
           initial={{ width: '0%' }}

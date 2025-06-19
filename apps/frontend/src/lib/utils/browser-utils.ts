@@ -372,3 +372,159 @@ Animation Duration: ${optimizations.animationDuration}ms (standardized across br
 Space Animation: ${optimizations.enableSpaceAnimation ? 'enabled' : 'disabled'}
 Gradient Cache: ${optimizations.gradientCacheSize} items, ${optimizations.gradientCacheClearInterval}ms interval`;
 }
+
+/**
+ * Check if the browser supports SVG filters
+ * Uses simple feature detection without complex testing
+ */
+export const supportsSVGFilters = (): boolean => {
+  try {
+    // Simple feature detection - check if we can create SVG filter elements
+    if (typeof document === 'undefined') return false;
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const filter = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
+    const feGaussianBlur = document.createElementNS('http://www.w3.org/2000/svg', 'feGaussianBlur');
+
+    // Check if elements were created successfully and have expected properties
+    return !!(
+      svg &&
+      filter &&
+      feGaussianBlur &&
+      'stdDeviation' in feGaussianBlur &&
+      'appendChild' in filter
+    );
+  } catch (error) {
+    console.warn('[Browser Utils] SVG filter detection failed:', error);
+    return false;
+  }
+};
+
+/**
+ * Get CSS filter fallback for neon effects when SVG filters aren't supported
+ * Returns appropriate CSS filter string based on device capabilities
+ */
+export const getNeonFallbackFilter = (): string => {
+  const performanceTier = browserUtils.getDevicePerformanceTier();
+
+  // High-end devices get more complex CSS filters
+  if (performanceTier === 'high') {
+    return 'drop-shadow(0 0 4px #D7BF75) drop-shadow(0 0 8px #D7BF75) drop-shadow(0 0 12px rgba(215, 191, 117, 0.4))';
+  }
+
+  // Medium devices get balanced effects
+  if (performanceTier === 'medium') {
+    return 'drop-shadow(0 0 6px #D7BF75) drop-shadow(0 0 12px rgba(215, 191, 117, 0.3))';
+  }
+
+  // Low-end devices get simple effects
+  return 'drop-shadow(0 0 8px #D7BF75)';
+};
+
+/**
+ * Check if browser supports advanced graphics features
+ * Combines SVG filter support with device performance tier
+ */
+export const supportsAdvancedGraphics = (): boolean => {
+  const hasSVGFilters = supportsSVGFilters();
+  const performanceTier = browserUtils.getDevicePerformanceTier();
+
+  // Advanced graphics require both SVG filter support AND sufficient performance
+  return hasSVGFilters && (performanceTier === 'high' || performanceTier === 'medium');
+};
+
+/**
+ * Check if the browser supports backdrop-filter (backdrop-blur)
+ * Uses simple CSS property detection without complex testing
+ */
+export const supportsBackdropFilter = (): boolean => {
+  try {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return false;
+
+    // Create a test element to check CSS property support
+    const testElement = document.createElement('div');
+    const testStyles = [
+      'backdrop-filter',
+      '-webkit-backdrop-filter', // Safari/older browsers
+      '-moz-backdrop-filter', // Firefox (future)
+    ];
+
+    // Check if any backdrop-filter variant is supported
+    for (const property of testStyles) {
+      if (property in testElement.style) {
+        return true;
+      }
+    }
+
+    return false;
+  } catch (error) {
+    console.warn('[Browser Utils] Backdrop-filter detection failed:', error);
+    return false;
+  }
+};
+
+/**
+ * Get backdrop-blur fallback styles based on device capabilities
+ * Returns appropriate CSS properties for browsers without backdrop-filter support
+ */
+export const getBackdropBlurFallback = (blurIntensity: 'sm' | 'xl' = 'sm'): string => {
+  const performanceTier = browserUtils.getDevicePerformanceTier();
+
+  // Base fallback using box-shadow and background for blur effect simulation
+  const baseBackground = 'rgba(0, 0, 0, 0.85)'; // Slightly more opaque for visual weight
+
+  if (blurIntensity === 'xl') {
+    // Strong blur fallback for modals
+    if (performanceTier === 'high') {
+      return `background: ${baseBackground}; box-shadow: inset 0 0 60px 20px rgba(0, 0, 0, 0.3);`;
+    } else if (performanceTier === 'medium') {
+      return `background: ${baseBackground}; box-shadow: inset 0 0 40px 15px rgba(0, 0, 0, 0.25);`;
+    } else {
+      return `background: rgba(0, 0, 0, 0.9);`; // Simple solid background for low-end
+    }
+  } else {
+    // Light blur fallback for loading bar
+    if (performanceTier === 'high' || performanceTier === 'medium') {
+      return `background: rgba(0, 0, 0, 0.4); box-shadow: inset 0 0 20px 5px rgba(0, 0, 0, 0.2);`;
+    } else {
+      return `background: rgba(0, 0, 0, 0.6);`; // Simple semi-transparent background
+    }
+  }
+};
+
+/**
+ * Get complete backdrop-filter CSS with fallbacks
+ * Returns CSS properties with progressive enhancement
+ */
+export const getBackdropFilterCSS = (
+  blurIntensity: 'sm' | 'xl' = 'sm',
+): {
+  backdropFilter?: string;
+  WebkitBackdropFilter?: string;
+  background?: string;
+  boxShadow?: string;
+} => {
+  const hasBackdropSupport = supportsBackdropFilter();
+
+  if (hasBackdropSupport) {
+    // Use native backdrop-filter with vendor prefixes
+    const blurValue = blurIntensity === 'xl' ? 'blur(24px)' : 'blur(4px)';
+    return {
+      backdropFilter: blurValue,
+      WebkitBackdropFilter: blurValue, // Safari support
+    };
+  } else {
+    // Parse fallback CSS into individual properties
+    const fallbackCSS = getBackdropBlurFallback(blurIntensity);
+    const cssProps: { background?: string; boxShadow?: string } = {};
+
+    // Extract background and box-shadow from fallback string
+    const backgroundMatch = fallbackCSS.match(/background:\s*([^;]+);?/);
+    const boxShadowMatch = fallbackCSS.match(/box-shadow:\s*([^;]+);?/);
+
+    if (backgroundMatch) cssProps.background = backgroundMatch[1].trim();
+    if (boxShadowMatch) cssProps.boxShadow = boxShadowMatch[1].trim();
+
+    return cssProps;
+  }
+};

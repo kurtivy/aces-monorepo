@@ -1,6 +1,11 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import {
+  supportsSVGFilters,
+  supportsAdvancedGraphics,
+  getNeonFallbackFilter,
+} from '../../lib/utils/browser-utils';
 
 interface NeonLogoProps {
   onComplete?: () => void;
@@ -44,8 +49,25 @@ const PATH_LENGTHS = {
 const NeonLogo: React.FC<NeonLogoProps> = ({ onComplete }) => {
   const [animationPhase, setAnimationPhase] = useState(0);
   const [pathData, setPathData] = useState<AllPathSets | null>(null);
+  const [hasSVGFilterSupport, setHasSVGFilterSupport] = useState(true);
+  const [fallbackFilter, setFallbackFilter] = useState('');
 
   useEffect(() => {
+    // Performance-first SVG filter detection
+    const detectSVGFilterSupport = () => {
+      const hasSVGFilters = supportsSVGFilters();
+      const hasAdvancedGraphics = supportsAdvancedGraphics();
+
+      setHasSVGFilterSupport(hasSVGFilters && hasAdvancedGraphics);
+
+      // Set fallback filter for devices without SVG filter support
+      if (!hasSVGFilters || !hasAdvancedGraphics) {
+        setFallbackFilter(getNeonFallbackFilter());
+      }
+    };
+
+    detectSVGFilterSupport();
+
     const parsePathIntoSubPaths = () => {
       const outerCircle =
         'M191 1.02699C157.858 5.58999 124.414 17.778 98.5 34.736C48.957 67.158 15.117 117.455 3.45899 176C1.23299 187.179 0.681991 193.144 0.253991 210.691C-0.698009 249.777 5.27599 278.173 21.462 311.51C65.758 402.737 164.871 450.636 264.5 428.966C307.667 419.576 350.081 394.546 379.224 361.264C407.316 329.181 424.17 293.566 431.66 250.457C434.187 235.913 434.183 198.567 431.653 183.5C421.302 121.864 387.856 69.847 336.821 36.018C311.008 18.906 286.569 9.07899 254.454 2.89499C245.763 1.22099 238.748 0.717987 220.5 0.458987C207.85 0.278987 194.575 0.533988 191 1.02699Z';
@@ -140,26 +162,30 @@ const NeonLogo: React.FC<NeonLogoProps> = ({ onComplete }) => {
           viewBox="-60 -60 554 555"
           xmlns="http://www.w3.org/2000/svg"
         >
-          {/* Reduced filters for less intense neon */}
+          {/* Conditional SVG filters - only render if supported for performance */}
           <defs>
-            <filter id="goldenNeonGlow" x="-100%" y="-100%" width="300%" height="300%">
-              <feGaussianBlur stdDeviation="2" result="coloredBlur" />
-              <feGaussianBlur stdDeviation="4" result="wideBlur" />
-              <feGaussianBlur stdDeviation="8" result="extraWideBlur" />
-              <feMerge>
-                <feMergeNode in="extraWideBlur" />
-                <feMergeNode in="wideBlur" />
-                <feMergeNode in="coloredBlur" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            </filter>
-            <filter id="goldenNeonCore" x="-50%" y="-50%" width="200%" height="200%">
-              <feGaussianBlur stdDeviation="0.5" result="coreBlur" />
-              <feMerge>
-                <feMergeNode in="coreBlur" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            </filter>
+            {hasSVGFilterSupport ? (
+              <>
+                <filter id="goldenNeonGlow" x="-100%" y="-100%" width="300%" height="300%">
+                  <feGaussianBlur stdDeviation="2" result="coloredBlur" />
+                  <feGaussianBlur stdDeviation="4" result="wideBlur" />
+                  <feGaussianBlur stdDeviation="8" result="extraWideBlur" />
+                  <feMerge>
+                    <feMergeNode in="extraWideBlur" />
+                    <feMergeNode in="wideBlur" />
+                    <feMergeNode in="coloredBlur" />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
+                <filter id="goldenNeonCore" x="-50%" y="-50%" width="200%" height="200%">
+                  <feGaussianBlur stdDeviation="0.5" result="coreBlur" />
+                  <feMerge>
+                    <feMergeNode in="coreBlur" />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
+              </>
+            ) : null}
           </defs>
 
           {/* Outer Circle */}
@@ -170,7 +196,7 @@ const NeonLogo: React.FC<NeonLogoProps> = ({ onComplete }) => {
                 d={pathData.outerCircle.glowPath.path}
                 stroke="#D7BF75"
                 strokeWidth={pathData.outerCircle.glowPath.strokeWidth}
-                filter="url(#goldenNeonGlow)"
+                filter={hasSVGFilterSupport ? 'url(#goldenNeonGlow)' : undefined}
                 style={
                   {
                     '--flicker-speed': `${pathData.outerCircle.glowPath.flickerSpeed}s`,
@@ -178,6 +204,8 @@ const NeonLogo: React.FC<NeonLogoProps> = ({ onComplete }) => {
                     '--path-length': `${PATH_LENGTHS.outerCircle}`,
                     '--max-opacity': `${pathData.outerCircle.glowPath.opacity}`,
                     animationDelay: `${pathData.outerCircle.glowPath.animationDelay}s`,
+                    // CSS fallback for browsers without SVG filter support
+                    filter: hasSVGFilterSupport ? undefined : fallbackFilter,
                   } as React.CSSProperties
                 }
               />
@@ -186,13 +214,15 @@ const NeonLogo: React.FC<NeonLogoProps> = ({ onComplete }) => {
                 d={pathData.outerCircle.mainPath.path}
                 stroke="#ffffff"
                 strokeWidth={pathData.outerCircle.mainPath.strokeWidth}
-                filter="url(#goldenNeonCore)"
+                filter={hasSVGFilterSupport ? 'url(#goldenNeonCore)' : undefined}
                 style={
                   {
                     '--flicker-speed': `${pathData.outerCircle.mainPath.flickerSpeed}s`,
                     '--draw-duration': `${pathData.outerCircle.mainPath.drawDuration}s`,
                     '--path-length': `${PATH_LENGTHS.outerCircle}`,
                     '--max-opacity': '1',
+                    // CSS fallback for browsers without SVG filter support
+                    filter: hasSVGFilterSupport ? undefined : 'drop-shadow(0 0 4px #ffffff)',
                   } as React.CSSProperties
                 }
               />
@@ -207,12 +237,14 @@ const NeonLogo: React.FC<NeonLogoProps> = ({ onComplete }) => {
                 d={pathData.crown.glowPath.path}
                 stroke="#D7BF75"
                 strokeWidth={pathData.crown.glowPath.strokeWidth}
-                filter="url(#goldenNeonGlow)"
+                filter={hasSVGFilterSupport ? 'url(#goldenNeonGlow)' : undefined}
                 style={
                   {
                     '--flicker-speed': `${pathData.crown.glowPath.flickerSpeed}s`,
                     '--draw-duration': `${pathData.crown.glowPath.drawDuration}s`,
                     '--max-opacity': `${pathData.crown.glowPath.opacity}`,
+                    // CSS fallback for browsers without SVG filter support
+                    filter: hasSVGFilterSupport ? undefined : fallbackFilter,
                   } as React.CSSProperties
                 }
               />
@@ -221,12 +253,14 @@ const NeonLogo: React.FC<NeonLogoProps> = ({ onComplete }) => {
                 d={pathData.crown.mainPath.path}
                 stroke="#ffffff"
                 strokeWidth={pathData.crown.mainPath.strokeWidth}
-                filter="url(#goldenNeonCore)"
+                filter={hasSVGFilterSupport ? 'url(#goldenNeonCore)' : undefined}
                 style={
                   {
                     '--flicker-speed': `${pathData.crown.mainPath.flickerSpeed}s`,
                     '--draw-duration': `${pathData.crown.mainPath.drawDuration}s`,
                     '--max-opacity': '1',
+                    // CSS fallback for browsers without SVG filter support
+                    filter: hasSVGFilterSupport ? undefined : 'drop-shadow(0 0 4px #ffffff)',
                   } as React.CSSProperties
                 }
               />
@@ -241,12 +275,14 @@ const NeonLogo: React.FC<NeonLogoProps> = ({ onComplete }) => {
                 d={pathData.horizontalLine.glowPath.path}
                 stroke="#D7BF75"
                 strokeWidth={pathData.horizontalLine.glowPath.strokeWidth}
-                filter="url(#goldenNeonGlow)"
+                filter={hasSVGFilterSupport ? 'url(#goldenNeonGlow)' : undefined}
                 style={
                   {
                     '--flicker-speed': `${pathData.horizontalLine.glowPath.flickerSpeed}s`,
                     '--draw-duration': `${pathData.horizontalLine.glowPath.drawDuration}s`,
                     '--max-opacity': `${pathData.horizontalLine.glowPath.opacity}`,
+                    // CSS fallback for browsers without SVG filter support
+                    filter: hasSVGFilterSupport ? undefined : fallbackFilter,
                   } as React.CSSProperties
                 }
               />
@@ -255,12 +291,14 @@ const NeonLogo: React.FC<NeonLogoProps> = ({ onComplete }) => {
                 d={pathData.horizontalLine.mainPath.path}
                 stroke="#ffffff"
                 strokeWidth={pathData.horizontalLine.mainPath.strokeWidth}
-                filter="url(#goldenNeonCore)"
+                filter={hasSVGFilterSupport ? 'url(#goldenNeonCore)' : undefined}
                 style={
                   {
                     '--flicker-speed': `${pathData.horizontalLine.mainPath.flickerSpeed}s`,
                     '--draw-duration': `${pathData.horizontalLine.mainPath.drawDuration}s`,
                     '--max-opacity': '1',
+                    // CSS fallback for browsers without SVG filter support
+                    filter: hasSVGFilterSupport ? undefined : 'drop-shadow(0 0 4px #ffffff)',
                   } as React.CSSProperties
                 }
               />
@@ -275,12 +313,14 @@ const NeonLogo: React.FC<NeonLogoProps> = ({ onComplete }) => {
                 d={pathData.smileyFace.glowPath.path}
                 stroke="#D7BF75"
                 strokeWidth={pathData.smileyFace.glowPath.strokeWidth}
-                filter="url(#goldenNeonGlow)"
+                filter={hasSVGFilterSupport ? 'url(#goldenNeonGlow)' : undefined}
                 style={
                   {
                     '--flicker-speed': `${pathData.smileyFace.glowPath.flickerSpeed}s`,
                     '--draw-duration': `${pathData.smileyFace.glowPath.drawDuration}s`,
                     '--max-opacity': `${pathData.smileyFace.glowPath.opacity}`,
+                    // CSS fallback for browsers without SVG filter support
+                    filter: hasSVGFilterSupport ? undefined : fallbackFilter,
                   } as React.CSSProperties
                 }
               />
@@ -289,12 +329,14 @@ const NeonLogo: React.FC<NeonLogoProps> = ({ onComplete }) => {
                 d={pathData.smileyFace.mainPath.path}
                 stroke="#ffffff"
                 strokeWidth={pathData.smileyFace.mainPath.strokeWidth}
-                filter="url(#goldenNeonCore)"
+                filter={hasSVGFilterSupport ? 'url(#goldenNeonCore)' : undefined}
                 style={
                   {
                     '--flicker-speed': `${pathData.smileyFace.mainPath.flickerSpeed}s`,
                     '--draw-duration': `${pathData.smileyFace.mainPath.drawDuration}s`,
                     '--max-opacity': '1',
+                    // CSS fallback for browsers without SVG filter support
+                    filter: hasSVGFilterSupport ? undefined : 'drop-shadow(0 0 4px #ffffff)',
                   } as React.CSSProperties
                 }
               />

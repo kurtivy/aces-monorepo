@@ -1,7 +1,7 @@
 'use client';
 
+import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useEffect, useRef, useCallback } from 'react';
 import Image from 'next/image';
 import type { ImageInfo } from '../../types/canvas';
 import { getImageMetadata } from '../../lib/utils/luxury-logger';
@@ -9,6 +9,7 @@ import {
   addWindowEventListenerSafe,
   removeWindowEventListenerSafe,
 } from '../../lib/utils/event-listener-utils';
+import { getBackdropFilterCSS } from '../../lib/utils/browser-utils';
 
 interface ImageDetailsModalProps {
   imageInfo: ImageInfo | null;
@@ -19,6 +20,23 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
   // Phase 2 Step 3 Action 4: Stabilize onClose to prevent event listener re-registration
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+
+  const [backdropStyles, setBackdropStyles] = useState<{
+    backdropFilter?: string;
+    WebkitBackdropFilter?: string;
+    background?: string;
+    boxShadow?: string;
+  }>({
+    // Safe server-side default - no backdrop effects
+    background: 'rgba(0, 0, 0, 0.7)',
+  });
+
+  // Client-side only backdrop detection to prevent hydration mismatch
+  useEffect(() => {
+    // Only run on client after hydration
+    const clientBackdropStyles = getBackdropFilterCSS('xl');
+    setBackdropStyles(clientBackdropStyles);
+  }, []);
 
   // Phase 2 Step 3 Action 4: Stable callback that doesn't change on every render
   const stableOnClose = useCallback(() => {
@@ -82,7 +100,14 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/70 backdrop-blur-xl z-50 flex items-center justify-center p-4 sm:p-8"
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-8"
+        style={{
+          // Dynamic backdrop styles with fallbacks
+          backgroundColor: backdropStyles.background || 'rgba(0, 0, 0, 0.7)',
+          backdropFilter: backdropStyles.backdropFilter,
+          WebkitBackdropFilter: backdropStyles.WebkitBackdropFilter,
+          boxShadow: backdropStyles.boxShadow,
+        }}
         onClick={stableOnClose}
       >
         <motion.div
