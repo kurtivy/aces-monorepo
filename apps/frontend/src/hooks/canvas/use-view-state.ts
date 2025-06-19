@@ -260,7 +260,7 @@ export const useViewState = ({
 
       setShowHomeButton(isPannedFar || isZoomedEnough);
     }, 100);
-  }, []);
+  }, [initialScale]); // Add initialScale since initialScaleRef.current depends on it
 
   const prevTargetRef = useRef({
     x: viewState.targetX,
@@ -282,12 +282,9 @@ export const useViewState = ({
         clearTimeout(showHomeButtonDebounceRef.current);
       }
     };
-  });
+  }, [viewState.targetX, viewState.targetY, viewState.targetScale, updateHomeButtonVisibility]);
 
   const animateToHome = useCallback(() => {
-    // Phase 2 Step 4 Action 4: Batch state updates for smooth home animation
-    startBatchUpdates(stateSynchronization);
-
     const currentUnitSize = canvasWidth.current < 768 ? 150 : 200;
     const currentHomeAreaWidth = currentUnitSize * 2;
     const currentHomeAreaHeight = currentUnitSize;
@@ -305,94 +302,29 @@ export const useViewState = ({
     velocityX.current = 0;
     velocityY.current = 0;
 
-    // Phase 2 Step 4 Action 4: Coordinate viewState and animation state updates
-    batchStateUpdate(
-      stateSynchronization,
-      () => {
-        setViewState((prev) => ({
-          ...prev,
-          targetX: targetX,
-          targetY: targetY,
-          targetScale: initialScale,
-        }));
-      },
-      'high',
-    );
+    setViewState((prev) => ({
+      ...prev,
+      targetX: targetX,
+      targetY: targetY,
+      targetScale: initialScale,
+    }));
 
-    batchStateUpdate(stateSynchronization, () => {
-      animationStartTime.current = performance.now();
-      startLightweightAnimation(animationCoordination, setIsAnimating, 'home');
-    });
-
-    // Phase 2 Step 4 Action 4: Flush coordinated updates
-    endBatchUpdates(stateSynchronization);
-  }, [initialScale, animationCoordination, stateSynchronization]);
+    animationStartTime.current = performance.now();
+    setIsAnimating(true);
+  }, [initialScale]);
 
   const animateViewState = useCallback(() => {
     const elapsed = performance.now() - animationStartTime.current;
-    const currentDuration =
-      Math.abs(velocityX.current) < 0.001 && Math.abs(velocityY.current) < 0.001
-        ? homeAnimationDuration.current
-        : animationDuration;
-    const progress = Math.min(1, elapsed / (currentDuration * 1000));
+    const progress = Math.min(1, elapsed / (homeAnimationDuration.current * 1000));
     const easedProgress = easeInOutCubic(progress);
 
     setViewState((prev) => {
-      if (Math.abs(velocityX.current) < 0.001 && Math.abs(velocityY.current) < 0.001) {
-        const newX = lerp(prev.x, prev.targetX, easedProgress);
-        const newY = lerp(prev.y, prev.targetY, easedProgress);
-        const newScale = lerp(prev.scale, prev.targetScale, easedProgress);
-
-        if (progress === 1) {
-          // Phase 2 Step 4 Action 4: Coordinate animation completion state updates
-          batchStateUpdate(stateSynchronization, () => {
-            const lastSource = animationCoordination.lastSource.current || 'unknown';
-            endLightweightAnimation(animationCoordination, setIsAnimating, lastSource);
-          });
-
-          return {
-            x: prev.targetX,
-            y: prev.targetY,
-            scale: prev.targetScale,
-            targetX: prev.targetX,
-            targetY: prev.targetY,
-            targetScale: prev.targetScale,
-          };
-        }
-
-        return {
-          x: newX,
-          y: newY,
-          scale: newScale,
-          targetX: prev.targetX,
-          targetY: prev.targetY,
-          targetScale: prev.targetScale,
-        };
-      }
-
-      velocityX.current *= friction;
-      velocityY.current *= friction;
-
-      const newX = lerp(prev.x, prev.targetX, panInterpolationFactor);
-      const newY = lerp(prev.y, prev.targetY, panInterpolationFactor);
+      const newX = lerp(prev.x, prev.targetX, easedProgress);
+      const newY = lerp(prev.y, prev.targetY, easedProgress);
       const newScale = lerp(prev.scale, prev.targetScale, easedProgress);
 
-      const isComplete =
-        Math.abs(velocityX.current) < 0.1 &&
-        Math.abs(velocityY.current) < 0.1 &&
-        Math.abs(newX - prev.targetX) < 0.1 &&
-        Math.abs(newY - prev.targetY) < 0.1 &&
-        Math.abs(newScale - prev.targetScale) < 0.0001;
-
-      if (isComplete) {
-        // Phase 2 Step 4 Action 4: Coordinate animation completion state updates
-        batchStateUpdate(stateSynchronization, () => {
-          const lastSource = animationCoordination.lastSource.current || 'unknown';
-          endLightweightAnimation(animationCoordination, setIsAnimating, lastSource);
-        });
-
-        velocityX.current = 0;
-        velocityY.current = 0;
+      if (progress === 1) {
+        setIsAnimating(false);
         return {
           x: prev.targetX,
           y: prev.targetY,
@@ -412,7 +344,7 @@ export const useViewState = ({
         targetScale: prev.targetScale,
       };
     });
-  }, [animationDuration, panInterpolationFactor, animationCoordination, stateSynchronization]);
+  }, []);
 
   const handleWheel = useCallback(
     (event: React.WheelEvent<HTMLCanvasElement>) => {

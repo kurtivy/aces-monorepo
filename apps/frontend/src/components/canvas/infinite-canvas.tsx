@@ -58,19 +58,12 @@ const InfiniteCanvas = () => {
     enableLazyLoading: true,
   });
 
-  const {
-    viewState,
-    handleWheel,
-    animateViewState,
-    isAnimating,
-    animateToHome,
-    showHomeButton,
-    updateViewState,
-  } = useViewState({
-    imagesLoaded: imagesLoaded,
-    _unitSize: unitSize,
-    animationDuration: browserUtils.getAnimationDuration() / 1000, // Convert ms to seconds for useViewState
-  });
+  const { viewState, handleWheel, animateViewState, isAnimating, animateToHome, updateViewState } =
+    useViewState({
+      imagesLoaded: imagesLoaded,
+      _unitSize: unitSize,
+      animationDuration: browserUtils.getAnimationDuration() / 1000, // Convert ms to seconds for useViewState
+    });
 
   const { canvasProgress, canvasReady } = useCanvasRenderer({
     images,
@@ -244,7 +237,7 @@ const InfiniteCanvas = () => {
         <TopLoadingBar
           onLoadingComplete={handleInitialLoadComplete}
           loadingProgress={Math.max(loadingProgress * 0.3, canvasProgress)}
-          isComplete={imagesLoaded}
+          isComplete={imagesLoaded && canvasReady}
         />
       )}
 
