@@ -87,7 +87,12 @@ export const useCanvasInteractions = ({
   const [isPanning, setIsPanning] = useState(false);
   const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
-  const dragStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const dragStartRef = useRef<{
+    x: number;
+    y: number;
+    time: number;
+    isClickableArea: boolean;
+  } | null>(null);
 
   // Phase 2 Step 7 Action 2: Touch physics state
   const touchPhysicsRef = useRef<TouchPhysics>({
@@ -353,6 +358,7 @@ export const useCanvasInteractions = ({
         x: event.clientX,
         y: event.clientY,
         time: Date.now(),
+        isClickableArea: false,
       };
       setLastMousePos({ x: event.clientX, y: event.clientY });
       setIsPanning(true);
@@ -439,11 +445,44 @@ export const useCanvasInteractions = ({
       // Only handle single finger touch for panning (no zoom support)
       if (event.touches.length === 1) {
         const touch = event.touches[0];
+
+        // SAFARI MOBILE FIX: Store touch information for reliable gesture detection
+        // Check if this touch is on a clickable element for better gesture handling
+        const canvas = event.currentTarget as HTMLCanvasElement;
+        const rect = canvas.getBoundingClientRect();
+        const worldX = (touch.clientX - rect.left - viewState.x) / viewState.scale;
+        const worldY = (touch.clientY - rect.top - viewState.y) / viewState.scale;
+
+        // Check if touching a create token square or home area
+        const isClickableArea =
+          // Home area check
+          isHomeArea(
+            worldX,
+            worldY,
+            homeAreaWorldX,
+            homeAreaWorldY,
+            homeAreaWidth,
+            homeAreaHeight,
+          ) ||
+          // Create token square check (from imagePlacementMap)
+          Array.from(imagePlacementMap.current?.values() || []).some((placedItem) => {
+            if (!placedItem?.image) return false;
+            const { image, x, y, width, height } = placedItem;
+            return (
+              image.type === 'create-token' &&
+              worldX >= x &&
+              worldX <= x + width &&
+              worldY >= y &&
+              worldY <= y + height
+            );
+          });
+
         setIsDragging(false);
         dragStartRef.current = {
           x: touch.clientX,
           y: touch.clientY,
           time: Date.now(),
+          isClickableArea,
         };
         setLastMousePos({ x: touch.clientX, y: touch.clientY });
         setIsPanning(true);
@@ -451,8 +490,11 @@ export const useCanvasInteractions = ({
         // Phase 2 Step 7 Action 2: Start position tracking for momentum
         trackPosition(touch.clientX, touch.clientY);
 
-        // Smart preventDefault - only prevent when we're sure we're panning
-        event.preventDefault();
+        // SAFARI MOBILE FIX: For clickable areas, don't preventDefault to allow Safari to handle properly
+        // For non-clickable areas, we can be more aggressive with preventDefault
+        if (!isClickableArea) {
+          event.preventDefault();
+        }
       } else {
         // Multiple touches - prevent default to disable zoom/pinch
         event.preventDefault();
@@ -461,7 +503,16 @@ export const useCanvasInteractions = ({
         dragStartRef.current = null;
       }
     },
-    [stopMomentum, trackPosition],
+    [
+      stopMomentum,
+      trackPosition,
+      viewState,
+      imagePlacementMap,
+      homeAreaWorldX,
+      homeAreaWorldY,
+      homeAreaWidth,
+      homeAreaHeight,
+    ],
   );
 
   const handleTouchMove = useCallback(
@@ -489,9 +540,11 @@ export const useCanvasInteractions = ({
         const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
         if (distance > settings.dragDistanceThreshold) {
           setIsDragging(true);
+          // BRAVE MOBILE FIX: Only preventDefault when we're sure we're dragging
           event.preventDefault();
         }
       } else if (isDragging) {
+        // Already dragging, prevent default
         event.preventDefault();
       }
 
@@ -506,22 +559,36 @@ export const useCanvasInteractions = ({
 
   const handleTouchEnd = useCallback(
     (event: React.TouchEvent) => {
-      event.preventDefault();
+      // SAFARI MOBILE FIX: Smart preventDefault based on interaction type
+      // Only preventDefault if we were actually dragging, allow taps to be handled by browser
+      if (isDragging) {
+        event.preventDefault();
+      }
 
       // Phase 2 Step 7 Action 2: Enhanced touch gesture detection
       if (!isDragging && dragStartRef.current) {
         // Use the last touch position from changedTouches (finger that was lifted)
         const lastTouch = event.changedTouches[0];
         if (lastTouch) {
-          const isTap = isQuickTap(
-            dragStartRef.current.time,
-            dragStartRef.current.x,
-            dragStartRef.current.y,
-            lastTouch.clientX,
-            lastTouch.clientY,
+          // SAFARI MOBILE FIX: More reliable tap detection with clickable area awareness
+          const timeDelta = Date.now() - dragStartRef.current.time;
+          const distance = Math.sqrt(
+            (lastTouch.clientX - dragStartRef.current.x) ** 2 +
+              (lastTouch.clientY - dragStartRef.current.y) ** 2,
           );
 
+          // More generous thresholds for clickable areas to ensure Safari navigation works
+          const isClickableArea = dragStartRef.current.isClickableArea;
+          const timeThreshold = isClickableArea ? 300 : 200; // More time for clickable areas
+          const distanceThreshold = isClickableArea ? 15 : 12; // More movement tolerance for clickable areas
+
+          const isTap = timeDelta < timeThreshold && distance < distanceThreshold;
+
           if (isTap) {
+            // SAFARI MOBILE FIX: For clickable areas, don't preventDefault to allow Safari navigation
+            if (!isClickableArea) {
+              event.preventDefault();
+            }
             handleClick(event);
           }
         }
@@ -535,7 +602,7 @@ export const useCanvasInteractions = ({
       setIsDragging(false);
       dragStartRef.current = null;
     },
-    [handleClick, isDragging, isPanning, isQuickTap, startMomentumAnimation],
+    [handleClick, isDragging, isPanning, startMomentumAnimation],
   );
 
   return {

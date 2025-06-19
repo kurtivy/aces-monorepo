@@ -1,10 +1,11 @@
 'use client';
 
 import type React from 'react';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import { Menu, X } from 'lucide-react';
 import Link from 'next/link';
+import { getDeviceCapabilities } from '../../lib/utils/browser-utils';
 
 const navItems = [
   { href: '/create-token', label: 'Create Token', external: false },
@@ -15,7 +16,8 @@ const navItems = [
   { href: 'https://t.me', label: 'Telegram', external: true },
 ];
 
-const menuVariants: Variants = {
+// Desktop animations (full experience)
+const desktopMenuVariants: Variants = {
   closed: {
     opacity: 0,
     x: '100%',
@@ -36,7 +38,7 @@ const menuVariants: Variants = {
   },
 };
 
-const navItemVariants: Variants = {
+const desktopNavItemVariants: Variants = {
   closed: {
     opacity: 0,
     x: 20,
@@ -51,8 +53,49 @@ const navItemVariants: Variants = {
   },
 };
 
+// Mobile animations (performance-optimized)
+const mobileMenuVariants: Variants = {
+  closed: {
+    opacity: 0,
+    transition: {
+      duration: 0.15,
+      ease: 'easeInOut',
+    },
+  },
+  open: {
+    opacity: 1,
+    transition: {
+      duration: 0.15,
+      ease: 'easeOut',
+    },
+  },
+};
+
+const mobileNavItemVariants: Variants = {
+  closed: {
+    opacity: 0,
+  },
+  open: {
+    opacity: 1,
+    transition: {
+      duration: 0.1,
+      ease: 'easeOut',
+    },
+  },
+};
+
 const NavMenu: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
+
+  // Smart mobile detection using our existing device capabilities
+  const isMobileDevice = useMemo(() => {
+    const capabilities = getDeviceCapabilities();
+    return capabilities.touchCapable || capabilities.isMobileSafari;
+  }, []);
+
+  // Choose animation variants based on device capability
+  const menuVariants = isMobileDevice ? mobileMenuVariants : desktopMenuVariants;
+  const navItemVariants = isMobileDevice ? mobileNavItemVariants : desktopNavItemVariants;
 
   return (
     <div className="fixed top-4 right-4 z-50 flex items-start">
@@ -66,7 +109,7 @@ const NavMenu: React.FC = () => {
             exit="closed"
             style={{
               marginTop: '0px',
-              willChange: 'transform, opacity',
+              willChange: isMobileDevice ? 'opacity' : 'transform, opacity',
             }}
           >
             <div className="p-3 sm:p-4 min-w-[160px] sm:min-w-[180px]">
@@ -76,7 +119,7 @@ const NavMenu: React.FC = () => {
                     key={item.href}
                     variants={navItemVariants}
                     custom={index}
-                    style={{ willChange: 'transform, opacity' }}
+                    style={{ willChange: isMobileDevice ? 'opacity' : 'transform, opacity' }}
                   >
                     {item.external ? (
                       <a
@@ -108,14 +151,16 @@ const NavMenu: React.FC = () => {
       <motion.button
         className="bg-black/90 border border-[#D0B264]/40 text-[#D0B264] shadow-lg rounded-full w-12 h-12 sm:w-16 sm:h-16 flex items-center justify-center cursor-pointer flex-shrink-0 hover:bg-black/95 hover:border-[#D0B264] transition-colors duration-150"
         onClick={() => setIsOpen(!isOpen)}
-        whileHover={{ scale: 1.05 }}
+        whileHover={isMobileDevice ? undefined : { scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
-        transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+        transition={
+          isMobileDevice ? { duration: 0.1 } : { type: 'spring', stiffness: 300, damping: 20 }
+        }
         style={{ willChange: 'transform' }}
       >
         <motion.div
           animate={{ rotate: isOpen ? 90 : 0 }}
-          transition={{ duration: 0.2, ease: 'easeInOut' }}
+          transition={{ duration: isMobileDevice ? 0.1 : 0.2, ease: 'easeInOut' }}
           style={{ willChange: 'transform' }}
         >
           {isOpen ? (

@@ -1,5 +1,6 @@
 import { UNIT_SIZE } from '../../../constants/canvas';
 import { browserUtils } from '../../utils/browser-utils';
+import { getDeviceCapabilities } from '../../utils/browser-utils';
 
 export const drawHomeArea = (
   ctx: CanvasRenderingContext2D,
@@ -14,24 +15,24 @@ export const drawHomeArea = (
   animationTime = 0, // For any additional animations
   unitSize = UNIT_SIZE, // Add unitSize parameter
 ) => {
+  // Smart mobile optimization: detect mobile device
+  const capabilities = getDeviceCapabilities();
+  const isMobileDevice = capabilities.touchCapable || capabilities.isMobileSafari;
+
+  const radius = 12;
+
+  // Background with gradient
   ctx.save();
-
-  const radius = 12; // Slightly larger radius for premium feel
-
-  // Create clipping region for the background
+  const backgroundGradient = ctx.createLinearGradient(x, y, x + homeAreaWidth, y + homeAreaHeight);
+  backgroundGradient.addColorStop(0, '#1A1A1A');
+  backgroundGradient.addColorStop(1, '#0A0A0A');
+  ctx.fillStyle = backgroundGradient;
   ctx.beginPath();
   ctx.roundRect(x, y, homeAreaWidth, homeAreaHeight, radius);
-  ctx.clip();
+  ctx.fill();
 
-  // Draw premium dark gradient background (matching create token square)
-  const bgGradient = ctx.createLinearGradient(x, y, x + homeAreaWidth, y + homeAreaHeight);
-  bgGradient.addColorStop(0, '#1A1A1A');
-  bgGradient.addColorStop(1, '#0A0A0A');
-  ctx.fillStyle = bgGradient;
-  ctx.fillRect(x, y, homeAreaWidth, homeAreaHeight);
-
-  // Draw space animation from the separate canvas with reduced opacity (disabled on mobile)
-  if (spaceCanvas && browserUtils.shouldEnableSpaceAnimation()) {
+  // Add space background (performance optimized)
+  if (spaceCanvas && !browserUtils.needsPerformanceMode()) {
     ctx.globalAlpha = 0.7;
     ctx.drawImage(spaceCanvas, x, y, homeAreaWidth, homeAreaHeight);
     ctx.globalAlpha = 1.0;
@@ -43,8 +44,11 @@ export const drawHomeArea = (
   const centerX = x + homeAreaWidth / 2;
   const centerY = y + homeAreaHeight / 2;
 
+  // Smart mobile optimization: disable expensive dot animations on mobile
+  const shouldShowDotPattern = !isMobileDevice && browserUtils.shouldUseComplexDotPattern();
+
   // Draw animated dot pattern for texture (disabled on mobile for performance)
-  if (browserUtils.shouldUseComplexDotPattern()) {
+  if (shouldShowDotPattern) {
     ctx.save();
     const dotSpacing = 12;
     const time = animationTime * 0.001; // Convert to seconds
@@ -74,9 +78,13 @@ export const drawHomeArea = (
   // Draw premium multi-layered border (matching create token square)
   ctx.save();
 
-  // Layer 1: Outer glow
-  ctx.shadowColor = 'rgba(208, 178, 100, 0.6)';
-  ctx.shadowBlur = 15;
+  // Smart mobile optimization: reduce glow effects on mobile
+  if (!isMobileDevice) {
+    // Layer 1: Outer glow (desktop only)
+    ctx.shadowColor = 'rgba(208, 178, 100, 0.6)';
+    ctx.shadowBlur = 15;
+  }
+
   ctx.strokeStyle = 'rgba(208, 178, 100, 0.8)';
   ctx.lineWidth = 4; // Thick golden border as requested
   ctx.beginPath();
@@ -126,8 +134,9 @@ export const drawHomeArea = (
     const quadX = x + (isRightSide ? quadWidth : 0);
     const quadY = y + (isBottomHalf ? quadHeight : 0);
 
-    // Check if mouse is over this quadrant
+    // Smart mobile optimization: disable hover effects on mobile (touch doesn't have hover)
     const isHovered =
+      !isMobileDevice &&
       mouseX >= quadX &&
       mouseX <= quadX + quadWidth &&
       mouseY >= quadY &&
@@ -201,8 +210,12 @@ export const drawHomeArea = (
 
   // Add premium glow around the logo
   ctx.save();
-  ctx.shadowColor = 'rgba(208, 178, 100, 0.4)';
-  ctx.shadowBlur = 20;
+
+  // Smart mobile optimization: reduce glow effects on mobile
+  if (!isMobileDevice) {
+    ctx.shadowColor = 'rgba(208, 178, 100, 0.4)';
+    ctx.shadowBlur = 20;
+  }
 
   // Multi-layered logo border
   ctx.strokeStyle = 'rgba(208, 178, 100, 0.6)';
@@ -229,9 +242,12 @@ export const drawHomeArea = (
     ctx.arc(centerX, centerY, logoSize / 2 - 4, 0, Math.PI * 2);
     ctx.clip();
 
-    // Add logo glow
-    ctx.shadowColor = 'rgba(255, 255, 255, 0.3)';
-    ctx.shadowBlur = 10;
+    // Smart mobile optimization: reduce logo glow on mobile
+    if (!isMobileDevice) {
+      // Add logo glow (desktop only)
+      ctx.shadowColor = 'rgba(255, 255, 255, 0.3)';
+      ctx.shadowBlur = 10;
+    }
 
     // Calculate dimensions to maintain aspect ratio
     const scale = (logoSize - 8) / Math.max(logoImage.width, logoImage.height);
