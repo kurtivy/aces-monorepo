@@ -1,17 +1,36 @@
 import { lerp } from '../math-utils';
-import { browserUtils } from '../../utils/browser-utils';
+import { getDeviceCapabilities } from '../../utils/browser-utils';
 
-// Cache gradients to avoid recreating them every frame (Safari optimization)
+// Phase 2 Step 5 Action 3: Performance-based gradient cache
 const gradientCache = new Map<string, CanvasGradient>();
+let lastCacheTime = 0;
+let isClearing = false;
+let clearTimeoutId: number | null = null;
 
-// Clear cache periodically to prevent memory leaks and state sticking
-let lastCacheClear = 0;
-const CACHE_CLEAR_INTERVAL = 30000; // Clear every 30 seconds (less aggressive)
-const MAX_CACHE_SIZE = 100; // Limit cache size to prevent memory issues
+// Get browser performance settings for cache management
+const getBrowserPerformanceSettings = () => {
+  const capabilities = getDeviceCapabilities();
+  const isMobile = capabilities.touchCapable || capabilities.isMobileSafari;
 
-const needsPerformanceMode = browserUtils.needsPerformanceMode();
+  return {
+    needsPerformanceMode: capabilities.performanceTier === 'low' || isMobile,
+    cacheSize:
+      capabilities.performanceTier === 'high'
+        ? 200
+        : capabilities.performanceTier === 'medium'
+          ? 100
+          : 50,
+    clearInterval:
+      capabilities.performanceTier === 'high'
+        ? 60000
+        : capabilities.performanceTier === 'medium'
+          ? 30000
+          : 15000,
+  };
+};
 
-// Create a cached gradient with a unique key that includes position
+const { needsPerformanceMode } = getBrowserPerformanceSettings();
+
 const getCachedGradient = (
   ctx: CanvasRenderingContext2D,
   key: string,
@@ -19,42 +38,53 @@ const getCachedGradient = (
   coordinates: number[],
   colorStops: Array<{ offset: number; color: string }>,
 ): CanvasGradient => {
-  // Clear cache periodically to prevent sticking effects
-  const now = performance.now();
-  if (now - lastCacheClear > CACHE_CLEAR_INTERVAL || gradientCache.size > MAX_CACHE_SIZE) {
-    // Use setTimeout to avoid clearing during frame rendering
-    setTimeout(() => {
-      gradientCache.clear();
-    }, 0);
-    lastCacheClear = now;
+  // Phase 2 Step 5 Action 3: Race condition prevention
+  if (isClearing) {
+    // If we're in the middle of clearing, create gradient directly
+    const gradient =
+      type === 'linear'
+        ? ctx.createLinearGradient(...(coordinates as [number, number, number, number]))
+        : ctx.createRadialGradient(
+            ...(coordinates as [number, number, number, number, number, number]),
+          );
+
+    colorStops.forEach((stop) => gradient.addColorStop(stop.offset, stop.color));
+    return gradient;
   }
 
   if (gradientCache.has(key)) {
     return gradientCache.get(key)!;
   }
 
-  let gradient: CanvasGradient;
-  if (type === 'linear') {
-    gradient = ctx.createLinearGradient(
-      coordinates[0],
-      coordinates[1],
-      coordinates[2],
-      coordinates[3],
-    );
-  } else {
-    gradient = ctx.createRadialGradient(
-      coordinates[0],
-      coordinates[1],
-      coordinates[2],
-      coordinates[3],
-      coordinates[4],
-      coordinates[5],
-    );
-  }
+  const gradient =
+    type === 'linear'
+      ? ctx.createLinearGradient(...(coordinates as [number, number, number, number]))
+      : ctx.createRadialGradient(
+          ...(coordinates as [number, number, number, number, number, number]),
+        );
 
-  colorStops.forEach((stop) => {
-    gradient.addColorStop(stop.offset, stop.color);
-  });
+  colorStops.forEach((stop) => gradient.addColorStop(stop.offset, stop.color));
+
+  // Phase 2 Step 5 Action 3: Cache management with race condition prevention
+  const settings = getBrowserPerformanceSettings();
+  const currentTime = performance.now();
+
+  if (gradientCache.size >= settings.cacheSize && !isClearing) {
+    // Trigger cache clearing if we haven't cleared recently
+    if (currentTime - lastCacheTime > settings.clearInterval) {
+      if (clearTimeoutId) {
+        clearTimeout(clearTimeoutId);
+      }
+
+      clearTimeoutId = window.setTimeout(() => {
+        isClearing = true;
+        gradientCache.clear();
+        lastCacheTime = performance.now();
+        isClearing = false;
+        clearTimeoutId = null;
+      }, 0);
+    }
+  }
 
   gradientCache.set(key, gradient);
   return gradient;
@@ -70,15 +100,23 @@ export const drawCreateTokenSquare = (
   spaceCanvas: HTMLCanvasElement | null,
   animationTime = 0, // Add animation time parameter
 ) => {
-  const size = lerp(unitSize, unitSize * 1.05, hoverProgress); // Interpolate size
+  // Smart mobile optimization: disable hover effects on touch devices
+  const capabilities = getDeviceCapabilities();
+  const isMobileDevice = capabilities.touchCapable || capabilities.isMobileSafari;
+
+  // On mobile devices, force hoverProgress to 0 (no hover effects)
+  const effectiveHoverProgress = isMobileDevice ? 0 : hoverProgress;
+
+  const size = lerp(unitSize, unitSize * 1.05, effectiveHoverProgress); // Interpolate size
   const padding = (unitSize - size) / 2;
   const centerX = x + unitSize / 2;
   const centerY = y + unitSize / 2;
   const cornerRadius = 8; // Slightly larger corner radius for a more premium look
 
-  // Create unique identifiers for this token's position
-  const tokenId = `${Math.round(x)}_${Math.round(y)}`;
-  const hoverState = hoverProgress > 0.01 ? 'hover' : 'normal';
+  // Phase 2 Step 5 Action 3: Simplified cache key generation - minimal math overhead
+  const tokenId = `${Math.round(x)}_${Math.round(y)}`; // Simple position-based keys
+  const hoverState = effectiveHoverProgress > 0.01 ? 'hover' : 'normal';
+  const sizeKey = Math.round(size); // Simple size rounding
 
   ctx.save();
 
@@ -87,8 +125,8 @@ export const drawCreateTokenSquare = (
   ctx.roundRect(x + padding, y + padding, size, size, cornerRadius);
   ctx.clip();
 
-  // Draw premium background - dark gradient with position-specific cache key
-  const bgGradientKey = `bg-${tokenId}-${Math.round(size)}`;
+  // Phase 2 Step 5 Action 3: Optimized background gradient with better cache key
+  const bgGradientKey = `bg-${tokenId}-${sizeKey}`;
   const bgGradient = getCachedGradient(
     ctx,
     bgGradientKey,
@@ -109,8 +147,9 @@ export const drawCreateTokenSquare = (
     ctx.globalAlpha = 1.0;
   }
 
-  const dotThreshold = needsPerformanceMode ? 0.5 : 0.1;
-  if (hoverProgress > dotThreshold) {
+  // Smart mobile optimization: skip expensive dot animations on mobile
+  const dotThreshold = isMobileDevice ? 1.0 : needsPerformanceMode ? 0.5 : 0.1;
+  if (effectiveHoverProgress > dotThreshold) {
     ctx.save();
     const dotSpacing = needsPerformanceMode ? 24 : 16;
     const time = animationTime * 0.001;
@@ -129,7 +168,7 @@ export const drawCreateTokenSquare = (
           }
         }
 
-        const baseOpacity = 0.12 * hoverProgress; // Scale with hover progress
+        const baseOpacity = 0.12 * effectiveHoverProgress; // Scale with hover progress
 
         // For performance mode browsers, use static opacity
         if (needsPerformanceMode) {
@@ -165,9 +204,9 @@ export const drawCreateTokenSquare = (
   );
   ctx.clip();
 
-  // Create cached radial gradient for inner glow with unique key per token and hover state
-  const glowOpacity = lerp(0.1, 0.25, hoverProgress);
-  const glowGradientKey = `glow-${tokenId}-${hoverState}-${Math.round(innerGlowSize)}-${glowOpacity.toFixed(2)}`;
+  // Phase 2 Step 5 Action 3: Simplified glow gradient cache key
+  const glowOpacity = lerp(0.1, 0.25, effectiveHoverProgress);
+  const glowGradientKey = `glow-${tokenId}-${hoverState}-${sizeKey}`;
   const glowGradient = getCachedGradient(
     ctx,
     glowGradientKey,
@@ -185,15 +224,15 @@ export const drawCreateTokenSquare = (
   ctx.restore();
 
   // Layer 1: Main border without shadow
-  const borderOpacity = lerp(0.6, 0.9, hoverProgress);
+  const borderOpacity = lerp(0.6, 0.9, effectiveHoverProgress);
   ctx.strokeStyle = `rgba(208, 178, 100, ${borderOpacity})`;
-  ctx.lineWidth = lerp(1.5, 2.5, hoverProgress);
+  ctx.lineWidth = lerp(1.5, 2.5, effectiveHoverProgress);
   ctx.beginPath();
   ctx.roundRect(x + padding, y + padding, size, size, cornerRadius);
   ctx.stroke();
 
-  // Layer 2: Inner border with position-specific cached gradient
-  const borderGradientKey = `border-${tokenId}-${Math.round(size)}`;
+  // Phase 2 Step 5 Action 3: Optimized border gradient with better cache key
+  const borderGradientKey = `border-${tokenId}-${sizeKey}`;
   const borderGradient = getCachedGradient(
     ctx,
     borderGradientKey,
@@ -207,7 +246,7 @@ export const drawCreateTokenSquare = (
   );
 
   ctx.strokeStyle = borderGradient;
-  ctx.lineWidth = lerp(1, 1.5, hoverProgress);
+  ctx.lineWidth = lerp(1, 1.5, effectiveHoverProgress);
   ctx.beginPath();
   ctx.roundRect(x + padding + 1, y + padding + 1, size - 2, size - 2, cornerRadius - 1);
   ctx.stroke();
@@ -215,13 +254,13 @@ export const drawCreateTokenSquare = (
   // Draw logo with simplified effects for Safari/Firefox
   if (logoImage) {
     // Reduced logo size for better spacing
-    const logoSize = lerp(unitSize * 0.45, unitSize * 0.55, hoverProgress);
+    const logoSize = lerp(unitSize * 0.45, unitSize * 0.55, effectiveHoverProgress);
     const logoX = centerX - logoSize / 2;
     // Center the logo vertically
     const logoY = centerY - logoSize / 2;
 
     ctx.save();
-    ctx.globalAlpha = lerp(0.85, 1, hoverProgress);
+    ctx.globalAlpha = lerp(0.85, 1, effectiveHoverProgress);
     ctx.drawImage(logoImage, logoX, logoY, logoSize, logoSize);
     ctx.restore();
   }
@@ -231,11 +270,11 @@ export const drawCreateTokenSquare = (
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
-  const createTokenFontSize = lerp(unitSize * 0.09, unitSize * 0.11, hoverProgress); // Scaled font size
+  const createTokenFontSize = lerp(unitSize * 0.09, unitSize * 0.11, effectiveHoverProgress); // Scaled font size
   ctx.font = `bold ${createTokenFontSize}px 'Syne'`; // Changed to Syne to match home area
 
-  // Gold gradient for text with position-specific cache key
-  const textGradientKey = `text-${tokenId}-${unitSize}`;
+  // Phase 2 Step 5 Action 3: Simplified text gradient cache key
+  const textGradientKey = `text-${tokenId}-${Math.round(unitSize)}`;
   const textGradient = getCachedGradient(
     ctx,
     textGradientKey,
@@ -262,22 +301,22 @@ export const drawCreateTokenSquare = (
     lerp(
       y + unitSize * 0.18, // Higher position
       y + unitSize * 0.16, // Even higher on hover
-      hoverProgress,
+      effectiveHoverProgress,
     ),
   );
 
   // ADJUSTED: "COMING SOON" with more appropriate letter spacing
-  const comingSoonFontSize = lerp(unitSize * 0.08, unitSize * 0.09, hoverProgress); // Scaled font size
+  const comingSoonFontSize = lerp(unitSize * 0.08, unitSize * 0.09, effectiveHoverProgress); // Scaled font size
   ctx.font = `bold ${comingSoonFontSize}px 'Syne'`; // Changed to Syne to match home area
 
   // White color for "COMING SOON" with slight gold tint
-  ctx.fillStyle = `rgba(255, 255, 255, ${lerp(0.8, 1.0, hoverProgress)})`;
+  ctx.fillStyle = `rgba(255, 255, 255, ${lerp(0.8, 1.0, effectiveHoverProgress)})`;
 
   // Position "COMING SOON" lower in the box
   const comingSoonY = lerp(
     y + unitSize * 0.82, // Lower position
     y + unitSize * 0.84, // Even lower on hover
-    hoverProgress,
+    effectiveHoverProgress,
   );
 
   // Draw "COMING SOON" with adjusted letter spacing
@@ -306,7 +345,7 @@ export const drawCreateTokenSquare = (
 
   // Use a tracking value that's wide but guaranteed to fit
   // Start with a base tracking and cap it at the maximum possible
-  const baseTracking = lerp(4, 6, hoverProgress); // Base desired tracking
+  const baseTracking = lerp(4, 6, effectiveHoverProgress); // Base desired tracking
   const safeTracking = Math.min(
     baseTracking,
     maxPossibleTracking > 0 ? maxPossibleTracking * 0.9 : 0,
@@ -329,18 +368,19 @@ export const drawCreateTokenSquare = (
   ctx.restore();
 
   const shineThreshold = needsPerformanceMode ? 1.0 : 0.3; // Disable shine for performance mode
-  if (hoverProgress > shineThreshold) {
+  if (effectiveHoverProgress > shineThreshold) {
     ctx.save();
     // Remove globalCompositeOperation for performance
 
     // Create a simpler diagonal shine effect
-    const shineOpacity = (hoverProgress - shineThreshold) * 0.02; // More subtle
+    const shineOpacity = (effectiveHoverProgress - shineThreshold) * 0.02; // More subtle
     const shineWidth = size * 0.4; // Smaller shine
     const shineHeight = size;
-    const shineX = x + padding + size * lerp(-0.1, 0.2, hoverProgress);
+    const shineX = x + padding + size * lerp(-0.1, 0.2, effectiveHoverProgress);
     const shineY = y + padding;
 
-    const shineGradientKey = `shine-${tokenId}-${hoverState}-${shineOpacity.toFixed(3)}`;
+    // Phase 2 Step 5 Action 3: Simplified shine gradient cache key
+    const shineGradientKey = `shine-${tokenId}-${hoverState}`;
     const shineGradient = getCachedGradient(
       ctx,
       shineGradientKey,

@@ -3,6 +3,7 @@ import { ImageInfo } from '../../types/canvas'; // Adjusted path
 import { getImageType, getDisplayDimensions } from '../../lib/canvas/image-type-utils'; // Adjusted path
 import { SAMPLE_METADATA } from '../../data/metadata'; // Adjusted path
 import { LuxuryLogger } from '../../lib/utils/luxury-logger'; // Adjusted path
+import { loadImageWithFallback } from '../../lib/utils/image-loader-utils'; // Phase 2 Step 1: Standardized CORS handling
 
 interface UseImageLoaderProps {
   unitSize: number; // Add unitSize as a prop
@@ -172,17 +173,23 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
         return;
       }
 
-      const img = new Image();
+      // Phase 2 Step 1: Use standardized CORS handling with fallback strategy
+      const loadImage = async () => {
+        const result = await loadImageWithFallback({
+          src: metadata.image!,
+          enableCORS: true,
+          timeout: 15000,
+          retryAttempts: 2,
+        });
 
-      // MOBILE FIX: Only set crossOrigin for external URLs, not same-domain images
-      // This prevents CORS issues on mobile browsers
-      if (metadata.image && !metadata.image.startsWith('/')) {
-        img.crossOrigin = 'anonymous';
-      }
+        if (result.success && result.image) {
+          handleLoad(result.image);
+        } else {
+          handleError();
+        }
+      };
 
-      img.src = metadata.image;
-
-      const handleLoad = () => {
+      const handleLoad = (img: HTMLImageElement) => {
         try {
           // Firefox sometimes reports 0 dimensions initially - add retry logic
           const getDimensions = () => {
@@ -259,7 +266,7 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
       };
 
       const handleError = () => {
-        LuxuryLogger.log(`Failed to load image: ${img.src}. Using placeholder.`, 'error');
+        LuxuryLogger.log(`Failed to load image: ${metadata.image}. Using placeholder.`, 'error');
         const placeholderElement = createLuxuryPlaceholderImage(unitSize); // Pass unitSize
 
         // Enhanced null safety for metadata
@@ -286,8 +293,8 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
         updateState();
       };
 
-      img.onload = handleLoad;
-      img.onerror = handleError;
+      // Phase 2 Step 1: Initiate standardized image loading
+      loadImage();
     });
 
     return () => {

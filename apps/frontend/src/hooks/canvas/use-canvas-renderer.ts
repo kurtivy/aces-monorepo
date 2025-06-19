@@ -1,7 +1,7 @@
 'use client';
 
 import type React from 'react';
-import { useRef, useEffect, useState, useCallback } from 'react';
+import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import type { ImageInfo, ViewState } from '../../types/canvas';
 import { drawCreateTokenSquare, drawHomeArea, drawImage } from '../../lib/canvas/draw';
 import {
@@ -16,7 +16,16 @@ import { getDisplayDimensions } from '../../lib/canvas/image-type-utils';
 import { useSpaceAnimation } from '../use-space-animation';
 import { easeInOutCubic } from '../../lib/canvas/math-utils';
 import { useCoordinatedResize } from '../use-coordinated-resize';
-import { browserUtils, getBrowserPerformanceSettings } from '../../lib/utils/browser-utils';
+import {
+  browserUtils,
+  getBrowserPerformanceSettings,
+  getDeviceCapabilities,
+} from '../../lib/utils/browser-utils';
+import {
+  addEventListenerSafe,
+  removeEventListenerSafe,
+} from '../../lib/utils/event-listener-utils';
+// Note: useAnimationFrame removed - caused scroll timing issues, kept for background animations only
 
 interface UseCanvasRendererProps {
   images: ImageInfo[];
@@ -73,7 +82,34 @@ export const useCanvasRenderer = ({
   const activeCanvasRef = canvasRef || canvasRefInternal;
 
   useCoordinatedResize({ canvasRef: activeCanvasRef });
-  const animationFrameRef = useRef<number | null>(null);
+
+  // Enhanced browser performance detection including mobile optimizations
+  const browserPerf = useMemo(() => {
+    const perf = getBrowserPerformanceSettings();
+    const capabilities = getDeviceCapabilities();
+
+    // Phase 2 Step 7 Action 3: Mobile-specific animation optimizations
+    const isMobileDevice = capabilities.touchCapable || capabilities.isMobileSafari;
+    const performanceTier = capabilities.performanceTier;
+
+    return {
+      ...perf,
+      // Mobile-optimized settings for smoother animation
+      frameThrottling: isMobileDevice && performanceTier === 'low',
+      mouseCheckInterval: isMobileDevice
+        ? performanceTier === 'high'
+          ? 32
+          : performanceTier === 'medium'
+            ? 50
+            : 100
+        : perf.mouseCheckInterval,
+      enableImageSmoothing: !isMobileDevice || performanceTier !== 'low',
+      adaptiveRendering: isMobileDevice, // Enable adaptive quality for mobile
+    };
+  }, []);
+
+  // Phase 2 Step 2: Remove individual animation frame management
+  // const animationFrameRef = useRef<number | null>(null); // Replaced by centralized manager
   const [hoveredTokenIndex, setHoveredTokenIndex] = useState<number | null>(null);
   const mousePositionRef = useRef({ x: 0, y: 0 });
   const logoImageRef = useRef<HTMLImageElement | null>(null);
@@ -103,7 +139,6 @@ export const useCanvasRenderer = ({
   const hoverAnimationDuration = browserPerf.animationDuration; // Centralized animation duration
 
   // Product entrance animation state
-  const [productAnimationStartTime, setProductAnimationStartTime] = useState<number | null>(null);
   const [isProductAnimationActive, setIsProductAnimationActive] = useState(false);
 
   const frameThrottleRef = useRef(0);
@@ -143,6 +178,58 @@ export const useCanvasRenderer = ({
   // Performance optimization: mouse check interval
   const lastMouseCheck = useRef(0);
   const mouseCheckInterval = browserPerf.mouseCheckInterval; // Centralized mouse check interval
+
+  // Canvas and animation refs - consolidated declaration
+  const animationFrameRef = useRef<number | null>(null);
+  const productAnimationStartTime = useRef<number | null>(null);
+
+  // Phase 2 Step 7 Action 3: Mobile animation performance optimization
+  const mobilePerformanceRef = useRef({
+    lastFrameTime: 0,
+    frameSkipCount: 0,
+    adaptiveQuality: 1.0, // Start with full quality
+    targetFrameTime: 16, // 60fps target
+  });
+
+  // Phase 2 Step 7 Action 3: Mobile frame management
+  const shouldSkipFrame = useCallback(
+    (currentTime: number): boolean => {
+      if (!browserPerf.adaptiveRendering) return false;
+
+      const mobile = mobilePerformanceRef.current;
+      const frameTime = currentTime - mobile.lastFrameTime;
+
+      // Skip frame if we're falling behind target framerate
+      if (frameTime < mobile.targetFrameTime * 0.8) {
+        mobile.frameSkipCount++;
+        return true;
+      }
+
+      // Adapt quality based on performance
+      if (mobile.frameSkipCount > 3) {
+        mobile.adaptiveQuality = Math.max(0.7, mobile.adaptiveQuality - 0.1);
+      } else if (mobile.frameSkipCount === 0 && frameTime < mobile.targetFrameTime) {
+        mobile.adaptiveQuality = Math.min(1.0, mobile.adaptiveQuality + 0.05);
+      }
+
+      mobile.lastFrameTime = currentTime;
+      mobile.frameSkipCount = 0;
+      return false;
+    },
+    [browserPerf.adaptiveRendering],
+  );
+
+  // Phase 2 Step 7 Action 3: Optimized mouse check for mobile
+  const shouldCheckMouse = useCallback(
+    (currentTime: number): boolean => {
+      // On mobile, reduce mouse checks during touch interactions to save CPU
+      if (browserPerf.adaptiveRendering && mobilePerformanceRef.current.adaptiveQuality < 0.9) {
+        return currentTime - lastMouseCheck.current > browserPerf.mouseCheckInterval * 2;
+      }
+      return currentTime - lastMouseCheck.current > browserPerf.mouseCheckInterval;
+    },
+    [browserPerf.mouseCheckInterval, browserPerf.adaptiveRendering],
+  );
 
   // Preload the logo image
   useEffect(() => {
@@ -462,53 +549,125 @@ export const useCanvasRenderer = ({
   const lastUpdateRef = useRef(0);
   const updateDebounceDelay = 100; // 100ms debounce for smooth animations
 
+  // Phase 2 Step 4 Action 2: Enhanced viewport change detection
   const viewStateRef = useRef(viewState);
-  viewStateRef.current = viewState;
+  const pendingUpdateRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Update infinite grid when viewport changes (with debouncing)
+  // Phase 2 Step 4 Action 2: Track significant viewport changes to optimize grid updates
+  const lastSignificantViewStateRef = useRef({
+    x: viewState.x,
+    y: viewState.y,
+    scale: viewState.scale,
+  });
+
+  // Phase 2 Step 4 Action 2: Optimized viewport change detection
+  const hasSignificantViewportChange = useCallback((currentViewState: ViewState): boolean => {
+    const last = lastSignificantViewStateRef.current;
+    const threshold = 50; // pixels - only update grid for moves > 50px
+    const scaleThreshold = 0.1; // scale changes > 10%
+
+    const deltaX = Math.abs(currentViewState.x - last.x);
+    const deltaY = Math.abs(currentViewState.y - last.y);
+    const deltaScale = Math.abs(currentViewState.scale - last.scale);
+
+    return deltaX > threshold || deltaY > threshold || deltaScale > scaleThreshold;
+  }, []);
+
+  // Phase 2 Step 4 Action 2: Debounced grid update with proper viewport coordination
+  const debouncedGridUpdate = useCallback(
+    (newViewState: ViewState) => {
+      // Clear any pending update
+      if (pendingUpdateRef.current) {
+        clearTimeout(pendingUpdateRef.current);
+      }
+
+      // Check if this is a significant enough change to warrant grid update
+      if (!hasSignificantViewportChange(newViewState)) {
+        return; // Skip minor viewport changes
+      }
+
+      const now = performance.now();
+      const timeSinceLastUpdate = now - lastUpdateRef.current;
+
+      if (timeSinceLastUpdate < updateDebounceDelay) {
+        // Debounce rapid changes
+        pendingUpdateRef.current = setTimeout(() => {
+          updateInfiniteGrid(newViewState);
+          lastUpdateRef.current = performance.now();
+          lastSignificantViewStateRef.current = {
+            x: newViewState.x,
+            y: newViewState.y,
+            scale: newViewState.scale,
+          };
+          pendingUpdateRef.current = null;
+        }, updateDebounceDelay - timeSinceLastUpdate);
+      } else {
+        // Update immediately if enough time has passed
+        updateInfiniteGrid(newViewState);
+        lastUpdateRef.current = now;
+        lastSignificantViewStateRef.current = {
+          x: newViewState.x,
+          y: newViewState.y,
+          scale: newViewState.scale,
+        };
+      }
+    },
+    [updateInfiniteGrid, hasSignificantViewportChange, updateDebounceDelay],
+  );
+
+  // Phase 2 Step 4 Action 2: Update viewStateRef and trigger coordinated grid updates
   useEffect(() => {
-    if (!placementsCalculated || !originalGridBounds.current) return;
+    viewStateRef.current = viewState;
 
-    const now = performance.now();
-    const timeSinceLastUpdate = now - lastUpdateRef.current;
-
-    // Debounce rapid viewport changes during animations
-    if (timeSinceLastUpdate < updateDebounceDelay) {
-      const timeoutId = setTimeout(() => {
-        updateInfiniteGrid(viewStateRef.current);
-        lastUpdateRef.current = performance.now();
-      }, updateDebounceDelay - timeSinceLastUpdate);
-
-      return () => clearTimeout(timeoutId);
-    } else {
-      updateInfiniteGrid(viewStateRef.current);
-      lastUpdateRef.current = now;
+    // Only update grid if placements are ready
+    if (placementsCalculated && originalGridBounds.current) {
+      debouncedGridUpdate(viewState);
     }
-  }, [updateInfiniteGrid, placementsCalculated]);
+  }, [viewState, placementsCalculated, debouncedGridUpdate]);
+
+  // Phase 2 Step 4 Action 2: Cleanup pending updates on unmount
+  useEffect(() => {
+    return () => {
+      if (pendingUpdateRef.current) {
+        clearTimeout(pendingUpdateRef.current);
+        pendingUpdateRef.current = null;
+      }
+    };
+  }, []);
 
   // Start product animation when images are loaded AND canvas is visible
   useEffect(() => {
     if (imagesLoaded && placementsCalculated && canvasVisible) {
       // Start animation immediately for faster loading experience
-      setProductAnimationStartTime(performance.now());
+      productAnimationStartTime.current = performance.now();
       setIsProductAnimationActive(true);
     }
   }, [imagesLoaded, placementsCalculated, canvasVisible]);
 
-  // Handle mouse movement for hover detection with throttling
+  // Phase 2 Step 3: Enhanced event listener setup with ref change protection
   useEffect(() => {
     const canvas = activeCanvasRef.current;
     if (!canvas) return;
 
-    const handleMouseMove = (event: MouseEvent) => {
-      const rect = canvas.getBoundingClientRect();
+    // Phase 2 Step 3: Store canvas reference for cleanup validation
+    const currentCanvas = canvas;
+
+    const handleMouseMove = (event: Event) => {
+      // Phase 2 Step 3: Validate canvas is still the same element
+      if (activeCanvasRef.current !== currentCanvas) return;
+
+      const mouseEvent = event as MouseEvent;
+      const rect = currentCanvas.getBoundingClientRect();
       mousePositionRef.current = {
-        x: event.clientX - rect.left,
-        y: event.clientY - rect.top,
+        x: mouseEvent.clientX - rect.left,
+        y: mouseEvent.clientY - rect.top,
       };
     };
 
-    const handleClick = (event: MouseEvent) => {
+    const handleClick = (event: Event) => {
+      // Phase 2 Step 3: Validate canvas is still the same element
+      if (activeCanvasRef.current !== currentCanvas) return;
+
       // Check if clicking on original token (with hover effect)
       if (hoveredTokenIndex !== null) {
         onCreateTokenClick();
@@ -516,9 +675,10 @@ export const useCanvasRenderer = ({
       }
 
       // Check if clicking on repeated token
-      const rect = canvas.getBoundingClientRect();
-      const mouseX = event.clientX - rect.left;
-      const mouseY = event.clientY - rect.top;
+      const mouseEvent = event as MouseEvent;
+      const rect = currentCanvas.getBoundingClientRect();
+      const mouseX = mouseEvent.clientX - rect.left;
+      const mouseY = mouseEvent.clientY - rect.top;
       const worldMouseX = (mouseX - viewState.x) / viewState.scale;
       const worldMouseY = (mouseY - viewState.y) / viewState.scale;
 
@@ -541,14 +701,43 @@ export const useCanvasRenderer = ({
       }
     };
 
-    canvas.addEventListener('mousemove', handleMouseMove);
-    canvas.addEventListener('click', handleClick);
+    // Phase 2 Step 3 Action 5: Enhanced error handling for canvas mouse events
+    const mouseMoveResult = addEventListenerSafe(currentCanvas, 'mousemove', handleMouseMove);
+    const clickResult = addEventListenerSafe(currentCanvas, 'click', handleClick);
+
+    if (!mouseMoveResult.success) {
+      console.warn(
+        '[Phase 2 Step 3] Canvas mousemove listener setup failed:',
+        mouseMoveResult.details,
+      );
+      // Canvas will still work, just without hover effects
+    } else if (mouseMoveResult.fallbackApplied) {
+      console.info('[Phase 2 Step 3] Canvas mousemove listener using fallback strategy');
+    }
+
+    if (!clickResult.success) {
+      console.warn('[Phase 2 Step 3] Canvas click listener setup failed:', clickResult.details);
+      // Canvas will still work, just without click interactions
+    } else if (clickResult.fallbackApplied) {
+      console.info('[Phase 2 Step 3] Canvas click listener using fallback strategy');
+    }
 
     return () => {
-      canvas.removeEventListener('mousemove', handleMouseMove);
-      canvas.removeEventListener('click', handleClick);
+      // Phase 2 Step 3 Action 5: Enhanced cleanup with error reporting
+      if (mouseMoveResult.success && currentCanvas) {
+        const removeResult = removeEventListenerSafe(currentCanvas, 'mousemove', handleMouseMove);
+        if (!removeResult.success) {
+          console.warn('[Phase 2 Step 3] Canvas mousemove cleanup failed:', removeResult.details);
+        }
+      }
+      if (clickResult.success && currentCanvas) {
+        const removeResult = removeEventListenerSafe(currentCanvas, 'click', handleClick);
+        if (!removeResult.success) {
+          console.warn('[Phase 2 Step 3] Canvas click cleanup failed:', removeResult.details);
+        }
+      }
     };
-  }, [hoveredTokenIndex, onCreateTokenClick]);
+  }, [hoveredTokenIndex, onCreateTokenClick, viewState, unitSize, activeCanvasRef]); // Phase 2 Step 3: Added activeCanvasRef dependency
 
   useEffect(() => {
     if (!imagesLoaded || !placementsCalculated) return;
@@ -566,16 +755,8 @@ export const useCanvasRenderer = ({
     // Disable only during static rendering to maintain performance
     ctx.imageSmoothingEnabled = true;
 
-    const updateCanvasSize = () => {
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = window.innerWidth * dpr;
-      canvas.height = window.innerHeight * dpr;
-      canvas.style.width = `${window.innerWidth}px`;
-      canvas.style.height = `${window.innerHeight}px`;
-      ctx.scale(dpr, dpr);
-    };
-
-    updateCanvasSize(); // Initial sizing
+    // Phase 2 Step 7 Action 1: Canvas sizing now handled by coordinated resize system
+    // No need for manual updateCanvasSize here - coordinated resize manages DPR and mobile optimization
 
     // Update progress: Canvas ready (100%)
     setCanvasProgress(100);
@@ -587,9 +768,14 @@ export const useCanvasRenderer = ({
     const homeAreaHeight = unitSize;
 
     const draw = (currentTime: number) => {
+      // Phase 2 Step 7 Action 3: Mobile frame skip optimization
+      if (shouldSkipFrame(currentTime)) {
+        return;
+      }
+
       if (browserPerf.frameThrottling) {
         if (currentTime - frameThrottleRef.current < frameInterval) {
-          animationFrameRef.current = requestAnimationFrame(draw);
+          // Phase 2 Step 2: Frame throttling handled by centralized manager
           return;
         }
         frameThrottleRef.current = currentTime;
@@ -598,6 +784,16 @@ export const useCanvasRenderer = ({
       // Stable canvas clearing for all browsers
       ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Phase 2 Step 7 Action 3: Apply adaptive quality for mobile
+      if (browserPerf.adaptiveRendering) {
+        const quality = mobilePerformanceRef.current.adaptiveQuality;
+        ctx.imageSmoothingEnabled = browserPerf.enableImageSmoothing && quality > 0.8;
+        ctx.globalAlpha = Math.max(0.8, quality); // Slightly reduce opacity on low performance
+      } else {
+        ctx.imageSmoothingEnabled = browserPerf.enableImageSmoothing;
+        ctx.globalAlpha = 1.0;
+      }
 
       ctx.save();
       ctx.translate(viewState.x, viewState.y);
@@ -610,8 +806,8 @@ export const useCanvasRenderer = ({
       const ANIMATION_DURATION = browserPerf.animationDuration; // Centralized animation duration
 
       // Check if the overall animation sequence is complete
-      if (isProductAnimationActive && productAnimationStartTime) {
-        const elapsed = currentTime - productAnimationStartTime;
+      if (isProductAnimationActive && productAnimationStartTime.current) {
+        const elapsed = currentTime - productAnimationStartTime.current;
 
         if (elapsed > ANIMATION_DURATION + 100) {
           // Add small buffer
@@ -621,11 +817,11 @@ export const useCanvasRenderer = ({
 
       // Calculate animation progress once
       let animationProgress = 0;
-      if (isProductAnimationActive && productAnimationStartTime) {
-        const elapsed = currentTime - productAnimationStartTime;
+      if (isProductAnimationActive && productAnimationStartTime.current) {
+        const elapsed = currentTime - productAnimationStartTime.current;
         const progress = Math.min(1, elapsed / ANIMATION_DURATION);
         animationProgress = easeInOutCubic(progress);
-      } else if (productAnimationStartTime) {
+      } else if (productAnimationStartTime.current) {
         // Animation has completed, keep images visible
         animationProgress = 1;
       }
@@ -663,9 +859,9 @@ export const useCanvasRenderer = ({
         });
       }
 
-      // Performance optimization: throttle mouse hit detection
+      // Phase 2 Step 7 Action 3: Mobile-optimized mouse hit detection
       let newHoveredIndex: number | null = null;
-      if (currentTime - lastMouseCheck.current > mouseCheckInterval) {
+      if (shouldCheckMouse(currentTime)) {
         const worldMouseX = (mousePositionRef.current.x - viewState.x) / viewState.scale;
         const worldMouseY = (mousePositionRef.current.y - viewState.y) / viewState.scale;
 
@@ -738,8 +934,8 @@ export const useCanvasRenderer = ({
       let tokenOpacity = 0;
       let tokenScale = 0.95;
 
-      if (isProductAnimationActive && productAnimationStartTime) {
-        const elapsed = currentTime - productAnimationStartTime;
+      if (isProductAnimationActive && productAnimationStartTime.current) {
+        const elapsed = currentTime - productAnimationStartTime.current;
         const tokenDelay = 100;
         const adjustedElapsed = Math.max(0, elapsed - tokenDelay);
         const progress = Math.min(1, adjustedElapsed / ANIMATION_DURATION);
@@ -747,7 +943,7 @@ export const useCanvasRenderer = ({
 
         tokenOpacity = easedProgress;
         tokenScale = 0.95 + 0.05 * easedProgress;
-      } else if (productAnimationStartTime) {
+      } else if (productAnimationStartTime.current) {
         tokenOpacity = 1;
         tokenScale = 1;
       }
@@ -819,14 +1015,32 @@ export const useCanvasRenderer = ({
       );
 
       ctx.restore();
-      animationFrameRef.current = requestAnimationFrame(draw);
+      // Phase 2 Step 2: Animation frame handled by centralized manager
+      // animationFrameRef.current = requestAnimationFrame(draw); // Removed
     };
 
-    animationFrameRef.current = requestAnimationFrame(draw);
+    // Phase 2 Step 2: Safe animation frame management with proper cleanup
+    let animationFrameId: number | null = null;
+    let isAnimationActive = true;
+
+    const animate = () => {
+      if (!isAnimationActive) return; // Early exit if cleanup called
+
+      draw(performance.now());
+
+      if (isAnimationActive) {
+        animationFrameId = requestAnimationFrame(animate);
+      }
+    };
+
+    animationFrameId = requestAnimationFrame(animate);
 
     return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
+      // Phase 2 Step 2: Fix cleanup race conditions
+      isAnimationActive = false;
+      if (animationFrameId !== null) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
       }
     };
   }, [
@@ -841,7 +1055,8 @@ export const useCanvasRenderer = ({
     isProductAnimationActive,
     productAnimationStartTime,
     canvasVisible,
-  ]); // eslint-disable-line react-hooks/exhaustive-deps
+    activeCanvasRef, // Phase 2 Step 4 Action 3: Added missing canvas ref dependency
+  ]); // Phase 2 Step 4 Action 3: Most refs are intentionally stable and don't need dependencies
 
   return {
     canvasRef: activeCanvasRef,
