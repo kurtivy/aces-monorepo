@@ -6,6 +6,7 @@ import {
   addWindowEventListenerSafe,
   removeWindowEventListenerSafe,
 } from '../lib/utils/event-listener-utils';
+import { browserUtils, mobileUtils } from '../lib/utils/browser-utils';
 
 interface UseCoordinatedResizeProps {
   canvasRef?: React.RefObject<HTMLCanvasElement | null>;
@@ -19,6 +20,7 @@ interface ResizeState {
 
 /**
  * STEP 5: Consolidated Resize Handler
+ * Phase 2 Step 7 Action 1: Enhanced with mobile-specific optimizations
  *
  * Replaces 3 separate resize listeners with 1 coordinated handler:
  * - infinite-canvas.tsx: unitSize updates
@@ -30,17 +32,37 @@ interface ResizeState {
  * - Coordinated update order (dimensions → unitSize → canvas sizing)
  * - Single resize listener (eliminates race conditions)
  * - Batch state updates (reduces React re-renders)
+ * - Phase 2 Step 7 Action 1: Mobile-optimized canvas memory management
+ * - Phase 2 Step 7 Action 1: Safari mobile DPR stabilization
+ * - Phase 2 Step 7 Action 1: Orientation change handling
  */
 export const useCoordinatedResize = ({ canvasRef }: UseCoordinatedResizeProps = {}) => {
+  // Phase 2 Step 7 Action 1: Get stable mobile dimensions for initial state
+  const getInitialDimensions = () => {
+    if (typeof window === 'undefined') return { width: 1024, height: 768 };
+
+    if (browserUtils.isMobileSafari()) {
+      return browserUtils.getStableMobileDimensions();
+    }
+
+    return { width: window.innerWidth, height: window.innerHeight };
+  };
+
   // Single state object for all resize-related values
-  const [resizeState, setResizeState] = useState<ResizeState>(() => ({
-    windowWidth: typeof window !== 'undefined' ? window.innerWidth : 1024,
-    windowHeight: typeof window !== 'undefined' ? window.innerHeight : 768,
-    unitSize: getUnitSize(typeof window !== 'undefined' ? window.innerWidth : 1024),
-  }));
+  const [resizeState, setResizeState] = useState<ResizeState>(() => {
+    const initialDimensions = getInitialDimensions();
+    return {
+      windowWidth: initialDimensions.width,
+      windowHeight: initialDimensions.height,
+      unitSize: getUnitSize(initialDimensions.width),
+    };
+  });
 
   // Debouncing timer ref
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Phase 2 Step 7 Action 1: Orientation cleanup ref
+  const orientationCleanupRef = useRef<(() => void) | null>(null);
 
   // Immediate dimensions for use-view-state (needs instant access)
   const currentDimensions = useRef({
@@ -48,7 +70,7 @@ export const useCoordinatedResize = ({ canvasRef }: UseCoordinatedResizeProps = 
     height: resizeState.windowHeight,
   });
 
-  // Update canvas DOM element size (from use-canvas-renderer logic)
+  // Phase 2 Step 7 Action 1: Mobile-optimized canvas sizing
   const updateCanvasSize = useCallback(
     (width: number, height: number) => {
       const canvas = canvasRef?.current;
@@ -58,24 +80,40 @@ export const useCoordinatedResize = ({ canvasRef }: UseCoordinatedResizeProps = 
       if (!ctx) return;
 
       try {
-        const dpr = window.devicePixelRatio || 1;
+        // Phase 2 Step 7 Action 1: Use mobile-optimized canvas dimensions when appropriate
+        if (browserUtils.isMobile() || browserUtils.isMobileSafari()) {
+          const mobileDimensions = browserUtils.getMobileCanvasDimensions();
 
-        // Update canvas size
-        canvas.width = width * dpr;
-        canvas.height = height * dpr;
-        canvas.style.width = `${width}px`;
-        canvas.style.height = `${height}px`;
+          // Update canvas with mobile-optimized dimensions
+          canvas.width = mobileDimensions.width;
+          canvas.height = mobileDimensions.height;
+          canvas.style.width = `${width}px`;
+          canvas.style.height = `${height}px`;
 
-        // Restore canvas scaling
-        ctx.scale(dpr, dpr);
+          // Scale by the optimized scale factor
+          ctx.scale(
+            mobileDimensions.dpr * mobileDimensions.scaleFactor,
+            mobileDimensions.dpr * mobileDimensions.scaleFactor,
+          );
+
+          // Mobile canvas optimized for memory efficiency
+        } else {
+          // Desktop/standard canvas sizing
+          const dpr = window.devicePixelRatio || 1;
+          canvas.width = width * dpr;
+          canvas.height = height * dpr;
+          canvas.style.width = `${width}px`;
+          canvas.style.height = `${height}px`;
+          ctx.scale(dpr, dpr);
+        }
       } catch (error) {
-        // Canvas resize error - continue silently
+        console.warn('[Phase 2 Step 7] Canvas resize error:', error);
       }
     },
     [canvasRef],
   );
 
-  // Coordinated resize handler
+  // Phase 2 Step 7 Action 1: Enhanced resize handler with mobile optimizations
   const handleResize = useCallback(
     (_event: Event) => {
       // Clear existing debounce timer
@@ -83,97 +121,95 @@ export const useCoordinatedResize = ({ canvasRef }: UseCoordinatedResizeProps = 
         clearTimeout(debounceTimerRef.current);
       }
 
-      // Update immediate dimensions for view-state (no debouncing needed for refs)
-      const newWidth = window.innerWidth;
-      const newHeight = window.innerHeight;
+      // Phase 2 Step 7 Action 1: Get dimensions using mobile-aware utilities
+      const dimensions = browserUtils.isMobileSafari()
+        ? browserUtils.getStableMobileDimensions()
+        : { width: window.innerWidth, height: window.innerHeight };
 
+      const newWidth = dimensions.width;
+      const newHeight = dimensions.height;
+
+      // Update immediate dimensions for view-state (no debouncing needed for refs)
       currentDimensions.current = {
         width: newWidth,
         height: newHeight,
       };
 
+      // Phase 2 Step 7 Action 1: Adjust debounce timing for mobile Safari
+      const debounceDelay = browserUtils.isMobileSafari() ? 1500 : 1000; // Longer delay for Safari mobile
+
       // Debounce the expensive state updates and canvas operations
       debounceTimerRef.current = setTimeout(() => {
         const newUnitSize = getUnitSize(newWidth);
 
-        // 1. Update all resize state in a single batched update
-        setResizeState({
-          windowWidth: newWidth,
-          windowHeight: newHeight,
-          unitSize: newUnitSize,
-        });
+        // Coordinated resize completed
 
-        // 2. Update canvas DOM element size after state update
-        const canvas = canvasRef?.current;
-        if (canvas) {
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            try {
-              const dpr = window.devicePixelRatio || 1;
-              canvas.width = newWidth * dpr;
-              canvas.height = newHeight * dpr;
-              canvas.style.width = `${newWidth}px`;
-              canvas.style.height = `${newHeight}px`;
-              ctx.scale(dpr, dpr);
-            } catch (error) {
-              // Canvas resize error - continue silently
-            }
-          }
-        }
-      }, 1000); // Increased to 1000ms for better debouncing in tests
+        // Phase 2 Step 7 Action 4: Safe mobile resize operations
+        mobileUtils.safeMobileViewportOperation(() => {
+          // 1. Update all resize state in a single batched update
+          setResizeState({
+            windowWidth: newWidth,
+            windowHeight: newHeight,
+            unitSize: newUnitSize,
+          });
+
+          // 2. Update canvas DOM element size after state update
+          updateCanvasSize(newWidth, newHeight);
+        }, 'coordinated-resize');
+      }, debounceDelay);
     },
-    [canvasRef],
+    [updateCanvasSize],
   );
 
-  // Single resize listener setup
+  // Single resize listener setup with mobile orientation support
   useEffect(() => {
-    // Initialize canvas size on mount
-    const canvas = canvasRef?.current;
-    if (canvas) {
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        try {
-          const dpr = window.devicePixelRatio || 1;
-          canvas.width = resizeState.windowWidth * dpr;
-          canvas.height = resizeState.windowHeight * dpr;
-          canvas.style.width = `${resizeState.windowWidth}px`;
-          canvas.style.height = `${resizeState.windowHeight}px`;
-          ctx.scale(dpr, dpr);
-        } catch (error) {
-          // Canvas resize error - continue silently
-        }
-      }
-    }
+    // Phase 2 Step 7 Action 1: Initialize canvas size on mount with mobile optimization
+    updateCanvasSize(resizeState.windowWidth, resizeState.windowHeight);
 
-    // Phase 2 Step 3 Action 5: Enhanced error handling for window resize events
+    // Phase 2 Step 7 Action 1: Enhanced error handling for window resize events
     const resizeListenerResult = addWindowEventListenerSafe('resize', handleResize);
 
     if (!resizeListenerResult.success) {
       console.warn(
-        '[Phase 2 Step 3] Window resize listener setup failed:',
+        '[Phase 2 Step 7] Window resize listener setup failed:',
         resizeListenerResult.details,
       );
-      // Coordinated resize will work for initial state, just no dynamic updates
     } else if (resizeListenerResult.fallbackApplied) {
-      console.info('[Phase 2 Step 3] Window resize listener using fallback strategy');
+      console.info('[Phase 2 Step 7] Window resize listener using fallback strategy');
+    }
+
+    // Phase 2 Step 7 Action 1: Set up mobile orientation change handling
+    if (browserUtils.isMobile() || browserUtils.isMobileSafari()) {
+      const orientationCleanup = mobileUtils.handleMobileOrientationChange(() => {
+        // Mobile orientation change detected, triggering coordinated resize
+        handleResize(new Event('orientationchange'));
+      });
+      orientationCleanupRef.current = orientationCleanup;
     }
 
     return () => {
-      // Phase 2 Step 3 Action 5: Enhanced cleanup with error reporting
+      // Phase 2 Step 7 Action 1: Enhanced cleanup with mobile orientation
       if (resizeListenerResult.success) {
         const removeResult = removeWindowEventListenerSafe('resize', handleResize);
         if (!removeResult.success) {
           console.warn(
-            '[Phase 2 Step 3] Window resize listener cleanup failed:',
+            '[Phase 2 Step 7] Window resize listener cleanup failed:',
             removeResult.details,
           );
         }
       }
+
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
       }
+
+      // Phase 2 Step 7 Action 1: Clean up mobile orientation listener
+      if (orientationCleanupRef.current) {
+        orientationCleanupRef.current();
+        orientationCleanupRef.current = null;
+      }
     };
-  }, [handleResize]);
+  }, [handleResize, updateCanvasSize]);
 
   return {
     // For infinite-canvas.tsx
@@ -187,7 +223,8 @@ export const useCoordinatedResize = ({ canvasRef }: UseCoordinatedResizeProps = 
     windowWidth: resizeState.windowWidth,
     windowHeight: resizeState.windowHeight,
 
-    // Debug info
+    // Debug info - Phase 2 Step 7 Action 1: Enhanced with mobile info
     isResizing: debounceTimerRef.current !== null,
+    isMobileOptimized: browserUtils.isMobile() || browserUtils.isMobileSafari(),
   };
 };

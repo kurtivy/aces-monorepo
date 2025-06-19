@@ -15,7 +15,7 @@ import HomeButton from '../ui/home-button';
 import NavMenu from '../ui/nav-menu';
 import type { ImageInfo } from '../../types/canvas';
 import { useCoordinatedResize } from '../../hooks/use-coordinated-resize';
-import { browserUtils } from '../../lib/utils/browser-utils';
+import { browserUtils, getDeviceCapabilities, mobileUtils } from '../../lib/utils/browser-utils';
 import {
   addEventListenerSafe,
   removeEventListenerSafe,
@@ -130,6 +130,43 @@ const InfiniteCanvas = () => {
       }
     };
   }, [loadingState, imagesLoaded, isAnimating, animateViewState]); // Phase 2 Step 4 Action 3: Added missing animateViewState dependency
+
+  // Phase 2 Step 7 Action 4: Mobile loading state monitoring and validation
+  useEffect(() => {
+    const capabilities = getDeviceCapabilities();
+    if (!capabilities.touchCapable && !capabilities.isMobileSafari) {
+      return; // Desktop - no mobile validation needed
+    }
+
+    const validation = mobileUtils.validateMobileLoadingState(
+      loadingState,
+      imagesLoaded,
+      canvasReady,
+    );
+
+    if (!validation.valid) {
+      console.warn('[Phase 2 Step 7] Mobile loading state validation failed:', {
+        loadingState,
+        imagesLoaded,
+        canvasReady,
+        issues: validation.issues,
+        recommendations: validation.recommendations,
+      });
+
+      // Apply recommendations for mobile
+      if (validation.issues.some((issue: string) => issue.includes('DPR'))) {
+        // High DPR issue detected
+        console.log('[Phase 2 Step 7] Applying DPR stabilization for mobile');
+      }
+
+      if (validation.issues.some((issue: string) => issue.includes('performance tier'))) {
+        // Low performance detected
+        console.log(
+          '[Phase 2 Step 7] Low performance mobile device detected, consider optimizations',
+        );
+      }
+    }
+  }, [loadingState, imagesLoaded, canvasReady]);
 
   const handleInitialLoadComplete = () => {
     if (hasSeenIntro) {

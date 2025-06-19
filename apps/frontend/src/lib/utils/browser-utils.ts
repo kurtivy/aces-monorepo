@@ -32,6 +32,13 @@ interface DeviceCapabilities {
 
   // Calculated performance tier
   performanceTier: 'high' | 'medium' | 'low';
+
+  // Phase 2 Step 7 Action 1: Mobile-specific capabilities
+  isMobileSafari: boolean;
+  screenSize: { width: number; height: number };
+  touchCapable: boolean;
+  orientationCapable: boolean;
+  pixelDensityCategory: 'standard' | 'high' | 'ultra';
 }
 
 interface BrowserOptimizations {
@@ -64,6 +71,12 @@ function detectDeviceCapabilities(): DeviceCapabilities {
     supportsWebGL: false,
     supportsOffscreenCanvas: false,
     performanceTier: 'medium',
+    // Phase 2 Step 7 Action 1: Mobile defaults
+    isMobileSafari: false,
+    screenSize: { width: 1024, height: 768 },
+    touchCapable: false,
+    orientationCapable: false,
+    pixelDensityCategory: 'standard',
   };
 
   if (typeof navigator === 'undefined' || typeof window === 'undefined') {
@@ -100,6 +113,29 @@ function detectDeviceCapabilities(): DeviceCapabilities {
   // Device pixel ratio
   const devicePixelRatio = window.devicePixelRatio || 1;
 
+  // Phase 2 Step 7 Action 1: Mobile Safari detection (more specific than general mobile)
+  const userAgent = navigator.userAgent.toLowerCase();
+  const isMobileSafari =
+    /iphone|ipad|ipod/.test(userAgent) && /safari/.test(userAgent) && !/chrome/.test(userAgent);
+
+  // Phase 2 Step 7 Action 1: Screen size detection for mobile optimization
+  const screenSize = {
+    width: window.screen.width || window.innerWidth,
+    height: window.screen.height || window.innerHeight,
+  };
+
+  // Phase 2 Step 7 Action 1: Touch and orientation capability detection
+  const touchCapable = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  const orientationCapable = 'orientation' in window || 'onorientationchange' in window;
+
+  // Phase 2 Step 7 Action 1: Pixel density categorization for canvas optimization
+  let pixelDensityCategory: 'standard' | 'high' | 'ultra' = 'standard';
+  if (devicePixelRatio >= 3) {
+    pixelDensityCategory = 'ultra'; // iPhone Pro, high-end Android
+  } else if (devicePixelRatio >= 2) {
+    pixelDensityCategory = 'high'; // Most modern mobile devices
+  }
+
   // WebGL support detection
   let supportsWebGL = false;
   try {
@@ -116,19 +152,26 @@ function detectDeviceCapabilities(): DeviceCapabilities {
   // Calculate performance tier based on multiple factors
   let performanceTier: 'high' | 'medium' | 'low' = 'medium';
 
-  // High performance: >4GB RAM, >4 cores, WebGL support, low memory pressure
+  // Phase 2 Step 7 Action 1: Enhanced mobile-aware performance tier calculation
+  const isMobileDevice = touchCapable || /mobile|android|iphone|ipad|ipod/.test(userAgent);
+
+  // High performance: >4GB RAM, >4 cores, WebGL support, low memory pressure, desktop or high-end mobile
   if (
     availableMemory > 4096 &&
     hardwareConcurrency >= 4 &&
     supportsWebGL &&
-    memoryPressure === 'low'
+    memoryPressure === 'low' &&
+    (!isMobileDevice || availableMemory > 6144) // Higher bar for mobile devices
   ) {
     performanceTier = 'high';
   }
-  // Low performance: <1.5GB RAM, ≤1 core, or high memory pressure
-  // Phase 2 Step 5 Action 1: More conservative low-tier classification
-  // Avoid classifying modern dual-core systems as low-performance
-  else if (availableMemory < 1536 || hardwareConcurrency <= 1 || memoryPressure === 'high') {
+  // Low performance: <1.5GB RAM, ≤1 core, high memory pressure, OR mobile with constraints
+  else if (
+    availableMemory < 1536 ||
+    hardwareConcurrency <= 1 ||
+    memoryPressure === 'high' ||
+    (isMobileDevice && (availableMemory < 2048 || pixelDensityCategory === 'ultra'))
+  ) {
     performanceTier = 'low';
   }
 
@@ -140,6 +183,12 @@ function detectDeviceCapabilities(): DeviceCapabilities {
     supportsWebGL,
     supportsOffscreenCanvas,
     performanceTier,
+    // Phase 2 Step 7 Action 1: Mobile-specific capabilities
+    isMobileSafari,
+    screenSize,
+    touchCapable,
+    orientationCapable,
+    pixelDensityCategory,
   };
 }
 
@@ -326,6 +375,230 @@ export function getDeviceCapabilities(): DeviceCapabilities {
 }
 
 /**
+ * Phase 2 Step 7 Action 1: Mobile-specific utilities for canvas optimization
+ */
+export const mobileUtils = {
+  // Mobile Safari specific optimizations
+  isMobileSafari: () => getDeviceCapabilities().isMobileSafari,
+
+  // Device pixel ratio management
+  getStableMobileDPR: () => {
+    const capabilities = getDeviceCapabilities();
+    if (capabilities.isMobileSafari) {
+      // Phase 2 Step 7 Action 1: Safari mobile DPR stabilization
+      // Clamp DPR to prevent viewport scaling issues
+      return Math.min(capabilities.devicePixelRatio, 3);
+    }
+    return capabilities.devicePixelRatio;
+  },
+
+  // Mobile-optimized canvas dimensions
+  getMobileCanvasDimensions: () => {
+    const capabilities = getDeviceCapabilities();
+    const baseDPR = mobileUtils.getStableMobileDPR();
+
+    // Phase 2 Step 7 Action 1: Mobile memory-aware canvas sizing
+    let scaleFactor = 1;
+    if (capabilities.performanceTier === 'low') {
+      scaleFactor = 0.75; // Reduce canvas size for low-end devices
+    } else if (
+      capabilities.pixelDensityCategory === 'ultra' &&
+      capabilities.availableMemory < 3072
+    ) {
+      scaleFactor = 0.85; // Moderate reduction for ultra-high DPI with limited memory
+    }
+
+    return {
+      width: Math.round(window.innerWidth * baseDPR * scaleFactor),
+      height: Math.round(window.innerHeight * baseDPR * scaleFactor),
+      scaleFactor,
+      dpr: baseDPR,
+    };
+  },
+
+  // Orientation change handling
+  handleMobileOrientationChange: (callback: () => void) => {
+    // Early exit for SSR or non-capable devices
+    if (typeof window === 'undefined') return () => {};
+
+    const capabilities = getDeviceCapabilities();
+    if (!capabilities.orientationCapable) return () => {};
+
+    const handleOrientationChange = () => {
+      // Phase 2 Step 7 Action 1: Safari mobile needs delay after orientation change
+      const delay = capabilities.isMobileSafari ? 300 : 100;
+      setTimeout(callback, delay);
+    };
+
+    // Use orientation event if available
+    if ('onorientationchange' in window) {
+      const w = window as Window & typeof globalThis;
+      w.addEventListener('orientationchange', handleOrientationChange);
+      return () => w.removeEventListener('orientationchange', handleOrientationChange);
+    }
+
+    // Fallback to resize detection
+    const w = window as Window & typeof globalThis;
+    let lastOrientation = w.innerWidth > w.innerHeight ? 'landscape' : 'portrait';
+
+    const handleResize = () => {
+      const currentOrientation = w.innerWidth > w.innerHeight ? 'landscape' : 'portrait';
+      if (currentOrientation !== lastOrientation) {
+        lastOrientation = currentOrientation;
+        handleOrientationChange();
+      }
+    };
+
+    w.addEventListener('resize', handleResize);
+    return () => w.removeEventListener('resize', handleResize);
+  },
+
+  // Mobile viewport utilities
+  getStableMobileDimensions: () => {
+    const capabilities = getDeviceCapabilities();
+    if (capabilities.isMobileSafari) {
+      // Phase 2 Step 7 Action 1: Safari mobile viewport stabilization
+      // Use visual viewport API if available, fallback to screen dimensions
+      if (typeof window !== 'undefined' && 'visualViewport' in window && window.visualViewport) {
+        const visualViewport = window.visualViewport as VisualViewport;
+        return {
+          width: visualViewport.width,
+          height: visualViewport.height,
+        };
+      }
+      // Fallback: use screen dimensions to avoid dynamic viewport issues
+      if (typeof window !== 'undefined') {
+        return {
+          width: Math.min(window.screen.width, window.innerWidth),
+          height: Math.min(window.screen.height, window.innerHeight),
+        };
+      }
+    }
+    if (typeof window !== 'undefined') {
+      return {
+        width: window.innerWidth,
+        height: window.innerHeight,
+      };
+    }
+    // SSR fallback
+    return {
+      width: 1024,
+      height: 768,
+    };
+  },
+
+  // Phase 2 Step 7 Action 4: Critical mobile issue resolution
+  handleMobileLoadingStateError: (error: Error, context: string) => {
+    const capabilities = getDeviceCapabilities();
+    if (!capabilities.touchCapable && !capabilities.isMobileSafari) {
+      return; // Desktop - use standard error handling
+    }
+
+    console.error(`[Phase 2 Step 7] Mobile loading error in ${context}:`, error);
+
+    // Mobile-specific error recovery
+    if (capabilities.isMobileSafari) {
+      // Safari mobile specific recovery
+      if (error.message.includes('viewport') || error.message.includes('dimension')) {
+        console.log(
+          '[Phase 2 Step 7] Safari mobile viewport error detected, applying stabilization',
+        );
+        // Trigger viewport stabilization
+        setTimeout(() => {
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new Event('resize'));
+          }
+        }, 300); // Safari mobile needs delay
+      }
+    }
+
+    // General mobile error patterns
+    if (error.message.includes('touch') || error.message.includes('interaction')) {
+      console.log('[Phase 2 Step 7] Mobile touch interaction error, applying safety delay');
+      // Provide breathing room for mobile interactions
+      setTimeout(() => {
+        if (typeof document !== 'undefined') {
+          document.body.style.touchAction = 'pan-x pan-y';
+        }
+      }, 100);
+    }
+  },
+
+  // Phase 2 Step 7 Action 4: Mobile loading state validation
+  validateMobileLoadingState: (
+    loadingState: string,
+    imagesLoaded: boolean,
+    canvasReady: boolean,
+  ) => {
+    const capabilities = getDeviceCapabilities();
+    if (!capabilities.touchCapable && !capabilities.isMobileSafari) {
+      return { valid: true, issues: [] };
+    }
+
+    const issues: string[] = [];
+
+    // Mobile-specific validation
+    if (loadingState === 'ready' && !imagesLoaded) {
+      issues.push('Mobile: Loading state ready but images not loaded');
+    }
+
+    if (loadingState === 'ready' && !canvasReady) {
+      issues.push('Mobile: Loading state ready but canvas not ready');
+    }
+
+    // Safari mobile specific checks
+    if (capabilities.isMobileSafari) {
+      if (loadingState === 'ready' && capabilities.devicePixelRatio > 3) {
+        issues.push('Safari mobile: High DPR may cause viewport instability');
+      }
+
+      if (loadingState === 'intro' && capabilities.performanceTier === 'low') {
+        issues.push('Safari mobile: Low performance tier may affect intro animations');
+      }
+    }
+
+    return {
+      valid: issues.length === 0,
+      issues,
+      recommendations:
+        issues.length > 0
+          ? [
+              'Consider delaying touch interactions until all systems ready',
+              'Apply Safari mobile DPR stabilization if needed',
+              'Use performance-appropriate animation settings',
+            ]
+          : [],
+    };
+  },
+
+  // Phase 2 Step 7 Action 4: Safe mobile viewport operations
+  safeMobileViewportOperation: (operation: () => void, context: string) => {
+    const capabilities = getDeviceCapabilities();
+
+    try {
+      if (capabilities.isMobileSafari) {
+        // Safari mobile: Apply with proper timing
+        setTimeout(() => {
+          try {
+            operation();
+          } catch (error) {
+            mobileUtils.handleMobileLoadingStateError(error as Error, `${context} (delayed)`);
+          }
+        }, 100); // Small delay for Safari mobile stability
+      } else if (capabilities.touchCapable) {
+        // Other mobile: Direct execution with error handling
+        operation();
+      } else {
+        // Desktop: Direct execution
+        operation();
+      }
+    } catch (error) {
+      mobileUtils.handleMobileLoadingStateError(error as Error, context);
+    }
+  },
+};
+
+/**
  * Utility functions for common browser checks
  * Replaces scattered inline checks throughout the codebase
  */
@@ -349,11 +622,18 @@ export const browserUtils = {
   getMemoryPressure: () => getDeviceCapabilities().memoryPressure,
   getGradientCacheSize: () => getBrowserPerformanceSettings().gradientCacheSize,
   getGradientCacheClearInterval: () => getBrowserPerformanceSettings().gradientCacheClearInterval,
+
+  // Phase 2 Step 7 Action 1: Mobile-specific utilities integration
+  isMobileSafari: () => mobileUtils.isMobileSafari(),
+  getStableMobileDPR: () => mobileUtils.getStableMobileDPR(),
+  getMobileCanvasDimensions: () => mobileUtils.getMobileCanvasDimensions(),
+  getStableMobileDimensions: () => mobileUtils.getStableMobileDimensions(),
 };
 
 /**
  * Debug information for troubleshooting browser-specific issues
  * Phase 2 Step 5 Action 1-2: Enhanced with device capability information and standardized animation durations
+ * Phase 2 Step 7 Action 1: Enhanced with mobile-specific diagnostics
  */
 export function getBrowserDebugInfo(): string {
   const browser = getBrowser();
@@ -367,6 +647,11 @@ Available Memory: ${deviceCapabilities.availableMemory}MB
 Memory Pressure: ${deviceCapabilities.memoryPressure}
 Hardware Cores: ${deviceCapabilities.hardwareConcurrency}
 WebGL Support: ${deviceCapabilities.supportsWebGL ? 'yes' : 'no'}
+Mobile Safari: ${deviceCapabilities.isMobileSafari ? 'yes' : 'no'}
+Touch Capable: ${deviceCapabilities.touchCapable ? 'yes' : 'no'}
+Screen Size: ${deviceCapabilities.screenSize.width}x${deviceCapabilities.screenSize.height}
+Pixel Density: ${deviceCapabilities.pixelDensityCategory} (${deviceCapabilities.devicePixelRatio}x)
+Orientation Support: ${deviceCapabilities.orientationCapable ? 'yes' : 'no'}
 Target FPS: ${optimizations.targetFPS}
 Animation Duration: ${optimizations.animationDuration}ms (standardized across browsers)
 Space Animation: ${optimizations.enableSpaceAnimation ? 'enabled' : 'disabled'}

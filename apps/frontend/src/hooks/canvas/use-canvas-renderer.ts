@@ -1,7 +1,7 @@
 'use client';
 
 import type React from 'react';
-import { useRef, useEffect, useState, useCallback } from 'react';
+import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import type { ImageInfo, ViewState } from '../../types/canvas';
 import { drawCreateTokenSquare, drawHomeArea, drawImage } from '../../lib/canvas/draw';
 import {
@@ -16,7 +16,11 @@ import { getDisplayDimensions } from '../../lib/canvas/image-type-utils';
 import { useSpaceAnimation } from '../use-space-animation';
 import { easeInOutCubic } from '../../lib/canvas/math-utils';
 import { useCoordinatedResize } from '../use-coordinated-resize';
-import { browserUtils, getBrowserPerformanceSettings } from '../../lib/utils/browser-utils';
+import {
+  browserUtils,
+  getBrowserPerformanceSettings,
+  getDeviceCapabilities,
+} from '../../lib/utils/browser-utils';
 import {
   addEventListenerSafe,
   removeEventListenerSafe,
@@ -78,6 +82,32 @@ export const useCanvasRenderer = ({
   const activeCanvasRef = canvasRef || canvasRefInternal;
 
   useCoordinatedResize({ canvasRef: activeCanvasRef });
+
+  // Enhanced browser performance detection including mobile optimizations
+  const browserPerf = useMemo(() => {
+    const perf = getBrowserPerformanceSettings();
+    const capabilities = getDeviceCapabilities();
+
+    // Phase 2 Step 7 Action 3: Mobile-specific animation optimizations
+    const isMobileDevice = capabilities.touchCapable || capabilities.isMobileSafari;
+    const performanceTier = capabilities.performanceTier;
+
+    return {
+      ...perf,
+      // Mobile-optimized settings for smoother animation
+      frameThrottling: isMobileDevice && performanceTier === 'low',
+      mouseCheckInterval: isMobileDevice
+        ? performanceTier === 'high'
+          ? 32
+          : performanceTier === 'medium'
+            ? 50
+            : 100
+        : perf.mouseCheckInterval,
+      enableImageSmoothing: !isMobileDevice || performanceTier !== 'low',
+      adaptiveRendering: isMobileDevice, // Enable adaptive quality for mobile
+    };
+  }, []);
+
   // Phase 2 Step 2: Remove individual animation frame management
   // const animationFrameRef = useRef<number | null>(null); // Replaced by centralized manager
   const [hoveredTokenIndex, setHoveredTokenIndex] = useState<number | null>(null);
@@ -109,7 +139,6 @@ export const useCanvasRenderer = ({
   const hoverAnimationDuration = browserPerf.animationDuration; // Centralized animation duration
 
   // Product entrance animation state
-  const [productAnimationStartTime, setProductAnimationStartTime] = useState<number | null>(null);
   const [isProductAnimationActive, setIsProductAnimationActive] = useState(false);
 
   const frameThrottleRef = useRef(0);
@@ -149,6 +178,58 @@ export const useCanvasRenderer = ({
   // Performance optimization: mouse check interval
   const lastMouseCheck = useRef(0);
   const mouseCheckInterval = browserPerf.mouseCheckInterval; // Centralized mouse check interval
+
+  // Canvas and animation refs - consolidated declaration
+  const animationFrameRef = useRef<number | null>(null);
+  const productAnimationStartTime = useRef<number | null>(null);
+
+  // Phase 2 Step 7 Action 3: Mobile animation performance optimization
+  const mobilePerformanceRef = useRef({
+    lastFrameTime: 0,
+    frameSkipCount: 0,
+    adaptiveQuality: 1.0, // Start with full quality
+    targetFrameTime: 16, // 60fps target
+  });
+
+  // Phase 2 Step 7 Action 3: Mobile frame management
+  const shouldSkipFrame = useCallback(
+    (currentTime: number): boolean => {
+      if (!browserPerf.adaptiveRendering) return false;
+
+      const mobile = mobilePerformanceRef.current;
+      const frameTime = currentTime - mobile.lastFrameTime;
+
+      // Skip frame if we're falling behind target framerate
+      if (frameTime < mobile.targetFrameTime * 0.8) {
+        mobile.frameSkipCount++;
+        return true;
+      }
+
+      // Adapt quality based on performance
+      if (mobile.frameSkipCount > 3) {
+        mobile.adaptiveQuality = Math.max(0.7, mobile.adaptiveQuality - 0.1);
+      } else if (mobile.frameSkipCount === 0 && frameTime < mobile.targetFrameTime) {
+        mobile.adaptiveQuality = Math.min(1.0, mobile.adaptiveQuality + 0.05);
+      }
+
+      mobile.lastFrameTime = currentTime;
+      mobile.frameSkipCount = 0;
+      return false;
+    },
+    [browserPerf.adaptiveRendering],
+  );
+
+  // Phase 2 Step 7 Action 3: Optimized mouse check for mobile
+  const shouldCheckMouse = useCallback(
+    (currentTime: number): boolean => {
+      // On mobile, reduce mouse checks during touch interactions to save CPU
+      if (browserPerf.adaptiveRendering && mobilePerformanceRef.current.adaptiveQuality < 0.9) {
+        return currentTime - lastMouseCheck.current > browserPerf.mouseCheckInterval * 2;
+      }
+      return currentTime - lastMouseCheck.current > browserPerf.mouseCheckInterval;
+    },
+    [browserPerf.mouseCheckInterval, browserPerf.adaptiveRendering],
+  );
 
   // Preload the logo image
   useEffect(() => {
@@ -558,7 +639,7 @@ export const useCanvasRenderer = ({
   useEffect(() => {
     if (imagesLoaded && placementsCalculated && canvasVisible) {
       // Start animation immediately for faster loading experience
-      setProductAnimationStartTime(performance.now());
+      productAnimationStartTime.current = performance.now();
       setIsProductAnimationActive(true);
     }
   }, [imagesLoaded, placementsCalculated, canvasVisible]);
@@ -674,16 +755,8 @@ export const useCanvasRenderer = ({
     // Disable only during static rendering to maintain performance
     ctx.imageSmoothingEnabled = true;
 
-    const updateCanvasSize = () => {
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = window.innerWidth * dpr;
-      canvas.height = window.innerHeight * dpr;
-      canvas.style.width = `${window.innerWidth}px`;
-      canvas.style.height = `${window.innerHeight}px`;
-      ctx.scale(dpr, dpr);
-    };
-
-    updateCanvasSize(); // Initial sizing
+    // Phase 2 Step 7 Action 1: Canvas sizing now handled by coordinated resize system
+    // No need for manual updateCanvasSize here - coordinated resize manages DPR and mobile optimization
 
     // Update progress: Canvas ready (100%)
     setCanvasProgress(100);
@@ -695,6 +768,11 @@ export const useCanvasRenderer = ({
     const homeAreaHeight = unitSize;
 
     const draw = (currentTime: number) => {
+      // Phase 2 Step 7 Action 3: Mobile frame skip optimization
+      if (shouldSkipFrame(currentTime)) {
+        return;
+      }
+
       if (browserPerf.frameThrottling) {
         if (currentTime - frameThrottleRef.current < frameInterval) {
           // Phase 2 Step 2: Frame throttling handled by centralized manager
@@ -707,6 +785,16 @@ export const useCanvasRenderer = ({
       ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+      // Phase 2 Step 7 Action 3: Apply adaptive quality for mobile
+      if (browserPerf.adaptiveRendering) {
+        const quality = mobilePerformanceRef.current.adaptiveQuality;
+        ctx.imageSmoothingEnabled = browserPerf.enableImageSmoothing && quality > 0.8;
+        ctx.globalAlpha = Math.max(0.8, quality); // Slightly reduce opacity on low performance
+      } else {
+        ctx.imageSmoothingEnabled = browserPerf.enableImageSmoothing;
+        ctx.globalAlpha = 1.0;
+      }
+
       ctx.save();
       ctx.translate(viewState.x, viewState.y);
       ctx.scale(viewState.scale, viewState.scale);
@@ -718,8 +806,8 @@ export const useCanvasRenderer = ({
       const ANIMATION_DURATION = browserPerf.animationDuration; // Centralized animation duration
 
       // Check if the overall animation sequence is complete
-      if (isProductAnimationActive && productAnimationStartTime) {
-        const elapsed = currentTime - productAnimationStartTime;
+      if (isProductAnimationActive && productAnimationStartTime.current) {
+        const elapsed = currentTime - productAnimationStartTime.current;
 
         if (elapsed > ANIMATION_DURATION + 100) {
           // Add small buffer
@@ -729,11 +817,11 @@ export const useCanvasRenderer = ({
 
       // Calculate animation progress once
       let animationProgress = 0;
-      if (isProductAnimationActive && productAnimationStartTime) {
-        const elapsed = currentTime - productAnimationStartTime;
+      if (isProductAnimationActive && productAnimationStartTime.current) {
+        const elapsed = currentTime - productAnimationStartTime.current;
         const progress = Math.min(1, elapsed / ANIMATION_DURATION);
         animationProgress = easeInOutCubic(progress);
-      } else if (productAnimationStartTime) {
+      } else if (productAnimationStartTime.current) {
         // Animation has completed, keep images visible
         animationProgress = 1;
       }
@@ -771,9 +859,9 @@ export const useCanvasRenderer = ({
         });
       }
 
-      // Performance optimization: throttle mouse hit detection
+      // Phase 2 Step 7 Action 3: Mobile-optimized mouse hit detection
       let newHoveredIndex: number | null = null;
-      if (currentTime - lastMouseCheck.current > mouseCheckInterval) {
+      if (shouldCheckMouse(currentTime)) {
         const worldMouseX = (mousePositionRef.current.x - viewState.x) / viewState.scale;
         const worldMouseY = (mousePositionRef.current.y - viewState.y) / viewState.scale;
 
@@ -846,8 +934,8 @@ export const useCanvasRenderer = ({
       let tokenOpacity = 0;
       let tokenScale = 0.95;
 
-      if (isProductAnimationActive && productAnimationStartTime) {
-        const elapsed = currentTime - productAnimationStartTime;
+      if (isProductAnimationActive && productAnimationStartTime.current) {
+        const elapsed = currentTime - productAnimationStartTime.current;
         const tokenDelay = 100;
         const adjustedElapsed = Math.max(0, elapsed - tokenDelay);
         const progress = Math.min(1, adjustedElapsed / ANIMATION_DURATION);
@@ -855,7 +943,7 @@ export const useCanvasRenderer = ({
 
         tokenOpacity = easedProgress;
         tokenScale = 0.95 + 0.05 * easedProgress;
-      } else if (productAnimationStartTime) {
+      } else if (productAnimationStartTime.current) {
         tokenOpacity = 1;
         tokenScale = 1;
       }
