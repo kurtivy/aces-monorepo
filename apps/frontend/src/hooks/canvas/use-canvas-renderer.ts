@@ -17,6 +17,7 @@ import { useSpaceAnimation } from '../use-space-animation';
 import { easeInOutCubic } from '../../lib/canvas/math-utils';
 import { useCoordinatedResize } from '../use-coordinated-resize';
 import { browserUtils, getBrowserPerformanceSettings } from '../../lib/utils/browser-utils';
+// Note: useAnimationFrame removed - caused scroll timing issues, kept for background animations only
 
 interface UseCanvasRendererProps {
   images: ImageInfo[];
@@ -73,7 +74,8 @@ export const useCanvasRenderer = ({
   const activeCanvasRef = canvasRef || canvasRefInternal;
 
   useCoordinatedResize({ canvasRef: activeCanvasRef });
-  const animationFrameRef = useRef<number | null>(null);
+  // Phase 2 Step 2: Remove individual animation frame management
+  // const animationFrameRef = useRef<number | null>(null); // Replaced by centralized manager
   const [hoveredTokenIndex, setHoveredTokenIndex] = useState<number | null>(null);
   const mousePositionRef = useRef({ x: 0, y: 0 });
   const logoImageRef = useRef<HTMLImageElement | null>(null);
@@ -589,7 +591,7 @@ export const useCanvasRenderer = ({
     const draw = (currentTime: number) => {
       if (browserPerf.frameThrottling) {
         if (currentTime - frameThrottleRef.current < frameInterval) {
-          animationFrameRef.current = requestAnimationFrame(draw);
+          // Phase 2 Step 2: Frame throttling handled by centralized manager
           return;
         }
         frameThrottleRef.current = currentTime;
@@ -819,14 +821,32 @@ export const useCanvasRenderer = ({
       );
 
       ctx.restore();
-      animationFrameRef.current = requestAnimationFrame(draw);
+      // Phase 2 Step 2: Animation frame handled by centralized manager
+      // animationFrameRef.current = requestAnimationFrame(draw); // Removed
     };
 
-    animationFrameRef.current = requestAnimationFrame(draw);
+    // Phase 2 Step 2: Safe animation frame management with proper cleanup
+    let animationFrameId: number | null = null;
+    let isAnimationActive = true;
+
+    const animate = () => {
+      if (!isAnimationActive) return; // Early exit if cleanup called
+
+      draw(performance.now());
+
+      if (isAnimationActive) {
+        animationFrameId = requestAnimationFrame(animate);
+      }
+    };
+
+    animationFrameId = requestAnimationFrame(animate);
 
     return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
+      // Phase 2 Step 2: Fix cleanup race conditions
+      isAnimationActive = false;
+      if (animationFrameId !== null) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
       }
     };
   }, [

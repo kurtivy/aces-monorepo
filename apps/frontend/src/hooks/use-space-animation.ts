@@ -4,6 +4,7 @@ import type React from 'react';
 
 import { useEffect } from 'react';
 import { browserUtils } from '../lib/utils/browser-utils';
+// Phase 2 Step 2 REVERT: Direct animation frame is more reliable for space animation
 
 // Star class for 3D starfield effect
 class Star {
@@ -130,6 +131,7 @@ interface UseSpaceAnimationOptions {
 
 /**
  * Custom hook for creating a 3D space animation on a canvas element
+ * Phase 2 Step 2 REVERT: Direct animation frame with coordinated cleanup
  * Disabled on mobile devices for better performance
  */
 export function useSpaceAnimation(
@@ -176,10 +178,14 @@ export function useSpaceAnimation(
       nebula.push(new NebulaParticle(width, height));
     }
 
-    let animationFrameId: number;
+    // Phase 2 Step 2 REVERT: Direct animation frame with coordinated cleanup
+    let animationFrameId: number | null = null;
+    let isAnimationActive = true;
 
     // Animation loop
     const animate = () => {
+      if (!isAnimationActive) return; // Early exit if cleanup called
+
       // Create a subtle fade effect instead of clearing completely
       ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
       ctx.fillRect(0, 0, width, height);
@@ -196,15 +202,22 @@ export function useSpaceAnimation(
         star.draw(ctx, width, height, offsetX, offsetY);
       });
 
-      animationFrameId = requestAnimationFrame(animate);
+      if (isAnimationActive) {
+        animationFrameId = requestAnimationFrame(animate);
+      }
     };
 
     // Start animation
-    animate();
+    animationFrameId = requestAnimationFrame(animate);
 
     // Cleanup function
     return () => {
-      cancelAnimationFrame(animationFrameId);
+      // Phase 2 Step 2: Fix cleanup race conditions for space animation
+      isAnimationActive = false;
+      if (animationFrameId !== null) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+      }
     };
   }, [canvasRef, starCount, nebulaCount, canvasWidth, canvasHeight, offsetX, offsetY]);
 }

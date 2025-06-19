@@ -16,6 +16,7 @@ import NavMenu from '../ui/nav-menu';
 import type { ImageInfo } from '../../types/canvas';
 import { useCoordinatedResize } from '../../hooks/use-coordinated-resize';
 import { browserUtils } from '../../lib/utils/browser-utils';
+// Note: useAnimationFrame removed - caused scroll timing issues, kept for background animations only
 
 type LoadingState = 'loading' | 'intro' | 'ready';
 
@@ -103,14 +104,19 @@ const InfiniteCanvas = () => {
 
   const interactionsEnabled = loadingState === 'ready' && imagesLoaded;
 
+  // Phase 2 Step 2: Safe view state animation with proper cleanup
   useEffect(() => {
     if (loadingState !== 'ready' || !imagesLoaded || !isAnimating) return;
 
-    let animationFrameId: number;
+    let animationFrameId: number | null = null;
+    let isAnimationActive = true;
 
     const animate = () => {
-      if (isAnimating) {
-        animateViewState();
+      if (!isAnimationActive || !isAnimating) return; // Double check animation state
+
+      animateViewState();
+
+      if (isAnimationActive && isAnimating) {
         animationFrameId = requestAnimationFrame(animate);
       }
     };
@@ -118,7 +124,12 @@ const InfiniteCanvas = () => {
     animationFrameId = requestAnimationFrame(animate);
 
     return () => {
-      cancelAnimationFrame(animationFrameId);
+      // Phase 2 Step 2: Fix cleanup race conditions for view state
+      isAnimationActive = false;
+      if (animationFrameId !== null) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadingState, imagesLoaded, isAnimating]);
