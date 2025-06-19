@@ -15,12 +15,20 @@ import HomeButton from '../ui/home-button';
 import NavMenu from '../ui/nav-menu';
 import type { ImageInfo } from '../../types/canvas';
 import { useCoordinatedResize } from '../../hooks/use-coordinated-resize';
-import { browserUtils, getDeviceCapabilities, mobileUtils } from '../../lib/utils/browser-utils';
+import {
+  browserUtils,
+  getDeviceCapabilities,
+  mobileUtils,
+  setScrollRestoration,
+  getScrollRestoration,
+} from '../../lib/utils/browser-utils';
 import {
   addEventListenerSafe,
   removeEventListenerSafe,
 } from '../../lib/utils/event-listener-utils';
 import { performEventListenerHealthCheck } from '../../lib/utils/event-listener-utils';
+// Phase 2 Step 8 Action 1: Navigation safety coordination
+import { useNavigationSafety } from '../../hooks/use-navigation-safety';
 // Note: useAnimationFrame removed - caused scroll timing issues, kept for background animations only
 
 type LoadingState = 'loading' | 'intro' | 'ready';
@@ -65,14 +73,22 @@ const InfiniteCanvas = () => {
       animationDuration: browserUtils.getAnimationDuration() / 1000, // Convert ms to seconds for useViewState
     });
 
+  // Phase 2 Step 8 Action 1: Navigation safety for canvas renderer callback
+  const { withNavigationSafety } = useNavigationSafety({
+    loadingState,
+    imagesLoaded,
+    canvasReady: false, // Initial state, will be updated by useCanvasRenderer
+  });
+
   const { canvasProgress, canvasReady } = useCanvasRenderer({
     images,
     viewState,
     imagesLoaded: imagesLoaded,
     canvasVisible: loadingState !== 'loading',
-    onCreateTokenClick: () => {
-      window.location.href = '/create-token';
-    },
+    onCreateTokenClick: withNavigationSafety(
+      () => (window.location.href = '/create-token'),
+      'canvas-renderer-token-click',
+    ),
     imagePlacementMap: imagePlacementMapRef,
     unitSize: unitSize,
     canvasRef: canvasRef,
@@ -91,6 +107,11 @@ const InfiniteCanvas = () => {
     handleTouchStart,
     handleTouchMove,
     handleTouchEnd,
+    // Phase 2 Step 8 Action 4: Focus and keyboard event handlers
+    handleKeyDown,
+    handleFocus,
+    handleBlur,
+    focusManagement,
   } = useCanvasInteractions({
     viewState,
     imagesRef,
@@ -98,6 +119,12 @@ const InfiniteCanvas = () => {
     imagePlacementMap: imagePlacementMapRef,
     unitSize: unitSize,
     updateViewState,
+    // Phase 2 Step 8 Action 1: Pass navigation safety state
+    navigationSafety: {
+      loadingState,
+      imagesLoaded,
+      canvasReady,
+    },
   });
 
   const interactionsEnabled = loadingState === 'ready' && imagesLoaded;
@@ -240,11 +267,33 @@ const InfiniteCanvas = () => {
     };
   }, [handleWheel, canvasRef, interactionsEnabled]); // Phase 2 Step 3: Proper dependency array
 
-  // Disable scroll restoration
+  // Phase 2 Step 8 Action 2: Cross-browser scroll restoration safety
   useEffect(() => {
-    window.history.scrollRestoration = 'manual';
+    // Store original setting for restoration
+    const originalSetting = getScrollRestoration();
+
+    // Set to manual with feature detection
+    const wasSet = setScrollRestoration('manual');
+
+    if (wasSet) {
+      console.debug('[Phase 2 Step 8] Scroll restoration set to manual');
+    } else {
+      console.debug(
+        '[Phase 2 Step 8] Scroll restoration not supported, relying on browser default',
+      );
+    }
+
     return () => {
-      window.history.scrollRestoration = 'auto';
+      // Restore original setting or fallback to auto
+      if (wasSet) {
+        const restored = setScrollRestoration(originalSetting || 'auto');
+        if (restored) {
+          console.debug(
+            '[Phase 2 Step 8] Scroll restoration restored to:',
+            originalSetting || 'auto',
+          );
+        }
+      }
     };
   }, []);
 
@@ -303,6 +352,11 @@ const InfiniteCanvas = () => {
           onTouchStart={interactionsEnabled ? handleTouchStart : undefined}
           onTouchMove={interactionsEnabled ? handleTouchMove : undefined}
           onTouchEnd={interactionsEnabled ? handleTouchEnd : undefined}
+          // Phase 2 Step 8 Action 4: Focus and keyboard event handlers
+          onKeyDown={interactionsEnabled ? handleKeyDown : undefined}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          tabIndex={focusManagement.canReceiveFocus ? -1 : undefined}
           className="w-full h-full touch-none select-none"
           style={{
             cursor: interactionsEnabled
@@ -312,6 +366,9 @@ const InfiniteCanvas = () => {
                   : 'grab'
                 : 'pointer'
               : 'default',
+            // Phase 2 Step 8 Action 4: Focus indicator styles
+            outline: focusManagement.focusIndicatorVisible ? '2px solid #007AFF' : 'none',
+            outlineOffset: focusManagement.focusIndicatorVisible ? '2px' : '0',
           }}
         />
       </motion.div>

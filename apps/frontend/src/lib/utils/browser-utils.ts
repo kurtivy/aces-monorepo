@@ -813,3 +813,46 @@ export const getBackdropFilterCSS = (
     return cssProps;
   }
 };
+
+// Phase 2 Step 8 Action 2: Cross-Browser Scroll Restoration Safety
+export const supportsScrollRestoration = (): boolean => {
+  if (typeof window === 'undefined' || typeof history === 'undefined') {
+    return false;
+  }
+
+  try {
+    // Feature detection: Check if scrollRestoration property exists and is writable
+    return 'scrollRestoration' in history && typeof history.scrollRestoration === 'string';
+  } catch (error) {
+    // Some browsers throw errors when accessing scrollRestoration
+    return false;
+  }
+};
+
+export const setScrollRestoration = (mode: 'auto' | 'manual'): boolean => {
+  if (!supportsScrollRestoration()) {
+    console.debug('[Phase 2 Step 8] Scroll restoration not supported, using fallback behavior');
+    return false;
+  }
+
+  try {
+    history.scrollRestoration = mode;
+    return true;
+  } catch (error) {
+    console.warn('[Phase 2 Step 8] Failed to set scroll restoration mode:', error);
+    return false;
+  }
+};
+
+export const getScrollRestoration = (): 'auto' | 'manual' | null => {
+  if (!supportsScrollRestoration()) {
+    return null;
+  }
+
+  try {
+    return history.scrollRestoration as 'auto' | 'manual';
+  } catch (error) {
+    console.warn('[Phase 2 Step 8] Failed to get scroll restoration mode:', error);
+    return null;
+  }
+};

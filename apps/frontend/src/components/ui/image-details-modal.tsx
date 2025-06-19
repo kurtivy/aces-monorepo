@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
 import type { ImageInfo } from '../../types/canvas';
@@ -100,6 +100,7 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
+        transition={{ duration: 0.15, ease: 'easeOut' }} // Faster on mobile
         className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-8"
         style={{
           // Dynamic backdrop styles with fallbacks
@@ -111,45 +112,62 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
         onClick={stableOnClose}
       >
         <motion.div
-          initial={{ scale: 0.95, opacity: 0 }}
+          initial={{ scale: 0.98, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 0.95, opacity: 0 }}
-          transition={{ duration: 0.2, ease: 'easeOut' }}
-          className="bg-black rounded-3xl overflow-hidden max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-6xl w-full shadow-goldGlow border border-[#D0B264]/40 max-h-[90vh]"
+          exit={{ scale: 0.98, opacity: 0 }}
+          transition={{
+            duration: 0.15,
+            ease: 'easeOut',
+            // Disable scale animation on mobile for better performance
+            scale: {
+              duration: typeof window !== 'undefined' && window.innerWidth < 768 ? 0 : 0.15,
+            },
+          }}
+          className="bg-black rounded-2xl sm:rounded-3xl overflow-hidden max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-6xl w-full shadow-goldGlow border border-[#D0B264]/40 max-h-[95vh] sm:max-h-[90vh]"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex flex-col lg:flex-row h-full max-h-[90vh]">
+          <div className="flex flex-col lg:flex-row h-full max-h-[95vh] sm:max-h-[90vh]">
             {/* Image Section */}
-            <div className="flex-shrink-0 lg:w-1/2 bg-gradient-to-b from-black/60 to-black p-4 sm:p-6 lg:p-8">
-              <div className="relative h-48 sm:h-64 lg:h-full min-h-[200px] max-h-[60vh] lg:max-h-none overflow-hidden rounded-2xl">
+            <div className="flex-shrink-0 lg:w-1/2 bg-gradient-to-b from-black/60 to-black p-3 sm:p-6 lg:p-8">
+              <div className="relative h-40 sm:h-48 md:h-56 lg:h-full min-h-[160px] max-h-[40vh] sm:max-h-[50vh] lg:max-h-none overflow-hidden rounded-xl sm:rounded-2xl bg-black">
                 <Image
                   src={safeMetadata.image || '/placeholder.png'}
                   alt={safeMetadata.title}
                   fill
-                  className="object-contain transition-transform duration-300 hover:scale-105"
+                  className="object-contain transition-transform duration-200 md:hover:scale-105 bg-black"
+                  style={{
+                    backgroundColor: '#000000',
+                    // Force black background during all loading states
+                    backgroundImage: 'none',
+                    backgroundRepeat: 'no-repeat',
+                  }}
                   sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 40vw"
                   quality={85}
                   priority={true} // Load immediately since it's in a modal
                   placeholder="blur"
-                  blurDataURL="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k="
+                  // Black blur placeholder instead of default
+                  blurDataURL="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDEwMCAxMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiBmaWxsPSIjMDAwMDAwIi8+Cjwvc3ZnPgo="
                 />
               </div>
             </div>
 
             {/* Content Section */}
-            <div className="flex-1 p-4 sm:p-6 lg:p-8 flex flex-col justify-between overflow-y-auto">
-              <div className="flex items-start justify-between mb-6">
-                <div className="flex-1">
-                  <motion.div
-                    initial={{ y: 20, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    transition={{ delay: 0.1 }}
-                  >
-                    <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[#D0B264] mb-2 font-syne tracking-wide">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              className="flex-1 p-3 sm:p-6 lg:p-8 flex flex-col justify-between overflow-y-auto"
+            >
+              <div className="flex items-start justify-between mb-4 sm:mb-6">
+                <div className="flex-1 pr-2">
+                  <div>
+                    {' '}
+                    {/* Remove motion.div wrapper */}
+                    <h2 className="text-xl sm:text-2xl lg:text-3xl xl:text-4xl font-bold text-[#D0B264] mb-1 sm:mb-2 font-syne tracking-wide leading-tight">
                       {safeMetadata.title}
                     </h2>
                     <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-1 sm:space-y-0 sm:space-x-2">
-                      <span className="text-xl sm:text-2xl lg:text-3xl font-syne text-[#D0B264] font-bold">
+                      <span className="text-lg sm:text-xl lg:text-2xl xl:text-3xl font-syne text-[#D0B264] font-bold">
                         {safeMetadata.ticker}
                       </span>
                       {safeMetadata.date && (
@@ -158,13 +176,18 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                         </span>
                       )}
                     </div>
-                  </motion.div>
+                  </div>
                 </div>
                 <button
                   onClick={stableOnClose}
-                  className="text-[#D0B264]/80 hover:text-[#D0B264] transition-colors p-1"
+                  className="text-[#D0B264]/80 hover:text-[#D0B264] transition-colors duration-150 p-1 flex-shrink-0"
                 >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg
+                    className="w-5 h-5 sm:w-6 sm:h-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -175,39 +198,30 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                 </button>
               </div>
 
-              <motion.div
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.2 }}
-                className="flex-1"
-              >
+              <div className="flex-1 mb-4 sm:mb-0">
+                {' '}
+                {/* Remove motion.div wrapper */}
                 <div className="prose prose-invert">
-                  <p className="text-[#FFFFFF]/80 text-sm sm:text-base leading-relaxed font-spectral tracking-wide">
+                  <p className="text-[#FFFFFF]/80 text-sm sm:text-base leading-relaxed font-spectral tracking-wide line-clamp-4 sm:line-clamp-none">
                     {safeMetadata.description}
                   </p>
                 </div>
-              </motion.div>
+              </div>
 
-              <motion.div
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.3 }}
-                className="mt-4 sm:mt-8"
-              >
-                <button className="w-full bg-gradient-to-r from-[#D0B264] to-[#D0B264]/80 hover:from-[#D0B264]/90 hover:to-[#D0B264]/70 text-[#231F20] font-syne font-bold py-3 sm:py-4 px-6 sm:px-8 rounded-xl transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98] shadow-goldGlow text-base sm:text-lg">
+              <div className="mt-3 sm:mt-6 lg:mt-8">
+                {' '}
+                {/* Remove motion.div wrapper */}
+                <button className="w-full bg-gradient-to-r from-[#D0B264] to-[#D0B264]/80 hover:from-[#D0B264]/90 hover:to-[#D0B264]/70 text-[#231F20] font-syne font-bold py-3 sm:py-4 px-4 sm:px-6 lg:px-8 rounded-lg sm:rounded-xl transition-all duration-150 transform active:scale-[0.98] shadow-goldGlow text-sm sm:text-base lg:text-lg md:hover:scale-[1.02]">
                   Tokenize Soon!
                 </button>
-              </motion.div>
+              </div>
 
-              <motion.div
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.4 }}
-                className="mt-4 sm:mt-6 flex flex-col sm:flex-row items-center justify-center space-y-2 sm:space-y-0 sm:space-x-4 text-xs sm:text-sm text-[#FFFFFF]/60"
-              >
+              <div className="mt-3 sm:mt-4 lg:mt-6 flex flex-col sm:flex-row items-center justify-center space-y-2 sm:space-y-0 sm:space-x-4 text-xs sm:text-sm text-[#FFFFFF]/60">
+                {' '}
+                {/* Remove motion.div wrapper */}
                 <span className="flex items-center font-jetbrains-mono tracking-wide">
                   <svg
-                    className="w-4 h-4 sm:w-5 sm:h-5 mr-1 text-[#D0B264]"
+                    className="w-3 h-3 sm:w-4 sm:h-4 lg:w-5 lg:h-5 mr-1 text-[#D0B264]"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -223,7 +237,7 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                 </span>
                 <span className="flex items-center font-jetbrains-mono tracking-wide">
                   <svg
-                    className="w-4 h-4 sm:w-5 sm:h-5 mr-1 text-[#D0B264]"
+                    className="w-3 h-3 sm:w-4 sm:h-4 lg:w-5 lg:h-5 mr-1 text-[#D0B264]"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -237,8 +251,8 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                   </svg>
                   Verified Authentic
                 </span>
-              </motion.div>
-            </div>
+              </div>
+            </motion.div>
           </div>
         </motion.div>
       </motion.div>
