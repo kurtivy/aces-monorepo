@@ -136,8 +136,7 @@ const InfiniteCanvas = () => {
         animationFrameId = null;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadingState, imagesLoaded, isAnimating]);
+  }, [loadingState, imagesLoaded, isAnimating, animateViewState]); // Phase 2 Step 4 Action 3: Added missing animateViewState dependency
 
   const handleInitialLoadComplete = () => {
     if (hasSeenIntro) {

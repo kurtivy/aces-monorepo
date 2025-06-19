@@ -468,29 +468,91 @@ export const useCanvasRenderer = ({
   const lastUpdateRef = useRef(0);
   const updateDebounceDelay = 100; // 100ms debounce for smooth animations
 
+  // Phase 2 Step 4 Action 2: Enhanced viewport change detection
   const viewStateRef = useRef(viewState);
-  viewStateRef.current = viewState;
+  const pendingUpdateRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Update infinite grid when viewport changes (with debouncing)
+  // Phase 2 Step 4 Action 2: Track significant viewport changes to optimize grid updates
+  const lastSignificantViewStateRef = useRef({
+    x: viewState.x,
+    y: viewState.y,
+    scale: viewState.scale,
+  });
+
+  // Phase 2 Step 4 Action 2: Optimized viewport change detection
+  const hasSignificantViewportChange = useCallback((currentViewState: ViewState): boolean => {
+    const last = lastSignificantViewStateRef.current;
+    const threshold = 50; // pixels - only update grid for moves > 50px
+    const scaleThreshold = 0.1; // scale changes > 10%
+
+    const deltaX = Math.abs(currentViewState.x - last.x);
+    const deltaY = Math.abs(currentViewState.y - last.y);
+    const deltaScale = Math.abs(currentViewState.scale - last.scale);
+
+    return deltaX > threshold || deltaY > threshold || deltaScale > scaleThreshold;
+  }, []);
+
+  // Phase 2 Step 4 Action 2: Debounced grid update with proper viewport coordination
+  const debouncedGridUpdate = useCallback(
+    (newViewState: ViewState) => {
+      // Clear any pending update
+      if (pendingUpdateRef.current) {
+        clearTimeout(pendingUpdateRef.current);
+      }
+
+      // Check if this is a significant enough change to warrant grid update
+      if (!hasSignificantViewportChange(newViewState)) {
+        return; // Skip minor viewport changes
+      }
+
+      const now = performance.now();
+      const timeSinceLastUpdate = now - lastUpdateRef.current;
+
+      if (timeSinceLastUpdate < updateDebounceDelay) {
+        // Debounce rapid changes
+        pendingUpdateRef.current = setTimeout(() => {
+          updateInfiniteGrid(newViewState);
+          lastUpdateRef.current = performance.now();
+          lastSignificantViewStateRef.current = {
+            x: newViewState.x,
+            y: newViewState.y,
+            scale: newViewState.scale,
+          };
+          pendingUpdateRef.current = null;
+        }, updateDebounceDelay - timeSinceLastUpdate);
+      } else {
+        // Update immediately if enough time has passed
+        updateInfiniteGrid(newViewState);
+        lastUpdateRef.current = now;
+        lastSignificantViewStateRef.current = {
+          x: newViewState.x,
+          y: newViewState.y,
+          scale: newViewState.scale,
+        };
+      }
+    },
+    [updateInfiniteGrid, hasSignificantViewportChange, updateDebounceDelay],
+  );
+
+  // Phase 2 Step 4 Action 2: Update viewStateRef and trigger coordinated grid updates
   useEffect(() => {
-    if (!placementsCalculated || !originalGridBounds.current) return;
+    viewStateRef.current = viewState;
 
-    const now = performance.now();
-    const timeSinceLastUpdate = now - lastUpdateRef.current;
-
-    // Debounce rapid viewport changes during animations
-    if (timeSinceLastUpdate < updateDebounceDelay) {
-      const timeoutId = setTimeout(() => {
-        updateInfiniteGrid(viewStateRef.current);
-        lastUpdateRef.current = performance.now();
-      }, updateDebounceDelay - timeSinceLastUpdate);
-
-      return () => clearTimeout(timeoutId);
-    } else {
-      updateInfiniteGrid(viewStateRef.current);
-      lastUpdateRef.current = now;
+    // Only update grid if placements are ready
+    if (placementsCalculated && originalGridBounds.current) {
+      debouncedGridUpdate(viewState);
     }
-  }, [updateInfiniteGrid, placementsCalculated]);
+  }, [viewState, placementsCalculated, debouncedGridUpdate]);
+
+  // Phase 2 Step 4 Action 2: Cleanup pending updates on unmount
+  useEffect(() => {
+    return () => {
+      if (pendingUpdateRef.current) {
+        clearTimeout(pendingUpdateRef.current);
+        pendingUpdateRef.current = null;
+      }
+    };
+  }, []);
 
   // Start product animation when images are loaded AND canvas is visible
   useEffect(() => {
@@ -905,7 +967,8 @@ export const useCanvasRenderer = ({
     isProductAnimationActive,
     productAnimationStartTime,
     canvasVisible,
-  ]); // eslint-disable-line react-hooks/exhaustive-deps
+    activeCanvasRef, // Phase 2 Step 4 Action 3: Added missing canvas ref dependency
+  ]); // Phase 2 Step 4 Action 3: Most refs are intentionally stable and don't need dependencies
 
   return {
     canvasRef: activeCanvasRef,
