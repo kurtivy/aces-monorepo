@@ -13,7 +13,7 @@ const navItems = [
   { href: 'https://docs.aces.fun', label: 'About', external: true },
   { href: '/privacy', label: 'Privacy', external: false },
   { href: 'https://x.com/acesdotfun', label: 'X', external: true },
-  { href: 'https://t.me', label: 'Telegram', external: true },
+  { href: 'https://t.me/acesdotfun/', label: 'Telegram', external: true },
 ];
 
 // Desktop animations (full experience)

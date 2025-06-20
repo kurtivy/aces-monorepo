@@ -763,6 +763,26 @@ export const useCanvasInteractions = ({
           const aboutQuadX = homeAreaWorldX;
           const aboutQuadY = homeAreaWorldY;
 
+          const termsQuadX = homeAreaWorldX;
+          const termsQuadY = homeAreaWorldY + quadHeight;
+
+          // Terms quadrant (bottom left)
+          if (
+            worldX >= termsQuadX &&
+            worldX < termsQuadX + quadWidth &&
+            worldY >= termsQuadY &&
+            worldY < termsQuadY + quadHeight
+          ) {
+            LuxuryLogger.log('Terms quadrant clicked! Navigating to /terms', 'info');
+            // Phase 2 Step 8 Action 1: Protected navigation - blocks during loading
+            withNavigationSafety(
+              () => (window.location.href = window.location.origin + '/terms'),
+              'terms-home-area',
+            )();
+            return;
+          }
+
+          // About quadrant (top left)
           if (
             worldX >= aboutQuadX &&
             worldX < aboutQuadX + quadWidth &&
@@ -779,6 +799,7 @@ export const useCanvasInteractions = ({
             return;
           }
 
+          // Create token quadrant (top right)
           if (
             worldX >= createQuadX &&
             worldX < createQuadX + quadWidth &&
