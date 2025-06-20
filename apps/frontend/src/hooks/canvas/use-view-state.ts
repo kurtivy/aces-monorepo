@@ -225,6 +225,7 @@ export const useViewState = ({
   const initialScaleRef = useRef(initialScale);
   initialScaleRef.current = initialScale;
 
+  // CRITICAL FIX: Use ref pattern to prevent infinite re-renders
   const updateHomeButtonVisibility = useCallback(() => {
     // Clear existing timeout
     if (showHomeButtonDebounceRef.current) {
@@ -260,7 +261,13 @@ export const useViewState = ({
 
       setShowHomeButton(isPannedFar || isZoomedEnough);
     }, 100);
-  }, [initialScale]); // Add initialScale since initialScaleRef.current depends on it
+  }, []); // CRITICAL FIX: Remove initialScale dependency to prevent infinite re-renders
+
+  // Store the function in a ref to access latest version
+  const updateHomeButtonVisibilityRef = useRef(updateHomeButtonVisibility);
+  useEffect(() => {
+    updateHomeButtonVisibilityRef.current = updateHomeButtonVisibility;
+  }, [updateHomeButtonVisibility]);
 
   const prevTargetRef = useRef({
     x: viewState.targetX,
@@ -273,7 +280,7 @@ export const useViewState = ({
     const current = { x: viewState.targetX, y: viewState.targetY, scale: viewState.targetScale };
 
     if (prev.x !== current.x || prev.y !== current.y || prev.scale !== current.scale) {
-      updateHomeButtonVisibility();
+      updateHomeButtonVisibilityRef.current(); // CRITICAL FIX: Use ref to prevent dependency loop
       prevTargetRef.current = current;
     }
 
@@ -282,7 +289,7 @@ export const useViewState = ({
         clearTimeout(showHomeButtonDebounceRef.current);
       }
     };
-  }, [viewState.targetX, viewState.targetY, viewState.targetScale, updateHomeButtonVisibility]);
+  }, [viewState.targetX, viewState.targetY, viewState.targetScale]); // CRITICAL FIX: Removed updateHomeButtonVisibility
 
   const animateToHome = useCallback(() => {
     const currentUnitSize = canvasWidth.current < 768 ? 150 : 200;

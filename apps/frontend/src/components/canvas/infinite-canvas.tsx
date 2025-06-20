@@ -80,7 +80,7 @@ const InfiniteCanvas = () => {
     canvasReady: false, // Initial state, will be updated by useCanvasRenderer
   });
 
-  const { canvasProgress, canvasReady } = useCanvasRenderer({
+  const { canvasProgress, canvasReady, repeatedPlacements, repeatedTokens } = useCanvasRenderer({
     images,
     viewState,
     imagesLoaded: imagesLoaded,
@@ -125,6 +125,10 @@ const InfiniteCanvas = () => {
       imagesLoaded,
       canvasReady,
     },
+    // CRITICAL FIX: Pass repeated placements for correct modal image selection
+    repeatedPlacements,
+    // CRITICAL FIX: Pass repeated tokens for create token square clicking
+    repeatedTokens,
   });
 
   const interactionsEnabled = loadingState === 'ready' && imagesLoaded;
@@ -212,6 +216,11 @@ const InfiniteCanvas = () => {
   };
 
   // Phase 2 Step 3: Enhanced wheel event listener with ref change protection
+  // CRITICAL FIX: Store handleWheel in a ref to prevent infinite re-renders
+  const handleWheelRef = useRef(handleWheel);
+  // Update the ref whenever handleWheel changes, but don't create dependency loop
+  handleWheelRef.current = handleWheel;
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !interactionsEnabled) return;
@@ -224,7 +233,7 @@ const InfiniteCanvas = () => {
       if (canvasRef.current !== currentCanvas) return;
 
       try {
-        handleWheel(e as unknown as React.WheelEvent<HTMLCanvasElement>);
+        handleWheelRef.current(e as unknown as React.WheelEvent<HTMLCanvasElement>);
       } catch (error) {
         // Wheel handler error - continue silently
       }
@@ -265,7 +274,7 @@ const InfiniteCanvas = () => {
         }
       }
     };
-  }, [handleWheel, canvasRef, interactionsEnabled]); // Phase 2 Step 3: Proper dependency array
+  }, [canvasRef, interactionsEnabled]); // CRITICAL FIX: Removed handleWheel from dependency array
 
   // Phase 2 Step 8 Action 2: Cross-browser scroll restoration safety
   useEffect(() => {

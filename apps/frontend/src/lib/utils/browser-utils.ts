@@ -416,6 +416,58 @@ export const mobileUtils = {
     };
   },
 
+  // Phase 3: Enhanced canvas scaling for larger canvas sizes
+  getOptimalCanvasScale: () => {
+    const capabilities = getDeviceCapabilities();
+
+    // SSR safety check
+    if (typeof window === 'undefined') {
+      return {
+        scaleFactor: 1.0,
+        recommendedTileCache: 50,
+        qualityMode: 'standard' as const,
+      };
+    }
+
+    const viewport = { width: window.innerWidth, height: window.innerHeight };
+    const memoryMB = capabilities.availableMemory;
+
+    // Calculate target canvas size increase factor
+    let canvasScaleFactor = 1.0;
+
+    // Desktop scaling based on performance tier and memory
+    if (!capabilities.touchCapable) {
+      if (capabilities.performanceTier === 'high' && memoryMB > 8192) {
+        canvasScaleFactor = 1.5; // 50% larger canvas for high-end desktop
+      } else if (capabilities.performanceTier === 'medium' && memoryMB > 4096) {
+        canvasScaleFactor = 1.25; // 25% larger for medium desktop
+      }
+    }
+    // Mobile scaling (more conservative)
+    else if (capabilities.performanceTier === 'high' && memoryMB > 4096) {
+      canvasScaleFactor = 1.2; // 20% larger for high-end mobile
+    }
+
+    // Viewport-based adjustments
+    const largeViewport = viewport.width > 1920 || viewport.height > 1080;
+    if (largeViewport && capabilities.performanceTier === 'high') {
+      canvasScaleFactor *= 1.2; // Additional scaling for large displays
+    }
+
+    return {
+      scaleFactor: canvasScaleFactor,
+      recommendedTileCache: Math.floor(
+        (capabilities.performanceTier === 'high'
+          ? 150
+          : capabilities.performanceTier === 'medium'
+            ? 75
+            : 50) * canvasScaleFactor,
+      ),
+      qualityMode:
+        canvasScaleFactor > 1.3 ? 'ultra' : canvasScaleFactor > 1.1 ? 'high' : 'standard',
+    };
+  },
+
   // Orientation change handling
   handleMobileOrientationChange: (callback: () => void) => {
     // Early exit for SSR or non-capable devices

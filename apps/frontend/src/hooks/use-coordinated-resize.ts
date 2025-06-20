@@ -80,34 +80,61 @@ export const useCoordinatedResize = ({ canvasRef }: UseCoordinatedResizeProps = 
       if (!ctx) return;
 
       try {
+        // Phase 3: Enhanced canvas scaling system (client-side only)
+        const optimalScale =
+          typeof window !== 'undefined'
+            ? mobileUtils.getOptimalCanvasScale()
+            : { scaleFactor: 1.0, qualityMode: 'standard' };
+
         // Phase 2 Step 7 Action 1: Use mobile-optimized canvas dimensions when appropriate
         if (browserUtils.isMobile() || browserUtils.isMobileSafari()) {
           const mobileDimensions = browserUtils.getMobileCanvasDimensions();
 
+          // Apply optimal scaling to mobile dimensions
+          const scaledWidth = Math.round(mobileDimensions.width * optimalScale.scaleFactor);
+          const scaledHeight = Math.round(mobileDimensions.height * optimalScale.scaleFactor);
+
           // Update canvas with mobile-optimized dimensions
-          canvas.width = mobileDimensions.width;
-          canvas.height = mobileDimensions.height;
+          canvas.width = scaledWidth;
+          canvas.height = scaledHeight;
           canvas.style.width = `${width}px`;
           canvas.style.height = `${height}px`;
 
-          // Scale by the optimized scale factor
-          ctx.scale(
-            mobileDimensions.dpr * mobileDimensions.scaleFactor,
-            mobileDimensions.dpr * mobileDimensions.scaleFactor,
+          // Scale by the combined optimization factors
+          const totalScaleFactor =
+            mobileDimensions.dpr * mobileDimensions.scaleFactor * optimalScale.scaleFactor;
+          ctx.scale(totalScaleFactor, totalScaleFactor);
+
+          console.log(
+            `[Canvas Scaling] Mobile: ${scaledWidth}x${scaledHeight} (${optimalScale.qualityMode} mode)`,
           );
-
-          // Mobile canvas optimized for memory efficiency
         } else {
-          // Desktop/standard canvas sizing
+          // Desktop/standard canvas sizing with enhanced scaling
           const dpr = window.devicePixelRatio || 1;
-          canvas.width = width * dpr;
-          canvas.height = height * dpr;
+          const scaledWidth = Math.round(width * dpr * optimalScale.scaleFactor);
+          const scaledHeight = Math.round(height * dpr * optimalScale.scaleFactor);
+
+          canvas.width = scaledWidth;
+          canvas.height = scaledHeight;
           canvas.style.width = `${width}px`;
           canvas.style.height = `${height}px`;
-          ctx.scale(dpr, dpr);
+
+          const totalScaleFactor = dpr * optimalScale.scaleFactor;
+          ctx.scale(totalScaleFactor, totalScaleFactor);
+
+          console.log(
+            `[Canvas Scaling] Desktop: ${scaledWidth}x${scaledHeight} (${optimalScale.qualityMode} mode)`,
+          );
         }
       } catch (error) {
         console.warn('[Phase 2 Step 7] Canvas resize error:', error);
+        // Fallback to original sizing on error
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+        canvas.style.width = `${width}px`;
+        canvas.style.height = `${height}px`;
+        ctx.scale(dpr, dpr);
       }
     },
     [canvasRef],
