@@ -153,8 +153,38 @@ export const getImageCandidatesForPosition = (
   homeAreaWorldY: number,
   homeAreaWidth: number,
   homeAreaHeight: number,
+  // NEW: Optional grid bounds for boundary detection
+  gridBounds?: {
+    startX: number;
+    startY: number;
+    endX: number;
+    endY: number;
+    width: number;
+    height: number;
+  },
 ): ImageInfo[] => {
   const candidates: ImageInfo[] = [];
+
+  // NEW: Determine if this position is at a tile boundary
+  let isAtTileBoundary = false;
+  if (gridBounds) {
+    const tileWidth = gridBounds.width;
+    const tileHeight = gridBounds.height;
+    const worldX = gridX * unitSize;
+    const worldY = gridY * unitSize;
+
+    // Check if position is at the edge of any tile when repeated
+    const relativeX = (((worldX - gridBounds.startX) % tileWidth) + tileWidth) % tileWidth;
+    const relativeY = (((worldY - gridBounds.startY) % tileHeight) + tileHeight) % tileHeight;
+
+    // Position is at boundary if it's within 1 unit of tile edge
+    const edgeThreshold = unitSize;
+    isAtTileBoundary =
+      relativeX < edgeThreshold ||
+      relativeX > tileWidth - edgeThreshold ||
+      relativeY < edgeThreshold ||
+      relativeY > tileHeight - edgeThreshold;
+  }
 
   // Option 1: Try to place a "Create Token" square (RESTORED OLD LOGIC)
   // Place a "Create Token" square every 8th available square position (deterministic but sparse)
@@ -192,8 +222,21 @@ export const getImageCandidatesForPosition = (
       return true;
     });
 
+    // NEW: Filter images based on boundary constraints
+    const boundaryFilteredImages = validImages.filter((img) => {
+      // At tile boundaries, only allow square images (including create-token)
+      if (isAtTileBoundary) {
+        return img.type === 'square' || img.type === 'create-token';
+      }
+      // In tile interior, allow all image types but prefer non-squares
+      return true;
+    });
+
+    // Use boundary-filtered images if available, otherwise fall back to all valid images
+    const imagesToUse = boundaryFilteredImages.length > 0 ? boundaryFilteredImages : validImages;
+
     // Initialize usage count for all images if not done yet
-    for (const img of validImages) {
+    for (const img of imagesToUse) {
       // Additional safety check (should be redundant now)
       if (!img.metadata) {
         // Image with missing metadata detected, skipping
@@ -206,7 +249,7 @@ export const getImageCandidatesForPosition = (
     }
 
     // Find the least used images
-    const sortedImages = [...validImages].sort((a, b) => {
+    const sortedImages = [...imagesToUse].sort((a, b) => {
       // Additional null safety checks (KEEP PRODUCTION SAFETY)
       if (!a.metadata || !b.metadata) {
         // Image metadata missing during sort
@@ -244,8 +287,8 @@ export const getImageCandidatesForPosition = (
 
     // If no candidates due to adjacency constraints, fall back to deterministic selection
     if (candidates.length === 0) {
-      const fallbackIndex = Math.abs(gridX * 7 + gridY * 11) % validImages.length;
-      const fallbackImage = validImages[fallbackIndex];
+      const fallbackIndex = Math.abs(gridX * 7 + gridY * 11) % imagesToUse.length;
+      const fallbackImage = imagesToUse[fallbackIndex];
       if (fallbackImage && fallbackImage.metadata) {
         candidates.push(fallbackImage);
       }

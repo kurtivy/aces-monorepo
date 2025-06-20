@@ -148,7 +148,7 @@ export function useSpaceAnimation(
   } = options;
 
   useEffect(() => {
-    // Don't run space animation on mobile devices
+    // Phase 3.3: Check if background animations should be disabled
     if (!browserUtils.shouldEnableSpaceAnimation()) {
       return;
     }
@@ -178,7 +178,7 @@ export function useSpaceAnimation(
       nebula.push(new NebulaParticle(width, height));
     }
 
-    // Phase 2 Step 2 REVERT: Direct animation frame with coordinated cleanup
+    // Animation variables
     let animationFrameId: number | null = null;
     let isAnimationActive = true;
 

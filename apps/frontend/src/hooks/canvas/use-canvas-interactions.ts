@@ -6,7 +6,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import type { ImageInfo, ViewState } from '../../types/canvas';
 import { isHomeArea } from '../../lib/canvas/grid-placement';
 import { LuxuryLogger, getImageMetadata } from '../../lib/utils/luxury-logger';
-import { browserUtils, mobileUtils, getDeviceCapabilities } from '../../lib/utils/browser-utils';
+import { mobileUtils, getDeviceCapabilities } from '../../lib/utils/browser-utils';
 // Phase 2 Step 8 Action 1: Navigation safety coordination
 import { useNavigationSafety } from '../use-navigation-safety';
 
@@ -25,6 +25,28 @@ interface UseCanvasInteractionsProps {
     imagesLoaded: boolean;
     canvasReady: boolean;
   };
+  // CRITICAL FIX: Access to repeated placements for correct modal image selection
+  repeatedPlacements?: Map<
+    string,
+    Array<{
+      image: ImageInfo;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      index: number;
+      tileId: string;
+    }>
+  >;
+  // CRITICAL FIX: Access to repeated tokens for create token square clicking
+  repeatedTokens?: Map<
+    string,
+    Array<{
+      worldX: number;
+      worldY: number;
+      tileId: string;
+    }>
+  >;
 }
 
 // Phase 2 Step 7 Action 2: Touch Physics for Google Maps-like feel
@@ -112,10 +134,10 @@ const createCanvasInteractionSafety = (): CanvasInteractionSafety => ({
   canvasBounds: null,
   lastBoundsUpdate: 0,
   validCoordinateRange: {
-    minX: -10000,
-    maxX: 10000,
-    minY: -10000,
-    maxY: 10000,
+    minX: -100000,
+    maxX: 100000,
+    minY: -100000,
+    maxY: 100000,
   },
   lastInteractionTime: 0,
   interactionCount: 0,
@@ -299,8 +321,8 @@ const getTouchSettings = (): TouchSettings => {
 
   // Base settings optimized for device type
   const baseSettings: TouchSettings = {
-    // True 1:1 finger tracking - no sensitivity scaling needed
-    touchSensitivity: 1.0, // Perfect 1:1 tracking
+    // Touch sensitivity optimized for 1:1 tracking
+    touchSensitivity: 1.0, // Perfect 1:1 finger tracking
     mouseSensitivity: 1.0, // No scaling - let browser handle precision
 
     // Momentum physics - natural Google Maps-like feel
@@ -474,11 +496,14 @@ const handleKeyboardNavigation = (
 
 export const useCanvasInteractions = ({
   viewState,
+  imagesRef,
   setSelectedImage,
   imagePlacementMap,
   unitSize,
   updateViewState,
   navigationSafety,
+  repeatedPlacements,
+  repeatedTokens,
 }: UseCanvasInteractionsProps) => {
   const [isPanning, setIsPanning] = useState(false);
   const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
@@ -585,7 +610,12 @@ export const useCanvasInteractions = ({
     physics.velocity = { x: velocityX, y: velocityY };
     physics.isDecelerating = true;
 
-    const animateMomentum = () => {
+    // Phase 3.3: Frame-scheduled momentum animation for critical responsiveness
+    let lastMomentumFrame = 0;
+
+    const animateMomentum = (currentTime: number = performance.now()) => {
+      lastMomentumFrame = currentTime;
+
       const currentSpeed = Math.sqrt(
         physics.velocity.x * physics.velocity.x + physics.velocity.y * physics.velocity.y,
       );
@@ -773,7 +803,7 @@ export const useCanvasInteractions = ({
           throw new Error('Image placement map not ready');
         }
 
-        // Iterate over the placed items to find the one that was clicked
+        // Check original grid placements first
         for (const placedItem of imagePlacementMap.current.values()) {
           // Phase 2 Step 8 Action 3: Enhanced placement item validation
           if (!placedItem?.image) {
@@ -795,6 +825,69 @@ export const useCanvasInteractions = ({
           if (worldX >= x && worldX <= x + width && worldY >= y && worldY <= y + height) {
             clickedImageInfo = image;
             break;
+          }
+        }
+
+        // CRITICAL FIX: Check actual repeated grid placements for correct modal image selection
+        if (!clickedImageInfo && repeatedPlacements) {
+          // Check each tile's repeated placements
+          for (const [tileId, tilePlacements] of repeatedPlacements.entries()) {
+            for (const placement of tilePlacements) {
+              if (
+                worldX >= placement.x &&
+                worldX <= placement.x + placement.width &&
+                worldY >= placement.y &&
+                worldY <= placement.y + placement.height
+              ) {
+                clickedImageInfo = placement.image;
+                console.log(
+                  '[Canvas Interactions] Found repeated grid image:',
+                  placement.image.metadata?.title,
+                  'in tile',
+                  tileId,
+                );
+                break;
+              }
+            }
+            if (clickedImageInfo) break;
+          }
+        }
+
+        // CRITICAL FIX: Check repeated create token squares for clicking
+        if (!clickedImageInfo && repeatedTokens) {
+          // Check each tile's repeated token positions
+          for (const [tileId, tileTokens] of repeatedTokens.entries()) {
+            for (const tokenPos of tileTokens) {
+              // Create token squares are unitSize x unitSize
+              if (
+                worldX >= tokenPos.worldX &&
+                worldX <= tokenPos.worldX + unitSize &&
+                worldY >= tokenPos.worldY &&
+                worldY <= tokenPos.worldY + unitSize
+              ) {
+                // Create a create-token image info for navigation
+                clickedImageInfo = {
+                  element: null as any, // Not needed for navigation
+                  type: 'create-token',
+                  displayWidth: unitSize,
+                  displayHeight: unitSize,
+                  metadata: {
+                    id: `create-token-repeated-${tileId}`,
+                    title: 'Create Token',
+                    description: 'Create your own token',
+                  },
+                };
+                console.log(
+                  '[Canvas Interactions] Found repeated create token square in tile',
+                  tileId,
+                  'at position',
+                  tokenPos.worldX,
+                  tokenPos.worldY,
+                );
+                break;
+              }
+            }
+            if (clickedImageInfo) break;
           }
         }
 
@@ -871,6 +964,8 @@ export const useCanvasInteractions = ({
         }
       }
 
+      // Mouse interaction started
+
       // Phase 2 Step 7 Action 2: Stop any ongoing momentum
       stopMomentum();
 
@@ -945,6 +1040,8 @@ export const useCanvasInteractions = ({
         }
       }
 
+      // Mouse interaction ended
+
       // Reset panning state
       setIsPanning(false);
       setIsDragging(false);
@@ -981,6 +1078,8 @@ export const useCanvasInteractions = ({
           console.debug(`[Phase 2 Step 8 Action 4] Canvas focus failed: ${focusResult.reason}`);
         }
       }
+
+      // Touch interaction started
 
       // Phase 2 Step 7 Action 2: Stop any ongoing momentum immediately
       stopMomentum();
@@ -1144,6 +1243,8 @@ export const useCanvasInteractions = ({
         // Phase 2 Step 7 Action 2: Start momentum animation for touch gestures
         startMomentumAnimation();
       }
+
+      // Touch interaction ended
 
       // Reset panning state
       setIsPanning(false);

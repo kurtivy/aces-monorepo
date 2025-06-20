@@ -2,6 +2,15 @@ import { UNIT_SIZE } from '../../../constants/canvas';
 import { browserUtils } from '../../utils/browser-utils';
 import { getDeviceCapabilities } from '../../utils/browser-utils';
 
+// Safari-specific performance optimizations
+const isSafari =
+  typeof navigator !== 'undefined' &&
+  navigator.userAgent.includes('Safari') &&
+  !navigator.userAgent.includes('Chrome');
+
+// Gradient cache for Safari performance
+const homeAreaGradientCache = new Map<string, CanvasGradient>();
+
 export const drawHomeArea = (
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -21,11 +30,23 @@ export const drawHomeArea = (
 
   const radius = 12;
 
-  // Background with gradient
+  // Background with gradient - Safari optimization: cache gradients
   ctx.save();
-  const backgroundGradient = ctx.createLinearGradient(x, y, x + homeAreaWidth, y + homeAreaHeight);
-  backgroundGradient.addColorStop(0, '#1A1A1A');
-  backgroundGradient.addColorStop(1, '#0A0A0A');
+
+  const gradientKey = `home-bg-${Math.round(homeAreaWidth)}-${Math.round(homeAreaHeight)}`;
+  let backgroundGradient = homeAreaGradientCache.get(gradientKey);
+
+  if (!backgroundGradient) {
+    backgroundGradient = ctx.createLinearGradient(0, 0, homeAreaWidth, homeAreaHeight);
+    backgroundGradient.addColorStop(0, '#1A1A1A');
+    backgroundGradient.addColorStop(1, '#0A0A0A');
+
+    // Cache for reuse (limit cache size)
+    if (homeAreaGradientCache.size < 20) {
+      homeAreaGradientCache.set(gradientKey, backgroundGradient);
+    }
+  }
+
   ctx.fillStyle = backgroundGradient;
   ctx.beginPath();
   ctx.roundRect(x, y, homeAreaWidth, homeAreaHeight, radius);
@@ -78,9 +99,9 @@ export const drawHomeArea = (
   // Draw premium multi-layered border (matching create token square)
   ctx.save();
 
-  // Smart mobile optimization: reduce glow effects on mobile
-  if (!isMobileDevice) {
-    // Layer 1: Outer glow (desktop only)
+  // Safari optimization: Skip expensive shadow effects on Safari
+  if (!isSafari && !isMobileDevice) {
+    // Layer 1: Outer glow (desktop only, not Safari)
     ctx.shadowColor = 'rgba(208, 178, 100, 0.6)';
     ctx.shadowBlur = 15;
   }
@@ -91,12 +112,23 @@ export const drawHomeArea = (
   ctx.roundRect(x, y, homeAreaWidth, homeAreaHeight, radius);
   ctx.stroke();
 
-  // Layer 2: Inner border with gradient
+  // Layer 2: Inner border with gradient - Safari optimization: cache gradients
   ctx.shadowBlur = 0;
-  const borderGradient = ctx.createLinearGradient(x, y, x + homeAreaWidth, y + homeAreaHeight);
-  borderGradient.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
-  borderGradient.addColorStop(0.5, 'rgba(208, 178, 100, 0.8)');
-  borderGradient.addColorStop(1, 'rgba(173, 142, 66, 0.9)');
+
+  const borderGradientKey = `home-border-${Math.round(homeAreaWidth)}-${Math.round(homeAreaHeight)}`;
+  let borderGradient = homeAreaGradientCache.get(borderGradientKey);
+
+  if (!borderGradient) {
+    borderGradient = ctx.createLinearGradient(0, 0, homeAreaWidth, homeAreaHeight);
+    borderGradient.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+    borderGradient.addColorStop(0.5, 'rgba(208, 178, 100, 0.8)');
+    borderGradient.addColorStop(1, 'rgba(173, 142, 66, 0.9)');
+
+    // Cache for reuse (limit cache size)
+    if (homeAreaGradientCache.size < 20) {
+      homeAreaGradientCache.set(borderGradientKey, borderGradient);
+    }
+  }
 
   ctx.strokeStyle = borderGradient;
   ctx.lineWidth = 2;
@@ -189,7 +221,7 @@ export const drawHomeArea = (
   drawQuadrantButton('CAREER', 3);
 
   // Draw the circular background for logo with premium styling
-  const logoSize = homeAreaHeight * 0.6; // Slightly smaller for better proportions
+  const logoSize = Math.min(homeAreaWidth, homeAreaHeight) * 0.6; // 60% of the smaller dimension
 
   // Logo background with gradient
   const logoGradient = ctx.createRadialGradient(
@@ -211,10 +243,10 @@ export const drawHomeArea = (
   // Add premium glow around the logo
   ctx.save();
 
-  // Smart mobile optimization: reduce glow effects on mobile
-  if (!isMobileDevice) {
-    ctx.shadowColor = 'rgba(208, 178, 100, 0.4)';
-    ctx.shadowBlur = 20;
+  // Safari optimization: Skip expensive logo glow on Safari
+  if (!isSafari && !isMobileDevice) {
+    ctx.shadowColor = 'rgba(255, 255, 255, 0.3)';
+    ctx.shadowBlur = 10;
   }
 
   // Multi-layered logo border
@@ -241,13 +273,6 @@ export const drawHomeArea = (
     ctx.beginPath();
     ctx.arc(centerX, centerY, logoSize / 2 - 4, 0, Math.PI * 2);
     ctx.clip();
-
-    // Smart mobile optimization: reduce logo glow on mobile
-    if (!isMobileDevice) {
-      // Add logo glow (desktop only)
-      ctx.shadowColor = 'rgba(255, 255, 255, 0.3)';
-      ctx.shadowBlur = 10;
-    }
 
     // Calculate dimensions to maintain aspect ratio
     const scale = (logoSize - 8) / Math.max(logoImage.width, logoImage.height);

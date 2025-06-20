@@ -4,6 +4,7 @@ import { getImageType, getDisplayDimensions } from '../../lib/canvas/image-type-
 import { SAMPLE_METADATA } from '../../data/metadata'; // Adjusted path
 import { LuxuryLogger } from '../../lib/utils/luxury-logger'; // Adjusted path
 import { loadImageWithFallback } from '../../lib/utils/image-loader-utils'; // Phase 2 Step 1: Standardized CORS handling
+import { safeCanvasToDataURL } from '../../lib/utils/canvas-error-boundary'; // Phase 2 Step 9: Safe canvas operations
 
 interface UseImageLoaderProps {
   unitSize: number; // Add unitSize as a prop
@@ -40,7 +41,25 @@ const createLuxuryPlaceholderImage = (unitSize: number) => {
   }
 
   const img = new Image();
-  img.src = canvas.toDataURL();
+  // Phase 2 Step 9: Safe canvas toDataURL with browser format support
+  const dataUrlResult = safeCanvasToDataURL(canvas);
+  if (dataUrlResult.success && dataUrlResult.data) {
+    img.src = dataUrlResult.data;
+  } else {
+    LuxuryLogger.log(
+      `[Phase 2 Step 9] Placeholder creation failed: ${dataUrlResult.error?.message}`,
+      'warn',
+    );
+    // Fallback: simple data URL
+    img.src =
+      'data:image/svg+xml;base64,' +
+      btoa(`
+      <svg width="${unitSize}" height="${unitSize}" xmlns="http://www.w3.org/2000/svg">
+        <rect width="100%" height="100%" fill="#D0B264"/>
+        <text x="50%" y="50%" text-anchor="middle" dy=".3em" fill="white" font-size="${unitSize * 0.08}">Unavailable</text>
+      </svg>
+    `);
+  }
   return img;
 };
 
