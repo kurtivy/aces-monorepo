@@ -12,6 +12,7 @@
  */
 
 import { LuxuryLogger } from './luxury-logger';
+import { safeCanvasToDataURL } from './canvas-error-boundary';
 
 interface ImageLoadOptions {
   src: string;
@@ -85,7 +86,25 @@ function createPlaceholderImage(width: number = 200, height: number = 200): HTML
   }
 
   const img = new Image();
-  img.src = canvas.toDataURL();
+  // Phase 2 Step 9: Safe canvas toDataURL with browser format support
+  const dataUrlResult = safeCanvasToDataURL(canvas);
+  if (dataUrlResult.success && dataUrlResult.data) {
+    img.src = dataUrlResult.data;
+  } else {
+    LuxuryLogger.log(
+      `[Phase 2 Step 9] Placeholder image creation failed: ${dataUrlResult.error?.message}`,
+      'warn',
+    );
+    // Fallback: create a simple colored rectangle
+    img.src =
+      'data:image/svg+xml;base64,' +
+      btoa(`
+      <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+        <rect width="100%" height="100%" fill="#D0B264"/>
+        <text x="50%" y="50%" text-anchor="middle" dy=".3em" fill="white" font-family="Arial">Image Unavailable</text>
+      </svg>
+    `);
+  }
   return img;
 }
 
@@ -93,18 +112,20 @@ function createPlaceholderImage(width: number = 200, height: number = 200): HTML
  * Checks if a canvas is tainted (cannot use toDataURL)
  */
 function isCanvasTainted(canvas: HTMLCanvasElement): boolean {
-  try {
-    // Try to get image data - will throw SecurityError if tainted
-    canvas.toDataURL();
-    return false;
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'SecurityError') {
-      return true;
-    }
-    // Other errors might indicate different issues
-    LuxuryLogger.log(`Canvas taint check failed with unexpected error: ${error}`, 'warn');
-    return true; // Assume tainted for safety
+  // Phase 2 Step 9: Safe canvas taint check with error boundary
+  const dataUrlResult = safeCanvasToDataURL(canvas);
+  if (dataUrlResult.success) {
+    return false; // Successfully got data URL, not tainted
   }
+
+  // Check if it's specifically a CORS/taint error
+  if (dataUrlResult.error?.type === 'todataurl-security-error') {
+    return true; // Confirmed tainted
+  }
+
+  // Other errors might indicate different issues
+  LuxuryLogger.log(`Canvas taint check failed: ${dataUrlResult.error?.message}`, 'warn');
+  return true; // Assume tainted for safety
 }
 
 /**

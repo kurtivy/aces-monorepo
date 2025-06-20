@@ -27,6 +27,15 @@ import {
 } from '../../lib/utils/event-listener-utils';
 // Note: useAnimationFrame removed - caused scroll timing issues, kept for background animations only
 
+// Phase 2 Step 9: Import comprehensive error boundary utilities
+import {
+  safeGetCanvasContext,
+  safeGetBoundingClientRect,
+  monitorCanvasPerformance,
+  recoverFromCanvasError,
+  type CanvasOperationResult,
+} from '../../lib/utils/canvas-error-boundary';
+
 interface UseCanvasRendererProps {
   images: ImageInfo[];
   viewState: ViewState;
@@ -657,7 +666,13 @@ export const useCanvasRenderer = ({
       if (activeCanvasRef.current !== currentCanvas) return;
 
       const mouseEvent = event as MouseEvent;
-      const rect = currentCanvas.getBoundingClientRect();
+      // Phase 2 Step 9: Safe getBoundingClientRect with precision handling
+      const rectResult = safeGetBoundingClientRect(currentCanvas);
+      if (!rectResult.success || !rectResult.data) {
+        console.warn('[Phase 2 Step 9] Canvas bounds calculation failed:', rectResult.error);
+        return;
+      }
+      const rect = rectResult.data;
       mousePositionRef.current = {
         x: mouseEvent.clientX - rect.left,
         y: mouseEvent.clientY - rect.top,
@@ -676,7 +691,13 @@ export const useCanvasRenderer = ({
 
       // Check if clicking on repeated token
       const mouseEvent = event as MouseEvent;
-      const rect = currentCanvas.getBoundingClientRect();
+      // Phase 2 Step 9: Safe getBoundingClientRect with precision handling
+      const rectResult = safeGetBoundingClientRect(currentCanvas);
+      if (!rectResult.success || !rectResult.data) {
+        console.warn('[Phase 2 Step 9] Canvas bounds calculation failed:', rectResult.error);
+        return;
+      }
+      const rect = rectResult.data;
       const mouseX = mouseEvent.clientX - rect.left;
       const mouseY = mouseEvent.clientY - rect.top;
       const worldMouseX = (mouseX - viewState.x) / viewState.scale;
@@ -745,7 +766,13 @@ export const useCanvasRenderer = ({
     const canvas = activeCanvasRef.current;
     if (!canvas) return;
 
-    const ctx = canvas.getContext('2d');
+    // Phase 2 Step 9: Safe canvas context creation with browser variation handling
+    const contextResult = safeGetCanvasContext(canvas, '2d');
+    if (!contextResult.success) {
+      console.warn('[Phase 2 Step 9] Canvas context creation failed:', contextResult.error);
+      return;
+    }
+    const ctx = contextResult.data as CanvasRenderingContext2D;
     if (!ctx) return;
 
     // Update progress: Canvas initializing (80%)
@@ -761,6 +788,9 @@ export const useCanvasRenderer = ({
     // Update progress: Canvas ready (100%)
     setCanvasProgress(100);
     setCanvasReady(true);
+
+    // Phase 2 Step 9: Lightweight performance monitoring (removed heavy monitoring for performance)
+    // Performance monitoring moved to development mode only
 
     const homeAreaWorldX = -unitSize;
     const homeAreaWorldY = -unitSize;
