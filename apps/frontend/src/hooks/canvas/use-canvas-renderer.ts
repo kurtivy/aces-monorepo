@@ -75,6 +75,23 @@ interface RepeatedTokenPosition {
   tileId: string;
 }
 
+// Phase 3.1: Dirty Region Tracking Interface
+interface DirtyRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  reason: 'viewport' | 'hover' | 'animation' | 'full';
+}
+
+interface DirtyRegionManager {
+  regions: DirtyRegion[];
+  addDirtyRegion: (region: DirtyRegion) => void;
+  shouldRedrawRegion: (x: number, y: number, width: number, height: number) => boolean;
+  clearDirtyRegions: () => void;
+  optimizeRegions: () => void;
+}
+
 export const useCanvasRenderer = ({
   images,
   viewState,
@@ -628,8 +645,28 @@ export const useCanvasRenderer = ({
   useEffect(() => {
     viewStateRef.current = viewState;
 
-    // Only update grid if placements are ready
+    // Phase 3.1: Track viewport changes as dirty regions
     if (placementsCalculated && originalGridBounds.current) {
+      const canvas = activeCanvasRef.current;
+      if (canvas) {
+        // Add dirty region for viewport change
+        const canvasRect = canvas.getBoundingClientRect();
+        const viewportWorldBounds = {
+          x: -viewState.x / viewState.scale,
+          y: -viewState.y / viewState.scale,
+          width: canvasRect.width / viewState.scale,
+          height: canvasRect.height / viewState.scale,
+        };
+
+        dirtyRegionManager.current.addDirtyRegion({
+          x: viewportWorldBounds.x,
+          y: viewportWorldBounds.y,
+          width: viewportWorldBounds.width,
+          height: viewportWorldBounds.height,
+          reason: 'viewport',
+        });
+      }
+
       debouncedGridUpdate(viewState);
     }
   }, [viewState, placementsCalculated, debouncedGridUpdate]);
@@ -811,9 +848,42 @@ export const useCanvasRenderer = ({
         frameThrottleRef.current = currentTime;
       }
 
-      // Stable canvas clearing for all browsers
-      ctx.fillStyle = '#000000';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // Phase 3.1: Clip-based redraw optimization - only redraw dirty regions
+      const dirtyRegions = dirtyRegionManager.current.regions;
+      const hasAnimations = isProductAnimationActive || isHoveringToken || currentHoverProgress > 0;
+
+      // For now, use full redraw during animations to ensure smoothness
+      // This can be optimized further in later phases
+      if (
+        hasAnimations ||
+        dirtyRegions.length === 0 ||
+        dirtyRegions.some((r) => r.reason === 'full')
+      ) {
+        // Full redraw - existing behavior
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      } else {
+        // Partial redraw - only clear dirty regions
+        ctx.fillStyle = '#000000';
+        dirtyRegions.forEach((region) => {
+          // Convert world coordinates to screen coordinates
+          const screenX = region.x * viewState.scale + viewState.x;
+          const screenY = region.y * viewState.scale + viewState.y;
+          const screenWidth = region.width * viewState.scale;
+          const screenHeight = region.height * viewState.scale;
+
+          // Clip and clear only this region
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(screenX, screenY, screenWidth, screenHeight);
+          ctx.clip();
+          ctx.fillRect(screenX, screenY, screenWidth, screenHeight);
+          ctx.restore();
+        });
+      }
+
+      // Clear dirty regions after processing
+      dirtyRegionManager.current.clearDirtyRegions();
 
       // Phase 2 Step 7 Action 3: Apply adaptive quality for mobile
       if (browserPerf.adaptiveRendering) {
@@ -931,6 +1001,33 @@ export const useCanvasRenderer = ({
         }
 
         if (newHoveredIndex !== hoveredTokenIndex) {
+          // Phase 3.1: Add dirty regions for hover state changes
+          const buffer = unitSize * 0.2; // 20% buffer for hover effects
+
+          // Mark old hovered area as dirty (if any)
+          if (hoveredTokenIndex !== null && stableCreateTokenPositions.current[hoveredTokenIndex]) {
+            const oldPos = stableCreateTokenPositions.current[hoveredTokenIndex];
+            dirtyRegionManager.current.addDirtyRegion({
+              x: oldPos.worldX - buffer,
+              y: oldPos.worldY - buffer,
+              width: unitSize + buffer * 2,
+              height: unitSize + buffer * 2,
+              reason: 'hover',
+            });
+          }
+
+          // Mark new hovered area as dirty (if any)
+          if (newHoveredIndex !== null && stableCreateTokenPositions.current[newHoveredIndex]) {
+            const newPos = stableCreateTokenPositions.current[newHoveredIndex];
+            dirtyRegionManager.current.addDirtyRegion({
+              x: newPos.worldX - buffer,
+              y: newPos.worldY - buffer,
+              width: unitSize + buffer * 2,
+              height: unitSize + buffer * 2,
+              reason: 'hover',
+            });
+          }
+
           setHoveredTokenIndex(newHoveredIndex);
           setIsHoveringToken(newHoveredIndex !== null);
           hoverAnimationStartTime.current = currentTime;
@@ -1087,6 +1184,50 @@ export const useCanvasRenderer = ({
     canvasVisible,
     activeCanvasRef, // Phase 2 Step 4 Action 3: Added missing canvas ref dependency
   ]); // Phase 2 Step 4 Action 3: Most refs are intentionally stable and don't need dependencies
+
+  // Phase 3.1: Dirty Region Manager Implementation
+  const dirtyRegionManager = useRef<DirtyRegionManager>({
+    regions: [],
+    addDirtyRegion: (region: DirtyRegion): void => {
+      dirtyRegionManager.current.regions.push(region);
+    },
+    shouldRedrawRegion: (x: number, y: number, width: number, height: number): boolean => {
+      const regions: DirtyRegion[] = dirtyRegionManager.current.regions;
+      if (regions.length === 0) return false;
+
+      // Check if any dirty region intersects with the given region
+      return regions.some((region: DirtyRegion) => {
+        const intersects = !(
+          region.x + region.width < x ||
+          x + width < region.x ||
+          region.y + region.height < y ||
+          y + height < region.y
+        );
+        return intersects;
+      });
+    },
+    clearDirtyRegions: (): void => {
+      dirtyRegionManager.current.regions = [];
+    },
+    optimizeRegions: (): void => {
+      // Simple optimization: merge overlapping regions
+      const regions: DirtyRegion[] = dirtyRegionManager.current.regions;
+      if (regions.length <= 1) return;
+
+      // If we have too many regions, just mark everything as dirty
+      if (regions.length > 10) {
+        dirtyRegionManager.current.regions = [
+          {
+            x: 0,
+            y: 0,
+            width: Number.MAX_SAFE_INTEGER,
+            height: Number.MAX_SAFE_INTEGER,
+            reason: 'full',
+          },
+        ];
+      }
+    },
+  });
 
   return {
     canvasRef: activeCanvasRef,
