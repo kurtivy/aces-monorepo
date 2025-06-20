@@ -22,6 +22,7 @@ import {
   getDeviceCapabilities,
   mobileUtils,
 } from '../../lib/utils/browser-utils';
+import { getInteractionCanvasQuality } from '../../lib/utils/animation-coordinator';
 import {
   addEventListenerSafe,
   removeEventListenerSafe,
@@ -981,6 +982,27 @@ export const useCanvasRenderer = ({
     const homeAreaHeight = unitSize;
 
     const draw = (currentTime: number) => {
+      const canvas = activeCanvasRef.current;
+      if (!canvas) return;
+
+      // Phase 2 Step 9: Safe canvas context creation with browser variation handling
+      const contextResult = safeGetCanvasContext(canvas, '2d');
+      if (!contextResult.success) {
+        console.warn('[Phase 2 Step 9] Canvas context creation failed:', contextResult.error);
+        return;
+      }
+      const ctx = contextResult.data as CanvasRenderingContext2D;
+      if (!ctx) return;
+
+      // Safari optimization: Detect Safari once for viewport culling
+      const isSafari =
+        typeof navigator !== 'undefined' &&
+        navigator.userAgent.includes('Safari') &&
+        !navigator.userAgent.includes('Chrome');
+
+      // Phase 3.1: Check if we should use dirty region optimization
+      const shouldUseDirtyRegions = dirtyRegionManager.current.regions.length > 0;
+
       // Phase 2 Step 7 Action 3: Mobile frame skip optimization
       if (shouldSkipFrame(currentTime)) {
         return;
@@ -1031,15 +1053,17 @@ export const useCanvasRenderer = ({
       // Clear dirty regions after processing
       dirtyRegionManager.current.clearDirtyRegions();
 
-      // Phase 2 Step 7 Action 3: Apply adaptive quality for mobile
-      if (browserPerf.adaptiveRendering) {
-        const quality = mobilePerformanceRef.current.adaptiveQuality;
-        ctx.imageSmoothingEnabled = browserPerf.enableImageSmoothing && quality > 0.8;
-        ctx.globalAlpha = Math.max(0.8, quality); // Slightly reduce opacity on low performance
-      } else {
-        ctx.imageSmoothingEnabled = browserPerf.enableImageSmoothing;
-        ctx.globalAlpha = 1.0;
-      }
+      // Phase 3.3: Apply interaction-aware canvas quality
+      const interactionQuality = getInteractionCanvasQuality();
+      const mobileQuality = browserPerf.adaptiveRendering
+        ? mobilePerformanceRef.current.adaptiveQuality
+        : 1.0;
+
+      // Combine mobile adaptive quality with interaction quality
+      const finalQuality = Math.min(interactionQuality, mobileQuality);
+
+      ctx.imageSmoothingEnabled = browserPerf.enableImageSmoothing && finalQuality > 0.8;
+      ctx.globalAlpha = Math.max(0.8, finalQuality);
 
       ctx.save();
       ctx.translate(viewState.x, viewState.y);
@@ -1088,21 +1112,80 @@ export const useCanvasRenderer = ({
 
       // Draw repeated grid products (always fully visible, no animation)
       if (animationProgress > 0) {
-        // Only show repeated grids after original animation starts
-        repeatedPlacements.current.forEach((tilePlacements) => {
-          tilePlacements.forEach((placement) => {
-            drawImage(
-              ctx,
-              placement.image.element,
-              placement.x,
-              placement.y,
-              placement.width,
-              placement.height,
-              1, // Always fully visible
-              unitSize,
-            );
+        // Safari optimization: Viewport culling to reduce drawImage calls
+        if (isSafari) {
+          // Calculate visible viewport bounds in world coordinates
+          const viewportLeft = -viewState.x / viewState.scale;
+          const viewportTop = -viewState.y / viewState.scale;
+          const viewportRight = viewportLeft + canvas.width / viewState.scale;
+          const viewportBottom = viewportTop + canvas.height / viewState.scale;
+
+          // Add small buffer for smooth scrolling (1 unitSize on each side)
+          const buffer = unitSize;
+          const cullingLeft = viewportLeft - buffer;
+          const cullingTop = viewportTop - buffer;
+          const cullingRight = viewportRight + buffer;
+          const cullingBottom = viewportBottom + buffer;
+
+          let renderedCount = 0;
+          let culledCount = 0;
+
+          // Only show repeated grids after original animation starts
+          repeatedPlacements.current.forEach((tilePlacements) => {
+            tilePlacements.forEach((placement) => {
+              // Viewport culling check for Safari performance
+              const imageRight = placement.x + placement.width;
+              const imageBottom = placement.y + placement.height;
+
+              // Skip images that are completely outside the viewport
+              if (
+                placement.x > cullingRight ||
+                imageRight < cullingLeft ||
+                placement.y > cullingBottom ||
+                imageBottom < cullingTop
+              ) {
+                culledCount++;
+                return; // Skip this image
+              }
+
+              renderedCount++;
+              drawImage(
+                ctx,
+                placement.image.element,
+                placement.x,
+                placement.y,
+                placement.width,
+                placement.height,
+                1, // Always fully visible
+                unitSize,
+              );
+            });
           });
-        });
+
+          // Debug logging (remove in production)
+          if (renderedCount + culledCount > 100) {
+            // Only log for large grids
+            console.log(
+              `[Safari Viewport Culling] Rendered: ${renderedCount}, Culled: ${culledCount}, Ratio: ${Math.round((culledCount / (renderedCount + culledCount)) * 100)}%`,
+            );
+          }
+        } else {
+          // Standard rendering for other browsers (no culling overhead)
+          repeatedPlacements.current.forEach((tilePlacements) => {
+            tilePlacements.forEach((placement) => {
+              drawImage(
+                ctx,
+                placement.image.element,
+                placement.x,
+                placement.y,
+                placement.width,
+                placement.height,
+                1, // Always fully visible
+                unitSize,
+              );
+            });
+          });
+        }
       }
 
       // Phase 2 Step 7 Action 3: Mobile-optimized mouse hit detection
@@ -1309,31 +1392,101 @@ export const useCanvasRenderer = ({
 
       // HOVER ENHANCEMENT: Draw repeated create token squares with hover effects!
       if (tokenOpacity > 0) {
-        repeatedTokens.current.forEach((tileTokens) => {
-          tileTokens.forEach((token) => {
-            ctx.save();
-            ctx.globalAlpha = 1; // Always fully visible
+        // Safari optimization: Viewport culling for repeated create token squares
+        if (isSafari) {
+          // Reuse viewport bounds calculated above
+          const viewportLeft = -viewState.x / viewState.scale;
+          const viewportTop = -viewState.y / viewState.scale;
+          const viewportRight = viewportLeft + canvas.width / viewState.scale;
+          const viewportBottom = viewportTop + canvas.height / viewState.scale;
 
-            // HOVER ENHANCEMENT: Check if this repeated token is currently hovered
-            const isCurrentlyHoveredRepeated =
-              hoveredRepeatedToken &&
-              hoveredRepeatedToken.worldX === token.worldX &&
-              hoveredRepeatedToken.worldY === token.worldY;
-            const actualHoverProgress = isCurrentlyHoveredRepeated ? currentHoverProgress : 0;
+          const buffer = unitSize;
+          const cullingLeft = viewportLeft - buffer;
+          const cullingTop = viewportTop - buffer;
+          const cullingRight = viewportRight + buffer;
+          const cullingBottom = viewportBottom + buffer;
 
-            drawCreateTokenSquare(
-              ctx,
-              token.worldX,
-              token.worldY,
-              actualHoverProgress, // Now repeated tokens get hover effects too!
-              unitSize,
-              logoImageRef.current,
-              spaceCanvasRef.current,
-              currentTime,
-            );
-            ctx.restore();
+          let tokenRenderedCount = 0;
+          let tokenCulledCount = 0;
+
+          repeatedTokens.current.forEach((tileTokens) => {
+            tileTokens.forEach((token) => {
+              // Viewport culling check for Safari performance
+              const tokenRight = token.worldX + unitSize;
+              const tokenBottom = token.worldY + unitSize;
+
+              // Skip tokens that are completely outside the viewport
+              if (
+                token.worldX > cullingRight ||
+                tokenRight < cullingLeft ||
+                token.worldY > cullingBottom ||
+                tokenBottom < cullingTop
+              ) {
+                tokenCulledCount++;
+                return; // Skip this token
+              }
+
+              tokenRenderedCount++;
+
+              ctx.save();
+              ctx.globalAlpha = 1; // Always fully visible
+
+              // HOVER ENHANCEMENT: Check if this repeated token is currently hovered
+              const isCurrentlyHoveredRepeated =
+                hoveredRepeatedToken &&
+                hoveredRepeatedToken.worldX === token.worldX &&
+                hoveredRepeatedToken.worldY === token.worldY;
+              const actualHoverProgress = isCurrentlyHoveredRepeated ? currentHoverProgress : 0;
+
+              drawCreateTokenSquare(
+                ctx,
+                token.worldX,
+                token.worldY,
+                actualHoverProgress, // Now repeated tokens get hover effects too!
+                unitSize,
+                logoImageRef.current,
+                spaceCanvasRef.current,
+                currentTime,
+              );
+              ctx.restore();
+            });
           });
-        });
+
+          // Debug logging for tokens (remove in production)
+          if (tokenRenderedCount + tokenCulledCount > 20) {
+            // Only log for large token grids
+            console.log(
+              `[Safari Token Culling] Rendered: ${tokenRenderedCount}, Culled: ${tokenCulledCount}, Ratio: ${Math.round((tokenCulledCount / (tokenRenderedCount + tokenCulledCount)) * 100)}%`,
+            );
+          }
+        } else {
+          // Standard rendering for other browsers (no culling overhead)
+          repeatedTokens.current.forEach((tileTokens) => {
+            tileTokens.forEach((token) => {
+              ctx.save();
+              ctx.globalAlpha = 1; // Always fully visible
+
+              // HOVER ENHANCEMENT: Check if this repeated token is currently hovered
+              const isCurrentlyHoveredRepeated =
+                hoveredRepeatedToken &&
+                hoveredRepeatedToken.worldX === token.worldX &&
+                hoveredRepeatedToken.worldY === token.worldY;
+              const actualHoverProgress = isCurrentlyHoveredRepeated ? currentHoverProgress : 0;
+
+              drawCreateTokenSquare(
+                ctx,
+                token.worldX,
+                token.worldY,
+                actualHoverProgress, // Now repeated tokens get hover effects too!
+                unitSize,
+                logoImageRef.current,
+                spaceCanvasRef.current,
+                currentTime,
+              );
+              ctx.restore();
+            });
+          });
+        }
       }
 
       // Draw home area with logo

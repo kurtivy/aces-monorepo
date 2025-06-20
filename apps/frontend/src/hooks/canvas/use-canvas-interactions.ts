@@ -6,7 +6,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import type { ImageInfo, ViewState } from '../../types/canvas';
 import { isHomeArea } from '../../lib/canvas/grid-placement';
 import { LuxuryLogger, getImageMetadata } from '../../lib/utils/luxury-logger';
-import { browserUtils, mobileUtils, getDeviceCapabilities } from '../../lib/utils/browser-utils';
+import { mobileUtils, getDeviceCapabilities } from '../../lib/utils/browser-utils';
 // Phase 2 Step 8 Action 1: Navigation safety coordination
 import { useNavigationSafety } from '../use-navigation-safety';
 
@@ -321,8 +321,8 @@ const getTouchSettings = (): TouchSettings => {
 
   // Base settings optimized for device type
   const baseSettings: TouchSettings = {
-    // True 1:1 finger tracking - no sensitivity scaling needed
-    touchSensitivity: 1.0, // Perfect 1:1 tracking
+    // Touch sensitivity optimized for 1:1 tracking
+    touchSensitivity: 1.0, // Perfect 1:1 finger tracking
     mouseSensitivity: 1.0, // No scaling - let browser handle precision
 
     // Momentum physics - natural Google Maps-like feel
@@ -610,7 +610,12 @@ export const useCanvasInteractions = ({
     physics.velocity = { x: velocityX, y: velocityY };
     physics.isDecelerating = true;
 
-    const animateMomentum = () => {
+    // Phase 3.3: Frame-scheduled momentum animation for critical responsiveness
+    let lastMomentumFrame = 0;
+
+    const animateMomentum = (currentTime: number = performance.now()) => {
+      lastMomentumFrame = currentTime;
+
       const currentSpeed = Math.sqrt(
         physics.velocity.x * physics.velocity.x + physics.velocity.y * physics.velocity.y,
       );
@@ -959,6 +964,8 @@ export const useCanvasInteractions = ({
         }
       }
 
+      // Mouse interaction started
+
       // Phase 2 Step 7 Action 2: Stop any ongoing momentum
       stopMomentum();
 
@@ -1033,6 +1040,8 @@ export const useCanvasInteractions = ({
         }
       }
 
+      // Mouse interaction ended
+
       // Reset panning state
       setIsPanning(false);
       setIsDragging(false);
@@ -1069,6 +1078,8 @@ export const useCanvasInteractions = ({
           console.debug(`[Phase 2 Step 8 Action 4] Canvas focus failed: ${focusResult.reason}`);
         }
       }
+
+      // Touch interaction started
 
       // Phase 2 Step 7 Action 2: Stop any ongoing momentum immediately
       stopMomentum();
@@ -1232,6 +1243,8 @@ export const useCanvasInteractions = ({
         // Phase 2 Step 7 Action 2: Start momentum animation for touch gestures
         startMomentumAnimation();
       }
+
+      // Touch interaction ended
 
       // Reset panning state
       setIsPanning(false);
