@@ -391,14 +391,50 @@ export const useCanvasRenderer = ({
       const placements: RepeatedPlacement[] = [];
       const tokens: RepeatedTokenPosition[] = [];
 
-      // Generate repeated product placements
+      if (!originalGridBounds.current) return { placements, tokens };
+
+      const { startX, startY, width, height } = originalGridBounds.current;
+      const tileStartX = startX + tile.offsetX;
+      const tileStartY = startY + tile.offsetY;
+      const tileEndX = tileStartX + width;
+      const tileEndY = tileStartY + height;
+
+      // Generate repeated product placements with boundary filtering
+      // Generate repeated product placements with boundary filtering
       stableProductPlacements.current.forEach((original, index) => {
-        placements.push({
-          ...original,
-          x: original.x + tile.offsetX,
-          y: original.y + tile.offsetY,
-          tileId,
-        });
+        const newX = original.x + tile.offsetX;
+        const newY = original.y + tile.offsetY;
+
+        // Check if this placement would extend beyond tile boundaries
+        const imageEndX = newX + original.width;
+        const imageEndY = newY + original.height;
+
+        // If image extends beyond tile boundaries, replace with square
+        if (imageEndX > tileEndX || imageEndY > tileEndY) {
+          // Replace with a square image to avoid boundary conflicts
+          const squareImages = images.filter((img) => img.type === 'square' && img.metadata);
+          if (squareImages.length > 0) {
+            const replacementImage =
+              squareImages[Math.abs(index + tile.tileX * 3 + tile.tileY * 7) % squareImages.length];
+            placements.push({
+              image: replacementImage,
+              x: newX,
+              y: newY,
+              width: unitSize, // Force to square size
+              height: unitSize, // Force to square size
+              index,
+              tileId,
+            });
+          }
+        } else {
+          // Original placement fits within tile boundaries
+          placements.push({
+            ...original,
+            x: newX,
+            y: newY,
+            tileId,
+          });
+        }
       });
 
       // Generate repeated token positions
@@ -1161,14 +1197,6 @@ export const useCanvasRenderer = ({
               );
             });
           });
-
-          // Debug logging (remove in production)
-          if (renderedCount + culledCount > 100) {
-            // Only log for large grids
-            console.log(
-              `[Safari Viewport Culling] Rendered: ${renderedCount}, Culled: ${culledCount}, Ratio: ${Math.round((culledCount / (renderedCount + culledCount)) * 100)}%`,
-            );
-          }
         } else {
           // Standard rendering for other browsers (no culling overhead)
           repeatedPlacements.current.forEach((tilePlacements) => {
@@ -1451,14 +1479,6 @@ export const useCanvasRenderer = ({
               ctx.restore();
             });
           });
-
-          // Debug logging for tokens (remove in production)
-          if (tokenRenderedCount + tokenCulledCount > 20) {
-            // Only log for large token grids
-            console.log(
-              `[Safari Token Culling] Rendered: ${tokenRenderedCount}, Culled: ${tokenCulledCount}, Ratio: ${Math.round((tokenCulledCount / (tokenRenderedCount + tokenCulledCount)) * 100)}%`,
-            );
-          }
         } else {
           // Standard rendering for other browsers (no culling overhead)
           repeatedTokens.current.forEach((tileTokens) => {

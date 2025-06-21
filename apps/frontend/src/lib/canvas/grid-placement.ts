@@ -177,8 +177,9 @@ export const getImageCandidatesForPosition = (
     const relativeX = (((worldX - gridBounds.startX) % tileWidth) + tileWidth) % tileWidth;
     const relativeY = (((worldY - gridBounds.startY) % tileHeight) + tileHeight) % tileHeight;
 
-    // Position is at boundary if it's within 1 unit of tile edge
-    const edgeThreshold = unitSize;
+    // Position is at boundary if it's within 2 units of tile edge (more aggressive)
+    // This prevents 2x1 landscape and 1x2 portrait images from extending beyond boundaries
+    const edgeThreshold = unitSize * 2;
     isAtTileBoundary =
       relativeX < edgeThreshold ||
       relativeX > tileWidth - edgeThreshold ||
