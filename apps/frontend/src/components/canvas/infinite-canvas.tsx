@@ -107,27 +107,13 @@ const InfiniteCanvas = () => {
     handleTouchStart,
     handleTouchMove,
     handleTouchEnd,
-    // Phase 2 Step 8 Action 4: Focus and keyboard event handlers
-    handleKeyDown,
-    handleFocus,
-    handleBlur,
-    focusManagement,
   } = useCanvasInteractions({
     viewState,
-    imagesRef,
     setSelectedImage,
     imagePlacementMap: imagePlacementMapRef,
     unitSize: unitSize,
     updateViewState,
-    // Phase 2 Step 8 Action 1: Pass navigation safety state
-    navigationSafety: {
-      loadingState,
-      imagesLoaded,
-      canvasReady,
-    },
-    // CRITICAL FIX: Pass repeated placements for correct modal image selection
     repeatedPlacements,
-    // CRITICAL FIX: Pass repeated tokens for create token square clicking
     repeatedTokens,
   });
 
@@ -361,23 +347,15 @@ const InfiniteCanvas = () => {
           onTouchStart={interactionsEnabled ? handleTouchStart : undefined}
           onTouchMove={interactionsEnabled ? handleTouchMove : undefined}
           onTouchEnd={interactionsEnabled ? handleTouchEnd : undefined}
-          // Phase 2 Step 8 Action 4: Focus and keyboard event handlers
-          onKeyDown={interactionsEnabled ? handleKeyDown : undefined}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
-          tabIndex={focusManagement.canReceiveFocus ? -1 : undefined}
           className="w-full h-full touch-none select-none"
           style={{
             cursor: interactionsEnabled
               ? isPanning
-                ? isDragging
+                ? 'grabbing'
+                : isDragging
                   ? 'grabbing'
-                  : 'grab'
-                : 'pointer'
+                  : 'pointer'
               : 'default',
-            // Phase 2 Step 8 Action 4: Focus indicator styles
-            outline: focusManagement.focusIndicatorVisible ? '2px solid #007AFF' : 'none',
-            outlineOffset: focusManagement.focusIndicatorVisible ? '2px' : '0',
           }}
         />
       </motion.div>
