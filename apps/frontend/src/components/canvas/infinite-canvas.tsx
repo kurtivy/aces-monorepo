@@ -6,7 +6,6 @@ import { motion } from 'framer-motion';
 
 import ImageDetailsModal from '../ui/image-details-modal';
 import IntroAnimation from '../loading/intro-animation';
-import TopLoadingBar from '../loading/top-loading-bar';
 import { useImageLoader } from '../../hooks/canvas/use-image-loader';
 import { useViewState } from '../../hooks/canvas/use-view-state';
 import { useCanvasInteractions } from '../../hooks/canvas/use-canvas-interactions';
@@ -313,16 +312,16 @@ const InfiniteCanvas = () => {
       {/* Navigation Menu - only show when canvas is ready */}
       {loadingState === 'ready' && <NavMenu />}
 
-      {/* Initial loading screen */}
+      {/* Loading screen with intro animation */}
       {loadingState === 'loading' && (
-        <TopLoadingBar
-          onLoadingComplete={handleInitialLoadComplete}
+        <IntroAnimation
+          onIntroAnimationComplete={handleInitialLoadComplete}
           loadingProgress={Math.max(loadingProgress * 0.3, canvasProgress)}
           isComplete={imagesLoaded && canvasReady}
         />
       )}
 
-      {/* Intro animation */}
+      {/* Intro animation for first-time visitors */}
       {loadingState === 'intro' && (
         <IntroAnimation onIntroAnimationComplete={handleIntroComplete} />
       )}

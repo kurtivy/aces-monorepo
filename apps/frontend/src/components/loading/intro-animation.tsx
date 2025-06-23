@@ -3,21 +3,26 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useEffect } from 'react';
 
-import NeonLogo from './neon-logo';
 import NeonText from './neon-text';
 import LoadingStyles from './loading-styles';
 
 interface IntroAnimationProps {
   onIntroAnimationComplete?: () => void;
+  // Add loading progress props to connect to actual website loading
+  loadingProgress?: number; // 0-100
+  isComplete?: boolean; // When website is fully loaded
 }
 
-const IntroAnimation: React.FC<IntroAnimationProps> = ({ onIntroAnimationComplete }) => {
-  const [logoComplete, setLogoComplete] = useState(false);
-  const [textComplete, setTextComplete] = useState(false);
+const IntroAnimation: React.FC<IntroAnimationProps> = ({
+  onIntroAnimationComplete,
+  loadingProgress = 0,
+  isComplete = false,
+}) => {
+  const [textReady, setTextReady] = useState(false);
 
-  // Track when both logo and text animations are complete
+  // Complete when text is ready and loading is finished
   useEffect(() => {
-    if (logoComplete && textComplete) {
+    if (textReady && isComplete) {
       // Add a small delay for smooth transition
       const completionTimer = setTimeout(() => {
         if (onIntroAnimationComplete) {
@@ -27,11 +32,23 @@ const IntroAnimation: React.FC<IntroAnimationProps> = ({ onIntroAnimationComplet
 
       return () => clearTimeout(completionTimer);
     }
-  }, [logoComplete, textComplete, onIntroAnimationComplete]);
+  }, [textReady, isComplete, onIntroAnimationComplete]);
+
+  // Debug logging
+  useEffect(() => {
+    console.log(
+      'IntroAnimation - Loading Progress:',
+      loadingProgress,
+      'isComplete:',
+      isComplete,
+      'textReady:',
+      textReady,
+    );
+  }, [loadingProgress, isComplete, textReady]);
 
   return (
     <AnimatePresence>
-      {!(logoComplete && textComplete) && ( // Only show while animations are not complete
+      {!(textReady && isComplete) && ( // Show while text is not ready OR loading is not finished
         <motion.div
           data-testid="intro-animation"
           initial={{ opacity: 1 }}
@@ -43,11 +60,13 @@ const IntroAnimation: React.FC<IntroAnimationProps> = ({ onIntroAnimationComplet
 
           {/* Main content container */}
           <div className="relative flex flex-col items-center justify-center z-20">
-            {/* Neon Logo and Text - Fixed position */}
-            <div className="flex flex-col items-center justify-center space-y-8">
-              <NeonLogo onComplete={() => setLogoComplete(true)} />
-              <NeonText onComplete={() => setTextComplete(true)} />
-            </div>
+            {/* Only Neon Text */}
+            <NeonText
+              onComplete={onIntroAnimationComplete}
+              loadingProgress={loadingProgress}
+              isComplete={isComplete}
+              onTextReady={() => setTextReady(true)}
+            />
           </div>
         </motion.div>
       )}
