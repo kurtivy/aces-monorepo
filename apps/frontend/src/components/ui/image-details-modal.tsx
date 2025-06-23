@@ -11,9 +11,195 @@ import {
 } from '../../lib/utils/event-listener-utils';
 import { getBackdropFilterCSS } from '../../lib/utils/browser-utils';
 
+// Modal image cache for memory management
+class ModalImageCache {
+  private cache = new Map<string, { loaded: boolean; timestamp: number }>();
+  private readonly MAX_CACHE_SIZE = 10; // Maximum cached modal images
+  private readonly CACHE_EXPIRY = 5 * 60 * 1000; // 5 minutes
+
+  track(src: string) {
+    this.cache.set(src, { loaded: true, timestamp: Date.now() });
+    this.cleanup();
+  }
+
+  isLoaded(src: string): boolean {
+    const entry = this.cache.get(src);
+    if (!entry) return false;
+
+    // Check if expired
+    if (Date.now() - entry.timestamp > this.CACHE_EXPIRY) {
+      this.cache.delete(src);
+      return false;
+    }
+
+    return entry.loaded;
+  }
+
+  cleanup() {
+    // Remove expired entries
+    const now = Date.now();
+    for (const [src, entry] of this.cache.entries()) {
+      if (now - entry.timestamp > this.CACHE_EXPIRY) {
+        this.cache.delete(src);
+      }
+    }
+
+    // If still over limit, remove oldest entries
+    if (this.cache.size > this.MAX_CACHE_SIZE) {
+      const sortedEntries = Array.from(this.cache.entries()).sort(
+        ([, a], [, b]) => a.timestamp - b.timestamp,
+      );
+
+      const toRemove = sortedEntries.slice(0, this.cache.size - this.MAX_CACHE_SIZE);
+      toRemove.forEach(([src]) => this.cache.delete(src));
+    }
+  }
+
+  clear() {
+    this.cache.clear();
+  }
+}
+
+// Global modal image cache instance
+const modalImageCache = new ModalImageCache();
+
 interface ImageDetailsModalProps {
   imageInfo: ImageInfo | null;
   onClose: () => void;
+}
+
+// Lazy loading component for modal images
+function LazyModalImage({
+  src,
+  alt,
+  className,
+  style,
+}: {
+  src: string;
+  alt: string;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+  const [shouldLoad, setShouldLoad] = useState(false);
+
+  // Mobile optimization - detect mobile device
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+
+  // Start loading immediately when component mounts (modal is open)
+  useEffect(() => {
+    const timer = setTimeout(
+      () => {
+        setShouldLoad(true);
+      },
+      isMobile ? 100 : 50,
+    ); // Slightly longer delay on mobile
+
+    return () => clearTimeout(timer);
+  }, [isMobile]);
+
+  const handleLoad = useCallback(() => {
+    setIsLoading(false);
+    // Track successful load in cache
+    modalImageCache.track(src);
+  }, [src]);
+
+  const handleError = useCallback(() => {
+    setIsLoading(false);
+    setHasError(true);
+  }, []);
+
+  // Check if image is already cached
+  const isCached = modalImageCache.isLoaded(src);
+
+  // Cleanup: Revoke object URLs and clear cache when component unmounts
+  useEffect(() => {
+    return () => {
+      // Clean up any cached image data if using object URLs
+      if (src.startsWith('blob:')) {
+        URL.revokeObjectURL(src);
+      }
+    };
+  }, [src]);
+
+  // Show loading state with black background
+  if (!shouldLoad || (isLoading && !isCached)) {
+    return (
+      <div className="relative w-full h-full">
+        {/* Black background */}
+        <div
+          className={className}
+          style={{
+            ...style,
+            backgroundColor: '#000000',
+          }}
+        />
+        {/* Centered loading spinner */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#D0B264] opacity-70"></div>
+        </div>
+        {/* Actually load the image (hidden) */}
+        {shouldLoad && (
+          <Image
+            src={src}
+            alt={alt}
+            fill
+            className="opacity-0 pointer-events-none"
+            sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 40vw"
+            quality={isMobile ? 75 : 85} // Lower quality on mobile for faster loading
+            priority={false} // Lazy loading - no priority
+            onLoad={handleLoad}
+            onError={handleError}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // Show error state
+  if (hasError) {
+    return (
+      <div
+        className={`${className} flex items-center justify-center`}
+        style={{
+          ...style,
+          backgroundColor: '#000000',
+        }}
+      >
+        <div className="text-[#D0B264]/60 text-center">
+          <svg
+            className="w-12 h-12 mx-auto mb-2"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1}
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.314 15.5c-.77.833.192 2.5 1.732 2.5z"
+            />
+          </svg>
+          <p className="text-sm">Failed to load image</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show the loaded image
+  return (
+    <Image
+      src={src}
+      alt={alt}
+      fill
+      className={className}
+      style={style}
+      sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 40vw"
+      quality={isMobile ? 75 : 85} // Mobile-optimized quality
+      priority={false} // Lazy loaded
+    />
+  );
 }
 
 export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsModalProps) {
@@ -45,6 +231,14 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
     } catch (error) {
       // Modal close error - continue silently
     }
+  }, []);
+
+  // Cleanup modal image cache when component unmounts
+  useEffect(() => {
+    return () => {
+      // Perform cache cleanup when modal is fully closed
+      modalImageCache.cleanup();
+    };
   }, []);
 
   // Phase 2 Step 3 Action 4: Enhanced event listener setup with race condition prevention
@@ -127,13 +321,12 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex flex-col lg:flex-row h-full max-h-[95vh] sm:max-h-[90vh]">
-            {/* Image Section */}
+            {/* Image Section - Now with Lazy Loading */}
             <div className="flex-shrink-0 lg:w-1/2 bg-gradient-to-b from-black/60 to-black p-3 sm:p-6 lg:p-8">
               <div className="relative h-40 sm:h-48 md:h-56 lg:h-full min-h-[160px] max-h-[40vh] sm:max-h-[50vh] lg:max-h-none overflow-hidden rounded-xl sm:rounded-2xl bg-black">
-                <Image
+                <LazyModalImage
                   src={safeMetadata.image || '/placeholder.png'}
                   alt={safeMetadata.title}
-                  fill
                   className="object-contain transition-transform duration-200 md:hover:scale-105 bg-black"
                   style={{
                     backgroundColor: '#000000',
@@ -141,12 +334,6 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                     backgroundImage: 'none',
                     backgroundRepeat: 'no-repeat',
                   }}
-                  sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 40vw"
-                  quality={85}
-                  priority={true} // Load immediately since it's in a modal
-                  placeholder="blur"
-                  // Black blur placeholder instead of default
-                  blurDataURL="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDEwMCAxMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiBmaWxsPSIjMDAwMDAwIi8+Cjwvc3ZnPgo="
                 />
               </div>
             </div>
