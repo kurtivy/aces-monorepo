@@ -16,13 +16,13 @@ const HomeButton: React.FC<HomeButtonProps> = ({ onClick }) => {
 
   return (
     <motion.button
-      className="fixed top-4 left-4 z-50 w-16 h-16 rounded-full bg-black/50 border border-[#D0B264]/40 text-[#D0B264] shadow-lg hover:bg-black/70 hover:border-[#D0B264] transition-all duration-200"
+      className="fixed top-4 left-4 z-50 w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-black/50 border border-[#D0B264]/40 text-[#D0B264] shadow-lg hover:bg-black/70 hover:border-[#D0B264] transition-all duration-200"
       whileHover={{ scale: 1.1 }}
       whileTap={{ scale: 0.9 }}
       onClick={onClick}
     >
       <svg
-        className="w-full h-full p-1"
+        className="w-full h-full p-2.5 sm:p-3"
         viewBox="50 50 334 335"
         fill="currentColor"
         xmlns="http://www.w3.org/2000/svg"

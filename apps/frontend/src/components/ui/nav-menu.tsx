@@ -3,17 +3,35 @@
 import type React from 'react';
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence, type Variants } from 'framer-motion';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, Send } from 'lucide-react';
 import Link from 'next/link';
 import { getDeviceCapabilities } from '../../lib/utils/browser-utils';
 
-const navItems = [
+// Separate main navigation items from social links
+const mainNavItems = [
   { href: '/create-token', label: 'Create Token', external: false },
   { href: '/terms', label: 'Terms', external: false },
   { href: 'https://docs.aces.fun', label: 'About', external: true },
   { href: '/privacy', label: 'Privacy', external: false },
-  { href: 'https://x.com/acesdotfun', label: 'X', external: true },
-  { href: 'https://t.me/acesdotfun/', label: 'Telegram', external: true },
+];
+
+// Custom X logo component (modern Twitter/X logo)
+const XIcon: React.FC<{ size?: number }> = ({ size = 20 }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+  </svg>
+);
+
+// Social links as icons in footer section
+const socialLinks = [
+  { href: 'https://x.com/acesdotfun', label: 'X (Twitter)', external: true, icon: XIcon },
+  { href: 'https://t.me/acesdotfun/', label: 'Telegram', external: true, icon: Send },
 ];
 
 // Desktop animations (full experience)
@@ -113,8 +131,9 @@ const NavMenu: React.FC = () => {
             }}
           >
             <div className="p-3 sm:p-4 min-w-[160px] sm:min-w-[180px]">
+              {/* Main Navigation Items */}
               <div className="space-y-1">
-                {navItems.map((item, index) => (
+                {mainNavItems.map((item, index) => (
                   <motion.div
                     key={item.href}
                     variants={navItemVariants}
@@ -142,6 +161,34 @@ const NavMenu: React.FC = () => {
                     )}
                   </motion.div>
                 ))}
+              </div>
+
+              {/* Social Links Footer */}
+              <div className="border-t border-[#D0B264]/20 mt-3 pt-3">
+                <div className="flex justify-center space-x-4">
+                  {socialLinks.map((social, index) => {
+                    const IconComponent = social.icon;
+                    return (
+                      <motion.div
+                        key={social.href}
+                        variants={navItemVariants}
+                        custom={mainNavItems.length + index}
+                        style={{ willChange: isMobileDevice ? 'opacity' : 'transform, opacity' }}
+                      >
+                        <a
+                          href={social.href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={() => setIsOpen(false)}
+                          className="flex items-center justify-center w-10 h-10 text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 rounded-full"
+                          aria-label={social.label}
+                        >
+                          <IconComponent size={20} />
+                        </a>
+                      </motion.div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </motion.div>
