@@ -182,7 +182,7 @@ export const useCanvasInteractions = ({
           worldY >= aboutQuadY &&
           worldY < aboutQuadY + quadHeight
         ) {
-          window.open('https://docs.aces.fun/', '_blank');
+          window.location.href = '/about';
           return;
         }
 

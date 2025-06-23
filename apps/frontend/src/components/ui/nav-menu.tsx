@@ -10,8 +10,8 @@ import { getDeviceCapabilities } from '../../lib/utils/browser-utils';
 // Separate main navigation items from social links
 const mainNavItems = [
   { href: '/create-token', label: 'Create Token', external: false },
+  { href: '/about', label: 'About', external: false },
   { href: '/terms', label: 'Terms', external: false },
-  { href: 'https://docs.aces.fun', label: 'About', external: true },
   { href: '/privacy', label: 'Privacy', external: false },
 ];
 
