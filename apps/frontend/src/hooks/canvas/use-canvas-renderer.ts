@@ -14,7 +14,11 @@ import {
 } from '../../lib/canvas/grid-placement';
 import { getDisplayDimensions } from '../../lib/canvas/image-type-utils';
 import { useSpaceAnimation } from '../use-space-animation';
-import { easeInOutCubic } from '../../lib/canvas/math-utils';
+import {
+  easeInOutCubic,
+  roundTo3Decimals,
+  isApproximatelyEqual,
+} from '../../lib/canvas/math-utils';
 import { useCoordinatedResize } from '../use-coordinated-resize';
 import {
   browserUtils,
@@ -1098,12 +1102,30 @@ export const useCanvasRenderer = ({
       // Combine mobile adaptive quality with interaction quality
       const finalQuality = Math.min(interactionQuality, mobileQuality);
 
-      ctx.imageSmoothingEnabled = browserPerf.enableImageSmoothing && finalQuality > 0.8;
-      ctx.globalAlpha = Math.max(0.8, finalQuality);
+      // MOBILE SHIMMER FIX: Only update canvas properties when they actually change
+      // Constant property changes cause mobile browsers to recalculate rendering state every frame
+      const shouldEnableSmoothing = browserPerf.enableImageSmoothing && finalQuality > 0.8;
+      const targetGlobalAlpha = Math.max(0.8, finalQuality);
+
+      // Only update imageSmoothingEnabled if it actually changed
+      if (ctx.imageSmoothingEnabled !== shouldEnableSmoothing) {
+        ctx.imageSmoothingEnabled = shouldEnableSmoothing;
+      }
+
+      // Only update globalAlpha if it actually changed (with small tolerance for floating point)
+      if (!isApproximatelyEqual(ctx.globalAlpha, targetGlobalAlpha)) {
+        ctx.globalAlpha = targetGlobalAlpha;
+      }
 
       ctx.save();
-      ctx.translate(viewState.x, viewState.y);
-      ctx.scale(viewState.scale, viewState.scale);
+      // MOBILE SHIMMER FIX: Round viewport transforms to integer pixels
+      // Fractional translate/scale values cause subpixel rendering instability on mobile
+      const roundedX = Math.round(viewState.x);
+      const roundedY = Math.round(viewState.y);
+      const roundedScale = roundTo3Decimals(viewState.scale);
+
+      ctx.translate(roundedX, roundedY);
+      ctx.scale(roundedScale, roundedScale);
 
       // Use STABLE placements - no recalculation!
       const productPlacements = stableProductPlacements.current;
@@ -1533,10 +1555,20 @@ export const useCanvasRenderer = ({
     let animationFrameId: number | null = null;
     let isAnimationActive = true;
 
+    // MOBILE SHIMMER FIX: Add frame rate throttling for mobile stability
+    let lastFrameTime = 0;
+    const mobileFrameThrottle = browserPerf.adaptiveRendering ? 32 : 16; // 30fps on mobile, 60fps on desktop
+
     const animate = () => {
       if (!isAnimationActive) return; // Early exit if cleanup called
 
-      draw(performance.now());
+      const currentTime = performance.now();
+
+      // MOBILE SHIMMER FIX: Throttle animation frames on mobile to reduce visual instability
+      if (currentTime - lastFrameTime >= mobileFrameThrottle) {
+        draw(currentTime);
+        lastFrameTime = currentTime;
+      }
 
       if (isAnimationActive) {
         animationFrameId = requestAnimationFrame(animate);

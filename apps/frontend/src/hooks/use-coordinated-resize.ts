@@ -7,9 +7,10 @@ import {
   removeWindowEventListenerSafe,
 } from '../lib/utils/event-listener-utils';
 import { browserUtils, mobileUtils } from '../lib/utils/browser-utils';
+import { roundTo2Decimals } from '../lib/canvas/math-utils';
 
 interface UseCoordinatedResizeProps {
-  canvasRef?: React.RefObject<HTMLCanvasElement | null>;
+  canvasRef: React.RefObject<HTMLCanvasElement | null>;
 }
 
 interface ResizeState {
@@ -36,7 +37,7 @@ interface ResizeState {
  * - Phase 2 Step 7 Action 1: Safari mobile DPR stabilization
  * - Phase 2 Step 7 Action 1: Orientation change handling
  */
-export const useCoordinatedResize = ({ canvasRef }: UseCoordinatedResizeProps = {}) => {
+export const useCoordinatedResize = ({ canvasRef }: UseCoordinatedResizeProps) => {
   // Phase 2 Step 7 Action 1: Get stable mobile dimensions for initial state
   const getInitialDimensions = () => {
     if (typeof window === 'undefined') return { width: 1024, height: 768 };
@@ -90,7 +91,8 @@ export const useCoordinatedResize = ({ canvasRef }: UseCoordinatedResizeProps = 
         if (browserUtils.isMobile() || browserUtils.isMobileSafari()) {
           const mobileDimensions = browserUtils.getMobileCanvasDimensions();
 
-          // Apply optimal scaling to mobile dimensions
+          // MOBILE SHIMMER FIX: Ensure canvas dimensions are integers
+          // Apply optimal scaling to mobile dimensions with proper rounding
           const scaledWidth = Math.round(mobileDimensions.width * optimalScale.scaleFactor);
           const scaledHeight = Math.round(mobileDimensions.height * optimalScale.scaleFactor);
 
@@ -100,17 +102,23 @@ export const useCoordinatedResize = ({ canvasRef }: UseCoordinatedResizeProps = 
           canvas.style.width = `${width}px`;
           canvas.style.height = `${height}px`;
 
-          // Scale by the combined optimization factors
-          const totalScaleFactor =
+          // MOBILE SHIMMER FIX: Round the total scale factor to prevent subpixel scaling
+          // Scale by the combined optimization factors with proper precision
+          const combinedScale =
             mobileDimensions.dpr * mobileDimensions.scaleFactor * optimalScale.scaleFactor;
-          ctx.scale(totalScaleFactor, totalScaleFactor);
+          const roundedScaleFactor = roundTo2Decimals(combinedScale);
 
-          console.log(
-            `[Canvas Scaling] Mobile: ${scaledWidth}x${scaledHeight} (${optimalScale.qualityMode} mode)`,
-          );
+          // Reset any existing transforms before applying new scale
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.scale(roundedScaleFactor, roundedScaleFactor);
+
+          // Remove development console log for production optimization
+          // console.log(`[Canvas Scaling] Mobile: ${scaledWidth}x${scaledHeight} (${optimalScale.qualityMode} mode, scale: ${roundedScaleFactor})`);
         } else {
           // Desktop/standard canvas sizing with enhanced scaling
           const dpr = window.devicePixelRatio || 1;
+
+          // MOBILE SHIMMER FIX: Apply same rounding logic to desktop for consistency
           const scaledWidth = Math.round(width * dpr * optimalScale.scaleFactor);
           const scaledHeight = Math.round(height * dpr * optimalScale.scaleFactor);
 
@@ -119,12 +127,16 @@ export const useCoordinatedResize = ({ canvasRef }: UseCoordinatedResizeProps = 
           canvas.style.width = `${width}px`;
           canvas.style.height = `${height}px`;
 
-          const totalScaleFactor = dpr * optimalScale.scaleFactor;
-          ctx.scale(totalScaleFactor, totalScaleFactor);
+          // MOBILE SHIMMER FIX: Round the scale factor for desktop too
+          const combinedScale = dpr * optimalScale.scaleFactor;
+          const roundedScaleFactor = roundTo2Decimals(combinedScale);
 
-          console.log(
-            `[Canvas Scaling] Desktop: ${scaledWidth}x${scaledHeight} (${optimalScale.qualityMode} mode)`,
-          );
+          // Reset any existing transforms before applying new scale
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.scale(roundedScaleFactor, roundedScaleFactor);
+
+          // Remove development console log for production optimization
+          // console.log(`[Canvas Scaling] Desktop: ${scaledWidth}x${scaledHeight} (${optimalScale.qualityMode} mode, scale: ${roundedScaleFactor})`);
         }
       } catch (error) {
         console.warn('[Phase 2 Step 7] Canvas resize error:', error);
@@ -134,7 +146,11 @@ export const useCoordinatedResize = ({ canvasRef }: UseCoordinatedResizeProps = 
         canvas.height = height * dpr;
         canvas.style.width = `${width}px`;
         canvas.style.height = `${height}px`;
-        ctx.scale(dpr, dpr);
+
+        // MOBILE SHIMMER FIX: Apply rounding to fallback too
+        const roundedDPR = roundTo2Decimals(dpr);
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.scale(roundedDPR, roundedDPR);
       }
     },
     [canvasRef],

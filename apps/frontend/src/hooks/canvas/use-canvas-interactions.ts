@@ -41,8 +41,19 @@ const TOUCH_SETTINGS = {
   touchSensitivity: mobileUtils.isMobileSafari() ? 18.0 : 15.0,
   mouseSensitivity: 15.0,
   velocityMultiplier: 3.75,
-  momentumFriction: 0.85,
-  minVelocity: 0.1,
+  // MOBILE ANIMATION FIX: Higher friction on mobile to stop momentum more quickly
+  momentumFriction:
+    typeof window !== 'undefined' &&
+    (window.navigator.maxTouchPoints > 0 || mobileUtils.isMobileSafari())
+      ? 0.88
+      : 0.85,
+  // MOBILE ANIMATION FIX: Much higher minVelocity for mobile to stop momentum sooner
+  // This prevents the appearance of continuously animated images after touch
+  minVelocity:
+    typeof window !== 'undefined' &&
+    (window.navigator.maxTouchPoints > 0 || mobileUtils.isMobileSafari())
+      ? 0.8
+      : 0.1,
   tapThreshold: 10,
   tapTimeLimit: 180,
   dragThreshold: 1.5,

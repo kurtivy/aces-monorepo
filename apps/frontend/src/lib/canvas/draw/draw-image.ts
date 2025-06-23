@@ -33,18 +33,31 @@ export const drawImage = (
     opacity = animationProgress;
   }
 
-  const scaledWidth = width;
-  const scaledHeight = height;
-  const scaleOffsetX = (width - scaledWidth) / 2;
-  const scaleOffsetY = (height - scaledHeight) / 2;
+  // MOBILE SHIMMER FIX: Round all coordinates to integer pixels
+  // This prevents subpixel rendering that causes visual instability on mobile
+  const roundedX = Math.round(x);
+  const roundedY = Math.round(animatedY);
+  const roundedWidth = Math.round(width);
+  const roundedHeight = Math.round(height);
+
+  const scaledWidth = roundedWidth;
+  const scaledHeight = roundedHeight;
+  const scaleOffsetX = (roundedWidth - scaledWidth) / 2;
+  const scaleOffsetY = (roundedHeight - scaledHeight) / 2;
 
   // Apply opacity
   ctx.globalAlpha = opacity;
 
-  // Create rounded rectangle clipping path
+  // Create rounded rectangle clipping path with integer coordinates
   const radius = 8;
   ctx.beginPath();
-  ctx.roundRect(x + scaleOffsetX, animatedY + scaleOffsetY, scaledWidth, scaledHeight, radius);
+  ctx.roundRect(
+    roundedX + scaleOffsetX,
+    roundedY + scaleOffsetY,
+    scaledWidth,
+    scaledHeight,
+    radius,
+  );
   ctx.clip();
 
   // Calculate scale to cover the entire area
@@ -55,9 +68,12 @@ export const drawImage = (
   const scaledImageWidth = img.naturalWidth * imageScale;
   const scaledImageHeight = img.naturalHeight * imageScale;
 
-  // Center the image
-  const offsetX = x + scaleOffsetX + (scaledWidth - scaledImageWidth) / 2;
-  const offsetY = animatedY + scaleOffsetY + (scaledHeight - scaledImageHeight) / 2;
+  // MOBILE SHIMMER FIX: Round image positioning to integer pixels
+  // Center the image with integer coordinates
+  const offsetX = Math.round(roundedX + scaleOffsetX + (scaledWidth - scaledImageWidth) / 2);
+  const offsetY = Math.round(roundedY + scaleOffsetY + (scaledHeight - scaledImageHeight) / 2);
+  const drawWidth = Math.round(scaledImageWidth);
+  const drawHeight = Math.round(scaledImageHeight);
 
   // Safari optimization: Only set image smoothing quality if not already set
   if (!isSafari || ctx.imageSmoothingQuality !== 'high') {
@@ -67,7 +83,8 @@ export const drawImage = (
     }
   }
 
-  ctx.drawImage(img, offsetX, offsetY, scaledImageWidth, scaledImageHeight);
+  // Draw image with integer pixel coordinates
+  ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
 
   // Add subtle border
   ctx.restore();
@@ -78,7 +95,7 @@ export const drawImage = (
   let borderGradient = borderGradientCache.get(gradientKey);
 
   if (!borderGradient) {
-    borderGradient = ctx.createLinearGradient(0, 0, 0, height);
+    borderGradient = ctx.createLinearGradient(0, 0, 0, roundedHeight);
     borderGradient.addColorStop(0, `rgba(208, 178, 100, ${0.3 * opacity})`);
     borderGradient.addColorStop(1, `rgba(208, 178, 100, ${0.1 * opacity})`);
 
@@ -91,7 +108,13 @@ export const drawImage = (
   ctx.strokeStyle = borderGradient;
   ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.roundRect(x + scaleOffsetX, animatedY + scaleOffsetY, scaledWidth, scaledHeight, radius);
+  ctx.roundRect(
+    roundedX + scaleOffsetX,
+    roundedY + scaleOffsetY,
+    scaledWidth,
+    scaledHeight,
+    radius,
+  );
   ctx.stroke();
 
   // Safari optimization: Skip expensive shadow effects on Safari
@@ -99,7 +122,13 @@ export const drawImage = (
     // Add subtle inner shadow/glow (desktop only)
     ctx.save();
     ctx.beginPath();
-    ctx.roundRect(x + scaleOffsetX, animatedY + scaleOffsetY, scaledWidth, scaledHeight, radius);
+    ctx.roundRect(
+      roundedX + scaleOffsetX,
+      roundedY + scaleOffsetY,
+      scaledWidth,
+      scaledHeight,
+      radius,
+    );
     ctx.clip();
     ctx.shadowColor = `rgba(208, 178, 100, ${0.1 * opacity})`;
     ctx.shadowBlur = 8;
@@ -114,8 +143,8 @@ export const drawImage = (
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.roundRect(
-      x + scaleOffsetX + 1,
-      animatedY + scaleOffsetY + 1,
+      roundedX + scaleOffsetX + 1,
+      roundedY + scaleOffsetY + 1,
       scaledWidth - 2,
       scaledHeight - 2,
       radius - 1,
