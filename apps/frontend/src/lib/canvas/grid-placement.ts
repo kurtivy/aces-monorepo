@@ -198,7 +198,16 @@ export const getImageCandidatesForPosition = (
       homeAreaWorldY,
       homeAreaWidth,
       homeAreaHeight,
-    ) // Ensure it's not in home area
+    ) && // Ensure it's not in home area
+    !isAdjacentToHomeArea(
+      gridX * unitSize,
+      gridY * unitSize,
+      homeAreaWorldX,
+      homeAreaWorldY,
+      homeAreaWidth,
+      homeAreaHeight,
+      unitSize,
+    ) // Ensure it's not adjacent to home area
   ) {
     candidates.push({
       element: new Image(), // Placeholder, not used for rendering
@@ -344,4 +353,37 @@ export const getImageUsageStats = () => {
       count: Infinity,
     }),
   };
+};
+
+// New helper function to check if a position is adjacent to the home area
+export const isAdjacentToHomeArea = (
+  x: number,
+  y: number,
+  homeAreaWorldX: number,
+  homeAreaWorldY: number,
+  homeAreaWidth: number,
+  homeAreaHeight: number,
+  unitSize: number,
+) => {
+  // Convert world coordinates to grid coordinates
+  const gridX = Math.floor(x / unitSize);
+  const gridY = Math.floor(y / unitSize);
+
+  // Convert home area bounds to grid coordinates
+  const homeStartGridX = Math.floor(homeAreaWorldX / unitSize);
+  const homeEndGridX = Math.floor((homeAreaWorldX + homeAreaWidth) / unitSize);
+  const homeStartGridY = Math.floor(homeAreaWorldY / unitSize);
+  const homeEndGridY = Math.floor((homeAreaWorldY + homeAreaHeight) / unitSize);
+
+  // Check if the position is adjacent (within 1 grid cell) of the home area
+  const isWithinAdjacentBounds =
+    gridX >= homeStartGridX - 1 &&
+    gridX <= homeEndGridX &&
+    gridY >= homeStartGridY - 1 &&
+    gridY <= homeEndGridY;
+
+  return (
+    isWithinAdjacentBounds &&
+    !isHomeArea(x, y, homeAreaWorldX, homeAreaWorldY, homeAreaWidth, homeAreaHeight)
+  );
 };
