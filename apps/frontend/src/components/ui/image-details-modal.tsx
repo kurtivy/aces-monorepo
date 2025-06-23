@@ -324,17 +324,23 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
             {/* Image Section - Now with Lazy Loading */}
             <div className="flex-shrink-0 lg:w-1/2 bg-gradient-to-b from-black/60 to-black p-3 sm:p-6 lg:p-8">
               <div className="relative h-40 sm:h-48 md:h-56 lg:h-full min-h-[160px] max-h-[40vh] sm:max-h-[50vh] lg:max-h-none overflow-hidden rounded-xl sm:rounded-2xl bg-black">
-                <LazyModalImage
-                  src={safeMetadata.image || '/placeholder.png'}
-                  alt={safeMetadata.title}
-                  className="object-contain transition-transform duration-200 md:hover:scale-105 bg-black"
-                  style={{
-                    backgroundColor: '#000000',
-                    // Force black background during all loading states
-                    backgroundImage: 'none',
-                    backgroundRepeat: 'no-repeat',
-                  }}
-                />
+                {safeMetadata.image ? (
+                  <LazyModalImage
+                    src={safeMetadata.image}
+                    alt={safeMetadata.title}
+                    className="object-contain transition-transform duration-200 md:hover:scale-105 bg-black"
+                    style={{
+                      backgroundColor: '#000000',
+                      // Force black background during all loading states
+                      backgroundImage: 'none',
+                      backgroundRepeat: 'no-repeat',
+                    }}
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-[#D0B264]/60">
+                    <span>No image available</span>
+                  </div>
+                )}
               </div>
             </div>
 

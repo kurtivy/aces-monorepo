@@ -9,7 +9,7 @@ export const SAMPLE_METADATA: ImageInfo['metadata'][] = [
 This set represents a significant and easily transferable store of value, prized by both collectors and investors for its history and 22-karat gold purity.`,
     date: '2024-03-15',
     ticker: '$KRUGER',
-    image: '/canvas-images/10xSouth-African-Gold-Krugerrands.png',
+    image: '/canvas-images/10xSouth-African-Gold-Krugerrands.webp',
   },
   {
     id: '2',
@@ -19,7 +19,7 @@ This set represents a significant and easily transferable store of value, prized
 Powered by a 3.3L turbocharged flat-six engine, the 964 Turbo offers a raw, analog driving experience that is increasingly sought-after. This particular car is not just a high-performance machine but a piece of automotive art.`,
     date: '2024-02-28',
     ticker: '$P964',
-    image: '/canvas-images/1991-Porsche-964-Turbo-Rubystone-Red-1-of-5-Limited-Edition-Paint.png',
+    image: '/canvas-images/1991-Porsche-964-Turbo-Rubystone-Red-1-of-5-Limited-Edition-Paint.webp',
   },
   {
     id: '3',
@@ -29,7 +29,7 @@ Powered by a 3.3L turbocharged flat-six engine, the 964 Turbo offers a raw, anal
 A masterpiece of aerodynamic engineering, owning this vehicle is to own a significant piece of motorsport history. It represents the cutting-edge of technology from its era and a tangible connection to a legendary driver.`,
     date: '2023-09-12',
     ticker: '$MP424',
-    image: '/canvas-images/2009-F1-McLaren-MP4-24.png',
+    image: '/canvas-images/2009-F1-McLaren-MP4-24.webp',
   },
   {
     id: '4',
@@ -39,7 +39,7 @@ A masterpiece of aerodynamic engineering, owning this vehicle is to own a signif
 With a production run of only 186 units worldwide, this SV is a rare and visceral supercar. It represents the pinnacle of the pre-VW era Lamborghini, a true collector's item destined to appreciate in value.`,
     date: '2024-01-15',
     ticker: '$LAMBOSV',
-    image: '/canvas-images/2010-Lamborghini-Murcielago-SV.png',
+    image: '/canvas-images/2010-Lamborghini-Murcielago-SV.webp',
   },
   {
     id: '5',
@@ -49,7 +49,7 @@ With a production run of only 186 units worldwide, this SV is a rare and viscera
 Powered by twin Volvo IPS engines, the Atlantis 45 delivers thrilling performance and effortless maneuverability. It's the perfect vessel for weekend getaways and entertaining guests in absolute style and comfort, representing a premier asset in the world of luxury marine craft.`,
     date: '2023-12-05',
     ticker: '$AZIMUT',
-    image: '/canvas-images/2022-Azimut-Atlantis-45.png',
+    image: '/canvas-images/2022-Azimut-Atlantis-45.webp',
   },
   {
     id: '6',
@@ -59,7 +59,7 @@ Powered by twin Volvo IPS engines, the Atlantis 45 delivers thrilling performanc
 The artist's signature makes this piece exceptionally valuable, as signed Warhol works are increasingly rare. This is a museum-quality piece that captures the essence of 1960s pop culture and American iconography.`,
     date: '2023-10-25',
     ticker: '$WARHOL',
-    image: '/canvas-images/Andy-Warhol-Signed-Marilyn-Monroe.png',
+    image: '/canvas-images/Andy-Warhol-Signed-Marilyn-Monroe.webp',
   },
   {
     id: '7',
@@ -70,7 +70,7 @@ This timepiece is not just a watch; it's a wearable sculpture that pushes the bo
     date: '2024-02-04',
     ticker: '$APKAWS',
     image:
-      '/canvas-images/Audemars-Piguet-Royal-Oak-Concept-KAWS-Tourbillon-Companion-Dial-Limited-Edition.png',
+      '/canvas-images/Audemars-Piguet-Royal-Oak-Concept-KAWS-Tourbillon-Companion-Dial-Limited-Edition.webp',
   },
   {
     id: '8',
@@ -80,7 +80,7 @@ This timepiece is not just a watch; it's a wearable sculpture that pushes the bo
 This authentic jersey represents not just a piece of sports memorabilia, but an investment in one of hockey's brightest stars. Barzal's signature and continued excellence make this a valuable asset for any sports collector.`,
     date: '2024-01-30',
     ticker: '$BARZAL',
-    image: '/canvas-images/Autographed-Jersey-Mathew-Barzal-New-York-Islanders.png',
+    image: '/canvas-images/Autographed-Jersey-Mathew-Barzal-New-York-Islanders.webp',
   },
   {
     id: '9',
@@ -90,7 +90,7 @@ This authentic jersey represents not just a piece of sports memorabilia, but an 
 This bag represents the pinnacle of Hermès craftsmanship and exclusivity. With waiting lists measured in years and prices that consistently appreciate, the Himalaya Kelly is considered one of the most desirable and investment-worthy luxury handbags in the world.`,
     date: '2024-02-14',
     ticker: '$HIMALAYA',
-    image: '/canvas-images/Hermes-Matte-Niloticus-Crocodile-Himalaya-Kelly-Retourne-32-White.png',
+    image: '/canvas-images/Hermes-Matte-Niloticus-Crocodile-Himalaya-Kelly-Retourne-32-White.webp',
   },
   {
     id: '10',
@@ -100,7 +100,7 @@ This bag represents the pinnacle of Hermès craftsmanship and exclusivity. With 
 This particular example, in the compact 25cm size, is prized for its rarity and exotic material. It is not just a handbag but an investment-grade asset that has consistently outperformed traditional investments.`,
     date: '2023-07-15',
     ticker: '$BIRKIN25',
-    image: '/canvas-images/Hermes-Ostrich-Birkin-25.png',
+    image: '/canvas-images/Hermes-Ostrich-Birkin-25.webp',
   },
   {
     id: '11',
@@ -110,7 +110,7 @@ This particular example, in the compact 25cm size, is prized for its rarity and 
 A signed copy of this iconic album is an incredibly rare and valuable piece of music memorabilia. It's a tangible piece of history from one of the most influential artists of his generation.`,
     date: '2023-06-01',
     ticker: '$YEEZYCD',
-    image: '/canvas-images/Kanye-West-College-Dropout-Signed.png',
+    image: '/canvas-images/Kanye-West-College-Dropout-Signed.webp',
   },
   {
     id: '12',
@@ -120,7 +120,7 @@ A signed copy of this iconic album is an incredibly rare and valuable piece of m
 This piece captures the artist's iconic motifs and social commentary. As a unique work from a pivotal year in his career, it is a significant asset for any collector of urban and contemporary art.`,
     date: '2023-05-18',
     ticker: '$HARING89',
-    image: '/canvas-images/Keith-Haring-1989.png',
+    image: '/canvas-images/Keith-Haring-1989.webp',
   },
   {
     id: '13',
@@ -130,7 +130,7 @@ This piece captures the artist's iconic motifs and social commentary. As a uniqu
 To own a trilogy of vintages from this mythical vineyard is to possess a piece of winemaking history. It's an ultimate prize for any serious wine connoisseur or investor, representing the absolute pinnacle of luxury champagne.`,
     date: '2024-03-01',
     ticker: '$KRUG',
-    image: '/canvas-images/Krug-Clos-dAmbonnay-Trilogy-Prestige-Champagne-Collection.png',
+    image: '/canvas-images/Krug-Clos-dAmbonnay-Trilogy-Prestige-Champagne-Collection.webp',
   },
   {
     id: '14',
@@ -140,7 +140,7 @@ To own a trilogy of vintages from this mythical vineyard is to possess a piece o
 With fewer than 700 bottles ever released globally, this is a true legacy piece for both luxury aficionados and alternative asset investors.`,
     date: '2023-11-10',
     ticker: '$LOUISXIII',
-    image: '/canvas-images/Louis-XIII-Rare-Cask-Cognac.png',
+    image: '/canvas-images/Louis-XIII-Rare-Cask-Cognac.webp',
   },
   {
     id: '15',
@@ -150,7 +150,7 @@ With fewer than 700 bottles ever released globally, this is a true legacy piece 
 Hand-made by skilled artisans, the Alzer trunk is one of the most iconic pieces from the house. This set is not just luggage, but a beautiful piece of furniture and a testament to a legacy of unparalleled craftsmanship.`,
     date: '2024-01-20',
     ticker: '$LVTRUNK',
-    image: '/canvas-images/Louis-Vuitton-Monogram-Alzer-11-Hard-Case-Trunk-Set-Brown.png',
+    image: '/canvas-images/Louis-Vuitton-Monogram-Alzer-11-Hard-Case-Trunk-Set-Brown.webp',
   },
   {
     id: '16',
@@ -160,7 +160,7 @@ Hand-made by skilled artisans, the Alzer trunk is one of the most iconic pieces 
 Featuring the iconic red and green colorway with a distinctive striped pattern, these sneakers are considered one of the holy grails of sneaker collecting. Their rarity and cult status make them a significant investment piece in the streetwear and sneaker market.`,
     date: '2024-01-08',
     ticker: '$FREDDYDUNK',
-    image: '/canvas-images/Nike-SB-Dunks-Freddy-Krueger.png',
+    image: '/canvas-images/Nike-SB-Dunks-Freddy-Krueger.webp',
   },
   {
     id: '17',
@@ -170,7 +170,7 @@ Featuring the iconic red and green colorway with a distinctive striped pattern, 
 With their distinctive red colorway, textured materials, and exclusive release through Concepts in Boston, these Dunks are among the most sought-after SB releases of all time. They represent a pinnacle moment in sneaker collaboration history and continue to appreciate in value.`,
     date: '2024-01-12',
     ticker: '$LOBSTERDUNK',
-    image: '/canvas-images/Nike-SB-Dunks-Lobster.png',
+    image: '/canvas-images/Nike-SB-Dunks-Lobster.webp',
   },
   {
     id: '18',
@@ -180,7 +180,7 @@ With their distinctive red colorway, textured materials, and exclusive release t
 As a piece of tech history, sealed original iPhones have become incredibly valuable collector's items. This device marked the beginning of the smartphone era and represents a pivotal moment in Apple's history and modern technology.`,
     date: '2024-02-20',
     ticker: '$ORIGINALIPHONE',
-    image: '/canvas-images/Original-iPhone-Apple.png',
+    image: '/canvas-images/Original-iPhone-Apple.webp',
   },
   {
     id: '19',
@@ -190,7 +190,7 @@ As a piece of tech history, sealed original iPhones have become incredibly valua
 The RM-88 showcases the brand's signature tonneau case, skeletonized movement, and exceptional attention to detail. Its limited production and the cultural significance of the Smiley design make it a standout piece for collectors of contemporary haute horlogerie.`,
     date: '2024-02-10',
     ticker: '$RM88SMILEY',
-    image: '/canvas-images/Richard-Mille-RM-88-Automatic-Tourbillon-Smiley.png',
+    image: '/canvas-images/Richard-Mille-RM-88-Automatic-Tourbillon-Smiley.webp',
   },
   {
     id: '20',
@@ -201,7 +201,7 @@ As a limited edition numbered 1 of only 5, this is one of the rarest and most de
     date: '2024-02-18',
     ticker: '$OHTANI',
     image:
-      '/canvas-images/Shohei-Ohtani-Los-Angeles-Angels-Autographed-Fanatics-Authentic-Game-Used-MLB-Baseball-from-2018-Rookie-Season-Limited-Edition-Number-1-of-5.png',
+      '/canvas-images/Shohei-Ohtani-Los-Angeles-Angels-Autographed-Fanatics-Authentic-Game-Used-MLB-Baseball-from-2018-Rookie-Season-Limited-Edition-Number-1-of-5.webp',
   },
   {
     id: '21',
@@ -211,7 +211,7 @@ As a limited edition numbered 1 of only 5, this is one of the rarest and most de
 Presented in a handmade oak trunk, this collection is a tribute to the rich heritage and craftsmanship of The Macallan. It is a true treasure for any serious whisky collector and a landmark acquisition in the world of fine spirits.`,
     date: '2024-03-10',
     ticker: '$MACALLAN',
-    image: '/canvas-images/The-Macallan-Red-Collection-Trunk-40yo-50yo-60yo-Limited-Edition.png',
+    image: '/canvas-images/The-Macallan-Red-Collection-Trunk-40yo-50yo-60yo-Limited-Edition.webp',
   },
   {
     id: '22',
@@ -221,7 +221,7 @@ Presented in a handmade oak trunk, this collection is a tribute to the rich heri
 This is a highly coveted travel accessory and a statement piece for discerning collectors of both brands. It blends German engineering with American luxury, creating a unique and desirable asset.`,
     date: '2023-08-20',
     ticker: '$TIFRIMOWA',
-    image: '/canvas-images/Tiffany-and-Co-Rimowa.png',
+    image: '/canvas-images/Tiffany-and-Co-Rimowa.webp',
   },
   {
     id: '23',
@@ -232,7 +232,7 @@ Brady's signature on this throwback design creates a perfect bridge between Patr
     date: '2024-01-25',
     ticker: '$TB12HELMET',
     image:
-      '/canvas-images/Tom-Brady-New-England-Patriots-Autographed-Riddell-1982-1989-Throwback-Speed-Flex-Authentic-Helmet.png',
+      '/canvas-images/Tom-Brady-New-England-Patriots-Autographed-Riddell-1982-1989-Throwback-Speed-Flex-Authentic-Helmet.webp',
   },
   {
     id: '24',
@@ -242,6 +242,6 @@ Brady's signature on this throwback design creates a perfect bridge between Patr
 More than just a refrigerator, this piece represents the epitome of luxury entertaining and French savoir-vivre. It's a statement piece that combines functionality with the heritage and elegance of one of Champagne's most prestigious houses.`,
     date: '2024-03-05',
     ticker: '$CLICQUOTFRIDGE',
-    image: '/canvas-images/Veuve-Clicquot-Champagne-Vertical-Limit-Fridge.png',
+    image: '/canvas-images/Veuve-Clicquot-Champagne-Vertical-Limit-Fridge.webp',
   },
 ];
