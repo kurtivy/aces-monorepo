@@ -1,9 +1,9 @@
 import type { Metadata } from 'next';
-import { Syne, Spectral, JetBrains_Mono } from 'next/font/google';
+import { Cinzel, Spectral, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import ErrorBoundary from '../components/error-boundary';
 
-const syne = Syne({
+const syne = Cinzel({
   subsets: ['latin'],
   display: 'swap',
   variable: '--font-syne',
