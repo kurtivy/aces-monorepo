@@ -21,7 +21,7 @@ const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnima
   const totalLetters = acesText.length + funText.length;
 
   const funFonts = [
-    { family: 'cursive', weight: '400', name: 'Cursive' },
+    { family: '"Spray Letters", cursive', weight: '400', name: 'Spray Letters' },
     { family: 'ui-serif, Georgia, serif', weight: '400', name: 'Serif' },
     { family: 'ui-sans-serif, system-ui, sans-serif', weight: '600', name: 'Sans' },
     { family: 'ui-monospace, Menlo, monospace', weight: '500', name: 'Mono' },
@@ -141,6 +141,7 @@ const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnima
                       style={{
                         fontFamily: currentFont.family,
                         fontWeight: currentFont.weight,
+                        letterSpacing: currentFont.name === 'Spray Letters' ? '0.2em' : 'normal',
                         textShadow: '0 0 30px rgba(255, 255, 255, 0.2)',
                         filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
                       }}
@@ -160,8 +161,10 @@ const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnima
                       key={`fun-char-${index}`}
                       className="text-6xl sm:text-7xl md:text-8xl lg:text-8xl xl:text-7xl font-bold tracking-tight text-white"
                       style={{
-                        fontFamily: 'cursive',
-                        textShadow: '0 0 20px rgba(255, 255, 255, 0.2)',
+                        fontFamily: currentFont.family,
+                        fontWeight: currentFont.weight,
+                        letterSpacing: currentFont.name === 'Spray Letters' ? '0.1em' : 'normal',
+                        textShadow: '0 0 30px rgba(255, 255, 255, 0.2)',
                         filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
                       }}
                       initial={{ opacity: 0, y: 20, scale: 0.8 }}
@@ -195,15 +198,15 @@ const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnima
       >
         <p
           className="text-lg sm:text-xl md:text-2xl lg:text-2xl text-white/90 font-light tracking-wide"
-          style={{ fontFamily: 'var(--font-jetbrains-mono), monospace' }}
+          style={{ fontFamily: '"Metropolis", sans-serif', fontWeight: '300' }}
         >
           The best collectibles. Tokenized.
         </p>
         <p
           className="text-base sm:text-lg md:text-xl lg:text-xl text-[#D7BF75]/80 font-light tracking-wide"
-          style={{ fontFamily: 'var(--font-jetbrains-mono), monospace' }}
+          style={{ fontFamily: '"Metropolis", sans-serif', fontWeight: '300' }}
         >
-          Be part of history. Own differently.
+          Own different.
         </p>
       </motion.div>
     </div>
