@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import type React from 'react';
 import { lerp, easeInOutCubic } from '../../lib/canvas/math-utils';
 import type { ViewState } from '../../types/canvas';
+import { browserUtils } from '../../lib/utils/browser-utils';
 
 interface UseViewStateProps {
   imagesLoaded: boolean;
@@ -208,8 +209,24 @@ export const useViewState = ({
     let deltaX = event.deltaX;
     let deltaY = event.deltaY;
 
+    // Browser-specific wheel delta normalization for consistent scrolling feel
+    const isFirefox = browserUtils.isFirefox();
+    const isBrave = navigator.userAgent.includes('Brave');
     const isTrackpad = event.deltaMode === 0 && Math.abs(event.deltaY) < 100;
-    const sensitivity = isTrackpad ? 1.0 : 2.0;
+
+    // Base sensitivity (trackpad vs mouse)
+    let sensitivity = isTrackpad ? 1.0 : 2.0;
+
+    // Browser-specific delta scaling for consistent feel across all browsers
+    if (isFirefox) {
+      // Firefox reports larger delta values, need to scale them down
+      sensitivity *= isTrackpad ? 0.7 : 0.8; // More aggressive scaling for Firefox
+    } else if (isBrave) {
+      // Brave has slight privacy processing overhead, compensate with sensitivity boost
+      sensitivity *= isTrackpad ? 1.1 : 1.15; // Slightly more sensitive for Brave
+    }
+    // Chrome/Safari use baseline sensitivity (no modification needed)
+
     deltaX *= sensitivity;
     deltaY *= sensitivity;
 
