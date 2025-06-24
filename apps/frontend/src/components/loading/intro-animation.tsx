@@ -1,17 +1,16 @@
 'use client';
 
+import type React from 'react';
+
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useEffect } from 'react';
-
 import NeonText from './neon-text';
-import LoadingStyles from './loading-styles';
 
 interface IntroAnimationProps {
   onIntroAnimationComplete?: () => void;
-  // Add loading progress props to connect to actual website loading
-  loadingProgress?: number; // 0-100
-  isComplete?: boolean; // When website is fully loaded
-  skipLetterAnimation?: boolean; // Skip letter animation for returning users
+  loadingProgress?: number;
+  isComplete?: boolean;
+  skipLetterAnimation?: boolean;
 }
 
 const IntroAnimation: React.FC<IntroAnimationProps> = ({
@@ -22,14 +21,13 @@ const IntroAnimation: React.FC<IntroAnimationProps> = ({
 }) => {
   const [minimumTimeElapsed, setMinimumTimeElapsed] = useState(false);
 
-  // Minimum display time to ensure animation always completes
   useEffect(() => {
     const minimumTimer = setTimeout(
       () => {
         setMinimumTimeElapsed(true);
       },
       skipLetterAnimation ? 1000 : 4000,
-    ); // 1s for skip, 10s for full animation test
+    );
 
     return () => clearTimeout(minimumTimer);
   }, [skipLetterAnimation]);
@@ -48,36 +46,30 @@ const IntroAnimation: React.FC<IntroAnimationProps> = ({
     }
   }, [isComplete, minimumTimeElapsed, onIntroAnimationComplete]);
 
-  // Debug logging
+  // Debug logging - show that we're receiving the props
   useEffect(() => {
-    // Only log on significant changes to reduce console noise
-    if (isComplete || minimumTimeElapsed) {
-      console.log(
-        'IntroAnimation - Loading Progress:',
-        loadingProgress,
-        'isComplete:',
-        isComplete,
-        'minimumTimeElapsed:',
-        minimumTimeElapsed,
-      );
-    }
+    console.log(
+      'IntroAnimation - Loading Progress:',
+      loadingProgress,
+      'isComplete:',
+      isComplete,
+      'minimumTimeElapsed:',
+      minimumTimeElapsed,
+    );
   }, [loadingProgress, isComplete, minimumTimeElapsed]);
 
   return (
     <AnimatePresence>
-      {!(isComplete && minimumTimeElapsed) && ( // Show until both loading complete AND minimum time elapsed
+      {!(isComplete && minimumTimeElapsed) && (
         <motion.div
           data-testid="intro-animation"
           initial={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 2.0 }}
+          transition={{ duration: 1.5, ease: 'easeInOut' }}
           className="fixed inset-0 min-h-screen bg-black flex flex-col items-center justify-center overflow-hidden z-50"
         >
-          <LoadingStyles />
-
           {/* Main content container */}
-          <div className="relative flex flex-col items-center justify-center z-20">
-            {/* Only Neon Text */}
+          <div className="relative flex flex-col items-center justify-center z-20 px-8">
             <NeonText
               isComplete={isComplete}
               minimumTimeElapsed={minimumTimeElapsed}

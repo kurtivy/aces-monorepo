@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import type React from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface NeonTextProps {
@@ -9,12 +10,7 @@ interface NeonTextProps {
   minimumTimeElapsed?: boolean;
 }
 
-const NeonText: React.FC<NeonTextProps> = ({
-  isComplete = false,
-  skipLetterAnimation = false,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  minimumTimeElapsed = false,
-}) => {
+const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnimation = false }) => {
   const [visibleLetters, setVisibleLetters] = useState(0);
   const [letterRevealComplete, setLetterRevealComplete] = useState(false);
   const [showFontCycling, setShowFontCycling] = useState(false);
@@ -25,13 +21,14 @@ const NeonText: React.FC<NeonTextProps> = ({
   const totalLetters = acesText.length + funText.length;
 
   const funFonts = [
-    { family: 'cursive', weight: 'normal' },
-    { family: "'Avenir Next', 'Helvetica Neue', sans-serif", weight: '500' },
-    { family: "'Didot', 'Bodoni MT', serif", weight: 'normal' },
-    { family: "'Futura', 'Century Gothic', sans-serif", weight: 'bold' },
-    { family: "'Rockwell', 'Georgia', serif", weight: 'bold' },
-    { family: "'Bebas Neue', 'Impact', sans-serif", weight: 'bold' },
-    { family: "'Copperplate', fantasy", weight: 'bold' },
+    { family: 'cursive', weight: '400', name: 'Cursive' },
+    { family: 'ui-serif, Georgia, serif', weight: '400', name: 'Serif' },
+    { family: 'ui-sans-serif, system-ui, sans-serif', weight: '600', name: 'Sans' },
+    { family: 'ui-monospace, Menlo, monospace', weight: '500', name: 'Mono' },
+    { family: 'Impact, "Arial Black", sans-serif', weight: '900', name: 'Impact' },
+    { family: '"Times New Roman", serif', weight: '700', name: 'Times' },
+    { family: '"Helvetica Neue", Arial, sans-serif', weight: '300', name: 'Helvetica' },
+    { family: 'Futura, "Century Gothic", sans-serif', weight: '700', name: 'Futura' },
   ];
 
   // Letter reveal animation
@@ -54,53 +51,37 @@ const NeonText: React.FC<NeonTextProps> = ({
         }
         return nextCount;
       });
-    }, 188);
+    }, 200);
 
     return () => clearInterval(letterInterval);
   }, [letterRevealComplete, totalLetters, skipLetterAnimation]);
 
   // Start font cycling
   useEffect(() => {
-    const cyclingTimer = setTimeout(() => {
-      setShowFontCycling(true);
-    }, 4000);
-    return () => clearTimeout(cyclingTimer);
-  }, []);
+    if (letterRevealComplete) {
+      const cyclingTimer = setTimeout(() => {
+        setShowFontCycling(true);
+      }, 1500);
+      return () => clearTimeout(cyclingTimer);
+    }
+  }, [letterRevealComplete]);
 
-  // Font cycling effect
+  // Font cycling effect - continues until website is loaded
   useEffect(() => {
-    if (showFontCycling) {
+    if (showFontCycling && !isComplete) {
       const cycleInterval = setInterval(() => {
         setCurrentFontIndex((prev) => (prev + 1) % funFonts.length);
-      }, 1500);
+      }, 2500);
       return () => clearInterval(cycleInterval);
-    } else if (letterRevealComplete) {
-      setCurrentFontIndex(0);
     }
-  }, [showFontCycling, isComplete, letterRevealComplete, funFonts.length]);
+  }, [showFontCycling, isComplete, funFonts.length]);
 
   const currentFont = funFonts[currentFontIndex];
 
-  const sentence = {
-    hidden: { opacity: 1 },
-    visible: {
-      opacity: 1,
-      transition: {
-        delay: 0,
-        staggerChildren: 0.15,
-      },
-    },
-  };
-
-  const letterVariant = {
-    hidden: { opacity: 0, y: 10 },
-    visible: { opacity: 1, y: 0 },
-  };
-
   return (
-    <div className="w-full max-w-6xl mx-auto px-4">
+    <div className="w-full max-w-5xl mx-auto text-center">
       {/* Main Logo Text */}
-      <div className="flex items-baseline justify-center mb-4 sm:mb-6 md:mb-8">
+      <div className="flex items-center justify-center mb-6 sm:mb-8 md:mb-10 flex-wrap">
         {/* ACES part */}
         <div className="flex">
           {acesText.split('').map((letter, index) => {
@@ -108,22 +89,23 @@ const NeonText: React.FC<NeonTextProps> = ({
             return (
               <motion.span
                 key={`aces-${index}`}
-                className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl xl:text-9xl font-bold"
+                className="text-5xl sm:text-6xl md:text-7xl lg:text-7xl xl:text-6xl font-bold tracking-tight"
                 style={{
-                  fontFamily: "'Neue World', serif",
+                  fontFamily: 'var(--font-syne), sans-serif',
                   color: '#D7BF75',
-                  textShadow:
-                    '0 0 2px #D7BF75, 0 0 4px #d0b284, 0 0 6px #d7bf75, 0 0 8px #d7bf75, 0 0 10px rgba(215, 191, 117, 0.4)',
+                  textShadow: '0 0 20px rgba(215, 191, 117, 0.3)',
+                  filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
                 }}
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, y: 20, scale: 0.8 }}
                 animate={{
                   opacity: isVisible ? 1 : 0,
-                  y: isVisible ? 0 : 10,
+                  y: isVisible ? 0 : 20,
+                  scale: isVisible ? 1 : 0.8,
                 }}
                 transition={{
-                  duration: 0.3,
-                  ease: 'easeOut',
-                  delay: isVisible ? 0.1 : 0,
+                  duration: 0.4,
+                  ease: [0.25, 0.46, 0.45, 0.94],
+                  delay: index * 0.1,
                 }}
               >
                 {letter}
@@ -132,81 +114,98 @@ const NeonText: React.FC<NeonTextProps> = ({
           })}
         </div>
 
-        {/* FUN part */}
-        <div className="ml-2 sm:ml-3 md:ml-4">
-          <div className="inline-block min-w-[120px] sm:min-w-[150px] md:min-w-[200px] lg:min-w-[250px] xl:min-w-[300px] text-center">
+        {/* FUN part - Using the v8 approach with fixed min-widths */}
+        <div className="ml-0.5 sm:ml-1 md:ml-1">
+          <div className="inline-block min-w-[120px] sm:min-w-[140px] md:min-w-[160px] lg:min-w-[180px] xl:min-w-[200px]">
             {letterRevealComplete ? (
-              <AnimatePresence mode="wait" initial={false}>
-                <motion.span
-                  key={currentFontIndex}
-                  className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl xl:text-9xl neon-text inline-block"
-                  style={{
-                    fontFamily: currentFont.family,
-                    fontWeight: currentFont.weight,
-                    color: '#ffffff',
-                    textShadow:
-                      '0 0 2px #ffffff, 0 0 4px #ffffff, 0 0 6px #ffffff, 0 0 8px #ffffff, 0 0 10px rgba(255, 255, 255, 0.4)',
-                  }}
-                  initial={{ y: -30, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  exit={{ y: 30, opacity: 0 }}
-                  transition={{
-                    duration: 0.4,
-                    ease: 'easeInOut',
-                  }}
-                >
-                  {funText}
-                </motion.span>
-              </AnimatePresence>
-            ) : (
-              <motion.span
-                className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl xl:text-9xl neon-text inline-block"
-                style={{
-                  fontFamily: funFonts[0].family,
-                  fontWeight: funFonts[0].weight,
-                  color: '#ffffff',
-                  display: 'inline-block',
-                  textShadow:
-                    '0 0 2px #ffffff, 0 0 4px #ffffff, 0 0 6px #ffffff, 0 0 8px #ffffff, 0 0 10px rgba(255, 255, 255, 0.4)',
-                }}
-                variants={sentence}
-                initial="hidden"
-                animate={visibleLetters > acesText.length ? 'visible' : 'hidden'}
+              <motion.div
+                className="relative"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.8, ease: 'easeOut' }}
               >
-                {funText.split('').map((char, index) => (
-                  <motion.span
-                    key={`fun-char-${index}`}
-                    variants={letterVariant}
-                    style={{ display: 'inline-block' }}
+                <AnimatePresence mode="wait" initial={false}>
+                  <motion.div
+                    key={currentFontIndex}
+                    className="relative"
+                    initial={{ y: -40, opacity: 0, rotateX: -90 }}
+                    animate={{ y: 0, opacity: 1, rotateX: 0 }}
+                    exit={{ y: 40, opacity: 0, rotateX: 90 }}
+                    transition={{
+                      duration: 0.6,
+                      ease: [0.25, 0.46, 0.45, 0.94],
+                    }}
                   >
-                    {char}
-                  </motion.span>
-                ))}
-              </motion.span>
+                    <span
+                      className="text-5xl sm:text-6xl md:text-7xl lg:text-7xl xl:text-6xl font-bold tracking-tight text-white"
+                      style={{
+                        fontFamily: currentFont.family,
+                        fontWeight: currentFont.weight,
+                        textShadow: '0 0 30px rgba(255, 255, 255, 0.2)',
+                        filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
+                      }}
+                    >
+                      {funText}
+                    </span>
+                  </motion.div>
+                </AnimatePresence>
+              </motion.div>
+            ) : (
+              <div className="flex">
+                {funText.split('').map((char, index) => {
+                  const letterIndex = acesText.length + index;
+                  const isVisible = letterIndex < visibleLetters;
+                  return (
+                    <motion.span
+                      key={`fun-char-${index}`}
+                      className="text-5xl sm:text-6xl md:text-7xl lg:text-7xl xl:text-6xl font-bold tracking-tight text-white"
+                      style={{
+                        fontFamily: 'cursive',
+                        textShadow: '0 0 20px rgba(255, 255, 255, 0.2)',
+                        filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
+                      }}
+                      initial={{ opacity: 0, y: 20, scale: 0.8 }}
+                      animate={{
+                        opacity: isVisible ? 1 : 0,
+                        y: isVisible ? 0 : 20,
+                        scale: isVisible ? 1 : 0.8,
+                      }}
+                      transition={{
+                        duration: 0.6,
+                        ease: [0.25, 0.46, 0.45, 0.94],
+                        delay: letterIndex * 0.22 + 0.1,
+                      }}
+                    >
+                      {char}
+                    </motion.span>
+                  );
+                })}
+              </div>
             )}
           </div>
         </div>
       </div>
 
       {/* Subtitle Text */}
-      <div className="text-center space-y-2 sm:space-y-3">
-        <motion.p
-          className="text-sm sm:text-base md:text-lg lg:text-xl text-white/80 font-light"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 0.8 }}
-          transition={{ duration: 1, delay: 2.5 }}
+      <motion.div
+        className="space-y-2 sm:space-y-3"
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.8, delay: 2.2, ease: 'easeOut' }}
+      >
+        <p
+          className="text-lg sm:text-xl md:text-2xl lg:text-2xl text-white/90 font-light tracking-wide"
+          style={{ fontFamily: 'var(--font-jetbrains-mono), monospace' }}
         >
           The best collectibles. Tokenized.
-        </motion.p>
-        <motion.p
-          className="text-sm sm:text-base md:text-lg lg:text-xl text-white/80 font-light"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 0.8 }}
-          transition={{ duration: 1, delay: 2.5 }}
+        </p>
+        <p
+          className="text-base sm:text-lg md:text-xl lg:text-xl text-[#D7BF75]/80 font-light tracking-wide"
+          style={{ fontFamily: 'var(--font-jetbrains-mono), monospace' }}
         >
           Be part of history. Own differently.
-        </motion.p>
-      </div>
+        </p>
+      </motion.div>
     </div>
   );
 };
