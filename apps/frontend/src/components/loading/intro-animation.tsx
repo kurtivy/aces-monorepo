@@ -3,21 +3,40 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useEffect } from 'react';
 
-import NeonLogo from './neon-logo';
 import NeonText from './neon-text';
 import LoadingStyles from './loading-styles';
 
 interface IntroAnimationProps {
   onIntroAnimationComplete?: () => void;
+  // Add loading progress props to connect to actual website loading
+  loadingProgress?: number; // 0-100
+  isComplete?: boolean; // When website is fully loaded
+  skipLetterAnimation?: boolean; // Skip letter animation for returning users
 }
 
-const IntroAnimation: React.FC<IntroAnimationProps> = ({ onIntroAnimationComplete }) => {
-  const [logoComplete, setLogoComplete] = useState(false);
-  const [textComplete, setTextComplete] = useState(false);
+const IntroAnimation: React.FC<IntroAnimationProps> = ({
+  onIntroAnimationComplete,
+  loadingProgress = 0,
+  isComplete = false,
+  skipLetterAnimation = false,
+}) => {
+  const [minimumTimeElapsed, setMinimumTimeElapsed] = useState(false);
 
-  // Track when both logo and text animations are complete
+  // Minimum display time to ensure animation always completes
   useEffect(() => {
-    if (logoComplete && textComplete) {
+    const minimumTimer = setTimeout(
+      () => {
+        setMinimumTimeElapsed(true);
+      },
+      skipLetterAnimation ? 1000 : 4000,
+    ); // 1s for skip, 10s for full animation test
+
+    return () => clearTimeout(minimumTimer);
+  }, [skipLetterAnimation]);
+
+  // Complete when loading is finished AND minimum time has elapsed
+  useEffect(() => {
+    if (isComplete && minimumTimeElapsed) {
       // Add a small delay for smooth transition
       const completionTimer = setTimeout(() => {
         if (onIntroAnimationComplete) {
@@ -27,11 +46,26 @@ const IntroAnimation: React.FC<IntroAnimationProps> = ({ onIntroAnimationComplet
 
       return () => clearTimeout(completionTimer);
     }
-  }, [logoComplete, textComplete, onIntroAnimationComplete]);
+  }, [isComplete, minimumTimeElapsed, onIntroAnimationComplete]);
+
+  // Debug logging
+  useEffect(() => {
+    // Only log on significant changes to reduce console noise
+    if (isComplete || minimumTimeElapsed) {
+      console.log(
+        'IntroAnimation - Loading Progress:',
+        loadingProgress,
+        'isComplete:',
+        isComplete,
+        'minimumTimeElapsed:',
+        minimumTimeElapsed,
+      );
+    }
+  }, [loadingProgress, isComplete, minimumTimeElapsed]);
 
   return (
     <AnimatePresence>
-      {!(logoComplete && textComplete) && ( // Only show while animations are not complete
+      {!(isComplete && minimumTimeElapsed) && ( // Show until both loading complete AND minimum time elapsed
         <motion.div
           data-testid="intro-animation"
           initial={{ opacity: 1 }}
@@ -43,11 +77,12 @@ const IntroAnimation: React.FC<IntroAnimationProps> = ({ onIntroAnimationComplet
 
           {/* Main content container */}
           <div className="relative flex flex-col items-center justify-center z-20">
-            {/* Neon Logo and Text - Fixed position */}
-            <div className="flex flex-col items-center justify-center space-y-8">
-              <NeonLogo onComplete={() => setLogoComplete(true)} />
-              <NeonText onComplete={() => setTextComplete(true)} />
-            </div>
+            {/* Only Neon Text */}
+            <NeonText
+              isComplete={isComplete}
+              minimumTimeElapsed={minimumTimeElapsed}
+              skipLetterAnimation={skipLetterAnimation}
+            />
           </div>
         </motion.div>
       )}
