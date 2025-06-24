@@ -257,6 +257,32 @@ export function detectBrowser(): BrowserInfo {
  * Gets browser-specific performance optimizations
  * Phase 2 Step 5 Action 1: Progressive performance degradation based on device capabilities
  */
+// Helper function to apply browser-specific mouse optimizations
+function applyBrowserSpecificMouseOptimizations(
+  optimizations: BrowserOptimizations,
+  browser: BrowserInfo,
+): BrowserOptimizations {
+  // Firefox desktop optimization: Reduce mouse check frequency slightly
+  // Firefox has efficient event handling but benefits from reduced polling
+  if (browser.name === 'firefox' && !browser.isMobile) {
+    return {
+      ...optimizations,
+      mouseCheckInterval: Math.max(optimizations.mouseCheckInterval * 1.25, 20), // 25% slower polling
+    };
+  }
+
+  // Brave desktop optimization: Increase mouse check frequency slightly
+  // Brave's privacy processing adds slight input delay, compensate with faster polling
+  if (browser.name === 'brave' && !browser.isMobile) {
+    return {
+      ...optimizations,
+      mouseCheckInterval: Math.max(optimizations.mouseCheckInterval * 0.8, 12), // 20% faster polling
+    };
+  }
+
+  return optimizations;
+}
+
 export function getBrowserOptimizations(browser: BrowserInfo): BrowserOptimizations {
   // Phase 2 Step 5 Action 1: Get device capabilities for optimization decisions
   const deviceCapabilities = detectDeviceCapabilities();
@@ -296,7 +322,8 @@ export function getBrowserOptimizations(browser: BrowserInfo): BrowserOptimizati
       lowPerfOptimizations.targetFPS = 60; // Keep full FPS for Firefox
     }
 
-    return lowPerfOptimizations;
+    // Apply browser-specific mouse interval optimizations for low performance tier
+    return applyBrowserSpecificMouseOptimizations(lowPerfOptimizations, browser);
   }
 
   if (deviceCapabilities.performanceTier === 'medium') {
@@ -320,12 +347,13 @@ export function getBrowserOptimizations(browser: BrowserInfo): BrowserOptimizati
       mediumOptimizations.frameThrottling = false; // CRITICAL: Disable frame throttling for Firefox
     }
 
-    return mediumOptimizations;
+    // Apply browser-specific mouse interval optimizations for medium performance tier
+    return applyBrowserSpecificMouseOptimizations(mediumOptimizations, browser);
   }
 
   // Phase 2 Step 5 Action 2: High performance tier with standardized animation timing
   if (deviceCapabilities.performanceTier === 'high') {
-    return {
+    const highPerfOptimizations = {
       ...baseOptimizations,
       targetFPS: 60,
       animationDuration: 350, // Standardized: slightly faster for high-end devices
@@ -338,10 +366,13 @@ export function getBrowserOptimizations(browser: BrowserInfo): BrowserOptimizati
       gradientCacheSize: 200, // Larger cache for high-end devices
       gradientCacheClearInterval: 60000, // Less frequent clearing
     };
+
+    // Apply browser-specific mouse interval optimizations for high performance tier
+    return applyBrowserSpecificMouseOptimizations(highPerfOptimizations, browser);
   }
 
-  // Fallback to base optimizations
-  return baseOptimizations;
+  // Fallback to base optimizations with browser-specific mouse optimizations
+  return applyBrowserSpecificMouseOptimizations(baseOptimizations, browser);
 }
 
 /**
