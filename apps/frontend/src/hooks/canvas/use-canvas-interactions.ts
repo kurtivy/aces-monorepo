@@ -36,24 +36,23 @@ interface UseCanvasInteractionsProps {
   >;
 }
 
-// Ultra-high sensitivity for maximum responsiveness
+// Balanced sensitivity now that view-state uses 1.0 instead of 0.05
 const TOUCH_SETTINGS = {
-  touchSensitivity: mobileUtils.isMobileSafari() ? 18.0 : 15.0,
-  mouseSensitivity: 15.0,
-  velocityMultiplier: 3.75,
-  // MOBILE ANIMATION FIX: Higher friction on mobile to stop momentum more quickly
+  touchSensitivity: mobileUtils.isMobileSafari() ? 1.2 : 1.0,
+  mouseSensitivity: 1.0,
+  velocityMultiplier: 2, // Increased initial inertia for more responsive momentum
+  // Higher friction for quicker stopping - eliminates slow tail
   momentumFriction:
     typeof window !== 'undefined' &&
     (window.navigator.maxTouchPoints > 0 || mobileUtils.isMobileSafari())
-      ? 0.88
-      : 0.85,
-  // MOBILE ANIMATION FIX: Much higher minVelocity for mobile to stop momentum sooner
-  // This prevents the appearance of continuously animated images after touch
+      ? 0.94
+      : 0.93,
+  // High threshold to prevent accidental momentum from tiny finger movements
   minVelocity:
     typeof window !== 'undefined' &&
     (window.navigator.maxTouchPoints > 0 || mobileUtils.isMobileSafari())
-      ? 0.8
-      : 0.1,
+      ? 3.0
+      : 2.5,
   tapThreshold: 10,
   tapTimeLimit: 180,
   dragThreshold: 1.5,
@@ -114,7 +113,7 @@ export const useCanvasInteractions = ({
     [viewState],
   );
 
-  // Simplified momentum animation - no complex physics, just smooth deceleration
+  // Browser-like momentum - mimics trackpad wheel events with decreasing deltas
   const startMomentum = useCallback(() => {
     const physics = touchPhysicsRef.current;
 
@@ -125,18 +124,21 @@ export const useCanvasInteractions = ({
       return;
     }
 
+    // Mimic browser's wheel momentum - fire rapid updates like trackpad does
+    const currentVelocity = { x: physics.velocity.x, y: physics.velocity.y };
+
     const animate = () => {
-      // Apply movement with enhanced velocity
-      updateViewState(physics.velocity.x, physics.velocity.y);
+      // Apply movement exactly like handleWheel does
+      updateViewState(currentVelocity.x, currentVelocity.y);
 
-      // Smooth deceleration curve
-      physics.velocity.x *= TOUCH_SETTINGS.momentumFriction;
-      physics.velocity.y *= TOUCH_SETTINGS.momentumFriction;
+      // Decelerate like browser does with wheel events
+      currentVelocity.x *= TOUCH_SETTINGS.momentumFriction;
+      currentVelocity.y *= TOUCH_SETTINGS.momentumFriction;
 
-      // Continue if still moving
+      // Continue if still moving (like browser keeps sending wheel events)
       if (
-        Math.abs(physics.velocity.x) > TOUCH_SETTINGS.minVelocity ||
-        Math.abs(physics.velocity.y) > TOUCH_SETTINGS.minVelocity
+        Math.abs(currentVelocity.x) > TOUCH_SETTINGS.minVelocity ||
+        Math.abs(currentVelocity.y) > TOUCH_SETTINGS.minVelocity
       ) {
         physics.momentumId = requestAnimationFrame(animate);
       } else {
@@ -304,15 +306,11 @@ export const useCanvasInteractions = ({
       // Immediate movement - no validation overhead
       updateViewState(deltaX, deltaY);
 
-      // Update velocity for momentum
-      const now = performance.now();
-      const timeDelta = now - physics.lastPos.time;
-      if (timeDelta > 0) {
-        physics.velocity.x = (deltaX / timeDelta) * TOUCH_SETTINGS.velocityMultiplier;
-        physics.velocity.y = (deltaY / timeDelta) * TOUCH_SETTINGS.velocityMultiplier;
-      }
+      // Simplified velocity tracking - just store the last movement
+      physics.velocity.x = deltaX * TOUCH_SETTINGS.velocityMultiplier;
+      physics.velocity.y = deltaY * TOUCH_SETTINGS.velocityMultiplier;
 
-      physics.lastPos = { x: event.clientX, y: event.clientY, time: now };
+      physics.lastPos = { x: event.clientX, y: event.clientY, time: performance.now() };
 
       // Mark as dragging if moved enough
       if (!physics.isDragging && dragStartRef.current) {
@@ -422,15 +420,11 @@ export const useCanvasInteractions = ({
       // Immediate movement application
       updateViewState(deltaX, deltaY);
 
-      // Efficient velocity calculation
-      const now = performance.now();
-      const timeDelta = now - physics.lastPos.time;
-      if (timeDelta > 0) {
-        physics.velocity.x = (deltaX / timeDelta) * TOUCH_SETTINGS.velocityMultiplier;
-        physics.velocity.y = (deltaY / timeDelta) * TOUCH_SETTINGS.velocityMultiplier;
-      }
+      // Simplified velocity tracking - just store the last movement
+      physics.velocity.x = deltaX * TOUCH_SETTINGS.velocityMultiplier;
+      physics.velocity.y = deltaY * TOUCH_SETTINGS.velocityMultiplier;
 
-      physics.lastPos = { x: touch.clientX, y: touch.clientY, time: now };
+      physics.lastPos = { x: touch.clientX, y: touch.clientY, time: performance.now() };
 
       // Quick drag detection
       if (!physics.isDragging) {
@@ -507,5 +501,6 @@ export const useCanvasInteractions = ({
     handleTouchStart,
     handleTouchMove,
     handleTouchEnd,
+    stopMomentum, // Expose for external momentum cancellation
   };
 };

@@ -107,6 +107,7 @@ const InfiniteCanvas = () => {
     handleTouchStart,
     handleTouchMove,
     handleTouchEnd,
+    stopMomentum,
   } = useCanvasInteractions({
     viewState,
     setSelectedImage,
@@ -297,6 +298,12 @@ const InfiniteCanvas = () => {
     setSelectedImage(null);
   }, []);
 
+  // Stop momentum before animating to home to prevent skewing
+  const handleHomeClick = useCallback(() => {
+    stopMomentum(); // Cancel any ongoing touch momentum
+    animateToHome(); // Then animate to home position
+  }, [stopMomentum, animateToHome]);
+
   // Phase 2 Step 3 Action 5: Demonstrate enhanced error handling on component mount
   useEffect(() => {
     // Run health check to validate enhanced error handling
@@ -322,7 +329,7 @@ const InfiniteCanvas = () => {
         />
       )}
 
-      {/* Intro animation */}
+      {/* Intro animation - only show if user hasn't seen it */}
       {loadingState === 'intro' && (
         <IntroAnimation onIntroAnimationComplete={handleIntroComplete} />
       )}
@@ -362,7 +369,7 @@ const InfiniteCanvas = () => {
 
       {/* Modals and UI */}
       <ImageDetailsModal imageInfo={selectedImage} onClose={handleModalClose} />
-      {loadingState === 'ready' && <HomeButton onClick={animateToHome} />}
+      {loadingState === 'ready' && <HomeButton onClick={handleHomeClick} />}
     </>
   );
 };

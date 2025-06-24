@@ -234,7 +234,7 @@ export const useViewState = ({
   }, []);
 
   const updateViewState = useCallback((deltaX: number, deltaY: number) => {
-    const sensitivity = 0.05;
+    const sensitivity = 1.0;
     const adjustedDeltaX = deltaX * sensitivity;
     const adjustedDeltaY = deltaY * sensitivity;
 
