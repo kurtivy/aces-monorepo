@@ -116,7 +116,7 @@ const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnima
 
         {/* FUN part - Using the v8 approach with fixed min-widths */}
         <div className="ml-0.5 sm:ml-1 md:ml-1 -mt-1 sm:-mt-1.5 md:-mt-2">
-          <div className="inline-block min-w-[120px] sm:min-w-[140px] md:min-w-[160px] lg:min-w-[180px] xl:min-w-[200px]">
+          <div className="inline-block w-[140px] sm:w-[160px] md:w-[180px] lg:w-[200px] xl:w-[220px] text-center">
             {letterRevealComplete ? (
               <motion.div
                 className="relative"
