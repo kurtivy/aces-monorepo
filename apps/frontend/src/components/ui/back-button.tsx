@@ -13,7 +13,7 @@ interface BackButtonProps {
   className?: string;
   // Phase 2 Step 8 Action 1: Navigation safety coordination
   navigationSafety?: {
-    loadingState: 'loading' | 'intro' | 'ready';
+    loadingState: 'loading' | 'ready';
     imagesLoaded: boolean;
     canvasReady: boolean;
   };

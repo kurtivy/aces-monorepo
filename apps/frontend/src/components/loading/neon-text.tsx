@@ -4,86 +4,139 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface NeonTextProps {
-  onComplete?: () => void;
-  onTextReady?: () => void; // Callback when initial text animation completes
-  // Add loading progress props to connect to actual website loading
-  loadingProgress?: number; // 0-100
   isComplete?: boolean; // When website is fully loaded
+  skipLetterAnimation?: boolean; // Skip letter animation for returning users
 }
 
-const NeonText: React.FC<NeonTextProps> = ({
-  onComplete,
-  onTextReady,
-  loadingProgress = 0,
-  isComplete = false,
-}) => {
-  const visibleLetters = 8; // Show all letters immediately for testing
-  const showFontCycling = true; // Start cycling immediately for testing
+const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnimation = false }) => {
+  // Progressive animation states
+  const [visibleLetters, setVisibleLetters] = useState(0);
+  const [letterRevealComplete, setLetterRevealComplete] = useState(false);
+  const [showFontCycling, setShowFontCycling] = useState(false);
   const [currentFontIndex, setCurrentFontIndex] = useState(0);
 
   const acesText = 'ACES.';
   const funText = 'FUN';
+  const totalLetters = acesText.length + funText.length; // 8 letters total
 
   // Array of fonts to cycle through for the "FUN" part
   const funFonts = [
-    { family: 'cursive', weight: 'normal', name: 'Script' },
-    { family: "'Times New Roman', serif", weight: 'bold', name: 'Serif' },
-    { family: "'Arial Black', sans-serif", weight: '900', name: 'Bold Sans' },
-    { family: "'Courier New', monospace", weight: 'bold', name: 'Mono' },
-    { family: "'Georgia', serif", weight: 'bold', name: 'Georgia' },
-    { family: "'Verdana', sans-serif", weight: 'bold', name: 'Verdana' },
-    { family: "'Impact', fantasy", weight: 'normal', name: 'Impact' },
-    { family: "'Comic Sans MS', fantasy", weight: 'bold', name: 'Comic' },
+    { family: "'Avenir Next', 'Helvetica Neue', sans-serif", weight: '500', name: 'Modern' },
+    { family: "'Didot', 'Bodoni MT', serif", weight: 'normal', name: 'Elegant Serif' },
+    { family: "'Futura', 'Century Gothic', sans-serif", weight: 'bold', name: 'Geometric' },
+    { family: "'Rockwell', 'Georgia', serif", weight: 'bold', name: 'Slab Serif' },
+    { family: "'Bebas Neue', 'Impact', sans-serif'", weight: 'bold', name: 'Display' },
+    { family: "'Brush Script MT', cursive", weight: 'normal', name: 'Script' },
+    { family: "'Copperplate', fantasy", weight: 'bold', name: 'Classic' },
   ];
 
-  // Trigger onTextReady immediately for testing
+  // Phase 1: Letter-by-letter reveal animation (or skip if returning user)
   useEffect(() => {
-    if (onTextReady) {
-      onTextReady();
+    if (letterRevealComplete) return; // Only check if letter reveal is already complete
+
+    if (skipLetterAnimation) {
+      // Skip letter animation - show all letters immediately
+      setVisibleLetters(totalLetters);
+      setLetterRevealComplete(true);
+      return;
     }
-  }, [onTextReady]);
 
-  // Font cycling effect - runs until website is loaded
+    const letterInterval = setInterval(() => {
+      setVisibleLetters((prev) => {
+        const nextCount = prev + 1;
+
+        // If we've revealed all letters, mark letter reveal as complete
+        if (nextCount >= totalLetters) {
+          setLetterRevealComplete(true);
+          clearInterval(letterInterval);
+          return totalLetters;
+        }
+
+        return nextCount;
+      });
+    }, 188); // ~1.5 seconds for "ACES.FUN"
+
+    return () => clearInterval(letterInterval);
+  }, [letterRevealComplete, totalLetters, skipLetterAnimation]); // Removed onTextReady from dependencies
+
+  // Start font cycling at the 4-second mark for testing.
   useEffect(() => {
-    if (!showFontCycling || isComplete) return;
+    const cyclingTimer = setTimeout(() => {
+      setShowFontCycling(true);
+    }, 4000);
+    return () => clearTimeout(cyclingTimer);
+  }, []);
 
-    // Cycle through fonts every 1000ms with slot machine animation
-    const cycleInterval = setInterval(() => {
-      // After slide-down animation completes, change font and slide up
-      setTimeout(() => {
-        setCurrentFontIndex((prev) => (prev + 1) % funFonts.length);
-      }, 200); // Half of the animation duration
-    }, 1000); // Faster cycling for more dynamic loading feel
-
-    return () => clearInterval(cycleInterval);
-  }, [showFontCycling, isComplete, funFonts.length]);
-
-  // Call onComplete when website loading is finished
+  // Unified animation effect
   useEffect(() => {
-    if (isComplete && showFontCycling && onComplete) {
-      onComplete();
-    }
-  }, [isComplete, showFontCycling, onComplete]);
+    // if (isComplete) return; // Temporarily disabled for testing
 
-  // Debug logging to see loading progress
-  useEffect(() => {
     if (showFontCycling) {
-      console.log('NeonText - Loading Progress:', loadingProgress, 'isComplete:', isComplete);
+      // Font cycling effect
+      const cycleInterval = setInterval(() => {
+        setCurrentFontIndex((prev) => (prev + 1) % funFonts.length);
+      }, 1500); // 1.5 seconds per font change
+      return () => clearInterval(cycleInterval);
+    } else if (letterRevealComplete) {
+      // Ensure it's on the first font ('cursive') after reveal, before cycling starts
+      setCurrentFontIndex(0);
     }
-  }, [loadingProgress, isComplete, showFontCycling]);
+  }, [showFontCycling, isComplete, letterRevealComplete, funFonts.length]);
 
   const currentFont = funFonts[currentFontIndex];
+
+  // Animation variants for letter-by-letter reveal
+  const sentence = {
+    hidden: { opacity: 1 },
+    visible: {
+      opacity: 1,
+      transition: {
+        delay: 0,
+        staggerChildren: 0.15, // Time between each letter
+      },
+    },
+  };
+
+  const letterVariant = {
+    hidden: { opacity: 0, y: 10 },
+    visible: { opacity: 1, y: 0 },
+  };
 
   return (
     <div className="relative flex items-center justify-center w-full max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg xl:max-w-xl h-auto">
       {/* Single SVG with separate text elements for ACES and FUN */}
-      <svg className="w-full h-auto" viewBox="0 0 600 120" style={{ overflow: 'visible' }}>
-        {/* ACES part - Fixed position */}
-        <text
-          x="200"
-          y="80"
+      <svg className="w-full h-auto" viewBox="0 0 600 280" style={{ overflow: 'visible' }}>
+        <motion.text
+          x="300"
+          y="180"
           textAnchor="middle"
-          className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl"
+          className="text-4xl"
+          fill="#ffffff"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 0.8 }}
+          transition={{ duration: 1, delay: 2.5 }}
+        >
+          The best collectibles. Tokenized.
+        </motion.text>
+        <motion.text
+          x="300"
+          y="220"
+          textAnchor="middle"
+          className="text-4xl"
+          fill="#ffffff"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 0.8 }}
+          transition={{ duration: 1, delay: 2.5 }}
+        >
+          Be part of history. Own differently.
+        </motion.text>
+
+        {/* ACES part - Progressive letter reveal */}
+        <text
+          x="130"
+          y="110"
+          textAnchor="middle"
+          className="text-6xl sm:text-7xl md:text-8xl lg:text-9xl"
         >
           {acesText.split('').map((letter, index) => {
             const isVisible = index < visibleLetters;
@@ -92,39 +145,49 @@ const NeonText: React.FC<NeonTextProps> = ({
             const fontWeight = 'bold';
 
             return (
-              <tspan
+              <motion.tspan
                 key={`aces-${index}`}
                 fontFamily={fontFamily}
                 fontWeight={fontWeight}
                 fill={color}
                 style={{
-                  filter: `drop-shadow(0 0 8px ${color}) drop-shadow(0 0 16px ${color})`,
+                  filter: `drop-shadow(0 0 4px ${color}) drop-shadow(0 0 8px ${color})`,
+                }}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{
                   opacity: isVisible ? 1 : 0,
-                  transition: 'opacity 0.3s ease-in-out',
+                  y: isVisible ? 0 : 10,
+                }}
+                transition={{
+                  duration: 0.3,
+                  ease: 'easeOut',
+                  delay: isVisible ? 0.1 : 0, // Small delay for smoother appearance
                 }}
               >
                 {letter}
-              </tspan>
+              </motion.tspan>
             );
           })}
         </text>
 
-        {/* FUN part - Separate text element with fixed position */}
+        {/* FUN part - Progressive reveal then font cycling */}
         <text
-          x="400"
-          y="80"
+          x="470"
+          y="110"
           textAnchor="middle"
-          className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl"
+          className="text-6xl sm:text-7xl md:text-8xl lg:text-9xl"
         >
-          {showFontCycling ? (
-            <AnimatePresence mode="wait">
+          {letterRevealComplete ? (
+            // UNIFIED animation system: Font cycling is now the primary animation.
+            // The initial state (index 0) is the "cursive" font, ensuring no "switch".
+            <AnimatePresence mode="wait" initial={false}>
               <motion.tspan
                 key={currentFontIndex}
                 fontFamily={currentFont.family}
                 fontWeight={currentFont.weight}
                 fill="#ffffff"
                 style={{
-                  filter: 'drop-shadow(0 0 8px #ffffff) drop-shadow(0 0 16px #ffffff)',
+                  filter: 'drop-shadow(0 0 4px #ffffff) drop-shadow(0 0 8px #ffffff)',
                 }}
                 initial={{ y: -30, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
@@ -138,53 +201,28 @@ const NeonText: React.FC<NeonTextProps> = ({
               </motion.tspan>
             </AnimatePresence>
           ) : (
-            // Static FUN during initial animation
-            funText.split('').map((letter, index) => {
-              const letterIndex = acesText.length + index;
-              const isVisible = letterIndex < visibleLetters;
-              const color = '#ffffff';
-              const fontFamily = 'cursive';
-              const fontWeight = 'normal';
-
-              return (
-                <tspan
-                  key={`fun-${index}`}
-                  fontFamily={fontFamily}
-                  fontWeight={fontWeight}
-                  fill={color}
-                  style={{
-                    filter: `drop-shadow(0 0 8px ${color}) drop-shadow(0 0 16px ${color})`,
-                    opacity: isVisible ? 1 : 0,
-                    transition: 'opacity 0.3s ease-in-out',
-                  }}
-                >
-                  {letter}
-                </tspan>
-              );
-            })
+            // Initial letter-by-letter reveal for FUN - now renders the entire word
+            // with animated characters to maintain consistent spacing from the start.
+            <motion.tspan
+              fontFamily={funFonts[0].family}
+              fontWeight={funFonts[0].weight}
+              fill="#ffffff"
+              style={{
+                filter: `drop-shadow(0 0 4px #ffffff) drop-shadow(0 0 8px #ffffff)`,
+              }}
+              variants={sentence}
+              initial="hidden"
+              animate={visibleLetters > acesText.length ? 'visible' : 'hidden'}
+            >
+              {funText.split('').map((char, index) => (
+                <motion.tspan key={`fun-char-${index}`} variants={letterVariant}>
+                  {char}
+                </motion.tspan>
+              ))}
+            </motion.tspan>
           )}
         </text>
       </svg>
-
-      {/* Enhanced loading progress indicator */}
-      {showFontCycling && !isComplete && (
-        <div className="absolute bottom-[-60px] left-1/2 transform -translate-x-1/2">
-          <div className="text-center space-y-2">
-            <div className="text-sm text-white font-mono">
-              Loading Website... {Math.round(loadingProgress)}%
-            </div>
-            <div className="text-xs text-gray-400">Current Font: {currentFont.name}</div>
-            <div className="w-48 h-2 bg-gray-800 rounded-full overflow-hidden">
-              <motion.div
-                className="h-full bg-gradient-to-r from-[#D0B264] via-[#D7BF75] to-[#D0B264] rounded-full"
-                initial={{ width: '0%' }}
-                animate={{ width: `${loadingProgress}%` }}
-                transition={{ duration: 0.3, ease: 'easeOut' }}
-              />
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

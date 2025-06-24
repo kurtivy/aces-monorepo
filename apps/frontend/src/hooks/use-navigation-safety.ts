@@ -6,7 +6,7 @@ import { useCallback, useRef } from 'react';
 // Lightweight navigation guard system that prevents navigation during critical loading phases
 
 interface NavigationSafetyState {
-  loadingState: 'loading' | 'intro' | 'ready';
+  loadingState: 'loading' | 'ready';
   imagesLoaded: boolean;
   canvasReady: boolean;
 }
@@ -25,15 +25,6 @@ const checkNavigationSafety = (state: NavigationSafetyState): NavigationSafetyRe
       isNavigationSafe: false,
       blockedReason: 'Images still loading',
       canProceed: false,
-    };
-  }
-
-  // Intro animation - allow emergency navigation but warn
-  if (state.loadingState === 'intro') {
-    return {
-      isNavigationSafe: true,
-      blockedReason: 'During intro animation',
-      canProceed: true,
     };
   }
 
@@ -63,11 +54,13 @@ const checkNavigationSafety = (state: NavigationSafetyState): NavigationSafetyRe
 export const useNavigationSafety = (state: NavigationSafetyState) => {
   // Performance optimization: Use ref to avoid recreation
   const lastSafetyCheckRef = useRef<NavigationSafetyResult | null>(null);
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   // Lightweight navigation guard - minimal performance impact
   const checkSafeNavigation = useCallback(
     (context: string = 'general'): NavigationSafetyResult => {
-      const result = checkNavigationSafety(state);
+      const result = checkNavigationSafety(stateRef.current);
 
       // Only log when safety status changes to avoid console spam
       if (
@@ -86,7 +79,7 @@ export const useNavigationSafety = (state: NavigationSafetyState) => {
       lastSafetyCheckRef.current = result;
       return result;
     },
-    [state.loadingState, state.imagesLoaded, state.canvasReady],
+    [], // Empty dependency array since we use stateRef.current
   );
 
   // Safe navigation wrapper for click handlers

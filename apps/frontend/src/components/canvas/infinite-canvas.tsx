@@ -30,13 +30,14 @@ import { performEventListenerHealthCheck } from '../../lib/utils/event-listener-
 import { useNavigationSafety } from '../../hooks/use-navigation-safety';
 // Note: useAnimationFrame removed - caused scroll timing issues, kept for background animations only
 
-type LoadingState = 'loading' | 'intro' | 'ready';
+type LoadingState = 'loading' | 'ready';
 
 const InfiniteCanvas = () => {
   const [selectedImage, setSelectedImage] = useState<ImageInfo | null>(null);
 
   const [loadingState, setLoadingState] = useState<LoadingState>('loading');
 
+  // Restore session memory for intro animation
   const [hasSeenIntro, setHasSeenIntro] = useState(false);
 
   const imagePlacementMapRef = useRef(
@@ -44,19 +45,6 @@ const InfiniteCanvas = () => {
   );
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-
-  useEffect(() => {
-    const checkIntroStatus = () => {
-      try {
-        const seenIntro = sessionStorage.getItem('hasSeenIntro') === 'true';
-        setHasSeenIntro(seenIntro);
-      } catch (error) {
-        setHasSeenIntro(false);
-      }
-    };
-
-    checkIntroStatus();
-  }, []);
 
   const { unitSize } = useCoordinatedResize({ canvasRef });
 
@@ -83,7 +71,7 @@ const InfiniteCanvas = () => {
     images,
     viewState,
     imagesLoaded: imagesLoaded,
-    canvasVisible: loadingState !== 'loading',
+    canvasVisible: loadingState !== 'loading' || hasSeenIntro,
     onCreateTokenClick: withNavigationSafety(
       () => (window.location.href = '/create-token'),
       'canvas-renderer-token-click',
@@ -184,20 +172,19 @@ const InfiniteCanvas = () => {
     }
   }, [loadingState, imagesLoaded, canvasReady]);
 
-  const handleInitialLoadComplete = () => {
-    if (hasSeenIntro) {
-      setLoadingState('ready');
-    } else {
-      setLoadingState('intro');
-    }
-  };
-
-  const handleIntroComplete = () => {
+  // Smart loading completion handler with session memory
+  const handleLoadingComplete = () => {
+    // Mark as seen for this session
     try {
-      sessionStorage.setItem('hasSeenIntro', 'true');
-    } catch (error) {}
-
-    setLoadingState('ready');
+      // Only set session storage if we're actually completing the loading
+      if (loadingState === 'loading') {
+        sessionStorage.setItem('hasSeenIntro', 'true');
+        setLoadingState('ready');
+      }
+    } catch (error) {
+      // sessionStorage not available, continue anyway
+      setLoadingState('ready');
+    }
   };
 
   // Phase 2 Step 3: Enhanced wheel event listener with ref change protection
@@ -307,23 +294,38 @@ const InfiniteCanvas = () => {
     });
   }, []); // Run once on mount
 
+  // Check if user has seen intro animation in this session
+  useEffect(() => {
+    const checkIntroStatus = () => {
+      try {
+        const sessionValue = sessionStorage.getItem('hasSeenIntro');
+        const seenIntro = sessionValue === 'true';
+
+        // Keep this log for session debugging
+        console.log('Session storage check - hasSeenIntro:', seenIntro);
+        setHasSeenIntro(seenIntro);
+      } catch (error) {
+        console.log('Session storage not available, defaulting to false');
+        setHasSeenIntro(false);
+      }
+    };
+
+    checkIntroStatus();
+  }, []);
+
   return (
     <>
       {/* Navigation Menu - only show when canvas is ready */}
       {loadingState === 'ready' && <NavMenu />}
 
-      {/* Loading screen with intro animation */}
-      {loadingState === 'loading' && (
+      {/* Loading screen with new aces.fun intro animation */}
+      {loadingState === 'loading' && !hasSeenIntro && (
         <IntroAnimation
-          onIntroAnimationComplete={handleInitialLoadComplete}
+          onIntroAnimationComplete={handleLoadingComplete}
           loadingProgress={Math.max(loadingProgress * 0.3, canvasProgress)}
           isComplete={imagesLoaded && canvasReady}
+          skipLetterAnimation={hasSeenIntro}
         />
-      )}
-
-      {/* Intro animation for first-time visitors */}
-      {loadingState === 'intro' && (
-        <IntroAnimation onIntroAnimationComplete={handleIntroComplete} />
       )}
 
       {/* Main Canvas */}
@@ -331,7 +333,7 @@ const InfiniteCanvas = () => {
         className="fixed inset-0"
         style={{ zIndex: 40 }}
         initial={{ opacity: 0 }}
-        animate={{ opacity: loadingState === 'ready' ? 1 : 0 }}
+        animate={{ opacity: loadingState === 'ready' || hasSeenIntro ? 1 : 0 }}
         transition={{ duration: 0.4, ease: 'easeOut' }}
         onAnimationComplete={() => {
           // Animation completion is now handled cleanly without debugging timers
