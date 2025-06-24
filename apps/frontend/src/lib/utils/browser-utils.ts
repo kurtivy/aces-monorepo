@@ -571,40 +571,28 @@ export const mobileUtils = {
   },
 
   // Phase 2 Step 7 Action 4: Critical mobile issue resolution
-  handleMobileLoadingStateError: (error: Error, context: string) => {
+  handleMobileLoadingStateError: () => {
     const capabilities = getDeviceCapabilities();
     if (!capabilities.touchCapable && !capabilities.isMobileSafari) {
       return; // Desktop - use standard error handling
     }
 
-    console.error(`[Phase 2 Step 7] Mobile loading error in ${context}:`, error);
-
     // Mobile-specific error recovery
     if (capabilities.isMobileSafari) {
       // Safari mobile specific recovery
-      if (error.message.includes('viewport') || error.message.includes('dimension')) {
-        console.log(
-          '[Phase 2 Step 7] Safari mobile viewport error detected, applying stabilization',
-        );
-        // Trigger viewport stabilization
-        setTimeout(() => {
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new Event('resize'));
-          }
-        }, 300); // Safari mobile needs delay
-      }
+      setTimeout(() => {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('resize'));
+        }
+      }, 300); // Safari mobile needs delay
     }
 
     // General mobile error patterns
-    if (error.message.includes('touch') || error.message.includes('interaction')) {
-      console.log('[Phase 2 Step 7] Mobile touch interaction error, applying safety delay');
-      // Provide breathing room for mobile interactions
-      setTimeout(() => {
-        if (typeof document !== 'undefined') {
-          document.body.style.touchAction = 'pan-x pan-y';
-        }
-      }, 100);
-    }
+    setTimeout(() => {
+      if (typeof document !== 'undefined') {
+        document.body.style.touchAction = 'pan-x pan-y';
+      }
+    }, 100);
   },
 
   // Phase 2 Step 7 Action 4: Mobile loading state validation
@@ -655,7 +643,7 @@ export const mobileUtils = {
   },
 
   // Phase 2 Step 7 Action 4: Safe mobile viewport operations
-  safeMobileViewportOperation: (operation: () => void, context: string) => {
+  safeMobileViewportOperation: (operation: () => void) => {
     const capabilities = getDeviceCapabilities();
 
     try {
@@ -665,7 +653,7 @@ export const mobileUtils = {
           try {
             operation();
           } catch (error) {
-            mobileUtils.handleMobileLoadingStateError(error as Error, `${context} (delayed)`);
+            mobileUtils.handleMobileLoadingStateError();
           }
         }, 100); // Small delay for Safari mobile stability
       } else if (capabilities.touchCapable) {
@@ -676,7 +664,7 @@ export const mobileUtils = {
         operation();
       }
     } catch (error) {
-      mobileUtils.handleMobileLoadingStateError(error as Error, context);
+      mobileUtils.handleMobileLoadingStateError();
     }
   },
 };
@@ -763,7 +751,6 @@ export const supportsSVGFilters = (): boolean => {
       'appendChild' in filter
     );
   } catch (error) {
-    console.warn('[Browser Utils] SVG filter detection failed:', error);
     return false;
   }
 };
@@ -826,7 +813,6 @@ export const supportsBackdropFilter = (): boolean => {
 
     return false;
   } catch (error) {
-    console.warn('[Browser Utils] Backdrop-filter detection failed:', error);
     return false;
   }
 };
@@ -914,7 +900,6 @@ export const supportsScrollRestoration = (): boolean => {
 
 export const setScrollRestoration = (mode: 'auto' | 'manual'): boolean => {
   if (!supportsScrollRestoration()) {
-    console.debug('[Phase 2 Step 8] Scroll restoration not supported, using fallback behavior');
     return false;
   }
 
@@ -922,7 +907,6 @@ export const setScrollRestoration = (mode: 'auto' | 'manual'): boolean => {
     history.scrollRestoration = mode;
     return true;
   } catch (error) {
-    console.warn('[Phase 2 Step 8] Failed to set scroll restoration mode:', error);
     return false;
   }
 };
@@ -935,7 +919,6 @@ export const getScrollRestoration = (): 'auto' | 'manual' | null => {
   try {
     return history.scrollRestoration as 'auto' | 'manual';
   } catch (error) {
-    console.warn('[Phase 2 Step 8] Failed to get scroll restoration mode:', error);
     return null;
   }
 };

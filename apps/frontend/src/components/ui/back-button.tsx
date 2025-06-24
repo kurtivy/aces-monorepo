@@ -39,7 +39,7 @@ const BackButton: React.FC<BackButtonProps> = ({
       className={`fixed top-4 left-4 z-50 w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-black/50 border border-[#D0B264]/40 text-[#D0B264] shadow-lg hover:bg-black/70 hover:border-[#D0B264] transition-all duration-200 flex items-center justify-center ${className}`}
       whileHover={{ scale: 1.1 }}
       whileTap={{ scale: 0.9 }}
-      onClick={onClick ? withNavigationSafety(onClick, 'back-button-click') : undefined}
+      onClick={onClick ? withNavigationSafety(onClick) : undefined}
     >
       <ArrowLeft className="w-6 h-6 sm:w-8 sm:h-8" />
     </motion.button>

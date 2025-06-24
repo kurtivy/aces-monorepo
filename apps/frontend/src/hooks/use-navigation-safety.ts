@@ -59,23 +59,8 @@ export const useNavigationSafety = (state: NavigationSafetyState) => {
 
   // Lightweight navigation guard - minimal performance impact
   const checkSafeNavigation = useCallback(
-    (context: string = 'general'): NavigationSafetyResult => {
+    (): NavigationSafetyResult => {
       const result = checkNavigationSafety(stateRef.current);
-
-      // Only log when safety status changes to avoid console spam
-      if (
-        !lastSafetyCheckRef.current ||
-        lastSafetyCheckRef.current.isNavigationSafe !== result.isNavigationSafe
-      ) {
-        if (!result.isNavigationSafe) {
-          console.debug(
-            `[Phase 2 Step 8] Navigation blocked (${context}): ${result.blockedReason}`,
-          );
-        } else if (lastSafetyCheckRef.current && !lastSafetyCheckRef.current.isNavigationSafe) {
-          console.debug(`[Phase 2 Step 8] Navigation now safe (${context})`);
-        }
-      }
-
       lastSafetyCheckRef.current = result;
       return result;
     },
@@ -84,22 +69,14 @@ export const useNavigationSafety = (state: NavigationSafetyState) => {
 
   // Safe navigation wrapper for click handlers
   const withNavigationSafety = useCallback(
-    (
-      navigationFn: () => void,
-      context: string = 'navigation',
-      forceAllow: boolean = false,
-    ): (() => void) => {
+    (navigationFn: () => void, forceAllow: boolean = false): (() => void) => {
       return () => {
-        const safety = checkSafeNavigation(context);
+        const safety = checkSafeNavigation();
 
         if (safety.canProceed || forceAllow) {
           try {
             navigationFn();
-          } catch (error) {
-            console.error(`[Phase 2 Step 8] Navigation error (${context}):`, error);
-          }
-        } else {
-          console.warn(`[Phase 2 Step 8] Navigation blocked (${context}): ${safety.blockedReason}`);
+          } catch (error) {}
         }
       };
     },

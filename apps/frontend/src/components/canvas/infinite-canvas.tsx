@@ -72,10 +72,7 @@ const InfiniteCanvas = () => {
     viewState,
     imagesLoaded: imagesLoaded,
     canvasVisible: loadingState !== 'loading' || hasSeenIntro,
-    onCreateTokenClick: withNavigationSafety(
-      () => (window.location.href = '/create-token'),
-      'canvas-renderer-token-click',
-    ),
+    onCreateTokenClick: withNavigationSafety(() => (window.location.href = '/create-token')),
     imagePlacementMap: imagePlacementMapRef,
     unitSize: unitSize,
     canvasRef: canvasRef,

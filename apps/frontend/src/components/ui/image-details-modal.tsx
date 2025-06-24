@@ -256,26 +256,10 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
     // Phase 2 Step 3 Action 5: Enhanced error handling for modal keydown events
     const keydownListenerResult = addWindowEventListenerSafe('keydown', handleEscape);
 
-    if (!keydownListenerResult.success) {
-      console.warn(
-        '[Phase 2 Step 3] Modal keydown listener setup failed:',
-        keydownListenerResult.details,
-      );
-      // Modal will still work via click outside, just no keyboard ESC support
-    } else if (keydownListenerResult.fallbackApplied) {
-      console.info('[Phase 2 Step 3] Modal keydown listener using fallback strategy');
-    }
-
     return () => {
       // Phase 2 Step 3 Action 5: Enhanced cleanup with error reporting
       if (keydownListenerResult.success) {
-        const removeResult = removeWindowEventListenerSafe('keydown', handleEscape);
-        if (!removeResult.success) {
-          console.warn(
-            '[Phase 2 Step 3] Modal keydown listener cleanup failed:',
-            removeResult.details,
-          );
-        }
+        removeWindowEventListenerSafe('keydown', handleEscape);
       }
     };
   }, [imageInfo, stableOnClose]); // Phase 2 Step 3 Action 4: Use stable callback instead of onClose

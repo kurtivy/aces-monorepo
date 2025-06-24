@@ -111,9 +111,6 @@ export const useCoordinatedResize = ({ canvasRef }: UseCoordinatedResizeProps) =
           // Reset any existing transforms before applying new scale
           ctx.setTransform(1, 0, 0, 1, 0, 0);
           ctx.scale(roundedScaleFactor, roundedScaleFactor);
-
-          // Remove development console log for production optimization
-          // console.log(`[Canvas Scaling] Mobile: ${scaledWidth}x${scaledHeight} (${optimalScale.qualityMode} mode, scale: ${roundedScaleFactor})`);
         } else {
           // Desktop/standard canvas sizing with enhanced scaling
           const dpr = window.devicePixelRatio || 1;
@@ -134,12 +131,8 @@ export const useCoordinatedResize = ({ canvasRef }: UseCoordinatedResizeProps) =
           // Reset any existing transforms before applying new scale
           ctx.setTransform(1, 0, 0, 1, 0, 0);
           ctx.scale(roundedScaleFactor, roundedScaleFactor);
-
-          // Remove development console log for production optimization
-          // console.log(`[Canvas Scaling] Desktop: ${scaledWidth}x${scaledHeight} (${optimalScale.qualityMode} mode, scale: ${roundedScaleFactor})`);
         }
       } catch (error) {
-        console.warn('[Phase 2 Step 7] Canvas resize error:', error);
         // Fallback to original sizing on error
         const dpr = window.devicePixelRatio || 1;
         canvas.width = width * dpr;
@@ -198,7 +191,7 @@ export const useCoordinatedResize = ({ canvasRef }: UseCoordinatedResizeProps) =
 
           // 2. Update canvas DOM element size after state update
           updateCanvasSize(newWidth, newHeight);
-        }, 'coordinated-resize');
+        });
       }, debounceDelay);
     },
     [updateCanvasSize],
@@ -211,15 +204,6 @@ export const useCoordinatedResize = ({ canvasRef }: UseCoordinatedResizeProps) =
 
     // Phase 2 Step 7 Action 1: Enhanced error handling for window resize events
     const resizeListenerResult = addWindowEventListenerSafe('resize', handleResize);
-
-    if (!resizeListenerResult.success) {
-      console.warn(
-        '[Phase 2 Step 7] Window resize listener setup failed:',
-        resizeListenerResult.details,
-      );
-    } else if (resizeListenerResult.fallbackApplied) {
-      console.info('[Phase 2 Step 7] Window resize listener using fallback strategy');
-    }
 
     // Phase 2 Step 7 Action 1: Set up mobile orientation change handling
     if (browserUtils.isMobile() || browserUtils.isMobileSafari()) {
@@ -234,12 +218,6 @@ export const useCoordinatedResize = ({ canvasRef }: UseCoordinatedResizeProps) =
       // Phase 2 Step 7 Action 1: Enhanced cleanup with mobile orientation
       if (resizeListenerResult.success) {
         const removeResult = removeWindowEventListenerSafe('resize', handleResize);
-        if (!removeResult.success) {
-          console.warn(
-            '[Phase 2 Step 7] Window resize listener cleanup failed:',
-            removeResult.details,
-          );
-        }
       }
 
       if (debounceTimerRef.current) {
