@@ -71,7 +71,7 @@ const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnima
     if (showFontCycling && !isComplete) {
       const cycleInterval = setInterval(() => {
         setCurrentFontIndex((prev) => (prev + 1) % funFonts.length);
-      }, 2500);
+      }, 2000);
       return () => clearInterval(cycleInterval);
     }
   }, [showFontCycling, isComplete, funFonts.length]);
@@ -115,7 +115,7 @@ const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnima
         </div>
 
         {/* FUN part - Using the v8 approach with fixed min-widths */}
-        <div className="ml-0.5 sm:ml-1 md:ml-1">
+        <div className="ml-0.5 sm:ml-1 md:ml-1 -mt-1 sm:-mt-1.5 md:-mt-2">
           <div className="inline-block min-w-[120px] sm:min-w-[140px] md:min-w-[160px] lg:min-w-[180px] xl:min-w-[200px]">
             {letterRevealComplete ? (
               <motion.div
@@ -137,7 +137,7 @@ const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnima
                     }}
                   >
                     <span
-                      className="text-5xl sm:text-6xl md:text-7xl lg:text-7xl xl:text-6xl font-bold tracking-tight text-white"
+                      className="text-6xl sm:text-7xl md:text-8xl lg:text-8xl xl:text-7xl font-bold tracking-tight text-white"
                       style={{
                         fontFamily: currentFont.family,
                         fontWeight: currentFont.weight,
@@ -158,7 +158,7 @@ const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnima
                   return (
                     <motion.span
                       key={`fun-char-${index}`}
-                      className="text-5xl sm:text-6xl md:text-7xl lg:text-7xl xl:text-6xl font-bold tracking-tight text-white"
+                      className="text-6xl sm:text-7xl md:text-8xl lg:text-8xl xl:text-7xl font-bold tracking-tight text-white"
                       style={{
                         fontFamily: 'cursive',
                         textShadow: '0 0 20px rgba(255, 255, 255, 0.2)',
@@ -191,7 +191,7 @@ const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnima
         className="space-y-2 sm:space-y-3"
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8, delay: 2.2, ease: 'easeOut' }}
+        transition={{ duration: 0.8, delay: 2, ease: 'easeOut' }}
       >
         <p
           className="text-lg sm:text-xl md:text-2xl lg:text-2xl text-white/90 font-light tracking-wide"
