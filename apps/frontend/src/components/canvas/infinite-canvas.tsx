@@ -150,26 +150,7 @@ const InfiniteCanvas = () => {
     );
 
     if (!validation.valid) {
-      console.warn('[Phase 2 Step 7] Mobile loading state validation failed:', {
-        loadingState,
-        imagesLoaded,
-        canvasReady,
-        issues: validation.issues,
-        recommendations: validation.recommendations,
-      });
-
-      // Apply recommendations for mobile
-      if (validation.issues.some((issue: string) => issue.includes('DPR'))) {
-        // High DPR issue detected
-        console.log('[Phase 2 Step 7] Applying DPR stabilization for mobile');
-      }
-
-      if (validation.issues.some((issue: string) => issue.includes('performance tier'))) {
-        // Low performance detected
-        console.log(
-          '[Phase 2 Step 7] Low performance mobile device detected, consider optimizations',
-        );
-      }
+      // Continue - canvas interactions will still work without wheel events
     }
   }, [loadingState, imagesLoaded, canvasReady]);
 
@@ -221,17 +202,13 @@ const InfiniteCanvas = () => {
       try {
         currentCanvas.focus();
       } catch (focusError) {
-        console.warn('[Phase 2 Step 3] Canvas focus failed:', focusError);
+        // Wheel handler error - continue silently
       }
 
       if (wheelListenerResult.fallbackApplied) {
-        console.info('[Phase 2 Step 3] Wheel event listener using fallback strategy');
+        // Continue - canvas interactions will still work without wheel events
       }
     } else {
-      console.warn(
-        '[Phase 2 Step 3] Wheel event listener setup failed:',
-        wheelListenerResult.details,
-      );
       // Continue - canvas interactions will still work without wheel events
     }
 
@@ -240,14 +217,11 @@ const InfiniteCanvas = () => {
       if (wheelListenerResult.success && currentCanvas) {
         const removeResult = removeEventListenerSafe(currentCanvas, 'wheel', wheelListener);
         if (!removeResult.success) {
-          console.warn(
-            '[Phase 2 Step 3] Wheel event listener cleanup failed:',
-            removeResult.details,
-          );
+          // Continue - canvas interactions will still work without wheel events
         }
       }
     };
-  }, [canvasRef, interactionsEnabled]); // CRITICAL FIX: Removed handleWheel from dependency array
+  }, [canvasRef, interactionsEnabled]);
 
   // Phase 2 Step 8 Action 2: Cross-browser scroll restoration safety
   useEffect(() => {
@@ -258,11 +232,7 @@ const InfiniteCanvas = () => {
     const wasSet = setScrollRestoration('manual');
 
     if (wasSet) {
-      console.debug('[Phase 2 Step 8] Scroll restoration set to manual');
-    } else {
-      console.debug(
-        '[Phase 2 Step 8] Scroll restoration not supported, relying on browser default',
-      );
+      // Continue - canvas interactions will still work without scroll restoration
     }
 
     return () => {
@@ -270,14 +240,65 @@ const InfiniteCanvas = () => {
       if (wasSet) {
         const restored = setScrollRestoration(originalSetting || 'auto');
         if (restored) {
-          console.debug(
-            '[Phase 2 Step 8] Scroll restoration restored to:',
-            originalSetting || 'auto',
-          );
+          // Continue - canvas interactions will still work without scroll restoration
         }
       }
     };
   }, []);
+
+  // Phase 2 Step 3: Enhanced wheel event listener with ref change protection
+  // CRITICAL FIX: Store handleWheel in a ref to prevent infinite re-renders
+  const handleWheelRef2 = useRef(handleWheel);
+  // Update the ref whenever handleWheel changes, but don't create dependency loop
+  handleWheelRef2.current = handleWheel;
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !interactionsEnabled) return;
+
+    // Phase 2 Step 3: Store canvas reference for cleanup validation
+    const currentCanvas = canvas;
+
+    const wheelListener2 = (e: Event) => {
+      // Phase 2 Step 3: Validate canvas is still the same element
+      if (canvasRef.current !== currentCanvas) return;
+
+      try {
+        handleWheelRef2.current(e as unknown as React.WheelEvent<HTMLCanvasElement>);
+      } catch (error) {
+        // Wheel handler error - continue silently
+      }
+    };
+
+    // Phase 2 Step 3 Action 5: Enhanced error handling for wheel event listener
+    const wheelListenerResult2 = addEventListenerSafe(currentCanvas, 'wheel', wheelListener2);
+
+    if (wheelListenerResult2.success) {
+      currentCanvas.tabIndex = -1;
+
+      try {
+        currentCanvas.focus();
+      } catch (focusError) {
+        // Wheel handler error - continue silently
+      }
+
+      if (wheelListenerResult2.fallbackApplied) {
+        // Continue - canvas interactions will still work without wheel events
+      }
+    } else {
+      // Continue - canvas interactions will still work without wheel events
+    }
+
+    return () => {
+      // Phase 2 Step 3 Action 5: Enhanced cleanup with error handling
+      if (wheelListenerResult2.success && currentCanvas) {
+        const removeResult = removeEventListenerSafe(currentCanvas, 'wheel', wheelListener2);
+        if (!removeResult.success) {
+          // Continue - canvas interactions will still work without wheel events
+        }
+      }
+    };
+  }, [canvasRef, interactionsEnabled]); // CRITICAL FIX: Removed handleWheel from dependency array
 
   // Phase 2 Step 3 Action 4: Stable onClose callback to prevent modal event listener race conditions
   const handleModalClose = useCallback(() => {
@@ -293,12 +314,7 @@ const InfiniteCanvas = () => {
   // Phase 2 Step 3 Action 5: Demonstrate enhanced error handling on component mount
   useEffect(() => {
     // Run health check to validate enhanced error handling
-    const healthCheck = performEventListenerHealthCheck();
-    console.info('[Phase 2 Step 3 Action 5] Event Listener Health Check:', {
-      passed: healthCheck.passed,
-      failed: healthCheck.failed,
-      details: healthCheck.details,
-    });
+    performEventListenerHealthCheck();
   }, []); // Run once on mount
 
   // Check if user has seen intro animation in this session
@@ -308,11 +324,8 @@ const InfiniteCanvas = () => {
         const sessionValue = sessionStorage.getItem('hasSeenIntro');
         const seenIntro = sessionValue === 'true';
 
-        // Keep this log for session debugging
-        console.log('Session storage check - hasSeenIntro:', seenIntro);
         setHasSeenIntro(seenIntro);
       } catch (error) {
-        console.log('Session storage not available, defaulting to false');
         setHasSeenIntro(false);
       }
     };
@@ -370,7 +383,7 @@ const InfiniteCanvas = () => {
 
       {/* Modals and UI */}
       <ImageDetailsModal imageInfo={selectedImage} onClose={handleModalClose} />
-      {loadingState === 'ready' && <HomeButton onClick={handleHomeClick} />}
+      {loadingState === 'ready' && !selectedImage && <HomeButton onClick={handleHomeClick} />}
     </>
   );
 };

@@ -854,7 +854,6 @@ export const useCanvasRenderer = ({
       // Phase 2 Step 9: Safe getBoundingClientRect with precision handling
       const rectResult = safeGetBoundingClientRect(currentCanvas);
       if (!rectResult.success || !rectResult.data) {
-        console.warn('[Phase 2 Step 9] Canvas bounds calculation failed:', rectResult.error);
         return;
       }
       const rect = rectResult.data;
@@ -879,7 +878,6 @@ export const useCanvasRenderer = ({
       // Phase 2 Step 9: Safe getBoundingClientRect with precision handling
       const rectResult = safeGetBoundingClientRect(currentCanvas);
       if (!rectResult.success || !rectResult.data) {
-        console.warn('[Phase 2 Step 9] Canvas bounds calculation failed:', rectResult.error);
         return;
       }
       const rect = rectResult.data;
@@ -912,20 +910,15 @@ export const useCanvasRenderer = ({
     const clickResult = addEventListenerSafe(currentCanvas, 'click', handleClick);
 
     if (!mouseMoveResult.success) {
-      console.warn(
-        '[Phase 2 Step 3] Canvas mousemove listener setup failed:',
-        mouseMoveResult.details,
-      );
       // Canvas will still work, just without hover effects
     } else if (mouseMoveResult.fallbackApplied) {
-      console.info('[Phase 2 Step 3] Canvas mousemove listener using fallback strategy');
+      // Canvas will still work, just without hover effects
     }
 
     if (!clickResult.success) {
-      console.warn('[Phase 2 Step 3] Canvas click listener setup failed:', clickResult.details);
       // Canvas will still work, just without click interactions
     } else if (clickResult.fallbackApplied) {
-      console.info('[Phase 2 Step 3] Canvas click listener using fallback strategy');
+      // Canvas will still work, just without click interactions
     }
 
     return () => {
@@ -933,13 +926,13 @@ export const useCanvasRenderer = ({
       if (mouseMoveResult.success && currentCanvas) {
         const removeResult = removeEventListenerSafe(currentCanvas, 'mousemove', handleMouseMove);
         if (!removeResult.success) {
-          console.warn('[Phase 2 Step 3] Canvas mousemove cleanup failed:', removeResult.details);
+          // Canvas will still work, just without hover effects
         }
       }
       if (clickResult.success && currentCanvas) {
         const removeResult = removeEventListenerSafe(currentCanvas, 'click', handleClick);
         if (!removeResult.success) {
-          console.warn('[Phase 2 Step 3] Canvas click cleanup failed:', removeResult.details);
+          // Canvas will still work, just without click interactions
         }
       }
     };
@@ -955,7 +948,6 @@ export const useCanvasRenderer = ({
     // Phase 2 Step 9: Safe canvas context creation with browser variation handling
     const contextResult = safeGetCanvasContext(canvas, '2d');
     if (!contextResult.success) {
-      console.warn('[Phase 2 Step 9] Canvas context creation failed:', contextResult.error);
       return;
     }
     const ctx = contextResult.data as CanvasRenderingContext2D;
@@ -986,7 +978,6 @@ export const useCanvasRenderer = ({
     // Phase 2 Step 9: Safe canvas context creation with browser variation handling
     const contextResult = safeGetCanvasContext(canvas, '2d');
     if (!contextResult.success) {
-      console.warn('[Phase 2 Step 9] Canvas context creation failed:', contextResult.error);
       return;
     }
     const ctx = contextResult.data as CanvasRenderingContext2D;
@@ -1007,7 +998,6 @@ export const useCanvasRenderer = ({
       // Phase 2 Step 9: Safe canvas context creation with browser variation handling
       const contextResult = safeGetCanvasContext(canvas, '2d');
       if (!contextResult.success) {
-        console.warn('[Phase 2 Step 9] Canvas context creation failed:', contextResult.error);
         return;
       }
       const ctx = contextResult.data as CanvasRenderingContext2D;
@@ -1775,7 +1765,6 @@ export const useCanvasRenderer = ({
           scheduleNextTileProcessing();
         }
       } catch (error) {
-        console.warn('Background tile processing error:', error);
         tileStreamingManager.current.processingTile = null;
         // Continue with next tile
         if (tileStreamingManager.current.priorityQueue.length > 0) {
