@@ -48,7 +48,7 @@ const InfiniteCanvas = () => {
 
   const { unitSize } = useCoordinatedResize({ canvasRef });
 
-  const { images, imagesLoaded, loadingProgress } = useImageLoader({
+  const { images, imagesLoaded } = useImageLoader({
     unitSize: 200,
     enableLazyLoading: true,
   });
@@ -67,7 +67,7 @@ const InfiniteCanvas = () => {
     canvasReady: false, // Initial state, will be updated by useCanvasRenderer
   });
 
-  const { canvasProgress, canvasReady, repeatedPlacements, repeatedTokens } = useCanvasRenderer({
+  const { canvasReady, repeatedPlacements, repeatedTokens } = useCanvasRenderer({
     images,
     viewState,
     imagesLoaded: imagesLoaded,
@@ -332,14 +332,13 @@ const InfiniteCanvas = () => {
 
   return (
     <>
-      {/* Navigation Menu - only show when canvas is ready */}
-      {loadingState === 'ready' && <NavMenu />}
+      {/* Navigation Menu - only show when canvas is fully loaded */}
+      {loadingState === 'ready' && canvasReady && <NavMenu />}
 
       {/* Loading screen with new aces.fun intro animation */}
       {loadingState === 'loading' && !hasSeenIntro && (
         <IntroAnimation
           onIntroAnimationComplete={handleLoadingComplete}
-          loadingProgress={Math.max(loadingProgress * 0.3, canvasProgress)}
           isComplete={imagesLoaded && canvasReady}
           skipLetterAnimation={hasSeenIntro}
         />
@@ -351,7 +350,7 @@ const InfiniteCanvas = () => {
         style={{ zIndex: 40 }}
         initial={{ opacity: 0 }}
         animate={{ opacity: loadingState === 'ready' || hasSeenIntro ? 1 : 0 }}
-        transition={{ duration: 0.4, ease: 'easeOut' }}
+        transition={{ duration: 0.6, ease: 'easeOut', delay: loadingState === 'ready' ? 0.2 : 0 }}
         onAnimationComplete={() => {
           // Animation completion is now handled cleanly without debugging timers
         }}
@@ -380,7 +379,9 @@ const InfiniteCanvas = () => {
 
       {/* Modals and UI */}
       <ImageDetailsModal imageInfo={selectedImage} onClose={handleModalClose} />
-      {loadingState === 'ready' && !selectedImage && <HomeButton onClick={handleHomeClick} />}
+      {loadingState === 'ready' && canvasReady && !selectedImage && (
+        <HomeButton onClick={handleHomeClick} />
+      )}
     </>
   );
 };

@@ -8,14 +8,12 @@ import NeonText from './neon-text';
 
 interface IntroAnimationProps {
   onIntroAnimationComplete?: () => void;
-  loadingProgress?: number;
   isComplete?: boolean;
   skipLetterAnimation?: boolean;
 }
 
 const IntroAnimation: React.FC<IntroAnimationProps> = ({
   onIntroAnimationComplete,
-  loadingProgress = 0,
   isComplete = false,
   skipLetterAnimation = false,
 }) => {
@@ -40,23 +38,11 @@ const IntroAnimation: React.FC<IntroAnimationProps> = ({
         if (onIntroAnimationComplete) {
           onIntroAnimationComplete();
         }
-      }, 500);
+      }, 800); // Increased delay to allow for fade-out animation
 
       return () => clearTimeout(completionTimer);
     }
   }, [isComplete, minimumTimeElapsed, onIntroAnimationComplete]);
-
-  // Debug logging - show that we're receiving the props
-  useEffect(() => {
-    console.log(
-      'IntroAnimation - Loading Progress:',
-      loadingProgress,
-      'isComplete:',
-      isComplete,
-      'minimumTimeElapsed:',
-      minimumTimeElapsed,
-    );
-  }, [loadingProgress, isComplete, minimumTimeElapsed]);
 
   return (
     <AnimatePresence>
@@ -65,7 +51,7 @@ const IntroAnimation: React.FC<IntroAnimationProps> = ({
           data-testid="intro-animation"
           initial={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 1.5, ease: 'easeInOut' }}
+          transition={{ duration: 0.8, ease: 'easeInOut' }} // Shorter, smoother fade-out
           className="fixed inset-0 min-h-screen bg-black flex flex-col items-center justify-center overflow-hidden z-50"
         >
           {/* Main content container */}

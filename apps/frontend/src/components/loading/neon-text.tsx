@@ -51,7 +51,7 @@ const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnima
         }
         return nextCount;
       });
-    }, 200);
+    }, 120);
 
     return () => clearInterval(letterInterval);
   }, [letterRevealComplete, totalLetters, skipLetterAnimation]);
@@ -61,7 +61,7 @@ const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnima
     if (letterRevealComplete) {
       const cyclingTimer = setTimeout(() => {
         setShowFontCycling(true);
-      }, 1500);
+      }, 800);
       return () => clearTimeout(cyclingTimer);
     }
   }, [letterRevealComplete]);
@@ -71,7 +71,7 @@ const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnima
     if (showFontCycling && !isComplete) {
       const cycleInterval = setInterval(() => {
         setCurrentFontIndex((prev) => (prev + 1) % funFonts.length);
-      }, 2000);
+      }, 1500);
       return () => clearInterval(cycleInterval);
     }
   }, [showFontCycling, isComplete, funFonts.length]);
@@ -103,9 +103,9 @@ const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnima
                   scale: isVisible ? 1 : 0.8,
                 }}
                 transition={{
-                  duration: 0.4,
+                  duration: 0.3,
                   ease: [0.25, 0.46, 0.45, 0.94],
-                  delay: index * 0.1,
+                  delay: index * 0.06,
                 }}
               >
                 {letter}
@@ -174,9 +174,9 @@ const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnima
                         scale: isVisible ? 1 : 0.8,
                       }}
                       transition={{
-                        duration: 0.6,
+                        duration: 0.4,
                         ease: [0.25, 0.46, 0.45, 0.94],
-                        delay: letterIndex * 0.22 + 0.1,
+                        delay: letterIndex * 0.15 + 0.05,
                       }}
                     >
                       {char}
@@ -194,7 +194,7 @@ const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnima
         className="space-y-2 sm:space-y-3"
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8, delay: 2, ease: 'easeOut' }}
+        transition={{ duration: 0.8, delay: 1.2, ease: 'easeOut' }}
       >
         <p
           className="text-lg sm:text-xl md:text-2xl lg:text-2xl text-white/90 font-light tracking-wide"
