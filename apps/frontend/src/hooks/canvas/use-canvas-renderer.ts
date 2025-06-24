@@ -260,49 +260,28 @@ export const useCanvasRenderer = ({
   // Phase 2 Step 7 Action 3: Mobile animation performance optimization
   const mobilePerformanceRef = useRef({
     lastFrameTime: 0,
-    frameSkipCount: 0,
-    adaptiveQuality: 1.0, // Start with full quality
-    targetFrameTime: 16, // 60fps target
+    adaptiveQuality: 1.0, // Start with full quality, remove frameSkipCount
   });
 
-  // Phase 2 Step 7 Action 3: Mobile frame management
-  const shouldSkipFrame = useCallback(
+  // Phase 2 Step 7 Action 3: Simplified mobile frame management
+  const shouldThrottleFrame = useCallback(
     (currentTime: number): boolean => {
       if (!browserPerf.adaptiveRendering) return false;
 
       const mobile = mobilePerformanceRef.current;
       const frameTime = currentTime - mobile.lastFrameTime;
 
-      // Skip frame if we're falling behind target framerate
-      if (frameTime < mobile.targetFrameTime * 0.8) {
-        mobile.frameSkipCount++;
-        return true;
-      }
+      // Simple throttling: limit to 30fps on mobile instead of aggressive skipping
+      const minFrameTime = 33; // 30fps = 33ms between frames
 
-      // Adapt quality based on performance
-      if (mobile.frameSkipCount > 3) {
-        mobile.adaptiveQuality = Math.max(0.7, mobile.adaptiveQuality - 0.1);
-      } else if (mobile.frameSkipCount === 0 && frameTime < mobile.targetFrameTime) {
-        mobile.adaptiveQuality = Math.min(1.0, mobile.adaptiveQuality + 0.05);
+      if (frameTime < minFrameTime) {
+        return true; // Throttle, but don't affect quality
       }
 
       mobile.lastFrameTime = currentTime;
-      mobile.frameSkipCount = 0;
       return false;
     },
     [browserPerf.adaptiveRendering],
-  );
-
-  // Phase 2 Step 7 Action 3: Optimized mouse check for mobile
-  const shouldCheckMouse = useCallback(
-    (currentTime: number): boolean => {
-      // On mobile, reduce mouse checks during touch interactions to save CPU
-      if (browserPerf.adaptiveRendering && mobilePerformanceRef.current.adaptiveQuality < 0.9) {
-        return currentTime - lastMouseCheck.current > browserPerf.mouseCheckInterval * 2;
-      }
-      return currentTime - lastMouseCheck.current > browserPerf.mouseCheckInterval;
-    },
-    [browserPerf.mouseCheckInterval, browserPerf.adaptiveRendering],
   );
 
   // Preload the logo image
@@ -1044,7 +1023,7 @@ export const useCanvasRenderer = ({
       const shouldUseDirtyRegions = dirtyRegionManager.current.regions.length > 0;
 
       // Phase 2 Step 7 Action 3: Mobile frame skip optimization
-      if (shouldSkipFrame(currentTime)) {
+      if (shouldThrottleFrame(currentTime)) {
         return;
       }
 
@@ -1093,19 +1072,10 @@ export const useCanvasRenderer = ({
       // Clear dirty regions after processing
       dirtyRegionManager.current.clearDirtyRegions();
 
-      // Phase 3.3: Apply interaction-aware canvas quality
-      const interactionQuality = getInteractionCanvasQuality();
-      const mobileQuality = browserPerf.adaptiveRendering
-        ? mobilePerformanceRef.current.adaptiveQuality
-        : 1.0;
-
-      // Combine mobile adaptive quality with interaction quality
-      const finalQuality = Math.min(interactionQuality, mobileQuality);
-
-      // MOBILE SHIMMER FIX: Only update canvas properties when they actually change
-      // Constant property changes cause mobile browsers to recalculate rendering state every frame
-      const shouldEnableSmoothing = browserPerf.enableImageSmoothing && finalQuality > 0.8;
-      const targetGlobalAlpha = Math.max(0.8, finalQuality);
+      // MOBILE SHIMMER FIX: Use stable canvas properties to avoid constant recalculation
+      // Set properties once at beginning, don't change them frequently during animation
+      const shouldEnableSmoothing = browserPerf.enableImageSmoothing;
+      const targetGlobalAlpha = 1.0; // Keep at full opacity for smooth animation
 
       // Only update imageSmoothingEnabled if it actually changed
       if (ctx.imageSmoothingEnabled !== shouldEnableSmoothing) {
@@ -1170,43 +1140,38 @@ export const useCanvasRenderer = ({
 
       // Draw repeated grid products (always fully visible, no animation)
       if (animationProgress > 0) {
-        // Safari optimization: Viewport culling to reduce drawImage calls
-        if (isSafari) {
-          // Calculate visible viewport bounds in world coordinates
+        // Mobile Safari optimization: Simplified viewport culling for better performance
+        if (isSafari && browserPerf.adaptiveRendering) {
+          // Calculate visible viewport bounds in world coordinates with larger buffer for mobile
           const viewportLeft = -viewState.x / viewState.scale;
           const viewportTop = -viewState.y / viewState.scale;
           const viewportRight = viewportLeft + canvas.width / viewState.scale;
           const viewportBottom = viewportTop + canvas.height / viewState.scale;
 
-          // Add small buffer for smooth scrolling (1 unitSize on each side)
-          const buffer = unitSize;
+          // Larger buffer for mobile to reduce culling calculations during scroll
+          const buffer = unitSize * 1.5;
           const cullingLeft = viewportLeft - buffer;
           const cullingTop = viewportTop - buffer;
           const cullingRight = viewportRight + buffer;
           const cullingBottom = viewportBottom + buffer;
 
-          let renderedCount = 0;
-          let culledCount = 0;
-
           // Only show repeated grids after original animation starts
           repeatedPlacements.current.forEach((tilePlacements) => {
             tilePlacements.forEach((placement) => {
-              // Viewport culling check for Safari performance
-              const imageRight = placement.x + placement.width;
-              const imageBottom = placement.y + placement.height;
+              // Simplified culling check - only check if center is visible
+              const centerX = placement.x + placement.width / 2;
+              const centerY = placement.y + placement.height / 2;
 
-              // Skip images that are completely outside the viewport
+              // Skip images where center is outside viewport
               if (
-                placement.x > cullingRight ||
-                imageRight < cullingLeft ||
-                placement.y > cullingBottom ||
-                imageBottom < cullingTop
+                centerX < cullingLeft ||
+                centerX > cullingRight ||
+                centerY < cullingTop ||
+                centerY > cullingBottom
               ) {
-                culledCount++;
                 return; // Skip this image
               }
 
-              renderedCount++;
               drawImage(
                 ctx,
                 placement.image.element,
@@ -1240,7 +1205,7 @@ export const useCanvasRenderer = ({
 
       // Phase 2 Step 7 Action 3: Mobile-optimized mouse hit detection
       let newHoveredIndex: number | null = null;
-      if (shouldCheckMouse(currentTime)) {
+      if (currentTime - lastMouseCheck.current > mouseCheckInterval) {
         const worldMouseX = (mousePositionRef.current.x - viewState.x) / viewState.scale;
         const worldMouseY = (mousePositionRef.current.y - viewState.y) / viewState.scale;
 
@@ -1555,20 +1520,13 @@ export const useCanvasRenderer = ({
     let animationFrameId: number | null = null;
     let isAnimationActive = true;
 
-    // MOBILE SHIMMER FIX: Add frame rate throttling for mobile stability
-    let lastFrameTime = 0;
-    const mobileFrameThrottle = browserPerf.adaptiveRendering ? 32 : 16; // 30fps on mobile, 60fps on desktop
-
     const animate = () => {
       if (!isAnimationActive) return; // Early exit if cleanup called
 
       const currentTime = performance.now();
 
-      // MOBILE SHIMMER FIX: Throttle animation frames on mobile to reduce visual instability
-      if (currentTime - lastFrameTime >= mobileFrameThrottle) {
-        draw(currentTime);
-        lastFrameTime = currentTime;
-      }
+      // Let the draw function handle its own throttling to avoid double throttling
+      draw(currentTime);
 
       if (isAnimationActive) {
         animationFrameId = requestAnimationFrame(animate);

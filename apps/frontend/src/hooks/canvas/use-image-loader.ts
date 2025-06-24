@@ -5,11 +5,75 @@ import { SAMPLE_METADATA } from '../../data/metadata'; // Adjusted path
 import { LuxuryLogger } from '../../lib/utils/luxury-logger'; // Adjusted path
 import { loadImageWithFallback } from '../../lib/utils/image-loader-utils'; // Phase 2 Step 1: Standardized CORS handling
 import { safeCanvasToDataURL } from '../../lib/utils/canvas-error-boundary'; // Phase 2 Step 9: Safe canvas operations
+import { browserUtils, getDeviceCapabilities } from '../../lib/utils/browser-utils'; // Browser-specific optimizations
 
 interface UseImageLoaderProps {
   unitSize: number; // Add unitSize as a prop
   enableLazyLoading?: boolean; // New prop to enable lazy loading
 }
+
+// Browser-specific image loading configurations
+const getBrowserImageLoadingConfig = () => {
+  const capabilities = getDeviceCapabilities();
+  const isSafari = browserUtils.isSafari();
+  const isFirefox = browserUtils.isFirefox();
+  const isBrave = navigator.userAgent.includes('Brave');
+  const isChrome = browserUtils.isChrome();
+  const isMobile = browserUtils.isMobile();
+
+  // Safari Mobile - Conservative approach due to memory constraints
+  if (isSafari && isMobile) {
+    return {
+      concurrent: capabilities.performanceTier === 'high' ? 3 : 2, // Max 2-3 concurrent loads
+      timeout: 20000, // Longer timeout for mobile networks
+      retryAttempts: 3, // More retries for network issues
+      enableCORS: false, // Avoid CORS complexity on Safari mobile
+      preloadDistance: 1, // Only preload adjacent images
+    };
+  }
+
+  // Firefox Mobile - Consistent performance approach
+  if (isFirefox && isMobile) {
+    return {
+      concurrent: 4, // Firefox handles concurrent loads well
+      timeout: 15000,
+      retryAttempts: 2,
+      enableCORS: true, // Firefox has good CORS handling
+      preloadDistance: 2, // Moderate preloading
+    };
+  }
+
+  // Brave Mobile - Privacy-aware approach
+  if (isBrave && isMobile) {
+    return {
+      concurrent: 3, // Moderate due to privacy processing overhead
+      timeout: 18000, // Extra time for privacy checks
+      retryAttempts: 3, // More retries due to potential blocking
+      enableCORS: true, // Try CORS first, fallback if blocked
+      preloadDistance: 1, // Conservative preloading
+    };
+  }
+
+  // Chrome Mobile - Optimized baseline
+  if (isChrome && isMobile) {
+    return {
+      concurrent: capabilities.performanceTier === 'high' ? 6 : 4, // Aggressive concurrent loading
+      timeout: 12000, // Shorter timeout, good network handling
+      retryAttempts: 2,
+      enableCORS: true, // Standard CORS support
+      preloadDistance: 3, // Aggressive preloading
+    };
+  }
+
+  // Desktop fallback - aggressive loading
+  return {
+    concurrent: 8,
+    timeout: 10000,
+    retryAttempts: 2,
+    enableCORS: true,
+    preloadDistance: 4,
+  };
+};
 
 // Helper function to create a luxurious placeholder image
 const createLuxuryPlaceholderImage = (unitSize: number) => {
@@ -71,6 +135,9 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
   useEffect(() => {
     let loadedCount = 0;
     const loadedImages: ImageInfo[] = [];
+
+    // Get browser-specific loading configuration
+    const loadingConfig = getBrowserImageLoadingConfig();
 
     // Clear the loading completion flag at start
     try {
@@ -192,13 +259,13 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
         return;
       }
 
-      // Phase 2 Step 1: Use standardized CORS handling with fallback strategy
+      // Phase 2 Step 1: Use browser-specific loading configuration
       const loadImage = async () => {
         const result = await loadImageWithFallback({
           src: metadata.image!,
-          enableCORS: true,
-          timeout: 15000,
-          retryAttempts: 2,
+          enableCORS: loadingConfig.enableCORS,
+          timeout: loadingConfig.timeout,
+          retryAttempts: loadingConfig.retryAttempts,
         });
 
         if (result.success && result.image) {
