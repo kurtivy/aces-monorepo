@@ -28,7 +28,7 @@ const IntroAnimation: React.FC<IntroAnimationProps> = ({
       () => {
         setMinimumTimeElapsed(true);
       },
-      skipLetterAnimation ? 1000 : 10000,
+      skipLetterAnimation ? 1000 : 4000,
     ); // 1s for skip, 10s for full animation test
 
     return () => clearTimeout(minimumTimer);
