@@ -214,6 +214,12 @@ export const useCanvasRenderer = ({
 
   // Product entrance animation state
   const [isProductAnimationActive, setIsProductAnimationActive] = useState(false);
+  const [hasAnimationStarted, setHasAnimationStarted] = useState(false);
+  const productAnimationStartTime = useRef<number | null>(null);
+
+  // Use a longer duration for entrance animation
+  const ENTRANCE_ANIMATION_DURATION = 800; // Longer duration for entrance animation
+  const HOVER_ANIMATION_DURATION = browserPerf.animationDuration; // Keep hover animation duration as is
 
   const frameThrottleRef = useRef(0);
   const targetFPS = browserPerf.targetFPS; // Centralized FPS setting
@@ -255,7 +261,6 @@ export const useCanvasRenderer = ({
 
   // Canvas and animation refs - consolidated declaration
   const animationFrameRef = useRef<number | null>(null);
-  const productAnimationStartTime = useRef<number | null>(null);
 
   // Phase 2 Step 7 Action 3: Mobile animation performance optimization
   const mobilePerformanceRef = useRef({
@@ -832,9 +837,10 @@ export const useCanvasRenderer = ({
   // Start product animation when images are loaded AND canvas is visible
   useEffect(() => {
     if (imagesLoaded && placementsCalculated && canvasVisible) {
-      // Start animation immediately for faster loading experience
-      productAnimationStartTime.current = performance.now();
+      // Reset animation state
       setIsProductAnimationActive(true);
+      setHasAnimationStarted(false);
+      productAnimationStartTime.current = null;
     }
   }, [imagesLoaded, placementsCalculated, canvasVisible]);
 
@@ -1091,25 +1097,32 @@ export const useCanvasRenderer = ({
       const productPlacements = stableProductPlacements.current;
       const createTokenPositions = stableCreateTokenPositions.current;
 
-      const ANIMATION_DURATION = browserPerf.animationDuration; // Centralized animation duration
-
-      // Check if the overall animation sequence is complete
-      if (isProductAnimationActive && productAnimationStartTime.current) {
-        const elapsed = currentTime - productAnimationStartTime.current;
-
-        if (elapsed > ANIMATION_DURATION + 100) {
-          // Add small buffer
-          setIsProductAnimationActive(false);
-        }
-      }
+      const ANIMATION_DURATION = ENTRANCE_ANIMATION_DURATION; // Centralized animation duration
 
       // Calculate animation progress once
       let animationProgress = 0;
-      if (isProductAnimationActive && productAnimationStartTime.current) {
-        const elapsed = currentTime - productAnimationStartTime.current;
-        const progress = Math.min(1, elapsed / ANIMATION_DURATION);
-        animationProgress = easeInOutCubic(progress);
-      } else if (productAnimationStartTime.current) {
+      if (isProductAnimationActive) {
+        // Set start time on first frame only
+        if (!hasAnimationStarted) {
+          productAnimationStartTime.current = currentTime;
+          setHasAnimationStarted(true);
+        }
+
+        if (productAnimationStartTime.current !== null) {
+          const elapsed = currentTime - productAnimationStartTime.current;
+          if (elapsed >= ANIMATION_DURATION) {
+            // Animation complete
+            setIsProductAnimationActive(false);
+            animationProgress = 1;
+          } else {
+            const progress = elapsed / ANIMATION_DURATION;
+            // Use a smoother easing for entrance animation
+            const eased = easeInOutCubic(progress);
+            // Add a slight bounce at the end
+            animationProgress = eased + Math.sin(eased * Math.PI) * 0.05;
+          }
+        }
+      } else {
         // Animation has completed, keep images visible
         animationProgress = 1;
       }
@@ -1352,7 +1365,7 @@ export const useCanvasRenderer = ({
       let tokenOpacity = 0;
       let tokenScale = 0.95;
 
-      if (isProductAnimationActive && productAnimationStartTime.current) {
+      if (isProductAnimationActive && productAnimationStartTime.current !== null) {
         const elapsed = currentTime - productAnimationStartTime.current;
         const tokenDelay = 100;
         const adjustedElapsed = Math.max(0, elapsed - tokenDelay);
@@ -1361,7 +1374,7 @@ export const useCanvasRenderer = ({
 
         tokenOpacity = easedProgress;
         tokenScale = 0.95 + 0.05 * easedProgress;
-      } else if (productAnimationStartTime.current) {
+      } else if (!isProductAnimationActive) {
         tokenOpacity = 1;
         tokenScale = 1;
       }
