@@ -22,9 +22,16 @@ const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnima
 
   const funFonts = [
     { family: '"Spray Letters", cursive', weight: '400', name: 'Spray Letters' },
-    { family: 'ui-serif, Georgia, serif', weight: '400', name: 'Serif' },
-    { family: 'ui-sans-serif, system-ui, sans-serif', weight: '600', name: 'Sans' },
+    { family: 'Verdana, Geneva, sans-serif', weight: '700', name: 'Clear' },
+    { family: '"Lucida Console", Monaco, monospace', weight: '400', name: 'Code' },
     { family: 'ui-monospace, Menlo, monospace', weight: '500', name: 'Mono' },
+    {
+      family: '"Palatino Linotype", "Book Antiqua", Palatino, serif',
+      weight: '700',
+      name: 'Classic',
+    },
+    { family: 'ui-serif, Georgia, serif', weight: '400', name: 'Serif' },
+
     { family: 'Impact, "Arial Black", sans-serif', weight: '900', name: 'Impact' },
     { family: '"Times New Roman", serif', weight: '700', name: 'Times' },
     { family: '"Helvetica Neue", Arial, sans-serif', weight: '300', name: 'Helvetica' },
