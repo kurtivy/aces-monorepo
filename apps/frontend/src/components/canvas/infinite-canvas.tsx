@@ -158,10 +158,12 @@ const InfiniteCanvas = () => {
       // Only set session storage if we're actually completing the loading
       if (loadingState === 'loading') {
         sessionStorage.setItem('hasSeenIntro', 'true');
+        setHasSeenIntro(true); // Update local state to match storage
         setLoadingState('ready');
       }
     } catch (error) {
       // sessionStorage not available, continue anyway
+      setHasSeenIntro(true); // Still update local state
       setLoadingState('ready');
     }
   };
@@ -322,6 +324,10 @@ const InfiniteCanvas = () => {
         const seenIntro = sessionValue === 'true';
 
         setHasSeenIntro(seenIntro);
+        // If they've seen the intro, we should also set loading state to ready
+        if (seenIntro) {
+          setLoadingState('ready');
+        }
       } catch (error) {
         setHasSeenIntro(false);
       }
