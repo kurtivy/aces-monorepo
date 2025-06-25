@@ -89,11 +89,11 @@ const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnima
             return (
               <motion.span
                 key={`aces-${index}`}
-                className="text-5xl sm:text-6xl md:text-7xl lg:text-7xl xl:text-6xl font-bold tracking-tight"
+                className="text-5xl sm:text-6xl md:text-7xl lg:text-7xl xl:text-6xl font-bold tracking-tight  text-white"
                 style={{
                   fontFamily: 'var(--font-syne), sans-serif',
-                  color: '#D7BF75',
-                  textShadow: '0 0 20px rgba(215, 191, 117, 0.3)',
+                  color: '#FFFFFF',
+                  textShadow: '0 0 20px rgba(255, 255, 255, 0.3)',
                   filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
                 }}
                 initial={{ opacity: 0, y: 20, scale: 0.8 }}
@@ -116,7 +116,7 @@ const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnima
 
         {/* FUN part - Using the v8 approach with fixed min-widths */}
         <div className="ml-0.5 sm:ml-1 md:ml-1 -mt-1 sm:-mt-1.5 md:-mt-2">
-          <div className="inline-block w-[140px] sm:w-[160px] md:w-[180px] lg:w-[200px] xl:w-[220px] text-center">
+          <div className="inline-block w-[140px] sm:w-[160px] md:w-[170px] lg:w-[170px] xl:w-[170px] text-center">
             {letterRevealComplete ? (
               <motion.div
                 className="relative"
@@ -137,12 +137,13 @@ const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnima
                     }}
                   >
                     <span
-                      className="text-6xl sm:text-7xl md:text-8xl lg:text-8xl xl:text-7xl font-bold tracking-tight text-white"
+                      className="text-6xl sm:text-7xl md:text-8xl lg:text-8xl xl:text-7xl font-bold tracking-tight"
                       style={{
                         fontFamily: currentFont.family,
                         fontWeight: currentFont.weight,
                         letterSpacing: currentFont.name === 'Spray Letters' ? '0.2em' : 'normal',
-                        textShadow: '0 0 30px rgba(255, 255, 255, 0.2)',
+                        color: '#D7BF75',
+                        textShadow: '0 0 30px rgba(215, 191, 117, 0.2)',
                         filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
                       }}
                     >
@@ -164,7 +165,8 @@ const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnima
                         fontFamily: currentFont.family,
                         fontWeight: currentFont.weight,
                         letterSpacing: currentFont.name === 'Spray Letters' ? '0.1em' : 'normal',
-                        textShadow: '0 0 30px rgba(255, 255, 255, 0.2)',
+                        color: '#D7BF75',
+                        textShadow: '0 0 30px rgba(215, 191, 117, 0.2)',
                         filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
                       }}
                       initial={{ opacity: 0, y: 20, scale: 0.8 }}
@@ -197,13 +199,13 @@ const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnima
         transition={{ duration: 0.8, delay: 1.2, ease: 'easeOut' }}
       >
         <p
-          className="text-lg sm:text-xl md:text-2xl lg:text-2xl text-white/90 font-light tracking-wide"
+          className="text-lg sm:text-xl md:text-2xl lg:text-2xl text-white/90 font-light tracking-wide uppercase"
           style={{ fontFamily: '"Metropolis", sans-serif', fontWeight: '300' }}
         >
           The best collectibles. Tokenized.
         </p>
         <p
-          className="text-base sm:text-lg md:text-xl lg:text-xl text-[#D7BF75]/80 font-light tracking-wide"
+          className="text-base sm:text-lg md:text-xl lg:text-xl text-[#D7BF75]/80 font-light tracking-wide uppercase"
           style={{ fontFamily: '"Metropolis", sans-serif', fontWeight: '300' }}
         >
           Own different.
