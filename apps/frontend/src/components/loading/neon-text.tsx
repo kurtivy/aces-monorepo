@@ -96,7 +96,7 @@ const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnima
             return (
               <motion.span
                 key={`aces-${index}`}
-                className="text-5xl sm:text-6xl md:text-7xl lg:text-7xl xl:text-6xl font-bold tracking-tight  text-white"
+                className="text-6xl sm:text-6xl md:text-9xl lg:text-9xl xl:text-9xl font-bold tracking-tight text-white leading-none"
                 style={{
                   fontFamily: 'var(--font-syne), sans-serif',
                   color: '#FFFFFF',
@@ -123,7 +123,7 @@ const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnima
 
         {/* FUN part - Using the v8 approach with fixed min-widths */}
         <div className="ml-0.5 sm:ml-1 md:ml-1 -mt-1 sm:-mt-1.5 md:-mt-2">
-          <div className="inline-block w-[140px] sm:w-[160px] md:w-[170px] lg:w-[170px] xl:w-[170px] text-center">
+          <div className="inline-block w-[140px] sm:w-[160px] md:w-[300px] lg:w-[300px] xl:w-[300px] text-center">
             {letterRevealComplete ? (
               <motion.div
                 className="relative"
@@ -144,7 +144,7 @@ const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnima
                     }}
                   >
                     <span
-                      className="text-6xl sm:text-7xl md:text-8xl lg:text-8xl xl:text-7xl font-bold tracking-tight"
+                      className="text-6xl sm:text-6xl md:text-[10.5rem] lg:text-[10.5rem] xl:text-[10.5rem] font-bold tracking-tight leading-none"
                       style={{
                         fontFamily: currentFont.family,
                         fontWeight: currentFont.weight,
@@ -167,7 +167,7 @@ const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnima
                   return (
                     <motion.span
                       key={`fun-char-${index}`}
-                      className="text-6xl sm:text-7xl md:text-8xl lg:text-8xl xl:text-7xl font-bold tracking-tight text-white"
+                      className="text-6xl sm:text-6xl md:text-[10.5rem] lg:text-[10.5rem] xl:text-[10.5rem] font-bold tracking-tight text-white leading-none"
                       style={{
                         fontFamily: currentFont.family,
                         fontWeight: currentFont.weight,
