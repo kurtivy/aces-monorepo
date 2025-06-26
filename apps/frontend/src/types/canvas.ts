@@ -10,6 +10,10 @@ export interface ImageInfo {
     date?: string;
     ticker?: string;
     image?: string;
+    rrp?: number; // Recommended Retail Price (USD)
+    tokenPrice?: number; // Hypothetical token price in USDT
+    marketCap?: number; // Hypothetical market capitalization in USDT
+    tokenSupply?: number; // Total supply of tokens for the asset
   };
 }
 

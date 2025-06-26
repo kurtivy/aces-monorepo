@@ -1,5 +1,7 @@
 'use client';
 
+import type React from 'react';
+
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
@@ -142,7 +144,7 @@ function LazyModalImage({
         {/* Actually load the image (hidden) */}
         {shouldLoad && (
           <Image
-            src={src}
+            src={src || '/placeholder.svg'}
             alt={alt}
             fill
             className="opacity-0 pointer-events-none"
@@ -190,7 +192,7 @@ function LazyModalImage({
   // Show the loaded image
   return (
     <Image
-      src={src}
+      src={src || '/placeholder.svg'}
       alt={alt}
       fill
       className={className}
@@ -206,6 +208,9 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
   // Phase 2 Step 3 Action 4: Stabilize onClose to prevent event listener re-registration
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+
+  // State for expandable description - starts expanded (true)
+  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(true);
 
   const [backdropStyles, setBackdropStyles] = useState<{
     backdropFilter?: string;
@@ -301,10 +306,11 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
               duration: typeof window !== 'undefined' && window.innerWidth < 768 ? 0 : 0.15,
             },
           }}
-          className="bg-black rounded-2xl sm:rounded-3xl overflow-hidden max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-6xl w-full shadow-goldGlow border border-[#D0B264]/40 max-h-[95vh] sm:max-h-[90vh]"
+          className="bg-black rounded-2xl sm:rounded-3xl overflow-hidden max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-6xl w-full shadow-goldGlow border border-[#D0B264]/40 max-h-[95vh] sm:max-h-[90vh] lg:h-[90vh] flex flex-col"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex flex-col lg:flex-row h-full max-h-[95vh] sm:max-h-[90vh]">
+          {/* Scrollable Content Area */}
+          <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
             {/* Image Section - Now with Lazy Loading */}
             <div className="flex-shrink-0 lg:w-1/2 bg-gradient-to-b from-black/60 to-black p-3 sm:p-6 lg:p-8">
               <div className="relative h-40 sm:h-48 md:h-56 lg:h-full min-h-[160px] max-h-[40vh] sm:max-h-[50vh] lg:max-h-none overflow-hidden rounded-xl sm:rounded-2xl bg-black">
@@ -328,108 +334,166 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
               </div>
             </div>
 
-            {/* Content Section */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.2, ease: 'easeOut' }}
-              className="flex-1 p-3 sm:p-6 lg:p-8 flex flex-col justify-between overflow-y-auto"
-            >
-              <div className="flex items-start justify-between mb-4 sm:mb-6">
-                <div className="flex-1 pr-2">
-                  <div>
-                    {' '}
-                    {/* Remove motion.div wrapper */}
-                    <h2 className="text-xl sm:text-2xl lg:text-3xl xl:text-4xl font-bold text-[#D0B264] mb-1 sm:mb-2 font-syne tracking-wide leading-tight">
-                      {safeMetadata.title}
-                    </h2>
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-1 sm:space-y-0 sm:space-x-2">
-                      <span className="text-lg sm:text-xl lg:text-2xl xl:text-3xl font-syne text-[#D0B264] font-bold">
-                        {safeMetadata.ticker}
-                      </span>
-                      {safeMetadata.date && (
-                        <span className="text-[#FFFFFF]/60 text-xs sm:text-sm font-jetbrains-mono tracking-wide">
-                          • Listed {new Date(safeMetadata.date).toLocaleDateString()}
-                        </span>
+            {/* Content Section - Scrollable */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <div className="flex-1 overflow-y-auto p-3 sm:p-6 lg:p-8 pb-0">
+                <div className="flex items-start justify-between mb-4 sm:mb-6">
+                  <div className="flex-1 pr-2">
+                    <div>
+                      <h2 className="text-xl sm:text-2xl lg:text-3xl xl:text-4xl font-bold text-[#D0B264] mb-2 sm:mb-3 font-syne tracking-wide leading-tight">
+                        {safeMetadata.title}
+                      </h2>
+
+                      {/* Updated Price Display - RRP Price • Token Symbol */}
+                      <div className="flex flex-col space-y-2 mb-3">
+                        {/* Price Line: RRP [Price] • [Token Symbol] */}
+                        <div className="flex items-baseline space-x-2">
+                          <span className="text-xs sm:text-sm text-[#D0B264]/70 font-jetbrains-mono tracking-wider uppercase">
+                            RRP
+                          </span>
+                          {(() => {
+                            const rrpValue = imageInfo?.metadata?.rrp as number | undefined;
+                            if (rrpValue === undefined) return null;
+                            const formatted = `$${rrpValue.toLocaleString('en-US', {
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 0,
+                            })}`;
+                            return (
+                              <span className="text-2xl sm:text-3xl lg:text-4xl xl:text-5xl font-syne text-[#FFFFFF]/80 font-bold leading-none">
+                                {formatted}
+                              </span>
+                            );
+                          })()}
+                          <span className="text-[#D0B264]/60 text-lg sm:text-xl lg:text-2xl font-medium">
+                            •
+                          </span>
+                          <span className="text-lg sm:text-xl lg:text-2xl font-syne text-[#D0B264] font-semibold">
+                            {safeMetadata.ticker}
+                          </span>
+                        </div>
+
+                        {/* Listed Date - Underneath */}
+                        {safeMetadata.date && (
+                          <div className="text-[#FFFFFF]/60 text-xs sm:text-sm font-jetbrains-mono tracking-wide">
+                            Listed {new Date(safeMetadata.date).toLocaleDateString()}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={stableOnClose}
+                    className="text-[#D0B264]/80 hover:text-[#D0B264] transition-colors duration-150 p-1 flex-shrink-0"
+                  >
+                    <svg
+                      className="w-5 h-5 sm:w-6 sm:h-6"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="mb-4 sm:mb-6">
+                  {/* Enhanced Description with Read More/Less functionality - More space allocated */}
+                  <div className="prose prose-invert">
+                    <div className="relative">
+                      <p
+                        className={`text-[#FFFFFF]/80 text-sm sm:text-base leading-relaxed font-spectral tracking-wide transition-all duration-300 ${
+                          isDescriptionExpanded ? '' : 'line-clamp-5'
+                        }`}
+                      >
+                        {safeMetadata.description}
+                      </p>
+
+                      {/* Read More Button - Show if description is long enough to be truncated */}
+                      {safeMetadata.description && safeMetadata.description.length > 200 && (
+                        <div className="mt-3">
+                          <button
+                            onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
+                            className="text-[#D0B264] text-sm font-medium hover:text-[#D0B264]/80 transition-colors duration-150 flex items-center space-x-1"
+                          >
+                            <span>{isDescriptionExpanded ? 'Show Less' : 'Read More'}</span>
+                            <svg
+                              className={`w-4 h-4 transition-transform duration-200 ${
+                                isDescriptionExpanded ? 'rotate-180' : ''
+                              }`}
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M19 9l-7 7-7-7"
+                              />
+                            </svg>
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
+
+                  {/* Asset Stats - More space allocated */}
+                  <div className="mt-6 sm:mt-8 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-4 sm:gap-y-6">
+                    {(() => {
+                      // Helper formatter
+                      const formatUSD = (v?: number) =>
+                        v === undefined
+                          ? '—'
+                          : `$${v.toLocaleString('en-US', {
+                              minimumFractionDigits: v >= 1 ? 2 : 4,
+                              maximumFractionDigits: v >= 1 ? 2 : 6,
+                            })}`;
+
+                      const formatNumber = (v?: number) =>
+                        v === undefined ? '—' : v.toLocaleString('en-US');
+
+                      const { tokenSupply, tokenPrice, marketCap } = (imageInfo?.metadata ||
+                        {}) as ImageInfo['metadata'];
+
+                      const stats = [
+                        {
+                          label: 'Token Price',
+                          value: formatUSD(tokenPrice),
+                        },
+                        {
+                          label: 'Market Cap',
+                          value: formatUSD(marketCap),
+                        },
+                        { label: 'Token Supply', value: formatNumber(tokenSupply) },
+                      ];
+
+                      return stats.map(({ label, value }) => (
+                        <div key={label} className="flex flex-col">
+                          <span className="text-[10px] xs:text-xs sm:text-xs md:text-sm text-[#FFFFFF]/60 tracking-wide font-jetbrains-mono uppercase">
+                            {label}
+                          </span>
+                          <span className="text-xs xs:text-sm sm:text-sm md:text-base font-syne font-bold text-[#D0B264] mt-1">
+                            {value}
+                          </span>
+                        </div>
+                      ));
+                    })()}
+                  </div>
                 </div>
-                <button
-                  onClick={stableOnClose}
-                  className="text-[#D0B264]/80 hover:text-[#D0B264] transition-colors duration-150 p-1 flex-shrink-0"
-                >
-                  <svg
-                    className="w-5 h-5 sm:w-6 sm:h-6"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
               </div>
 
-              <div className="flex-1 mb-4 sm:mb-0">
-                {' '}
-                {/* Remove motion.div wrapper */}
-                <div className="prose prose-invert">
-                  <p className="text-[#FFFFFF]/80 text-sm sm:text-base leading-relaxed font-spectral tracking-wide line-clamp-4 sm:line-clamp-none">
-                    {safeMetadata.description}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-3 sm:mt-6 lg:mt-8">
-                {' '}
-                {/* Remove motion.div wrapper */}
+              {/* Fixed Button Area */}
+              <div className="flex-shrink-0 p-3 sm:p-6 lg:p-8 pt-0 bg-gradient-to-t from-black via-black/95 to-transparent">
                 <button className="w-full bg-gradient-to-r from-[#D0B264] to-[#D0B264]/80 hover:from-[#D0B264]/90 hover:to-[#D0B264]/70 text-[#231F20] font-syne font-bold py-3 sm:py-4 px-4 sm:px-6 lg:px-8 rounded-lg sm:rounded-xl transition-all duration-150 transform active:scale-[0.98] shadow-goldGlow text-sm sm:text-base lg:text-lg md:hover:scale-[1.02]">
                   Tokenize Soon!
                 </button>
               </div>
-
-              <div className="mt-3 sm:mt-4 lg:mt-6 flex flex-col sm:flex-row items-center justify-center space-y-2 sm:space-y-0 sm:space-x-4 text-xs sm:text-sm text-[#FFFFFF]/60">
-                {' '}
-                {/* Remove motion.div wrapper */}
-                <span className="flex items-center font-jetbrains-mono tracking-wide">
-                  <svg
-                    className="w-3 h-3 sm:w-4 sm:h-4 lg:w-5 lg:h-5 mr-1 text-[#D0B264]"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                    />
-                  </svg>
-                  Secure Transaction
-                </span>
-                <span className="flex items-center font-jetbrains-mono tracking-wide">
-                  <svg
-                    className="w-3 h-3 sm:w-4 sm:h-4 lg:w-5 lg:h-5 mr-1 text-[#D0B264]"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  Verified Authentic
-                </span>
-              </div>
-            </motion.div>
+            </div>
           </div>
         </motion.div>
       </motion.div>
