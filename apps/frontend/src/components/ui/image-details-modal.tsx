@@ -359,7 +359,7 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                               maximumFractionDigits: 0,
                             })}`;
                             return (
-                              <span className="text-2xl sm:text-3xl lg:text-4xl xl:text-5xl font-syne text-[#FFFFFF]/80 font-bold leading-none">
+                              <span className="text-xl sm:text-2xl lg:text-3xl font-syne text-[#FFFFFF]/80 font-bold leading-none">
                                 {formatted}
                               </span>
                             );
