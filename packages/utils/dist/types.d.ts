@@ -2,7 +2,7 @@ export type AppError = {
     statusCode: number;
     code: string;
     message: string;
-    meta?: Record<string, any>;
+    meta?: Record<string, unknown>;
 };
 export type PaginatedResponse<T> = {
     data: T[];
@@ -12,9 +12,10 @@ export type PaginatedResponse<T> = {
 export interface User {
     id: string;
     privyDid: string;
-    walletAddress?: string;
-    email?: string;
+    walletAddress: string | null;
+    email?: string | null;
     createdAt: Date;
+    updatedAt: Date;
 }
 export type SubmissionStatus = 'PENDING' | 'APPROVED' | 'LIVE' | 'REJECTED';
 export type TxStatus = 'SUBMITTED' | 'MINED' | 'FAILED' | 'DROPPED';

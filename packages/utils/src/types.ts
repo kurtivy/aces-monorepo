@@ -5,7 +5,7 @@ export type AppError = {
   statusCode: number;
   code: string;
   message: string;
-  meta?: Record<string, any>;
+  meta?: Record<string, unknown>;
 };
 
 // Standard Pagination Contract (from backend.md)
@@ -15,13 +15,14 @@ export type PaginatedResponse<T> = {
   hasMore: boolean;
 };
 
-// User types
+// User types - Exactly matching Prisma's User model
 export interface User {
   id: string;
   privyDid: string;
-  walletAddress?: string;
-  email?: string;
+  walletAddress: string | null;
+  email?: string | null;
   createdAt: Date;
+  updatedAt: Date;
 }
 
 // Submission types (matching Prisma schema)
@@ -84,7 +85,7 @@ export interface NetworkConfig {
 }
 
 // API Response types
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   data?: T;
   error?: AppError;
 }
