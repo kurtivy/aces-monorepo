@@ -11,128 +11,127 @@ datasource db {
 }
 
 model User {
-  id            String   @id @default(cuid())
-  privyDid      String   @unique
-  walletAddress String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  // Relations
-  rwaSubmissions RwaSubmission[]
-  bids           Bid[]
+  id            String          @id @default(cuid())
+  privyDid      String          @unique
+  walletAddress String?         @unique
+  email         String?         @unique
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  submissions   RwaSubmission[]
+  bids          Bid[]
 
   @@map("users")
 }
 
 model RwaSubmission {
-  id              String            @id @default(cuid())
+  id              String               @id @default(cuid())
+  status          SubmissionStatus     @default(PENDING)
+  txStatus        TxStatus?
+  rejectionType   RejectionType?
   name            String
   symbol          String
-  description     String
+  description     String               @db.Text
   imageUrl        String
-  proofOfOwnership String
-  status          SubmissionStatus  @default(PENDING)
-  
-  // Blockchain data
-  txHash          String?
-  txStatus        TransactionStatus @default(PENDING)
-  contractAddress String?
-  tokenId         String?
-  
-  // Ownership
   ownerId         String
-  owner           User              @relation(fields: [ownerId], references: [id])
-  
-  // Admin tracking
+  owner           User                 @relation(fields: [ownerId], references: [id])
+  proofOfOwnership String
+  createdAt       DateTime             @default(now())
   approvedAt      DateTime?
-  updatedBy       String?
-  updatedByType   ActorType?
-  
-  // Soft delete
+  rejectionReason String?
+  txHash          String?              @unique
   deletedAt       DateTime?
-  
-  // Timestamps
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-
-  // Relations
+  updatedBy       String?
+  updatedByType   ActionType?
   bids            Bid[]
+  token           Token?
   auditLogs       SubmissionAuditLog[]
 
+  @@index([status, createdAt])
+  @@index([ownerId, createdAt])
+  @@index([createdAt])
   @@map("rwa_submissions")
 }
 
+model Token {
+  id              String        @id @default(cuid())
+  contractAddress String        @unique
+  deedNftId       Int
+  submissionId    String        @unique
+  submission      RwaSubmission @relation(fields: [submissionId], references: [id])
+  createdAt       DateTime      @default(now())
+
+  @@index([contractAddress])
+  @@map("tokens")
+}
+
 model Bid {
-  id           String    @id @default(cuid())
+  id           String        @id @default(cuid())
+  amount       String
+  currency     String
+  bidderId     String
+  bidder       User          @relation(fields: [bidderId], references: [id])
   submissionId String
   submission   RwaSubmission @relation(fields: [submissionId], references: [id])
-  
-  bidderId     String
-  bidder       User      @relation(fields: [bidderId], references: [id])
-  
-  amount       String    // Store as string to handle big numbers
-  currency     Currency  @default(ETH)
-  
-  // Blockchain data
-  txHash       String?
-  txStatus     TransactionStatus @default(PENDING)
-  
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt    DateTime      @default(now())
+  deletedAt    DateTime?
+  updatedBy    String?
+  updatedByType ActionType?
 
+  @@unique([bidderId, submissionId])
+  @@index([submissionId, createdAt])
   @@map("bids")
+}
+
+model WebhookLog {
+  id          String    @id @default(cuid())
+  payload     Json
+  headers     Json
+  error       String?
+  processedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([processedAt, createdAt])
+  @@map("webhook_logs")
 }
 
 model SubmissionAuditLog {
   id           String           @id @default(cuid())
   submissionId String
   submission   RwaSubmission    @relation(fields: [submissionId], references: [id])
-  
-  fromStatus   SubmissionStatus
+  fromStatus   SubmissionStatus?
   toStatus     SubmissionStatus
-  
   actorId      String
-  actorType    ActorType
-  
+  actorType    ActionType
   notes        String?
-  
   createdAt    DateTime         @default(now())
 
+  @@index([submissionId])
+  @@index([actorId, actorType])
   @@map("submission_audit_logs")
 }
 
-model WebhookLog {
-  id          String    @id @default(cuid())
-  eventType   String
-  payload     Json
-  processedAt DateTime?
-  createdAt   DateTime  @default(now())
-
-  @@map("webhook_logs")
-}
-
-// Enums
 enum SubmissionStatus {
   PENDING
   APPROVED
+  LIVE
   REJECTED
-  DEPLOYED
 }
 
-enum TransactionStatus {
-  PENDING
+enum TxStatus {
   SUBMITTED
-  CONFIRMED
+  MINED
   FAILED
+  DROPPED
 }
 
-enum Currency {
-  ETH
-  ACES
+enum RejectionType {
+  MANUAL
+  TX_FAILURE
 }
 
-enum ActorType {
+enum ActionType {
   USER
-  ADMIN
   SYSTEM
+  WEBHOOK
+  ADMIN
 } 

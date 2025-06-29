@@ -56,7 +56,7 @@ export const loggers = {
       'Request completed',
     ),
 
-  auth: (userId: string, walletAddress?: string, action = 'authenticated') =>
+  auth: (userId: string, walletAddress: string | null, action: 'registered' | 'authenticated') =>
     logger.info(
       {
         type: 'auth',

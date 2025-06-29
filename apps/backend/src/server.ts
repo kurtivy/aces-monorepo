@@ -4,17 +4,11 @@ import { getPrismaClient, checkDatabaseHealth, disconnectDatabase } from './lib/
 import { logger, loggers } from './lib/logger';
 import { handleError } from './lib/errors';
 import { randomUUID } from 'crypto';
+import './types'; // Import to register Fastify module extensions
 
 // Extend Fastify types
 declare module 'fastify' {
   interface FastifyRequest {
-    user?: {
-      id: string;
-      privyDid: string;
-      walletAddress: string | null;
-      createdAt: Date;
-      updatedAt: Date;
-    };
     startTime?: number;
   }
 
@@ -73,7 +67,7 @@ const buildServer = async () => {
 
   // Authentication plugin
   await fastify.register(async function (fastify) {
-    fastify.decorateRequest('user');
+    fastify.decorateRequest('user', null);
 
     fastify.addHook('preHandler', async (request) => {
       const authHeader = request.headers.authorization;
@@ -85,24 +79,24 @@ const buildServer = async () => {
           const claims = await privyClient.verifyAuthToken(token);
 
           // Find or create user in database
-          let user = await prisma.user.findUnique({
+          let dbUser = await prisma.user.findUnique({
             where: { privyDid: claims.userId },
           });
 
-          if (!user) {
-            user = await prisma.user.create({
+          if (!dbUser) {
+            dbUser = await prisma.user.create({
               data: {
                 privyDid: claims.userId,
-                walletAddress: null, // Will be updated later when wallet is connected
+                walletAddress: null,
               },
             });
 
-            loggers.auth(user.id, user.walletAddress || undefined, 'registered');
+            loggers.auth(dbUser.id, dbUser.walletAddress, 'registered');
           } else {
-            loggers.auth(user.id, user.walletAddress || undefined, 'authenticated');
+            loggers.auth(dbUser.id, dbUser.walletAddress, 'authenticated');
           }
 
-          request.user = user;
+          request.user = dbUser;
         } catch (error) {
           // Optional auth - don't throw error, just log warning
           logger.warn({ error, requestId: request.id }, 'Auth verification failed');
