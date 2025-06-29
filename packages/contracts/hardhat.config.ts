@@ -5,6 +5,11 @@ import '@typechain/hardhat';
 import 'hardhat-gas-reporter';
 import 'solidity-coverage';
 import '@openzeppelin/hardhat-upgrades';
+import * as dotenv from 'dotenv';
+import path from 'path';
+
+// Load environment variables from the backend .env file
+dotenv.config({ path: path.join(__dirname, '../../apps/backend/.env') });
 
 const config: HardhatUserConfig = {
   solidity: {
@@ -25,12 +30,11 @@ const config: HardhatUserConfig = {
       url: process.env.BASE_RPC_URL || 'https://sepolia.base.org',
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
       chainId: 84532,
-      gasPrice: 1000000000, // 1 gwei
     },
   },
   etherscan: {
     apiKey: {
-      baseSepolia: process.env.BASESCAN_API_KEY || '',
+      baseSepolia: process.env.BASE_SCAN_API_KEY || '',
     },
     customChains: [
       {
@@ -47,9 +51,14 @@ const config: HardhatUserConfig = {
     enabled: true,
   },
   gasReporter: {
-    enabled: process.env.REPORT_GAS !== undefined,
+    enabled: process.env.REPORT_GAS ? true : false,
     currency: 'USD',
-    outputFile: 'gas-report.txt',
+    gasPrice: 20,
+    outputFile: 'gas-report.json',
+    noColors: true,
+    coinmarketcap: process.env.COINMARKETCAP_API_KEY,
+    token: 'ETH',
+    gasPriceApi: 'https://api-sepolia.basescan.org/api?module=proxy&action=eth_gasPrice',
   },
   mocha: {
     timeout: 40000,
