@@ -13,7 +13,12 @@
     "coverage:check": "vitest run --coverage && node src/scripts/check-coverage.js",
     "cli": "ts-node src/scripts/cli.ts",
     "lint": "eslint src/**/*.ts",
-    "lint:fix": "eslint src/**/*.ts --fix"
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "db:test": "ts-node src/scripts/test-db-connection.ts",
+    "db:migrate": "npx prisma migrate dev",
+    "db:reset": "npx prisma migrate reset",
+    "db:seed": "npx prisma db seed",
+    "db:studio": "npx prisma studio"
   },
   "keywords": [],
   "author": "",
