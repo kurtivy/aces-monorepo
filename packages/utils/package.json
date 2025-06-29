@@ -1,0 +1,25 @@
+{
+  "name": "@aces/utils",
+  "version": "1.0.0",
+  "description": "Shared utilities for ACES monorepo",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "viem": "^2.0.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "exports": {
+    "./types": "./dist/types.js",
+    "./zod-schemas": "./dist/zod-schemas.js",
+    "./abis": "./dist/abis.js",
+    "./contracts": "./dist/contracts.js"
+  }
+}
