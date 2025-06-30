@@ -85,6 +85,7 @@ export declare const PaginationSchema: z.ZodObject<{
     cursor?: string | undefined;
     limit?: number | undefined;
 }>;
+export declare const SubmissionStatusEnum: z.ZodEnum<["PENDING", "APPROVED", "LIVE", "REJECTED"]>;
 export declare const ChainEventWebhookSchema: z.ZodObject<{
     txHash: z.ZodString;
     status: z.ZodEnum<["MINED", "FAILED", "DROPPED"]>;

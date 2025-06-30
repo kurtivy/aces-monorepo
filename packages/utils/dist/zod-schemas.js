@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ChainEventWebhookSchema = exports.PaginationSchema = exports.UpdateTokenMetadataSchema = exports.WebhookReplaySchema = exports.RecoverySchema = exports.RejectionSchema = exports.ApprovalSchema = exports.CreateBidSchema = exports.CreateSubmissionSchema = void 0;
+exports.ChainEventWebhookSchema = exports.SubmissionStatusEnum = exports.PaginationSchema = exports.UpdateTokenMetadataSchema = exports.WebhookReplaySchema = exports.RecoverySchema = exports.RejectionSchema = exports.ApprovalSchema = exports.CreateBidSchema = exports.CreateSubmissionSchema = void 0;
 const zod_1 = require("zod");
 // Submission schemas (from backend.md API contract)
 exports.CreateSubmissionSchema = zod_1.z.object({
@@ -40,6 +40,8 @@ exports.PaginationSchema = zod_1.z.object({
     cursor: zod_1.z.string().optional(),
     limit: zod_1.z.number().min(1).max(100).default(20),
 });
+// Enum for submission status, for reuse
+exports.SubmissionStatusEnum = zod_1.z.enum(['PENDING', 'APPROVED', 'LIVE', 'REJECTED']);
 // Webhook payload schema (for chain events)
 exports.ChainEventWebhookSchema = zod_1.z.object({
     txHash: zod_1.z.string().regex(/^0x[a-fA-F0-9]{64}$/),

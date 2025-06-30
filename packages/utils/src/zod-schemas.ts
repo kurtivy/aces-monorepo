@@ -46,6 +46,9 @@ export const PaginationSchema = z.object({
   limit: z.number().min(1).max(100).default(20),
 });
 
+// Enum for submission status, for reuse
+export const SubmissionStatusEnum = z.enum(['PENDING', 'APPROVED', 'LIVE', 'REJECTED']);
+
 // Webhook payload schema (for chain events)
 export const ChainEventWebhookSchema = z.object({
   txHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/),

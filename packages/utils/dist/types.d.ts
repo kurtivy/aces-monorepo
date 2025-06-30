@@ -13,7 +13,7 @@ export interface User {
     id: string;
     privyDid: string;
     walletAddress: string | null;
-    email?: string | null;
+    email: string | null;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -24,8 +24,8 @@ export type ActionType = 'USER' | 'SYSTEM' | 'WEBHOOK' | 'ADMIN';
 export interface RwaSubmission {
     id: string;
     status: SubmissionStatus;
-    txStatus?: TxStatus;
-    rejectionType?: RejectionType;
+    txStatus: TxStatus | null;
+    rejectionType: RejectionType | null;
     name: string;
     symbol: string;
     description: string;
@@ -33,12 +33,12 @@ export interface RwaSubmission {
     ownerId: string;
     proofOfOwnership: string;
     createdAt: Date;
-    approvedAt?: Date;
-    rejectionReason?: string;
-    txHash?: string;
-    deletedAt?: Date;
-    updatedBy?: string;
-    updatedByType?: ActionType;
+    approvedAt: Date | null;
+    rejectionReason: string | null;
+    txHash: string | null;
+    deletedAt: Date | null;
+    updatedBy: string | null;
+    updatedByType: ActionType | null;
 }
 export interface Token {
     id: string;
@@ -54,9 +54,9 @@ export interface Bid {
     bidderId: string;
     submissionId: string;
     createdAt: Date;
-    deletedAt?: Date;
-    updatedBy?: string;
-    updatedByType?: ActionType;
+    deletedAt: Date | null;
+    updatedBy: string | null;
+    updatedByType: ActionType | null;
 }
 export interface ContractAddresses {
     acesToken: string;
@@ -68,7 +68,7 @@ export interface NetworkConfig {
     rpcUrl: string;
     contracts: ContractAddresses;
 }
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
     data?: T;
     error?: AppError;
 }
