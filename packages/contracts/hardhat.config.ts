@@ -56,9 +56,8 @@ const config: HardhatUserConfig = {
     gasPrice: 20,
     outputFile: 'gas-report.json',
     noColors: true,
-    coinmarketcap: process.env.COINMARKETCAP_API_KEY,
+    // coinmarketcap: process.env.COINMARKETCAP_API_KEY, // Optional - only for USD conversion
     token: 'ETH',
-    gasPriceApi: 'https://api-sepolia.basescan.org/api?module=proxy&action=eth_gasPrice',
   },
   mocha: {
     timeout: 40000,

@@ -4,6 +4,9 @@
   "description": "Shared utilities for ACES monorepo",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
@@ -17,6 +20,7 @@
     "typescript": "^5.0.0"
   },
   "exports": {
+    ".": "./dist/index.js",
     "./types": "./dist/types.js",
     "./zod-schemas": "./dist/zod-schemas.js",
     "./abis": "./dist/abis.js",

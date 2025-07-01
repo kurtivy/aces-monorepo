@@ -23,12 +23,12 @@ export declare const CreateBidSchema: z.ZodObject<{
     amount: z.ZodString;
     currency: z.ZodEnum<["ETH", "ACES"]>;
 }, "strip", z.ZodTypeAny, {
-    submissionId: string;
     amount: string;
+    submissionId: string;
     currency: "ETH" | "ACES";
 }, {
-    submissionId: string;
     amount: string;
+    submissionId: string;
     currency: "ETH" | "ACES";
 }>;
 export declare const ApprovalSchema: z.ZodObject<{
@@ -82,8 +82,8 @@ export declare const PaginationSchema: z.ZodObject<{
     limit: number;
     cursor?: string | undefined;
 }, {
-    cursor?: string | undefined;
     limit?: number | undefined;
+    cursor?: string | undefined;
 }>;
 export declare const SubmissionStatusEnum: z.ZodEnum<["PENDING", "APPROVED", "LIVE", "REJECTED"]>;
 export declare const ChainEventWebhookSchema: z.ZodObject<{

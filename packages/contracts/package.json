@@ -8,7 +8,11 @@
     "test:coverage": "hardhat coverage",
     "test:gas": "REPORT_GAS=true hardhat test",
     "compile": "hardhat compile",
-    "clean": "hardhat clean"
+    "clean": "hardhat clean",
+    "deploy:base-sepolia": "hardhat run scripts/deploy-to-base-sepolia.ts --network baseSepolia",
+    "extract-abis": "ts-node scripts/extract-abis.ts",
+    "deploy-and-extract": "pnpm deploy:base-sepolia && pnpm extract-abis",
+    "verify": "hardhat verify --network baseSepolia"
   },
   "keywords": [],
   "author": "",

@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import "../utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import "../interfaces/IRwaFactory.sol";
 import "../interfaces/IRwaDeedNft.sol";
 import "../lib/AcesConstants.sol";
@@ -20,7 +20,7 @@ contract MockRwaFactory is
     Initializable,
     AccessControlUpgradeable,
     UUPSUpgradeable,
-    ReentrancyGuard,
+    ReentrancyGuardUpgradeable,
     IRwaFactory
 {
     using AcesConstants for *;
@@ -50,7 +50,8 @@ contract MockRwaFactory is
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
-        _disableInitializers();
+        // For testing purposes, allow direct initialization
+        // In production, this would use _disableInitializers() for proxy pattern
     }
 
     function initialize(
