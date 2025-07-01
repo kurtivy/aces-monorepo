@@ -9,7 +9,7 @@ import {
 import { createWalletClient, http, WalletClient } from 'viem';
 import { baseSepolia } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
-import { CONTRACTS, FACTORY_ABI } from '@aces/utils';
+import { CONTRACTS, MOCK_RWA_FACTORY_ABI } from '@aces/utils';
 import { errors } from '../lib/errors';
 import { loggers } from '../lib/logger';
 import { withTransaction } from '../lib/database';
@@ -91,8 +91,8 @@ export class RecoveryService {
         const previousTxHash = submission.txHash;
 
         // Get contract addresses
-        const contractAddresses = CONTRACTS[this.network];
-        if (!contractAddresses?.factory) {
+        const contractAddresses = CONTRACTS[this.network as keyof typeof CONTRACTS];
+        if (!contractAddresses?.mockRwaFactory) {
           throw errors.internal(
             `No factory contract address configured for network: ${this.network}`,
           );
@@ -102,7 +102,7 @@ export class RecoveryService {
         loggers.blockchain(
           'resubmitting',
           'factory_contract',
-          `${contractAddresses.factory} | original: ${previousTxHash}`,
+          `${contractAddresses.mockRwaFactory} | original: ${previousTxHash}`,
         );
 
         if (!this.walletClient.account) {
@@ -112,13 +112,13 @@ export class RecoveryService {
         const newHash = await this.walletClient.writeContract({
           account: this.walletClient.account,
           chain: this.walletClient.chain,
-          address: contractAddresses.factory as `0x${string}`,
-          abi: FACTORY_ABI,
+          address: contractAddresses.mockRwaFactory as `0x${string}`,
+          abi: MOCK_RWA_FACTORY_ABI,
           functionName: 'createRwa',
           args: [
             submission.name,
             submission.symbol,
-            submission.imageUrl,
+            BigInt(1), // Temporary deedId - in production this should be dynamically generated
             submission.owner.walletAddress as `0x${string}`,
           ],
         });

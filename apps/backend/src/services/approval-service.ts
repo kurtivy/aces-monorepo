@@ -2,7 +2,7 @@ import { PrismaClient, Prisma, RwaSubmission, SubmissionStatus } from '@prisma/c
 import { createWalletClient, http, WalletClient } from 'viem';
 import { baseSepolia } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
-import { CONTRACTS, FACTORY_ABI } from '@aces/utils';
+import { CONTRACTS, MOCK_RWA_FACTORY_ABI } from '@aces/utils';
 import { errors } from '../lib/errors';
 import { loggers } from '../lib/logger';
 import { withTransaction } from '../lib/database';
@@ -66,15 +66,15 @@ export class ApprovalService {
         }
 
         // Get contract addresses for current network
-        const contractAddresses = CONTRACTS[this.network];
-        if (!contractAddresses?.factory) {
+        const contractAddresses = CONTRACTS[this.network as keyof typeof CONTRACTS];
+        if (!contractAddresses?.mockRwaFactory) {
           throw errors.internal(
             `No factory contract address configured for network: ${this.network}`,
           );
         }
 
         // Call factory contract to create RWA
-        loggers.blockchain('calling', 'factory_contract', contractAddresses.factory);
+        loggers.blockchain('calling', 'factory_contract', contractAddresses.mockRwaFactory);
 
         if (!this.walletClient.account) {
           throw errors.internal('Wallet client is not configured with an account.');
@@ -83,18 +83,18 @@ export class ApprovalService {
         const hash = await this.walletClient.writeContract({
           account: this.walletClient.account,
           chain: this.walletClient.chain,
-          address: contractAddresses.factory as `0x${string}`,
-          abi: FACTORY_ABI,
+          address: contractAddresses.mockRwaFactory as `0x${string}`,
+          abi: MOCK_RWA_FACTORY_ABI,
           functionName: 'createRwa',
           args: [
             submission.name,
             submission.symbol,
-            submission.imageUrl, // Using imageUrl as tokenURI
+            BigInt(1), // Temporary deedId - in production this should be dynamically generated
             submission.owner.walletAddress as `0x${string}`,
           ],
         });
 
-        loggers.blockchain(hash, 'transaction_submitted', contractAddresses.factory);
+        loggers.blockchain(hash, 'transaction_submitted', contractAddresses.mockRwaFactory);
 
         // Update submission status
         await tx.rwaSubmission.update({
@@ -289,23 +289,10 @@ export class ApprovalService {
   }
 
   async validateAdminPermissions(userId: string, walletAddress: string | null): Promise<boolean> {
-    try {
-      if (!walletAddress) {
-        return false;
-      }
-
-      const adminWallets = process.env.ADMIN_WALLET_ADDRESSES?.split(',') || [];
-      const isAdmin = adminWallets.includes(walletAddress.toLowerCase());
-
-      loggers.auth(userId, walletAddress, isAdmin ? 'admin_validated' : 'admin_rejected');
-      return isAdmin;
-    } catch (error) {
-      loggers.error(error as Error, {
-        userId,
-        walletAddress,
-        operation: 'validateAdminPermissions',
-      });
+    if (!walletAddress) {
       return false;
     }
+    const adminWallets = (process.env.ADMIN_WALLET_ADDRESSES || '').toLowerCase().split(',');
+    return adminWallets.includes(walletAddress.toLowerCase());
   }
 }
