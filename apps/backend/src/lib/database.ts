@@ -1,7 +1,8 @@
-import { PrismaClient } from '@prisma/client/edge';
 import { logger } from './logger';
 
-// Extend the PrismaClient with middleware
+// Import PrismaClient from the correct path
+import { PrismaClient } from '@prisma/client';
+
 const createPrismaClient = () => {
   const prisma = new PrismaClient({
     log: [
@@ -26,7 +27,7 @@ const createPrismaClient = () => {
 
   // Log database queries in development
   if (process.env.NODE_ENV === 'development') {
-    prisma.$on('query', (e) => {
+    prisma.$on('query', (e: any) => {
       logger.debug(
         {
           type: 'database',
@@ -40,7 +41,7 @@ const createPrismaClient = () => {
   }
 
   // Log database errors
-  prisma.$on('error', (e) => {
+  prisma.$on('error', (e: any) => {
     logger.error(
       {
         type: 'database',
@@ -51,7 +52,7 @@ const createPrismaClient = () => {
   });
 
   // Add performance monitoring middleware
-  prisma.$use(async (params, next) => {
+  prisma.$use(async (params: any, next: any) => {
     const start = Date.now();
     const result = await next(params);
     const duration = Date.now() - start;
