@@ -6,7 +6,7 @@ import underPressure from '@fastify/under-pressure';
 import fastifyMetrics from 'fastify-metrics';
 
 import { getPrismaClient, checkDatabaseHealth, disconnectDatabase } from './lib/database';
-import { logger, loggers } from './lib/logger';
+import { loggers } from './lib/logger';
 import { handleError } from './lib/errors';
 import { registerAuth } from './plugins/auth';
 import { registerRoutes } from './plugins/routes';
