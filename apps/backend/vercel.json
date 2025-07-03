@@ -7,24 +7,12 @@
       "config": {
         "distDir": "dist"
       }
-    },
-    {
-      "src": "src/vercel.ts",
-      "use": "@vercel/node",
-      "config": {
-        "includeFiles": [
-          "prisma/**",
-          "node_modules/.prisma/**",
-          "node_modules/@prisma/**",
-          "dist/**"
-        ]
-      }
     }
   ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "src/vercel.ts"
+      "dest": "dist/vercel.js"
     }
   ]
 }
