@@ -19,5 +19,12 @@
       "src": "/(.*)",
       "dest": "src/vercel.ts"
     }
-  ]
+  ],
+  "build": {
+    "env": {
+      "NODE_VERSION": "18.x",
+      "PNPM_VERSION": "8.x"
+    },
+    "command": "pnpm vercel-build"
+  }
 }
