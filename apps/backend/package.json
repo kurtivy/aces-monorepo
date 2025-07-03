@@ -6,7 +6,7 @@
   "scripts": {
     "postinstall": "npx prisma generate --no-engine",
     "dev": "nodemon src/server.ts",
-    "build": "tsc",
+    "build": "npx prisma generate --no-engine && tsc",
     "start": "node dist/server.js",
     "vercel-build": "npx prisma generate --no-engine && tsc",
     "test": "vitest run --reporter=verbose --run",
