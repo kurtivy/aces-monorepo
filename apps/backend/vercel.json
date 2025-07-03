@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "buildCommand": "pnpm vercel-build",
   "builds": [
     {
       "src": "src/vercel.ts",
@@ -19,12 +20,5 @@
       "src": "/(.*)",
       "dest": "src/vercel.ts"
     }
-  ],
-  "build": {
-    "env": {
-      "NODE_VERSION": "18.x",
-      "PNPM_VERSION": "8.x"
-    },
-    "command": "pnpm vercel-build"
-  }
+  ]
 }
