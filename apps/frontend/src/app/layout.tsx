@@ -28,6 +28,35 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: 'ACES.fun',
   description: 'Tokenize your sh!t.',
+  metadataBase: new URL('https://aces.fun'),
+  openGraph: {
+    title: 'ACES.fun',
+    description: 'Tokenize your sh!t.',
+    url: 'https://aces.fun',
+    siteName: 'ACES.fun',
+    images: [
+      {
+        url: '/aces-logo.png',
+        width: 800,
+        height: 800,
+        alt: 'ACES.fun Logo',
+      },
+    ],
+    locale: 'en_US',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'ACES.fun',
+    description: 'Tokenize your sh!t.',
+    images: ['/aces-logo.png'],
+    creator: '@aces_fun',
+  },
+  icons: {
+    icon: '/favicon.ico',
+    shortcut: '/aces-logo.png',
+    apple: '/aces-logo.png',
+  },
 };
 
 export default function RootLayout({
