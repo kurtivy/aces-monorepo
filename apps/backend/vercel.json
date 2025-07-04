@@ -1,8 +1,14 @@
 {
   "version": 2,
-  "buildCommand": "pnpm vercel-build && cp -r dist/* api/ && mv api/vercel.js api/index.js",
+  "buildCommand": "pnpm vercel-build",
   "installCommand": "pnpm install --no-frozen-lockfile",
   "outputDirectory": ".",
+  "functions": {
+    "api/index.js": {
+      "memory": 1024,
+      "maxDuration": 30
+    }
+  },
   "routes": [
     {
       "src": "/(.*)",
