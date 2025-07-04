@@ -4,7 +4,7 @@
   "installCommand": "pnpm install --no-frozen-lockfile",
   "functions": {
     "dist/vercel.js": {
-      "runtime": "nodejs18.x"
+      "runtime": "nodejs"
     }
   },
   "routes": [
