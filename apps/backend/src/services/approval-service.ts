@@ -8,15 +8,24 @@ import { loggers } from '../lib/logger';
 import { withTransaction } from '../lib/database';
 
 export class ApprovalService {
-  private walletClient: WalletClient;
+  private walletClient: WalletClient | null = null;
   private network: string;
 
   constructor(private prisma: PrismaClient) {
-    // Initialize wallet client based on environment
+    // Initialize network setting but don't require wallet client immediately
     this.network = process.env.BLOCKCHAIN_NETWORK || 'localhost';
 
+    // Only initialize wallet client if we have the private key
+    if (process.env.MINTER_PRIVATE_KEY) {
+      this.initializeWalletClient();
+    }
+  }
+
+  private initializeWalletClient() {
     if (!process.env.MINTER_PRIVATE_KEY) {
-      throw new Error('MINTER_PRIVATE_KEY environment variable is required');
+      throw new Error(
+        'MINTER_PRIVATE_KEY environment variable is required for blockchain operations',
+      );
     }
 
     const account = privateKeyToAccount(process.env.MINTER_PRIVATE_KEY as `0x${string}`);
@@ -31,6 +40,23 @@ export class ApprovalService {
     });
 
     loggers.blockchain('initialized', 'wallet_client', `network: ${this.network}`);
+  }
+
+  private ensureWalletClient(): WalletClient {
+    if (!this.walletClient) {
+      if (!process.env.MINTER_PRIVATE_KEY) {
+        throw new Error(
+          'MINTER_PRIVATE_KEY environment variable is required for blockchain operations',
+        );
+      }
+      this.initializeWalletClient();
+
+      // Double-check initialization succeeded
+      if (!this.walletClient) {
+        throw new Error('Failed to initialize wallet client');
+      }
+    }
+    return this.walletClient;
   }
 
   async approveSubmission(
@@ -76,13 +102,15 @@ export class ApprovalService {
         // Call factory contract to create RWA
         loggers.blockchain('calling', 'factory_contract', contractAddresses.mockRwaFactory);
 
-        if (!this.walletClient.account) {
+        const walletClient = this.ensureWalletClient();
+
+        if (!walletClient.account) {
           throw errors.internal('Wallet client is not configured with an account.');
         }
 
-        const hash = await this.walletClient.writeContract({
-          account: this.walletClient.account,
-          chain: this.walletClient.chain,
+        const hash = await walletClient.writeContract({
+          account: walletClient.account,
+          chain: walletClient.chain,
           address: contractAddresses.mockRwaFactory as `0x${string}`,
           abi: MOCK_RWA_FACTORY_ABI,
           functionName: 'createRwa',

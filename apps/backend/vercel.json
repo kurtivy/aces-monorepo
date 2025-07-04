@@ -1,12 +1,16 @@
 {
-  "buildCommand": "npm run vercel-build",
+  "version": 2,
+  "buildCommand": "pnpm vercel-build",
   "installCommand": "pnpm install --no-frozen-lockfile",
-  "framework": null,
-  "outputDirectory": "dist",
-  "rewrites": [
+  "functions": {
+    "dist/vercel.js": {
+      "runtime": "nodejs18.x"
+    }
+  },
+  "routes": [
     {
-      "source": "/(.*)",
-      "destination": "/src/vercel.ts"
+      "src": "/(.*)",
+      "dest": "/dist/vercel.js"
     }
   ]
 }

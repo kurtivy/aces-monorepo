@@ -29,6 +29,7 @@ const start = async () => {
     logger.info(`Server listening at http://localhost:${port}`);
   } catch (err) {
     logger.error('Error starting server:', err);
+    console.error('Full error details:', err); // Additional logging for debugging
     if (app) {
       await app.close();
     }

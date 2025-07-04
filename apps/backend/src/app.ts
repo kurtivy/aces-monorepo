@@ -2,8 +2,20 @@ import Fastify, { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
-import underPressure from '@fastify/under-pressure';
 import fastifyMetrics from 'fastify-metrics';
+import { User as PrismaUser, PrismaClient } from '@prisma/client';
+
+// Extend Fastify types to include custom properties
+declare module 'fastify' {
+  interface FastifyRequest {
+    startTime?: number;
+    user: PrismaUser | null;
+  }
+
+  interface FastifyInstance {
+    prisma: PrismaClient;
+  }
+}
 
 import { getPrismaClient, checkDatabaseHealth, disconnectDatabase } from './lib/database';
 import { loggers } from './lib/logger';
@@ -23,11 +35,12 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   // Register plugins
   fastify.register(cors, { origin: '*' });
   fastify.register(helmet);
-  fastify.register(underPressure, {
-    maxEventLoopDelay: 1000,
-    maxHeapUsedBytes: 100000000,
-    maxRssBytes: 100000000,
-  });
+  // Temporarily disable under-pressure for development
+  // fastify.register(underPressure, {
+  //   maxEventLoopDelay: 1000,
+  //   maxHeapUsedBytes: 100000000,
+  //   maxRssBytes: 100000000,
+  // });
   fastify.register(fastifyMetrics, {
     endpoint: '/metrics',
     routeMetrics: { enabled: true },

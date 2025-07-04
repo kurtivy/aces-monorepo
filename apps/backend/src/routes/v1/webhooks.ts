@@ -1,5 +1,7 @@
 import { FastifyInstance } from 'fastify';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 import { ChainEventWebhookSchema } from '@aces/utils';
+import type { z } from 'zod';
 import { ApprovalService } from '../../services/approval-service';
 import { errors } from '../../lib/errors';
 import { loggers } from '../../lib/logger';
@@ -12,11 +14,11 @@ export async function webhooksRoutes(fastify: FastifyInstance) {
     '/chain-event',
     {
       schema: {
-        body: ChainEventWebhookSchema,
+        body: zodToJsonSchema(ChainEventWebhookSchema),
       },
     },
     async (request, reply) => {
-      const body = request.body as any;
+      const body = request.body as z.infer<typeof ChainEventWebhookSchema>;
       const correlationId = request.id;
       const headers = request.headers;
 
@@ -27,8 +29,8 @@ export async function webhooksRoutes(fastify: FastifyInstance) {
         // Create webhook log entry first (dead-letter queue pattern)
         const webhookLog = await fastify.prisma.webhookLog.create({
           data: {
-            payload: body,
-            headers: headers as any,
+            payload: JSON.parse(JSON.stringify(body)),
+            headers: JSON.parse(JSON.stringify(headers)),
           },
         });
         webhookLogId = webhookLog.id;
@@ -146,7 +148,7 @@ export async function webhooksRoutes(fastify: FastifyInstance) {
         throw errors.notFound('Test endpoint not available in production');
       }
 
-      const body = request.body as any;
+      const body = request.body as z.infer<typeof ChainEventWebhookSchema>;
 
       loggers.blockchain(body.txHash, 'test_webhook', `status: ${body.status}`);
 
