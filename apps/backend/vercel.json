@@ -2,9 +2,6 @@
   "version": 2,
   "buildCommand": "pnpm vercel-build",
   "installCommand": "pnpm install --no-frozen-lockfile",
-  "functions": {
-    "dist/vercel.js": {}
-  },
   "routes": [
     {
       "src": "/(.*)",
