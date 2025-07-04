@@ -8,7 +8,7 @@ export default defineConfig({
   format: ['cjs'],
   target: 'node18',
   bundle: true,
-  minify: false,
+  minify: true,
   sourcemap: false,
   clean: true,
   noExternal: ['fastify', '@fastify/cors', '@fastify/multipart', '@prisma/client', 'zod'],
