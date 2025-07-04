@@ -68,3 +68,4 @@ zBUGS/
 STEP4_COMPLETION_PLAN.md
 apps/frontend/__tests__/
 playwright.config.ts
+.vercel

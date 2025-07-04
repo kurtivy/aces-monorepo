@@ -56,20 +56,22 @@ export async function createTestUsers(
   const random = Math.random().toString(36).substring(2, 8);
 
   try {
-    const [adminUser, regularUser] = await prisma.user.createManyAndReturn({
-      data: [
-        {
+    // Use transaction to create both users atomically
+    const [adminUser, regularUser] = await prisma.$transaction([
+      prisma.user.create({
+        data: {
           privyDid: `admin_${testNamespace}_${userCounter}_${timestamp}_${random}`,
-          // Use the actual admin wallet address from env for permission tests
           walletAddress:
             process.env.ADMIN_WALLET_ADDRESSES?.split(',')[0] || generateUniqueWalletAddress(),
         },
-        {
+      }),
+      prisma.user.create({
+        data: {
           privyDid: `user_${testNamespace}_${userCounter}_${timestamp}_${random}`,
           walletAddress: generateUniqueWalletAddress(),
         },
-      ],
-    });
+      }),
+    ]);
 
     return [adminUser, regularUser];
   } catch (error) {
@@ -80,7 +82,7 @@ export async function createTestUsers(
 
 export async function createTestSubmissions(
   prisma: PrismaClient,
-  adminUser: User,
+  _adminUser: User,
   regularUser: User,
   namespace?: string,
 ): Promise<[RwaSubmission, RwaSubmission]> {
@@ -90,9 +92,10 @@ export async function createTestSubmissions(
   const random = Math.random().toString(36).substring(2, 8);
 
   try {
-    const [pendingSubmission, approvedSubmission] = await prisma.rwaSubmission.createManyAndReturn({
-      data: [
-        {
+    // Use transaction to create both submissions atomically
+    const [pendingSubmission, approvedSubmission] = await prisma.$transaction([
+      prisma.rwaSubmission.create({
+        data: {
           name: `Pending_Submission_${testNamespace}_${submissionCounter}`,
           symbol: `PEND${submissionCounter}${random}`.substring(0, 10).toUpperCase(),
           description: `A submission waiting for approval ${testNamespace} ${timestamp}`,
@@ -101,7 +104,9 @@ export async function createTestSubmissions(
           ownerId: regularUser.id,
           status: 'PENDING',
         },
-        {
+      }),
+      prisma.rwaSubmission.create({
+        data: {
           name: `Approved_Submission_${testNamespace}_${submissionCounter}`,
           symbol: `APPR${submissionCounter}${random}`.substring(0, 10).toUpperCase(),
           description: `A submission that is already approved ${testNamespace} ${timestamp}`,
@@ -111,8 +116,8 @@ export async function createTestSubmissions(
           status: 'APPROVED',
           txHash: generateUniqueTxHash(),
         },
-      ],
-    });
+      }),
+    ]);
 
     return [pendingSubmission, approvedSubmission];
   } catch (error) {
@@ -131,9 +136,10 @@ export async function createTestWebhooks(
   const timestamp = Date.now();
 
   try {
-    const [unprocessedWebhook, processedWebhook] = await prisma.webhookLog.createManyAndReturn({
-      data: [
-        {
+    // Use transaction to create both webhooks atomically
+    const [unprocessedWebhook, processedWebhook] = await prisma.$transaction([
+      prisma.webhookLog.create({
+        data: {
           payload: {
             event: 'transaction.mined',
             txHash: failedSubmission.txHash,
@@ -145,7 +151,9 @@ export async function createTestWebhooks(
           headers: { 'content-type': 'application/json' },
           error: `Processing failed ${testNamespace} ${webhookCounter}`,
         },
-        {
+      }),
+      prisma.webhookLog.create({
+        data: {
           payload: {
             event: 'transaction.failed',
             hash: generateUniqueTxHash(),
@@ -156,8 +164,8 @@ export async function createTestWebhooks(
           headers: { 'content-type': 'application/json' },
           processedAt: new Date(),
         },
-      ],
-    });
+      }),
+    ]);
 
     return [unprocessedWebhook, processedWebhook];
   } catch (error) {

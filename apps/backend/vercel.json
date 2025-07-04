@@ -1,24 +1,23 @@
 {
-  "version": 2,
-  "buildCommand": "pnpm vercel-build",
-  "builds": [
-    {
-      "src": "src/vercel.ts",
-      "use": "@vercel/node",
-      "config": {
-        "includeFiles": [
-          "prisma/**",
-          "dist/**",
-          "node_modules/.prisma/**",
-          "node_modules/@prisma/**"
-        ]
-      }
+  "functions": {
+    "src/vercel.ts": {
+      "includeFiles": [
+        "prisma/schema.prisma",
+        "node_modules/.prisma/**",
+        "node_modules/@prisma/**"
+      ],
+      "memory": 1024,
+      "maxDuration": 10
     }
-  ],
-  "routes": [
+  },
+  "buildCommand": "npm run vercel-build",
+  "installCommand": "npm ci",
+  "framework": null,
+  "outputDirectory": "dist",
+  "rewrites": [
     {
-      "src": "/(.*)",
-      "dest": "src/vercel.ts"
+      "source": "/(.*)",
+      "destination": "/src/vercel.ts"
     }
   ]
 }

@@ -6,7 +6,7 @@ const testRunId = `test_${Date.now()}_${Math.random().toString(36).substring(2, 
 // Keep track of all active test clients for cleanup
 const activeClients = new Set<PrismaClient>();
 
-export function createTestPrismaClient(testNamespace?: string): PrismaClient {
+export function createTestPrismaClient(_testNamespace?: string): PrismaClient {
   // Create isolated Prisma client with reduced logging for tests
   const prisma = new PrismaClient({
     datasources: {

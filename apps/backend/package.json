@@ -70,30 +70,5 @@
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
-  },
-  "vercel": {
-    "functions": {
-      "apps/backend/src/vercel.ts": {
-        "includeFiles": "prisma/schema.prisma"
-      }
-    },
-    "output": {
-      "api/index.js": {
-        "node": "20.x"
-      }
-    },
-    "framework": null,
-    "bundler": {
-      "external": [
-        "@prisma/client",
-        ".prisma/client"
-      ],
-      "include": [
-        "@privy-io/server-auth",
-        "@hpke/common",
-        "@hpke/dhkem-x25519",
-        "@hpke/chacha20poly1305"
-      ]
-    }
   }
 }
