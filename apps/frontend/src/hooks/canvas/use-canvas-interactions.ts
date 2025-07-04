@@ -177,6 +177,8 @@ export const useCanvasInteractions = ({
         const createQuadY = homeAreaWorldY;
         const aboutQuadX = homeAreaWorldX;
         const aboutQuadY = homeAreaWorldY;
+        const termsQuadX = homeAreaWorldX;
+        const termsQuadY = homeAreaWorldY + quadHeight;
 
         if (
           worldX >= aboutQuadX &&
@@ -195,6 +197,16 @@ export const useCanvasInteractions = ({
           worldY < createQuadY + quadHeight
         ) {
           window.location.href = '/create-token';
+          return;
+        }
+
+        if (
+          worldX >= termsQuadX &&
+          worldX < termsQuadX + quadWidth &&
+          worldY >= termsQuadY &&
+          worldY < termsQuadY + quadHeight
+        ) {
+          window.location.href = '/terms';
           return;
         }
         return;

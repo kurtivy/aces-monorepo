@@ -11,8 +11,7 @@ import { getDeviceCapabilities } from '../../lib/utils/browser-utils';
 const mainNavItems = [
   { href: '/create-token', label: 'Create Token', external: false },
   { href: '/about', label: 'About', external: false },
-  { href: '/terms', label: 'Terms', external: false },
-  { href: '/privacy', label: 'Privacy', external: false },
+  { href: '/terms', label: 'Terms & PP', external: false },
 ];
 
 // Custom X logo component (modern Twitter/X logo)
