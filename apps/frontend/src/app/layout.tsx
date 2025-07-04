@@ -36,7 +36,7 @@ export const metadata: Metadata = {
     siteName: 'ACES.fun',
     images: [
       {
-        url: 'aces-logo.png',
+        url: '/aces-logo.png',
         width: 800,
         height: 800,
         alt: 'ACES.fun Logo',
@@ -49,13 +49,21 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'ACES.fun',
     description: 'Tokenize your sh!t.',
-    images: ['aces-logo.png'],
-    creator: '@aces_fun',
+    images: [
+      {
+        url: '/aces-logo.png',
+        width: 800,
+        height: 800,
+        alt: 'ACES.fun Logo',
+      },
+    ],
+    creator: '@acesdotfun',
+    site: '@acesdotfun',
   },
   icons: {
-    icon: 'favicon.ico',
-    shortcut: 'aces-logo.png',
-    apple: 'aces-logo.png',
+    icon: '/favicon.ico',
+    shortcut: '/aces-logo.png',
+    apple: '/aces-logo.png',
   },
 };
 
