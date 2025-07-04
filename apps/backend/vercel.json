@@ -2,5 +2,11 @@
   "version": 2,
   "buildCommand": "pnpm vercel-build && cp dist/vercel.js api/index.js",
   "installCommand": "pnpm install --no-frozen-lockfile",
-  "outputDirectory": "."
+  "outputDirectory": ".",
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/api/index.js"
+    }
+  ]
 }
