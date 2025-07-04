@@ -62,7 +62,7 @@ const getApp = async (): Promise<FastifyInstance> => {
  * The serverless handler for Vercel.
  * It initializes the Fastify app and passes the request to it.
  */
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+async function handler(req: VercelRequest, res: VercelResponse) {
   const requestStart = Date.now();
   console.log(`=== Processing ${req.method} ${req.url} ===`);
   console.log('Request headers:', JSON.stringify(req.headers, null, 2));
@@ -99,3 +99,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 }
+
+// Export for Vercel
+module.exports = handler;
+module.exports.default = handler;

@@ -13,4 +13,6 @@ export default defineConfig({
   clean: true,
   noExternal: ['fastify', '@fastify/cors', '@fastify/multipart', '@prisma/client', 'zod'],
   external: ['prisma'],
+  cjsInterop: true,
+  splitting: false,
 });

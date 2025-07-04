@@ -28,7 +28,6 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
   mod
 ));
-var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // ../../node_modules/.pnpm/reusify@1.1.0/node_modules/reusify/reusify.js
 var require_reusify = __commonJS({
@@ -35530,13 +35529,6 @@ var require_default2 = __commonJS({
   }
 });
 
-// src/vercel.ts
-var vercel_exports = {};
-__export(vercel_exports, {
-  default: () => handler
-});
-module.exports = __toCommonJS(vercel_exports);
-
 // src/app.ts
 var import_fastify = __toESM(require_fastify());
 var import_crypto = require("crypto");
@@ -41826,6 +41818,8 @@ async function handler(req, res) {
     }
   }
 }
+module.exports = handler;
+module.exports.default = handler;
 /*! Bundled license information:
 
 forwarded/index.js:
