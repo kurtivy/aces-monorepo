@@ -1,11 +1,7 @@
 {
   "functions": {
     "src/vercel.ts": {
-      "includeFiles": [
-        "prisma/schema.prisma",
-        "node_modules/.prisma/**",
-        "node_modules/@prisma/**"
-      ],
+      "includeFiles": "prisma/**,node_modules/.prisma/**,node_modules/@prisma/**",
       "memory": 1024,
       "maxDuration": 10
     }
