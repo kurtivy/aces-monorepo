@@ -25,14 +25,24 @@ const jetbrainsMono = JetBrains_Mono({
   weight: ['400', '700'],
 });
 
+// Get the metadata base URL based on environment
+const getMetadataBaseUrl = () => {
+  if (process.env.VERCEL_URL) {
+    // Handle Vercel preview deployments
+    return `https://${process.env.VERCEL_URL}`;
+  }
+  // Default to production URL
+  return 'https://aces.fun';
+};
+
 export const metadata: Metadata = {
   title: 'ACES.fun',
   description: 'Tokenize your sh!t.',
-  metadataBase: new URL('https://aces.fun'),
+  metadataBase: new URL(getMetadataBaseUrl()),
   openGraph: {
     title: 'ACES.fun',
     description: 'Tokenize your sh!t.',
-    url: 'https://aces.fun',
+    url: '/',
     siteName: 'ACES.fun',
     images: [
       {
