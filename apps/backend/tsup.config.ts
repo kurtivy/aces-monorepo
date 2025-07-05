@@ -10,6 +10,7 @@ export default defineConfig({
   outDir: 'api',
   format: ['cjs'],
   target: 'node18',
+  platform: 'node',
   bundle: true,
   minify: true,
   sourcemap: false,
@@ -18,4 +19,10 @@ export default defineConfig({
   external: ['prisma'],
   cjsInterop: true,
   splitting: false,
+  // Ensure proper module exports for Vercel serverless functions
+  esbuildOptions(options) {
+    options.footer = {
+      js: 'module.exports = exports.default || exports;',
+    };
+  },
 });
