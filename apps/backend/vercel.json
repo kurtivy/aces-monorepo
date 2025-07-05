@@ -5,6 +5,10 @@
   "outputDirectory": ".",
   "rewrites": [
     {
+      "source": "/api/v1/health/(.*)",
+      "destination": "/api/health"
+    },
+    {
       "source": "/api/v1/submissions/(.*)",
       "destination": "/api/submissions"
     },

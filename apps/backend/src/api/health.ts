@@ -30,6 +30,9 @@ const buildHealthApp = async (): Promise<FastifyInstance> => {
   const prisma = getPrismaClient();
   fastify.decorate('prisma', prisma);
 
+  // Always decorate the request with user property for compatibility
+  fastify.decorateRequest('user', null);
+
   // Register plugins
   fastify.register(cors, { origin: '*' });
   fastify.register(helmet);
@@ -67,8 +70,16 @@ const buildHealthApp = async (): Promise<FastifyInstance> => {
   return fastify;
 };
 
-export default async (req: VercelRequest, res: VercelResponse) => {
+const handler = async (req: VercelRequest, res: VercelResponse) => {
   const app = await buildHealthApp();
   await app.ready();
+
+  // Handle path rewriting: /api/v1/health/live → /live
+  if (req.url?.startsWith('/api/v1/health')) {
+    req.url = req.url.replace('/api/v1/health', '') || '/';
+  }
+
   app.server.emit('request', req, res);
 };
+
+export default handler;

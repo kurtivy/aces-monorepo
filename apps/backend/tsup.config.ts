@@ -6,6 +6,7 @@ export default defineConfig({
     bids: 'src/api/bids.ts',
     admin: 'src/api/admin.ts',
     webhooks: 'src/api/webhooks.ts',
+    health: 'src/api/health.ts',
   },
   outDir: 'api',
   format: ['cjs'],
@@ -15,8 +16,13 @@ export default defineConfig({
   minify: true,
   sourcemap: false,
   clean: true,
-  noExternal: ['fastify', '@fastify/cors', '@fastify/multipart', '@prisma/client', 'zod'],
-  external: ['prisma'],
+  noExternal: ['fastify', '@fastify/cors', '@fastify/multipart', 'zod'],
+  external: ['prisma', '@prisma/client', '.prisma/client'],
   cjsInterop: true,
   splitting: false,
+  esbuildOptions(options) {
+    options.footer = {
+      js: 'if (module.exports.default) module.exports = module.exports.default;',
+    };
+  },
 });
