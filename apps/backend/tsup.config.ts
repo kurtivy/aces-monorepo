@@ -9,7 +9,7 @@ export default defineConfig({
   },
   outDir: 'api',
   format: ['cjs'],
-  target: 'node18',
+  target: 'node22',
   platform: 'node',
   bundle: true,
   minify: true,

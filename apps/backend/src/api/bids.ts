@@ -72,5 +72,11 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 export default async (req: VercelRequest, res: VercelResponse) => {
   const app = await buildBidsApp();
   await app.ready();
+
+  // Handle path rewriting: /api/v1/bids/something → /something
+  if (req.url?.startsWith('/api/v1/bids')) {
+    req.url = req.url.replace('/api/v1/bids', '') || '/';
+  }
+
   app.server.emit('request', req, res);
 };

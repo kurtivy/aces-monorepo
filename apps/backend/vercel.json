@@ -3,26 +3,36 @@
   "buildCommand": "pnpm vercel-build",
   "installCommand": "pnpm install --no-frozen-lockfile",
   "outputDirectory": ".",
+  "functions": {
+    "api/submissions.js": {
+      "runtime": "nodejs22.x"
+    },
+    "api/bids.js": {
+      "runtime": "nodejs22.x"
+    },
+    "api/admin.js": {
+      "runtime": "nodejs22.x"
+    },
+    "api/webhooks.js": {
+      "runtime": "nodejs22.x"
+    }
+  },
   "rewrites": [
     {
-      "source": "/api/v1/health/(.*)",
-      "destination": "/api/submissions/$1"
-    },
-    {
       "source": "/api/v1/submissions/(.*)",
-      "destination": "/api/submissions/$1"
+      "destination": "/api/submissions"
     },
     {
       "source": "/api/v1/bids/(.*)",
-      "destination": "/api/bids/$1"
+      "destination": "/api/bids"
     },
     {
       "source": "/api/v1/admin/(.*)",
-      "destination": "/api/admin/$1"
+      "destination": "/api/admin"
     },
     {
       "source": "/api/v1/webhooks/(.*)",
-      "destination": "/api/webhooks/$1"
+      "destination": "/api/webhooks"
     }
   ]
 }

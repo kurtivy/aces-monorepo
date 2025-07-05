@@ -72,5 +72,11 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 export default async (req: VercelRequest, res: VercelResponse) => {
   const app = await buildWebhooksApp();
   await app.ready();
+
+  // Handle path rewriting: /api/v1/webhooks/something → /something
+  if (req.url?.startsWith('/api/v1/webhooks')) {
+    req.url = req.url.replace('/api/v1/webhooks', '') || '/';
+  }
+
   app.server.emit('request', req, res);
 };

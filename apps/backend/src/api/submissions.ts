@@ -55,7 +55,7 @@ const buildSubmissionsApp = async (): Promise<FastifyInstance> => {
     loggers.response(request.id, request.method, request.url, reply.statusCode, responseTime);
   });
 
-  // Health check routes (routed here via vercel.json)
+  // Health check routes
   fastify.get('/live', async () => ({ status: 'ok' }));
   fastify.get('/ready', async () => {
     const isDbReady = await checkDatabaseHealth();
@@ -82,5 +82,11 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 export default async (req: VercelRequest, res: VercelResponse) => {
   const app = await buildSubmissionsApp();
   await app.ready();
+
+  // Handle path rewriting: /api/v1/submissions/live → /live
+  if (req.url?.startsWith('/api/v1/submissions')) {
+    req.url = req.url.replace('/api/v1/submissions', '') || '/';
+  }
+
   app.server.emit('request', req, res);
 };

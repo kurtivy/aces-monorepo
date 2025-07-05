@@ -72,5 +72,11 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 export default async (req: VercelRequest, res: VercelResponse) => {
   const app = await buildAdminApp();
   await app.ready();
+
+  // Handle path rewriting: /api/v1/admin/something → /something
+  if (req.url?.startsWith('/api/v1/admin')) {
+    req.url = req.url.replace('/api/v1/admin', '') || '/';
+  }
+
   app.server.emit('request', req, res);
 };
