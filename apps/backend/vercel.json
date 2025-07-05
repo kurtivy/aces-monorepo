@@ -2,23 +2,5 @@
   "version": 2,
   "buildCommand": "pnpm vercel-build",
   "installCommand": "pnpm install --no-frozen-lockfile",
-  "outputDirectory": ".",
-  "functions": {
-    "api/admin.js": {
-      "memory": 1024,
-      "maxDuration": 30
-    },
-    "api/bids.js": {
-      "memory": 1024,
-      "maxDuration": 30
-    },
-    "api/submissions.js": {
-      "memory": 1024,
-      "maxDuration": 30
-    },
-    "api/webhooks.js": {
-      "memory": 1024,
-      "maxDuration": 30
-    }
-  }
+  "outputDirectory": "."
 }
