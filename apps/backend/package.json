@@ -5,9 +5,9 @@
   "private": true,
   "scripts": {
     "postinstall": "npx prisma generate",
-    "dev": "nodemon src/server.ts",
+    "dev": "nodemon src/dev-server.ts",
     "build": "npx prisma generate && tsc",
-    "start": "node dist/server.js",
+    "start": "node dist/dev-server.js",
     "vercel-build": "npx prisma generate && tsup",
     "test": "vitest run --reporter=verbose --run",
     "test:watch": "vitest --reporter=verbose",
