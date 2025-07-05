@@ -2,37 +2,5 @@
   "version": 2,
   "buildCommand": "pnpm vercel-build",
   "installCommand": "pnpm install --no-frozen-lockfile",
-  "outputDirectory": ".",
-  "functions": {
-    "api/v1/submissions.js": {
-      "maxDuration": 30
-    },
-    "api/v1/bids.js": {
-      "maxDuration": 30
-    },
-    "api/v1/admin.js": {
-      "maxDuration": 30
-    },
-    "api/v1/webhooks.js": {
-      "maxDuration": 30
-    }
-  },
-  "routes": [
-    {
-      "src": "/api/v1/submissions/(.*)",
-      "dest": "/api/v1/submissions.js"
-    },
-    {
-      "src": "/api/v1/bids/(.*)",
-      "dest": "/api/v1/bids.js"
-    },
-    {
-      "src": "/api/v1/admin/(.*)",
-      "dest": "/api/v1/admin.js"
-    },
-    {
-      "src": "/api/v1/webhooks/(.*)",
-      "dest": "/api/v1/webhooks.js"
-    }
-  ]
+  "outputDirectory": "."
 }

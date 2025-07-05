@@ -42,7 +42,7 @@ const buildSubmissionsApp = async (): Promise<FastifyInstance> => {
 
   // Register custom plugins
   fastify.register(registerAuth);
-  fastify.register(submissionsRoutes);
+  fastify.register(submissionsRoutes, { prefix: '/api/v1/submissions' });
 
   // Register hooks
   fastify.addHook('onRequest', async (request) => {
@@ -77,29 +77,10 @@ const buildSubmissionsApp = async (): Promise<FastifyInstance> => {
   return fastify;
 };
 
-export default async (req: any, res: any) => {
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+
+export default async (req: VercelRequest, res: VercelResponse) => {
   const app = await buildSubmissionsApp();
   await app.ready();
-
-  // Fix the URL path to remove the /api/v1/submissions prefix
-  const originalUrl = req.url || '';
-  const baseUrl = '/api/v1/submissions';
-
-  // Extract the sub-path (e.g., /live from /api/v1/submissions/live)
-  let subPath = originalUrl.startsWith(baseUrl)
-    ? originalUrl.substring(baseUrl.length)
-    : originalUrl;
-
-  // If there's no sub-path, default to root
-  if (!subPath || subPath === '') {
-    subPath = '/';
-  }
-
-  // Create a modified request object with the correct URL path
-  const modifiedReq = {
-    ...req,
-    url: subPath,
-  };
-
-  app.server.emit('request', modifiedReq, res);
+  app.server.emit('request', req, res);
 };
