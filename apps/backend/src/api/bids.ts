@@ -42,7 +42,7 @@ const buildBidsApp = async (): Promise<FastifyInstance> => {
 
   // Register custom plugins
   fastify.register(registerAuth);
-  fastify.register(bidsRoutes, { prefix: '/api/v1/bids' });
+  fastify.register(bidsRoutes);
 
   // Register hooks
   fastify.addHook('onRequest', async (request) => {

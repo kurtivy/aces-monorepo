@@ -42,7 +42,7 @@ const buildAdminApp = async (): Promise<FastifyInstance> => {
 
   // Register custom plugins
   fastify.register(registerAuth);
-  fastify.register(adminRoutes, { prefix: '/api/v1/admin' });
+  fastify.register(adminRoutes);
 
   // Register hooks
   fastify.addHook('onRequest', async (request) => {

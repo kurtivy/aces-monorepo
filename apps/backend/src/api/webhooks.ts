@@ -42,7 +42,7 @@ const buildWebhooksApp = async (): Promise<FastifyInstance> => {
 
   // Register custom plugins
   fastify.register(registerAuth);
-  fastify.register(webhooksRoutes, { prefix: '/api/v1/webhooks' });
+  fastify.register(webhooksRoutes);
 
   // Register hooks
   fastify.addHook('onRequest', async (request) => {

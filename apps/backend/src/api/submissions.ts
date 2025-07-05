@@ -42,7 +42,7 @@ const buildSubmissionsApp = async (): Promise<FastifyInstance> => {
 
   // Register custom plugins
   fastify.register(registerAuth);
-  fastify.register(submissionsRoutes, { prefix: '/api/v1/submissions' });
+  fastify.register(submissionsRoutes);
 
   // Register hooks
   fastify.addHook('onRequest', async (request) => {
