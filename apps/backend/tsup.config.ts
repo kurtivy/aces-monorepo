@@ -6,7 +6,6 @@ export default defineConfig({
     bids: 'src/api/bids.ts',
     admin: 'src/api/admin.ts',
     webhooks: 'src/api/webhooks.ts',
-    health: 'src/api/health.ts',
   },
   outDir: 'api',
   format: ['cjs'],

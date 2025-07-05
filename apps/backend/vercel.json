@@ -6,7 +6,7 @@
   "rewrites": [
     {
       "source": "/api/v1/health/(.*)",
-      "destination": "/api/health/$1"
+      "destination": "/api/submissions/$1"
     },
     {
       "source": "/api/v1/submissions/(.*)",

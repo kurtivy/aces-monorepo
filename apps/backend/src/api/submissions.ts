@@ -55,6 +55,16 @@ const buildSubmissionsApp = async (): Promise<FastifyInstance> => {
     loggers.response(request.id, request.method, request.url, reply.statusCode, responseTime);
   });
 
+  // Health check routes (routed here via vercel.json)
+  fastify.get('/live', async () => ({ status: 'ok' }));
+  fastify.get('/ready', async () => {
+    const isDbReady = await checkDatabaseHealth();
+    if (!isDbReady) {
+      throw new Error('Database not ready');
+    }
+    return { status: 'ready' };
+  });
+
   // Global error handler
   fastify.setErrorHandler((error, request, reply) => {
     handleError(reply, error);
