@@ -17,12 +17,13 @@ declare module 'fastify' {
   }
 }
 
-import { getPrismaClient, checkDatabaseHealth, disconnectDatabase } from './lib/database';
-import { loggers } from './lib/logger';
-import { handleError } from './lib/errors';
-import { registerAuth } from './plugins/auth';
+import { getPrismaClient, checkDatabaseHealth, disconnectDatabase } from '../lib/database';
+import { loggers } from '../lib/logger';
+import { handleError } from '../lib/errors';
+import { registerAuth } from '../plugins/auth';
+import { adminRoutes } from '../routes/v1/admin';
 
-export const buildApp = async (): Promise<FastifyInstance> => {
+const buildAdminApp = async (): Promise<FastifyInstance> => {
   const fastify = Fastify({
     logger: false,
     genReqId: () => randomUUID(),
@@ -41,6 +42,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
 
   // Register custom plugins
   fastify.register(registerAuth);
+  fastify.register(adminRoutes, { prefix: '/api/v1/admin' });
 
   // Register hooks
   fastify.addHook('onRequest', async (request) => {
@@ -73,4 +75,10 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   });
 
   return fastify;
+};
+
+export default async (req: any, res: any) => {
+  const app = await buildAdminApp();
+  await app.ready();
+  app.server.emit('request', req, res);
 };

@@ -2,7 +2,10 @@ import { defineConfig } from 'tsup';
 
 export default defineConfig({
   entryPoints: {
-    index: 'src/vercel.ts',
+    admin: 'src/api/admin.ts',
+    bids: 'src/api/bids.ts',
+    submissions: 'src/api/submissions.ts',
+    webhooks: 'src/api/webhooks.ts',
   },
   outDir: 'api',
   format: ['cjs'],
