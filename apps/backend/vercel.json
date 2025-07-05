@@ -2,5 +2,27 @@
   "version": 2,
   "buildCommand": "pnpm vercel-build",
   "installCommand": "pnpm install --no-frozen-lockfile",
-  "outputDirectory": "."
+  "outputDirectory": ".",
+  "rewrites": [
+    {
+      "source": "/api/v1/health/(.*)",
+      "destination": "/api/health/$1"
+    },
+    {
+      "source": "/api/v1/submissions/(.*)",
+      "destination": "/api/submissions/$1"
+    },
+    {
+      "source": "/api/v1/bids/(.*)",
+      "destination": "/api/bids/$1"
+    },
+    {
+      "source": "/api/v1/admin/(.*)",
+      "destination": "/api/admin/$1"
+    },
+    {
+      "source": "/api/v1/webhooks/(.*)",
+      "destination": "/api/webhooks/$1"
+    }
+  ]
 }

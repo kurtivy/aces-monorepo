@@ -2,10 +2,11 @@ import { defineConfig } from 'tsup';
 
 export default defineConfig({
   entryPoints: {
-    'v1/admin': 'src/api/admin.ts',
-    'v1/bids': 'src/api/bids.ts',
-    'v1/submissions': 'src/api/submissions.ts',
-    'v1/webhooks': 'src/api/webhooks.ts',
+    submissions: 'src/api/submissions.ts',
+    bids: 'src/api/bids.ts',
+    admin: 'src/api/admin.ts',
+    webhooks: 'src/api/webhooks.ts',
+    health: 'src/api/health.ts',
   },
   outDir: 'api',
   format: ['cjs'],

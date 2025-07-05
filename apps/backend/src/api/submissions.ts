@@ -42,7 +42,7 @@ const buildSubmissionsApp = async (): Promise<FastifyInstance> => {
 
   // Register custom plugins
   fastify.register(registerAuth);
-  fastify.register(submissionsRoutes, { prefix: '/api/v1/submissions' });
+  fastify.register(submissionsRoutes);
 
   // Register hooks
   fastify.addHook('onRequest', async (request) => {
@@ -53,16 +53,6 @@ const buildSubmissionsApp = async (): Promise<FastifyInstance> => {
   fastify.addHook('onResponse', async (request, reply) => {
     const responseTime = request.startTime ? Date.now() - request.startTime : 0;
     loggers.response(request.id, request.method, request.url, reply.statusCode, responseTime);
-  });
-
-  // Health check routes
-  fastify.get('/api/v1/health/live', async () => ({ status: 'ok' }));
-  fastify.get('/api/v1/health/ready', async () => {
-    const isDbReady = await checkDatabaseHealth();
-    if (!isDbReady) {
-      throw new Error('Database not ready');
-    }
-    return { status: 'ready' };
   });
 
   // Global error handler
