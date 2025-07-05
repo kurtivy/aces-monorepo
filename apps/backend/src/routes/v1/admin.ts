@@ -22,7 +22,8 @@ export async function adminRoutes(fastify: FastifyInstance) {
   const recoveryService = new RecoveryService(fastify.prisma);
   const submissionService = new SubmissionService(fastify.prisma);
 
-  // Admin authentication middleware
+  // Admin authentication middleware - DISABLED (no auth)
+  /*
   fastify.addHook('preHandler', async (request) => {
     if (!request.user) {
       throw errors.unauthorized('Authentication required');
@@ -38,6 +39,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
       throw errors.forbidden('Admin access required');
     }
   });
+  */
 
   // Get pending submissions for approval
   fastify.get(
@@ -125,7 +127,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     },
     async (request, reply) => {
       const { submissionId } = request.params as z.infer<typeof ApprovalSchema>;
-      const adminId = request.user!.id;
+      const adminId = 'temp-admin-no-auth'; // TODO: Add proper authentication
       const correlationId = request.id;
 
       const result = await approvalService.approveSubmission(submissionId, adminId, correlationId);
@@ -150,7 +152,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const { submissionId } = request.params as { submissionId: string };
       const { rejectionReason } = request.body as RejectionRequest;
-      const adminId = request.user!.id;
+      const adminId = 'temp-admin-no-auth'; // TODO: Add proper authentication
       //   const correlationId = request.id;
 
       // Manual rejection implementation
@@ -209,7 +211,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     },
     async (request, reply) => {
       const { submissionId } = request.params as z.infer<typeof RecoverySchema>;
-      const adminId = request.user!.id;
+      const adminId = 'temp-admin-no-auth'; // TODO: Add proper authentication
       const correlationId = request.id;
 
       const result = await recoveryService.resubmitTransaction(
@@ -236,7 +238,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     },
     async (request, reply) => {
       const { webhookLogId } = request.params as z.infer<typeof WebhookReplaySchema>;
-      const adminId = request.user!.id;
+      const adminId = 'temp-admin-no-auth'; // TODO: Add proper authentication
       const correlationId = request.id;
 
       const result = await recoveryService.replayWebhook(webhookLogId, adminId, correlationId);

@@ -20,7 +20,7 @@ declare module 'fastify' {
 import { getPrismaClient, checkDatabaseHealth, disconnectDatabase } from '../lib/database';
 import { loggers } from '../lib/logger';
 import { handleError } from '../lib/errors';
-import { registerAuth } from '../plugins/auth';
+// import { registerAuth } from '../plugins/auth'; // Disabled - no auth needed
 import { webhooksRoutes } from '../routes/v1/webhooks';
 
 const buildWebhooksApp = async (): Promise<FastifyInstance> => {
@@ -32,6 +32,9 @@ const buildWebhooksApp = async (): Promise<FastifyInstance> => {
   const prisma = getPrismaClient();
   fastify.decorate('prisma', prisma);
 
+  // Always decorate the request with user property for compatibility
+  fastify.decorateRequest('user', null);
+
   // Register plugins
   fastify.register(cors, { origin: '*' });
   fastify.register(helmet);
@@ -41,7 +44,7 @@ const buildWebhooksApp = async (): Promise<FastifyInstance> => {
   });
 
   // Register custom plugins
-  fastify.register(registerAuth);
+  // fastify.register(registerAuth); // Disabled - no auth needed
   fastify.register(webhooksRoutes);
 
   // Register hooks
