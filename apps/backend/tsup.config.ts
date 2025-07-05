@@ -19,10 +19,4 @@ export default defineConfig({
   external: ['prisma'],
   cjsInterop: true,
   splitting: false,
-  // Ensure proper module exports for Vercel serverless functions
-  esbuildOptions(options) {
-    options.footer = {
-      js: 'module.exports = exports.default || exports;',
-    };
-  },
 });

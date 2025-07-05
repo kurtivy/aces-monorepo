@@ -72,7 +72,7 @@ const buildWebhooksApp = async (): Promise<FastifyInstance> => {
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-export default async (req: VercelRequest, res: VercelResponse) => {
+const handler = async (req: VercelRequest, res: VercelResponse) => {
   const app = await buildWebhooksApp();
   await app.ready();
 
@@ -83,3 +83,7 @@ export default async (req: VercelRequest, res: VercelResponse) => {
 
   app.server.emit('request', req, res);
 };
+
+export default handler;
+module.exports = handler;
+module.exports.default = handler;
