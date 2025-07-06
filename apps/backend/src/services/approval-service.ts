@@ -320,7 +320,21 @@ export class ApprovalService {
     if (!walletAddress) {
       return false;
     }
+
+    // Check if wallet is in ADMIN_WALLET_ADDRESSES
     const adminWallets = (process.env.ADMIN_WALLET_ADDRESSES || '').toLowerCase().split(',');
-    return adminWallets.includes(walletAddress.toLowerCase());
+    if (adminWallets.includes(walletAddress.toLowerCase())) {
+      return true;
+    }
+
+    // Check if wallet matches the minter wallet
+    if (process.env.MINTER_PRIVATE_KEY) {
+      const minterAccount = privateKeyToAccount(process.env.MINTER_PRIVATE_KEY as `0x${string}`);
+      if (minterAccount.address.toLowerCase() === walletAddress.toLowerCase()) {
+        return true;
+      }
+    }
+
+    return false;
   }
 }

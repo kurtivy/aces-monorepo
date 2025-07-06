@@ -22,9 +22,16 @@ export async function adminRoutes(fastify: FastifyInstance) {
   const recoveryService = new RecoveryService(fastify.prisma);
   const submissionService = new SubmissionService(fastify.prisma);
 
-  // Admin authentication middleware - DISABLED (no auth)
-  /*
+  // Admin authentication middleware - skip for approval endpoint
   fastify.addHook('preHandler', async (request) => {
+    // Skip admin check for approval endpoint
+    if (request.routeOptions.url === '/api/v1/admin/approve/:submissionId') {
+      if (!request.user) {
+        throw errors.unauthorized('Authentication required');
+      }
+      return;
+    }
+
     if (!request.user) {
       throw errors.unauthorized('Authentication required');
     }
@@ -39,7 +46,6 @@ export async function adminRoutes(fastify: FastifyInstance) {
       throw errors.forbidden('Admin access required');
     }
   });
-  */
 
   // Get pending submissions for approval
   fastify.get(
@@ -127,7 +133,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     },
     async (request, reply) => {
       const { submissionId } = request.params as z.infer<typeof ApprovalSchema>;
-      const adminId = 'temp-admin-no-auth'; // TODO: Add proper authentication
+      const adminId = request.user!.id;
       const correlationId = request.id;
 
       const result = await approvalService.approveSubmission(submissionId, adminId, correlationId);
@@ -152,7 +158,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const { submissionId } = request.params as { submissionId: string };
       const { rejectionReason } = request.body as RejectionRequest;
-      const adminId = 'temp-admin-no-auth'; // TODO: Add proper authentication
+      const adminId = request.user!.id;
       //   const correlationId = request.id;
 
       // Manual rejection implementation
@@ -211,7 +217,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     },
     async (request, reply) => {
       const { submissionId } = request.params as z.infer<typeof RecoverySchema>;
-      const adminId = 'temp-admin-no-auth'; // TODO: Add proper authentication
+      const adminId = request.user!.id;
       const correlationId = request.id;
 
       const result = await recoveryService.resubmitTransaction(

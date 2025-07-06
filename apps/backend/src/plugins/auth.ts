@@ -21,6 +21,8 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
 
   fastify.addHook('preHandler', async (request) => {
     const authHeader = request.headers.authorization;
+    const walletAddress = request.headers['x-wallet-address'] as string | undefined;
+
     if (authHeader?.startsWith('Bearer ')) {
       try {
         const token = authHeader.substring(7);
@@ -28,14 +30,22 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
 
         const user = await fastify.prisma.user.upsert({
           where: { privyDid: claims.userId },
-          update: { walletAddress: claims.walletAddress || null },
+          update: { walletAddress: walletAddress || claims.walletAddress || null },
           create: {
             privyDid: claims.userId,
-            walletAddress: claims.walletAddress,
+            walletAddress: walletAddress || claims.walletAddress,
           },
         });
 
         if (user) {
+          // Update user with wallet address from header if different
+          if (walletAddress && user.walletAddress !== walletAddress) {
+            await fastify.prisma.user.update({
+              where: { id: user.id },
+              data: { walletAddress },
+            });
+            user.walletAddress = walletAddress;
+          }
           loggers.auth(user.id, user.walletAddress, 'authenticated');
         }
         request.user = user;

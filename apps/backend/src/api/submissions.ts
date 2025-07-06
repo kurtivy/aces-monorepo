@@ -17,10 +17,10 @@ declare module 'fastify' {
   }
 }
 
-import { getPrismaClient, checkDatabaseHealth, disconnectDatabase } from '../lib/database';
+import { getPrismaClient, disconnectDatabase } from '../lib/database';
 import { loggers } from '../lib/logger';
 import { handleError } from '../lib/errors';
-// import { registerAuth } from '../plugins/auth'; // Disabled - no auth needed
+import { registerAuth } from '../plugins/auth';
 import { submissionsRoutes } from '../routes/v1/submissions';
 
 const buildSubmissionsApp = async (): Promise<FastifyInstance> => {
@@ -32,9 +32,6 @@ const buildSubmissionsApp = async (): Promise<FastifyInstance> => {
   const prisma = getPrismaClient();
   fastify.decorate('prisma', prisma);
 
-  // Always decorate the request with user property for compatibility
-  fastify.decorateRequest('user', null);
-
   // Register plugins
   fastify.register(cors, { origin: '*' });
   fastify.register(helmet);
@@ -44,7 +41,7 @@ const buildSubmissionsApp = async (): Promise<FastifyInstance> => {
   });
 
   // Register custom plugins
-  // fastify.register(registerAuth); // Disabled - no auth needed
+  fastify.register(registerAuth);
   fastify.register(submissionsRoutes);
 
   // Register hooks
