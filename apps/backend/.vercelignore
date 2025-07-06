@@ -1,0 +1,14 @@
+# Ignore everything outside of backend
+../frontend
+../../packages
+../../build-guides
+../../playwright-report
+../../test-results
+../../zBUGS
+
+# Ignore development files
+node_modules
+.env
+.env.*
+coverage
+*.log 

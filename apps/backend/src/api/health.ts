@@ -49,13 +49,17 @@ const buildHealthApp = async (): Promise<FastifyInstance> => {
   });
 
   // Health check routes
-  fastify.get('/live', async () => ({ status: 'ok' }));
+  fastify.get('/live', async () => ({
+    status: 'ok',
+    version: '1.0.0',
+    timestamp: new Date().toISOString(),
+  }));
   fastify.get('/ready', async () => {
     const isDbReady = await checkDatabaseHealth();
     if (!isDbReady) {
       throw new Error('Database not ready');
     }
-    return { status: 'ready' };
+    return { status: 'ready', version: '1.0.0', timestamp: new Date().toISOString() };
   });
 
   // Global error handler
