@@ -69,3 +69,10 @@ STEP4_COMPLETION_PLAN.md
 apps/frontend/__tests__/
 playwright.config.ts
 .vercel
+
+# Additional test and script directories
+**/test/
+**/tests/
+**/scripts/
+**/e2e/
+**/__tests__/

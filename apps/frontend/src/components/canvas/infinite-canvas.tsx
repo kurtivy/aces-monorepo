@@ -245,60 +245,6 @@ const InfiniteCanvas = () => {
     };
   }, []);
 
-  // Phase 2 Step 3: Enhanced wheel event listener with ref change protection
-  // CRITICAL FIX: Store handleWheel in a ref to prevent infinite re-renders
-  const handleWheelRef2 = useRef(handleWheel);
-  // Update the ref whenever handleWheel changes, but don't create dependency loop
-  handleWheelRef2.current = handleWheel;
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || !interactionsEnabled) return;
-
-    // Phase 2 Step 3: Store canvas reference for cleanup validation
-    const currentCanvas = canvas;
-
-    const wheelListener2 = (e: Event) => {
-      // Phase 2 Step 3: Validate canvas is still the same element
-      if (canvasRef.current !== currentCanvas) return;
-
-      try {
-        handleWheelRef2.current(e as unknown as React.WheelEvent<HTMLCanvasElement>);
-      } catch (error) {
-        // Wheel handler error - continue silently
-      }
-    };
-
-    // Phase 2 Step 3 Action 5: Enhanced error handling for wheel event listener
-    const wheelListenerResult2 = addEventListenerSafe(currentCanvas, 'wheel', wheelListener2);
-
-    if (wheelListenerResult2.success) {
-      currentCanvas.tabIndex = -1;
-
-      try {
-        currentCanvas.focus();
-      } catch (focusError) {
-        // Wheel handler error - continue silently
-      }
-
-      if (wheelListenerResult2.fallbackApplied) {
-        // Continue - canvas interactions will still work without wheel events
-      }
-    } else {
-      // Continue - canvas interactions will still work without wheel events
-    }
-
-    return () => {
-      // Phase 2 Step 3 Action 5: Enhanced cleanup with error handling
-      if (wheelListenerResult2.success && currentCanvas) {
-        const removeResult = removeEventListenerSafe(currentCanvas, 'wheel', wheelListener2);
-        if (!removeResult.success) {
-          // Continue - canvas interactions will still work without wheel events
-        }
-      }
-    };
-  }, [canvasRef, interactionsEnabled]); // CRITICAL FIX: Removed handleWheel from dependency array
-
   // Phase 2 Step 3 Action 4: Stable onClose callback to prevent modal event listener race conditions
   const handleModalClose = useCallback(() => {
     setSelectedImage(null);

@@ -93,7 +93,66 @@ function detectDeviceCapabilities(): DeviceCapabilities {
       // @ts-expect-error - performance.memory properties not in standard types
       const memInfo = performance.memory;
       // Available memory estimation based on heap limit
-      availableMemory = Math.round(memInfo.jsHeapSizeLimit / (1024 * 1024));
+      let rawMemory = Math.round(memInfo.jsHeapSizeLimit / (1024 * 1024));
+
+      // Platform-specific memory adjustments for more accurate estimation
+      const isWindows = typeof navigator !== 'undefined' && navigator.platform.includes('Win');
+      const isAndroid = typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent);
+
+      // Debug logging for Android detection
+      if (typeof console !== 'undefined' && console.log) {
+        console.log('Memory Detection Debug:', {
+          isWindows,
+          isAndroid,
+          userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'undefined',
+          platform: typeof navigator !== 'undefined' ? navigator.platform : 'undefined',
+          rawMemory,
+        });
+      }
+
+      if (isWindows && rawMemory > 1024) {
+        // Windows typically has more system memory than the conservative heap limit suggests
+        // Apply a more aggressive multiplier for high-end Windows PCs
+        if (rawMemory >= 4096) {
+          rawMemory = Math.min(rawMemory * 2.0, 32768); // 2x multiplier for high-end
+          console.log('Windows Memory Adjustment Applied:', {
+            originalMemory: Math.round(memInfo.jsHeapSizeLimit / (1024 * 1024)),
+            adjustedMemory: rawMemory,
+          });
+        } else if (rawMemory >= 2048) {
+          rawMemory = Math.min(rawMemory * 2.2, 16384); // 2.2x multiplier for mid-high end (your PC range)
+          console.log('Windows Memory Adjustment Applied:', {
+            originalMemory: Math.round(memInfo.jsHeapSizeLimit / (1024 * 1024)),
+            adjustedMemory: rawMemory,
+          });
+        } else if (rawMemory >= 1536) {
+          rawMemory = Math.min(rawMemory * 1.5, 8192); // 1.5x multiplier for mid-range
+          console.log('Windows Memory Adjustment Applied:', {
+            originalMemory: Math.round(memInfo.jsHeapSizeLimit / (1024 * 1024)),
+            adjustedMemory: rawMemory,
+          });
+        }
+      } else if (isAndroid && rawMemory > 1024) {
+        // Android Chrome also reports conservative heap limits, especially on high-end devices
+        // Apply Android-specific memory adjustments
+        console.log('Android Memory Adjustment - Before:', { rawMemory, isAndroid });
+        if (rawMemory >= 2048) {
+          rawMemory = Math.min(rawMemory * 1.8, 16384); // 1.8x multiplier for high-end Android (Galaxy S24 Ultra, etc.)
+          console.log('Android Memory Adjustment - Applied 1.8x multiplier:', {
+            newMemory: rawMemory,
+          });
+        } else if (rawMemory >= 1536) {
+          rawMemory = Math.min(rawMemory * 1.5, 8192); // 1.5x multiplier for mid-range Android
+          console.log('Android Memory Adjustment - Applied 1.5x multiplier:', {
+            newMemory: rawMemory,
+          });
+        }
+        console.log('Android Memory Adjustment - After:', { rawMemory });
+      } else {
+        console.log('No Memory Adjustment Applied:', { isWindows, isAndroid, rawMemory });
+      }
+
+      availableMemory = rawMemory;
 
       // Memory pressure calculation
       const usedRatio = memInfo.usedJSHeapSize / memInfo.jsHeapSizeLimit;
@@ -155,22 +214,24 @@ function detectDeviceCapabilities(): DeviceCapabilities {
   // Phase 2 Step 7 Action 1: Enhanced mobile-aware performance tier calculation
   const isMobileDevice = touchCapable || /mobile|android|iphone|ipad|ipod/.test(userAgent);
 
-  // High performance: >4GB RAM, >4 cores, WebGL support, low memory pressure, desktop or high-end mobile
+  // High performance: Lowered thresholds for modern devices
+  // Desktop: >2.5GB RAM, ≥4 cores, WebGL support, not high memory pressure
+  // Mobile: >2.2GB RAM, ≥6 cores, WebGL support, not high memory pressure (adjusted for Android Galaxy S24 Ultra, Tab S9+)
   if (
-    availableMemory > 4096 &&
+    availableMemory > 2560 && // Lowered from 3072 to 2560 (2.5GB) for modern systems
     hardwareConcurrency >= 4 &&
     supportsWebGL &&
-    memoryPressure === 'low' &&
-    (!isMobileDevice || availableMemory > 6144) // Higher bar for mobile devices
+    memoryPressure !== 'high' && // Changed from 'low' to 'not high' - medium is acceptable
+    (!isMobileDevice || (availableMemory > 2200 && hardwareConcurrency >= 6)) // Mobile: >2.2GB RAM, ≥6 cores for high-end Android devices (Galaxy S24 Ultra: 2222MB raw)
   ) {
     performanceTier = 'high';
   }
-  // Low performance: <1.5GB RAM, ≤1 core, high memory pressure, OR mobile with constraints
+  // Low performance: <1.5GB RAM, ≤1 core, high memory pressure, OR mobile with severe constraints
   else if (
     availableMemory < 1536 ||
     hardwareConcurrency <= 1 ||
     memoryPressure === 'high' ||
-    (isMobileDevice && (availableMemory < 2048 || pixelDensityCategory === 'ultra'))
+    (isMobileDevice && availableMemory < 1536) // Removed ultra pixel density penalty for high-end devices
   ) {
     performanceTier = 'low';
   }
@@ -302,10 +363,10 @@ export function getBrowserOptimizations(browser: BrowserInfo): BrowserOptimizati
   };
 
   // Phase 2 Step 5 Action 2: Device-based optimization (no browser-specific animation timing)
-  if (deviceCapabilities.performanceTier === 'low' || browser.isMobile) {
+  if (deviceCapabilities.performanceTier === 'low') {
     const lowPerfOptimizations = {
       ...baseOptimizations,
-      targetFPS: deviceCapabilities.performanceTier === 'low' ? 30 : 45,
+      targetFPS: 30, // Only reduce FPS for truly low-end devices
       animationDuration: 250, // Faster animations for lower-end devices (standardized)
       mouseCheckInterval: 50, // Less frequent checks
       enableSpaceAnimation: false, // Disable heavy animations
@@ -330,11 +391,13 @@ export function getBrowserOptimizations(browser: BrowserInfo): BrowserOptimizati
     // Phase 2 Step 5 Action 2: Standardized medium performance tier - no browser-specific animation timing
     const mediumOptimizations = {
       ...baseOptimizations,
+      targetFPS: 60, // Keep 60fps for medium devices
       // Animation duration stays standardized (400ms from baseOptimizations)
-      mouseCheckInterval: 50, // Standard for medium devices
+      mouseCheckInterval: browser.isMobile ? 40 : 32, // Optimized for mobile vs desktop
       enableSpaceAnimation: false, // Disabled for stability on medium devices
       enableComplexDotPattern: false, // Disabled for performance on medium devices
       useLinearEasing: true, // Simpler easing for medium devices
+      frameThrottling: false, // Don't throttle medium devices
     };
 
     // ONLY critical browser-specific fixes (not animation timing)
@@ -357,13 +420,13 @@ export function getBrowserOptimizations(browser: BrowserInfo): BrowserOptimizati
       ...baseOptimizations,
       targetFPS: 60,
       animationDuration: 350, // Standardized: slightly faster for high-end devices
-      mouseCheckInterval: 16,
-      enableSpaceAnimation: true,
+      mouseCheckInterval: browser.isMobile ? 32 : 16, // Slightly slower for mobile touch to reduce CPU load
+      enableSpaceAnimation: !browser.isMobile, // Disable space animation on mobile for better performance
       enableComplexDotPattern: true,
       enableImageSmoothing: true,
       useLinearEasing: false,
       frameThrottling: false,
-      gradientCacheSize: 200, // Larger cache for high-end devices
+      gradientCacheSize: browser.isMobile ? 150 : 200, // Slightly smaller cache for mobile
       gradientCacheClearInterval: 60000, // Less frequent clearing
     };
 

@@ -212,6 +212,8 @@ export const useViewState = ({
     // Browser-specific wheel delta normalization for consistent scrolling feel
     const isFirefox = browserUtils.isFirefox();
     const isBrave = navigator.userAgent.includes('Brave');
+    const isChrome = browserUtils.isChrome();
+    const isWindows = typeof navigator !== 'undefined' && navigator.platform.includes('Win');
     const isTrackpad = event.deltaMode === 0 && Math.abs(event.deltaY) < 100;
 
     // Base sensitivity (trackpad vs mouse)
@@ -224,8 +226,12 @@ export const useViewState = ({
     } else if (isBrave) {
       // Brave has slight privacy processing overhead, compensate with sensitivity boost
       sensitivity *= isTrackpad ? 1.1 : 1.15; // Slightly more sensitive for Brave
+    } else if (isChrome && isWindows) {
+      // Windows Chrome wheel events need different handling than Mac Chrome
+      // Windows reports different wheel delta values and has different mouse/trackpad behavior
+      sensitivity *= isTrackpad ? 0.9 : 1.2; // Slightly reduced for trackpad, increased for mouse
     }
-    // Chrome/Safari use baseline sensitivity (no modification needed)
+    // Mac Chrome/Safari use baseline sensitivity (no modification needed)
 
     deltaX *= sensitivity;
     deltaY *= sensitivity;
