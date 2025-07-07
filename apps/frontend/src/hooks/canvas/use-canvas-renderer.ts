@@ -33,6 +33,12 @@ import {
 } from '../../lib/utils/event-listener-utils';
 // Note: useAnimationFrame removed - caused scroll timing issues, kept for background animations only
 
+// Phase 1: Import animation timing hook
+import { useCanvasAnimationTiming } from './use-canvas-animation-timing';
+
+// Phase 2: Import background tile processor
+import { useBackgroundTileProcessor } from './use-background-tile-processor';
+
 // Phase 2 Step 9: Import comprehensive error boundary utilities
 import {
   safeGetCanvasContext,
@@ -185,6 +191,10 @@ export const useCanvasRenderer = ({
   const [canvasProgress, setCanvasProgress] = useState(0);
   const [canvasReady, setCanvasReady] = useState(false);
 
+  // Animation state - KEEP these in main hook (UI state, not animation timing)
+  const [isProductAnimationActive, setIsProductAnimationActive] = useState(false);
+  const [isHoveringToken, setIsHoveringToken] = useState(false);
+
   /*
    * SAFARI PERFORMANCE OPTIMIZATIONS
    * ================================
@@ -200,22 +210,14 @@ export const useCanvasRenderer = ({
    */
 
   // State for hover animation
-  const [currentHoverProgress, setCurrentHoverProgress] = useState(0);
-  const hoverAnimationStartTime = useRef(0);
-  const [isHoveringToken, setIsHoveringToken] = useState(false);
+
   const hoverAnimationDuration = browserPerf.animationDuration; // Centralized animation duration
 
-  // HOVER ENHANCEMENT: Add repeated token hover state (performance-optimized)
   const [hoveredRepeatedToken, setHoveredRepeatedToken] = useState<{
     worldX: number;
     worldY: number;
     tileId: string;
   } | null>(null);
-
-  // Product entrance animation state
-  const [isProductAnimationActive, setIsProductAnimationActive] = useState(false);
-  const [hasAnimationStarted, setHasAnimationStarted] = useState(false);
-  const productAnimationStartTime = useRef<number | null>(null);
 
   // Use a longer duration for entrance animation
   const ENTRANCE_ANIMATION_DURATION = 800; // Longer duration for entrance animation
@@ -241,6 +243,23 @@ export const useCanvasRenderer = ({
 
   const stableCreateTokenPositions = useRef<Array<{ worldX: number; worldY: number }>>([]);
   const [placementsCalculated, setPlacementsCalculated] = useState(false);
+
+  // Phase 1: Animation timing coordination - EXTRACTED animation calculations
+  const {
+    productAnimationProgress,
+    hoverAnimationProgress,
+    currentHoverProgress,
+    hasAnimationStarted,
+    startProductAnimation,
+    updateHoverState,
+    updateAnimations,
+  } = useCanvasAnimationTiming({
+    isProductAnimationActive,
+    isHoveringToken,
+    imagesLoaded,
+    placementsCalculated,
+    canvasVisible,
+  });
 
   const originalGridBounds = useRef<{
     startX: number;
@@ -288,6 +307,15 @@ export const useCanvasRenderer = ({
     },
     [browserPerf.adaptiveRendering],
   );
+
+  // Phase 2: Background tile processing - EXTRACTED expensive tile generation
+  const backgroundTileProcessor = useBackgroundTileProcessor({
+    images,
+    unitSize,
+    stableProductPlacements: stableProductPlacements.current,
+    stableCreateTokenPositions: stableCreateTokenPositions.current,
+    originalGridBounds: originalGridBounds.current,
+  });
 
   // Preload the logo image
   useEffect(() => {
@@ -368,115 +396,7 @@ export const useCanvasRenderer = ({
     return tiles;
   }, []);
 
-  const generateRepeatedPlacementsForTile = useCallback(
-    (
-      tile: GridTile,
-    ): {
-      placements: RepeatedPlacement[];
-      tokens: RepeatedTokenPosition[];
-    } => {
-      const tileId = `${tile.tileX},${tile.tileY}`;
-      const placements: RepeatedPlacement[] = [];
-      const tokens: RepeatedTokenPosition[] = [];
-
-      if (!originalGridBounds.current) return { placements, tokens };
-
-      const { startX, startY, width, height } = originalGridBounds.current;
-      const tileStartX = startX + tile.offsetX;
-      const tileStartY = startY + tile.offsetY;
-      const tileEndX = tileStartX + width;
-      const tileEndY = tileStartY + height;
-
-      // Generate repeated product placements with boundary filtering
-      // Generate repeated product placements with boundary filtering
-      stableProductPlacements.current.forEach((original, index) => {
-        const newX = original.x + tile.offsetX;
-        const newY = original.y + tile.offsetY;
-
-        // Check if this placement would extend beyond tile boundaries
-        const imageEndX = newX + original.width;
-        const imageEndY = newY + original.height;
-
-        // If image extends beyond tile boundaries, replace with square
-        if (imageEndX > tileEndX || imageEndY > tileEndY) {
-          // Replace with a square image to avoid boundary conflicts
-          const squareImages = images.filter((img) => img.type === 'square' && img.metadata);
-          if (squareImages.length > 0) {
-            const replacementImage =
-              squareImages[Math.abs(index + tile.tileX * 3 + tile.tileY * 7) % squareImages.length];
-            placements.push({
-              image: replacementImage,
-              x: newX,
-              y: newY,
-              width: unitSize, // Force to square size
-              height: unitSize, // Force to square size
-              index,
-              tileId,
-            });
-          }
-        } else {
-          // Original placement fits within tile boundaries
-          placements.push({
-            ...original,
-            x: newX,
-            y: newY,
-            tileId,
-          });
-        }
-      });
-
-      // Generate repeated token positions
-      stableCreateTokenPositions.current.forEach((original) => {
-        tokens.push({
-          worldX: original.worldX + tile.offsetX,
-          worldY: original.worldY + tile.offsetY,
-          tileId,
-        });
-      });
-
-      // NEW: Fill home area gap with two square images in repeated tiles
-      if (tile.tileX !== 0 || tile.tileY !== 0) {
-        // Only fill gaps in repeated tiles, not the original tile (0,0)
-        const homeAreaWorldX = -unitSize + tile.offsetX;
-        const homeAreaWorldY = -unitSize + tile.offsetY;
-
-        // Get square images for gap filling
-        const squareImages = images.filter((img) => img.type === 'square' && img.metadata);
-
-        if (squareImages.length > 0) {
-          // Place two square images side by side in the home area gap
-          // Left square (position 0,0 relative to home area)
-          const leftSquareImage =
-            squareImages[Math.abs(tile.tileX * 3 + tile.tileY * 7) % squareImages.length];
-          placements.push({
-            image: leftSquareImage,
-            x: homeAreaWorldX,
-            y: homeAreaWorldY,
-            width: unitSize,
-            height: unitSize,
-            index: placements.length,
-            tileId,
-          });
-
-          // Right square (position 1,0 relative to home area)
-          const rightSquareImage =
-            squareImages[Math.abs(tile.tileX * 5 + tile.tileY * 11) % squareImages.length];
-          placements.push({
-            image: rightSquareImage,
-            x: homeAreaWorldX + unitSize,
-            y: homeAreaWorldY,
-            width: unitSize,
-            height: unitSize,
-            index: placements.length,
-            tileId,
-          });
-        }
-      }
-
-      return { placements, tokens };
-    },
-    [images, unitSize],
-  );
+  // Phase 2: generateRepeatedPlacementsForTile function moved to useBackgroundTileProcessor
 
   const updateInfiniteGrid = useCallback(
     (currentViewState: ViewState) => {
@@ -503,44 +423,39 @@ export const useCanvasRenderer = ({
         const tileId = `${tile.tileX},${tile.tileY}`;
         newActiveTiles.add(tileId);
 
-        // Check if tile exists in LRU cache
-        const cachedData = lruTileCache.current.get(tileId);
+        // Phase 2: Use background processor for cache management
+        const cachedData = backgroundTileProcessor.getCachedTileData(tileId);
         if (cachedData) {
           // Update the current active data from cache
           repeatedPlacements.current.set(tileId, cachedData.placements);
           repeatedTokens.current.set(tileId, cachedData.tokens);
         } else {
-          // Add to streaming queue for background processing
+          // Add to background processing queue instead of blocking main thread
           tilesToLoad.push(tile);
         }
       });
 
-      // Add new tiles to priority queue for streaming
+      // Phase 2: Add new tiles to background processor queue
       if (tilesToLoad.length > 0) {
-        tileStreamingManager.current.addTiles(tilesToLoad, {
+        backgroundTileProcessor.addTilesToQueue(tilesToLoad, {
           x: viewportCenterX,
           y: viewportCenterY,
         });
 
-        // Phase 3.2: Start background processing if not already running
-        const isCurrentlyProcessing = tileStreamingManager.current.isProcessing();
-
-        if (!isCurrentlyProcessing) {
-          scheduleNextTileProcessing();
-        }
+        // Background processing is handled automatically by the processor
       }
 
-      // Clean up distant tiles and update LRU cache
+      // Clean up distant tiles and cache them using background processor
       const tilesToRemove = Array.from(activeTiles.current).filter(
         (tileId) => !newActiveTiles.has(tileId),
       );
       tilesToRemove.forEach((tileId) => {
-        // Move to LRU cache before removing from active memory
+        // Phase 2: Use background processor for cache management
         const placements = repeatedPlacements.current.get(tileId);
         const tokens = repeatedTokens.current.get(tileId);
 
         if (placements && tokens) {
-          lruTileCache.current.set(tileId, { placements, tokens });
+          backgroundTileProcessor.cacheTileData(tileId, { placements, tokens });
         }
 
         // Remove from active memory
@@ -718,9 +633,8 @@ export const useCanvasRenderer = ({
     repeatedTokens.current.clear();
     activeTiles.current.clear();
 
-    // Phase 3.2: Clear streaming caches on reset
-    lruTileCache.current.clear();
-    tileStreamingManager.current.clear();
+    // Phase 2: Clear background processor caches on reset
+    backgroundTileProcessor.clearTileQueue();
   }, [unitSize]);
 
   const lastUpdateRef = useRef(0);
@@ -794,6 +708,14 @@ export const useCanvasRenderer = ({
     [updateInfiniteGrid, hasSignificantViewportChange, updateDebounceDelay],
   );
 
+  // CRITICAL FIX: Initial grid update when placements are calculated
+  useEffect(() => {
+    if (placementsCalculated && originalGridBounds.current) {
+      // Force initial grid update regardless of viewport changes
+      updateInfiniteGrid(viewState);
+    }
+  }, [placementsCalculated, updateInfiniteGrid]);
+
   // Phase 2 Step 4 Action 2: Update viewStateRef and trigger coordinated grid updates
   useEffect(() => {
     viewStateRef.current = viewState;
@@ -835,12 +757,12 @@ export const useCanvasRenderer = ({
   }, []);
 
   // Start product animation when images are loaded AND canvas is visible
+  // CRITICAL FIX: Don't auto-start animation on every mount - let it be user-triggered
   useEffect(() => {
     if (imagesLoaded && placementsCalculated && canvasVisible) {
-      // Reset animation state
-      setIsProductAnimationActive(true);
-      setHasAnimationStarted(false);
-      productAnimationStartTime.current = null;
+      // Don't automatically start animation - images should be visible immediately
+      // Animation can be triggered later if needed
+      setIsProductAnimationActive(false);
     }
   }, [imagesLoaded, placementsCalculated, canvasVisible]);
 
@@ -1097,37 +1019,19 @@ export const useCanvasRenderer = ({
       const productPlacements = stableProductPlacements.current;
       const createTokenPositions = stableCreateTokenPositions.current;
 
-      const ANIMATION_DURATION = ENTRANCE_ANIMATION_DURATION; // Centralized animation duration
+      // Phase 1: Update animations and get progress - EXTRACTED calculation logic
+      const hasActiveAnimations = updateAnimations(currentTime);
+      const animationProgress = productAnimationProgress;
 
-      // Calculate animation progress once
-      let animationProgress = 0;
-      if (isProductAnimationActive) {
-        // Set start time on first frame only
-        if (!hasAnimationStarted) {
-          productAnimationStartTime.current = currentTime;
-          setHasAnimationStarted(true);
-        }
-
-        if (productAnimationStartTime.current !== null) {
-          const elapsed = currentTime - productAnimationStartTime.current;
-          if (elapsed >= ANIMATION_DURATION) {
-            // Animation complete
-            setIsProductAnimationActive(false);
-            animationProgress = 1;
-          } else {
-            const progress = elapsed / ANIMATION_DURATION;
-            // Use a smoother easing for entrance animation
-            const eased = easeInOutCubic(progress);
-            // Add a slight bounce at the end
-            animationProgress = eased + Math.sin(eased * Math.PI) * 0.05;
-          }
-        }
-      } else {
-        // Animation has completed, keep images visible
-        animationProgress = 1;
+      // Stop product animation when complete
+      if (isProductAnimationActive && !hasActiveAnimations && animationProgress >= 1) {
+        setIsProductAnimationActive(false);
       }
 
       // Draw original products with animation - using STABLE positions
+      // CRITICAL FIX: Show images at full opacity immediately, animate only when intended
+      const effectiveAnimationProgress = isProductAnimationActive ? animationProgress : 1;
+
       productPlacements.forEach((placement) => {
         drawImage(
           ctx,
@@ -1136,13 +1040,14 @@ export const useCanvasRenderer = ({
           placement.y,
           placement.width,
           placement.height,
-          animationProgress,
+          effectiveAnimationProgress,
           unitSize,
         );
       });
 
       // Draw repeated grid products (always fully visible, no animation)
-      if (animationProgress > 0) {
+      // CRITICAL FIX: Tile rendering should be independent of animation progress
+      if (placementsCalculated && originalGridBounds.current) {
         // Mobile Safari optimization: Simplified viewport culling for better performance
         if (isSafari && browserPerf.adaptiveRendering) {
           // Calculate visible viewport bounds in world coordinates with larger buffer for mobile
@@ -1300,7 +1205,7 @@ export const useCanvasRenderer = ({
           // restart the animation to ensure smooth transition
           if (newHoveredRepeatedToken || hoveredRepeatedToken) {
             setIsHoveringToken(newHoveredRepeatedToken !== null);
-            hoverAnimationStartTime.current = currentTime;
+            updateHoverState(newHoveredRepeatedToken !== null, currentTime);
           }
         }
 
@@ -1334,49 +1239,26 @@ export const useCanvasRenderer = ({
 
           setHoveredTokenIndex(newHoveredIndex);
           setIsHoveringToken(newHoveredIndex !== null);
-          hoverAnimationStartTime.current = currentTime;
+          updateHoverState(newHoveredIndex !== null, currentTime);
         }
 
         lastMouseCheck.current = currentTime;
       }
-
-      // Update hover animation progress - optimized for Safari
-      if (isHoveringToken || currentHoverProgress > 0) {
-        const elapsed = currentTime - hoverAnimationStartTime.current;
-        let progress = Math.min(1, elapsed / hoverAnimationDuration);
-        if (!isHoveringToken) {
-          progress = 1 - progress;
-        }
-
-        if (browserPerf.useLinearEasing) {
-          progress = progress; // Linear interpolation for performance mode
-        } else {
-          progress = easeInOutCubic(progress);
-        }
-
-        setCurrentHoverProgress(progress);
-
-        if (!isHoveringToken && progress <= 0) {
-          setCurrentHoverProgress(0);
-        }
-      }
+      // Phase 1: Hover animation now handled by animation timing hook
+      // (All hover progress calculations moved to useCanvasAnimationTiming)
 
       // Calculate token animation progress
-      let tokenOpacity = 0;
-      let tokenScale = 0.95;
+      // CRITICAL FIX: Show tokens at full opacity immediately if animation not active
+      let tokenOpacity = 1;
+      let tokenScale = 1;
 
-      if (isProductAnimationActive && productAnimationStartTime.current !== null) {
-        const elapsed = currentTime - productAnimationStartTime.current;
-        const tokenDelay = 100;
-        const adjustedElapsed = Math.max(0, elapsed - tokenDelay);
-        const progress = Math.min(1, adjustedElapsed / ANIMATION_DURATION);
-        const easedProgress = easeInOutCubic(progress);
+      if (isProductAnimationActive && hasAnimationStarted) {
+        // Add token delay effect
+        const delayedProgress = Math.max(0, productAnimationProgress - 0.1); // 100ms delay effect
+        const normalizedProgress = Math.min(1, delayedProgress / 0.9); // Normalize to 0-1
 
-        tokenOpacity = easedProgress;
-        tokenScale = 0.95 + 0.05 * easedProgress;
-      } else if (!isProductAnimationActive) {
-        tokenOpacity = 1;
-        tokenScale = 1;
+        tokenOpacity = normalizedProgress;
+        tokenScale = 0.95 + 0.05 * normalizedProgress;
       }
 
       // Draw original create token squares with animation
@@ -1561,6 +1443,51 @@ export const useCanvasRenderer = ({
     activeCanvasRef, // Phase 2 Step 4 Action 3: Added missing canvas ref dependency
   ]); // Phase 2 Step 4 Action 3: Most refs are intentionally stable and don't need dependencies
 
+  // Phase 2: Background tile processing loop
+  useEffect(() => {
+    if (!placementsCalculated) return;
+
+    let isProcessingActive = true;
+
+    const processBackgroundTiles = async () => {
+      if (!isProcessingActive) return;
+
+      // Process tiles in background when idle
+      if (!backgroundTileProcessor.isProcessingTiles()) {
+        try {
+          const tileData = await backgroundTileProcessor.processNextTile();
+
+          if (tileData && isProcessingActive) {
+            // Extract tileId from the first placement (if any)
+            const firstPlacement = tileData.placements[0];
+            if (firstPlacement) {
+              const tileId = firstPlacement.tileId;
+
+              // Update active tiles if this tile is still needed
+              if (activeTiles.current.has(tileId)) {
+                repeatedPlacements.current.set(tileId, tileData.placements);
+                repeatedTokens.current.set(tileId, tileData.tokens);
+              }
+            }
+          }
+        } catch (error) {
+          // Continue processing on error
+        }
+      }
+
+      // Continue processing in background
+      if (isProcessingActive) {
+        setTimeout(processBackgroundTiles, 16); // ~60fps processing
+      }
+    };
+
+    processBackgroundTiles();
+
+    return () => {
+      isProcessingActive = false;
+    };
+  }, [placementsCalculated, backgroundTileProcessor]);
+
   // Phase 3.1: Dirty Region Manager Implementation
   const dirtyRegionManager = useRef<DirtyRegionManager>({
     regions: [],
@@ -1605,195 +1532,7 @@ export const useCanvasRenderer = ({
     },
   });
 
-  // Phase 3.2: LRU Tile Cache Implementation with Mobile Memory Limits
-  const deviceCapabilities = useMemo(() => getDeviceCapabilities(), []);
-  const maxCacheSize = useMemo(() => {
-    // SSR safety: Use default cache size during server-side rendering
-    if (typeof window === 'undefined') {
-      return 50; // Safe default for SSR
-    }
-
-    // Enhanced cache sizing with canvas scaling awareness
-    const optimalScale = mobileUtils.getOptimalCanvasScale();
-    const baseCacheSize = optimalScale.recommendedTileCache;
-
-    // Mobile-aware cache sizing with scaling factor
-    const tier = deviceCapabilities.performanceTier;
-    if (tier === 'low') return Math.max(25, Math.floor(baseCacheSize * 0.5)); // Conservative for low-end
-    if (tier === 'medium') return Math.max(50, Math.floor(baseCacheSize * 0.75)); // Balanced for medium
-    return Math.max(100, baseCacheSize); // Full recommended size for high-end
-  }, [deviceCapabilities]);
-
-  const lruTileCache = useRef<LRUTileCache>({
-    cache: new Map(),
-    maxSize: maxCacheSize,
-    get: (
-      tileId: string,
-    ): { placements: RepeatedPlacement[]; tokens: RepeatedTokenPosition[] } | null => {
-      const entry = lruTileCache.current.cache.get(tileId);
-      if (entry) {
-        // Update access time for LRU
-        entry.lastAccess = performance.now();
-        return { placements: entry.placements, tokens: entry.tokens };
-      }
-      return null;
-    },
-    set: (
-      tileId: string,
-      data: { placements: RepeatedPlacement[]; tokens: RepeatedTokenPosition[] },
-    ): void => {
-      const cache = lruTileCache.current.cache;
-
-      // If at capacity, evict LRU item
-      if (cache.size >= lruTileCache.current.maxSize && !cache.has(tileId)) {
-        lruTileCache.current.evictLRU();
-      }
-
-      cache.set(tileId, {
-        ...data,
-        lastAccess: performance.now(),
-      });
-    },
-    delete: (tileId: string): void => {
-      lruTileCache.current.cache.delete(tileId);
-    },
-    clear: (): void => {
-      lruTileCache.current.cache.clear();
-    },
-    getSize: (): number => {
-      return lruTileCache.current.cache.size;
-    },
-    evictLRU: (): void => {
-      const cache = lruTileCache.current.cache;
-      let oldestTime = Infinity;
-      let oldestKey = '';
-
-      for (const [key, entry] of cache.entries()) {
-        if (entry.lastAccess < oldestTime) {
-          oldestTime = entry.lastAccess;
-          oldestKey = key;
-        }
-      }
-
-      if (oldestKey) {
-        cache.delete(oldestKey);
-      }
-    },
-  });
-
-  // Phase 3.2: Priority Queue Tile Streaming Manager
-  const tileStreamingManager = useRef<TileStreamingManager>({
-    priorityQueue: [],
-    processingTile: null,
-    addTiles: (tiles: GridTile[], viewportCenter: { x: number; y: number }): void => {
-      const queue = tileStreamingManager.current.priorityQueue;
-
-      tiles.forEach((tile) => {
-        const tileId = `${tile.tileX},${tile.tileY}`;
-
-        // Skip if already in queue or already processed
-        if (
-          queue.some((item) => `${item.tile.tileX},${item.tile.tileY}` === tileId) ||
-          lruTileCache.current.get(tileId)
-        ) {
-          return;
-        }
-
-        // Calculate distance from viewport center for priority
-        const tileCenterX = tile.offsetX + (originalGridBounds.current?.width || 0) / 2;
-        const tileCenterY = tile.offsetY + (originalGridBounds.current?.height || 0) / 2;
-        const distance = Math.sqrt(
-          Math.pow(tileCenterX - viewportCenter.x, 2) + Math.pow(tileCenterY - viewportCenter.y, 2),
-        );
-
-        queue.push({
-          tile,
-          priority: distance, // Lower distance = higher priority
-          distance,
-        });
-      });
-
-      // Sort by priority (lower number = higher priority)
-      queue.sort((a, b) => a.priority - b.priority);
-    },
-    getNextTile: (): TilePriority | null => {
-      const queue = tileStreamingManager.current.priorityQueue;
-      return queue.shift() || null;
-    },
-    isProcessing: (): boolean => {
-      return tileStreamingManager.current.processingTile !== null;
-    },
-    clear: (): void => {
-      tileStreamingManager.current.priorityQueue = [];
-      tileStreamingManager.current.processingTile = null;
-    },
-  });
-
-  // Phase 3.2: Background Tile Processing with requestIdleCallback
-  const backgroundTileProcessing = useCallback(() => {
-    if (tileStreamingManager.current.isProcessing()) {
-      return;
-    }
-
-    const nextTilePriority = tileStreamingManager.current.getNextTile();
-    if (!nextTilePriority) {
-      return;
-    }
-
-    const { tile } = nextTilePriority;
-    const tileId = `${tile.tileX},${tile.tileY}`;
-
-    // Mark as processing
-    tileStreamingManager.current.processingTile = tileId;
-
-    const processTile = (deadline?: IdleDeadline) => {
-      try {
-        // Check if we have time to process (or fallback if no IdleDeadline)
-        const hasTime = !deadline || deadline.timeRemaining() > 1; // 1ms minimum
-
-        if (hasTime) {
-          // Generate tile data
-          const { placements, tokens } = generateRepeatedPlacementsForTile(tile);
-
-          // Store in LRU cache
-          lruTileCache.current.set(tileId, { placements, tokens });
-
-          // If this tile is still needed, add to active memory
-          if (activeTiles.current.has(tileId)) {
-            repeatedPlacements.current.set(tileId, placements);
-            repeatedTokens.current.set(tileId, tokens);
-          }
-
-          // Mark as complete
-          tileStreamingManager.current.processingTile = null;
-
-          // Process next tile if available
-          if (tileStreamingManager.current.priorityQueue.length > 0) {
-            scheduleNextTileProcessing();
-          }
-        } else {
-          // Clear processing flag before rescheduling
-          tileStreamingManager.current.processingTile = null;
-          // Not enough time, reschedule
-          scheduleNextTileProcessing();
-        }
-      } catch (error) {
-        tileStreamingManager.current.processingTile = null;
-        // Continue with next tile
-        if (tileStreamingManager.current.priorityQueue.length > 0) {
-          scheduleNextTileProcessing();
-        }
-      }
-    };
-
-    // Use setTimeout instead of requestIdleCallback for reliable processing during scrolling
-    setTimeout(() => processTile(), 16); // ~60fps - process tiles even during scrolling
-  }, [generateRepeatedPlacementsForTile]);
-
-  const scheduleNextTileProcessing = useCallback(() => {
-    // Use setTimeout for consistent scheduling
-    setTimeout(backgroundTileProcessing, 16);
-  }, [backgroundTileProcessing]);
+  // Phase 2: Old tile cache and streaming implementations moved to useBackgroundTileProcessor
 
   return {
     canvasRef: activeCanvasRef,
