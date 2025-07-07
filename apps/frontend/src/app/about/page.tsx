@@ -1,5 +1,5 @@
-import NavMenu from '@/components/ui/nav-menu';
-import BackButton from '@/components/ui/back-button';
+import NavMenu from '@/components/ui/custom/nav-menu';
+import BackButton from '@/components/ui/custom/back-button';
 
 export default function AboutPage() {
   return (

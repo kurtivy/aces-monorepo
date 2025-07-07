@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import NavMenu from '@/components/ui/nav-menu';
-import BackButton from '@/components/ui/back-button';
+import NavMenu from '@/components/ui/custom/nav-menu';
+import BackButton from '@/components/ui/custom/back-button';
 
 export default function TermsPage() {
   const [activeTab, setActiveTab] = useState<'terms' | 'privacy'>('terms');

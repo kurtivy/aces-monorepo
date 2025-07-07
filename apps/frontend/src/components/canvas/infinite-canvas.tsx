@@ -4,14 +4,14 @@ import type React from 'react';
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 
-import ImageDetailsModal from '../ui/image-details-modal';
+import ImageDetailsModal from '../ui/custom/image-details-modal';
 import IntroAnimation from '../loading/intro-animation';
 import { useImageLoader } from '../../hooks/canvas/use-image-loader';
 import { useViewState } from '../../hooks/canvas/use-view-state';
 import { useCanvasInteractions } from '../../hooks/canvas/use-canvas-interactions';
 import { useCanvasRenderer } from '../../hooks/canvas/use-canvas-renderer';
-import HomeButton from '../ui/home-button';
-import NavMenu from '../ui/nav-menu';
+import HomeButton from '../ui/custom/home-button';
+import NavMenu from '../ui/custom/nav-menu';
 import type { ImageInfo } from '../../types/canvas';
 import { useCoordinatedResize } from '../../hooks/use-coordinated-resize';
 import {

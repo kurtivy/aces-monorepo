@@ -5,13 +5,13 @@ import type React from 'react';
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
-import type { ImageInfo } from '../../types/canvas';
-import { getImageMetadata } from '../../lib/utils/luxury-logger';
+import type { ImageInfo } from '../../../types/canvas';
+import { getImageMetadata } from '../../../lib/utils/luxury-logger';
 import {
   addWindowEventListenerSafe,
   removeWindowEventListenerSafe,
-} from '../../lib/utils/event-listener-utils';
-import { getBackdropFilterCSS } from '../../lib/utils/browser-utils';
+} from '../../../lib/utils/event-listener-utils';
+import { getBackdropFilterCSS } from '../../../lib/utils/browser-utils';
 
 // Modal image cache for memory management
 class ModalImageCache {

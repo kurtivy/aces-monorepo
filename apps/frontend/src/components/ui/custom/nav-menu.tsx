@@ -5,7 +5,7 @@ import { useState, useMemo } from 'react';
 import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import { Menu, X, Send } from 'lucide-react';
 import Link from 'next/link';
-import { getDeviceCapabilities } from '../../lib/utils/browser-utils';
+import { getDeviceCapabilities } from '../../../lib/utils/browser-utils';
 
 // Separate main navigation items from social links
 const mainNavItems = [

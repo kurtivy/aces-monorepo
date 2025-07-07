@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
 // Phase 2 Step 8 Action 1: Navigation safety coordination
-import { useNavigationSafety } from '../../hooks/use-navigation-safety';
+import { useNavigationSafety } from '../../../hooks/use-navigation-safety';
 
 interface BackButtonProps {
   href?: string;
