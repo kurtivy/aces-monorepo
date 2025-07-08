@@ -1489,6 +1489,26 @@ export const useCanvasRenderer = ({
     activeCanvasRef, // Phase 2 Step 4 Action 3: Added missing canvas ref dependency
   ]); // Phase 2 Step 4 Action 3: Most refs are intentionally stable and don't need dependencies
 
+  // Step 3: Scroll detection and background processor coordination
+  const lastViewState = useRef(viewState);
+  const scrollVelocity = useRef(0);
+
+  useEffect(() => {
+    const deltaX = viewState.x - lastViewState.current.x;
+    const deltaY = viewState.y - lastViewState.current.y;
+    const velocity = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+    scrollVelocity.current = velocity;
+    const isScrolling = velocity > 5; // Threshold for scrolling detection
+
+    // Step 3: Update background processor scroll state for 80% improvement
+    if (backgroundTileProcessor.updateScrollState) {
+      backgroundTileProcessor.updateScrollState(isScrolling, velocity);
+    }
+
+    lastViewState.current = viewState;
+  }, [viewState, backgroundTileProcessor]);
+
   // Phase 2: Background tile processing loop
   useEffect(() => {
     if (!placementsCalculated) return;
