@@ -2,7 +2,6 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { easeInOutCubic } from '../../lib/canvas/math-utils';
-import { getBrowserPerformanceSettings } from '../../lib/utils/browser-utils';
 import type { ImageInfo } from '../../types/canvas';
 
 interface UseCanvasEntranceAnimationProps {
@@ -19,10 +18,11 @@ interface UseCanvasEntranceAnimationProps {
 
   // Trigger conditions
   shouldAnimate: boolean; // When intro complete + everything loaded
+  currentTime: number; // From main render loop
   unitSize: number;
 }
 
-interface AnimatedProductElement {
+export interface AnimatedProductElement {
   image: ImageInfo;
   x: number;
   y: number;
@@ -35,7 +35,7 @@ interface AnimatedProductElement {
   animatedOpacity: number;
 }
 
-interface AnimatedTokenElement {
+export interface AnimatedTokenElement {
   worldX: number;
   worldY: number;
   // Animated properties (final calculated values)
@@ -68,71 +68,18 @@ export const useCanvasEntranceAnimation = ({
   tokenPositions,
   shouldAnimate,
   unitSize,
-}: UseCanvasEntranceAnimationProps): CanvasEntranceAnimation => {
+}: Omit<UseCanvasEntranceAnimationProps, 'currentTime'>): {
+  calculateAnimatedElements: (currentTime: number) => CanvasEntranceAnimation;
+  resetAnimation: () => void;
+} => {
   // Animation state
   const [isAnimationActive, setIsAnimationActive] = useState(false);
   const [hasAnimationStarted, setHasAnimationStarted] = useState(false);
-  const [animationProgress, setAnimationProgress] = useState(0);
   const animationStartTime = useRef<number | null>(null);
-  const animationFrameId = useRef<number | null>(null);
-
-  // Browser-specific settings
-  const browserPerf = getBrowserPerformanceSettings();
 
   // Animation timing constants
   const ENTRANCE_ANIMATION_DURATION = 800; // 800ms total duration
   const TOKEN_DELAY = 100; // Tokens start 100ms after products
-
-  // Animation frame loop to update progress
-  const updateAnimation = useCallback(() => {
-    if (!isAnimationActive) return;
-
-    const currentTime = performance.now();
-
-    // Set start time on first frame
-    if (!hasAnimationStarted) {
-      animationStartTime.current = currentTime;
-      setHasAnimationStarted(true);
-      setAnimationProgress(0);
-      animationFrameId.current = requestAnimationFrame(updateAnimation);
-      return;
-    }
-
-    if (animationStartTime.current === null) {
-      setAnimationProgress(0);
-      animationFrameId.current = requestAnimationFrame(updateAnimation);
-      return;
-    }
-
-    const elapsed = currentTime - animationStartTime.current;
-
-    if (elapsed >= ENTRANCE_ANIMATION_DURATION) {
-      // Animation complete
-      setIsAnimationActive(false);
-      setAnimationProgress(1);
-      return;
-    }
-
-    const progress = elapsed / ENTRANCE_ANIMATION_DURATION;
-
-    // Apply easing based on browser performance
-    let finalProgress: number;
-    if (browserPerf.useLinearEasing) {
-      finalProgress = progress; // Linear for performance mode
-    } else {
-      // Smooth easing with slight bounce
-      const eased = easeInOutCubic(progress);
-      finalProgress = eased + Math.sin(eased * Math.PI) * 0.05;
-    }
-
-    setAnimationProgress(finalProgress);
-    animationFrameId.current = requestAnimationFrame(updateAnimation);
-  }, [
-    isAnimationActive,
-    hasAnimationStarted,
-    browserPerf.useLinearEasing,
-    ENTRANCE_ANIMATION_DURATION,
-  ]);
 
   // Start animation when conditions are met
   useEffect(() => {
@@ -143,72 +90,87 @@ export const useCanvasEntranceAnimation = ({
     }
   }, [shouldAnimate, isAnimationActive, hasAnimationStarted]);
 
-  // Start animation loop when animation becomes active
-  useEffect(() => {
-    if (isAnimationActive && !animationFrameId.current) {
-      updateAnimation();
-    }
+  // Reset animation function
+  const resetAnimation = useCallback(() => {
+    setIsAnimationActive(false);
+    setHasAnimationStarted(false);
+    animationStartTime.current = null;
+  }, []);
 
-    // Cleanup on unmount or when animation stops
-    return () => {
-      if (animationFrameId.current) {
-        cancelAnimationFrame(animationFrameId.current);
-        animationFrameId.current = null;
-      }
-    };
-  }, [isAnimationActive, updateAnimation]);
+  // Calculator function that can be called from draw loop
+  const calculateAnimatedElements = useCallback(
+    (currentTime: number): CanvasEntranceAnimation => {
+      // Calculate animation progress
+      let animationProgress = 1;
+      let currentIsAnimationActive = isAnimationActive;
 
-  // Animation progress is now managed by state and animation frame loop
+      if (isAnimationActive) {
+        // Set start time on first frame
+        if (!hasAnimationStarted) {
+          animationStartTime.current = currentTime;
+          setHasAnimationStarted(true);
+          animationProgress = 0;
+        } else if (animationStartTime.current !== null) {
+          const elapsed = currentTime - animationStartTime.current;
 
-  // Calculate animated product placements
-  const calculateAnimatedProducts = useCallback(
-    (progress: number): AnimatedProductElement[] => {
-      return productPlacements.map((placement) => {
-        let animatedY = placement.y;
-        let animatedOpacity = 1;
+          if (elapsed >= ENTRANCE_ANIMATION_DURATION) {
+            // Animation complete
+            setIsAnimationActive(false);
+            currentIsAnimationActive = false;
+            animationProgress = 1;
+          } else {
+            const progress = elapsed / ENTRANCE_ANIMATION_DURATION;
 
-        if (progress < 1) {
-          // Slide up from bottom
-          const startOffset = unitSize * 0.3; // Start 30% of unitSize below
-          const currentOffset = startOffset * (1 - progress);
-          animatedY = placement.y + currentOffset;
-
-          // Fade in
-          animatedOpacity = progress;
+            // Force smooth easing during animation (ignore performance settings)
+            const eased = easeInOutCubic(progress);
+            animationProgress = eased + Math.sin(eased * Math.PI) * 0.05;
+          }
         }
+      }
 
-        return {
-          ...placement,
-          animatedX: placement.x, // X position doesn't change
-          animatedY,
-          animatedOpacity,
-        };
-      });
-    },
-    [productPlacements, unitSize],
-  );
+      // Calculate animated products
+      const animatedProductPlacements: AnimatedProductElement[] = productPlacements.map(
+        (placement) => {
+          let animatedY = placement.y;
+          let animatedOpacity = 1;
 
-  // Calculate animated token positions
-  const calculateAnimatedTokens = useCallback(
-    (progress: number): AnimatedTokenElement[] => {
-      return tokenPositions.map((position) => {
+          if (animationProgress < 1) {
+            // Slide up from bottom
+            const startOffset = unitSize * 0.3; // Start 30% of unitSize below
+            const currentOffset = startOffset * (1 - animationProgress);
+            animatedY = placement.y + currentOffset;
+
+            // Fade in
+            animatedOpacity = animationProgress;
+          }
+
+          return {
+            ...placement,
+            animatedX: placement.x,
+            animatedY,
+            animatedOpacity,
+          };
+        },
+      );
+
+      // Calculate animated tokens
+      const animatedTokenPositions: AnimatedTokenElement[] = tokenPositions.map((position) => {
         let animatedY = position.worldY;
         let animatedOpacity = 1;
         let animatedScale = 1;
 
-        if (progress < 1) {
+        if (animationProgress < 1) {
           // Calculate token-specific progress with delay
           const tokenProgress = Math.max(
             0,
-            (progress * ENTRANCE_ANIMATION_DURATION - TOKEN_DELAY) / ENTRANCE_ANIMATION_DURATION,
+            (animationProgress * ENTRANCE_ANIMATION_DURATION - TOKEN_DELAY) /
+              ENTRANCE_ANIMATION_DURATION,
           );
           const clampedTokenProgress = Math.min(1, tokenProgress);
 
           if (clampedTokenProgress > 0) {
-            // Apply easing to token progress
-            const easedTokenProgress = browserPerf.useLinearEasing
-              ? clampedTokenProgress
-              : easeInOutCubic(clampedTokenProgress);
+            // Always use smooth easing for tokens
+            const easedTokenProgress = easeInOutCubic(clampedTokenProgress);
 
             // Slide up from bottom
             const startOffset = unitSize * 0.3;
@@ -231,30 +193,33 @@ export const useCanvasEntranceAnimation = ({
         return {
           worldX: position.worldX,
           worldY: position.worldY,
-          animatedX: position.worldX, // X position doesn't change
+          animatedX: position.worldX,
           animatedY,
           animatedOpacity,
           animatedScale,
         };
       });
+
+      return {
+        animatedProductPlacements,
+        animatedTokenPositions,
+        isAnimationActive: currentIsAnimationActive,
+        animationProgress,
+      };
     },
     [
+      isAnimationActive,
+      hasAnimationStarted,
+      productPlacements,
       tokenPositions,
       unitSize,
-      browserPerf.useLinearEasing,
       ENTRANCE_ANIMATION_DURATION,
       TOKEN_DELAY,
     ],
   );
 
-  // Calculate current animation state using the state-managed progress
-  const animatedProductPlacements = calculateAnimatedProducts(animationProgress);
-  const animatedTokenPositions = calculateAnimatedTokens(animationProgress);
-
   return {
-    animatedProductPlacements,
-    animatedTokenPositions,
-    isAnimationActive,
-    animationProgress,
+    calculateAnimatedElements,
+    resetAnimation,
   };
 };

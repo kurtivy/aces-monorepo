@@ -3,7 +3,8 @@
 import type React from 'react';
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import type { ImageInfo, ViewState } from '../../types/canvas';
-import { drawCreateTokenSquare, drawHomeArea, drawImage } from '../../lib/canvas/draw';
+import { drawHomeArea, drawImage } from '../../lib/canvas/draw';
+import { drawSimpleTokenSquare } from '../../lib/canvas/draw/draw-simple-token-square';
 import {
   markSpaceOccupied,
   canPlaceImage,
@@ -31,10 +32,12 @@ import {
   addEventListenerSafe,
   removeEventListenerSafe,
 } from '../../lib/utils/event-listener-utils';
+import { performanceMonitor } from '../../lib/utils/performance-monitor';
 // Note: useAnimationFrame removed - caused scroll timing issues, kept for background animations only
 
-// Phase 1: Import entrance animation hook
+// Phase 1: Import entrance animation hook and types
 import { useCanvasEntranceAnimation } from './use-canvas-entrance-animation';
+import type { AnimatedProductElement, AnimatedTokenElement } from './use-canvas-entrance-animation';
 
 // Phase 2: Import background tile processor
 import { useBackgroundTileProcessor } from './use-background-tile-processor';
@@ -256,13 +259,15 @@ export const useCanvasRenderer = ({
     [currentHoverProgress],
   );
 
-  // Phase 1: Centralized entrance animation - EXTRACTED animation calculations
-  const entranceAnimation = useCanvasEntranceAnimation({
+  // Phase 1: SAFE - Entrance animation hook called at top level (follows Rules of Hooks)
+  const entranceAnimationHook = useCanvasEntranceAnimation({
     productPlacements: stableProductPlacements.current,
     tokenPositions: stableCreateTokenPositions.current,
     shouldAnimate: canvasVisible && canvasReady && imagesLoaded && placementsCalculated,
     unitSize,
   });
+
+  const entranceAnimationStatusRef = useRef({ isAnimationActive: false, animationProgress: 0 });
 
   const originalGridBounds = useRef<{
     startX: number;
@@ -923,6 +928,9 @@ export const useCanvasRenderer = ({
     const homeAreaHeight = unitSize;
 
     const draw = (currentTime: number) => {
+      // Step 0: Start performance monitoring for this frame
+      performanceMonitor.startFrame();
+
       const canvas = activeCanvasRef.current;
       if (!canvas) return;
 
@@ -934,6 +942,15 @@ export const useCanvasRenderer = ({
       const ctx = contextResult.data as CanvasRenderingContext2D;
       if (!ctx) return;
 
+      // SAFE: Calculate entrance animation using calculator function (no hook violation)
+      const entranceAnimation = entranceAnimationHook.calculateAnimatedElements(currentTime);
+
+      // Update animation status ref for use outside draw function
+      entranceAnimationStatusRef.current = {
+        isAnimationActive: entranceAnimation.isAnimationActive,
+        animationProgress: entranceAnimation.animationProgress,
+      };
+
       // Safari optimization: Detect Safari once for viewport culling
       const isSafari =
         typeof navigator !== 'undefined' &&
@@ -943,12 +960,15 @@ export const useCanvasRenderer = ({
       // Phase 3.1: Check if we should use dirty region optimization
       const shouldUseDirtyRegions = dirtyRegionManager.current.regions.length > 0;
 
-      // Phase 2 Step 7 Action 3: Mobile frame skip optimization
-      if (shouldThrottleFrame(currentTime)) {
+      // FIXED: Skip frame throttling during entrance animation for smooth 60fps
+      const shouldSkipThrottling = entranceAnimation.isAnimationActive;
+
+      // Phase 2 Step 7 Action 3: Mobile frame skip optimization (skip during entrance)
+      if (!shouldSkipThrottling && shouldThrottleFrame(currentTime)) {
         return;
       }
 
-      if (browserPerf.frameThrottling) {
+      if (!shouldSkipThrottling && browserPerf.frameThrottling) {
         if (currentTime - frameThrottleRef.current < frameInterval) {
           // Phase 2 Step 2: Frame throttling handled by centralized manager
           return;
@@ -1055,9 +1075,12 @@ export const useCanvasRenderer = ({
         setIsProductAnimationActive(false);
       }
 
+      // Step 0: Track rendered elements for performance monitoring
+      let totalElementsRendered = 0;
+
       // Draw original products with animation - using PRE-CALCULATED animated values
       // NEW: Use animated placements from entrance animation hook for better performance
-      entranceAnimation.animatedProductPlacements.forEach((element) => {
+      entranceAnimation.animatedProductPlacements.forEach((element: AnimatedProductElement) => {
         drawImage(
           ctx,
           element.image.element,
@@ -1067,6 +1090,7 @@ export const useCanvasRenderer = ({
           element.height,
           element.animatedOpacity, // Pre-calculated opacity value
         );
+        totalElementsRendered++;
       });
 
       // Draw repeated grid products (always fully visible, no animation)
@@ -1113,6 +1137,7 @@ export const useCanvasRenderer = ({
                 placement.height,
                 1, // Always fully visible
               );
+              totalElementsRendered++;
             });
           });
         } else {
@@ -1128,6 +1153,7 @@ export const useCanvasRenderer = ({
                 placement.height,
                 1, // Always fully visible
               );
+              totalElementsRendered++;
             });
           });
         }
@@ -1271,33 +1297,36 @@ export const useCanvasRenderer = ({
 
       // Draw original create token squares with animation - using PRE-CALCULATED animated values
       // NEW: Use animated tokens from entrance animation hook for better performance
-      entranceAnimation.animatedTokenPositions.forEach((token, index) => {
-        const isCurrentlyHovered = index === hoveredTokenIndex;
-        const actualHoverProgress = isCurrentlyHovered ? currentHoverProgress : 0;
+      entranceAnimation.animatedTokenPositions.forEach(
+        (token: AnimatedTokenElement, index: number) => {
+          const isCurrentlyHovered = index === hoveredTokenIndex;
+          const actualHoverProgress = isCurrentlyHovered ? currentHoverProgress : 0;
 
-        if (token.animatedOpacity > 0) {
-          ctx.save();
-          ctx.globalAlpha = token.animatedOpacity; // Pre-calculated opacity
+          if (token.animatedOpacity > 0) {
+            ctx.save();
+            ctx.globalAlpha = token.animatedOpacity; // Pre-calculated opacity
 
-          const centerX = token.animatedX + unitSize / 2;
-          const centerY = token.animatedY + unitSize / 2;
-          ctx.translate(centerX, centerY);
-          ctx.scale(token.animatedScale, token.animatedScale); // Pre-calculated scale
-          ctx.translate(-centerX, -centerY);
+            const centerX = token.animatedX + unitSize / 2;
+            const centerY = token.animatedY + unitSize / 2;
+            ctx.translate(centerX, centerY);
+            ctx.scale(token.animatedScale, token.animatedScale); // Pre-calculated scale
+            ctx.translate(-centerX, -centerY);
 
-          drawCreateTokenSquare(
-            ctx,
-            token.animatedX, // Pre-calculated position
-            token.animatedY, // Pre-calculated position
-            actualHoverProgress,
-            unitSize,
-            logoImageRef.current,
-            spaceCanvasRef.current,
-            currentTime,
-          );
-          ctx.restore();
-        }
-      });
+            drawSimpleTokenSquare(
+              ctx,
+              token.animatedX, // Pre-calculated position
+              token.animatedY, // Pre-calculated position
+              actualHoverProgress,
+              unitSize,
+              logoImageRef.current,
+              spaceCanvasRef.current,
+              currentTime,
+            );
+            ctx.restore();
+            totalElementsRendered++;
+          }
+        },
+      );
 
       // HOVER ENHANCEMENT: Draw repeated create token squares with hover effects!
       // Repeated tokens are always visible (no entrance animation)
@@ -1348,7 +1377,7 @@ export const useCanvasRenderer = ({
                 hoveredRepeatedToken.worldY === token.worldY;
               const actualHoverProgress = isCurrentlyHoveredRepeated ? currentHoverProgress : 0;
 
-              drawCreateTokenSquare(
+              drawSimpleTokenSquare(
                 ctx,
                 token.worldX,
                 token.worldY,
@@ -1359,6 +1388,7 @@ export const useCanvasRenderer = ({
                 currentTime,
               );
               ctx.restore();
+              totalElementsRendered++;
             });
           });
         } else {
@@ -1375,7 +1405,7 @@ export const useCanvasRenderer = ({
                 hoveredRepeatedToken.worldY === token.worldY;
               const actualHoverProgress = isCurrentlyHoveredRepeated ? currentHoverProgress : 0;
 
-              drawCreateTokenSquare(
+              drawSimpleTokenSquare(
                 ctx,
                 token.worldX,
                 token.worldY,
@@ -1386,6 +1416,7 @@ export const useCanvasRenderer = ({
                 currentTime,
               );
               ctx.restore();
+              totalElementsRendered++;
             });
           });
         }
@@ -1405,8 +1436,13 @@ export const useCanvasRenderer = ({
         currentTime,
         unitSize,
       );
+      totalElementsRendered++; // Count home area as one element
 
       ctx.restore();
+
+      // Step 0: End performance monitoring for this frame
+      performanceMonitor.endFrame(totalElementsRendered);
+
       // Phase 2 Step 2: Animation frame handled by centralized manager
       // animationFrameRef.current = requestAnimationFrame(draw); // Removed
     };
@@ -1548,13 +1584,12 @@ export const useCanvasRenderer = ({
   const productsFullyVisible = useMemo(() => {
     return (
       placementsCalculated &&
-      !entranceAnimation.isAnimationActive &&
-      entranceAnimation.animationProgress >= 1
+      !entranceAnimationStatusRef.current.isAnimationActive &&
+      entranceAnimationStatusRef.current.animationProgress >= 1
     );
   }, [
     placementsCalculated,
-    entranceAnimation.isAnimationActive,
-    entranceAnimation.animationProgress,
+    // Note: Using ref, so dependencies are minimal - status updates in draw function
   ]);
 
   return {
