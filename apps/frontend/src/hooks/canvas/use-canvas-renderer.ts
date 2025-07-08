@@ -33,8 +33,8 @@ import {
 } from '../../lib/utils/event-listener-utils';
 // Note: useAnimationFrame removed - caused scroll timing issues, kept for background animations only
 
-// Phase 1: Import animation timing hook
-import { useCanvasAnimationTiming } from './use-canvas-animation-timing';
+// Phase 1: Import entrance animation hook
+import { useCanvasEntranceAnimation } from './use-canvas-entrance-animation';
 
 // Phase 2: Import background tile processor
 import { useBackgroundTileProcessor } from './use-background-tile-processor';
@@ -219,9 +219,7 @@ export const useCanvasRenderer = ({
     tileId: string;
   } | null>(null);
 
-  // Use a longer duration for entrance animation
-  const ENTRANCE_ANIMATION_DURATION = 800; // Longer duration for entrance animation
-  const HOVER_ANIMATION_DURATION = browserPerf.animationDuration; // Keep hover animation duration as is
+  // Animation durations now handled by entrance animation hook and browserPerf settings
 
   const frameThrottleRef = useRef(0);
   const targetFPS = browserPerf.targetFPS; // Centralized FPS setting
@@ -244,21 +242,26 @@ export const useCanvasRenderer = ({
   const stableCreateTokenPositions = useRef<Array<{ worldX: number; worldY: number }>>([]);
   const [placementsCalculated, setPlacementsCalculated] = useState(false);
 
-  // Phase 1: Animation timing coordination - EXTRACTED animation calculations
-  const {
-    productAnimationProgress,
-    hoverAnimationProgress,
-    currentHoverProgress,
-    hasAnimationStarted,
-    startProductAnimation,
-    updateHoverState,
-    updateAnimations,
-  } = useCanvasAnimationTiming({
-    isProductAnimationActive,
-    isHoveringToken,
-    imagesLoaded,
-    placementsCalculated,
-    canvasVisible,
+  // Hover animation state (simple state management for hover effects)
+  const [currentHoverProgress, setCurrentHoverProgress] = useState(0);
+  const hoverAnimationStartTime = useRef(0);
+
+  // Update hover state function
+  const updateHoverState = useCallback(
+    (isHovering: boolean, currentTime: number) => {
+      const wasHovering = currentHoverProgress > 0;
+      if (wasHovering === isHovering) return;
+      hoverAnimationStartTime.current = currentTime;
+    },
+    [currentHoverProgress],
+  );
+
+  // Phase 1: Centralized entrance animation - EXTRACTED animation calculations
+  const entranceAnimation = useCanvasEntranceAnimation({
+    productPlacements: stableProductPlacements.current,
+    tokenPositions: stableCreateTokenPositions.current,
+    shouldAnimate: canvasVisible && canvasReady && imagesLoaded && placementsCalculated,
+    unitSize,
   });
 
   const originalGridBounds = useRef<{
@@ -1019,29 +1022,50 @@ export const useCanvasRenderer = ({
       const productPlacements = stableProductPlacements.current;
       const createTokenPositions = stableCreateTokenPositions.current;
 
-      // Phase 1: Update animations and get progress - EXTRACTED calculation logic
-      const hasActiveAnimations = updateAnimations(currentTime);
-      const animationProgress = productAnimationProgress;
+      // Phase 1: Update hover animations and check if any animations are active
+      const updateHoverAnimationProgress = () => {
+        if (isHoveringToken || currentHoverProgress > 0) {
+          const elapsed = currentTime - hoverAnimationStartTime.current;
+          let progress = Math.min(1, elapsed / hoverAnimationDuration);
+          if (!isHoveringToken) {
+            progress = 1 - progress;
+          }
+
+          progress = browserPerf.useLinearEasing ? progress : easeInOutCubic(progress);
+          setCurrentHoverProgress(progress);
+
+          if (!isHoveringToken && progress <= 0) {
+            setCurrentHoverProgress(0);
+          }
+        }
+      };
+
+      updateHoverAnimationProgress();
+
+      // Check if any animations are active
+      const hasActiveAnimations = entranceAnimation.isAnimationActive || currentHoverProgress > 0;
+      const animationProgress = entranceAnimation.animationProgress;
 
       // Stop product animation when complete
-      if (isProductAnimationActive && !hasActiveAnimations && animationProgress >= 1) {
+      if (
+        isProductAnimationActive &&
+        !entranceAnimation.isAnimationActive &&
+        animationProgress >= 1
+      ) {
         setIsProductAnimationActive(false);
       }
 
-      // Draw original products with animation - using STABLE positions
-      // CRITICAL FIX: Show images at full opacity immediately, animate only when intended
-      const effectiveAnimationProgress = isProductAnimationActive ? animationProgress : 1;
-
-      productPlacements.forEach((placement) => {
+      // Draw original products with animation - using PRE-CALCULATED animated values
+      // NEW: Use animated placements from entrance animation hook for better performance
+      entranceAnimation.animatedProductPlacements.forEach((element) => {
         drawImage(
           ctx,
-          placement.image.element,
-          placement.x,
-          placement.y,
-          placement.width,
-          placement.height,
-          effectiveAnimationProgress,
-          unitSize,
+          element.image.element,
+          element.animatedX,
+          element.animatedY,
+          element.width,
+          element.height,
+          element.animatedOpacity, // Pre-calculated opacity value
         );
       });
 
@@ -1088,7 +1112,6 @@ export const useCanvasRenderer = ({
                 placement.width,
                 placement.height,
                 1, // Always fully visible
-                unitSize,
               );
             });
           });
@@ -1104,7 +1127,6 @@ export const useCanvasRenderer = ({
                 placement.width,
                 placement.height,
                 1, // Always fully visible
-                unitSize,
               );
             });
           });
@@ -1244,42 +1266,29 @@ export const useCanvasRenderer = ({
 
         lastMouseCheck.current = currentTime;
       }
-      // Phase 1: Hover animation now handled by animation timing hook
-      // (All hover progress calculations moved to useCanvasAnimationTiming)
+      // Phase 1: Hover animation now handled inline
+      // (Hover progress calculations simplified and moved inline)
 
-      // Calculate token animation progress
-      // CRITICAL FIX: Show tokens at full opacity immediately if animation not active
-      let tokenOpacity = 1;
-      let tokenScale = 1;
-
-      if (isProductAnimationActive && hasAnimationStarted) {
-        // Add token delay effect
-        const delayedProgress = Math.max(0, productAnimationProgress - 0.1); // 100ms delay effect
-        const normalizedProgress = Math.min(1, delayedProgress / 0.9); // Normalize to 0-1
-
-        tokenOpacity = normalizedProgress;
-        tokenScale = 0.95 + 0.05 * normalizedProgress;
-      }
-
-      // Draw original create token squares with animation
-      createTokenPositions.forEach((pos, index) => {
+      // Draw original create token squares with animation - using PRE-CALCULATED animated values
+      // NEW: Use animated tokens from entrance animation hook for better performance
+      entranceAnimation.animatedTokenPositions.forEach((token, index) => {
         const isCurrentlyHovered = index === hoveredTokenIndex;
         const actualHoverProgress = isCurrentlyHovered ? currentHoverProgress : 0;
 
-        if (tokenOpacity > 0) {
+        if (token.animatedOpacity > 0) {
           ctx.save();
-          ctx.globalAlpha = tokenOpacity;
+          ctx.globalAlpha = token.animatedOpacity; // Pre-calculated opacity
 
-          const centerX = pos.worldX + unitSize / 2;
-          const centerY = pos.worldY + unitSize / 2;
+          const centerX = token.animatedX + unitSize / 2;
+          const centerY = token.animatedY + unitSize / 2;
           ctx.translate(centerX, centerY);
-          ctx.scale(tokenScale, tokenScale);
+          ctx.scale(token.animatedScale, token.animatedScale); // Pre-calculated scale
           ctx.translate(-centerX, -centerY);
 
           drawCreateTokenSquare(
             ctx,
-            pos.worldX,
-            pos.worldY,
+            token.animatedX, // Pre-calculated position
+            token.animatedY, // Pre-calculated position
             actualHoverProgress,
             unitSize,
             logoImageRef.current,
@@ -1291,7 +1300,8 @@ export const useCanvasRenderer = ({
       });
 
       // HOVER ENHANCEMENT: Draw repeated create token squares with hover effects!
-      if (tokenOpacity > 0) {
+      // Repeated tokens are always visible (no entrance animation)
+      if (placementsCalculated) {
         // Safari optimization: Viewport culling for repeated create token squares
         if (isSafari) {
           // Reuse viewport bounds calculated above
@@ -1534,10 +1544,24 @@ export const useCanvasRenderer = ({
 
   // Phase 2: Old tile cache and streaming implementations moved to useBackgroundTileProcessor
 
+  // Calculate if products are fully visible (entrance animation complete)
+  const productsFullyVisible = useMemo(() => {
+    return (
+      placementsCalculated &&
+      !entranceAnimation.isAnimationActive &&
+      entranceAnimation.animationProgress >= 1
+    );
+  }, [
+    placementsCalculated,
+    entranceAnimation.isAnimationActive,
+    entranceAnimation.animationProgress,
+  ]);
+
   return {
     canvasRef: activeCanvasRef,
     canvasProgress,
     canvasReady,
+    productsFullyVisible,
     repeatedPlacements: repeatedPlacements.current,
     repeatedTokens: repeatedTokens.current,
   };

@@ -1,8 +1,7 @@
 'use client';
 
 import { useRef, useCallback } from 'react';
-import type { ImageInfo, ViewState } from '../../types/canvas';
-import { getDisplayDimensions } from '../../lib/canvas/image-type-utils';
+import type { ImageInfo } from '../../types/canvas';
 import { mobileUtils, getDeviceCapabilities } from '../../lib/utils/browser-utils';
 
 // Types from main hook

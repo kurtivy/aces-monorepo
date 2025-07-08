@@ -26,8 +26,6 @@ import {
   removeEventListenerSafe,
 } from '../../lib/utils/event-listener-utils';
 import { performEventListenerHealthCheck } from '../../lib/utils/event-listener-utils';
-// Phase 2 Step 8 Action 1: Navigation safety coordination
-import { useNavigationSafety } from '../../hooks/use-navigation-safety';
 // Note: useAnimationFrame removed - caused scroll timing issues, kept for background animations only
 
 type LoadingState = 'loading' | 'ready';
@@ -60,23 +58,17 @@ const InfiniteCanvas = () => {
       animationDuration: browserUtils.getAnimationDuration() / 1000, // Convert ms to seconds for useViewState
     });
 
-  // Phase 2 Step 8 Action 1: Navigation safety for canvas renderer callback
-  const { withNavigationSafety } = useNavigationSafety({
-    loadingState,
-    imagesLoaded,
-    canvasReady: false, // Initial state, will be updated by useCanvasRenderer
-  });
-
-  const { canvasReady, repeatedPlacements, repeatedTokens } = useCanvasRenderer({
-    images,
-    viewState,
-    imagesLoaded: imagesLoaded,
-    canvasVisible: loadingState !== 'loading' || hasSeenIntro,
-    onCreateTokenClick: withNavigationSafety(() => (window.location.href = '/create-token')),
-    imagePlacementMap: imagePlacementMapRef,
-    unitSize: unitSize,
-    canvasRef: canvasRef,
-  });
+  const { canvasReady, productsFullyVisible, repeatedPlacements, repeatedTokens } =
+    useCanvasRenderer({
+      images,
+      viewState,
+      imagesLoaded: imagesLoaded,
+      canvasVisible: loadingState !== 'loading' || hasSeenIntro,
+      onCreateTokenClick: () => (window.location.href = '/create-token'), // Temporarily remove withNavigationSafety
+      imagePlacementMap: imagePlacementMapRef,
+      unitSize: unitSize,
+      canvasRef: canvasRef,
+    });
 
   const imagesRef = useRef(images);
   imagesRef.current = images;
@@ -284,8 +276,16 @@ const InfiniteCanvas = () => {
 
   return (
     <>
-      {/* Navigation Menu - only show when canvas is fully loaded */}
-      {loadingState === 'ready' && canvasReady && <NavMenu />}
+      {/* Navigation Menu - fade in when products are fully visible */}
+      {loadingState === 'ready' && canvasReady && productsFullyVisible && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: 'easeOut', delay: 0.3 }}
+        >
+          <NavMenu />
+        </motion.div>
+      )}
 
       {/* Loading screen with new aces.fun intro animation */}
       {loadingState === 'loading' && !hasSeenIntro && (
@@ -331,8 +331,14 @@ const InfiniteCanvas = () => {
 
       {/* Modals and UI */}
       <ImageDetailsModal imageInfo={selectedImage} onClose={handleModalClose} />
-      {loadingState === 'ready' && canvasReady && !selectedImage && (
-        <HomeButton onClick={handleHomeClick} />
+      {loadingState === 'ready' && canvasReady && productsFullyVisible && !selectedImage && (
+        <motion.div
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.6, ease: 'easeOut', delay: 0.3 }}
+        >
+          <HomeButton onClick={handleHomeClick} />
+        </motion.div>
       )}
     </>
   );

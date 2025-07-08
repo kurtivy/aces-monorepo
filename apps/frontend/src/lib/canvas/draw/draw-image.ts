@@ -14,29 +14,14 @@ export const drawImage = (
   y: number,
   width: number,
   height: number,
-  animationProgress = 1, // Default to fully animated (no animation)
-  unitSize: number, // Ensure unitSize is used
+  opacity = 1, // Direct opacity value (pre-calculated)
 ) => {
   ctx.save();
-
-  // Animation logic - only applies when animationProgress < 1
-  let animatedY = y;
-  let opacity = 1;
-
-  if (animationProgress < 1) {
-    // Rise from bottom
-    const startOffset = unitSize * 0.3; // Make offset relative to unitSize
-    const currentOffset = startOffset * (1 - animationProgress);
-    animatedY = y + currentOffset;
-
-    // Simple fade-in
-    opacity = animationProgress;
-  }
 
   // MOBILE SHIMMER FIX: Round all coordinates to integer pixels
   // This prevents subpixel rendering that causes visual instability on mobile
   const roundedX = Math.round(x);
-  const roundedY = Math.round(animatedY);
+  const roundedY = Math.round(y);
   const roundedWidth = Math.round(width);
   const roundedHeight = Math.round(height);
 
