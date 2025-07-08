@@ -396,16 +396,31 @@ export const useBackgroundTileProcessor = ({
   );
 
   const processNextTile = useCallback(async (): Promise<TileData | null> => {
-    // Step 3: Skip processing if scrolling on low-end devices (80% improvement)
-    if (scrollState.current.isScrolling && deviceCapabilities.performanceTier === 'low') {
-      return null;
+    const now = performance.now();
+
+    // Step 6: Smart scroll-aware processing - balance infinite canvas vs scroll performance
+    if (scrollState.current.isScrolling) {
+      const velocity = scrollState.current.velocity;
+      const tier = deviceCapabilities.performanceTier;
+
+      // Apply smart rate limiting based on scroll intensity and device capability
+      let minDelay = 0;
+
+      if (velocity > 15 && tier === 'low') {
+        minDelay = 32; // ~30fps on low-end during fast scroll
+      } else if (velocity > 10 && tier === 'medium') {
+        minDelay = 16; // ~60fps on medium during fast scroll
+      } else if (velocity > 5) {
+        minDelay = 8; // ~120fps during normal scroll
+      }
+      // velocity <= 5: no rate limiting (immediate processing for edge exploration)
+
+      if (minDelay > 0 && now - scrollState.current.lastUpdateTime < minDelay) {
+        return null;
+      }
     }
 
-    // Step 3: Rate limit based on device capabilities
-    const now = performance.now();
-    if (now - scrollState.current.lastUpdateTime < processingLimits.processingDelay) {
-      return null;
-    }
+    // REMOVED: Aggressive rate limiting that was breaking infinite canvas
 
     const nextTilePriority = tileStreamingManager.current.getNextTile();
     if (!nextTilePriority) return null;
@@ -417,13 +432,13 @@ export const useBackgroundTileProcessor = ({
     tileStreamingManager.current.processingTile = tileId;
 
     try {
-      // Step 3: Generate tile data with performance monitoring
+      // Step 6: Generate tile data with immediate processing for infinite canvas
       const startTime = performance.now();
       const tileData = await generateTileInBackground(tile);
       const processingTime = performance.now() - startTime;
 
-      // Step 3: Adaptive quality based on processing time
-      if (processingTime > 10 && deviceCapabilities.performanceTier === 'low') {
+      // Step 6: Only simplify tiles if processing is consistently very slow (more lenient)
+      if (processingTime > 20 && deviceCapabilities.performanceTier === 'low') {
         // Reduce tile complexity for future tiles on low-end devices
         const simplifiedData = simplifyTileData(tileData);
         cacheTileData(tileId, simplifiedData);
