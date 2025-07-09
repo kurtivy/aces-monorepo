@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef, memo } from 'react';
-import { cn } from '@/lib/utils';
+import { useEffect, useRef, memo } from 'react';
+import Image from 'next/image';
 
 interface TradingViewWidgetProps {
   interval?: string;
@@ -14,7 +14,6 @@ const TradingViewWidget = memo(
 
     useEffect(() => {
       const currentContainer = container.current;
-
       // Clear previous widget
       if (currentContainer) {
         currentContainer.innerHTML = '';
@@ -25,41 +24,45 @@ const TradingViewWidget = memo(
       script.type = 'text/javascript';
       script.async = true;
       script.innerHTML = `
-      {
-        "allow_symbol_change": true,
-        "calendar": false,
-        "details": false,
-        "hide_side_toolbar": true,
-        "hide_top_toolbar": false,
-        "hide_legend": false,
-        "hide_volume": false,
-        "hotlist": false,
-        "interval": "${interval}",
-        "locale": "en",
-        "save_image": true,
-        "style": "1",
-        "symbol": "${symbol}",
-        "theme": "dark",
-        "timezone": "Etc/UTC",
-        "backgroundColor": "#0F0F0F",
-        "gridColor": "rgba(242, 242, 242, 0.06)",
-        "watchlist": [],
-        "withdateranges": false,
-        "compareSymbols": [],
-        "studies": [],
-        "autosize": true
-      }`;
+        {
+          "allow_symbol_change": true,
+          "calendar": false,
+          "details": false,
+          "hide_side_toolbar": true,
+          "hide_top_toolbar": false,
+          "hide_legend": false,
+          "hide_volume": false,
+          "hotlist": false,
+          "interval": "${interval}",
+          "locale": "en",
+          "save_image": true,
+          "style": "1",
+          "symbol": "${symbol}",
+          "theme": "dark",
+          "timezone": "Etc/UTC",
+          "backgroundColor": "#231F20",
+          "gridColor": "rgba(208, 178, 132, 0.1)",
+          "watchlist": [],
+          "withdateranges": false,
+          "compareSymbols": [],
+          "studies": [],
+          "autosize": true
+        }`;
 
       // Create widget container structure
       const widgetContainer = document.createElement('div');
       widgetContainer.className = 'tradingview-widget-container__widget';
-      widgetContainer.style.height = 'calc(100% - 32px)';
+      widgetContainer.style.height = '100%';
       widgetContainer.style.width = '100%';
 
       const copyright = document.createElement('div');
       copyright.className = 'tradingview-widget-copyright';
       copyright.innerHTML =
         '<a href="https://www.tradingview.com/" rel="noopener nofollow" target="_blank"><span class="blue-text">Track all markets on TradingView</span></a>';
+      copyright.style.position = 'absolute';
+      copyright.style.bottom = '8px';
+      copyright.style.left = '8px';
+      copyright.style.zIndex = '1';
 
       if (currentContainer) {
         currentContainer.appendChild(widgetContainer);
@@ -77,7 +80,7 @@ const TradingViewWidget = memo(
 
     return (
       <div
-        className="tradingview-widget-container"
+        className="tradingview-widget-container relative h-full w-full"
         ref={container}
         style={{ height: '100%', width: '100%' }}
       />
@@ -89,68 +92,112 @@ TradingViewWidget.displayName = 'TradingViewWidget';
 
 // Main Token Graph Component
 interface TokenGraphProps {
-  currentPrice?: number;
-  priceChange?: number;
+  tokenSymbol?: string;
+  title?: string;
+  imageSrc?: string;
+  tokenAddress?: string;
+  fdv?: string;
+  createdAt?: string;
   volume?: string;
 }
 
 export default function TokenGraph({
-  currentPrice = 2000,
-  priceChange = 2.5,
+  tokenSymbol = 'ETH',
+  title = 'South African Gold Krugerrands',
+  imageSrc = '/canvas-images/10xSouth-African-Gold-Krugerrands.webp',
+  tokenAddress = '0x7300...0219FE',
+  fdv = '$18.12m',
+  createdAt = '2 mo ago',
   volume = '$1.2M',
 }: TokenGraphProps) {
-  type TimeframeKey = '5m' | '15m' | '1H' | '4H' | '1D' | '1W';
-  const [timeframe, setTimeframe] = useState<TimeframeKey>('1D');
-  const timeframes: TimeframeKey[] = ['5m', '15m', '1H', '4H', '1D', '1W'];
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      // You could add a toast notification here
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
+    }
+  };
 
-  // Interval mapping for TradingView
-  const intervalMap: Record<TimeframeKey, string> = {
-    '5m': '5',
-    '15m': '15',
-    '1H': '60',
-    '4H': '240',
-    '1D': 'D',
-    '1W': 'W',
+  // Remove unused timeframe state and constants
+  const getSymbol = (tokenSymbol: string) => {
+    const symbolMap: Record<string, string> = {
+      ETH: 'BINANCE:ETHUSDT',
+      BTC: 'BINANCE:BTCUSDT',
+      KRUGER: 'BINANCE:ETHUSDT', // Default to ETH for custom tokens
+      RWA: 'BINANCE:ETHUSDT',
+    };
+    return symbolMap[tokenSymbol] || 'BINANCE:ETHUSDT';
   };
 
   return (
-    <div className="col-span-2 w-full rounded-lg bg-black/20 p-4">
+    <div className="h-full w-full">
       {/* Header with price info */}
-      <div className="mb-4 flex items-center justify-between">
-        <div className="space-y-1">
-          <h3 className="text-2xl font-bold text-white">{`$${currentPrice.toFixed(2)}`}</h3>
-          <div className="flex items-center gap-2">
-            <span
-              className={cn(
-                'text-sm font-medium',
-                priceChange >= 0 ? 'text-emerald-500' : 'text-red-500',
-              )}
-            >
-              {priceChange >= 0 ? '+' : ''}
-              {priceChange}%
-            </span>
-            <span className="text-sm text-gray-400">24h Volume: {volume}</span>
+      <div className="space-y-4 p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg border border-[#D0B284]/20">
+              <Image src={imageSrc} alt={title} width={48} height={48} className="object-cover" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-[#FFFFFF] font-syne">
+                {title} <span className="text-sm text-[#DCDDCC]">{`$${tokenSymbol}`}</span>
+              </h1>
+              <div className="mt-2">
+                <div className="flex items-center gap-2 rounded-md bg-[#231F20]/60 px-2 py-1.5 border border-[#D0B284]/20 w-fit">
+                  <span className="text-xs text-[#DCDDCC] font-mono">{tokenAddress}</span>
+                  <button
+                    onClick={() => copyToClipboard(tokenAddress)}
+                    className="flex h-5 w-5 items-center justify-center rounded bg-[#D0B284]/10 hover:bg-[#D0B284]/20 transition-colors border border-[#D0B284]/20"
+                  >
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="#D0B284"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-        <div className="flex gap-1 rounded-lg bg-black/40 p-1">
-          {timeframes.map((tf) => (
+          <div className="flex flex-col items-end gap-4">
+            <div className="flex items-center gap-6 text-sm">
+              <div className="flex flex-col items-center">
+                <span className="text-[#DCDDCC]">Vol</span>
+                <span className="text-white">{volume}</span>
+              </div>
+              <div className="flex flex-col items-center">
+                <span className="text-[#DCDDCC]">FDV</span>
+                <span className="text-white">{fdv}</span>
+              </div>
+              <div className="flex flex-col items-center">
+                <span className="text-[#DCDDCC]">Created At</span>
+                <span className="text-white">{createdAt}</span>
+              </div>
+            </div>
             <button
-              key={tf}
-              onClick={() => setTimeframe(tf)}
-              className={cn(
-                'rounded px-3 py-1 text-sm font-medium transition-colors',
-                timeframe === tf ? 'bg-white/10 text-white' : 'text-gray-400 hover:text-white',
-              )}
+              className="rounded-lg bg-[#D0B284] px-4 py-2 text-sm font-bold text-[#231F20] hover:bg-[#D0B284]/90 transition-colors w-full"
+              onClick={() => {
+                /* Add your buy action here */
+              }}
             >
-              {tf}
+              BUY RWA NOW
             </button>
-          ))}
+          </div>
         </div>
       </div>
 
       {/* TradingView Chart */}
-      <div className="h-[400px] w-full overflow-hidden rounded-lg bg-gray-900">
-        <TradingViewWidget interval={intervalMap[timeframe]} symbol="BINANCE:ETHUSDT" />
+      <div className="flex-1 h-[calc(100%-8rem)] w-full bg-[#231F20] rounded-lg border border-[#D0B284]/20 overflow-hidden">
+        <TradingViewWidget interval="D" symbol={getSymbol(tokenSymbol)} />
       </div>
     </div>
   );

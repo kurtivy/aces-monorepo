@@ -1,309 +1,233 @@
 import { notFound } from 'next/navigation';
-import Image from 'next/image';
-import { SAMPLE_METADATA } from '@/data/metadata';
 import PictureGallery from '@/components/rwa/picture-gallery';
 import TokenGraph from '@/components/rwa/token-graph';
 import SwapInterface from '@/components/rwa/swap-interface';
 import ProductDescription from '@/components/rwa/product-description';
-import BidsSection from '@/components/rwa/bids-section';
+import BiddingSystem from '@/components/rwa/bids-section';
 import TokenInformation from '@/components/rwa/token-information';
-import { Button } from '@/components/ui/button';
-import { ExternalLink, Globe, Twitter, Instagram, MessageCircle } from 'lucide-react';
 
-type TransactionType = 'buy' | 'sell';
-
-// Helper function to get item data
+// TODO: Replace with your actual API/database call
 async function getItemData(itemId: string) {
-  // Find the item in our metadata
-  const item = SAMPLE_METADATA.find((item) => item.id === itemId);
+  // Mock data structure matching your metadata format
+  const mockItems: Record<string, any> = {
+    '1': {
+      id: '1',
+      title: '10x South African Gold Krugerrands',
+      description: `A pristine collection of ten 1oz Gold Krugerrands from South Africa. First minted in 1967 to help market South African gold, the Krugerrand is one of the most recognized and liquid gold bullion coins in the world, making it a cornerstone for any serious hard asset portfolio. This set represents a significant and easily transferable store of value, prized by both collectors and investors for its history and 22-karat gold purity.`,
+      date: '2024-03-15',
+      ticker: '$KRUGER',
+      image: '/canvas-images/10xSouth-African-Gold-Krugerrands.webp',
+      rrp: 24000,
+      tokenPrice: 0.27365,
+      marketCap: 27365,
+      tokenSupply: 100000,
+    },
+  };
 
-  if (!item || !item.marketCap || !item.tokenPrice || !item.ticker || !item.image) {
-    return null;
+  // Handle placeholder route for design preview
+  if (itemId === '[itemId]') {
+    return mockItems['1']; // Return sample data for preview
   }
 
-  // Transform metadata to match our component props
+  // TODO: Replace with your actual data fetching logic
+  return mockItems[itemId] || null;
+}
+
+// Helper function to transform your metadata into component props
+function transformItemData(itemData: any) {
+  // Calculate derived values
+  const fdv = `$${(itemData.marketCap / 1000).toFixed(1)}K`;
+  const volume24h = `$${((itemData.marketCap * 0.05) / 1000).toFixed(1)}K`;
+  const holders = Math.floor(itemData.tokenSupply / 1000);
+  const liquidity = `$${((itemData.marketCap * 0.1) / 1000).toFixed(1)}K`;
+  const priceChange24h = (Math.random() - 0.5) * 20;
+
   return {
-    id: item.id,
-    title: item.title,
-    description: item.description,
-    category: 'Luxury Assets', // We can expand this later
-    brand: '', // Can be added to metadata later
-    condition: 'Excellent', // Can be added to metadata later
-    authenticity: 'Certified Authentic', // Can be added to metadata later
-    images: [item.image], // For now we only have one image
-    tokenSymbol: item.ticker,
-    tokenPrice: item.tokenPrice,
-    priceChange24h: 0, // To be implemented
-    fdv: `$${item.marketCap.toLocaleString()}`,
-    holders: Math.floor(Math.random() * 1000), // Placeholder
-    liquidity: `$${Math.floor(item.marketCap * 0.1).toLocaleString()}`, // Placeholder
-    volume24h: `$${Math.floor(item.marketCap * 0.05).toLocaleString()}`, // Placeholder
-    currentHighestBid: item.tokenPrice * 1000, // Placeholder
-    minimumBid: item.tokenPrice * 1100, // Placeholder
-    totalBids: Math.floor(Math.random() * 20), // Placeholder
-    website: 'https://example.com', // Placeholder
-    social: {
-      twitter: 'https://twitter.com/example',
-      instagram: 'https://instagram.com/example',
-      discord: 'https://discord.gg/example',
-    }, // Placeholder socials
+    // Basic info
+    id: itemData.id,
+    title: itemData.title,
+    description: itemData.description,
+    category: 'Precious Metals',
+    brand: 'South African Mint',
+    condition: 'Mint Condition',
+    authenticity: 'Certified Authentic',
+
+    // Images
+    images: [itemData.image, itemData.image, itemData.image],
+
+    // Token information
+    tokenSymbol: itemData.ticker.replace('$', ''),
+    tokenPrice: itemData.tokenPrice,
+    priceChange24h: priceChange24h,
+    fdv: fdv,
+    holders: holders,
+    liquidity: liquidity,
+    volume24h: volume24h,
+    tokenSupply: itemData.tokenSupply,
+    marketCap: itemData.marketCap,
+    rrp: itemData.rrp,
+
+    // Mock bidding data
+    currentHighestBid: (itemData.rrp * 0.8) / 2400,
+    minimumBid: (itemData.rrp * 0.82) / 2400,
+    totalBids: Math.floor(Math.random() * 20) + 5,
     bids: [
       {
         id: '1',
         bidder: '0x1234...5678',
-        amount: item.tokenPrice * 1000,
+        amount: (itemData.rrp * 0.8) / 2400,
         timestamp: '5 min ago',
         isWinning: true,
       },
-      { id: '2', bidder: '0x8765...4321', amount: item.tokenPrice * 950, timestamp: '12 min ago' },
-      { id: '3', bidder: '0x9876...1234', amount: item.tokenPrice * 900, timestamp: '25 min ago' },
+      {
+        id: '2',
+        bidder: '0x8765...4321',
+        amount: (itemData.rrp * 0.75) / 2400,
+        timestamp: '12 min ago',
+      },
     ],
+
+    // Mock transaction data
     recentTransactions: [
       {
-        type: 'buy' as TransactionType,
-        amount: '2,150',
-        price: item.tokenPrice.toFixed(5),
+        type: 'buy' as const,
+        amount: '1,250',
+        price: itemData.tokenPrice.toFixed(5),
         time: '3m ago',
         hash: '0x1234...5678',
       },
       {
-        type: 'sell' as TransactionType,
+        type: 'sell' as const,
         amount: '890',
-        price: (item.tokenPrice * 0.99).toFixed(5),
+        price: (itemData.tokenPrice * 0.98).toFixed(5),
         time: '8m ago',
         hash: '0x8765...4321',
       },
-      {
-        type: 'buy' as TransactionType,
-        amount: '1,200',
-        price: (item.tokenPrice * 1.01).toFixed(5),
-        time: '15m ago',
-        hash: '0x9876...1234',
-      },
     ],
+
+    // Social links
+    website: 'https://example.com',
+    social: {
+      twitter: 'https://twitter.com/example',
+    },
   };
 }
 
 interface PageProps {
-  params: Promise<{
+  params: {
     itemId: string;
-  }>;
+  };
 }
 
 export default async function ItemPage({ params }: PageProps) {
-  const resolvedParams = await params;
-  const { itemId } = resolvedParams;
-  const itemData = await getItemData(itemId);
+  const { itemId } = params;
+  const rawItemData = await getItemData(itemId);
 
-  if (!itemData) {
+  if (!rawItemData) {
     notFound();
   }
 
+  const itemData = transformItemData(rawItemData);
+
   return (
-    <div className="min-h-screen bg-black text-white">
-      {/* Background Effects */}
-      <div className="fixed inset-0 bg-gradient-to-br from-[#D0B264]/5 via-transparent to-emerald-500/5 pointer-events-none" />
-      <div className="fixed inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,black_100%)] pointer-events-none" />
-
-      <div className="relative z-10 p-4 lg:p-6">
-        <div className="max-w-[1600px] mx-auto">
-          {/* Asset Header */}
-          <div className="mb-6">
-            <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-white/10 p-6 shadow-2xl">
-              <div className="flex flex-col gap-6">
-                {/* Main Header Info */}
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                  <div className="flex items-center gap-4">
-                    <div className="w-16 h-16 rounded-xl overflow-hidden border-2 border-[#D0B264]/30 shadow-lg relative">
-                      <Image
-                        src={itemData.images[0]}
-                        alt={itemData.title}
-                        fill
-                        className="object-cover"
-                        sizes="64px"
-                        priority
-                      />
-                    </div>
-                    <div>
-                      <h1 className="text-2xl lg:text-3xl font-bold text-white mb-1">
-                        {itemData.title}
-                      </h1>
-                      <div className="flex items-center gap-4 text-sm text-gray-400">
-                        <span className="flex items-center gap-2">
-                          <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
-                          Live Trading
-                        </span>
-                        <span>•</span>
-                        <span>{itemData.category}</span>
-                        <span>•</span>
-                        <span>{itemData.tokenSymbol}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-6">
-                    <div className="text-right">
-                      <div className="text-2xl font-bold text-white font-mono">
-                        ${itemData.tokenPrice.toFixed(4)}
-                      </div>
-                      <div className="text-sm text-gray-400">Token Price</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-lg font-semibold text-[#D0B264]">{itemData.fdv}</div>
-                      <div className="text-sm text-gray-400">Market Cap</div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Social Links Section */}
-                <div className="flex flex-wrap gap-3 pt-4 border-t border-white/10">
-                  {itemData.website && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="border-[#D0B264]/30 text-[#D0B264] hover:bg-[#D0B264]/10 bg-transparent backdrop-blur-sm"
-                      asChild
-                    >
-                      <a href={itemData.website} target="_blank" rel="noopener noreferrer">
-                        <Globe className="h-4 w-4 mr-2" />
-                        Website
-                        <ExternalLink className="h-3 w-3 ml-1" />
-                      </a>
-                    </Button>
-                  )}
-
-                  {itemData.social.twitter && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10 bg-transparent backdrop-blur-sm"
-                      asChild
-                    >
-                      <a href={itemData.social.twitter} target="_blank" rel="noopener noreferrer">
-                        <Twitter className="h-4 w-4 mr-2" />
-                        Twitter
-                        <ExternalLink className="h-3 w-3 ml-1" />
-                      </a>
-                    </Button>
-                  )}
-
-                  {itemData.social.instagram && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="border-pink-500/30 text-pink-400 hover:bg-pink-500/10 bg-transparent backdrop-blur-sm"
-                      asChild
-                    >
-                      <a href={itemData.social.instagram} target="_blank" rel="noopener noreferrer">
-                        <Instagram className="h-4 w-4 mr-2" />
-                        Instagram
-                        <ExternalLink className="h-3 w-3 ml-1" />
-                      </a>
-                    </Button>
-                  )}
-
-                  {itemData.social.discord && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10 bg-transparent backdrop-blur-sm"
-                      asChild
-                    >
-                      <a href={itemData.social.discord} target="_blank" rel="noopener noreferrer">
-                        <MessageCircle className="h-4 w-4 mr-2" />
-                        Discord
-                        <ExternalLink className="h-3 w-3 ml-1" />
-                      </a>
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </div>
+    <div className="h-screen w-screen bg-[#231F20] flex">
+      {/* Main Container - no padding to match infinite canvas */}
+      <div className="w-full h-full flex">
+        {/* Left Section - 63.8% width */}
+        <div className="w-[63.8%] h-full flex flex-col">
+          {/* Chart Section with Title - 62% height */}
+          <div className="h-[62%] relative">
+            <TokenGraph
+              tokenSymbol={itemData.tokenSymbol}
+              currentPrice={itemData.tokenPrice}
+              priceChange={itemData.priceChange24h}
+              volume={itemData.volume24h}
+            />
           </div>
 
-          {/* Main Trading Interface Layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-            {/* Left Column - Main Trading Area */}
-            <div className="lg:col-span-3 space-y-6">
-              {/* Trading Chart - Full Width */}
-              <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden">
-                <div className="h-1 bg-gradient-to-r from-[#D0B264] via-[#D0B264]/70 to-emerald-500/50"></div>
-                <div className="p-6">
-                  <TokenGraph
-                    currentPrice={itemData.tokenPrice}
-                    priceChange={itemData.priceChange24h}
-                    volume={itemData.volume24h}
-                  />
-                </div>
+          {/* Bottom Section - 38% height, split into two */}
+          <div className="h-[38%] flex">
+            {/* Product Description - 50% of bottom section */}
+            <div className="w-1/2 h-full bg-[#DCDDCC] border-2 border-[#D0B264]">
+              <ProductDescription
+                title={itemData.title}
+                description={itemData.description}
+                category={itemData.category}
+                brand={itemData.brand}
+                condition={itemData.condition}
+                authenticity={itemData.authenticity}
+                website={itemData.website}
+                social={itemData.social}
+              />
+            </div>
+            {/* Swap Interface - 50% of bottom section */}
+            <div className="w-1/2 h-full bg-[#184D37] border-2 border-[#D0B264]">
+              <SwapInterface tokenSymbol={itemData.tokenSymbol} />
+            </div>
+          </div>
+        </div>
+
+        {/* Right Section - 36.2% width */}
+        <div className="w-[36.2%] h-full flex flex-col">
+          {/* Token Info - 39% height */}
+          <div className="h-[39%] bg-[#184D37] border-2 border-[#D0B264]">
+            <TokenInformation
+              tokenSymbol={itemData.tokenSymbol}
+              tokenPrice={itemData.tokenPrice}
+              priceChange24h={itemData.priceChange24h}
+              fdv={itemData.fdv}
+              holders={itemData.holders}
+              liquidity={itemData.liquidity}
+              volume24h={itemData.volume24h}
+              recentTransactions={itemData.recentTransactions}
+            />
+          </div>
+
+          {/* Bottom Section Container */}
+          <div className="flex-1 flex">
+            {/* Main Content Column - 73.2% of bottom section */}
+            <div className="w-[73.2%] h-full flex flex-col">
+              {/* Gallery - 34.7% of total height */}
+              <div className="h-[56.9%] bg-[#928357] border-2 border-[#D0B264]">
+                <PictureGallery images={itemData.images} title={itemData.title} />
               </div>
-
-              {/* Product Description - Full Width */}
-              <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden">
-                <div className="h-1 bg-gradient-to-r from-emerald-500/50 to-[#D0B264]/70"></div>
-                <div className="p-6">
-                  <ProductDescription
-                    description={itemData.description}
-                    category={itemData.category}
-                    brand={itemData.brand}
-                    condition={itemData.condition}
-                    authenticity={itemData.authenticity}
-                    website={itemData.website}
-                    social={itemData.social}
-                  />
-                </div>
-              </div>
-
-              {/* Gallery and Bidding Section - Side by Side */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Picture Gallery - 2/3 width */}
-                <div className="lg:col-span-2">
-                  <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden h-full">
-                    <div className="h-1 bg-gradient-to-r from-[#D0B264]/70 to-emerald-500/50"></div>
-                    <div className="p-6">
-                      <PictureGallery images={itemData.images} title={itemData.title} />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Bidding Section - 1/3 width */}
-                <div className="lg:col-span-1">
-                  <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden h-full">
-                    <div className="h-1 bg-gradient-to-r from-emerald-500/50 to-[#D0B264]/70"></div>
-                    <div className="p-6">
-                      <BidsSection
-                        currentHighestBid={itemData.currentHighestBid}
-                        minimumBid={itemData.minimumBid}
-                        totalBids={itemData.totalBids}
-                        bids={itemData.bids}
-                      />
-                    </div>
-                  </div>
-                </div>
+              {/* Bids - Remaining height */}
+              <div className="flex-1 bg-[#928357] border-2 border-[#D0B264]">
+                <BiddingSystem
+                  currentHighestBid={itemData.currentHighestBid}
+                  minimumBid={itemData.minimumBid}
+                  totalBids={itemData.totalBids}
+                  bids={itemData.bids}
+                />
               </div>
             </div>
 
-            {/* Right Sidebar - Swap and Token Info Stacked */}
-            <div className="lg:col-span-2 space-y-6">
-              {/* Swap Interface */}
-              <div>
-                <SwapInterface tokenSymbol={itemData.tokenSymbol} />
-              </div>
-
-              {/* Token Information */}
-              <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden">
-                <div className="h-1 bg-gradient-to-r from-emerald-500/50 via-[#D0B264]/70 to-emerald-500/50"></div>
-                <div className="p-6">
-                  <TokenInformation
-                    tokenSymbol={itemData.tokenSymbol}
-                    tokenPrice={itemData.tokenPrice}
-                    priceChange24h={itemData.priceChange24h}
-                    fdv={itemData.fdv}
-                    holders={itemData.holders}
-                    liquidity={itemData.liquidity}
-                    volume24h={itemData.volume24h}
-                    recentTransactions={itemData.recentTransactions}
-                  />
+            {/* Right Column - 26.8% of bottom section */}
+            <div className="w-[26.8%] h-full flex flex-col">
+              {/* NFT Login - 23% of total height */}
+              <div className="h-[37.7%] bg-[#D7BF75] border-2 border-[#D0B264]">
+                <div className="h-full flex items-center justify-center">
+                  <div className="text-center">
+                    <p className="text-xs text-[#231F20] font-medium mb-1">Own this item?</p>
+                    <button className="text-xs bg-[#231F20] text-[#FFFFFF] px-3 py-1 rounded-lg font-medium hover:bg-[#184D37] transition-colors">
+                      Login
+                    </button>
+                  </div>
                 </div>
               </div>
+              {/* Search Similar - 23% of total height */}
+              <div className="h-[37.7%] bg-[#D7BF75] border-2 border-[#D0B264]">
+                <div className="h-full flex items-center justify-center">
+                  <div className="text-center">
+                    <p className="text-xs text-[#231F20] font-medium mb-1">Search Similar</p>
+                    <button className="text-xs bg-[#231F20] text-[#FFFFFF] px-3 py-1 rounded-lg hover:bg-[#184D37] transition-colors">
+                      Find
+                    </button>
+                  </div>
+                </div>
+              </div>
+              {/* Empty Space - Remaining height */}
+              <div className="flex-1 bg-[#231F20] border-2 border-[#D0B264]"></div>
             </div>
           </div>
         </div>
@@ -312,20 +236,18 @@ export default async function ItemPage({ params }: PageProps) {
   );
 }
 
-// Generate metadata for SEO
 export async function generateMetadata({ params }: PageProps) {
-  const resolvedParams = await params;
-  const { itemId } = resolvedParams;
-  const itemData = await getItemData(itemId);
+  const { itemId } = params;
+  const rawItemData = await getItemData(itemId);
 
-  if (!itemData) {
+  if (!rawItemData) {
     return {
       title: 'Item Not Found',
     };
   }
 
   return {
-    title: `${itemData.title} - RWA Marketplace`,
-    description: itemData.description,
+    title: `${rawItemData.title} - RWA Marketplace`,
+    description: rawItemData.description,
   };
 }
