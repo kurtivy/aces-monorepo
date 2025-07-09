@@ -4,30 +4,22 @@ import type React from 'react';
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import type { ImageInfo, ViewState } from '../../types/canvas';
 import { drawHomeArea, drawImage } from '../../lib/canvas/draw';
-import { drawSimpleTokenSquare } from '../../lib/canvas/draw/draw-simple-token-square';
+import { drawTokenSquare } from '../../lib/canvas/draw/draw-token-square';
 import {
   markSpaceOccupied,
   canPlaceImage,
   getImageCandidatesForPosition,
   recordImagePlacement,
   resetGlobalPlacementTracking,
-  getImageUsageStats,
 } from '../../lib/canvas/grid-placement';
 import { getDisplayDimensions } from '../../lib/canvas/image-type-utils';
 import { useSpaceAnimation } from '../use-space-animation';
-import {
-  easeInOutCubic,
-  roundTo3Decimals,
-  isApproximatelyEqual,
-} from '../../lib/canvas/math-utils';
+import { easeInOutCubic, isApproximatelyEqual } from '../../lib/canvas/math-utils';
 import { useCoordinatedResize } from '../use-coordinated-resize';
 import {
-  browserUtils,
   getBrowserPerformanceSettings,
   getDeviceCapabilities,
-  mobileUtils,
 } from '../../lib/utils/browser-utils';
-import { getInteractionCanvasQuality } from '../../lib/utils/animation-coordinator';
 import {
   addEventListenerSafe,
   removeEventListenerSafe,
@@ -38,11 +30,7 @@ import {
   batchTransformElements,
   worldToScreen,
 } from '../../lib/utils/coordinate-transforms';
-import {
-  ViewportCuller,
-  createScreenViewportBounds,
-  createWorldViewportBounds,
-} from '../../lib/utils/viewport-culling';
+import { ViewportCuller, createWorldViewportBounds } from '../../lib/utils/viewport-culling';
 
 // Note: useAnimationFrame removed - caused scroll timing issues, kept for background animations only
 
@@ -1427,7 +1415,7 @@ export const useCanvasRenderer = ({
           ctx.scale(tokenElement.original.animatedScale, tokenElement.original.animatedScale);
           ctx.translate(-centerX, -centerY);
 
-          drawSimpleTokenSquare(
+          drawTokenSquare(
             ctx,
             tokenElement.screenX,
             tokenElement.screenY,
@@ -1487,7 +1475,7 @@ export const useCanvasRenderer = ({
             hoveredRepeatedToken.worldY === tokenElement.original.worldY;
           const actualHoverProgress = isCurrentlyHoveredRepeated ? currentHoverProgress : 0;
 
-          drawSimpleTokenSquare(
+          drawTokenSquare(
             ctx,
             tokenElement.screenX,
             tokenElement.screenY,
