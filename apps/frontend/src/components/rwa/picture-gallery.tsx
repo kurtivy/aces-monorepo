@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Image from 'next/image';
 import { ChevronLeft, ChevronRight, Expand } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTrigger, DialogTitle } from '@/components/ui/dialog';
 
 interface PictureGalleryProps {
   images?: string[];
@@ -31,18 +31,10 @@ export default function PictureGallery({
   };
 
   return (
-    <div className="h-full flex flex-col p-2">
-      {/* Compact Header */}
-      <div className="flex items-center justify-between h-[8%] px-1">
-        <h3 className="text-sm font-bold text-white">Gallery</h3>
-        <div className="text-xs text-gray-400">
-          {currentImage + 1} / {images.length}
-        </div>
-      </div>
-
-      {/* Main Image - adjusted to take up remaining space while maintaining aspect ratio */}
-      <div className="relative h-[84%] group">
-        <div className="h-full w-full overflow-hidden bg-black/20 border border-white/10">
+    <div className="h-full flex flex-col p-0">
+      {/* Main Image - touches top and sides */}
+      <div className="relative flex-1 group rounded-t-2xl overflow-hidden">
+        <div className="h-full w-full overflow-hidden bg-black/20 border-b border-white/10">
           <Image
             src={images[currentImage] || '/placeholder.svg'}
             alt={`${title} - Image ${currentImage + 1}`}
@@ -52,7 +44,7 @@ export default function PictureGallery({
           />
         </div>
 
-        {/* Navigation Arrows - made smaller */}
+        {/* Navigation Arrows - optional, can be removed if you want a cleaner look */}
         {images.length > 1 && (
           <>
             <Button
@@ -74,7 +66,7 @@ export default function PictureGallery({
           </>
         )}
 
-        {/* Expand Button - made smaller */}
+        {/* Expand Button - optional, can be removed if you want a cleaner look */}
         <Dialog>
           <DialogTrigger asChild>
             <Button
@@ -86,6 +78,9 @@ export default function PictureGallery({
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-4xl bg-black/90 backdrop-blur-xl border-white/20">
+            <DialogTitle className="sr-only">
+              {title} - Image {currentImage + 1}
+            </DialogTitle>
             <div className="aspect-square rounded-lg overflow-hidden">
               <Image
                 src={images[currentImage] || '/placeholder.svg'}
@@ -99,9 +94,9 @@ export default function PictureGallery({
         </Dialog>
       </div>
 
-      {/* Dot Indicators - made more compact */}
+      {/* Dot Indicators - directly below image, minimal spacing */}
       {images.length > 1 && (
-        <div className="flex justify-center gap-1 h-[8%] items-center">
+        <div className="flex justify-center gap-1 py-2 items-center rounded-b-2xl bg-transparent">
           {images.map((_, index) => (
             <button
               key={index}

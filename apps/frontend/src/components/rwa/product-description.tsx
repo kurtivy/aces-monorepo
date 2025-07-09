@@ -46,17 +46,10 @@ export default function ProductDescription({
           <span className="text-white ml-2 font-medium">{brand}</span>
         </div>
         <div>
-          <span className="text-gray-400">Condition:</span>
-          <span className="text-white ml-2 font-medium">{condition}</span>
-        </div>
-        <div>
           <span className="text-gray-400">Category:</span>
           <span className="text-white ml-2 font-medium">{category}</span>
         </div>
-        <div>
-          <span className="text-gray-400">Authentication:</span>
-          <span className="text-white ml-2 font-medium">{authenticity}</span>
-        </div>
+        q{' '}
       </div>
 
       {/* Description */}

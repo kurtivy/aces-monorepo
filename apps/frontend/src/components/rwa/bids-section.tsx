@@ -36,65 +36,70 @@ export default function BidsSection({
   };
 
   return (
-    <div className="space-y-4 h-full flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-bold text-white">Current Bids</h3>
+    <div className="h-full flex flex-col space-y-3 bg-[#928357] text-white">
+      {/* Compact Header */}
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-sm font-bold text-[#D0B264]">Bids</h3>
         <div className="flex items-center gap-1 text-green-400">
-          <TrendingUp className="h-4 w-4" />
-          <span className="text-sm font-medium">{totalBids} bids</span>
+          <TrendingUp className="h-3 w-3" />
+          <span className="text-xs font-medium">{totalBids}</span>
         </div>
       </div>
 
-      {/* Current Bid Info */}
-      <div className="bg-white/5 rounded-lg p-4 border border-white/10">
-        <div className="text-sm text-gray-400 mb-1">Highest Bid</div>
-        <div className="text-2xl font-bold text-white font-mono mb-1">
+      {/* Compact Current Bid Info */}
+      <div className="bg-black/20 rounded-md border border-[#D0B264]/30">
+        <div className="text-xs text-gray-300 mb-1">Top Bid</div>
+        <div className="text-lg font-bold text-white font-mono mb-1">
           {currentHighestBid.toFixed(2)} ETH
         </div>
-        <div className="text-xs text-gray-400">≈ ${(currentHighestBid * 2400).toFixed(2)} USD</div>
+        <div className="text-xs text-gray-400">≈ ${(currentHighestBid * 2400).toFixed(0)}</div>
       </div>
 
-      {/* Place Bid Button */}
+      {/* Compact Place Bid Button */}
       <Button
         onClick={handleGoToBidding}
-        className="w-full bg-[#D0B264] hover:bg-[#D0B264]/90 text-black font-semibold py-3 transition-all duration-200"
+        className="w-full bg-[#D0B264] hover:bg-[#D0B264]/90 text-black font-semibold py-2 text-xs transition-all duration-200"
+        size="sm"
       >
-        <Gavel className="h-4 w-4 mr-2" />
+        <Gavel className="h-3 w-3 mr-1" />
         Place Bid
       </Button>
 
-      {/* Recent Bids */}
-      <div className="flex-1 flex flex-col">
-        <h4 className="text-sm font-semibold text-[#D0B264] mb-3">Recent Bids</h4>
-        <div className="space-y-2 flex-1 overflow-y-auto max-h-64">
-          {bids.map((bid) => (
+      {/* Compact Recent Bids */}
+      <div className="flex-1 flex flex-col min-h-0">
+        <h4 className="text-xs font-semibold text-[#D0B264] mb-2">Recent</h4>
+        <div className="flex-1 overflow-y-auto space-y-1">
+          {bids.slice(0, 4).map((bid) => (
             <div
               key={bid.id}
-              className={`flex items-center justify-between p-3 rounded-lg transition-colors border ${
+              className={`flex items-center justify-between p-2 rounded-md transition-colors border ${
                 bid.isWinning
-                  ? 'bg-green-500/10 border-green-500/30'
-                  : 'bg-white/5 border-white/10 hover:bg-white/10'
+                  ? 'bg-green-500/20 border-green-500/40'
+                  : 'bg-black/10 border-white/10 hover:bg-black/20'
               }`}
             >
-              <div className="flex items-center gap-2">
-                <Avatar className="h-6 w-6">
-                  <AvatarFallback className="bg-[#D0B264]/20 text-[#D0B264] text-xs">
-                    <User className="h-3 w-3" />
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <Avatar className="h-4 w-4 flex-shrink-0">
+                  <AvatarFallback className="bg-[#D0B264]/30 text-[#D0B264] text-xs">
+                    <User className="h-2 w-2" />
                   </AvatarFallback>
                 </Avatar>
-                <div>
-                  <div className="text-xs font-medium text-white">{bid.bidder}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-medium text-white truncate">
+                    {bid.bidder.slice(0, 8)}...
+                  </div>
                   <div className="text-xs text-gray-400">{bid.timestamp}</div>
                 </div>
               </div>
-              <div className="text-right">
+              <div className="text-right flex-shrink-0 ml-2">
                 <div
-                  className={`text-xs font-mono font-semibold ${bid.isWinning ? 'text-green-400' : 'text-white'}`}
+                  className={`text-xs font-mono font-semibold ${
+                    bid.isWinning ? 'text-green-400' : 'text-white'
+                  }`}
                 >
-                  {bid.amount.toFixed(2)} ETH
+                  {bid.amount.toFixed(1)}
                 </div>
-                {bid.isWinning && <div className="text-xs text-green-400">Winning</div>}
+                {bid.isWinning && <div className="text-xs text-green-400">Win</div>}
               </div>
             </div>
           ))}

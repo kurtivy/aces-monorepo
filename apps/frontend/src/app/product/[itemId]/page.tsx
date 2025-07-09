@@ -145,10 +145,11 @@ export default async function ItemPage({ params }: PageProps) {
             />
           </div>
 
-          {/* Bottom Section - 38% height, split into two */}
+          {/* Combined Gallery + Product Description Section - 38% height */}
+          {/* Product Description + Gallery Section - 38% height */}
           <div className="h-[38%] flex">
-            {/* Product Description - 50% of bottom section */}
-            <div className="w-1/2 h-full bg-[#DCDDCC] border-2 border-[#D0B264]">
+            {/* Product Description - takes up most space (75%) */}
+            <div className="w-[75%] h-full border border-[#D0B264]/40 overflow-y-auto rounded-2xl">
               <ProductDescription
                 title={itemData.title}
                 description={itemData.description}
@@ -160,9 +161,9 @@ export default async function ItemPage({ params }: PageProps) {
                 social={itemData.social}
               />
             </div>
-            {/* Swap Interface - 50% of bottom section */}
-            <div className="w-1/2 h-full bg-[#184D37] border-2 border-[#D0B264]">
-              <SwapInterface tokenSymbol={itemData.tokenSymbol} />
+            {/* Picture Gallery - on the right (25%) */}
+            <div className="w-[25%] h-full border border-[#D0B264]/40 overflow-y-auto rounded-2xl">
+              <PictureGallery images={itemData.images} title={itemData.title} />
             </div>
           </div>
         </div>
@@ -170,7 +171,7 @@ export default async function ItemPage({ params }: PageProps) {
         {/* Right Section - 36.2% width */}
         <div className="w-[36.2%] h-full flex flex-col">
           {/* Token Info - 39% height */}
-          <div className="h-[39%] bg-[#184D37] border-2 border-[#D0B264]/40 rounded-2xl">
+          <div className="h-[39%] bg-[#184D37] border border-[#D0B264]/40 rounded-2xl">
             <TokenInformation
               tokenSymbol={itemData.tokenSymbol}
               tokenPrice={itemData.tokenPrice}
@@ -183,16 +184,24 @@ export default async function ItemPage({ params }: PageProps) {
             />
           </div>
 
-          {/* Bottom Section Container */}
-          <div className="flex-1 flex">
-            {/* Main Content Column - 73.2% of bottom section */}
-            <div className="w-[73.2%] h-full flex flex-col">
-              {/* Gallery - 34.7% of total height */}
-              <div className="h-[56.9%] bg-[#928357] border-2 border-[#D0B264]">
-                <PictureGallery images={itemData.images} title={itemData.title} />
+          {/* Bottom Section Container - 61% height */}
+          <div className="h-[61%] flex">
+            {/* Left Column - 26.8% of right section */}
+            <div className="w-[26.8%] h-full flex flex-col">
+              {/* Own NFT + Login Button - smaller height, more prominent */}
+              <div className="h-[15%] bg-[#D0B264] border-2 border-[#D0B264] rounded-lg ">
+                <div className="h-full flex items-center justify-center">
+                  <div className="text-center">
+                    <p className="text-[10px] text-[#231F20] font-medium mb-1">Own this item?</p>
+                    <button className="text-[10px] bg-[#231F20] text-[#FFFFFF] px-4w py-2 rounded-lg font-bold hover:bg-[#184D37] transition-colors shadow-lg border border-[#D0B264]">
+                      LOGIN
+                    </button>
+                  </div>
+                </div>
               </div>
-              {/* Bids - Remaining height */}
-              <div className="flex-1 bg-[#928357] border-2 border-[#D0B264]">
+
+              {/* Bidding System - takes remaining space */}
+              <div className="flex-1 bg-[#928357] border-2 border-[#D0B264] rounded-lg  p-2">
                 <BiddingSystem
                   currentHighestBid={itemData.currentHighestBid}
                   minimumBid={itemData.minimumBid}
@@ -202,32 +211,12 @@ export default async function ItemPage({ params }: PageProps) {
               </div>
             </div>
 
-            {/* Right Column - 26.8% of bottom section */}
-            <div className="w-[26.8%] h-full flex flex-col">
-              {/* NFT Login - 23% of total height */}
-              <div className="h-[37.7%] bg-[#D7BF75] border-2 border-[#D0B264]">
-                <div className="h-full flex items-center justify-center">
-                  <div className="text-center">
-                    <p className="text-xs text-[#231F20] font-medium mb-1">Own this item?</p>
-                    <button className="text-xs bg-[#231F20] text-[#FFFFFF] px-3 py-1 rounded-lg font-medium hover:bg-[#184D37] transition-colors">
-                      Login
-                    </button>
-                  </div>
-                </div>
+            {/* Right Column - 73.2% of right section */}
+            <div className="w-[73.2%] h-full">
+              {/* Swap Interface moved to bottom to reach the bottom */}
+              <div className="h-full bg-[#184D37] border-2 border-[#D0B264] flex flex-col">
+                <SwapInterface tokenSymbol={itemData.tokenSymbol} />
               </div>
-              {/* Search Similar - 23% of total height */}
-              <div className="h-[37.7%] bg-[#D7BF75] border-2 border-[#D0B264]">
-                <div className="h-full flex items-center justify-center">
-                  <div className="text-center">
-                    <p className="text-xs text-[#231F20] font-medium mb-1">Search Similar</p>
-                    <button className="text-xs bg-[#231F20] text-[#FFFFFF] px-3 py-1 rounded-lg hover:bg-[#184D37] transition-colors">
-                      Find
-                    </button>
-                  </div>
-                </div>
-              </div>
-              {/* Empty Space - Remaining height */}
-              <div className="flex-1 bg-[#231F20] border-2 border-[#D0B264]"></div>
             </div>
           </div>
         </div>
