@@ -171,10 +171,6 @@ export default function TokenGraph({
           <div className="flex flex-col items-end gap-4">
             <div className="flex items-center gap-6 text-sm">
               <div className="flex flex-col items-center">
-                <span className="text-[#DCDDCC]">Vol</span>
-                <span className="text-white">{volume}</span>
-              </div>
-              <div className="flex flex-col items-center">
                 <span className="text-[#DCDDCC]">FDV</span>
                 <span className="text-white">{fdv}</span>
               </div>

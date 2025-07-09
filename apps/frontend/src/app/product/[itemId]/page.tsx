@@ -170,7 +170,7 @@ export default async function ItemPage({ params }: PageProps) {
         {/* Right Section - 36.2% width */}
         <div className="w-[36.2%] h-full flex flex-col">
           {/* Token Info - 39% height */}
-          <div className="h-[39%] bg-[#184D37] border-2 border-[#D0B264]">
+          <div className="h-[39%] bg-[#184D37] border-2 border-[#D0B264]/40 rounded-2xl">
             <TokenInformation
               tokenSymbol={itemData.tokenSymbol}
               tokenPrice={itemData.tokenPrice}

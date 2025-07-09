@@ -1,128 +1,222 @@
 'use client';
 
-import { TrendingUp, TrendingDown, Users, Droplets, Activity, Clock } from 'lucide-react';
+import { TrendingUp, Users, Droplets, Activity } from 'lucide-react';
+import { useState } from 'react';
 
 interface TokenInformationProps {
-  tokenSymbol?: string;
   tokenPrice?: number;
-  priceChange24h?: number;
+  priceChange?: {
+    '5m': number;
+    '1h': number;
+    '6h': number;
+    '1d': number;
+  };
   fdv?: string;
   holders?: number;
   liquidity?: string;
-  volume24h?: string;
-  recentTransactions?: Array<{
-    type: 'buy' | 'sell';
-    amount: string;
-    price: string;
-    time: string;
-    hash: string;
-  }>;
+  volume?: {
+    '5m': string;
+    '1h': string;
+    '6h': string;
+    '1d': string;
+  };
+  transactions?: {
+    '5m': {
+      buys: number;
+      sells: number;
+      makers: number;
+      buyers: number;
+      sellers: number;
+    };
+    '1h': {
+      buys: number;
+      sells: number;
+      makers: number;
+      buyers: number;
+      sellers: number;
+    };
+    '6h': {
+      buys: number;
+      sells: number;
+      makers: number;
+      buyers: number;
+      sellers: number;
+    };
+    '1d': {
+      buys: number;
+      sells: number;
+      makers: number;
+      buyers: number;
+      sellers: number;
+    };
+  };
 }
 
 export default function TokenInformation({
-  tokenSymbol = 'RWA',
-  tokenPrice = 0.02734,
-  priceChange24h = 12.65,
-  fdv = '$2.1M',
-  holders = 1247,
-  liquidity = '$156K',
-  volume24h = '$89.2K',
-  recentTransactions = [
-    { type: 'buy', amount: '1,250', price: '0.02745', time: '2m ago', hash: '0x1234...5678' },
-    { type: 'sell', amount: '890', price: '0.02738', time: '4m ago', hash: '0x8765...4321' },
-    { type: 'buy', amount: '2,100', price: '0.02742', time: '7m ago', hash: '0x9876...1234' },
-    { type: 'buy', amount: '567', price: '0.02739', time: '12m ago', hash: '0x5432...8765' },
-    { type: 'sell', amount: '1,890', price: '0.02735', time: '18m ago', hash: '0x2468...1357' },
-  ],
+  tokenPrice = 0.01884,
+  priceChange = {
+    '5m': 0.04,
+    '1h': -6.31,
+    '6h': -6.26,
+    '1d': -5.24,
+  },
+  fdv = '$18.74m',
+  holders = 26261,
+  liquidity = '$864.13k',
+  volume = {
+    '5m': '$45.19k',
+    '1h': '$145.19k',
+    '6h': '$245.19k',
+    '1d': '$345.19k',
+  },
+  transactions = {
+    '5m': {
+      buys: 1404,
+      sells: 170,
+      makers: 1378,
+      buyers: 1263,
+      sellers: 115,
+    },
+    '1h': {
+      buys: 2804,
+      sells: 340,
+      makers: 2756,
+      buyers: 2526,
+      sellers: 230,
+    },
+    '6h': {
+      buys: 5608,
+      sells: 680,
+      makers: 5512,
+      buyers: 5052,
+      sellers: 460,
+    },
+    '1d': {
+      buys: 11216,
+      sells: 1360,
+      makers: 11024,
+      buyers: 10104,
+      sellers: 920,
+    },
+  },
 }: TokenInformationProps) {
-  const isPositive = priceChange24h >= 0;
+  const [selectedTimeframe, setSelectedTimeframe] = useState<'5m' | '1h' | '6h' | '1d'>('1h');
+  const currentTransactions = transactions[selectedTimeframe];
+  const currentVolume = volume[selectedTimeframe];
 
   return (
-    <div className="space-y-4">
-      {/* Token Price Header */}
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-bold text-white">Token Information</h3>
-        <div
-          className={`flex items-center gap-1 ${isPositive ? 'text-green-400' : 'text-red-400'}`}
-        >
-          {isPositive ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-          <span className="text-sm font-medium">
-            {isPositive ? '+' : ''}
-            {priceChange24h.toFixed(2)}%
-          </span>
+    <div className="h-full px-0 py-4 flex flex-col gap-3">
+      {/* Token Price and Volume */}
+      <div className="flex items-center justify-between px-4">
+        <div className="flex items-center gap-3">
+          <div className="text-xs text-gray-400">Price</div>
+          <div className="text-3xl font-mono font-bold text-white">${tokenPrice.toFixed(5)}</div>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="text-xs text-gray-400">{selectedTimeframe} Volume</div>
+          <div className="flex items-center gap-1.5">
+            <Activity className="h-3 w-3 text-[#D0B264]" />
+            <span className="text-sm font-mono text-white">{currentVolume}</span>
+          </div>
         </div>
       </div>
 
-      {/* Current Price */}
-      <div className="bg-white/5 rounded-lg p-4 border border-white/10">
-        <div className="text-sm text-gray-400 mb-1">${tokenSymbol} Price</div>
-        <div className="text-2xl font-bold text-white font-mono">${tokenPrice.toFixed(5)}</div>
-      </div>
-
-      {/* Key Metrics - Compact List */}
-      <div className="space-y-2">
-        <div className="flex justify-between items-center p-3 bg-white/5 rounded-lg border border-white/10">
-          <div className="flex items-center gap-2">
-            <TrendingUp className="h-4 w-4 text-[#D0B264]" />
-            <span className="text-sm text-gray-400">FDV</span>
+      {/* Key Metrics Grid */}
+      <div className="grid grid-cols-2">
+        <div className="bg-white/5 rounded-lg p-2 border border-white/10">
+          <div className="flex items-center gap-1.5 mb-1">
+            <TrendingUp className="h-3 w-3 text-[#D0B264]" />
+            <span className="text-xs text-gray-400">FDV</span>
           </div>
-          <span className="font-mono text-white">{fdv}</span>
+          <span className="font-mono text-white text-sm">{fdv}</span>
         </div>
 
-        <div className="flex justify-between items-center p-3 bg-white/5 rounded-lg border border-white/10">
-          <div className="flex items-center gap-2">
-            <Users className="h-4 w-4 text-[#D0B264]" />
-            <span className="text-sm text-gray-400">Holders</span>
+        <div className="bg-white/5 rounded-lg p-2 border border-white/10">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Droplets className="h-3 w-3 text-[#D0B264]" />
+            <span className="text-xs text-gray-400">Liquidity</span>
           </div>
-          <span className="font-mono text-white">{holders.toLocaleString()}</span>
+          <span className="font-mono text-white text-sm">{liquidity}</span>
         </div>
 
-        <div className="flex justify-between items-center p-3 bg-white/5 rounded-lg border border-white/10">
-          <div className="flex items-center gap-2">
-            <Droplets className="h-4 w-4 text-[#D0B264]" />
-            <span className="text-sm text-gray-400">Liquidity</span>
+        <div className="bg-white/5 rounded-lg p-2 border border-white/10">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Users className="h-3 w-3 text-[#D0B264]" />
+            <span className="text-xs text-gray-400">Holders</span>
           </div>
-          <span className="font-mono text-white">{liquidity}</span>
+          <span className="font-mono text-white text-sm">{holders.toLocaleString()}</span>
         </div>
 
-        <div className="flex justify-between items-center p-3 bg-white/5 rounded-lg border border-white/10">
-          <div className="flex items-center gap-2">
-            <Activity className="h-4 w-4 text-[#D0B264]" />
-            <span className="text-sm text-gray-400">24h Volume</span>
+        <div className="bg-white/5 rounded-lg p-2 border border-white/10">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Activity className="h-3 w-3 text-[#D0B264]" />
+            <span className="text-xs text-gray-400">24h Vol</span>
           </div>
-          <span className="font-mono text-white">{volume24h}</span>
+          <span className="font-mono text-white text-sm">{volume['1d']}</span>
         </div>
       </div>
 
-      {/* Recent Transactions */}
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <Clock className="h-4 w-4 text-[#D0B264]" />
-          <h4 className="text-sm font-semibold text-[#D0B264]">Recent Transactions</h4>
-        </div>
-
-        <div className="space-y-2 max-h-40 overflow-y-auto">
-          {recentTransactions.map((tx, index) => (
+      {/* Time-based Price Changes */}
+      <div className="grid grid-cols-4 ">
+        {Object.entries(priceChange).map(([time, change]) => (
+          <button
+            key={time}
+            onClick={() => setSelectedTimeframe(time as '5m' | '1h' | '6h' | '1d')}
+            className={`bg-white/5 rounded-lg p-1.5 text-center border transition-colors ${
+              selectedTimeframe === time
+                ? 'border-emerald-400/50 bg-emerald-400/10'
+                : 'border-white/10 hover:border-white/20'
+            }`}
+          >
+            <div className="text-xs mb-0.5 text-white">{time}</div>
             <div
-              key={index}
-              className="flex items-center justify-between p-2 bg-white/5 rounded-lg hover:bg-white/10 transition-colors border border-white/10"
+              className={`text-xs font-mono font-medium ${change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}
             >
-              <div className="flex items-center gap-2">
-                <div
-                  className={`w-2 h-2 rounded-full ${tx.type === 'buy' ? 'bg-green-400' : 'bg-red-400'}`}
-                />
-                <div>
-                  <div className="text-xs font-medium text-white">
-                    {tx.type === 'buy' ? 'Buy' : 'Sell'} {tx.amount}
-                  </div>
-                  <div className="text-xs text-gray-400">{tx.time}</div>
-                </div>
+              {change >= 0 ? '+' : ''}
+              {change}%
+            </div>
+          </button>
+        ))}
+      </div>
+
+      {/* Transaction Distribution */}
+      <div className="mt-auto px-4 pb-4">
+        {/* Buy/Sell Distribution */}
+        <div className="space-y-1.5">
+          <div className="flex justify-between items-center text-xs">
+            <div>
+              <span className="text-gray-400">Txns </span>
+              <span className="text-white font-mono">
+                {currentTransactions.buys + currentTransactions.sells}
+              </span>
+            </div>
+            <div className="flex gap-3">
+              <div>
+                <span className="text-emerald-400">Buys </span>
+                <span className="text-white font-mono">{currentTransactions.buys}</span>
               </div>
-              <div className="text-right">
-                <div className="text-xs font-mono text-white">${tx.price}</div>
+              <div>
+                <span className="text-red-400">Sells </span>
+                <span className="text-white font-mono">{currentTransactions.sells}</span>
               </div>
             </div>
-          ))}
+          </div>
+          <div className="relative h-1.5 rounded-full overflow-hidden">
+            <div className="absolute inset-0 flex">
+              <div
+                className="h-full bg-emerald-400"
+                style={{
+                  width: `${(currentTransactions.buys / (currentTransactions.buys + currentTransactions.sells)) * 100}%`,
+                }}
+              />
+              <div
+                className="h-full bg-red-400"
+                style={{
+                  width: `${(currentTransactions.sells / (currentTransactions.buys + currentTransactions.sells)) * 100}%`,
+                }}
+              />
+            </div>
+          </div>
         </div>
       </div>
     </div>
