@@ -1,8 +1,8 @@
 'use client';
 
-import type React from 'react';
-import { useState, useCallback, useRef, useEffect } from 'react';
-import type { ImageInfo, ViewState } from '../../types/canvas';
+import { useCallback, useRef, useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import type { ViewState, ImageInfo } from '../../types/canvas';
 import { isHomeArea } from '../../lib/canvas/grid-placement';
 import { mobileUtils } from '../../lib/utils/browser-utils';
 
@@ -103,6 +103,7 @@ export const useCanvasInteractions = ({
   repeatedTokens,
   onMomentumUpdate,
 }: UseCanvasInteractionsProps) => {
+  const router = useRouter();
   const [isPanning, setIsPanning] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -190,7 +191,7 @@ export const useCanvasInteractions = ({
           worldY >= aboutQuadY &&
           worldY < aboutQuadY + quadHeight
         ) {
-          window.location.href = '/about';
+          router.push('/about');
           return;
         }
 
@@ -200,7 +201,7 @@ export const useCanvasInteractions = ({
           worldY >= createQuadY &&
           worldY < createQuadY + quadHeight
         ) {
-          window.location.href = '/create-token';
+          router.push('/create-token');
           return;
         }
 
@@ -210,7 +211,7 @@ export const useCanvasInteractions = ({
           worldY >= termsQuadY &&
           worldY < termsQuadY + quadHeight
         ) {
-          window.location.href = '/terms';
+          router.push('/terms');
           return;
         }
         return;
@@ -258,7 +259,7 @@ export const useCanvasInteractions = ({
               worldY >= tokenPos.worldY &&
               worldY <= tokenPos.worldY + unitSize
             ) {
-              window.location.href = '/create-token';
+              router.push('/create-token');
               return;
             }
           }
@@ -267,7 +268,7 @@ export const useCanvasInteractions = ({
 
       if (clickedImage) {
         if (clickedImage.type === 'create-token') {
-          window.location.href = '/create-token';
+          router.push('/create-token');
         } else {
           setSelectedImage(clickedImage);
         }
@@ -284,6 +285,7 @@ export const useCanvasInteractions = ({
       repeatedTokens,
       unitSize,
       setSelectedImage,
+      router,
     ],
   );
 

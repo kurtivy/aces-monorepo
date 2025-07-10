@@ -1,19 +1,18 @@
 'use client';
 
-import type React from 'react';
-import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { motion } from 'framer-motion';
-
-import ImageDetailsModal from '../ui/image-details-modal';
-import IntroAnimation from '../loading/intro-animation';
+import { useRouter } from 'next/navigation';
+import type { ImageInfo } from '../../types/canvas';
 import { useImageLoader } from '../../hooks/canvas/use-image-loader';
 import { useViewState } from '../../hooks/canvas/use-view-state';
-import { useCanvasInteractions } from '../../hooks/canvas/use-canvas-interactions';
 import { useCanvasRenderer } from '../../hooks/canvas/use-canvas-renderer';
+import { useCanvasInteractions } from '../../hooks/canvas/use-canvas-interactions';
+import { useCoordinatedResize } from '../../hooks/use-coordinated-resize';
 import NavMenu from '../ui/nav-menu';
 import HomeButton from '../ui/home-button';
-import type { ImageInfo } from '../../types/canvas';
-import { useCoordinatedResize } from '../../hooks/use-coordinated-resize';
+import ImageDetailsModal from '../ui/image-details-modal';
+import IntroAnimation from '../loading/intro-animation';
 import {
   browserUtils,
   getDeviceCapabilities,
@@ -31,6 +30,7 @@ import { performEventListenerHealthCheck } from '../../lib/utils/event-listener-
 type LoadingState = 'loading' | 'ready';
 
 const InfiniteCanvas = () => {
+  const router = useRouter();
   const [selectedImage, setSelectedImage] = useState<ImageInfo | null>(null);
 
   const [loadingState, setLoadingState] = useState<LoadingState>('loading');
@@ -64,7 +64,7 @@ const InfiniteCanvas = () => {
       viewState,
       imagesLoaded: imagesLoaded,
       canvasVisible: loadingState !== 'loading' || hasSeenIntro,
-      onCreateTokenClick: () => (window.location.href = '/create-token'), // Temporarily remove withNavigationSafety
+      onCreateTokenClick: () => router.push('/create-token'), // Temporarily remove withNavigationSafety
       imagePlacementMap: imagePlacementMapRef,
       unitSize: unitSize,
       canvasRef: canvasRef,

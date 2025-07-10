@@ -65,9 +65,41 @@ const NavMenu: React.FC = () => {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isToggling = useRef(false); // Use ref instead of state to avoid re-renders
 
-  // Use your existing performance detection
-  const browserPerf = getBrowserPerformanceSettings();
-  const deviceCaps = getDeviceCapabilities();
+  // Hydration-safe performance detection - prevents SSR mismatch
+  const [browserPerf, setBrowserPerf] = useState<ReturnType<typeof getBrowserPerformanceSettings>>(
+    () => ({
+      targetFPS: 60,
+      animationDuration: 300,
+      mouseCheckInterval: 16,
+      enableComplexDotPattern: true,
+      enableImageSmoothing: true,
+      useLinearEasing: false,
+      frameThrottling: false,
+      gradientCacheSize: 100,
+      gradientCacheClearInterval: 60000,
+    }),
+  );
+
+  const [deviceCaps, setDeviceCaps] = useState<ReturnType<typeof getDeviceCapabilities>>(() => ({
+    availableMemory: 2048,
+    memoryPressure: 'medium' as const,
+    hardwareConcurrency: 4,
+    devicePixelRatio: 2,
+    supportsWebGL: true,
+    supportsOffscreenCanvas: false,
+    performanceTier: 'medium' as const,
+    isMobileSafari: false,
+    screenSize: { width: 375, height: 812 },
+    touchCapable: true,
+    orientationCapable: true,
+    pixelDensityCategory: 'high' as const,
+  }));
+
+  // Update browser settings after hydration to get real performance values
+  useEffect(() => {
+    setBrowserPerf(getBrowserPerformanceSettings());
+    setDeviceCaps(getDeviceCapabilities());
+  }, []);
 
   // Clear any existing timeout to prevent stuck states
   const clearExistingTimeout = useCallback(() => {
