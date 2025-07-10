@@ -13,6 +13,39 @@ interface BatchElement {
 }
 
 /**
+ * OPTIMIZED: Fast batch renderer for entrance animations
+ * Avoids expensive Map operations when all elements have same opacity
+ */
+export const batchRenderAnimated = (
+  ctx: CanvasRenderingContext2D,
+  elements: BatchElement[],
+  animationProgress: number,
+): void => {
+  if (elements.length === 0) return;
+
+  // Fast path: during entrance animation, most elements have same opacity
+  if (animationProgress < 1) {
+    // Check if all elements have same opacity (common during animation)
+    const firstOpacity = elements[0].opacity;
+    const allSameOpacity = elements.every((el) => Math.abs(el.opacity - firstOpacity) < 0.01);
+
+    if (allSameOpacity) {
+      // Ultra-fast single batch render
+      ctx.save();
+      ctx.globalAlpha = firstOpacity;
+      for (let i = 0; i < elements.length; i++) {
+        elements[i].render();
+      }
+      ctx.restore();
+      return;
+    }
+  }
+
+  // Fall back to normal batching when animation complete or mixed opacities
+  batchRenderByOpacity(ctx, elements);
+};
+
+/**
  * Batch render elements by opacity groups with single save/restore per group
  *
  * @param ctx - Canvas rendering context

@@ -1,8 +1,37 @@
 'use client';
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { easeInOutCubic } from '../../lib/canvas/math-utils';
 import type { ImageInfo } from '../../types/canvas';
+
+/**
+ * Check if an element is within viewport bounds (with buffer)
+ * Optimized for entrance animation performance
+ */
+const isElementInViewport = (
+  elementX: number,
+  elementY: number,
+  elementWidth: number,
+  elementHeight: number,
+  viewState: { x: number; y: number; scale: number },
+  canvasWidth: number,
+  canvasHeight: number,
+  buffer: number = 100, // Extra buffer for smooth entrance
+): boolean => {
+  // Convert world coordinates to screen coordinates
+  const screenX = elementX * viewState.scale + viewState.x;
+  const screenY = elementY * viewState.scale + viewState.y;
+  const screenWidth = elementWidth * viewState.scale;
+  const screenHeight = elementHeight * viewState.scale;
+
+  // Check if element overlaps with viewport (with buffer)
+  return (
+    screenX + screenWidth > -buffer &&
+    screenX < canvasWidth + buffer &&
+    screenY + screenHeight > -buffer &&
+    screenY < canvasHeight + buffer
+  );
+};
 
 interface UseCanvasEntranceAnimationProps {
   // Data inputs
@@ -20,6 +49,11 @@ interface UseCanvasEntranceAnimationProps {
   shouldAnimate: boolean; // When intro complete + everything loaded
   currentTime: number; // From main render loop
   unitSize: number;
+
+  // Viewport optimization (optional for mobile performance)
+  viewState?: { x: number; y: number; scale: number };
+  canvasWidth?: number;
+  canvasHeight?: number;
 }
 
 export interface AnimatedProductElement {
@@ -68,6 +102,9 @@ export const useCanvasEntranceAnimation = ({
   tokenPositions,
   shouldAnimate,
   unitSize,
+  viewState,
+  canvasWidth = 1920,
+  canvasHeight = 1080,
 }: Omit<UseCanvasEntranceAnimationProps, 'currentTime'>): {
   calculateAnimatedElements: (currentTime: number) => CanvasEntranceAnimation;
   resetAnimation: () => void;
@@ -80,6 +117,51 @@ export const useCanvasEntranceAnimation = ({
   // Animation timing constants
   const ENTRANCE_ANIMATION_DURATION = 800; // 800ms total duration
   const TOKEN_DELAY = 100; // Tokens start 100ms after products
+
+  // Pre-calculate base values to avoid expensive array mapping every frame
+  // OPTIMIZATION: Filter viewport-visible elements during animation for mobile performance
+  const baseProductCalculations = useMemo(() => {
+    const baseCalcs = productPlacements.map((placement) => ({
+      ...placement,
+      baseY: placement.y,
+      startOffset: unitSize * 0.3, // Pre-calculate start offset
+      isVisible:
+        !viewState ||
+        isElementInViewport(
+          placement.x,
+          placement.y,
+          placement.width,
+          placement.height,
+          viewState,
+          canvasWidth,
+          canvasHeight,
+        ),
+    }));
+
+    // During animation, only process visible elements for performance
+    return baseCalcs;
+  }, [productPlacements, unitSize, viewState, canvasWidth, canvasHeight]);
+
+  const baseTokenCalculations = useMemo(() => {
+    const baseCalcs = tokenPositions.map((position) => ({
+      ...position,
+      baseY: position.worldY,
+      startOffset: unitSize * 0.3, // Pre-calculate start offset
+      isVisible:
+        !viewState ||
+        isElementInViewport(
+          position.worldX,
+          position.worldY,
+          unitSize,
+          unitSize,
+          viewState,
+          canvasWidth,
+          canvasHeight,
+        ),
+    }));
+
+    return baseCalcs;
+  }, [tokenPositions, unitSize, viewState, canvasWidth, canvasHeight]);
 
   // Start animation when conditions are met
   useEffect(() => {
@@ -121,83 +203,93 @@ export const useCanvasEntranceAnimation = ({
           } else {
             const progress = elapsed / ENTRANCE_ANIMATION_DURATION;
 
-            // Force smooth easing during animation (ignore performance settings)
-            const eased = easeInOutCubic(progress);
-            animationProgress = eased + Math.sin(eased * Math.PI) * 0.05;
+            // Optimized smooth easing - removed expensive Math.sin() calculation
+            animationProgress = easeInOutCubic(progress);
           }
         }
       }
 
-      // Calculate animated products
-      const animatedProductPlacements: AnimatedProductElement[] = productPlacements.map(
-        (placement) => {
-          let animatedY = placement.y;
-          let animatedOpacity = 1;
+      // Calculate animated products using pre-calculated base values
+      // OPTIMIZATION: During animation, prioritize visible elements for mobile performance
+      const elementsToProcess =
+        currentIsAnimationActive && viewState
+          ? baseProductCalculations.filter((base) => base.isVisible)
+          : baseProductCalculations;
 
-          if (animationProgress < 1) {
-            // Slide up from bottom
-            const startOffset = unitSize * 0.3; // Start 30% of unitSize below
-            const currentOffset = startOffset * (1 - animationProgress);
-            animatedY = placement.y + currentOffset;
-
-            // Fade in
-            animatedOpacity = animationProgress;
-          }
-
+      const animatedProductPlacements: AnimatedProductElement[] = elementsToProcess.map((base) => {
+        if (animationProgress >= 1) {
+          // Animation complete - use final positions
           return {
-            ...placement,
-            animatedX: placement.x,
-            animatedY,
-            animatedOpacity,
+            ...base,
+            animatedX: base.x,
+            animatedY: base.baseY,
+            animatedOpacity: 1,
           };
-        },
-      );
-
-      // Calculate animated tokens
-      const animatedTokenPositions: AnimatedTokenElement[] = tokenPositions.map((position) => {
-        let animatedY = position.worldY;
-        let animatedOpacity = 1;
-        let animatedScale = 1;
-
-        if (animationProgress < 1) {
-          // Calculate token-specific progress with delay
-          const tokenProgress = Math.max(
-            0,
-            (animationProgress * ENTRANCE_ANIMATION_DURATION - TOKEN_DELAY) /
-              ENTRANCE_ANIMATION_DURATION,
-          );
-          const clampedTokenProgress = Math.min(1, tokenProgress);
-
-          if (clampedTokenProgress > 0) {
-            // Always use smooth easing for tokens
-            const easedTokenProgress = easeInOutCubic(clampedTokenProgress);
-
-            // Slide up from bottom
-            const startOffset = unitSize * 0.3;
-            const currentOffset = startOffset * (1 - easedTokenProgress);
-            animatedY = position.worldY + currentOffset;
-
-            // Fade in
-            animatedOpacity = easedTokenProgress;
-
-            // Scale from 95% to 100%
-            animatedScale = 0.95 + 0.05 * easedTokenProgress;
-          } else {
-            // Token hasn't started animating yet
-            animatedY = position.worldY + unitSize * 0.3;
-            animatedOpacity = 0;
-            animatedScale = 0.95;
-          }
         }
 
+        // During animation - fast inline calculation
+        const currentOffset = base.startOffset * (1 - animationProgress);
         return {
-          worldX: position.worldX,
-          worldY: position.worldY,
-          animatedX: position.worldX,
-          animatedY,
-          animatedOpacity,
-          animatedScale,
+          ...base,
+          animatedX: base.x,
+          animatedY: base.baseY + currentOffset,
+          animatedOpacity: animationProgress,
         };
+      });
+
+      // Calculate animated tokens using pre-calculated base values
+      // OPTIMIZATION: During animation, prioritize visible tokens for mobile performance
+      const tokensToProcess =
+        currentIsAnimationActive && viewState
+          ? baseTokenCalculations.filter((base) => base.isVisible)
+          : baseTokenCalculations;
+
+      const animatedTokenPositions: AnimatedTokenElement[] = tokensToProcess.map((base) => {
+        if (animationProgress >= 1) {
+          // Animation complete - use final positions
+          return {
+            worldX: base.worldX,
+            worldY: base.worldY,
+            animatedX: base.worldX,
+            animatedY: base.baseY,
+            animatedOpacity: 1,
+            animatedScale: 1,
+          };
+        }
+
+        // Calculate token-specific progress with delay
+        const tokenProgress = Math.max(
+          0,
+          (animationProgress * ENTRANCE_ANIMATION_DURATION - TOKEN_DELAY) /
+            ENTRANCE_ANIMATION_DURATION,
+        );
+        const clampedTokenProgress = Math.min(1, tokenProgress);
+
+        if (clampedTokenProgress > 0) {
+          // Always use smooth easing for tokens
+          const easedTokenProgress = easeInOutCubic(clampedTokenProgress);
+
+          // Fast inline calculations using pre-calculated values
+          const currentOffset = base.startOffset * (1 - easedTokenProgress);
+          return {
+            worldX: base.worldX,
+            worldY: base.worldY,
+            animatedX: base.worldX,
+            animatedY: base.baseY + currentOffset,
+            animatedOpacity: easedTokenProgress,
+            animatedScale: 0.95 + 0.05 * easedTokenProgress,
+          };
+        } else {
+          // Token hasn't started animating yet
+          return {
+            worldX: base.worldX,
+            worldY: base.worldY,
+            animatedX: base.worldX,
+            animatedY: base.baseY + base.startOffset,
+            animatedOpacity: 0,
+            animatedScale: 0.95,
+          };
+        }
       });
 
       return {
@@ -210,9 +302,8 @@ export const useCanvasEntranceAnimation = ({
     [
       isAnimationActive,
       hasAnimationStarted,
-      productPlacements,
-      tokenPositions,
-      unitSize,
+      baseProductCalculations,
+      baseTokenCalculations,
       ENTRANCE_ANIMATION_DURATION,
       TOKEN_DELAY,
     ],

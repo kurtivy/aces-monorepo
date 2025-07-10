@@ -6,7 +6,7 @@ import type { ImageInfo, ViewState } from '../../types/canvas';
 import { drawHomeArea, drawImage } from '../../lib/canvas/draw';
 import { drawTokenSquare } from '../../lib/canvas/draw/draw-token-square';
 import { drawImageWithoutContext } from '../../lib/canvas/draw/draw-image';
-import { batchRenderByOpacity } from '../../lib/utils/canvas-batch-renderer';
+import { batchRenderByOpacity, batchRenderAnimated } from '../../lib/utils/canvas-batch-renderer';
 import {
   markSpaceOccupied,
   canPlaceImage,
@@ -343,6 +343,10 @@ export const useCanvasRenderer = ({
     tokenPositions: stableCreateTokenPositions.current,
     shouldAnimate: canvasVisible && canvasReady && imagesLoaded && placementsCalculated,
     unitSize,
+    // OPTIMIZATION: Pass viewport info for mobile performance (viewport-aware animation)
+    viewState,
+    canvasWidth: activeCanvasRef.current?.width,
+    canvasHeight: activeCanvasRef.current?.height,
   });
 
   const entranceAnimationStatusRef = useRef({ isAnimationActive: false, animationProgress: 0 });
@@ -1264,7 +1268,12 @@ export const useCanvasRenderer = ({
         },
       }));
 
-      batchRenderByOpacity(ctx, imageRenderBatch);
+      // Use optimized batch renderer during entrance animations
+      if (entranceAnimation.isAnimationActive) {
+        batchRenderAnimated(ctx, imageRenderBatch, entranceAnimation.animationProgress);
+      } else {
+        batchRenderByOpacity(ctx, imageRenderBatch);
+      }
       totalElementsRendered += transformedProducts.length;
 
       // Draw repeated grid products using grid-based viewport culling
