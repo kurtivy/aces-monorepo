@@ -58,7 +58,7 @@ const InfiniteCanvas = () => {
       animationDuration: browserUtils.getAnimationDuration() / 1000, // Convert ms to seconds for useViewState
     });
 
-  const { canvasReady, repeatedPlacements, repeatedTokens, handleMomentumStart } =
+  const { canvasReady, repeatedPlacements, repeatedTokens, handleMomentumUpdate } =
     useCanvasRenderer({
       images,
       viewState,
@@ -95,7 +95,7 @@ const InfiniteCanvas = () => {
     repeatedPlacements,
     repeatedTokens,
     // Issue #2: Pass momentum callback from canvas renderer to interactions
-    onMomentumStart: handleMomentumStart,
+    onMomentumUpdate: handleMomentumUpdate,
   });
 
   const interactionsEnabled = loadingState === 'ready' && imagesLoaded;

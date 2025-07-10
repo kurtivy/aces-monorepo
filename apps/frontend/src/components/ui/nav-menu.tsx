@@ -156,18 +156,9 @@ const NavMenu: React.FC = () => {
 
   // Close menu when clicking nav links
   const handleNavClick = useCallback(() => {
-    console.log('🔍 Nav link clicked - closing menu');
     clearExistingTimeout();
     setIsOpen(false);
   }, [clearExistingTimeout]);
-
-  console.log('🔍 Nav Render:', {
-    isOpen,
-    isToggling: isToggling.current,
-    performanceTier: deviceCaps.performanceTier,
-    useAnimations,
-    timeoutActive: timeoutRef.current !== null,
-  });
 
   return (
     <div className="fixed top-4 right-4 z-50 flex items-start gap-2">

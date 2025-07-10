@@ -34,62 +34,63 @@ interface UseCanvasInteractionsProps {
       tileId: string;
     }>
   >;
-  // Issue #2: Add momentum callback for RAF integration
-  onMomentumStart?: (momentum: {
-    velocity: { x: number; y: number };
-    startTime: number;
-    duration: number;
-    friction: number;
-    deviceType: 'ios' | 'mobile' | 'desktop';
-  }) => void;
+  // MOMENTUM RESTORATION: Add momentum callback for RAF integration
+  onMomentumUpdate?: (momentum: { velocity: { x: number; y: number }; active: boolean }) => void;
 }
 
-// Enhanced momentum settings for native-like mobile feel
-const TOUCH_SETTINGS = {
+// MOMENTUM RESTORATION: Export enhanced momentum settings for canvas renderer
+export const TOUCH_SETTINGS = {
   touchSensitivity: mobileUtils.isMobileSafari() ? 1.2 : 1.0,
   mouseSensitivity: 1.0,
-  // Enhanced velocity multiplier for more satisfying momentum
+  // GALAXY S9 MOMENTUM: Use Galaxy S9 settings for iOS since they work perfectly
   velocityMultiplier:
     typeof window !== 'undefined' && mobileUtils.isMobileSafari()
-      ? 3.5 // Higher for iOS to feel natural like native scrolling
+      ? 1.5 // Match Galaxy S9 Android settings exactly
       : typeof window !== 'undefined' && window.navigator.maxTouchPoints > 0
-        ? 3.0 // Slightly lower for Android
-        : 2.0, // Conservative for desktop/trackpad
+        ? 1.5 // Keep Galaxy S9 unchanged - working perfectly
+        : 1.2, // Keep desktop unchanged - working well
 
-  // Momentum friction - lower values = longer momentum (more natural)
+  // GALAXY S9 MOMENTUM: Use Galaxy S9 settings for iOS since they work perfectly
   momentumFriction:
     typeof window !== 'undefined' && mobileUtils.isMobileSafari()
-      ? 0.982 // Very low friction for iPhone - long, natural deceleration
+      ? 0.96 // Match Galaxy S9 Android settings exactly
       : typeof window !== 'undefined' && window.navigator.maxTouchPoints > 0
-        ? 0.985 // Slightly higher for Android
-        : 0.93, // Higher for desktop (shorter momentum)
+        ? 0.96 // Keep Galaxy S9 unchanged - working perfectly
+        : 0.88, // Keep desktop unchanged - working well
 
-  // Lower threshold for smoother momentum initiation
+  // ADJUSTED: Lower minVelocity for new time-based calculation
   minVelocity:
     typeof window !== 'undefined' && mobileUtils.isMobileSafari()
-      ? 1.5 // Lower threshold for iPhone - more responsive
+      ? 1.0 // Lowered for iOS time-based velocity calculation
       : typeof window !== 'undefined' && window.navigator.maxTouchPoints > 0
-        ? 2.0 // Medium for Android
-        : 2.5, // Higher for desktop to prevent accidental momentum
+        ? 1.0 // Lowered for Android time-based velocity calculation
+        : 2.0, // Lowered for desktop time-based velocity calculation
 
   tapThreshold: 10,
   tapTimeLimit: 180,
   dragThreshold: 1.5,
+
+  // iOS-specific momentum timing (critical for proper iOS momentum)
+  moveThreshold: 200, // ms - max time between last touchmove and touchend for momentum (was too strict at 100ms)
+  velocityScale: 8.0, // iOS velocity scaling factor (pixels/ms to momentum units) - increased for proper momentum
 } as const;
 
-// Optimized touch physics tracking
+// iOS-compatible touch physics tracking with time-based velocity
 interface TouchPhysics {
   velocity: { x: number; y: number };
   lastPos: { x: number; y: number; time: number } | null;
-  // Issue #2: Removed momentumId - RAF now handled by canvas renderer
   isDragging: boolean;
+  // iOS-specific timing for momentum detection
+  lastMoveTime: number;
+  startPos: { x: number; y: number; time: number } | null;
 }
 
 const createTouchPhysics = (): TouchPhysics => ({
   velocity: { x: 0, y: 0 },
   lastPos: null,
-  // Issue #2: Removed momentumId - RAF now handled by canvas renderer
   isDragging: false,
+  lastMoveTime: 0,
+  startPos: null,
 });
 
 export const useCanvasInteractions = ({
@@ -100,7 +101,7 @@ export const useCanvasInteractions = ({
   updateViewState,
   repeatedPlacements,
   repeatedTokens,
-  onMomentumStart,
+  onMomentumUpdate,
 }: UseCanvasInteractionsProps) => {
   const [isPanning, setIsPanning] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -133,8 +134,7 @@ export const useCanvasInteractions = ({
     [viewState],
   );
 
-  // Browser-like momentum - mimics trackpad wheel events with decreasing deltas
-  // Issue #2: Replace RAF loop with callback-based approach
+  // MOMENTUM RESTORATION: Clean production-ready momentum start
   const startMomentum = useCallback(() => {
     const physics = touchPhysicsRef.current;
 
@@ -145,36 +145,23 @@ export const useCanvasInteractions = ({
       return;
     }
 
-    // Enhanced momentum with device-specific duration for natural feel
-    const isMobileSafari = typeof window !== 'undefined' && mobileUtils.isMobileSafari();
-    const isMobile = typeof window !== 'undefined' && window.navigator.maxTouchPoints > 0;
+    // Google Maps style momentum for all platforms
+    onMomentumUpdate?.({
+      velocity: {
+        x: physics.velocity.x,
+        y: physics.velocity.y,
+      },
+      active: true,
+    });
+  }, [onMomentumUpdate]);
 
-    const momentumData = {
-      velocity: { x: physics.velocity.x, y: physics.velocity.y },
-      startTime: performance.now(),
-      // Device-specific duration for native-like feel
-      duration: isMobileSafari
-        ? 2500 // 2.5s for iPhone - matches native iOS momentum
-        : isMobile
-          ? 2000 // 2s for other touch devices
-          : 1200, // 1.2s for desktop - shorter but still smooth
-      friction: TOUCH_SETTINGS.momentumFriction,
-      // Add device type for enhanced decay curves
-      deviceType: (isMobileSafari ? 'ios' : isMobile ? 'mobile' : 'desktop') as
-        | 'ios'
-        | 'mobile'
-        | 'desktop',
-    };
-
-    // Pass to parent component instead of managing RAF here
-    onMomentumStart?.(momentumData);
-  }, [onMomentumStart]);
-
+  // MOMENTUM RESTORATION: Add momentum stop function
   const stopMomentum = useCallback(() => {
-    const physics = touchPhysicsRef.current;
-    // Issue #2: Removed RAF management - just reset velocity
-    physics.velocity = { x: 0, y: 0 };
-  }, []);
+    onMomentumUpdate?.({
+      velocity: { x: 0, y: 0 },
+      active: false,
+    });
+  }, [onMomentumUpdate]);
 
   // Simplified click handling - minimal validation for speed
   const handleClick = useCallback(
@@ -308,11 +295,14 @@ export const useCanvasInteractions = ({
       canvasRef.current = event.currentTarget as HTMLCanvasElement;
       boundsRef.current = null; // Reset bounds cache
 
+      const currentTime = performance.now();
       stopMomentum();
 
       const physics = touchPhysicsRef.current;
-      physics.lastPos = { x: event.clientX, y: event.clientY, time: performance.now() };
+      physics.lastPos = { x: event.clientX, y: event.clientY, time: currentTime };
+      physics.startPos = { x: event.clientX, y: event.clientY, time: currentTime };
       physics.isDragging = false;
+      physics.lastMoveTime = currentTime;
 
       dragStartRef.current = { x: event.clientX, y: event.clientY, time: Date.now() };
       setIsPanning(true);
@@ -326,8 +316,9 @@ export const useCanvasInteractions = ({
     (event: React.MouseEvent) => {
       if (!isPanning) return;
 
+      const currentTime = performance.now();
       const physics = touchPhysicsRef.current;
-      if (!physics.lastPos) return;
+      if (!physics.lastPos || !physics.startPos) return;
 
       const deltaX = (event.clientX - physics.lastPos.x) * TOUCH_SETTINGS.mouseSensitivity;
       const deltaY = (event.clientY - physics.lastPos.y) * TOUCH_SETTINGS.mouseSensitivity;
@@ -335,11 +326,21 @@ export const useCanvasInteractions = ({
       // Immediate movement - no validation overhead
       updateViewState(deltaX, deltaY);
 
-      // Simplified velocity tracking - just store the last movement
-      physics.velocity.x = deltaX * TOUCH_SETTINGS.velocityMultiplier;
-      physics.velocity.y = deltaY * TOUCH_SETTINGS.velocityMultiplier;
+      // Google Maps style: Recent movement velocity (same as touch)
+      const recentTimeElapsed = currentTime - physics.lastPos.time;
+      if (recentTimeElapsed > 0) {
+        const recentDistanceX = event.clientX - physics.lastPos.x;
+        const recentDistanceY = event.clientY - physics.lastPos.y;
 
-      physics.lastPos = { x: event.clientX, y: event.clientY, time: performance.now() };
+        const velocityX = (recentDistanceX / recentTimeElapsed) * TOUCH_SETTINGS.velocityScale;
+        const velocityY = (recentDistanceY / recentTimeElapsed) * TOUCH_SETTINGS.velocityScale;
+
+        physics.velocity.x = velocityX * TOUCH_SETTINGS.velocityMultiplier;
+        physics.velocity.y = velocityY * TOUCH_SETTINGS.velocityMultiplier;
+      }
+
+      physics.lastPos = { x: event.clientX, y: event.clientY, time: currentTime };
+      physics.lastMoveTime = currentTime;
 
       // Mark as dragging if moved enough
       if (!physics.isDragging && dragStartRef.current) {
@@ -359,6 +360,7 @@ export const useCanvasInteractions = ({
     (event: React.MouseEvent) => {
       if (event.button !== 0) return;
 
+      const currentTime = performance.now();
       const physics = touchPhysicsRef.current;
 
       // Handle click vs drag
@@ -373,8 +375,12 @@ export const useCanvasInteractions = ({
           handleClick(event.clientX, event.clientY);
         }
       } else if (physics.isDragging) {
-        // Start momentum
-        startMomentum();
+        // Same timing check as touch for consistent behavior
+        const timeSinceLastMove = currentTime - physics.lastMoveTime;
+
+        if (timeSinceLastMove < TOUCH_SETTINGS.moveThreshold) {
+          startMomentum();
+        }
       }
 
       // Reset state
@@ -382,6 +388,8 @@ export const useCanvasInteractions = ({
       setIsDragging(false);
       physics.isDragging = false;
       physics.lastPos = null;
+      physics.startPos = null;
+      physics.lastMoveTime = 0;
       dragStartRef.current = null;
 
       event.preventDefault();
@@ -398,11 +406,14 @@ export const useCanvasInteractions = ({
       boundsRef.current = null; // Reset bounds cache
 
       const touch = event.touches[0];
+      const currentTime = performance.now();
       stopMomentum();
 
       const physics = touchPhysicsRef.current;
-      physics.lastPos = { x: touch.clientX, y: touch.clientY, time: performance.now() };
+      physics.lastPos = { x: touch.clientX, y: touch.clientY, time: currentTime };
+      physics.startPos = { x: touch.clientX, y: touch.clientY, time: currentTime };
       physics.isDragging = false;
+      physics.lastMoveTime = currentTime;
 
       dragStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
       setIsPanning(true);
@@ -439,8 +450,9 @@ export const useCanvasInteractions = ({
       if (!isPanning || event.touches.length !== 1) return;
 
       const touch = event.touches[0];
+      const currentTime = performance.now();
       const physics = touchPhysicsRef.current;
-      if (!physics.lastPos) return;
+      if (!physics.lastPos || !physics.startPos) return;
 
       // Ultra-responsive movement calculation
       const deltaX = (touch.clientX - physics.lastPos.x) * TOUCH_SETTINGS.touchSensitivity;
@@ -449,11 +461,22 @@ export const useCanvasInteractions = ({
       // Immediate movement application
       updateViewState(deltaX, deltaY);
 
-      // Simplified velocity tracking - just store the last movement
-      physics.velocity.x = deltaX * TOUCH_SETTINGS.velocityMultiplier;
-      physics.velocity.y = deltaY * TOUCH_SETTINGS.velocityMultiplier;
+      // Google Maps style: Recent movement velocity (more responsive than total velocity)
+      const recentTimeElapsed = currentTime - physics.lastPos.time;
+      if (recentTimeElapsed > 0) {
+        const recentDistanceX = touch.clientX - physics.lastPos.x;
+        const recentDistanceY = touch.clientY - physics.lastPos.y;
 
-      physics.lastPos = { x: touch.clientX, y: touch.clientY, time: performance.now() };
+        // Calculate velocity as pixels per millisecond, then scale for momentum
+        const velocityX = (recentDistanceX / recentTimeElapsed) * TOUCH_SETTINGS.velocityScale;
+        const velocityY = (recentDistanceY / recentTimeElapsed) * TOUCH_SETTINGS.velocityScale;
+
+        physics.velocity.x = velocityX * TOUCH_SETTINGS.velocityMultiplier;
+        physics.velocity.y = velocityY * TOUCH_SETTINGS.velocityMultiplier;
+      }
+
+      physics.lastPos = { x: touch.clientX, y: touch.clientY, time: currentTime };
+      physics.lastMoveTime = currentTime;
 
       // Quick drag detection
       if (!physics.isDragging) {
@@ -471,6 +494,7 @@ export const useCanvasInteractions = ({
 
   const handleTouchEnd = useCallback(
     (event: React.TouchEvent) => {
+      const currentTime = performance.now();
       const physics = touchPhysicsRef.current;
 
       if (event.changedTouches.length === 1 && dragStartRef.current) {
@@ -488,8 +512,14 @@ export const useCanvasInteractions = ({
         ) {
           handleClick(touch.clientX, touch.clientY);
         } else if (physics.isDragging) {
-          // Start momentum with current velocity
-          startMomentum();
+          // Google Maps timing check - only trigger momentum if touch ended soon after last move
+          const timeSinceLastMove = currentTime - physics.lastMoveTime;
+
+          if (timeSinceLastMove < TOUCH_SETTINGS.moveThreshold) {
+            // Timing validation passed - start momentum (like Google Maps)
+            startMomentum();
+          }
+          // If too much time passed since last move, no momentum (finger paused)
         }
       }
 
@@ -498,6 +528,8 @@ export const useCanvasInteractions = ({
       setIsDragging(false);
       physics.isDragging = false;
       physics.lastPos = null;
+      physics.startPos = null;
+      physics.lastMoveTime = 0;
       dragStartRef.current = null;
 
       event.preventDefault();
@@ -510,6 +542,8 @@ export const useCanvasInteractions = ({
     setIsDragging(false);
     touchPhysicsRef.current.isDragging = false;
     touchPhysicsRef.current.lastPos = null;
+    touchPhysicsRef.current.startPos = null;
+    touchPhysicsRef.current.lastMoveTime = 0;
     dragStartRef.current = null;
   }, []);
 

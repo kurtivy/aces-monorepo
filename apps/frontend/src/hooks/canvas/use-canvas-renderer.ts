@@ -33,6 +33,8 @@ import {
   batchTransformElements,
   worldToScreen,
 } from '../../lib/utils/coordinate-transforms';
+// MOMENTUM RESTORATION: Import TOUCH_SETTINGS for momentum physics
+import { TOUCH_SETTINGS } from './use-canvas-interactions';
 import { ViewportCuller, createWorldViewportBounds } from '../../lib/utils/viewport-culling';
 
 // Note: useAnimationFrame removed - caused scroll timing issues, kept for background animations only
@@ -210,32 +212,69 @@ export const useCanvasRenderer = ({
   // Issue #1: Safari RAF Throttling Detection State
   const [isThrottled, setIsThrottled] = useState(false);
 
-  // Issue #1: Detect RAF throttling on mount
+  // Universal RAF throttling detection for all platforms
   useEffect(() => {
     detectLowPowerMode().then(setIsThrottled);
   }, []);
 
-  // Issue #2: Touch momentum state management (replaces RAF loop in interactions)
+  // MOMENTUM RESTORATION: Simplified momentum state management
   const momentumState = useRef<{
     velocity: { x: number; y: number };
-    startTime: number;
-    duration: number;
-    friction: number;
-    deviceType: 'ios' | 'mobile' | 'desktop';
+    lastUpdate: number;
+    active: boolean;
   } | null>(null);
 
-  // Issue #2: Momentum handler function (before draw function)
-  const handleMomentumStart = useCallback(
-    (momentum: {
-      velocity: { x: number; y: number };
-      startTime: number;
-      duration: number;
-      friction: number;
-      deviceType: 'ios' | 'mobile' | 'desktop';
-    }) => {
-      momentumState.current = momentum;
+  // MOMENTUM RESTORATION: Add momentum handler for canvas RAF integration
+  const handleMomentumUpdate = useCallback(
+    (momentum: { velocity: { x: number; y: number }; active: boolean }) => {
+      if (momentum.active) {
+        momentumState.current = {
+          velocity: { ...momentum.velocity },
+          lastUpdate: performance.now(),
+          active: true,
+        };
+      } else {
+        momentumState.current = null;
+      }
     },
     [],
+  );
+
+  // MOMENTUM RESTORATION: Universal momentum physics (Galaxy S9 approach)
+  const updateMomentum = useCallback(
+    (currentTime: number) => {
+      if (!momentumState.current) return;
+
+      const deltaTime = currentTime - momentumState.current.lastUpdate;
+
+      // Universal timing: 16ms minimum for all platforms (Galaxy S9 approach)
+      if (deltaTime >= 16) {
+        // Apply momentum physics consistently across all platforms
+        const friction = TOUCH_SETTINGS.momentumFriction;
+        const normalizedDelta = deltaTime / 16; // Normalize to 16ms for physics consistency
+        const frameDecay = Math.pow(friction, normalizedDelta);
+
+        momentumState.current.velocity.x *= frameDecay;
+        momentumState.current.velocity.y *= frameDecay;
+
+        // Universal movement application (Galaxy S9 approach)
+        updateViewState?.(
+          momentumState.current.velocity.x * normalizedDelta,
+          momentumState.current.velocity.y * normalizedDelta,
+        );
+
+        momentumState.current.lastUpdate = currentTime;
+
+        // Stop when velocity is too small
+        if (
+          Math.abs(momentumState.current.velocity.x) < TOUCH_SETTINGS.minVelocity &&
+          Math.abs(momentumState.current.velocity.y) < TOUCH_SETTINGS.minVelocity
+        ) {
+          momentumState.current = null;
+        }
+      }
+    },
+    [updateViewState],
   );
 
   /*
@@ -334,7 +373,7 @@ export const useCanvasRenderer = ({
     adaptiveQuality: 1.0, // Start with full quality, remove frameSkipCount
   });
 
-  // Phase 2 Step 7 Action 3: Simplified mobile frame management
+  // Universal mobile frame management (Galaxy S9 approach)
   const shouldThrottleFrame = useCallback(
     (currentTime: number): boolean => {
       if (!browserPerf.adaptiveRendering) return false;
@@ -342,7 +381,11 @@ export const useCanvasRenderer = ({
       const mobile = mobilePerformanceRef.current;
       const frameTime = currentTime - mobile.lastFrameTime;
 
-      // Simple throttling: limit to 30fps on mobile instead of aggressive skipping
+      // Only throttle genuinely low-performance mobile devices
+      const shouldThrottle = deviceCapabilities.performanceTier === 'low';
+      if (!shouldThrottle) return false;
+
+      // Simple throttling: limit to 30fps only on low-end devices
       const minFrameTime = 33; // 30fps = 33ms between frames
 
       if (frameTime < minFrameTime) {
@@ -352,7 +395,7 @@ export const useCanvasRenderer = ({
       mobile.lastFrameTime = currentTime;
       return false;
     },
-    [browserPerf.adaptiveRendering],
+    [browserPerf.adaptiveRendering, deviceCapabilities.performanceTier],
   );
 
   // Phase 2: Background tile processing - EXTRACTED expensive tile generation
@@ -971,43 +1014,8 @@ export const useCanvasRenderer = ({
       // Step 0: Start performance monitoring for this frame
       performanceMonitor.startFrame();
 
-      // Issue #2: Enhanced momentum with device-specific decay curves for natural feel
-      if (momentumState.current) {
-        const elapsed = currentTime - momentumState.current.startTime;
-        const progress = Math.min(elapsed / momentumState.current.duration, 1);
-
-        if (progress < 1) {
-          // Device-specific decay curves for native-like momentum
-          let decay: number;
-
-          switch (momentumState.current.deviceType) {
-            case 'ios':
-              // iOS-like momentum: smooth deceleration with gentle tail (like native iOS scrolling)
-              decay = Math.pow(1 - progress, 1.5) * Math.exp(-progress * 2.0);
-              break;
-            case 'mobile':
-              // Android-like momentum: slightly more aggressive deceleration
-              decay = Math.pow(1 - progress, 1.8) * Math.exp(-progress * 2.2);
-              break;
-            case 'desktop':
-              // Desktop momentum: quicker stopping, more controlled
-              decay = Math.pow(1 - progress, 2.5);
-              break;
-            default:
-              // Fallback to original
-              decay = Math.pow(1 - progress, 2);
-          }
-
-          // Frame time calculation for smooth 60fps
-          const frameTime = momentumState.current.deviceType === 'ios' ? 0.02 : 0.016; // Slightly higher for iOS smoothness
-          const deltaX = momentumState.current.velocity.x * decay * frameTime;
-          const deltaY = momentumState.current.velocity.y * decay * frameTime;
-
-          updateViewState?.(deltaX, deltaY);
-        } else {
-          momentumState.current = null;
-        }
-      }
+      // MOMENTUM RESTORATION: Simple momentum physics integrated into main RAF loop
+      updateMomentum(currentTime);
 
       const canvas = activeCanvasRef.current;
       if (!canvas) return;
@@ -1939,6 +1947,6 @@ export const useCanvasRenderer = ({
     repeatedPlacements: repeatedPlacements.current,
     repeatedTokens: repeatedTokens.current,
     // Issue #2: Return momentum handler for interactions integration
-    handleMomentumStart,
+    handleMomentumUpdate,
   };
 };
