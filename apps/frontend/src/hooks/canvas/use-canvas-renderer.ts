@@ -5,6 +5,8 @@ import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import type { ImageInfo, ViewState } from '../../types/canvas';
 import { drawHomeArea, drawImage } from '../../lib/canvas/draw';
 import { drawTokenSquare } from '../../lib/canvas/draw/draw-token-square';
+import { drawImageWithoutContext } from '../../lib/canvas/draw/draw-image';
+import { batchRenderByOpacity } from '../../lib/utils/canvas-batch-renderer';
 import {
   markSpaceOccupied,
   canPlaceImage,
@@ -215,6 +217,7 @@ export const useCanvasRenderer = ({
     startTime: number;
     duration: number;
     friction: number;
+    deviceType: 'ios' | 'mobile' | 'desktop';
   } | null>(null);
 
   // Issue #2: Momentum handler function (before draw function)
@@ -224,6 +227,7 @@ export const useCanvasRenderer = ({
       startTime: number;
       duration: number;
       friction: number;
+      deviceType: 'ios' | 'mobile' | 'desktop';
     }) => {
       momentumState.current = momentum;
     },
@@ -979,15 +983,38 @@ export const useCanvasRenderer = ({
       // Step 0: Start performance monitoring for this frame
       performanceMonitor.startFrame();
 
-      // Issue #2: Handle momentum in main RAF loop instead of separate loop
+      // Issue #2: Enhanced momentum with device-specific decay curves for natural feel
       if (momentumState.current) {
         const elapsed = currentTime - momentumState.current.startTime;
         const progress = Math.min(elapsed / momentumState.current.duration, 1);
 
         if (progress < 1) {
-          const decay = Math.pow(1 - progress, 2);
-          const deltaX = momentumState.current.velocity.x * decay * 0.016; // 16ms frame time
-          const deltaY = momentumState.current.velocity.y * decay * 0.016;
+          // Device-specific decay curves for native-like momentum
+          let decay: number;
+
+          switch (momentumState.current.deviceType) {
+            case 'ios':
+              // iOS-like momentum: smooth deceleration with gentle tail (like native iOS scrolling)
+              decay = Math.pow(1 - progress, 1.5) * Math.exp(-progress * 2.0);
+              break;
+            case 'mobile':
+              // Android-like momentum: slightly more aggressive deceleration
+              decay = Math.pow(1 - progress, 1.8) * Math.exp(-progress * 2.2);
+              break;
+            case 'desktop':
+              // Desktop momentum: quicker stopping, more controlled
+              decay = Math.pow(1 - progress, 2.5);
+              break;
+            default:
+              // Fallback to original
+              decay = Math.pow(1 - progress, 2);
+          }
+
+          // Frame time calculation for smooth 60fps
+          const frameTime = momentumState.current.deviceType === 'ios' ? 0.02 : 0.016; // Slightly higher for iOS smoothness
+          const deltaX = momentumState.current.velocity.x * decay * frameTime;
+          const deltaY = momentumState.current.velocity.y * decay * frameTime;
+
           updateViewState?.(deltaX, deltaY);
         } else {
           momentumState.current = null;
@@ -1210,19 +1237,23 @@ export const useCanvasRenderer = ({
       // Step 4: Batch transform only visible elements to screen coordinates (combined 95% improvement)
       const transformedProducts = batchTransformElements(visibleAnimatedProducts, viewTransform);
 
-      // Draw products using screen coordinates (no canvas transforms needed)
-      transformedProducts.forEach((element) => {
-        drawImage(
-          ctx,
-          element.original.image.element,
-          element.screenX,
-          element.screenY,
-          element.width,
-          element.height,
-          element.opacity,
-        );
-        totalElementsRendered++;
-      });
+      // Issue #3: Batch render products by opacity to reduce save/restore calls
+      const imageRenderBatch = transformedProducts.map((element) => ({
+        opacity: element.opacity,
+        render: () => {
+          drawImageWithoutContext(
+            ctx,
+            element.original.image.element,
+            element.screenX,
+            element.screenY,
+            element.width,
+            element.height,
+          );
+        },
+      }));
+
+      batchRenderByOpacity(ctx, imageRenderBatch);
+      totalElementsRendered += transformedProducts.length;
 
       // Draw repeated grid products using grid-based viewport culling
       if (placementsCalculated && originalGridBounds.current) {
@@ -1263,19 +1294,23 @@ export const useCanvasRenderer = ({
           viewTransform,
         );
 
-        // Draw repeated products using screen coordinates
-        transformedRepeatedProducts.forEach((element) => {
-          drawImage(
-            ctx,
-            element.original.image.element,
-            element.screenX,
-            element.screenY,
-            element.width,
-            element.height,
-            1, // Always fully visible
-          );
-          totalElementsRendered++;
-        });
+        // Issue #3: Batch render repeated products with single opacity (all fully visible)
+        const repeatedImageRenderBatch = transformedRepeatedProducts.map((element) => ({
+          opacity: 1, // Always fully visible
+          render: () => {
+            drawImageWithoutContext(
+              ctx,
+              element.original.image.element,
+              element.screenX,
+              element.screenY,
+              element.width,
+              element.height,
+            );
+          },
+        }));
+
+        batchRenderByOpacity(ctx, repeatedImageRenderBatch);
+        totalElementsRendered += transformedRepeatedProducts.length;
       }
 
       // Phase 2 Step 7 Action 3: Mobile-optimized mouse hit detection using screen coordinates

@@ -40,26 +40,38 @@ interface UseCanvasInteractionsProps {
     startTime: number;
     duration: number;
     friction: number;
+    deviceType: 'ios' | 'mobile' | 'desktop';
   }) => void;
 }
 
-// Balanced sensitivity now that view-state uses 1.0 instead of 0.05
+// Enhanced momentum settings for native-like mobile feel
 const TOUCH_SETTINGS = {
   touchSensitivity: mobileUtils.isMobileSafari() ? 1.2 : 1.0,
   mouseSensitivity: 1.0,
-  velocityMultiplier: 2, // Increased initial inertia for more responsive momentum
-  // Higher friction for quicker stopping - eliminates slow tail
+  // Enhanced velocity multiplier for more satisfying momentum
+  velocityMultiplier:
+    typeof window !== 'undefined' && mobileUtils.isMobileSafari()
+      ? 3.5 // Higher for iOS to feel natural like native scrolling
+      : typeof window !== 'undefined' && window.navigator.maxTouchPoints > 0
+        ? 3.0 // Slightly lower for Android
+        : 2.0, // Conservative for desktop/trackpad
+
+  // Momentum friction - lower values = longer momentum (more natural)
   momentumFriction:
-    typeof window !== 'undefined' &&
-    (window.navigator.maxTouchPoints > 0 || mobileUtils.isMobileSafari())
-      ? 0.94
-      : 0.93,
-  // High threshold to prevent accidental momentum from tiny finger movements
+    typeof window !== 'undefined' && mobileUtils.isMobileSafari()
+      ? 0.982 // Very low friction for iPhone - long, natural deceleration
+      : typeof window !== 'undefined' && window.navigator.maxTouchPoints > 0
+        ? 0.985 // Slightly higher for Android
+        : 0.93, // Higher for desktop (shorter momentum)
+
+  // Lower threshold for smoother momentum initiation
   minVelocity:
-    typeof window !== 'undefined' &&
-    (window.navigator.maxTouchPoints > 0 || mobileUtils.isMobileSafari())
-      ? 3.0
-      : 2.5,
+    typeof window !== 'undefined' && mobileUtils.isMobileSafari()
+      ? 1.5 // Lower threshold for iPhone - more responsive
+      : typeof window !== 'undefined' && window.navigator.maxTouchPoints > 0
+        ? 2.0 // Medium for Android
+        : 2.5, // Higher for desktop to prevent accidental momentum
+
   tapThreshold: 10,
   tapTimeLimit: 180,
   dragThreshold: 1.5,
@@ -133,12 +145,25 @@ export const useCanvasInteractions = ({
       return;
     }
 
-    // Instead of creating new RAF loop, pass momentum data to canvas
+    // Enhanced momentum with device-specific duration for natural feel
+    const isMobileSafari = typeof window !== 'undefined' && mobileUtils.isMobileSafari();
+    const isMobile = typeof window !== 'undefined' && window.navigator.maxTouchPoints > 0;
+
     const momentumData = {
       velocity: { x: physics.velocity.x, y: physics.velocity.y },
       startTime: performance.now(),
-      duration: 1000, // 1 second decay
+      // Device-specific duration for native-like feel
+      duration: isMobileSafari
+        ? 2500 // 2.5s for iPhone - matches native iOS momentum
+        : isMobile
+          ? 2000 // 2s for other touch devices
+          : 1200, // 1.2s for desktop - shorter but still smooth
       friction: TOUCH_SETTINGS.momentumFriction,
+      // Add device type for enhanced decay curves
+      deviceType: (isMobileSafari ? 'ios' : isMobile ? 'mobile' : 'desktop') as
+        | 'ios'
+        | 'mobile'
+        | 'desktop',
     };
 
     // Pass to parent component instead of managing RAF here
