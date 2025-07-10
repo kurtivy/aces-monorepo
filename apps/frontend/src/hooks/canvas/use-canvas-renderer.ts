@@ -19,6 +19,7 @@ import { useCoordinatedResize } from '../use-coordinated-resize';
 import {
   getBrowserPerformanceSettings,
   getDeviceCapabilities,
+  detectLowPowerMode,
 } from '../../lib/utils/browser-utils';
 import {
   addEventListenerSafe,
@@ -61,6 +62,8 @@ interface UseCanvasRendererProps {
     Map<string, { image: ImageInfo; x: number; y: number; width: number; height: number }>
   >;
   canvasRef?: React.RefObject<HTMLCanvasElement | null>; // Match the nullable type
+  // Issue #2: Add updateViewState for momentum handling
+  updateViewState?: (deltaX: number, deltaY: number) => void;
 }
 
 const browserPerf = getBrowserPerformanceSettings();
@@ -150,6 +153,7 @@ export const useCanvasRenderer = ({
   onCreateTokenClick,
   imagePlacementMap,
   canvasRef,
+  updateViewState,
 }: UseCanvasRendererProps) => {
   const canvasRefInternal = useRef<HTMLCanvasElement>(null);
 
@@ -196,6 +200,35 @@ export const useCanvasRenderer = ({
   // Animation state - KEEP these in main hook (UI state, not animation timing)
   const [isProductAnimationActive, setIsProductAnimationActive] = useState(false);
   const [isHoveringToken, setIsHoveringToken] = useState(false);
+
+  // Issue #1: Safari RAF Throttling Detection State
+  const [isThrottled, setIsThrottled] = useState(false);
+
+  // Issue #1: Detect RAF throttling on mount
+  useEffect(() => {
+    detectLowPowerMode().then(setIsThrottled);
+  }, []);
+
+  // Issue #2: Touch momentum state management (replaces RAF loop in interactions)
+  const momentumState = useRef<{
+    velocity: { x: number; y: number };
+    startTime: number;
+    duration: number;
+    friction: number;
+  } | null>(null);
+
+  // Issue #2: Momentum handler function (before draw function)
+  const handleMomentumStart = useCallback(
+    (momentum: {
+      velocity: { x: number; y: number };
+      startTime: number;
+      duration: number;
+      friction: number;
+    }) => {
+      momentumState.current = momentum;
+    },
+    [],
+  );
 
   /*
    * SAFARI PERFORMANCE OPTIMIZATIONS
@@ -946,6 +979,21 @@ export const useCanvasRenderer = ({
       // Step 0: Start performance monitoring for this frame
       performanceMonitor.startFrame();
 
+      // Issue #2: Handle momentum in main RAF loop instead of separate loop
+      if (momentumState.current) {
+        const elapsed = currentTime - momentumState.current.startTime;
+        const progress = Math.min(elapsed / momentumState.current.duration, 1);
+
+        if (progress < 1) {
+          const decay = Math.pow(1 - progress, 2);
+          const deltaX = momentumState.current.velocity.x * decay * 0.016; // 16ms frame time
+          const deltaY = momentumState.current.velocity.y * decay * 0.016;
+          updateViewState?.(deltaX, deltaY);
+        } else {
+          momentumState.current = null;
+        }
+      }
+
       const canvas = activeCanvasRef.current;
       if (!canvas) return;
 
@@ -1031,15 +1079,23 @@ export const useCanvasRenderer = ({
       // Clear dirty regions after processing
       dirtyRegionManager.current.clearDirtyRegions();
 
-      // MOBILE SHIMMER FIX: Use stable canvas properties to avoid constant recalculation
-      // Set properties once at beginning, don't change them frequently during animation
-      const shouldEnableSmoothing = browserPerf.enableImageSmoothing;
-      const targetGlobalAlpha = 1.0; // Keep at full opacity for smooth animation
+      // Issue #1: Apply throttling optimizations when RAF is throttled to 30fps
+      if (isThrottled && browserPerf.targetFPS > 30) {
+        // Reduce visual complexity for 30fps mode
+        ctx.imageSmoothingEnabled = false;
+        console.log('🎯 RAF Throttling: Reduced visual complexity for 30fps mode');
+      } else {
+        // MOBILE SHIMMER FIX: Use stable canvas properties to avoid constant recalculation
+        // Set properties once at beginning, don't change them frequently during animation
+        const shouldEnableSmoothing = browserPerf.enableImageSmoothing;
 
-      // Only update imageSmoothingEnabled if it actually changed
-      if (ctx.imageSmoothingEnabled !== shouldEnableSmoothing) {
-        ctx.imageSmoothingEnabled = shouldEnableSmoothing;
+        // Only update imageSmoothingEnabled if it actually changed
+        if (ctx.imageSmoothingEnabled !== shouldEnableSmoothing) {
+          ctx.imageSmoothingEnabled = shouldEnableSmoothing;
+        }
       }
+
+      const targetGlobalAlpha = 1.0; // Keep at full opacity for smooth animation
 
       // Only update globalAlpha if it actually changed (with small tolerance for floating point)
       if (!isApproximatelyEqual(ctx.globalAlpha, targetGlobalAlpha)) {
@@ -1843,5 +1899,7 @@ export const useCanvasRenderer = ({
     productsFullyVisible,
     repeatedPlacements: repeatedPlacements.current,
     repeatedTokens: repeatedTokens.current,
+    // Issue #2: Return momentum handler for interactions integration
+    handleMomentumStart,
   };
 };

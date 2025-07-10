@@ -474,6 +474,46 @@ export function getDeviceCapabilities(): DeviceCapabilities {
 }
 
 /**
+ * Issue #1: Safari RAF Throttling Detection
+ * Detects if the browser is throttling requestAnimationFrame to 30fps (low power mode)
+ * This is crucial for iOS devices in low power mode or background tabs
+ */
+export const detectLowPowerMode = (): Promise<boolean> => {
+  if (typeof window === 'undefined') return Promise.resolve(false);
+
+  return new Promise((resolve) => {
+    const startTime = performance.now();
+    let frameCount = 0;
+
+    const measureRAF = () => {
+      frameCount++;
+      if (frameCount < 10) {
+        requestAnimationFrame(measureRAF);
+      } else {
+        const elapsed = performance.now() - startTime;
+        const avgFrameTime = elapsed / frameCount;
+        // If average frame time > 25ms, likely throttled to 30fps
+        const isThrottled = avgFrameTime > 25;
+
+        // Debug logging for performance monitoring
+        if (typeof console !== 'undefined' && console.log) {
+          console.log('🎯 RAF Throttling Detection:', {
+            avgFrameTime: avgFrameTime.toFixed(2) + 'ms',
+            estimatedFPS: (1000 / avgFrameTime).toFixed(1),
+            isThrottled,
+            frameCount,
+            totalTime: elapsed.toFixed(2) + 'ms',
+          });
+        }
+
+        resolve(isThrottled);
+      }
+    };
+    requestAnimationFrame(measureRAF);
+  });
+};
+
+/**
  * Phase 2 Step 7 Action 1: Mobile-specific utilities for canvas optimization
  */
 export const mobileUtils = {

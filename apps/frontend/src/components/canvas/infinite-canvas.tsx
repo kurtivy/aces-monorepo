@@ -58,16 +58,19 @@ const InfiniteCanvas = () => {
       animationDuration: browserUtils.getAnimationDuration() / 1000, // Convert ms to seconds for useViewState
     });
 
-  const { canvasReady, repeatedPlacements, repeatedTokens } = useCanvasRenderer({
-    images,
-    viewState,
-    imagesLoaded: imagesLoaded,
-    canvasVisible: loadingState !== 'loading' || hasSeenIntro,
-    onCreateTokenClick: () => (window.location.href = '/create-token'), // Temporarily remove withNavigationSafety
-    imagePlacementMap: imagePlacementMapRef,
-    unitSize: unitSize,
-    canvasRef: canvasRef,
-  });
+  const { canvasReady, repeatedPlacements, repeatedTokens, handleMomentumStart } =
+    useCanvasRenderer({
+      images,
+      viewState,
+      imagesLoaded: imagesLoaded,
+      canvasVisible: loadingState !== 'loading' || hasSeenIntro,
+      onCreateTokenClick: () => (window.location.href = '/create-token'), // Temporarily remove withNavigationSafety
+      imagePlacementMap: imagePlacementMapRef,
+      unitSize: unitSize,
+      canvasRef: canvasRef,
+      // Issue #2: Pass updateViewState for momentum integration
+      updateViewState,
+    });
 
   const imagesRef = useRef(images);
   imagesRef.current = images;
@@ -91,6 +94,8 @@ const InfiniteCanvas = () => {
     updateViewState,
     repeatedPlacements,
     repeatedTokens,
+    // Issue #2: Pass momentum callback from canvas renderer to interactions
+    onMomentumStart: handleMomentumStart,
   });
 
   const interactionsEnabled = loadingState === 'ready' && imagesLoaded;

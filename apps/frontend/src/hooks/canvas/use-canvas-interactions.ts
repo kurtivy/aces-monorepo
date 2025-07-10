@@ -34,6 +34,13 @@ interface UseCanvasInteractionsProps {
       tileId: string;
     }>
   >;
+  // Issue #2: Add momentum callback for RAF integration
+  onMomentumStart?: (momentum: {
+    velocity: { x: number; y: number };
+    startTime: number;
+    duration: number;
+    friction: number;
+  }) => void;
 }
 
 // Balanced sensitivity now that view-state uses 1.0 instead of 0.05
@@ -62,14 +69,14 @@ const TOUCH_SETTINGS = {
 interface TouchPhysics {
   velocity: { x: number; y: number };
   lastPos: { x: number; y: number; time: number } | null;
-  momentumId: number | null;
+  // Issue #2: Removed momentumId - RAF now handled by canvas renderer
   isDragging: boolean;
 }
 
 const createTouchPhysics = (): TouchPhysics => ({
   velocity: { x: 0, y: 0 },
   lastPos: null,
-  momentumId: null,
+  // Issue #2: Removed momentumId - RAF now handled by canvas renderer
   isDragging: false,
 });
 
@@ -81,6 +88,7 @@ export const useCanvasInteractions = ({
   updateViewState,
   repeatedPlacements,
   repeatedTokens,
+  onMomentumStart,
 }: UseCanvasInteractionsProps) => {
   const [isPanning, setIsPanning] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -114,6 +122,7 @@ export const useCanvasInteractions = ({
   );
 
   // Browser-like momentum - mimics trackpad wheel events with decreasing deltas
+  // Issue #2: Replace RAF loop with callback-based approach
   const startMomentum = useCallback(() => {
     const physics = touchPhysicsRef.current;
 
@@ -124,38 +133,21 @@ export const useCanvasInteractions = ({
       return;
     }
 
-    // Mimic browser's wheel momentum - fire rapid updates like trackpad does
-    const currentVelocity = { x: physics.velocity.x, y: physics.velocity.y };
-
-    const animate = () => {
-      // Apply movement exactly like handleWheel does
-      updateViewState(currentVelocity.x, currentVelocity.y);
-
-      // Decelerate like browser does with wheel events
-      currentVelocity.x *= TOUCH_SETTINGS.momentumFriction;
-      currentVelocity.y *= TOUCH_SETTINGS.momentumFriction;
-
-      // Continue if still moving (like browser keeps sending wheel events)
-      if (
-        Math.abs(currentVelocity.x) > TOUCH_SETTINGS.minVelocity ||
-        Math.abs(currentVelocity.y) > TOUCH_SETTINGS.minVelocity
-      ) {
-        physics.momentumId = requestAnimationFrame(animate);
-      } else {
-        physics.momentumId = null;
-        physics.velocity = { x: 0, y: 0 };
-      }
+    // Instead of creating new RAF loop, pass momentum data to canvas
+    const momentumData = {
+      velocity: { x: physics.velocity.x, y: physics.velocity.y },
+      startTime: performance.now(),
+      duration: 1000, // 1 second decay
+      friction: TOUCH_SETTINGS.momentumFriction,
     };
 
-    physics.momentumId = requestAnimationFrame(animate);
-  }, [updateViewState]);
+    // Pass to parent component instead of managing RAF here
+    onMomentumStart?.(momentumData);
+  }, [onMomentumStart]);
 
   const stopMomentum = useCallback(() => {
     const physics = touchPhysicsRef.current;
-    if (physics.momentumId) {
-      cancelAnimationFrame(physics.momentumId);
-      physics.momentumId = null;
-    }
+    // Issue #2: Removed RAF management - just reset velocity
     physics.velocity = { x: 0, y: 0 };
   }, []);
 
