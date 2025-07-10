@@ -944,9 +944,8 @@ export const useCanvasRenderer = ({
     // Update progress: Canvas initializing (80%)
     setCanvasProgress(80);
 
-    // Performance optimization: enable image smoothing for Safari to improve movement quality
-    // Disable only during static rendering to maintain performance
-    ctx.imageSmoothingEnabled = true;
+    // Issue #4: Image smoothing now handled centrally in draw function with device detection
+    // No need to set imageSmoothingEnabled during initialization
 
     // Phase 2 Step 7 Action 1: Canvas sizing now handled by coordinated resize system
     // No need for manual updateCanvasSize here - coordinated resize manages DPR and mobile optimization
@@ -1106,19 +1105,36 @@ export const useCanvasRenderer = ({
       // Clear dirty regions after processing
       dirtyRegionManager.current.clearDirtyRegions();
 
-      // Issue #1: Apply throttling optimizations when RAF is throttled to 30fps
+      // Issue #4: Enhanced mobile image smoothing - set once per frame with device detection
+      const capabilities = getDeviceCapabilities();
+      let shouldUseImageSmoothing: boolean;
+
+      // Issue #1: RAF throttling takes priority (disable smoothing when throttled)
       if (isThrottled && browserPerf.targetFPS > 30) {
-        // Reduce visual complexity for 30fps mode
-        ctx.imageSmoothingEnabled = false;
+        shouldUseImageSmoothing = false;
         console.log('🎯 RAF Throttling: Reduced visual complexity for 30fps mode');
       } else {
-        // MOBILE SHIMMER FIX: Use stable canvas properties to avoid constant recalculation
-        // Set properties once at beginning, don't change them frequently during animation
-        const shouldEnableSmoothing = browserPerf.enableImageSmoothing;
+        // Issue #4: Device-specific image smoothing logic
+        if (capabilities.isMobileSafari) {
+          // Mobile Safari: only enable on high performance tier and not throttled
+          shouldUseImageSmoothing = capabilities.performanceTier === 'high' && !isThrottled;
+        } else {
+          // Other devices: use browser performance settings
+          shouldUseImageSmoothing = browserPerf.enableImageSmoothing && !isThrottled;
+        }
+      }
 
-        // Only update imageSmoothingEnabled if it actually changed
-        if (ctx.imageSmoothingEnabled !== shouldEnableSmoothing) {
-          ctx.imageSmoothingEnabled = shouldEnableSmoothing;
+      // Apply image smoothing only if it actually changed (prevents shader recompilation)
+      if (ctx.imageSmoothingEnabled !== shouldUseImageSmoothing) {
+        ctx.imageSmoothingEnabled = shouldUseImageSmoothing;
+
+        // Debug logging for mobile optimization
+        if (capabilities.isMobileSafari) {
+          console.log('🎯 Mobile Safari Image Smoothing:', {
+            enabled: shouldUseImageSmoothing,
+            performanceTier: capabilities.performanceTier,
+            isThrottled,
+          });
         }
       }
 

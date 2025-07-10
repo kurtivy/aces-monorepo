@@ -60,12 +60,10 @@ export const drawImage = (
   const drawWidth = Math.round(scaledImageWidth);
   const drawHeight = Math.round(scaledImageHeight);
 
+  // Issue #4: Image smoothing now set centrally in canvas renderer for performance
   // Safari optimization: Only set image smoothing quality if not already set
-  if (!isSafari || ctx.imageSmoothingQuality !== 'high') {
-    ctx.imageSmoothingEnabled = true;
-    if (!isSafari) {
-      ctx.imageSmoothingQuality = 'high'; // Skip expensive quality setting on Safari
-    }
+  if (!isSafari && ctx.imageSmoothingQuality !== 'high') {
+    ctx.imageSmoothingQuality = 'high'; // Skip expensive quality setting on Safari
   }
 
   // Draw image with integer pixel coordinates
@@ -170,12 +168,10 @@ export const drawImageWithoutContext = (
   const drawWidth = Math.round(scaledImageWidth);
   const drawHeight = Math.round(scaledImageHeight);
 
+  // Issue #4: Image smoothing now set centrally in canvas renderer for performance
   // Safari optimization: Only set image smoothing quality if not already set
-  if (!isSafari || ctx.imageSmoothingQuality !== 'high') {
-    ctx.imageSmoothingEnabled = true;
-    if (!isSafari) {
-      ctx.imageSmoothingQuality = 'high'; // Skip expensive quality setting on Safari
-    }
+  if (!isSafari && ctx.imageSmoothingQuality !== 'high') {
+    ctx.imageSmoothingQuality = 'high'; // Skip expensive quality setting on Safari
   }
 
   // Draw image with integer pixel coordinates
