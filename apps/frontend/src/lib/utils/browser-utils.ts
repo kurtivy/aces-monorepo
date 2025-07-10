@@ -48,7 +48,6 @@ interface BrowserOptimizations {
   mouseCheckInterval: number;
 
   // Feature flags
-  enableSpaceAnimation: boolean;
   enableComplexDotPattern: boolean;
   enableImageSmoothing: boolean;
 
@@ -87,6 +86,9 @@ function detectDeviceCapabilities(): DeviceCapabilities {
   if (typeof navigator === 'undefined' || typeof window === 'undefined') {
     return defaultCapabilities;
   }
+
+  // Get userAgent early for platform detection
+  const userAgent = navigator.userAgent.toLowerCase();
 
   // Memory detection using performance.memory API (Chrome/Edge)
   let availableMemory = 1024; // Default 1GB
@@ -153,6 +155,49 @@ function detectDeviceCapabilities(): DeviceCapabilities {
           });
         }
         console.log('Android Memory Adjustment - After:', { rawMemory });
+      }
+      // FIX: Apply similar memory adjustments for iOS devices like iPhone XS
+      else if (/iphone|ipad|ipod/.test(userAgent) && rawMemory > 1024) {
+        // iOS devices also underreport memory, especially iPhone XS/Pro models
+        console.log('iOS Memory Adjustment - Before:', { rawMemory, userAgent });
+        if (rawMemory >= 1536) {
+          rawMemory = Math.min(rawMemory * 1.6, 8192); // 1.6x multiplier for iPhone XS+ level devices
+          console.log('iOS Memory Adjustment - Applied 1.6x multiplier:', {
+            newMemory: rawMemory,
+          });
+        } else if (rawMemory >= 1024) {
+          rawMemory = Math.min(rawMemory * 1.3, 4096); // 1.3x multiplier for older iOS devices
+          console.log('iOS Memory Adjustment - Applied 1.3x multiplier:', {
+            newMemory: rawMemory,
+          });
+        }
+        console.log('iOS Memory Adjustment - After:', { rawMemory });
+      }
+      // FIX: Handle M1 Mac Safari memory detection failure
+      else if (!isWindows && !isAndroid && rawMemory <= 1024) {
+        // Likely Safari on Mac without performance.memory API access
+        console.log('Mac Safari Memory Fallback - Detected Safari without memory API');
+        // Use navigator.hardwareConcurrency to estimate Mac tier
+        const cores = navigator.hardwareConcurrency || 4;
+        if (cores >= 8) {
+          rawMemory = 8192; // M1 Pro/Max level (8-16GB typical)
+          console.log('Mac Safari Memory Fallback - Applied M1 Pro/Max estimate:', {
+            newMemory: rawMemory,
+            cores,
+          });
+        } else if (cores >= 4) {
+          rawMemory = 4096; // M1 base level (8GB typical)
+          console.log('Mac Safari Memory Fallback - Applied M1 base estimate:', {
+            newMemory: rawMemory,
+            cores,
+          });
+        } else {
+          rawMemory = 2048; // Older Intel Mac
+          console.log('Mac Safari Memory Fallback - Applied Intel Mac estimate:', {
+            newMemory: rawMemory,
+            cores,
+          });
+        }
       } else {
         console.log('No Memory Adjustment Applied:', { isWindows, isAndroid, rawMemory });
       }
@@ -178,7 +223,6 @@ function detectDeviceCapabilities(): DeviceCapabilities {
   const devicePixelRatio = window.devicePixelRatio || 1;
 
   // Phase 2 Step 7 Action 1: Mobile Safari detection (more specific than general mobile)
-  const userAgent = navigator.userAgent.toLowerCase();
   const isMobileSafari =
     /iphone|ipad|ipod/.test(userAgent) && /safari/.test(userAgent) && !/chrome/.test(userAgent);
 
@@ -219,15 +263,15 @@ function detectDeviceCapabilities(): DeviceCapabilities {
   // Phase 2 Step 7 Action 1: Enhanced mobile-aware performance tier calculation
   const isMobileDevice = touchCapable || /mobile|android|iphone|ipad|ipod/.test(userAgent);
 
-  // High performance: Lowered thresholds for modern devices
-  // Desktop: >2.5GB RAM, ≥4 cores, WebGL support, not high memory pressure
-  // Mobile: >2.2GB RAM, ≥6 cores, WebGL support, not high memory pressure (adjusted for Android Galaxy S24 Ultra, Tab S9+)
+  // FIX: More reasonable high performance thresholds for modern devices
+  // Desktop: >2GB RAM, ≥4 cores, WebGL support, not high memory pressure
+  // Mobile: >1.8GB RAM, ≥4 cores, WebGL support (iPhone XS easily qualifies)
   if (
-    availableMemory > 2560 && // Lowered from 3072 to 2560 (2.5GB) for modern systems
+    availableMemory > 2048 && // Lowered from 2560 to 2048 (2GB) for modern systems
     hardwareConcurrency >= 4 &&
     supportsWebGL &&
-    memoryPressure !== 'high' && // Changed from 'low' to 'not high' - medium is acceptable
-    (!isMobileDevice || (availableMemory > 2200 && hardwareConcurrency >= 6)) // Mobile: >2.2GB RAM, ≥6 cores for high-end Android devices (Galaxy S24 Ultra: 2222MB raw)
+    memoryPressure !== 'high' &&
+    (!isMobileDevice || (availableMemory > 1800 && hardwareConcurrency >= 4)) // Mobile: >1.8GB RAM, ≥4 cores (iPhone XS: ~2.5GB after adjustment, 6 cores)
   ) {
     performanceTier = 'high';
   }
@@ -321,126 +365,59 @@ export function detectBrowser(): BrowserInfo {
 
 /**
  * Gets browser-specific performance optimizations
- * Phase 2 Step 5 Action 1: Progressive performance degradation based on device capabilities
+ * HOLISTIC APPROACH: Canvas-first performance optimization
  */
-// Helper function to apply browser-specific mouse optimizations
-function applyBrowserSpecificMouseOptimizations(
-  optimizations: BrowserOptimizations,
-  browser: BrowserInfo,
-): BrowserOptimizations {
-  // Firefox desktop optimization: Reduce mouse check frequency slightly
-  // Firefox has efficient event handling but benefits from reduced polling
-  if (browser.name === 'firefox' && !browser.isMobile) {
-    return {
-      ...optimizations,
-      mouseCheckInterval: Math.max(optimizations.mouseCheckInterval * 1.25, 20), // 25% slower polling
-    };
-  }
-
-  // Brave desktop optimization: Increase mouse check frequency slightly
-  // Brave's privacy processing adds slight input delay, compensate with faster polling
-  if (browser.name === 'brave' && !browser.isMobile) {
-    return {
-      ...optimizations,
-      mouseCheckInterval: Math.max(optimizations.mouseCheckInterval * 0.8, 12), // 20% faster polling
-    };
-  }
-
-  return optimizations;
-}
-
-export function getBrowserOptimizations(browser: BrowserInfo): BrowserOptimizations {
-  // Phase 2 Step 5 Action 1: Get device capabilities for optimization decisions
+export function getBrowserOptimizations(): BrowserOptimizations {
+  // HOLISTIC APPROACH: Canvas-first performance optimization
+  // Priority #1: Buttery smooth canvas traversal across ALL browsers and devices
   const deviceCapabilities = detectDeviceCapabilities();
 
-  // Phase 2 Step 5 Action 2: Standardized animation durations based on device capabilities only
-  const baseOptimizations: BrowserOptimizations = {
-    targetFPS: 60,
-    animationDuration: 400, // Standardized: medium duration for all browsers
-    mouseCheckInterval: 16,
-    enableSpaceAnimation: true,
-    enableComplexDotPattern: true,
-    enableImageSmoothing: true,
-    useLinearEasing: false,
-    frameThrottling: false,
-    gradientCacheSize: 100,
-    gradientCacheClearInterval: 30000,
+  // CANVAS-FOCUSED BASE SETTINGS: Optimized for smooth traversal, not visual effects
+  const canvasFocusedOptimizations: BrowserOptimizations = {
+    targetFPS: 60, // Always target 60fps for smooth canvas
+    animationDuration: 350, // Fast animations to minimize interference
+    mouseCheckInterval: 20, // STANDARDIZED across all browsers - no more browser favoritism
+
+    // CANVAS SMOOTHNESS PRIORITY: Disable all non-essential effects
+    enableComplexDotPattern: false, // DISABLED - GPU overhead
+    enableImageSmoothing: true, // Keep for quality, optimized separately
+
+    // SIMPLE ANIMATIONS: Prioritize performance over visual complexity
+    useLinearEasing: true, // Simpler math = smoother performance
+    frameThrottling: false, // NEVER throttle - smoothness is priority
+
+    // MEMORY MANAGEMENT: Conservative settings for stability
+    gradientCacheSize: 100, // Balanced across all devices
+    gradientCacheClearInterval: 45000, // Standard interval
   };
 
-  // Phase 2 Step 5 Action 2: Device-based optimization (no browser-specific animation timing)
+  // DEVICE-SPECIFIC ADJUSTMENTS: Only where absolutely necessary for stability
   if (deviceCapabilities.performanceTier === 'low') {
-    const lowPerfOptimizations = {
-      ...baseOptimizations,
-      targetFPS: 30, // Only reduce FPS for truly low-end devices
-      animationDuration: 250, // Faster animations for lower-end devices (standardized)
-      mouseCheckInterval: 50, // Less frequent checks
-      enableSpaceAnimation: false, // Disable heavy animations
-      enableComplexDotPattern: false, // Disable complex patterns
-      useLinearEasing: true, // Simpler easing
-      frameThrottling: true, // Enable throttling
-      gradientCacheSize: 25, // Smaller cache for memory-constrained devices
-      gradientCacheClearInterval: 15000, // More frequent clearing
+    return {
+      ...canvasFocusedOptimizations,
+      targetFPS: 45, // Slightly reduced for truly low-end devices
+      mouseCheckInterval: 30, // Slightly slower for memory-constrained devices
+      gradientCacheSize: 50, // Smaller cache
+      gradientCacheClearInterval: 30000, // More frequent clearing
     };
-
-    // Phase 2 Step 5 Action 1: Firefox-specific fix for black screen flashing
-    if (browser.name === 'firefox') {
-      lowPerfOptimizations.frameThrottling = false; // CRITICAL: Never throttle Firefox frames
-      lowPerfOptimizations.targetFPS = 60; // Keep full FPS for Firefox
-    }
-
-    // Apply browser-specific mouse interval optimizations for low performance tier
-    return applyBrowserSpecificMouseOptimizations(lowPerfOptimizations, browser);
   }
 
-  if (deviceCapabilities.performanceTier === 'medium') {
-    // Phase 2 Step 5 Action 2: Standardized medium performance tier - no browser-specific animation timing
-    const mediumOptimizations = {
-      ...baseOptimizations,
-      targetFPS: 60, // Keep 60fps for medium devices
-      // Animation duration stays standardized (400ms from baseOptimizations)
-      mouseCheckInterval: browser.isMobile ? 40 : 32, // Optimized for mobile vs desktop
-      enableSpaceAnimation: false, // Disabled for stability on medium devices
-      enableComplexDotPattern: false, // Disabled for performance on medium devices
-      useLinearEasing: true, // Simpler easing for medium devices
-      frameThrottling: false, // Don't throttle medium devices
+  // CRITICAL: High and medium devices get IDENTICAL settings
+  // No more "high tier gets more effects" - focus on smoothness
+  if (
+    deviceCapabilities.performanceTier === 'medium' ||
+    deviceCapabilities.performanceTier === 'high'
+  ) {
+    return {
+      ...canvasFocusedOptimizations,
+      // Enhanced settings for canvas smoothness (not visual effects)
+      mouseCheckInterval: 16, // Slightly faster for better responsiveness
+      animationDuration: 300, // Slightly faster animations
+      gradientCacheSize: 150, // Slightly larger cache for smooth scrolling
     };
-
-    // ONLY critical browser-specific fixes (not animation timing)
-    if (browser.name === 'safari') {
-      mediumOptimizations.gradientCacheSize = 100; // Phase 2 Step 5 Action 3: Increased cache for Safari scroll performance
-    }
-
-    if (browser.name === 'firefox') {
-      mediumOptimizations.gradientCacheSize = 75; // Moderate cache for Firefox
-      mediumOptimizations.frameThrottling = false; // CRITICAL: Disable frame throttling for Firefox
-    }
-
-    // Apply browser-specific mouse interval optimizations for medium performance tier
-    return applyBrowserSpecificMouseOptimizations(mediumOptimizations, browser);
   }
 
-  // Phase 2 Step 5 Action 2: High performance tier with standardized animation timing
-  if (deviceCapabilities.performanceTier === 'high') {
-    const highPerfOptimizations = {
-      ...baseOptimizations,
-      targetFPS: 60,
-      animationDuration: 350, // Standardized: slightly faster for high-end devices
-      mouseCheckInterval: browser.isMobile ? 32 : 16, // Slightly slower for mobile touch to reduce CPU load
-      enableSpaceAnimation: !browser.isMobile, // Disable space animation on mobile for better performance
-      enableComplexDotPattern: true,
-      enableImageSmoothing: true,
-      useLinearEasing: false,
-      frameThrottling: false,
-      gradientCacheSize: browser.isMobile ? 150 : 200, // Slightly smaller cache for mobile
-      gradientCacheClearInterval: 60000, // Less frequent clearing
-    };
-
-    // Apply browser-specific mouse interval optimizations for high performance tier
-    return applyBrowserSpecificMouseOptimizations(highPerfOptimizations, browser);
-  }
-
-  // Fallback to base optimizations with browser-specific mouse optimizations
-  return applyBrowserSpecificMouseOptimizations(baseOptimizations, browser);
+  return canvasFocusedOptimizations;
 }
 
 /**
@@ -459,8 +436,7 @@ export function getBrowser(): BrowserInfo {
 
 export function getBrowserPerformanceSettings(): BrowserOptimizations {
   if (!cachedOptimizations) {
-    const browser = getBrowser();
-    cachedOptimizations = getBrowserOptimizations(browser);
+    cachedOptimizations = getBrowserOptimizations();
   }
   return cachedOptimizations;
 }
@@ -792,7 +768,7 @@ export const browserUtils = {
   getTargetFPS: () => getBrowserPerformanceSettings().targetFPS,
   getAnimationDuration: () => getBrowserPerformanceSettings().animationDuration,
   getMouseCheckInterval: () => getBrowserPerformanceSettings().mouseCheckInterval,
-  shouldEnableSpaceAnimation: () => getBrowserPerformanceSettings().enableSpaceAnimation,
+  // Space animation completely removed for performance
   shouldUseComplexDotPattern: () => getBrowserPerformanceSettings().enableComplexDotPattern,
 
   // Phase 2 Step 5 Action 1: New device capability utilities
@@ -833,7 +809,7 @@ Pixel Density: ${deviceCapabilities.pixelDensityCategory} (${deviceCapabilities.
 Orientation Support: ${deviceCapabilities.orientationCapable ? 'yes' : 'no'}
 Target FPS: ${optimizations.targetFPS}
 Animation Duration: ${optimizations.animationDuration}ms (standardized across browsers)
-Space Animation: ${optimizations.enableSpaceAnimation ? 'enabled' : 'disabled'}
+Space Animation: disabled (removed for performance)
 Gradient Cache: ${optimizations.gradientCacheSize} items, ${optimizations.gradientCacheClearInterval}ms interval`;
 }
 

@@ -15,7 +15,7 @@ import {
   resetGlobalPlacementTracking,
 } from '../../lib/canvas/grid-placement';
 import { getDisplayDimensions } from '../../lib/canvas/image-type-utils';
-import { useSpaceAnimation } from '../use-space-animation';
+// Space animation removed for performance optimization
 import { easeInOutCubic, isApproximatelyEqual } from '../../lib/canvas/math-utils';
 import { useCoordinatedResize } from '../use-coordinated-resize';
 import {
@@ -165,7 +165,7 @@ export const useCanvasRenderer = ({
   useCoordinatedResize({ canvasRef: activeCanvasRef });
 
   // Enhanced browser performance detection including mobile optimizations
-  const browserPerf = useMemo(() => {
+  const { browserPerf, deviceCapabilities } = useMemo(() => {
     const perf = getBrowserPerformanceSettings();
     const capabilities = getDeviceCapabilities();
 
@@ -174,18 +174,22 @@ export const useCanvasRenderer = ({
     const performanceTier = capabilities.performanceTier;
 
     return {
-      ...perf,
-      // Mobile-optimized settings for smoother animation
-      frameThrottling: isMobileDevice && performanceTier === 'low',
-      mouseCheckInterval: isMobileDevice
-        ? performanceTier === 'high'
-          ? 32
-          : performanceTier === 'medium'
-            ? 50
-            : 100
-        : perf.mouseCheckInterval,
-      enableImageSmoothing: !isMobileDevice || performanceTier !== 'low',
-      adaptiveRendering: isMobileDevice, // Enable adaptive quality for mobile
+      browserPerf: {
+        ...perf,
+        // Mobile-optimized settings for smoother animation
+        frameThrottling: isMobileDevice && performanceTier === 'low',
+        mouseCheckInterval: isMobileDevice
+          ? performanceTier === 'high'
+            ? 32
+            : performanceTier === 'medium'
+              ? 50
+              : 100
+          : perf.mouseCheckInterval,
+        enableImageSmoothing: !isMobileDevice || performanceTier !== 'low',
+        adaptiveRendering: isMobileDevice, // Enable adaptive quality for mobile
+      },
+      // Issue #4 FIX: Memoize device capabilities to prevent expensive calls every frame
+      deviceCapabilities: capabilities,
     };
   }, []);
 
@@ -264,8 +268,7 @@ export const useCanvasRenderer = ({
   const targetFPS = browserPerf.targetFPS; // Centralized FPS setting
   const frameInterval = 1000 / targetFPS;
 
-  // Create a separate canvas for space animation
-  const spaceCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Space animation removed for performance optimization
 
   const stableProductPlacements = useRef<
     Array<{
@@ -386,23 +389,9 @@ export const useCanvasRenderer = ({
     };
   }, []);
 
-  // Initialize space canvas
-  useEffect(() => {
-    if (typeof document !== 'undefined') {
-      const canvas = document.createElement('canvas');
-      canvas.width = unitSize;
-      canvas.height = unitSize;
-      spaceCanvasRef.current = canvas;
-    }
-  }, [unitSize]);
+  // Space canvas initialization removed for performance optimization
 
-  // Initialize space animation with centralized browser-specific settings
-  useSpaceAnimation(spaceCanvasRef, {
-    starCount: 0, // Disabled for all browsers during loading
-    nebulaCount: browserPerf.enableSpaceAnimation ? 3 : 0, // Centralized space animation control
-    canvasWidth: unitSize,
-    canvasHeight: unitSize,
-  });
+  // Space animation completely removed for performance optimization
 
   const calculateRequiredTiles = useCallback((currentViewState: ViewState): GridTile[] => {
     if (!originalGridBounds.current) {
@@ -1105,8 +1094,7 @@ export const useCanvasRenderer = ({
       // Clear dirty regions after processing
       dirtyRegionManager.current.clearDirtyRegions();
 
-      // Issue #4: Enhanced mobile image smoothing - set once per frame with device detection
-      const capabilities = getDeviceCapabilities();
+      // Issue #4 FIX: Use memoized device capabilities instead of expensive call every frame
       let shouldUseImageSmoothing: boolean;
 
       // Issue #1: RAF throttling takes priority (disable smoothing when throttled)
@@ -1114,10 +1102,10 @@ export const useCanvasRenderer = ({
         shouldUseImageSmoothing = false;
         console.log('🎯 RAF Throttling: Reduced visual complexity for 30fps mode');
       } else {
-        // Issue #4: Device-specific image smoothing logic
-        if (capabilities.isMobileSafari) {
+        // Issue #4: Device-specific image smoothing logic (using memoized capabilities)
+        if (deviceCapabilities.isMobileSafari) {
           // Mobile Safari: only enable on high performance tier and not throttled
-          shouldUseImageSmoothing = capabilities.performanceTier === 'high' && !isThrottled;
+          shouldUseImageSmoothing = deviceCapabilities.performanceTier === 'high' && !isThrottled;
         } else {
           // Other devices: use browser performance settings
           shouldUseImageSmoothing = browserPerf.enableImageSmoothing && !isThrottled;
@@ -1128,11 +1116,11 @@ export const useCanvasRenderer = ({
       if (ctx.imageSmoothingEnabled !== shouldUseImageSmoothing) {
         ctx.imageSmoothingEnabled = shouldUseImageSmoothing;
 
-        // Debug logging for mobile optimization
-        if (capabilities.isMobileSafari) {
+        // Debug logging for mobile optimization (reduced frequency to avoid spam)
+        if (deviceCapabilities.isMobileSafari && Math.random() < 0.01) {
           console.log('🎯 Mobile Safari Image Smoothing:', {
             enabled: shouldUseImageSmoothing,
-            performanceTier: capabilities.performanceTier,
+            performanceTier: deviceCapabilities.performanceTier,
             isThrottled,
           });
         }
@@ -1529,7 +1517,7 @@ export const useCanvasRenderer = ({
             actualHoverProgress,
             unitSize,
             logoImageRef.current,
-            spaceCanvasRef.current,
+            null, // Space animation removed for performance
             currentTime,
           );
           ctx.restore();
@@ -1589,7 +1577,7 @@ export const useCanvasRenderer = ({
             actualHoverProgress,
             unitSize,
             logoImageRef.current,
-            spaceCanvasRef.current,
+            null, // Space animation removed for performance
             currentTime,
           );
           ctx.restore();

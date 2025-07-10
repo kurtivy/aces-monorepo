@@ -23,19 +23,32 @@ export const createViewTransform = (viewState: ViewState): ViewTransform => ({
 });
 
 /**
- * Issue #5: DPR-aware rounding function for high-DPI devices
+ * Issue #5: Memoized DPR-aware rounding function for high-DPI devices
  * Handles iPhone XS (DPR=3) and other high-DPI devices properly
+ * Cached to avoid recreation every frame
  */
-const createDprRoundFunction = (): ((value: number) => number) => {
-  const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+let cachedDprRoundFunction: ((value: number) => number) | null = null;
+let cachedDpr: number | null = null;
 
-  if (dpr === 1) {
+const getDprRoundFunction = (): ((value: number) => number) => {
+  const currentDpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+
+  // Return cached function if DPR hasn't changed
+  if (cachedDprRoundFunction && cachedDpr === currentDpr) {
+    return cachedDprRoundFunction;
+  }
+
+  // Create and cache new function
+  cachedDpr = currentDpr;
+  if (currentDpr === 1) {
     // Desktop: Keep bitwise operations for performance
-    return (value: number) => value | 0;
+    cachedDprRoundFunction = (value: number) => value | 0;
   } else {
     // High-DPI devices: Use DPR-aware rounding for pixel-perfect alignment
-    return (value: number) => Math.round(value * dpr) / dpr;
+    cachedDprRoundFunction = (value: number) => Math.round(value * currentDpr) / currentDpr;
   }
+
+  return cachedDprRoundFunction;
 };
 
 /**
@@ -67,8 +80,8 @@ export const batchTransformElements = <
 }> => {
   const { scaleX, scaleY, offsetX, offsetY } = transform;
 
-  // Issue #5: Create DPR-aware rounding function once per batch
-  const dprRound = createDprRoundFunction();
+  // Issue #5: Get cached DPR-aware rounding function
+  const dprRound = getDprRoundFunction();
 
   // Use typed array for better performance on large datasets
   const results = new Array(elements.length);
@@ -104,7 +117,7 @@ export const worldToScreen = (
   worldY: number,
   transform: ViewTransform,
 ): { x: number; y: number } => {
-  const dprRound = createDprRoundFunction();
+  const dprRound = getDprRoundFunction();
 
   return {
     x: dprRound(worldX * transform.scaleX + transform.offsetX),
