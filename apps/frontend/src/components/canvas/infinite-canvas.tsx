@@ -1,7 +1,7 @@
 'use client';
 
 import type React from 'react';
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 
 import ImageDetailsModal from '../ui/image-details-modal';
@@ -10,8 +10,8 @@ import { useImageLoader } from '../../hooks/canvas/use-image-loader';
 import { useViewState } from '../../hooks/canvas/use-view-state';
 import { useCanvasInteractions } from '../../hooks/canvas/use-canvas-interactions';
 import { useCanvasRenderer } from '../../hooks/canvas/use-canvas-renderer';
-import HomeButton from '../ui/home-button';
 import NavMenu from '../ui/nav-menu';
+import HomeButton from '../ui/home-button';
 import type { ImageInfo } from '../../types/canvas';
 import { useCoordinatedResize } from '../../hooks/use-coordinated-resize';
 import {
@@ -58,17 +58,16 @@ const InfiniteCanvas = () => {
       animationDuration: browserUtils.getAnimationDuration() / 1000, // Convert ms to seconds for useViewState
     });
 
-  const { canvasReady, productsFullyVisible, repeatedPlacements, repeatedTokens } =
-    useCanvasRenderer({
-      images,
-      viewState,
-      imagesLoaded: imagesLoaded,
-      canvasVisible: loadingState !== 'loading' || hasSeenIntro,
-      onCreateTokenClick: () => (window.location.href = '/create-token'), // Temporarily remove withNavigationSafety
-      imagePlacementMap: imagePlacementMapRef,
-      unitSize: unitSize,
-      canvasRef: canvasRef,
-    });
+  const { canvasReady, repeatedPlacements, repeatedTokens } = useCanvasRenderer({
+    images,
+    viewState,
+    imagesLoaded: imagesLoaded,
+    canvasVisible: loadingState !== 'loading' || hasSeenIntro,
+    onCreateTokenClick: () => (window.location.href = '/create-token'), // Temporarily remove withNavigationSafety
+    imagePlacementMap: imagePlacementMapRef,
+    unitSize: unitSize,
+    canvasRef: canvasRef,
+  });
 
   const imagesRef = useRef(images);
   imagesRef.current = images;
@@ -274,10 +273,15 @@ const InfiniteCanvas = () => {
     checkIntroStatus();
   }, []);
 
+  // Memoized visibility conditions to prevent expensive re-calculations
+  const isUIVisible = useMemo(() => {
+    return (loadingState === 'ready' || hasSeenIntro) && canvasReady;
+  }, [loadingState, hasSeenIntro, canvasReady]);
+
   return (
     <>
-      {/* Navigation Menu - fade in when products are fully visible */}
-      {loadingState === 'ready' && canvasReady && productsFullyVisible && (
+      {/* Navigation Menu - cached visibility conditions */}
+      {isUIVisible && (
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -331,7 +335,7 @@ const InfiniteCanvas = () => {
 
       {/* Modals and UI */}
       <ImageDetailsModal imageInfo={selectedImage} onClose={handleModalClose} />
-      {loadingState === 'ready' && canvasReady && productsFullyVisible && !selectedImage && (
+      {isUIVisible && !selectedImage && (
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}

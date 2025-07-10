@@ -64,20 +64,25 @@ interface BrowserOptimizations {
 // Phase 2 Step 5 Action 1: Memory-based device capability detection
 function detectDeviceCapabilities(): DeviceCapabilities {
   const defaultCapabilities: DeviceCapabilities = {
-    availableMemory: 1024, // 1GB default assumption
+    availableMemory: 2048, // More realistic mobile default
     memoryPressure: 'medium',
-    hardwareConcurrency: 2,
-    devicePixelRatio: 1,
-    supportsWebGL: false,
+    hardwareConcurrency: 4,
+    devicePixelRatio: 2, // More typical for modern mobile devices
+    supportsWebGL: true, // Most modern mobile devices support WebGL
     supportsOffscreenCanvas: false,
     performanceTier: 'medium',
     // Phase 2 Step 7 Action 1: Mobile defaults
     isMobileSafari: false,
-    screenSize: { width: 1024, height: 768 },
-    touchCapable: false,
-    orientationCapable: false,
-    pixelDensityCategory: 'standard',
+    screenSize: { width: 375, height: 812 }, // iPhone X/XS screen size as default
+    touchCapable: true, // More realistic mobile default
+    orientationCapable: true,
+    pixelDensityCategory: 'high',
   };
+
+  // Add a global flag to track hydration state
+  if (typeof window !== 'undefined') {
+    (window as Window & { __ACES_HYDRATION_SAFE__?: boolean }).__ACES_HYDRATION_SAFE__ = true;
+  }
 
   if (typeof navigator === 'undefined' || typeof window === 'undefined') {
     return defaultCapabilities;
