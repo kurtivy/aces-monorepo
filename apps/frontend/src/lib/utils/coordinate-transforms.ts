@@ -23,8 +23,25 @@ export const createViewTransform = (viewState: ViewState): ViewTransform => ({
 });
 
 /**
+ * Issue #5: DPR-aware rounding function for high-DPI devices
+ * Handles iPhone XS (DPR=3) and other high-DPI devices properly
+ */
+const createDprRoundFunction = (): ((value: number) => number) => {
+  const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+
+  if (dpr === 1) {
+    // Desktop: Keep bitwise operations for performance
+    return (value: number) => value | 0;
+  } else {
+    // High-DPI devices: Use DPR-aware rounding for pixel-perfect alignment
+    return (value: number) => Math.round(value * dpr) / dpr;
+  }
+};
+
+/**
  * Batch transform world coordinates to screen coordinates
  * 91% faster than individual transforms
+ * Issue #5: Now with DPR-aware rounding for high-DPI devices
  */
 export const batchTransformElements = <
   T extends {
@@ -50,6 +67,9 @@ export const batchTransformElements = <
 }> => {
   const { scaleX, scaleY, offsetX, offsetY } = transform;
 
+  // Issue #5: Create DPR-aware rounding function once per batch
+  const dprRound = createDprRoundFunction();
+
   // Use typed array for better performance on large datasets
   const results = new Array(elements.length);
 
@@ -61,12 +81,12 @@ export const batchTransformElements = <
     const elementY = element.animatedY ?? element.y ?? 0;
     const elementOpacity = element.animatedOpacity ?? element.opacity ?? 1;
 
-    // Bitwise operations for integer conversion (faster than Math.round)
+    // Issue #5: DPR-aware coordinate rounding (bitwise for desktop, DPR-aware for high-DPI)
     results[i] = {
-      screenX: (elementX * scaleX + offsetX) | 0,
-      screenY: (elementY * scaleY + offsetY) | 0,
-      width: (element.width * scaleX) | 0,
-      height: (element.height * scaleY) | 0,
+      screenX: dprRound(elementX * scaleX + offsetX),
+      screenY: dprRound(elementY * scaleY + offsetY),
+      width: dprRound(element.width * scaleX),
+      height: dprRound(element.height * scaleY),
       opacity: elementOpacity,
       original: element, // ← Full original object preserved
     };
@@ -77,18 +97,24 @@ export const batchTransformElements = <
 
 /**
  * Fast world-to-screen coordinate conversion
+ * Issue #5: Now with DPR-aware rounding for high-DPI devices
  */
 export const worldToScreen = (
   worldX: number,
   worldY: number,
   transform: ViewTransform,
-): { x: number; y: number } => ({
-  x: (worldX * transform.scaleX + transform.offsetX) | 0,
-  y: (worldY * transform.scaleY + transform.offsetY) | 0,
-});
+): { x: number; y: number } => {
+  const dprRound = createDprRoundFunction();
+
+  return {
+    x: dprRound(worldX * transform.scaleX + transform.offsetX),
+    y: dprRound(worldY * transform.scaleY + transform.offsetY),
+  };
+};
 
 /**
  * Fast screen-to-world coordinate conversion
+ * Issue #5: Input coordinates may come from DPR-aware sources, output stays precise
  */
 export const screenToWorld = (
   screenX: number,
