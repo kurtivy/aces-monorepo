@@ -207,7 +207,6 @@ const cleanupGradientCache = () => {
     if (gradientCache.size > 50) {
       // Only clear if cache is getting large
       gradientCache.clear();
-      console.log('🧹 Cleaned up gradient cache');
     }
     lastCacheCleanup = now;
   }

@@ -87,12 +87,10 @@ function detectDeviceCapabilities(): DeviceCapabilities {
     return defaultCapabilities;
   }
 
-  // Get userAgent early for platform detection
   const userAgent = navigator.userAgent.toLowerCase();
 
-  // Memory detection using performance.memory API (Chrome/Edge)
-  let availableMemory = 1024; // Default 1GB
-  let memoryPressure: 'low' | 'medium' | 'high' = 'medium';
+  let detectedMemory = 1024; // Default 1GB
+  let detectedPressure: 'low' | 'medium' | 'high' = 'medium';
 
   try {
     // @ts-expect-error - performance.memory is Chrome-specific extension not in standard types
@@ -100,116 +98,60 @@ function detectDeviceCapabilities(): DeviceCapabilities {
       // @ts-expect-error - performance.memory properties not in standard types
       const memInfo = performance.memory;
       // Available memory estimation based on heap limit
-      let rawMemory = Math.round(memInfo.jsHeapSizeLimit / (1024 * 1024));
+      detectedMemory = Math.round(memInfo.jsHeapSizeLimit / (1024 * 1024));
 
       // Platform-specific memory adjustments for more accurate estimation
       const isWindows = typeof navigator !== 'undefined' && navigator.platform.includes('Win');
       const isAndroid = typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent);
 
-      // Debug logging for Android detection
-      if (typeof console !== 'undefined' && console.log) {
-        console.log('Memory Detection Debug:', {
-          isWindows,
-          isAndroid,
-          userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'undefined',
-          platform: typeof navigator !== 'undefined' ? navigator.platform : 'undefined',
-          rawMemory,
-        });
-      }
-
-      if (isWindows && rawMemory > 1024) {
+      if (isWindows && detectedMemory > 1024) {
         // Windows typically has more system memory than the conservative heap limit suggests
         // Apply a more aggressive multiplier for high-end Windows PCs
-        if (rawMemory >= 4096) {
-          rawMemory = Math.min(rawMemory * 2.0, 32768); // 2x multiplier for high-end
-          console.log('Windows Memory Adjustment Applied:', {
-            originalMemory: Math.round(memInfo.jsHeapSizeLimit / (1024 * 1024)),
-            adjustedMemory: rawMemory,
-          });
-        } else if (rawMemory >= 2048) {
-          rawMemory = Math.min(rawMemory * 2.2, 16384); // 2.2x multiplier for mid-high end (your PC range)
-          console.log('Windows Memory Adjustment Applied:', {
-            originalMemory: Math.round(memInfo.jsHeapSizeLimit / (1024 * 1024)),
-            adjustedMemory: rawMemory,
-          });
-        } else if (rawMemory >= 1536) {
-          rawMemory = Math.min(rawMemory * 1.5, 8192); // 1.5x multiplier for mid-range
-          console.log('Windows Memory Adjustment Applied:', {
-            originalMemory: Math.round(memInfo.jsHeapSizeLimit / (1024 * 1024)),
-            adjustedMemory: rawMemory,
-          });
+        if (detectedMemory >= 4096) {
+          detectedMemory = Math.min(detectedMemory * 2.0, 32768); // 2x multiplier for high-end
+        } else if (detectedMemory >= 2048) {
+          detectedMemory = Math.min(detectedMemory * 2.2, 16384); // 2.2x multiplier for mid-high end (your PC range)
+        } else if (detectedMemory >= 1536) {
+          detectedMemory = Math.min(detectedMemory * 1.5, 8192); // 1.5x multiplier for mid-range
         }
-      } else if (isAndroid && rawMemory > 1024) {
+      } else if (isAndroid && detectedMemory > 1024) {
         // Android Chrome also reports conservative heap limits, especially on high-end devices
         // Apply Android-specific memory adjustments
-        console.log('Android Memory Adjustment - Before:', { rawMemory, isAndroid });
-        if (rawMemory >= 2048) {
-          rawMemory = Math.min(rawMemory * 1.8, 16384); // 1.8x multiplier for high-end Android (Galaxy S24 Ultra, etc.)
-          console.log('Android Memory Adjustment - Applied 1.8x multiplier:', {
-            newMemory: rawMemory,
-          });
-        } else if (rawMemory >= 1536) {
-          rawMemory = Math.min(rawMemory * 1.5, 8192); // 1.5x multiplier for mid-range Android
-          console.log('Android Memory Adjustment - Applied 1.5x multiplier:', {
-            newMemory: rawMemory,
-          });
+        if (detectedMemory >= 2048) {
+          detectedMemory = Math.min(detectedMemory * 1.8, 16384); // 1.8x multiplier for high-end Android (Galaxy S24 Ultra, etc.)
+        } else if (detectedMemory >= 1536) {
+          detectedMemory = Math.min(detectedMemory * 1.5, 8192); // 1.5x multiplier for mid-range Android
         }
-        console.log('Android Memory Adjustment - After:', { rawMemory });
       }
       // FIX: Apply similar memory adjustments for iOS devices like iPhone XS
-      else if (/iphone|ipad|ipod/.test(userAgent) && rawMemory > 1024) {
+      else if (/iphone|ipad|ipod/.test(userAgent) && detectedMemory > 1024) {
         // iOS devices also underreport memory, especially iPhone XS/Pro models
-        console.log('iOS Memory Adjustment - Before:', { rawMemory, userAgent });
-        if (rawMemory >= 1536) {
-          rawMemory = Math.min(rawMemory * 1.6, 8192); // 1.6x multiplier for iPhone XS+ level devices
-          console.log('iOS Memory Adjustment - Applied 1.6x multiplier:', {
-            newMemory: rawMemory,
-          });
-        } else if (rawMemory >= 1024) {
-          rawMemory = Math.min(rawMemory * 1.3, 4096); // 1.3x multiplier for older iOS devices
-          console.log('iOS Memory Adjustment - Applied 1.3x multiplier:', {
-            newMemory: rawMemory,
-          });
+        if (detectedMemory >= 1536) {
+          detectedMemory = Math.min(detectedMemory * 1.6, 8192); // 1.6x multiplier for iPhone XS+ level devices
+        } else if (detectedMemory >= 1024) {
+          detectedMemory = Math.min(detectedMemory * 1.3, 4096); // 1.3x multiplier for older iOS devices
         }
-        console.log('iOS Memory Adjustment - After:', { rawMemory });
       }
       // FIX: Handle M1 Mac Safari memory detection failure
-      else if (!isWindows && !isAndroid && rawMemory <= 1024) {
+      else if (!isWindows && !isAndroid && detectedMemory <= 1024) {
         // Likely Safari on Mac without performance.memory API access
-        console.log('Mac Safari Memory Fallback - Detected Safari without memory API');
         // Use navigator.hardwareConcurrency to estimate Mac tier
         const cores = navigator.hardwareConcurrency || 4;
         if (cores >= 8) {
-          rawMemory = 8192; // M1 Pro/Max level (8-16GB typical)
-          console.log('Mac Safari Memory Fallback - Applied M1 Pro/Max estimate:', {
-            newMemory: rawMemory,
-            cores,
-          });
+          detectedMemory = 8192; // M1 Pro/Max level (8-16GB typical)
         } else if (cores >= 4) {
-          rawMemory = 4096; // M1 base level (8GB typical)
-          console.log('Mac Safari Memory Fallback - Applied M1 base estimate:', {
-            newMemory: rawMemory,
-            cores,
-          });
+          detectedMemory = 4096; // M1 base level (8GB typical)
         } else {
-          rawMemory = 2048; // Older Intel Mac
-          console.log('Mac Safari Memory Fallback - Applied Intel Mac estimate:', {
-            newMemory: rawMemory,
-            cores,
-          });
+          detectedMemory = 2048; // Older Intel Mac
         }
-      } else {
-        console.log('No Memory Adjustment Applied:', { isWindows, isAndroid, rawMemory });
       }
-
-      availableMemory = rawMemory;
 
       // Memory pressure calculation
       const usedRatio = memInfo.usedJSHeapSize / memInfo.jsHeapSizeLimit;
       if (usedRatio < 0.3) {
-        memoryPressure = 'low';
+        detectedPressure = 'low';
       } else if (usedRatio > 0.7) {
-        memoryPressure = 'high';
+        detectedPressure = 'high';
       }
     }
   } catch (error) {
@@ -267,33 +209,32 @@ function detectDeviceCapabilities(): DeviceCapabilities {
   // Desktop: >2GB RAM, ≥4 cores, WebGL support, not high memory pressure
   // Mobile: >1.8GB RAM, ≥4 cores, WebGL support (iPhone XS easily qualifies)
   if (
-    availableMemory > 2048 && // Lowered from 2560 to 2048 (2GB) for modern systems
+    detectedMemory > 2048 && // Lowered from 2560 to 2048 (2GB) for modern systems
     hardwareConcurrency >= 4 &&
     supportsWebGL &&
-    memoryPressure !== 'high' &&
-    (!isMobileDevice || (availableMemory > 1800 && hardwareConcurrency >= 4)) // Mobile: >1.8GB RAM, ≥4 cores (iPhone XS: ~2.5GB after adjustment, 6 cores)
+    detectedPressure !== 'high' &&
+    (!isMobileDevice || (detectedMemory > 1800 && hardwareConcurrency >= 4)) // Mobile: >1.8GB RAM, ≥4 cores (iPhone XS: ~2.5GB after adjustment, 6 cores)
   ) {
     performanceTier = 'high';
   }
   // Low performance: <1.5GB RAM, ≤1 core, high memory pressure, OR mobile with severe constraints
   else if (
-    availableMemory < 1536 ||
+    detectedMemory < 1536 ||
     hardwareConcurrency <= 1 ||
-    memoryPressure === 'high' ||
-    (isMobileDevice && availableMemory < 1536) // Removed ultra pixel density penalty for high-end devices
+    detectedPressure === 'high' ||
+    (isMobileDevice && detectedMemory < 1536) // Removed ultra pixel density penalty for high-end devices
   ) {
     performanceTier = 'low';
   }
 
   return {
-    availableMemory,
-    memoryPressure,
+    availableMemory: detectedMemory,
+    memoryPressure: detectedPressure,
     hardwareConcurrency,
     devicePixelRatio,
     supportsWebGL,
     supportsOffscreenCanvas,
     performanceTier,
-    // Phase 2 Step 7 Action 1: Mobile-specific capabilities
     isMobileSafari,
     screenSize,
     touchCapable,
@@ -470,18 +411,6 @@ export const detectLowPowerMode = (): Promise<boolean> => {
         const avgFrameTime = elapsed / frameCount;
         // If average frame time > 25ms, likely throttled to 30fps
         const isThrottled = avgFrameTime > 25;
-
-        // Debug logging for performance monitoring
-        if (typeof console !== 'undefined' && console.log) {
-          console.log('🎯 RAF Throttling Detection:', {
-            avgFrameTime: avgFrameTime.toFixed(2) + 'ms',
-            estimatedFPS: (1000 / avgFrameTime).toFixed(1),
-            isThrottled,
-            frameCount,
-            totalTime: elapsed.toFixed(2) + 'ms',
-          });
-        }
-
         resolve(isThrottled);
       }
     };

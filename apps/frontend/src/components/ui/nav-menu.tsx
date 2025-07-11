@@ -113,15 +113,8 @@ const NavMenu: React.FC = () => {
   const handleToggle = useCallback(() => {
     // Prevent rapid clicking while respecting user intent
     if (isToggling.current) {
-      console.log('🔍 Toggle blocked - animation in progress');
       return;
     }
-
-    console.log('🔍 Nav Toggle Start:', {
-      currentState: isOpen,
-      willBe: !isOpen,
-      timeoutActive: timeoutRef.current !== null,
-    });
 
     // Clear any existing timeout first
     clearExistingTimeout();
@@ -132,13 +125,11 @@ const NavMenu: React.FC = () => {
     // Toggle the state
     setIsOpen((prev) => {
       const newState = !prev;
-      console.log('🔍 State Update:', { from: prev, to: newState });
       return newState;
     });
 
     // Set timeout to clear toggling flag
     timeoutRef.current = setTimeout(() => {
-      console.log('🔍 Animation Complete - clearing toggle flag');
       isToggling.current = false;
       timeoutRef.current = null;
     }, browserPerf.animationDuration + 50); // Add small buffer
@@ -160,7 +151,6 @@ const NavMenu: React.FC = () => {
           return;
         }
 
-        console.log('🔍 Outside click - closing menu');
         clearExistingTimeout();
         setIsOpen(false);
       }

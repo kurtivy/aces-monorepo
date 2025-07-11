@@ -1112,7 +1112,6 @@ export const useCanvasRenderer = ({
       // Issue #1: RAF throttling takes priority (disable smoothing when throttled)
       if (isThrottled && browserPerf.targetFPS > 30) {
         shouldUseImageSmoothing = false;
-        console.log('🎯 RAF Throttling: Reduced visual complexity for 30fps mode');
       } else {
         // Issue #4: Device-specific image smoothing logic (using memoized capabilities)
         if (deviceCapabilities.isMobileSafari) {
@@ -1130,7 +1129,7 @@ export const useCanvasRenderer = ({
 
         // Debug logging for mobile optimization (reduced frequency to avoid spam)
         if (deviceCapabilities.isMobileSafari && Math.random() < 0.01) {
-          console.log('🎯 Mobile Safari Image Smoothing:', {
+          console.log('🎯 M obile Safari Image Smoothing:', {
             enabled: shouldUseImageSmoothing,
             performanceTier: deviceCapabilities.performanceTier,
             isThrottled,
