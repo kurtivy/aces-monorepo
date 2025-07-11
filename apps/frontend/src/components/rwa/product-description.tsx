@@ -40,7 +40,7 @@ export default function ProductDescription({
       </div>
 
       {/* Product Info Grid */}
-      <div className="grid grid-cols-2 gap-4 mb-6 text-sm">
+      <div className="grid grid-cols-2 gap-4 mb-1 text-sm">
         <div>
           <span className="text-gray-400">Brand:</span>
           <span className="text-white ml-2 font-medium">{brand}</span>
@@ -49,7 +49,6 @@ export default function ProductDescription({
           <span className="text-gray-400">Category:</span>
           <span className="text-white ml-2 font-medium">{category}</span>
         </div>
-        q{' '}
       </div>
 
       {/* Description */}

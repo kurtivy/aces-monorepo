@@ -108,7 +108,7 @@ export default function TokenGraph({
   tokenAddress = '0x7300...0219FE',
   fdv = '$18.12m',
   createdAt = '2 mo ago',
-  volume = '$1.2M',
+  // volume = '$1.2M',
 }: TokenGraphProps) {
   const copyToClipboard = async (text: string) => {
     try {
