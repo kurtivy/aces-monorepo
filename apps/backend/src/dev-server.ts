@@ -101,7 +101,7 @@ const buildDevServer = async (): Promise<FastifyInstance> => {
 const start = async () => {
   try {
     const app = await buildDevServer();
-    const port = process.env.PORT ? parseInt(process.env.PORT) : 3001;
+    const port = process.env.PORT ? parseInt(process.env.PORT) : 3002;
     const host = process.env.HOST || '0.0.0.0';
 
     await app.listen({ port, host });

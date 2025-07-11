@@ -15,32 +15,92 @@ export async function submissionsRoutes(fastify: FastifyInstance) {
   const submissionService = new SubmissionService(fastify.prisma);
   const biddingService = new BiddingService(fastify.prisma);
 
-  // Create submission
+  // Test endpoint - no auth required
   fastify.post(
-    '/',
+    '/test',
     {
       schema: {
         body: zodToJsonSchema(CreateSubmissionSchema),
       },
     },
     async (request, reply) => {
-      if (!request.user) {
-        throw errors.unauthorized('Authentication required');
-      }
-
       const body = request.body as CreateSubmissionRequest;
       const correlationId = request.id;
 
-      const submission = await submissionService.createSubmission(
-        request.user.id,
-        body,
-        correlationId,
-      );
+      try {
+        // Create or get test user
+        const testUser = await fastify.prisma.user.upsert({
+          where: { privyDid: 'test-user' },
+          update: {},
+          create: {
+            privyDid: 'test-user',
+            walletAddress: '0xTestUser',
+          },
+        });
 
-      return reply.status(201).send({
-        success: true,
-        data: submission,
-      });
+        // Create submission with test user
+        const submission = await submissionService.createSubmission(
+          testUser.id,
+          body,
+          correlationId,
+        );
+
+        return { success: true, data: submission };
+      } catch (error) {
+        // Properly type the error and use structured logging
+        const err = error instanceof Error ? error : new Error('Unknown error');
+        fastify.log.error(
+          { err, correlationId, operation: 'testSubmission' },
+          'Failed to create test submission',
+        );
+        return reply.status(500).send({
+          success: false,
+          error: 'Failed to create test submission',
+        });
+      }
+    },
+  );
+
+  // Regular submission endpoint - requires auth
+  fastify.post(
+    '/create',
+    {
+      schema: {
+        body: zodToJsonSchema(CreateSubmissionSchema),
+      },
+    },
+    async (request, reply) => {
+      const body = request.body as CreateSubmissionRequest;
+      const correlationId = request.id;
+
+      // Check if user exists
+      if (!request.user) {
+        return reply.status(401).send({
+          success: false,
+          error: 'Authentication required',
+        });
+      }
+
+      try {
+        const submission = await submissionService.createSubmission(
+          request.user.id,
+          body,
+          correlationId,
+        );
+
+        return { success: true, data: submission };
+      } catch (error) {
+        // Properly type the error and use structured logging
+        const err = error instanceof Error ? error : new Error('Unknown error');
+        fastify.log.error(
+          { err, correlationId, operation: 'createSubmission' },
+          'Failed to create submission',
+        );
+        return reply.status(500).send({
+          success: false,
+          error: 'Failed to create submission',
+        });
+      }
     },
   );
 

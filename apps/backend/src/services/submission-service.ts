@@ -4,6 +4,20 @@ import { errors } from '../lib/errors';
 import { loggers } from '../lib/logger';
 import { withTransaction } from '../lib/database';
 
+type SubmissionInclude = {
+  owner: true;
+  token: true;
+  bids: {
+    include: {
+      bidder: true;
+    };
+  };
+};
+
+type SubmissionWithRelations = Prisma.RwaSubmissionGetPayload<{
+  include: SubmissionInclude;
+}>;
+
 export class SubmissionService {
   constructor(private prisma: PrismaClient) {}
 
@@ -11,46 +25,80 @@ export class SubmissionService {
     userId: string,
     data: CreateSubmissionRequest,
     correlationId: string,
-  ): Promise<RwaSubmission> {
+  ): Promise<SubmissionWithRelations> {
     try {
-      loggers.database('create', 'rwa_submissions', undefined, 0);
+      const submissionData: Omit<
+        RwaSubmission,
+        | 'id'
+        | 'createdAt'
+        | 'updatedAt'
+        | 'status'
+        | 'txStatus'
+        | 'rejectionType'
+        | 'approvedAt'
+        | 'rejectionReason'
+        | 'txHash'
+        | 'deletedAt'
+        | 'updatedBy'
+        | 'updatedByType'
+      > = {
+        name: data.name,
+        symbol: data.symbol,
+        description: data.description,
+        imageUrl: data.imageUrl,
+        proofOfOwnership: data.proofOfOwnership,
+        ownerId: userId,
+        email: data.email || null,
+        destinationWallet: data.destinationWallet || null,
+        twitterLink: data.twitterLink || null,
+      };
 
       const submission = await this.prisma.rwaSubmission.create({
         data: {
-          ...data,
-          ownerId: userId,
+          ...submissionData,
           status: 'PENDING',
         },
         include: {
           owner: true,
+          token: true,
+          bids: {
+            include: {
+              bidder: true,
+            },
+          },
         },
       });
-
       // Log to audit trail
       await this.prisma.submissionAuditLog.create({
         data: {
           submissionId: submission.id,
-          fromStatus: null,
-          toStatus: 'PENDING',
           actorId: userId,
           actorType: 'USER',
-          notes: 'Submission created',
+          toStatus: 'PENDING',
+          notes: 'Initial submission',
         },
       });
 
-      loggers.database('created', 'rwa_submissions', submission.id);
-
       return submission;
-    } catch (error) {
-      loggers.error(error as Error, { userId, correlationId, operation: 'createSubmission' });
-      throw error;
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        console.error('Error in createSubmission:', err);
+        console.error('Error details:', {
+          name: err.name,
+          message: err.message,
+          stack: err.stack,
+        });
+      } else {
+        console.error('Unknown error in createSubmission:', err);
+      }
+      throw err;
     }
   }
 
   async getUserSubmissions(
     userId: string,
     options: { limit?: number; cursor?: string } = {},
-  ): Promise<{ data: RwaSubmission[]; nextCursor?: string; hasMore: boolean }> {
+  ): Promise<{ data: SubmissionWithRelations[]; nextCursor?: string; hasMore: boolean }> {
     try {
       const limit = Math.min(options.limit || 20, 100);
       const where: Prisma.RwaSubmissionWhereInput = {
@@ -67,6 +115,11 @@ export class SubmissionService {
         include: {
           owner: true,
           token: true,
+          bids: {
+            include: {
+              bidder: true,
+            },
+          },
         },
         orderBy: { createdAt: 'desc' },
         take: limit + 1, // Take one extra to check for more
@@ -83,7 +136,10 @@ export class SubmissionService {
     }
   }
 
-  async getSubmissionById(submissionId: string, userId?: string): Promise<RwaSubmission | null> {
+  async getSubmissionById(
+    submissionId: string,
+    userId?: string,
+  ): Promise<SubmissionWithRelations | null> {
     try {
       const where: Prisma.RwaSubmissionWhereInput = { id: submissionId, deletedAt: null };
 
@@ -174,7 +230,7 @@ export class SubmissionService {
   async getAllSubmissions(
     status?: SubmissionStatus,
     options: { limit?: number; cursor?: string } = {},
-  ): Promise<{ data: RwaSubmission[]; nextCursor?: string; hasMore: boolean }> {
+  ): Promise<{ data: SubmissionWithRelations[]; nextCursor?: string; hasMore: boolean }> {
     try {
       const limit = Math.min(options.limit || 20, 100);
       const where: Prisma.RwaSubmissionWhereInput = { deletedAt: null };
@@ -192,6 +248,11 @@ export class SubmissionService {
         include: {
           owner: true,
           token: true,
+          bids: {
+            include: {
+              bidder: true,
+            },
+          },
         },
         orderBy: { createdAt: 'desc' },
         take: limit + 1,
