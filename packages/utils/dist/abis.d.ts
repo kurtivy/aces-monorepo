@@ -4918,3 +4918,4 @@ export declare const ABIS: {
         readonly type: "function";
     }];
 };
+//# sourceMappingURL=abis.d.ts.map

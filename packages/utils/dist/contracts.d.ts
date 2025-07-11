@@ -18,3 +18,4 @@ export declare const DEPLOYMENT_INFO: {
     readonly chainId: 84532;
     readonly deployedAt: "2025-06-30T17:02:26.722Z";
 };
+//# sourceMappingURL=contracts.d.ts.map

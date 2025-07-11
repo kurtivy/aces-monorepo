@@ -4,11 +4,28 @@ exports.ChainEventWebhookSchema = exports.SubmissionStatusEnum = exports.Paginat
 const zod_1 = require("zod");
 // Submission schemas (from backend.md API contract)
 exports.CreateSubmissionSchema = zod_1.z.object({
-    name: zod_1.z.string().min(1).max(50),
-    symbol: zod_1.z.string().min(1).max(10),
-    description: zod_1.z.string().min(10).max(1000),
-    imageUrl: zod_1.z.string().url(),
-    proofOfOwnership: zod_1.z.string().min(10),
+    name: zod_1.z
+        .string()
+        .min(1, 'Asset name is required')
+        .max(50, 'Asset name must be less than 50 characters'),
+    symbol: zod_1.z.string().min(1, 'Symbol is required').max(10, 'Symbol must be less than 10 characters'),
+    description: zod_1.z
+        .string()
+        .min(10, 'Description must be at least 10 characters')
+        .max(1000, 'Description must be less than 1000 characters'),
+    imageUrl: zod_1.z.string().url('Please provide a valid image URL'),
+    proofOfOwnership: zod_1.z.string().min(10, 'Proof of ownership must be at least 10 characters'),
+    email: zod_1.z.string().email('Please enter a valid email address').optional(),
+    destinationWallet: zod_1.z
+        .string()
+        .regex(/^0x[a-fA-F0-9]{40}$/, 'Please enter a valid Ethereum wallet address')
+        .optional(),
+    twitterLink: zod_1.z
+        .string()
+        .url('Please enter a valid Twitter URL')
+        .regex(/^https?:\/\/(www\.)?(twitter\.com|x\.com)\//, 'Please enter a valid Twitter/X URL')
+        .optional()
+        .or(zod_1.z.literal('')),
 });
 exports.CreateBidSchema = zod_1.z.object({
     submissionId: zod_1.z.string().cuid(),
@@ -49,3 +66,4 @@ exports.ChainEventWebhookSchema = zod_1.z.object({
     blockNumber: zod_1.z.number().optional(),
     gasUsed: zod_1.z.string().optional(),
 });
+//# sourceMappingURL=zod-schemas.js.map

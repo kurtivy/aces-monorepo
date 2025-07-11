@@ -5,18 +5,27 @@ export declare const CreateSubmissionSchema: z.ZodObject<{
     description: z.ZodString;
     imageUrl: z.ZodString;
     proofOfOwnership: z.ZodString;
+    email: z.ZodOptional<z.ZodString>;
+    destinationWallet: z.ZodOptional<z.ZodString>;
+    twitterLink: z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>;
 }, "strip", z.ZodTypeAny, {
     symbol: string;
     name: string;
     description: string;
     imageUrl: string;
     proofOfOwnership: string;
+    email?: string | undefined;
+    destinationWallet?: string | undefined;
+    twitterLink?: string | undefined;
 }, {
     symbol: string;
     name: string;
     description: string;
     imageUrl: string;
     proofOfOwnership: string;
+    email?: string | undefined;
+    destinationWallet?: string | undefined;
+    twitterLink?: string | undefined;
 }>;
 export declare const CreateBidSchema: z.ZodObject<{
     submissionId: z.ZodString;
@@ -111,3 +120,4 @@ export type WebhookReplayRequest = z.infer<typeof WebhookReplaySchema>;
 export type UpdateTokenMetadataRequest = z.infer<typeof UpdateTokenMetadataSchema>;
 export type PaginationRequest = z.infer<typeof PaginationSchema>;
 export type ChainEventWebhookRequest = z.infer<typeof ChainEventWebhookSchema>;
+//# sourceMappingURL=zod-schemas.d.ts.map
