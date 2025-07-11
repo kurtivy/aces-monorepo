@@ -2,11 +2,28 @@ import { z } from 'zod';
 
 // Submission schemas (from backend.md API contract)
 export const CreateSubmissionSchema = z.object({
-  name: z.string().min(1).max(50),
-  symbol: z.string().min(1).max(10),
-  description: z.string().min(10).max(1000),
-  imageUrl: z.string().url(),
-  proofOfOwnership: z.string().min(10),
+  name: z
+    .string()
+    .min(1, 'Asset name is required')
+    .max(50, 'Asset name must be less than 50 characters'),
+  symbol: z.string().min(1, 'Symbol is required').max(10, 'Symbol must be less than 10 characters'),
+  description: z
+    .string()
+    .min(10, 'Description must be at least 10 characters')
+    .max(1000, 'Description must be less than 1000 characters'),
+  imageUrl: z.string().url('Please provide a valid image URL'),
+  proofOfOwnership: z.string().min(10, 'Proof of ownership must be at least 10 characters'),
+  email: z.string().email('Please enter a valid email address').optional(),
+  destinationWallet: z
+    .string()
+    .regex(/^0x[a-fA-F0-9]{40}$/, 'Please enter a valid Ethereum wallet address')
+    .optional(),
+  twitterLink: z
+    .string()
+    .url('Please enter a valid Twitter URL')
+    .regex(/^https?:\/\/(www\.)?(twitter\.com|x\.com)\//, 'Please enter a valid Twitter/X URL')
+    .optional()
+    .or(z.literal('')),
 });
 
 export const CreateBidSchema = z.object({

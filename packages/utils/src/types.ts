@@ -31,6 +31,7 @@ export type TxStatus = 'SUBMITTED' | 'MINED' | 'FAILED' | 'DROPPED';
 export type RejectionType = 'MANUAL' | 'TX_FAILURE';
 export type ActionType = 'USER' | 'SYSTEM' | 'WEBHOOK' | 'ADMIN';
 
+// Base RwaSubmission interface - matches Prisma model fields only (no relations)
 export interface RwaSubmission {
   id: string;
   status: SubmissionStatus;
@@ -40,9 +41,13 @@ export interface RwaSubmission {
   symbol: string;
   description: string;
   imageUrl: string;
-  ownerId: string;
   proofOfOwnership: string;
+  destinationWallet: string | null;
+  twitterLink: string | null;
+  email: string | null;
+  ownerId: string;
   createdAt: Date;
+  updatedAt: Date;
   approvedAt: Date | null;
   rejectionReason: string | null;
   txHash: string | null;
@@ -71,6 +76,35 @@ export interface Bid {
   updatedByType: ActionType | null;
 }
 
+// Extended interfaces for when relations are included (Prisma include queries)
+export interface RwaSubmissionWithOwner extends RwaSubmission {
+  owner: User;
+}
+
+export interface RwaSubmissionWithToken extends RwaSubmission {
+  token: Token | null;
+}
+
+export interface RwaSubmissionWithRelations extends RwaSubmission {
+  owner: User;
+  token: Token | null;
+  bids: (Bid & { bidder: User })[];
+}
+
+// For service layer responses that might include audit logs
+export interface RwaSubmissionDetailed extends RwaSubmissionWithRelations {
+  auditLogs: {
+    id: string;
+    submissionId: string;
+    fromStatus: SubmissionStatus | null;
+    toStatus: SubmissionStatus;
+    actorId: string;
+    actorType: ActionType;
+    notes: string | null;
+    createdAt: Date;
+  }[];
+}
+
 // Blockchain types
 export interface ContractAddresses {
   acesToken: string;
@@ -86,8 +120,10 @@ export interface NetworkConfig {
 
 // API Response types
 export interface ApiResponse<T = unknown> {
+  success: boolean;
   data?: T;
-  error?: AppError;
+  message?: string;
+  error?: AppError | string;
 }
 
 export interface HealthCheckResponse {
