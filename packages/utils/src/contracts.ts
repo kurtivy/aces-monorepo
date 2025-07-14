@@ -19,7 +19,10 @@ export type NetworkName = keyof typeof CONTRACTS;
 export type ContractName = keyof typeof CONTRACTS.baseSepolia;
 
 // Helper function to get contract address
-export function getContractAddress(network: NetworkName, contractName: ContractName): string {
+export function getContractAddress(
+  network: NetworkName,
+  contractName: ContractName
+): string {
   const address = CONTRACTS[network][contractName];
   if (!address) {
     throw new Error(`Contract ${contractName} not deployed on ${network}`);

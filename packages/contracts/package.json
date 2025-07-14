@@ -12,7 +12,10 @@
     "deploy:base-sepolia": "hardhat run scripts/deploy-to-base-sepolia.ts --network baseSepolia",
     "extract-abis": "ts-node scripts/extract-abis.ts",
     "deploy-and-extract": "pnpm deploy:base-sepolia && pnpm extract-abis",
-    "verify": "hardhat verify --network baseSepolia"
+    "verify": "hardhat verify --network baseSepolia",
+    "debug:contract-state": "hardhat run scripts/check-contract-state.ts --network baseSepolia",
+    "debug:purchase-test": "hardhat run scripts/debug-frontend-issues.ts --network baseSepolia",
+    "debug:full-test": "hardhat run scripts/test-purchase-transactions.ts --network baseSepolia"
   },
   "keywords": [],
   "author": "",
