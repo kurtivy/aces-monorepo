@@ -5,29 +5,21 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { usePrivy } from '@privy-io/react-auth';
-import {
-  Upload,
-  Crown,
-  CheckCircle,
-  AlertCircle,
-  Mail,
-  Wallet,
-  Twitter,
-  User,
-  LogOut,
-  LogIn,
-} from 'lucide-react';
+import { Upload, Crown, CheckCircle, AlertCircle, Mail, Wallet, Twitter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { CreateSubmissionSchema, type CreateSubmissionRequest } from '@aces/utils';
 import { SubmissionsApi } from '@/lib/api/submissions';
 import Image from 'next/image';
+import Footer from '@/components/ui/custom/footer';
+import LaunchHeader from '@/components/new-launch/launch-header';
+import AnimatedDotsBackground from '@/components/ui/custom/animated-dots-background';
 
 // Label Section Component (Short tile)
 const LabelSection = ({ label, error }: { label: string; error?: string }) => (
   <div className="w-1/3">
-    <div className="bg-black border border-[#D0B284] rounded-xl shadow-lg hover:shadow-xl hover:border-[#D7BF75] transition-all duration-300 p-1 font-syne uppercase">
+    <div className="bg-[#D0B284]/10 border border-[#D0B284] rounded-xl shadow-lg hover:shadow-xl hover:border-[#D7BF75] transition-all duration-300 p-1 font-syne uppercase">
       <span className="text-[#D0B284] flex justify-center items-center font-medium text-lg">
         {label}
       </span>
@@ -38,7 +30,7 @@ const LabelSection = ({ label, error }: { label: string; error?: string }) => (
 
 // Input Section Component (Full tile)
 const InputSection = ({ children }: { children: React.ReactNode }) => (
-  <div className="w-full pl-24">
+  <div className="w-full pl-12">
     <div className="bg-[#231F20] border border-[#D0B284] rounded-xl shadow-lg hover:shadow-xl hover:border-[#D7BF75] transition-all duration-300">
       {children}
     </div>
@@ -46,7 +38,7 @@ const InputSection = ({ children }: { children: React.ReactNode }) => (
 );
 
 export default function CreateTokenForm() {
-  const { user, login, logout, ready } = usePrivy();
+  const { user, ready } = usePrivy();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -57,7 +49,7 @@ export default function CreateTokenForm() {
     handleSubmit,
     formState: { errors },
     setValue,
-    watch,
+
     reset,
   } = useForm<CreateSubmissionRequest>({
     resolver: zodResolver(CreateSubmissionSchema),
@@ -115,81 +107,35 @@ export default function CreateTokenForm() {
   };
 
   return (
-    <div className="min-h-screen bg-black">
-      {/* Authentication Header */}
-      <div className="border-b border-[#D0B284]/30 bg-[#231F20]/80 backdrop-blur-xl">
-        <div className="max-w-4xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-gradient-to-r from-[#D0B284] to-[#D7BF75] rounded-2xl flex items-center justify-center shadow-lg">
-                <User className="w-5 h-5 text-black" />
-              </div>
-              <div>
-                {ready ? (
-                  user ? (
-                    <div>
-                      <p className="text-sm font-medium text-white">
-                        Logged in as: {user.email?.address || user.wallet?.address || 'User'}
-                      </p>
-                      <p className="text-xs text-[#DCDDCC]">Ready to submit tokens</p>
-                    </div>
-                  ) : (
-                    <div>
-                      <p className="text-sm font-medium text-[#DCDDCC]">Not logged in</p>
-                      <p className="text-xs text-[#DCDDCC]/70">Please log in to submit tokens</p>
-                    </div>
-                  )
-                ) : (
-                  <div>
-                    <p className="text-sm font-medium text-[#DCDDCC]">Loading...</p>
-                    <p className="text-xs text-[#DCDDCC]/70">Initializing authentication</p>
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              {ready &&
-                (user ? (
-                  <Button
-                    onClick={logout}
-                    variant="outline"
-                    size="sm"
-                    className="bg-[#231F20]/60 border-[#D0B284]/50 text-[#DCDDCC] hover:bg-[#231F20] hover:text-white hover:border-[#D7BF75] rounded-xl"
-                  >
-                    <LogOut className="w-4 h-4 mr-2" />
-                    Logout
-                  </Button>
-                ) : (
-                  <Button
-                    onClick={login}
-                    size="sm"
-                    className="bg-gradient-to-r from-[#D0B284] to-[#D7BF75] hover:from-[#D7BF75] hover:to-[#D0B284] text-black font-medium rounded-xl shadow-lg hover:shadow-xl"
-                  >
-                    <LogIn className="w-4 h-4 mr-2" />
-                    Login
-                  </Button>
-                ))}
-            </div>
-          </div>
-        </div>
+    <div className="min-h-screen bg-gradient-to-b from-black to-[#231F20] relative">
+      {/* Add animated dots background */}
+      <AnimatedDotsBackground
+        opacity={0.18}
+        dotSpacing={40}
+        dotSize={1.2}
+        animationSpeed={0.6}
+        waveType="radial"
+        minOpacity={0.06}
+        className="z-0"
+      />
+
+      {/* Add a subtle radial gradient overlay */}
+      <div
+        className="absolute inset-0 pointer-events-none z-10"
+        style={{
+          background:
+            'radial-gradient(circle at 50% 50%, rgba(26, 26, 26, 0) 0%, rgba(0, 0, 0, 0.3) 100%)',
+        }}
+      />
+
+      {/* Launch Header */}
+      <div className="relative z-50">
+        <LaunchHeader />
       </div>
-      {/* Main Header */}
-      {/* <div className="border-b border-[#D0B284]/30 bg-[#231F20]/50 backdrop-blur-xl">
-        <div className="max-w-4xl mx-auto px-6 py-8">
-          <div className="flex items-center gap-6">
-            <div className="w-16 h-16 bg-gradient-to-r from-[#D0B284] to-[#D7BF75] rounded-3xl flex items-center justify-center shadow-xl">
-              <Crown className="w-8 h-8 text-black" />
-            </div>
-            <div>
-              <h1 className="text-4xl font-bold text-white mb-2">Create Token</h1>
-              <p className="text-[#DCDDCC] text-lg">Tokenize your luxury assets</p>
-            </div>
-          </div>
-        </div>
-      </div> */}
+
       {/* Authentication Warning */}
       {ready && !user && (
-        <div className="max-w-4xl mx-auto px-6 pt-8">
+        <div className="max-w-4xl mx-auto px-6 pt-8 relative z-20">
           <div className="p-6 rounded-2xl flex items-center gap-4 bg-yellow-900/20 border-2 border-yellow-500/50 text-yellow-400 shadow-lg">
             <AlertCircle className="w-6 h-6 flex-shrink-0" />
             <p className="text-lg">Please log in to submit your token for approval.</p>
@@ -198,7 +144,7 @@ export default function CreateTokenForm() {
       )}
       {/* Status Message */}
       {submitStatus !== 'idle' && (
-        <div className="max-w-4xl mx-auto px-6 pt-8">
+        <div className="max-w-4xl mx-auto px-6 pt-8 relative z-20">
           <div
             className={`p-6 rounded-2xl flex items-center gap-4 shadow-lg ${
               submitStatus === 'success'
@@ -216,7 +162,29 @@ export default function CreateTokenForm() {
         </div>
       )}
       {/* Mosaic Tile Form */}
-      <div className="max-w-4xl mx-auto px-6 py-12">
+      <div className="max-w-4xl mx-auto px-6 py-12 relative z-20">
+        {/* Page Title */}
+        <div className="mb-8 text-center">
+          <h1
+            className="text-5xl font-bold text-[#D7BF75] mb-4"
+            style={{
+              fontFamily: 'Cinzel, serif',
+              textShadow: '0 0 20px rgba(208, 178, 100, 0.3)',
+            }}
+          >
+            Submit your RWA!
+          </h1>
+        </div>
+
+        {/* Introductory Text */}
+        <div className="mb-12 text-center">
+          <p className="text-lg font-spectral text-[#DCDDCC] leading-relaxed">
+            Hey, while we haven&apos;t officially launched yet, if you have a high-value Real-World
+            Asset (RWA) that you would like to tokenize, submit a form here and maybe you can be
+            part of our launch!
+          </p>
+        </div>
+
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-0">
           {/* Email Field */}
           <LabelSection label="Email" error={errors.email?.message} />
@@ -321,9 +289,6 @@ export default function CreateTokenForm() {
                 {...register('imageUrl')}
                 className="bg-transparent border-0 text-white placeholder:text-[#DCDDCC]/60 text-lg h-14 "
               />
-              <p className="text-sm text-[#DCDDCC]/70">
-                Please provide a direct URL to your asset image
-              </p>
             </div>
           </InputSection>
 
@@ -386,6 +351,7 @@ export default function CreateTokenForm() {
           </div>
         </form>
       </div>
+      <Footer />
     </div>
   );
 }

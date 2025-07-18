@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef } from 'react';
-import { getDeviceCapabilities } from '../../lib/utils/browser-utils';
+import { getDeviceCapabilities } from '../../../lib/utils/browser-utils';
 
 interface AnimatedDotsBackgroundProps {
   className?: string;
@@ -76,37 +76,42 @@ const AnimatedDotsBackground: React.FC<AnimatedDotsBackgroundProps> = ({
             // Different wave patterns based on waveType with smoother calculations
             switch (waveType) {
               case 'horizontal':
-                // Smoother horizontal wave with higher frequency for more fluid motion
+                // Smoother horizontal wave with optimized frequency and easing
                 waveIntensity =
-                  Math.sin(dotX * 0.008 - time * animationSpeed * Math.PI) * 0.5 + 0.5;
+                  Math.sin(dotX * 0.006 - time * animationSpeed * Math.PI) * 0.5 + 0.5;
                 break;
               case 'vertical':
-                // Smoother vertical wave
+                // Smoother vertical wave with optimized frequency
                 waveIntensity =
-                  Math.sin(dotY * 0.008 - time * animationSpeed * Math.PI) * 0.5 + 0.5;
+                  Math.sin(dotY * 0.006 - time * animationSpeed * Math.PI) * 0.5 + 0.5;
                 break;
               case 'diagonal':
-                // Smoother diagonal wave
+                // Smoother diagonal wave with optimized frequency
                 waveIntensity =
-                  Math.sin((dotX + dotY) * 0.006 - time * animationSpeed * Math.PI) * 0.5 + 0.5;
+                  Math.sin((dotX + dotY) * 0.004 - time * animationSpeed * Math.PI) * 0.5 + 0.5;
                 break;
               case 'radial':
               default:
-                // Smoother radial wave effect
+                // Enhanced radial wave effect with smoother calculations
                 const waveDistance = Math.sqrt(dotX * dotX + dotY * dotY);
-                const wavePhase = waveDistance * 0.004 - time * animationSpeed * Math.PI;
+                const wavePhase = waveDistance * 0.003 - time * animationSpeed * Math.PI;
                 waveIntensity = Math.sin(wavePhase) * 0.5 + 0.5;
                 break;
             }
 
-            // Smoother secondary wave with easing
-            const smoothTime = time * 0.6;
-            const secondaryWave = Math.sin(waveIntensity * Math.PI * 1.5 + smoothTime) * 0.2 + 0.8;
+            // Enhanced secondary wave with better easing
+            const smoothTime = time * 0.4;
+            const secondaryWave =
+              Math.sin(waveIntensity * Math.PI * 1.2 + smoothTime) * 0.15 + 0.85;
 
-            // Apply easing function for smoother transitions
-            const easedIntensity = waveIntensity * waveIntensity * (3.0 - 2.0 * waveIntensity); // Smoothstep
+            // Enhanced easing function for even smoother transitions
+            const easedIntensity =
+              waveIntensity *
+              waveIntensity *
+              waveIntensity *
+              (10 - 15 * waveIntensity + 6 * waveIntensity * waveIntensity); // Smootherstep
 
-            // Combine waves and ensure minimum opacity
+            // Combine waves with enhanced blending
             const combinedIntensity = easedIntensity * secondaryWave;
             const opacityRange = baseOpacity - minOpacity;
             const animatedOpacity = minOpacity + opacityRange * combinedIntensity;
