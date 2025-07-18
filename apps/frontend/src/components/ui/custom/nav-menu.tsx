@@ -9,13 +9,13 @@ import { getDeviceCapabilities } from '../../../lib/utils/browser-utils';
 
 // Separate main navigation items from social links
 const mainNavItems = [
-  { href: '/create-token', label: 'Create Token', external: false },
-  { href: '/about', label: 'About', external: false },
-  { href: '/terms', label: 'Terms & PP', external: false },
+  { href: '/create-token', label: 'Create Token', external: false, action: 'navigate' },
+  { href: '/about', label: 'About', external: false, action: 'modal' },
+  { href: '/terms', label: 'Terms & PP', external: false, action: 'modal' },
 ];
 
 // Custom X logo component (modern Twitter/X logo)
-const XIcon: React.FC<{ size?: number }> = ({ size = 20 }) => (
+export const XIcon: React.FC<{ size?: number }> = ({ size = 20 }) => (
   <svg
     width={size}
     height={size}
@@ -28,7 +28,7 @@ const XIcon: React.FC<{ size?: number }> = ({ size = 20 }) => (
 );
 
 // Custom Instagram logo component
-const InstagramIcon: React.FC<{ size?: number }> = ({ size = 20 }) => (
+export const InstagramIcon: React.FC<{ size?: number }> = ({ size = 20 }) => (
   <svg
     width={size}
     height={size}
@@ -46,7 +46,7 @@ const InstagramIcon: React.FC<{ size?: number }> = ({ size = 20 }) => (
 );
 
 // Custom TikTok logo component - Updated with correct TikTok icon path
-const TikTokIcon: React.FC<{ size?: number }> = ({ size = 20 }) => (
+export const TikTokIcon: React.FC<{ size?: number }> = ({ size = 20 }) => (
   <svg
     width={size}
     height={size}
@@ -139,7 +139,12 @@ const mobileNavItemVariants: Variants = {
   },
 };
 
-const NavMenu: React.FC = () => {
+interface NavMenuProps {
+  onAboutClick?: () => void;
+  onTermsClick?: () => void;
+}
+
+const NavMenu: React.FC<NavMenuProps> = ({ onAboutClick, onTermsClick }) => {
   const [isOpen, setIsOpen] = useState(false);
 
   // Smart mobile detection using our existing device capabilities
@@ -187,6 +192,20 @@ const NavMenu: React.FC = () => {
                       >
                         {item.label}
                       </a>
+                    ) : item.action === 'modal' ? (
+                      <button
+                        onClick={() => {
+                          setIsOpen(false);
+                          if (item.href === '/about' && onAboutClick) {
+                            onAboutClick();
+                          } else if (item.href === '/terms' && onTermsClick) {
+                            onTermsClick();
+                          }
+                        }}
+                        className="block w-full text-left text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 px-2 py-1.5 sm:px-3 sm:py-2 text-sm font-medium rounded-md whitespace-nowrap uppercase font-spectral tracking-wide"
+                      >
+                        {item.label}
+                      </button>
                     ) : (
                       <Link
                         href={item.href}
