@@ -1,8 +1,31 @@
 import Image from 'next/image';
-import { InstagramIcon, TikTokIcon, XIcon } from '@/components/ui/custom/nav-menu';
-import { Button } from '@/components/ui/button';
+import SocialIcons from '@/components/ui/custom/social-icons';
+import ConnectWalletProfile from '@/components/ui/custom/connect-wallet-profile';
+import { useState } from 'react';
 
 export default function LaunchHeader() {
+  const [isConnected, setIsConnected] = useState(false);
+
+  const handleConnect = () => {
+    // In a real app, you'd call Privy's login here: login()
+    setIsConnected(true); // Simulate connection
+  };
+
+  const handleDisconnect = () => {
+    // In a real app, you'd call Privy's logout here: logout()
+    setIsConnected(false); // Simulate disconnection
+  };
+
+  const handleProfileClick = () => {
+    // Handle profile click logic here
+    console.log('Profile clicked');
+  };
+
+  const handleSettingsClick = () => {
+    // Handle settings click logic here
+    console.log('Settings clicked');
+  };
+
   return (
     <div className="relative z-10 flex items-center justify-between p-6 w-full overflow-hidden">
       <div className="flex items-center gap-4">
@@ -39,36 +62,15 @@ export default function LaunchHeader() {
       </div>
 
       <div className="flex items-center gap-6">
-        <a
-          href="#"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center justify-center w-14 h-14 text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 rounded-full shadow-md"
-          aria-label="X (Twitter)"
-        >
-          <XIcon size={32} />
-        </a>
-        <a
-          href="#"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center justify-center w-14 h-14 text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 rounded-full shadow-md"
-          aria-label="Instagram"
-        >
-          <InstagramIcon size={32} />
-        </a>
-        <a
-          href="#"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center justify-center w-14 h-14 text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 rounded-full shadow-md"
-          aria-label="TikTok"
-        >
-          <TikTokIcon size={32} />
-        </a>
-        <Button className="ml-4 px-8 py-5 rounded-full bg-[#D0B264] text-black font-bold text-lg shadow-md hover:bg-[#D0B264]/80 transition-colors duration-150">
-          CONNECT WALLET
-        </Button>
+        <SocialIcons iconSize={24} />
+        <ConnectWalletProfile
+          isConnected={isConnected}
+          userAddress={isConnected ? '0x1235abcdef1234567890' : undefined}
+          onConnect={handleConnect}
+          onDisconnect={handleDisconnect}
+          onProfileClick={handleProfileClick}
+          onSettingsClick={handleSettingsClick}
+        />
       </div>
     </div>
   );

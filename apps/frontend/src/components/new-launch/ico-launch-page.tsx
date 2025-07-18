@@ -8,9 +8,10 @@ import BondingCurveChart from './bonding-curve-chart';
 import CountdownTimer from './countdown-timer';
 import ProgressionBar from './progression-bar';
 import BuyNowSection from './buy-now';
-import AnimatedDotsBackground from './animated-dots-background';
+import AnimatedDotsBackground from '../ui/custom/animated-dots-background';
 import { useICOContracts } from '@/hooks/use-ico-contracts';
 import { formatEther } from 'viem';
+import Footer from '@/components/ui/custom/footer';
 
 // Image positioning system - 200x200px squares, no gaps, RIGHT AGAINST content edges
 // Main content = 5 squares wide (1000px), images positioned directly adjacent
@@ -386,6 +387,7 @@ const ICOLaunchPage: React.FC = () => {
           </div>
         </motion.div>
       </div>
+      <Footer />
     </div>
   );
 };

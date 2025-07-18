@@ -1,7 +1,6 @@
 import Image from 'next/image';
 import React from 'react';
-import { XIcon, InstagramIcon, TikTokIcon } from './nav-menu';
-import { Send } from 'lucide-react';
+import SocialIcons from './social-icons';
 
 interface FooterProps {
   onTermsClick?: () => void;
@@ -21,32 +20,7 @@ const Footer = ({ onTermsClick }: FooterProps) => {
     <footer className="w-full bg-black border-t border-[#D0B284] rounded-t-xl py-6 px-4">
       <div className="max-w-7xl mx-auto">
         {/* Social Icons Section */}
-        <div className="flex justify-start items-start space-x-6 mb-4">
-          <a
-            href="https://www.instagram.com/acesdotfun/"
-            className="text-[#D0B284] hover:text-[#D0B284]/80 transition-colors"
-          >
-            <XIcon size={20} />
-          </a>
-          <a
-            href="https://www.instagram.com/acesdotfun/"
-            className="text-[#D0B284] hover:text-[#D0B284]/80 transition-colors"
-          >
-            <InstagramIcon size={20} />
-          </a>
-          <a
-            href="https://www.tiktok.com/@acesdotfun"
-            className="text-[#D0B284] hover:text-[#D0B284]/80 transition-colors"
-          >
-            <TikTokIcon size={20} />
-          </a>
-          <a
-            href="https://t.me/acesdotfun/"
-            className="text-[#D0B284] hover:text-[#D0B284]/80 transition-colors"
-          >
-            <Send size={20} />
-          </a>
-        </div>
+        <SocialIcons className="mb-4" />
 
         {/* Divider */}
         <div className="border-t border-[#D0B284]/30 mb-4"></div>
