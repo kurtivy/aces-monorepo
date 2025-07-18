@@ -34,6 +34,8 @@ interface UseCanvasInteractionsProps {
       tileId: string;
     }>
   >;
+  onAboutClick?: () => void;
+  onTermsClick?: () => void;
 }
 
 // Balanced sensitivity now that view-state uses 1.0 instead of 0.05
@@ -81,6 +83,8 @@ export const useCanvasInteractions = ({
   updateViewState,
   repeatedPlacements,
   repeatedTokens,
+  onAboutClick,
+  onTermsClick,
 }: UseCanvasInteractionsProps) => {
   const [isPanning, setIsPanning] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -186,7 +190,10 @@ export const useCanvasInteractions = ({
           worldY >= aboutQuadY &&
           worldY < aboutQuadY + quadHeight
         ) {
-          window.location.href = '/about';
+          // Open About modal instead of navigating
+          if (onAboutClick) {
+            onAboutClick();
+          }
           return;
         }
 
@@ -206,7 +213,10 @@ export const useCanvasInteractions = ({
           worldY >= termsQuadY &&
           worldY < termsQuadY + quadHeight
         ) {
-          window.location.href = '/terms';
+          // Open Terms modal instead of navigating
+          if (onTermsClick) {
+            onTermsClick();
+          }
           return;
         }
         return;
