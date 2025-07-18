@@ -1,15 +1,24 @@
-import { notFound } from 'next/navigation';
-import PictureGallery from '@/components/rwa/picture-gallery';
-import TokenGraph from '@/components/rwa/token-graph';
-import SwapInterface from '@/components/rwa/swap-interface';
-import ProductDescription from '@/components/rwa/product-description';
-import BiddingSystem from '@/components/rwa/bids-section';
-import TokenInformation from '@/components/rwa/token-information';
+import ClientItemPage from '@/components/rwa/client-page';
+
+// Define proper types
+interface ItemData {
+  id: string;
+  title: string;
+  description: string;
+  date: string;
+  ticker: string;
+  image: string;
+  rrp: number;
+  tokenPrice: number;
+  marketCap: number;
+  tokenSupply: number;
+  ownerAddress: string;
+}
 
 // TODO: Replace with your actual API/database call
-async function getItemData(itemId: string) {
+async function getItemData(itemId: string): Promise<ItemData | null> {
   // Mock data structure matching your metadata format
-  const mockItems: Record<string, any> = {
+  const mockItems: Record<string, ItemData> = {
     '1': {
       id: '1',
       title: '10x South African Gold Krugerrands',
@@ -21,6 +30,7 @@ async function getItemData(itemId: string) {
       tokenPrice: 0.27365,
       marketCap: 27365,
       tokenSupply: 100000,
+      ownerAddress: '0x1234567890123456789012345678901234567890',
     },
   };
 
@@ -33,200 +43,19 @@ async function getItemData(itemId: string) {
   return mockItems[itemId] || null;
 }
 
-// Helper function to transform your metadata into component props
-function transformItemData(itemData: any) {
-  // Calculate derived values
-  const fdv = `$${(itemData.marketCap / 1000).toFixed(1)}K`;
-  const volume24h = `$${((itemData.marketCap * 0.05) / 1000).toFixed(1)}K`;
-  const holders = Math.floor(itemData.tokenSupply / 1000);
-  const liquidity = `$${((itemData.marketCap * 0.1) / 1000).toFixed(1)}K`;
-  const priceChange24h = (Math.random() - 0.5) * 20;
-
-  return {
-    // Basic info
-    id: itemData.id,
-    title: itemData.title,
-    description: itemData.description,
-    category: 'Precious Metals',
-    brand: 'South African Mint',
-    condition: 'Mint Condition',
-    authenticity: 'Certified Authentic',
-
-    // Images
-    images: [itemData.image, itemData.image, itemData.image],
-
-    // Token information
-    tokenSymbol: itemData.ticker.replace('$', ''),
-    tokenPrice: itemData.tokenPrice,
-    priceChange24h: priceChange24h,
-    fdv: fdv,
-    holders: holders,
-    liquidity: liquidity,
-    volume24h: volume24h,
-    tokenSupply: itemData.tokenSupply,
-    marketCap: itemData.marketCap,
-    rrp: itemData.rrp,
-
-    // Mock bidding data
-    currentHighestBid: (itemData.rrp * 0.8) / 2400,
-    minimumBid: (itemData.rrp * 0.82) / 2400,
-    totalBids: Math.floor(Math.random() * 20) + 5,
-    bids: [
-      {
-        id: '1',
-        bidder: '0x1234...5678',
-        amount: (itemData.rrp * 0.8) / 2400,
-        timestamp: '5 min ago',
-        isWinning: true,
-      },
-      {
-        id: '2',
-        bidder: '0x8765...4321',
-        amount: (itemData.rrp * 0.75) / 2400,
-        timestamp: '12 min ago',
-      },
-    ],
-
-    // Mock transaction data
-    recentTransactions: [
-      {
-        type: 'buy' as const,
-        amount: '1,250',
-        price: itemData.tokenPrice.toFixed(5),
-        time: '3m ago',
-        hash: '0x1234...5678',
-      },
-      {
-        type: 'sell' as const,
-        amount: '890',
-        price: (itemData.tokenPrice * 0.98).toFixed(5),
-        time: '8m ago',
-        hash: '0x8765...4321',
-      },
-    ],
-
-    // Social links
-    website: 'https://example.com',
-    social: {
-      twitter: 'https://twitter.com/example',
-    },
-  };
-}
-
 interface PageProps {
-  params: {
+  params: Promise<{
     itemId: string;
-  };
+  }>;
 }
 
 export default async function ItemPage({ params }: PageProps) {
-  const { itemId } = params;
-  const rawItemData = await getItemData(itemId);
-
-  if (!rawItemData) {
-    notFound();
-  }
-
-  const itemData = transformItemData(rawItemData);
-
-  return (
-    <div className="h-screen w-screen bg-[#231F20] flex">
-      {/* Main Container - no padding to match infinite canvas */}
-      <div className="w-full h-full flex">
-        {/* Left Section - 63.8% width */}
-        <div className="w-[63.8%] h-full flex flex-col">
-          {/* Chart Section with Title - 62% height */}
-          <div className="h-[62%] relative">
-            <TokenGraph
-              tokenSymbol={itemData.tokenSymbol}
-              currentPrice={itemData.tokenPrice}
-              priceChange={itemData.priceChange24h}
-              volume={itemData.volume24h}
-            />
-          </div>
-
-          {/* Combined Gallery + Product Description Section - 38% height */}
-          {/* Product Description + Gallery Section - 38% height */}
-          <div className="h-[38%] flex">
-            {/* Product Description - takes up most space (75%) */}
-            <div className="w-[75%] h-full border border-[#D0B264]/40 overflow-y-auto rounded-2xl">
-              <ProductDescription
-                title={itemData.title}
-                description={itemData.description}
-                category={itemData.category}
-                brand={itemData.brand}
-                condition={itemData.condition}
-                authenticity={itemData.authenticity}
-                website={itemData.website}
-                social={itemData.social}
-              />
-            </div>
-            {/* Picture Gallery - on the right (25%) */}
-            <div className="w-[25%] h-full border border-[#D0B264]/40 overflow-y-auto rounded-2xl">
-              <PictureGallery images={itemData.images} title={itemData.title} />
-            </div>
-          </div>
-        </div>
-
-        {/* Right Section - 36.2% width */}
-        <div className="w-[36.2%] h-full flex flex-col">
-          {/* Token Info - 39% height */}
-          <div className="h-[39%] bg-[#184D37] border border-[#D0B264]/40 rounded-2xl">
-            <TokenInformation
-              tokenSymbol={itemData.tokenSymbol}
-              tokenPrice={itemData.tokenPrice}
-              priceChange24h={itemData.priceChange24h}
-              fdv={itemData.fdv}
-              holders={itemData.holders}
-              liquidity={itemData.liquidity}
-              volume24h={itemData.volume24h}
-              recentTransactions={itemData.recentTransactions}
-            />
-          </div>
-
-          {/* Bottom Section Container - 61% height */}
-          <div className="h-[61%] flex">
-            {/* Left Column - 26.8% of right section */}
-            <div className="w-[26.8%] h-full flex flex-col">
-              {/* Own NFT + Login Button - smaller height, more prominent */}
-              <div className="h-[15%] bg-[#D0B264] border-2 border-[#D0B264] rounded-lg ">
-                <div className="h-full flex items-center justify-center">
-                  <div className="text-center">
-                    <p className="text-[10px] text-[#231F20] font-medium mb-1">Own this item?</p>
-                    <button className="text-[10px] bg-[#231F20] text-[#FFFFFF] px-4w py-2 rounded-lg font-bold hover:bg-[#184D37] transition-colors shadow-lg border border-[#D0B264]">
-                      LOGIN
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Bidding System - takes remaining space */}
-              <div className="flex-1 bg-[#928357] border-2 border-[#D0B264] rounded-lg  p-2">
-                <BiddingSystem
-                  currentHighestBid={itemData.currentHighestBid}
-                  minimumBid={itemData.minimumBid}
-                  totalBids={itemData.totalBids}
-                  bids={itemData.bids}
-                />
-              </div>
-            </div>
-
-            {/* Right Column - 73.2% of right section */}
-            <div className="w-[73.2%] h-full">
-              {/* Swap Interface moved to bottom to reach the bottom */}
-              <div className="h-full bg-[#184D37] border-2 border-[#D0B264] flex flex-col">
-                <SwapInterface tokenSymbol={itemData.tokenSymbol} />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  const { itemId } = await params;
+  return <ClientItemPage itemId={itemId} />;
 }
 
 export async function generateMetadata({ params }: PageProps) {
-  const { itemId } = params;
+  const { itemId } = await params;
   const rawItemData = await getItemData(itemId);
 
   if (!rawItemData) {
