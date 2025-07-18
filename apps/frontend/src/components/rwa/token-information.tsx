@@ -105,116 +105,191 @@ export default function TokenInformation({
   const currentVolume = volume[selectedTimeframe];
 
   return (
-    <div className="h-full px-0 py-4 flex flex-col gap-3">
-      {/* Token Price and Volume */}
-      <div className="flex items-center justify-between px-4">
-        <div className="flex items-center gap-3">
-          <div className="text-xs text-gray-400">Price</div>
-          <div className="text-3xl font-mono font-bold text-white">${tokenPrice.toFixed(5)}</div>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="text-xs text-gray-400">{selectedTimeframe} Volume</div>
-          <div className="flex items-center gap-1.5">
-            <Activity className="h-3 w-3 text-[#D0B264]" />
-            <span className="text-sm font-mono text-white">{currentVolume}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Key Metrics Grid */}
-      <div className="grid grid-cols-2">
-        <div className="bg-white/5 rounded-lg p-2 border border-white/10">
-          <div className="flex items-center gap-1.5 mb-1">
-            <TrendingUp className="h-3 w-3 text-[#D0B264]" />
-            <span className="text-xs text-gray-400">FDV</span>
-          </div>
-          <span className="font-mono text-white text-sm">{fdv}</span>
-        </div>
-
-        <div className="bg-white/5 rounded-lg p-2 border border-white/10">
-          <div className="flex items-center gap-1.5 mb-1">
-            <Droplets className="h-3 w-3 text-[#D0B264]" />
-            <span className="text-xs text-gray-400">Liquidity</span>
-          </div>
-          <span className="font-mono text-white text-sm">{liquidity}</span>
-        </div>
-
-        <div className="bg-white/5 rounded-lg p-2 border border-white/10">
-          <div className="flex items-center gap-1.5 mb-1">
-            <Users className="h-3 w-3 text-[#D0B264]" />
-            <span className="text-xs text-gray-400">Holders</span>
-          </div>
-          <span className="font-mono text-white text-sm">{holders.toLocaleString()}</span>
-        </div>
-
-        <div className="bg-white/5 rounded-lg p-2 border border-white/10">
-          <div className="flex items-center gap-1.5 mb-1">
-            <Activity className="h-3 w-3 text-[#D0B264]" />
-            <span className="text-xs text-gray-400">24h Vol</span>
-          </div>
-          <span className="font-mono text-white text-sm">{volume['1d']}</span>
-        </div>
-      </div>
-
-      {/* Time-based Price Changes */}
-      <div className="grid grid-cols-4 ">
-        {Object.entries(priceChange).map(([time, change]) => (
-          <button
-            key={time}
-            onClick={() => setSelectedTimeframe(time as '5m' | '1h' | '6h' | '1d')}
-            className={`bg-white/5 rounded-lg p-1.5 text-center border transition-colors ${
-              selectedTimeframe === time
-                ? 'border-emerald-400/50 bg-emerald-400/10'
-                : 'border-white/10 hover:border-white/20'
-            }`}
-          >
-            <div className="text-xs mb-0.5 text-white">{time}</div>
-            <div
-              className={`text-xs font-mono font-medium ${change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}
-            >
-              {change >= 0 ? '+' : ''}
-              {change}%
-            </div>
-          </button>
-        ))}
-      </div>
-
-      {/* Transaction Distribution */}
-      <div className="mt-auto px-4 pb-4">
-        {/* Buy/Sell Distribution */}
-        <div className="space-y-1.5">
-          <div className="flex justify-between items-center text-xs">
-            <div>
-              <span className="text-gray-400">Txns </span>
-              <span className="text-white font-mono">
-                {currentTransactions.buys + currentTransactions.sells}
-              </span>
-            </div>
-            <div className="flex gap-3">
-              <div>
-                <span className="text-emerald-400">Buys </span>
-                <span className="text-white font-mono">{currentTransactions.buys}</span>
+    <div className="bg-black rounded-xl overflow-hidden">
+      <div className="flex w-full divide-x divide-[#D0B284]/10">
+        {/* Left Column - Price and Key Metrics */}
+        <div className="flex flex-col justify-between w-1/2 h-full">
+          {/* Token Price Header */}
+          <div className="w-full  border-b border-[#D0B284]/30 rounded-b-xl shadow-lg shadow-black/20">
+            <div className="flex items-center justify-between p-2.5 px-6 bg-[#231F20] border border-[#D0B284]/30 rounded-xl">
+              <div className="flex items-center gap-3">
+                <div className="text-xs text-[#DCDDCC] font-mono">Price</div>
+                <div className="text-2xl font-bold text-white font-mono">
+                  ${tokenPrice.toFixed(5)}
+                </div>
               </div>
-              <div>
-                <span className="text-red-400">Sells </span>
-                <span className="text-white font-mono">{currentTransactions.sells}</span>
+              <div className="flex items-center gap-1.5">
+                <Activity className="h-3 w-3 text-[#D0B284]" />
+                <span className="text-xs text-[#DCDDCC] font-mono">
+                  {selectedTimeframe} Volume:
+                </span>
+                <span className="text-sm font-mono text-white">{currentVolume}</span>
               </div>
             </div>
           </div>
-          <div className="relative h-1.5 rounded-full overflow-hidden">
-            <div className="absolute inset-0 flex">
-              <div
-                className="h-full bg-emerald-400"
-                style={{
-                  width: `${(currentTransactions.buys / (currentTransactions.buys + currentTransactions.sells)) * 100}%`,
-                }}
-              />
-              <div
-                className="h-full bg-red-400"
-                style={{
-                  width: `${(currentTransactions.sells / (currentTransactions.buys + currentTransactions.sells)) * 100}%`,
-                }}
-              />
+
+          {/* Key Metrics Grid */}
+          <div className="grid grid-cols-2">
+            <div className="bg-[#231F20]/50 border border-[#D0B284]/30 shadow-md shadow-black/15 rounded-xl">
+              <div className="p-2 text-center">
+                <div className="flex items-center justify-center">
+                  <TrendingUp className="h-4 w-4 text-[#D0B284]" />
+                  <span className="text-xs text-[#DCDDCC] font-mono">FDV</span>
+                </div>
+                <span className="font-mono text-white text-sm font-medium">{fdv}</span>
+              </div>
+            </div>
+
+            <div className="bg-[#231F20]/50 border border-[#D0B284]/30 shadow-md shadow-black/15 rounded-xl">
+              <div className="p-2 text-center">
+                <div className="flex items-center justify-center">
+                  <Droplets className="h-4 w-4 text-[#D0B284]" />
+                  <span className="text-xs text-[#DCDDCC] font-mono">Liquidity</span>
+                </div>
+                <span className="font-mono text-white text-sm font-medium">{liquidity}</span>
+              </div>
+            </div>
+
+            <div className="bg-[#231F20]/50 border border-[#D0B284]/30 shadow-md shadow-black/15 rounded-xl">
+              <div className="p-2 text-center">
+                <div className="flex items-center justify-center">
+                  <Users className="h-4 w-4 text-[#D0B284]" />
+                  <span className="text-xs text-[#DCDDCC] font-mono">Holders</span>
+                </div>
+                <span className="font-mono text-white text-sm font-medium">
+                  {holders.toLocaleString()}
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-[#231F20]/50 border border-[#D0B284]/30 shadow-md shadow-black/15 rounded-xl">
+              <div className="p-2 text-center">
+                <div className="flex items-center justify-center">
+                  <Activity className="h-4 w-4 text-[#D0B284]" />
+                  <span className="text-xs text-[#DCDDCC] font-mono">24h Vol</span>
+                </div>
+                <span className="font-mono text-white text-sm font-medium">{volume['1d']}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column - Time-based Changes and Transaction Distribution */}
+        <div className="flex flex-col justify-between w-1/2 h-full bg-[#231F20]/50 pb-2 rounded-br-xl">
+          {/* Time-based Price Changes */}
+          <div className="bg-[#231F20]/50 shadow-md shadow-black/15 pt-0.5">
+            <div className="flex flex-row">
+              {Object.entries(priceChange).map(([time, change]) => (
+                <button
+                  key={time}
+                  onClick={() => setSelectedTimeframe(time as '5m' | '1h' | '6h' | '1d')}
+                  className={`flex-1 rounded-xl p-2 text-center border transition-all duration-200 shadow-sm bg-black ${
+                    selectedTimeframe === time
+                      ? 'border-[#184D37] bg-[#184D37]/50 shadow-[#184D37]/20'
+                      : 'border-[#D0B284]/20 hover:border-[#D0B284]/40 hover:bg-[#D0B284]/5'
+                  }`}
+                >
+                  <div className="text-xs mb-1 text-[#D0B284] font-mono font-medium">{time}</div>
+                  <div
+                    className={`text-xs font-mono font-bold ${change >= 0 ? 'text-[#184D37]' : 'text-red-400'}`}
+                  >
+                    {change >= 0 ? '+' : ''}
+                    {change}%
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Transaction Distribution */}
+          <div className="px-6">
+            <div className="p-2.5">
+              <div className="space-y-2">
+                <div className="flex justify-between items-center text-xs">
+                  <div>
+                    <span className="text-[#DCDDCC]">Total Txns </span>
+                    <span className="text-white font-mono font-medium">
+                      {currentTransactions.buys + currentTransactions.sells}
+                    </span>
+                  </div>
+                  <div className="flex gap-4">
+                    <div>
+                      <span className="text-[#184D37]">Buys </span>
+                      <span className="text-white font-mono font-medium">
+                        {currentTransactions.buys}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-red-400">Sells </span>
+                      <span className="text-white font-mono font-medium">
+                        {currentTransactions.sells}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div className="relative h-2 rounded-full overflow-hidden bg-black/40 pb-0.5">
+                  <div className="absolute inset-0 flex pb-0.5">
+                    <div
+                      className="h-full bg-[#184D37] shadow-sm"
+                      style={{
+                        width: `${(currentTransactions.buys / (currentTransactions.buys + currentTransactions.sells)) * 100}%`,
+                      }}
+                    />
+                    <div
+                      className="h-full bg-red-400 shadow-sm"
+                      style={{
+                        width: `${(currentTransactions.sells / (currentTransactions.buys + currentTransactions.sells)) * 100}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Makers Distribution */}
+          <div className="px-6">
+            <div className="p-2.5">
+              <div className="space-y-2">
+                <div className="flex justify-between items-center text-xs">
+                  <div>
+                    <span className="text-[#DCDDCC]">Makers </span>
+                    <span className="text-white font-mono font-medium">
+                      {currentTransactions.makers}
+                    </span>
+                  </div>
+                  <div className="flex gap-4">
+                    <div>
+                      <span className="text-[#184D37]">Buyers </span>
+                      <span className="text-white font-mono font-medium">
+                        {currentTransactions.buyers}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-red-400">Sellers </span>
+                      <span className="text-white font-mono font-medium">
+                        {currentTransactions.sellers}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div className="relative h-2 rounded-full overflow-hidden bg-black/40">
+                  <div className="absolute inset-0 flex">
+                    <div
+                      className="h-full bg-[#184D37] shadow-sm"
+                      style={{
+                        width: `${(currentTransactions.buyers / (currentTransactions.buyers + currentTransactions.sellers)) * 100}%`,
+                      }}
+                    />
+                    <div
+                      className="h-full bg-red-400 shadow-sm"
+                      style={{
+                        width: `${(currentTransactions.sellers / (currentTransactions.buyers + currentTransactions.sellers)) * 100}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

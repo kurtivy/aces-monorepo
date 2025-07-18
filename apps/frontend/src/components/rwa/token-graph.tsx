@@ -1,7 +1,10 @@
 'use client';
 
-import { useEffect, useRef, memo } from 'react';
+import type React from 'react';
 import Image from 'next/image';
+import { useEffect, useRef, memo } from 'react';
+import OfferDrawer from './drawers/offer-drawer';
+import CheckoutDrawer from './drawers/checkout-drawer';
 
 interface TradingViewWidgetProps {
   interval?: string;
@@ -28,7 +31,7 @@ const TradingViewWidget = memo(
           "allow_symbol_change": true,
           "calendar": false,
           "details": false,
-          "hide_side_toolbar": true,
+          "hide_side_toolbar": false,
           "hide_top_toolbar": false,
           "hide_legend": false,
           "hide_volume": false,
@@ -43,10 +46,20 @@ const TradingViewWidget = memo(
           "backgroundColor": "#231F20",
           "gridColor": "rgba(208, 178, 132, 0.1)",
           "watchlist": [],
-          "withdateranges": false,
+          "withdateranges": true,
           "compareSymbols": [],
           "studies": [],
-          "autosize": true
+          "autosize": true,
+          "show_popup_button": false,
+          "popup_width": "1000",
+          "popup_height": "650",
+          "enable_publishing": false,
+          "hide_top_toolbar": false,
+          "hide_side_toolbar": false,
+          "allow_symbol_change": true,
+          "container_id": "tradingview_widget",
+          "drawings": true,
+          "show_timeframes_toolbar": true
         }`;
 
       // Create widget container structure
@@ -55,18 +68,8 @@ const TradingViewWidget = memo(
       widgetContainer.style.height = '100%';
       widgetContainer.style.width = '100%';
 
-      const copyright = document.createElement('div');
-      copyright.className = 'tradingview-widget-copyright';
-      copyright.innerHTML =
-        '<a href="https://www.tradingview.com/" rel="noopener nofollow" target="_blank"><span class="blue-text">Track all markets on TradingView</span></a>';
-      copyright.style.position = 'absolute';
-      copyright.style.bottom = '8px';
-      copyright.style.left = '8px';
-      copyright.style.zIndex = '1';
-
       if (currentContainer) {
         currentContainer.appendChild(widgetContainer);
-        currentContainer.appendChild(copyright);
         currentContainer.appendChild(script);
       }
 
@@ -99,17 +102,19 @@ interface TokenGraphProps {
   fdv?: string;
   createdAt?: string;
   volume?: string;
+  // Added for consistency with page.tsx usage, though not directly used in this component's display logic
+  currentPrice?: number;
+  priceChange?: number;
 }
 
-export default function TokenGraph({
+const TokenGraph: React.FC<TokenGraphProps> = ({
   tokenSymbol = 'ETH',
   title = 'South African Gold Krugerrands',
   imageSrc = '/canvas-images/10xSouth-African-Gold-Krugerrands.webp',
   tokenAddress = '0x7300...0219FE',
   fdv = '$18.12m',
   createdAt = '2 mo ago',
-  // volume = '$1.2M',
-}: TokenGraphProps) {
+}) => {
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -119,7 +124,6 @@ export default function TokenGraph({
     }
   };
 
-  // Remove unused timeframe state and constants
   const getSymbol = (tokenSymbol: string) => {
     const symbolMap: Record<string, string> = {
       ETH: 'BINANCE:ETHUSDT',
@@ -131,13 +135,19 @@ export default function TokenGraph({
   };
 
   return (
-    <div className="h-full w-full">
+    <div className="flex flex-col h-full w-full bg-[#231f20]/50 rounded-xl overflow-hidden">
       {/* Header with price info */}
-      <div className="space-y-4 p-4">
+      <div className="space-y-4 p-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg border border-[#D0B284]/20">
-              <Image src={imageSrc} alt={title} width={48} height={48} className="object-cover" />
+              <Image
+                src={imageSrc || '/placeholder.svg'}
+                alt={title}
+                width={48}
+                height={48}
+                className="object-cover"
+              />
             </div>
             <div>
               <h1 className="text-2xl font-bold text-[#FFFFFF] font-syne">
@@ -179,22 +189,51 @@ export default function TokenGraph({
                 <span className="text-white">{createdAt}</span>
               </div>
             </div>
-            <button
-              className="rounded-lg bg-[#D0B284] px-4 py-2 text-sm font-bold text-[#231F20] hover:bg-[#D0B284]/90 transition-colors w-full"
-              onClick={() => {
-                /* Add your buy action here */
-              }}
-            >
-              BUY RWA NOW
-            </button>
+            <div className="flex gap-3 w-full">
+              <OfferDrawer
+                itemTitle={title}
+                itemImage={imageSrc}
+                floorPrice="13.6849 ETH"
+                topOffer="13.18 WETH"
+                lastSale="14.08 WETH"
+                tokenAddress={tokenAddress}
+                onOfferSubmit={(amount, duration) => {
+                  console.log('Offer submitted:', { amount, duration });
+                  // Add your offer submission logic here
+                }}
+              >
+                <button className="flex-1 rounded-xl border border-[#D0B284] px-8 py-1 text-sm font-bold bg-black text-[#D0B284] hover:bg-[#D0B284]/10 transition-colors whitespace-nowrap">
+                  MAKE OFFER
+                </button>
+              </OfferDrawer>
+              <CheckoutDrawer
+                itemTitle={title}
+                itemImage={imageSrc}
+                itemPrice="13.6849 ETH"
+                itemPriceUSD="$47K"
+                collectionName="ACES Collection"
+                tokenId="#2470"
+                walletAddress="0x4CF9...A2E7"
+                onPurchase={(paymentMethod) => {
+                  console.log('Purchase completed with:', paymentMethod);
+                  // Add your purchase logic here
+                }}
+              >
+                <button className="flex-1 rounded-xl bg-[#D0B284] px-8 py-1 text-sm font-bold text-[#231F20] hover:bg-[#D0B284]/90 transition-colors whitespace-nowrap">
+                  BUY NOW
+                </button>
+              </CheckoutDrawer>
+            </div>
           </div>
         </div>
       </div>
 
       {/* TradingView Chart */}
-      <div className="flex-1 h-[calc(100%-8rem)] w-full bg-[#231F20] rounded-lg border border-[#D0B284]/20 overflow-hidden">
+      <div className="flex-1 w-full bg-[#231F20] rounded-none border-t border-[#D0B284]/20 overflow-hidden">
         <TradingViewWidget interval="D" symbol={getSymbol(tokenSymbol)} />
       </div>
     </div>
   );
-}
+};
+
+export default TokenGraph;
