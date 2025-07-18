@@ -326,7 +326,7 @@ export default function ClientItemPage({ itemId }: ClientPageProps) {
         <div className="flex flex-col lg:w-[36.2%]">
           {/* Profile Section - Now wrapped in ProfileSectionWrapper */}
           <div className="rounded-bl-xl overflow-hidden border-b border-l border-[#D0B284]">
-            <ProfileSectionWrapper ownerAddress={itemData.ownerAddress} />
+            <ProfileSectionWrapper />
           </div>
           {/* Swap Interface */}
           <div className="flex-1 rounded-xl overflow-hidden border border-[#D0B284]">
