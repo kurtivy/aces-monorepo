@@ -1,5 +1,5 @@
 import type {
-  RwaSubmission,
+  // RwaSubmission,
   RwaSubmissionWithOwner,
   CreateSubmissionRequest,
   ApiResponse,
