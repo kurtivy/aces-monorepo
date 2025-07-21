@@ -63,7 +63,7 @@ export default function BuyNowSection() {
         <div className="flex flex-col items-center space-y-3">
           <h3
             className="text-[#DCDDCC] text-sm font-medium tracking-wider"
-            style={{ fontFamily: 'Spectral, serif' }}
+            style={{ fontFamily: 'system, serif' }}
           >
             BUY WITH
           </h3>
@@ -101,7 +101,6 @@ export default function BuyNowSection() {
         <button
           className="relative w-full h-16 bg-gradient-to-r from-[#D0B284] to-[#D7BF75] text-black font-bold text-2xl rounded-xl shadow-2xl border-2 border-[#D0B284] transition-all duration-300 overflow-hidden group mb-4"
           style={{
-            fontFamily: 'Cinzel, serif',
             textShadow: '0 2px 4px rgba(0,0,0,0.3)',
           }}
           onMouseEnter={() => setIsHovered(true)}

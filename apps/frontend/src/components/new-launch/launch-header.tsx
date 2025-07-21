@@ -33,20 +33,20 @@ export default function LaunchHeader() {
           <Image
             src="/aces-logo.png"
             alt="ACES Logo"
-            width={64}
-            height={64}
-            className="w-16 h-16 object-contain"
+            width={48}
+            height={48}
+            className="w-12 h-12 object-contain"
           />
         </div>
         <div className="flex items-center">
           <span
-            className="text-6xl font-bold text-white mr-2"
-            style={{ fontFamily: 'var(--font-syne), sans-serif' }}
+            className="text-4xl font-bold text-white mr-2"
+            style={{ fontFamily: 'var(--font-heading), sans-serif' }}
           >
             ACES.
           </span>
           <span
-            className="text-6xl font-bold ml-2"
+            className="text-4xl font-bold ml-2"
             style={{
               fontFamily: 'Spray Letters',
               fontWeight: '400',

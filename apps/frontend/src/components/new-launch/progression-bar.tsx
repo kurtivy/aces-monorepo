@@ -148,7 +148,7 @@ export default function UsdtRaisedSection({
         <div className="text-center">
           <span
             className="text-[#DCDDCC] text-sm font-medium tracking-wide"
-            style={{ fontFamily: 'Spectral, serif' }}
+            style={{ fontFamily: 'system, serif' }}
           >
             TOTAL RAISED: {formatCurrency(displayCurrentAmount)} /{' '}
             {formatCurrency(displayTargetAmount)}

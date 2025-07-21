@@ -87,7 +87,7 @@ const CurrentPriceSquare: React.FC<{ currentPrice: bigint }> = ({ currentPrice }
       <div className="text-center">
         <h3
           className="text-[#D0B264] text-sm font-medium tracking-wider mb-3 uppercase"
-          style={{ fontFamily: 'Spectral, serif' }}
+          style={{ fontFamily: 'system, serif' }}
         >
           Current Price
         </h3>
@@ -100,7 +100,7 @@ const CurrentPriceSquare: React.FC<{ currentPrice: bigint }> = ({ currentPrice }
           </span>
           <span
             className="text-[#DCDDCC] text-lg font-medium"
-            style={{ fontFamily: 'Spectral, serif' }}
+            style={{ fontFamily: 'system, serif' }}
           >
             ETH
           </span>
@@ -123,7 +123,7 @@ const TotalAllocationSquare: React.FC<{ totalSupply: bigint }> = ({ totalSupply 
       <div className="text-center">
         <h3
           className="text-[#D0B264] text-sm font-medium tracking-wider mb-3 uppercase"
-          style={{ fontFamily: 'Spectral, serif' }}
+          style={{ fontFamily: 'system, serif' }}
         >
           Total Allocation
         </h3>
@@ -138,7 +138,7 @@ const TotalAllocationSquare: React.FC<{ totalSupply: bigint }> = ({ totalSupply 
           </span>
           <span
             className="text-[#DCDDCC] text-lg font-medium"
-            style={{ fontFamily: 'Spectral, serif' }}
+            style={{ fontFamily: 'system, serif' }}
           >
             ACES
           </span>
@@ -268,7 +268,6 @@ const ICOLaunchPage: React.FC = () => {
       ref={containerRef}
       className="relative min-h-screen w-full overflow-hidden"
       style={{
-        fontFamily: 'Cinzel, serif',
         background: 'linear-gradient(180deg, #000000 0%, #1A1A1A 100%)',
       }}
     >
@@ -335,7 +334,6 @@ const ICOLaunchPage: React.FC = () => {
                 <h2
                   className="text-5xl font-bold text-white mb-2"
                   style={{
-                    fontFamily: 'Cinzel, serif',
                     textShadow: '0 0 20px rgba(208, 178, 100, 0.3)',
                   }}
                 >
@@ -343,7 +341,7 @@ const ICOLaunchPage: React.FC = () => {
                 </h2>
                 <p
                   className="text-lg text-[#DCDDCC] max-w-2xl text-center leading-relaxed"
-                  style={{ fontFamily: 'Spectral, serif' }}
+                  style={{ fontFamily: 'system, serif' }}
                 >
                   Participate in the ACES ICO and own a piece of the future of luxury asset
                   tokenization.

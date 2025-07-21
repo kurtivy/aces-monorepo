@@ -52,7 +52,7 @@ export default function CountdownTimer() {
 
               <span
                 className="text-3xl font-bold text-white relative z-10 tabular-nums"
-                style={{ fontFamily: 'Spectral, serif' }}
+                style={{ fontFamily: 'system, serif' }}
               >
                 {unit.value.toString().padStart(2, '0')}
               </span>
@@ -64,7 +64,7 @@ export default function CountdownTimer() {
             {/* Label */}
             <span
               className="text-sm text-[#DCDDCC] mt-2 font-medium tracking-wide uppercase"
-              style={{ fontFamily: 'Spectral, serif' }}
+              style={{ fontFamily: 'system, serif' }}
             >
               {unit.label}
             </span>
