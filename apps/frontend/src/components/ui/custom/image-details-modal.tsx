@@ -340,7 +340,7 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                 <div className="flex items-start justify-between mb-4 sm:mb-6">
                   <div className="flex-1 pr-2">
                     <div>
-                      <h2 className="text-xl sm:text-2xl lg:text-3xl xl:text-4xl font-bold text-[#D0B264] mb-2 sm:mb-3 font-syne tracking-wide leading-tight">
+                      <h2 className="text-xl sm:text-2xl lg:text-3xl xl:text-4xl font-bold text-[#D0B264] mb-2 sm:mb-3 font-heading tracking-wide leading-tight">
                         {safeMetadata.title}
                       </h2>
 
@@ -359,7 +359,7 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                               maximumFractionDigits: 0,
                             })}`;
                             return (
-                              <span className="text-xl sm:text-2xl lg:text-3xl font-syne text-[#FFFFFF]/80 font-bold leading-none">
+                              <span className="text-xl sm:text-2xl lg:text-3xl font-heading text-[#FFFFFF]/80 font-bold leading-none">
                                 {formatted}
                               </span>
                             );
@@ -367,7 +367,7 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                           <span className="text-[#D0B264]/60 text-lg sm:text-xl lg:text-2xl font-medium">
                             •
                           </span>
-                          <span className="text-lg sm:text-xl lg:text-2xl font-syne text-[#D0B264] font-semibold">
+                          <span className="text-lg sm:text-xl lg:text-2xl font-heading text-[#D0B264] font-semibold">
                             {safeMetadata.ticker}
                           </span>
                         </div>
@@ -406,7 +406,7 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                   <div className="prose prose-invert">
                     <div className="relative">
                       <p
-                        className={`text-[#FFFFFF]/80 text-sm sm:text-base leading-relaxed font-spectral tracking-wide transition-all duration-300 ${
+                        className={`text-[#FFFFFF]/80 text-sm sm:text-base leading-relaxed font-system tracking-wide transition-all duration-300 ${
                           isDescriptionExpanded ? '' : 'line-clamp-5'
                         }`}
                       >
@@ -477,7 +477,7 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                           <span className="text-[10px] xs:text-xs sm:text-xs md:text-sm text-[#FFFFFF]/60 tracking-wide font-jetbrains-mono uppercase">
                             {label}
                           </span>
-                          <span className="text-xs xs:text-sm sm:text-sm md:text-base font-syne font-bold text-[#D0B264] mt-1">
+                          <span className="text-xs xs:text-sm sm:text-sm md:text-base font-heading font-bold text-[#D0B264] mt-1">
                             {value}
                           </span>
                         </div>
@@ -489,7 +489,7 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
 
               {/* Fixed Button Area */}
               <div className="flex-shrink-0 p-3 sm:p-6 lg:p-8 pt-0 bg-gradient-to-t from-black via-black/95 to-transparent">
-                <button className="w-full bg-gradient-to-r from-[#D0B264] to-[#D0B264]/80 hover:from-[#D0B264]/90 hover:to-[#D0B264]/70 text-[#231F20] font-syne font-bold py-3 sm:py-4 px-4 sm:px-6 lg:px-8 rounded-lg sm:rounded-xl transition-all duration-150 transform active:scale-[0.98] shadow-goldGlow text-sm sm:text-base lg:text-lg md:hover:scale-[1.02]">
+                <button className="w-full bg-gradient-to-r from-[#D0B264] to-[#D0B264]/80 hover:from-[#D0B264]/90 hover:to-[#D0B264]/70 text-[#231F20] font-heading font-bold py-3 sm:py-4 px-4 sm:px-6 lg:px-8 rounded-lg sm:rounded-xl transition-all duration-150 transform active:scale-[0.98] shadow-goldGlow text-sm sm:text-base lg:text-lg md:hover:scale-[1.02]">
                   Tokenize Soon!
                 </button>
               </div>

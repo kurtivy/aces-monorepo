@@ -188,7 +188,7 @@ const NavMenu: React.FC<NavMenuProps> = ({ onAboutClick, onTermsClick }) => {
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={() => setIsOpen(false)}
-                        className="block text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 px-2 py-1.5 sm:px-3 sm:py-2 text-sm font-medium rounded-md whitespace-nowrap uppercase font-spectral tracking-wide"
+                        className="block text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 px-2 py-1.5 sm:px-3 sm:py-2 text-sm font-medium rounded-md whitespace-nowrap uppercase font-system tracking-wide"
                       >
                         {item.label}
                       </a>
@@ -202,7 +202,7 @@ const NavMenu: React.FC<NavMenuProps> = ({ onAboutClick, onTermsClick }) => {
                             onTermsClick();
                           }
                         }}
-                        className="block w-full text-left text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 px-2 py-1.5 sm:px-3 sm:py-2 text-sm font-medium rounded-md whitespace-nowrap uppercase font-spectral tracking-wide"
+                        className="block w-full text-left text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 px-2 py-1.5 sm:px-3 sm:py-2 text-sm font-medium rounded-md whitespace-nowrap uppercase font-system tracking-wide"
                       >
                         {item.label}
                       </button>
@@ -210,7 +210,7 @@ const NavMenu: React.FC<NavMenuProps> = ({ onAboutClick, onTermsClick }) => {
                       <Link
                         href={item.href}
                         onClick={() => setIsOpen(false)}
-                        className="block text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 px-2 py-1.5 sm:px-3 sm:py-2 text-sm font-medium rounded-md whitespace-nowrap uppercase font-spectral tracking-wide"
+                        className="block text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 px-2 py-1.5 sm:px-3 sm:py-2 text-sm font-medium rounded-md whitespace-nowrap uppercase font-system tracking-wide"
                       >
                         {item.label}
                       </Link>

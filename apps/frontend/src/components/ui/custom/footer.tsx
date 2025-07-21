@@ -17,7 +17,7 @@ const Footer = ({ onTermsClick }: FooterProps) => {
   };
 
   return (
-    <footer className="w-full bg-black border-t border-[#D0B284] rounded-t-xl py-6 px-4">
+    <footer className="w-full bg-black border-t border-[#D0B284]/30 rounded-t-xl py-6 px-4">
       <div className="max-w-7xl mx-auto">
         {/* Social Icons Section */}
         <SocialIcons className="mb-4" />

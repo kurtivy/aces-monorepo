@@ -112,12 +112,30 @@ const config: Config = {
         glow: 'glow 2s ease-in-out infinite alternate',
       },
       fontFamily: {
-        syne: ['var(--font-syne)'],
-        spectral: ['var(--font-spectral)'],
-        'jetbrains-mono': ['var(--font-jetbrains-mono)'],
-        // Aliases for your custom fonts
-        cinzel: ['var(--font-syne)', 'serif'],
+        // System fonts for body text
+        system: [
+          '-apple-system',
+          'BlinkMacSystemFont',
+          'Segoe UI',
+          'Roboto',
+          'Helvetica Neue',
+          'Arial',
+          'Noto Sans',
+          'sans-serif',
+          'Apple Color Emoji',
+          'Segoe UI Emoji',
+          'Segoe UI Symbol',
+          'Noto Color Emoji',
+        ],
+        // Custom fonts
+        'libre-caslon': ['var(--font-libre-caslon)', 'serif'],
+        'jetbrains-mono': ['var(--font-jetbrains-mono)', 'monospace'],
+        // Aliases
+        heading: ['var(--font-libre-caslon)', 'serif'],
         jetbrains: ['var(--font-jetbrains-mono)', 'monospace'],
+        // Ensure headings use Libre Caslon
+        sans: ['var(--font-system)', 'sans-serif'],
+        serif: ['var(--font-libre-caslon)', 'serif'],
       },
       boxShadow: {
         goldGlow: '0 0 20px rgba(208, 178, 100, 0.5)',

@@ -36,7 +36,7 @@ export default function TermsModal({ isOpen, onClose }: TermsModalProps) {
             <div className="max-w-3xl w-full max-h-[90vh] bg-[#231F20] rounded-lg shadow-lg border border-[#D0B264]/40 overflow-hidden">
               {/* Header */}
               <div className="flex items-center justify-between p-6 border-b border-[#D0B264]/20">
-                <h1 className="text-3xl font-syne font-bold text-white">Legal Information</h1>
+                <h1 className="text-3xl font-heading font-bold text-white">Legal Information</h1>
                 <button
                   onClick={onClose}
                   className="text-[#D0B264] hover:text-white transition-colors duration-200"
@@ -52,7 +52,7 @@ export default function TermsModal({ isOpen, onClose }: TermsModalProps) {
                     <div className="flex space-x-1">
                       <button
                         onClick={() => setActiveTab('terms')}
-                        className={`flex-1 px-3 py-2 sm:px-8 sm:py-3 rounded-full text-sm sm:text-lg font-syne font-semibold transition-all duration-300 ${
+                        className={`flex-1 px-3 py-2 sm:px-8 sm:py-3 rounded-full text-sm sm:text-lg font-heading font-semibold transition-all duration-300 ${
                           activeTab === 'terms'
                             ? 'bg-[#D0B264] text-black shadow-lg'
                             : 'text-gray-400 hover:text-[#D0B264] hover:bg-[#D0B264]/10'
@@ -62,7 +62,7 @@ export default function TermsModal({ isOpen, onClose }: TermsModalProps) {
                       </button>
                       <button
                         onClick={() => setActiveTab('privacy')}
-                        className={`flex-1 px-3 py-2 sm:px-8 sm:py-3 rounded-full text-sm sm:text-lg font-syne font-semibold transition-all duration-300 ${
+                        className={`flex-1 px-3 py-2 sm:px-8 sm:py-3 rounded-full text-sm sm:text-lg font-heading font-semibold transition-all duration-300 ${
                           activeTab === 'privacy'
                             ? 'bg-[#D0B264] text-black shadow-lg'
                             : 'text-gray-400 hover:text-[#D0B264] hover:bg-[#D0B264]/10'
@@ -82,7 +82,7 @@ export default function TermsModal({ isOpen, onClose }: TermsModalProps) {
                     <div className="text-gray-300 space-y-6">
                       <div className="space-y-8">
                         <div className="text-center mb-4">
-                          <h2 className="text-2xl font-syne font-bold text-[#D0B264] mb-2">
+                          <h2 className="text-2xl font-heading font-bold text-[#D0B264] mb-2">
                             Waiver of Liability and User Terms
                           </h2>
                           <p className="text-[#D0B264] text-lg">
@@ -91,7 +91,7 @@ export default function TermsModal({ isOpen, onClose }: TermsModalProps) {
                         </div>
 
                         <section>
-                          <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                          <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                             1. Acceptance of Terms
                           </h2>
                           <p>
@@ -103,7 +103,7 @@ export default function TermsModal({ isOpen, onClose }: TermsModalProps) {
                         </section>
 
                         <section>
-                          <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                          <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                             2. Assumption of Risk
                           </h2>
                           <p>
@@ -115,7 +115,7 @@ export default function TermsModal({ isOpen, onClose }: TermsModalProps) {
                         </section>
 
                         <section>
-                          <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                          <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                             3. Waiver of Liability
                           </h2>
                           <p>
@@ -143,7 +143,7 @@ export default function TermsModal({ isOpen, onClose }: TermsModalProps) {
                         </section>
 
                         <section>
-                          <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                          <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                             4. Indemnification
                           </h2>
                           <p>
@@ -155,7 +155,7 @@ export default function TermsModal({ isOpen, onClose }: TermsModalProps) {
                         </section>
 
                         <section>
-                          <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                          <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                             5. No Warranties
                           </h2>
                           <p>
@@ -168,7 +168,7 @@ export default function TermsModal({ isOpen, onClose }: TermsModalProps) {
                         </section>
 
                         <section>
-                          <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                          <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                             6. User Responsibilities
                           </h2>
                           <ul className="list-disc pl-6 mt-2 space-y-1">
@@ -188,7 +188,7 @@ export default function TermsModal({ isOpen, onClose }: TermsModalProps) {
                         </section>
 
                         <section>
-                          <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                          <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                             7. Third-Party Links
                           </h2>
                           <p>
@@ -199,7 +199,7 @@ export default function TermsModal({ isOpen, onClose }: TermsModalProps) {
                         </section>
 
                         <section>
-                          <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                          <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                             8. Changes to These Terms
                           </h2>
                           <p>
@@ -209,7 +209,7 @@ export default function TermsModal({ isOpen, onClose }: TermsModalProps) {
                         </section>
 
                         <section>
-                          <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                          <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                             9. Governing Law and Jurisdiction
                           </h2>
                           <p>
@@ -220,7 +220,7 @@ export default function TermsModal({ isOpen, onClose }: TermsModalProps) {
                         </section>
 
                         <section>
-                          <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                          <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                             10. Contact Information
                           </h2>
                           <p>
@@ -240,7 +240,7 @@ export default function TermsModal({ isOpen, onClose }: TermsModalProps) {
                     <div className="text-gray-300 space-y-6">
                       <div className="space-y-8">
                         <div className="text-center mb-4">
-                          <h2 className="text-2xl font-syne font-bold text-[#D0B264] mb-2">
+                          <h2 className="text-2xl font-heading font-bold text-[#D0B264] mb-2">
                             Privacy Policy
                           </h2>
                           <p className="text-[#D0B264] text-lg">
@@ -249,7 +249,7 @@ export default function TermsModal({ isOpen, onClose }: TermsModalProps) {
                         </div>
 
                         <section>
-                          <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                          <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                             1. Information We Collect
                           </h2>
                           <p>
@@ -261,7 +261,7 @@ export default function TermsModal({ isOpen, onClose }: TermsModalProps) {
                         </section>
 
                         <section>
-                          <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                          <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                             2. How We Use Your Information
                           </h2>
                           <p>
@@ -272,7 +272,7 @@ export default function TermsModal({ isOpen, onClose }: TermsModalProps) {
                         </section>
 
                         <section>
-                          <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                          <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                             3. Information Sharing
                           </h2>
                           <p>
@@ -283,7 +283,7 @@ export default function TermsModal({ isOpen, onClose }: TermsModalProps) {
                         </section>
 
                         <section>
-                          <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                          <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                             4. Data Security
                           </h2>
                           <p>
@@ -294,7 +294,7 @@ export default function TermsModal({ isOpen, onClose }: TermsModalProps) {
                         </section>
 
                         <section>
-                          <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                          <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                             5. Your Rights
                           </h2>
                           <p>
@@ -305,7 +305,7 @@ export default function TermsModal({ isOpen, onClose }: TermsModalProps) {
                         </section>
 
                         <section>
-                          <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                          <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                             6. Cookies and Tracking
                           </h2>
                           <p>
@@ -316,7 +316,7 @@ export default function TermsModal({ isOpen, onClose }: TermsModalProps) {
                         </section>
 
                         <section>
-                          <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                          <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                             7. Third-Party Services
                           </h2>
                           <p>
@@ -327,7 +327,7 @@ export default function TermsModal({ isOpen, onClose }: TermsModalProps) {
                         </section>
 
                         <section>
-                          <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                          <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                             8. Children&apos;s Privacy
                           </h2>
                           <p>
@@ -337,7 +337,7 @@ export default function TermsModal({ isOpen, onClose }: TermsModalProps) {
                         </section>
 
                         <section>
-                          <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                          <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                             9. Changes to This Policy
                           </h2>
                           <p>
@@ -347,7 +347,7 @@ export default function TermsModal({ isOpen, onClose }: TermsModalProps) {
                         </section>
 
                         <section>
-                          <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                          <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                             10. Contact Us
                           </h2>
                           <p>
