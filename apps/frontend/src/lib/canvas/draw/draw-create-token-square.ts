@@ -271,7 +271,7 @@ export const drawCreateTokenSquare = (
   ctx.textBaseline = 'middle';
 
   const createTokenFontSize = lerp(unitSize * 0.09, unitSize * 0.11, effectiveHoverProgress); // Scaled font size
-  ctx.font = `bold ${createTokenFontSize}px 'Syne'`; // Changed to Syne to match home area
+  ctx.font = `bold ${createTokenFontSize}px 'heading'`; // Changed to heading to match home area
 
   // Phase 2 Step 5 Action 3: Simplified text gradient cache key
   const textGradientKey = `text-${tokenId}-${Math.round(unitSize)}`;
@@ -307,7 +307,7 @@ export const drawCreateTokenSquare = (
 
   // ADJUSTED: "COMING SOON" with more appropriate letter spacing
   const comingSoonFontSize = lerp(unitSize * 0.08, unitSize * 0.09, effectiveHoverProgress); // Scaled font size
-  ctx.font = `bold ${comingSoonFontSize}px 'Syne'`; // Changed to Syne to match home area
+  ctx.font = `bold ${comingSoonFontSize}px 'heading'`; // Changed to heading to match home area
 
   // White color for "COMING SOON" with slight gold tint
   ctx.fillStyle = `rgba(255, 255, 255, ${lerp(0.8, 1.0, effectiveHoverProgress)})`;
