@@ -104,7 +104,9 @@ export default function ProductDescription({
 
             {/* Description - this can scroll if needed */}
             <div className="flex-1 min-h-0 overflow-y-auto">
-              <h4 className="text-lg font-syne font-semibold text-[#D0B264] mb-3">Description</h4>
+              <h4 className="text-lg font-heading font-semibold text-[#D0B264] mb-3">
+                Description
+              </h4>
               <p className="text-gray-300 leading-relaxed">{description}</p>
             </div>
           </div>

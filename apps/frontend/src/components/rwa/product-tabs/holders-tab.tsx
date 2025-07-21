@@ -1,4 +1,3 @@
-// HoldersTab with proper scrolling
 'use client';
 import { Filter, ExternalLink } from 'lucide-react';
 import {
@@ -25,11 +24,7 @@ interface HoldersTabProps {
 }
 
 // Utility function to truncate addresses
-const truncateAddress = (
-  address: string,
-  startLength: number = 6,
-  endLength: number = 4,
-): string => {
+const truncateAddress = (address: string, startLength = 6, endLength = 4): string => {
   if (address.length <= startLength + endLength + 3) {
     return address;
   }
@@ -48,13 +43,13 @@ export function HoldersTab({ holders = [] }: HoldersTabProps) {
         <Table>
           <TableHeader className="sticky top-0 bg-[#231F20] z-10">
             <TableRow className="border-b border-[#D0B284]/10">
-              <TableHead className="text-[#DCDDCC] font-mono text-xs">RANK</TableHead>
-              <TableHead className="text-[#DCDDCC] font-mono text-xs">ADDRESS</TableHead>
-              <TableHead className="text-[#DCDDCC] font-mono text-xs">%</TableHead>
-              <TableHead className="text-[#DCDDCC] font-mono text-xs">AMOUNT</TableHead>
-              <TableHead className="text-[#DCDDCC] font-mono text-xs">VALUE</TableHead>
-              <TableHead className="text-[#DCDDCC] font-mono text-xs">TXNS</TableHead>
-              <TableHead className="text-[#DCDDCC] font-mono text-xs text-right">EXP</TableHead>
+              <TableHead className="text-[#D0B284] font-mono text-xs">RANK</TableHead>
+              <TableHead className="text-[#D0B284] font-mono text-xs">ADDRESS</TableHead>
+              <TableHead className="text-[#D0B284] font-mono text-xs">%</TableHead>
+              <TableHead className="text-[#D0B284] font-mono text-xs">AMOUNT</TableHead>
+              <TableHead className="text-[#D0B284] font-mono text-xs">VALUE</TableHead>
+              <TableHead className="text-[#D0B284] font-mono text-xs">TXNS</TableHead>
+              <TableHead className="text-[#D0B284] font-mono text-xs text-right">EXP</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -78,7 +73,7 @@ export function HoldersTab({ holders = [] }: HoldersTabProps) {
                       <span className="text-white font-mono text-sm">
                         {holder.amount.toLocaleString()}M
                       </span>
-                      <div className="w-24 bg-black/40 rounded-full h-2">
+                      <div className="w-24 bg-[#184D37]/50 rounded-full h-2">
                         <div
                           className="bg-[#D0B284] h-full rounded-full"
                           style={{ width: `${(holder.amount / 1000) * 100}%` }}

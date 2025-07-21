@@ -106,7 +106,7 @@ export default function TokenInformation({
 
   return (
     <div className="bg-black rounded-xl overflow-hidden">
-      <div className="flex w-full divide-x divide-[#D0B284]/10">
+      <div className="flex w-full">
         {/* Left Column - Price and Key Metrics */}
         <div className="flex flex-col justify-between w-1/2 h-full">
           {/* Token Price Header */}
@@ -175,15 +175,15 @@ export default function TokenInformation({
         </div>
 
         {/* Right Column - Time-based Changes and Transaction Distribution */}
-        <div className="flex flex-col justify-between w-1/2 h-full bg-[#231F20]/50 pb-2 rounded-br-xl">
+        <div className="flex flex-col justify-between w-1/2 h-full bg- pb-2 rounded-br-xl">
           {/* Time-based Price Changes */}
-          <div className="bg-[#231F20]/50 shadow-md shadow-black/15 pt-0.5">
+          <div className=" shadow-md shadow-black/15">
             <div className="flex flex-row">
               {Object.entries(priceChange).map(([time, change]) => (
                 <button
                   key={time}
                   onClick={() => setSelectedTimeframe(time as '5m' | '1h' | '6h' | '1d')}
-                  className={`flex-1 rounded-xl p-2 text-center border transition-all duration-200 shadow-sm bg-black ${
+                  className={`flex-1 rounded-xl p-2 text-center border transition-all duration-200 shadow-sm bg-[#231F20]/50 ${
                     selectedTimeframe === time
                       ? 'border-[#184D37] bg-[#184D37]/50 shadow-[#184D37]/20'
                       : 'border-[#D0B284]/20 hover:border-[#D0B284]/40 hover:bg-[#D0B284]/5'

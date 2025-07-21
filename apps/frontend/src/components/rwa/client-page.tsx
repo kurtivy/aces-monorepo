@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { notFound } from 'next/navigation';
 import PictureGallery from '@/components/rwa/picture-gallery';
-import TokenGraph from '@/components/rwa/token-graph';
+// import TokenGraph from '@/components/rwa/token-graph';
 import SwapInterface from '@/components/rwa/swap-interface';
 import ProductDescription from '@/components/rwa/product-description';
 import TokenInformation from '@/components/rwa/token-information';
@@ -62,7 +62,6 @@ function transformItemData(itemData: ItemData) {
   const volume24h = `$${((itemData.marketCap * 0.05) / 1000).toFixed(1)}K`;
   const holders = Math.floor(itemData.tokenSupply / 1000);
   const liquidity = `$${((itemData.marketCap * 0.1) / 1000).toFixed(1)}K`;
-  const priceChange24h = (Math.random() - 0.5) * 20;
 
   // Mock activity data for the NFT (ordered by most recent first)
   const activity = [
@@ -228,10 +227,10 @@ function transformItemData(itemData: ItemData) {
     tokenSymbol: itemData.ticker.replace('$', ''),
     tokenPrice: itemData.tokenPrice,
     priceChange: {
-      '5m': priceChange24h,
-      '1h': priceChange24h * 1.2,
-      '6h': priceChange24h * 0.8,
-      '1d': priceChange24h,
+      '5m': 0.04,
+      '1h': -6.31,
+      '6h': -6.26,
+      '1d': -5.24,
     },
     fdv: fdv,
     holders: holders,
@@ -313,30 +312,30 @@ export default function ClientItemPage({ itemId }: ClientPageProps) {
       {/* Row 1: Chart, Profile, Swap */}
       <div className="flex flex-col lg:flex-row flex-1">
         {/* Chart Tile */}
-        <div className="flex-1 rounded-xl overflow-hidden border border-[#D0B284]">
-          <TokenGraph
+        <div className="flex-1 rounded-xl overflow-hidden border border-[#D0B284]/30">
+          {/* <TokenGraph
             tokenSymbol={itemData.tokenSymbol}
             currentPrice={itemData.tokenPrice}
             priceChange={itemData.priceChange['1d']}
             volume={itemData.volume['1d']}
-          />
+          /> */}
         </div>
 
         {/* Right Column - Profile and Swap Interface */}
         <div className="flex flex-col lg:w-[36.2%]">
           {/* Profile Section - Now wrapped in ProfileSectionWrapper */}
-          <div className="rounded-bl-xl overflow-hidden border-b border-l border-[#D0B284]">
+          <div className="rounded-bl-xl overflow-hidden border-b border-l border-[#D0B284]/30">
             <ProfileSectionWrapper />
           </div>
           {/* Swap Interface */}
-          <div className="flex-1 rounded-xl overflow-hidden border border-[#D0B284]">
+          <div className="flex-1 rounded-xl overflow-hidden">
             <SwapInterface tokenSymbol={itemData.tokenSymbol} />
           </div>
         </div>
       </div>
 
       {/* Full Width Token Information Strip */}
-      <div className="w-full rounded-xl overflow-hidden border border-[#D0B284]">
+      <div className="w-full rounded-xl overflow-hidden px-6">
         <TokenInformation
           tokenPrice={itemData.tokenPrice}
           priceChange={itemData.priceChange}
@@ -351,12 +350,12 @@ export default function ClientItemPage({ itemId }: ClientPageProps) {
       {/* Picture Gallery and Product Description Row */}
       <div className="flex flex-col lg:flex-row flex-1">
         {/* Picture Gallery Tile - Square */}
-        <div className="w-full lg:w-[400px] rounded-xl overflow-hidden border border-[#D0B284]">
+        <div className="w-full lg:w-[400px] rounded-xl overflow-hidden border border-[#D0B284]/30">
           <PictureGallery images={itemData.images} />
         </div>
 
         {/* Product Description Tile - Full Width */}
-        <div className="flex-1 rounded-xl overflow-hidden border border-[#D0B284]">
+        <div className="flex-1 rounded-xl overflow-hidden border border-[#D0B284]/30">
           <ProductDescription
             title={itemData.title}
             description={itemData.description}

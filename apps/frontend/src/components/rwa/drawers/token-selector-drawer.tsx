@@ -2,15 +2,16 @@
 
 import { useState } from 'react';
 import { Search, X, Star, Users } from 'lucide-react';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
 interface Token {
   symbol: string;
   name: string;
-  description: string;
+  ticker: string;
   icon: string;
-  color: string;
+  color?: string;
   balance?: string;
   isFavorite?: boolean;
   hasCommunity?: boolean;
@@ -26,9 +27,9 @@ const AVAILABLE_TOKENS: Token[] = [
   {
     symbol: 'ETH',
     name: 'Ethereum',
-    description: 'Ethereum',
-    icon: '⟠',
-    color: 'from-blue-500 to-blue-400',
+    ticker: 'ETH',
+    icon: '/svg/eth.svg',
+    color: 'invert brightness-200',
     balance: '2.45',
     isFavorite: false,
     hasCommunity: false,
@@ -36,9 +37,8 @@ const AVAILABLE_TOKENS: Token[] = [
   {
     symbol: 'USDC',
     name: 'USD Coin',
-    description: 'USD Coin',
-    icon: '$',
-    color: 'from-blue-600 to-blue-500',
+    ticker: 'USDC',
+    icon: '/svg/usdc.svg',
     balance: '0.00',
     isFavorite: false,
     hasCommunity: false,
@@ -46,9 +46,8 @@ const AVAILABLE_TOKENS: Token[] = [
   {
     symbol: 'USDT',
     name: 'Tether',
-    description: 'Tether',
-    icon: '₮',
-    color: 'from-green-600 to-green-500',
+    ticker: 'USDT',
+    icon: '/svg/tether.svg',
     balance: '0.00',
     isFavorite: false,
     hasCommunity: false,
@@ -66,7 +65,7 @@ export default function TokenSelectorDrawer({
     const matchesSearch =
       token.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       token.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      token.description.toLowerCase().includes(searchQuery.toLowerCase());
+      token.ticker.toLowerCase().includes(searchQuery.toLowerCase());
 
     return matchesSearch;
   });
@@ -138,10 +137,13 @@ export default function TokenSelectorDrawer({
                         <div
                           className={`w-8 h-8 bg-gradient-to-r ${token.color} rounded-full flex items-center justify-center relative`}
                         >
-                          <span className="text-sm font-bold text-white">{token.icon}</span>
-                          <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-gray-500 rounded-full flex items-center justify-center">
-                            <span className="text-xs text-white">-</span>
-                          </div>
+                          <Image
+                            src={token.icon}
+                            alt={token.name}
+                            width={20}
+                            height={20}
+                            className="w-5 h-5"
+                          />
                         </div>
 
                         <div className="flex-1">
@@ -149,9 +151,7 @@ export default function TokenSelectorDrawer({
                             <span className="text-white font-medium">{token.name}</span>
                             {token.hasCommunity && <Users className="w-3 h-3 text-green-400" />}
                           </div>
-                          <span className="text-[#928357] text-xs font-mono">
-                            {token.description}
-                          </span>
+                          <span className="text-[#928357] text-xs font-mono">{token.ticker}</span>
                         </div>
                       </div>
 

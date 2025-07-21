@@ -2,12 +2,10 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
-import { X, CheckCircle, AlertCircle, Info, RefreshCw } from 'lucide-react';
+import { CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
 import {
   Drawer,
-  DrawerClose,
   DrawerContent,
-  DrawerFooter,
   DrawerHeader,
   DrawerTitle,
   DrawerTrigger,
@@ -21,8 +19,6 @@ interface CheckoutDrawerProps {
   itemPrice?: string;
   itemPriceUSD?: string;
   collectionName?: string;
-  tokenId?: string;
-  walletAddress?: string;
   onPurchase?: (paymentMethod: string) => void;
 }
 
@@ -33,8 +29,6 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({
   itemPrice = '13.6849 ETH',
   itemPriceUSD = '$47K',
   collectionName = 'ACES Collection',
-  tokenId = '#2470',
-  walletAddress = '0x4CF9...A2E7',
   onPurchase,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -64,118 +58,218 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({
     handlePurchase();
   };
 
-  const copyToClipboard = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      // You could add a toast notification here
-    } catch (err) {
-      console.error('Failed to copy text: ', err);
-    }
-  };
-
   return (
     <Drawer open={isOpen} onOpenChange={setIsOpen}>
       <DrawerTrigger asChild>{children}</DrawerTrigger>
-      <DrawerContent className="bg-[#231F20] border-t border-[#D0B284]/20">
+      <DrawerContent className="bg-black border-t border-[#D0B284]/20">
+        <DrawerHeader className="">
+          <DrawerTitle className="text-xl font-bold text-white"></DrawerTitle>
+        </DrawerHeader>
         <div className="mx-auto w-full">
-          <DrawerHeader className="px-4 pt-4">
-            <div className="flex items-center justify-between">
-              <DrawerTitle className="text-xl font-bold text-white">Checkout</DrawerTitle>
-              <DrawerClose asChild>
-                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                  <X className="h-4 w-4 text-[#D0B284]" />
-                </Button>
-              </DrawerClose>
-            </div>
-          </DrawerHeader>
-
           <div className="px-4 py-4">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="flex flex-col lg:flex-row gap-6">
               {/* Left Section - Checkout Details */}
-              <div className="space-y-4">
+              <div className="flex-1 space-y-4">
                 <h2 className="text-lg font-semibold text-white">Checkout</h2>
 
-                {/* Item Details */}
-                <div className="flex items-center gap-3 p-3 rounded-lg border border-[#D0B284]/20 bg-[#231F20]/60">
-                  <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg border border-[#D0B284]/20">
-                    <Image
-                      src={itemImage}
-                      alt={itemTitle}
-                      width={64}
-                      height={64}
-                      className="object-cover"
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-sm font-medium text-white">{itemTitle}</h3>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-xs text-[#DCDDCC]">{collectionName}</span>
-                      <CheckCircle className="h-3 w-3 text-blue-500" />
+                {/* Item Details with Price on Same Line */}
+                <div className="flex items-center justify-between p-3 rounded-lg border border-[#D0B284]/20 bg-[#231F20]/60">
+                  <div className="flex items-center gap-3">
+                    <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg border border-[#D0B284]/20">
+                      <Image
+                        src={itemImage}
+                        alt={itemTitle}
+                        width={64}
+                        height={64}
+                        className="object-cover"
+                      />
                     </div>
+                    <div>
+                      <h3 className="text-sm font-medium text-white">{itemTitle}</h3>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-xs text-[#DCDDCC]">{collectionName}</span>
+                        <CheckCircle className="h-3 w-3 text-blue-500" />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-medium text-white">{itemPrice}</div>
+                    <div className="text-xs text-[#DCDDCC]">{itemPriceUSD}</div>
                   </div>
                 </div>
 
-                {/* Price Details */}
-                <div className="space-y-2">
+                {/* Total Section */}
+                <div className="border-t border-[#D0B284]/20 pt-3">
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-[#DCDDCC]">Price</span>
+                    <span className="text-sm font-medium text-white">Total</span>
                     <div className="text-right">
                       <div className="text-sm font-medium text-white">{itemPrice}</div>
                       <div className="text-xs text-[#DCDDCC]">{itemPriceUSD}</div>
                     </div>
                   </div>
-
-                  <div className="border-t border-[#D0B284]/20 pt-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium text-white">Total</span>
-                      <div className="text-right">
-                        <div className="text-sm font-medium text-white">{itemPrice}</div>
-                        <div className="text-xs text-[#DCDDCC]">{itemPriceUSD}</div>
-                      </div>
-                    </div>
-                  </div>
                 </div>
               </div>
 
-              {/* Right Section - Payment */}
-              <div className="space-y-4">
-                <h2 className="text-lg font-semibold text-white">PAYMENT</h2>
+              {/* Vertical Divider - Removed to fix layout issues */}
 
-                {/* Payment Method */}
-                <div className="p-4 rounded-lg border border-[#D0B284]/20 bg-[#2A2A2A]">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="h-8 w-8 rounded-full bg-orange-500 flex items-center justify-center">
-                        <span className="text-white text-xs font-bold">🦊</span>
+              {/* Right Section - Payment */}
+              <div className="flex-1 space-y-4">
+                <h2 className="text-lg font-semibold text-white">PAYMENT METHOD</h2>
+
+                {/* Payment Method Options - Scrollable */}
+                <div className="space-y-3 max-h-64 overflow-y-auto pr-2">
+                  {/* Phantom */}
+                  <div
+                    className={`p-4 rounded-lg border cursor-pointer transition-colors ${
+                      selectedPaymentMethod === 'phantom'
+                        ? 'border-[#D0B284] bg-[#231F20]'
+                        : 'border-[#D0B284]/20 bg-[#231F20] hover:border-[#D0B284]/40'
+                    }`}
+                    onClick={() => setSelectedPaymentMethod('phantom')}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Image
+                          src="/svg/phantom.svg"
+                          alt="Phantom"
+                          width={32}
+                          height={32}
+                          className="w-6 h-6"
+                        />
+                        <div>
+                          <div className="text-sm font-medium text-white">Phantom</div>
+                        </div>
                       </div>
-                      <div>
-                        <div className="text-sm font-medium text-white">MetaMask</div>
-                        <div className="text-xs text-[#DCDDCC]">{walletAddress}</div>
+                      <div className="flex items-center gap-2">
+                        <div
+                          className={`w-4 h-4 rounded-full border-2 ${
+                            selectedPaymentMethod === 'phantom'
+                              ? 'border-[#D0B284] bg-[#D0B284]'
+                              : 'border-gray-400'
+                          }`}
+                        >
+                          {selectedPaymentMethod === 'phantom' && (
+                            <div className="w-2 h-2 bg-white rounded-full m-0.5"></div>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <div className="flex items-center gap-1">
-                        <div className="h-2 w-2 rounded-full bg-green-500"></div>
-                        <span className="text-xs text-green-500">Connected</span>
+                  </div>
+
+                  {/* Apple Pay */}
+                  <div
+                    className={`p-4 rounded-lg border cursor-pointer transition-colors ${
+                      selectedPaymentMethod === 'applepay'
+                        ? 'border-[#D0B284] bg-[#231F20]'
+                        : 'border-[#D0B284]/20 bg-[#231F20] hover:border-[#D0B284]/40'
+                    }`}
+                    onClick={() => setSelectedPaymentMethod('applepay')}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Image
+                          src="/svg/apple-pay.svg"
+                          alt="Apple Pay"
+                          width={48}
+                          height={48}
+                          className="w-8 h-8"
+                        />
+                        <div>
+                          <div className="text-sm font-medium text-white">Apple Pay</div>
+                        </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-4 w-4 p-0"
-                        onClick={() => copyToClipboard(walletAddress)}
-                      >
-                        <Info className="h-3 w-3 text-[#D0B284]" />
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <div
+                          className={`w-4 h-4 rounded-full border-2 ${
+                            selectedPaymentMethod === 'applepay'
+                              ? 'border-[#D0B284] bg-[#D0B284]'
+                              : 'border-gray-400'
+                          }`}
+                        >
+                          {selectedPaymentMethod === 'applepay' && (
+                            <div className="w-2 h-2 bg-white rounded-full m-0.5"></div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* MetaMask */}
+                  <div
+                    className={`p-4 rounded-lg border cursor-pointer transition-colors ${
+                      selectedPaymentMethod === 'metamask'
+                        ? 'border-[#D0B284] bg-[#231F20]'
+                        : 'border-[#D0B284]/20 bg-[#231F20] hover:border-[#D0B284]/40'
+                    }`}
+                    onClick={() => setSelectedPaymentMethod('metamask')}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Image
+                          src="/svg/metamask.svg"
+                          alt="MetaMask"
+                          width={32}
+                          height={32}
+                          className="w-6 h-6"
+                        />
+                        <div>
+                          <div className="text-sm font-medium text-white">MetaMask</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div
+                          className={`w-4 h-4 rounded-full border-2 ${
+                            selectedPaymentMethod === 'metamask'
+                              ? 'border-[#D0B284] bg-[#D0B284]'
+                              : 'border-gray-400'
+                          }`}
+                        >
+                          {selectedPaymentMethod === 'metamask' && (
+                            <div className="w-2 h-2 bg-white rounded-full m-0.5"></div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Google Pay */}
+                  <div
+                    className={`p-4 rounded-lg border cursor-pointer transition-colors ${
+                      selectedPaymentMethod === 'googlepay'
+                        ? 'border-[#D0B284] bg-[#231F20]'
+                        : 'border-[#D0B284]/20 bg-[#231F20] hover:border-[#D0B284]/40'
+                    }`}
+                    onClick={() => setSelectedPaymentMethod('googlepay')}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Image
+                          src="/svg/google-pay.svg"
+                          alt="Google Pay"
+                          width={32}
+                          height={32}
+                          className="w-8 h-8"
+                        />
+                        <div>
+                          <div className="text-sm font-medium text-white">Google Pay</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div
+                          className={`w-4 h-4 rounded-full border-2 ${
+                            selectedPaymentMethod === 'googlepay'
+                              ? 'border-[#D0B284] bg-[#D0B284]'
+                              : 'border-gray-400'
+                          }`}
+                        >
+                          {selectedPaymentMethod === 'googlepay' && (
+                            <div className="w-2 h-2 bg-white rounded-full m-0.5"></div>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
-
-                <Button
-                  variant="outline"
-                  className="w-full border-[#D0B284]/20 text-[#D0B284] hover:bg-[#D0B284]/10"
-                >
-                  Change payment method
-                </Button>
 
                 {/* Transaction Status */}
                 {transactionStatus && (
@@ -212,19 +306,20 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({
                     </div>
                   </div>
                 )}
+
+                {/* Confirm Button - Only in right column */}
+                <div className="pt-4 flex justify-end">
+                  <Button
+                    onClick={handlePurchase}
+                    disabled={transactionStatus === 'pending'}
+                    className="w-32 bg-[#D0B284] hover:bg-[#D0B284]/90 text-[#231F20] font-bold"
+                  >
+                    {transactionStatus === 'pending' ? 'Processing...' : 'Confirm'}
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
-
-          <DrawerFooter className="px-4 pb-4">
-            <Button
-              onClick={handlePurchase}
-              disabled={transactionStatus === 'pending'}
-              className="w-full bg-[#D0B284] hover:bg-[#D0B284]/90 text-[#231F20] font-bold"
-            >
-              {transactionStatus === 'pending' ? 'Processing...' : 'Complete Purchase'}
-            </Button>
-          </DrawerFooter>
         </div>
       </DrawerContent>
     </Drawer>

@@ -1,4 +1,3 @@
-// ActivityTab with proper scrolling
 'use client';
 import { ShoppingBag, Zap, TrendingUp, ExternalLink } from 'lucide-react';
 import {
@@ -34,17 +33,17 @@ export function ActivityTab({ activity = [] }: ActivityTabProps) {
         <Table>
           <TableHeader className="sticky top-0 bg-[#231F20] z-10">
             <TableRow className="border-gray-700/50">
-              <TableHead className="text-[#D0B284] text-xs font-medium">EVENT</TableHead>
-              <TableHead className="text-[#D0B284] text-xs font-medium">PRICE</TableHead>
-              <TableHead className="text-[#D0B284] text-xs font-medium">FROM</TableHead>
-              <TableHead className="text-[#D0B284] text-xs font-medium">TO</TableHead>
-              <TableHead className="text-[#D0B284] text-xs font-medium text-right">TIME</TableHead>
+              <TableHead className="text-[#D0B284] font-mono text-xs">EVENT</TableHead>
+              <TableHead className="text-[#D0B284] font-mono text-xs">PRICE</TableHead>
+              <TableHead className="text-[#D0B284] font-mono text-xs">FROM</TableHead>
+              <TableHead className="text-[#D0B284] font-mono text-xs">TO</TableHead>
+              <TableHead className="text-[#D0B284] font-mono text-xs text-right">TIME</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {activity.map((item, index) => (
               <TableRow key={index} className="border-gray-700/30">
-                <TableCell className="text-white text-sm">
+                <TableCell className="text-white font-mono text-sm">
                   <div className="flex items-center gap-2">
                     {item.event === 'Mint' ? (
                       <Zap className="h-4 w-4 text-[#D0B284]" />
@@ -56,13 +55,13 @@ export function ActivityTab({ activity = [] }: ActivityTabProps) {
                     <span>{item.event}</span>
                   </div>
                 </TableCell>
-                <TableCell className="text-white text-sm">{item.price} ETH</TableCell>
-                <TableCell className="text-white text-sm">{item.from}</TableCell>
-                <TableCell className="text-white text-sm">{item.to}</TableCell>
+                <TableCell className="text-white font-mono text-sm">{item.price} ETH</TableCell>
+                <TableCell className="text-white font-mono text-sm">{item.from}</TableCell>
+                <TableCell className="text-white font-mono text-sm">{item.to}</TableCell>
                 <TableCell className="text-right">
                   <a
                     href="#"
-                    className="flex items-center gap-1 text-gray-400 hover:text-gray-300 text-sm justify-end"
+                    className="flex items-center gap-1 text-[#DCDDCC] hover:text-[#D0B284] font-mono text-xs justify-end"
                   >
                     {item.time} <ExternalLink className="h-3 w-3" />
                   </a>
@@ -73,7 +72,7 @@ export function ActivityTab({ activity = [] }: ActivityTabProps) {
         </Table>
       </div>
       {activity.length === 0 && (
-        <div className="text-center text-gray-400 py-8">No activity to display.</div>
+        <div className="text-center text-[#DCDDCC] py-8">No activity to display.</div>
       )}
     </div>
   );

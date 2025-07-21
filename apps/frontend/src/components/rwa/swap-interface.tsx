@@ -1,10 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { ArrowUpDown, Settings, Info, ChevronDown, Minus, Plus, X } from 'lucide-react';
+import { ArrowUpDown, Settings, Info, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import TokenSelectorDrawer from './drawers/token-selector-drawer';
+import Image from 'next/image';
 
 interface SwapInterfaceProps {
   tokenSymbol?: string;
@@ -14,27 +15,26 @@ interface Token {
   symbol: string;
   name: string;
   icon: string;
-  color: string;
+  color?: string;
 }
 
 const AVAILABLE_TOKENS: Record<string, Token> = {
   ETH: {
     symbol: 'ETH',
     name: 'Ethereum',
-    icon: '⟠',
-    color: 'from-blue-500 to-blue-400',
+    icon: '/svg/eth.svg',
+    color: 'invert brightness-200',
   },
   USDC: {
     symbol: 'USDC',
     name: 'USD Coin',
-    icon: '$',
-    color: 'from-blue-600 to-blue-500',
+    icon: '/svg/usdc.svg',
   },
   USDT: {
     symbol: 'USDT',
     name: 'Tether',
-    icon: '₮',
-    color: 'from-green-600 to-green-500',
+    icon: '/svg/tether.svg',
+    color: 'invert brightness-200',
   },
 };
 
@@ -47,7 +47,7 @@ export default function SwapInterface({ tokenSymbol = 'ACES' }: SwapInterfacePro
   const [showSlippageSettings, setShowSlippageSettings] = useState(false);
   const [showFromTokenDrawer, setShowFromTokenDrawer] = useState(false);
   const [showToTokenDrawer, setShowToTokenDrawer] = useState(false);
-  const [slippageValue, setSlippageValue] = useState('0.50');
+  const [slippageValue, setSlippageValue] = useState('2.50');
   const [isAutoSlippage, setIsAutoSlippage] = useState(true);
 
   const fromTokenData = AVAILABLE_TOKENS[fromToken] || {
@@ -60,7 +60,7 @@ export default function SwapInterface({ tokenSymbol = 'ACES' }: SwapInterfacePro
   const toTokenData = {
     symbol: toToken,
     name: toToken,
-    icon: 'A',
+    icon: '/aces-logo.png',
     color: 'from-[#D0B284] to-[#D7BF75]',
   };
 
@@ -92,31 +92,9 @@ export default function SwapInterface({ tokenSymbol = 'ACES' }: SwapInterfacePro
     }, 2000);
   };
 
-  const handleSlippageChange = (value: string) => {
-    const numValue = parseFloat(value);
-    if (!isNaN(numValue) && numValue >= 0 && numValue <= 100) {
-      setSlippageValue(value);
-      setIsAutoSlippage(false);
-    }
-  };
-
-  const handleSlippageIncrement = () => {
-    const currentValue = parseFloat(slippageValue);
-    const newValue = Math.min(currentValue + 0.1, 100).toFixed(1);
-    setSlippageValue(newValue);
-    setIsAutoSlippage(false);
-  };
-
-  const handleSlippageDecrement = () => {
-    const currentValue = parseFloat(slippageValue);
-    const newValue = Math.max(currentValue - 0.1, 0).toFixed(1);
-    setSlippageValue(newValue);
-    setIsAutoSlippage(false);
-  };
-
   const handleAutoSlippage = () => {
     setIsAutoSlippage(true);
-    setSlippageValue('0.50');
+    setSlippageValue('2.50');
   };
 
   const handleFromTokenSelect = (token: { symbol: string }) => {
@@ -136,127 +114,96 @@ export default function SwapInterface({ tokenSymbol = 'ACES' }: SwapInterfacePro
         {/* Header Tile */}
         <div className="flex items-center justify-between p-6 pb-4">
           <div className="flex items-center gap-3">
-            <h2 className="text-xl font-bold text-white font-spectral uppercase tracking-wider">
+            <h2 className="text-xl font-bold text-white font-system uppercase tracking-wider">
               Swap
             </h2>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-sm text-[#928357] font-mono">
-              {isAutoSlippage ? 'Auto' : `${slippageValue}%`} slippage
+              {isAutoSlippage ? 'Auto' : `${slippageValue}%`}
             </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setShowSlippageSettings(true)}
-              className="text-[#DCDDCC] hover:text-white hover:bg-[#231F20]/50 rounded-xl"
-            >
-              <Settings className="w-5 h-5" />
-            </Button>
-          </div>
-        </div>
+            <div className="relative">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowSlippageSettings(!showSlippageSettings)}
+                className="text-[#DCDDCC] hover:text-white hover:bg-[#231F20]/50 rounded-xl"
+              >
+                <Settings className="w-5 h-5" />
+              </Button>
 
-        {/* Slippage Settings Modal */}
-        {showSlippageSettings && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-[#231F20] border border-[#D0B284]/30 rounded-2xl shadow-2xl w-full max-w-md">
-              {/* Modal Header */}
-              <div className="flex items-center justify-between p-6 pb-4 border-b border-[#D0B284]/10">
-                <h3 className="text-lg font-bold text-white">Set maximum slippage</h3>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setShowSlippageSettings(false)}
-                  className="text-[#DCDDCC] hover:text-white hover:bg-[#231F20]/50 rounded-xl"
-                >
-                  <X className="w-5 h-5" />
-                </Button>
-              </div>
+              {/* Slippage Settings Dropdown */}
+              {showSlippageSettings && (
+                <div className="absolute top-full right-0 mt-2 z-50">
+                  <div className="bg-[#231F20] border border-[#D0B284]/30 rounded-xl shadow-2xl w-64">
+                    {/* Dropdown Content */}
+                    <div className="p-3">
+                      <span className="text-sm font-bold text-[#D0B284] font-mono">Slippage</span>
+                      {/* Slippage Display */}
+                      <div className="bg-[#2A2627] border border-[#D0B284]/20 rounded-lg p-2 flex items-center justify-center mb-3">
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="ghost"
+                            onClick={handleAutoSlippage}
+                            className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                              isAutoSlippage
+                                ? 'bg-gradient-to-r from-[#D0B284] to-[#D7BF75] text-black'
+                                : 'text-[#D0B284] hover:bg-[#D0B284]/10'
+                            }`}
+                          >
+                            Auto
+                          </Button>
+                          <Input
+                            type="number"
+                            value={slippageValue}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              if (
+                                value &&
+                                !isNaN(parseFloat(value)) &&
+                                parseFloat(value) >= 0 &&
+                                parseFloat(value) <= 100
+                              ) {
+                                setSlippageValue(value);
+                                setIsAutoSlippage(false);
+                              }
+                            }}
+                            className="w-16 bg-transparent border-none text-sm font-bold text-white font-mono p-0 text-center focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:shadow-none focus-visible:outline-none focus-visible:border-transparent focus-visible:text-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&>input]:text-white [&>input]:focus-visible:text-white"
+                            step="0.1"
+                            min="0"
+                            max="100"
+                          />
+                          <span className="text-white text-sm">%</span>
+                        </div>
+                      </div>
 
-              {/* Modal Content */}
-              <div className="p-6">
-                <div className="flex items-center gap-3">
-                  {/* Minus Button */}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleSlippageDecrement}
-                    className="w-12 h-12 bg-[#2A2627] hover:bg-[#2A2627]/80 text-white rounded-full border border-[#D0B284]/20"
-                  >
-                    <Minus className="w-5 h-5" />
-                  </Button>
-
-                  {/* Slippage Input Field */}
-                  <div className="flex-1 bg-[#2A2627] border border-[#D0B284]/20 rounded-xl p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Button
-                        variant="ghost"
-                        onClick={handleAutoSlippage}
-                        className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                          isAutoSlippage
-                            ? 'bg-gradient-to-r from-[#D0B284] to-[#D7BF75] text-black'
-                            : 'text-[#D0B284] hover:bg-[#D0B284]/10'
-                        }`}
-                      >
-                        Auto
-                      </Button>
-                      <span className="text-2xl font-bold text-white font-mono">
-                        {slippageValue}
-                      </span>
-                      <span className="text-white text-lg">%</span>
+                      {/* Quick Presets */}
+                      <div className="flex gap-2">
+                        {['0.5', '1.0', '2.0'].map((preset) => (
+                          <Button
+                            key={preset}
+                            variant="ghost"
+                            onClick={() => {
+                              setSlippageValue(preset);
+                              setIsAutoSlippage(false);
+                            }}
+                            className={`flex-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                              slippageValue === preset && !isAutoSlippage
+                                ? 'bg-gradient-to-r from-[#D0B284] to-[#D7BF75] text-black'
+                                : 'text-[#D0B284] hover:bg-[#D0B284]/10'
+                            }`}
+                          >
+                            {preset}%
+                          </Button>
+                        ))}
+                      </div>
                     </div>
                   </div>
-
-                  {/* Plus Button */}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleSlippageIncrement}
-                    className="w-12 h-12 bg-[#2A2627] hover:bg-[#2A2627]/80 text-white rounded-full border border-[#D0B284]/20"
-                  >
-                    <Plus className="w-5 h-5" />
-                  </Button>
                 </div>
-
-                {/* Manual Input Option */}
-                {!isAutoSlippage && (
-                  <div className="mt-4">
-                    <Input
-                      type="number"
-                      value={slippageValue}
-                      onChange={(e) => handleSlippageChange(e.target.value)}
-                      placeholder="0.50"
-                      className="bg-[#2A2627] border-[#D0B284]/20 text-white placeholder:text-[#928357] font-mono"
-                      step="0.1"
-                      min="0"
-                      max="100"
-                    />
-                  </div>
-                )}
-
-                {/* Quick Presets */}
-                <div className="mt-4 flex gap-2">
-                  {['0.1', '0.5', '1.0', '2.0'].map((preset) => (
-                    <Button
-                      key={preset}
-                      variant="ghost"
-                      onClick={() => {
-                        setSlippageValue(preset);
-                        setIsAutoSlippage(false);
-                      }}
-                      className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                        slippageValue === preset && !isAutoSlippage
-                          ? 'bg-gradient-to-r from-[#D0B284] to-[#D7BF75] text-black'
-                          : 'text-[#D0B284] hover:bg-[#D0B284]/10'
-                      }`}
-                    >
-                      {preset}%
-                    </Button>
-                  ))}
-                </div>
-              </div>
+              )}
             </div>
           </div>
-        )}
+        </div>
 
         {/* Main Content Area */}
         <div className="flex-1 flex flex-col bg-black">
@@ -287,7 +234,7 @@ export default function SwapInterface({ tokenSymbol = 'ACES' }: SwapInterfacePro
                       placeholder="0"
                       value={fromAmount}
                       onChange={(e) => handleFromAmountChange(e.target.value)}
-                      className="bg-transparent border-none text-2xl font-bold text-white placeholder:text-[#928357] p-0 h-auto focus-visible:ring-0 font-mono"
+                      className="bg-transparent border-none text-2xl font-bold text-white placeholder:text-[#928357] p-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:shadow-none focus-visible:outline-none focus-visible:border-transparent focus-visible:text-white font-mono [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&>input]:text-white [&>input]:focus-visible:text-white"
                       step="0.000001"
                     />
                     <div className="text-sm text-[#928357] mt-1 font-mono">
@@ -299,13 +246,19 @@ export default function SwapInterface({ tokenSymbol = 'ACES' }: SwapInterfacePro
                     <Button
                       onClick={() => setShowFromTokenDrawer(true)}
                       variant="outline"
-                      className="bg-[#231F20] border-[#D0B284]/30 text-white hover:bg-[#231F20]/80 font-medium px-4 py-3 rounded-2xl backdrop-blur-sm shrink-0 h-auto"
+                      className="bg-[#231F20] border-[#D0B284]/30 text-white hover:bg-[#231F20]/80 hover:text-[#D0B284]/80 font-medium px-4 py-3 rounded-2xl backdrop-blur-sm shrink-0 h-auto"
                     >
                       <div className="flex items-center gap-2">
                         <div
                           className={`w-6 h-6 bg-gradient-to-r ${fromTokenData.color} rounded-full flex items-center justify-center`}
                         >
-                          <span className="text-sm font-bold text-white">{fromTokenData.icon}</span>
+                          <Image
+                            src={fromTokenData.icon}
+                            alt={fromTokenData.name}
+                            width={20}
+                            height={20}
+                            className="w-5 h-5"
+                          />
                         </div>
                         <span className="font-semibold">{fromToken}</span>
                         <ChevronDown className="w-4 h-4" />
@@ -338,7 +291,7 @@ export default function SwapInterface({ tokenSymbol = 'ACES' }: SwapInterfacePro
                       placeholder="0"
                       value={toAmount}
                       readOnly
-                      className="bg-transparent border-none text-2xl font-bold text-white placeholder:text-[#928357] p-0 h-auto focus-visible:ring-0 font-mono"
+                      className="bg-transparent border-none text-2xl font-bold text-white placeholder:text-[#928357] p-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:shadow-none focus-visible:outline-none focus-visible:border-transparent focus-visible:text-white font-mono [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&>input]:text-white [&>input]:focus-visible:text-white"
                     />
                     {isLoading && (
                       <div className="absolute inset-0 flex items-center">
@@ -354,14 +307,17 @@ export default function SwapInterface({ tokenSymbol = 'ACES' }: SwapInterfacePro
                     <Button
                       onClick={() => setShowToTokenDrawer(true)}
                       variant="outline"
-                      className="bg-[#231F20] border-[#D0B284]/30 text-white hover:bg-[#231F20]/80 font-medium px-4 py-3 rounded-2xl backdrop-blur-sm shrink-0 h-auto"
+                      className="bg-[#231F20] border-[#D0B284]/30 text-white hover:bg-[#231F20]/80 hover:text-[#D0B284]/80 font-medium px-4 py-3 rounded-2xl backdrop-blur-sm shrink-0 h-auto"
                     >
                       <div className="flex items-center gap-2">
-                        <div
-                          className={`w-6 h-6 bg-gradient-to-r ${toTokenData.color} rounded-full flex items-center justify-center`}
-                        >
-                          <span className="text-sm font-bold text-black">{toTokenData.icon}</span>
-                        </div>
+                        <Image
+                          src={toTokenData.icon}
+                          alt={toTokenData.name}
+                          width={20}
+                          height={20}
+                          className="w-6 h-6"
+                        />
+
                         <span className="font-semibold">{toToken}</span>
                         <ChevronDown className="w-4 h-4" />
                       </div>
@@ -392,14 +348,12 @@ export default function SwapInterface({ tokenSymbol = 'ACES' }: SwapInterfacePro
               className="w-full bg-gradient-to-r from-[#D0B284] to-[#D7BF75] hover:from-[#D7BF75] hover:to-[#D0B284] text-black font-bold py-6 text-lg rounded-2xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl"
             >
               {isLoading ? (
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                <div className="flex items-center gap-2 tracking-widest font-bold">
+                  <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin " />
                   Swapping...
                 </div>
-              ) : !fromAmount || !toAmount ? (
-                'Enter an amount'
               ) : (
-                'Swap'
+                'SWAP'
               )}
             </Button>
           </div>
