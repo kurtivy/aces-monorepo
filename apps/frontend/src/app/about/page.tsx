@@ -8,11 +8,13 @@ export default function AboutPage() {
       <BackButton />
 
       <div className="max-w-4xl w-full bg-[#231F20] rounded-lg shadow-lg p-8 space-y-6 border border-[#D0B264]/40">
-        <h1 className="text-4xl font-syne font-bold text-[#D0B264] text-center mb-4">About ACES</h1>
+        <h1 className="text-4xl font-heading font-bold text-[#D0B264] text-center mb-4">
+          About ACES
+        </h1>
 
         <div className="text-gray-300 space-y-6 leading-relaxed">
           <section>
-            <h2 className="text-2xl font-syne font-semibold text-[#D0B264] mb-4">Our Vision</h2>
+            <h2 className="text-2xl font-heading font-semibold text-[#D0B264] mb-4">Our Vision</h2>
             <p>
               Web3 promised to revolutionize e-commerce by replacing fragmented marketplaces with
               decentralized networks, enabling seamless cross-platform shopping and new ownership
@@ -26,7 +28,7 @@ export default function AboutPage() {
           </section>
 
           <section>
-            <h2 className="text-2xl font-syne font-semibold text-[#D0B264] mb-4">
+            <h2 className="text-2xl font-heading font-semibold text-[#D0B264] mb-4">
               The Tokenization Revolution
             </h2>
             <p>
@@ -45,7 +47,9 @@ export default function AboutPage() {
           </section>
 
           <section>
-            <h2 className="text-2xl font-syne font-semibold text-[#D0B264] mb-4">Our Ecosystem</h2>
+            <h2 className="text-2xl font-heading font-semibold text-[#D0B264] mb-4">
+              Our Ecosystem
+            </h2>
             <p>
               To begin our journey, we have identified an ecosystem that combines tokenization with
               e-commerce in a way that aligns incentives between three parties: Sellers, Buyers, and
@@ -59,12 +63,12 @@ export default function AboutPage() {
           </section>
 
           <section>
-            <h2 className="text-2xl font-syne font-semibold text-[#D0B264] mb-4">
+            <h2 className="text-2xl font-heading font-semibold text-[#D0B264] mb-4">
               Benefits for All Participants
             </h2>
             <div className="space-y-4">
               <div>
-                <h3 className="text-xl font-syne font-medium text-[#D0B264]/80 mb-2">
+                <h3 className="text-xl font-heading font-medium text-[#D0B264]/80 mb-2">
                   For Sellers
                 </h3>
                 <p>
@@ -74,14 +78,16 @@ export default function AboutPage() {
                 </p>
               </div>
               <div>
-                <h3 className="text-xl font-syne font-medium text-[#D0B264]/80 mb-2">For Buyers</h3>
+                <h3 className="text-xl font-heading font-medium text-[#D0B264]/80 mb-2">
+                  For Buyers
+                </h3>
                 <p>
                   Buyers gain access to exclusive tokenized luxury assets with verified
                   authenticity, join a built-in community, and can purchase using cryptocurrency.
                 </p>
               </div>
               <div>
-                <h3 className="text-xl font-syne font-medium text-[#D0B264]/80 mb-2">
+                <h3 className="text-xl font-heading font-medium text-[#D0B264]/80 mb-2">
                   For Retail Traders
                 </h3>
                 <p>
@@ -94,7 +100,7 @@ export default function AboutPage() {
           </section>
 
           <section>
-            <h2 className="text-2xl font-syne font-semibold text-[#D0B264] mb-4">
+            <h2 className="text-2xl font-heading font-semibold text-[#D0B264] mb-4">
               The Future of Trading
             </h2>
             <p>

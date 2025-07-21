@@ -15,13 +15,13 @@ export default function TermsPage() {
       <div className="max-w-3xl w-full bg-[#231F20] rounded-lg shadow-lg p-8 space-y-6 border border-[#D0B264]/40">
         {/* Enhanced Tab Navigation as Title Area */}
         <div className="text-center space-y-4 mb-8">
-          <h1 className="text-3xl font-syne font-bold text-white mb-6">Legal Information</h1>
+          <h1 className="text-3xl font-heading font-bold text-white mb-6">Legal Information</h1>
           <div className="flex justify-center">
             <div className="bg-[#1a1718] rounded-full p-1 border border-[#D0B264]/30 w-full max-w-sm sm:max-w-2xl">
               <div className="flex space-x-1">
                 <button
                   onClick={() => setActiveTab('terms')}
-                  className={`flex-1 px-3 py-2 sm:px-8 sm:py-3 rounded-full text-sm sm:text-lg font-syne font-semibold transition-all duration-300 ${
+                  className={`flex-1 px-3 py-2 sm:px-8 sm:py-3 rounded-full text-sm sm:text-lg font-heading font-semibold transition-all duration-300 ${
                     activeTab === 'terms'
                       ? 'bg-[#D0B264] text-black shadow-lg'
                       : 'text-gray-400 hover:text-[#D0B264] hover:bg-[#D0B264]/10'
@@ -31,7 +31,7 @@ export default function TermsPage() {
                 </button>
                 <button
                   onClick={() => setActiveTab('privacy')}
-                  className={`flex-1 px-3 py-2 sm:px-8 sm:py-3 rounded-full text-sm sm:text-lg font-syne font-semibold transition-all duration-300 ${
+                  className={`flex-1 px-3 py-2 sm:px-8 sm:py-3 rounded-full text-sm sm:text-lg font-heading font-semibold transition-all duration-300 ${
                     activeTab === 'privacy'
                       ? 'bg-[#D0B264] text-black shadow-lg'
                       : 'text-gray-400 hover:text-[#D0B264] hover:bg-[#D0B264]/10'
@@ -50,14 +50,14 @@ export default function TermsPage() {
             <div className="text-gray-300 space-y-6">
               <div className="space-y-8">
                 <div className="text-center mb-4">
-                  <h2 className="text-2xl font-syne font-bold text-[#D0B264] mb-2">
+                  <h2 className="text-2xl font-heading font-bold text-[#D0B264] mb-2">
                     Waiver of Liability and User Terms
                   </h2>
                   <p className="text-[#D0B264] text-lg">Effective Date: February 13th, 2025</p>
                 </div>
 
                 <section>
-                  <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                  <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                     1. Acceptance of Terms
                   </h2>
                   <p>
@@ -68,7 +68,7 @@ export default function TermsPage() {
                 </section>
 
                 <section>
-                  <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                  <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                     2. Assumption of Risk
                   </h2>
                   <p>
@@ -79,7 +79,7 @@ export default function TermsPage() {
                 </section>
 
                 <section>
-                  <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                  <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                     3. Waiver of Liability
                   </h2>
                   <p>
@@ -104,7 +104,7 @@ export default function TermsPage() {
                 </section>
 
                 <section>
-                  <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                  <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                     4. Indemnification
                   </h2>
                   <p>
@@ -116,7 +116,7 @@ export default function TermsPage() {
                 </section>
 
                 <section>
-                  <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                  <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                     5. No Warranties
                   </h2>
                   <p>
@@ -128,7 +128,7 @@ export default function TermsPage() {
                 </section>
 
                 <section>
-                  <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                  <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                     6. User Responsibilities
                   </h2>
                   <ul className="list-disc pl-6 mt-2 space-y-1">
@@ -146,7 +146,7 @@ export default function TermsPage() {
                 </section>
 
                 <section>
-                  <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                  <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                     7. Third-Party Links
                   </h2>
                   <p>
@@ -156,7 +156,7 @@ export default function TermsPage() {
                 </section>
 
                 <section>
-                  <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                  <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                     8. Changes to These Terms
                   </h2>
                   <p>
@@ -166,7 +166,7 @@ export default function TermsPage() {
                 </section>
 
                 <section>
-                  <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                  <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                     9. Governing Law and Jurisdiction
                   </h2>
                   <p>
@@ -177,7 +177,7 @@ export default function TermsPage() {
                 </section>
 
                 <section>
-                  <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                  <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                     10. Contact Information
                   </h2>
                   <p>
@@ -193,14 +193,14 @@ export default function TermsPage() {
             <div className="text-gray-300 space-y-6">
               <div className="space-y-8">
                 <div className="text-center mb-4">
-                  <h2 className="text-2xl font-syne font-bold text-[#D0B264] mb-2">
+                  <h2 className="text-2xl font-heading font-bold text-[#D0B264] mb-2">
                     Privacy Policy
                   </h2>
                   <p className="text-[#D0B264] text-lg">Effective Date: February 13th, 2025</p>
                 </div>
 
                 <section>
-                  <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                  <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                     1. Introduction
                   </h2>
                   <p>
@@ -214,7 +214,7 @@ export default function TermsPage() {
                 </section>
 
                 <section>
-                  <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                  <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                     2. Information We Collect
                   </h2>
                   <p>We collect and process the following types of personal data:</p>
@@ -233,7 +233,7 @@ export default function TermsPage() {
                 </section>
 
                 <section>
-                  <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                  <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                     3. How We Use Your Data
                   </h2>
                   <p>We process your data for the following purposes:</p>
@@ -247,7 +247,7 @@ export default function TermsPage() {
                 </section>
 
                 <section>
-                  <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                  <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                     4. Legal Basis for Processing Data
                   </h2>
                   <p>We process personal data under the following legal bases:</p>
@@ -262,7 +262,7 @@ export default function TermsPage() {
                 </section>
 
                 <section>
-                  <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                  <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                     5. Data Retention
                   </h2>
                   <p>
@@ -273,7 +273,7 @@ export default function TermsPage() {
                 </section>
 
                 <section>
-                  <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                  <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                     6. International Data Transfers
                   </h2>
                   <p>
@@ -284,7 +284,7 @@ export default function TermsPage() {
                 </section>
 
                 <section>
-                  <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                  <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                     7. Your Rights
                   </h2>
                   <p>Depending on your location, you may have the following rights:</p>
@@ -304,7 +304,7 @@ export default function TermsPage() {
                 </section>
 
                 <section>
-                  <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                  <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                     8. Security Measures
                   </h2>
                   <p>
@@ -315,7 +315,7 @@ export default function TermsPage() {
                 </section>
 
                 <section>
-                  <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                  <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                     9. Cookies and Tracking Technologies
                   </h2>
                   <p>
@@ -325,7 +325,7 @@ export default function TermsPage() {
                 </section>
 
                 <section>
-                  <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                  <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                     10. Third-Party Services
                   </h2>
                   <p>
@@ -336,7 +336,7 @@ export default function TermsPage() {
                 </section>
 
                 <section>
-                  <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                  <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                     11. Children&apos;s Privacy
                   </h2>
                   <p>
@@ -346,7 +346,7 @@ export default function TermsPage() {
                 </section>
 
                 <section>
-                  <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                  <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                     12. Changes to This Policy
                   </h2>
                   <p>
@@ -356,7 +356,7 @@ export default function TermsPage() {
                 </section>
 
                 <section>
-                  <h2 className="text-xl font-syne font-semibold text-[#D0B264] mb-3">
+                  <h2 className="text-xl font-heading font-semibold text-[#D0B264] mb-3">
                     13. Contact Us
                   </h2>
                   <p>

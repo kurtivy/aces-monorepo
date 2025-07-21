@@ -19,7 +19,7 @@ import AnimatedDotsBackground from '@/components/ui/custom/animated-dots-backgro
 // Label Section Component (Short tile)
 const LabelSection = ({ label, error }: { label: string; error?: string }) => (
   <div className="w-1/3">
-    <div className="bg-[#D0B284]/10 border border-[#D0B284] rounded-xl shadow-lg hover:shadow-xl hover:border-[#D7BF75] transition-all duration-300 p-1 font-syne uppercase">
+    <div className="bg-[#D0B284]/10 border border-[#D0B284] rounded-xl shadow-lg hover:shadow-xl hover:border-[#D7BF75] transition-all duration-300 p-1 font-heading uppercase">
       <span className="text-[#D0B284] flex justify-center items-center font-medium text-lg">
         {label}
       </span>
@@ -168,7 +168,6 @@ export default function CreateTokenForm() {
           <h1
             className="text-5xl font-bold text-[#D7BF75] mb-4"
             style={{
-              fontFamily: 'Cinzel, serif',
               textShadow: '0 0 20px rgba(208, 178, 100, 0.3)',
             }}
           >
@@ -178,7 +177,7 @@ export default function CreateTokenForm() {
 
         {/* Introductory Text */}
         <div className="mb-12 text-center">
-          <p className="text-lg font-spectral text-[#DCDDCC] leading-relaxed">
+          <p className="text-lg font-system text-[#DCDDCC] leading-relaxed">
             Hey, while we haven&apos;t officially launched yet, if you have a high-value Real-World
             Asset (RWA) that you would like to tokenize, submit a form here and maybe you can be
             part of our launch!

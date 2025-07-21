@@ -11,10 +11,10 @@ export default function CreateTokenPage() {
       <BackButton />
 
       <div className="max-w-3xl w-full bg-[#231F20] rounded-lg shadow-lg p-8 space-y-6 border border-[#D0B264]/40">
-        <h1 className="text-4xl font-syne font-bold text-[#D0B264] text-center mb-4">
+        <h1 className="text-4xl font-heading font-bold text-[#D0B264] text-center mb-4">
           RWA Submission Form
         </h1>
-        <p className="text-lg font-spectral text-center text-gray-300 mb-8">
+        <p className="text-lg font-system text-center text-gray-300 mb-8">
           Hey, while we haven&apos;t officially launched yet, if you have a high-value Real-World
           Asset (RWA) that you would like to tokenize, submit a form here and maybe you can be part
           of our launch!
@@ -31,7 +31,7 @@ export default function CreateTokenPage() {
           </iframe>
         </div>{' '}
         {/* Closing div added here */}
-        <p className="text-sm font-spectral text-center text-gray-300 mt-8">
+        <p className="text-sm font-system text-center text-gray-300 mt-8">
           We will review your submission and get back to you if your RWA is a good fit for Aces.fun.
         </p>
       </div>

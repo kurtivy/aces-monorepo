@@ -9,7 +9,7 @@ export default function GlobalError({
 }) {
   return (
     <html>
-      <body className="bg-black text-white font-syne">
+      <body className="bg-black text-white font-heading">
         <div className="fixed inset-0 flex items-center justify-center">
           <div className="text-center p-8 max-w-md">
             <div className="text-[#D0B264] text-2xl font-bold mb-4">Something went wrong!</div>

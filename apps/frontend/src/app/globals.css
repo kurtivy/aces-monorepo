@@ -52,6 +52,13 @@
 
 @layer base {
   :root {
+    /* Font variables */
+    --font-system:
+      -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans',
+      sans-serif;
+    --font-heading: var(--font-libre-caslon);
+
+    /* Color variables */
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
 
@@ -113,9 +120,10 @@
     --ring: 210 40% 98%;
   }
 }
+
 @layer base {
   body {
-    font-family: var(--font-spectral), serif;
+    font-family: var(--font-system), sans-serif;
   }
   h1,
   h2,
@@ -123,7 +131,7 @@
   h4,
   h5,
   h6 {
-    font-family: var(--font-syne), sans-serif;
+    font-family: var(--font-libre-caslon), serif;
   }
   code,
   pre {
@@ -237,6 +245,7 @@
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
 }
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
