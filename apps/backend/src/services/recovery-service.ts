@@ -134,7 +134,9 @@ export class RecoveryService {
         const walletClient = this.ensureWalletClient();
 
         if (!walletClient.account) {
-          throw errors.internal('Wallet client is not configured with an account.');
+          throw errors.internal('Wallet client is not configured with an account', {
+            cause: new Error('No wallet account'),
+          });
         }
 
         const newHash = await walletClient.writeContract({

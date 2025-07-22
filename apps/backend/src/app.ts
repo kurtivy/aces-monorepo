@@ -65,7 +65,11 @@ export const buildApp = async (): Promise<FastifyInstance> => {
 
   // Global error handler
   fastify.setErrorHandler((error, request, reply) => {
-    handleError(reply, error);
+    try {
+      handleError(error, reply);
+    } catch (error) {
+      handleError(error, reply);
+    }
   });
 
   fastify.addHook('onClose', async () => {

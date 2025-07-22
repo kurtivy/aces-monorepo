@@ -1,6 +1,5 @@
-import { FastifyReply } from 'fastify';
 import {
-  isBoom,
+  Boom,
   unauthorized,
   forbidden,
   notFound,
@@ -8,79 +7,76 @@ import {
   badRequest,
   internal,
 } from '@hapi/boom';
-import type { AppError } from '@aces/utils';
+import { FastifyReply } from 'fastify';
 
-export function boom(
-  statusCode: number,
-  code: string,
-  message: string,
-  meta?: Record<string, unknown>,
-): AppError {
-  return { statusCode, code, message, meta };
+export class AppError extends Error {
+  constructor(
+    message: string,
+    public readonly code: string,
+    public readonly meta?: Record<string, unknown>,
+  ) {
+    super(message);
+    this.name = 'AppError';
+  }
 }
 
-export function handleError(reply: FastifyReply, error: unknown) {
-  // Handle @hapi/boom errors
-  if (isBoom(error)) {
-    return reply.status(error.output.statusCode).send({
-      error: {
-        code: error.message.toUpperCase().replace(/\s+/g, '_'),
-        message: error.message,
-        meta: error.data,
-      },
+// Helper to check if something is a FastifyReply
+function isFastifyReply(obj: unknown): obj is FastifyReply {
+  if (obj === null || typeof obj !== 'object') return false;
+
+  const candidate = obj as { status?: unknown; send?: unknown };
+  return typeof candidate.status === 'function' && typeof candidate.send === 'function';
+}
+
+export async function handleError(error: unknown, reply: FastifyReply): Promise<void> {
+  if (error instanceof AppError) {
+    await reply.status(400).send({
+      error: error.code,
+      message: error.message,
+      meta: error.meta,
     });
+    return;
   }
 
-  // Handle our custom AppError format
-  if (error && typeof error === 'object' && 'statusCode' in error) {
-    const appError = error as AppError;
-    return reply.status(appError.statusCode).send({
-      error: {
-        code: appError.code,
-        message: appError.message,
-        meta: appError.meta,
-      },
-    });
+  if (error instanceof Boom) {
+    await reply.status(error.output.statusCode).send(error.output.payload);
+    return;
   }
 
-  // Handle Prisma errors
-  if (error && typeof error === 'object' && 'code' in error) {
-    const prismaError = error as { code: string; meta?: { target?: string[] } };
-    if (prismaError.code === 'P2002') {
-      return reply.status(409).send({
-        error: {
-          code: 'CONFLICT',
-          message: 'Resource already exists',
-          meta: { constraint: prismaError.meta?.target },
-        },
-      });
+  // Default to internal server error
+  const internalError = internal('An unexpected error occurred');
+  await reply.status(internalError.output.statusCode).send(internalError.output.payload);
+}
+
+// Backward compatibility wrapper
+export async function handleErrorLegacy(
+  replyOrError: FastifyReply | unknown,
+  errorOrReply: unknown | FastifyReply,
+): Promise<void> {
+  if (isFastifyReply(replyOrError)) {
+    // Old style: handleError(reply, error)
+    return handleError(errorOrReply, replyOrError);
+  } else {
+    // New style: handleError(error, reply)
+    if (!isFastifyReply(errorOrReply)) {
+      throw new Error('Invalid arguments to handleError');
     }
+    return handleError(replyOrError, errorOrReply);
   }
-
-  // Unexpected error
-  reply.log.error(error);
-  return reply.status(500).send({
-    error: {
-      code: 'INTERNAL_ERROR',
-      message: 'An unexpected error occurred',
-    },
-  });
 }
 
-// Common error factories using @hapi/boom
 export const errors = {
-  unauthorized: (message = 'Authentication required') => unauthorized(message),
-
-  forbidden: (message = 'Access denied') => forbidden(message),
-
-  notFound: (resource = 'Resource') => notFound(`${resource} not found`),
-
+  unauthorized: (message?: string) => unauthorized(message || 'Unauthorized'),
+  forbidden: (message?: string) => forbidden(message || 'Forbidden'),
+  notFound: (resource?: string) => notFound(resource ? `${resource} not found` : 'Not found'),
   validation: (message: string, meta?: Record<string, unknown>) =>
-    boom(400, 'VALIDATION_ERROR', message, meta),
-
+    new AppError(message, 'VALIDATION_ERROR', meta),
   conflict: (message: string) => conflict(message),
-
   badRequest: (message: string) => badRequest(message),
-
-  internal: (message = 'Internal server error') => internal(message),
+  tooManyRequests: (message: string) => new Boom(message, { statusCode: 429 }),
+  internal: (message: string, { cause }: { cause?: unknown } = {}) => {
+    const error = internal(message);
+    if (cause) error.data = { cause };
+    return error;
+  },
 };

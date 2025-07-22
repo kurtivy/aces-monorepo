@@ -105,7 +105,9 @@ export class ApprovalService {
         const walletClient = this.ensureWalletClient();
 
         if (!walletClient.account) {
-          throw errors.internal('Wallet client is not configured with an account.');
+          throw errors.internal('Wallet client is not configured with an account', {
+            cause: new Error('No wallet account'),
+          });
         }
 
         const hash = await walletClient.writeContract({
@@ -161,7 +163,7 @@ export class ApprovalService {
         correlationId,
         operation: 'approveSubmission',
       });
-      throw error;
+      throw errors.internal('Failed to approve submission', { cause: error });
     }
   }
 
