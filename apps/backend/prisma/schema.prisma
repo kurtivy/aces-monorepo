@@ -17,8 +17,42 @@ model User {
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
   email         String?         @unique
+  
+  // User Role & Status
+  role          UserRole        @default(TRADER)
+  isActive      Boolean         @default(true)
+  
+  // Profile Information  
+  firstName     String?
+  lastName      String?
+  displayName   String?
+  avatar        String?
+  bio           String?
+  website       String?
+  twitterHandle String?
+  
+  // Seller Verification System
+  sellerStatus  SellerStatus    @default(NOT_APPLIED)
+  appliedAt     DateTime?
+  verifiedAt    DateTime?
+  rejectedAt    DateTime?
+  rejectionReason String?
+  
+  // Seller Credentials (for protected pages)
+  sellerEmail   String?         @unique // separate from main email
+  sellerPasswordHash String?    // hashed password for seller dashboard
+  lastSellerLogin DateTime?
+  
+  // Preferences & Settings
+  notifications Boolean         @default(true)
+  newsletter    Boolean         @default(false)
+  darkMode      Boolean         @default(true)
+  
   bids          Bid[]
   RwaSubmission RwaSubmission[]
+  verification  SellerVerification?
+  verificationAttempts Int @default(0)
+  lastVerificationAttempt DateTime?
 
   @@map("users")
 }
@@ -115,6 +149,47 @@ model RwaSubmission {
   @@map("rwa_submissions")
 }
 
+model SellerVerification {
+  id            String      @id @default(cuid())
+  userId        String      @unique
+  user          User        @relation(fields: [userId], references: [id])
+  documentType  String      // e.g., "DRIVERS_LICENSE", "PASSPORT"
+  documentNumber String
+  fullName      String
+  dateOfBirth   DateTime
+  countryOfIssue String
+  state         String?
+  address       String
+  emailAddress  String
+  documentImageUrl String?  // URL to stored image in Supabase storage
+  submittedAt   DateTime    @default(now())
+  reviewedAt    DateTime?
+  reviewedBy    String?     // Admin user ID who reviewed
+  status        VerificationStatus @default(PENDING)
+  rejectionReason String?
+  attempts      Int         @default(0)
+  lastAttemptAt DateTime?
+  auditLogs     VerificationAuditLog[]
+
+  @@index([status])
+  @@index([userId])
+}
+
+model VerificationAuditLog {
+  id            String    @id @default(cuid())
+  verificationId String
+  verification  SellerVerification @relation(fields: [verificationId], references: [id])
+  action        String    // e.g., "SUBMITTED", "REVIEWED", "APPROVED", "REJECTED"
+  actorId       String    // User ID who performed the action
+  timestamp     DateTime  @default(now())
+  details       Json?     // Additional details about the action
+  ipAddress     String?
+  userAgent     String?
+
+  @@index([verificationId])
+  @@index([timestamp])
+}
+
 enum SubmissionStatus {
   PENDING
   APPROVED
@@ -139,4 +214,23 @@ enum ActionType {
   SYSTEM
   WEBHOOK
   ADMIN
+}
+
+enum UserRole {
+  TRADER
+  SELLER
+  ADMIN
+}
+
+enum SellerStatus {
+  NOT_APPLIED
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
