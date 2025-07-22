@@ -89,25 +89,6 @@ export default function BondingCurveChart({
   const yAxisMax = maxPriceInData * 1.2;
   const yAxisMin = 0;
 
-  // Debug logging
-  console.log('Fixed Chart Debug:', {
-    currentPrice: currentPrice.toString(),
-    currentPriceNumber,
-    currentPriceInNanoETH: currentPriceNumber * 1e9,
-    tokensSold: tokensSold.toString(),
-    currentTokensSoldNumber,
-    displayPrice,
-    bondingCurveDataSample: bondingCurveData.slice(0, 3),
-    yAxisMax,
-    yAxisMin,
-    maxPriceInData,
-    chartWillShow: {
-      dotX: currentTokensSoldNumber,
-      dotY: displayPrice,
-      dotVisible: displayPrice > 0 && currentTokensSoldNumber > 0,
-    },
-  });
-
   return (
     <div className="w-full h-full bg-transparent flex items-center justify-center">
       <ResponsiveContainer width="100%" height="100%">

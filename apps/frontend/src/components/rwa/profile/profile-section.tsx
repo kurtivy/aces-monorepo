@@ -1,7 +1,5 @@
 'use client';
 
-import { useState } from 'react';
-
 import OwnerLoginButton from '@/components/ui/custom/owner-login-button';
 import ConnectWalletProfile from '@/components/ui/custom/connect-wallet-profile';
 
@@ -10,19 +8,6 @@ interface ProfileSectionProps {
 }
 
 export default function ProfileSection({}: ProfileSectionProps) {
-  // Local state for dummy connection simulation
-  const [isConnected, setIsConnected] = useState(false);
-
-  const handleConnect = () => {
-    // In a real app, you'd call Privy's login here: login()
-    setIsConnected(true); // Simulate connection
-  };
-
-  const handleDisconnect = () => {
-    // In a real app, you'd call Privy's logout here: logout()
-    setIsConnected(false); // Simulate disconnection
-  };
-
   const handleOwnerLogin = () => {
     // Handle owner login logic here
     console.log('Owner login clicked');
@@ -38,6 +23,10 @@ export default function ProfileSection({}: ProfileSectionProps) {
     console.log('Settings clicked');
   };
 
+  function handleSellerDashboardClick(): void {
+    throw new Error('Function not implemented.');
+  }
+
   return (
     <div className="bg-black rounded-xl p-2 flex items-center justify-end min-w-[200px] pr-6">
       <div className="flex items-center gap-2">
@@ -48,12 +37,9 @@ export default function ProfileSection({}: ProfileSectionProps) {
 
         {/* Connect Wallet Profile */}
         <ConnectWalletProfile
-          isConnected={isConnected}
-          userAddress={isConnected ? '0x1235abcdef1234567890' : undefined}
-          onConnect={handleConnect}
-          onDisconnect={handleDisconnect}
           onProfileClick={handleProfileClick}
           onSettingsClick={handleSettingsClick}
+          onSellerDashboardClick={handleSellerDashboardClick}
         />
       </div>
     </div>

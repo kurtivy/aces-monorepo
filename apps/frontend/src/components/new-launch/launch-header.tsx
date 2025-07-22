@@ -1,29 +1,21 @@
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import SocialIcons from '@/components/ui/custom/social-icons';
 import ConnectWalletProfile from '@/components/ui/custom/connect-wallet-profile';
-import { useState } from 'react';
 
 export default function LaunchHeader() {
-  const [isConnected, setIsConnected] = useState(false);
-
-  const handleConnect = () => {
-    // In a real app, you'd call Privy's login here: login()
-    setIsConnected(true); // Simulate connection
-  };
-
-  const handleDisconnect = () => {
-    // In a real app, you'd call Privy's logout here: logout()
-    setIsConnected(false); // Simulate disconnection
-  };
+  const router = useRouter();
 
   const handleProfileClick = () => {
-    // Handle profile click logic here
-    console.log('Profile clicked');
+    router.push('/profile');
   };
 
   const handleSettingsClick = () => {
-    // Handle settings click logic here
-    console.log('Settings clicked');
+    router.push('/profile/settings');
+  };
+
+  const handleSellerDashboardClick = () => {
+    router.push('/seller/dashboard');
   };
 
   return (
@@ -64,12 +56,9 @@ export default function LaunchHeader() {
       <div className="flex items-center gap-6">
         <SocialIcons iconSize={24} />
         <ConnectWalletProfile
-          isConnected={isConnected}
-          userAddress={isConnected ? '0x1235abcdef1234567890' : undefined}
-          onConnect={handleConnect}
-          onDisconnect={handleDisconnect}
           onProfileClick={handleProfileClick}
           onSettingsClick={handleSettingsClick}
+          onSellerDashboardClick={handleSellerDashboardClick}
         />
       </div>
     </div>
