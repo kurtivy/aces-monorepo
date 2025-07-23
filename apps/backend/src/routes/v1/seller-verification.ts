@@ -69,7 +69,7 @@ export async function sellerVerificationRoutes(fastify: FastifyInstance) {
             fullName: { type: 'string', minLength: 1 },
             dateOfBirth: { type: 'string', format: 'date' },
             countryOfIssue: { type: 'string', minLength: 1 },
-            state: { type: 'string', optional: true },
+            state: { type: 'string' },
             address: { type: 'string', minLength: 1 },
             emailAddress: { type: 'string', format: 'email' },
             documentFile: {

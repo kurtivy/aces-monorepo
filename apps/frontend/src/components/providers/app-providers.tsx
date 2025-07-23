@@ -44,6 +44,8 @@ export default function AppProviders({ children }: { children: ReactNode }) {
               createOnLogin: 'users-without-wallets',
             },
           },
+          defaultChain: baseSepolia,
+          supportedChains: [baseSepolia],
         }}
       >
         <WagmiProvider config={wagmiConfig}>

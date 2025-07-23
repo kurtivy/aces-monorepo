@@ -71,6 +71,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isAdmin = state.user?.role === 'ADMIN';
 
+  // Monitor external wallet disconnection
+  useEffect(() => {
+    const checkWalletConnection = async () => {
+      if (typeof window.ethereum !== 'undefined') {
+        const accounts = (await window.ethereum.request({ method: 'eth_accounts' })) as string[];
+        if (accounts.length === 0 && privyAuthenticated) {
+          // MetaMask is disconnected but Privy still thinks we're authenticated
+          await disconnectWallet();
+        }
+      }
+    };
+
+    // Check initial state
+    checkWalletConnection();
+
+    // Listen for account changes
+    if (typeof window.ethereum !== 'undefined') {
+      window.ethereum.on('accountsChanged', async (accounts: unknown) => {
+        const accountsArray = accounts as string[];
+        if (accountsArray.length === 0 && privyAuthenticated) {
+          await disconnectWallet();
+        }
+      });
+    }
+
+    return () => {
+      // Cleanup listeners
+      if (typeof window.ethereum !== 'undefined') {
+        window.ethereum.removeListener('accountsChanged', () => {});
+      }
+    };
+  }, [privyAuthenticated]);
+
   // Initialize auth state when Privy is ready
   useEffect(() => {
     if (privyAuthenticated && privyUser) {

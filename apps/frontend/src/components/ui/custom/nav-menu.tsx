@@ -3,9 +3,10 @@
 import type React from 'react';
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence, type Variants } from 'framer-motion';
-import { Menu, X, Send } from 'lucide-react';
+import { Menu, X, Send, Wallet, User } from 'lucide-react';
 import Link from 'next/link';
 import { getDeviceCapabilities } from '../../../lib/utils/browser-utils';
+import { useAuth } from '@/lib/auth/auth-context';
 
 // Separate main navigation items from social links
 const mainNavItems = [
@@ -147,6 +148,9 @@ interface NavMenuProps {
 const NavMenu: React.FC<NavMenuProps> = ({ onAboutClick, onTermsClick }) => {
   const [isOpen, setIsOpen] = useState(false);
 
+  // Auth context integration
+  const { isAuthenticated, isLoading, user, walletAddress, connectWallet } = useAuth();
+
   // Smart mobile detection using our existing device capabilities
   const isMobileDevice = useMemo(() => {
     const capabilities = getDeviceCapabilities();
@@ -156,6 +160,26 @@ const NavMenu: React.FC<NavMenuProps> = ({ onAboutClick, onTermsClick }) => {
   // Choose animation variants based on device capability
   const menuVariants = isMobileDevice ? mobileMenuVariants : desktopMenuVariants;
   const navItemVariants = isMobileDevice ? mobileNavItemVariants : desktopNavItemVariants;
+
+  // Wallet connection handlers
+  const handleConnectWallet = async () => {
+    try {
+      await connectWallet();
+    } catch (error) {
+      console.error('Failed to connect wallet:', error);
+    }
+  };
+
+  const handleWalletAddressClick = (e: React.MouseEvent) => {
+    setIsOpen(false); // Close the nav menu
+  };
+
+  // Display wallet address truncated
+  const displayAddress = walletAddress
+    ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
+    : null;
+
+  const displayName = user?.displayName || (displayAddress ? displayAddress : 'User');
 
   return (
     <div className="fixed top-4 right-4 z-50 flex items-start">
@@ -173,13 +197,66 @@ const NavMenu: React.FC<NavMenuProps> = ({ onAboutClick, onTermsClick }) => {
             }}
           >
             <div className="p-3 sm:p-4 min-w-[160px] sm:min-w-[180px]">
+              {/* Wallet Connection Header */}
+              <div className="border-b border-[#D0B264]/20 mb-3 pb-3">
+                {isAuthenticated && user ? (
+                  // Connected Wallet Display
+                  <motion.div
+                    variants={navItemVariants}
+                    custom={0}
+                    style={{ willChange: isMobileDevice ? 'opacity' : 'transform, opacity' }}
+                  >
+                    <Link
+                      href="/profile"
+                      onClick={handleWalletAddressClick}
+                      className="flex items-center gap-2 text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 px-2 py-2 rounded-md group"
+                    >
+                      <div className="w-6 h-6 rounded-full bg-[#D0B284] flex items-center justify-center text-black text-xs font-bold">
+                        {user.avatar ? (
+                          <img src={user.avatar} alt="Avatar" className="w-6 h-6 rounded-full" />
+                        ) : (
+                          user?.displayName?.[0]?.toUpperCase() ||
+                          walletAddress?.[2]?.toUpperCase() ||
+                          'A'
+                        )}
+                      </div>
+                      <div className="flex flex-col items-start min-w-0">
+                        <div className="text-[#D0B264] text-xs font-medium truncate max-w-[120px] group-hover:text-white">
+                          {displayName}
+                        </div>
+                        <div className="text-[#D0B264]/60 text-xs font-mono group-hover:text-white/60">
+                          {displayAddress}
+                        </div>
+                      </div>
+                      <User className="w-3 h-3 ml-auto opacity-60 group-hover:opacity-100" />
+                    </Link>
+                  </motion.div>
+                ) : (
+                  // Connect Wallet Button
+                  <motion.div
+                    variants={navItemVariants}
+                    custom={0}
+                    style={{ willChange: isMobileDevice ? 'opacity' : 'transform, opacity' }}
+                  >
+                    <button
+                      onClick={handleConnectWallet}
+                      disabled={isLoading}
+                      className="flex items-center justify-center w-full text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 px-2 py-2 rounded-md text-sm font-medium"
+                    >
+                      <Wallet className="w-4 h-4 mr-2" />
+                      {isLoading ? 'Connecting...' : 'Connect Wallet'}
+                    </button>
+                  </motion.div>
+                )}
+              </div>
+
               {/* Main Navigation Items */}
               <div className="space-y-1">
                 {mainNavItems.map((item, index) => (
                   <motion.div
                     key={item.href}
                     variants={navItemVariants}
-                    custom={index}
+                    custom={index + 1} // Offset by 1 due to wallet header
                     style={{ willChange: isMobileDevice ? 'opacity' : 'transform, opacity' }}
                   >
                     {item.external ? (
@@ -228,7 +305,7 @@ const NavMenu: React.FC<NavMenuProps> = ({ onAboutClick, onTermsClick }) => {
                       <motion.div
                         key={social.href}
                         variants={navItemVariants}
-                        custom={mainNavItems.length + index}
+                        custom={mainNavItems.length + index + 1} // Offset by 1 due to wallet header
                         style={{ willChange: isMobileDevice ? 'opacity' : 'transform, opacity' }}
                       >
                         <a
