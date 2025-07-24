@@ -62,7 +62,8 @@ export const useViewState = ({
     const screenCenterY = canvasHeight.current / 2;
 
     const newX = screenCenterX - (currentHomeAreaWorldX + currentHomeAreaWidth / 2) * initialScale;
-    const newY = screenCenterY - (currentHomeAreaWorldY + currentHomeAreaHeight / 2) * initialScale;
+    const newY =
+      screenCenterY - (currentHomeAreaWorldY + currentHomeAreaHeight / 2) * initialScale + 200; // Add 200px offset
 
     setViewState((prev) => ({
       ...prev,
@@ -157,7 +158,7 @@ export const useViewState = ({
     const targetX =
       screenCenterX - (currentHomeAreaWorldX + currentHomeAreaWidth / 2) * initialScale;
     const targetY =
-      screenCenterY - (currentHomeAreaWorldY + currentHomeAreaHeight / 2) * initialScale;
+      screenCenterY - (currentHomeAreaWorldY + currentHomeAreaHeight / 2) * initialScale + 200; // Add 200px offset
 
     setViewState((prev) => ({
       ...prev,

@@ -182,7 +182,6 @@ export const useCanvasInteractions = ({
         const createQuadY = homeAreaWorldY;
         const aboutQuadX = homeAreaWorldX;
         const aboutQuadY = homeAreaWorldY;
-        const termsQuadX = homeAreaWorldX;
         const termsQuadY = homeAreaWorldY + quadHeight;
 
         if (
@@ -205,13 +204,16 @@ export const useCanvasInteractions = ({
           return;
         }
 
-        if (
-          worldX >= termsQuadX &&
-          worldX < termsQuadX + quadWidth &&
-          worldY >= termsQuadY &&
-          worldY < termsQuadY + quadHeight
-        ) {
-          router.push('/terms');
+        // Handle bottom quadrants
+        if (worldY >= termsQuadY && worldY < termsQuadY + quadHeight) {
+          // Bottom left quadrant (DOCS)
+          if (worldX < homeAreaWorldX + homeAreaWidth / 2) {
+            window.open('https://docs.aces.fun', '_blank');
+          }
+          // Bottom right quadrant (CHAT)
+          else {
+            window.open('https://t.me/acesdotfun/', '_blank');
+          }
           return;
         }
         return;

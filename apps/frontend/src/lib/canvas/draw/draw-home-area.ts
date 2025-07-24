@@ -216,9 +216,9 @@ export const drawHomeArea = (
 
   // Draw all quadrant buttons
   drawQuadrantButton('ABOUT', 0);
-  drawQuadrantButton('CREATE', 1);
-  drawQuadrantButton('TERMS', 2);
-  drawQuadrantButton('CAREER', 3);
+  drawQuadrantButton('MINT', 1);
+  drawQuadrantButton('DOCS', 2);
+  drawQuadrantButton('CHAT', 3);
 
   // Draw the circular background for logo with premium styling
   const logoSize = Math.min(homeAreaWidth, homeAreaHeight) * 0.6; // 60% of the smaller dimension

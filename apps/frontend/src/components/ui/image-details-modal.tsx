@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
 import type { ImageInfo } from '../../types/canvas';
 import { getImageMetadata } from '../../lib/utils/luxury-logger';
+import CountdownTimer from './countdown-timer';
 import {
   addWindowEventListenerSafe,
   removeWindowEventListenerSafe,
@@ -346,11 +347,11 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
 
                       {/* Updated Price Display - RRP Price • Token Symbol */}
                       <div className="flex flex-col space-y-2 mb-3">
+                        <div className="text-[#FFFFFF]/60 text-xs sm:text-sm font-jetbrains-mono tracking-wide">
+                          Bids starting at
+                        </div>
                         {/* Price Line: RRP [Price] • [Token Symbol] */}
                         <div className="flex items-baseline space-x-2">
-                          <span className="text-xs sm:text-sm text-[#D0B264]/70 font-jetbrains-mono tracking-wider uppercase">
-                            RRP
-                          </span>
                           {(() => {
                             const rrpValue = imageInfo?.metadata?.rrp as number | undefined;
                             if (rrpValue === undefined) return null;
@@ -371,13 +372,6 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                             {safeMetadata.ticker}
                           </span>
                         </div>
-
-                        {/* Listed Date - Underneath */}
-                        {safeMetadata.date && (
-                          <div className="text-[#FFFFFF]/60 text-xs sm:text-sm font-jetbrains-mono tracking-wide">
-                            Listed {new Date(safeMetadata.date).toLocaleDateString()}
-                          </div>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -401,13 +395,20 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                   </button>
                 </div>
 
+                {/* Add Countdown Timer */}
+                <div className="mb-2">
+                  <CountdownTimer
+                    targetDate={new Date('2025-09-01T12:00:00-04:00')} // September 1, 2025 at 12PM Eastern Time
+                  />
+                </div>
+
                 <div className="mb-4 sm:mb-6">
                   {/* Enhanced Description with Read More/Less functionality - More space allocated */}
                   <div className="prose prose-invert">
                     <div className="relative">
                       <p
                         className={`text-[#FFFFFF]/80 text-sm sm:text-base leading-relaxed font-spectral tracking-wide transition-all duration-300 ${
-                          isDescriptionExpanded ? '' : 'line-clamp-5'
+                          isDescriptionExpanded ? '' : 'line-clamp-3'
                         }`}
                       >
                         {safeMetadata.description}
@@ -446,30 +447,30 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                   <div className="mt-6 sm:mt-8 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-4 sm:gap-y-6">
                     {(() => {
                       // Helper formatter
-                      const formatUSD = (v?: number) =>
-                        v === undefined
-                          ? '—'
-                          : `$${v.toLocaleString('en-US', {
-                              minimumFractionDigits: v >= 1 ? 2 : 4,
-                              maximumFractionDigits: v >= 1 ? 2 : 6,
-                            })}`;
+                      //   const formatUSD = (v?: number) =>
+                      //     v === undefined
+                      //       ? '`—'
+                      //     : `$${v.toLocaleString('en-US', {
+                      //         minimumFractionDigits: v >= 1 ? 2 : 4,
+                      //         maximumFractionDigits: v >= 1 ? 2 : 6,
+                      //       })}`;
 
-                      const formatNumber = (v?: number) =>
-                        v === undefined ? '—' : v.toLocaleString('en-US');
+                      // const formatNumber = (v?: number) =>
+                      //   v === undefined ? '—' : v.toLocaleString('en-US');
 
-                      const { tokenSupply, tokenPrice, marketCap } = (imageInfo?.metadata ||
-                        {}) as ImageInfo['metadata'];
+                      // const { tokenSupply, tokenPrice, marketCap } = (imageInfo?.metadata ||
+                      //   {}) as ImageInfo['metadata'];
 
                       const stats = [
                         {
                           label: 'Token Price',
-                          value: formatUSD(tokenPrice),
+                          value: 'TBD',
                         },
                         {
                           label: 'Market Cap',
-                          value: formatUSD(marketCap),
+                          value: 'TBD',
                         },
-                        { label: 'Token Supply', value: formatNumber(tokenSupply) },
+                        { label: 'Token Supply', value: 'TBD' },
                       ];
 
                       return stats.map(({ label, value }) => (
@@ -489,9 +490,36 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
 
               {/* Fixed Button Area */}
               <div className="flex-shrink-0 p-3 sm:p-6 lg:p-8 pt-0 bg-gradient-to-t from-black via-black/95 to-transparent">
-                <button className="w-full bg-gradient-to-r from-[#D0B264] to-[#D0B264]/80 hover:from-[#D0B264]/90 hover:to-[#D0B264]/70 text-[#231F20] font-syne font-bold py-3 sm:py-4 px-4 sm:px-6 lg:px-8 rounded-lg sm:rounded-xl transition-all duration-150 transform active:scale-[0.98] shadow-goldGlow text-sm sm:text-base lg:text-lg md:hover:scale-[1.02]">
-                  Tokenize Soon!
-                </button>
+                <a
+                  href={`mailto:sales@aces.fun?subject=${encodeURIComponent(`Interest in ${safeMetadata.title} (${safeMetadata.ticker})`)}&body=${encodeURIComponent(
+                    `Hello,
+
+I am interested in purchasing ${safeMetadata.title}.`,
+                  )}`}
+                  onClick={() => {
+                    // Backup copy to clipboard if mailto fails
+                    const mailtoFailed = () => {
+                      try {
+                        const text = `I am interested in purchasing ${safeMetadata.title} (${safeMetadata.ticker})`;
+                        navigator.clipboard.writeText(text);
+                        alert(
+                          'Email client could not be opened. Message copied to clipboard instead.',
+                        );
+                      } catch (err) {
+                        alert('Please contact sales@aces.fun regarding ' + safeMetadata.title);
+                      }
+                    };
+
+                    // Small timeout to detect if mailto failed
+                    const mailtoCheck = setTimeout(mailtoFailed, 500);
+                    window.addEventListener('focus', () => clearTimeout(mailtoCheck), {
+                      once: true,
+                    });
+                  }}
+                  className="block w-full bg-gradient-to-r from-[#D0B264] to-[#D0B264]/80 hover:from-[#D0B264]/90 hover:to-[#D0B264]/70 text-[#231F20] font-syne font-bold py-3 sm:py-4 px-4 sm:px-6 lg:px-8 rounded-lg sm:rounded-xl transition-all duration-150 transform active:scale-[0.98] shadow-goldGlow text-sm sm:text-base lg:text-lg md:hover:scale-[1.02] text-center"
+                >
+                  Buy Now!
+                </a>
               </div>
             </div>
           </div>
