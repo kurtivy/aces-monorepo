@@ -1,11 +1,11 @@
 'use client';
 
-import TokenSwapInterface from '@/components/new-rwa/token-swap-interface';
-import { LeftColumnNavigation } from './components/left-column/left-column-navigation';
-import { MiddleContentArea } from './components/middle-column/middle-content-area';
-import { ShareModal, DeliveryModal } from './components/modals';
-import { useSectionNavigation } from './hooks/use-section-navigation';
-import { sections } from './constants';
+import TokenSwapInterface from '@/components/rwa/token-swap-interface';
+import { LeftColumnNavigation } from '../../components/rwa/left-column/left-column-navigation';
+import { MiddleContentArea } from '../../components/rwa/middle-column/middle-content-area';
+import { ShareModal, DeliveryModal } from '../../components/rwa/modals';
+import { useSectionNavigation } from '@/hooks/rwa/use-section-navigation';
+import { sections } from '@/constants/rwa';
 
 export default function RWAPage() {
   const navigation = useSectionNavigation(sections);

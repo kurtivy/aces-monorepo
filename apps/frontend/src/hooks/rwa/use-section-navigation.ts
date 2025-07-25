@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import type { WheelEvent as ReactWheelEvent } from 'react';
-import type { Section } from '../types/section.types';
+import type { Section } from '@/types/rwa/section.types';
 
 export function useSectionNavigation(sections: Section[], initialSection = 0) {
   const [activeSection, setActiveSection] = useState(initialSection);

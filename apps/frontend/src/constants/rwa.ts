@@ -1,4 +1,4 @@
-import type { Section, ImageData } from '../types/section.types';
+import type { Section, ImageData } from '../types/rwa/section.types';
 
 export const sections: Section[] = [
   { id: 'overview', label: 'OVERVIEW' },

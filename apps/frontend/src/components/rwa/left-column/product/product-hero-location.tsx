@@ -1,4 +1,6 @@
-"use client"
+'use client';
+
+import Image from 'next/image';
 
 export default function ProductHeroLocation() {
   return (
@@ -6,11 +8,13 @@ export default function ProductHeroLocation() {
       {/* Hero Image */}
       <div className="flex-shrink-0">
         <div className="relative bg-[#231F20] rounded-lg border border-[#D0B284]/20 overflow-hidden shadow-lg">
-          <img
+          <Image
             src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/1-XLO1yYFWUAiJQZnkumrWt6GLOfTUV0.jpeg"
             alt="King Solomon's Baby - Hero Image"
             className="w-full h-auto object-cover"
-            style={{ aspectRatio: "4/3" }}
+            style={{ aspectRatio: '4/3' }}
+            width={500}
+            height={300}
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
         </div>
@@ -29,5 +33,5 @@ export default function ProductHeroLocation() {
         </div>
       </div>
     </div>
-  )
+  );
 }

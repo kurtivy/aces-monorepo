@@ -1,4 +1,4 @@
-import ClientItemPage from '@/components/rwa/client-page';
+import ClientItemPage from '@/components/old/rwa/client-page';
 
 // Define proper types
 interface ItemData {

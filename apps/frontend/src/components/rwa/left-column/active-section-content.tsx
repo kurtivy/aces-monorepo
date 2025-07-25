@@ -2,11 +2,11 @@
 
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
-import Chart from '@/components/new-rwa/chart';
-import SeesawAnimation from '@/components/new-rwa/seesaw-animation';
-import ProductHeroLocation from '@/components/new-rwa/product-hero-location';
-import type { ActiveSectionContentProps } from '../../types/section.types';
-import { mockImages } from '../../constants';
+import SeesawAnimation from '@/components/rwa/left-column/token-details/seesaw-animation';
+import ProductHeroLocation from '@/components/rwa/left-column/product/product-hero-location';
+import type { ActiveSectionContentProps } from '../../../types/rwa/section.types';
+import { mockImages } from '../../../constants/rwa';
+import BondingCurveChart from './overview/bonding-curve-chart';
 
 export function ActiveSectionContent({
   sectionIndex,
@@ -18,7 +18,7 @@ export function ActiveSectionContent({
     <div key="overview" className="h-full flex flex-col space-y-3 p-4 overflow-hidden">
       {/* Bonding Curve Chart */}
       <div className="flex-1 bg-[#231F20] rounded-lg border border-[#D0B284]/20 p-3 min-h-0">
-        <Chart />
+        <BondingCurveChart />
       </div>
 
       {/* Image Thumbnails */}

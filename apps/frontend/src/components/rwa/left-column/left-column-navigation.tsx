@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import type { SectionNavigationProps } from '../../types/section.types';
+import type { SectionNavigationProps } from '../../../types/rwa/section.types';
 import { ActiveSectionContent } from './active-section-content';
 
 export function LeftColumnNavigation({

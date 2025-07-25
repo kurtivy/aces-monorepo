@@ -1,6 +1,6 @@
 'use client';
 
-import type { ModalProps } from '../types/section.types';
+import type { ModalProps } from '../../types/rwa/section.types';
 
 // Share Modal Component
 export function ShareModal({ onClose }: ModalProps) {

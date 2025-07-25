@@ -2,12 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { notFound } from 'next/navigation';
-import PictureGallery from '@/components/rwa/picture-gallery';
+import PictureGallery from '@/components/old/rwa/picture-gallery';
 // import TokenGraph from '@/components/rwa/token-graph';
-import SwapInterface from '@/components/rwa/swap-interface';
-import ProductDescription from '@/components/rwa/product-description';
-import TokenInformation from '@/components/rwa/token-information';
-import ProfileSectionWrapper from '@/components/rwa/profile/profile-section-wrapper'; // Import the new wrapper component
+import SwapInterface from '@/components/old/rwa/swap-interface';
+import ProductDescription from '@/components/old/rwa/product-description';
+import TokenInformation from '@/components/old/rwa/token-information';
+import ProfileSectionWrapper from '@/components/old/rwa/profile/profile-section-wrapper'; // Import the new wrapper component
 import Footer from '@/components/ui/custom/footer';
 import TermsModal from '@/components/ui/custom/terms-modal';
 

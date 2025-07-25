@@ -1,18 +1,18 @@
 'use client';
-import PhotoGallery from '@/components/asset/photo-gallery/photo-gallery';
-import SwapInterface from '@/components/rwa/swap-interface';
-import TokenGraph from '@/components/asset/token/token-graph';
-import TokenInformation from '@/components/asset/token/token-information';
-import ProductCarousel from '@/components/asset/product-carousel';
-import OfferDrawer from '@/components/rwa/drawers/offer-drawer';
-import CheckoutDrawer from '@/components/rwa/drawers/checkout-drawer';
+import PhotoGallery from '@/components/old/asset/photo-gallery/photo-gallery';
+import SwapInterface from '@/components/old/rwa/swap-interface';
+import TokenGraph from '@/components/old/asset/token/token-graph';
+import TokenInformation from '@/components/old/asset/token/token-information';
+import ProductCarousel from '@/components/old/asset/product-carousel';
+import OfferDrawer from '@/components/old/rwa/drawers/offer-drawer';
+import CheckoutDrawer from '@/components/old/rwa/drawers/checkout-drawer';
 import Footer from '@/components/ui/custom/footer';
 import LaunchHeader from '@/components/new-launch/launch-header';
 import AnimatedDotsBackground from '@/components/ui/custom/animated-dots-background';
 
 // Import new modular components
-import ProductInfoContainer from '@/components/asset/products/product-info-container';
-import TokenInformationContainer from '@/components/asset/token/token-info-container';
+import ProductInfoContainer from '@/components/old/asset/products/product-info-container';
+import TokenInformationContainer from '@/components/old/asset/token/token-info-container';
 import { tokenData } from '@/data/token-sample-data';
 
 export default function ProductPage() {
