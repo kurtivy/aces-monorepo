@@ -88,11 +88,6 @@ const productMapping: Record<string, string> = {
 const CurrentPriceSquare: React.FC = () => {
   const { contractState, ethPrice } = useBondingCurveContracts();
 
-  console.log('Contract State:', contractState);
-  console.log('Current Price (raw):', contractState?.currentPrice?.toString());
-  console.log('Tokens Sold:', contractState?.tokenSupply?.toString());
-  console.log('ETH Price:', ethPrice.current);
-
   const priceInETH = contractState?.currentPrice
     ? Number(formatEther(contractState.currentPrice))
     : 0;
