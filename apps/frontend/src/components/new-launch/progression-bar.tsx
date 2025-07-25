@@ -1,43 +1,45 @@
 'use client';
 
 import { formatEther } from 'viem';
+import { useBondingCurveContracts } from '@/hooks/use-ico-contracts';
 
-interface UsdtRaisedSectionProps {
+interface ProgressionBarProps {
+  // Props are now optional since we get data from the hook
   currentAmount?: number;
   targetAmount?: number;
   percentage?: number;
-  totalETHRaised?: bigint;
-  totalUSDCRaised?: bigint;
-  totalSupply?: bigint;
 }
 
-export default function UsdtRaisedSection({
+export default function ProgressionBar({
   currentAmount,
   targetAmount,
   percentage,
-  totalETHRaised = BigInt(0),
-  totalUSDCRaised = BigInt(0),
-  totalSupply = BigInt(0),
-}: UsdtRaisedSectionProps) {
-  // Calculate real values from contract data
+}: ProgressionBarProps) {
+  const { contractState, ethPrice } = useBondingCurveContracts();
+
+  // Calculate values from contract data with live ETH price
+  const totalETHRaised = contractState?.totalETHRaised || BigInt(0);
+  const targetRaiseUSD = contractState?.targetRaiseUSD || BigInt(1000); // $1,000 target
+  const tokenSupply = contractState?.tokenSupply || BigInt(0);
+  const bondingCurveSupply = contractState?.bondingCurveSupply || BigInt(8000000);
+
+  // Convert ETH to USD using live Uniswap price
   const totalETHRaisedNumber = Number(formatEther(totalETHRaised));
-  const totalUSDCRaisedNumber = Number(formatEther(totalUSDCRaised)) / 1e6; // USDC has 6 decimals
-  const totalSupplyNumber = Number(formatEther(totalSupply));
+  const currentAmountReal = totalETHRaisedNumber * ethPrice.current; // Live ETH price from Uniswap
 
-  // Calculate current amount (ETH + USDC in USD equivalent)
-  const ethInUSD = totalETHRaisedNumber * 3000; // Assuming 1 ETH = $3000
-  const currentAmountReal = ethInUSD + totalUSDCRaisedNumber;
+  // Target amount in USD
+  const targetAmountReal = Number(targetRaiseUSD);
 
-  // Calculate target amount (total supply value)
-  const targetAmountReal = totalSupplyNumber * 0.00000006 * 3000; // Base price * ETH value
-
-  // Calculate percentage
-  const percentageReal = targetAmountReal > 0 ? (currentAmountReal / targetAmountReal) * 100 : 0;
+  // Calculate percentage based on token supply progress (more accurate than USD progress)
+  const tokenProgress =
+    bondingCurveSupply > 0
+      ? (Number(formatEther(tokenSupply)) / Number(formatEther(bondingCurveSupply))) * 100
+      : 0;
 
   // Use real values or fallback to props
   const displayCurrentAmount = currentAmount || currentAmountReal;
   const displayTargetAmount = targetAmount || targetAmountReal;
-  const displayPercentage = percentage || percentageReal;
+  const displayPercentage = percentage || tokenProgress;
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -50,18 +52,32 @@ export default function UsdtRaisedSection({
 
   return (
     <div className="w-full flex flex-col items-center justify-center rounded-xl px-6 py-2 flex-1 shadow-2xl relative overflow-hidden">
-      {/* Emerald Green Gradient Background */}
+      {/* Background */}
       <div className="absolute inset-0 rounded-xl" />
-
-      {/* Subtle overlay texture */}
       <div className="absolute inset-0 rounded-xl" />
 
       {/* Content Container */}
       <div className="relative z-10 w-full flex flex-col items-center justify-center space-y-4">
+        {/* Enhanced Percentage Display */}
+        <div className="bg-gradient-to-br from-[#231F20] to-[#1a1718] border-2 border-[#D0B284]/40 rounded-xl px-4 py-2 shadow-xl backdrop-blur-sm relative overflow-hidden">
+          {/* Background glow */}
+          <div className="absolute inset-0 bg-gradient-to-br from-[#D0B284]/10 to-transparent rounded-xl" />
+
+          <span
+            className="text-[#D7BF75] text-lg font-bold min-w-[52px] text-center block tabular-nums relative z-10"
+            style={{ fontFamily: 'JetBrains Mono, monospace' }}
+          >
+            {displayPercentage.toFixed(1)}%
+          </span>
+
+          {/* Corner accent */}
+          <div className="absolute top-1 right-1 w-1.5 h-1.5 bg-[#D0B284]/40 rounded-full" />
+        </div>
+
         {/* Progress Bar Container */}
-        <div className="flex items-center w-full justify-center gap-2">
+        <div className="flex items-center w-[510px] justify-center">
           {/* Enhanced Progress Bar */}
-          <div className="relative w-[70%] h-6 group">
+          <div className="relative w-full h-6 group">
             {/* Outer container with premium styling */}
             <div className="relative h-full bg-gradient-to-r from-[#231F20] to-[#1a1718] rounded-full border border-[#D0B284]/20 shadow-2xl overflow-hidden">
               {/* Inner track with subtle texture */}
@@ -81,7 +97,7 @@ export default function UsdtRaisedSection({
                 <div
                   className="absolute left-0.5 top-0.5 bottom-0.5 rounded-full shadow-lg transition-all duration-1000 ease-out overflow-hidden"
                   style={{
-                    width: `calc(${displayPercentage}% - 2px)`,
+                    width: `calc(${Math.min(displayPercentage, 100)}% - 2px)`,
                     background: `linear-gradient(90deg, 
                       #184D37 0%, 
                       #928357 25%, 
@@ -104,7 +120,7 @@ export default function UsdtRaisedSection({
                 {/* Progress indicator dot */}
                 <div
                   className="absolute top-1/2 w-5 h-5 bg-gradient-to-br from-[#D7BF75] to-[#D0B284] rounded-full shadow-lg border-2 border-white/20 transition-all duration-1000 ease-out transform -translate-y-1/2"
-                  style={{ left: `calc(${displayPercentage}% - 6px)` }}
+                  style={{ left: `calc(${Math.min(displayPercentage, 100)}% - 6px)` }}
                 >
                   <div className="absolute inset-0.5 bg-gradient-to-br from-[#D7BF75] to-[#D0B284] rounded-full animate-pulse" />
                 </div>
@@ -126,25 +142,9 @@ export default function UsdtRaisedSection({
               <span>100%</span>
             </div>
           </div>
-
-          {/* Enhanced Percentage Display */}
-          <div className="bg-gradient-to-br from-[#231F20] to-[#1a1718] border-2 border-[#D0B284]/40 rounded-xl px-4 py-2 shadow-xl backdrop-blur-sm relative overflow-hidden">
-            {/* Background glow */}
-            <div className="absolute inset-0 bg-gradient-to-br from-[#D0B284]/10 to-transparent rounded-xl" />
-
-            <span
-              className="text-[#D7BF75] text-lg font-bold min-w-[52px] text-center block tabular-nums relative z-10"
-              style={{ fontFamily: 'JetBrains Mono, monospace' }}
-            >
-              {displayPercentage.toFixed(1)}%
-            </span>
-
-            {/* Corner accent */}
-            <div className="absolute top-1 right-1 w-1.5 h-1.5 bg-[#D0B284]/40 rounded-full" />
-          </div>
         </div>
 
-        {/* Amount Display */}
+        {/* Amount Display with Live ETH Price */}
         <div className="text-center">
           <span
             className="text-[#DCDDCC] text-sm font-medium tracking-wide"
@@ -153,6 +153,34 @@ export default function UsdtRaisedSection({
             TOTAL RAISED: {formatCurrency(displayCurrentAmount)} /{' '}
             {formatCurrency(displayTargetAmount)}
           </span>
+
+          {/* Show token progress and ETH price source */}
+          {contractState && (
+            <div className="space-y-1 mt-2">
+              <div
+                className="text-xs text-[#928357]"
+                style={{ fontFamily: 'JetBrains Mono, monospace' }}
+              >
+                {Number(formatEther(contractState.tokenSupply)).toLocaleString()} /{' '}
+                {Number(formatEther(contractState.bondingCurveSupply)).toLocaleString()} tokens sold
+              </div>
+
+              {/* Live price indicator */}
+              <div className="flex items-center justify-center gap-2 text-xs">
+                <div className="flex items-center gap-1">
+                  <div
+                    className={`w-2 h-2 rounded-full ${ethPrice.error ? 'bg-red-400' : ethPrice.isStale ? 'bg-yellow-400' : 'bg-green-400'}`}
+                  ></div>
+                  <span
+                    className="text-[#928357]"
+                    style={{ fontFamily: 'JetBrains Mono, monospace' }}
+                  >
+                    ETH: ${ethPrice.current.toLocaleString()} ({ethPrice.source})
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

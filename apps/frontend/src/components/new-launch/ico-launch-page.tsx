@@ -9,7 +9,7 @@ import CountdownTimer from './countdown-timer';
 import ProgressionBar from './progression-bar';
 import BuyNowSection from './buy-now';
 import AnimatedDotsBackground from '../ui/custom/animated-dots-background';
-import { useICOContracts } from '@/hooks/use-ico-contracts';
+import { useBondingCurveContracts } from '@/hooks/use-ico-contracts'; // Updated import
 import { formatEther } from 'viem';
 import Footer from '@/components/ui/custom/footer';
 
@@ -41,6 +41,8 @@ const imagePositions = {
   'rect-horizontal-1': { x: -400, y: 200, width: 400, height: 200, type: 'horizontal' },
   'rect-horizontal-2': { x: -200, y: 800, width: 400, height: 200, type: 'horizontal' },
   'rect-horizontal-3': { x: 800, y: 800, width: 400, height: 200, type: 'horizontal' },
+  'rect-horizontal-4': { x: 800, y: 1000, width: 400, height: 200, type: 'horizontal' },
+  'rect-horizontal-5': { x: -200, y: 1000, width: 400, height: 200, type: 'horizontal' },
 
   'rect-vertical-1': { x: -400, y: 400, width: 200, height: 400, type: 'vertical' },
   'rect-vertical-2': { x: 1200, y: 200, width: 200, height: 400, type: 'vertical' },
@@ -67,10 +69,14 @@ const productMapping: Record<string, string> = {
   'square-11':
     '/canvas-images/Shohei-Ohtani-Los-Angeles-Angels-Autographed-Fanatics-Authentic-Game-Used-MLB-Baseball-from-2018-Rookie-Season-Limited-Edition-Number-1-of-5.webp',
   'square-12': '/canvas-images/Krug-Clos-dAmbonnay-Trilogy-Prestige-Champagne-Collection.webp',
+
   // Horizontal
   'rect-horizontal-1': '/canvas-images/outline/2009-F1-McLaren-MP4-24.png',
   'rect-horizontal-2': '/canvas-images/outline/2010-Lamborghini-Murcielago-SV.png',
   'rect-horizontal-3': '/canvas-images/outline/2022-Azimut-Atlantis-45.png',
+  'rect-horizontal-4': '/canvas-images/outline/2022-Azimut-Atlantis-45.png',
+
+  'rect-horizontal-5': '/canvas-images/outline/2010-Lamborghini-Murcielago-SV.png',
   // Vertical
   'rect-vertical-1':
     '/canvas-images/Louis-Vuitton-Monogram-Alzer-11-Hard-Case-Trunk-Set-Brown.webp',
@@ -78,9 +84,19 @@ const productMapping: Record<string, string> = {
   'rect-vertical-3': '/canvas-images/outline/Tiffany-and-Co-Rimowa.png',
 };
 
-// Token Info Components
-const CurrentPriceSquare: React.FC<{ currentPrice: bigint }> = ({ currentPrice }) => {
-  const priceInETH = currentPrice ? Number(formatEther(currentPrice)) : 0;
+// Token Info Components - Now pull from live contract data
+const CurrentPriceSquare: React.FC = () => {
+  const { contractState, ethPrice } = useBondingCurveContracts();
+
+  console.log('Contract State:', contractState);
+  console.log('Current Price (raw):', contractState?.currentPrice?.toString());
+  console.log('Tokens Sold:', contractState?.tokenSupply?.toString());
+  console.log('ETH Price:', ethPrice.current);
+
+  const priceInETH = contractState?.currentPrice
+    ? Number(formatEther(contractState.currentPrice))
+    : 0;
+  const priceInUSD = priceInETH * ethPrice.current;
 
   return (
     <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-[#231F20] to-[#0A0A0A] p-4">
@@ -93,16 +109,16 @@ const CurrentPriceSquare: React.FC<{ currentPrice: bigint }> = ({ currentPrice }
         </h3>
         <div className="flex flex-col items-center">
           <span
-            className="text-white text-2xl font-bold mb-1"
+            className="text-white text-xl font-bold mb-1"
             style={{ fontFamily: 'JetBrains Mono, monospace' }}
           >
-            {priceInETH.toFixed(6)}
+            ${priceInUSD.toFixed(8)}
           </span>
           <span
-            className="text-[#DCDDCC] text-lg font-medium"
+            className="text-[#DCDDCC] text-sm font-medium"
             style={{ fontFamily: 'system, serif' }}
           >
-            ETH
+            ({priceInETH.toFixed(12)} ETH)
           </span>
         </div>
       </div>
@@ -115,8 +131,30 @@ const CurrentPriceSquare: React.FC<{ currentPrice: bigint }> = ({ currentPrice }
   );
 };
 
-const TotalAllocationSquare: React.FC<{ totalSupply: bigint }> = ({ totalSupply }) => {
-  const totalSupplyNumber = totalSupply ? Number(formatEther(totalSupply)) : 0;
+const UserBalanceSquare: React.FC = () => {
+  const { contractState } = useBondingCurveContracts();
+
+  // Get user's token balance from contract state
+  const userTokenBalance = contractState?.tokenBalance
+    ? Number(formatEther(contractState.tokenBalance))
+    : 0;
+
+  // Calculate USD value of user's tokens
+  const tokenPriceETH = contractState?.currentPrice
+    ? Number(formatEther(contractState.currentPrice))
+    : 0;
+
+  const ethPriceUSD = contractState?.ethPriceUSD || 3540; // Live ETH price
+  const userBalanceUSD = userTokenBalance * tokenPriceETH * ethPriceUSD;
+
+  // Format balance display
+  const formatBalance = (balance: number) => {
+    if (balance === 0) return '0';
+    if (balance >= 1000000) return `${(balance / 1000000).toFixed(1)}M`;
+    if (balance >= 1000) return `${(balance / 1000).toFixed(1)}K`;
+    if (balance < 1) return balance.toFixed(3);
+    return balance.toFixed(0);
+  };
 
   return (
     <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-[#231F20] to-[#0A0A0A] p-4">
@@ -125,23 +163,37 @@ const TotalAllocationSquare: React.FC<{ totalSupply: bigint }> = ({ totalSupply 
           className="text-[#D0B264] text-sm font-medium tracking-wider mb-3 uppercase"
           style={{ fontFamily: 'system, serif' }}
         >
-          Total Allocation
+          Your Balance
         </h3>
         <div className="flex flex-col items-center">
           <span
-            className="text-white text-xl font-bold mb-1"
+            className="text-white text-lg font-bold mb-1"
             style={{ fontFamily: 'JetBrains Mono, monospace' }}
           >
-            {totalSupplyNumber > 1000
-              ? `${(totalSupplyNumber / 1000).toFixed(1)}K`
-              : totalSupplyNumber.toFixed(0)}
+            {formatBalance(userTokenBalance)}
           </span>
           <span
-            className="text-[#DCDDCC] text-lg font-medium"
+            className="text-[#DCDDCC] text-xs font-medium"
             style={{ fontFamily: 'system, serif' }}
           >
-            ACES
+            ACES Tokens
           </span>
+          {userTokenBalance > 0 && (
+            <span
+              className="text-[#D0B264] text-xs font-medium mt-1"
+              style={{ fontFamily: 'JetBrains Mono, monospace' }}
+            >
+              ≈ ${userBalanceUSD.toFixed(2)}
+            </span>
+          )}
+          {userTokenBalance === 0 && (
+            <span
+              className="text-[#928357] text-xs font-medium mt-1"
+              style={{ fontFamily: 'system, serif' }}
+            >
+              No tokens yet
+            </span>
+          )}
         </div>
       </div>
       {/* Corner accents */}
@@ -159,18 +211,9 @@ interface ImageTileProps {
   imageUrl?: string;
   alt: string;
   tileKey: string;
-  currentPrice: bigint;
-  totalSupply: bigint;
 }
 
-const ImageTile: React.FC<ImageTileProps> = ({
-  position,
-  imageUrl,
-  alt,
-  tileKey,
-  currentPrice,
-  totalSupply,
-}) => {
+const ImageTile: React.FC<ImageTileProps> = ({ position, imageUrl, alt, tileKey }) => {
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
 
@@ -189,11 +232,11 @@ const ImageTile: React.FC<ImageTileProps> = ({
       }}
     >
       {position.type === 'token-info' ? (
-        // Render token info components
+        // Render token info components - now they get their own data
         tileKey === 'token-price' ? (
-          <CurrentPriceSquare currentPrice={currentPrice} />
+          <CurrentPriceSquare />
         ) : tileKey === 'token-allocation' ? (
-          <TotalAllocationSquare totalSupply={totalSupply} />
+          <UserBalanceSquare />
         ) : null
       ) : (
         // Render image content for regular squares
@@ -244,7 +287,7 @@ const ImageTile: React.FC<ImageTileProps> = ({
 const ICOLaunchPage: React.FC = () => {
   const [isMobile, setIsMobile] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const { contractState } = useICOContracts();
+  // const { contractState } = useBondingCurveContracts(); // Updated to use new hook
 
   useEffect(() => {
     const checkMobile = () => {
@@ -256,12 +299,10 @@ const ICOLaunchPage: React.FC = () => {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // Get contract data with fallbacks
-  const currentPrice = contractState?.currentPrice || BigInt(0);
-  const totalSupply = contractState?.totalSupply || BigInt(0);
-  const tokensSold = contractState?.tokensSold || BigInt(0);
-  const totalETHRaised = contractState?.totalETHRaised || BigInt(0);
-  const totalUSDCRaised = contractState?.totalUSDCRaised || BigInt(0);
+  // Get contract data with fallbacks - now using contractState directly
+  // const currentPrice = contractState?.currentPrice || BigInt(0);
+  // const maxSupply = contractState?.maxSupply || BigInt(10000000); // 10M max supply
+  // const tokensSold = contractState?.tokenSupply || BigInt(0); // tokens sold so far
 
   return (
     <div
@@ -297,7 +338,7 @@ const ICOLaunchPage: React.FC = () => {
       </div>
 
       {/* Main Layout Container - content starts right after header */}
-      <div className="relative w-full">
+      <div className="relative w-full" style={{ minHeight: '1200px' }}>
         {/* Image Grid Background - Hidden on mobile, positioned around content */}
         {!isMobile && (
           <div className="absolute top-0 left-1/2 transform -translate-x-1/2">
@@ -310,8 +351,6 @@ const ICOLaunchPage: React.FC = () => {
                   imageUrl={productMapping[key]}
                   alt={`Luxury asset ${key}`}
                   tileKey={key}
-                  currentPrice={currentPrice}
-                  totalSupply={totalSupply}
                 />
               ))}
             </div>
@@ -326,66 +365,62 @@ const ICOLaunchPage: React.FC = () => {
           transition={{ duration: 0.8, ease: 'easeOut' }}
         >
           <div className="w-full max-w-[1000px] mx-auto">
-            {/* Page Info Header - seamlessly connected to header */}
-            {/* Combined: BUY ACES ICO NOW + Countdown + USDT Raised = 2 squares = 400px total */}
-            <div className="w-full rounded-xl flex flex-col h-[400px]">
-              {/* BUY ACES ICO NOW section */}
-              <div className="w-full flex flex-col items-center py-4 flex-[1.2]">
-                <h2
-                  className="text-5xl font-bold text-white mb-2"
-                  style={{
-                    textShadow: '0 0 20px rgba(208, 178, 100, 0.3)',
-                  }}
-                >
-                  BUY $ACES ICO NOW
-                </h2>
-                <p
-                  className="text-lg text-[#DCDDCC] max-w-2xl text-center leading-relaxed"
-                  style={{ fontFamily: 'system, serif' }}
-                >
-                  Participate in the ACES ICO and own a piece of the future of luxury asset
-                  tokenization.
-                </p>
-              </div>
-
-              {/* Countdown Timer section */}
-              <div className="w-full flex flex-col items-center justify-center rounded-xl flex-1">
-                <CountdownTimer />
-              </div>
-
-              {/* USDT Raised section */}
-              <div className="w-full flex flex-col items-center justify-center rounded-xl flex-1">
-                <ProgressionBar
-                  totalETHRaised={totalETHRaised}
-                  totalUSDCRaised={totalUSDCRaised}
-                  totalSupply={totalSupply}
-                />
-              </div>
+            {/* BUY ACES ICO NOW Header */}
+            <div className="w-full flex flex-col items-center py-4 mb-4">
+              <h2
+                className="text-4xl font-bold text-white mb-2"
+                style={{
+                  textShadow: '0 0 20px rgba(208, 178, 100, 0.3)',
+                }}
+              >
+                BUY $ACES ICO NOW
+              </h2>
+              <p
+                className="text-base text-[#DCDDCC] max-w-2xl text-center leading-relaxed"
+                style={{ fontFamily: 'system, serif' }}
+              >
+                Participate in the ACES ICO and own a piece of the future of luxury asset
+                tokenization.
+              </p>
             </div>
 
-            {/* Token Info and Chart - 1 square = 200px high */}
-            <div
-              className="w-full max-w-[1000px] mx-auto flex items-center justify-center gap-0"
-              style={{ height: '400px' }}
-            >
-              {/* Price Chart - Centered */}
-              <div className="w-[600px] h-[400px] rounded-xl flex items-center justify-center overflow-hidden">
-                <div className="w-full h-full">
-                  <BondingCurveChart currentPrice={currentPrice} tokensSold={tokensSold} />
-                </div>
-              </div>
-            </div>
-
-            {/* Buy Button - 1 square high (200px) × 2 squares wide (400px) - centered */}
-            <div className="flex items-center justify-center">
-              <div className="w-[600px] border-b border-[#D0B264] rounded-xl">
+            {/* Buy Now Section - standalone */}
+            <div className="w-full max-w-[1000px] mx-auto flex items-center justify-center mb-4">
+              <div className="w-[600px]">
                 <BuyNowSection />
+              </div>
+            </div>
+
+            {/* Countdown Timer section - standalone */}
+            <div className="w-full flex flex-col items-center justify-center mb-4">
+              <CountdownTimer />
+            </div>
+
+            {/* Progression Bar - No props needed, gets data from hook */}
+            <div className="w-full flex flex-col items-center justify-center mb-12 relative z-10">
+              <ProgressionBar />
+            </div>
+
+            {/* Bonding Curve Chart - No props needed, gets data from hook */}
+            <div
+              className="w-full max-w-[1000px] mx-auto flex items-center justify-center relative z-0"
+              style={{ height: '500px' }}
+            >
+              {/* Chart - Centered */}
+              <div className="w-[600px] h-[500px] rounded-xl flex items-center justify-center overflow-hidden ">
+                <div className="w-full h-full">
+                  <BondingCurveChart />
+                </div>
               </div>
             </div>
           </div>
         </motion.div>
       </div>
-      <Footer />
+
+      {/* Footer positioned to sit flush with bottom of images */}
+      <div className="relative border-0.5 border-t rounded-t-xl border-[#D0B264]">
+        <Footer />
+      </div>
     </div>
   );
 };

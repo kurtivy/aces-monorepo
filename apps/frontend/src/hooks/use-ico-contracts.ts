@@ -1,372 +1,336 @@
 'use client';
 
-import { DUAL_CURRENCY_BONDING_CURVE_TOKEN_ABI } from './../../../../packages/utils/src/abis';
 import { useCallback } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useReadContract, useWriteContract, useBalance } from 'wagmi';
+import { BONDING_CURVE_TEST_ABI, ACES_TEST_ABI } from '@aces/utils';
+import { useReliableETHPrice } from './use-reliable-eth-price'; // More reliable price hook
 
-// Contract addresses from deployment (0.09 ETH TARGET VERSION - FIXED SUPPLY)
-const BONDING_CURVE_ADDRESS = '0x60b6312004dfb5B35f544982060Ae60BDa3a5e31' as const;
-const USDC_ADDRESS = '0x036CbD53842c5426634e7929541eC2318f3dCF7e' as const; // Base Sepolia USDC
+// Contract addresses from your deployment
+const BONDING_CURVE_ADDRESS = '0xafa9256Adffc24c3d34296304046647B77eEB139' as const;
+const ACES_TEST_TOKEN_ADDRESS = '0x6474F13C2CEbD4Ca36cAE5a1055d44928822Ded9' as const;
 
 // Base Sepolia chain definition
 const baseSepolia = {
   id: 84532,
   name: 'Base Sepolia',
-  nativeCurrency: {
-    name: 'Ether',
-    symbol: 'ETH',
-    decimals: 18,
-  },
-  rpcUrls: {
-    default: {
-      http: ['https://sepolia.base.org'],
-    },
-  },
+  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  rpcUrls: { default: { http: ['https://sepolia.base.org'] } },
   blockExplorers: {
-    default: {
-      name: 'Base Sepolia Explorer',
-      url: 'https://sepolia.basescan.org',
-    },
+    default: { name: 'Base Sepolia Explorer', url: 'https://sepolia.basescan.org' },
   },
   testnet: true,
 } as const;
 
-// Type for the getContractState return value
-type ContractStateData = [
-  bigint, // totalSupply
-  bigint, // tokensSold
-  bigint, // totalETHRaised
-  bigint, // totalUSDCRaised
-  bigint, // currentPrice
-  bigint, // marketCap
-  bigint, // progress
-  boolean, // emergencyStop
-];
-
-export interface ICOContractState {
-  totalSupply: bigint;
-  tokensSold: bigint;
+export interface BondingCurveState {
+  tokenSupply: bigint;
   totalETHRaised: bigint;
-  totalUSDCRaised: bigint;
   currentPrice: bigint;
-  marketCap: bigint;
   progress: bigint;
+  maxSupply: bigint;
+  bondingCurveSupply: bigint;
+  targetRaiseUSD: bigint;
+  basePrice: bigint;
   isActive: boolean;
   name: string;
   symbol: string;
   ethBalance?: bigint;
-  usdcBalance?: bigint;
   tokenBalance?: bigint;
-  emergencyStop: boolean;
+  // Price feed data
+  ethPriceUSD: number;
+  priceSource: string;
+  priceLastUpdated: number;
+  isPriceStale: boolean;
 }
 
 export interface QuoteResult {
   tokensOut: bigint;
+  ethCost: bigint;
   pricePerToken: bigint;
+  usdCost: number;
+  usdPerToken: number;
 }
 
-export interface PricingInfo {
-  isBondingCurvePhase: boolean;
-  isICOPhase: boolean;
-  currentPrice: bigint;
-  priceType: string;
-}
-
-export function useICOContracts() {
+export function useBondingCurveContracts() {
   const { ready, authenticated, user } = usePrivy();
+
+  // Get live ETH price from multiple reliable sources
+  const {
+    price: ethPriceUSD,
+    source: priceSource,
+    lastUpdated: priceLastUpdated,
+    isStale: isPriceStale,
+    isLoading: isPriceLoading,
+    error: priceError,
+    refresh: refreshPrice,
+    network: currentNetwork,
+    poolInfo,
+  } = useReliableETHPrice(30000); // Multiple sources with fallbacks
 
   // Get wallet balances
   const { data: ethBalance } = useBalance({
     address: user?.wallet?.address as `0x${string}`,
-    query: {
-      enabled: ready && authenticated && !!user?.wallet?.address,
-    },
-  });
-
-  const { data: usdcBalance } = useBalance({
-    address: user?.wallet?.address as `0x${string}`,
-    token: USDC_ADDRESS,
-    query: {
-      enabled: ready && authenticated && !!user?.wallet?.address,
-    },
+    query: { enabled: ready && authenticated && !!user?.wallet?.address },
   });
 
   const { data: tokenBalance } = useBalance({
     address: user?.wallet?.address as `0x${string}`,
-    token: BONDING_CURVE_ADDRESS,
-    query: {
-      enabled: ready && authenticated && !!user?.wallet?.address,
-    },
+    token: ACES_TEST_TOKEN_ADDRESS,
+    query: { enabled: ready && authenticated && !!user?.wallet?.address },
   });
 
-  // Read all contract state at once
-  const { data: contractStateData } = useReadContract({
+  // Read contract constants
+  const { data: maxSupply } = useReadContract({
     address: BONDING_CURVE_ADDRESS,
-    abi: DUAL_CURRENCY_BONDING_CURVE_TOKEN_ABI,
-    functionName: 'getContractState',
+    abi: BONDING_CURVE_TEST_ABI,
+    functionName: 'MAX_SUPPLY',
+    query: { enabled: ready && authenticated },
+  });
+
+  const { data: bondingCurveSupply } = useReadContract({
+    address: BONDING_CURVE_ADDRESS,
+    abi: BONDING_CURVE_TEST_ABI,
+    functionName: 'BONDING_CURVE_SUPPLY',
+    query: { enabled: ready && authenticated },
+  });
+
+  const { data: targetRaiseUSD } = useReadContract({
+    address: BONDING_CURVE_ADDRESS,
+    abi: BONDING_CURVE_TEST_ABI,
+    functionName: 'TARGET_RAISE_USD',
+    query: { enabled: ready && authenticated },
+  });
+
+  const { data: basePrice } = useReadContract({
+    address: BONDING_CURVE_ADDRESS,
+    abi: BONDING_CURVE_TEST_ABI,
+    functionName: 'BASE_PRICE',
+    query: { enabled: ready && authenticated },
+  });
+
+  // Read room stats (all the dynamic data in one call)
+  const { data: roomStats } = useReadContract({
+    address: BONDING_CURVE_ADDRESS,
+    abi: BONDING_CURVE_TEST_ABI,
+    functionName: 'getRoomStats',
+    args: [ACES_TEST_TOKEN_ADDRESS, BigInt(0)],
     query: {
       enabled: ready && authenticated,
       refetchInterval: 5000, // Refetch every 5 seconds for real-time updates
     },
-  }) as { data: ContractStateData | undefined };
+  }) as { data: [bigint, bigint, bigint, bigint] | undefined };
 
+  // Read token name and symbol
   const { data: name } = useReadContract({
-    address: BONDING_CURVE_ADDRESS,
-    abi: DUAL_CURRENCY_BONDING_CURVE_TOKEN_ABI,
+    address: ACES_TEST_TOKEN_ADDRESS,
+    abi: ACES_TEST_ABI,
     functionName: 'name',
-    query: {
-      enabled: ready && authenticated,
-    },
+    query: { enabled: ready && authenticated },
   });
 
   const { data: symbol } = useReadContract({
-    address: BONDING_CURVE_ADDRESS,
-    abi: DUAL_CURRENCY_BONDING_CURVE_TOKEN_ABI,
+    address: ACES_TEST_TOKEN_ADDRESS,
+    abi: ACES_TEST_ABI,
     functionName: 'symbol',
-    query: {
-      enabled: ready && authenticated,
-    },
+    query: { enabled: ready && authenticated },
   });
 
   // Write contract functions
   const { writeContractAsync } = useWriteContract();
 
-  // Get ETH quote - REAL CONTRACT CALL
-  const getETHQuote = useCallback(
-    async (amountETH: bigint): Promise<QuoteResult> => {
+  // Get price quote for buying tokens with live USD conversion
+  const getQuote = useCallback(
+    async (usdAmount: number): Promise<QuoteResult> => {
       if (!ready || !authenticated) throw new Error('Not authenticated');
 
-      if (amountETH <= BigInt(0)) {
+      if (usdAmount <= 0) {
         return {
           tokensOut: BigInt(0),
+          ethCost: BigInt(0),
           pricePerToken: BigInt(0),
+          usdCost: 0,
+          usdPerToken: 0,
         };
       }
 
       try {
-        // Use the same calculation as the contract for now
-        // In a production environment, you'd call the contract directly
-        const currentPrice = contractStateData ? contractStateData[4] : BigInt(0);
-        const tokensOut =
-          currentPrice > BigInt(0) ? (amountETH * BigInt(1e18)) / currentPrice : BigInt(0);
-        const pricePerToken = currentPrice;
+        // Convert USD to ETH using live price
+        const ethAmount = usdAmount / ethPriceUSD;
+        const ethAmountWei = BigInt(Math.floor(ethAmount * 1e18));
 
-        return {
-          tokensOut: tokensOut,
-          pricePerToken: pricePerToken,
-        };
+        // Use current price from contract
+        const currentPrice = roomStats ? roomStats[2] : BigInt(0);
+
+        if (currentPrice > BigInt(0)) {
+          // Calculate tokens based on current price
+          const estimatedTokens = (ethAmountWei * BigInt(1e18)) / currentPrice;
+          const usdPerToken = (Number(currentPrice) / 1e18) * ethPriceUSD;
+
+          return {
+            tokensOut: estimatedTokens,
+            ethCost: ethAmountWei,
+            pricePerToken: currentPrice,
+            usdCost: usdAmount,
+            usdPerToken: usdPerToken,
+          };
+        } else {
+          throw new Error('Current price not available');
+        }
       } catch (error) {
-        console.error('ETH quote failed:', error);
-        throw new Error('Failed to get ETH quote');
+        console.error('Quote failed:', error);
+        throw new Error('Failed to get price quote');
       }
     },
-    [ready, authenticated, contractStateData],
+    [ready, authenticated, ethPriceUSD, roomStats],
   );
 
-  // Get USDC quote - REAL CONTRACT CALL
-  const getUSDCQuote = useCallback(
-    async (amountUSDC: bigint): Promise<QuoteResult> => {
+  // Buy tokens (matches your dev's buyShares function)
+  const buyTokens = useCallback(
+    async (tokenAmount: bigint, ethCost: bigint) => {
       if (!ready || !authenticated) throw new Error('Not authenticated');
-
-      if (amountUSDC <= BigInt(0)) {
-        return {
-          tokensOut: BigInt(0),
-          pricePerToken: BigInt(0),
-        };
-      }
 
       try {
-        // Convert USDC to ETH equivalent (1 ETH = 3000 USDC from your contract)
-        const ethEquivalent = (amountUSDC * BigInt(1e18)) / (BigInt(3000) * BigInt(1e6));
+        // Calculate number of tokens being purchased for gas estimation
+        const numTokens = Number(tokenAmount) / 1e18; // Convert from wei to token count
 
-        // Use the same calculation as ETH quote
-        const currentPrice = contractStateData ? contractStateData[4] : BigInt(0);
-        const tokensOut =
-          currentPrice > BigInt(0) ? (ethEquivalent * BigInt(1e18)) / currentPrice : BigInt(0);
-        const pricePerToken = currentPrice;
+        console.log('🔥 Estimating gas for buyShares transaction...');
+        console.log(`📊 Purchasing ${numTokens.toLocaleString()} tokens`);
 
-        return {
-          tokensOut: tokensOut,
-          pricePerToken: pricePerToken,
-        };
+        // CRITICAL: The contract loops once per token in getPrice() function!
+        // For large purchases, this becomes extremely gas-intensive
+
+        // Dynamic gas calculation based on token amount
+        let gasLimit: bigint;
+
+        if (numTokens <= 100) {
+          gasLimit = BigInt(1000000); // Increased from 200k to 1M gas
+        } else if (numTokens <= 1000) {
+          gasLimit = BigInt(2000000); // Increased from 500k to 2M gas
+        } else if (numTokens <= 5000) {
+          gasLimit = BigInt(4000000); // Increased from 1.5M to 4M gas
+        } else if (numTokens <= 10000) {
+          gasLimit = BigInt(6000000); // Increased from 2.5M to 6M gas
+        } else {
+          // For purchases over 10k tokens, break them down or warn user
+          throw new Error(
+            `Purchase of ${numTokens.toLocaleString()} tokens would require excessive gas. Please try a smaller amount (max 10,000 tokens per transaction).`,
+          );
+        }
+
+        console.log(
+          `💰 Using ${gasLimit.toLocaleString()} gas limit for ${numTokens.toLocaleString()} tokens`,
+        );
+        console.log(
+          `💰 Buying ${tokenAmount} tokens for ${ethCost} ETH with ${gasLimit} gas limit`,
+        );
+
+        const hash = await writeContractAsync({
+          address: BONDING_CURVE_ADDRESS,
+          abi: BONDING_CURVE_TEST_ABI,
+          functionName: 'buyShares',
+          args: [ACES_TEST_TOKEN_ADDRESS, BigInt(0), tokenAmount],
+          value: ethCost,
+          chain: baseSepolia,
+          account: user?.wallet?.address as `0x${string}`,
+          // Dynamic gas settings based on purchase size
+          gas: gasLimit,
+          // Increased gas price for large transactions to ensure they go through
+          maxFeePerGas: numTokens > 1000 ? BigInt(2000000000) : BigInt(1000000000), // 2 gwei for large, 1 gwei for small
+          maxPriorityFeePerGas: numTokens > 1000 ? BigInt(200000000) : BigInt(100000000), // 0.2 gwei tip for large, 0.1 gwei for small
+        });
+
+        console.log('✅ Transaction submitted:', hash);
+        return hash;
       } catch (error) {
-        console.error('USDC quote failed:', error);
-        throw new Error('Failed to get USDC quote');
+        console.error('❌ buyTokens failed:', error);
+        throw error;
       }
     },
-    [ready, authenticated, contractStateData],
-  );
-
-  // USDC approval ABI (ERC20 approve function)
-  const USDC_APPROVE_ABI = [
-    {
-      inputs: [
-        { name: 'spender', type: 'address' },
-        { name: 'amount', type: 'uint256' },
-      ],
-      name: 'approve',
-      outputs: [{ name: '', type: 'bool' }],
-      stateMutability: 'nonpayable',
-      type: 'function',
-    },
-  ] as const;
-
-  // Approve USDC spending
-  const approveUSDC = useCallback(
-    async (amount: bigint) => {
-      if (!ready || !authenticated) throw new Error('Not authenticated');
-      return writeContractAsync({
-        address: USDC_ADDRESS,
-        abi: USDC_APPROVE_ABI,
-        functionName: 'approve',
-        args: [BONDING_CURVE_ADDRESS, amount],
-        chain: baseSepolia,
-        account: user?.wallet?.address as `0x${string}`,
-      });
-    },
     [ready, authenticated, writeContractAsync, user?.wallet?.address],
   );
 
-  // Buy tokens with ETH
-  const buyWithETH = useCallback(
-    async (amountETH: bigint) => {
-      if (!ready || !authenticated) throw new Error('Not authenticated');
-
-      const hash = await writeContractAsync({
-        address: BONDING_CURVE_ADDRESS,
-        abi: DUAL_CURRENCY_BONDING_CURVE_TOKEN_ABI,
-        functionName: 'buyWithETH',
-        value: amountETH,
-        chain: baseSepolia,
-        account: user?.wallet?.address as `0x${string}`,
-      });
-
-      return hash;
-    },
-    [ready, authenticated, writeContractAsync, user?.wallet?.address],
-  );
-
-  // Buy tokens with USDC
-  const buyWithUSDC = useCallback(
-    async (amountUSDC: bigint) => {
-      if (!ready || !authenticated) throw new Error('Not authenticated');
-
-      // First approve USDC spending
-      const approvalHash = await approveUSDC(amountUSDC);
-
-      // Wait for approval to be confirmed before proceeding with purchase
-      const hash = await writeContractAsync({
-        address: BONDING_CURVE_ADDRESS,
-        abi: DUAL_CURRENCY_BONDING_CURVE_TOKEN_ABI,
-        functionName: 'buyWithUSDC',
-        args: [amountUSDC],
-        chain: baseSepolia,
-        account: user?.wallet?.address as `0x${string}`,
-      });
-
-      return hash;
-    },
-    [ready, authenticated, writeContractAsync, user?.wallet?.address, approveUSDC],
-  );
-
-  // Sell tokens for ETH
-  const sellForETH = useCallback(
+  // Sell tokens back to the curve
+  const sellTokens = useCallback(
     async (tokenAmount: bigint) => {
       if (!ready || !authenticated) throw new Error('Not authenticated');
 
-      return writeContractAsync({
-        address: BONDING_CURVE_ADDRESS,
-        abi: DUAL_CURRENCY_BONDING_CURVE_TOKEN_ABI,
-        functionName: 'sellForETH',
-        args: [tokenAmount],
-        chain: baseSepolia,
-        account: user?.wallet?.address as `0x${string}`,
-      });
+      try {
+        console.log('🔥 Estimating gas for sellShares transaction...');
+
+        // Use a higher gas limit for selling as well
+        const gasLimit = BigInt(300000); // 300k gas limit for selling (slightly less complex than buying)
+
+        console.log(`💸 Selling ${tokenAmount} tokens with ${gasLimit} gas limit`);
+
+        const hash = await writeContractAsync({
+          address: BONDING_CURVE_ADDRESS,
+          abi: BONDING_CURVE_TEST_ABI,
+          functionName: 'sellShares',
+          args: [ACES_TEST_TOKEN_ADDRESS, BigInt(0), tokenAmount],
+          chain: baseSepolia,
+          account: user?.wallet?.address as `0x${string}`,
+          // Add gas settings to prevent "out of gas" errors
+          gas: gasLimit,
+          // Optional: Set gas price for faster confirmation
+          maxFeePerGas: BigInt(1000000000), // 1 gwei
+          maxPriorityFeePerGas: BigInt(100000000), // 0.1 gwei tip
+        });
+
+        console.log('✅ Sell transaction submitted:', hash);
+        return hash;
+      } catch (error) {
+        console.error('❌ sellTokens failed:', error);
+        throw error;
+      }
     },
     [ready, authenticated, writeContractAsync, user?.wallet?.address],
   );
 
-  // Sell tokens for USDC
-  const sellForUSDC = useCallback(
-    async (tokenAmount: bigint) => {
-      if (!ready || !authenticated) throw new Error('Not authenticated');
-
-      return writeContractAsync({
-        address: BONDING_CURVE_ADDRESS,
-        abi: DUAL_CURRENCY_BONDING_CURVE_TOKEN_ABI,
-        functionName: 'sellForUSDC',
-        args: [tokenAmount],
-        chain: baseSepolia,
-        account: user?.wallet?.address as `0x${string}`,
-      });
-    },
-    [ready, authenticated, writeContractAsync, user?.wallet?.address],
-  );
-
-  // USDC ABI for allowance check
-  const USDC_ABI = [
-    {
-      inputs: [
-        { name: 'owner', type: 'address' },
-        { name: 'spender', type: 'address' },
-      ],
-      name: 'allowance',
-      outputs: [{ name: '', type: 'uint256' }],
-      stateMutability: 'view',
-      type: 'function',
-    },
-  ] as const;
-
-  // Check USDC allowance
-  const { data: usdcAllowance } = useReadContract({
-    address: USDC_ADDRESS,
-    abi: USDC_ABI,
-    functionName: 'allowance',
-    args: [user?.wallet?.address as `0x${string}`, BONDING_CURVE_ADDRESS],
-    query: {
-      enabled: ready && authenticated && !!user?.wallet?.address,
-    },
-  });
-
-  // Contract state
-  const contractState: ICOContractState | undefined = contractStateData
+  // Contract state with live price data
+  const contractState: BondingCurveState | undefined = roomStats
     ? {
-        totalSupply: contractStateData[0],
-        tokensSold: contractStateData[1],
-        totalETHRaised: contractStateData[2],
-        totalUSDCRaised: contractStateData[3],
-        currentPrice: contractStateData[4],
-        marketCap: contractStateData[5],
-        progress: contractStateData[6],
-        emergencyStop: contractStateData[7],
-        isActive: !contractStateData[7], // Active if not in emergency stop
-        name: name || '',
-        symbol: symbol || '',
+        tokenSupply: roomStats[0],
+        totalETHRaised: roomStats[1],
+        currentPrice: roomStats[2],
+        progress: roomStats[3],
+        maxSupply: maxSupply || BigInt(0),
+        bondingCurveSupply: bondingCurveSupply || BigInt(0),
+        targetRaiseUSD: targetRaiseUSD || BigInt(0),
+        basePrice: basePrice || BigInt(0),
+        isActive: true,
+        name: name || 'AcesTest',
+        symbol: symbol || 'ACEST',
         ethBalance: ethBalance?.value,
-        usdcBalance: usdcBalance?.value,
         tokenBalance: tokenBalance?.value,
+        // Live price data
+        ethPriceUSD,
+        priceSource,
+        priceLastUpdated,
+        isPriceStale,
       }
     : undefined;
 
-  // Pricing info for the bonding curve
-  const pricingInfo: PricingInfo = {
-    isBondingCurvePhase: true,
-    isICOPhase: false,
-    currentPrice: contractState?.currentPrice || BigInt(0),
-    priceType: 'Bonding Curve',
-  };
-
   return {
     contractState,
-    buyWithETH,
-    buyWithUSDC,
-    sellForETH,
-    sellForUSDC,
-    getETHQuote,
-    getUSDCQuote,
-    pricingInfo,
-    usdcAllowance,
-    approveUSDC,
+    getQuote,
+    buyTokens,
+    sellTokens,
+    // Price feed utilities
+    ethPrice: {
+      current: ethPriceUSD,
+      source: priceSource,
+      lastUpdated: priceLastUpdated,
+      isStale: isPriceStale,
+      isLoading: isPriceLoading,
+      error: priceError,
+      refresh: refreshPrice,
+      network: currentNetwork,
+      poolInfo: poolInfo,
+    },
+    // Contract addresses for reference
+    addresses: {
+      bondingCurve: BONDING_CURVE_ADDRESS,
+      token: ACES_TEST_TOKEN_ADDRESS,
+    },
   };
 }
