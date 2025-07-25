@@ -24,6 +24,8 @@ const sections = [
   { id: 'manifesto', label: 'PRODUCT MANIFESTO' },
   { id: 'place-bids', label: 'PLACE BIDS' },
   { id: 'chats', label: 'CHATS' },
+  { id: 'share', label: 'LINK TO YOUR RICH BUDDY', isModal: true },
+  { id: 'delivery', label: 'DELIVERY', isModal: true },
 ];
 
 // Real images of the pink Porsche 911
@@ -56,54 +58,70 @@ const mockImages = [
       'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/4-ESnibTIZQDab4L60RSs93vMxg9rOde.jpeg',
     alt: 'Pink Porsche 911 - Urban Setting',
   },
-  // Add some placeholder slots for additional images
-  {
-    id: 5,
-    src: '/placeholder.svg?height=400&width=600&text=Image 5',
-    thumbnail: '/placeholder.svg?height=60&width=60&text=5',
-    alt: 'Additional Image 5',
-  },
-  {
-    id: 6,
-    src: '/placeholder.svg?height=400&width=600&text=Image 6',
-    thumbnail: '/placeholder.svg?height=60&width=60&text=6',
-    alt: 'Additional Image 6',
-  },
-  {
-    id: 7,
-    src: '/placeholder.svg?height=400&width=600&text=Image 7',
-    thumbnail: '/placeholder.svg?height=60&width=60&text=7',
-    alt: 'Additional Image 7',
-  },
-  {
-    id: 8,
-    src: '/placeholder.svg?height=400&width=600&text=Image 8',
-    thumbnail: '/placeholder.svg?height=60&width=60&text=8',
-    alt: 'Additional Image 8',
-  },
 ];
 
 export default function RWAPage() {
   const [activeSection, setActiveSection] = useState(0);
-  const [isAnimating, setIsAnimating] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
-  const [animationDirection, setAnimationDirection] = useState<'up' | 'down'>('up');
   const [previousActiveSection, setPreviousActiveSection] = useState<number | null>(null);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [showDeliveryModal, setShowDeliveryModal] = useState(false);
 
   const handleSectionChange = (index: number) => {
+    const section = sections[index];
+
+    // Handle modal sections differently
+    if (section.isModal) {
+      if (section.id === 'share') {
+        setShowShareModal(true);
+      } else if (section.id === 'delivery') {
+        setShowDeliveryModal(true);
+      }
+      return; // Don't change active section for modals
+    }
+
+    // Regular navigation logic for content sections
     if (index !== activeSection && !isAnimating) {
       setIsAnimating(true);
       setPreviousActiveSection(activeSection);
-      setAnimationDirection(index > activeSection ? 'up' : 'down');
       setActiveSection(index);
-      setTimeout(() => setIsAnimating(false), 1500); // Increased timeout for longer animation
+      // Reset animation state after transition completes
+      setTimeout(() => setIsAnimating(false), 1200);
+    }
+  };
+
+  // Page-level scroll handler for navigation
+  const handlePageWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY;
+
+    // Only navigate through content sections (not modal sections)
+    const contentSections = sections.filter((section) => !section.isModal);
+    const currentContentIndex = contentSections.findIndex(
+      (section) => section.id === sections[activeSection].id,
+    );
+
+    if (delta > 0 && currentContentIndex < contentSections.length - 1) {
+      // Scroll down - go to next content section
+      const nextSection = contentSections[currentContentIndex + 1];
+      const nextIndex = sections.findIndex((section) => section.id === nextSection.id);
+      handleSectionChange(nextIndex);
+    } else if (delta < 0 && currentContentIndex > 0) {
+      // Scroll up - go to previous content section
+      const prevSection = contentSections[currentContentIndex - 1];
+      const prevIndex = sections.findIndex((section) => section.id === prevSection.id);
+      handleSectionChange(prevIndex);
     }
   };
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div
+      className="h-screen bg-black text-white overflow-hidden flex flex-col"
+      onWheel={handlePageWheel}
+    >
       {/* Header Banner */}
-      <header className="w-full bg-[#231F20] border-b border-[#D0B284]/20">
+      <header className="w-full bg-[#231F20] border-b border-[#D0B284]/20 flex-shrink-0">
         <div className="container mx-auto px-6 py-2">
           <h1 className="text-4xl md:text-6xl font-bold text-[#D0B284] text-center tracking-wide">
             <span style={{ fontFamily: "'Spray Letters', cursive" }}>KING SOLOMON&apos;S BABY</span>
@@ -112,15 +130,14 @@ export default function RWAPage() {
       </header>
 
       {/* Main 3-Column Layout */}
-      <div className="flex min-h-[calc(100vh-200px)]">
+      <div className="flex flex-1 overflow-hidden">
         {/* Left Column - Navigation System */}
-        <div className="w-80 bg-[#231F20] border-r border-[#D0B284]/20 relative overflow-hidden">
+        <div className="w-80 bg-[#231F20] border-r border-[#D0B284]/20 relative overflow-hidden flex-shrink-0">
           <LeftColumnNavigation
             sections={sections}
             activeSection={activeSection}
             onSectionChange={handleSectionChange}
             isAnimating={isAnimating}
-            animationDirection={animationDirection}
             selectedImageIndex={selectedImageIndex}
             setSelectedImageIndex={setSelectedImageIndex}
             previousActiveSection={previousActiveSection}
@@ -128,21 +145,26 @@ export default function RWAPage() {
         </div>
 
         {/* Middle Column - Main Content */}
-        <div className="flex-1 bg-black relative">
+        <div className="flex-1 bg-black relative overflow-hidden">
           <MiddleContentArea
             activeSection={activeSection}
             isAnimating={isAnimating}
-            animationDirection={animationDirection}
             selectedImageIndex={selectedImageIndex}
             setSelectedImageIndex={setSelectedImageIndex}
           />
         </div>
 
         {/* Right Column - Token Swap Interface */}
-        <div className="w-96 bg-[#231F20] border-l border-[#D0B284]/20">
+        <div className="w-96 bg-[#231F20] border-l border-[#D0B284]/20 flex-shrink-0 overflow-y-auto">
           <TokenSwapInterface tokenSymbol="RWA" tokenPrice={0.000268} userBalance={1.2547} />
         </div>
       </div>
+
+      {/* Share Modal */}
+      {showShareModal && <ShareModal onClose={() => setShowShareModal(false)} />}
+
+      {/* Delivery Modal */}
+      {showDeliveryModal && <DeliveryModal onClose={() => setShowDeliveryModal(false)} />}
     </div>
   );
 }
@@ -152,142 +174,115 @@ function LeftColumnNavigation({
   activeSection,
   onSectionChange,
   isAnimating,
-  // animationDirection,
   selectedImageIndex,
   setSelectedImageIndex,
   previousActiveSection,
 }: {
-  sections: Array<{ id: string; label: string }>;
+  sections: Array<{ id: string; label: string; isModal?: boolean }>;
   activeSection: number;
   onSectionChange: (index: number) => void;
   isAnimating: boolean;
-  animationDirection: 'up' | 'down';
   selectedImageIndex: number;
   setSelectedImageIndex: (index: number) => void;
   previousActiveSection: number | null;
 }) {
-  const HEADER_HEIGHT = 64;
-  const CONTENT_HEIGHT = 400;
-  const CONTAINER_HEIGHT = 800;
+  const HEADER_HEIGHT = 56; // Reduced from 64 to fit more headers
+  const CONTENT_HEIGHT = 320; // Reduced from 400 to make room for all headers
 
+  // Calculate position for each card to create stacking effect
   const getCardPosition = (cardIndex: number) => {
     if (cardIndex === activeSection) {
       // Active card - positioned to show its content after any top stack headers
       const topStackCount = activeSection; // Number of cards above active section
       return topStackCount * HEADER_HEIGHT;
     } else if (cardIndex < activeSection) {
-      // Cards above active card - stacked at top in numerical order
+      // Cards above active card - stacked at top in numerical order (headers only)
       return cardIndex * HEADER_HEIGHT;
     } else {
-      // Cards below active card - stacked immediately after active card content
+      // Cards below active card - stacked after active card content
       const activeCardBottomPosition =
         activeSection * HEADER_HEIGHT + HEADER_HEIGHT + CONTENT_HEIGHT;
       return activeCardBottomPosition + (cardIndex - activeSection - 1) * HEADER_HEIGHT;
     }
   };
 
-  const getCardZIndex = (cardIndex: number) => {
-    // Fixed z-index based on card position - higher card numbers get higher z-index
-    // This maintains the physical "stack" order consistently
-    return cardIndex * 5; // 0,5,10,15,20
-  };
-
-  // Add scroll handler for navigation
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    const delta = e.deltaY;
-
-    if (delta > 0 && activeSection < sections.length - 1) {
-      // Scroll down - go to next section
-      onSectionChange(activeSection + 1);
-    } else if (delta < 0 && activeSection > 0) {
-      // Scroll up - go to previous section
-      onSectionChange(activeSection - 1);
-    }
-  };
-
   return (
     <div
       className="h-full relative overflow-hidden"
-      style={{ height: `${CONTAINER_HEIGHT}px` }}
-      onWheel={handleWheel}
+      style={{
+        height: 'calc(100vh - 120px)', // Use available viewport height minus header
+        width: '320px',
+        minHeight: '750px', // Minimum height to fit all 7 headers + content
+      }}
     >
       {sections.map((section, index) => {
         const isActive = index === activeSection;
 
-        // Determine if this card is moving in a reverse animation (backwards navigation)
+        // Determine if this card is animating out (going backwards)
         const isReverseAnimation =
           previousActiveSection !== null && previousActiveSection > activeSection;
+        const isAnimatingOut = isAnimating && isReverseAnimation && index === previousActiveSection;
 
-        // Calculate animation delay for two-phase animation
-        let animationDelay = 0;
-        if (isReverseAnimation) {
-          // When going backwards, outgoing cards animate first (no delay)
-          // Incoming card (new active) animates second (with delay)
-          if (index === activeSection) {
-            animationDelay = 0.5; // Incoming card waits for outgoing card
-          } else if (index > activeSection) {
-            animationDelay = 0; // Outgoing cards go first
-          }
-        }
-
-        // Determine if content should be visible
-        // Show content for: active card OR card that's animating out in reverse animation
-        const shouldShowContent =
-          isActive || (isReverseAnimation && isAnimating && index === previousActiveSection);
+        // Show content for active card OR card that's animating out (only for content sections)
+        const shouldShowContent = !section.isModal && (isActive || isAnimatingOut);
 
         return (
-          <motion.div
+          <div
             key={section.id}
             className="absolute w-full"
             style={{
-              zIndex: getCardZIndex(index),
-            }}
-            animate={{
-              y: getCardPosition(index),
-            }}
-            transition={{
-              duration: 1.0, // Increased to 1 second
-              ease: [0.23, 1, 0.32, 1],
-              delay: animationDelay,
+              zIndex: index * 5, // Fixed z-index: 0,5,10,15,20,25,30
+              transform: `translateY(${getCardPosition(index)}px)`,
+              transition: 'transform 1.2s cubic-bezier(0.23, 1, 0.32, 1)',
+              willChange: 'transform',
             }}
           >
             {/* Card Header */}
             <div
               className={cn(
-                'h-16 border-b border-[#D0B284]/20 cursor-pointer transition-all duration-300',
+                'h-14 border-b border-[#D0B284]/20 cursor-pointer transition-all duration-300', // h-14 = 56px
                 'flex items-center justify-center relative overflow-hidden',
                 isActive
                   ? 'bg-[#D0B284] text-black'
                   : 'bg-[#231F20] text-[#D0B284] hover:bg-[#D0B284]/10',
+                // Highlight modal sections differently
+                section.isModal && 'hover:bg-[#D0B284]/5 border-dashed',
               )}
               onClick={() => onSectionChange(index)}
             >
               <span
-                className="font-bold text-sm tracking-wider"
+                className="font-bold text-xs tracking-wider" // Reduced font size slightly
                 style={{ fontFamily: "'Spray Letters', cursive" }}
               >
                 {section.label}
               </span>
 
-              {/* Active indicator */}
-              {isActive && <div className="absolute left-0 top-0 w-1 h-full bg-[#184D37]" />}
+              {/* Active indicator (only for content sections) */}
+              {isActive && !section.isModal && (
+                <div className="absolute left-0 top-0 w-1 h-full bg-[#184D37]" />
+              )}
             </div>
 
-            {/* Card Content - Show for active card OR animating out card */}
+            {/* Card Content - Show for active content sections OR animating out card */}
             {shouldShowContent && (
-              <div
+              <motion.div
                 className="bg-[#231F20] border-b border-[#D0B284]/20 overflow-y-auto"
-                style={{ height: `${CONTENT_HEIGHT}px` }}
+                style={{
+                  height: `${CONTENT_HEIGHT}px`, // Now 320px instead of 400px
+                  width: '320px', // Fixed width to match container
+                }}
+                initial={false}
+                animate={{ opacity: isActive ? 1 : 0.7 }}
+                transition={{ duration: 0.3 }}
               >
                 <ActiveSectionContent
                   sectionIndex={index}
                   selectedImageIndex={selectedImageIndex}
                   setSelectedImageIndex={setSelectedImageIndex}
                 />
-              </div>
+              </motion.div>
             )}
-          </motion.div>
+          </div>
         );
       })}
     </div>
@@ -305,16 +300,22 @@ function ActiveSectionContent({
 }) {
   const content = [
     // Overview
-    <div key="overview" className="h-full flex flex-col space-y-4 p-6">
+    <div key="overview" className="h-full flex flex-col space-y-3 p-4 overflow-hidden">
+      {' '}
+      {/* Reduced padding and spacing */}
       {/* Bonding Curve Chart */}
-      <div className="flex-1 bg-[#231F20] rounded-lg border border-[#D0B284]/20 p-4">
+      <div className="flex-1 bg-[#231F20] rounded-lg border border-[#D0B284]/20 p-3 min-h-0">
+        {' '}
+        {/* Reduced padding */}
         <Chart />
       </div>
-
       {/* Image Thumbnails */}
       <div className="flex-shrink-0">
-        <h4 className="text-[#D0B284] text-sm font-bold mb-3 tracking-wider">GALLERY</h4>
-        <div className="grid grid-cols-4 gap-2">
+        <h4 className="text-[#D0B284] text-xs font-bold mb-2 tracking-wider">GALLERY</h4>{' '}
+        {/* Smaller text and margin */}
+        <div className="grid grid-cols-4 gap-1.5">
+          {' '}
+          {/* Reduced gap */}
           {mockImages.map((image, index) => (
             <div
               key={image.id}
@@ -336,7 +337,9 @@ function ActiveSectionContent({
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-[#D0B284] font-bold text-lg">
+                <div className="w-full h-full flex items-center justify-center text-[#D0B284] font-bold text-sm">
+                  {' '}
+                  {/* Smaller text */}
                   {index + 1}
                 </div>
               )}
@@ -346,19 +349,21 @@ function ActiveSectionContent({
       </div>
     </div>,
 
-    // Token Details
-    <div key="token-details" className="space-y-4 p-6">
-      <SeesawAnimation />
+    // Token Details - Compact version
+    <div key="token-details" className="h-full flex flex-col space-y-3 p-4 overflow-hidden">
+      <div className="flex-1 min-h-0">
+        <SeesawAnimation />
+      </div>
     </div>,
 
-    // Product Manifesto
-    <div key="manifesto" className="h-full">
+    // Product Manifesto - Ensure it fits in smaller space
+    <div key="manifesto" className="h-full overflow-hidden">
       <ProductHeroLocation />
     </div>,
 
-    // Place Bids
-    <div key="place-bids" className="h-full flex flex-col space-y-4 p-6">
-      {/* Product Image - Same as manifesto */}
+    // Place Bids - Compact version
+    <div key="place-bids" className="h-full flex flex-col space-y-3 p-4 overflow-hidden">
+      {/* Product Image - Smaller */}
       <div className="flex-shrink-0">
         <div className="relative bg-[#231F20] rounded-lg border border-[#D0B284]/20 overflow-hidden shadow-lg">
           <Image
@@ -374,21 +379,26 @@ function ActiveSectionContent({
       </div>
 
       {/* Bidding Details */}
-      <div className="flex-1 space-y-3">
-        <h4 className="text-[#D0B284] text-sm font-bold mb-4 tracking-wider">BIDDING</h4>
-
+      <div className="flex-1 space-y-2 min-h-0 overflow-y-auto">
+        {' '}
+        {/* Reduced spacing */}
+        <h4 className="text-[#D0B284] text-xs font-bold mb-2 tracking-wider">BIDDING</h4>{' '}
+        {/* Smaller text */}
         <div className="bg-[#231F20] border border-[#D0B284]/20 rounded-lg overflow-hidden">
-          <div className="flex items-center justify-between p-4">
-            <span className="text-[#DCDDCC] text-sm font-medium">Current High Bid:</span>
-            <span className="text-white text-sm font-semibold">$45,200</span>
+          <div className="flex items-center justify-between p-3">
+            {' '}
+            {/* Reduced padding */}
+            <span className="text-[#DCDDCC] text-xs font-medium">Current High Bid:</span>{' '}
+            {/* Smaller text */}
+            <span className="text-white text-xs font-semibold">$45,200</span> {/* Smaller text */}
           </div>
         </div>
       </div>
     </div>,
 
-    // Chats
-    <div key="chats" className="h-full flex flex-col space-y-4 p-6">
-      {/* Product Image - Same as other sections */}
+    // Chats - Compact version
+    <div key="chats" className="h-full flex flex-col space-y-3 p-4 overflow-hidden">
+      {/* Product Image - Smaller */}
       <div className="flex-shrink-0">
         <div className="relative bg-[#231F20] rounded-lg border border-[#D0B284]/20 overflow-hidden shadow-lg">
           <Image
@@ -404,20 +414,27 @@ function ActiveSectionContent({
       </div>
 
       {/* Community Stats */}
-      <div className="flex-1 space-y-3">
-        <h4 className="text-[#D0B284] text-sm font-bold mb-4 tracking-wider">COMMUNITY</h4>
-
+      <div className="flex-1 space-y-2 min-h-0 overflow-y-auto">
+        {' '}
+        {/* Reduced spacing */}
+        <h4 className="text-[#D0B284] text-xs font-bold mb-2 tracking-wider">COMMUNITY</h4>{' '}
+        {/* Smaller text */}
         <div className="bg-[#231F20] border border-[#D0B284]/20 rounded-lg overflow-hidden">
-          <div className="flex items-center justify-between p-4">
-            <span className="text-[#DCDDCC] text-sm font-medium">Active Members:</span>
-            <span className="text-white text-sm font-semibold">1,247</span>
+          <div className="flex items-center justify-between p-3">
+            {' '}
+            {/* Reduced padding */}
+            <span className="text-[#DCDDCC] text-xs font-medium">Active Members:</span>{' '}
+            {/* Smaller text */}
+            <span className="text-white text-xs font-semibold">1,247</span> {/* Smaller text */}
           </div>
         </div>
-
         <div className="bg-[#231F20] border border-[#D0B284]/20 rounded-lg overflow-hidden">
-          <div className="flex items-center justify-between p-4">
-            <span className="text-[#DCDDCC] text-sm font-medium">Total Comments:</span>
-            <span className="text-white text-sm font-semibold">3,891</span>
+          <div className="flex items-center justify-between p-3">
+            {' '}
+            {/* Reduced padding */}
+            <span className="text-[#DCDDCC] text-xs font-medium">Total Comments:</span>{' '}
+            {/* Smaller text */}
+            <span className="text-white text-xs font-semibold">3,891</span> {/* Smaller text */}
           </div>
         </div>
       </div>
@@ -429,14 +446,12 @@ function ActiveSectionContent({
 
 function MiddleContentArea({
   activeSection,
-  //   isAnimating,
-  animationDirection,
+  isAnimating,
   selectedImageIndex,
   setSelectedImageIndex,
 }: {
   activeSection: number;
   isAnimating: boolean;
-  animationDirection: 'up' | 'down';
   selectedImageIndex: number;
   setSelectedImageIndex: (index: number) => void;
 }) {
@@ -594,7 +609,7 @@ function MiddleContentArea({
           key={activeSection}
           initial={{
             opacity: 0,
-            y: animationDirection === 'up' ? 50 : -50,
+            y: 50,
           }}
           animate={{
             opacity: 1,
@@ -602,16 +617,144 @@ function MiddleContentArea({
           }}
           exit={{
             opacity: 0,
-            y: animationDirection === 'up' ? -50 : 50,
+            y: -50,
           }}
           transition={{
-            duration: 1,
+            duration: isAnimating ? 1.2 : 0.6,
             ease: 'easeInOut',
           }}
+          className="h-full"
         >
           {contentSections[activeSection]}
         </motion.div>
       </AnimatePresence>
+    </div>
+  );
+}
+
+// Share Modal Component
+function ShareModal({ onClose }: { onClose: () => void }) {
+  const shareUrl = typeof window !== 'undefined' ? window.location.href : '';
+
+  const shareOptions = [
+    { name: 'Copy Link', action: () => navigator.clipboard.writeText(shareUrl) },
+    {
+      name: 'Twitter',
+      action: () =>
+        window.open(
+          `https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=Check out King Solomon's Baby - Real World Asset!`,
+        ),
+    },
+    {
+      name: 'Facebook',
+      action: () =>
+        window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`),
+    },
+    {
+      name: 'LinkedIn',
+      action: () =>
+        window.open(
+          `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`,
+        ),
+    },
+  ];
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      onClick={onClose}
+    >
+      <div
+        className="bg-[#231F20] border border-[#D0B284]/20 rounded-lg p-6 max-w-md w-full mx-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-6">
+          <h3
+            className="text-[#D0B284] text-xl font-bold"
+            style={{ fontFamily: "'Spray Letters', cursive" }}
+          >
+            SHARE WITH YOUR RICH BUDDY
+          </h3>
+          <button onClick={onClose} className="text-[#D0B284] hover:text-white transition-colors">
+            ✕
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          {shareOptions.map((option) => (
+            <button
+              key={option.name}
+              onClick={option.action}
+              className="w-full bg-[#D0B284]/10 hover:bg-[#D0B284]/20 text-[#D0B284] border border-[#D0B284]/20 rounded-lg p-3 transition-all duration-200 text-left"
+            >
+              {option.name}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Delivery Modal Component
+function DeliveryModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      onClick={onClose}
+    >
+      <div
+        className="bg-[#231F20] border border-[#D0B284]/20 rounded-lg p-6 max-w-lg w-full mx-4 max-h-[80vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-6">
+          <h3
+            className="text-[#D0B284] text-xl font-bold"
+            style={{ fontFamily: "'Spray Letters', cursive" }}
+          >
+            DELIVERY INFORMATION
+          </h3>
+          <button onClick={onClose} className="text-[#D0B284] hover:text-white transition-colors">
+            ✕
+          </button>
+        </div>
+
+        <div className="space-y-4 text-[#DCDDCC]">
+          <div>
+            <h4 className="text-[#D0B284] font-bold mb-2">Digital Asset Delivery</h4>
+            <p className="text-sm leading-relaxed">
+              Upon successful purchase, your RWA tokens will be instantly delivered to your
+              connected wallet. The tokens represent fractional ownership of King Solomon&apos;s
+              Baby sculpture.
+            </p>
+          </div>
+
+          <div>
+            <h4 className="text-[#D0B284] font-bold mb-2">Physical Rights</h4>
+            <p className="text-sm leading-relaxed">
+              Token holders will receive voting rights on the sculpture&apos;s future, including
+              decisions about exhibitions, sales, and potential physical division based on the
+              original MSCHF concept.
+            </p>
+          </div>
+
+          <div>
+            <h4 className="text-[#D0B284] font-bold mb-2">Timeline</h4>
+            <ul className="text-sm space-y-1">
+              <li>• Token delivery: Immediate upon purchase</li>
+              <li>• Voting period: 30 days after sale completion</li>
+              <li>• Physical delivery: If voted, 60-90 days processing</li>
+            </ul>
+          </div>
+
+          <div className="bg-[#D0B284]/10 border border-[#D0B284]/20 rounded-lg p-4">
+            <p className="text-xs text-[#D0B284]">
+              <strong>Note:</strong> This is a conceptual RWA implementation. Actual delivery terms
+              would be subject to legal agreements and regulatory compliance.
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
