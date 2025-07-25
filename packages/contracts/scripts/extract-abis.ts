@@ -8,7 +8,9 @@ interface ArtifactFile {
 }
 
 interface ContractABIs {
-  DualCurrencyBondingCurveToken: unknown[];
+  AcesTest: unknown[];
+  BondingCurveTest: unknown[];
+  MockRwaFactory: unknown[];
 }
 
 async function main() {
@@ -20,19 +22,42 @@ async function main() {
   // Extract ABIs from artifacts
   const abis: Partial<ContractABIs> = {};
 
-  // 1. DualCurrencyBondingCurveToken
-  const dualCurrencyBondingCurveTokenArtifact = path.join(
+  // 1. MockRwaFactory (needed for backend)
+  const mockRwaFactoryArtifact = path.join(
     contractsDir,
-    'DualCurrencyBondingCurveToken.sol/DualCurrencyBondingCurveToken.json',
+    'mocks/MockRwaFactory.sol/MockRwaFactory.json',
   );
-  if (fs.existsSync(dualCurrencyBondingCurveTokenArtifact)) {
-    const artifact: ArtifactFile = JSON.parse(
-      fs.readFileSync(dualCurrencyBondingCurveTokenArtifact, 'utf8'),
-    );
-    abis.DualCurrencyBondingCurveToken = artifact.abi;
-    console.log('✅ Extracted DualCurrencyBondingCurveToken ABI');
+  if (fs.existsSync(mockRwaFactoryArtifact)) {
+    const artifact: ArtifactFile = JSON.parse(fs.readFileSync(mockRwaFactoryArtifact, 'utf8'));
+    abis.MockRwaFactory = artifact.abi;
+    console.log('✅ Extracted MockRwaFactory ABI');
   } else {
-    console.log('❌ DualCurrencyBondingCurveToken artifact not found. Run "pnpm compile" first.');
+    console.log('❌ MockRwaFactory artifact not found. Run "pnpm compile" first.');
+    process.exit(1);
+  }
+
+  // 2. AcesTest
+  const acesTestArtifact = path.join(contractsDir, 'AcesTest.sol/AcesTest.json');
+  if (fs.existsSync(acesTestArtifact)) {
+    const artifact: ArtifactFile = JSON.parse(fs.readFileSync(acesTestArtifact, 'utf8'));
+    abis.AcesTest = artifact.abi;
+    console.log('✅ Extracted AcesTest ABI');
+  } else {
+    console.log('❌ AcesTest artifact not found. Run "pnpm compile" first.');
+    process.exit(1);
+  }
+
+  // 3. BondingCurveTest
+  const bondingCurveTestArtifact = path.join(
+    contractsDir,
+    'BondingCurveTest.sol/BondingCurveTest.json',
+  );
+  if (fs.existsSync(bondingCurveTestArtifact)) {
+    const artifact: ArtifactFile = JSON.parse(fs.readFileSync(bondingCurveTestArtifact, 'utf8'));
+    abis.BondingCurveTest = artifact.abi;
+    console.log('✅ Extracted BondingCurveTest ABI');
+  } else {
+    console.log('❌ BondingCurveTest artifact not found. Run "pnpm compile" first.');
     process.exit(1);
   }
 
@@ -41,11 +66,18 @@ async function main() {
 // Generated from compiled contract artifacts
 // Run 'pnpm extract-abis' to regenerate
 
-export const DUAL_CURRENCY_BONDING_CURVE_TOKEN_ABI = ${JSON.stringify(abis.DualCurrencyBondingCurveToken || [], null, 2)} as const;
+// Legacy ABIs (needed for backend)
+export const MOCK_RWA_FACTORY_ABI = ${JSON.stringify(abis.MockRwaFactory || [], null, 2)} as const;
+
+// Bonding Curve ABIs
+export const ACES_TEST_ABI = ${JSON.stringify(abis.AcesTest || [], null, 2)} as const;
+export const BONDING_CURVE_TEST_ABI = ${JSON.stringify(abis.BondingCurveTest || [], null, 2)} as const;
 
 // Exported for convenience
 export const ABIS = {
-  DualCurrencyBondingCurveToken: DUAL_CURRENCY_BONDING_CURVE_TOKEN_ABI,
+  MockRwaFactory: MOCK_RWA_FACTORY_ABI,
+  AcesTest: ACES_TEST_ABI,
+  BondingCurveTest: BONDING_CURVE_TEST_ABI,
 } as const;
 `;
 
