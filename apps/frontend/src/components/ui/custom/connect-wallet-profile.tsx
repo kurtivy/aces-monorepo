@@ -1,16 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import {
+  Menu,
+  X,
+  Send,
   Wallet,
-  CircleUser,
-  ChevronDown,
-  Crown,
-  Settings,
   User,
-  Shield,
   CreditCard,
-  Zap,
   AlertTriangle,
   Eye,
   ExternalLink,
@@ -20,6 +18,7 @@ import { useFundWallet } from '@privy-io/react-auth';
 import { useChainSwitching } from '@/hooks/use-chain-switching';
 import { usePrivyWallet } from '@/hooks/use-privy-wallet';
 import { WalletModal } from '@/components/wallet/wallet-modal';
+import { getDeviceCapabilities } from '../../../lib/utils/browser-utils';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -32,28 +31,122 @@ import {
 import Image from 'next/image';
 import Link from 'next/link';
 
+// Custom X logo component (modern Twitter/X logo)
+export const XIcon: React.FC<{ size?: number }> = ({ size = 20 }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+  </svg>
+);
+
+// Custom Instagram logo component
+export const InstagramIcon: React.FC<{ size?: number }> = ({ size = 20 }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+    <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+  </svg>
+);
+
+// Custom TikTok logo component
+export const TikTokIcon: React.FC<{ size?: number }> = ({ size = 20 }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-.88-.05A6.33 6.33 0 0 0 5.16 20.5a6.33 6.33 0 0 0 10.86-4.43V7.83a8.24 8.24 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1.2-.26z" />
+  </svg>
+);
+
+// Main navigation items
+const mainNavItems = [
+  { href: '/create-token', label: 'Create Token', external: false, action: 'navigate' },
+  { href: '/about', label: 'About', external: false, action: 'modal' },
+  { href: '/terms', label: 'Terms & PP', external: false, action: 'modal' },
+];
+
+// Social links as icons in footer section
+const socialLinks = [
+  { href: 'https://x.com/acesdotfun', label: 'X (Twitter)', external: true, icon: XIcon },
+  { href: 'https://t.me/acesdotfun/', label: 'Telegram', external: true, icon: Send },
+  {
+    href: 'https://www.instagram.com/acesdotfun/',
+    label: 'Instagram',
+    external: true,
+    icon: InstagramIcon,
+  },
+  { href: 'https://www.tiktok.com/@acesdotfun', label: 'TikTok', external: true, icon: TikTokIcon },
+];
+
+// Compact animations for the smaller nav menu
+const compactMenuVariants: Variants = {
+  closed: {
+    opacity: 0,
+    scale: 0.95,
+    transition: {
+      duration: 0.15,
+      ease: 'easeInOut',
+    },
+  },
+  open: {
+    opacity: 1,
+    scale: 1,
+    transition: {
+      duration: 0.2,
+      ease: 'easeOut',
+      staggerChildren: 0.05,
+      delayChildren: 0.1,
+    },
+  },
+};
+
+const compactNavItemVariants: Variants = {
+  closed: {
+    opacity: 0,
+    y: -10,
+  },
+  open: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.15,
+      ease: 'easeOut',
+    },
+  },
+};
+
 interface ConnectWalletProfileProps {
   className?: string;
   onProfileClick?: () => void;
-  onSettingsClick?: () => void;
-  onSellerDashboardClick?: () => void;
+  onAboutClick?: () => void;
+  onTermsClick?: () => void;
 }
 
 export default function ConnectWalletProfile({
   className = '',
   onProfileClick,
-  onSettingsClick,
-  onSellerDashboardClick,
+  onAboutClick,
+  onTermsClick,
 }: ConnectWalletProfileProps) {
-  const {
-    isAuthenticated,
-    isLoading,
-    user,
-    walletAddress,
-    connectWallet,
-    disconnectWallet,
-    hasRole,
-  } = useAuth();
+  const { isAuthenticated, isLoading, user, walletAddress, connectWallet, disconnectWallet } =
+    useAuth();
 
   const { fundWallet } = useFundWallet();
 
@@ -62,16 +155,21 @@ export default function ConnectWalletProfile({
     isOnBaseMainnet,
     isOnBaseSepolia,
     isSwitching,
-    switchToFunding,
-    switchToDefault,
     ensureCorrectChain,
     SUPPORTED_CHAINS,
   } = useChainSwitching();
 
   const { hasEmbeddedWallet } = usePrivyWallet();
 
-  // Local state for wallet modal
+  // Local state for navigation menu and wallet modal
+  const [isNavOpen, setIsNavOpen] = useState(false);
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
+
+  // Smart mobile detection using existing device capabilities
+  const isMobileDevice = useMemo(() => {
+    const capabilities = getDeviceCapabilities();
+    return capabilities.touchCapable || capabilities.isMobileSafari;
+  }, []);
 
   const displayAddress = walletAddress
     ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
@@ -130,38 +228,9 @@ export default function ConnectWalletProfile({
     }
   };
 
-  // Handle switching to development chain
-  const handleSwitchToTestnet = async () => {
-    try {
-      await switchToDefault();
-    } catch (error) {
-      console.error('Failed to switch to testnet:', error);
-    }
-  };
-
-  const handleSwitchToMainnet = async () => {
-    try {
-      await switchToFunding();
-    } catch (error) {
-      console.error('Failed to switch to mainnet:', error);
-    }
-  };
-
   const handleProfileClick = () => {
     if (onProfileClick) {
       onProfileClick();
-    }
-  };
-
-  const handleSettingsClick = () => {
-    if (onSettingsClick) {
-      onSettingsClick();
-    }
-  };
-
-  const handleSellerDashboardClick = () => {
-    if (onSellerDashboardClick) {
-      onSellerDashboardClick();
     }
   };
 
@@ -206,20 +275,19 @@ export default function ConnectWalletProfile({
     };
   };
 
-  // Check if user can access seller dashboard
-  const canAccessSellerDashboard = hasRole(['SELLER', 'ADMIN']);
   const isSellerVerified = user?.sellerStatus === 'APPROVED';
   const chainBadge = getChainBadge();
 
   if (isAuthenticated && user) {
-    // Connected Wallet Dropdown
+    // Connected Wallet Dropdown + Navigation Menu
     return (
-      <>
+      <div className={`flex items-center gap-2 relative ${className}`}>
+        {/* Wallet Dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
-              className={`flex items-center gap-2 text-[#D0B284] hover:bg-[#D0B284]/20 px-2 py-1 rounded-xl cursor-pointer ${className}`}
+              className="flex items-center gap-2 text-[#D0B284] hover:bg-[#D0B284]/20 px-2 py-1 rounded-xl cursor-pointer"
               disabled={isLoading}
             >
               <div className="w-8 h-8 rounded-full bg-[#D0B284] flex items-center justify-center text-black text-lg font-bold">
@@ -244,7 +312,6 @@ export default function ConnectWalletProfile({
                   </div>
                 </div>
               </div>
-              <ChevronDown className="w-4 h-4 ml-1 text-[#D0B284]" />
               <span className="sr-only">Account options</span>
             </Button>
           </DropdownMenuTrigger>
@@ -285,35 +352,6 @@ export default function ConnectWalletProfile({
               {!isOnBaseMainnet && <AlertTriangle className="w-3 h-3 ml-auto text-yellow-400" />}
             </DropdownMenuItem>
 
-            {/* Chain Switching Options */}
-            <DropdownMenuSeparator className="bg-[#D0B284]/20" />
-
-            {!isOnBaseSepolia && (
-              <DropdownMenuItem
-                className="hover:bg-[#D0B284]/20 cursor-pointer text-[#D0B284] hover:text-[#D0B284]"
-                onClick={handleSwitchToTestnet}
-                disabled={isSwitching}
-              >
-                <Zap className="w-4 h-4 mr-2" />
-                {isSwitching ? 'Switching...' : 'Switch to Base Sepolia'}
-                <span className="ml-auto text-xs text-blue-400">Testnet</span>
-              </DropdownMenuItem>
-            )}
-
-            {!isOnBaseMainnet && (
-              <DropdownMenuItem
-                className="hover:bg-[#D0B284]/20 cursor-pointer text-[#D0B284] hover:text-[#D0B284]"
-                onClick={handleSwitchToMainnet}
-                disabled={isSwitching}
-              >
-                <Zap className="w-4 h-4 mr-2" />
-                {isSwitching ? 'Switching...' : 'Switch to Base'}
-                <span className="ml-auto text-xs text-green-400">Mainnet</span>
-              </DropdownMenuItem>
-            )}
-
-            <DropdownMenuSeparator className="bg-[#D0B284]/20" />
-
             {/* Profile */}
             <DropdownMenuItem
               className="hover:bg-[#D0B284]/20 cursor-pointer text-[#D0B284] hover:text-[#D0B284]"
@@ -322,43 +360,6 @@ export default function ConnectWalletProfile({
               <User className="w-4 h-4 mr-2" />
               <Link href="/profile">Profile</Link>
             </DropdownMenuItem>
-
-            {/* Seller Dashboard (if available) */}
-            {canAccessSellerDashboard && (
-              <DropdownMenuItem
-                className="hover:bg-[#D0B284]/20 cursor-pointer text-[#D0B284] hover:text-[#D0B284]"
-                onClick={handleSellerDashboardClick}
-              >
-                <Crown className="w-4 h-4 mr-2" />
-                Seller Dashboard
-                {!isSellerVerified && (
-                  <span className="ml-auto text-xs text-orange-400">Verification Required</span>
-                )}
-              </DropdownMenuItem>
-            )}
-
-            {/* Settings */}
-            <DropdownMenuItem
-              className="hover:bg-[#D0B284]/20 cursor-pointer text-[#D0B284] hover:text-[#D0B284]"
-              onClick={handleSettingsClick}
-            >
-              <Settings className="w-4 h-4 mr-2" />
-              Settings
-            </DropdownMenuItem>
-
-            {/* Admin Dashboard - Only show for admin users */}
-            {user?.role === 'ADMIN' && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link href="/admin" className="cursor-pointer">
-                    <Shield className="w-4 h-4 mr-2" />
-                    Admin Dashboard
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-              </>
-            )}
 
             <DropdownMenuSeparator className="bg-[#D0B284]" />
 
@@ -374,15 +375,135 @@ export default function ConnectWalletProfile({
           </DropdownMenuContent>
         </DropdownMenu>
 
+        {/* Vertical Line */}
+        <div className="w-px h-6 bg-[#D0B284] mx-2" />
+
+        {/* Compact Navigation Menu */}
+        <div className="relative">
+          <AnimatePresence mode="wait">
+            {isNavOpen && (
+              <motion.div
+                className="absolute top-12 right-0 bg-black/95 border border-[#D0B264]/40 text-[#D0B264] rounded-lg overflow-hidden shadow-lg min-w-[180px] z-50"
+                variants={compactMenuVariants}
+                initial="closed"
+                animate="open"
+                exit="closed"
+                style={{
+                  willChange: isMobileDevice ? 'opacity' : 'transform, opacity',
+                }}
+              >
+                <div className="p-3">
+                  {/* Main Navigation Items */}
+                  <div className="space-y-1 border-b border-[#D0B264]/20 mb-3 pb-3">
+                    {mainNavItems.map((item, index) => (
+                      <motion.div
+                        key={item.href}
+                        variants={compactNavItemVariants}
+                        custom={index}
+                        style={{ willChange: isMobileDevice ? 'opacity' : 'transform, opacity' }}
+                      >
+                        {item.external ? (
+                          <a
+                            href={item.href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={() => setIsNavOpen(false)}
+                            className="block text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 px-2 py-1.5 text-sm font-medium rounded-md whitespace-nowrap uppercase tracking-wide"
+                          >
+                            {item.label}
+                          </a>
+                        ) : item.action === 'modal' ? (
+                          <button
+                            onClick={() => {
+                              setIsNavOpen(false);
+                              if (item.href === '/about' && onAboutClick) {
+                                onAboutClick();
+                              } else if (item.href === '/terms' && onTermsClick) {
+                                onTermsClick();
+                              }
+                            }}
+                            className="block w-full text-left text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 px-2 py-1.5 text-sm font-medium rounded-md whitespace-nowrap uppercase tracking-wide"
+                          >
+                            {item.label}
+                          </button>
+                        ) : (
+                          <Link
+                            href={item.href}
+                            onClick={() => setIsNavOpen(false)}
+                            className="block text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 px-2 py-1.5 text-sm font-medium rounded-md whitespace-nowrap uppercase tracking-wide"
+                          >
+                            {item.label}
+                          </Link>
+                        )}
+                      </motion.div>
+                    ))}
+                  </div>
+
+                  {/* Social Links Footer */}
+                  <div>
+                    <div className="flex justify-center space-x-3">
+                      {socialLinks.map((social, index) => {
+                        const IconComponent = social.icon;
+                        return (
+                          <motion.div
+                            key={social.href}
+                            variants={compactNavItemVariants}
+                            custom={mainNavItems.length + index}
+                            style={{
+                              willChange: isMobileDevice ? 'opacity' : 'transform, opacity',
+                            }}
+                          >
+                            <a
+                              href={social.href}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={() => setIsNavOpen(false)}
+                              className="flex items-center justify-center w-8 h-8 text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 rounded-full"
+                              aria-label={social.label}
+                            >
+                              <IconComponent size={14} />
+                            </a>
+                          </motion.div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Compact Hamburger Menu Button */}
+          <motion.button
+            className="w-10 h-10 bg-black/90 border border-[#D0B284]/40 text-[#D0B284] hover:text-white hover:bg-black/95 hover:border-[#D0B284] transition-colors duration-150 flex items-center justify-center rounded-full shadow-lg"
+            onClick={() => setIsNavOpen(!isNavOpen)}
+            whileHover={isMobileDevice ? undefined : { scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            transition={
+              isMobileDevice ? { duration: 0.1 } : { type: 'spring', stiffness: 300, damping: 20 }
+            }
+            style={{ willChange: 'transform' }}
+          >
+            <motion.div
+              animate={{ rotate: isNavOpen ? 90 : 0 }}
+              transition={{ duration: 0.2, ease: 'easeInOut' }}
+              style={{ willChange: 'transform' }}
+            >
+              {isNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </motion.div>
+          </motion.button>
+        </div>
+
         {/* Custom Wallet Modal */}
         <WalletModal isOpen={isWalletModalOpen} onClose={() => setIsWalletModalOpen(false)} />
-      </>
+      </div>
     );
   }
 
-  // Unauthenticated UI: Connect Wallet Button + Generic User Icon
+  // Unauthenticated UI: Connect Wallet Button + Vertical Line + Compact Nav Menu
   return (
-    <div className={`flex items-center gap-2 ${className}`}>
+    <div className={`flex items-center gap-2 relative ${className}`}>
+      {/* Connect Wallet Button */}
       <Button
         variant="ghost"
         className="flex items-center justify-center text-[#D0B284] hover:bg-[#D0B284]/20 hover:text-[#D0B284] px-4 py-2 rounded-xl"
@@ -403,8 +524,119 @@ export default function ConnectWalletProfile({
       {/* Vertical Line */}
       <div className="w-px h-6 bg-[#D0B284] mx-2" />
 
-      {/* Generic User Icon */}
-      <CircleUser className="w-6 h-6 text-[#D0B284]" />
+      {/* Compact Navigation Menu */}
+      <div className="relative">
+        <AnimatePresence mode="wait">
+          {isNavOpen && (
+            <motion.div
+              className="absolute top-8 right-0 bg-black/95 border border-[#D0B264]/40 text-[#D0B264] rounded-lg overflow-hidden shadow-lg min-w-[180px] z-50"
+              variants={compactMenuVariants}
+              initial="closed"
+              animate="open"
+              exit="closed"
+              style={{
+                willChange: isMobileDevice ? 'opacity' : 'transform, opacity',
+              }}
+            >
+              <div className="p-3">
+                {/* Main Navigation Items */}
+                <div className="space-y-1 border-b border-[#D0B264]/20 mb-3 pb-3">
+                  {mainNavItems.map((item, index) => (
+                    <motion.div
+                      key={item.href}
+                      variants={compactNavItemVariants}
+                      custom={index}
+                      style={{ willChange: isMobileDevice ? 'opacity' : 'transform, opacity' }}
+                    >
+                      {item.external ? (
+                        <a
+                          href={item.href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={() => setIsNavOpen(false)}
+                          className="block text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 px-2 py-1.5 text-sm font-medium rounded-md whitespace-nowrap uppercase tracking-wide"
+                        >
+                          {item.label}
+                        </a>
+                      ) : item.action === 'modal' ? (
+                        <button
+                          onClick={() => {
+                            setIsNavOpen(false);
+                            if (item.href === '/about' && onAboutClick) {
+                              onAboutClick();
+                            } else if (item.href === '/terms' && onTermsClick) {
+                              onTermsClick();
+                            }
+                          }}
+                          className="block w-full text-left text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 px-2 py-1.5 text-sm font-medium rounded-md whitespace-nowrap uppercase tracking-wide"
+                        >
+                          {item.label}
+                        </button>
+                      ) : (
+                        <Link
+                          href={item.href}
+                          onClick={() => setIsNavOpen(false)}
+                          className="block text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 px-2 py-1.5 text-sm font-medium rounded-md whitespace-nowrap uppercase tracking-wide"
+                        >
+                          {item.label}
+                        </Link>
+                      )}
+                    </motion.div>
+                  ))}
+                </div>
+
+                {/* Social Links Footer */}
+                <div>
+                  <div className="flex justify-center space-x-3">
+                    {socialLinks.map((social, index) => {
+                      const IconComponent = social.icon;
+                      return (
+                        <motion.div
+                          key={social.href}
+                          variants={compactNavItemVariants}
+                          custom={mainNavItems.length + index}
+                          style={{ willChange: isMobileDevice ? 'opacity' : 'transform, opacity' }}
+                        >
+                          <a
+                            href={social.href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={() => setIsNavOpen(false)}
+                            className="flex items-center justify-center w-8 h-8 text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 rounded-full"
+                            aria-label={social.label}
+                          >
+                            <IconComponent size={14} />
+                          </a>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Compact Hamburger Menu Button */}
+        <motion.button
+          className="w-10 h-10 bg-black/90 border border-[#D0B284]/40 text-[#D0B284] hover:text-white hover:bg-black/95 hover:border-[#D0B284] transition-colors duration-150 flex items-center justify-center rounded-full shadow-lg"
+          onClick={() => setIsNavOpen(!isNavOpen)}
+          whileHover={isMobileDevice ? undefined : { scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          transition={
+            isMobileDevice ? { duration: 0.1 } : { type: 'spring', stiffness: 300, damping: 20 }
+          }
+          style={{ willChange: 'transform' }}
+        >
+          <motion.div
+            animate={{ rotate: isNavOpen ? 90 : 0 }}
+            transition={{ duration: 0.2, ease: 'easeInOut' }}
+            style={{ willChange: 'transform' }}
+          >
+            {isNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </motion.div>
+        </motion.button>
+      </div>
     </div>
   );
 }
