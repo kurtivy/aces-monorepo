@@ -10,14 +10,6 @@ export default function LaunchHeader() {
     router.push('/profile');
   };
 
-  const handleSettingsClick = () => {
-    router.push('/profile/settings');
-  };
-
-  const handleSellerDashboardClick = () => {
-    router.push('/seller/dashboard');
-  };
-
   return (
     <div className="relative z-10 flex items-center justify-between p-6 w-full overflow-hidden">
       <div className="flex items-center gap-4">
@@ -55,11 +47,7 @@ export default function LaunchHeader() {
 
       <div className="flex items-center gap-6">
         <SocialIcons iconSize={24} />
-        <ConnectWalletProfile
-          onProfileClick={handleProfileClick}
-          onSettingsClick={handleSettingsClick}
-          onSellerDashboardClick={handleSellerDashboardClick}
-        />
+        <ConnectWalletProfile onProfileClick={handleProfileClick} />
       </div>
     </div>
   );

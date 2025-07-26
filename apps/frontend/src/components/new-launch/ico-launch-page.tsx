@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import LaunchHeader from './launch-header';
+import AcesHeader from '@/components/ui/custom/aces-header';
 import Image from 'next/image';
 import BondingCurveChart from './bonding-curve-chart';
 import CountdownTimer from './countdown-timer';
@@ -329,7 +329,7 @@ const ICOLaunchPage: React.FC = () => {
 
       {/* Header - spans full width */}
       <div className="relative z-50">
-        <LaunchHeader />
+        <AcesHeader />
       </div>
 
       {/* Main Layout Container - content starts right after header */}
