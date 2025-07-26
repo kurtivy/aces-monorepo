@@ -67,9 +67,9 @@ export function LeftColumnNavigation({
             {/* Card Header */}
             <div
               className={cn(
-                'h-14 border-b border-[#D0B284]/20 cursor-pointer', // h-14 = 56px
+                'h-14 border-b border-[#D0B284]/30 border-dashed cursor-pointer', // h-14 = 56px
                 'flex items-center justify-center relative overflow-hidden',
-                'bg-[#231F20] text-[#D0B284]',
+                'bg-black text-[#D0B284]',
                 // Modal sections styling (no hover effects)
                 section.isModal && 'border-dashed',
               )}
@@ -91,7 +91,7 @@ export function LeftColumnNavigation({
             {/* Card Content - Show for active content sections OR animating out card */}
             {shouldShowContent && (
               <motion.div
-                className="bg-[#231F20] border-b border-[#D0B284]/20 overflow-y-auto"
+                className="bg-[#231F20]/30  border-b border-[#D0B284]/30 border-dashed overflow-y-auto"
                 style={{
                   height: `${CONTENT_HEIGHT}px`, // Now 320px instead of 400px
                   width: '320px', // Fixed width to match container

@@ -1,28 +1,42 @@
-"use client"
+'use client';
 
-import type React from "react"
-import Image from "next/image"
-import { useEffect, useRef, memo } from "react"
+import type React from 'react';
+import Image from 'next/image';
+import { useEffect, useRef, memo } from 'react';
 
 interface TradingViewWidgetProps {
-  interval?: string
-  symbol?: string
+  interval?: string;
+  symbol?: string;
 }
 
-const TradingViewWidget = memo(({ interval = "D", symbol = "BINANCE:ETHUSDT" }: TradingViewWidgetProps) => {
-  const container = useRef<HTMLDivElement>(null)
+const TradingViewWidget = memo(
+  ({ interval = 'D', symbol = 'BINANCE:ETHUSDT' }: TradingViewWidgetProps) => {
+    const container = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const currentContainer = container.current
-    if (currentContainer) {
-      currentContainer.innerHTML = ""
-    }
+    useEffect(() => {
+      const currentContainer = container.current;
+      if (currentContainer) {
+        currentContainer.innerHTML = '';
+      }
 
-    const script = document.createElement("script")
-    script.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js"
-    script.type = "text/javascript"
-    script.async = true
-    script.innerHTML = `
+      // Add CSS to ensure TradingView iframe scrolling works
+      const style = document.createElement('style');
+      style.setAttribute('data-tradingview-scroll', 'true');
+      style.textContent = `
+      .tradingview-widget-container iframe {
+        overflow: visible !important;
+      }
+      .tradingview-widget-container__widget {
+        overflow: visible !important;
+      }
+    `;
+      document.head.appendChild(style);
+
+      const script = document.createElement('script');
+      script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
+      script.type = 'text/javascript';
+      script.async = true;
+      script.innerHTML = `
         {
           "allow_symbol_change": true,
           "calendar": false,
@@ -56,91 +70,105 @@ const TradingViewWidget = memo(({ interval = "D", symbol = "BINANCE:ETHUSDT" }: 
           "container_id": "tradingview_widget",
           "drawings": true,
           "show_timeframes_toolbar": true
-        }`
+        }`;
 
-    const widgetContainer = document.createElement("div")
-    widgetContainer.className = "tradingview-widget-container__widget"
-    widgetContainer.style.height = "100%"
-    widgetContainer.style.width = "100%"
+      const widgetContainer = document.createElement('div');
+      widgetContainer.className = 'tradingview-widget-container__widget';
+      widgetContainer.style.height = '100%';
+      widgetContainer.style.width = '100%';
 
-    if (currentContainer) {
-      currentContainer.appendChild(widgetContainer)
-      currentContainer.appendChild(script)
-    }
-
-    return () => {
       if (currentContainer) {
-        currentContainer.innerHTML = ""
+        currentContainer.appendChild(widgetContainer);
+        currentContainer.appendChild(script);
       }
-    }
-  }, [interval, symbol])
 
-  return (
-    <div
-      className="tradingview-widget-container relative h-full w-full"
-      ref={container}
-      style={{ height: "100%", width: "100%" }}
-    />
-  )
-})
+      return () => {
+        if (currentContainer) {
+          currentContainer.innerHTML = '';
+        }
+        // Clean up the style tag
+        const existingStyle = document.querySelector('style[data-tradingview-scroll]');
+        if (existingStyle) {
+          existingStyle.remove();
+        }
+      };
+    }, [interval, symbol]);
 
-TradingViewWidget.displayName = "TradingViewWidget"
+    return (
+      <div
+        className="tradingview-widget-container relative h-full w-full"
+        ref={container}
+        style={{
+          height: '100%',
+          width: '100%',
+          overflow: 'visible',
+        }}
+      />
+    );
+  },
+);
+
+TradingViewWidget.displayName = 'TradingViewWidget';
 
 interface TokenGraphProps {
-  tokenSymbol?: string
-  title?: string
-  imageSrc?: string
-  tokenAddress?: string
-  fdv?: string
-  createdAt?: string
-  volume?: string
-  height?: string
-  currentPrice?: number
-  priceChange?: number
+  tokenSymbol?: string;
+  title?: string;
+  imageSrc?: string;
+  tokenAddress?: string;
+  fdv?: string;
+  createdAt?: string;
+  volume?: string;
+  height?: string;
+  currentPrice?: number;
+  priceChange?: number;
 }
 
 const TokenGraph: React.FC<TokenGraphProps> = ({
-  tokenSymbol = "RWA",
+  tokenSymbol = 'RWA',
   title = "King Solomon's Baby",
-  imageSrc = "/placeholder.svg?height=48&width=48&text=RWA",
-  tokenAddress = "0x7300...0219FE",
-  fdv = "$100k",
-  createdAt = "1 day ago",
-  height = "h-[500px]",
+  imageSrc = '/canvas-image/1991-Porsche-964-Turbo-Rubystone-Red-1-of-5-Limited-Edition-Paint.webp',
+  tokenAddress = '0x7300...0219FE',
+  fdv = '$100k',
+  createdAt = '1 day ago',
+  height = 'h-[500px]',
 }) => {
   const copyToClipboard = async (text: string) => {
     try {
-      await navigator.clipboard.writeText(text)
+      await navigator.clipboard.writeText(text);
     } catch (err) {
-      console.error("Failed to copy text: ", err)
+      console.error('Failed to copy text: ', err);
     }
-  }
+  };
 
   const getSymbol = (tokenSymbol: string) => {
     const symbolMap: Record<string, string> = {
-      ETH: "BINANCE:ETHUSDT",
-      BTC: "BINANCE:BTCUSDT",
-      KRUGER: "BINANCE:ETHUSDT",
-      RWA: "BINANCE:ETHUSDT",
-    }
-    return symbolMap[tokenSymbol] || "BINANCE:ETHUSDT"
-  }
+      ETH: 'BINANCE:ETHUSDT',
+      BTC: 'BINANCE:BTCUSDT',
+      KRUGER: 'BINANCE:ETHUSDT',
+      RWA: 'BINANCE:ETHUSDT',
+    };
+    return symbolMap[tokenSymbol] || 'BINANCE:ETHUSDT';
+  };
 
   return (
-    <div className={`flex flex-col ${height} w-full bg-[#231f20]/50 rounded-xl overflow-hidden`}>
-      <div className="space-y-4 p-5 flex-shrink-0">
+    <div className={`flex flex-col ${height} w-full bg-[#231f20]/50 overflow-hidden`}>
+      <div className="space-y-3 p-3 flex-shrink-0">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg border border-[#D0B284]/20">
-              <Image src={imageSrc || "/placeholder.svg"} alt={title} width={48} height={48} className="object-cover" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-[#FFFFFF] font-heading">
-                {title} <span className="text-sm text-[#DCDDCC]">{`$${tokenSymbol}`}</span>
-              </h1>
-              <div className="mt-2">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3">
+              <div className="relative h-8 w-8 rounded-lg overflow-hidden bg-[#231F20]/60 border border-[#D0B284]/20">
+                <Image
+                  src={imageSrc}
+                  alt={title}
+                  width={48}
+                  height={48}
+                  className="object-cover w-full h-full"
+                />
+              </div>
+              <div className="mt-1">
                 <div className="flex items-center gap-2 rounded-md bg-[#231F20]/60 px-2 py-1.5 border border-[#D0B284]/20 w-fit">
                   <span className="text-xs text-[#DCDDCC] font-mono">{tokenAddress}</span>
+                  <span className="text-sm text-[#DCDDCC]">{`$${tokenSymbol}`}</span>
                   <button
                     onClick={() => copyToClipboard(tokenAddress)}
                     className="flex h-5 w-5 items-center justify-center rounded bg-[#D0B284]/10 hover:bg-[#D0B284]/20 transition-colors border border-[#D0B284]/20"
@@ -163,8 +191,8 @@ const TokenGraph: React.FC<TokenGraphProps> = ({
               </div>
             </div>
           </div>
-          <div className="flex flex-col items-end gap-4">
-            <div className="flex items-center gap-6 text-sm">
+          <div className="flex flex-col items-end gap-2">
+            <div className="flex items-center gap-4 text-sm">
               <div className="flex flex-col items-center">
                 <span className="text-[#DCDDCC]">FDV</span>
                 <span className="text-white">{fdv}</span>
@@ -178,11 +206,11 @@ const TokenGraph: React.FC<TokenGraphProps> = ({
         </div>
       </div>
 
-      <div className="flex-1 w-full bg-[#231F20] rounded-none border-t border-[#D0B284]/20 overflow-hidden min-h-[500px]">
+      <div className="flex-1 w-full bg-[#231F20] rounded-none border-t border-[#D0B284]/20 min-h-[400px]">
         <TradingViewWidget interval="D" symbol={getSymbol(tokenSymbol)} />
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default TokenGraph
+export default TokenGraph;

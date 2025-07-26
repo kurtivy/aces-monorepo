@@ -1,38 +1,32 @@
-"use client"
+'use client';
 
-import { useState, useEffect } from "react"
-import { motion } from "framer-motion"
+import { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 
 export default function SeesawAnimation() {
-  const [isUp, setIsUp] = useState(true)
-  const [isHovered, setIsHovered] = useState(false)
+  const [isUp, setIsUp] = useState(true);
+  const [isHovered, setIsHovered] = useState(false);
 
   // Auto-animate the seesaw
   useEffect(() => {
     const interval = setInterval(() => {
       if (!isHovered) {
-        setIsUp((prev) => !prev)
+        setIsUp((prev) => !prev);
       }
-    }, 3000)
+    }, 3000);
 
-    return () => clearInterval(interval)
-  }, [isHovered])
+    return () => clearInterval(interval);
+  }, [isHovered]);
 
   const handleClick = () => {
-    setIsUp((prev) => !prev)
-  }
+    setIsUp((prev) => !prev);
+  };
 
   return (
-    <div className="h-full flex flex-col items-center justify-center p-6 space-y-8">
-      {/* Title */}
-      <div className="text-center">
-        <h3 className="text-[#D0B284] text-lg font-bold mb-2 tracking-wider">TOKEN DYNAMICS</h3>
-        <p className="text-[#DCDDCC] text-sm">Interactive Balance</p>
-      </div>
-
+    <div className="h-full flex flex-col items-center justify-center space-y-8 bg-black">
       {/* Seesaw Container */}
       <div
-        className="relative w-full max-w-xs h-48 cursor-pointer"
+        className="relative w-full max-w-xs h-48 cursor-pointer bg-[#231F20]/30"
         onClick={handleClick}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
@@ -46,15 +40,15 @@ export default function SeesawAnimation() {
         {/* Seesaw Plank */}
         <motion.div
           className="absolute bottom-[75px] left-1/2 w-64 h-3 bg-gradient-to-r from-[#D0B284] to-[#D7BF75] rounded-full shadow-lg origin-center"
-          style={{ transformOrigin: "center center" }}
+          style={{ transformOrigin: 'center center' }}
           animate={{
             rotate: isUp ? -15 : 15,
           }}
           transition={{
             duration: 1.2,
-            ease: "easeInOut",
+            ease: 'easeInOut',
           }}
-          initial={{ x: "-50%" }}
+          initial={{ x: '-50%' }}
         >
           {/* Left Side (Reward) */}
           <motion.div
@@ -65,7 +59,7 @@ export default function SeesawAnimation() {
             }}
             transition={{
               duration: 1.2,
-              ease: "easeInOut",
+              ease: 'easeInOut',
             }}
           >
             <div className="text-white text-xs font-bold text-center">
@@ -82,7 +76,7 @@ export default function SeesawAnimation() {
             }}
             transition={{
               duration: 1.2,
-              ease: "easeInOut",
+              ease: 'easeInOut',
             }}
           >
             <div className="text-white text-xs font-bold text-center">
@@ -101,7 +95,7 @@ export default function SeesawAnimation() {
           transition={{
             duration: 2,
             repeat: Number.POSITIVE_INFINITY,
-            ease: "easeInOut",
+            ease: 'easeInOut',
           }}
         />
         <motion.div
@@ -113,20 +107,20 @@ export default function SeesawAnimation() {
           transition={{
             duration: 2.5,
             repeat: Number.POSITIVE_INFINITY,
-            ease: "easeInOut",
+            ease: 'easeInOut',
             delay: 0.5,
           }}
         />
       </div>
 
       {/* Labels */}
-      <div className="w-full max-w-xs">
+      <div className="w-full max-w-xs px-4">
         <div className="flex justify-between items-center">
           <motion.div
             className="text-center"
             animate={{
               scale: isUp ? 1.1 : 1,
-              color: isUp ? "#184D37" : "#DCDDCC",
+              color: isUp ? '#184D37' : '#DCDDCC',
             }}
             transition={{ duration: 0.6 }}
           >
@@ -138,7 +132,7 @@ export default function SeesawAnimation() {
             className="text-center"
             animate={{
               scale: !isUp ? 1.1 : 1,
-              color: !isUp ? "#8B4513" : "#DCDDCC",
+              color: !isUp ? '#8B4513' : '#DCDDCC',
             }}
             transition={{ duration: 0.6 }}
           >
@@ -150,8 +144,8 @@ export default function SeesawAnimation() {
 
       {/* Interactive Hint */}
       <div className="text-center">
-        <p className="text-[#DCDDCC] text-xs opacity-60">Click to balance • Hover to pause</p>
+        <p className="text-[#DCDDCC] text-xs opacity-60 pb-2">Click to balance • Hover to pause</p>
       </div>
     </div>
-  )
+  );
 }

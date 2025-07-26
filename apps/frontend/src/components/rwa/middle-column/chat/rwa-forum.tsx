@@ -314,6 +314,7 @@ export default function RWAForum() {
           };
         });
       };
+
       return addReplyToComment(newComments);
     });
 
@@ -357,7 +358,9 @@ export default function RWAForum() {
               variant="ghost"
               size="sm"
               onClick={() => handleVote(comment.id, 'up', path)}
-              className={`p-1 h-auto ${comment.userVote === 'up' ? 'text-[#184D37]' : 'text-[#DCDDCC] hover:text-[#184D37]'}`}
+              className={`p-1 h-auto ${
+                comment.userVote === 'up' ? 'text-[#184D37]' : 'text-[#DCDDCC] hover:text-[#184D37]'
+              }`}
             >
               <ArrowUp size={16} />
             </Button>
@@ -368,7 +371,9 @@ export default function RWAForum() {
               variant="ghost"
               size="sm"
               onClick={() => handleVote(comment.id, 'down', path)}
-              className={`p-1 h-auto ${comment.userVote === 'down' ? 'text-red-400' : 'text-[#DCDDCC] hover:text-red-400'}`}
+              className={`p-1 h-auto ${
+                comment.userVote === 'down' ? 'text-red-400' : 'text-[#DCDDCC] hover:text-red-400'
+              }`}
             >
               <ArrowDown size={16} />
             </Button>
@@ -378,7 +383,9 @@ export default function RWAForum() {
             variant="ghost"
             size="sm"
             onClick={() => handleLike(comment.id, path)}
-            className={`flex items-center gap-1 text-xs ${comment.isLiked ? 'text-red-400' : 'text-[#DCDDCC] hover:text-red-400'}`}
+            className={`flex items-center gap-1 text-xs ${
+              comment.isLiked ? 'text-red-400' : 'text-[#DCDDCC] hover:text-red-400'
+            }`}
           >
             <Heart size={14} fill={comment.isLiked ? 'currentColor' : 'none'} />
             {comment.likes}
@@ -438,42 +445,51 @@ export default function RWAForum() {
       </div>
 
       {/* Render Replies */}
-      {comment.replies.map((reply, index) =>
+      {comment.replies.map((reply) =>
         renderComment(reply, depth + 1, [...path, comments.findIndex((c) => c.id === comment.id)]),
       )}
     </div>
   );
 
   return (
-    <div className="h-[calc(100vh-300px)] flex flex-col bg-black rounded-lg">
+    <div className="h-full bg-black relative flex flex-col">
       {/* Header */}
-      <div className="flex-shrink-0 p-4 border-b border-[#D0B284]/20">
+      <div className="px-4 py-3 border-b border-[#D0B284]/20 flex-shrink-0">
         <h3 className="text-white text-lg font-semibold">
           Discussion ({comments.length} comments)
         </h3>
       </div>
 
-      {/* Comments Feed - Scrollable with constrained height */}
-      <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-[#D0B284] scrollbar-track-[#231F20] min-h-0">
-        <div className="space-y-4">
+      {/* Comments Feed - Scrollable with bottom padding for comment input section */}
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#D0B284] scrollbar-track-[#231F20] pb-32">
+        <div className="px-4 py-4 space-y-4">
           {comments.map((comment, index) => renderComment(comment, 0, [index]))}
         </div>
       </div>
 
-      {/* New Comment Section - Always visible at bottom, flush to container bottom */}
-      <div className="flex-shrink-0 border-t border-[#D0B284]/20 p-4 bg-[#231F20] rounded-b-lg">
-        <div className="flex gap-3 items-end">
+      {/* New Comment Section - Positioned at bottom of this container */}
+      <div className="absolute bottom-0 left-0 right-0 border-t border-[#D0B284]/20 bg-[#231F20] z-10 p-4">
+        <div className="flex gap-3 items-end w-full">
           <Textarea
             placeholder="Share your thoughts about King Solomon's Baby..."
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}
-            className="flex-1 bg-black border-[#D0B284]/20 text-white placeholder:text-[#DCDDCC] resize-none"
-            rows={3}
+            className="flex-1 bg-black border-[#D0B284]/20 text-white placeholder:text-[#DCDDCC] resize-none min-h-[60px] max-h-[200px] overflow-y-auto"
+            style={{
+              height: 'auto',
+              minHeight: '60px',
+              maxHeight: '200px',
+            }}
+            onInput={(e) => {
+              const target = e.target as HTMLTextAreaElement;
+              target.style.height = 'auto';
+              target.style.height = Math.min(target.scrollHeight, 200) + 'px';
+            }}
           />
           <Button
             onClick={handleSubmitComment}
             disabled={!newComment.trim()}
-            className="bg-[#D0B284] hover:bg-[#D0B284]/90 text-[#231F20] font-semibold px-6 py-2 h-auto"
+            className="bg-[#D0B284] hover:bg-[#D0B284]/90 text-[#231F20] font-semibold px-6 py-2 h-auto self-end"
           >
             Post Comment
           </Button>

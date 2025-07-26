@@ -10,12 +10,38 @@ import RWAForum from '@/components/rwa/middle-column/chat/rwa-forum';
 import type { MiddleContentAreaProps } from '../../../types/rwa/section.types';
 import { mockImages } from '../../../constants/rwa';
 
+// Import the type from the hook for consistency
+export type NavigationDirection = 'up' | 'down';
+
+// 1. Define the variants object OUTSIDE the component.
+// The variant functions will receive the `custom` prop as an argument.
+const variants = {
+  // The state to animate FROM
+  enter: (direction: NavigationDirection) => ({
+    y: direction === 'down' ? 50 : -50,
+    opacity: 0,
+  }),
+  // The state to animate TO
+  center: {
+    y: 0,
+    opacity: 1,
+  },
+  // The state to animate TO when exiting
+  exit: (direction: NavigationDirection) => ({
+    y: direction === 'down' ? -50 : 50, // Note: The exiting component moves in the opposite direction of the enter
+    opacity: 0,
+  }),
+};
+
 export function MiddleContentArea({
   activeSection,
   selectedImageIndex,
   setSelectedImageIndex,
-  isAnimating,
-}: MiddleContentAreaProps & { isAnimating: boolean }) {
+  navigationDirection, // Receive the stable direction from the hook
+}: MiddleContentAreaProps & {
+  isAnimating: boolean;
+  navigationDirection: NavigationDirection;
+}) {
   const contentSections = [
     // Overview Content
     <OverviewSection
@@ -34,7 +60,7 @@ export function MiddleContentArea({
         tokenAddress="0x1234...5678"
         fdv="$100,000"
         createdAt="1 day ago"
-        height="h-[500px]"
+        height="h-[550px]"
       />
 
       {/* Token Information - Single Column Layout */}
@@ -85,24 +111,24 @@ export function MiddleContentArea({
   ];
 
   return (
-    <div className={`h-full overflow-y-auto ${activeSection === 0 ? 'p-0' : 'p-8'}`}>
-      <AnimatePresence mode="wait">
+    <div className="h-full overflow-y-auto">
+      {/* mode="wait" is correct, it ensures exit animations finish first */}
+      <AnimatePresence mode="wait" custom={navigationDirection}>
         <motion.div
+          // The key tells AnimatePresence when a component enters/exits
           key={activeSection}
-          initial={{
-            opacity: 0,
-            y: 50,
-          }}
-          animate={{
-            opacity: 1,
-            y: 0,
-          }}
-          exit={{
-            opacity: 0,
-            y: -50,
-          }}
+          // 2. Pass the direction to the `custom` prop. AnimatePresence
+          // will pass this to the variants of both the entering and
+          // EXITING components.
+          custom={navigationDirection}
+          // 3. Reference the variants by name.
+          variants={variants}
+          initial="enter"
+          animate="center"
+          exit="exit"
+          // 4. The transition can be defined once.
           transition={{
-            duration: isAnimating ? 1.2 : 0.6,
+            duration: 1.2, // Use a single duration
             ease: 'easeInOut',
           }}
           className="h-full"
