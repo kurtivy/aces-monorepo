@@ -35,6 +35,7 @@ export interface MiddleContentAreaProps {
   activeSection: number;
   selectedImageIndex: number;
   setSelectedImageIndex: (index: number) => void;
+  navigationDirection: 'up' | 'down' | null;
 }
 
 export interface ImageData {
