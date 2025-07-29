@@ -9,7 +9,7 @@ import { EnhancedUser, AuthContext } from '../types/fastify';
 export function createAuthContext(user: EnhancedUser | null): AuthContext {
   const isAuthenticated = !!user && user.isActive;
   const isSellerVerified = user?.sellerStatus === SellerStatus.APPROVED;
-  const canAccessSellerDashboard = isSellerVerified && !!user?.sellerPasswordHash;
+  const canAccessSellerDashboard = isSellerVerified && !!user?.verifiedAt;
 
   return {
     user,

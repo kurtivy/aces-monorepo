@@ -25,9 +25,11 @@ import { registerAuth } from './plugins/auth';
 import { submissionsRoutes } from './routes/v1/submissions';
 import { adminRoutes } from './routes/v1/admin';
 import { bidsRoutes } from './routes/v1/bids';
-import { sellerVerificationRoutes } from './routes/v1/seller-verification';
+import { accountVerificationRoutes } from './routes/v1/account-verification';
 import { userProfileRoutes } from './routes/v1/user-profile';
 import { webhooksRoutes } from './routes/v1/webhooks';
+import listingsRoutes from './routes/v1/listings';
+import tokensRoutes from './routes/v1/tokens';
 
 export const buildApp = async (): Promise<FastifyInstance> => {
   const fastify = Fastify({
@@ -58,9 +60,11 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   fastify.register(submissionsRoutes, { prefix: '/submissions' });
   fastify.register(adminRoutes, { prefix: '/api/v1/admin' });
   fastify.register(bidsRoutes, { prefix: '/api/v1/bids' });
-  fastify.register(sellerVerificationRoutes, { prefix: '/api/v1/seller-verification' });
+  fastify.register(accountVerificationRoutes, { prefix: '/api/v1/account-verification' });
   fastify.register(userProfileRoutes, { prefix: '/api/v1/users' });
   fastify.register(webhooksRoutes, { prefix: '/api/v1/webhooks' });
+  fastify.register(listingsRoutes, { prefix: '/api/v1' });
+  fastify.register(tokensRoutes, { prefix: '/api/v1' });
 
   // Register hooks
   fastify.addHook('onRequest', async (request) => {
