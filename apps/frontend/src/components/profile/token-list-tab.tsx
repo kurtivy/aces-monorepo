@@ -7,7 +7,6 @@ import { useAuth } from '@/lib/auth/auth-context';
 import { useEffect, useState } from 'react';
 import { ProfileApi, TokenData } from '@/lib/api/profile';
 
-
 export function TokenListTab() {
   const { getAccessToken } = useAuth();
   const [tokens, setTokens] = useState<TokenData[]>([]);
@@ -23,8 +22,29 @@ export function TokenListTab() {
       try {
         const result = await ProfileApi.getUserTokens(authToken);
         if (result.success) {
-          setTokens(result.data.tokens);
-          setTotalValue(result.data.totalValue);
+          // Backend returns tokens directly in data, not in data.tokens
+          const backendTokens = result.data;
+
+          // Transform backend data to frontend TokenData format
+          const transformedTokens: TokenData[] = backendTokens.map((token) => ({
+            id: token.id,
+            title: token.title,
+            ticker: token.ticker,
+            image: token.image,
+            contractAddress: token.contractAddress,
+            category: token.category,
+            amount: 1, // Default to 1 since backend doesn't provide amount
+            totalInEth: parseFloat(token.value) || 0,
+            totalInAces: parseFloat(token.value) || 0, // Using same value for now
+            totalInUSD: parseFloat(token.value) || 0, // Using same value for now
+          }));
+
+          setTokens(transformedTokens);
+
+          // Calculate total value from tokens
+          const totalEth = transformedTokens.reduce((sum, token) => sum + token.totalInEth, 0);
+          const totalUsd = transformedTokens.reduce((sum, token) => sum + token.totalInUSD, 0);
+          setTotalValue({ eth: totalEth, usd: totalUsd });
         } else {
           setError(result.error);
         }
@@ -61,7 +81,8 @@ export function TokenListTab() {
     );
   }
 
-  if (!tokens.length) {
+  // Add null check for tokens array
+  if (!tokens || tokens.length === 0) {
     return (
       <div className="w-full rounded-xl bg-[#231F20] border border-[#D0B284]/20 shadow-lg p-6">
         <div className="text-center text-[#DCDDCC]">

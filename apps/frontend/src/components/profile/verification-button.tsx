@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Shield, Info, Clock, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { VerificationForm } from './verification-form';
 import { useAuth } from '@/lib/auth/auth-context';
@@ -97,6 +97,7 @@ export function VerificationButton({ onSellerDashboardClick }: VerificationButto
       </div>
 
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <DialogTitle className="sr-only">Verification</DialogTitle>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-black border border-[#D0B284]/20">
           <VerificationForm
             onSuccess={() => setIsModalOpen(false)}
