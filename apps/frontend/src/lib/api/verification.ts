@@ -5,26 +5,53 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
 export interface VerificationSubmissionData {
   documentType: string;
   documentNumber: string;
-  fullName: string;
+  firstName: string; // Changed from fullName to firstName
+  lastName: string; // New field
   dateOfBirth: string;
   countryOfIssue: string;
   state?: string;
   address: string;
   emailAddress: string;
-  documentImage: File;
+  twitter?: string; // New optional field
+  website?: string; // New optional field
+  documentImage?: File; // Now optional
 }
 
 export interface VerificationStatus {
-  status: 'PENDING' | 'APPROVED' | 'REJECTED' | null;
+  sellerStatus: 'NOT_APPLIED' | 'PENDING' | 'APPROVED' | 'REJECTED';
+  verificationAttempts: number;
+  lastVerificationAttempt?: string;
+  verificationDetails?: {
+    id: string;
+    status: 'PENDING' | 'APPROVED' | 'REJECTED';
+    rejectionReason?: string;
+    submittedAt: string;
+    reviewedAt?: string;
+  };
   canReapply: boolean;
   attemptsRemaining: number;
-  lastAttempt?: string;
   rejectionReason?: string;
 }
 
 export interface VerificationResult {
-  verificationId: string;
-  message: string;
+  id: string;
+  status: string;
+  submittedAt: string;
+  userId: string;
+}
+
+// Backend response type for status endpoint
+export interface BackendVerificationStatus {
+  sellerStatus: 'NOT_APPLIED' | 'PENDING' | 'APPROVED' | 'REJECTED';
+  verificationAttempts: number;
+  lastVerificationAttempt?: string;
+  verificationDetails?: {
+    id: string;
+    status: 'PENDING' | 'APPROVED' | 'REJECTED';
+    rejectionReason?: string;
+    submittedAt: string;
+    reviewedAt?: string;
+  };
 }
 
 export interface ApiSuccessResponse<T> extends ApiResponse<T> {
@@ -70,7 +97,7 @@ export class VerificationApi {
   }
 
   /**
-   * Submit verification with documents
+   * Submit verification with optional documents
    */
   static async submitVerification(
     data: VerificationSubmissionData,
@@ -81,15 +108,20 @@ export class VerificationApi {
     // Add all text fields
     formData.append('documentType', data.documentType);
     formData.append('documentNumber', data.documentNumber);
-    formData.append('fullName', data.fullName);
+    // Combine firstName and lastName for the fullName field that backend expects
+    formData.append('fullName', `${data.firstName} ${data.lastName}`.trim());
     formData.append('dateOfBirth', data.dateOfBirth);
     formData.append('countryOfIssue', data.countryOfIssue);
     if (data.state) formData.append('state', data.state);
     formData.append('address', data.address);
     formData.append('emailAddress', data.emailAddress);
+    if (data.twitter) formData.append('twitter', data.twitter);
+    if (data.website) formData.append('website', data.website);
 
-    // Add file
-    formData.append('documentImage', data.documentImage);
+    // Add file only if provided
+    if (data.documentImage) {
+      formData.append('documentFile', data.documentImage);
+    }
 
     return this.request('/submit', {
       method: 'POST',
@@ -104,12 +136,41 @@ export class VerificationApi {
    * Get verification status
    */
   static async getVerificationStatus(authToken: string): Promise<ApiResult<VerificationStatus>> {
-    return this.request('/status', {
+    const result = await this.request<BackendVerificationStatus>('/status', {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${authToken}`,
       },
     });
+
+    if (!result.success) {
+      return result;
+    }
+
+    // Transform the backend response to match our frontend interface
+    const backendData = result.data;
+    const transformedData: VerificationStatus = {
+      sellerStatus: backendData.sellerStatus,
+      verificationAttempts: backendData.verificationAttempts,
+      lastVerificationAttempt: backendData.lastVerificationAttempt,
+      verificationDetails: backendData.verificationDetails
+        ? {
+            id: backendData.verificationDetails.id,
+            status: backendData.verificationDetails.status,
+            rejectionReason: backendData.verificationDetails.rejectionReason,
+            submittedAt: backendData.verificationDetails.submittedAt,
+            reviewedAt: backendData.verificationDetails.reviewedAt,
+          }
+        : undefined,
+      canReapply: backendData.sellerStatus !== 'PENDING' && backendData.verificationAttempts < 3,
+      attemptsRemaining: Math.max(0, 3 - backendData.verificationAttempts),
+      rejectionReason: backendData.verificationDetails?.rejectionReason,
+    };
+
+    return {
+      success: true,
+      data: transformedData,
+    };
   }
 
   /**
@@ -128,11 +189,11 @@ export class VerificationApi {
 
     const status = result.data;
 
-    if (status.status === 'APPROVED') {
+    if (status.sellerStatus === 'APPROVED') {
       return { canSubmit: false, reason: 'Already verified' };
     }
 
-    if (status.status === 'PENDING') {
+    if (status.sellerStatus === 'PENDING') {
       return { canSubmit: false, reason: 'Verification pending approval' };
     }
 

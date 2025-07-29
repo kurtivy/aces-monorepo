@@ -21,7 +21,7 @@ interface VerificationFormProps {
 }
 
 export function VerificationForm({ onSuccess, onCancel }: VerificationFormProps) {
-  const { applyForSeller, getAccessToken, user } = useAuth();
+  const { getAccessToken, user } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,12 +29,15 @@ export function VerificationForm({ onSuccess, onCancel }: VerificationFormProps)
   const [formData, setFormData] = useState({
     documentType: 'DRIVERS_LICENSE',
     documentNumber: '',
-    fullName: '',
+    firstName: '',
+    lastName: '',
     dateOfBirth: new Date(),
     countryOfIssue: '',
     state: '',
     address: '',
     emailAddress: '',
+    twitter: '',
+    website: '',
     documentImage: null as File | null,
   });
 
@@ -135,8 +138,15 @@ export function VerificationForm({ onSuccess, onCancel }: VerificationFormProps)
     e.preventDefault();
     setError(null);
 
-    // Basic validation
-    if (!formData.documentNumber || !formData.fullName || !formData.emailAddress) {
+    // Basic validation - updated for new fields
+    if (
+      !formData.documentNumber ||
+      !formData.firstName ||
+      !formData.lastName ||
+      !formData.emailAddress ||
+      !formData.address ||
+      !formData.countryOfIssue
+    ) {
       setError('Please fill in all required fields');
       return;
     }
@@ -144,27 +154,31 @@ export function VerificationForm({ onSuccess, onCancel }: VerificationFormProps)
     setIsSubmitting(true);
 
     try {
-      // Create FormData for file upload
-      const submitData = new FormData();
+      const token = await getAccessToken();
+      if (!token) throw new Error('No auth token available');
 
-      // Handle each field type appropriately
-      submitData.append('documentType', formData.documentType);
-      submitData.append('documentNumber', formData.documentNumber);
-      submitData.append('fullName', formData.fullName);
-      submitData.append('dateOfBirth', formData.dateOfBirth.toISOString());
-      submitData.append('countryOfIssue', formData.countryOfIssue);
-      submitData.append('state', formData.state);
-      submitData.append('address', formData.address);
-      submitData.append('emailAddress', formData.emailAddress);
+      // Prepare data for the new API structure
+      const submissionData = {
+        documentType: formData.documentType,
+        documentNumber: formData.documentNumber,
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        dateOfBirth: formData.dateOfBirth.toISOString(),
+        countryOfIssue: formData.countryOfIssue,
+        state: formData.state || undefined,
+        address: formData.address,
+        emailAddress: formData.emailAddress,
+        twitter: formData.twitter || undefined,
+        website: formData.website || undefined,
+        documentImage: formData.documentImage || undefined,
+      };
 
-      // Handle file separately - now optional
-      if (formData.documentImage) {
-        submitData.append('documentImage', formData.documentImage);
-      }
+      const result = await VerificationApi.submitVerification(submissionData, token);
 
-      const success = await applyForSeller(submitData);
-      if (success) {
+      if (result.success) {
         onSuccess?.();
+      } else {
+        setError(result.error || 'Failed to submit verification');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to submit verification');
@@ -210,14 +224,26 @@ export function VerificationForm({ onSuccess, onCancel }: VerificationFormProps)
             />
           </div>
 
-          {/* Full Name */}
+          {/* First Name */}
           <div>
-            <Label className="text-[#DCDDCC]">Full Name *</Label>
+            <Label className="text-[#DCDDCC]">First Name *</Label>
             <Input
-              value={formData.fullName}
-              onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+              value={formData.firstName}
+              onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
               className="bg-black/50 border-[#D0B284]/20 text-white"
-              placeholder="Enter your full name"
+              placeholder="Enter your first name"
+              required
+            />
+          </div>
+
+          {/* Last Name */}
+          <div>
+            <Label className="text-[#DCDDCC]">Last Name *</Label>
+            <Input
+              value={formData.lastName}
+              onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+              className="bg-black/50 border-[#D0B284]/20 text-white"
+              placeholder="Enter your last name"
               required
             />
           </div>
@@ -270,6 +296,19 @@ export function VerificationForm({ onSuccess, onCancel }: VerificationFormProps)
             />
           </div>
 
+          {/* Email */}
+          <div>
+            <Label className="text-[#DCDDCC]">Email Address *</Label>
+            <Input
+              type="email"
+              value={formData.emailAddress}
+              onChange={(e) => setFormData({ ...formData, emailAddress: e.target.value })}
+              className="bg-black/50 border-[#D0B284]/20 text-white"
+              placeholder="Enter your email"
+              required
+            />
+          </div>
+
           {/* Address */}
           <div className="md:col-span-2">
             <Label className="text-[#DCDDCC]">Address *</Label>
@@ -282,16 +321,26 @@ export function VerificationForm({ onSuccess, onCancel }: VerificationFormProps)
             />
           </div>
 
-          {/* Email */}
-          <div className="md:col-span-2">
-            <Label className="text-[#DCDDCC]">Email Address *</Label>
+          {/* Twitter (Optional) */}
+          <div>
+            <Label className="text-[#DCDDCC]">Twitter Username</Label>
             <Input
-              type="email"
-              value={formData.emailAddress}
-              onChange={(e) => setFormData({ ...formData, emailAddress: e.target.value })}
+              value={formData.twitter}
+              onChange={(e) => setFormData({ ...formData, twitter: e.target.value })}
               className="bg-black/50 border-[#D0B284]/20 text-white"
-              placeholder="Enter your email"
-              required
+              placeholder="@username (optional)"
+            />
+          </div>
+
+          {/* Website (Optional) */}
+          <div>
+            <Label className="text-[#DCDDCC]">Website</Label>
+            <Input
+              type="url"
+              value={formData.website}
+              onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+              className="bg-black/50 border-[#D0B284]/20 text-white"
+              placeholder="https://example.com (optional)"
             />
           </div>
 

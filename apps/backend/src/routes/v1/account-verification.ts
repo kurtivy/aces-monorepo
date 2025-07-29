@@ -6,6 +6,8 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 import { MultipartFile } from '@fastify/multipart';
 import { errors } from '../../lib/errors';
 import { logger } from '../../lib/logger';
+import { getSignedSecureUrl } from '../../lib/secure-storage-utils';
+import { VerificationStatus } from '@prisma/client';
 
 interface CustomError extends Error {
   statusCode?: number;
@@ -23,6 +25,8 @@ const VerificationSubmissionSchema = z.object({
   state: z.string().optional(),
   address: z.string().min(1, 'Address is required'),
   emailAddress: z.string().email('Invalid email address'),
+  twitter: z.string().optional(),
+  website: z.string().optional(),
 });
 
 const VerificationApprovalSchema = z.object({
@@ -52,293 +56,403 @@ function validateFile(file: MultipartFile): DocumentFile {
 }
 
 export async function accountVerificationRoutes(fastify: FastifyInstance) {
-  const verificationService = new AccountVerificationService(fastify.prisma);
-  const log = logger.child({ module: 'account-verification-routes' });
+  console.log('🔐 Registering account verification routes...');
 
-  fastify.post(
-    '/submit',
-    {
-      preHandler: [requireAuth],
-      schema: {
-        consumes: ['multipart/form-data'],
-        body: {
-          type: 'object',
-          properties: {
-            documentType: { type: 'string', minLength: 1 },
-            documentNumber: { type: 'string', minLength: 1 },
-            fullName: { type: 'string', minLength: 1 },
-            dateOfBirth: { type: 'string', format: 'date' },
-            countryOfIssue: { type: 'string', minLength: 1 },
-            state: { type: 'string' },
-            address: { type: 'string', minLength: 1 },
-            emailAddress: { type: 'string', format: 'email' },
-            documentFile: {
-              type: 'string',
-              format: 'binary',
-              contentMediaType: ALLOWED_MIME_TYPES.join(','),
-              maxLength: MAX_FILE_SIZE,
-            },
-          },
-          required: [
-            'documentType',
-            'documentNumber',
-            'fullName',
-            'dateOfBirth',
-            'countryOfIssue',
-            'address',
-            'emailAddress',
-            'documentFile',
-          ],
-        } as const,
+  try {
+    const verificationService = new AccountVerificationService(fastify.prisma);
+    const log = logger.child({ module: 'account-verification-routes' });
+    console.log('✅ Account verification service initialized');
+
+    // Add debugging hook for account verification requests
+    fastify.addHook('preHandler', async (request) => {
+      if (request.url.includes('/account-verification/submit')) {
+        console.log('🔍 PRE-HANDLER HOOK - before any middleware', {
+          method: request.method,
+          url: request.url,
+          hasAuth: !!request.auth,
+          isMultipart: request.isMultipart?.() ?? 'unknown',
+        });
+      }
+    });
+
+    console.log('📝 Registering POST /submit route...');
+    fastify.post(
+      '/submit',
+      {
+        preHandler: [requireAuth],
+        // Removed schema - multipart/form-data doesn't work with JSON schema validation
       },
-    },
-    async (request, reply) => {
-      try {
-        if (!request.isMultipart()) {
-          throw errors.badRequest('Request must be multipart/form-data');
+      async (request, reply) => {
+        console.log('🎯 ROUTE HANDLER REACHED - verification submission starting');
+        log.info('Starting verification submission', {
+          userId: request.user?.id,
+          hasUser: !!request.user,
+          userKeys: request.user ? Object.keys(request.user) : [],
+        });
+
+        if (!request.user?.id) {
+          log.error('No authenticated user found');
+          return reply.status(401).send({
+            success: false,
+            error: 'Authentication required',
+          });
         }
 
-        const parts = request.parts();
-        const fields: Record<string, string> = {};
-        let documentFile: DocumentFile | null = null;
-
-        for await (const part of parts) {
-          if (part.type === 'field') {
-            fields[part.fieldname] = part.value as string;
-          } else if (part.type === 'file' && part.fieldname === 'documentFile') {
-            // Validate and store file
-            documentFile = validateFile(part);
-            const buffer = await part.toBuffer();
-            if (buffer.length > MAX_FILE_SIZE) {
-              throw errors.badRequest(`File size must not exceed ${MAX_FILE_SIZE / 1024 / 1024}MB`);
-            }
-            documentFile.buffer = buffer;
+        try {
+          if (!request.isMultipart()) {
+            log.error('Request is not multipart');
+            throw errors.badRequest('Request must be multipart/form-data');
           }
-        }
 
-        // Validate form data
-        const formData = VerificationSubmissionSchema.parse(fields);
+          log.info('Processing multipart form data');
+          const parts = request.parts();
+          const fields: Record<string, string> = {};
+          let documentFile: DocumentFile | null = null;
 
-        if (!documentFile) {
-          throw errors.badRequest('Document file is required');
-        }
+          for await (const part of parts) {
+            if (part.type === 'field') {
+              fields[part.fieldname] = part.value as string;
+              log.info('Received field', {
+                fieldname: part.fieldname,
+                value: part.fieldname === 'emailAddress' ? '[email]' : part.value,
+              });
+            } else if (part.type === 'file' && part.fieldname === 'documentFile') {
+              log.info('Received file', {
+                fieldname: part.fieldname,
+                filename: part.filename,
+                mimetype: part.mimetype,
+              });
+              // Validate and store file
+              documentFile = validateFile(part);
+              const buffer = await part.toBuffer();
+              if (buffer.length > MAX_FILE_SIZE) {
+                throw errors.badRequest(
+                  `File size must not exceed ${MAX_FILE_SIZE / 1024 / 1024}MB`,
+                );
+              }
+              documentFile.buffer = buffer;
+            }
+          }
 
-        // Submit verification
-        const result = await verificationService.submitVerification(
-          request.user!.id,
-          {
-            ...formData,
-            dateOfBirth: new Date(formData.dateOfBirth),
-            firstName: '',
-            lastName: '',
-          },
-          documentFile,
-        );
+          log.info('Form fields received', {
+            fieldCount: Object.keys(fields).length,
+            hasFile: !!documentFile,
+          });
 
-        log.info('Verification submitted successfully', {
-          userId: request.user!.id,
-          verificationId: result.id,
-        });
+          // Validate form data
+          log.info('Validating form data with schema');
+          const formData = VerificationSubmissionSchema.parse(fields);
 
-        return reply.send({
-          success: true,
-          data: result,
-        });
-      } catch (error: unknown) {
-        log.error('Verification submission error', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          userId: request.user!.id,
-        });
+          // Submit verification
+          const { fullName, ...formDataWithoutFullName } = formData;
+          const result = await verificationService.submitVerification(
+            request.user!.id,
+            {
+              ...formDataWithoutFullName,
+              dateOfBirth: new Date(formData.dateOfBirth),
+              firstName: formData.fullName.split(' ')[0] || '',
+              lastName: formData.fullName.split(' ').slice(1).join(' ') || '',
+            },
+            documentFile || undefined,
+          );
 
-        if (error instanceof z.ZodError) {
-          return reply.status(400).send({
+          log.info('Verification submitted successfully', {
+            userId: request.user!.id,
+            verificationId: result.id,
+          });
+
+          return reply.send({
+            success: true,
+            data: result,
+          });
+        } catch (error: unknown) {
+          log.error('Verification submission error', {
+            error: error instanceof Error ? error.message : 'Unknown error',
+            stack: error instanceof Error ? error.stack : undefined,
+            errorType: error?.constructor?.name,
+            userId: request.user?.id || 'unknown',
+          });
+
+          if (error instanceof z.ZodError) {
+            return reply.status(400).send({
+              success: false,
+              error: 'Invalid form data',
+              details: error.errors,
+            });
+          }
+
+          const customError = error as CustomError;
+          if (customError.statusCode) {
+            return reply.status(customError.statusCode).send({
+              success: false,
+              error: customError.message,
+            });
+          }
+
+          return reply.status(500).send({
             success: false,
-            error: 'Invalid form data',
-            details: error.errors,
+            error: 'Internal server error',
           });
         }
-
-        const customError = error as CustomError;
-        if (customError.statusCode) {
-          return reply.status(customError.statusCode).send({
-            success: false,
-            error: customError.message,
-          });
-        }
-
-        return reply.status(500).send({
-          success: false,
-          error: 'Internal server error',
-        });
-      }
-    },
-  );
-
-  fastify.delete(
-    '/document',
-    {
-      preHandler: [requireAuth],
-    },
-    async (request, reply) => {
-      try {
-        await verificationService.deleteVerificationDocument(request.user!.id);
-        return reply.send({
-          success: true,
-          message: 'Document deleted successfully',
-        });
-      } catch (error: unknown) {
-        log.error('Document deletion error', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          userId: request.user!.id,
-        });
-
-        const customError = error as CustomError;
-        if (customError.statusCode) {
-          return reply.status(customError.statusCode).send({
-            success: false,
-            error: customError.message,
-          });
-        }
-
-        return reply.status(500).send({
-          success: false,
-          error: 'Failed to delete document',
-        });
-      }
-    },
-  );
-
-  fastify.get(
-    '/status',
-    {
-      preHandler: [requireAuth],
-    },
-    async (request, reply) => {
-      try {
-        const status = await verificationService.getUserVerificationStatus(request.user!.id);
-        return reply.send({
-          success: true,
-          data: status,
-        });
-      } catch (error: unknown) {
-        log.error('Status check error', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          userId: request.user!.id,
-        });
-
-        const customError = error as CustomError;
-        if (customError.statusCode) {
-          return reply.status(customError.statusCode).send({
-            success: false,
-            error: customError.message,
-          });
-        }
-
-        return reply.status(500).send({
-          success: false,
-          error: 'Failed to get verification status',
-        });
-      }
-    },
-  );
-
-  fastify.get(
-    '/admin/pending',
-    {
-      preHandler: [requireAdmin],
-    },
-    async (request, reply) => {
-      try {
-        const pendingVerifications = await verificationService.getAllPendingVerifications();
-        return reply.send({
-          success: true,
-          data: pendingVerifications,
-        });
-      } catch (error: unknown) {
-        log.error('Pending verifications fetch error', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          adminId: request.user!.id,
-        });
-
-        const customError = error as CustomError;
-        if (customError.statusCode) {
-          return reply.status(customError.statusCode).send({
-            success: false,
-            error: customError.message,
-          });
-        }
-
-        return reply.status(500).send({
-          success: false,
-          error: 'Failed to fetch pending verifications',
-        });
-      }
-    },
-  );
-
-  fastify.post(
-    '/admin/process/:verificationId',
-    {
-      preHandler: [requireAdmin],
-      schema: {
-        params: zodToJsonSchema(
-          z.object({
-            verificationId: z.string().uuid('Invalid verification ID'),
-          }),
-        ),
-        body: zodToJsonSchema(VerificationApprovalSchema),
       },
-    },
-    async (request, reply) => {
-      try {
-        const { verificationId } = request.params as { verificationId: string };
-        const { approve, rejectionReason } = VerificationApprovalSchema.parse(request.body);
+    );
 
-        const result = await verificationService.processVerification(
-          verificationId,
-          request.user!.id,
-          approve,
-          rejectionReason || undefined,
-        );
+    fastify.delete(
+      '/document',
+      {
+        preHandler: [requireAuth],
+      },
+      async (request, reply) => {
+        try {
+          await verificationService.deleteVerificationDocument(request.user!.id);
+          return reply.send({
+            success: true,
+            message: 'Document deleted successfully',
+          });
+        } catch (error: unknown) {
+          log.error('Document deletion error', {
+            error: error instanceof Error ? error.message : 'Unknown error',
+            userId: request.user!.id,
+          });
 
-        log.info('Verification processed', {
-          verificationId,
-          adminId: request.user!.id,
-          approved: approve,
-        });
+          const customError = error as CustomError;
+          if (customError.statusCode) {
+            return reply.status(customError.statusCode).send({
+              success: false,
+              error: customError.message,
+            });
+          }
 
-        return reply.send({
-          success: true,
-          data: result,
-        });
-      } catch (error: unknown) {
-        log.error('Verification processing error', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          adminId: request.user!.id,
-          verificationId: (request.params as { verificationId: string }).verificationId,
-        });
-
-        if (error instanceof z.ZodError) {
-          return reply.status(400).send({
+          return reply.status(500).send({
             success: false,
-            error: 'Invalid request data',
-            details: error.errors,
+            error: 'Failed to delete document',
           });
         }
+      },
+    );
 
-        const customError = error as CustomError;
-        if (customError.statusCode) {
-          return reply.status(customError.statusCode).send({
+    fastify.get(
+      '/status',
+      {
+        preHandler: [requireAuth],
+      },
+      async (request, reply) => {
+        try {
+          const status = await verificationService.getUserVerificationStatus(request.user!.id);
+          return reply.send({
+            success: true,
+            data: status,
+          });
+        } catch (error: unknown) {
+          log.error('Status check error', {
+            error: error instanceof Error ? error.message : 'Unknown error',
+            userId: request.user!.id,
+          });
+
+          const customError = error as CustomError;
+          if (customError.statusCode) {
+            return reply.status(customError.statusCode).send({
+              success: false,
+              error: customError.message,
+            });
+          }
+
+          return reply.status(500).send({
             success: false,
-            error: customError.message,
+            error: 'Failed to get verification status',
           });
         }
+      },
+    );
 
-        return reply.status(500).send({
-          success: false,
-          error: 'Failed to process verification',
+    fastify.get(
+      '/admin/pending',
+      {
+        preHandler: [requireAdmin],
+      },
+      async (request, reply) => {
+        try {
+          const pendingVerifications = await verificationService.getAllPendingVerifications();
+          return reply.send({
+            success: true,
+            data: pendingVerifications,
+          });
+        } catch (error: unknown) {
+          log.error('Pending verifications fetch error', {
+            error: error instanceof Error ? error.message : 'Unknown error',
+            adminId: request.user!.id,
+          });
+
+          const customError = error as CustomError;
+          if (customError.statusCode) {
+            return reply.status(customError.statusCode).send({
+              success: false,
+              error: customError.message,
+            });
+          }
+
+          return reply.status(500).send({
+            success: false,
+            error: 'Failed to fetch pending verifications',
+          });
+        }
+      },
+    );
+
+    fastify.post(
+      '/admin/process/:verificationId',
+      {
+        preHandler: [requireAdmin],
+        schema: {
+          params: zodToJsonSchema(
+            z.object({
+              verificationId: z.string().uuid('Invalid verification ID'),
+            }),
+          ),
+          body: zodToJsonSchema(VerificationApprovalSchema),
+        },
+      },
+      async (request, reply) => {
+        try {
+          const { verificationId } = request.params as { verificationId: string };
+          const { approve, rejectionReason } = VerificationApprovalSchema.parse(request.body);
+
+          const decision = approve ? VerificationStatus.APPROVED : VerificationStatus.REJECTED;
+          const result = await verificationService.reviewVerification(
+            verificationId,
+            request.user!.id,
+            decision,
+            rejectionReason || undefined,
+          );
+
+          log.info('Verification processed', {
+            verificationId,
+            adminId: request.user!.id,
+            approved: approve,
+          });
+
+          return reply.send({
+            success: true,
+            data: result,
+          });
+        } catch (error: unknown) {
+          log.error('Verification processing error', {
+            error: error instanceof Error ? error.message : 'Unknown error',
+            adminId: request.user!.id,
+            verificationId: (request.params as { verificationId: string }).verificationId,
+          });
+
+          if (error instanceof z.ZodError) {
+            return reply.status(400).send({
+              success: false,
+              error: 'Invalid request data',
+              details: error.errors,
+            });
+          }
+
+          const customError = error as CustomError;
+          if (customError.statusCode) {
+            return reply.status(customError.statusCode).send({
+              success: false,
+              error: customError.message,
+            });
+          }
+
+          return reply.status(500).send({
+            success: false,
+            error: 'Failed to process verification',
+          });
+        }
+      },
+    );
+
+    /**
+     * Get signed URL for secure document (admin only)
+     */
+    fastify.get(
+      '/admin/document/:verificationId',
+      {
+        preHandler: [requireAdmin],
+        schema: {
+          params: zodToJsonSchema(
+            z.object({
+              verificationId: z.string().cuid(),
+            }),
+          ),
+        },
+      },
+      async (request, reply) => {
+        try {
+          const { verificationId } = request.params as { verificationId: string };
+
+          // Get verification with document URL
+          const verification = await verificationService.getVerificationById(verificationId);
+
+          if (!verification) {
+            throw errors.notFound('Verification not found');
+          }
+
+          if (!verification.documentImageUrl) {
+            throw errors.notFound('No document found for this verification');
+          }
+
+          // Extract filename from URL
+          const fileName = verification.documentImageUrl.split('aces-secure-documents/')[1];
+          if (!fileName) {
+            throw errors.badRequest('Invalid document URL');
+          }
+
+          // Generate signed URL for secure access
+          const signedUrl = await getSignedSecureUrl(fileName, 30); // 30 minutes access
+
+          return reply.send({
+            success: true,
+            data: {
+              signedUrl,
+              expiresIn: 30 * 60, // 30 minutes in seconds
+              documentType: verification.documentType,
+              uploadedAt: verification.submittedAt,
+            },
+          });
+        } catch (error: unknown) {
+          log.error('Secure document access error', {
+            error: error instanceof Error ? error.message : 'Unknown error',
+            adminId: request.user!.id,
+            verificationId: (request.params as { verificationId: string }).verificationId,
+          });
+
+          const customError = error as CustomError;
+          if (customError.statusCode) {
+            return reply.status(customError.statusCode).send({
+              success: false,
+              error: customError.message,
+            });
+          }
+
+          return reply.status(500).send({
+            success: false,
+            error: 'Failed to access secure document',
+          });
+        }
+      },
+    );
+
+    // Add debug hook for all verification routes
+    fastify.addHook('preHandler', async (request) => {
+      if (request.url.includes('/account-verification/submit')) {
+        console.log('🔍 PRE-HANDLER HOOK - before any middleware', {
+          url: request.url,
+          method: request.method,
+          contentType: request.headers['content-type'],
+          hasAuth: !!request.auth,
+          hasUser: !!request.user,
         });
       }
-    },
-  );
+    });
+
+    console.log('✅ Account verification routes registered successfully');
+  } catch (error) {
+    console.error('❌ Error during route registration:', error);
+    throw error;
+  }
 }

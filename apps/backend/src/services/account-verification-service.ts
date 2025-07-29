@@ -1,17 +1,9 @@
 import { PrismaClient, SellerStatus, VerificationStatus } from '@prisma/client';
 import { errors } from '../lib/errors';
 import { MultipartFile } from '@fastify/multipart';
-import { uploadVerificationDocument, deleteVerificationDocument } from '../lib/storage-utils';
+import { uploadSecureDocument, deleteSecureDocumentByUrl } from '../lib/secure-storage-utils';
 
 export class AccountVerificationService {
-  processVerification(
-    verificationId: string,
-    id: string,
-    approve: boolean,
-    arg3: string | undefined,
-  ) {
-    throw new Error('Method not implemented.');
-  }
   constructor(private prisma: PrismaClient) {}
 
   async submitVerification(
@@ -29,7 +21,7 @@ export class AccountVerificationService {
       twitter?: string; // New optional field
       website?: string; // New optional field
     },
-    documentFile: MultipartFile & { buffer?: Buffer },
+    documentFile?: MultipartFile & { buffer?: Buffer },
   ) {
     console.log('Starting verification submission for user:', userId);
 
@@ -65,10 +57,15 @@ export class AccountVerificationService {
         await this.deleteVerificationDocument(userId);
       }
 
-      // Upload document
-      console.log('Uploading new document');
-      const documentImageUrl = await uploadVerificationDocument(documentFile, userId);
-      console.log('Document uploaded successfully:', documentImageUrl);
+      // Upload document if provided
+      let documentImageUrl: string | null = null;
+      if (documentFile) {
+        console.log('Uploading new document');
+        documentImageUrl = await uploadSecureDocument(documentFile, userId, data.documentType);
+        console.log('Document uploaded successfully:', documentImageUrl);
+      } else {
+        console.log('No document file provided - skipping upload');
+      }
 
       // Use transaction to ensure all operations succeed or fail together
       console.log('Starting database transaction');
@@ -127,7 +124,7 @@ export class AccountVerificationService {
       // Clean up uploaded file on error
       if (documentFile) {
         try {
-          await deleteVerificationDocument(userId);
+          await this.deleteVerificationDocument(userId);
         } catch (cleanupError) {
           console.error('Error cleaning up document:', cleanupError);
         }
@@ -240,6 +237,31 @@ export class AccountVerificationService {
     }
   }
 
+  async getVerificationById(verificationId: string) {
+    try {
+      const verification = await this.prisma.accountVerification.findUnique({
+        where: { id: verificationId },
+        include: {
+          user: {
+            select: {
+              id: true,
+              displayName: true,
+              email: true,
+              sellerStatus: true,
+              verificationAttempts: true,
+              lastVerificationAttempt: true,
+            },
+          },
+        },
+      });
+
+      return verification;
+    } catch (error) {
+      console.error('Error getting verification by ID:', error);
+      throw error;
+    }
+  }
+
   async deleteVerificationDocument(userId: string) {
     try {
       const user = await this.prisma.user.findUnique({
@@ -251,7 +273,7 @@ export class AccountVerificationService {
         return false;
       }
 
-      await deleteVerificationDocument(user.accountVerification.documentImageUrl);
+      await deleteSecureDocumentByUrl(user.accountVerification.documentImageUrl);
 
       // Update verification record to remove document URL
       await this.prisma.accountVerification.update({
