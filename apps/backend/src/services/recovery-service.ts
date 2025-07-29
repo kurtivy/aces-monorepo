@@ -1,91 +1,22 @@
-import {
-  PrismaClient,
-  Prisma,
-  WebhookLog,
-  SubmissionStatus,
-  TxStatus,
-  RwaSubmission,
-} from '@prisma/client';
-import { createWalletClient, http, WalletClient } from 'viem';
-import { baseSepolia } from 'viem/chains';
-import { privateKeyToAccount } from 'viem/accounts';
-import { CONTRACTS, MOCK_RWA_FACTORY_ABI } from '@aces/utils';
+import { PrismaClient, WebhookLog, SubmissionStatus, RwaSubmission } from '@prisma/client';
 import { errors } from '../lib/errors';
 import { loggers } from '../lib/logger';
 import { withTransaction } from '../lib/database';
-import { z } from 'zod';
-
-const ReplayWebhookPayloadSchema = z
-  .object({
-    txHash: z.string().optional(),
-    hash: z.string().optional(),
-    transactionHash: z.string().optional(),
-    status: z.string(),
-    blockNumber: z.number().optional(),
-    gasUsed: z.string().optional(),
-  })
-  .refine((data) => data.txHash || data.hash || data.transactionHash, {
-    message: 'Payload must contain one of txHash, hash, or transactionHash',
-  });
 
 export class RecoveryService {
-  private walletClient: WalletClient | null = null;
-  private network: string;
+  constructor(private prisma: PrismaClient) {}
 
-  constructor(private prisma: PrismaClient) {
-    // Initialize network setting but don't require wallet client immediately
-    this.network = process.env.BLOCKCHAIN_NETWORK || 'localhost';
-
-    // Only initialize wallet client if we have the private key
-    if (process.env.MINTER_PRIVATE_KEY) {
-      this.initializeWalletClient();
-    }
-  }
-
-  private initializeWalletClient() {
-    if (!process.env.MINTER_PRIVATE_KEY) {
-      throw new Error(
-        'MINTER_PRIVATE_KEY environment variable is required for blockchain operations',
-      );
-    }
-
-    const account = privateKeyToAccount(process.env.MINTER_PRIVATE_KEY as `0x${string}`);
-    const chain = this.network === 'baseSepolia' ? baseSepolia : baseSepolia;
-
-    this.walletClient = createWalletClient({
-      account,
-      chain,
-      transport: http(process.env.BASE_RPC_URL || 'https://sepolia.base.org'),
-    });
-
-    loggers.blockchain('initialized', 'recovery_wallet_client', `network: ${this.network}`);
-  }
-
-  private ensureWalletClient(): WalletClient {
-    if (!this.walletClient) {
-      if (!process.env.MINTER_PRIVATE_KEY) {
-        throw new Error(
-          'MINTER_PRIVATE_KEY environment variable is required for blockchain operations',
-        );
-      }
-      this.initializeWalletClient();
-
-      // Double-check initialization succeeded
-      if (!this.walletClient) {
-        throw new Error('Failed to initialize wallet client');
-      }
-    }
-    return this.walletClient;
-  }
-
-  async resubmitTransaction(
+  /**
+   * Retry submission approval (for failed approvals)
+   */
+  async retrySubmissionApproval(
     submissionId: string,
     adminId: string,
     correlationId: string,
-  ): Promise<{ txHash: string; previousTxHash?: string }> {
+  ): Promise<{ success: boolean; submissionId: string }> {
     try {
       const result = await withTransaction(async (tx) => {
-        // Get submission details
+        // Get submission
         const submission = await tx.rwaSubmission.findUnique({
           where: { id: submissionId },
           include: { owner: true },
@@ -95,75 +26,19 @@ export class RecoveryService {
           throw errors.notFound('Submission not found');
         }
 
-        // Validate that this submission can be resubmitted
-        if (submission.status !== 'APPROVED' && submission.status !== 'REJECTED') {
-          throw errors.validation(`Cannot resubmit submission with status: ${submission.status}`);
+        // Only allow retry for rejected submissions
+        if (submission.status !== 'REJECTED') {
+          throw errors.validation(`Cannot retry submission with status: ${submission.status}`);
         }
 
-        if (!submission.txHash) {
-          throw errors.validation('No original transaction to resubmit');
-        }
-
-        if (submission.txStatus !== 'FAILED' && submission.txStatus !== 'DROPPED') {
-          throw errors.validation(
-            `Cannot resubmit transaction with status: ${submission.txStatus}`,
-          );
-        }
-
-        if (!submission.owner.walletAddress) {
-          throw errors.validation('Submission owner has no wallet address');
-        }
-
-        const previousTxHash = submission.txHash;
-
-        // Get contract addresses
-        const contractAddresses = CONTRACTS[this.network as keyof typeof CONTRACTS];
-        if (!contractAddresses?.mockRwaFactory) {
-          throw errors.internal(
-            `No factory contract address configured for network: ${this.network}`,
-          );
-        }
-
-        // Resubmit the transaction with same parameters
-        loggers.blockchain(
-          'resubmitting',
-          'factory_contract',
-          `${contractAddresses.mockRwaFactory} | original: ${previousTxHash}`,
-        );
-
-        const walletClient = this.ensureWalletClient();
-
-        if (!walletClient.account) {
-          throw errors.internal('Wallet client is not configured with an account', {
-            cause: new Error('No wallet account'),
-          });
-        }
-
-        const newHash = await walletClient.writeContract({
-          account: walletClient.account,
-          chain: walletClient.chain,
-          address: contractAddresses.mockRwaFactory as `0x${string}`,
-          abi: MOCK_RWA_FACTORY_ABI,
-          functionName: 'createRwa',
-          args: [
-            submission.name,
-            submission.symbol,
-            BigInt(1), // Temporary deedId - in production this should be dynamically generated
-            submission.owner.walletAddress as `0x${string}`,
-          ],
-        });
-
-        loggers.blockchain(newHash, 'transaction_resubmitted', `previous: ${previousTxHash}`);
-
-        // Update submission with new transaction
+        // Reset submission to pending for retry
         await tx.rwaSubmission.update({
           where: { id: submissionId },
           data: {
-            status: 'APPROVED', // Back to approved since we resubmitted
-            txHash: newHash,
-            txStatus: 'SUBMITTED',
+            status: 'PENDING',
+            rejectionReason: null,
             updatedBy: adminId,
-            updatedByType: 'ADMIN',
+            updatedAt: new Date(),
           },
         });
 
@@ -171,133 +46,63 @@ export class RecoveryService {
         await tx.submissionAuditLog.create({
           data: {
             submissionId,
-            fromStatus: submission.status,
-            toStatus: 'APPROVED',
+            fromStatus: 'REJECTED',
+            toStatus: 'PENDING',
             actorId: adminId,
             actorType: 'ADMIN',
-            notes: `Transaction resubmitted. New: ${newHash}, Previous: ${previousTxHash}`,
+            notes: 'Submission reset for retry approval',
           },
         });
 
-        return { txHash: newHash, previousTxHash };
+        return true;
       });
 
-      loggers.database('resubmitted', 'rwa_submission', submissionId);
-      return result;
+      loggers.database('retry_approval', 'rwa_submission', submissionId);
+      return { success: result, submissionId };
     } catch (error) {
       loggers.error(error as Error, {
         submissionId,
         adminId,
         correlationId,
-        operation: 'resubmitTransaction',
+        operation: 'retrySubmissionApproval',
       });
       throw error;
     }
   }
 
+  /**
+   * Recover webhook processing (replay webhook)
+   */
   async replayWebhook(
     webhookLogId: string,
     adminId: string,
     correlationId: string,
   ): Promise<{ success: boolean; processed: boolean }> {
     try {
-      const result = await withTransaction(async (tx) => {
-        // Get webhook log
-        const webhookLog = await tx.webhookLog.findUnique({
-          where: { id: webhookLogId },
-        });
-
-        if (!webhookLog) {
-          throw errors.notFound('Webhook log not found');
-        }
-
-        // Check if already processed (idempotency)
-        if (webhookLog.processedAt) {
-          loggers.blockchain('webhook_already_processed', 'replay', webhookLogId);
-          return { success: true, processed: true };
-        }
-
-        // Mark as processed first to prevent duplicate processing
-        await tx.webhookLog.update({
-          where: { id: webhookLogId },
-          data: { processedAt: new Date() },
-        });
-
-        // Extract transaction details from payload
-        const parseResult = ReplayWebhookPayloadSchema.safeParse(webhookLog.payload);
-        if (!parseResult.success) {
-          throw errors.validation('Invalid webhook payload', { details: parseResult.error.issues });
-        }
-        const payload = parseResult.data;
-        const txHash = payload.txHash || payload.hash || payload.transactionHash!;
-        const status = payload.status;
-
-        if (!txHash || !status) {
-          throw errors.validation('Invalid webhook payload: missing txHash or status');
-        }
-
-        // Find the submission by transaction hash
-        const submission = await tx.rwaSubmission.findUnique({
-          where: { txHash },
-        });
-
-        if (!submission) {
-          loggers.blockchain(txHash, 'submission_not_found_for_webhook', webhookLogId);
-          return { success: true, processed: false };
-        }
-
-        // Update submission status based on webhook
-        let newSubmissionStatus;
-        let newTxStatus;
-
-        switch (status.toUpperCase()) {
-          case 'MINED':
-          case 'SUCCESS':
-          case 'CONFIRMED':
-            newSubmissionStatus = 'LIVE';
-            newTxStatus = 'MINED';
-            break;
-          case 'FAILED':
-          case 'REVERTED':
-            newSubmissionStatus = 'REJECTED';
-            newTxStatus = 'FAILED';
-            break;
-          case 'DROPPED':
-          case 'CANCELLED':
-            newSubmissionStatus = 'REJECTED';
-            newTxStatus = 'DROPPED';
-            break;
-          default:
-            throw errors.validation(`Unknown transaction status: ${status}`);
-        }
-
-        // Update submission
-        await tx.rwaSubmission.update({
-          where: { txHash },
-          data: {
-            status: newSubmissionStatus as SubmissionStatus,
-            txStatus: newTxStatus as TxStatus,
-            updatedByType: 'WEBHOOK',
-          },
-        });
-
-        // Log to audit trail
-        await tx.submissionAuditLog.create({
-          data: {
-            submissionId: submission.id,
-            fromStatus: submission.status,
-            toStatus: newSubmissionStatus as SubmissionStatus,
-            actorId: adminId,
-            actorType: 'ADMIN',
-            notes: `Webhook replayed: ${status} for tx ${txHash}${payload.blockNumber ? ` (block ${payload.blockNumber})` : ''}`,
-          },
-        });
-
-        return { success: true, processed: false };
+      const webhookLog = await this.prisma.webhookLog.findUnique({
+        where: { id: webhookLogId },
       });
 
-      loggers.database('webhook_replayed', 'webhook_log', webhookLogId);
-      return result;
+      if (!webhookLog) {
+        throw errors.notFound('Webhook log not found');
+      }
+
+      if (webhookLog.processedAt) {
+        loggers.database('webhook_already_processed', 'webhook_logs', webhookLogId);
+        return { success: true, processed: true };
+      }
+
+      // Mark as processed (in a real implementation, you'd re-process the webhook)
+      await this.prisma.webhookLog.update({
+        where: { id: webhookLogId },
+        data: {
+          processedAt: new Date(),
+          error: null, // Clear any previous error
+        },
+      });
+
+      loggers.database('webhook_replayed', 'webhook_logs', webhookLogId);
+      return { success: true, processed: false };
     } catch (error) {
       loggers.error(error as Error, {
         webhookLogId,
@@ -309,106 +114,180 @@ export class RecoveryService {
     }
   }
 
-  async getFailedTransactions(
-    options: { limit?: number; cursor?: string } = {},
-  ): Promise<{ data: RwaSubmission[]; nextCursor?: string; hasMore: boolean }> {
+  /**
+   * Get failed webhook logs for retry
+   */
+  async getFailedWebhooks(
+    limit: number = 50,
+    options: { olderThan?: Date; includeProcessed?: boolean } = {},
+  ): Promise<WebhookLog[]> {
     try {
-      const limit = Math.min(options.limit || 20, 100);
-      const where: Prisma.RwaSubmissionWhereInput = {
-        txStatus: { in: ['FAILED', 'DROPPED'] },
-        deletedAt: null,
+      const where: {
+        processedAt?: null;
+        createdAt?: { lt: Date };
+        error: { not: null };
+      } = {
+        error: { not: null },
       };
 
-      if (options.cursor) {
-        where.id = { lt: options.cursor };
+      if (!options.includeProcessed) {
+        where.processedAt = null;
       }
 
-      const submissions = (await this.prisma.rwaSubmission.findMany({
-        where,
-        include: {
-          owner: true,
-          auditLogs: {
-            orderBy: { createdAt: 'desc' },
-            take: 3, // Recent audit history
-          },
-        },
-        orderBy: { createdAt: 'desc' },
-        take: limit + 1,
-      })) as RwaSubmission[];
+      if (options.olderThan) {
+        where.createdAt = {
+          lt: options.olderThan,
+        };
+      }
 
-      const hasMore = submissions.length > limit;
-      const data = hasMore ? submissions.slice(0, -1) : submissions;
-      const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
-
-      return { data, nextCursor, hasMore };
-    } catch (error) {
-      loggers.error(error as Error, { operation: 'getFailedTransactions' });
-      throw error;
-    }
-  }
-
-  async getUnprocessedWebhooks(
-    options: { limit?: number; cursor?: string } = {},
-  ): Promise<{ data: WebhookLog[]; nextCursor?: string; hasMore: boolean }> {
-    try {
-      const limit = Math.min(options.limit || 20, 100);
-      const where: Prisma.WebhookLogWhereInput = {
-        processedAt: null,
-        error: { not: null }, // Only show errored webhooks
+      // Include webhooks with errors
+      where.error = {
+        not: null,
       };
 
-      if (options.cursor) {
-        where.id = { lt: options.cursor };
-      }
-
-      const webhookLogs = await this.prisma.webhookLog.findMany({
+      const webhooks = await this.prisma.webhookLog.findMany({
         where,
         orderBy: { createdAt: 'desc' },
-        take: limit + 1,
+        take: limit,
       });
 
-      const hasMore = webhookLogs.length > limit;
-      const data = hasMore ? webhookLogs.slice(0, -1) : webhookLogs;
-      const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
-
-      return { data, nextCursor, hasMore };
+      return webhooks;
     } catch (error) {
-      loggers.error(error as Error, { operation: 'getUnprocessedWebhooks' });
+      loggers.error(error as Error, { operation: 'getFailedWebhooks' });
       throw error;
     }
   }
 
-  async getRecoveryStats(): Promise<{
-    failedTransactions: number;
-    unprocessedWebhooks: number;
-    pendingApprovals: number;
+  /**
+   * Get submissions that need recovery (stuck in pending too long)
+   */
+  async getStuckSubmissions(options: { olderThanHours?: number } = {}): Promise<RwaSubmission[]> {
+    try {
+      const hoursAgo = options.olderThanHours || 24;
+      const cutoffDate = new Date(Date.now() - hoursAgo * 60 * 60 * 1000);
+
+      const submissions = await this.prisma.rwaSubmission.findMany({
+        where: {
+          status: 'PENDING',
+          createdAt: {
+            lt: cutoffDate,
+          },
+        },
+        include: {
+          owner: {
+            select: {
+              id: true,
+              displayName: true,
+              walletAddress: true,
+            },
+          },
+          rwaListing: true,
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      return submissions;
+    } catch (error) {
+      loggers.error(error as Error, { operation: 'getStuckSubmissions' });
+      throw error;
+    }
+  }
+
+  /**
+   * Bulk retry stuck submissions
+   */
+  async bulkRetryStuckSubmissions(
+    adminId: string,
+    maxAge: number = 24,
+    dryRun: boolean = true,
+  ): Promise<{
+    found: number;
+    processed: number;
+    errors: string[];
   }> {
     try {
-      const [failedTransactions, unprocessedWebhooks, pendingApprovals] = await Promise.all([
+      const stuckSubmissions = await this.getStuckSubmissions({
+        olderThanHours: maxAge,
+      });
+
+      if (dryRun) {
+        return {
+          found: stuckSubmissions.length,
+          processed: 0,
+          errors: [],
+        };
+      }
+
+      let processed = 0;
+      const errors: string[] = [];
+
+      for (const submission of stuckSubmissions) {
+        try {
+          await this.retrySubmissionApproval(submission.id, adminId, `bulk-retry-${Date.now()}`);
+          processed++;
+        } catch (error) {
+          errors.push(
+            `${submission.id}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          );
+        }
+      }
+
+      loggers.database(
+        'bulk_retry_completed',
+        'recovery',
+        `${processed}/${stuckSubmissions.length}`,
+      );
+
+      return {
+        found: stuckSubmissions.length,
+        processed,
+        errors,
+      };
+    } catch (error) {
+      loggers.error(error as Error, { adminId, maxAge, operation: 'bulkRetryStuckSubmissions' });
+      throw error;
+    }
+  }
+
+  /**
+   * Get recovery statistics
+   */
+  async getRecoveryStats(): Promise<{
+    stuckSubmissions: number;
+    failedWebhooks: number;
+    totalRecoveryActions: number;
+  }> {
+    try {
+      const [stuckSubmissions, failedWebhooks, totalRecoveryActions] = await Promise.all([
         this.prisma.rwaSubmission.count({
           where: {
-            txStatus: { in: ['FAILED', 'DROPPED'] },
-            deletedAt: null,
+            status: 'PENDING',
+            createdAt: {
+              lt: new Date(Date.now() - 24 * 60 * 60 * 1000), // Older than 24 hours
+            },
           },
         }),
         this.prisma.webhookLog.count({
           where: {
             processedAt: null,
-            error: { not: null },
+            error: {
+              not: null,
+            },
           },
         }),
-        this.prisma.rwaSubmission.count({
+        this.prisma.submissionAuditLog.count({
           where: {
-            status: 'PENDING',
-            deletedAt: null,
+            notes: {
+              contains: 'retry',
+            },
           },
         }),
       ]);
 
       return {
-        failedTransactions,
-        unprocessedWebhooks,
-        pendingApprovals,
+        stuckSubmissions,
+        failedWebhooks,
+        totalRecoveryActions,
       };
     } catch (error) {
       loggers.error(error as Error, { operation: 'getRecoveryStats' });

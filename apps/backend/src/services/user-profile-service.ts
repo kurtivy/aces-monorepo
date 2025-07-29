@@ -1,97 +1,69 @@
-import { PrismaClient, UserRole, SellerStatus } from '@prisma/client';
-import { loggers } from '../lib/logger';
+import {
+  PrismaClient,
+  UserRole,
+  SellerStatus,
+  SubmissionStatus,
+  VerificationStatus,
+} from '@prisma/client';
 import { errors } from '../lib/errors';
-import { EnhancedUser } from '../types/fastify';
+import { loggers } from '../lib/logger';
 
-export interface UserProfileUpdate {
-  firstName?: string;
-  lastName?: string;
-  displayName?: string;
-  bio?: string;
-  website?: string;
-  twitterHandle?: string;
-  avatar?: string;
-  notifications?: boolean;
-  newsletter?: boolean;
-  darkMode?: boolean;
-}
-
+// Simplified user profile response interface
 export interface UserProfileResponse {
   id: string;
   walletAddress: string | null;
   email: string | null;
   role: UserRole;
   sellerStatus: SellerStatus;
-  firstName: string | null;
-  lastName: string | null;
   displayName: string | null;
-  bio: string | null;
-  website: string | null;
-  twitterHandle: string | null;
   avatar: string | null;
-  notifications: boolean;
-  newsletter: boolean;
-  darkMode: boolean;
   createdAt: Date;
   updatedAt: Date;
-  // Computed fields
-  fullName: string | null;
+  verifiedAt: Date | null;
+  rejectedAt: Date | null;
+  rejectionReason: string | null;
   isVerifiedSeller: boolean;
-  canAccessSellerDashboard: boolean;
 }
 
-export interface UserTransactionHistory {
-  submissions: Array<{
-    id: string;
-    name: string;
-    status: string;
-    createdAt: Date;
-    imageUrl: string | null;
-  }>;
-  bids: Array<{
-    id: string;
-    amount: string;
-    currency: string;
-    createdAt: Date;
-    submission: {
-      id: string;
-      name: string;
-      imageUrl: string | null;
-    };
-  }>;
-  totalSubmissions: number;
-  totalBids: number;
-  totalSpent: string; // Sum of winning bids (would need additional logic)
+export interface UserActivitySummary {
+  submissionsCount: number;
+  listingsCount: number;
+  bidsCount: number;
+  tokensCount: number;
 }
 
-export interface UserOnChainAssets {
+export interface UserPortfolioSummary {
+  tokenSymbols: string[];
+  totalValueEstimate: string;
   tokens: Array<{
+    id: string;
     contractAddress: string;
-    symbol: string;
-    name: string;
-    balance: string;
-    imageUrl: string | null;
-  }>;
-  totalValue: string; // USD value (would need price oracle)
-}
-
-export interface UserTokens {
-  tokens: Array<{
-    id: string;
     title: string;
     ticker: string;
     image: string;
-    contractAddress: string;
+    value: string;
     category: string;
-    amount: number;
-    totalInEth: number;
-    totalInAces: number;
-    totalInUSD: number;
   }>;
-  totalValue: {
-    eth: number;
-    usd: number;
-  };
+}
+
+export interface UserPortfolioItem {
+  id: string;
+  contractAddress: string;
+  title: string;
+  ticker: string;
+  image: string;
+  value: string;
+  category: string;
+}
+
+export interface UserPublicProfile {
+  id: string;
+  displayName: string | null;
+  avatar: string | null;
+  role: UserRole;
+  sellerStatus: SellerStatus;
+  memberSince: Date;
+  verificationStatus: VerificationStatus | null;
 }
 
 export class UserProfileService {
@@ -110,19 +82,13 @@ export class UserProfileService {
           email: true,
           role: true,
           sellerStatus: true,
-          firstName: true,
-          lastName: true,
           displayName: true,
-          bio: true,
-          website: true,
-          twitterHandle: true,
           avatar: true,
-          notifications: true,
-          newsletter: true,
-          darkMode: true,
           createdAt: true,
           updatedAt: true,
-          sellerPasswordHash: true,
+          verifiedAt: true,
+          rejectedAt: true,
+          rejectionReason: true,
         },
       });
 
@@ -131,10 +97,7 @@ export class UserProfileService {
       }
 
       // Compute derived fields
-      const fullName =
-        user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : null;
       const isVerifiedSeller = user.sellerStatus === SellerStatus.APPROVED;
-      const canAccessSellerDashboard = isVerifiedSeller && !!user.sellerPasswordHash;
 
       return {
         id: user.id,
@@ -142,24 +105,287 @@ export class UserProfileService {
         email: user.email,
         role: user.role,
         sellerStatus: user.sellerStatus,
-        firstName: user.firstName,
-        lastName: user.lastName,
         displayName: user.displayName,
-        bio: user.bio,
-        website: user.website,
-        twitterHandle: user.twitterHandle,
         avatar: user.avatar,
-        notifications: user.notifications,
-        newsletter: user.newsletter,
-        darkMode: user.darkMode,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
-        fullName,
+        verifiedAt: user.verifiedAt,
+        rejectedAt: user.rejectedAt,
+        rejectionReason: user.rejectionReason,
         isVerifiedSeller,
-        canAccessSellerDashboard,
       };
     } catch (error) {
       loggers.error(error as Error, { userId, operation: 'getUserProfile' });
+      throw error;
+    }
+  }
+
+  /**
+   * Get user activity summary
+   */
+  async getUserActivitySummary(userId: string): Promise<UserActivitySummary> {
+    try {
+      const [submissionsCount, listingsCount, bidsCount, tokensCount] = await Promise.all([
+        this.prisma.rwaSubmission.count({
+          where: { ownerId: userId },
+        }),
+        this.prisma.rwaListing.count({
+          where: { ownerId: userId },
+        }),
+        this.prisma.bid.count({
+          where: { bidderId: userId },
+        }),
+        this.prisma.token.count({
+          where: { userId },
+        }),
+      ]);
+
+      return {
+        submissionsCount,
+        listingsCount,
+        bidsCount,
+        tokensCount,
+      };
+    } catch (error) {
+      loggers.error(error as Error, { userId, operation: 'getUserActivitySummary' });
+      throw error;
+    }
+  }
+
+  /**
+   * Get user submissions
+   */
+  async getUserSubmissions(userId: string) {
+    try {
+      const submissions = await this.prisma.rwaSubmission.findMany({
+        where: { ownerId: userId },
+        select: {
+          id: true,
+          title: true,
+          symbol: true,
+          status: true,
+          createdAt: true,
+          imageGallery: true,
+          rwaListing: {
+            select: {
+              id: true,
+              isLive: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      return submissions.map((sub) => ({
+        id: sub.id,
+        title: sub.title,
+        symbol: sub.symbol,
+        status: sub.status,
+        imageUrl: sub.imageGallery[0] || '/placeholder.svg',
+        createdAt: sub.createdAt,
+        hasListing: !!sub.rwaListing,
+        listingIsLive: sub.rwaListing?.isLive || false,
+      }));
+    } catch (error) {
+      loggers.error(error as Error, { userId, operation: 'getUserSubmissions' });
+      throw error;
+    }
+  }
+
+  /**
+   * Get user listings
+   */
+  async getUserListings(userId: string) {
+    try {
+      const listings = await this.prisma.rwaListing.findMany({
+        where: { ownerId: userId },
+        select: {
+          id: true,
+          title: true,
+          symbol: true,
+          imageGallery: true,
+          isLive: true,
+          createdAt: true,
+          rwaSubmission: {
+            select: {
+              id: true,
+              status: true,
+            },
+          },
+          bids: {
+            take: 5,
+            orderBy: { createdAt: 'desc' },
+            select: {
+              id: true,
+              amount: true,
+              currency: true,
+              createdAt: true,
+              bidder: {
+                select: {
+                  displayName: true,
+                },
+              },
+            },
+          },
+          token: {
+            select: {
+              id: true,
+              contractAddress: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      return listings.map((listing) => ({
+        id: listing.id,
+        title: listing.title,
+        symbol: listing.symbol,
+        imageUrl: listing.imageGallery[0] || '/placeholder.svg',
+        isLive: listing.isLive,
+        createdAt: listing.createdAt,
+        submissionId: listing.rwaSubmission.id,
+        submissionStatus: listing.rwaSubmission.status,
+        bidsCount: listing.bids.length,
+        latestBid: listing.bids[0] || null,
+        hasToken: !!listing.token,
+        tokenAddress: listing.token?.contractAddress || null,
+      }));
+    } catch (error) {
+      loggers.error(error as Error, { userId, operation: 'getUserListings' });
+      throw error;
+    }
+  }
+
+  /**
+   * Get user bids
+   */
+  async getUserBids(userId: string) {
+    try {
+      const bids = await this.prisma.bid.findMany({
+        where: { bidderId: userId },
+        include: {
+          listing: {
+            select: {
+              id: true,
+              title: true,
+              symbol: true,
+              imageGallery: true,
+              isLive: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      return bids.map((bid) => ({
+        id: bid.id,
+        amount: bid.amount,
+        currency: bid.currency,
+        createdAt: bid.createdAt,
+        listing: {
+          id: bid.listing.id,
+          title: bid.listing.title,
+          symbol: bid.listing.symbol,
+          imageUrl: bid.listing.imageGallery[0] || '/placeholder.svg',
+          isLive: bid.listing.isLive,
+        },
+      }));
+    } catch (error) {
+      loggers.error(error as Error, { userId, operation: 'getUserBids' });
+      throw error;
+    }
+  }
+
+  /**
+   * Get user tokens/portfolio
+   */
+  async getUserTokens(userId: string): Promise<UserPortfolioItem[]> {
+    try {
+      const tokens = await this.prisma.token.findMany({
+        where: { userId },
+        include: {
+          rwaListing: {
+            select: {
+              title: true,
+              symbol: true,
+              imageGallery: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      return tokens.map((token) => ({
+        id: token.id,
+        contractAddress: token.contractAddress,
+        title: token.rwaListing?.title || 'Unknown',
+        ticker: token.rwaListing?.symbol || 'UNK',
+        image: token.rwaListing?.imageGallery[0] || '/placeholder.svg',
+        value: '0', // Would need pricing data
+        category: this.getCategoryFromTitle(token.rwaListing?.title || ''),
+      }));
+    } catch (error) {
+      loggers.error(error as Error, { userId, operation: 'getUserTokens' });
+      throw error;
+    }
+  }
+
+  /**
+   * Get user portfolio summary
+   */
+  async getUserPortfolioSummary(userId: string): Promise<UserPortfolioSummary> {
+    try {
+      const tokens = await this.getUserTokens(userId);
+
+      return {
+        tokenSymbols: tokens.map((t) => t.ticker),
+        totalValueEstimate: '0', // Would need pricing integration
+        tokens,
+      };
+    } catch (error) {
+      loggers.error(error as Error, { userId, operation: 'getUserPortfolioSummary' });
+      throw error;
+    }
+  }
+
+  /**
+   * Get public user profile (for other users to view)
+   */
+  async getPublicUserProfile(userId: string): Promise<UserPublicProfile> {
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          displayName: true,
+          avatar: true,
+          role: true,
+          sellerStatus: true,
+          createdAt: true,
+          accountVerification: {
+            select: {
+              status: true,
+            },
+          },
+        },
+      });
+
+      if (!user) {
+        throw errors.notFound('User not found');
+      }
+
+      return {
+        id: user.id,
+        displayName: user.displayName,
+        avatar: user.avatar,
+        role: user.role,
+        sellerStatus: user.sellerStatus,
+        memberSince: user.createdAt,
+        verificationStatus: user.accountVerification?.status || null,
+      };
+    } catch (error) {
+      loggers.error(error as Error, { userId, operation: 'getPublicUserProfile' });
       throw error;
     }
   }
@@ -169,346 +395,80 @@ export class UserProfileService {
    */
   async updateUserProfile(
     userId: string,
-    updates: UserProfileUpdate,
-    correlationId: string,
+    updates: {
+      displayName?: string;
+      avatar?: string;
+      email?: string;
+    },
   ): Promise<UserProfileResponse> {
     try {
-      // Validate Twitter handle format if provided
-      if (updates.twitterHandle && !updates.twitterHandle.match(/^@?[A-Za-z0-9_]{1,15}$/)) {
-        throw errors.badRequest('Invalid Twitter handle format');
-      }
-
-      // Remove @ prefix from Twitter handle if present
-      if (updates.twitterHandle?.startsWith('@')) {
-        updates.twitterHandle = updates.twitterHandle.substring(1);
-      }
-
       const updatedUser = await this.prisma.user.update({
         where: { id: userId },
         data: {
           ...updates,
           updatedAt: new Date(),
         },
-      });
-
-      loggers.database('update', 'user_profile', userId);
-
-      return this.getUserProfile(userId);
-    } catch (error) {
-      loggers.error(error as Error, { userId, correlationId, operation: 'updateUserProfile' });
-      throw error;
-    }
-  }
-
-  /**
-   * Get user transaction history
-   */
-  async getUserTransactionHistory(
-    userId: string,
-    limit: number = 20,
-    cursor?: string,
-  ): Promise<UserTransactionHistory> {
-    try {
-      // Get user's submissions
-      const submissions = await this.prisma.rwaSubmission.findMany({
-        where: { ownerId: userId },
-        take: limit,
-        ...(cursor && { cursor: { id: cursor }, skip: 1 }),
-        orderBy: { createdAt: 'desc' },
         select: {
           id: true,
-          name: true,
-          status: true,
+          walletAddress: true,
+          email: true,
+          role: true,
+          sellerStatus: true,
+          displayName: true,
+          avatar: true,
           createdAt: true,
-          imageUrl: true,
+          updatedAt: true,
+          verifiedAt: true,
+          rejectedAt: true,
+          rejectionReason: true,
         },
       });
 
-      // Get user's bids
-      const bids = await this.prisma.bid.findMany({
-        where: { bidderId: userId },
-        take: limit,
-        ...(cursor && { cursor: { id: cursor }, skip: 1 }),
-        orderBy: { createdAt: 'desc' },
-        include: {
-          submission: {
-            select: {
-              id: true,
-              name: true,
-              imageUrl: true,
-            },
-          },
-        },
-      });
-
-      // Get totals
-      const [totalSubmissions, totalBids] = await Promise.all([
-        this.prisma.rwaSubmission.count({ where: { ownerId: userId } }),
-        this.prisma.bid.count({ where: { bidderId: userId } }),
-      ]);
-
-      // TODO: Calculate totalSpent based on winning bids
-      const totalSpent = '0'; // Placeholder
+      const isVerifiedSeller = updatedUser.sellerStatus === SellerStatus.APPROVED;
 
       return {
-        submissions: submissions.map((sub) => ({
-          id: sub.id,
-          name: sub.name,
-          status: sub.status,
-          createdAt: sub.createdAt,
-          imageUrl: sub.imageUrl,
-        })),
-        bids: bids.map((bid) => ({
-          id: bid.id,
-          amount: bid.amount,
-          currency: bid.currency,
-          createdAt: bid.createdAt,
-          submission: bid.submission,
-        })),
-        totalSubmissions,
-        totalBids,
-        totalSpent,
+        ...updatedUser,
+        isVerifiedSeller,
       };
     } catch (error) {
-      loggers.error(error as Error, { userId, operation: 'getUserTransactionHistory' });
+      loggers.error(error as Error, { userId, updates, operation: 'updateUserProfile' });
       throw error;
     }
   }
 
   /**
-   * Get user's on-chain assets (placeholder - would integrate with Web3 providers)
-   */
-  async getUserOnChainAssets(userId: string, walletAddress?: string): Promise<UserOnChainAssets> {
-    try {
-      // This would integrate with Web3 providers like Alchemy, Moralis, etc.
-      // For now, return placeholder data
-
-      // Get tokens from our platform that user owns
-      const userTokens = await this.prisma.token.findMany({
-        where: {
-          submission: {
-            ownerId: userId,
-          },
-        },
-        include: {
-          submission: {
-            select: {
-              name: true,
-              symbol: true,
-              imageUrl: true,
-            },
-          },
-        },
-      });
-
-      const tokens = userTokens.map((token) => ({
-        contractAddress: token.contractAddress,
-        symbol: token.submission.symbol,
-        name: token.submission.name,
-        balance: '1.0', // Placeholder - would query blockchain
-        imageUrl: token.submission.imageUrl,
-      }));
-
-      // TODO: Integrate with price oracles for USD values
-      const totalValue = '0.00';
-
-      return {
-        tokens,
-        totalValue,
-      };
-    } catch (error) {
-      loggers.error(error as Error, { userId, operation: 'getUserOnChainAssets' });
-      throw error;
-    }
-  }
-
-  /**
-   * Get user's tokens with associated data
-   */
-  async getUserTokens(userId: string): Promise<UserTokens> {
-    try {
-      const tokens = await this.prisma.token.findMany({
-        where: {
-          userId,
-        },
-        include: {
-          submission: true,
-        },
-      });
-
-      const transformedTokens = tokens.map((token) => ({
-        id: token.id,
-        title: token.submission.name,
-        ticker: token.submission.symbol,
-        image: token.submission.imageUrl || '/placeholder.svg',
-        contractAddress: token.contractAddress,
-        category: this.getCategoryFromTitle(token.submission.name),
-        // TODO: These values should come from blockchain data
-        amount: 0,
-        totalInEth: 0,
-        totalInAces: 0,
-        totalInUSD: 0,
-      }));
-
-      // TODO: Calculate real totals from blockchain data
-      const totalValue = transformedTokens.reduce(
-        (acc, token) => ({
-          eth: acc.eth + token.totalInEth,
-          usd: acc.usd + token.totalInUSD,
-        }),
-        { eth: 0, usd: 0 },
-      );
-
-      return {
-        tokens: transformedTokens,
-        totalValue,
-      };
-    } catch (error) {
-      loggers.error(error as Error, { userId, operation: 'getUserTokens' });
-      throw error;
-    }
-  }
-
-  /**
-   * Helper function to categorize tokens
+   * Helper method to categorize assets
    */
   private getCategoryFromTitle(title: string): string {
-    if (title.includes('Porsche') || title.includes('McLaren') || title.includes('Lamborghini'))
-      return 'Cars';
-    if (title.includes('Audemars') || title.includes('Richard Mille')) return 'Watches';
-    if (title.includes('Warhol') || title.includes('Haring')) return 'Art';
-    if (title.includes('Brady') || title.includes('Ohtani') || title.includes('Barzal'))
-      return 'Sports';
-    if (title.includes('Nike') || title.includes('Sneakers')) return 'Sneakers';
-    if (title.includes('Hermès') || title.includes('Louis Vuitton') || title.includes('Tiffany'))
-      return 'Luxury Goods';
+    const titleLower = title.toLowerCase();
     if (
-      title.includes('Macallan') ||
-      title.includes('Louis XIII') ||
-      title.includes('Krug') ||
-      title.includes('Veuve')
-    )
-      return 'Spirits';
-    if (title.includes('Krugerrand') || title.includes('Gold')) return 'Precious Metals';
-    if (title.includes('iPhone')) return 'Tech';
-    if (title.includes('Kanye') || title.includes('Vinyl')) return 'Music';
-    if (title.includes('Azimut')) return 'Marine';
-    return 'Collectibles';
-  }
-
-  /**
-   * Get public user profile (limited info for other users)
-   */
-  async getPublicUserProfile(userId: string): Promise<{
-    id: string;
-    displayName: string | null;
-    avatar: string | null;
-    bio: string | null;
-    website: string | null;
-    twitterHandle: string | null;
-    role: UserRole;
-    isVerifiedSeller: boolean;
-    createdAt: Date;
-    totalSubmissions: number;
-  }> {
-    try {
-      const user = await this.prisma.user.findUnique({
-        where: { id: userId },
-        select: {
-          id: true,
-          displayName: true,
-          avatar: true,
-          bio: true,
-          website: true,
-          twitterHandle: true,
-          role: true,
-          sellerStatus: true,
-          createdAt: true,
-        },
-      });
-
-      if (!user) {
-        throw errors.notFound('User not found');
-      }
-
-      const totalSubmissions = await this.prisma.rwaSubmission.count({
-        where: { ownerId: userId },
-      });
-
-      return {
-        id: user.id,
-        displayName: user.displayName,
-        avatar: user.avatar,
-        bio: user.bio,
-        website: user.website,
-        twitterHandle: user.twitterHandle,
-        role: user.role,
-        isVerifiedSeller: user.sellerStatus === SellerStatus.APPROVED,
-        createdAt: user.createdAt,
-        totalSubmissions,
-      };
-    } catch (error) {
-      loggers.error(error as Error, { userId, operation: 'getPublicUserProfile' });
-      throw error;
+      titleLower.includes('car') ||
+      titleLower.includes('vehicle') ||
+      titleLower.includes('porsche')
+    ) {
+      return 'Vehicle';
     }
-  }
-
-  /**
-   * Search users by display name or wallet address
-   */
-  async searchUsers(
-    query: string,
-    limit: number = 10,
-  ): Promise<
-    Array<{
-      id: string;
-      displayName: string | null;
-      avatar: string | null;
-      walletAddress: string | null;
-      role: UserRole;
-      isVerifiedSeller: boolean;
-    }>
-  > {
-    try {
-      const users = await this.prisma.user.findMany({
-        where: {
-          OR: [
-            {
-              displayName: {
-                contains: query,
-                mode: 'insensitive',
-              },
-            },
-            {
-              walletAddress: {
-                contains: query,
-                mode: 'insensitive',
-              },
-            },
-          ],
-        },
-        take: limit,
-        select: {
-          id: true,
-          displayName: true,
-          avatar: true,
-          walletAddress: true,
-          role: true,
-          sellerStatus: true,
-        },
-      });
-
-      return users.map((user) => ({
-        id: user.id,
-        displayName: user.displayName,
-        avatar: user.avatar,
-        walletAddress: user.walletAddress,
-        role: user.role,
-        isVerifiedSeller: user.sellerStatus === SellerStatus.APPROVED,
-      }));
-    } catch (error) {
-      loggers.error(error as Error, { query, operation: 'searchUsers' });
-      throw error;
+    if (
+      titleLower.includes('house') ||
+      titleLower.includes('property') ||
+      titleLower.includes('real estate')
+    ) {
+      return 'Real Estate';
     }
+    if (
+      titleLower.includes('art') ||
+      titleLower.includes('painting') ||
+      titleLower.includes('sculpture')
+    ) {
+      return 'Art';
+    }
+    if (
+      titleLower.includes('watch') ||
+      titleLower.includes('jewelry') ||
+      titleLower.includes('gold')
+    ) {
+      return 'Luxury';
+    }
+    return 'Other';
   }
 }

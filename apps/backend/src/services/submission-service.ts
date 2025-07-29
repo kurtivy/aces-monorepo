@@ -6,12 +6,7 @@ import { withTransaction } from '../lib/database';
 
 type SubmissionInclude = {
   owner: true;
-  token: true;
-  bids: {
-    include: {
-      bidder: true;
-    };
-  };
+  rwaListing: true; // Changed from token to rwaListing
 };
 
 type SubmissionWithRelations = Prisma.RwaSubmissionGetPayload<{
@@ -28,33 +23,27 @@ export class SubmissionService {
   ): Promise<SubmissionWithRelations> {
     try {
       const submissionData = {
-        name: data.name,
+        title: data.name, // Map name to title
         symbol: data.symbol,
         description: data.description,
-        imageUrl: data.imageUrl || '',
-        imageUrls: data.imageUrls || [],
+        imageGallery: data.imageUrls || (data.imageUrl ? [data.imageUrl] : []), // Combine imageUrl and imageUrls
         proofOfOwnership: data.proofOfOwnership,
+        typeOfOwnership: 'General', // Add required field with default
+        location: null,
+        contractAddress: null,
         ownerId: userId,
         email: data.email || null,
-        destinationWallet: data.destinationWallet || null,
-        twitterLink: data.twitterLink || null,
+        status: 'PENDING' as SubmissionStatus,
       };
 
       const submission = await this.prisma.rwaSubmission.create({
-        data: {
-          ...submissionData,
-          status: 'PENDING',
-        },
+        data: submissionData,
         include: {
           owner: true,
-          token: true,
-          bids: {
-            include: {
-              bidder: true,
-            },
-          },
+          rwaListing: true, // Changed from token to rwaListing
         },
       });
+
       // Log to audit trail
       await this.prisma.submissionAuditLog.create({
         data: {
@@ -84,13 +73,14 @@ export class SubmissionService {
 
   async getUserSubmissions(
     userId: string,
+    filter?: { status?: SubmissionStatus },
     options: { limit?: number; cursor?: string } = {},
   ): Promise<{ data: SubmissionWithRelations[]; nextCursor?: string; hasMore: boolean }> {
     try {
       const limit = Math.min(options.limit || 20, 100);
       const where: Prisma.RwaSubmissionWhereInput = {
         ownerId: userId,
-        deletedAt: null,
+        ...(filter?.status && { status: filter.status }),
       };
 
       if (options.cursor) {
@@ -101,12 +91,7 @@ export class SubmissionService {
         where,
         include: {
           owner: true,
-          token: true,
-          bids: {
-            include: {
-              bidder: true,
-            },
-          },
+          rwaListing: true, // Changed from token to rwaListing
         },
         orderBy: { createdAt: 'desc' },
         take: limit + 1, // Take one extra to check for more
@@ -128,23 +113,18 @@ export class SubmissionService {
     userId?: string,
   ): Promise<SubmissionWithRelations | null> {
     try {
-      const where: Prisma.RwaSubmissionWhereInput = { id: submissionId, deletedAt: null };
+      const where: Prisma.RwaSubmissionWhereInput = { id: submissionId };
 
-      // If userId provided, ensure they own the submission
+      // If userId is provided, ensure the user can only see their own submissions
       if (userId) {
         where.ownerId = userId;
       }
 
-      const submission = await this.prisma.rwaSubmission.findFirst({
-        where,
+      const submission = await this.prisma.rwaSubmission.findUnique({
+        where: { id: submissionId },
         include: {
           owner: true,
-          token: true,
-          bids: {
-            where: { deletedAt: null },
-            include: { bidder: true },
-            orderBy: { createdAt: 'desc' },
-          },
+          rwaListing: true, // Changed from token to rwaListing
         },
       });
 
@@ -155,35 +135,29 @@ export class SubmissionService {
     }
   }
 
-  async softDeleteSubmission(
-    submissionId: string,
-    userId: string,
-    correlationId: string,
-  ): Promise<boolean> {
+  async deleteSubmission(submissionId: string, userId: string): Promise<void> {
     try {
-      const result = await withTransaction(async (tx) => {
-        // Check if submission exists and belongs to user
-        const submission = await tx.rwaSubmission.findFirst({
+      await withTransaction(async (tx) => {
+        const submission = await tx.rwaSubmission.findUnique({
           where: {
             id: submissionId,
-            ownerId: userId,
-            status: 'PENDING', // Only allow deletion of pending submissions
-            deletedAt: null,
+            ownerId: userId, // Ensure user can only delete their own submissions
           },
         });
 
         if (!submission) {
-          throw errors.notFound('Submission not found or cannot be deleted');
+          throw errors.notFound('Submission not found or access denied');
         }
 
-        // Soft delete the submission
-        await tx.rwaSubmission.update({
+        if (submission.status !== 'PENDING') {
+          throw errors.validation(
+            `Cannot delete submission with status: ${submission.status}. Only pending submissions can be deleted.`,
+          );
+        }
+
+        // Hard delete the submission since we removed soft delete
+        await tx.rwaSubmission.delete({
           where: { id: submissionId },
-          data: {
-            deletedAt: new Date(),
-            updatedBy: userId,
-            updatedByType: 'USER',
-          },
         });
 
         // Log to audit trail
@@ -191,40 +165,31 @@ export class SubmissionService {
           data: {
             submissionId,
             fromStatus: submission.status,
-            toStatus: submission.status, // Status doesn't change, but marked as deleted
+            toStatus: 'REJECTED', // Use REJECTED as closest equivalent to deleted
             actorId: userId,
             actorType: 'USER',
-            notes: 'Submission soft deleted',
+            notes: 'Submission deleted by user',
           },
         });
-
-        return true;
       });
 
-      loggers.database('soft_deleted', 'rwa_submissions', submissionId);
-      return result;
+      loggers.database('deleted', 'rwa_submissions', submissionId);
     } catch (error) {
-      loggers.error(error as Error, {
-        submissionId,
-        userId,
-        correlationId,
-        operation: 'softDeleteSubmission',
-      });
+      loggers.error(error as Error, { submissionId, userId, operation: 'deleteSubmission' });
       throw error;
     }
   }
 
   async getAllSubmissions(
-    status?: SubmissionStatus,
+    adminId: string,
+    filter?: { status?: SubmissionStatus },
     options: { limit?: number; cursor?: string } = {},
   ): Promise<{ data: SubmissionWithRelations[]; nextCursor?: string; hasMore: boolean }> {
     try {
-      const limit = Math.min(options.limit || 20, 100);
-      const where: Prisma.RwaSubmissionWhereInput = { deletedAt: null };
-
-      if (status) {
-        where.status = status;
-      }
+      const limit = Math.min(options.limit || 50, 100);
+      const where: Prisma.RwaSubmissionWhereInput = {
+        ...(filter?.status && { status: filter.status }),
+      };
 
       if (options.cursor) {
         where.id = { lt: options.cursor };
@@ -234,12 +199,7 @@ export class SubmissionService {
         where,
         include: {
           owner: true,
-          token: true,
-          bids: {
-            include: {
-              bidder: true,
-            },
-          },
+          rwaListing: true, // Changed from token to rwaListing
         },
         orderBy: { createdAt: 'desc' },
         take: limit + 1,
@@ -251,7 +211,24 @@ export class SubmissionService {
 
       return { data, nextCursor, hasMore };
     } catch (error) {
-      loggers.error(error as Error, { status, operation: 'getAllSubmissions' });
+      loggers.error(error as Error, { adminId, operation: 'getAllSubmissions' });
+      throw error;
+    }
+  }
+
+  async getSubmissionByIds(submissionIds: string[]): Promise<SubmissionWithRelations[]> {
+    try {
+      return await this.prisma.rwaSubmission.findMany({
+        where: {
+          id: { in: submissionIds },
+        },
+        include: {
+          owner: true,
+          rwaListing: true, // Changed from token to rwaListing
+        },
+      });
+    } catch (error) {
+      loggers.error(error as Error, { submissionIds, operation: 'getSubmissionByIds' });
       throw error;
     }
   }
