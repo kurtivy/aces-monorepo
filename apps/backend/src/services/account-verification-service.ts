@@ -311,22 +311,107 @@ export class AccountVerificationService {
 
   async getAllPendingVerifications() {
     try {
-      return this.prisma.accountVerification.findMany({
+      // Get verifications without includes first to avoid orphaned relationship errors
+      const verifications = await this.prisma.accountVerification.findMany({
         where: { status: VerificationStatus.PENDING },
-        include: {
-          user: {
-            select: {
-              id: true,
-              displayName: true,
-              email: true,
-              createdAt: true,
-            },
-          },
-        },
         orderBy: { submittedAt: 'asc' }, // FIFO order
       });
+
+      // Manually fetch user data for each verification to handle orphaned records
+      const verificationsWithUsers = await Promise.all(
+        verifications.map(async (verification) => {
+          let user = null;
+          try {
+            user = await this.prisma.user.findUnique({
+              where: { id: verification.userId },
+              select: {
+                id: true,
+                displayName: true,
+                email: true,
+                createdAt: true,
+              },
+            });
+          } catch (error) {
+            console.warn(
+              `Failed to fetch user ${verification.userId} for verification ${verification.id}:`,
+              error,
+            );
+          }
+
+          return {
+            ...verification,
+            user,
+          };
+        }),
+      );
+
+      return verificationsWithUsers;
     } catch (error) {
       console.error('Error getting pending verifications:', error);
+      throw error;
+    }
+  }
+
+  async getAllVerifications() {
+    try {
+      // Get all verifications without includes first to avoid orphaned relationship errors
+      const verifications = await this.prisma.accountVerification.findMany({
+        orderBy: { submittedAt: 'desc' },
+      });
+
+      // Manually fetch all relationships for each verification to handle orphaned records
+      const verificationsWithRelations = await Promise.all(
+        verifications.map(async (verification) => {
+          // Safely fetch user
+          let user = null;
+          try {
+            user = await this.prisma.user.findUnique({
+              where: { id: verification.userId },
+              select: {
+                id: true,
+                displayName: true,
+                email: true,
+                createdAt: true,
+              },
+            });
+          } catch (error) {
+            console.warn(
+              `Failed to fetch user ${verification.userId} for verification ${verification.id}:`,
+              error,
+            );
+          }
+
+          // Safely fetch reviewer
+          let reviewer = null;
+          if (verification.reviewedBy) {
+            try {
+              reviewer = await this.prisma.user.findUnique({
+                where: { id: verification.reviewedBy },
+                select: {
+                  id: true,
+                  displayName: true,
+                  email: true,
+                },
+              });
+            } catch (error) {
+              console.warn(
+                `Failed to fetch reviewer ${verification.reviewedBy} for verification ${verification.id}:`,
+                error,
+              );
+            }
+          }
+
+          return {
+            ...verification,
+            user,
+            reviewer,
+          };
+        }),
+      );
+
+      return verificationsWithRelations;
+    } catch (error) {
+      console.error('Error getting all verifications:', error);
       throw error;
     }
   }

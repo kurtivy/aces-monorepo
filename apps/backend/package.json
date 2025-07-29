@@ -17,6 +17,7 @@
     "coverage:check": "vitest run --coverage --run && node scripts/check-coverage.js",
     "cli": "ts-node src/scripts/cli.ts",
     "set-admin": "ts-node scripts/set-admin-role.ts",
+    "seed": "ts-node scripts/seed-database.ts",
     "db:migrate": "npx prisma migrate dev",
     "db:deploy": "npx prisma migrate deploy",
     "db:reset": "npx prisma migrate reset",
@@ -59,7 +60,8 @@
     "sharp": "^0.34.3",
     "viem": "^2.31.6",
     "zod": "^3.23.8",
-    "zod-to-json-schema": "^3.23.1"
+    "zod-to-json-schema": "^3.23.1",
+    "@faker-js/faker": "^9.3.1"
   },
   "devDependencies": {
     "@types/node": "^20.14.2",

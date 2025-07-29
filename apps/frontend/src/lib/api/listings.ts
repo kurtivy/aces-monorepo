@@ -15,6 +15,12 @@ export interface ListingData {
   createdAt: string;
   updatedAt: string;
   ownerId: string;
+  owner?: {
+    id: string;
+    displayName: string | null;
+    avatar: string | null;
+    walletAddress: string | null;
+  };
   rwaSubmissionId: string;
   rwaSubmission?: {
     id: string;
@@ -56,7 +62,10 @@ export class ListingsApi {
     endpoint: string,
     options: RequestInit = {},
   ): Promise<ApiResult<T>> {
-    const url = `${API_BASE_URL}/api/v1/listings${endpoint}`;
+    // For admin endpoints, use the admin base path
+    const isAdminEndpoint = endpoint.startsWith('/admin/');
+    const basePath = isAdminEndpoint ? '/api/v1' : '/api/v1/listings';
+    const url = `${API_BASE_URL}${basePath}${endpoint}`;
 
     const finalHeaders = {
       'Content-Type': 'application/json',
@@ -119,6 +128,15 @@ export class ListingsApi {
         Authorization: `Bearer ${authToken}`,
       },
       body: JSON.stringify({ isLive }),
+    });
+  }
+
+  static async getAllListingsForAdmin(authToken: string): Promise<ApiResult<ListingData[]>> {
+    return this.request('/admin/listings', {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
     });
   }
 }

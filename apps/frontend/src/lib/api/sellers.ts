@@ -2,32 +2,40 @@ import type { ApiResponse } from '@aces/utils';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
 
-export interface BidData {
+export interface SellerData {
   id: string;
-  listingId: string;
-  bidderId: string;
-  verificationId: string;
-  amount: string;
-  currency: string;
-  expiresAt: string | null;
+  displayName: string | null;
+  email: string | null;
+  walletAddress: string | null;
+  sellerStatus: 'PENDING' | 'APPROVED' | 'REJECTED';
+  appliedAt: string | null;
+  verifiedAt: string | null;
+  rejectedAt: string | null;
+  rejectionReason: string | null;
   createdAt: string;
-  bidder?: {
-    id: string;
-    displayName: string | null;
-    walletAddress: string | null;
-    email: string | null;
-  } | null;
-  listing?: {
-    id: string;
-    title: string;
-    symbol: string;
-    imageGallery: string[];
-    isLive: boolean;
-  } | null;
-  verification?: {
+  updatedAt: string;
+  accountVerification?: {
     id: string;
     status: string;
+    submittedAt: string;
+    reviewedAt: string | null;
+    attempts: number;
   } | null;
+  listings: {
+    total: number;
+    live: number;
+    recent: Array<{
+      id: string;
+      title: string;
+      symbol: string;
+      isLive: boolean;
+      createdAt: string;
+    }>;
+  };
+  bidStats: {
+    totalBids: number;
+    totalBidValue: number;
+  };
 }
 
 export interface ApiSuccessResponse<T> extends ApiResponse<T> {
@@ -42,7 +50,7 @@ export interface ApiErrorResponse extends ApiResponse<never> {
 
 export type ApiResult<T> = ApiSuccessResponse<T> | ApiErrorResponse;
 
-export class BidsApi {
+export class SellersApi {
   private static async request<T = unknown>(
     endpoint: string,
     options: RequestInit = {},
@@ -78,8 +86,17 @@ export class BidsApi {
     }
   }
 
-  static async getAllBids(authToken: string): Promise<ApiResult<BidData[]>> {
-    return this.request('/admin/bids', {
+  static async getAllSellers(authToken: string): Promise<ApiResult<SellerData[]>> {
+    return this.request('/admin/sellers', {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
+    });
+  }
+
+  static async getPendingSellers(authToken: string): Promise<ApiResult<SellerData[]>> {
+    return this.request('/admin/sellers/pending', {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${authToken}`,

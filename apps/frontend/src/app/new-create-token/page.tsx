@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { usePrivy } from '@privy-io/react-auth';
-import { Upload, Crown, CheckCircle, AlertCircle, Mail, Wallet, Twitter } from 'lucide-react';
+import { Upload, Crown, CheckCircle, AlertCircle, Mail, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -97,10 +97,9 @@ export default function CreateTokenForm() {
 
       const submissionData = {
         ...formData,
-        imageUrl: uploadedUrls[0] || undefined,
-        imageUrls: uploadedUrls,
-        destinationWallet: formData.destinationWallet || undefined,
-        twitterLink: formData.twitterLink || undefined,
+        imageGallery: uploadedUrls,
+        location: formData.location || undefined,
+        contractAddress: formData.contractAddress || undefined,
       };
 
       const response = await SubmissionsApi.createTestSubmission(submissionData);
@@ -292,13 +291,13 @@ export default function CreateTokenForm() {
               </div>
             </InputSection>
 
-            {/* Asset Name Field */}
-            <LabelSection label="Asset Name" error={errors.name?.message} />
+            {/* Asset Title Field */}
+            <LabelSection label="Asset Title" error={errors.title?.message} />
             <InputSection>
               <Input
-                id="name"
+                id="title"
                 placeholder="e.g., 2023 Lamborghini Huracán"
-                {...register('name')}
+                {...register('title')}
                 className="bg-transparent border-0 text-white placeholder:text-[#DCDDCC]/60 text-lg h-14 "
               />
             </InputSection>
@@ -330,6 +329,17 @@ export default function CreateTokenForm() {
               />
             </InputSection>
 
+            {/* Type of Ownership Field */}
+            <LabelSection label="Type of Ownership" error={errors.typeOfOwnership?.message} />
+            <InputSection>
+              <Input
+                id="typeOfOwnership"
+                placeholder="Vehicle number, Receipt Number, Item ID, etc."
+                {...register('typeOfOwnership')}
+                className="bg-transparent border-0 text-white placeholder:text-[#DCDDCC]/60 text-lg h-14 "
+              />
+            </InputSection>
+
             {/* Proof of Ownership Field */}
             <LabelSection label="Proof of Ownership" error={errors.proofOfOwnership?.message} />
             <InputSection>
@@ -341,38 +351,33 @@ export default function CreateTokenForm() {
               />
             </InputSection>
 
-            {/* Destination Wallet Field */}
-            <LabelSection label="Destination Wallet" error={errors.destinationWallet?.message} />
+            {/* Location Field */}
+            <LabelSection label="Location" error={errors.location?.message} />
+            <InputSection>
+              <Input
+                id="location"
+                placeholder="e.g., Los Angeles, CA"
+                {...register('location')}
+                className="bg-transparent border-0 text-white placeholder:text-[#DCDDCC]/60 text-lg h-14 "
+              />
+            </InputSection>
+
+            {/* Contract Address Field */}
+            <LabelSection label="Contract Address" error={errors.contractAddress?.message} />
             <InputSection>
               <div className="relative">
                 <Wallet className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#D0B284]" />
                 <Input
-                  id="destinationWallet"
+                  id="contractAddress"
                   placeholder="0x..."
-                  {...register('destinationWallet')}
+                  {...register('contractAddress')}
                   className="bg-transparent border-0 text-white placeholder:text-[#DCDDCC]/60 text-lg h-14 pl-12  font-mono"
                 />
               </div>
             </InputSection>
 
-            {/* Twitter Link Field */}
-            <LabelSection label="Twitter Link" error={errors.twitterLink?.message} />
-            <InputSection>
-              <div className="space-y-3">
-                <div className="relative">
-                  <Twitter className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#D0B284]" />
-                  <Input
-                    id="twitterLink"
-                    placeholder="https://twitter.com/yourusername"
-                    {...register('twitterLink')}
-                    className="bg-transparent border-0 text-white placeholder:text-[#DCDDCC]/60 text-lg h-14 pl-12 "
-                  />
-                </div>
-              </div>
-            </InputSection>
-
             {/* Image Upload Field */}
-            <LabelSection label="Upload Images" error={errors.imageUrls?.message} />
+            <LabelSection label="Upload Images" error={errors.imageGallery?.message} />
             <InputSection>
               <div className="relative">
                 <input

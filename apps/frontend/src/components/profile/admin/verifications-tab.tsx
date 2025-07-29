@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -8,111 +8,114 @@ import { Textarea } from '@/components/ui/textarea';
 import { Check, X, Search, Eye, FileText, Calendar, MapPin } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import Image from 'next/image';
-
-interface VerificationData {
-  id: string;
-  userId: string;
-  userName: string;
-  userEmail: string;
-  documentType: string;
-  documentNumber: string;
-  fullName: string;
-  dateOfBirth: string;
-  countryOfIssue: string;
-  state?: string;
-  address: string;
-  emailAddress: string;
-  documentImageUrl?: string;
-  submittedAt: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
-  rejectionReason?: string;
-}
-
-const SAMPLE_VERIFICATIONS: VerificationData[] = [
-  {
-    id: '1',
-    userId: 'user1',
-    userName: 'John Ferrari',
-    userEmail: 'collector@example.com',
-    documentType: 'DRIVERS_LICENSE',
-    documentNumber: 'D123456789',
-    fullName: 'John Michael Ferrari',
-    dateOfBirth: '1985-03-15',
-    countryOfIssue: 'United States',
-    state: 'California',
-    address: '123 Luxury Lane, Beverly Hills, CA 90210',
-    emailAddress: 'collector@example.com',
-    documentImageUrl: '/placeholder.svg?height=300&width=400',
-    submittedAt: '2024-07-23 14:30',
-    status: 'PENDING',
-  },
-  {
-    id: '2',
-    userId: 'user2',
-    userName: 'Sarah Timepiece',
-    userEmail: 'watchcollector@example.com',
-    documentType: 'PASSPORT',
-    documentNumber: 'P987654321',
-    fullName: 'Sarah Elizabeth Timepiece',
-    dateOfBirth: '1990-08-22',
-    countryOfIssue: 'United Kingdom',
-    address: '456 Watch Street, London, UK',
-    emailAddress: 'watchcollector@example.com',
-    documentImageUrl: '/placeholder.svg?height=300&width=400',
-    submittedAt: '2024-07-23 11:15',
-    status: 'PENDING',
-  },
-  {
-    id: '3',
-    userId: 'user3',
-    userName: 'Art Gallery NYC',
-    userEmail: 'artdealer@example.com',
-    documentType: 'ID_CARD',
-    documentNumber: 'ID456789123',
-    fullName: 'Robert Art Gallery',
-    dateOfBirth: '1975-12-10',
-    countryOfIssue: 'United States',
-    state: 'New York',
-    address: '789 Gallery Ave, New York, NY 10001',
-    emailAddress: 'artdealer@example.com',
-    submittedAt: '2024-07-22 16:45',
-    status: 'APPROVED',
-  },
-];
+import { useAuth } from '@/lib/auth/auth-context';
+import { VerificationsApi, VerificationData } from '@/lib/api/verifications';
 
 export function VerificationsTab() {
-  const [verifications, setVerifications] = useState(SAMPLE_VERIFICATIONS);
+  const { getAccessToken } = useAuth();
+  const [verifications, setVerifications] = useState<VerificationData[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>(
-    'PENDING',
+    'ALL',
   );
   const [selectedVerification, setSelectedVerification] = useState<VerificationData | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
+  const [isReviewing, setIsReviewing] = useState(false);
+
+  useEffect(() => {
+    const fetchVerifications = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        const token = await getAccessToken();
+        if (!token) {
+          setError('Authentication required');
+          return;
+        }
+
+        const result = await VerificationsApi.getAllVerifications(token);
+
+        if (result.success) {
+          console.log('Verifications API response:', result.data);
+          setVerifications(result.data);
+        } else {
+          setError(result.error || 'Failed to fetch verifications');
+        }
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : 'An error occurred while fetching verifications',
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchVerifications();
+  }, [getAccessToken]);
 
   const filteredVerifications = verifications.filter((verification) => {
+    const fullName = `${verification.firstName} ${verification.lastName}`;
+    const userName = verification.user?.displayName || 'Unknown User';
+    const userEmail = verification.user?.email || verification.emailAddress || '';
+
     const matchesSearch =
-      verification.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      verification.userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      verification.userEmail.toLowerCase().includes(searchTerm.toLowerCase());
+      fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      userEmail.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'ALL' || verification.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
-  const handleApprove = (id: string) => {
-    setVerifications((prev) =>
-      prev.map((ver) => (ver.id === id ? { ...ver, status: 'APPROVED' as const } : ver)),
-    );
-    setSelectedVerification(null);
+  const handleApprove = async (id: string) => {
+    try {
+      setIsReviewing(true);
+      const token = await getAccessToken();
+      if (!token) return;
+
+      const result = await VerificationsApi.reviewVerification(id, true, undefined, token);
+
+      if (result.success) {
+        setVerifications((prev) =>
+          prev.map((ver) => (ver.id === id ? { ...ver, status: 'APPROVED' as const } : ver)),
+        );
+        setSelectedVerification(null);
+      } else {
+        setError(result.error || 'Failed to approve verification');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred during approval');
+    } finally {
+      setIsReviewing(false);
+    }
   };
 
-  const handleReject = (id: string, reason?: string) => {
-    setVerifications((prev) =>
-      prev.map((ver) =>
-        ver.id === id ? { ...ver, status: 'REJECTED' as const, rejectionReason: reason } : ver,
-      ),
-    );
-    setSelectedVerification(null);
-    setRejectionReason('');
+  const handleReject = async (id: string, reason?: string) => {
+    try {
+      setIsReviewing(true);
+      const token = await getAccessToken();
+      if (!token) return;
+
+      const result = await VerificationsApi.reviewVerification(id, false, reason, token);
+
+      if (result.success) {
+        setVerifications((prev) =>
+          prev.map((ver) =>
+            ver.id === id ? { ...ver, status: 'REJECTED' as const, rejectionReason: reason } : ver,
+          ),
+        );
+        setSelectedVerification(null);
+        setRejectionReason('');
+      } else {
+        setError(result.error || 'Failed to reject verification');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred during rejection');
+    } finally {
+      setIsReviewing(false);
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -140,6 +143,50 @@ export function VerificationsTab() {
         return type;
     }
   };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleString();
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-2xl font-bold text-purple-400 font-libre-caslon">
+            Seller Verifications
+          </h2>
+        </div>
+        <div className="bg-[#231F20] border border-[#D0B284]/20 rounded-xl overflow-hidden">
+          <div className="p-6">
+            <div className="animate-pulse space-y-4">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="h-16 bg-[#D0B284]/10 rounded-lg" />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-2xl font-bold text-purple-400 font-libre-caslon">
+            Seller Verifications
+          </h2>
+        </div>
+        <div className="bg-[#231F20] border border-[#D0B284]/20 rounded-xl overflow-hidden">
+          <div className="p-6">
+            <div className="text-center py-8">
+              <p className="text-red-400 font-jetbrains">{error}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -197,70 +244,89 @@ export function VerificationsTab() {
               </tr>
             </thead>
             <tbody>
-              {filteredVerifications.map((verification) => (
-                <tr
-                  key={verification.id}
-                  className="border-b border-[#D0B284]/10 hover:bg-[#D0B284]/5"
-                >
-                  <td className="py-4 px-4">
-                    <div>
-                      <h3 className="text-white font-medium">{verification.fullName}</h3>
-                      <div className="text-[#DCDDCC] text-sm">{verification.userEmail}</div>
-                    </div>
-                  </td>
-                  <td className="py-4 px-4 text-center">
-                    <div className="flex items-center justify-center space-x-2">
-                      <FileText className="w-4 h-4 text-[#D0B284]" />
-                      <span className="text-white text-sm">
-                        {getDocumentTypeLabel(verification.documentType)}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="py-4 px-4 text-center">
-                    <Badge className={`${getStatusColor(verification.status)} border-none`}>
-                      {verification.status}
-                    </Badge>
-                  </td>
-                  <td className="py-4 px-4 text-center">
-                    <span className="text-[#DCDDCC] text-sm">{verification.submittedAt}</span>
-                  </td>
-                  <td className="py-4 px-4 text-right">
-                    <div className="flex items-center justify-end space-x-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-[#D0B284] hover:bg-[#D0B284]/10"
-                        onClick={() => setSelectedVerification(verification)}
-                      >
-                        <Eye className="w-4 h-4 mr-1" />
-                        Review
-                      </Button>
-                      {verification.status === 'PENDING' && (
-                        <>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-[#184D37] hover:bg-[#184D37]/10"
-                            onClick={() => handleApprove(verification.id)}
-                          >
-                            <Check className="w-4 h-4 mr-1" />
-                            Approve
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-red-400 hover:bg-red-400/10"
-                            onClick={() => setSelectedVerification(verification)}
-                          >
-                            <X className="w-4 h-4 mr-1" />
-                            Reject
-                          </Button>
-                        </>
-                      )}
-                    </div>
+              {filteredVerifications.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="text-center py-8">
+                    <p className="text-[#DCDDCC] font-jetbrains">No verifications found</p>
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filteredVerifications.map((verification) => (
+                  <tr
+                    key={verification.id}
+                    className="border-b border-[#D0B284]/10 hover:bg-[#D0B284]/5"
+                  >
+                    <td className="py-4 px-4">
+                      <div>
+                        <h3 className="text-white font-medium">
+                          {`${verification.firstName} ${verification.lastName}`}
+                        </h3>
+                        <div className="text-[#DCDDCC] text-sm">
+                          {verification.user?.email || verification.emailAddress}
+                          {!verification.user && (
+                            <span className="text-red-400 ml-2">(Orphaned)</span>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-4 px-4 text-center">
+                      <div className="flex items-center justify-center space-x-2">
+                        <FileText className="w-4 h-4 text-[#D0B284]" />
+                        <span className="text-white text-sm">
+                          {getDocumentTypeLabel(verification.documentType)}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="py-4 px-4 text-center">
+                      <Badge className={`${getStatusColor(verification.status)} border-none`}>
+                        {verification.status}
+                      </Badge>
+                    </td>
+                    <td className="py-4 px-4 text-center">
+                      <span className="text-[#DCDDCC] text-sm">
+                        {formatDate(verification.submittedAt)}
+                      </span>
+                    </td>
+                    <td className="py-4 px-4 text-right">
+                      <div className="flex items-center justify-end space-x-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-[#D0B284] hover:bg-[#D0B284]/10"
+                          onClick={() => setSelectedVerification(verification)}
+                        >
+                          <Eye className="w-4 h-4 mr-1" />
+                          Review
+                        </Button>
+                        {verification.status === 'PENDING' && (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-[#184D37] hover:bg-[#184D37]/10"
+                              onClick={() => handleApprove(verification.id)}
+                              disabled={isReviewing}
+                            >
+                              <Check className="w-4 h-4 mr-1" />
+                              Approve
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-400 hover:bg-red-400/10"
+                              onClick={() => setSelectedVerification(verification)}
+                              disabled={isReviewing}
+                            >
+                              <X className="w-4 h-4 mr-1" />
+                              Reject
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -273,7 +339,8 @@ export function VerificationsTab() {
             <>
               <DialogHeader>
                 <DialogTitle className="text-[#D0B284] text-xl">
-                  Verification Review - {selectedVerification.fullName}
+                  Verification Review -{' '}
+                  {`${selectedVerification.firstName} ${selectedVerification.lastName}`}
                 </DialogTitle>
               </DialogHeader>
 
@@ -300,7 +367,9 @@ export function VerificationsTab() {
                     <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
                       Full Name
                     </label>
-                    <p className="text-white mt-1">{selectedVerification.fullName}</p>
+                    <p className="text-white mt-1">
+                      {`${selectedVerification.firstName} ${selectedVerification.lastName}`}
+                    </p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
@@ -380,6 +449,7 @@ export function VerificationsTab() {
                       variant="ghost"
                       className="text-red-400 hover:bg-red-400/10"
                       onClick={() => handleReject(selectedVerification.id, rejectionReason)}
+                      disabled={isReviewing}
                     >
                       <X className="w-4 h-4 mr-2" />
                       Reject Verification
@@ -387,6 +457,7 @@ export function VerificationsTab() {
                     <Button
                       className="bg-[#184D37] hover:bg-[#184D37]/80 text-white"
                       onClick={() => handleApprove(selectedVerification.id)}
+                      disabled={isReviewing}
                     >
                       <Check className="w-4 h-4 mr-2" />
                       Approve Verification

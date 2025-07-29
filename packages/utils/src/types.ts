@@ -34,34 +34,30 @@ export type ActionType = 'USER' | 'SYSTEM' | 'WEBHOOK' | 'ADMIN';
 // Base RwaSubmission interface - matches Prisma model fields only (no relations)
 export interface RwaSubmission {
   id: string;
-  name: string;
+  title: string; // Changed from name to title
   symbol: string;
   description: string;
-  imageUrl: string | null;
-  imageUrls: string[];
+  imageGallery: string[]; // Changed from imageUrl to imageGallery array
   proofOfOwnership: string;
+  typeOfOwnership: string; // Added this field
   ownerId: string;
   email: string | null;
-  destinationWallet: string | null;
-  twitterLink: string | null;
+  location: string | null; // Added this field
+  contractAddress: string | null; // Added this field
   status: string;
-  txStatus: string | null;
   rejectionType: string | null;
   approvedAt: Date | null;
   rejectionReason: string | null;
-  txHash: string | null;
+  updatedBy: string | null;
   createdAt: Date;
   updatedAt: Date;
-  deletedAt: Date | null;
-  updatedBy: string | null;
-  updatedByType: string | null;
 }
 
 export interface Token {
   id: string;
   contractAddress: string;
-  deedNftId: number;
-  submissionId: string;
+  rwaListingId: string; // Changed from submissionId to rwaListingId
+  userId: string; // Added this field
   createdAt: Date;
 }
 
@@ -70,11 +66,10 @@ export interface Bid {
   amount: string;
   currency: string;
   bidderId: string;
-  submissionId: string;
+  listingId: string; // Changed from submissionId to listingId
+  verificationId: string; // Added this field
   createdAt: Date;
-  deletedAt: Date | null;
-  updatedBy: string | null;
-  updatedByType: ActionType | null;
+  expiresAt: Date | null; // Added this field
 }
 
 // Extended interfaces for when relations are included (Prisma include queries)
@@ -82,14 +77,31 @@ export interface RwaSubmissionWithOwner extends RwaSubmission {
   owner: User;
 }
 
-export interface RwaSubmissionWithToken extends RwaSubmission {
-  token: Token | null;
+export interface RwaSubmissionWithListing extends RwaSubmission {
+  rwaListing: RwaListing | null; // Changed from token to rwaListing
 }
 
 export interface RwaSubmissionWithRelations extends RwaSubmission {
   owner: User;
-  token: Token | null;
-  bids: (Bid & { bidder: User })[];
+  rwaListing: RwaListing | null; // Changed from token to rwaListing
+}
+
+// RwaListing interface to match the new schema
+export interface RwaListing {
+  id: string;
+  title: string;
+  symbol: string;
+  description: string;
+  imageGallery: string[];
+  contractAddress: string | null;
+  location: string | null;
+  email: string | null;
+  isLive: boolean;
+  rwaSubmissionId: string;
+  ownerId: string;
+  updatedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 // For service layer responses that might include audit logs

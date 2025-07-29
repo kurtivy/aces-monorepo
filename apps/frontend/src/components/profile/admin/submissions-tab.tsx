@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Check, X, Search, Eye, Mail, Twitter, Wallet, Loader2 } from 'lucide-react';
+import { Check, X, Search, Eye, Mail, Wallet, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useAuth } from '@/lib/auth/auth-context';
 import { AdminApi } from '@/lib/api/admin';
@@ -59,7 +59,7 @@ export function SubmissionsTab() {
 
   const filteredSubmissions = submissions.filter((submission) => {
     const matchesSearch =
-      submission.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      submission.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       submission.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (submission.owner.email || submission.owner.walletAddress || '')
         .toLowerCase()
@@ -139,6 +139,14 @@ export function SubmissionsTab() {
       hour: '2-digit',
       minute: '2-digit',
     });
+  };
+
+  // Helper function to get the first image from imageGallery array
+  const getFirstImage = (submission: RwaSubmissionWithRelations) => {
+    if (submission.imageGallery && submission.imageGallery.length > 0) {
+      return submission.imageGallery[0];
+    }
+    return '/placeholder.svg';
   };
 
   if (!isAdmin) {
@@ -250,14 +258,14 @@ export function SubmissionsTab() {
                       <td className="py-4 px-4">
                         <div className="flex items-center space-x-3">
                           <Image
-                            src={submission.imageUrl || '/placeholder.svg'}
-                            alt={submission.name}
+                            src={getFirstImage(submission)}
+                            alt={submission.title || 'Asset'}
                             className="w-12 h-12 rounded-lg object-cover border border-[#D0B284]/20"
                             width={48}
                             height={48}
                           />
                           <div>
-                            <h3 className="text-white font-medium">{submission.name}</h3>
+                            <h3 className="text-white font-medium">{submission.title}</h3>
                             <span className="text-[#DCDDCC] font-jetbrains text-sm">
                               ${submission.symbol}
                             </span>
@@ -340,7 +348,7 @@ export function SubmissionsTab() {
             <>
               <DialogHeader>
                 <DialogTitle className="text-[#D0B284] text-xl">
-                  {selectedSubmission.name} (${selectedSubmission.symbol})
+                  {selectedSubmission.title} (${selectedSubmission.symbol})
                 </DialogTitle>
               </DialogHeader>
 
@@ -348,8 +356,8 @@ export function SubmissionsTab() {
                 {/* Image */}
                 <div>
                   <Image
-                    src={selectedSubmission.imageUrl || '/placeholder.svg'}
-                    alt={selectedSubmission.name}
+                    src={getFirstImage(selectedSubmission)}
+                    alt={selectedSubmission.title || 'Asset'}
                     className="w-full h-64 object-cover rounded-lg border border-[#D0B284]/20"
                     width={400}
                     height={300}
@@ -372,6 +380,13 @@ export function SubmissionsTab() {
                     <p className="text-white mt-1">{selectedSubmission.proofOfOwnership}</p>
                   </div>
 
+                  <div>
+                    <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
+                      Type of Ownership
+                    </label>
+                    <p className="text-white mt-1">{selectedSubmission.typeOfOwnership}</p>
+                  </div>
+
                   <div className="grid grid-cols-1 gap-4">
                     {selectedSubmission.email && (
                       <div className="flex items-center space-x-2">
@@ -380,26 +395,19 @@ export function SubmissionsTab() {
                       </div>
                     )}
 
-                    {selectedSubmission.destinationWallet && (
+                    {selectedSubmission.owner.walletAddress && (
                       <div className="flex items-center space-x-2">
                         <Wallet className="w-4 h-4 text-[#D0B284]" />
                         <span className="text-white font-mono text-sm">
-                          {selectedSubmission.destinationWallet}
+                          {selectedSubmission.owner.walletAddress}
                         </span>
                       </div>
                     )}
 
-                    {selectedSubmission.twitterLink && (
+                    {selectedSubmission.location && (
                       <div className="flex items-center space-x-2">
-                        <Twitter className="w-4 h-4 text-[#D0B284]" />
-                        <a
-                          href={selectedSubmission.twitterLink}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-[#D0B284] hover:underline"
-                        >
-                          {selectedSubmission.twitterLink}
-                        </a>
+                        <span className="text-[#D0B284]">📍</span>
+                        <span className="text-white">{selectedSubmission.location}</span>
                       </div>
                     )}
                   </div>

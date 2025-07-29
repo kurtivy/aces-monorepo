@@ -23,33 +23,29 @@ export type RejectionType = 'MANUAL' | 'TX_FAILURE';
 export type ActionType = 'USER' | 'SYSTEM' | 'WEBHOOK' | 'ADMIN';
 export interface RwaSubmission {
     id: string;
-    name: string;
+    title: string;
     symbol: string;
     description: string;
-    imageUrl: string | null;
-    imageUrls: string[];
+    imageGallery: string[];
     proofOfOwnership: string;
+    typeOfOwnership: string;
     ownerId: string;
     email: string | null;
-    destinationWallet: string | null;
-    twitterLink: string | null;
+    location: string | null;
+    contractAddress: string | null;
     status: string;
-    txStatus: string | null;
     rejectionType: string | null;
     approvedAt: Date | null;
     rejectionReason: string | null;
-    txHash: string | null;
+    updatedBy: string | null;
     createdAt: Date;
     updatedAt: Date;
-    deletedAt: Date | null;
-    updatedBy: string | null;
-    updatedByType: string | null;
 }
 export interface Token {
     id: string;
     contractAddress: string;
-    deedNftId: number;
-    submissionId: string;
+    rwaListingId: string;
+    userId: string;
     createdAt: Date;
 }
 export interface Bid {
@@ -57,24 +53,36 @@ export interface Bid {
     amount: string;
     currency: string;
     bidderId: string;
-    submissionId: string;
+    listingId: string;
+    verificationId: string;
     createdAt: Date;
-    deletedAt: Date | null;
-    updatedBy: string | null;
-    updatedByType: ActionType | null;
+    expiresAt: Date | null;
 }
 export interface RwaSubmissionWithOwner extends RwaSubmission {
     owner: User;
 }
-export interface RwaSubmissionWithToken extends RwaSubmission {
-    token: Token | null;
+export interface RwaSubmissionWithListing extends RwaSubmission {
+    rwaListing: RwaListing | null;
 }
 export interface RwaSubmissionWithRelations extends RwaSubmission {
     owner: User;
-    token: Token | null;
-    bids: (Bid & {
-        bidder: User;
-    })[];
+    rwaListing: RwaListing | null;
+}
+export interface RwaListing {
+    id: string;
+    title: string;
+    symbol: string;
+    description: string;
+    imageGallery: string[];
+    contractAddress: string | null;
+    location: string | null;
+    email: string | null;
+    isLive: boolean;
+    rwaSubmissionId: string;
+    ownerId: string;
+    updatedBy: string | null;
+    createdAt: Date;
+    updatedAt: Date;
 }
 export interface RwaSubmissionDetailed extends RwaSubmissionWithRelations {
     auditLogs: {

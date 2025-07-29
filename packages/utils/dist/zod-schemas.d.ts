@@ -1,34 +1,34 @@
 import { z } from 'zod';
 export declare const CreateSubmissionSchema: z.ZodObject<{
-    name: z.ZodString;
+    title: z.ZodString;
     symbol: z.ZodString;
     description: z.ZodString;
-    imageUrl: z.ZodOptional<z.ZodString>;
-    imageUrls: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    imageGallery: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
     proofOfOwnership: z.ZodString;
+    typeOfOwnership: z.ZodString;
     email: z.ZodOptional<z.ZodString>;
-    destinationWallet: z.ZodOptional<z.ZodString>;
-    twitterLink: z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>;
+    location: z.ZodOptional<z.ZodString>;
+    contractAddress: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     symbol: string;
-    name: string;
+    title: string;
     description: string;
-    imageUrls: string[];
+    imageGallery: string[];
     proofOfOwnership: string;
-    imageUrl?: string | undefined;
+    typeOfOwnership: string;
     email?: string | undefined;
-    destinationWallet?: string | undefined;
-    twitterLink?: string | undefined;
+    location?: string | undefined;
+    contractAddress?: string | undefined;
 }, {
     symbol: string;
-    name: string;
+    title: string;
     description: string;
     proofOfOwnership: string;
-    imageUrl?: string | undefined;
-    imageUrls?: string[] | undefined;
+    typeOfOwnership: string;
+    imageGallery?: string[] | undefined;
     email?: string | undefined;
-    destinationWallet?: string | undefined;
-    twitterLink?: string | undefined;
+    location?: string | undefined;
+    contractAddress?: string | undefined;
 }>;
 export declare const CreateBidSchema: z.ZodObject<{
     listingId: z.ZodString;
@@ -80,15 +80,15 @@ export declare const WebhookReplaySchema: z.ZodObject<{
 export declare const UpdateTokenMetadataSchema: z.ZodObject<{
     contractAddress: z.ZodString;
     description: z.ZodOptional<z.ZodString>;
-    imageUrl: z.ZodOptional<z.ZodString>;
+    imageGallery: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
 }, "strip", z.ZodTypeAny, {
     contractAddress: string;
     description?: string | undefined;
-    imageUrl?: string | undefined;
+    imageGallery?: string[] | undefined;
 }, {
     contractAddress: string;
     description?: string | undefined;
-    imageUrl?: string | undefined;
+    imageGallery?: string[] | undefined;
 }>;
 export declare const PaginationSchema: z.ZodObject<{
     cursor: z.ZodOptional<z.ZodString>;

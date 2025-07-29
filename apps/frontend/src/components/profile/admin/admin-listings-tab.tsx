@@ -1,10 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Search, Eye, Edit, Trash2 } from 'lucide-react';
+import { useAuth } from '@/lib/auth/auth-context';
+import { ListingsApi, ListingData } from '@/lib/api/listings';
 
 interface AdminListingData {
   id: string;
@@ -23,79 +25,81 @@ interface AdminListingData {
   lastActivity: string;
 }
 
-const SAMPLE_ADMIN_LISTINGS: AdminListingData[] = [
-  {
-    id: '1',
-    name: '1991 Porsche 964 Turbo',
-    ticker: '$P964',
-    image: '/placeholder.svg?height=40&width=40',
-    seller: 'John Ferrari',
-    sellerAddress: '0x742d...35c3',
-    category: 'Cars',
-    volume: '125.4 ETH',
-    marketCap: '2.1M',
-    tokenPrice: '0.0045 ETH',
-    holders: 1247,
-    status: 'active',
-    listedAt: '2024-07-20 14:30',
-    lastActivity: '2024-07-23 16:45',
-  },
-  {
-    id: '2',
-    name: 'Audemars Piguet Royal Oak KAWS',
-    ticker: '$APKAWS',
-    image: '/placeholder.svg?height=40&width=40',
-    seller: 'Sarah Timepiece',
-    sellerAddress: '0x8f1a...92b4',
-    category: 'Watches',
-    volume: '89.2 ETH',
-    marketCap: '1.8M',
-    tokenPrice: '0.0067 ETH',
-    holders: 892,
-    status: 'active',
-    listedAt: '2024-07-19 11:20',
-    lastActivity: '2024-07-23 14:22',
-  },
-  {
-    id: '3',
-    name: 'Andy Warhol Marilyn Monroe',
-    ticker: '$WARHOL',
-    image: '/placeholder.svg?height=40&width=40',
-    seller: 'Art Gallery NYC',
-    sellerAddress: '0x3c2e...7f8d',
-    category: 'Art',
-    volume: '234.7 ETH',
-    marketCap: '5.2M',
-    tokenPrice: '0.0234 ETH',
-    holders: 2156,
-    status: 'sold',
-    listedAt: '2024-07-15 09:15',
-    lastActivity: '2024-07-22 18:30',
-  },
-  {
-    id: '4',
-    name: 'Richard Mille RM-88 Smiley',
-    ticker: '$RM88',
-    image: '/placeholder.svg?height=40&width=40',
-    seller: 'Watch Collector Pro',
-    sellerAddress: '0x9d4b...1a2c',
-    category: 'Watches',
-    volume: '76.8 ETH',
-    marketCap: '1.2M',
-    tokenPrice: '0.0089 ETH',
-    holders: 634,
-    status: 'suspended',
-    listedAt: '2024-07-18 16:45',
-    lastActivity: '2024-07-21 12:10',
-  },
-];
+// Helper function to determine listing status
+const getListingStatus = (listing: ListingData): 'active' | 'pending' | 'suspended' | 'sold' => {
+  if (!listing.isLive) {
+    return 'pending';
+  }
+  // For now, we'll consider live listings as active
+  // In a real implementation, you'd check for sold status, expiration, etc.
+  return 'active';
+};
+
+// Helper function to format listing data for admin display
+const formatListingForAdminDisplay = (listing: ListingData): AdminListingData => {
+  const status = getListingStatus(listing);
+  const imageUrl = listing.imageGallery?.[0] || '/placeholder.svg?height=40&width=40';
+  const sellerName = listing.owner?.displayName || 'Unknown';
+  const sellerAddress = listing.owner?.walletAddress || '0x0000...0000';
+
+  return {
+    id: listing.id,
+    name: listing.title,
+    ticker: listing.symbol,
+    image: imageUrl,
+    seller: sellerName,
+    sellerAddress: sellerAddress,
+    category: 'RWA', // Default category since it's not in the schema
+    volume: '0 ETH', // Placeholder - would need to calculate from transactions
+    marketCap: '0', // Placeholder - would need to calculate from token data
+    tokenPrice: '0 ETH', // Placeholder - would need to calculate from token data
+    holders: 0, // Placeholder - would need to get from token data
+    status,
+    listedAt: new Date(listing.createdAt).toLocaleString(),
+    lastActivity: new Date(listing.updatedAt).toLocaleString(),
+  };
+};
 
 export function AdminListingsTab() {
-  const [listings, setListings] = useState(SAMPLE_ADMIN_LISTINGS);
+  const { getAccessToken } = useAuth();
+  const [listings, setListings] = useState<AdminListingData[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [sortBy, setSortBy] = useState<'latest' | 'seller' | 'volume'>('latest');
+
+  useEffect(() => {
+    const fetchListings = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        const token = await getAccessToken();
+        if (!token) {
+          setError('Authentication required');
+          return;
+        }
+
+        const result = await ListingsApi.getAllListingsForAdmin(token);
+
+        if (result.success) {
+          console.log('Admin listings API response:', result.data);
+          const formattedListings = result.data.map(formatListingForAdminDisplay);
+          setListings(formattedListings);
+        } else {
+          setError(result.error || 'Failed to fetch listings');
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'An error occurred while fetching listings');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchListings();
+  }, [getAccessToken]);
 
   const categories = ['ALL', ...Array.from(new Set(listings.map((l) => l.category)))];
 
@@ -155,6 +159,42 @@ export function AdminListingsTab() {
       ),
     );
   };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-2xl font-bold text-purple-400 font-libre-caslon">All Listings</h2>
+        </div>
+        <div className="bg-[#231F20] border border-[#D0B284]/20 rounded-xl overflow-hidden">
+          <div className="p-6">
+            <div className="animate-pulse space-y-4">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="h-16 bg-[#D0B284]/10 rounded-lg" />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-2xl font-bold text-purple-400 font-libre-caslon">All Listings</h2>
+        </div>
+        <div className="bg-[#231F20] border border-[#D0B284]/20 rounded-xl overflow-hidden">
+          <div className="p-6">
+            <div className="text-center py-8">
+              <p className="text-red-400 font-jetbrains">{error}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -238,96 +278,109 @@ export function AdminListingsTab() {
               </tr>
             </thead>
             <tbody>
-              {filteredAndSortedListings.map((listing) => (
-                <tr key={listing.id} className="border-b border-[#D0B284]/10 hover:bg-[#D0B284]/5">
-                  <td className="py-4 px-4">
-                    <div className="flex items-center space-x-3">
-                      <img
-                        src={listing.image || '/placeholder.svg'}
-                        alt={listing.name}
-                        className="w-10 h-10 rounded-full object-cover border border-[#D0B284]/20"
-                      />
-                      <div>
-                        <h3 className="text-white font-medium text-sm">
-                          {listing.name.split(' ').slice(0, 2).join(' ')}
-                        </h3>
-                        <span className="text-[#DCDDCC] font-jetbrains text-xs">
-                          {listing.ticker}
-                        </span>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-4 px-4 text-center">
-                    <div>
-                      <div className="text-white font-medium text-sm">{listing.seller}</div>
-                      <div className="text-[#DCDDCC] font-jetbrains text-xs">
-                        {listing.sellerAddress}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-4 px-4 text-center">
-                    <Badge variant="secondary" className="bg-[#D0B284]/10 text-[#D0B284] text-xs">
-                      {listing.category}
-                    </Badge>
-                  </td>
-                  <td className="py-4 px-4 text-center">
-                    <span className="text-white font-medium text-sm">{listing.volume}</span>
-                  </td>
-                  <td className="py-4 px-4 text-center">
-                    <span className="text-white font-medium text-sm">
-                      {listing.holders.toLocaleString()}
-                    </span>
-                  </td>
-                  <td className="py-4 px-4 text-center">
-                    <Badge className={`${getStatusColor(listing.status)} border-none text-xs`}>
-                      {listing.status.charAt(0).toUpperCase() + listing.status.slice(1)}
-                    </Badge>
-                  </td>
-                  <td className="py-4 px-4 text-center">
-                    <span className="text-[#DCDDCC] text-sm">{listing.listedAt.split(' ')[0]}</span>
-                  </td>
-                  <td className="py-4 px-4 text-right">
-                    <div className="flex items-center justify-end space-x-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-[#D0B284] hover:bg-[#D0B284]/10"
-                      >
-                        <Eye className="w-4 h-4 mr-1" />
-                        View
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-[#DCDDCC] hover:bg-[#DCDDCC]/10"
-                      >
-                        <Edit className="w-4 h-4 mr-1" />
-                        Edit
-                      </Button>
-                      {listing.status === 'active' ? (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-red-400 hover:bg-red-400/10"
-                          onClick={() => handleSuspendListing(listing.id)}
-                        >
-                          <Trash2 className="w-4 h-4 mr-1" />
-                          Suspend
-                        </Button>
-                      ) : listing.status === 'suspended' ? (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-[#184D37] hover:bg-[#184D37]/10"
-                          onClick={() => handleActivateListing(listing.id)}
-                        >
-                          Activate
-                        </Button>
-                      ) : null}
-                    </div>
+              {filteredAndSortedListings.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="text-center py-8">
+                    <p className="text-[#DCDDCC] font-jetbrains">No listings found</p>
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filteredAndSortedListings.map((listing) => (
+                  <tr
+                    key={listing.id}
+                    className="border-b border-[#D0B284]/10 hover:bg-[#D0B284]/5"
+                  >
+                    <td className="py-4 px-4">
+                      <div className="flex items-center space-x-3">
+                        <img
+                          src={listing.image || '/placeholder.svg'}
+                          alt={listing.name}
+                          className="w-10 h-10 rounded-full object-cover border border-[#D0B284]/20"
+                        />
+                        <div>
+                          <h3 className="text-white font-medium text-sm">
+                            {listing.name.split(' ').slice(0, 2).join(' ')}
+                          </h3>
+                          <span className="text-[#DCDDCC] font-jetbrains text-xs">
+                            {listing.ticker}
+                          </span>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-4 px-4 text-center">
+                      <div>
+                        <div className="text-white font-medium text-sm">{listing.seller}</div>
+                        <div className="text-[#DCDDCC] font-jetbrains text-xs">
+                          {listing.sellerAddress}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-4 px-4 text-center">
+                      <Badge variant="secondary" className="bg-[#D0B284]/10 text-[#D0B284] text-xs">
+                        {listing.category}
+                      </Badge>
+                    </td>
+                    <td className="py-4 px-4 text-center">
+                      <span className="text-white font-medium text-sm">{listing.volume}</span>
+                    </td>
+                    <td className="py-4 px-4 text-center">
+                      <span className="text-white font-medium text-sm">
+                        {listing.holders.toLocaleString()}
+                      </span>
+                    </td>
+                    <td className="py-4 px-4 text-center">
+                      <Badge className={`${getStatusColor(listing.status)} border-none text-xs`}>
+                        {listing.status.charAt(0).toUpperCase() + listing.status.slice(1)}
+                      </Badge>
+                    </td>
+                    <td className="py-4 px-4 text-center">
+                      <span className="text-[#DCDDCC] text-sm">
+                        {listing.listedAt.split(' ')[0]}
+                      </span>
+                    </td>
+                    <td className="py-4 px-4 text-right">
+                      <div className="flex items-center justify-end space-x-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-[#D0B284] hover:bg-[#D0B284]/10"
+                        >
+                          <Eye className="w-4 h-4 mr-1" />
+                          View
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-[#DCDDCC] hover:bg-[#DCDDCC]/10"
+                        >
+                          <Edit className="w-4 h-4 mr-1" />
+                          Edit
+                        </Button>
+                        {listing.status === 'active' ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-400 hover:bg-red-400/10"
+                            onClick={() => handleSuspendListing(listing.id)}
+                          >
+                            <Trash2 className="w-4 h-4 mr-1" />
+                            Suspend
+                          </Button>
+                        ) : listing.status === 'suspended' ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-[#184D37] hover:bg-[#184D37]/10"
+                            onClick={() => handleActivateListing(listing.id)}
+                          >
+                            Activate
+                          </Button>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

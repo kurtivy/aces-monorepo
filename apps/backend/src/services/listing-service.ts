@@ -162,39 +162,113 @@ export class ListingService {
    */
   async getAllListings() {
     try {
+      // First get all listings without any includes to avoid orphaned relationship errors
       const listings = await this.prisma.rwaListing.findMany({
-        include: {
-          owner: {
-            select: {
-              id: true,
-              displayName: true,
-              avatar: true,
-              walletAddress: true,
-            },
-          },
-          rwaSubmission: {
-            select: {
-              id: true,
-              status: true,
-              createdAt: true,
-            },
-          },
-          bids: {
-            take: 5,
-            orderBy: { createdAt: 'desc' },
-          },
-          token: true,
-          approvedBy: {
-            select: {
-              id: true,
-              displayName: true,
-            },
-          },
-        },
         orderBy: { createdAt: 'desc' },
       });
 
-      return listings;
+      // Then manually fetch all relationships for each listing to handle orphaned records
+      const listingsWithRelations = await Promise.all(
+        listings.map(async (listing) => {
+          // Safely fetch owner
+          let owner = null;
+          try {
+            owner = await this.prisma.user.findUnique({
+              where: { id: listing.ownerId },
+              select: {
+                id: true,
+                displayName: true,
+                avatar: true,
+                walletAddress: true,
+              },
+            });
+          } catch (error) {
+            logger.warn(
+              `Failed to fetch owner ${listing.ownerId} for listing ${listing.id}:`,
+              error,
+            );
+          }
+
+          // Safely fetch rwaSubmission
+          let rwaSubmission = null;
+          try {
+            rwaSubmission = await this.prisma.rwaSubmission.findUnique({
+              where: { id: listing.rwaSubmissionId },
+              select: {
+                id: true,
+                status: true,
+                createdAt: true,
+              },
+            });
+          } catch (error) {
+            logger.warn(
+              `Failed to fetch submission ${listing.rwaSubmissionId} for listing ${listing.id}:`,
+              error,
+            );
+          }
+
+          // Safely fetch bids
+          let bids: Array<{
+            id: string;
+            amount: string;
+            currency: string;
+            createdAt: Date;
+            bidder: {
+              id: string;
+              displayName: string | null;
+              avatar: string | null;
+            };
+            verification: {
+              id: string;
+              status: string;
+            };
+          }> = [];
+          try {
+            bids = await this.prisma.bid.findMany({
+              where: { listingId: listing.id },
+              take: 5,
+              orderBy: { createdAt: 'desc' },
+              include: {
+                bidder: {
+                  select: {
+                    id: true,
+                    displayName: true,
+                    avatar: true,
+                  },
+                },
+                verification: {
+                  select: {
+                    id: true,
+                    status: true,
+                  },
+                },
+              },
+            });
+          } catch (error) {
+            logger.warn(`Failed to fetch bids for listing ${listing.id}:`, error);
+          }
+
+          // Safely fetch token
+          let token = null;
+          try {
+            token = await this.prisma.token.findUnique({
+              where: { rwaListingId: listing.id },
+            });
+          } catch (error) {
+            logger.warn(`Failed to fetch token for listing ${listing.id}:`, error);
+          }
+
+          return {
+            ...listing,
+            owner,
+            rwaSubmission,
+            bids,
+            token,
+          };
+        }),
+      );
+
+      return listingsWithRelations;
     } catch (error) {
       logger.error('Error fetching all listings:', error);
       throw error;

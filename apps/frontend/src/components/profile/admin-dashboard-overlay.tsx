@@ -7,8 +7,7 @@ import { AnalyticsTab } from './admin/analytics-tab';
 import { SubmissionsTab } from './admin/submissions-tab';
 import { VerificationsTab } from './admin/verifications-tab';
 import { AdminListingsTab } from './admin/admin-listings-tab';
-import { AdminBidsTab } from './admin/admin-bids-tab';
-import { EscrowTab } from './admin/escrow-tab';
+import { BidsTab } from './admin/bids-tab';
 import { SellersTab } from './admin/sellers-tab';
 
 interface AdminDashboardOverlayProps {
@@ -116,10 +115,12 @@ export function AdminDashboardOverlay({ isOpen, onClose }: AdminDashboardOverlay
                 <AdminListingsTab />
               </TabsContent>
               <TabsContent value="bids" className="mt-6 w-full">
-                <AdminBidsTab />
+                <BidsTab />
               </TabsContent>
               <TabsContent value="escrow" className="mt-6 w-full">
-                <EscrowTab />
+                <div className="text-center py-16">
+                  <p className="text-[#DCDDCC] font-jetbrains">Escrow management coming soon...</p>
+                </div>
               </TabsContent>
             </Tabs>
           </div>

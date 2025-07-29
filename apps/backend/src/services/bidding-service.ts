@@ -446,4 +446,83 @@ export class BiddingService {
       throw error;
     }
   }
+
+  /**
+   * Get all bids for admin view (with orphaned relationship handling)
+   */
+  async getAllBids() {
+    try {
+      // Get all bids without includes first to avoid orphaned relationship errors
+      const bids = await this.prisma.bid.findMany({
+        orderBy: { createdAt: 'desc' },
+      });
+
+      // Manually fetch all relationships for each bid to handle orphaned records
+      const bidsWithRelations = await Promise.all(
+        bids.map(async (bid) => {
+          // Safely fetch bidder
+          let bidder = null;
+          try {
+            bidder = await this.prisma.user.findUnique({
+              where: { id: bid.bidderId },
+              select: {
+                id: true,
+                displayName: true,
+                walletAddress: true,
+                email: true,
+              },
+            });
+          } catch (error) {
+            console.warn(`Failed to fetch bidder ${bid.bidderId} for bid ${bid.id}:`, error);
+          }
+
+          // Safely fetch listing
+          let listing = null;
+          try {
+            listing = await this.prisma.rwaListing.findUnique({
+              where: { id: bid.listingId },
+              select: {
+                id: true,
+                title: true,
+                symbol: true,
+                imageGallery: true,
+                isLive: true,
+              },
+            });
+          } catch (error) {
+            console.warn(`Failed to fetch listing ${bid.listingId} for bid ${bid.id}:`, error);
+          }
+
+          // Safely fetch verification
+          let verification = null;
+          try {
+            verification = await this.prisma.accountVerification.findUnique({
+              where: { id: bid.verificationId },
+              select: {
+                id: true,
+                status: true,
+              },
+            });
+          } catch (error) {
+            console.warn(
+              `Failed to fetch verification ${bid.verificationId} for bid ${bid.id}:`,
+              error,
+            );
+          }
+
+          return {
+            ...bid,
+            bidder,
+            listing,
+            verification,
+          };
+        }),
+      );
+
+      return bidsWithRelations;
+    } catch (error) {
+      loggers.error(error as Error, { operation: 'getAllBids' });
+      throw error;
+    }
+  }
 }

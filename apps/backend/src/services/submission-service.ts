@@ -23,14 +23,14 @@ export class SubmissionService {
   ): Promise<SubmissionWithRelations> {
     try {
       const submissionData = {
-        title: data.name, // Map name to title
+        title: data.title, // Use title directly
         symbol: data.symbol,
         description: data.description,
-        imageGallery: data.imageUrls || (data.imageUrl ? [data.imageUrl] : []), // Combine imageUrl and imageUrls
+        imageGallery: data.imageGallery || [], // Use imageGallery directly
         proofOfOwnership: data.proofOfOwnership,
-        typeOfOwnership: 'General', // Add required field with default
-        location: null,
-        contractAddress: null,
+        typeOfOwnership: data.typeOfOwnership || 'General', // Use provided typeOfOwnership
+        location: data.location || null,
+        contractAddress: data.contractAddress || null,
         ownerId: userId,
         email: data.email || null,
         status: 'PENDING' as SubmissionStatus,

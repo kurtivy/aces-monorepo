@@ -10,6 +10,7 @@ import { SubmissionService } from '../../services/submission-service';
 import { RecoveryService } from '../../services/recovery-service';
 import { BiddingService } from '../../services/bidding-service';
 import { AccountVerificationService } from '../../services/account-verification-service';
+import { SellerService } from '../../services/seller-service';
 
 // Schema definitions
 const PaginationSchema = z.object({
@@ -45,6 +46,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
   const recoveryService = new RecoveryService(prisma);
   const biddingService = new BiddingService(prisma);
   const verificationService = new AccountVerificationService(prisma);
+  const sellerService = new SellerService(prisma);
 
   // Admin authentication middleware
   fastify.addHook('preHandler', async (request) => {
@@ -329,6 +331,16 @@ export async function adminRoutes(fastify: FastifyInstance) {
     });
   });
 
+  // Get all verifications for admin view
+  fastify.get('/verifications', async (request, reply) => {
+    const verifications = await verificationService.getAllVerifications();
+
+    return reply.send({
+      success: true,
+      data: verifications,
+    });
+  });
+
   // Review verification
   fastify.post(
     '/verifications/:verificationId/review',
@@ -366,4 +378,34 @@ export async function adminRoutes(fastify: FastifyInstance) {
       });
     },
   );
+
+  // Get all bids for admin view
+  fastify.get('/bids', async (request, reply) => {
+    const bids = await biddingService.getAllBids();
+
+    return reply.send({
+      success: true,
+      data: bids,
+    });
+  });
+
+  // Get all sellers for admin view
+  fastify.get('/sellers', async (request, reply) => {
+    const sellers = await sellerService.getAllSellers();
+
+    return reply.send({
+      success: true,
+      data: sellers,
+    });
+  });
+
+  // Get pending sellers
+  fastify.get('/sellers/pending', async (request, reply) => {
+    const sellers = await sellerService.getPendingSellers();
+
+    return reply.send({
+      success: true,
+      data: sellers,
+    });
+  });
 }

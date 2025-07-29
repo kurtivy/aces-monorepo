@@ -64,15 +64,15 @@ export default function ImageCarousel({
           <ChevronRight size={24} />
         </button>
 
-        {/* Image Counter */}
+        {/* Image Counter
         <div className="absolute bottom-4 right-4 bg-black/70 text-[#D0B284] px-3 py-1 rounded-full text-sm font-mono border border-[#D0B284]/50 z-10 backdrop-blur-sm">
           {selectedImageIndex + 1} / {mockImages.length}
         </div>
 
         {/* Image Title/Description */}
-        <div className="absolute bottom-4 left-4 bg-black/70 text-[#D0B284] px-3 py-1 rounded-full text-sm font-mono border border-[#D0B284]/50 z-10 backdrop-blur-sm">
+        {/* <div className="absolute bottom-4 left-4 bg-black/70 text-[#D0B284] px-3 py-1 rounded-full text-sm font-mono border border-[#D0B284]/50 z-10 backdrop-blur-sm">
           {mockImages[selectedImageIndex].alt}
-        </div>
+        </div> */}
       </div>
     </div>
   );
