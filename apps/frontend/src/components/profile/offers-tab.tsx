@@ -3,25 +3,10 @@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Check, X, MessageCircle, Clock, Search, Filter } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Image from 'next/image';
-
-interface OfferData {
-  id: string;
-  itemName: string;
-  ticker: string;
-  image: string;
-  offerAmount: string;
-  fromAddress: string;
-  fromDisplayName?: string;
-  expiration: string;
-  status: 'active' | 'expired' | 'accepted' | 'declined';
-  createdAt: string;
-}
-
-interface OffersTabProps {
-  offers?: OfferData[];
-}
+import { useAuth } from '@/lib/auth/auth-context';
+import { OffersApi, OfferData } from '@/lib/api/offers';
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -38,130 +23,76 @@ const getStatusColor = (status: string) => {
   }
 };
 
-const SAMPLE_OFFERS: OfferData[] = [
-  {
-    id: '1',
-    itemName: '1991 Porsche 964 Turbo',
-    ticker: '$P964',
-    image: '/placeholder.svg?height=40&width=40',
-    offerAmount: '45.5 ETH',
-    fromAddress: '0x742d...35c3',
-    fromDisplayName: 'PorscheCollector',
-    expiration: '2024-07-30',
-    status: 'active',
-    createdAt: '2024-07-23',
-  },
-  {
-    id: '2',
-    itemName: 'Audemars Piguet Royal Oak KAWS',
-    ticker: '$APKAWS',
-    image: '/placeholder.svg?height=40&width=40',
-    offerAmount: '28.2 ETH',
-    fromAddress: '0x8f1a...92b4',
-    fromDisplayName: 'WatchEnthusiast',
-    expiration: '2024-07-28',
-    status: 'active',
-    createdAt: '2024-07-22',
-  },
-  {
-    id: '3',
-    itemName: 'Andy Warhol Marilyn Monroe',
-    ticker: '$WARHOL',
-    image: '/placeholder.svg?height=40&width=40',
-    offerAmount: '125.0 ETH',
-    fromAddress: '0x3c2e...7f8d',
-    expiration: '2024-07-25',
-    status: 'expired',
-    createdAt: '2024-07-18',
-  },
-  {
-    id: '4',
-    itemName: '1991 Porsche 964 Turbo',
-    ticker: '$P964',
-    image: '/placeholder.svg?height=40&width=40',
-    offerAmount: '42.0 ETH',
-    fromAddress: '0x9d4b...1a2c',
-    fromDisplayName: 'CryptoTrader',
-    expiration: '2024-07-26',
-    status: 'declined',
-    createdAt: '2024-07-20',
-  },
-  {
-    id: '5',
-    itemName: 'Audemars Piguet Royal Oak KAWS',
-    ticker: '$APKAWS',
-    image: '/placeholder.svg?height=40&width=40',
-    offerAmount: '25.8 ETH',
-    fromAddress: '0x1f8e...6b9a',
-    fromDisplayName: 'LuxuryCollector',
-    expiration: '2024-07-24',
-    status: 'accepted',
-    createdAt: '2024-07-19',
-  },
-  {
-    id: '6',
-    itemName: 'Richard Mille RM-88 Smiley',
-    ticker: '$RM88',
-    image: '/placeholder.svg?height=40&width=40',
-    offerAmount: '67.5 ETH',
-    fromAddress: '0x5a3b...8c9d',
-    fromDisplayName: 'RMCollector',
-    expiration: '2024-07-29',
-    status: 'active',
-    createdAt: '2024-07-21',
-  },
-  {
-    id: '7',
-    itemName: 'Andy Warhol Marilyn Monroe',
-    ticker: '$WARHOL',
-    image: '/placeholder.svg?height=40&width=40',
-    offerAmount: '118.5 ETH',
-    fromAddress: '0x7e2f...4a5b',
-    expiration: '2024-07-27',
-    status: 'declined',
-    createdAt: '2024-07-17',
-  },
-  {
-    id: '8',
-    itemName: '1991 Porsche 964 Turbo',
-    ticker: '$P964',
-    image: '/placeholder.svg?height=40&width=40',
-    offerAmount: '38.9 ETH',
-    fromAddress: '0x6c4d...9e8f',
-    fromDisplayName: 'CarEnthusiast',
-    expiration: '2024-07-23',
-    status: 'expired',
-    createdAt: '2024-07-16',
-  },
-  {
-    id: '9',
-    itemName: 'Hermès Himalaya Kelly Retourne 32',
-    ticker: '$HIMALY',
-    image: '/placeholder.svg?height=40&width=40',
-    offerAmount: '15.2 ETH',
-    fromAddress: '0x8b7a...3c2d',
-    fromDisplayName: 'FashionCollector',
-    expiration: '2024-07-31',
-    status: 'active',
-    createdAt: '2024-07-24',
-  },
-  {
-    id: '10',
-    itemName: 'Hermès Himalaya Kelly Retourne 32',
-    ticker: '$HIMALY',
-    image: '/placeholder.svg?height=40&width=40',
-    offerAmount: '12.8 ETH',
-    fromAddress: '0x4f6e...7d8c',
-    expiration: '2024-07-22',
-    status: 'accepted',
-    createdAt: '2024-07-15',
-  },
-];
+// Helper function to format bid data as offer data
+const formatBidAsOffer = (bid: {
+  id: string;
+  amount: string;
+  currency: string;
+  createdAt: string;
+  expiresAt?: string;
+  listing: {
+    title: string;
+    symbol: string;
+    imageGallery?: string[];
+  };
+  bidder: {
+    id: string;
+    displayName?: string;
+    walletAddress?: string;
+  };
+}): OfferData => {
+  return {
+    id: bid.id,
+    itemName: bid.listing.title,
+    ticker: bid.listing.symbol,
+    image: bid.listing.imageGallery?.[0] || '/placeholder.svg?height=40&width=40',
+    offerAmount: `${bid.amount} ${bid.currency}`,
+    fromAddress: bid.bidder.walletAddress || bid.bidder.id,
+    fromDisplayName: bid.bidder.displayName || undefined,
+    expiration: bid.expiresAt ? new Date(bid.expiresAt).toLocaleDateString() : 'No expiry',
+    status: 'active', // For now, all bids are considered active
+    createdAt: new Date(bid.createdAt).toLocaleDateString(),
+  };
+};
 
-export function OffersTab({ offers = SAMPLE_OFFERS }: OffersTabProps) {
+export function OffersTab() {
+  const { getAccessToken } = useAuth();
+  const [offers, setOffers] = useState<OfferData[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [listingFilter, setListingFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    const fetchOffers = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        const token = await getAccessToken();
+        if (!token) {
+          setError('Authentication required');
+          return;
+        }
+
+        const result = await OffersApi.getOffersForMyListings(token);
+
+        if (result.success) {
+          const formattedOffers = result.data.map(formatBidAsOffer);
+          setOffers(formattedOffers);
+        } else {
+          setError(result.error || 'Failed to fetch offers');
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'An error occurred while fetching offers');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchOffers();
+  }, [getAccessToken]);
 
   const activeOffers = offers.filter((offer) => offer.status === 'active');
 
@@ -186,6 +117,32 @@ export function OffersTab({ offers = SAMPLE_OFFERS }: OffersTabProps) {
 
   const filteredActiveOffers = getFilteredOffers(activeOffers);
   const filteredAllOffers = getFilteredOffers(offers);
+
+  if (isLoading) {
+    return (
+      <div className="w-full space-y-6">
+        <div className="bg-[#231F20] border border-[#D0B284]/20 rounded-xl p-4">
+          <div className="animate-pulse space-y-4">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="h-16 bg-[#D0B284]/10 rounded-lg" />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="w-full space-y-6">
+        <div className="bg-[#231F20] border border-[#D0B284]/20 rounded-xl p-4">
+          <div className="text-center py-8">
+            <p className="text-red-400 font-jetbrains">{error}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full space-y-6">

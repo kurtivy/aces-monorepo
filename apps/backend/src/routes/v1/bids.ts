@@ -108,6 +108,20 @@ export async function bidsRoutes(fastify: FastifyInstance) {
     });
   });
 
+  // Get offers for listings owned by the user (seller's perspective)
+  fastify.get('/my-listings-offers', async (request, reply) => {
+    if (!request.user) {
+      throw errors.unauthorized('Authentication required');
+    }
+
+    const offers = await biddingService.getOffersForUserListings(request.user.id);
+
+    return reply.send({
+      success: true,
+      data: offers,
+    });
+  });
+
   // Get specific bid
   fastify.get(
     '/:id',

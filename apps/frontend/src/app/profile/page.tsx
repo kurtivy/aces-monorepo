@@ -12,7 +12,7 @@ import { useState } from 'react';
 import { AdminDashboardOverlay } from '@/components/profile/admin-dashboard-overlay';
 
 export default function ProfilePage() {
-  const { user, isLoading, error, updateProfile } = useAuth();
+  const { user, isLoading, error, updateProfile, walletAddress } = useAuth();
   const [isSellerDashboardOpen, setIsSellerDashboardOpen] = useState(false);
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
 
@@ -68,7 +68,7 @@ export default function ProfilePage() {
   const profileData = {
     displayName: user?.displayName || undefined,
     email: user?.email || undefined,
-    walletAddress: user?.walletAddress || undefined,
+    walletAddress: walletAddress || undefined,
     role: user?.role || undefined,
     sellerStatus: user?.sellerStatus || undefined,
   };

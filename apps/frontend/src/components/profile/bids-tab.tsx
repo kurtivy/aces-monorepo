@@ -2,8 +2,11 @@
 
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
+import { useEffect, useState } from 'react';
+import { useAuth } from '@/lib/auth/auth-context';
+import { BidsApi, BidData } from '@/lib/api/bids';
 
-interface BidData {
+interface DisplayBidData {
   id: string;
   itemName: string;
   ticker: string;
@@ -13,10 +16,6 @@ interface BidData {
   status: 'active' | 'outbid' | 'won' | 'expired';
   expiryDate: string;
   currentPrice: string;
-}
-
-interface BidsTabProps {
-  bids?: BidData[];
 }
 
 const getStatusColor = (status: string) => {
@@ -34,54 +33,99 @@ const getStatusColor = (status: string) => {
   }
 };
 
-const SAMPLE_BIDS: BidData[] = [
-  {
-    id: '1',
-    itemName: '2009 McLaren MP4-24 F1 Car',
-    ticker: '$MP424',
-    image: '/placeholder.svg?height=40&width=40',
-    category: 'Cars',
-    bidAmount: '45.50 ETH',
-    status: 'active',
-    expiryDate: '2024-07-30',
-    currentPrice: '66.85 ETH',
-  },
-  {
-    id: '2',
-    itemName: 'Richard Mille RM-88 Smiley',
-    ticker: '$RM88',
-    image: '/placeholder.svg?height=40&width=40',
-    category: 'Watches',
-    bidAmount: '8.25 ETH',
-    status: 'outbid',
-    expiryDate: '2024-07-25',
-    currentPrice: '10.82 ETH',
-  },
-  {
-    id: '3',
-    itemName: 'Keith Haring "Untitled" (1989)',
-    ticker: '$HARING',
-    image: '/placeholder.svg?height=40&width=40',
-    category: 'Art',
-    bidAmount: '7.80 ETH',
-    status: 'won',
-    expiryDate: '2024-07-20',
-    currentPrice: '8.57 ETH',
-  },
-  {
-    id: '4',
-    itemName: 'Nike SB Dunks "Freddy Krueger"',
-    ticker: '$FDUNK',
-    image: '/placeholder.svg?height=40&width=40',
-    category: 'Sneakers',
-    bidAmount: '0.35 ETH',
-    status: 'expired',
-    expiryDate: '2024-07-15',
-    currentPrice: '0.40 ETH',
-  },
-];
+// Helper function to determine bid status based on listing state and bid data
+const getBidStatus = (bid: BidData): 'active' | 'outbid' | 'won' | 'expired' => {
+  if (!bid.listing.isLive) {
+    return 'expired';
+  }
 
-export function BidsTab({ bids = SAMPLE_BIDS }: BidsTabProps) {
+  // For now, we'll consider all live bids as active
+  // In a real implementation, you'd compare with current highest bid
+  return 'active';
+};
+
+// Helper function to format bid data for display
+const formatBidForDisplay = (bid: BidData): DisplayBidData => {
+  const status = getBidStatus(bid);
+  const imageUrl = bid.listing.imageGallery?.[0] || '/placeholder.svg?height=40&width=40';
+
+  return {
+    id: bid.id,
+    itemName: bid.listing.title,
+    ticker: bid.listing.symbol,
+    image: imageUrl,
+    category: 'Asset', // You might want to add category to the listing model
+    bidAmount: `${bid.amount} ${bid.currency}`,
+    status,
+    expiryDate: bid.expiresAt ? new Date(bid.expiresAt).toLocaleDateString() : 'No expiry',
+    currentPrice: `${bid.amount} ${bid.currency}`, // For now, same as bid amount
+  };
+};
+
+export function BidsTab() {
+  const { getAccessToken } = useAuth();
+  const [bids, setBids] = useState<DisplayBidData[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchBids = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        const token = await getAccessToken();
+        if (!token) {
+          setError('Authentication required');
+          return;
+        }
+
+        const result = await BidsApi.getUserBids(token);
+
+        if (result.success) {
+          const formattedBids = result.data.map(formatBidForDisplay);
+          setBids(formattedBids);
+        } else {
+          setError(result.error || 'Failed to fetch bids');
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'An error occurred while fetching bids');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchBids();
+  }, [getAccessToken]);
+
+  if (isLoading) {
+    return (
+      <div className="w-full rounded-xl bg-[#231F20] border border-[#D0B284]/20 shadow-lg overflow-hidden">
+        <div className="p-6">
+          <h2 className="text-xl font-bold text-[#D0B284] mb-6 font-libre-caslon">Your Bids</h2>
+          <div className="animate-pulse space-y-4">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="h-16 bg-[#D0B284]/10 rounded-lg" />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="w-full rounded-xl bg-[#231F20] border border-[#D0B284]/20 shadow-lg overflow-hidden">
+        <div className="p-6">
+          <h2 className="text-xl font-bold text-[#D0B284] mb-6 font-libre-caslon">Your Bids</h2>
+          <div className="text-center py-8">
+            <p className="text-red-400 font-jetbrains">{error}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full rounded-xl bg-[#231F20] border border-[#D0B284]/20 shadow-lg overflow-hidden">
       <div className="p-6">

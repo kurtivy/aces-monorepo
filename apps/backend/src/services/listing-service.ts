@@ -275,6 +275,21 @@ export class ListingService {
           bids: {
             take: 5,
             orderBy: { createdAt: 'desc' },
+            include: {
+              bidder: {
+                select: {
+                  id: true,
+                  displayName: true,
+                  avatar: true,
+                },
+              },
+              verification: {
+                select: {
+                  id: true,
+                  status: true,
+                },
+              },
+            },
           },
           token: true,
         },

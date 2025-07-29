@@ -235,6 +235,48 @@ export class BiddingService {
     }
   }
 
+  async getOffersForUserListings(userId: string): Promise<Bid[]> {
+    try {
+      const offers = await this.prisma.bid.findMany({
+        where: {
+          listing: {
+            ownerId: userId,
+          },
+        },
+        include: {
+          listing: {
+            select: {
+              id: true,
+              title: true,
+              symbol: true,
+              imageGallery: true,
+              isLive: true,
+            },
+          },
+          bidder: {
+            select: {
+              id: true,
+              displayName: true,
+              walletAddress: true,
+            },
+          },
+          verification: {
+            select: {
+              id: true,
+              status: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      return offers;
+    } catch (error) {
+      loggers.error(error as Error, { userId, operation: 'getOffersForUserListings' });
+      throw error;
+    }
+  }
+
   async deleteBid(bidId: string, userId: string): Promise<void> {
     try {
       await withTransaction(async (tx) => {
