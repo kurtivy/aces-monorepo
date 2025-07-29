@@ -1,108 +1,119 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Check, X, Search, Eye, Mail, Twitter, Wallet } from 'lucide-react';
+import { Check, X, Search, Eye, Mail, Twitter, Wallet, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { useAuth } from '@/lib/auth/auth-context';
+import { AdminApi } from '@/lib/api/admin';
+import type { RwaSubmissionWithRelations } from '@aces/utils';
 import Image from 'next/image';
 
-interface SubmissionData {
-  id: string;
-  name: string;
-  symbol: string;
-  description: string;
-  email: string;
-  proofOfOwnership: string;
-  destinationWallet?: string;
-  twitterLink?: string;
-  imageUrl: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
-  submittedAt: string;
-  submitterName: string;
-  rejectionReason?: string;
-}
-
-const SAMPLE_SUBMISSIONS: SubmissionData[] = [
-  {
-    id: '1',
-    name: '2023 Ferrari SF90 Stradale',
-    symbol: 'SF90',
-    description:
-      'Limited edition Ferrari SF90 Stradale with only 1,200 miles. Pristine condition with all original documentation.',
-    email: 'collector@example.com',
-    proofOfOwnership: 'VIN: ZFF9NFA2XP0123456',
-    destinationWallet: '0x742d35Cc6634C0532925a3b8D0C9e3e3d4c5c3',
-    twitterLink: 'https://twitter.com/ferraricollector',
-    imageUrl: '/canvas-image/Nike-SB-Dunks-Lobster.webp',
-    status: 'PENDING',
-    submittedAt: '2024-07-23 14:30',
-    submitterName: 'John Ferrari',
-  },
-  {
-    id: '2',
-    name: 'Rolex Daytona Paul Newman',
-    symbol: 'DAYTONA',
-    description:
-      'Vintage 1970 Rolex Daytona with Paul Newman dial. Extremely rare and authenticated by Rolex.',
-    email: 'watchcollector@example.com',
-    proofOfOwnership: 'Serial: 2648123, Certificate of Authenticity included',
-    imageUrl:
-      '/canvas-image/Shohei-Ohtani-Los-Angeles-Angels-Autographed-Fanatics-Authentic-Game-Used-MLB-Baseball-from-2018-Rookie-Season-Limited-Edition-Number-1-of-5.webp',
-    status: 'PENDING',
-    submittedAt: '2024-07-23 11:15',
-    submitterName: 'Sarah Timepiece',
-  },
-  {
-    id: '3',
-    name: 'Basquiat Original Painting',
-    symbol: 'BASQUIAT',
-    description: 'Original Jean-Michel Basquiat painting from 1982. Provenance fully documented.',
-    email: 'artdealer@example.com',
-    proofOfOwnership: 'Certificate of Authenticity, Gallery Documentation',
-    imageUrl:
-      '/canvas-image/Tom-Brady-New-England-Patriots-Autographed-Riddell-1982-1989-Throwback-Speed-Flex-Authentic-Helmet.webp',
-    status: 'APPROVED',
-    submittedAt: '2024-07-22 16:45',
-    submitterName: 'Art Gallery NYC',
-  },
-];
+type StatusFilter = 'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'LIVE';
 
 export function SubmissionsTab() {
-  const [submissions, setSubmissions] = useState(SAMPLE_SUBMISSIONS);
+  const { getAccessToken, isAdmin } = useAuth();
+
+  const [submissions, setSubmissions] = useState<RwaSubmissionWithRelations[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>(
-    'PENDING',
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('PENDING');
+  const [selectedSubmission, setSelectedSubmission] = useState<RwaSubmissionWithRelations | null>(
+    null,
   );
-  const [selectedSubmission, setSelectedSubmission] = useState<SubmissionData | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  // Fetch submissions from the backend
+  const fetchSubmissions = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const token = await getAccessToken();
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+
+      const status = statusFilter === 'ALL' ? undefined : statusFilter;
+      const response = await AdminApi.getSubmissions(status, { limit: 50 }, token);
+
+      setSubmissions(response.data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch submissions');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load submissions on component mount and when status filter changes
+  useEffect(() => {
+    if (isAdmin) {
+      fetchSubmissions();
+    }
+  }, [statusFilter, isAdmin]);
 
   const filteredSubmissions = submissions.filter((submission) => {
     const matchesSearch =
       submission.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       submission.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      submission.submitterName.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'ALL' || submission.status === statusFilter;
-    return matchesSearch && matchesStatus;
+      (submission.owner.email || submission.owner.walletAddress || '')
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase());
+    return matchesSearch;
   });
 
-  const handleApprove = (id: string) => {
-    setSubmissions((prev) =>
-      prev.map((sub) => (sub.id === id ? { ...sub, status: 'APPROVED' as const } : sub)),
-    );
-    setSelectedSubmission(null);
+  const handleApprove = async (id: string) => {
+    try {
+      setActionLoading(id);
+      const token = await getAccessToken();
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+
+      await AdminApi.approveSubmission(id, token);
+
+      // Update local state
+      setSubmissions((prev) =>
+        prev.map((sub) => (sub.id === id ? { ...sub, status: 'APPROVED' as const } : sub)),
+      );
+      setSelectedSubmission(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to approve submission');
+    } finally {
+      setActionLoading(null);
+    }
   };
 
-  const handleReject = (id: string, reason?: string) => {
-    setSubmissions((prev) =>
-      prev.map((sub) =>
-        sub.id === id ? { ...sub, status: 'REJECTED' as const, rejectionReason: reason } : sub,
-      ),
-    );
-    setSelectedSubmission(null);
-    setRejectionReason('');
+  const handleReject = async (id: string, reason?: string) => {
+    try {
+      setActionLoading(id);
+      const token = await getAccessToken();
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+
+      await AdminApi.rejectSubmission(id, reason || 'No reason provided', token);
+
+      // Update local state
+      setSubmissions((prev) =>
+        prev.map((sub) =>
+          sub.id === id
+            ? { ...sub, status: 'REJECTED' as const, rejectionReason: reason || null }
+            : sub,
+        ),
+      );
+      setSelectedSubmission(null);
+      setRejectionReason('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reject submission');
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -113,10 +124,30 @@ export function SubmissionsTab() {
         return 'text-[#184D37] bg-[#184D37]/10';
       case 'REJECTED':
         return 'text-red-400 bg-red-400/10';
+      case 'LIVE':
+        return 'text-blue-400 bg-blue-400/10';
       default:
         return 'text-[#DCDDCC] bg-[#DCDDCC]/10';
     }
   };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  if (!isAdmin) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-red-400">Access denied. Admin privileges required.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -135,120 +166,172 @@ export function SubmissionsTab() {
           </div>
           <select
             value={statusFilter}
-            onChange={(e) =>
-              setStatusFilter(e.target.value as 'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED')
-            }
+            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
             className="bg-[#231F20] border border-[#D0B284]/20 text-white rounded-md px-3 py-2"
           >
             <option value="ALL">All Status</option>
             <option value="PENDING">Pending</option>
             <option value="APPROVED">Approved</option>
             <option value="REJECTED">Rejected</option>
+            <option value="LIVE">Live</option>
           </select>
+          <Button
+            onClick={fetchSubmissions}
+            variant="ghost"
+            size="sm"
+            className="text-[#D0B284] hover:bg-[#D0B284]/10"
+            disabled={loading}
+          >
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Refresh'}
+          </Button>
         </div>
       </div>
 
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-400/10 border border-red-400/20 rounded-lg p-4">
+          <p className="text-red-400">{error}</p>
+          <Button
+            onClick={() => setError(null)}
+            variant="ghost"
+            size="sm"
+            className="mt-2 text-red-400 hover:bg-red-400/10"
+          >
+            Dismiss
+          </Button>
+        </div>
+      )}
+
+      {/* Loading State */}
+      {loading && (
+        <div className="text-center py-8">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto text-[#D0B284]" />
+          <p className="text-[#DCDDCC] mt-2">Loading submissions...</p>
+        </div>
+      )}
+
       {/* Submissions Table */}
-      <div className="bg-[#231F20] border border-[#D0B284]/20 rounded-xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-[#D0B284]/20">
-                <th className="text-left text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-4">
-                  Asset
-                </th>
-                <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-4">
-                  Submitter
-                </th>
-                <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-4">
-                  Status
-                </th>
-                <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-4">
-                  Submitted
-                </th>
-                <th className="text-right text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-4">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredSubmissions.map((submission) => (
-                <tr
-                  key={submission.id}
-                  className="border-b border-[#D0B284]/10 hover:bg-[#D0B284]/5"
-                >
-                  <td className="py-4 px-4">
-                    <div className="flex items-center space-x-3">
-                      <Image
-                        src={submission.imageUrl || '/placeholder.svg'}
-                        alt={submission.name}
-                        className="w-12 h-12 rounded-lg object-cover border border-[#D0B284]/20"
-                        width={48}
-                        height={48}
-                      />
-                      <div>
-                        <h3 className="text-white font-medium">{submission.name}</h3>
-                        <span className="text-[#DCDDCC] font-jetbrains text-sm">
-                          ${submission.symbol}
+      {!loading && (
+        <div className="bg-[#231F20] border border-[#D0B284]/20 rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-[#D0B284]/20">
+                  <th className="text-left text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-4">
+                    Asset
+                  </th>
+                  <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-4">
+                    Submitter
+                  </th>
+                  <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-4">
+                    Status
+                  </th>
+                  <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-4">
+                    Submitted
+                  </th>
+                  <th className="text-right text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-4">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredSubmissions.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="text-center py-8 text-[#DCDDCC]">
+                      No submissions found
+                    </td>
+                  </tr>
+                ) : (
+                  filteredSubmissions.map((submission) => (
+                    <tr
+                      key={submission.id}
+                      className="border-b border-[#D0B284]/10 hover:bg-[#D0B284]/5"
+                    >
+                      <td className="py-4 px-4">
+                        <div className="flex items-center space-x-3">
+                          <Image
+                            src={submission.imageUrl || '/placeholder.svg'}
+                            alt={submission.name}
+                            className="w-12 h-12 rounded-lg object-cover border border-[#D0B284]/20"
+                            width={48}
+                            height={48}
+                          />
+                          <div>
+                            <h3 className="text-white font-medium">{submission.name}</h3>
+                            <span className="text-[#DCDDCC] font-jetbrains text-sm">
+                              ${submission.symbol}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-4 px-4 text-center">
+                        <div>
+                          <div className="text-white font-medium">
+                            {submission.owner.email || 'Anonymous User'}
+                          </div>
+                          <div className="text-[#DCDDCC] text-sm">
+                            {submission.email || submission.owner.walletAddress}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-4 px-4 text-center">
+                        <Badge className={`${getStatusColor(submission.status)} border-none`}>
+                          {submission.status}
+                        </Badge>
+                      </td>
+                      <td className="py-4 px-4 text-center">
+                        <span className="text-[#DCDDCC] text-sm">
+                          {formatDate(submission.createdAt.toString())}
                         </span>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-4 px-4 text-center">
-                    <div>
-                      <div className="text-white font-medium">{submission.submitterName}</div>
-                      <div className="text-[#DCDDCC] text-sm">{submission.email}</div>
-                    </div>
-                  </td>
-                  <td className="py-4 px-4 text-center">
-                    <Badge className={`${getStatusColor(submission.status)} border-none`}>
-                      {submission.status}
-                    </Badge>
-                  </td>
-                  <td className="py-4 px-4 text-center">
-                    <span className="text-[#DCDDCC] text-sm">{submission.submittedAt}</span>
-                  </td>
-                  <td className="py-4 px-4 text-right">
-                    <div className="flex items-center justify-end space-x-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-[#D0B284] hover:bg-[#D0B284]/10"
-                        onClick={() => setSelectedSubmission(submission)}
-                      >
-                        <Eye className="w-4 h-4 mr-1" />
-                        View
-                      </Button>
-                      {submission.status === 'PENDING' && (
-                        <>
+                      </td>
+                      <td className="py-4 px-4 text-right">
+                        <div className="flex items-center justify-end space-x-2">
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="text-[#184D37] hover:bg-[#184D37]/10"
-                            onClick={() => handleApprove(submission.id)}
-                          >
-                            <Check className="w-4 h-4 mr-1" />
-                            Approve
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-red-400 hover:bg-red-400/10"
+                            className="text-[#D0B284] hover:bg-[#D0B284]/10"
                             onClick={() => setSelectedSubmission(submission)}
                           >
-                            <X className="w-4 h-4 mr-1" />
-                            Reject
+                            <Eye className="w-4 h-4 mr-1" />
+                            View
                           </Button>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                          {submission.status === 'PENDING' && (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-[#184D37] hover:bg-[#184D37]/10"
+                                onClick={() => handleApprove(submission.id)}
+                                disabled={actionLoading === submission.id}
+                              >
+                                {actionLoading === submission.id ? (
+                                  <Loader2 className="w-4 h-4 animate-spin mr-1" />
+                                ) : (
+                                  <Check className="w-4 h-4 mr-1" />
+                                )}
+                                Approve
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-400 hover:bg-red-400/10"
+                                onClick={() => setSelectedSubmission(submission)}
+                              >
+                                <X className="w-4 h-4 mr-1" />
+                                Reject
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Submission Detail Modal */}
       <Dialog open={!!selectedSubmission} onOpenChange={() => setSelectedSubmission(null)}>
@@ -290,10 +373,12 @@ export function SubmissionsTab() {
                   </div>
 
                   <div className="grid grid-cols-1 gap-4">
-                    <div className="flex items-center space-x-2">
-                      <Mail className="w-4 h-4 text-[#D0B284]" />
-                      <span className="text-white">{selectedSubmission.email}</span>
-                    </div>
+                    {selectedSubmission.email && (
+                      <div className="flex items-center space-x-2">
+                        <Mail className="w-4 h-4 text-[#D0B284]" />
+                        <span className="text-white">{selectedSubmission.email}</span>
+                      </div>
+                    )}
 
                     {selectedSubmission.destinationWallet && (
                       <div className="flex items-center space-x-2">
@@ -318,6 +403,15 @@ export function SubmissionsTab() {
                       </div>
                     )}
                   </div>
+
+                  {selectedSubmission.rejectionReason && (
+                    <div>
+                      <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
+                        Rejection Reason
+                      </label>
+                      <p className="text-red-400 mt-1">{selectedSubmission.rejectionReason}</p>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -341,15 +435,25 @@ export function SubmissionsTab() {
                       variant="ghost"
                       className="text-red-400 hover:bg-red-400/10"
                       onClick={() => handleReject(selectedSubmission.id, rejectionReason)}
+                      disabled={actionLoading === selectedSubmission.id}
                     >
-                      <X className="w-4 h-4 mr-2" />
+                      {actionLoading === selectedSubmission.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      ) : (
+                        <X className="w-4 h-4 mr-2" />
+                      )}
                       Reject Submission
                     </Button>
                     <Button
                       className="bg-[#184D37] hover:bg-[#184D37]/80 text-white"
                       onClick={() => handleApprove(selectedSubmission.id)}
+                      disabled={actionLoading === selectedSubmission.id}
                     >
-                      <Check className="w-4 h-4 mr-2" />
+                      {actionLoading === selectedSubmission.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      ) : (
+                        <Check className="w-4 h-4 mr-2" />
+                      )}
                       Approve Submission
                     </Button>
                   </div>

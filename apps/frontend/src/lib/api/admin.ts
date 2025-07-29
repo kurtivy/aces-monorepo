@@ -1,3 +1,5 @@
+import type { RwaSubmissionWithRelations } from '@aces/utils';
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
 
 export interface VerificationApplication {
@@ -28,11 +30,11 @@ export interface VerificationApplication {
   };
 }
 
-export interface AdminStats {
-  pendingVerifications: number;
-  totalVerifications: number;
-  approvedToday: number;
-  rejectedToday: number;
+export interface SubmissionsResponse {
+  success: boolean;
+  data: RwaSubmissionWithRelations[];
+  nextCursor?: string;
+  hasMore: boolean;
 }
 
 export class AdminApi {
@@ -60,6 +62,31 @@ export class AdminApi {
     return response.json();
   }
 
+  private static async adminRequest<T = unknown>(
+    endpoint: string,
+    options: RequestInit = {},
+    token?: string,
+  ): Promise<T> {
+    const url = `${API_BASE_URL}/api/v1/admin${endpoint}`;
+
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token && { Authorization: `Bearer ${token}` }),
+        ...options.headers,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Request failed with status ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  // Verification-related methods
   static async getPendingVerifications(token: string): Promise<VerificationApplication[]> {
     const response = await this.request<{ data?: VerificationApplication[] }>(
       '/pending',
@@ -99,6 +126,71 @@ export class AdminApi {
       `/${verificationId}`,
       {
         method: 'GET',
+      },
+      token,
+    );
+  }
+
+  // Submission management methods
+  static async getSubmissions(
+    status?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'LIVE',
+    options: { limit?: number; cursor?: string } = {},
+    token?: string,
+  ): Promise<SubmissionsResponse> {
+    const params = new URLSearchParams();
+    if (status) params.append('status', status);
+    if (options.limit) params.append('limit', options.limit.toString());
+    if (options.cursor) params.append('cursor', options.cursor);
+
+    const query = params.toString() ? `?${params.toString()}` : '';
+
+    return this.adminRequest<SubmissionsResponse>(
+      `/submissions/all${query}`,
+      {
+        method: 'GET',
+      },
+      token,
+    );
+  }
+
+  static async getSubmissionDetails(
+    submissionId: string,
+    token?: string,
+  ): Promise<{ success: boolean; data: RwaSubmissionWithRelations }> {
+    return this.adminRequest(
+      `/submissions/${submissionId}`,
+      {
+        method: 'GET',
+      },
+      token,
+    );
+  }
+
+  static async approveSubmission(
+    submissionId: string,
+    token?: string,
+  ): Promise<{ success: boolean; message: string }> {
+    return this.adminRequest(
+      `/approve/${submissionId}`,
+      {
+        method: 'POST',
+      },
+      token,
+    );
+  }
+
+  static async rejectSubmission(
+    submissionId: string,
+    rejectionReason: string,
+    token?: string,
+  ): Promise<{ success: boolean; message: string }> {
+    return this.adminRequest(
+      `/reject/${submissionId}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          rejectionReason,
+        }),
       },
       token,
     );

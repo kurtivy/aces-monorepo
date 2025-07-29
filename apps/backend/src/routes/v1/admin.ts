@@ -134,14 +134,13 @@ export async function adminRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const { submissionId } = request.params as z.infer<typeof ApprovalSchema>;
       const adminId = request.user!.id;
-      const correlationId = request.id;
 
-      const result = await approvalService.approveSubmission(submissionId, adminId, correlationId);
+      const result = await approvalService.adminApproveSubmission(submissionId, adminId);
 
       return reply.send({
         success: true,
         data: result,
-        message: 'Submission approved and transaction submitted',
+        message: 'Submission approved successfully',
       });
     },
   );
