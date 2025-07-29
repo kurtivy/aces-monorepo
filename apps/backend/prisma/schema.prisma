@@ -49,6 +49,7 @@ model User {
   darkMode      Boolean         @default(true)
   
   bids          Bid[]
+  tokens        Token[]
   RwaSubmission RwaSubmission[]
   verification  SellerVerification?
   verificationAttempts Int @default(0)
@@ -62,10 +63,13 @@ model Token {
   contractAddress String        @unique
   deedNftId       Int
   submissionId    String        @unique
+  userId          String        // Required field for user relationship
   createdAt       DateTime      @default(now())
   submission      RwaSubmission @relation(fields: [submissionId], references: [id])
+  user            User          @relation(fields: [userId], references: [id])
 
   @@index([contractAddress])
+  @@index([userId])
   @@map("tokens")
 }
 
@@ -123,7 +127,8 @@ model RwaSubmission {
   name              String
   symbol            String
   description       String
-  imageUrl          String
+  imageUrl          String?              // Made optional for backward compatibility
+  imageUrls         String[]             @default([]) // Array of image URLs
   proofOfOwnership  String
   destinationWallet String?
   twitterLink       String?

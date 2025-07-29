@@ -59,6 +59,61 @@ export class ApprovalService {
     return this.walletClient;
   }
 
+  /**
+   * Admin approval - just updates database status without blockchain operations
+   */
+  async adminApproveSubmission(
+    submissionId: string,
+    adminId: string,
+  ): Promise<{ success: boolean; submissionId: string }> {
+    try {
+      await withTransaction(async (tx) => {
+        // Get submission
+        const submission = await tx.rwaSubmission.findUnique({
+          where: { id: submissionId },
+        });
+
+        if (!submission) {
+          throw errors.notFound('Submission not found');
+        }
+
+        if (submission.status !== 'PENDING') {
+          throw errors.validation(`Submission status is ${submission.status}, cannot approve`);
+        }
+
+        // Update submission status to APPROVED (not LIVE yet)
+        await tx.rwaSubmission.update({
+          where: { id: submissionId },
+          data: {
+            status: 'APPROVED',
+            approvedAt: new Date(),
+            updatedBy: adminId,
+            updatedByType: 'ADMIN',
+          },
+        });
+
+        // Log to audit trail
+        await tx.submissionAuditLog.create({
+          data: {
+            submissionId,
+            fromStatus: 'PENDING',
+            toStatus: 'APPROVED',
+            actorId: adminId,
+            actorType: 'ADMIN',
+            notes: 'Admin approval - ready for blockchain deployment',
+          },
+        });
+      });
+
+      loggers.auth(adminId, null, 'admin_validated');
+
+      return { success: true, submissionId };
+    } catch (error) {
+      loggers.error(error as Error, { submissionId, adminId, operation: 'adminApproveSubmission' });
+      throw error;
+    }
+  }
+
   async approveSubmission(
     submissionId: string,
     adminId: string,

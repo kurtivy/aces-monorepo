@@ -27,25 +27,12 @@ export class SubmissionService {
     correlationId: string,
   ): Promise<SubmissionWithRelations> {
     try {
-      const submissionData: Omit<
-        RwaSubmission,
-        | 'id'
-        | 'createdAt'
-        | 'updatedAt'
-        | 'status'
-        | 'txStatus'
-        | 'rejectionType'
-        | 'approvedAt'
-        | 'rejectionReason'
-        | 'txHash'
-        | 'deletedAt'
-        | 'updatedBy'
-        | 'updatedByType'
-      > = {
+      const submissionData = {
         name: data.name,
         symbol: data.symbol,
         description: data.description,
-        imageUrl: data.imageUrl,
+        imageUrl: data.imageUrl || '',
+        imageUrls: data.imageUrls || [],
         proofOfOwnership: data.proofOfOwnership,
         ownerId: userId,
         email: data.email || null,

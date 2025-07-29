@@ -46,7 +46,7 @@ export interface UserTransactionHistory {
     name: string;
     status: string;
     createdAt: Date;
-    imageUrl: string;
+    imageUrl: string | null;
   }>;
   bids: Array<{
     id: string;
@@ -56,7 +56,7 @@ export interface UserTransactionHistory {
     submission: {
       id: string;
       name: string;
-      imageUrl: string;
+      imageUrl: string | null;
     };
   }>;
   totalSubmissions: number;
@@ -70,9 +70,28 @@ export interface UserOnChainAssets {
     symbol: string;
     name: string;
     balance: string;
-    imageUrl?: string;
+    imageUrl: string | null;
   }>;
   totalValue: string; // USD value (would need price oracle)
+}
+
+export interface UserTokens {
+  tokens: Array<{
+    id: string;
+    title: string;
+    ticker: string;
+    image: string;
+    contractAddress: string;
+    category: string;
+    amount: number;
+    totalInEth: number;
+    totalInAces: number;
+    totalInUSD: number;
+  }>;
+  totalValue: {
+    eth: number;
+    usd: number;
+  };
 }
 
 export class UserProfileService {
@@ -301,6 +320,80 @@ export class UserProfileService {
       loggers.error(error as Error, { userId, operation: 'getUserOnChainAssets' });
       throw error;
     }
+  }
+
+  /**
+   * Get user's tokens with associated data
+   */
+  async getUserTokens(userId: string): Promise<UserTokens> {
+    try {
+      const tokens = await this.prisma.token.findMany({
+        where: {
+          userId,
+        },
+        include: {
+          submission: true,
+        },
+      });
+
+      const transformedTokens = tokens.map((token) => ({
+        id: token.id,
+        title: token.submission.name,
+        ticker: token.submission.symbol,
+        image: token.submission.imageUrl || '/placeholder.svg',
+        contractAddress: token.contractAddress,
+        category: this.getCategoryFromTitle(token.submission.name),
+        // TODO: These values should come from blockchain data
+        amount: 0,
+        totalInEth: 0,
+        totalInAces: 0,
+        totalInUSD: 0,
+      }));
+
+      // TODO: Calculate real totals from blockchain data
+      const totalValue = transformedTokens.reduce(
+        (acc, token) => ({
+          eth: acc.eth + token.totalInEth,
+          usd: acc.usd + token.totalInUSD,
+        }),
+        { eth: 0, usd: 0 },
+      );
+
+      return {
+        tokens: transformedTokens,
+        totalValue,
+      };
+    } catch (error) {
+      loggers.error(error as Error, { userId, operation: 'getUserTokens' });
+      throw error;
+    }
+  }
+
+  /**
+   * Helper function to categorize tokens
+   */
+  private getCategoryFromTitle(title: string): string {
+    if (title.includes('Porsche') || title.includes('McLaren') || title.includes('Lamborghini'))
+      return 'Cars';
+    if (title.includes('Audemars') || title.includes('Richard Mille')) return 'Watches';
+    if (title.includes('Warhol') || title.includes('Haring')) return 'Art';
+    if (title.includes('Brady') || title.includes('Ohtani') || title.includes('Barzal'))
+      return 'Sports';
+    if (title.includes('Nike') || title.includes('Sneakers')) return 'Sneakers';
+    if (title.includes('Hermès') || title.includes('Louis Vuitton') || title.includes('Tiffany'))
+      return 'Luxury Goods';
+    if (
+      title.includes('Macallan') ||
+      title.includes('Louis XIII') ||
+      title.includes('Krug') ||
+      title.includes('Veuve')
+    )
+      return 'Spirits';
+    if (title.includes('Krugerrand') || title.includes('Gold')) return 'Precious Metals';
+    if (title.includes('iPhone')) return 'Tech';
+    if (title.includes('Kanye') || title.includes('Vinyl')) return 'Music';
+    if (title.includes('Azimut')) return 'Marine';
+    return 'Collectibles';
   }
 
   /**
