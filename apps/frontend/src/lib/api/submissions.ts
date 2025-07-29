@@ -1,61 +1,55 @@
-import type {
-  // RwaSubmission,
-  RwaSubmissionWithOwner,
-  CreateSubmissionRequest,
-  ApiResponse,
-} from '@aces/utils';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+import { CreateSubmissionRequest } from '@aces/utils';
 
 export class SubmissionsApi {
-  private static async request<T = unknown>(
-    endpoint: string,
-    options: RequestInit = {},
-  ): Promise<ApiResponse<T>> {
-    const url = `${API_BASE_URL}/api/v1/submissions${endpoint}`;
-
-    const finalHeaders = {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    };
-
-    const response = await fetch(url, {
-      ...options,
-      headers: finalHeaders,
-    });
-
-    const data = await response.json();
-    return data as ApiResponse<T>;
-  }
-
-  static async createSubmission(
-    data: CreateSubmissionRequest,
-    authToken: string,
-  ): Promise<ApiResponse<RwaSubmissionWithOwner>> {
-    return this.request('/create', {
+  static async getUploadUrl(fileType: string): Promise<{
+    url: string;
+    fileName: string;
+    publicUrl: string;
+  }> {
+    const response = await fetch('/submissions/get-upload-url', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${authToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ fileType }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to get upload URL');
+    }
+
+    const result = await response.json();
+    return result.data;
+  }
+
+  static async uploadImage(file: File): Promise<string> {
+    // Use direct upload through backend to bypass CORS
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const uploadResponse = await fetch('/submissions/upload-image', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!uploadResponse.ok) {
+      const errorData = await uploadResponse.json();
+      throw new Error(errorData.error || 'Failed to upload image');
+    }
+
+    const result = await uploadResponse.json();
+    return result.data.publicUrl;
+  }
+
+  static async createTestSubmission(data: CreateSubmissionRequest) {
+    const response = await fetch('/submissions/test', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify(data),
     });
-  }
 
-  // Test endpoint that doesn't require authentication
-  static async createTestSubmission(
-    data: CreateSubmissionRequest,
-  ): Promise<ApiResponse<RwaSubmissionWithOwner>> {
-    return this.request('/test', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
-  static async getSubmissions(): Promise<ApiResponse<RwaSubmissionWithOwner[]>> {
-    return this.request('');
-  }
-
-  static async getSubmission(id: string): Promise<ApiResponse<RwaSubmissionWithOwner>> {
-    return this.request(`/${id}`);
+    return response.json();
   }
 }

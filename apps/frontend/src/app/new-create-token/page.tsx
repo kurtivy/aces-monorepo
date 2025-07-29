@@ -9,7 +9,7 @@ import { Upload, Crown, CheckCircle, AlertCircle, Mail, Wallet, Twitter } from '
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { CreateSubmissionSchema, type CreateSubmissionRequest } from '@aces/utils';
+import { CreateSubmissionSchema } from '@aces/utils';
 import { SubmissionsApi } from '@/lib/api/submissions';
 import Image from 'next/image';
 import Footer from '@/components/ui/custom/footer';
@@ -44,48 +44,66 @@ export default function CreateTokenForm() {
   const { user, ready } = usePrivy();
   const { user: authUser } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imagePreviews, setImagePreviews] = useState<Array<{ preview: string; file: File }>>([]);
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [submitMessage, setSubmitMessage] = useState<string>('');
   const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
 
   const {
     register,
     handleSubmit,
     formState: { errors },
-    setValue,
-
     reset,
-  } = useForm<CreateSubmissionRequest>({
+  } = useForm({
     resolver: zodResolver(CreateSubmissionSchema),
   });
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const result = e.target?.result as string;
-        setImagePreview(result);
-        setValue('imageUrl', result);
-      };
-      reader.readAsDataURL(file);
+    const files = event.target.files;
+    if (files) {
+      const newPreviews = Array.from(files).map((file) => ({
+        preview: URL.createObjectURL(file),
+        file,
+      }));
+      setImagePreviews([...imagePreviews, ...newPreviews]);
     }
   };
 
-  const onSubmit = async (data: CreateSubmissionRequest) => {
+  const removeImage = (index: number) => {
+    setImagePreviews((prev) => {
+      const newPreviews = [...prev];
+      URL.revokeObjectURL(newPreviews[index].preview);
+      newPreviews.splice(index, 1);
+      return newPreviews;
+    });
+  };
+
+  const onSubmit = handleSubmit(async (formData) => {
     setIsSubmitting(true);
     setSubmitStatus('idle');
     setSubmitMessage('');
+    setUploadProgress(0);
 
     try {
-      const cleanedData = {
-        ...data,
-        destinationWallet: data.destinationWallet === '' ? undefined : data.destinationWallet,
-        twitterLink: data.twitterLink === '' ? undefined : data.twitterLink,
+      // Upload all images first
+      const uploadedUrls: string[] = [];
+      for (let i = 0; i < imagePreviews.length; i++) {
+        const { file } = imagePreviews[i];
+        const publicUrl = await SubmissionsApi.uploadImage(file);
+        uploadedUrls.push(publicUrl);
+        setUploadProgress(((i + 1) / imagePreviews.length) * 100);
+      }
+
+      const submissionData = {
+        ...formData,
+        imageUrl: uploadedUrls[0] || undefined,
+        imageUrls: uploadedUrls,
+        destinationWallet: formData.destinationWallet || undefined,
+        twitterLink: formData.twitterLink || undefined,
       };
 
-      const response = await SubmissionsApi.createTestSubmission(cleanedData);
+      const response = await SubmissionsApi.createTestSubmission(submissionData);
 
       if (response.success) {
         setSubmitStatus('success');
@@ -93,7 +111,9 @@ export default function CreateTokenForm() {
           'Token submission created successfully! It will be reviewed for approval.',
         );
         reset();
-        setImagePreview(null);
+        // Clean up previews
+        imagePreviews.forEach(({ preview }) => URL.revokeObjectURL(preview));
+        setImagePreviews([]);
       } else {
         setSubmitStatus('error');
         const errorMessage =
@@ -108,8 +128,9 @@ export default function CreateTokenForm() {
       console.error('Error creating token:', error);
     } finally {
       setIsSubmitting(false);
+      setUploadProgress(0);
     }
-  };
+  });
 
   // Check if user is a verified seller
   const canCreateToken = authUser?.sellerStatus === 'APPROVED';
@@ -255,7 +276,7 @@ export default function CreateTokenForm() {
           <h2 className="text-[#D0B284] text-2xl font-bold mb-6">Create Token</h2>
 
           {/* Your existing create token form goes here */}
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-0">
+          <form onSubmit={onSubmit} className="space-y-0">
             {/* Email Field */}
             <LabelSection label="Email" error={errors.email?.message} />
             <InputSection>
@@ -350,47 +371,59 @@ export default function CreateTokenForm() {
               </div>
             </InputSection>
 
-            {/* Image URL Field */}
-            <LabelSection label="Asset Image URL" error={errors.imageUrl?.message} />
-            <InputSection>
-              <div className="space-y-4">
-                <Input
-                  placeholder="https://example.com/your-asset-image.jpg"
-                  {...register('imageUrl')}
-                  className="bg-transparent border-0 text-white placeholder:text-[#DCDDCC]/60 text-lg h-14 "
-                />
-              </div>
-            </InputSection>
-
             {/* Image Upload Field */}
-            <LabelSection label="Upload Preview" />
+            <LabelSection label="Upload Images" error={errors.imageUrls?.message} />
             <InputSection>
               <div className="relative">
                 <input
                   type="file"
                   accept="image/*"
+                  multiple
                   onChange={handleImageUpload}
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                 />
                 <div className="border-2 border-dashed border-[#D0B284]/50 rounded-xl p-8 text-center hover:border-[#D7BF75] transition-colors">
-                  {imagePreview ? (
+                  {imagePreviews.length > 0 ? (
                     <div className="space-y-4">
-                      <Image
-                        src={imagePreview || '/placeholder.svg'}
-                        alt="Preview"
-                        width={200}
-                        height={200}
-                        className="max-w-full max-h-48 mx-auto rounded-lg object-cover"
-                      />
-                      <p className="text-sm text-[#DCDDCC]/70">Click to change image</p>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        {imagePreviews.map((preview, index) => (
+                          <div key={index} className="relative group">
+                            <Image
+                              src={preview.preview}
+                              alt={`Preview ${index + 1}`}
+                              width={200}
+                              height={200}
+                              className="w-full h-48 object-cover rounded-lg"
+                            />
+                            <button
+                              onClick={() => removeImage(index)}
+                              className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                className="h-5 w-5"
+                                viewBox="0 0 20 20"
+                                fill="currentColor"
+                              >
+                                <path
+                                  fillRule="evenodd"
+                                  d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                                  clipRule="evenodd"
+                                />
+                              </svg>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-sm text-[#DCDDCC]/70">Click to add more images</p>
                     </div>
                   ) : (
                     <div className="space-y-4">
                       <Upload className="w-12 h-12 text-[#D0B284] mx-auto" />
                       <div>
-                        <p className="text-white font-medium text-lg">Upload your asset image</p>
+                        <p className="text-white font-medium text-lg">Upload your asset images</p>
                         <p className="text-sm text-[#DCDDCC]/70">
-                          PNG, JPG up to 10MB (for preview only)
+                          PNG, JPG up to 10MB each (you can upload multiple images)
                         </p>
                       </div>
                     </div>
@@ -398,6 +431,21 @@ export default function CreateTokenForm() {
                 </div>
               </div>
             </InputSection>
+
+            {/* Add upload progress indicator */}
+            {uploadProgress > 0 && uploadProgress < 100 && (
+              <div className="mt-4">
+                <div className="w-full bg-[#231F20] rounded-full h-2.5">
+                  <div
+                    className="bg-[#D0B284] h-2.5 rounded-full transition-all duration-300"
+                    style={{ width: `${uploadProgress}%` }}
+                  ></div>
+                </div>
+                <p className="text-sm text-[#DCDDCC]/70 mt-2">
+                  Uploading images: {Math.round(uploadProgress)}%
+                </p>
+              </div>
+            )}
 
             {/* Submit Button */}
             <div className="flex justify-center pt-12">
