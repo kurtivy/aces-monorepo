@@ -295,7 +295,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const walletAddress = privyUser?.wallet?.address || '';
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/seller-verification/submit`, {
+      const response = await fetch(`${API_BASE_URL}/api/v1/account-verification/submit`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
