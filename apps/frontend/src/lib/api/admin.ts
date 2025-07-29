@@ -43,7 +43,7 @@ export class AdminApi {
     options: RequestInit = {},
     token?: string,
   ): Promise<T> {
-    const url = `${API_BASE_URL}/api/v1/seller-verification/admin${endpoint}`;
+    const url = `${API_BASE_URL}/api/v1/account-verification/admin${endpoint}`;
 
     const response = await fetch(url, {
       ...options,

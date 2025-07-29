@@ -28,9 +28,10 @@ export const CreateSubmissionSchema = z.object({
 });
 
 export const CreateBidSchema = z.object({
-  submissionId: z.string().cuid(),
+  listingId: z.string().cuid(),
   amount: z.string(),
   currency: z.enum(['ETH', 'ACES']),
+  expiresAt: z.string().datetime().optional(),
 });
 
 // Admin schemas

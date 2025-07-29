@@ -44,7 +44,7 @@ export class VerificationApi {
     endpoint: string,
     options: RequestInit = {},
   ): Promise<ApiResult<T>> {
-    const url = `${API_BASE_URL}/api/v1/seller-verification${endpoint}`;
+    const url = `${API_BASE_URL}/api/v1/account-verification${endpoint}`;
 
     try {
       const response = await fetch(url, {
