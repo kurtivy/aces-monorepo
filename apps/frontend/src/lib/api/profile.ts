@@ -83,6 +83,17 @@ export interface TokenData {
   totalInUSD: number;
 }
 
+// Backend token data structure
+export interface BackendTokenData {
+  id: string;
+  contractAddress: string;
+  title: string;
+  ticker: string;
+  image: string;
+  value: string;
+  category: string;
+}
+
 export class ProfileApi {
   private static async request<T = unknown>(
     endpoint: string,
@@ -175,9 +186,7 @@ export class ProfileApi {
     });
   }
 
-  static async getUserTokens(
-    authToken: string,
-  ): Promise<ApiResult<{ tokens: TokenData[]; totalValue: { eth: number; usd: number } }>> {
+  static async getUserTokens(authToken: string): Promise<ApiResult<BackendTokenData[]>> {
     return this.request('/me/tokens', {
       method: 'GET',
       headers: {

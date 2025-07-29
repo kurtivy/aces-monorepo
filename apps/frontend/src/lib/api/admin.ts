@@ -88,8 +88,8 @@ export class AdminApi {
 
   // Verification-related methods
   static async getPendingVerifications(token: string): Promise<VerificationApplication[]> {
-    const response = await this.request<{ data?: VerificationApplication[] }>(
-      '/pending',
+    const response = await this.adminRequest<{ data?: VerificationApplication[] }>(
+      '/verifications/pending',
       {
         method: 'GET',
       },
@@ -105,12 +105,12 @@ export class AdminApi {
     rejectionReason?: string,
     token?: string,
   ): Promise<{ success: boolean }> {
-    return this.request(
-      `/process/${verificationId}`,
+    return this.adminRequest(
+      `/verifications/${verificationId}/review`,
       {
         method: 'POST',
         body: JSON.stringify({
-          approve,
+          approved: approve,
           rejectionReason,
         }),
       },
@@ -122,8 +122,8 @@ export class AdminApi {
     verificationId: string,
     token: string,
   ): Promise<VerificationApplication> {
-    return this.request(
-      `/${verificationId}`,
+    return this.adminRequest(
+      `/verifications/${verificationId}`,
       {
         method: 'GET',
       },
