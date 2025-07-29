@@ -1,6 +1,6 @@
 import type { ApiResponse } from '@aces/utils';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_BASE_API_URL || 'http://localhost:3002';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
 
 export interface UserProfile {
   id: string;
@@ -69,6 +69,19 @@ export interface ApiErrorResponse extends ApiResponse<never> {
 }
 
 export type ApiResult<T> = ApiSuccessResponse<T> | ApiErrorResponse;
+
+export interface TokenData {
+  id: string;
+  title: string;
+  ticker: string;
+  image: string;
+  contractAddress: string;
+  category: string;
+  amount: number;
+  totalInEth: number;
+  totalInAces: number;
+  totalInUSD: number;
+}
 
 export class ProfileApi {
   private static async request<T = unknown>(
@@ -155,6 +168,17 @@ export class ProfileApi {
     authToken: string,
   ): Promise<ApiResult<{ assets: UserAsset[]; totalValue: number }>> {
     return this.request(`/${userId}/assets`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
+    });
+  }
+
+  static async getUserTokens(
+    authToken: string,
+  ): Promise<ApiResult<{ tokens: TokenData[]; totalValue: { eth: number; usd: number } }>> {
+    return this.request('/me/tokens', {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${authToken}`,

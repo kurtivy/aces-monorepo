@@ -3,129 +3,79 @@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
+import { useAuth } from '@/lib/auth/auth-context';
+import { useEffect, useState } from 'react';
+import { ProfileApi, TokenData } from '@/lib/api/profile';
 
-interface TokenData {
-  id: string;
-  title: string;
-  ticker: string;
-  image: string;
-  contractAddress: string;
-  category: string;
-  amount: number;
-  totalInEth: number;
-  totalInAces: number;
-  totalInUSD: number;
-}
 
-interface TokenListTabProps {
-  tokens?: TokenData[];
-}
+export function TokenListTab() {
+  const { getAccessToken } = useAuth();
+  const [tokens, setTokens] = useState<TokenData[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [totalValue, setTotalValue] = useState({ eth: 0, usd: 0 });
 
-// Generate dummy contract addresses
-const generateContractAddress = (id: string): string => {
-  const addresses = [
-    '0x8ac9...07b506',
-    '0xbf85...298c36',
-    '0x60b0...3be80f',
-    '0x4f9f...d1a826',
-    '0x6ea5...78c3af',
-  ];
-  return addresses[Number.parseInt(id) % addresses.length] || '0x1234...5678';
-};
+  useEffect(() => {
+    const fetchUserTokens = async () => {
+      const authToken = await getAccessToken();
+      if (!authToken) return;
 
-// Categorize items
-const getCategoryFromTitle = (title: string): string => {
-  if (title.includes('Porsche') || title.includes('McLaren') || title.includes('Lamborghini'))
-    return 'Cars';
-  if (title.includes('Audemars') || title.includes('Richard Mille')) return 'Watches';
-  if (title.includes('Warhol') || title.includes('Haring')) return 'Art';
-  if (title.includes('Brady') || title.includes('Ohtani') || title.includes('Barzal'))
-    return 'Sports';
-  if (title.includes('Nike') || title.includes('Sneakers')) return 'Sneakers';
-  if (title.includes('Hermès') || title.includes('Louis Vuitton') || title.includes('Tiffany'))
-    return 'Luxury Goods';
-  if (
-    title.includes('Macallan') ||
-    title.includes('Louis XIII') ||
-    title.includes('Krug') ||
-    title.includes('Veuve')
-  )
-    return 'Spirits';
-  if (title.includes('Krugerrand') || title.includes('Gold')) return 'Precious Metals';
-  if (title.includes('iPhone')) return 'Tech';
-  if (title.includes('Kanye') || title.includes('Vinyl')) return 'Music';
-  if (title.includes('Azimut')) return 'Marine';
-  return 'Collectibles';
-};
+      try {
+        const result = await ProfileApi.getUserTokens(authToken);
+        if (result.success) {
+          setTokens(result.data.tokens);
+          setTotalValue(result.data.totalValue);
+        } else {
+          setError(result.error);
+        }
+      } catch (err) {
+        setError('Failed to fetch tokens');
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-// Sample data from the metadata
-const SAMPLE_TOKENS: TokenData[] = [
-  {
-    id: '2',
-    title: '1991 Porsche 964 Turbo',
-    ticker: '$P964',
-    image: '/placeholder.svg?height=40&width=40',
-    contractAddress: generateContractAddress('2'),
-    category: getCategoryFromTitle('1991 Porsche 964 Turbo'),
-    amount: 14931,
-    totalInEth: 5.6327,
-    totalInAces: 43.837416,
-    totalInUSD: 18420.5,
-  },
-  {
-    id: '7',
-    title: 'Audemars Piguet Royal Oak KAWS',
-    ticker: '$APKAWS',
-    image: '/placeholder.svg?height=40&width=40',
-    contractAddress: generateContractAddress('7'),
-    category: getCategoryFromTitle('Audemars Piguet Royal Oak KAWS'),
-    amount: 11675,
-    totalInEth: 6.6129,
-    totalInAces: 30.950425,
-    totalInUSD: 21650.75,
-  },
-  {
-    id: '4',
-    title: '2010 Lamborghini Murcielago SV',
-    ticker: '$LAMBOSV',
-    image: '/placeholder.svg?height=40&width=40',
-    contractAddress: generateContractAddress('4'),
-    category: getCategoryFromTitle('2010 Lamborghini Murcielago SV'),
-    amount: 859,
-    totalInEth: 13.4423,
-    totalInAces: 0.005103,
-    totalInUSD: 44000.0,
-  },
-  {
-    id: '6',
-    title: 'Andy Warhol Signed "Marilyn Monroe"',
-    ticker: '$WARHOL',
-    image: '/placeholder.svg?height=40&width=40',
-    contractAddress: generateContractAddress('6'),
-    category: getCategoryFromTitle('Andy Warhol Signed "Marilyn Monroe"'),
-    amount: 2500,
-    totalInEth: 44.205,
-    totalInAces: 125.5,
-    totalInUSD: 144820.0,
-  },
-  {
-    id: '9',
-    title: 'Hermès Himalaya Kelly Retourne 32',
-    ticker: '$HIMALY',
-    image: '/placeholder.svg?height=40&width=40',
-    contractAddress: generateContractAddress('9'),
-    category: getCategoryFromTitle('Hermès Himalaya Kelly Retourne 32'),
-    amount: 1200,
-    totalInEth: 4.4725,
-    totalInAces: 89.25,
-    totalInUSD: 14650.0,
-  },
-];
+    fetchUserTokens();
+  }, [getAccessToken]);
 
-export function TokenListTab({ tokens = SAMPLE_TOKENS }: TokenListTabProps) {
-  // Calculate total portfolio values
-  const totalEth = tokens.reduce((sum, token) => sum + token.totalInEth, 0);
-  const totalUsd = tokens.reduce((sum, token) => sum + token.totalInUSD, 0);
+  if (isLoading) {
+    return (
+      <div className="w-full rounded-xl bg-[#231F20] border border-[#D0B284]/20 shadow-lg p-6">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-[#D0B284]/10 rounded w-1/4"></div>
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-16 bg-[#D0B284]/10 rounded"></div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="w-full rounded-xl bg-[#231F20] border border-red-500/20 shadow-lg p-6">
+        <div className="text-red-500">Error: {error}</div>
+      </div>
+    );
+  }
+
+  if (!tokens.length) {
+    return (
+      <div className="w-full rounded-xl bg-[#231F20] border border-[#D0B284]/20 shadow-lg p-6">
+        <div className="text-center text-[#DCDDCC]">
+          <p className="mb-4">No tokens found in your portfolio</p>
+          <Button
+            className="bg-[#184D37] hover:bg-[#184D37]/80 text-white"
+            onClick={() => (window.location.href = '/create-token')}
+          >
+            Create Token
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full rounded-xl bg-[#231F20] border border-[#D0B284]/20 shadow-lg overflow-hidden">
@@ -134,9 +84,9 @@ export function TokenListTab({ tokens = SAMPLE_TOKENS }: TokenListTabProps) {
         <div className="flex items-center justify-between mb-6">
           <div>
             <div className="text-2xl font-bold text-white font-libre-caslon mb-1">
-              {totalEth.toFixed(6)} ETH
+              {totalValue.eth.toFixed(6)} ETH
             </div>
-            <div className="text-[#DCDDCC] text-sm">${totalUsd.toLocaleString()}</div>
+            <div className="text-[#DCDDCC] text-sm">${totalValue.usd.toLocaleString()}</div>
           </div>
         </div>
 

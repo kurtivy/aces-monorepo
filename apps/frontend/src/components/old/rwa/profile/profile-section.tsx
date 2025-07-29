@@ -18,15 +18,6 @@ export default function ProfileSection({}: ProfileSectionProps) {
     console.log('Profile clicked');
   };
 
-  const handleSettingsClick = () => {
-    // Handle settings click logic here
-    console.log('Settings clicked');
-  };
-
-  function handleSellerDashboardClick(): void {
-    throw new Error('Function not implemented.');
-  }
-
   return (
     <div className="bg-black rounded-xl p-2 flex items-center justify-end min-w-[200px] pr-6">
       <div className="flex items-center gap-2">
@@ -36,11 +27,7 @@ export default function ProfileSection({}: ProfileSectionProps) {
         <div className="w-px h-6 bg-[#D0B284] mx-2" />
 
         {/* Connect Wallet Profile */}
-        <ConnectWalletProfile
-          onProfileClick={handleProfileClick}
-          onSettingsClick={handleSettingsClick}
-          onSellerDashboardClick={handleSellerDashboardClick}
-        />
+        <ConnectWalletProfile onProfileClick={handleProfileClick} />
       </div>
     </div>
   );

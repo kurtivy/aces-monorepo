@@ -404,4 +404,69 @@ export async function userProfileRoutes(fastify: FastifyInstance) {
       }
     },
   );
+
+  /**
+   * Get user's tokens
+   */
+  fastify.get(
+    '/:userId/tokens',
+    {
+      preHandler: [requireAuth],
+      schema: {
+        params: zodToJsonSchema(
+          z.object({
+            userId: z.string().min(1),
+          }),
+        ),
+      },
+    },
+    async (request, reply) => {
+      const { userId } = request.params as { userId: string };
+
+      try {
+        // Check if user can access this data (admin or own data)
+        if (!canAccessResource(request.user, userId, [UserRole.ADMIN])) {
+          throw errors.forbidden('Access denied');
+        }
+
+        const tokens = await profileService.getUserTokens(userId);
+
+        return reply.send({
+          success: true,
+          data: tokens,
+        });
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error('Unknown error');
+        fastify.log.error({ err, userId, operation: 'getUserTokens' }, 'Failed to get user tokens');
+        throw error;
+      }
+    },
+  );
+
+  /**
+   * Get current user's tokens
+   */
+  fastify.get(
+    '/me/tokens',
+    {
+      preHandler: [requireAuth],
+    },
+    async (request, reply) => {
+      try {
+        const tokens = await profileService.getUserTokens(request.user!.id);
+
+        return reply.send({
+          success: true,
+          data: tokens,
+        });
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error('Unknown error');
+        fastify.log.error(
+          { err, operation: 'getCurrentUserTokens' },
+          'Failed to get current user tokens',
+        );
+        throw error;
+      }
+    },
+  );
 }

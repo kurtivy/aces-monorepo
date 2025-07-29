@@ -2,6 +2,7 @@ import Fastify, { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
+import multipart from '@fastify/multipart';
 import fastifyMetrics from 'fastify-metrics';
 import { User as PrismaUser, PrismaClient } from '@prisma/client';
 
@@ -21,6 +22,12 @@ import { getPrismaClient, checkDatabaseHealth, disconnectDatabase } from './lib/
 import { loggers } from './lib/logger';
 import { handleError } from './lib/errors';
 import { registerAuth } from './plugins/auth';
+import { submissionsRoutes } from './routes/v1/submissions';
+import { adminRoutes } from './routes/v1/admin';
+import { bidsRoutes } from './routes/v1/bids';
+import { sellerVerificationRoutes } from './routes/v1/seller-verification';
+import { userProfileRoutes } from './routes/v1/user-profile';
+import { webhooksRoutes } from './routes/v1/webhooks';
 
 export const buildApp = async (): Promise<FastifyInstance> => {
   const fastify = Fastify({
@@ -34,6 +41,11 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   // Register plugins
   fastify.register(cors, { origin: '*' });
   fastify.register(helmet);
+  fastify.register(multipart, {
+    limits: {
+      fileSize: 5 * 1024 * 1024, // 5MB
+    },
+  });
   fastify.register(fastifyMetrics, {
     endpoint: '/metrics',
     routeMetrics: { enabled: true },
@@ -41,6 +53,14 @@ export const buildApp = async (): Promise<FastifyInstance> => {
 
   // Register custom plugins
   fastify.register(registerAuth);
+
+  // Register v1 routes with proper API prefixes
+  fastify.register(submissionsRoutes, { prefix: '/submissions' });
+  fastify.register(adminRoutes, { prefix: '/api/v1/admin' });
+  fastify.register(bidsRoutes, { prefix: '/api/v1/bids' });
+  fastify.register(sellerVerificationRoutes, { prefix: '/api/v1/seller-verification' });
+  fastify.register(userProfileRoutes, { prefix: '/api/v1/users' });
+  fastify.register(webhooksRoutes, { prefix: '/api/v1/webhooks' });
 
   // Register hooks
   fastify.addHook('onRequest', async (request) => {
@@ -54,8 +74,8 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   });
 
   // Health check routes
-  fastify.get('/api/v1/health/live', async () => ({ status: 'ok' }));
-  fastify.get('/api/v1/health/ready', async () => {
+  fastify.get('/health/live', async () => ({ status: 'ok' }));
+  fastify.get('/health/ready', async () => {
     const isDbReady = await checkDatabaseHealth();
     if (!isDbReady) {
       throw new Error('Database not ready');
