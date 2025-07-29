@@ -13,7 +13,8 @@ exports.CreateSubmissionSchema = zod_1.z.object({
         .string()
         .min(10, 'Description must be at least 10 characters')
         .max(1000, 'Description must be less than 1000 characters'),
-    imageUrl: zod_1.z.string().url('Please provide a valid image URL'),
+    imageUrl: zod_1.z.string().url('Please provide a valid image URL').optional(),
+    imageUrls: zod_1.z.array(zod_1.z.string().url('Please provide valid image URLs')).optional().default([]),
     proofOfOwnership: zod_1.z.string().min(10, 'Proof of ownership must be at least 10 characters'),
     email: zod_1.z.string().email('Please enter a valid email address').optional(),
     destinationWallet: zod_1.z

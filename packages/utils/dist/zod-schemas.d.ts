@@ -3,7 +3,8 @@ export declare const CreateSubmissionSchema: z.ZodObject<{
     name: z.ZodString;
     symbol: z.ZodString;
     description: z.ZodString;
-    imageUrl: z.ZodString;
+    imageUrl: z.ZodOptional<z.ZodString>;
+    imageUrls: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
     proofOfOwnership: z.ZodString;
     email: z.ZodOptional<z.ZodString>;
     destinationWallet: z.ZodOptional<z.ZodString>;
@@ -12,8 +13,9 @@ export declare const CreateSubmissionSchema: z.ZodObject<{
     symbol: string;
     name: string;
     description: string;
-    imageUrl: string;
+    imageUrls: string[];
     proofOfOwnership: string;
+    imageUrl?: string | undefined;
     email?: string | undefined;
     destinationWallet?: string | undefined;
     twitterLink?: string | undefined;
@@ -21,8 +23,9 @@ export declare const CreateSubmissionSchema: z.ZodObject<{
     symbol: string;
     name: string;
     description: string;
-    imageUrl: string;
     proofOfOwnership: string;
+    imageUrl?: string | undefined;
+    imageUrls?: string[] | undefined;
     email?: string | undefined;
     destinationWallet?: string | undefined;
     twitterLink?: string | undefined;

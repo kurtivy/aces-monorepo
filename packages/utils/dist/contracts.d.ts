@@ -25,7 +25,6 @@ export declare function getBondingCurveContracts(chainId: number): {
     readonly acesTest: "0x6474F13C2CEbD4Ca36cAE5a1055d44928822Ded9";
     readonly bondingCurveTest: "0xafa9256Adffc24c3d34296304046647B77eEB139";
 };
-export { ACES_TEST_ABI, BONDING_CURVE_TEST_ABI, ABIS } from './abis';
 export interface BondingCurveContracts {
     acesTest: string;
     bondingCurveTest: string;

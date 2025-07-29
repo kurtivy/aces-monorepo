@@ -3,7 +3,7 @@
 // Generated from deployment addresses
 // Run 'pnpm extract-abis' to regenerate
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.DEPLOYMENT_INFO = exports.ABIS = exports.BONDING_CURVE_TEST_ABI = exports.ACES_TEST_ABI = exports.BONDING_CURVE_CONTRACTS = exports.CONTRACTS = void 0;
+exports.DEPLOYMENT_INFO = exports.BONDING_CURVE_CONTRACTS = exports.CONTRACTS = void 0;
 exports.getContractAddress = getContractAddress;
 exports.getBondingCurveContracts = getBondingCurveContracts;
 exports.CONTRACTS = {
@@ -43,11 +43,6 @@ function getBondingCurveContracts(chainId) {
             throw new Error(`Bonding curve contracts not deployed on chain ${chainId}`);
     }
 }
-// Contract ABIs are imported from abis.ts
-var abis_1 = require("./abis");
-Object.defineProperty(exports, "ACES_TEST_ABI", { enumerable: true, get: function () { return abis_1.ACES_TEST_ABI; } });
-Object.defineProperty(exports, "BONDING_CURVE_TEST_ABI", { enumerable: true, get: function () { return abis_1.BONDING_CURVE_TEST_ABI; } });
-Object.defineProperty(exports, "ABIS", { enumerable: true, get: function () { return abis_1.ABIS; } });
 // Deployment info
 exports.DEPLOYMENT_INFO = {
     network: 'baseSepolia',

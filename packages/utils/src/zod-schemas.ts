@@ -11,7 +11,8 @@ export const CreateSubmissionSchema = z.object({
     .string()
     .min(10, 'Description must be at least 10 characters')
     .max(1000, 'Description must be less than 1000 characters'),
-  imageUrl: z.string().url('Please provide a valid image URL'),
+  imageUrl: z.string().url('Please provide a valid image URL').optional(),
+  imageUrls: z.array(z.string().url('Please provide valid image URLs')).optional().default([]),
   proofOfOwnership: z.string().min(10, 'Proof of ownership must be at least 10 characters'),
   email: z.string().email('Please enter a valid email address').optional(),
   destinationWallet: z

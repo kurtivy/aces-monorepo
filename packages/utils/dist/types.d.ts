@@ -23,26 +23,27 @@ export type RejectionType = 'MANUAL' | 'TX_FAILURE';
 export type ActionType = 'USER' | 'SYSTEM' | 'WEBHOOK' | 'ADMIN';
 export interface RwaSubmission {
     id: string;
-    status: SubmissionStatus;
-    txStatus: TxStatus | null;
-    rejectionType: RejectionType | null;
     name: string;
     symbol: string;
     description: string;
-    imageUrl: string;
+    imageUrl: string | null;
+    imageUrls: string[];
     proofOfOwnership: string;
+    ownerId: string;
+    email: string | null;
     destinationWallet: string | null;
     twitterLink: string | null;
-    email: string | null;
-    ownerId: string;
-    createdAt: Date;
-    updatedAt: Date;
+    status: string;
+    txStatus: string | null;
+    rejectionType: string | null;
     approvedAt: Date | null;
     rejectionReason: string | null;
     txHash: string | null;
+    createdAt: Date;
+    updatedAt: Date;
     deletedAt: Date | null;
     updatedBy: string | null;
-    updatedByType: ActionType | null;
+    updatedByType: string | null;
 }
 export interface Token {
     id: string;
