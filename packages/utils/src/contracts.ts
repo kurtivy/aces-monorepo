@@ -46,9 +46,6 @@ export function getBondingCurveContracts(chainId: number) {
   }
 }
 
-// Contract ABIs are imported from abis.ts
-export { ACES_TEST_ABI, BONDING_CURVE_TEST_ABI, ABIS } from './abis';
-
 // Types for the contracts
 export interface BondingCurveContracts {
   acesTest: string;

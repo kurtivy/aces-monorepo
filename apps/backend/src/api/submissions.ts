@@ -1,88 +1,58 @@
-import Fastify, { FastifyInstance } from 'fastify';
-import { randomUUID } from 'crypto';
-import cors from '@fastify/cors';
-import helmet from '@fastify/helmet';
-import fastifyMetrics from 'fastify-metrics';
-import { User as PrismaUser, PrismaClient } from '@prisma/client';
+import { FastifyPluginAsync } from 'fastify';
+import { z } from 'zod';
+import { StorageService } from '../lib/storage-utils';
+import { CreateSubmissionSchema, type CreateSubmissionRequest } from '@aces/utils';
+import { errors } from '../lib/errors';
+import { SubmissionService } from '../services/submission-service';
+import { getPrismaClient } from '../lib/database';
 
-// Extend Fastify types to include custom properties
-declare module 'fastify' {
-  interface FastifyRequest {
-    startTime?: number;
-    user: PrismaUser | null;
-  }
+// Create a singleton instance of SubmissionService
+const submissionService = new SubmissionService(getPrismaClient());
 
-  interface FastifyInstance {
-    prisma: PrismaClient;
-  }
-}
+const GetSignedUrlSchema = z.object({
+  fileType: z.string(),
+});
 
-import { getPrismaClient, disconnectDatabase } from '../lib/database';
-import { loggers } from '../lib/logger';
-import { handleError } from '../lib/errors';
-import { registerAuth } from '../plugins/auth';
-import { submissionsRoutes } from '../routes/v1/submissions';
-
-const buildSubmissionsApp = async (): Promise<FastifyInstance> => {
-  const fastify = Fastify({
-    logger: false,
-    genReqId: () => randomUUID(),
+export const submissionsApi: FastifyPluginAsync = async (fastify) => {
+  // Get signed URL for image upload
+  fastify.post<{ Body: z.infer<typeof GetSignedUrlSchema> }>('/api/submissions/get-upload-url', {
+    schema: {
+      body: GetSignedUrlSchema,
+    },
+    handler: async (request) => {
+      try {
+        const { fileType } = request.body;
+        const { url, fileName } = await StorageService.getSignedUploadUrl(fileType);
+        return { url, fileName, publicUrl: StorageService.getPublicUrl(fileName) };
+      } catch (error) {
+        throw errors.internal('Failed to generate signed URL', { cause: error });
+      }
+    },
   });
 
-  const prisma = getPrismaClient();
-  fastify.decorate('prisma', prisma);
+  // Create submission endpoint
+  fastify.post<{ Body: CreateSubmissionRequest }>('/api/submissions', {
+    schema: {
+      body: CreateSubmissionSchema,
+    },
+    handler: async (request) => {
+      try {
+        // Get the user ID from the authenticated session
+        const userId = request.user?.id;
+        if (!userId) {
+          throw errors.unauthorized('User must be authenticated');
+        }
 
-  // Register plugins
-  fastify.register(cors, { origin: '*' });
-  fastify.register(helmet);
-  fastify.register(fastifyMetrics, {
-    endpoint: '/metrics',
-    routeMetrics: { enabled: true },
+        const submission = await submissionService.createSubmission(
+          userId,
+          request.body,
+          request.id, // Using request ID as correlation ID
+        );
+
+        return { success: true, data: submission };
+      } catch (error) {
+        throw errors.internal('Failed to create submission', { cause: error });
+      }
+    },
   });
-
-  // Register custom plugins
-  fastify.register(registerAuth);
-  fastify.register(submissionsRoutes);
-
-  // Register hooks
-  fastify.addHook('onRequest', async (request) => {
-    request.startTime = Date.now();
-    loggers.request(request.id, request.method, request.url, request.headers['user-agent']);
-  });
-
-  fastify.addHook('onResponse', async (request, reply) => {
-    const responseTime = request.startTime ? Date.now() - request.startTime : 0;
-    loggers.response(request.id, request.method, request.url, reply.statusCode, responseTime);
-  });
-
-  // Global error handler
-  fastify.setErrorHandler((error, request, reply) => {
-    try {
-      handleError(error, reply);
-    } catch (error) {
-      handleError(error, reply);
-    }
-  });
-
-  fastify.addHook('onClose', async () => {
-    await disconnectDatabase();
-  });
-
-  return fastify;
 };
-
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-
-const handler = async (req: VercelRequest, res: VercelResponse) => {
-  const app = await buildSubmissionsApp();
-  await app.ready();
-
-  // Handle path rewriting: /api/v1/submissions/live → /live
-  if (req.url?.startsWith('/api/v1/submissions')) {
-    req.url = req.url.replace('/api/v1/submissions', '') || '/';
-  }
-
-  app.server.emit('request', req, res);
-};
-
-export default handler;
