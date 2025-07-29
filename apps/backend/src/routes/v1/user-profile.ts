@@ -79,11 +79,7 @@ export async function userProfileRoutes(fastify: FastifyInstance) {
       const correlationId = request.id;
 
       try {
-        const updatedProfile = await profileService.updateUserProfile(
-          request.user!.id,
-          updates,
-          correlationId,
-        );
+        const updatedProfile = await profileService.updateUserProfile(request.user!.id, updates);
 
         return reply.send({
           success: true,
@@ -160,15 +156,29 @@ export async function userProfileRoutes(fastify: FastifyInstance) {
       const { limit, cursor } = request.query as z.infer<typeof PaginationSchema>;
 
       try {
-        const transactions = await profileService.getUserTransactionHistory(
-          request.user!.id,
-          limit,
-          cursor,
-        );
+        // Get user activity summary instead of transaction history
+        const activity = await profileService.getUserActivitySummary(request.user!.id);
+        const submissions = await profileService.getUserSubmissions(request.user!.id);
+        const bids = await profileService.getUserBids(request.user!.id);
+
+        // Apply pagination to submissions (as a proxy for transaction history)
+        const startIndex = cursor ? submissions.findIndex((s) => s.id === cursor) + 1 : 0;
+        const endIndex = startIndex + limit;
+        const paginatedSubmissions = submissions.slice(startIndex, endIndex);
+        const hasMore = endIndex < submissions.length;
+        const nextCursor = hasMore
+          ? paginatedSubmissions[paginatedSubmissions.length - 1]?.id
+          : undefined;
 
         return reply.send({
           success: true,
-          data: transactions,
+          data: {
+            activity,
+            submissions: paginatedSubmissions,
+            bids: bids.slice(0, limit),
+            nextCursor,
+            hasMore,
+          },
         });
       } catch (error) {
         const err = error instanceof Error ? error : new Error('Unknown error');
@@ -207,7 +217,27 @@ export async function userProfileRoutes(fastify: FastifyInstance) {
           throw errors.forbidden('Access denied');
         }
 
-        const transactions = await profileService.getUserTransactionHistory(userId, limit, cursor);
+        // Get user activity summary instead of transaction history
+        const activity = await profileService.getUserActivitySummary(userId);
+        const submissions = await profileService.getUserSubmissions(userId);
+        const bids = await profileService.getUserBids(userId);
+
+        // Apply pagination to submissions
+        const startIndex = cursor ? submissions.findIndex((s) => s.id === cursor) + 1 : 0;
+        const endIndex = startIndex + limit;
+        const paginatedSubmissions = submissions.slice(startIndex, endIndex);
+        const hasMore = endIndex < submissions.length;
+        const nextCursor = hasMore
+          ? paginatedSubmissions[paginatedSubmissions.length - 1]?.id
+          : undefined;
+
+        const transactions = {
+          activity,
+          submissions: paginatedSubmissions,
+          bids: bids.slice(0, limit),
+          nextCursor,
+          hasMore,
+        };
 
         return reply.send({
           success: true,
@@ -234,14 +264,17 @@ export async function userProfileRoutes(fastify: FastifyInstance) {
     },
     async (request, reply) => {
       try {
-        const assets = await profileService.getUserOnChainAssets(
-          request.user!.id,
-          request.user!.walletAddress || undefined,
-        );
+        // Get user portfolio summary instead of on-chain assets
+        const portfolio = await profileService.getUserPortfolioSummary(request.user!.id);
+        const tokens = await profileService.getUserTokens(request.user!.id);
 
         return reply.send({
           success: true,
-          data: assets,
+          data: {
+            portfolio,
+            tokens,
+            totalValue: portfolio.totalValueEstimate,
+          },
         });
       } catch (error) {
         const err = error instanceof Error ? error : new Error('Unknown error');
@@ -287,10 +320,15 @@ export async function userProfileRoutes(fastify: FastifyInstance) {
           throw errors.notFound('User not found');
         }
 
-        const assets = await profileService.getUserOnChainAssets(
-          userId,
-          user.walletAddress || undefined,
-        );
+        // Get user portfolio summary instead of on-chain assets
+        const portfolio = await profileService.getUserPortfolioSummary(userId);
+        const tokens = await profileService.getUserTokens(userId);
+
+        const assets = {
+          portfolio,
+          tokens,
+          totalValue: portfolio.totalValueEstimate,
+        };
 
         return reply.send({
           success: true,
@@ -322,7 +360,28 @@ export async function userProfileRoutes(fastify: FastifyInstance) {
       const { q, limit } = request.query as z.infer<typeof UserSearchSchema>;
 
       try {
-        const users = await profileService.searchUsers(q, limit);
+        // Simple user search implementation using Prisma directly
+        const users = await fastify.prisma.user.findMany({
+          where: {
+            OR: [
+              { displayName: { contains: q, mode: 'insensitive' } },
+              { walletAddress: { contains: q, mode: 'insensitive' } },
+              { email: { contains: q, mode: 'insensitive' } },
+            ],
+            isActive: true,
+          },
+          select: {
+            id: true,
+            displayName: true,
+            walletAddress: true,
+            avatar: true,
+            role: true,
+            sellerStatus: true,
+            createdAt: true,
+          },
+          take: limit,
+          orderBy: { createdAt: 'desc' },
+        });
 
         return reply.send({
           success: true,
@@ -365,10 +424,11 @@ export async function userProfileRoutes(fastify: FastifyInstance) {
         }
 
         // Get comprehensive user statistics
-        const [profile, transactions, assets] = await Promise.all([
+        const [profile, activity, portfolio, tokens] = await Promise.all([
           profileService.getUserProfile(userId),
-          profileService.getUserTransactionHistory(userId, 1),
-          profileService.getUserOnChainAssets(userId),
+          profileService.getUserActivitySummary(userId),
+          profileService.getUserPortfolioSummary(userId),
+          profileService.getUserTokens(userId),
         ]);
 
         const stats = {
@@ -380,13 +440,15 @@ export async function userProfileRoutes(fastify: FastifyInstance) {
             isVerifiedSeller: profile.isVerifiedSeller,
           },
           activity: {
-            totalSubmissions: transactions.totalSubmissions,
-            totalBids: transactions.totalBids,
-            totalSpent: transactions.totalSpent,
+            totalSubmissions: activity.submissionsCount,
+            totalListings: activity.listingsCount,
+            totalBids: activity.bidsCount,
+            totalTokens: activity.tokensCount,
           },
           assets: {
-            totalTokens: assets.tokens.length,
-            totalValue: assets.totalValue,
+            totalTokens: tokens.length,
+            totalValue: portfolio.totalValueEstimate,
+            tokenSymbols: portfolio.tokenSymbols,
           },
         };
 

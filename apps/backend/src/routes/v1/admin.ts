@@ -1,48 +1,58 @@
 import { FastifyInstance } from 'fastify';
-import { zodToJsonSchema } from 'zod-to-json-schema';
 import { z } from 'zod';
-import {
-  ApprovalSchema,
-  RejectionSchema,
-  RecoverySchema,
-  WebhookReplaySchema,
-  PaginationSchema,
-  SubmissionStatusEnum,
-  type RejectionRequest,
-  type PaginationRequest,
-  type ChainEventWebhookRequest,
-} from '@aces/utils';
-import { ApprovalService } from '../../services/approval-service';
-import { RecoveryService } from '../../services/recovery-service';
-import { SubmissionService } from '../../services/submission-service';
+import { zodToJsonSchema } from 'zod-to-json-schema';
+import { SubmissionStatus } from '@prisma/client';
 import { errors } from '../../lib/errors';
+import { loggers } from '../../lib/logger';
+import { getPrismaClient } from '../../lib/database';
+import { ApprovalService } from '../../services/approval-service';
+import { SubmissionService } from '../../services/submission-service';
+import { RecoveryService } from '../../services/recovery-service';
+import { BiddingService } from '../../services/bidding-service';
+import { AccountVerificationService } from '../../services/account-verification-service';
+
+// Schema definitions
+const PaginationSchema = z.object({
+  limit: z.coerce.number().min(1).max(100).default(20),
+  cursor: z.string().optional(),
+});
+
+const ApprovalSchema = z.object({
+  submissionId: z.string().cuid(),
+});
+
+const RejectionSchema = z.object({
+  submissionId: z.string().cuid(),
+  rejectionReason: z.string().min(1).max(500),
+});
+
+const RecoverySchema = z.object({
+  submissionId: z.string().cuid(),
+});
+
+const WebhookReplaySchema = z.object({
+  webhookLogId: z.string().cuid(),
+});
+
+const SubmissionStatusEnum = z.nativeEnum(SubmissionStatus);
+
+type PaginationRequest = z.infer<typeof PaginationSchema>;
 
 export async function adminRoutes(fastify: FastifyInstance) {
-  const approvalService = new ApprovalService(fastify.prisma);
-  const recoveryService = new RecoveryService(fastify.prisma);
-  const submissionService = new SubmissionService(fastify.prisma);
+  const prisma = getPrismaClient();
+  const approvalService = new ApprovalService(prisma);
+  const submissionService = new SubmissionService(prisma);
+  const recoveryService = new RecoveryService(prisma);
+  const biddingService = new BiddingService(prisma);
+  const verificationService = new AccountVerificationService(prisma);
 
-  // Admin authentication middleware - skip for approval endpoint
+  // Admin authentication middleware
   fastify.addHook('preHandler', async (request) => {
-    // Skip admin check for approval endpoint
-    if (request.routeOptions.url === '/api/v1/admin/approve/:submissionId') {
-      if (!request.user) {
-        throw errors.unauthorized('Authentication required');
-      }
-      return;
-    }
-
     if (!request.user) {
       throw errors.unauthorized('Authentication required');
     }
 
-    // Validate admin permissions
-    const isAdmin = await approvalService.validateAdminPermissions(
-      request.user.id,
-      request.user.walletAddress,
-    );
-
-    if (!isAdmin) {
+    if (request.user.role !== 'ADMIN') {
       throw errors.forbidden('Admin access required');
     }
   });
@@ -58,14 +68,17 @@ export async function adminRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const { limit, cursor } = request.query as PaginationRequest;
 
-      const result = await approvalService.getPendingApprovals({
+      const submissions = await approvalService.getSubmissionsByStatus('PENDING', {
         limit,
-        cursor,
+        offset: cursor ? 1 : 0,
       });
 
       return reply.send({
         success: true,
-        ...result,
+        data: submissions,
+        hasMore: submissions.length === limit,
+        nextCursor:
+          submissions.length === limit ? submissions[submissions.length - 1]?.id : undefined,
       });
     },
   );
@@ -87,10 +100,11 @@ export async function adminRoutes(fastify: FastifyInstance) {
         status?: z.infer<typeof SubmissionStatusEnum>;
       };
 
-      const result = await submissionService.getAllSubmissions(status, {
-        limit,
-        cursor,
-      });
+      const result = await submissionService.getAllSubmissions(
+        request.user!.id,
+        status ? { status } : undefined,
+        { limit, cursor },
+      );
 
       return reply.send({
         success: true,
@@ -110,7 +124,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const { id } = request.params as { id: string };
 
-      const submission = await approvalService.getSubmissionDetails(id);
+      const submission = await approvalService.getSubmissionById(id);
 
       if (!submission) {
         throw errors.notFound('Submission not found');
@@ -150,54 +164,16 @@ export async function adminRoutes(fastify: FastifyInstance) {
     '/reject/:submissionId',
     {
       schema: {
-        params: zodToJsonSchema(z.object({ submissionId: z.string().cuid() })),
-        body: zodToJsonSchema(RejectionSchema),
+        params: zodToJsonSchema(RejectionSchema),
+        body: zodToJsonSchema(z.object({ rejectionReason: z.string().min(1).max(500) })),
       },
     },
     async (request, reply) => {
-      const { submissionId } = request.params as { submissionId: string };
-      const { rejectionReason } = request.body as RejectionRequest;
+      const { submissionId } = request.params as z.infer<typeof RejectionSchema>;
+      const { rejectionReason } = request.body as { rejectionReason: string };
       const adminId = request.user!.id;
-      //   const correlationId = request.id;
 
-      // Manual rejection implementation
-      await fastify.prisma.$transaction(async (tx) => {
-        const submission = await tx.rwaSubmission.findUnique({
-          where: { id: submissionId },
-        });
-
-        if (!submission) {
-          throw errors.notFound('Submission not found');
-        }
-
-        if (submission.status !== 'PENDING') {
-          throw errors.validation(`Cannot reject submission with status: ${submission.status}`);
-        }
-
-        // Update submission status
-        await tx.rwaSubmission.update({
-          where: { id: submissionId },
-          data: {
-            status: 'REJECTED',
-            rejectionType: 'MANUAL',
-            rejectionReason: rejectionReason,
-            updatedBy: adminId,
-            updatedByType: 'ADMIN',
-          },
-        });
-
-        // Log to audit trail
-        await tx.submissionAuditLog.create({
-          data: {
-            submissionId,
-            fromStatus: 'PENDING',
-            toStatus: 'REJECTED',
-            actorId: adminId,
-            actorType: 'ADMIN',
-            notes: `Manual rejection: ${rejectionReason}`,
-          },
-        });
-      });
+      await approvalService.rejectSubmission(submissionId, adminId, rejectionReason, request.id);
 
       return reply.send({
         success: true,
@@ -208,7 +184,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
 
   // Recovery endpoints
   fastify.post(
-    '/recover/resubmit/:submissionId',
+    '/recover/retry/:submissionId',
     {
       schema: {
         params: zodToJsonSchema(RecoverySchema),
@@ -219,7 +195,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
       const adminId = request.user!.id;
       const correlationId = request.id;
 
-      const result = await recoveryService.resubmitTransaction(
+      const result = await recoveryService.retrySubmissionApproval(
         submissionId,
         adminId,
         correlationId,
@@ -228,7 +204,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
       return reply.send({
         success: true,
         data: result,
-        message: 'Transaction resubmitted successfully',
+        message: 'Submission retry initiated successfully',
       });
     },
   );
@@ -243,7 +219,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     },
     async (request, reply) => {
       const { webhookLogId } = request.params as z.infer<typeof WebhookReplaySchema>;
-      const adminId = 'temp-admin-no-auth'; // TODO: Add proper authentication
+      const adminId = request.user!.id;
       const correlationId = request.id;
 
       const result = await recoveryService.replayWebhook(webhookLogId, adminId, correlationId);
@@ -258,119 +234,135 @@ export async function adminRoutes(fastify: FastifyInstance) {
     },
   );
 
-  // Get failed transactions
+  // Get stuck submissions
   fastify.get(
-    '/recovery/failed-transactions',
+    '/recovery/stuck-submissions',
     {
       schema: {
         querystring: zodToJsonSchema(PaginationSchema),
       },
     },
     async (request, reply) => {
-      const { limit, cursor } = request.query as PaginationRequest;
+      const { limit } = request.query as PaginationRequest;
 
-      const result = await recoveryService.getFailedTransactions({
-        limit,
-        cursor,
+      const submissions = await recoveryService.getStuckSubmissions({
+        olderThanHours: 24,
       });
 
       return reply.send({
         success: true,
-        ...result,
+        data: submissions.slice(0, limit),
+        total: submissions.length,
       });
     },
   );
 
-  // Get unprocessed webhooks
+  // Get failed webhooks
   fastify.get(
-    '/recovery/unprocessed-webhooks',
+    '/recovery/failed-webhooks',
     {
       schema: {
         querystring: zodToJsonSchema(PaginationSchema),
       },
     },
     async (request, reply) => {
-      const { limit, cursor } = request.query as PaginationRequest;
+      const { limit } = request.query as PaginationRequest;
 
-      const result = await recoveryService.getUnprocessedWebhooks({
-        limit,
-        cursor,
-      });
+      const webhooks = await recoveryService.getFailedWebhooks(limit);
 
       return reply.send({
         success: true,
-        ...result,
+        data: webhooks,
+        total: webhooks.length,
       });
     },
   );
 
-  // Get admin dashboard stats
+  // Get admin dashboard statistics
   fastify.get('/stats', async (request, reply) => {
-    const [recoveryStats, submissionStats, systemHealth] = await Promise.all([
+    const [totalSubmissions, totalBids, recoveryStats, biddingStats] = await Promise.all([
+      prisma.rwaSubmission.count(),
+      prisma.bid.count(),
       recoveryService.getRecoveryStats(),
-      Promise.all([
-        fastify.prisma.rwaSubmission.groupBy({
-          by: ['status'],
-          where: { deletedAt: null },
-          _count: { status: true },
-        }),
-        fastify.prisma.user.count(),
-        fastify.prisma.bid.count({ where: { deletedAt: null } }),
-      ]),
-      // Add system health checks here if needed
-      Promise.resolve({ dbConnected: true }),
+      biddingService.getBiddingStats(),
     ]);
 
-    const [statusCounts, totalUsers, totalBids] = submissionStats;
+    // Get submission status breakdown
+    const submissionStatuses = await prisma.rwaSubmission.groupBy({
+      by: ['status'],
+      _count: { status: true },
+    });
+
+    const statusBreakdown = submissionStatuses.reduce(
+      (acc, item) => {
+        if (item._count && typeof item._count === 'object' && 'status' in item._count) {
+          acc[item.status] = (item._count as { status: number }).status;
+        }
+        return acc;
+      },
+      {} as Record<string, number>,
+    );
 
     return reply.send({
       success: true,
       data: {
-        recovery: recoveryStats,
         submissions: {
-          byStatus: statusCounts.reduce((acc: Record<string, number>, item) => {
-            acc[item.status] = item._count.status;
-            return acc;
-          }, {}),
-          totalUsers,
-          totalBids,
+          total: totalSubmissions,
+          byStatus: statusBreakdown,
         },
-        system: systemHealth,
+        bids: {
+          total: totalBids,
+          uniqueBidders: biddingStats.totalBidders,
+        },
+        recovery: recoveryStats,
       },
     });
   });
 
-  // Update transaction status (called by webhooks typically, but admin can also use)
+  // Get pending verifications
+  fastify.get('/verifications/pending', async (request, reply) => {
+    const verifications = await verificationService.getAllPendingVerifications();
+
+    return reply.send({
+      success: true,
+      data: verifications,
+    });
+  });
+
+  // Review verification
   fastify.post(
-    '/update-transaction-status',
+    '/verifications/:verificationId/review',
     {
       schema: {
+        params: zodToJsonSchema(z.object({ verificationId: z.string().cuid() })),
         body: zodToJsonSchema(
           z.object({
-            txHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
-            status: z.enum(['MINED', 'FAILED', 'DROPPED']),
-            blockNumber: z.number().optional(),
-            gasUsed: z.string().optional(),
+            approved: z.boolean(),
+            rejectionReason: z.string().optional(),
           }),
         ),
       },
     },
     async (request, reply) => {
-      const { txHash, status, blockNumber, gasUsed } = request.body as ChainEventWebhookRequest;
-      const correlationId = request.id;
+      const { verificationId } = request.params as { verificationId: string };
+      const { approved, rejectionReason } = request.body as {
+        approved: boolean;
+        rejectionReason?: string;
+      };
+      const adminId = request.user!.id;
 
-      const result = await approvalService.updateTransactionStatus(
-        txHash,
-        status,
-        blockNumber,
-        gasUsed,
-        correlationId,
+      const decision = approved ? 'APPROVED' : 'REJECTED';
+      const result = await verificationService.reviewVerification(
+        verificationId,
+        adminId,
+        decision as 'APPROVED' | 'REJECTED',
+        rejectionReason,
       );
 
       return reply.send({
         success: true,
-        data: { updated: result },
-        message: result ? 'Transaction status updated' : 'Transaction not found or already updated',
+        data: result,
+        message: `Verification ${approved ? 'approved' : 'rejected'} successfully`,
       });
     },
   );
