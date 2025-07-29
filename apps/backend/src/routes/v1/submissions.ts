@@ -10,10 +10,96 @@ import {
 import { SubmissionService } from '../../services/submission-service';
 import { BiddingService } from '../../services/bidding-service';
 import { errors } from '../../lib/errors';
+import { StorageService } from '../../lib/storage-utils';
 
 export async function submissionsRoutes(fastify: FastifyInstance) {
   const submissionService = new SubmissionService(fastify.prisma);
   const biddingService = new BiddingService(fastify.prisma);
+
+  // Direct image upload endpoint (bypasses CORS)
+  fastify.post('/upload-image', async (request, reply) => {
+    try {
+      const data = await request.file();
+
+      if (!data) {
+        return reply.status(400).send({
+          success: false,
+          error: 'No file provided',
+        });
+      }
+
+      // Validate file type
+      if (!data.mimetype.startsWith('image/')) {
+        return reply.status(400).send({
+          success: false,
+          error: 'File must be an image',
+        });
+      }
+
+      // Validate file size (5MB limit)
+      const buffer = await data.toBuffer();
+      if (buffer.length > 5 * 1024 * 1024) {
+        return reply.status(400).send({
+          success: false,
+          error: 'File size too large (max 5MB)',
+        });
+      }
+
+      // Upload to Google Cloud Storage
+      const fileName = `submissions/${Date.now()}-${data.filename}`;
+      const bucket = StorageService.getBucket();
+      const file = bucket.file(fileName);
+
+      await file.save(buffer, {
+        metadata: {
+          contentType: data.mimetype,
+        },
+      });
+
+      const publicUrl = StorageService.getPublicUrl(fileName);
+
+      return reply.send({
+        success: true,
+        data: { publicUrl },
+      });
+    } catch (error) {
+      fastify.log.error({ error, operation: 'uploadImage' }, 'Failed to upload image');
+      return reply.status(500).send({
+        success: false,
+        error: 'Failed to upload image',
+      });
+    }
+  });
+
+  // Get signed URL for image upload
+  fastify.post(
+    '/get-upload-url',
+    {
+      schema: {
+        body: zodToJsonSchema(
+          z.object({
+            fileType: z.string(),
+          }),
+        ),
+      },
+    },
+    async (request, reply) => {
+      const { fileType } = request.body as { fileType: string };
+
+      try {
+        const { url, fileName } = await StorageService.getSignedUploadUrl(fileType);
+        const publicUrl = StorageService.getPublicUrl(fileName);
+
+        return reply.send({
+          success: true,
+          data: { url, fileName, publicUrl },
+        });
+      } catch (error) {
+        fastify.log.error({ error, operation: 'getUploadUrl' }, 'Failed to generate signed URL');
+        throw errors.internal('Failed to generate signed URL');
+      }
+    },
+  );
 
   // Test endpoint - no auth required
   fastify.post(

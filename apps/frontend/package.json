@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@aces/utils": "workspace:*",
+    "@google-cloud/storage": "^7.16.0",
     "@hookform/resolvers": "^5.1.1",
     "@privy-io/react-auth": "^2.20.0",
     "@radix-ui/react-alert-dialog": "^1.1.14",
