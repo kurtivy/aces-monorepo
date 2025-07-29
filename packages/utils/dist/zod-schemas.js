@@ -29,9 +29,10 @@ exports.CreateSubmissionSchema = zod_1.z.object({
         .or(zod_1.z.literal('')),
 });
 exports.CreateBidSchema = zod_1.z.object({
-    submissionId: zod_1.z.string().cuid(),
+    listingId: zod_1.z.string().cuid(),
     amount: zod_1.z.string(),
     currency: zod_1.z.enum(['ETH', 'ACES']),
+    expiresAt: zod_1.z.string().datetime().optional(),
 });
 // Admin schemas
 exports.ApprovalSchema = zod_1.z.object({

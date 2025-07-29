@@ -1,9 +1,9 @@
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { ListingService } from '../services/listing-service.js';
-import { getPrismaClient } from '../lib/database.js';
-import { errors } from '../lib/errors.js';
-import { logger } from '../lib/logger.js';
+import { ListingService } from '../services/listing-service';
+import { getPrismaClient } from '../lib/database';
+import { errors } from '../lib/errors';
+import { logger } from '../lib/logger';
 
 const listingService = new ListingService(getPrismaClient());
 

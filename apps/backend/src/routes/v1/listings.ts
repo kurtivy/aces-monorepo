@@ -5,8 +5,8 @@ import {
   toggleListingStatus,
   getAllListingsForAdmin,
   getMyListings,
-} from '../../api/listings.js';
-import { errors } from '../../lib/errors.js';
+} from '../../api/listings';
+import { errors } from '../../lib/errors';
 
 export default async function listingsRoutes(fastify: FastifyInstance) {
   // Authentication middleware for protected routes

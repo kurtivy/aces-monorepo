@@ -1,6 +1,6 @@
 import { PrismaClient, Token } from '@prisma/client';
-import { logger } from '../lib/logger.js';
-import { errors } from '../lib/errors.js';
+import { logger } from '../lib/logger';
+import { errors } from '../lib/errors';
 
 interface CreateTokenFromListingData {
   listingId: string;

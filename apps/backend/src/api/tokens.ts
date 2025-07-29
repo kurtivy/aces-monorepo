@@ -1,9 +1,9 @@
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { TokenService } from '../services/token-service.js';
-import { getPrismaClient } from '../lib/database.js';
-import { errors } from '../lib/errors.js';
-import { logger } from '../lib/logger.js';
+import { TokenService } from '../services/token-service';
+import { getPrismaClient } from '../lib/database';
+import { errors } from '../lib/errors';
+import { logger } from '../lib/logger';
 
 const tokenService = new TokenService(getPrismaClient());
 

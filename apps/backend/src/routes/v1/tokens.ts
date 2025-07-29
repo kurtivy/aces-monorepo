@@ -1,13 +1,13 @@
 import { FastifyInstance } from 'fastify';
 import {
-  createToken,
   getTokenById,
   getTokenByContractAddress,
-  getAllTokensForAdmin,
-  getMyTokens,
+  createToken,
   deleteToken,
-} from '../../api/tokens.js';
-import { errors } from '../../lib/errors.js';
+  getMyTokens,
+  getAllTokensForAdmin,
+} from '../../api/tokens';
+import { errors } from '../../lib/errors';
 
 export default async function tokensRoutes(fastify: FastifyInstance) {
   // Authentication middleware for protected routes

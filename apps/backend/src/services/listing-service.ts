@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { logger } from '../lib/logger.js';
+import { logger } from '../lib/logger';
 
 interface CreateListingFromSubmissionData {
   submissionId: string;

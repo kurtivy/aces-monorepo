@@ -31,17 +31,20 @@ export declare const CreateSubmissionSchema: z.ZodObject<{
     twitterLink?: string | undefined;
 }>;
 export declare const CreateBidSchema: z.ZodObject<{
-    submissionId: z.ZodString;
+    listingId: z.ZodString;
     amount: z.ZodString;
     currency: z.ZodEnum<["ETH", "ACES"]>;
+    expiresAt: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
+    listingId: string;
     amount: string;
-    submissionId: string;
     currency: "ETH" | "ACES";
+    expiresAt?: string | undefined;
 }, {
+    listingId: string;
     amount: string;
-    submissionId: string;
     currency: "ETH" | "ACES";
+    expiresAt?: string | undefined;
 }>;
 export declare const ApprovalSchema: z.ZodObject<{
     submissionId: z.ZodString;
@@ -94,8 +97,8 @@ export declare const PaginationSchema: z.ZodObject<{
     limit: number;
     cursor?: string | undefined;
 }, {
-    limit?: number | undefined;
     cursor?: string | undefined;
+    limit?: number | undefined;
 }>;
 export declare const SubmissionStatusEnum: z.ZodEnum<["PENDING", "APPROVED", "LIVE", "REJECTED"]>;
 export declare const ChainEventWebhookSchema: z.ZodObject<{
