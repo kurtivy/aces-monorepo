@@ -9,9 +9,22 @@ import CountdownTimer from './countdown-timer';
 import ProgressionBar from './progression-bar';
 import BuyNowSection from './buy-now';
 import AnimatedDotsBackground from '../ui/custom/animated-dots-background';
-import { useBondingCurveContracts } from '@/hooks/use-ico-contracts'; // Updated import
+import { useBondingCurveContracts } from '@/hooks/use-ico-contracts';
+import { useAuth } from '@/lib/auth/auth-context';
+import { usePageLoading } from '@/hooks/use-page-loading';
 import { formatEther } from 'viem';
 import Footer from '@/components/ui/custom/footer';
+
+// Import skeleton components
+import {
+  ImageTileSkeleton,
+  TokenInfoSkeleton,
+  BuyNowSkeleton,
+  CountdownSkeleton,
+  ProgressionSkeleton,
+  ChartSkeleton,
+  LoadingOverlay,
+} from './skeleton-components';
 
 // Image positioning system - 200x200px squares, no gaps, RIGHT AGAINST content edges
 // Main content = 5 squares wide (1000px), images positioned directly adjacent
@@ -61,13 +74,13 @@ const productMapping: Record<string, string> = {
     '/canvas-images/outline/Tom-Brady-New-England-Patriots-Autographed-Riddell-1982-1989-Throwback-Speed-Flex-Authentic-Helmet.webp',
   'square-3': '/canvas-images/outline/Andy-Warhol-Signed-Marilyn-Monroe.webp',
   'square-4': '/canvas-images/outline/tokenise-you-shit.webp',
-  'square-5': '/canvas-images/outline/',
+  'square-5': '/canvas-images/outline/Nike-SB-Dunks-Lobster.webp',
   'square-6': '/canvas-images/outline/Original-iPhone-Apple.webp',
   'square-7': '/canvas-images/outline/tokenise-you-shit.webp',
   'square-8':
     '/canvas-images/outline/Hermes-Matte-Niloticus-Crocodile-Himalaya-Kelly-Retourne-32-White.webp',
   'square-9': '/canvas-images/outline/Richard-Mille-RM-88-Automatic-Tourbillon-Smiley.webp',
-  'square-10': '/canvas-images/outline/',
+  'square-10': '/canvas-images/outline/2010-Lamborghini-Murcielago-SV.webp',
   'square-11':
     '/canvas-images/outline/Shohei-Ohtani-Los-Angeles-Angels-Autographed-Fanatics-Authentic-Game-Used-MLB-Baseball-from-2018-Rookie-Season-Limited-Edition-Number-1-of-5.webp',
   'square-12':
@@ -93,7 +106,7 @@ const productMapping: Record<string, string> = {
   'rect-vertical-3': '/canvas-images/outline/Tiffany-and-Co-Rimowa.webp',
 };
 
-// Token Info Components - Now pull from live contract data
+// Token Info Components - Price square always shows live data, balance square depends on wallet
 const CurrentPriceSquare: React.FC = () => {
   const { contractState, ethPrice } = useBondingCurveContracts();
 
@@ -101,6 +114,31 @@ const CurrentPriceSquare: React.FC = () => {
     ? Number(formatEther(contractState.currentPrice))
     : 0;
   const priceInUSD = priceInETH * ethPrice.current;
+
+  // Debug the current price calculation for browser differences
+  console.log('💰 CurrentPriceSquare Calculation (NEXT TOKEN PRICE):', {
+    browser: navigator.userAgent.includes('Chrome')
+      ? 'Chrome'
+      : navigator.userAgent.includes('Firefox')
+        ? 'Firefox'
+        : navigator.userAgent.includes('Safari')
+          ? 'Safari'
+          : 'Other',
+    nextTokenPriceWei: contractState?.currentPrice
+      ? `${contractState.currentPrice.toString()} wei`
+      : 'NO DATA',
+    nextTokenPriceETH: priceInETH,
+    ethPriceCurrent: ethPrice.current,
+    ethPriceSource: ethPrice.source || 'unknown',
+    nextTokenPriceUSD: priceInUSD,
+    contractReady: !!contractState,
+    ethPriceReady: !ethPrice.isLoading,
+  });
+
+  // Show loading state if contract data isn't ready
+  if (!contractState || ethPrice.isLoading) {
+    return <TokenInfoSkeleton />;
+  }
 
   return (
     <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-[#231F20] to-[#0A0A0A] p-4">
@@ -137,6 +175,61 @@ const CurrentPriceSquare: React.FC = () => {
 
 const UserBalanceSquare: React.FC = () => {
   const { contractState } = useBondingCurveContracts();
+  const { isAuthenticated, connectWallet } = useAuth();
+
+  // If wallet not connected, show connect prompt
+  if (!isAuthenticated) {
+    return (
+      <div
+        className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-[#231F20] to-[#0A0A0A] p-4 cursor-pointer hover:bg-gradient-to-br hover:from-[#2A1F20] hover:to-[#1A0A0A] transition-all duration-300"
+        onClick={connectWallet}
+      >
+        <div className="text-center">
+          <h3
+            className="text-[#D0B264] text-sm font-medium tracking-wider mb-3 uppercase"
+            style={{ fontFamily: 'system, serif' }}
+          >
+            Your Balance
+          </h3>
+          <div className="flex flex-col items-center">
+            <div className="w-8 h-8 mx-auto mb-2 border border-[#D0B264] rounded-lg flex items-center justify-center">
+              <svg
+                className="w-4 h-4 text-[#D0B264]"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                />
+              </svg>
+            </div>
+            <span
+              className="text-[#D0B264] text-sm font-medium text-center leading-tight"
+              style={{ fontFamily: 'system, serif' }}
+            >
+              Connect Wallet
+              <br />
+              <span className="text-xs text-[#928357]">to view balance</span>
+            </span>
+          </div>
+        </div>
+        {/* Corner accents */}
+        <div className="absolute top-2 left-2 w-2 h-2 border-l-2 border-t-2 border-[#D0B264]/40 rounded-tl-lg" />
+        <div className="absolute top-2 right-2 w-2 h-2 border-r-2 border-t-2 border-[#D0B264]/40 rounded-tr-lg" />
+        <div className="absolute bottom-2 left-2 w-2 h-2 border-l-2 border-b-2 border-[#D0B264]/40 rounded-bl-lg" />
+        <div className="absolute bottom-2 right-2 w-2 h-2 border-r-2 border-b-2 border-[#D0B264]/40 rounded-br-lg" />
+      </div>
+    );
+  }
+
+  // Show loading if contract data not ready
+  if (!contractState) {
+    return <TokenInfoSkeleton />;
+  }
 
   // Get user's token balance from contract state
   const userTokenBalance = contractState?.tokenBalance
@@ -291,12 +384,23 @@ const ImageTile: React.FC<ImageTileProps> = ({ position, imageUrl, alt, tileKey 
 const ICOLaunchPage: React.FC = () => {
   const [isMobile, setIsMobile] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const { contractState } = useBondingCurveContracts();
 
-  // const { contractState } = useBondingCurveContracts(); // Updated to use new hook
+  // Get all image paths for preloading - filter out empty/invalid paths
+  const imagePaths = Object.values(productMapping).filter(
+    (path) => path && path.length > 0 && path !== '/canvas-images/outline/' && !path.endsWith('/'),
+  );
+
+  // Page loading coordination - now using real contract state since public data is available
+  const pageLoading = usePageLoading({
+    imagePaths,
+    contractReady: !!contractState, // Use real contract state
+    enableIntroAnimation: true,
+  });
 
   useEffect(() => {
     const checkMobile = () => {
-      setIsMobile(window.innerWidth < 1100); // Increased mobile breakpoint for wider content
+      setIsMobile(window.innerWidth < 1100);
     };
 
     checkMobile();
@@ -304,25 +408,55 @@ const ICOLaunchPage: React.FC = () => {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // Get contract data with fallbacks - now using contractState directly
-  // const currentPrice = contractState?.currentPrice || BigInt(0);
-  // const maxSupply = contractState?.maxSupply || BigInt(10000000); // 10M max supply
-  // const tokensSold = contractState?.tokenSupply || BigInt(0); // tokens sold so far
+  // Show loading overlay while images and contract data load
+  if (!pageLoading.isReady) {
+    let loadingMessage = 'Loading luxury assets...';
+    if (pageLoading.imagesLoading) {
+      loadingMessage = 'Preloading luxury assets...';
+    } else if (pageLoading.contractLoading) {
+      loadingMessage = 'Connecting to blockchain...';
+    }
 
+    return (
+      <>
+        <LoadingOverlay progress={pageLoading.loadingProgress} message={loadingMessage} />
+        {/* Pre-render the page structure for faster transition */}
+        <div className="opacity-0 pointer-events-none fixed inset-0">
+          <ICOPageContent isMobile={isMobile} containerRef={containerRef} isReady={false} />
+        </div>
+      </>
+    );
+  }
+
+  // Page is ready - show with intro animation
+  return <ICOPageContent isMobile={isMobile} containerRef={containerRef} isReady={true} />;
+};
+
+// Separated page content for cleaner loading logic
+interface ICOPageContentProps {
+  isMobile: boolean;
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  isReady: boolean;
+}
+
+const ICOPageContent: React.FC<ICOPageContentProps> = ({ isMobile, containerRef, isReady }) => {
   return (
-    <div
+    <motion.div
       ref={containerRef}
       className="relative min-h-screen w-full overflow-hidden"
       style={{
         background: 'linear-gradient(180deg, #000000 0%, #1A1A1A 100%)',
       }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: isReady ? 1 : 0 }}
+      transition={{ duration: 0.8, ease: 'easeOut' }}
     >
-      {/* Add animated dots background */}
+      {/* Add animated dots background - reduced complexity during intro */}
       <AnimatedDotsBackground
-        opacity={0.22}
-        dotSpacing={32}
+        opacity={isReady ? 0.22 : 0.1}
+        dotSpacing={isReady ? 32 : 48}
         dotSize={1}
-        animationSpeed={0.8}
+        animationSpeed={isReady ? 0.8 : 0.3}
         waveType="horizontal"
         minOpacity={0.08}
         className="z-0"
@@ -346,34 +480,43 @@ const ICOLaunchPage: React.FC = () => {
       <div className="relative w-full" style={{ minHeight: '1200px' }}>
         {/* Image Grid Background - Hidden on mobile, positioned around content */}
         {!isMobile && (
-          <div className="absolute top-0 left-1/2 transform -translate-x-1/2">
+          <motion.div
+            className="absolute top-0 left-1/2 transform -translate-x-1/2"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: isReady ? 1 : 0 }}
+            transition={{ duration: 0.6, delay: 0.2, ease: 'easeOut' }}
+          >
             {/* Image positioning container - positioned relative to content start */}
             <div className="relative w-[1000px]">
-              {Object.entries(imagePositions).map(([key, position]) => (
-                <ImageTile
-                  key={key}
-                  position={position}
-                  imageUrl={productMapping[key]}
-                  alt={`Luxury asset ${key}`}
-                  tileKey={key}
-                />
-              ))}
+              {Object.entries(imagePositions).map(([key, position]) =>
+                isReady ? (
+                  <ImageTile
+                    key={key}
+                    position={position}
+                    imageUrl={productMapping[key]}
+                    alt={`Luxury asset ${key}`}
+                    tileKey={key}
+                  />
+                ) : (
+                  <ImageTileSkeleton key={key} position={position} />
+                ),
+              )}
             </div>
-          </div>
+          </motion.div>
         )}
 
         {/* Central Content Area - 1000px max width, starts right after header */}
         <motion.div
           className="relative z-10 flex flex-col items-center"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, ease: 'easeOut' }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: isReady ? 1 : 0 }}
+          transition={{ duration: 0.5, delay: 0.1, ease: 'easeOut' }}
         >
           <div className="w-full max-w-[1000px] mx-auto">
             {/* BUY ACES ICO NOW Header */}
             <div className="w-full flex flex-col items-center py-4 mb-4">
               <h2
-                className="text-4xl font-bold text-white mb-2"
+                className="text-4xl font-bold text-white mb-2 tracking-widest"
                 style={{
                   textShadow: '0 0 20px rgba(208, 178, 100, 0.3)',
                 }}
@@ -390,43 +533,64 @@ const ICOLaunchPage: React.FC = () => {
             </div>
 
             {/* Buy Now Section - standalone */}
-            <div className="w-full max-w-[1000px] mx-auto flex items-center justify-center mb-4">
-              <div className="w-[600px]">
-                <BuyNowSection />
-              </div>
-            </div>
+            <motion.div
+              className="w-full max-w-[1000px] mx-auto flex items-center justify-center mb-4"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: isReady ? 1 : 0 }}
+              transition={{ duration: 0.4, delay: 0.3, ease: 'easeOut' }}
+            >
+              <div className="w-[600px]">{isReady ? <BuyNowSection /> : <BuyNowSkeleton />}</div>
+            </motion.div>
 
             {/* Countdown Timer section - standalone */}
-            <div className="w-full flex flex-col items-center justify-center mb-4">
-              <CountdownTimer />
-            </div>
+            <motion.div
+              className="w-full flex flex-col items-center justify-center mb-4"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: isReady ? 1 : 0 }}
+              transition={{ duration: 0.4, delay: 0.4, ease: 'easeOut' }}
+            >
+              {isReady ? <CountdownTimer /> : <CountdownSkeleton />}
+            </motion.div>
 
             {/* Progression Bar - No props needed, gets data from hook */}
-            <div className="w-full flex flex-col items-center justify-center mb-12 relative z-10">
-              <ProgressionBar />
-            </div>
+            <motion.div
+              className="w-full flex flex-col items-center justify-center mb-12 relative z-10"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: isReady ? 1 : 0 }}
+              transition={{ duration: 0.4, delay: 0.5, ease: 'easeOut' }}
+            >
+              {isReady ? <ProgressionBar /> : <ProgressionSkeleton />}
+            </motion.div>
 
             {/* Bonding Curve Chart - No props needed, gets data from hook */}
-            <div
+            <motion.div
               className="w-full max-w-[1000px] mx-auto flex items-center justify-center relative z-0"
               style={{ height: '500px' }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: isReady ? 1 : 0 }}
+              transition={{ duration: 0.4, delay: 0.6, ease: 'easeOut' }}
             >
               {/* Chart - Centered */}
-              <div className="w-[600px] h-[500px] rounded-xl flex items-center justify-center overflow-hidden ">
+              <div className="w-[600px] h-[500px] rounded-xl flex items-center justify-center overflow-hidden">
                 <div className="w-full h-full">
-                  <BondingCurveChart />
+                  {isReady ? <BondingCurveChart /> : <ChartSkeleton />}
                 </div>
               </div>
-            </div>
+            </motion.div>
           </div>
         </motion.div>
       </div>
 
       {/* Footer positioned to sit flush with bottom of images */}
-      <div className="relative border-0.5 border-t rounded-t-xl border-[#D0B264]">
+      <motion.div
+        className="relative border-0.5 border-t rounded-t-xl border-[#D0B264]"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: isReady ? 1 : 0 }}
+        transition={{ duration: 0.4, delay: 0.7, ease: 'easeOut' }}
+      >
         <Footer />
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 };
 
