@@ -28,13 +28,13 @@ export function createAuthContext(user: EnhancedUser | null): AuthContext {
  * Middleware to require authentication
  */
 export async function requireAuth(request: FastifyRequest, _reply: FastifyReply) {
-  console.log('🔐 requireAuth middleware called', {
-    hasAuth: !!request.auth,
-    authKeys: request.auth ? Object.keys(request.auth) : [],
-    isAuthenticated: request.auth?.isAuthenticated,
-    hasUser: !!request.user,
-    userId: request.user?.id,
-  });
+  // console.log('🔐 requireAuth middleware called', {
+  //   hasAuth: !!request.auth,
+  //   authKeys: request.auth ? Object.keys(request.auth) : [],
+  //   isAuthenticated: request.auth?.isAuthenticated,
+  //   hasUser: !!request.user,
+  //   userId: request.user?.id,
+  // });
 
   if (!request.auth) {
     console.error('❌ request.auth is null/undefined');
