@@ -14,6 +14,7 @@ interface UseCanvasInteractionsProps {
   >;
   unitSize: number;
   updateViewState: (deltaX: number, deltaY: number) => void;
+  canvasRef: React.RefObject<HTMLCanvasElement | null>;
   repeatedPlacements?: Map<
     string,
     Array<{
@@ -81,6 +82,7 @@ export const useCanvasInteractions = ({
   imagePlacementMap,
   unitSize,
   updateViewState,
+  canvasRef,
   repeatedPlacements,
   repeatedTokens,
   onAboutClick,
@@ -91,7 +93,6 @@ export const useCanvasInteractions = ({
 
   const touchPhysicsRef = useRef<TouchPhysics>(createTouchPhysics());
   const dragStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const boundsRef = useRef<DOMRect | null>(null);
 
   const homeAreaWidth = unitSize * 2;
@@ -114,7 +115,7 @@ export const useCanvasInteractions = ({
         worldY: (clientY - rect.top - viewState.y) / viewState.scale,
       };
     },
-    [viewState],
+    [viewState, canvasRef],
   );
 
   // Browser-like momentum - mimics trackpad wheel events with decreasing deltas
@@ -298,7 +299,6 @@ export const useCanvasInteractions = ({
     (event: React.MouseEvent) => {
       if (event.button !== 0) return;
 
-      canvasRef.current = event.currentTarget as HTMLCanvasElement;
       boundsRef.current = null; // Reset bounds cache
 
       stopMomentum();
@@ -387,7 +387,6 @@ export const useCanvasInteractions = ({
     (event: React.TouchEvent) => {
       if (event.touches.length !== 1) return;
 
-      canvasRef.current = event.currentTarget as HTMLCanvasElement;
       boundsRef.current = null; // Reset bounds cache
 
       const touch = event.touches[0];
