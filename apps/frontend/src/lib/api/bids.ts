@@ -43,6 +43,9 @@ export interface ApiErrorResponse extends ApiResponse<never> {
 export type ApiResult<T> = ApiSuccessResponse<T> | ApiErrorResponse;
 
 export class BidsApi {
+  static getUserBids(_token: string) {
+    throw new Error('Method not implemented.');
+  }
   private static async request<T = unknown>(
     endpoint: string,
     options: RequestInit = {},

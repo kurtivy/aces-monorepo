@@ -35,7 +35,7 @@ const getStatusColor = (status: string) => {
 
 // Helper function to determine bid status based on listing state and bid data
 const getBidStatus = (bid: BidData): 'active' | 'outbid' | 'won' | 'expired' => {
-  if (!bid.listing.isLive) {
+  if (!bid.listing?.isLive) {
     return 'expired';
   }
 
@@ -47,12 +47,12 @@ const getBidStatus = (bid: BidData): 'active' | 'outbid' | 'won' | 'expired' => 
 // Helper function to format bid data for display
 const formatBidForDisplay = (bid: BidData): DisplayBidData => {
   const status = getBidStatus(bid);
-  const imageUrl = bid.listing.imageGallery?.[0] || '/placeholder.svg?height=40&width=40';
+  const imageUrl = bid.listing?.imageGallery?.[0] || '/placeholder.svg?height=40&width=40';
 
   return {
     id: bid.id,
-    itemName: bid.listing.title,
-    ticker: bid.listing.symbol,
+    itemName: bid.listing?.title || 'Unknown Item',
+    ticker: bid.listing?.symbol || 'N/A',
     image: imageUrl,
     category: 'Asset', // You might want to add category to the listing model
     bidAmount: `${bid.amount} ${bid.currency}`,
@@ -80,13 +80,13 @@ export function BidsTab() {
           return;
         }
 
-        const result = await BidsApi.getUserBids(token);
+        const data = await BidsApi.getUserBids(token);
 
-        if (result.success) {
-          const formattedBids = result.data.map(formatBidForDisplay);
+        if (Array.isArray(data)) {
+          const formattedBids = data.map(formatBidForDisplay);
           setBids(formattedBids);
         } else {
-          setError(result.error || 'Failed to fetch bids');
+          setError('Failed to fetch bids');
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An error occurred while fetching bids');

@@ -65,7 +65,7 @@ export function BidsTab() {
       } else if (statusFilter === 'EXPIRED') {
         const now = new Date();
         const expiresAt = bid.expiresAt ? new Date(bid.expiresAt) : null;
-        matchesStatus = expiresAt && expiresAt <= now;
+        matchesStatus = Boolean(expiresAt && expiresAt <= now);
       }
 
       return matchesSearch && matchesStatus;
