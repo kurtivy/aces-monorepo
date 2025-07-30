@@ -1,7 +1,7 @@
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import SocialIcons from '@/components/ui/custom/social-icons';
-import ConnectWalletProfile from '@/components/ui/custom/connect-wallet-profile';
+import ConnectWalletNav from '@/components/ui/custom/connect-wallet-nav';
 
 export default function LaunchHeader() {
   const router = useRouter();
@@ -11,7 +11,7 @@ export default function LaunchHeader() {
   };
 
   return (
-    <div className="relative z-10 flex items-center justify-between p-6 w-full overflow-hidden">
+    <div className="relative z-10 flex items-center justify-between p-6 w-full bg-transparent">
       <div className="flex items-center gap-4">
         <div className="w-16 h-16 flex items-center justify-center overflow-hidden">
           <Image
@@ -47,7 +47,7 @@ export default function LaunchHeader() {
 
       <div className="flex items-center gap-6">
         <SocialIcons iconSize={24} />
-        <ConnectWalletProfile onProfileClick={handleProfileClick} />
+        <ConnectWalletNav onProfileClick={handleProfileClick} />
       </div>
     </div>
   );

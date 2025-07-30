@@ -3,12 +3,11 @@
 import type React from 'react';
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence, type Variants } from 'framer-motion';
-import { Menu, X, Send, Wallet, User } from 'lucide-react';
-import Link from 'next/link';
+import { Menu, X, Send } from 'lucide-react';
 import { getDeviceCapabilities } from '../../../lib/utils/browser-utils';
-import { useAuth } from '@/lib/auth/auth-context';
+import { useModal } from '@/lib/contexts/modal-context';
 
-// Separate main navigation items from social links
+// Main navigation items
 const mainNavItems = [
   { href: '/create-token', label: 'Create Token', external: false, action: 'navigate' },
   { href: '/about', label: 'About', external: false, action: 'modal' },
@@ -46,7 +45,7 @@ export const InstagramIcon: React.FC<{ size?: number }> = ({ size = 20 }) => (
   </svg>
 );
 
-// Custom TikTok logo component - Updated with correct TikTok icon path
+// Custom TikTok logo component
 export const TikTokIcon: React.FC<{ size?: number }> = ({ size = 20 }) => (
   <svg
     width={size}
@@ -72,84 +71,62 @@ const socialLinks = [
   { href: 'https://www.tiktok.com/@acesdotfun', label: 'TikTok', external: true, icon: TikTokIcon },
 ];
 
-// Desktop animations (full experience)
-const desktopMenuVariants: Variants = {
+// Compact animations for the nav menu
+const compactMenuVariants: Variants = {
   closed: {
     opacity: 0,
-    x: '100%',
+    scale: 0.95,
     transition: {
-      duration: 0.2,
+      duration: 0.15,
       ease: 'easeInOut',
     },
   },
   open: {
     opacity: 1,
-    x: 0,
+    scale: 1,
     transition: {
-      duration: 0.3,
+      duration: 0.2,
       ease: 'easeOut',
-      staggerChildren: 0.1,
+      staggerChildren: 0.05,
       delayChildren: 0.1,
     },
   },
 };
 
-const desktopNavItemVariants: Variants = {
+const compactNavItemVariants: Variants = {
   closed: {
     opacity: 0,
-    x: 20,
+    y: -10,
   },
   open: {
     opacity: 1,
-    x: 0,
-    transition: {
-      duration: 0.2,
-      ease: 'easeOut',
-    },
-  },
-};
-
-// Mobile animations (performance-optimized)
-const mobileMenuVariants: Variants = {
-  closed: {
-    opacity: 0,
+    y: 0,
     transition: {
       duration: 0.15,
-      ease: 'easeInOut',
-    },
-  },
-  open: {
-    opacity: 1,
-    transition: {
-      duration: 0.15,
-      ease: 'easeOut',
-    },
-  },
-};
-
-const mobileNavItemVariants: Variants = {
-  closed: {
-    opacity: 0,
-  },
-  open: {
-    opacity: 1,
-    transition: {
-      duration: 0.1,
       ease: 'easeOut',
     },
   },
 };
 
 interface NavMenuProps {
-  onAboutClick?: () => void;
-  onTermsClick?: () => void;
+  className?: string;
+  isOpen?: boolean;
+  onOpenChange?: (isOpen: boolean) => void;
 }
 
-const NavMenu: React.FC<NavMenuProps> = ({ onAboutClick, onTermsClick }) => {
-  const [isOpen, setIsOpen] = useState(false);
+const NavMenu: React.FC<NavMenuProps> = ({
+  className = '',
+  isOpen: controlledIsOpen,
+  onOpenChange,
+}) => {
+  const [internalIsOpen, setInternalIsOpen] = useState(false);
 
-  // Auth context integration
-  const { isAuthenticated, isLoading, user, walletAddress, connectWallet } = useAuth();
+  // Use controlled state if provided, otherwise use internal state
+  const isOpen = controlledIsOpen !== undefined ? controlledIsOpen : internalIsOpen;
+  const setIsOpen = onOpenChange || setInternalIsOpen;
+
+  // Modal context integration
+  const { openAboutModal, openTermsModal } = useModal();
 
   // Smart mobile detection using our existing device capabilities
   const isMobileDevice = useMemo(() => {
@@ -157,106 +134,28 @@ const NavMenu: React.FC<NavMenuProps> = ({ onAboutClick, onTermsClick }) => {
     return capabilities.touchCapable || capabilities.isMobileSafari;
   }, []);
 
-  // Choose animation variants based on device capability
-  const menuVariants = isMobileDevice ? mobileMenuVariants : desktopMenuVariants;
-  const navItemVariants = isMobileDevice ? mobileNavItemVariants : desktopNavItemVariants;
-
-  // Wallet connection handlers
-  const handleConnectWallet = async () => {
-    try {
-      await connectWallet();
-    } catch (error) {
-      console.error('Failed to connect wallet:', error);
-    }
-  };
-
-  const handleWalletAddressClick = (e: React.MouseEvent) => {
-    setIsOpen(false); // Close the nav menu
-  };
-
-  // Display wallet address truncated
-  const displayAddress = walletAddress
-    ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
-    : null;
-
-  const displayName = user?.displayName || (displayAddress ? displayAddress : 'User');
-
   return (
-    <div className="fixed top-4 right-4 z-50 flex items-start">
+    <div className={`relative ${className}`}>
       <AnimatePresence mode="wait">
         {isOpen && (
           <motion.div
-            className="bg-black/95 border border-[#D0B264]/40 text-[#D0B264] rounded-lg mr-2 overflow-hidden shadow-lg max-w-[calc(100vw-4rem)]"
-            variants={menuVariants}
+            className="absolute top-10 right-0 bg-black/95 border border-[#D0B264]/40 text-[#D0B264] rounded-lg overflow-hidden shadow-lg min-w-[180px] z-50"
+            variants={compactMenuVariants}
             initial="closed"
             animate="open"
             exit="closed"
             style={{
-              marginTop: '0px',
               willChange: isMobileDevice ? 'opacity' : 'transform, opacity',
             }}
           >
-            <div className="p-3 sm:p-4 min-w-[160px] sm:min-w-[180px]">
-              {/* Wallet Connection Header */}
-              <div className="border-b border-[#D0B264]/20 mb-3 pb-3">
-                {isAuthenticated && user ? (
-                  // Connected Wallet Display
-                  <motion.div
-                    variants={navItemVariants}
-                    custom={0}
-                    style={{ willChange: isMobileDevice ? 'opacity' : 'transform, opacity' }}
-                  >
-                    <Link
-                      href="/profile"
-                      onClick={handleWalletAddressClick}
-                      className="flex items-center gap-2 text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 px-2 py-2 rounded-md group"
-                    >
-                      <div className="w-6 h-6 rounded-full bg-[#D0B284] flex items-center justify-center text-black text-xs font-bold">
-                        {user.avatar ? (
-                          <img src={user.avatar} alt="Avatar" className="w-6 h-6 rounded-full" />
-                        ) : (
-                          user?.displayName?.[0]?.toUpperCase() ||
-                          walletAddress?.[2]?.toUpperCase() ||
-                          'A'
-                        )}
-                      </div>
-                      <div className="flex flex-col items-start min-w-0">
-                        <div className="text-[#D0B264] text-xs font-medium truncate max-w-[120px] group-hover:text-white">
-                          {displayName}
-                        </div>
-                        <div className="text-[#D0B264]/60 text-xs font-mono group-hover:text-white/60">
-                          {displayAddress}
-                        </div>
-                      </div>
-                      <User className="w-3 h-3 ml-auto opacity-60 group-hover:opacity-100" />
-                    </Link>
-                  </motion.div>
-                ) : (
-                  // Connect Wallet Button
-                  <motion.div
-                    variants={navItemVariants}
-                    custom={0}
-                    style={{ willChange: isMobileDevice ? 'opacity' : 'transform, opacity' }}
-                  >
-                    <button
-                      onClick={handleConnectWallet}
-                      disabled={isLoading}
-                      className="flex items-center justify-center w-full text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 px-2 py-2 rounded-md text-sm font-medium"
-                    >
-                      <Wallet className="w-4 h-4 mr-2" />
-                      {isLoading ? 'Connecting...' : 'Connect Wallet'}
-                    </button>
-                  </motion.div>
-                )}
-              </div>
-
+            <div className="p-3">
               {/* Main Navigation Items */}
-              <div className="space-y-1">
+              <div className="space-y-1 border-b border-[#D0B264]/20 mb-3 pb-3">
                 {mainNavItems.map((item, index) => (
                   <motion.div
                     key={item.href}
-                    variants={navItemVariants}
-                    custom={index + 1} // Offset by 1 due to wallet header
+                    variants={compactNavItemVariants}
+                    custom={index}
                     style={{ willChange: isMobileDevice ? 'opacity' : 'transform, opacity' }}
                   >
                     {item.external ? (
@@ -265,7 +164,7 @@ const NavMenu: React.FC<NavMenuProps> = ({ onAboutClick, onTermsClick }) => {
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={() => setIsOpen(false)}
-                        className="block text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 px-2 py-1.5 sm:px-3 sm:py-2 text-sm font-medium rounded-md whitespace-nowrap uppercase font-system tracking-wide"
+                        className="block text-[#D0B264] hover:text-[#D0B264]/80 hover:bg-[#D0B264]/10 transition-colors duration-150 px-2 py-1.5 text-sm font-medium rounded-md whitespace-nowrap uppercase tracking-wide"
                       >
                         {item.label}
                       </a>
@@ -273,50 +172,52 @@ const NavMenu: React.FC<NavMenuProps> = ({ onAboutClick, onTermsClick }) => {
                       <button
                         onClick={() => {
                           setIsOpen(false);
-                          if (item.href === '/about' && onAboutClick) {
-                            onAboutClick();
-                          } else if (item.href === '/terms' && onTermsClick) {
-                            onTermsClick();
+                          if (item.href === '/about') {
+                            openAboutModal();
+                          } else if (item.href === '/terms') {
+                            openTermsModal();
                           }
                         }}
-                        className="block w-full text-left text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 px-2 py-1.5 sm:px-3 sm:py-2 text-sm font-medium rounded-md whitespace-nowrap uppercase font-system tracking-wide"
+                        className="block w-full text-left text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 px-2 py-1.5 text-sm font-medium rounded-md whitespace-nowrap uppercase tracking-wide"
                       >
                         {item.label}
                       </button>
                     ) : (
-                      <Link
+                      <a
                         href={item.href}
                         onClick={() => setIsOpen(false)}
-                        className="block text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 px-2 py-1.5 sm:px-3 sm:py-2 text-sm font-medium rounded-md whitespace-nowrap uppercase font-system tracking-wide"
+                        className="block text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 px-2 py-1.5 text-sm font-medium rounded-md whitespace-nowrap uppercase tracking-wide"
                       >
                         {item.label}
-                      </Link>
+                      </a>
                     )}
                   </motion.div>
                 ))}
               </div>
 
               {/* Social Links Footer */}
-              <div className="border-t border-[#D0B264]/20 mt-3 pt-3">
-                <div className="flex justify-center space-x-2 sm:space-x-4">
+              <div>
+                <div className="flex justify-center space-x-3">
                   {socialLinks.map((social, index) => {
                     const IconComponent = social.icon;
                     return (
                       <motion.div
                         key={social.href}
-                        variants={navItemVariants}
-                        custom={mainNavItems.length + index + 1} // Offset by 1 due to wallet header
-                        style={{ willChange: isMobileDevice ? 'opacity' : 'transform, opacity' }}
+                        variants={compactNavItemVariants}
+                        custom={mainNavItems.length + index}
+                        style={{
+                          willChange: isMobileDevice ? 'opacity' : 'transform, opacity',
+                        }}
                       >
                         <a
                           href={social.href}
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={() => setIsOpen(false)}
-                          className="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 rounded-full"
+                          className="flex items-center justify-center w-8 h-8 text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 rounded-full"
                           aria-label={social.label}
                         >
-                          <IconComponent size={16} className="sm:w-5 sm:h-5" />
+                          <IconComponent size={14} />
                         </a>
                       </motion.div>
                     );
@@ -328,8 +229,9 @@ const NavMenu: React.FC<NavMenuProps> = ({ onAboutClick, onTermsClick }) => {
         )}
       </AnimatePresence>
 
+      {/* Compact Hamburger Menu Button */}
       <motion.button
-        className="bg-black/90 border border-[#D0B264]/40 text-[#D0B264] shadow-lg rounded-full w-12 h-12 sm:w-16 sm:h-16 flex items-center justify-center cursor-pointer flex-shrink-0 hover:bg-black/95 hover:border-[#D0B264] transition-colors duration-150"
+        className="w-10 h-10 bg-black/90 border border-[#D0B284]/40 text-[#D0B284] hover:text-[#D0B264]/80 hover:bg-black/95 hover:border-[#D0B284] transition-colors duration-150 flex items-center justify-center rounded-full shadow-lg"
         onClick={() => setIsOpen(!isOpen)}
         whileHover={isMobileDevice ? undefined : { scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
@@ -340,14 +242,10 @@ const NavMenu: React.FC<NavMenuProps> = ({ onAboutClick, onTermsClick }) => {
       >
         <motion.div
           animate={{ rotate: isOpen ? 90 : 0 }}
-          transition={{ duration: isMobileDevice ? 0.1 : 0.2, ease: 'easeInOut' }}
+          transition={{ duration: 0.2, ease: 'easeInOut' }}
           style={{ willChange: 'transform' }}
         >
-          {isOpen ? (
-            <X className="h-6 w-6 sm:h-8 sm:w-8" />
-          ) : (
-            <Menu className="h-6 w-6 sm:h-8 sm:w-8" />
-          )}
+          {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </motion.div>
       </motion.button>
     </div>

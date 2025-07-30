@@ -5,8 +5,6 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 
 import ImageDetailsModal from '../ui/custom/image-details-modal';
-import AboutModal from '../ui/custom/about-modal';
-import TermsModal from '../ui/custom/terms-modal';
 import IntroAnimation from '../loading/intro-animation';
 import { useImageLoader } from '../../hooks/canvas/use-image-loader';
 import { useViewState } from '../../hooks/canvas/use-view-state';
@@ -41,10 +39,6 @@ const InfiniteCanvas = () => {
 
   // Restore session memory for intro animation
   const [hasSeenIntro, setHasSeenIntro] = useState(false);
-
-  // Modal state
-  const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
-  const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
 
   const imagePlacementMapRef = useRef(
     new Map<string, { image: ImageInfo; x: number; y: number; width: number; height: number }>(),
@@ -102,12 +96,11 @@ const InfiniteCanvas = () => {
     viewState,
     setSelectedImage,
     imagePlacementMap: imagePlacementMapRef,
-    unitSize: unitSize,
+    unitSize,
     updateViewState,
+    canvasRef,
     repeatedPlacements,
     repeatedTokens,
-    onAboutClick: () => setIsAboutModalOpen(true),
-    onTermsClick: () => setIsTermsModalOpen(true),
   });
 
   const interactionsEnabled = loadingState === 'ready' && imagesLoaded;
@@ -347,12 +340,7 @@ const InfiniteCanvas = () => {
   return (
     <>
       {/* Navigation Menu - only show when canvas is fully loaded */}
-      {loadingState === 'ready' && canvasReady && (
-        <NavMenu
-          onAboutClick={() => setIsAboutModalOpen(true)}
-          onTermsClick={() => setIsTermsModalOpen(true)}
-        />
-      )}
+      {loadingState === 'ready' && canvasReady && <NavMenu />}
 
       {/* Loading screen with new aces.fun intro animation */}
       {loadingState === 'loading' && !hasSeenIntro && (
@@ -398,8 +386,6 @@ const InfiniteCanvas = () => {
 
       {/* Modals and UI */}
       <ImageDetailsModal imageInfo={selectedImage} onClose={handleModalClose} />
-      <AboutModal isOpen={isAboutModalOpen} onClose={() => setIsAboutModalOpen(false)} />
-      <TermsModal isOpen={isTermsModalOpen} onClose={() => setIsTermsModalOpen(false)} />
       {loadingState === 'ready' && canvasReady && !selectedImage && (
         <HomeButton onClick={handleHomeClick} />
       )}

@@ -1,27 +1,21 @@
 'use client';
 
 import Image from 'next/image';
-import ConnectWalletProfile from './connect-wallet-profile';
+import ConnectWalletNav from './connect-wallet-nav';
 
 interface AcesHeaderProps {
   className?: string;
   title?: string;
-  onAboutClick?: () => void;
-  onTermsClick?: () => void;
   onProfileClick?: () => void;
 }
 
-export default function AcesHeader({
-  className = '',
-  title = '1991 Porsche 964 Turbo Rubystone Red',
-  onAboutClick,
-  onTermsClick,
-  onProfileClick,
-}: AcesHeaderProps) {
+export default function AcesHeader({ className = '', title, onProfileClick }: AcesHeaderProps) {
   return (
-    <header className={`w-full bg-[#231F20]/30 border-b border-[#D0B284]/20 ${className}`}>
+    <header className={`w-full bg-[#231F20]/30 ${className}`}>
       <div className="max-w-[1920px] mx-auto px-6 py-4">
-        <div className="grid grid-cols-[250px_1fr_250px] items-center w-full">
+        <div
+          className={`grid items-center w-full ${title ? 'grid-cols-[250px_1fr_250px]' : 'grid-cols-[250px_1fr]'}`}
+        >
           {/* Left side - ACES.FUN Logo */}
           <div className="flex items-center gap-4 min-w-[250px]">
             <div className="w-12 h-12 flex items-center justify-center overflow-hidden">
@@ -55,23 +49,21 @@ export default function AcesHeader({
             </div>
           </div>
 
-          {/* Center - Title (perfectly centered) */}
-          <div className="flex justify-center px-4">
-            <h1
-              className="text-xl sm:text-2xl lg:text-3xl text-center whitespace-nowrap text-[#D0B284] text-shadow-lg/30 text-shadow-[#231F20]"
-              style={{ fontFamily: 'Spray Letters' }}
-            >
-              {title}
-            </h1>
-          </div>
+          {/* Center - Title (conditionally rendered) */}
+          {title && (
+            <div className="flex justify-center px-4">
+              <h1
+                className="text-xl sm:text-2xl lg:text-3xl text-center whitespace-nowrap text-[#D0B284] text-shadow-lg/30 text-shadow-[#231F20]"
+                style={{ fontFamily: 'Spray Letters' }}
+              >
+                {title}
+              </h1>
+            </div>
+          )}
 
           {/* Right side - Connect Wallet and Nav Menu */}
           <div className="flex items-center justify-end min-w-[250px]">
-            <ConnectWalletProfile
-              onAboutClick={onAboutClick}
-              onTermsClick={onTermsClick}
-              onProfileClick={onProfileClick}
-            />
+            <ConnectWalletNav onProfileClick={onProfileClick} />
           </div>
         </div>
       </div>

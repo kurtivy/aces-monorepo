@@ -21,17 +21,23 @@ const imagePositions = {
   'square-2': { x: -400, y: 0, width: 200, height: 200, type: 'square' },
   'square-3': { x: -200, y: 400, width: 200, height: 200, type: 'square' },
   'square-4': { x: -200, y: 600, width: 200, height: 200, type: 'square' },
-  'square-5': { x: 0, y: 600, width: 200, height: 200, type: 'square' }, // Bottom left, next to BUY NOW
+  // 'square-5': { x: 0, y: 600, width: 200, height: 200, type: 'square' },
 
   // Right side - positioned directly against right edge of content (1000px + 0px = 1000px)
   'square-6': { x: 1200, y: 0, width: 200, height: 200, type: 'square' },
   'square-7': { x: 1000, y: 200, width: 200, height: 200, type: 'square' },
   'square-8': { x: 1000, y: 0, width: 200, height: 200, type: 'square' },
-  'square-9': { x: 1200, y: 600, width: 200, height: 200, type: 'square' },
-  'square-10': { x: 800, y: 600, width: 200, height: 200, type: 'square' },
+  'square-9': { x: -400, y: 1000, width: 200, height: 200, type: 'square' },
+  // 'square-10': { x: 800, y: 600, width: 200, height: 200, type: 'square' },
 
-  'square-11': { x: -400, y: 800, width: 200, height: 200, type: 'square' },
+  'square-11': { x: 1000, y: 800, width: 200, height: 200, type: 'square' },
   'square-12': { x: 1200, y: 800, width: 200, height: 200, type: 'square' },
+  'square-13': { x: 800, y: 800, width: 200, height: 200, type: 'square' },
+  'square-14': { x: -200, y: 1000, width: 200, height: 200, type: 'square' },
+  'square-15': { x: 0, y: 1000, width: 200, height: 200, type: 'square' },
+  'square-16': { x: 1200, y: 1000, width: 200, height: 200, type: 'square' },
+  'square-17': { x: 1200, y: 600, width: 200, height: 200, type: 'square' },
+  'square-18': { x: -400, y: 800, width: 200, height: 200, type: 'square' },
 
   // Token Info Squares
   'token-price': { x: 0, y: 400, width: 200, height: 200, type: 'token-info' },
@@ -40,9 +46,7 @@ const imagePositions = {
   // Additional rectangles and squares for complete grid coverage
   'rect-horizontal-1': { x: -400, y: 200, width: 400, height: 200, type: 'horizontal' },
   'rect-horizontal-2': { x: -200, y: 800, width: 400, height: 200, type: 'horizontal' },
-  'rect-horizontal-3': { x: 800, y: 800, width: 400, height: 200, type: 'horizontal' },
-  'rect-horizontal-4': { x: 800, y: 1000, width: 400, height: 200, type: 'horizontal' },
-  'rect-horizontal-5': { x: -200, y: 1000, width: 400, height: 200, type: 'horizontal' },
+  'rect-horizontal-3': { x: 800, y: 1000, width: 400, height: 200, type: 'horizontal' },
 
   'rect-vertical-1': { x: -400, y: 400, width: 200, height: 400, type: 'vertical' },
   'rect-vertical-2': { x: 1200, y: 200, width: 200, height: 400, type: 'vertical' },
@@ -51,37 +55,42 @@ const imagePositions = {
 
 // Luxury product mapping - using the same high-end products as infinite canvas
 const productMapping: Record<string, string> = {
-  'square-1': '/canvas-images/outline/Autographed-Jersey-Mathew-Barzal-New-York-Islanders.png',
+  'square-1':
+    '/canvas-images/outline/Audemars-Piguet-Royal-Oak-Concept-KAWS-Tourbillon-Companion-Dial-Limited-Edition.webp',
   'square-2':
-    '/canvas-images/Tom-Brady-New-England-Patriots-Autographed-Riddell-1982-1989-Throwback-Speed-Flex-Authentic-Helmet.webp',
-  'square-3': '/canvas-images/outline/Andy-Warhol-Signed-Marilyn-Monroe.png',
-  'square-4':
-    '/canvas-images/outline/Hermes-Matte-Niloticus-Crocodile-Himalaya-Kelly-Retourne-32-White.png',
-  'square-5':
-    '/canvas-images/outline/Audemars-Piguet-Royal-Oak-Concept-KAWS-Tourbillon-Companion-Dial-Limited-Edition.png',
-  'square-6': '/canvas-images/Original-iPhone-Apple.webp',
-  'square-7':
-    '/canvas-images/outline/Shohei-Ohtani-Los-Angeles-Angels-Autographed-Fanatics-Authentic-Game-Used-MLB-Baseball-from-2018-Rookie-Season-Limited-Edition-Number-1-of-5.png',
+    '/canvas-images/outline/Tom-Brady-New-England-Patriots-Autographed-Riddell-1982-1989-Throwback-Speed-Flex-Authentic-Helmet.webp',
+  'square-3': '/canvas-images/outline/Andy-Warhol-Signed-Marilyn-Monroe.webp',
+  'square-4': '/canvas-images/outline/tokenise-you-shit.webp',
+  'square-5': '/canvas-images/outline/',
+  'square-6': '/canvas-images/outline/Original-iPhone-Apple.webp',
+  'square-7': '/canvas-images/outline/tokenise-you-shit.webp',
   'square-8':
-    '/canvas-images/outline/The-Macallan-Red-Collection-Trunk-40yo-50yo-60yo-Limited-Edition.png',
-  'square-9': '/canvas-images/outline/Nike-SB-Dunks-Lobster.png',
-  'square-10': '/canvas-images/outline/Nike-SB-Dunks-Lobster.png',
+    '/canvas-images/outline/Hermes-Matte-Niloticus-Crocodile-Himalaya-Kelly-Retourne-32-White.webp',
+  'square-9': '/canvas-images/outline/Richard-Mille-RM-88-Automatic-Tourbillon-Smiley.webp',
+  'square-10': '/canvas-images/outline/',
   'square-11':
-    '/canvas-images/Shohei-Ohtani-Los-Angeles-Angels-Autographed-Fanatics-Authentic-Game-Used-MLB-Baseball-from-2018-Rookie-Season-Limited-Edition-Number-1-of-5.webp',
-  'square-12': '/canvas-images/Krug-Clos-dAmbonnay-Trilogy-Prestige-Champagne-Collection.webp',
+    '/canvas-images/outline/Shohei-Ohtani-Los-Angeles-Angels-Autographed-Fanatics-Authentic-Game-Used-MLB-Baseball-from-2018-Rookie-Season-Limited-Edition-Number-1-of-5.webp',
+  'square-12':
+    '/canvas-images/outline/Krug-Clos-dAmbonnay-Trilogy-Prestige-Champagne-Collection.webp',
+  'square-13': '/canvas-images/outline/Nike-SB-Dunks-Lobster.webp',
+  'square-14': '/canvas-images/outline/Autographed-Jersey-Mathew-Barzal-New-York-Islanders.webp',
+  'square-15':
+    '/canvas-images/outline/1991-Porsche-964-Turbo-Rubystone-Red-1-of-5-Limited-Edition-Paint.webp',
+  'square-16':
+    '/canvas-images/outline/The-Macallan-Red-Collection-Trunk-40yo-50yo-60yo-Limited-Edition.webp',
+  'square-17': '/canvas-images/outline/tokenise-you-shit.webp',
+  'square-18':
+    '/canvas-images/outline/Hermes-Matte-Niloticus-Crocodile-Himalaya-Kelly-Retourne-32-White.webp',
 
   // Horizontal
-  'rect-horizontal-1': '/canvas-images/outline/2009-F1-McLaren-MP4-24.png',
-  'rect-horizontal-2': '/canvas-images/outline/2010-Lamborghini-Murcielago-SV.png',
-  'rect-horizontal-3': '/canvas-images/outline/2022-Azimut-Atlantis-45.png',
-  'rect-horizontal-4': '/canvas-images/outline/2022-Azimut-Atlantis-45.png',
-
-  'rect-horizontal-5': '/canvas-images/outline/2010-Lamborghini-Murcielago-SV.png',
+  'rect-horizontal-1': '/canvas-images/outline/2009-F1-McLaren-MP4-24.webp',
+  'rect-horizontal-2': '/canvas-images/outline/2010-Lamborghini-Murcielago-SV.webp',
+  'rect-horizontal-3': '/canvas-images/outline/2022-Azimut-Atlantis-45.webp',
   // Vertical
   'rect-vertical-1':
-    '/canvas-images/Louis-Vuitton-Monogram-Alzer-11-Hard-Case-Trunk-Set-Brown.webp',
-  'rect-vertical-2': '/canvas-images/Veuve-Clicquot-Champagne-Vertical-Limit-Fridge.webp',
-  'rect-vertical-3': '/canvas-images/outline/Tiffany-and-Co-Rimowa.png',
+    '/canvas-images/outline/Louis-Vuitton-Monogram-Alzer-11-Hard-Case-Trunk-Set-Brown.webp',
+  'rect-vertical-2': '/canvas-images/outline/Veuve-Clicquot-Champagne-Vertical-Limit-Fridge.webp',
+  'rect-vertical-3': '/canvas-images/outline/Tiffany-and-Co-Rimowa.webp',
 };
 
 // Token Info Components - Now pull from live contract data
@@ -282,6 +291,7 @@ const ImageTile: React.FC<ImageTileProps> = ({ position, imageUrl, alt, tileKey 
 const ICOLaunchPage: React.FC = () => {
   const [isMobile, setIsMobile] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
   // const { contractState } = useBondingCurveContracts(); // Updated to use new hook
 
   useEffect(() => {

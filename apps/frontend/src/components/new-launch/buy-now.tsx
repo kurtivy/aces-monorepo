@@ -6,7 +6,7 @@ import ModalSwapInterface from './modal-swap-interface';
 
 type PaymentMethod = {
   name: string;
-  color: string;
+  color?: string;
 } & (
   | {
       icon: string;
@@ -26,17 +26,14 @@ export default function BuyNowSection() {
     {
       name: 'Ethereum',
       icon: '/svg/eth.svg',
-      color: 'invert brightness-200',
     },
     {
       name: 'USDC',
       icon: '/svg/usdc.svg',
-      color: 'text-[#2775CA]',
     },
     {
       name: 'Tether',
       icon: '/svg/tether.svg',
-      color: 'text-[#26A17B]',
     },
     {
       name: 'Apple Pay',

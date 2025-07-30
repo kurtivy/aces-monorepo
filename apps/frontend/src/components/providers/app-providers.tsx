@@ -5,6 +5,8 @@ import { WagmiProvider, createConfig, http } from 'wagmi';
 import { baseSepolia, base } from 'wagmi/chains';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from '../../lib/auth/auth-context';
+import { ModalProvider } from '../../lib/contexts/modal-context';
+import GlobalModals from '../ui/custom/global-modals';
 import { type ReactNode } from 'react';
 
 // Initialize QueryClient for wagmi with optimized settings
@@ -48,7 +50,12 @@ export default function AppProviders({ children }: { children: ReactNode }) {
         }}
       >
         <WagmiProvider config={wagmiConfig}>
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            <ModalProvider>
+              {children}
+              <GlobalModals />
+            </ModalProvider>
+          </AuthProvider>
         </WagmiProvider>
       </PrivyProvider>
     </QueryClientProvider>
