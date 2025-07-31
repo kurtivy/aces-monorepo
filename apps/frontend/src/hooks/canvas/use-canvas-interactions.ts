@@ -204,7 +204,7 @@ export const useCanvasInteractions = ({
           worldY >= createQuadY &&
           worldY < createQuadY + quadHeight
         ) {
-          window.location.href = '/create-token';
+          window.location.href = '/mint-token';
           return;
         }
 
@@ -265,7 +265,7 @@ export const useCanvasInteractions = ({
               worldY >= tokenPos.worldY &&
               worldY <= tokenPos.worldY + unitSize
             ) {
-              window.location.href = '/create-token';
+              window.location.href = '/mint-token';
               return;
             }
           }
@@ -274,7 +274,7 @@ export const useCanvasInteractions = ({
 
       if (clickedImage) {
         if (clickedImage.type === 'create-token') {
-          window.location.href = '/create-token';
+          window.location.href = '/mint-token';
         } else {
           setSelectedImage(clickedImage);
         }

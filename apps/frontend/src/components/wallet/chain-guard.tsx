@@ -2,7 +2,7 @@
 'use client';
 
 import { ReactNode } from 'react';
-import { useChainSwitching } from '@/hooks/use-chain-switching';
+import { useChainSwitching } from '@/hooks/contracts/use-chain-switching';
 import { Button } from '@/components/ui/button';
 import { AlertTriangle, Zap } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';

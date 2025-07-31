@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/auth-context';
 import { useFundWallet } from '@privy-io/react-auth';
-import { useChainSwitching } from '@/hooks/use-chain-switching';
+import { useChainSwitching } from '@/hooks/contracts/use-chain-switching';
 import { usePrivyWallet } from '@/hooks/use-privy-wallet';
 import { WalletModal } from '@/components/wallet/wallet-modal';
 import { Button } from '@/components/ui/button';

@@ -77,15 +77,12 @@ const getListingStatus = (listing: ListingData): 'active' | 'pending' | 'sold' |
 
 // Helper function to format listing data for display
 const formatListingForDisplay = (listing: ListingData): DisplayListingData => {
-  console.log('Formatting listing:', listing);
-
   const status = getListingStatus(listing);
   const imageUrl = listing.imageGallery?.[0] || '/placeholder.svg?height=40&width=40';
 
   // Convert bids to offers format for display
   const offers =
     listing.bids?.map((bid) => {
-      console.log('Processing bid:', bid);
       return {
         id: bid.id,
         offerAmount: `${bid.amount} ${bid.currency}`,
@@ -134,7 +131,6 @@ export function ListingsTab() {
         const result = await ListingsApi.getMyListings(token);
 
         if (result.success) {
-          console.log('Listings API response:', result.data);
           const formattedListings = result.data.map(formatListingForDisplay);
           setListings(formattedListings);
         } else {

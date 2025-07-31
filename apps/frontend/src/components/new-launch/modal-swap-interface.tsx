@@ -15,11 +15,11 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { usePrivy, useFundWallet } from '@privy-io/react-auth';
-import { useBondingCurveContracts } from '@/hooks/use-ico-contracts';
+import { useBondingCurveContracts } from '@/hooks/contracts/use-bonding-curve-contract';
 import { parseEther, formatEther } from 'viem';
 import { useWaitForTransactionReceipt, useWriteContract, useBalance } from 'wagmi';
 import { Currency, SUPPORTED_CURRENCIES } from '@/types/contracts';
-import { useChainSwitching } from '@/hooks/use-chain-switching';
+import { useChainSwitching } from '@/hooks/contracts/use-chain-switching';
 import Image from 'next/image';
 
 interface ModalSwapInterfaceProps {
@@ -333,54 +333,48 @@ export default function ModalSwapInterface({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-black border-[#D0B284]/30 max-w-lg max-h-[80vh]">
-        <DialogHeader className="">
+      <DialogContent className="bg-black border-[#D0B284]/30 max-w-lg h-fit max-h-[90vh] overflow-hidden">
+        <DialogHeader className="pb-2">
           <DialogTitle></DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-1">
+        <div className="space-y-3 overflow-y-auto max-h-[calc(90vh-120px)] px-1">
           {/* Currency Selector Dropdown */}
-          <div className="bg-[#231F20]/50 rounded-xl border border-[#D0B284]/20 p-0.5">
-            <div className="flex items-center justify-between mb-2">
+          <div className="bg-[#231F20]/50 rounded-xl border border-[#D0B284]/20 p-2">
+            <div className="flex items-center justify-between mb-1">
               <span className="text-sm font-medium text-[#DCDDCC] font-mono">PAYMENT METHOD</span>
             </div>
 
             {/* Currency Dropdown Button */}
             <button
               onClick={() => setShowCurrencyModal(true)}
-              className="w-full p-3 rounded-lg border border-[#D0B284]/30 bg-[#231F20]/30 hover:border-[#D0B284]/50 transition-all duration-200 flex items-center justify-between"
+              className="w-full p-2 rounded-lg border border-[#D0B284]/30 bg-[#231F20]/30 hover:border-[#D0B284]/50 transition-all duration-200 flex items-center justify-between"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center">
                   <Image
                     src={getCurrencyIcon(selectedCurrency)}
                     alt={currencyInfo.name}
-                    width={24}
-                    height={24}
+                    width={20}
+                    height={20}
                     className="rounded-full"
                   />
                 </div>
-                <div className="text-left">
-                  <div className="text-lg font-bold text-white">{currencyInfo.symbol}</div>
-                  <div className="text-sm text-[#928357]">{currencyInfo.name}</div>
+                <div className="flex items-center gap-2">
+                  <span className="text-base font-bold text-white">{currencyInfo.symbol}</span>
+                  <span className="text-sm text-[#928357]">{currencyInfo.name}</span>
                 </div>
               </div>
-              <ChevronDown className="w-5 h-5 text-[#928357]" />
+              <ChevronDown className="w-4 h-4 text-[#928357]" />
             </button>
 
             {/* Currency Balance Display */}
-            <div className="text-xs text-[#928357] text-center mt-2 font-mono">
+            <div className="text-xs text-[#928357] text-center mt-1 font-mono">
               Balance:{' '}
               {(Number(userCurrencyBalance) / Math.pow(10, currencyInfo.decimals)).toFixed(4)}{' '}
               {selectedCurrency}
               {selectedCurrency === 'ETH' &&
-                ` ($${(Number(formatEther(userCurrencyBalance)) * ethPrice.current).toFixed(0)})`}
-              {/* Low balance indicator */}
-              {Number(userCurrencyBalance) === 0 && (
-                <div className="text-[#D0B284] text-xs mt-1">
-                  💳 Need crypto? Use "Buy Crypto" button below
-                </div>
-              )}
+                ` (${(Number(formatEther(userCurrencyBalance)) * ethPrice.current).toFixed(0)})`}
             </div>
           </div>
 
@@ -389,9 +383,16 @@ export default function ModalSwapInterface({
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-[#DCDDCC] font-mono">
                 {selectedCurrency === 'ETH'
-                  ? 'INVESTMENT AMOUNT (USD Value)'
+                  ? 'INVESTMENT AMOUNT (USD Value Approx.)'
                   : `${selectedCurrency} AMOUNT`}
               </span>
+              <button
+                onClick={() => setAmount(maxAmount)}
+                disabled={maxAmount <= 0}
+                className="px-2 py-1 text-xs font-bold text-[#D0B284] border border-[#D0B284]/50 rounded bg-[#D0B284]/10 hover:bg-[#D0B284]/20 hover:border-[#D0B284] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                MAX
+              </button>
             </div>
 
             {/* Amount Display */}
@@ -402,16 +403,16 @@ export default function ModalSwapInterface({
                 {selectedCurrency !== 'ETH' ? ` ${selectedCurrency}` : ''}
               </div>
 
-              {/* Conversion Display for Stablecoins */}
+              {/* Conversion Display for Stablecoins - More Compact */}
               {selectedCurrency !== 'ETH' && (
-                <div className="text-sm text-[#928357] font-mono mb-2">
-                  <div className="flex items-center justify-center gap-2">
+                <div className="text-xs text-[#928357] font-mono mb-2">
+                  <div className="flex items-center justify-center gap-1 text-xs">
                     <span>
                       {amount} {selectedCurrency}
                     </span>
-                    <ArrowRight className="w-3 h-3" />
-                    <span>≈ {(amount / ethPrice.current).toFixed(6)} ETH</span>
-                    <ArrowRight className="w-3 h-3" />
+                    <ArrowRight className="w-2 h-2" />
+                    <span>≈ {(amount / ethPrice.current).toFixed(5)} ETH</span>
+                    <ArrowRight className="w-2 h-2" />
                     <span>
                       {Number(expectedTokens).toFixed(0)} {tokenSymbol}
                     </span>
@@ -457,14 +458,18 @@ export default function ModalSwapInterface({
           </div>
 
           {/* Expected Tokens Display */}
-          <div className="bg-[#231F20]/50 rounded-xl border border-[#D0B284]/20 p-2">
+          <div className="bg-[#231F20]/50 rounded-xl border border-[#D0B284]/20 p-3">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-[#DCDDCC] font-mono">YOU RECEIVE</span>
               <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-full bg-gradient-to-r from-[#D0B284] to-[#D7BF75] flex items-center justify-center text-black text-sm font-bold">
-                  A
-                </div>
-                <span className="text-[#D0B284] font-medium">{tokenSymbol}</span>
+                <Image
+                  src={'/aces-logo.png'}
+                  alt={currencyInfo.name}
+                  width={24}
+                  height={24}
+                  className="rounded-full"
+                />
+                <span className="text-[#D0B284] font-medium">${tokenSymbol}</span>
               </div>
             </div>
             <div className="text-3xl font-bold text-[#D0B284] font-mono">
@@ -484,9 +489,9 @@ export default function ModalSwapInterface({
             )}
           </div>
 
-          {/* Approval Status Indicator for ERC20 tokens */}
+          {/* Approval Status Indicator for ERC20 tokens - More Compact */}
           {selectedCurrency !== 'ETH' && approvalCompleted && (
-            <div className="bg-green-500/10 rounded-xl border border-green-500/20 p-2">
+            <div className="bg-green-500/10 rounded-lg border border-green-500/20 p-2">
               <div className="flex items-center gap-2">
                 <CheckCircle className="w-4 h-4 text-green-400" />
                 <span className="text-xs text-green-400 font-mono">
@@ -496,8 +501,18 @@ export default function ModalSwapInterface({
             </div>
           )}
 
-          {/* Terms Checkbox */}
-          <div className="bg-[#231F20]/30 rounded-xl border border-[#D0B284]/10 p-2">
+          {/* Approval explanation for ERC20 tokens - More Compact */}
+          {selectedCurrency !== 'ETH' && needsApproval && !approvalCompleted && (
+            <div className="bg-blue-500/10 rounded-lg border border-blue-500/20 p-2">
+              <p className="text-xs text-blue-300 text-center">
+                First, approve the contract to spend your {selectedCurrency}, then purchase{' '}
+                {tokenSymbol} tokens
+              </p>
+            </div>
+          )}
+
+          {/* Terms Checkbox - More Compact */}
+          <div className="bg-[#231F20]/30 rounded-lg border border-[#D0B284]/10 p-2">
             <div className="flex items-start gap-2">
               <input
                 type="checkbox"
@@ -511,16 +526,6 @@ export default function ModalSwapInterface({
               </label>
             </div>
           </div>
-
-          {/* Approval explanation for ERC20 tokens */}
-          {selectedCurrency !== 'ETH' && needsApproval && !approvalCompleted && (
-            <div className="bg-blue-500/10 rounded-lg border border-blue-500/20 p-2 mb-2">
-              <p className="text-xs text-blue-300 text-center">
-                First, approve the contract to spend your {selectedCurrency}, then you can purchase{' '}
-                {tokenSymbol} tokens
-              </p>
-            </div>
-          )}
 
           {/* Purchase Button */}
           <Button
@@ -566,7 +571,7 @@ export default function ModalSwapInterface({
 
       {/* Currency Selection Modal */}
       <Dialog open={showCurrencyModal} onOpenChange={setShowCurrencyModal}>
-        <DialogContent className="bg-[#231F20] border-[#D0B284]/30 max-w-md">
+        <DialogContent className="bg-[#231F20] border-[#D0B284]/30 max-w-md max-h-[80vh] overflow-hidden">
           <DialogHeader>
             <div className="flex items-center justify-between">
               <DialogTitle className="text-white font-serif text-xl">Select Currency</DialogTitle>
@@ -579,7 +584,7 @@ export default function ModalSwapInterface({
             </div>
           </DialogHeader>
 
-          <div className="space-y-2 py-4">
+          <div className="space-y-2 py-4 overflow-y-auto max-h-[60vh]">
             {Object.entries(SUPPORTED_CURRENCIES).map(([key, currency]) => {
               const isSelected = selectedCurrency === key;
               const balance =
@@ -598,6 +603,7 @@ export default function ModalSwapInterface({
                   key={key}
                   onClick={() => {
                     setSelectedCurrency(key as Currency);
+                    setAmount(minAmount); // Reset amount when currency changes
                     setShowCurrencyModal(false);
                   }}
                   className={`w-full p-4 rounded-lg border transition-all duration-200 flex items-center justify-between ${
@@ -647,37 +653,29 @@ export default function ModalSwapInterface({
                 </button>
               );
             })}
-          </div>
 
-          {/* Buy Crypto with Card Section */}
-          <div className="border-t border-[#928357]/20 pt-4">
-            <div className="bg-gradient-to-r from-[#D0B284]/10 to-[#D7BF75]/10 rounded-lg border border-[#D0B284]/20 p-4 mb-4">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-8 h-8 rounded-full bg-[#D0B284]/20 flex items-center justify-center">
-                  <CreditCard className="w-4 h-4 text-[#D0B284]" />
+            {/* Buy Crypto with Card Section - Styled like currency options */}
+            <button
+              onClick={handleBuyCrypto}
+              disabled={isSwitching}
+              className="w-full p-4 rounded-lg border border-[#928357]/30 bg-[#231F20]/30 hover:border-[#D0B284]/50 hover:bg-[#D0B284]/5 transition-all duration-200 flex items-center justify-between disabled:opacity-50"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
+                  <CreditCard className="w-7 h-7 text-[#D0B284]" />
                 </div>
-                <div>
-                  <h3 className="text-white font-medium text-sm">Need More Crypto?</h3>
-                  <p className="text-xs text-[#928357]">Buy instantly with your card</p>
+                <div className="text-left">
+                  <div className="text-lg font-bold text-white">Buy Crypto</div>
+                  <div className="text-sm text-[#928357]">with Credit Card</div>
                 </div>
               </div>
 
-              <Button
-                onClick={handleBuyCrypto}
-                disabled={isSwitching}
-                className="w-full bg-gradient-to-r from-[#D0B284] to-[#D7BF75] hover:from-[#D7BF75] hover:to-[#D0B284] text-black font-medium py-2 px-4 rounded-lg transition-all duration-200 flex items-center justify-center gap-2"
-              >
-                <CreditCard className="w-4 h-4" />
-                {!isOnBaseMainnet ? 'Buy Crypto (Switch to Base)' : 'Buy Crypto'}
-                {!isOnBaseMainnet && <AlertTriangle className="w-3 h-3 ml-auto text-yellow-600" />}
-              </Button>
+              <div className="text-right">
+                {!isOnBaseMainnet && <AlertTriangle className="w-5 h-5 text-yellow-600" />}
+              </div>
+            </button>
 
-              <p className="text-xs text-[#928357] text-center mt-3">
-                Secure card payments • Multiple currencies supported
-              </p>
-            </div>
-
-            <p className="text-xs text-[#928357] text-center">
+            <p className="text-xs text-[#928357] text-center mt-3">
               Choose your preferred payment method for purchasing {tokenSymbol} tokens
             </p>
           </div>

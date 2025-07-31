@@ -1,54 +1,45 @@
 'use client';
 
 import { formatEther } from 'viem';
-import { useBondingCurveContracts } from '@/hooks/use-ico-contracts';
+import { useBondingCurveContracts } from '@/hooks/contracts/use-bonding-curve-contract';
 
 interface ProgressionBarProps {
-  // Props are now optional since we get data from the hook
   currentAmount?: number;
   targetAmount?: number;
   percentage?: number;
 }
 
-export default function ProgressionBar({
-  currentAmount,
-  targetAmount,
-  percentage,
-}: ProgressionBarProps) {
-  const { contractState, ethPrice } = useBondingCurveContracts();
+export default function ProgressionBar({ percentage }: ProgressionBarProps) {
+  const { contractState } = useBondingCurveContracts();
+
+  // Simple loading state check
+  if (!contractState) {
+    return (
+      <div className="w-full flex flex-col items-center justify-center rounded-xl px-6 py-2 flex-1 shadow-2xl relative overflow-hidden">
+        <div className="text-[#DCDDCC] text-sm font-medium tracking-wide">
+          Loading contract data...
+        </div>
+        <div className="text-[#928357] text-xs mt-2">Connecting to Base Sepolia network...</div>
+      </div>
+    );
+  }
 
   // Calculate values from contract data with live ETH price
-  const totalETHRaised = contractState?.totalETHRaised || BigInt(0);
-  const targetRaiseUSD = contractState?.targetRaiseUSD || BigInt(1000); // $1,000 target
-  const tokenSupply = contractState?.tokenSupply || BigInt(0);
-  const bondingCurveSupply = contractState?.bondingCurveSupply || BigInt(8000000);
+  const tokenSupply = contractState.tokenSupply || BigInt(0);
+  const bondingCurveSupply = contractState.bondingCurveSupply || BigInt(8000000);
 
-  // Convert ETH to USD using live Uniswap price
-  const totalETHRaisedNumber = Number(formatEther(totalETHRaised));
-  const currentAmountReal = totalETHRaisedNumber * ethPrice.current; // Live ETH price from Uniswap
+  // Convert ETH to USD using live price
 
   // Target amount in USD
-  const targetAmountReal = Number(targetRaiseUSD);
 
-  // Calculate percentage based on token supply progress (more accurate than USD progress)
+  // Calculate percentage based on token supply progress
   const tokenProgress =
     bondingCurveSupply > 0
       ? (Number(formatEther(tokenSupply)) / Number(formatEther(bondingCurveSupply))) * 100
       : 0;
 
   // Use real values or fallback to props
-  const displayCurrentAmount = currentAmount || currentAmountReal;
-  const displayTargetAmount = targetAmount || targetAmountReal;
   const displayPercentage = percentage || tokenProgress;
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
 
   return (
     <div className="w-full flex flex-col items-center justify-center rounded-xl px-6 py-2 flex-1 shadow-2xl relative overflow-hidden">
@@ -146,41 +137,16 @@ export default function ProgressionBar({
 
         {/* Amount Display with Live ETH Price */}
         <div className="text-center">
-          <span
-            className="text-[#DCDDCC] text-sm font-medium tracking-wide"
-            style={{ fontFamily: 'system, serif' }}
-          >
-            TOTAL RAISED: {formatCurrency(displayCurrentAmount)} /{' '}
-            {formatCurrency(displayTargetAmount)}
-          </span>
-
           {/* Show token progress and ETH price source */}
-          {contractState && (
-            <div className="space-y-1 mt-2">
-              <div
-                className="text-xs text-[#928357]"
-                style={{ fontFamily: 'JetBrains Mono, monospace' }}
-              >
-                {Number(formatEther(contractState.tokenSupply)).toLocaleString()} /{' '}
-                {Number(formatEther(contractState.bondingCurveSupply)).toLocaleString()} tokens sold
-              </div>
-
-              {/* Live price indicator */}
-              <div className="flex items-center justify-center gap-2 text-xs">
-                <div className="flex items-center gap-1">
-                  <div
-                    className={`w-2 h-2 rounded-full ${ethPrice.error ? 'bg-red-400' : ethPrice.isStale ? 'bg-yellow-400' : 'bg-green-400'}`}
-                  ></div>
-                  <span
-                    className="text-[#928357]"
-                    style={{ fontFamily: 'JetBrains Mono, monospace' }}
-                  >
-                    ETH: ${ethPrice.current.toLocaleString()} ({ethPrice.source})
-                  </span>
-                </div>
-              </div>
+          <div className="space-y-1 mt-2">
+            <div
+              className="text-xs text-[#928357]"
+              style={{ fontFamily: 'JetBrains Mono, monospace' }}
+            >
+              {Number(formatEther(contractState.tokenSupply)).toLocaleString()} /{' '}
+              {Number(formatEther(contractState.bondingCurveSupply)).toLocaleString()} tokens sold
             </div>
-          )}
+          </div>
         </div>
       </div>
 

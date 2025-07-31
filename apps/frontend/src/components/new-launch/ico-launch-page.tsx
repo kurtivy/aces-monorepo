@@ -9,9 +9,10 @@ import CountdownTimer from './countdown-timer';
 import ProgressionBar from './progression-bar';
 import BuyNowSection from './buy-now';
 import AnimatedDotsBackground from '../ui/custom/animated-dots-background';
-import { useBondingCurveContracts } from '@/hooks/use-ico-contracts';
+import { useBondingCurveContracts } from '@/hooks/contracts/use-bonding-curve-contract';
 import { useAuth } from '@/lib/auth/auth-context';
 import { usePageLoading } from '@/hooks/use-page-loading';
+import { useChainSwitching } from '@/hooks/contracts/use-chain-switching';
 import { formatEther } from 'viem';
 import Footer from '@/components/ui/custom/footer';
 
@@ -106,64 +107,66 @@ const productMapping: Record<string, string> = {
   'rect-vertical-3': '/canvas-images/outline/Tiffany-and-Co-Rimowa.webp',
 };
 
-// Token Info Components - Price square always shows live data, balance square depends on wallet
+// Token Info Components - Price square shows wallet connection prompt or live data
 const CurrentPriceSquare: React.FC = () => {
   const { contractState, ethPrice } = useBondingCurveContracts();
-
-  const priceInETH = contractState?.currentPrice
-    ? Number(formatEther(contractState.currentPrice))
-    : 0;
-  const priceInUSD = priceInETH * ethPrice.current;
-
-  // Debug the current price calculation for browser differences
-  console.log('💰 CurrentPriceSquare Calculation (NEXT TOKEN PRICE):', {
-    browser: navigator.userAgent.includes('Chrome')
-      ? 'Chrome'
-      : navigator.userAgent.includes('Firefox')
-        ? 'Firefox'
-        : navigator.userAgent.includes('Safari')
-          ? 'Safari'
-          : 'Other',
-    nextTokenPriceWei: contractState?.currentPrice
-      ? `${contractState.currentPrice.toString()} wei`
-      : 'NO DATA',
-    nextTokenPriceETH: priceInETH,
-    ethPriceCurrent: ethPrice.current,
-    ethPriceSource: ethPrice.source || 'unknown',
-    nextTokenPriceUSD: priceInUSD,
-    contractReady: !!contractState,
-    ethPriceReady: !ethPrice.isLoading,
-  });
 
   // Show loading state if contract data isn't ready
   if (!contractState || ethPrice.isLoading) {
     return <TokenInfoSkeleton />;
   }
 
+  // Get the price of the NEXT token to be bought
+  // contractState.currentPrice is already the price for the next token (from getCurrentPrice function)
+  const nextTokenPriceETH = contractState?.currentPrice
+    ? Number(formatEther(contractState.currentPrice))
+    : 0;
+
+  // Use LIVE ETH price from the reliable price hook
+  const liveETHPriceUSD = ethPrice.current; // This is from your useReliableETHPrice hook
+  const nextTokenPriceUSD = nextTokenPriceETH * liveETHPriceUSD;
+
+  // Format price display - show more precision for small values
+  const formatUSDPrice = (price: number) => {
+    if (price >= 1) return price.toFixed(4);
+    if (price >= 0.001) return price.toFixed(6);
+    return price.toFixed(8);
+  };
+
+  const formatETHPrice = (price: number) => {
+    if (price >= 0.01) return price.toFixed(6);
+    if (price >= 0.000001) return price.toFixed(9);
+    return price.toFixed(12);
+  };
+
   return (
-    <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-[#231F20] to-[#0A0A0A] p-4">
+    <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-[#231F20] to-[#0A0A0A] p-4 relative">
       <div className="text-center">
         <h3
           className="text-[#D0B264] text-sm font-medium tracking-wider mb-3 uppercase"
           style={{ fontFamily: 'system, serif' }}
         >
-          Current Price
+          Next Token Price
         </h3>
         <div className="flex flex-col items-center">
+          {/* USD Price - Primary display */}
           <span
             className="text-white text-xl font-bold mb-1"
             style={{ fontFamily: 'JetBrains Mono, monospace' }}
           >
-            ${priceInUSD.toFixed(8)}
+            ${formatUSDPrice(nextTokenPriceUSD)}
           </span>
+
+          {/* ETH Price - Secondary display in brackets */}
           <span
             className="text-[#DCDDCC] text-sm font-medium"
-            style={{ fontFamily: 'system, serif' }}
+            style={{ fontFamily: 'JetBrains Mono, monospace' }}
           >
-            ({priceInETH.toFixed(12)} ETH)
+            ({formatETHPrice(nextTokenPriceETH)} ETH)
           </span>
         </div>
       </div>
+
       {/* Corner accents */}
       <div className="absolute top-2 left-2 w-2 h-2 border-l-2 border-t-2 border-[#D0B264]/40 rounded-tl-lg" />
       <div className="absolute top-2 right-2 w-2 h-2 border-r-2 border-t-2 border-[#D0B264]/40 rounded-tr-lg" />

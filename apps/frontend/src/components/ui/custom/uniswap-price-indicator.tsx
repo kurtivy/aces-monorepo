@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { RefreshCw, Wifi, WifiOff, AlertTriangle, ExternalLink, Info } from 'lucide-react';
-import { useBondingCurveContracts } from '@/hooks/use-ico-contracts';
+import { useBondingCurveContracts } from '@/hooks/contracts/use-bonding-curve-contract';
 
 interface UniswapPriceIndicatorProps {
   className?: string;

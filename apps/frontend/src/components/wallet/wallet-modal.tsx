@@ -8,9 +8,9 @@ import { formatEther, formatUnits } from 'viem';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Wallet, Copy, ExternalLink, RefreshCw, Eye, EyeOff, Send, FileText } from 'lucide-react';
+import { Wallet, Copy, ExternalLink, RefreshCw, Eye, EyeOff, Send } from 'lucide-react';
 import { SUPPORTED_CURRENCIES } from '@/types/contracts';
-import { useReliableETHPrice } from '@/hooks/use-reliable-eth-price';
+import { useReliableETHPrice } from '@/hooks/contracts/use-reliable-eth-price';
 import { useSendTransaction } from '@privy-io/react-auth';
 import { useSignMessage } from '@privy-io/react-auth';
 import Image from 'next/image';
@@ -280,7 +280,7 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
                       onClick={() => {
                         exportWallet(); // This opens Privy's built-in export dialog
                       }}
-                      variant="outline"
+                      variant="default"
                       className="border border-[#D0B264]/40 text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 px-2 py-1.5 rounded text-xs font-medium uppercase tracking-wide"
                     >
                       <Eye className="w-3 h-3 mr-1" />
@@ -288,16 +288,6 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
                     </Button>
                   )}
                 </div>
-
-                {/* Secondary Action */}
-                <Button
-                  onClick={() => setSignModalOpen(true)}
-                  variant="outline"
-                  className="w-full border border-[#D0B264]/40 text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 px-2 py-1 rounded text-xs font-medium uppercase tracking-wide"
-                >
-                  <FileText className="w-3 h-3 mr-1" />
-                  Sign Message
-                </Button>
               </div>
             </CardContent>
           </Card>

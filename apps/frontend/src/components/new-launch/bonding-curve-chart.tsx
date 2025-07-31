@@ -3,7 +3,7 @@
 import React, { useRef, useEffect, useMemo, useState } from 'react';
 import * as d3 from 'd3';
 import { formatEther } from 'viem';
-import { useBondingCurveContracts } from '@/hooks/use-ico-contracts';
+import { useBondingCurveContracts } from '@/hooks/contracts/use-bonding-curve-contract';
 
 interface BondingCurveChartProps {
   // Props are now optional since we get data from the hook

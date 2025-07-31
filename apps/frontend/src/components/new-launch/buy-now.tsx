@@ -36,11 +36,6 @@ export default function BuyNowSection() {
       icon: '/svg/tether.svg',
     },
     {
-      name: 'Apple Pay',
-      color: 'text-white',
-      isApplePay: true,
-    },
-    {
       name: 'Credit Card',
       icon: '/svg/credit-card.svg',
       color: 'invert brightness-200',
