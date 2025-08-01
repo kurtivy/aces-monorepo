@@ -70,6 +70,8 @@ export class ApprovalService {
           submissionId,
           adminId,
           operation: 'createListingFromApprovedSubmission',
+          errorMessage: listingError instanceof Error ? listingError.message : 'Unknown error',
+          errorStack: listingError instanceof Error ? listingError.stack : undefined,
         });
         // Could implement a retry mechanism or manual intervention here
       }

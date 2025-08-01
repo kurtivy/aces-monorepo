@@ -1,7 +1,7 @@
-import { PrismaClient, SellerStatus, VerificationStatus } from '@prisma/client';
+import { PrismaClient, SellerStatus, VerificationStatus, Prisma } from '@prisma/client';
 import { errors } from '../lib/errors';
 import { MultipartFile } from '@fastify/multipart';
-import { uploadSecureDocument, deleteSecureDocumentByUrl } from '../lib/secure-storage-utils';
+import { SecureStorageService } from '../lib/secure-storage-utils';
 
 export class AccountVerificationService {
   constructor(private prisma: PrismaClient) {}
@@ -60,9 +60,16 @@ export class AccountVerificationService {
       // Upload document if provided
       let documentImageUrl: string | null = null;
       if (documentFile) {
-        console.log('Uploading new document');
-        documentImageUrl = await uploadSecureDocument(documentFile, userId, data.documentType);
-        console.log('Document uploaded successfully:', documentImageUrl);
+        console.log('Uploading new document to Google Cloud Secure Storage');
+        documentImageUrl = await SecureStorageService.uploadSecureDocument(
+          documentFile,
+          userId,
+          data.documentType,
+        );
+        console.log(
+          'Document uploaded successfully to Google Cloud Secure Storage:',
+          documentImageUrl,
+        );
       } else {
         console.log('No document file provided - skipping upload');
       }
@@ -237,31 +244,6 @@ export class AccountVerificationService {
     }
   }
 
-  async getVerificationById(verificationId: string) {
-    try {
-      const verification = await this.prisma.accountVerification.findUnique({
-        where: { id: verificationId },
-        include: {
-          user: {
-            select: {
-              id: true,
-              displayName: true,
-              email: true,
-              sellerStatus: true,
-              verificationAttempts: true,
-              lastVerificationAttempt: true,
-            },
-          },
-        },
-      });
-
-      return verification;
-    } catch (error) {
-      console.error('Error getting verification by ID:', error);
-      throw error;
-    }
-  }
-
   async deleteVerificationDocument(userId: string) {
     try {
       const user = await this.prisma.user.findUnique({
@@ -273,7 +255,9 @@ export class AccountVerificationService {
         return false;
       }
 
-      await deleteSecureDocumentByUrl(user.accountVerification.documentImageUrl);
+      await SecureStorageService.deleteSecureDocumentByUrl(
+        user.accountVerification.documentImageUrl,
+      );
 
       // Update verification record to remove document URL
       await this.prisma.accountVerification.update({
@@ -412,6 +396,172 @@ export class AccountVerificationService {
       return verificationsWithRelations;
     } catch (error) {
       console.error('Error getting all verifications:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a verification record (used for testing)
+   */
+  async createVerification(
+    userId: string,
+    data: {
+      documentType: string;
+      documentNumber: string;
+      firstName: string;
+      lastName: string;
+      dateOfBirth: Date;
+      countryOfIssue: string;
+      state?: string;
+      address: string;
+      emailAddress: string;
+      twitter?: string;
+      website?: string;
+      documentImageUrl?: string;
+    },
+  ) {
+    try {
+      console.log('Creating verification record for user:', userId);
+
+      // Check if user already has a verification
+      const existingVerification = await this.prisma.accountVerification.findUnique({
+        where: { userId },
+      });
+
+      if (existingVerification) {
+        console.log('Verification already exists for user:', userId);
+
+        // If this is for testing and we have a documentImageUrl, update the existing record
+        if (data.documentImageUrl) {
+          console.log('Updating existing verification with test document URL');
+          const updatedVerification = await this.prisma.accountVerification.update({
+            where: { id: existingVerification.id },
+            data: {
+              documentImageUrl: data.documentImageUrl,
+              status: VerificationStatus.PENDING,
+            },
+          });
+
+          // Also ensure user status is PENDING
+          await this.prisma.user.update({
+            where: { id: userId },
+            data: { sellerStatus: SellerStatus.PENDING },
+          });
+
+          console.log('Existing verification updated with documentImageUrl');
+          return updatedVerification;
+        }
+
+        return existingVerification;
+      }
+
+      // Create the verification record
+      const verification = await this.prisma.accountVerification.create({
+        data: {
+          userId,
+          documentType: data.documentType,
+          documentNumber: data.documentNumber,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          dateOfBirth: data.dateOfBirth,
+          countryOfIssue: data.countryOfIssue,
+          state: data.state,
+          address: data.address,
+          emailAddress: data.emailAddress,
+          twitter: data.twitter,
+          website: data.website,
+          documentImageUrl: data.documentImageUrl,
+          status: VerificationStatus.PENDING,
+        },
+      });
+
+      // Update user's seller status to PENDING
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          sellerStatus: SellerStatus.PENDING,
+        },
+      });
+
+      console.log('Verification record created successfully:', verification.id);
+      return verification;
+    } catch (error) {
+      console.error('Error creating verification:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Upload selfie image to Google Cloud Secure Storage
+   */
+  async uploadSelfieImage(
+    selfieFile: MultipartFile & { buffer?: Buffer },
+    userId: string,
+  ): Promise<string> {
+    try {
+      console.log('Uploading selfie image to Google Cloud Secure Storage for user:', userId);
+
+      const selfieImageUrl = await SecureStorageService.uploadSecureDocument(
+        selfieFile,
+        userId,
+        'selfie',
+      );
+      console.log('Selfie uploaded successfully to Google Cloud Secure Storage:', selfieImageUrl);
+
+      return selfieImageUrl;
+    } catch (error) {
+      console.error('Error uploading selfie image:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update facial verification data for a verification record
+   */
+  async updateFacialVerification(
+    verificationId: string,
+    facialData: {
+      selfieImageUrl?: string;
+      facialVerificationStatus?: string;
+      facialAnalysisResults?: Prisma.InputJsonValue;
+      faceComparisonScore?: number;
+      overallVerificationScore?: number;
+      visionApiRecommendation?: string;
+      facialVerificationAt?: Date;
+    },
+  ) {
+    try {
+      console.log('Updating facial verification data:', { verificationId, facialData });
+
+      const updatedVerification = await this.prisma.accountVerification.update({
+        where: { id: verificationId },
+        data: facialData,
+      });
+
+      console.log('Facial verification data updated successfully');
+      return updatedVerification;
+    } catch (error) {
+      console.error('Error updating facial verification:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get verification by ID (needed for facial verification)
+   */
+  async getVerificationById(verificationId: string) {
+    try {
+      const verification = await this.prisma.accountVerification.findUnique({
+        where: { id: verificationId },
+        include: {
+          user: true,
+          reviewer: true,
+        },
+      });
+
+      return verification;
+    } catch (error) {
+      console.error('Error getting verification by ID:', error);
       throw error;
     }
   }

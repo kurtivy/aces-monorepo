@@ -46,6 +46,9 @@ export class SellerService {
                 submittedAt: true,
                 reviewedAt: true,
                 attempts: true,
+                firstName: true,
+                lastName: true,
+                documentType: true,
               },
             });
           } catch (error) {

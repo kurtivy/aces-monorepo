@@ -58,6 +58,7 @@ export class ListingService {
           title: submission.title,
           symbol: submission.symbol,
           description: submission.description,
+          assetType: submission.assetType,
           imageGallery: submission.imageGallery,
           contractAddress: submission.contractAddress,
           location: submission.location,
@@ -170,7 +171,7 @@ export class ListingService {
       // Then manually fetch all relationships for each listing to handle orphaned records
       const listingsWithRelations = await Promise.all(
         listings.map(async (listing) => {
-          // Safely fetch owner
+          // Safely fetch owner with account verification
           let owner = null;
           try {
             owner = await this.prisma.user.findUnique({
@@ -182,6 +183,28 @@ export class ListingService {
                 walletAddress: true,
               },
             });
+
+            // Also fetch account verification for the owner
+            if (owner) {
+              try {
+                const verification = await this.prisma.accountVerification.findUnique({
+                  where: { userId: listing.ownerId },
+                  select: {
+                    firstName: true,
+                    lastName: true,
+                    status: true,
+                  },
+                });
+
+                // Add verification data to owner object
+                (owner as any).accountVerification = verification;
+              } catch (verificationError) {
+                logger.warn(
+                  `Failed to fetch verification for owner ${listing.ownerId}:`,
+                  verificationError,
+                );
+              }
+            }
           } catch (error) {
             logger.warn(
               `Failed to fetch owner ${listing.ownerId} for listing ${listing.id}:`,

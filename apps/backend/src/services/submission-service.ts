@@ -22,17 +22,24 @@ export class SubmissionService {
     correlationId: string,
   ): Promise<SubmissionWithRelations> {
     try {
+      // Get user's email from their profile instead of requiring it in submission
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true },
+      });
+
       const submissionData = {
         title: data.title, // Use title directly
         symbol: data.symbol,
         description: data.description,
+        assetType: data.assetType,
         imageGallery: data.imageGallery || [], // Use imageGallery directly
         proofOfOwnership: data.proofOfOwnership,
         typeOfOwnership: data.typeOfOwnership || 'General', // Use provided typeOfOwnership
         location: data.location || null,
         contractAddress: data.contractAddress || null,
         ownerId: userId,
-        email: data.email || null,
+        email: user?.email || null, // Use user's existing email instead of submitted email
         status: 'PENDING' as SubmissionStatus,
       };
 
