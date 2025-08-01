@@ -9,9 +9,9 @@ import { useViewState } from '../../hooks/canvas/use-view-state';
 import { useCanvasRenderer } from '../../hooks/canvas/use-canvas-renderer';
 import { useCanvasInteractions } from '../../hooks/canvas/use-canvas-interactions';
 import { useCoordinatedResize } from '../../hooks/use-coordinated-resize';
-import NavMenu from '../ui/nav-menu';
-import HomeButton from '../ui/home-button';
-import ImageDetailsModal from '../ui/image-details-modal';
+import NavMenu from '../ui/custom/nav-menu';
+import HomeButton from '../ui/custom/home-button';
+import ImageDetailsModal from '../ui/custom/image-details-modal';
 import IntroAnimation from '../loading/intro-animation';
 import {
   mobileUtils,

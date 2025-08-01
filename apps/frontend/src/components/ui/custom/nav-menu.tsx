@@ -1,9 +1,12 @@
 'use client';
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Menu, X, Send } from 'lucide-react';
 import { motion, AnimatePresence, type Variants } from 'framer-motion';
-import { getDeviceCapabilities, getBrowserPerformanceSettings } from '../../../lib/utils/browser-utils';
+import {
+  getDeviceCapabilities,
+  getBrowserPerformanceSettings,
+} from '../../../lib/utils/browser-utils';
 import { useModal } from '@/lib/contexts/modal-context';
 
 // Main navigation items
@@ -68,7 +71,6 @@ const socialLinks = [
   { href: 'https://www.tiktok.com/@acesdotfun', label: 'TikTok', external: true, icon: TikTokIcon },
 ];
 
-
 // Compact animations for the nav menu
 const compactMenuVariants: Variants = {
   closed: {
@@ -126,21 +128,18 @@ const NavMenu: React.FC<NavMenuProps> = ({
   // Modal context integration
   const { openAboutModal, openTermsModal } = useModal();
 
-
   // Hydration-safe performance detection - prevents SSR mismatch
-  const [browserPerf, setBrowserPerf] = useState<ReturnType<typeof getBrowserPerformanceSettings>>(
-    () => ({
-      targetFPS: 60,
-      animationDuration: 300,
-      mouseCheckInterval: 16,
-      enableComplexDotPattern: true,
-      enableImageSmoothing: true,
-      useLinearEasing: false,
-      frameThrottling: false,
-      gradientCacheSize: 100,
-      gradientCacheClearInterval: 60000,
-    }),
-  );
+  const [, setBrowserPerf] = useState<ReturnType<typeof getBrowserPerformanceSettings>>(() => ({
+    targetFPS: 60,
+    animationDuration: 300,
+    mouseCheckInterval: 16,
+    enableComplexDotPattern: true,
+    enableImageSmoothing: true,
+    useLinearEasing: false,
+    frameThrottling: false,
+    gradientCacheSize: 100,
+    gradientCacheClearInterval: 60000,
+  }));
 
   const [deviceCaps, setDeviceCaps] = useState<ReturnType<typeof getDeviceCapabilities>>(() => ({
     availableMemory: 2048,
@@ -258,8 +257,8 @@ const NavMenu: React.FC<NavMenuProps> = ({
               </div>
             </div>
           </motion.div>
-        </AnimatePresence>
-      )}
+        )}
+      </AnimatePresence>
 
       {/* Compact Hamburger Menu Button */}
       <motion.button

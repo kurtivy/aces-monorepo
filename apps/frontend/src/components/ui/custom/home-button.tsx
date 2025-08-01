@@ -4,7 +4,7 @@ import React, { memo } from 'react';
 import {
   getBrowserPerformanceSettings,
   getDeviceCapabilities,
-} from '../../lib/utils/browser-utils';
+} from '../../../lib/utils/browser-utils';
 
 interface HomeButtonProps {
   onClick: () => void;

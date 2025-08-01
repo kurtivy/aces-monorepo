@@ -37,6 +37,7 @@ interface UseCanvasInteractionsProps {
   >;
   onAboutClick?: () => void;
   onTermsClick?: () => void;
+  onMomentumUpdate?: (momentum: { velocity: { x: number; y: number }; active: boolean }) => void;
 }
 
 // MOMENTUM RESTORATION: Export enhanced momentum settings for canvas renderer
@@ -105,6 +106,7 @@ export const useCanvasInteractions = ({
   repeatedTokens,
   onAboutClick,
   onTermsClick,
+  onMomentumUpdate,
 }: UseCanvasInteractionsProps) => {
   const router = useRouter();
   const [isPanning, setIsPanning] = useState(false);
@@ -184,6 +186,7 @@ export const useCanvasInteractions = ({
         const createQuadY = homeAreaWorldY;
         const aboutQuadX = homeAreaWorldX;
         const aboutQuadY = homeAreaWorldY;
+        const termsQuadX = homeAreaWorldX;
         const termsQuadY = homeAreaWorldY + quadHeight;
 
         if (
