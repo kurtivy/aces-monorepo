@@ -1,0 +1,12 @@
+{
+  "network": "baseSepolia",
+  "chainId": 84532,
+  "deployedAt": "2024-12-20T00:00:00.000Z",
+  "contracts": {
+    "acesTest": "0x6474F13C2CEbD4Ca36cAE5a1055d44928822Ded9",
+    "bondingCurveTest": "0xafa9256Adffc24c3d34296304046647B77eEB139"
+  },
+  "verified": true,
+  "testnet": true,
+  "description": "Bonding Curve Test contracts for ACES platform testing"
+}

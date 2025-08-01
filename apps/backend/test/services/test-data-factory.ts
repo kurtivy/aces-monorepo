@@ -96,25 +96,26 @@ export async function createTestSubmissions(
     const [pendingSubmission, approvedSubmission] = await prisma.$transaction([
       prisma.rwaSubmission.create({
         data: {
-          name: `Pending_Submission_${testNamespace}_${submissionCounter}`,
+          title: `Pending_Submission_${testNamespace}_${submissionCounter}`,
           symbol: `PEND${submissionCounter}${random}`.substring(0, 10).toUpperCase(),
-          description: `A submission waiting for approval ${testNamespace} ${timestamp}`,
-          imageUrl: `https://example.com/pending-${testNamespace}-${timestamp}.png`,
+          description: `Pending submission ${testNamespace} ${timestamp}`,
+          imageGallery: [`https://example.com/pending-${testNamespace}-${timestamp}.png`],
           proofOfOwnership: `proof-pending-${testNamespace}-${timestamp}-${random}`,
+          typeOfOwnership: 'Vehicle',
           ownerId: regularUser.id,
           status: 'PENDING',
         },
       }),
       prisma.rwaSubmission.create({
         data: {
-          name: `Approved_Submission_${testNamespace}_${submissionCounter}`,
+          title: `Approved_Submission_${testNamespace}_${submissionCounter}`,
           symbol: `APPR${submissionCounter}${random}`.substring(0, 10).toUpperCase(),
-          description: `A submission that is already approved ${testNamespace} ${timestamp}`,
-          imageUrl: `https://example.com/approved-${testNamespace}-${timestamp}.png`,
+          description: `Approved submission ${testNamespace} ${timestamp}`,
+          imageGallery: [`https://example.com/approved-${testNamespace}-${timestamp}.png`],
           proofOfOwnership: `proof-approved-${testNamespace}-${timestamp}-${random}`,
+          typeOfOwnership: 'Vehicle',
           ownerId: regularUser.id,
           status: 'APPROVED',
-          txHash: generateUniqueTxHash(),
         },
       }),
     ]);
@@ -142,7 +143,7 @@ export async function createTestWebhooks(
         data: {
           payload: {
             event: 'transaction.mined',
-            txHash: failedSubmission.txHash,
+            hash: generateUniqueTxHash(),
             status: 'MINED',
             blockNumber: 12345,
             timestamp,
@@ -205,16 +206,17 @@ export async function createUniqueSubmission(
 
   return prisma.rwaSubmission.create({
     data: {
-      name: overrides.name || `Unique_Submission_${testNamespace}_${submissionCounter}`,
+      title: overrides.title || `Unique_Submission_${testNamespace}_${submissionCounter}`,
       symbol: overrides.symbol || `UNQ${submissionCounter}${random}`.substring(0, 10).toUpperCase(),
       description: overrides.description || `Unique submission ${testNamespace} ${timestamp}`,
-      imageUrl:
-        overrides.imageUrl || `https://example.com/unique-${testNamespace}-${timestamp}.png`,
+      imageGallery: overrides.imageGallery || [
+        `https://example.com/unique-${testNamespace}-${timestamp}.png`,
+      ],
       proofOfOwnership:
         overrides.proofOfOwnership || `proof-unique-${testNamespace}-${timestamp}-${random}`,
+      typeOfOwnership: overrides.typeOfOwnership || 'Vehicle',
       ownerId,
       status: overrides.status || 'PENDING',
-      txHash: overrides.txHash,
       ...overrides,
     },
   });

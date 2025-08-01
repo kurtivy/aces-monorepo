@@ -4,16 +4,33 @@ exports.ChainEventWebhookSchema = exports.SubmissionStatusEnum = exports.Paginat
 const zod_1 = require("zod");
 // Submission schemas (from backend.md API contract)
 exports.CreateSubmissionSchema = zod_1.z.object({
-    name: zod_1.z.string().min(1).max(50),
-    symbol: zod_1.z.string().min(1).max(10),
-    description: zod_1.z.string().min(10).max(1000),
-    imageUrl: zod_1.z.string().url(),
-    proofOfOwnership: zod_1.z.string().min(10),
+    title: zod_1.z
+        .string()
+        .min(1, 'Asset title is required')
+        .max(50, 'Asset title must be less than 50 characters'),
+    symbol: zod_1.z.string().min(1, 'Symbol is required').max(10, 'Symbol must be less than 10 characters'),
+    description: zod_1.z
+        .string()
+        .min(10, 'Description must be at least 10 characters')
+        .max(1000, 'Description must be less than 1000 characters'),
+    assetType: zod_1.z.enum(['VEHICLE', 'JEWELRY', 'COLLECTIBLE', 'ART', 'FASHION', 'ALCOHOL', 'OTHER'], {
+        required_error: 'Asset type is required',
+        invalid_type_error: 'Please select a valid asset type',
+    }),
+    imageGallery: zod_1.z.array(zod_1.z.string().url('Please provide valid image URLs')).optional().default([]),
+    proofOfOwnership: zod_1.z.string().min(10, 'Proof of ownership must be at least 10 characters'),
+    typeOfOwnership: zod_1.z.string().min(1, 'Type of ownership is required'),
+    location: zod_1.z.string().optional(),
+    contractAddress: zod_1.z
+        .string()
+        .regex(/^0x[a-fA-F0-9]{40}$/, 'Please enter a valid Ethereum contract address')
+        .optional(),
 });
 exports.CreateBidSchema = zod_1.z.object({
-    submissionId: zod_1.z.string().cuid(),
+    listingId: zod_1.z.string().cuid(),
     amount: zod_1.z.string(),
     currency: zod_1.z.enum(['ETH', 'ACES']),
+    expiresAt: zod_1.z.string().datetime().optional(),
 });
 // Admin schemas
 exports.ApprovalSchema = zod_1.z.object({
@@ -33,7 +50,7 @@ exports.WebhookReplaySchema = zod_1.z.object({
 exports.UpdateTokenMetadataSchema = zod_1.z.object({
     contractAddress: zod_1.z.string().regex(/^0x[a-fA-F0-9]{40}$/),
     description: zod_1.z.string().min(10).max(1000).optional(),
-    imageUrl: zod_1.z.string().url().optional(),
+    imageGallery: zod_1.z.array(zod_1.z.string().url()).optional(),
 });
 // Pagination schema
 exports.PaginationSchema = zod_1.z.object({
@@ -49,3 +66,4 @@ exports.ChainEventWebhookSchema = zod_1.z.object({
     blockNumber: zod_1.z.number().optional(),
     gasUsed: zod_1.z.string().optional(),
 });
+//# sourceMappingURL=zod-schemas.js.map

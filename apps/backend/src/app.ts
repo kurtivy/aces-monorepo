@@ -2,6 +2,7 @@ import Fastify, { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
+import multipart from '@fastify/multipart';
 import fastifyMetrics from 'fastify-metrics';
 import { User as PrismaUser, PrismaClient } from '@prisma/client';
 
@@ -21,6 +22,14 @@ import { getPrismaClient, checkDatabaseHealth, disconnectDatabase } from './lib/
 import { loggers } from './lib/logger';
 import { handleError } from './lib/errors';
 import { registerAuth } from './plugins/auth';
+import { submissionsRoutes } from './routes/v1/submissions';
+import { adminRoutes } from './routes/v1/admin';
+import { bidsRoutes } from './routes/v1/bids';
+import { accountVerificationRoutes } from './routes/v1/account-verification';
+import { userProfileRoutes } from './routes/v1/user-profile';
+import { webhooksRoutes } from './routes/v1/webhooks';
+import listingsRoutes from './routes/v1/listings';
+import tokensRoutes from './routes/v1/tokens';
 
 export const buildApp = async (): Promise<FastifyInstance> => {
   const fastify = Fastify({
@@ -34,6 +43,11 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   // Register plugins
   fastify.register(cors, { origin: '*' });
   fastify.register(helmet);
+  fastify.register(multipart, {
+    limits: {
+      fileSize: 5 * 1024 * 1024, // 5MB
+    },
+  });
   fastify.register(fastifyMetrics, {
     endpoint: '/metrics',
     routeMetrics: { enabled: true },
@@ -41,6 +55,16 @@ export const buildApp = async (): Promise<FastifyInstance> => {
 
   // Register custom plugins
   fastify.register(registerAuth);
+
+  // Register v1 routes with proper API prefixes
+  fastify.register(submissionsRoutes, { prefix: '/api/v1/submissions' });
+  fastify.register(adminRoutes, { prefix: '/api/v1/admin' });
+  fastify.register(bidsRoutes, { prefix: '/api/v1/bids' });
+  fastify.register(accountVerificationRoutes, { prefix: '/api/v1/account-verification' });
+  fastify.register(userProfileRoutes, { prefix: '/api/v1/users' });
+  fastify.register(webhooksRoutes, { prefix: '/api/v1/webhooks' });
+  fastify.register(listingsRoutes, { prefix: '/api/v1' });
+  fastify.register(tokensRoutes, { prefix: '/api/v1' });
 
   // Register hooks
   fastify.addHook('onRequest', async (request) => {
@@ -54,8 +78,8 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   });
 
   // Health check routes
-  fastify.get('/api/v1/health/live', async () => ({ status: 'ok' }));
-  fastify.get('/api/v1/health/ready', async () => {
+  fastify.get('/health/live', async () => ({ status: 'ok' }));
+  fastify.get('/health/ready', async () => {
     const isDbReady = await checkDatabaseHealth();
     if (!isDbReady) {
       throw new Error('Database not ready');
@@ -65,7 +89,31 @@ export const buildApp = async (): Promise<FastifyInstance> => {
 
   // Global error handler
   fastify.setErrorHandler((error, request, reply) => {
-    handleError(reply, error);
+    // Log the error with full context
+    loggers.error(error instanceof Error ? error : new Error('Unknown error'), {
+      url: request.url,
+      method: request.method,
+      headers: request.headers,
+      params: request.params,
+      query: request.query,
+      userId: request.user?.id,
+      requestId: request.id,
+    });
+
+    try {
+      handleError(error, reply);
+    } catch (handlerError) {
+      loggers.error(
+        handlerError instanceof Error ? handlerError : new Error('Error handler failed'),
+        {
+          originalError: error instanceof Error ? error.message : 'Unknown error',
+          url: request.url,
+          method: request.method,
+          requestId: request.id,
+        },
+      );
+      handleError(handlerError, reply);
+    }
   });
 
   fastify.addHook('onClose', async () => {

@@ -14,7 +14,10 @@
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
     "typecheck": "turbo run typecheck",
-    "clean": "turbo run clean && rm -rf node_modules"
+    "clean": "turbo run clean && rm -rf node_modules",
+    "convert:png-to-webp": "node scripts/convert-png-to-webp.js",
+    "move:png-to-old": "node scripts/move-png-to-old-outline.js",
+    "convert:and-clean": "node scripts/convert-and-clean-png.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.53.0",
@@ -30,6 +33,7 @@
     "eslint-plugin-react-hooks": "^4.6.0",
     "playwright": "^1.53.0",
     "prettier": "^3.2.5",
+    "sharp": "^0.33.2",
     "turbo": "^1.13.3",
     "typescript": "^5.4.5"
   },

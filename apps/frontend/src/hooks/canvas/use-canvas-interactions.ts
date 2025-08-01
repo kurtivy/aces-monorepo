@@ -14,6 +14,7 @@ interface UseCanvasInteractionsProps {
   >;
   unitSize: number;
   updateViewState: (deltaX: number, deltaY: number) => void;
+  canvasRef: React.RefObject<HTMLCanvasElement | null>;
   repeatedPlacements?: Map<
     string,
     Array<{
@@ -34,8 +35,8 @@ interface UseCanvasInteractionsProps {
       tileId: string;
     }>
   >;
-  // MOMENTUM RESTORATION: Add momentum callback for RAF integration
-  onMomentumUpdate?: (momentum: { velocity: { x: number; y: number }; active: boolean }) => void;
+  onAboutClick?: () => void;
+  onTermsClick?: () => void;
 }
 
 // MOMENTUM RESTORATION: Export enhanced momentum settings for canvas renderer
@@ -99,9 +100,11 @@ export const useCanvasInteractions = ({
   imagePlacementMap,
   unitSize,
   updateViewState,
+  canvasRef,
   repeatedPlacements,
   repeatedTokens,
-  onMomentumUpdate,
+  onAboutClick,
+  onTermsClick,
 }: UseCanvasInteractionsProps) => {
   const router = useRouter();
   const [isPanning, setIsPanning] = useState(false);
@@ -109,7 +112,6 @@ export const useCanvasInteractions = ({
 
   const touchPhysicsRef = useRef<TouchPhysics>(createTouchPhysics());
   const dragStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const boundsRef = useRef<DOMRect | null>(null);
 
   const homeAreaWidth = unitSize * 2;
@@ -132,7 +134,7 @@ export const useCanvasInteractions = ({
         worldY: (clientY - rect.top - viewState.y) / viewState.scale,
       };
     },
-    [viewState],
+    [viewState, canvasRef],
   );
 
   // MOMENTUM RESTORATION: Clean production-ready momentum start
@@ -190,7 +192,10 @@ export const useCanvasInteractions = ({
           worldY >= aboutQuadY &&
           worldY < aboutQuadY + quadHeight
         ) {
-          router.push('/about');
+          // Open About modal instead of navigating
+          if (onAboutClick) {
+            onAboutClick();
+          }
           return;
         }
 
@@ -200,19 +205,19 @@ export const useCanvasInteractions = ({
           worldY >= createQuadY &&
           worldY < createQuadY + quadHeight
         ) {
-          router.push('/create-token');
+          window.location.href = '/mint-token';
           return;
         }
 
-        // Handle bottom quadrants
-        if (worldY >= termsQuadY && worldY < termsQuadY + quadHeight) {
-          // Bottom left quadrant (DOCS)
-          if (worldX < homeAreaWorldX + homeAreaWidth / 2) {
-            window.open('https://docs.aces.fun', '_blank');
-          }
-          // Bottom right quadrant (CHAT)
-          else {
-            window.open('https://t.me/acesdotfun/', '_blank');
+        if (
+          worldX >= termsQuadX &&
+          worldX < termsQuadX + quadWidth &&
+          worldY >= termsQuadY &&
+          worldY < termsQuadY + quadHeight
+        ) {
+          // Open Terms modal instead of navigating
+          if (onTermsClick) {
+            onTermsClick();
           }
           return;
         }
@@ -261,7 +266,7 @@ export const useCanvasInteractions = ({
               worldY >= tokenPos.worldY &&
               worldY <= tokenPos.worldY + unitSize
             ) {
-              router.push('/create-token');
+              window.location.href = '/mint-token';
               return;
             }
           }
@@ -270,7 +275,7 @@ export const useCanvasInteractions = ({
 
       if (clickedImage) {
         if (clickedImage.type === 'create-token') {
-          router.push('/create-token');
+          window.location.href = '/mint-token';
         } else {
           setSelectedImage(clickedImage);
         }
@@ -296,7 +301,6 @@ export const useCanvasInteractions = ({
     (event: React.MouseEvent) => {
       if (event.button !== 0) return;
 
-      canvasRef.current = event.currentTarget as HTMLCanvasElement;
       boundsRef.current = null; // Reset bounds cache
 
       const currentTime = performance.now();
@@ -406,7 +410,6 @@ export const useCanvasInteractions = ({
     (event: React.TouchEvent) => {
       if (event.touches.length !== 1) return;
 
-      canvasRef.current = event.currentTarget as HTMLCanvasElement;
       boundsRef.current = null; // Reset bounds cache
 
       const touch = event.touches[0];

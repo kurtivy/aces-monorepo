@@ -3,8 +3,9 @@
 // Generated from deployment addresses
 // Run 'pnpm extract-abis' to regenerate
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.DEPLOYMENT_INFO = exports.CONTRACTS = void 0;
+exports.DEPLOYMENT_INFO = exports.BONDING_CURVE_CONTRACTS = exports.CONTRACTS = void 0;
 exports.getContractAddress = getContractAddress;
+exports.getBondingCurveContracts = getBondingCurveContracts;
 exports.CONTRACTS = {
     localhost: {
         acesToken: '',
@@ -25,9 +26,27 @@ function getContractAddress(network, contractName) {
     }
     return address;
 }
+// Contract addresses for Base Sepolia testnet
+exports.BONDING_CURVE_CONTRACTS = {
+    BASE_SEPOLIA: {
+        chainId: 84532,
+        acesTest: '0x6474F13C2CEbD4Ca36cAE5a1055d44928822Ded9',
+        bondingCurveTest: '0xafa9256Adffc24c3d34296304046647B77eEB139',
+    },
+};
+// Helper function to get contract addresses for current network
+function getBondingCurveContracts(chainId) {
+    switch (chainId) {
+        case 84532: // Base Sepolia
+            return exports.BONDING_CURVE_CONTRACTS.BASE_SEPOLIA;
+        default:
+            throw new Error(`Bonding curve contracts not deployed on chain ${chainId}`);
+    }
+}
 // Deployment info
 exports.DEPLOYMENT_INFO = {
     network: 'baseSepolia',
     chainId: 84532,
     deployedAt: '2025-06-30T17:02:26.722Z',
 };
+//# sourceMappingURL=contracts.js.map

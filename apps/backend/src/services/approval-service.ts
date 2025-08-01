@@ -1,76 +1,26 @@
-import { PrismaClient, Prisma, RwaSubmission, SubmissionStatus } from '@prisma/client';
-import { createWalletClient, http, WalletClient } from 'viem';
-import { baseSepolia } from 'viem/chains';
-import { privateKeyToAccount } from 'viem/accounts';
-import { CONTRACTS, MOCK_RWA_FACTORY_ABI } from '@aces/utils';
+import { PrismaClient, RwaSubmission, SubmissionStatus } from '@prisma/client';
 import { errors } from '../lib/errors';
 import { loggers } from '../lib/logger';
 import { withTransaction } from '../lib/database';
+import { ListingService } from './listing-service';
 
 export class ApprovalService {
-  private walletClient: WalletClient | null = null;
-  private network: string;
+  constructor(private prisma: PrismaClient) {}
 
-  constructor(private prisma: PrismaClient) {
-    // Initialize network setting but don't require wallet client immediately
-    this.network = process.env.BLOCKCHAIN_NETWORK || 'localhost';
-
-    // Only initialize wallet client if we have the private key
-    if (process.env.MINTER_PRIVATE_KEY) {
-      this.initializeWalletClient();
-    }
-  }
-
-  private initializeWalletClient() {
-    if (!process.env.MINTER_PRIVATE_KEY) {
-      throw new Error(
-        'MINTER_PRIVATE_KEY environment variable is required for blockchain operations',
-      );
-    }
-
-    const account = privateKeyToAccount(process.env.MINTER_PRIVATE_KEY as `0x${string}`);
-
-    // Configure chain based on network
-    const chain = this.network === 'baseSepolia' ? baseSepolia : baseSepolia; // Default to baseSepolia for now
-
-    this.walletClient = createWalletClient({
-      account,
-      chain,
-      transport: http(process.env.BASE_RPC_URL || 'https://sepolia.base.org'),
-    });
-
-    loggers.blockchain('initialized', 'wallet_client', `network: ${this.network}`);
-  }
-
-  private ensureWalletClient(): WalletClient {
-    if (!this.walletClient) {
-      if (!process.env.MINTER_PRIVATE_KEY) {
-        throw new Error(
-          'MINTER_PRIVATE_KEY environment variable is required for blockchain operations',
-        );
-      }
-      this.initializeWalletClient();
-
-      // Double-check initialization succeeded
-      if (!this.walletClient) {
-        throw new Error('Failed to initialize wallet client');
-      }
-    }
-    return this.walletClient;
-  }
-
-  async approveSubmission(
+  /**
+   * Admin approval - updates database status and automatically creates RWAListing
+   */
+  async adminApproveSubmission(
     submissionId: string,
     adminId: string,
-    correlationId: string,
-  ): Promise<{ txHash: string }> {
+  ): Promise<{ success: boolean; submissionId: string; listingId?: string }> {
     try {
-      // Use transaction to ensure atomicity
-      const result = await withTransaction(async (tx) => {
-        // Get submission with owner details
+      let listingId: string | undefined;
+
+      await withTransaction(async (tx) => {
+        // Get submission
         const submission = await tx.rwaSubmission.findUnique({
           where: { id: submissionId },
-          include: { owner: true },
         });
 
         if (!submission) {
@@ -81,59 +31,13 @@ export class ApprovalService {
           throw errors.validation(`Submission status is ${submission.status}, cannot approve`);
         }
 
-        if (!submission.owner.walletAddress) {
-          throw errors.validation('Submission owner has no wallet address');
-        }
-
-        // Check if already has a transaction hash (idempotency)
-        if (submission.txHash) {
-          loggers.blockchain(submission.txHash, 'already_approved', submission.id);
-          return { txHash: submission.txHash };
-        }
-
-        // Get contract addresses for current network
-        const contractAddresses = CONTRACTS[this.network as keyof typeof CONTRACTS];
-        if (!contractAddresses?.mockRwaFactory) {
-          throw errors.internal(
-            `No factory contract address configured for network: ${this.network}`,
-          );
-        }
-
-        // Call factory contract to create RWA
-        loggers.blockchain('calling', 'factory_contract', contractAddresses.mockRwaFactory);
-
-        const walletClient = this.ensureWalletClient();
-
-        if (!walletClient.account) {
-          throw errors.internal('Wallet client is not configured with an account.');
-        }
-
-        const hash = await walletClient.writeContract({
-          account: walletClient.account,
-          chain: walletClient.chain,
-          address: contractAddresses.mockRwaFactory as `0x${string}`,
-          abi: MOCK_RWA_FACTORY_ABI,
-          functionName: 'createRwa',
-          args: [
-            submission.name,
-            submission.symbol,
-            BigInt(1), // Temporary deedId - in production this should be dynamically generated
-            submission.owner.walletAddress as `0x${string}`,
-          ],
-        });
-
-        loggers.blockchain(hash, 'transaction_submitted', contractAddresses.mockRwaFactory);
-
-        // Update submission status
+        // Update submission status to APPROVED
         await tx.rwaSubmission.update({
           where: { id: submissionId },
           data: {
             status: 'APPROVED',
-            txHash: hash,
-            txStatus: 'SUBMITTED',
             approvedAt: new Date(),
             updatedBy: adminId,
-            updatedByType: 'ADMIN',
           },
         });
 
@@ -145,15 +49,48 @@ export class ApprovalService {
             toStatus: 'APPROVED',
             actorId: adminId,
             actorType: 'ADMIN',
-            notes: `Approved and submitted transaction: ${hash}`,
+            notes: 'Admin approval - RWAListing created automatically',
           },
         });
-
-        return { txHash: hash };
       });
 
-      loggers.database('approved', 'rwa_submission', submissionId);
-      return result;
+      // After successful transaction, create the RWAListing
+      try {
+        const listingService = new ListingService(this.prisma);
+        const listing = await listingService.createListingFromApprovedSubmission({
+          submissionId,
+          approvedBy: adminId,
+        });
+        listingId = listing.id;
+
+        loggers.auth(adminId, null, 'admin_validated');
+      } catch (listingError) {
+        // Log error but don't fail the approval since submission is already approved
+        loggers.error(listingError as Error, {
+          submissionId,
+          adminId,
+          operation: 'createListingFromApprovedSubmission',
+          errorMessage: listingError instanceof Error ? listingError.message : 'Unknown error',
+          errorStack: listingError instanceof Error ? listingError.stack : undefined,
+        });
+        // Could implement a retry mechanism or manual intervention here
+      }
+
+      return { success: true, submissionId, listingId };
+    } catch (error) {
+      loggers.error(error as Error, { submissionId, adminId, operation: 'adminApproveSubmission' });
+      throw error;
+    }
+  }
+
+  async approveSubmission(
+    submissionId: string,
+    adminId: string,
+    correlationId: string,
+  ): Promise<{ success: boolean; submissionId: string; listingId?: string }> {
+    try {
+      // Use the simplified admin approval logic
+      return await this.adminApproveSubmission(submissionId, adminId);
     } catch (error) {
       loggers.error(error as Error, {
         submissionId,
@@ -161,180 +98,139 @@ export class ApprovalService {
         correlationId,
         operation: 'approveSubmission',
       });
-      throw error;
+      throw errors.internal('Failed to approve submission', { cause: error });
     }
   }
 
-  async updateTransactionStatus(
-    txHash: string,
-    status: 'MINED' | 'FAILED' | 'DROPPED',
-    blockNumber?: number,
-    gasUsed?: string,
-    correlationId?: string,
+  async rejectSubmission(
+    submissionId: string,
+    adminId: string,
+    reason: string,
+    correlationId: string,
   ): Promise<boolean> {
     try {
       const result = await withTransaction(async (tx) => {
-        // Find submission by transaction hash
+        // Get submission
         const submission = await tx.rwaSubmission.findUnique({
-          where: { txHash },
-          include: { owner: true },
+          where: { id: submissionId },
         });
 
         if (!submission) {
-          loggers.blockchain(txHash, 'submission_not_found', 'updateTransactionStatus');
-          return false;
+          throw errors.notFound('Submission not found');
         }
 
-        // Idempotency check - if already in this status, do nothing
-        if (submission.txStatus === status) {
-          loggers.blockchain(txHash, 'status_already_set', status);
-          return true;
+        if (submission.status !== 'PENDING') {
+          throw errors.validation(`Submission status is ${submission.status}, cannot reject`);
         }
 
-        // Determine the new status
-        let newStatus: SubmissionStatus | undefined;
-        if (status === 'MINED') {
-          newStatus = 'LIVE';
-        } else if (status === 'FAILED' || status === 'DROPPED') {
-          newStatus = 'REJECTED';
-        }
-
-        // Update submission
-        const updateData: Prisma.RwaSubmissionUpdateInput = {
-          txStatus: status,
-          updatedByType: 'WEBHOOK',
-        };
-        if (newStatus) {
-          updateData.status = newStatus;
-        }
-        if (newStatus === 'REJECTED') {
-          updateData.rejectionType = 'TX_FAILURE';
-        }
-
+        // Update submission to rejected
         await tx.rwaSubmission.update({
-          where: { txHash },
-          data: updateData,
+          where: { id: submissionId },
+          data: {
+            status: 'REJECTED',
+            rejectionReason: reason,
+            updatedBy: adminId,
+          },
         });
 
         // Log to audit trail
         await tx.submissionAuditLog.create({
           data: {
-            submissionId: submission.id,
-            fromStatus: submission.status,
-            toStatus: newStatus || submission.status,
-            actorId: 'SYSTEM',
-            actorType: 'WEBHOOK',
-            notes: `Transaction ${status.toLowerCase()}: ${txHash}${blockNumber ? ` (block ${blockNumber})` : ''}`,
+            submissionId,
+            fromStatus: 'PENDING',
+            toStatus: 'REJECTED',
+            actorId: adminId,
+            actorType: 'ADMIN',
+            notes: `Rejected: ${reason}`,
           },
         });
 
-        // If transaction was successful, create token record
-        if (status === 'MINED' && blockNumber) {
-          // We would need to query the blockchain for the actual token address and deed NFT ID
-          // For now, we'll leave this as a placeholder for when we implement full blockchain integration
-          loggers.blockchain(txHash, 'token_creation_placeholder', submission.id);
-        }
-
         return true;
       });
 
-      loggers.blockchain(txHash, 'status_updated', status);
+      loggers.auth(adminId, null, 'admin_rejected');
       return result;
     } catch (error) {
       loggers.error(error as Error, {
-        txHash,
-        status,
+        submissionId,
+        adminId,
+        reason,
         correlationId,
-        operation: 'updateTransactionStatus',
+        operation: 'rejectSubmission',
       });
       throw error;
     }
   }
 
-  async getPendingApprovals(
-    options: { limit?: number; cursor?: string } = {},
-  ): Promise<{ data: RwaSubmission[]; nextCursor?: string; hasMore: boolean }> {
+  async validateAdminPermissions(userId: string, walletAddress?: string | null): Promise<boolean> {
     try {
-      const limit = Math.min(options.limit || 20, 100);
-      const where: Prisma.RwaSubmissionWhereInput = {
-        status: 'PENDING',
-        deletedAt: null,
-      };
+      // Get user from database
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+      });
 
-      if (options.cursor) {
-        where.id = { lt: options.cursor };
+      if (!user) {
+        return false;
       }
 
-      const submissions = await this.prisma.rwaSubmission.findMany({
-        where,
-        include: {
-          owner: true,
-          bids: {
-            where: { deletedAt: null },
-            orderBy: { createdAt: 'desc' },
-            take: 5, // Include recent bids for admin context
-          },
-        },
-        orderBy: { createdAt: 'asc' }, // Oldest first for FIFO processing
-        take: limit + 1,
-      });
-
-      const hasMore = submissions.length > limit;
-      const data = hasMore ? submissions.slice(0, -1) : submissions;
-      const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
-
-      return { data, nextCursor, hasMore };
+      // Check if user has admin role
+      return user.role === 'ADMIN';
     } catch (error) {
-      loggers.error(error as Error, { operation: 'getPendingApprovals' });
-      throw error;
-    }
-  }
-
-  async getSubmissionDetails(submissionId: string): Promise<RwaSubmission | null> {
-    try {
-      const submission = await this.prisma.rwaSubmission.findUnique({
-        where: { id: submissionId },
-        include: {
-          owner: true,
-          token: true,
-          bids: {
-            where: { deletedAt: null },
-            include: { bidder: true },
-            orderBy: { createdAt: 'desc' },
-          },
-          auditLogs: {
-            orderBy: { createdAt: 'desc' },
-            take: 10, // Recent audit history
-          },
-        },
-      });
-
-      return submission;
-    } catch (error) {
-      loggers.error(error as Error, { submissionId, operation: 'getSubmissionDetails' });
-      throw error;
-    }
-  }
-
-  async validateAdminPermissions(userId: string, walletAddress: string | null): Promise<boolean> {
-    if (!walletAddress) {
+      loggers.error(error as Error, { userId, operation: 'validateAdminPermissions' });
       return false;
     }
+  }
 
-    // Check if wallet is in ADMIN_WALLET_ADDRESSES
-    const adminWallets = (process.env.ADMIN_WALLET_ADDRESSES || '').toLowerCase().split(',');
-    if (adminWallets.includes(walletAddress.toLowerCase())) {
-      return true;
+  async getSubmissionsByStatus(
+    status: SubmissionStatus,
+    options: { limit?: number; offset?: number } = {},
+  ): Promise<RwaSubmission[]> {
+    try {
+      const limit = Math.min(options.limit || 50, 100);
+      const offset = options.offset || 0;
+
+      return await this.prisma.rwaSubmission.findMany({
+        where: { status },
+        include: {
+          owner: {
+            select: {
+              id: true,
+              displayName: true,
+              walletAddress: true,
+              email: true,
+            },
+          },
+          rwaListing: true, // Changed from token to rwaListing
+        },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip: offset,
+      });
+    } catch (error) {
+      loggers.error(error as Error, { status, options, operation: 'getSubmissionsByStatus' });
+      throw error;
     }
+  }
 
-    // Check if wallet matches the minter wallet
-    if (process.env.MINTER_PRIVATE_KEY) {
-      const minterAccount = privateKeyToAccount(process.env.MINTER_PRIVATE_KEY as `0x${string}`);
-      if (minterAccount.address.toLowerCase() === walletAddress.toLowerCase()) {
-        return true;
-      }
+  async getSubmissionById(submissionId: string): Promise<RwaSubmission | null> {
+    try {
+      return await this.prisma.rwaSubmission.findUnique({
+        where: { id: submissionId },
+        include: {
+          owner: {
+            select: {
+              id: true,
+              displayName: true,
+              walletAddress: true,
+              email: true,
+            },
+          },
+          rwaListing: true, // Changed from token to rwaListing
+        },
+      });
+    } catch (error) {
+      loggers.error(error as Error, { submissionId, operation: 'getSubmissionById' });
+      throw error;
     }
-
-    return false;
   }
 }

@@ -1,7 +1,7 @@
 import { logger } from './logger';
 
-// Import PrismaClient from the correct path
-import { PrismaClient } from '@prisma/client';
+// Import PrismaClient from the generated client
+import { PrismaClient, Prisma } from '@prisma/client';
 
 const createPrismaClient = () => {
   const prisma = new PrismaClient({
@@ -27,7 +27,7 @@ const createPrismaClient = () => {
 
   // Log database queries in development
   if (process.env.NODE_ENV === 'development') {
-    prisma.$on('query', (e: any) => {
+    prisma.$on('query', (e: Prisma.QueryEvent) => {
       logger.debug(
         {
           type: 'database',
@@ -41,7 +41,7 @@ const createPrismaClient = () => {
   }
 
   // Log database errors
-  prisma.$on('error', (e: any) => {
+  prisma.$on('error', (e: Prisma.LogEvent) => {
     logger.error(
       {
         type: 'database',
@@ -52,26 +52,31 @@ const createPrismaClient = () => {
   });
 
   // Add performance monitoring middleware
-  prisma.$use(async (params: any, next: any) => {
-    const start = Date.now();
-    const result = await next(params);
-    const duration = Date.now() - start;
+  prisma.$use(
+    async (
+      params: Prisma.MiddlewareParams,
+      next: (params: Prisma.MiddlewareParams) => Promise<unknown>,
+    ) => {
+      const start = Date.now();
+      const result = await next(params);
+      const duration = Date.now() - start;
 
-    // Log slow queries
-    if (duration > 1000) {
-      logger.warn(
-        {
-          type: 'database',
-          action: params.action,
-          model: params.model,
-          duration,
-        },
-        'Slow database query detected',
-      );
-    }
+      // Log slow queries
+      if (duration > 1000) {
+        logger.warn(
+          {
+            type: 'database',
+            action: params.action,
+            model: params.model,
+            duration,
+          },
+          'Slow database query detected',
+        );
+      }
 
-    return result;
-  });
+      return result;
+    },
+  );
 
   return prisma;
 };

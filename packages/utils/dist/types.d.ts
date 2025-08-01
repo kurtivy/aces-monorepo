@@ -23,28 +23,29 @@ export type RejectionType = 'MANUAL' | 'TX_FAILURE';
 export type ActionType = 'USER' | 'SYSTEM' | 'WEBHOOK' | 'ADMIN';
 export interface RwaSubmission {
     id: string;
-    status: SubmissionStatus;
-    txStatus: TxStatus | null;
-    rejectionType: RejectionType | null;
-    name: string;
+    title: string;
     symbol: string;
     description: string;
-    imageUrl: string;
-    ownerId: string;
+    imageGallery: string[];
     proofOfOwnership: string;
-    createdAt: Date;
+    typeOfOwnership: string;
+    ownerId: string;
+    email: string | null;
+    location: string | null;
+    contractAddress: string | null;
+    status: string;
+    rejectionType: string | null;
     approvedAt: Date | null;
     rejectionReason: string | null;
-    txHash: string | null;
-    deletedAt: Date | null;
     updatedBy: string | null;
-    updatedByType: ActionType | null;
+    createdAt: Date;
+    updatedAt: Date;
 }
 export interface Token {
     id: string;
     contractAddress: string;
-    deedNftId: number;
-    submissionId: string;
+    rwaListingId: string;
+    userId: string;
     createdAt: Date;
 }
 export interface Bid {
@@ -52,11 +53,48 @@ export interface Bid {
     amount: string;
     currency: string;
     bidderId: string;
-    submissionId: string;
+    listingId: string;
+    verificationId: string;
     createdAt: Date;
-    deletedAt: Date | null;
+    expiresAt: Date | null;
+}
+export interface RwaSubmissionWithOwner extends RwaSubmission {
+    owner: User;
+}
+export interface RwaSubmissionWithListing extends RwaSubmission {
+    rwaListing: RwaListing | null;
+}
+export interface RwaSubmissionWithRelations extends RwaSubmission {
+    owner: User;
+    rwaListing: RwaListing | null;
+}
+export interface RwaListing {
+    id: string;
+    title: string;
+    symbol: string;
+    description: string;
+    imageGallery: string[];
+    contractAddress: string | null;
+    location: string | null;
+    email: string | null;
+    isLive: boolean;
+    rwaSubmissionId: string;
+    ownerId: string;
     updatedBy: string | null;
-    updatedByType: ActionType | null;
+    createdAt: Date;
+    updatedAt: Date;
+}
+export interface RwaSubmissionDetailed extends RwaSubmissionWithRelations {
+    auditLogs: {
+        id: string;
+        submissionId: string;
+        fromStatus: SubmissionStatus | null;
+        toStatus: SubmissionStatus;
+        actorId: string;
+        actorType: ActionType;
+        notes: string | null;
+        createdAt: Date;
+    }[];
 }
 export interface ContractAddresses {
     acesToken: string;
@@ -69,8 +107,10 @@ export interface NetworkConfig {
     contracts: ContractAddresses;
 }
 export interface ApiResponse<T = unknown> {
+    success: boolean;
     data?: T;
-    error?: AppError;
+    message?: string;
+    error?: AppError | string;
 }
 export interface HealthCheckResponse {
     status: 'ok' | 'ready';
@@ -92,3 +132,4 @@ export interface RecoveryResult {
     txHash?: string;
     message?: string;
 }
+//# sourceMappingURL=types.d.ts.map

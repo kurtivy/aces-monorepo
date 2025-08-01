@@ -2,17 +2,34 @@ import { z } from 'zod';
 
 // Submission schemas (from backend.md API contract)
 export const CreateSubmissionSchema = z.object({
-  name: z.string().min(1).max(50),
-  symbol: z.string().min(1).max(10),
-  description: z.string().min(10).max(1000),
-  imageUrl: z.string().url(),
-  proofOfOwnership: z.string().min(10),
+  title: z
+    .string()
+    .min(1, 'Asset title is required')
+    .max(50, 'Asset title must be less than 50 characters'),
+  symbol: z.string().min(1, 'Symbol is required').max(10, 'Symbol must be less than 10 characters'),
+  description: z
+    .string()
+    .min(10, 'Description must be at least 10 characters')
+    .max(1000, 'Description must be less than 1000 characters'),
+  assetType: z.enum(['VEHICLE', 'JEWELRY', 'COLLECTIBLE', 'ART', 'FASHION', 'ALCOHOL', 'OTHER'], {
+    required_error: 'Asset type is required',
+    invalid_type_error: 'Please select a valid asset type',
+  }),
+  imageGallery: z.array(z.string().url('Please provide valid image URLs')).optional().default([]),
+  proofOfOwnership: z.string().min(10, 'Proof of ownership must be at least 10 characters'),
+  typeOfOwnership: z.string().min(1, 'Type of ownership is required'),
+  location: z.string().optional(),
+  contractAddress: z
+    .string()
+    .regex(/^0x[a-fA-F0-9]{40}$/, 'Please enter a valid Ethereum contract address')
+    .optional(),
 });
 
 export const CreateBidSchema = z.object({
-  submissionId: z.string().cuid(),
+  listingId: z.string().cuid(),
   amount: z.string(),
   currency: z.enum(['ETH', 'ACES']),
+  expiresAt: z.string().datetime().optional(),
 });
 
 // Admin schemas
@@ -37,7 +54,7 @@ export const WebhookReplaySchema = z.object({
 export const UpdateTokenMetadataSchema = z.object({
   contractAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
   description: z.string().min(10).max(1000).optional(),
-  imageUrl: z.string().url().optional(),
+  imageGallery: z.array(z.string().url()).optional(),
 });
 
 // Pagination schema

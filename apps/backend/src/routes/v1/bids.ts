@@ -1,20 +1,35 @@
 import { FastifyInstance } from 'fastify';
-import { CreateBidSchema, PaginationSchema, CreateBidRequest } from '@aces/utils';
+import { PaginationSchema } from '@aces/utils';
 import { z } from 'zod';
 import zodToJsonSchema from 'zod-to-json-schema';
-import { Bid, RwaSubmission } from '@prisma/client';
+import { Bid, RwaListing } from '@prisma/client';
 import { BiddingService } from '../../services/bidding-service';
 import { errors } from '../../lib/errors';
+
+// Local schema and interface for bid creation (matches the bidding service)
+const BidCreateSchema = z.object({
+  listingId: z.string().cuid(),
+  amount: z.string(),
+  currency: z.enum(['ETH', 'ACES']),
+  expiresAt: z.string().datetime().optional(),
+});
+
+interface LocalCreateBidRequest {
+  listingId: string;
+  amount: string;
+  currency: string;
+  expiresAt?: Date;
+}
 
 const IdParamSchema = z.object({
   id: z.string().cuid({ message: 'Invalid ID' }),
 });
 type IdParam = z.infer<typeof IdParamSchema>;
 
-const SubmissionIdParamSchema = z.object({
-  submissionId: z.string().cuid({ message: 'Invalid Submission ID' }),
+const ListingIdParamSchema = z.object({
+  listingId: z.string().cuid({ message: 'Invalid Listing ID' }),
 });
-type SubmissionIdParam = z.infer<typeof SubmissionIdParamSchema>;
+type ListingIdParam = z.infer<typeof ListingIdParamSchema>;
 
 const TopBidsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(10).default(5),
@@ -23,8 +38,22 @@ type TopBidsQuery = z.infer<typeof TopBidsQuerySchema>;
 
 type PaginationParams = z.infer<typeof PaginationSchema>;
 
-type BidWithSubmission = Bid & {
-  submission: RwaSubmission;
+type BidWithListing = Bid & {
+  listing: {
+    id: string;
+    title: string;
+    symbol: string;
+    isLive: boolean;
+  };
+  bidder: {
+    id: string;
+    displayName: string | null;
+    walletAddress: string | null;
+  };
+  verification: {
+    id: string;
+    status: string;
+  };
 };
 
 export async function bidsRoutes(fastify: FastifyInstance) {
@@ -35,7 +64,7 @@ export async function bidsRoutes(fastify: FastifyInstance) {
     '/',
     {
       schema: {
-        body: zodToJsonSchema(CreateBidSchema),
+        body: zodToJsonSchema(BidCreateSchema),
       },
     },
     async (request, reply) => {
@@ -43,8 +72,17 @@ export async function bidsRoutes(fastify: FastifyInstance) {
         throw errors.unauthorized('Authentication required');
       }
 
-      const body = request.body as CreateBidRequest;
+      // Parse and validate the body using our local schema
+      const parsedBody = BidCreateSchema.parse(request.body);
       const correlationId = request.id;
+
+      // Convert to the format expected by the service
+      const body: LocalCreateBidRequest = {
+        listingId: parsedBody.listingId,
+        amount: parsedBody.amount,
+        currency: parsedBody.currency,
+        expiresAt: parsedBody.expiresAt ? new Date(parsedBody.expiresAt) : undefined,
+      };
 
       const bid = await biddingService.createOrUpdateBid(request.user.id, body, correlationId);
 
@@ -57,30 +95,34 @@ export async function bidsRoutes(fastify: FastifyInstance) {
   );
 
   // Get user's bids
-  fastify.get(
-    '/my',
-    {
-      schema: {
-        querystring: zodToJsonSchema(PaginationSchema),
-      },
-    },
-    async (request, reply) => {
-      if (!request.user) {
-        throw errors.unauthorized('Authentication required');
-      }
+  fastify.get('/my', async (request, reply) => {
+    if (!request.user) {
+      throw errors.unauthorized('Authentication required');
+    }
 
-      const query = request.query as PaginationParams;
+    const bids = await biddingService.getUserBids(request.user.id);
 
-      const result = await biddingService.getUserBids(request.user.id, query);
+    return reply.send({
+      success: true,
+      data: bids,
+    });
+  });
 
-      return reply.send({
-        success: true,
-        ...result,
-      });
-    },
-  );
+  // Get offers for listings owned by the user (seller's perspective)
+  fastify.get('/my-listings-offers', async (request, reply) => {
+    if (!request.user) {
+      throw errors.unauthorized('Authentication required');
+    }
 
-  // Get single bid details
+    const offers = await biddingService.getOffersForUserListings(request.user.id);
+
+    return reply.send({
+      success: true,
+      data: offers,
+    });
+  });
+
+  // Get specific bid
   fastify.get(
     '/:id',
     {
@@ -89,26 +131,21 @@ export async function bidsRoutes(fastify: FastifyInstance) {
       },
     },
     async (request, reply) => {
+      if (!request.user) {
+        throw errors.unauthorized('Authentication required');
+      }
+
       const { id } = request.params as IdParam;
 
-      const bid = (await biddingService.getBidById(id)) as BidWithSubmission | null;
+      const bidResult = await biddingService.getBidById(id);
 
-      if (!bid) {
+      if (!bidResult) {
         throw errors.notFound('Bid not found');
       }
 
-      // Only show bid details to the bidder or submission owner
-      if (
-        request.user &&
-        (bid.bidderId === request.user.id || bid.submission.ownerId === request.user.id)
-      ) {
-        return reply.send({
-          success: true,
-          data: bid,
-        });
-      }
+      // Type assertion since we know the service includes the listing relation
+      const bid = bidResult as BidWithListing;
 
-      // For others, show limited information
       return reply.send({
         success: true,
         data: {
@@ -116,18 +153,18 @@ export async function bidsRoutes(fastify: FastifyInstance) {
           amount: bid.amount,
           currency: bid.currency,
           createdAt: bid.createdAt,
-          submission: {
-            id: bid.submission.id,
-            name: bid.submission.name,
-            symbol: bid.submission.symbol,
-            status: bid.submission.status,
+          listing: {
+            id: bid.listing.id,
+            title: bid.listing.title,
+            symbol: bid.listing.symbol,
+            isLive: bid.listing.isLive,
           },
         },
       });
     },
   );
 
-  // Delete bid (soft delete)
+  // Delete bid
   fastify.delete(
     '/:id',
     {
@@ -141,9 +178,8 @@ export async function bidsRoutes(fastify: FastifyInstance) {
       }
 
       const { id } = request.params as IdParam;
-      const correlationId = request.id;
 
-      await biddingService.softDeleteBid(id, request.user.id, correlationId);
+      await biddingService.deleteBid(id, request.user.id);
 
       return reply.send({
         success: true,
@@ -152,24 +188,22 @@ export async function bidsRoutes(fastify: FastifyInstance) {
     },
   );
 
-  // Get top bids for a submission (public endpoint)
+  // Get highest bid for a listing (public endpoint)
   fastify.get(
-    '/submission/:submissionId/top',
+    '/listing/:listingId/highest',
     {
       schema: {
-        params: zodToJsonSchema(SubmissionIdParamSchema),
-        querystring: zodToJsonSchema(TopBidsQuerySchema),
+        params: zodToJsonSchema(ListingIdParamSchema),
       },
     },
     async (request, reply) => {
-      const { submissionId } = request.params as SubmissionIdParam;
-      const { limit } = request.query as TopBidsQuery;
+      const { listingId } = request.params as ListingIdParam;
 
-      const bids = await biddingService.getTopBidsForSubmission(submissionId, limit);
+      const bid = await biddingService.getHighestBidForListing(listingId);
 
       return reply.send({
         success: true,
-        data: bids,
+        data: bid,
       });
     },
   );
@@ -184,25 +218,22 @@ export async function bidsRoutes(fastify: FastifyInstance) {
     });
   });
 
-  // Get bids for a specific submission (with access control)
+  // Get bids for a specific listing (public endpoint)
   fastify.get(
-    '/submission/:submissionId',
+    '/listing/:listingId',
     {
       schema: {
-        params: zodToJsonSchema(SubmissionIdParamSchema),
-        querystring: zodToJsonSchema(PaginationSchema),
+        params: zodToJsonSchema(ListingIdParamSchema),
       },
     },
     async (request, reply) => {
-      const { submissionId } = request.params as SubmissionIdParam;
-      const query = request.query as PaginationParams;
+      const { listingId } = request.params as ListingIdParam;
 
-      // This will handle access control internally
-      const result = await biddingService.getBidsForSubmission(submissionId, query);
+      const bids = await biddingService.getBidsForListing(listingId);
 
       return reply.send({
         success: true,
-        ...result,
+        data: bids,
       });
     },
   );

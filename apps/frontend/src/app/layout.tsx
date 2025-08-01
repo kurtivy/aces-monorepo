@@ -1,21 +1,14 @@
 import type { Metadata } from 'next';
-import { Cinzel, Spectral, JetBrains_Mono } from 'next/font/google';
+import { Libre_Caslon_Text, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import ErrorBoundary from '../components/error-boundary';
 import { DeviceProvider } from '../contexts/device-provider';
 
-const syne = Cinzel({
+const libreCaslon = Libre_Caslon_Text({
   subsets: ['latin'],
   display: 'swap',
-  variable: '--font-syne',
-  weight: ['400', '500', '600', '700', '800'],
-});
-
-const spectral = Spectral({
-  subsets: ['latin'],
-  display: 'swap',
-  variable: '--font-spectral',
-  weight: ['200', '300', '400', '500', '600', '700', '800'],
+  variable: '--font-libre-caslon',
+  weight: ['400', '700'],
   style: ['normal', 'italic'],
 });
 
@@ -80,14 +73,12 @@ export default function RootLayout({
         <meta name="theme-color" content="#000000" />
         <meta name="color-scheme" content="dark" />
 
-        {/* FIX: Brave mobile Web3 compatibility - prevent ethereum injection errors */}
+        {/* Web3 compatibility script */}
         <script
           dangerouslySetInnerHTML={{
             __html: `
-              // Prevent Brave mobile Web3 injection errors
               if (typeof window !== 'undefined') {
                 try {
-                  // If window.ethereum doesn't exist, create a minimal stub to prevent errors
                   if (!window.ethereum) {
                     window.ethereum = {
                       selectedAddress: null,
@@ -96,7 +87,6 @@ export default function RootLayout({
                     };
                   }
                   
-                  // Prevent assignment errors by making selectedAddress writable
                   if (window.ethereum && typeof window.ethereum.selectedAddress === 'undefined') {
                     Object.defineProperty(window.ethereum, 'selectedAddress', {
                       value: null,
@@ -128,7 +118,7 @@ export default function RootLayout({
         ) : null}
       </head>
       <body
-        className={`${syne.variable} ${spectral.variable} ${jetbrainsMono.variable} font-spectral antialiased  bg-black`}
+        className={`${libreCaslon.variable} ${jetbrainsMono.variable} font-system antialiased bg-black`}
       >
         <ErrorBoundary>
           <DeviceProvider>{children}</DeviceProvider>

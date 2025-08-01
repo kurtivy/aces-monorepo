@@ -9,38 +9,184 @@ import {
 } from '@aces/utils';
 import { SubmissionService } from '../../services/submission-service';
 import { BiddingService } from '../../services/bidding-service';
+import { StorageService } from '../../lib/storage-utils';
 import { errors } from '../../lib/errors';
 
 export async function submissionsRoutes(fastify: FastifyInstance) {
   const submissionService = new SubmissionService(fastify.prisma);
   const biddingService = new BiddingService(fastify.prisma);
 
-  // Create submission
+  // Direct image upload endpoint (bypasses CORS)
+  fastify.post('/upload-image', async (request, reply) => {
+    try {
+      const data = await request.file();
+
+      if (!data) {
+        return reply.status(400).send({
+          success: false,
+          error: 'No file provided',
+        });
+      }
+
+      // Validate file type
+      if (!data.mimetype.startsWith('image/')) {
+        return reply.status(400).send({
+          success: false,
+          error: 'File must be an image',
+        });
+      }
+
+      // Validate file size (5MB limit)
+      const buffer = await data.toBuffer();
+      if (buffer.length > 5 * 1024 * 1024) {
+        return reply.status(400).send({
+          success: false,
+          error: 'File size too large (max 5MB)',
+        });
+      }
+
+      // Upload to Google Cloud Storage
+      const fileName = `submissions/${Date.now()}-${data.filename}`;
+      const bucket = StorageService.getBucket();
+      const file = bucket.file(fileName);
+
+      await file.save(buffer, {
+        metadata: {
+          contentType: data.mimetype,
+        },
+      });
+
+      const publicUrl = StorageService.getPublicUrl(fileName);
+
+      return reply.send({
+        success: true,
+        data: { publicUrl },
+      });
+    } catch (error) {
+      fastify.log.error({ error, operation: 'uploadImage' }, 'Failed to upload image');
+      return reply.status(500).send({
+        success: false,
+        error: 'Failed to upload image',
+      });
+    }
+  });
+
+  // Get signed URL for image upload
   fastify.post(
-    '/',
+    '/get-upload-url',
+    {
+      schema: {
+        body: zodToJsonSchema(
+          z.object({
+            fileType: z.string(),
+          }),
+        ),
+      },
+    },
+    async (request, reply) => {
+      const { fileType } = request.body as { fileType: string };
+
+      try {
+        const { url, fileName } = await StorageService.getSignedUploadUrl(fileType);
+        const publicUrl = StorageService.getPublicUrl(fileName);
+
+        return reply.send({
+          success: true,
+          data: { url, fileName, publicUrl },
+        });
+      } catch (error) {
+        fastify.log.error({ error, operation: 'getUploadUrl' }, 'Failed to generate signed URL');
+        throw errors.internal('Failed to generate signed URL');
+      }
+    },
+  );
+
+  // Test endpoint - no auth required
+  fastify.post(
+    '/test',
     {
       schema: {
         body: zodToJsonSchema(CreateSubmissionSchema),
       },
     },
     async (request, reply) => {
-      if (!request.user) {
-        throw errors.unauthorized('Authentication required');
-      }
-
       const body = request.body as CreateSubmissionRequest;
       const correlationId = request.id;
 
-      const submission = await submissionService.createSubmission(
-        request.user.id,
-        body,
-        correlationId,
-      );
+      try {
+        // Create or get test user
+        const testUser = await fastify.prisma.user.upsert({
+          where: { privyDid: 'test-user' },
+          update: {},
+          create: {
+            privyDid: 'test-user',
+            walletAddress: '0xTestUser',
+          },
+        });
 
-      return reply.status(201).send({
-        success: true,
-        data: submission,
-      });
+        // Create submission with test user
+        const submission = await submissionService.createSubmission(
+          testUser.id,
+          body,
+          correlationId,
+        );
+
+        return { success: true, data: submission };
+      } catch (error) {
+        // Properly type the error and use structured logging
+        const err = error instanceof Error ? error : new Error('Unknown error');
+        fastify.log.error(
+          { err, correlationId, operation: 'testSubmission' },
+          'Failed to create test submission',
+        );
+        return reply.status(500).send({
+          success: false,
+          error: 'Failed to create test submission',
+        });
+      }
+    },
+  );
+
+  // Regular submission endpoint - requires auth
+  fastify.post(
+    '/create',
+    {
+      schema: {
+        body: zodToJsonSchema(CreateSubmissionSchema),
+      },
+    },
+    async (request, reply) => {
+      const body = request.body as CreateSubmissionRequest;
+      const correlationId = request.id;
+
+      // Check if user exists
+      if (!request.user) {
+        return reply.status(401).send({
+          success: false,
+          error: 'Authentication required',
+        });
+      }
+
+      try {
+        const submission = await submissionService.createSubmission(
+          request.user.id,
+          body,
+          correlationId,
+        );
+
+        return { success: true, data: submission };
+      } catch (error) {
+        // Properly type the error and use structured logging
+        const err = error instanceof Error ? error : new Error('Unknown error');
+        fastify.log.error(
+          { err, correlationId, operation: 'createSubmission' },
+          'Failed to create submission',
+        );
+        return reply.status(500).send({
+          success: false,
+          error: 'Failed to create submission',
+        });
+      }
     },
   );
 
@@ -59,10 +205,11 @@ export async function submissionsRoutes(fastify: FastifyInstance) {
 
       const { limit, cursor } = request.query as PaginationRequest;
 
-      const result = await submissionService.getUserSubmissions(request.user.id, {
-        limit,
-        cursor,
-      });
+      const result = await submissionService.getUserSubmissions(
+        request.user.id,
+        undefined, // no status filter
+        { limit, cursor },
+      );
 
       return reply.send({
         success: true,
@@ -88,11 +235,9 @@ export async function submissionsRoutes(fastify: FastifyInstance) {
         throw errors.notFound('Submission not found');
       }
 
-      // Only show full details to owner or make it public for live submissions
-      if (
-        submission.status !== 'LIVE' &&
-        (!request.user || submission.ownerId !== request.user.id)
-      ) {
+      // Only show full details to owner or make it public for approved submissions with live listings
+      const hasLiveListing = submission.rwaListing && submission.rwaListing.isLive;
+      if (!hasLiveListing && (!request.user || submission.ownerId !== request.user.id)) {
         throw errors.forbidden('Cannot view this submission');
       }
 
@@ -117,9 +262,8 @@ export async function submissionsRoutes(fastify: FastifyInstance) {
       }
 
       const { id } = request.params as { id: string };
-      const correlationId = request.id;
 
-      await submissionService.softDeleteSubmission(id, request.user.id, correlationId);
+      await submissionService.deleteSubmission(id, request.user.id);
 
       return reply.send({
         success: true,
@@ -148,22 +292,36 @@ export async function submissionsRoutes(fastify: FastifyInstance) {
         throw errors.notFound('Submission not found');
       }
 
-      // Only show bids for pending submissions or to the owner
-      if (
-        submission.status !== 'PENDING' &&
-        (!request.user || submission.ownerId !== request.user.id)
-      ) {
+      // Only show bids for submissions with live listings or to the owner
+      const hasLiveListing = submission.rwaListing && submission.rwaListing.isLive;
+      if (!hasLiveListing && (!request.user || submission.ownerId !== request.user.id)) {
         throw errors.forbidden('Cannot view bids for this submission');
       }
 
-      const result = await biddingService.getBidsForSubmission(id, {
-        limit,
-        cursor,
-      });
+      // If submission has a live listing, get bids for the listing
+      if (!submission.rwaListing) {
+        return reply.send({
+          success: true,
+          data: [],
+          hasMore: false,
+        });
+      }
+
+      const bids = await biddingService.getBidsForListing(submission.rwaListing.id);
+
+      // Apply pagination manually since getBidsForListing doesn't support it
+      const limitValue = Math.min(limit || 20, 100);
+      const startIndex = cursor ? bids.findIndex((bid) => bid.id === cursor) + 1 : 0;
+      const endIndex = startIndex + limitValue;
+      const paginatedBids = bids.slice(startIndex, endIndex);
+      const hasMore = endIndex < bids.length;
+      const nextCursor = hasMore ? paginatedBids[paginatedBids.length - 1]?.id : undefined;
 
       return reply.send({
         success: true,
-        ...result,
+        data: paginatedBids,
+        nextCursor,
+        hasMore,
       });
     },
   );
@@ -179,14 +337,46 @@ export async function submissionsRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const { limit, cursor } = request.query as PaginationRequest;
 
-      const result = await submissionService.getAllSubmissions('LIVE', {
-        limit,
-        cursor,
+      // Query live listings instead of submissions
+      const limitValue = Math.min(limit || 20, 100);
+      const where: { isLive: boolean; id?: { lt: string } } = { isLive: true };
+
+      if (cursor) {
+        where.id = { lt: cursor };
+      }
+
+      const listings = await fastify.prisma.rwaListing.findMany({
+        where,
+        include: {
+          owner: {
+            select: {
+              id: true,
+              walletAddress: true,
+              displayName: true,
+            },
+          },
+          rwaSubmission: {
+            select: {
+              id: true,
+              status: true,
+              createdAt: true,
+            },
+          },
+          token: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: limitValue + 1,
       });
+
+      const hasMore = listings.length > limitValue;
+      const data = hasMore ? listings.slice(0, -1) : listings;
+      const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
 
       return reply.send({
         success: true,
-        ...result,
+        data,
+        nextCursor,
+        hasMore,
       });
     },
   );
@@ -206,13 +396,12 @@ export async function submissionsRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const { q, limit } = request.query as PaginationRequest & { q: string };
 
-      // Simple search implementation - can be enhanced with full-text search later
-      const submissions = await fastify.prisma.rwaSubmission.findMany({
+      // Search live listings instead of submissions
+      const listings = await fastify.prisma.rwaListing.findMany({
         where: {
-          status: 'LIVE',
-          deletedAt: null,
+          isLive: true,
           OR: [
-            { name: { contains: q, mode: 'insensitive' } },
+            { title: { contains: q, mode: 'insensitive' } },
             { symbol: { contains: q, mode: 'insensitive' } },
             { description: { contains: q, mode: 'insensitive' } },
           ],
@@ -222,6 +411,13 @@ export async function submissionsRoutes(fastify: FastifyInstance) {
             select: {
               id: true,
               walletAddress: true,
+              displayName: true,
+            },
+          },
+          rwaSubmission: {
+            select: {
+              id: true,
+              status: true,
             },
           },
           token: true,
@@ -232,8 +428,8 @@ export async function submissionsRoutes(fastify: FastifyInstance) {
 
       return reply.send({
         success: true,
-        data: submissions,
-        hasMore: submissions.length === (limit || 20),
+        data: listings,
+        hasMore: listings.length === (limit || 20),
       });
     },
   );
@@ -241,11 +437,11 @@ export async function submissionsRoutes(fastify: FastifyInstance) {
   // Get submission statistics (public)
   fastify.get('/stats', async (request, reply) => {
     const [totalLive, totalPending, totalUsers] = await Promise.all([
-      fastify.prisma.rwaSubmission.count({
-        where: { status: 'LIVE', deletedAt: null },
+      fastify.prisma.rwaListing.count({
+        where: { isLive: true },
       }),
       fastify.prisma.rwaSubmission.count({
-        where: { status: 'PENDING', deletedAt: null },
+        where: { status: 'PENDING' },
       }),
       fastify.prisma.user.count(),
     ]);

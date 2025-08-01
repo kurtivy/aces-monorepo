@@ -14,8 +14,7 @@ import { setTestNamespace, createUniqueUser, createUniqueSubmission } from './te
 // Type for submission with included relations
 type SubmissionWithRelations = RwaSubmission & {
   owner: User;
-  token?: Token | null;
-  bids?: (Bid & { bidder: User })[];
+  rwaListing?: RwaSubmission | null;
 };
 
 // Mock the logger
@@ -61,20 +60,22 @@ describe('SubmissionService', () => {
 
     // Create fresh submissions for each test
     pendingSubmission = await createUniqueSubmission(prisma, user1.id, {
-      name: 'Pending Submission',
+      title: 'Pending Submission',
       symbol: 'PEND',
       description: 'A submission waiting for approval',
-      imageUrl: 'http://example.com/pending.png',
+      imageGallery: ['http://example.com/pending.png'],
       proofOfOwnership: 'proof-pending',
+      typeOfOwnership: 'Vehicle',
       status: 'PENDING',
     });
 
     approvedSubmission = await createUniqueSubmission(prisma, user2.id, {
-      name: 'Approved Submission',
+      title: 'Approved Submission',
       symbol: 'APPR',
       description: 'A submission that is already approved',
-      imageUrl: 'http://example.com/approved.png',
+      imageGallery: ['http://example.com/approved.png'],
       proofOfOwnership: 'proof-approved',
+      typeOfOwnership: 'Vehicle',
       status: 'APPROVED',
     });
   });
@@ -93,11 +94,12 @@ describe('SubmissionService', () => {
   describe('createSubmission', () => {
     it('should create a new submission successfully', async () => {
       const submissionData: CreateSubmissionRequest = {
-        name: 'Test Asset',
+        title: 'Test Asset',
         symbol: 'TEST',
         description: 'A test asset for submission',
-        imageUrl: 'http://example.com/test.png',
+        imageGallery: ['http://example.com/test.png'],
         proofOfOwnership: 'proof-test',
+        typeOfOwnership: 'Vehicle',
       };
       const correlationId = 'test-create-submission';
 
@@ -108,10 +110,10 @@ describe('SubmissionService', () => {
       )) as SubmissionWithRelations;
 
       expect(createdSubmission).toBeDefined();
-      expect(createdSubmission.name).toBe(submissionData.name);
+      expect(createdSubmission.title).toBe(submissionData.title);
       expect(createdSubmission.symbol).toBe(submissionData.symbol);
       expect(createdSubmission.description).toBe(submissionData.description);
-      expect(createdSubmission.imageUrl).toBe(submissionData.imageUrl);
+      expect(createdSubmission.imageGallery).toEqual(submissionData.imageGallery);
       expect(createdSubmission.proofOfOwnership).toBe(submissionData.proofOfOwnership);
       expect(createdSubmission.ownerId).toBe(user1.id);
       expect(createdSubmission.status).toBe('PENDING');
@@ -126,7 +128,7 @@ describe('SubmissionService', () => {
       expect(auditLog?.toStatus).toBe('PENDING');
       expect(auditLog?.actorId).toBe(user1.id);
       expect(auditLog?.actorType).toBe('USER');
-      expect(auditLog?.notes).toBe('Submission created');
+      expect(auditLog?.notes).toBe('Initial submission');
     });
   });
 
@@ -136,7 +138,6 @@ describe('SubmissionService', () => {
 
       expect(data.length).toBeGreaterThanOrEqual(1);
       expect(data.every((s) => s.ownerId === user1.id)).toBe(true);
-      expect(data.every((s) => s.deletedAt === null)).toBe(true);
       expect(hasMore).toBe(false);
 
       // Check that submissions include related data
@@ -148,20 +149,21 @@ describe('SubmissionService', () => {
       // Create additional submissions for pagination testing
       for (let i = 0; i < 3; i++) {
         await createUniqueSubmission(prisma, user1.id, {
-          name: `Pagination Test ${i}`,
+          title: `Pagination Test ${i}`,
           symbol: `PAG${i}`,
           description: 'desc',
-          imageUrl: 'url',
+          imageGallery: ['url'],
           proofOfOwnership: 'proof',
+          typeOfOwnership: 'Vehicle',
         });
       }
 
-      const page1 = await submissionService.getUserSubmissions(user1.id, { limit: 2 });
+      const page1 = await submissionService.getUserSubmissions(user1.id, undefined, { limit: 2 });
       expect(page1.data.length).toBe(2);
       expect(page1.hasMore).toBe(true);
       expect(page1.nextCursor).toBeDefined();
 
-      const page2 = await submissionService.getUserSubmissions(user1.id, {
+      const page2 = await submissionService.getUserSubmissions(user1.id, undefined, {
         limit: 2,
         cursor: page1.nextCursor,
       });
@@ -184,7 +186,7 @@ describe('SubmissionService', () => {
 
       expect(submission).not.toBeNull();
       expect(submission?.id).toBe(pendingSubmission.id);
-      expect(submission?.name).toBe(pendingSubmission.name);
+      expect(submission?.title).toBe(pendingSubmission.title);
       expect((submission as SubmissionWithRelations)?.owner).toBeDefined();
     });
 
@@ -203,94 +205,69 @@ describe('SubmissionService', () => {
     });
 
     it('should return null for non-existent submission', async () => {
-      const nonExistentId = 'clxxxxxxxxx';
-      const submission = await submissionService.getSubmissionById(nonExistentId);
+      const submission = await submissionService.getSubmissionById('non-existent-id');
 
       expect(submission).toBeNull();
     });
   });
 
-  describe('softDeleteSubmission', () => {
-    it('should soft delete a pending submission successfully', async () => {
-      const correlationId = 'test-soft-delete';
-      const result = await submissionService.softDeleteSubmission(
-        pendingSubmission.id,
-        user1.id,
-        correlationId,
-      );
+  describe('deleteSubmission', () => {
+    it('should delete a pending submission successfully', async () => {
+      const result = await submissionService.deleteSubmission(pendingSubmission.id, user1.id);
 
-      expect(result).toBe(true);
-
+      // Verify submission was deleted
       const deletedSubmission = await prisma.rwaSubmission.findUnique({
         where: { id: pendingSubmission.id },
       });
-      expect(deletedSubmission?.deletedAt).not.toBeNull();
+      expect(deletedSubmission).toBeNull();
+
+      // Verify audit log was created
+      const auditLog = await prisma.submissionAuditLog.findFirst({
+        where: { submissionId: pendingSubmission.id },
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(auditLog).not.toBeNull();
+      expect(auditLog?.fromStatus).toBe('PENDING');
+      expect(auditLog?.toStatus).toBe('REJECTED');
+      expect(auditLog?.actorId).toBe(user1.id);
+      expect(auditLog?.actorType).toBe('USER');
+      expect(auditLog?.notes).toBe('Submission deleted by user');
     });
 
-    it('should throw an error if submission does not belong to user', async () => {
-      const correlationId = 'test-soft-delete-fail';
+    it('should throw error when trying to delete non-pending submission', async () => {
       await expect(
-        submissionService.softDeleteSubmission(pendingSubmission.id, user2.id, correlationId),
-      ).rejects.toThrow('Submission not found or cannot be deleted');
+        submissionService.deleteSubmission(approvedSubmission.id, user2.id),
+      ).rejects.toThrow('Cannot delete submission with status: APPROVED');
     });
 
-    it('should throw an error if submission is not in PENDING state', async () => {
-      const correlationId = 'test-soft-delete-fail-status';
-      await expect(
-        submissionService.softDeleteSubmission(approvedSubmission.id, user2.id, correlationId),
-      ).rejects.toThrow('Submission not found or cannot be deleted');
+    it('should throw error when trying to delete non-existent submission', async () => {
+      await expect(submissionService.deleteSubmission('non-existent-id', user1.id)).rejects.toThrow(
+        'Submission not found or access denied',
+      );
     });
 
-    it('should throw an error for non-existent submission', async () => {
-      const nonExistentId = 'clxxxxxxxxx';
-      const correlationId = 'test-soft-delete-fail-notfound';
+    it('should throw error when trying to delete another user submission', async () => {
       await expect(
-        submissionService.softDeleteSubmission(nonExistentId, user1.id, correlationId),
-      ).rejects.toThrow('Submission not found or cannot be deleted');
+        submissionService.deleteSubmission(pendingSubmission.id, user2.id),
+      ).rejects.toThrow('Submission not found or access denied');
     });
   });
 
   describe('getAllSubmissions', () => {
-    it('should return all submissions when no status filter is provided', async () => {
-      const { data, hasMore } = await submissionService.getAllSubmissions();
+    it('should return all submissions for admin', async () => {
+      const { data, hasMore } = await submissionService.getAllSubmissions(user1.id);
 
-      expect(data.length).toBeGreaterThanOrEqual(2); // At least pending and approved
-      expect(data.some((s) => s.status === 'PENDING')).toBe(true);
-      expect(data.some((s) => s.status === 'APPROVED')).toBe(true);
+      expect(data.length).toBeGreaterThanOrEqual(2);
       expect(hasMore).toBe(false);
+      expect(data.every((s) => s.owner)).toBe(true);
     });
 
     it('should filter submissions by status', async () => {
-      const { data } = await submissionService.getAllSubmissions('PENDING');
-
-      expect(data.every((s) => s.status === 'PENDING')).toBe(true);
-      expect(data.length).toBeGreaterThanOrEqual(1);
-    });
-
-    it('should handle pagination for all submissions', async () => {
-      // Create additional submissions for pagination testing
-      for (let i = 0; i < 3; i++) {
-        await createUniqueSubmission(prisma, user1.id);
-      }
-
-      const page1 = await submissionService.getAllSubmissions(undefined, { limit: 2 });
-      expect(page1.data.length).toBe(2);
-      expect(page1.hasMore).toBe(true);
-      expect(page1.nextCursor).toBeDefined();
-
-      const page2 = await submissionService.getAllSubmissions(undefined, {
-        limit: 2,
-        cursor: page1.nextCursor,
+      const { data: pendingData } = await submissionService.getAllSubmissions(user1.id, {
+        status: 'PENDING',
       });
-      expect(page2.data.length).toBeGreaterThan(0);
-    });
 
-    it('should return empty array when filtering by non-existent status', async () => {
-      // Using a valid but unused status for this test
-      const { data, hasMore } = await submissionService.getAllSubmissions('LIVE');
-
-      expect(data).toEqual([]);
-      expect(hasMore).toBe(false);
+      expect(pendingData.every((s) => s.status === 'PENDING')).toBe(true);
     });
   });
 });

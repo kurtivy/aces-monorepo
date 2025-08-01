@@ -198,7 +198,7 @@ export const drawHomeArea = (
     const isMobile = unitSize <= 150;
     const baseFontSize = isMobile ? unitSize * 0.12 : unitSize * 0.15; // Original desktop size
     const hoverFontSize = isMobile ? unitSize * 0.13 : unitSize * 0.16; // Original desktop size
-    ctx.font = `bold ${isHovered ? hoverFontSize : baseFontSize}px 'Syne'`;
+    ctx.font = `bold ${isHovered ? hoverFontSize : baseFontSize}px 'heading'`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 

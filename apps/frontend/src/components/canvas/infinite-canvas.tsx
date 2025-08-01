@@ -109,8 +109,9 @@ const InfiniteCanvas = () => {
     viewState,
     setSelectedImage,
     imagePlacementMap: imagePlacementMapRef,
-    unitSize: unitSize,
+    unitSize,
     updateViewState,
+    canvasRef,
     repeatedPlacements,
     repeatedTokens,
     // Issue #2: Pass momentum callback from canvas renderer to interactions

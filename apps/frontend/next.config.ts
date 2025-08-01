@@ -4,6 +4,16 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   transpilePackages: ['three'],
 
+  // API proxy configuration
+  async rewrites() {
+    return [
+      {
+        source: '/submissions/:path*',
+        destination: 'http://localhost:3002/submissions/:path*',
+      },
+    ];
+  },
+
   // Image optimization configuration
   images: {
     // Enable image optimization

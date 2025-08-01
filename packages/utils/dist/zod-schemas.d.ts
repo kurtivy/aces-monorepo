@@ -1,35 +1,50 @@
 import { z } from 'zod';
 export declare const CreateSubmissionSchema: z.ZodObject<{
-    name: z.ZodString;
+    title: z.ZodString;
     symbol: z.ZodString;
     description: z.ZodString;
-    imageUrl: z.ZodString;
+    assetType: z.ZodEnum<["VEHICLE", "JEWELRY", "COLLECTIBLE", "ART", "FASHION", "ALCOHOL", "OTHER"]>;
+    imageGallery: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
     proofOfOwnership: z.ZodString;
+    typeOfOwnership: z.ZodString;
+    location: z.ZodOptional<z.ZodString>;
+    contractAddress: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     symbol: string;
-    name: string;
+    title: string;
     description: string;
-    imageUrl: string;
+    assetType: "VEHICLE" | "JEWELRY" | "COLLECTIBLE" | "ART" | "FASHION" | "ALCOHOL" | "OTHER";
+    imageGallery: string[];
     proofOfOwnership: string;
+    typeOfOwnership: string;
+    location?: string | undefined;
+    contractAddress?: string | undefined;
 }, {
     symbol: string;
-    name: string;
+    title: string;
     description: string;
-    imageUrl: string;
+    assetType: "VEHICLE" | "JEWELRY" | "COLLECTIBLE" | "ART" | "FASHION" | "ALCOHOL" | "OTHER";
     proofOfOwnership: string;
+    typeOfOwnership: string;
+    imageGallery?: string[] | undefined;
+    location?: string | undefined;
+    contractAddress?: string | undefined;
 }>;
 export declare const CreateBidSchema: z.ZodObject<{
-    submissionId: z.ZodString;
+    listingId: z.ZodString;
     amount: z.ZodString;
     currency: z.ZodEnum<["ETH", "ACES"]>;
+    expiresAt: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
+    listingId: string;
     amount: string;
-    submissionId: string;
     currency: "ETH" | "ACES";
+    expiresAt?: string | undefined;
 }, {
+    listingId: string;
     amount: string;
-    submissionId: string;
     currency: "ETH" | "ACES";
+    expiresAt?: string | undefined;
 }>;
 export declare const ApprovalSchema: z.ZodObject<{
     submissionId: z.ZodString;
@@ -65,15 +80,15 @@ export declare const WebhookReplaySchema: z.ZodObject<{
 export declare const UpdateTokenMetadataSchema: z.ZodObject<{
     contractAddress: z.ZodString;
     description: z.ZodOptional<z.ZodString>;
-    imageUrl: z.ZodOptional<z.ZodString>;
+    imageGallery: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
 }, "strip", z.ZodTypeAny, {
     contractAddress: string;
     description?: string | undefined;
-    imageUrl?: string | undefined;
+    imageGallery?: string[] | undefined;
 }, {
     contractAddress: string;
     description?: string | undefined;
-    imageUrl?: string | undefined;
+    imageGallery?: string[] | undefined;
 }>;
 export declare const PaginationSchema: z.ZodObject<{
     cursor: z.ZodOptional<z.ZodString>;
@@ -82,8 +97,8 @@ export declare const PaginationSchema: z.ZodObject<{
     limit: number;
     cursor?: string | undefined;
 }, {
-    limit?: number | undefined;
     cursor?: string | undefined;
+    limit?: number | undefined;
 }>;
 export declare const SubmissionStatusEnum: z.ZodEnum<["PENDING", "APPROVED", "LIVE", "REJECTED"]>;
 export declare const ChainEventWebhookSchema: z.ZodObject<{
@@ -111,3 +126,4 @@ export type WebhookReplayRequest = z.infer<typeof WebhookReplaySchema>;
 export type UpdateTokenMetadataRequest = z.infer<typeof UpdateTokenMetadataSchema>;
 export type PaginationRequest = z.infer<typeof PaginationSchema>;
 export type ChainEventWebhookRequest = z.infer<typeof ChainEventWebhookSchema>;
+//# sourceMappingURL=zod-schemas.d.ts.map
