@@ -3,6 +3,12 @@
   "buildCommand": "pnpm vercel-build",
   "installCommand": "pnpm install --no-frozen-lockfile",
   "outputDirectory": ".",
+  "git": {
+    "deploymentEnabled": {
+      "main": true,
+      "dev": true
+    }
+  },
   "rewrites": [
     {
       "source": "/api/v1/health/(.*)",
