@@ -12,6 +12,7 @@ import { useModal } from '@/lib/contexts/modal-context';
 // Main navigation items
 // Main navigation items
 const mainNavItems = [
+  { href: '/launch', label: 'ICO Launch', external: false, action: 'navigate' },
   { href: '/mint-token', label: 'Mint Token', external: false, action: 'navigate' },
   { href: '/about', label: 'About', external: false, action: 'modal' },
   { href: '/terms', label: 'Terms & PP', external: false, action: 'modal' },

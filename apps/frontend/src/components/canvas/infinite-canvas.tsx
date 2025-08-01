@@ -11,7 +11,9 @@ import { useCanvasInteractions } from '../../hooks/canvas/use-canvas-interaction
 import { useCoordinatedResize } from '../../hooks/use-coordinated-resize';
 import ConnectWalletNav from '../ui/custom/connect-wallet-nav';
 import HomeButton from '../ui/custom/home-button';
+import ContactButton from '../ui/custom/contact-button';
 import ImageDetailsModal from '../ui/custom/image-details-modal';
+import ContactFormModal from '../ui/custom/contact-form-modal';
 import IntroAnimation from '../loading/intro-animation';
 import {
   mobileUtils,
@@ -31,6 +33,7 @@ type LoadingState = 'loading' | 'ready';
 const InfiniteCanvas = () => {
   const router = useRouter();
   const [selectedImage, setSelectedImage] = useState<ImageInfo | null>(null);
+  const [isContactModalOpen, setIsContactModalOpen] = useState(false);
 
   const [loadingState, setLoadingState] = useState<LoadingState>('loading');
 
@@ -273,6 +276,16 @@ const InfiniteCanvas = () => {
     animateToHome(); // Then animate to home position
   }, [stopMomentum, animateToHome]);
 
+  // Handle contact button click
+  const handleContactClick = useCallback(() => {
+    setIsContactModalOpen(true);
+  }, []);
+
+  // Handle contact modal close
+  const handleContactModalClose = useCallback(() => {
+    setIsContactModalOpen(false);
+  }, []);
+
   // Phase 2 Step 3 Action 5: Demonstrate enhanced error handling on component mount
   useEffect(() => {
     // Run health check to validate enhanced error handling
@@ -362,14 +375,24 @@ const InfiniteCanvas = () => {
 
       {/* Modals and UI */}
       <ImageDetailsModal imageInfo={selectedImage} onClose={handleModalClose} />
+      <ContactFormModal isOpen={isContactModalOpen} onClose={handleContactModalClose} />
       {isUIVisible && !selectedImage && (
-        <motion.div
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.6, ease: 'easeOut', delay: 0.3 }}
-        >
-          <HomeButton onClick={handleHomeClick} />
-        </motion.div>
+        <>
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.6, ease: 'easeOut', delay: 0.3 }}
+          >
+            <HomeButton onClick={handleHomeClick} />
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.6, ease: 'easeOut', delay: 0.4 }}
+          >
+            <ContactButton onClick={handleContactClick} />
+          </motion.div>
+        </>
       )}
     </>
   );

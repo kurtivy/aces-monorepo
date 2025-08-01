@@ -30,6 +30,7 @@ import { userProfileRoutes } from './routes/v1/user-profile';
 import { webhooksRoutes } from './routes/v1/webhooks';
 import listingsRoutes from './routes/v1/listings';
 import tokensRoutes from './routes/v1/tokens';
+import contactRoutes from './routes/v1/contact';
 
 export const buildApp = async (): Promise<FastifyInstance> => {
   const fastify = Fastify({
@@ -65,6 +66,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   fastify.register(webhooksRoutes, { prefix: '/api/v1/webhooks' });
   fastify.register(listingsRoutes, { prefix: '/api/v1' });
   fastify.register(tokensRoutes, { prefix: '/api/v1' });
+  fastify.register(contactRoutes, { prefix: '/api/v1' });
 
   // Register hooks
   fastify.addHook('onRequest', async (request) => {
