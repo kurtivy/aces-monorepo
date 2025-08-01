@@ -3,30 +3,30 @@ export declare const CreateSubmissionSchema: z.ZodObject<{
     title: z.ZodString;
     symbol: z.ZodString;
     description: z.ZodString;
+    assetType: z.ZodEnum<["VEHICLE", "JEWELRY", "COLLECTIBLE", "ART", "FASHION", "ALCOHOL", "OTHER"]>;
     imageGallery: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
     proofOfOwnership: z.ZodString;
     typeOfOwnership: z.ZodString;
-    email: z.ZodOptional<z.ZodString>;
     location: z.ZodOptional<z.ZodString>;
     contractAddress: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     symbol: string;
     title: string;
     description: string;
+    assetType: "VEHICLE" | "JEWELRY" | "COLLECTIBLE" | "ART" | "FASHION" | "ALCOHOL" | "OTHER";
     imageGallery: string[];
     proofOfOwnership: string;
     typeOfOwnership: string;
-    email?: string | undefined;
     location?: string | undefined;
     contractAddress?: string | undefined;
 }, {
     symbol: string;
     title: string;
     description: string;
+    assetType: "VEHICLE" | "JEWELRY" | "COLLECTIBLE" | "ART" | "FASHION" | "ALCOHOL" | "OTHER";
     proofOfOwnership: string;
     typeOfOwnership: string;
     imageGallery?: string[] | undefined;
-    email?: string | undefined;
     location?: string | undefined;
     contractAddress?: string | undefined;
 }>;

@@ -13,10 +13,13 @@ exports.CreateSubmissionSchema = zod_1.z.object({
         .string()
         .min(10, 'Description must be at least 10 characters')
         .max(1000, 'Description must be less than 1000 characters'),
+    assetType: zod_1.z.enum(['VEHICLE', 'JEWELRY', 'COLLECTIBLE', 'ART', 'FASHION', 'ALCOHOL', 'OTHER'], {
+        required_error: 'Asset type is required',
+        invalid_type_error: 'Please select a valid asset type',
+    }),
     imageGallery: zod_1.z.array(zod_1.z.string().url('Please provide valid image URLs')).optional().default([]),
     proofOfOwnership: zod_1.z.string().min(10, 'Proof of ownership must be at least 10 characters'),
     typeOfOwnership: zod_1.z.string().min(1, 'Type of ownership is required'),
-    email: zod_1.z.string().email('Please enter a valid email address').optional(),
     location: zod_1.z.string().optional(),
     contractAddress: zod_1.z
         .string()
