@@ -9,6 +9,7 @@ import Footer from '@/components/ui/custom/footer';
 import { SellerDashboardOverlay } from '@/components/profile/seller-dashboard-overlay';
 import { useState } from 'react';
 import { AdminDashboardOverlay } from '@/components/profile/admin-dashboard-overlay';
+import { SubmissionStatusNotifications } from '@/components/profile/submission-status-notifications';
 import AnimatedDotsBackground from '@/components/ui/custom/animated-dots-background';
 import LuxuryAssetsBackground from '@/components/ui/custom/luxury-assets-background';
 import AcesHeader from '@/components/ui/custom/aces-header';
@@ -120,6 +121,9 @@ export default function ProfilePage() {
                 onSellerDashboardClick={handleSellerDashboard}
                 onAdminDashboardClick={handleAdminDashboard}
               />
+
+              {/* Submission Status Notifications */}
+              <SubmissionStatusNotifications />
 
               {/* Main Content - Full Width Tabs */}
               <div className="w-full">

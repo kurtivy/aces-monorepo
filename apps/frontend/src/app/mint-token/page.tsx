@@ -2,13 +2,34 @@
 
 import type React from 'react';
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { usePrivy } from '@privy-io/react-auth';
-import { Upload, Crown, CheckCircle, AlertCircle, Mail, Wallet } from 'lucide-react';
+import {
+  Upload,
+  Crown,
+  CheckCircle,
+  AlertCircle,
+  Wallet,
+  FileText,
+  MapPin,
+  Tag,
+  Camera,
+  Shield,
+  Info,
+  ChevronRight,
+  Layers,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { CreateSubmissionSchema } from '@aces/utils';
 import { SubmissionsApi } from '@/lib/api/submissions';
 import Image from 'next/image';
@@ -20,23 +41,90 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { VerificationForm } from '@/components/seller/verification-form';
 import AcesHeader from '@/components/ui/custom/aces-header';
 
-// Label Section Component (Short tile)
-const LabelSection = ({ label, error }: { label: string; error?: string }) => (
-  <div className="w-1/3">
-    <div className="bg-[#D0B284]/10 border border-[#D0B284] rounded-xl shadow-lg hover:shadow-xl hover:border-[#D7BF75] transition-all duration-300 p-1 font-heading uppercase">
-      <span className="text-[#D0B284] flex justify-center items-center font-medium text-lg">
-        {label}
-      </span>
-      {error && <p className="text-red-400 text-sm mt-2">{error}</p>}
+// Modern Form Section Component
+const FormSection = ({
+  icon: Icon,
+  title,
+  description,
+  children,
+  className = '',
+}: {
+  icon: React.ElementType;
+  title: string;
+  description: string;
+  children: React.ReactNode;
+  className?: string;
+}) => (
+  <div
+    className={`bg-[#1A1A1A]/90 backdrop-blur-sm border border-[#D0B284]/20 rounded-2xl p-8 shadow-2xl hover:shadow-3xl hover:border-[#D0B284]/40 transition-all duration-300 ${className}`}
+  >
+    <div className="flex items-center gap-4 mb-6">
+      <div className="p-3 bg-gradient-to-r from-[#D0B284]/20 to-[#D7BF75]/20 rounded-xl">
+        <Icon className="w-6 h-6 text-[#D0B284]" />
+      </div>
+      <div>
+        <h2 className="text-2xl font-bold text-[#D0B284] mb-1">{title}</h2>
+        <p className="text-[#DCDDCC]/70 text-sm">{description}</p>
+      </div>
     </div>
+    <div className="space-y-6">{children}</div>
   </div>
 );
 
-// Input Section Component (Full tile)
-const InputSection = ({ children }: { children: React.ReactNode }) => (
-  <div className="w-full pl-12">
-    <div className="bg-[#231F20] border border-[#D0B284] rounded-xl shadow-lg hover:shadow-xl hover:border-[#D7BF75] transition-all duration-300">
-      {children}
+// Modern Form Field Component
+const FormField = ({
+  label,
+  icon: Icon,
+  error,
+  required = false,
+  children,
+}: {
+  label: string;
+  icon?: React.ElementType;
+  error?: string;
+  required?: boolean;
+  children: React.ReactNode;
+}) => (
+  <div className="space-y-2">
+    <label className="flex items-center gap-2 text-[#D0B284] font-medium text-sm uppercase tracking-wide">
+      {Icon && <Icon className="w-4 h-4" />}
+      {label}
+      {required && <span className="text-red-400">*</span>}
+    </label>
+    <div className="relative">{children}</div>
+    {error && (
+      <p className="text-red-400 text-sm flex items-center gap-1">
+        <AlertCircle className="w-4 h-4" />
+        {error}
+      </p>
+    )}
+  </div>
+);
+
+// Progress Steps Component
+const ProgressSteps = ({ currentStep }: { currentStep: number }) => (
+  <div className="flex items-center justify-center mb-12">
+    <div className="flex items-center gap-4">
+      {[1, 2].map((step) => (
+        <div key={step} className="flex items-center">
+          <div
+            className={`w-10 h-10 rounded-full flex items-center justify-center font-bold transition-all duration-300 ${
+              step <= currentStep
+                ? 'bg-gradient-to-r from-[#D0B284] to-[#D7BF75] text-black'
+                : 'bg-[#231F20] border-2 border-[#D0B284]/30 text-[#D0B284]'
+            }`}
+          >
+            {step <= currentStep ? <CheckCircle className="w-5 h-5" /> : step}
+          </div>
+          {step < 2 && (
+            <ChevronRight
+              className={`w-6 h-6 mx-2 transition-colors duration-300 ${
+                step < currentStep ? 'text-[#D0B284]' : 'text-[#D0B284]/30'
+              }`}
+            />
+          )}
+        </div>
+      ))}
     </div>
   </div>
 );
@@ -50,15 +138,24 @@ export default function CreateTokenForm() {
   const [submitMessage, setSubmitMessage] = useState<string>('');
   const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [currentStep, setCurrentStep] = useState(1);
 
   const {
     register,
     handleSubmit,
     formState: { errors },
     reset,
+    watch,
+    control,
   } = useForm({
     resolver: zodResolver(CreateSubmissionSchema),
   });
+
+  // Watch form values to determine if section 1 is complete
+  const watchedValues = watch(['title', 'symbol', 'description', 'assetType']);
+  const isSection1Complete = watchedValues.every(
+    (value) => value && value.toString().trim() !== '',
+  );
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -114,6 +211,7 @@ export default function CreateTokenForm() {
         // Clean up previews
         imagePreviews.forEach(({ preview }) => URL.revokeObjectURL(preview));
         setImagePreviews([]);
+        setCurrentStep(1);
       } else {
         setSubmitStatus('error');
         const errorMessage =
@@ -138,48 +236,45 @@ export default function CreateTokenForm() {
   const isRejected = authUser?.sellerStatus === 'REJECTED';
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-black to-[#231F20] relative">
-      {/* Header Component - Fixed at top with z-50 */}
+    <div className="h-screen max-h-[1200px] bg-gradient-to-b from-black via-[#0A0A0A] to-[#231F20] relative overflow-hidden">
+      {/* Header Component */}
       <div className="relative z-50">
         <AcesHeader />
       </div>
 
-      {/* Animated Dots Background - Full screen, outside of scroll container */}
+      {/* Background Elements */}
       <AnimatedDotsBackground
-        opacity={0.18}
-        dotSpacing={40}
-        dotSize={1.2}
-        animationSpeed={0.6}
+        opacity={0.15}
+        dotSpacing={45}
+        dotSize={1.5}
+        animationSpeed={0.4}
         waveType="radial"
-        minOpacity={0.06}
+        minOpacity={0.05}
         className="absolute inset-0 z-0"
       />
 
-      {/* Subtle radial gradient overlay */}
       <div
         className="absolute inset-0 pointer-events-none z-10"
         style={{
           background:
-            'radial-gradient(circle at 50% 50%, rgba(26, 26, 26, 0) 0%, rgba(0, 0, 0, 0.3) 100%)',
+            'radial-gradient(circle at 30% 20%, rgba(208, 178, 132, 0.05) 0%, transparent 50%), radial-gradient(circle at 70% 80%, rgba(215, 191, 117, 0.05) 0%, transparent 50%)',
         }}
       />
 
-      {/* Main Content Container - Fixed height with overflow hidden */}
-      <div className="relative overflow-hidden" style={{ height: '1000px' }}>
-        {/* Background System - Static background that doesn't scroll */}
-        <div className="absolute inset-0 z-0">
-          <LuxuryAssetsBackground opacity={0.8} className="z-0" />
-        </div>
+      {/* Main Content */}
+      <div className="relative z-20 h-full flex flex-col overflow-hidden">
+        <LuxuryAssetsBackground opacity={0.6} className="absolute inset-0 z-0" />
 
-        {/* Form Content Layer - Scrollable within fixed container */}
-        <div className="relative z-10 h-full overflow-y-auto">
-          <div className="max-w-4xl mx-auto px-6 py-12">
+        <div className="relative z-10 flex-1 overflow-y-auto">
+          <div className="max-w-5xl mx-auto px-6 py-12">
             {/* Authentication Warning */}
             {ready && !user && (
               <div className="mb-8">
-                <div className="p-6 rounded-2xl flex items-center gap-4 bg-yellow-900/20 border-2 border-yellow-500/50 text-yellow-400 shadow-lg">
+                <div className="p-6 rounded-2xl flex items-center gap-4 bg-gradient-to-r from-yellow-900/30 to-orange-900/30 border border-yellow-500/50 text-yellow-300 shadow-xl backdrop-blur-sm">
                   <AlertCircle className="w-6 h-6 flex-shrink-0" />
-                  <p className="text-lg">Please log in to submit your token for approval.</p>
+                  <p className="text-lg font-medium">
+                    Please log in to submit your token for approval.
+                  </p>
                 </div>
               </div>
             )}
@@ -188,10 +283,10 @@ export default function CreateTokenForm() {
             {submitStatus !== 'idle' && (
               <div className="mb-8">
                 <div
-                  className={`p-6 rounded-2xl flex items-center gap-4 shadow-lg ${
+                  className={`p-6 rounded-2xl flex items-center gap-4 shadow-xl backdrop-blur-sm ${
                     submitStatus === 'success'
-                      ? 'bg-green-900/20 border-2 border-green-500/50 text-green-400'
-                      : 'bg-red-900/20 border-2 border-red-500/50 text-red-400'
+                      ? 'bg-gradient-to-r from-green-900/30 to-emerald-900/30 border border-green-500/50 text-green-300'
+                      : 'bg-gradient-to-r from-red-900/30 to-rose-900/30 border border-red-500/50 text-red-300'
                   }`}
                 >
                   {submitStatus === 'success' ? (
@@ -199,303 +294,386 @@ export default function CreateTokenForm() {
                   ) : (
                     <AlertCircle className="w-6 h-6 flex-shrink-0" />
                   )}
-                  <p className="text-lg">{submitMessage}</p>
+                  <p className="text-lg font-medium">{submitMessage}</p>
                 </div>
               </div>
             )}
 
-            {/* Page Title */}
-            <div className="mb-8 text-center">
+            {/* Page Header */}
+            <div className="text-center mb-12">
               <h1
-                className="text-5xl font-bold text-[#D7BF75] mb-4"
+                className="text-6xl font-bold bg-gradient-to-r from-[#D0B284] via-[#D7BF75] to-[#E8D099] bg-clip-text text-transparent mb-6"
                 style={{
-                  textShadow: '0 0 20px rgba(208, 178, 100, 0.3)',
+                  textShadow: '0 0 40px rgba(208, 178, 132, 0.3)',
                 }}
               >
-                Submit your RWA!
+                Submit Your RWA
               </h1>
-            </div>
-
-            {/* Introductory Text */}
-            <div className="mb-12 text-center">
-              <p className="text-lg font-system text-[#DCDDCC] leading-relaxed">
-                Hey, while we haven&apos;t officially launched yet, if you have a high-value
-                Real-World Asset (RWA) that you would like to tokenize, submit a form here and maybe
-                you can be part of our launch!
+              <p className="text-xl text-[#DCDDCC]/80 leading-relaxed max-w-3xl mx-auto">
+                Transform your high-value Real-World Asset into a digital token. Join our exclusive
+                launch by submitting your luxury asset for tokenization.
               </p>
             </div>
 
+            {/* Progress Steps */}
+            <ProgressSteps currentStep={currentStep} />
+
             {/* Verification Status Banner */}
             {!canCreateToken && (
-              <div className="mb-6 bg-[#231F20] rounded-xl p-6 border border-[#D0B284]/20">
-                <h2 className="text-[#D0B284] text-2xl font-bold mb-4">
-                  Seller Verification Required
-                </h2>
-
-                {isPendingVerification ? (
-                  <div>
-                    <p className="text-[#DCDDCC] mb-4">
-                      Your seller verification is pending approval. You&apos;ll be notified once
-                      your application has been reviewed.
-                    </p>
-                    <div className="flex items-center gap-2 text-yellow-400">
-                      <span className="relative flex h-3 w-3">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-3 w-3 bg-yellow-400"></span>
-                      </span>
-                      <span>Application Under Review</span>
+              <div className="mb-8">
+                <FormSection
+                  icon={Shield}
+                  title="Seller Verification Required"
+                  description="Complete verification to start tokenizing your assets"
+                  className="border-[#D0B284]/40"
+                >
+                  {isPendingVerification ? (
+                    <div className="flex items-center justify-between p-4 bg-yellow-900/20 rounded-xl border border-yellow-500/30">
+                      <div className="flex items-center gap-3">
+                        <div className="relative flex h-3 w-3">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-3 w-3 bg-yellow-400"></span>
+                        </div>
+                        <div>
+                          <p className="text-yellow-300 font-medium">Application Under Review</p>
+                          <p className="text-yellow-300/70 text-sm">
+                            You&apos;ll be notified once approved
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ) : isRejected ? (
-                  <div>
-                    <p className="text-[#DCDDCC] mb-2">
-                      Your previous verification application was not approved.
-                    </p>
-                    {authUser?.rejectionReason && (
-                      <p className="text-red-400 mb-4">Reason: {authUser.rejectionReason}</p>
-                    )}
-                    <Button
-                      variant="ghost"
-                      className="text-[#D0B284] hover:bg-[#D0B284]/20"
-                      onClick={() => setShowVerificationModal(true)}
-                    >
-                      Apply Again
-                    </Button>
-                  </div>
-                ) : (
-                  <div>
-                    <p className="text-[#DCDDCC] mb-4">
-                      To create and list tokens on our platform, you need to complete the seller
-                      verification process. This helps ensure the authenticity and security of all
-                      listings.
-                    </p>
-                    <Button
-                      variant="ghost"
-                      className="text-[#D0B284] hover:bg-[#D0B284]/20"
-                      onClick={() => setShowVerificationModal(true)}
-                    >
-                      Start Verification Process
-                    </Button>
-                  </div>
-                )}
+                  ) : isRejected ? (
+                    <div className="space-y-4">
+                      <div className="p-4 bg-red-900/20 rounded-xl border border-red-500/30">
+                        <p className="text-red-300 font-medium mb-2">
+                          Previous application was not approved
+                        </p>
+                        {authUser?.rejectionReason && (
+                          <p className="text-red-300/70 text-sm">
+                            Reason: {authUser.rejectionReason}
+                          </p>
+                        )}
+                      </div>
+                      <Button
+                        variant="outline"
+                        className="border-[#D0B284] text-[#D0B284] hover:bg-[#D0B284]/10"
+                        onClick={() => setShowVerificationModal(true)}
+                      >
+                        Apply Again
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="p-4 bg-[#D0B284]/10 rounded-xl border border-[#D0B284]/30">
+                        <p className="text-[#DCDDCC] mb-2">
+                          Complete seller verification to create and list tokens on our platform.
+                        </p>
+                        <p className="text-[#DCDDCC]/70 text-sm">
+                          This ensures authenticity and security of all listings.
+                        </p>
+                      </div>
+                      <Button
+                        className="bg-gradient-to-r from-[#D0B284] to-[#D7BF75] hover:from-[#D7BF75] hover:to-[#D0B284] text-black font-semibold"
+                        onClick={() => setShowVerificationModal(true)}
+                      >
+                        Start Verification Process
+                      </Button>
+                    </div>
+                  )}
+                </FormSection>
               </div>
             )}
 
-            {/* Create Token Form - disabled if not verified */}
-            <div
-              className={`bg-[#231F20] rounded-xl p-6 border border-[#D0B284]/20 ${!canCreateToken ? 'opacity-50 pointer-events-none' : ''}`}
-            >
-              <h2 className="text-[#D0B284] text-2xl font-bold mb-6">Create Token</h2>
+            {/* Main Form */}
+            <form onSubmit={onSubmit} className="space-y-8">
+              <div
+                className={`transition-all duration-300 ${!canCreateToken ? 'opacity-50 pointer-events-none' : ''}`}
+              >
+                {/* Section 1: Asset Details */}
+                <FormSection
+                  icon={Info}
+                  title="Asset Information"
+                  description="Tell us about your luxury asset and create its digital identity"
+                >
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <FormField
+                      label="Token Symbol"
+                      icon={Tag}
+                      required
+                      error={errors.symbol?.message}
+                    >
+                      <Input
+                        {...register('symbol')}
+                        placeholder="LAMBO"
+                        className="bg-[#0F0F0F]/80 border-[#D0B284]/30 text-white placeholder:text-[#DCDDCC]/50 h-12 font-mono uppercase focus-visible:ring-[#D0B284] focus-visible:border-[#D0B284]"
+                        onChange={(e) => {
+                          e.target.value = e.target.value.toUpperCase();
+                        }}
+                      />
+                    </FormField>
 
-              {/* Your existing create token form goes here */}
-              <form onSubmit={onSubmit} className="space-y-0">
-                {/* Email Field */}
-                <LabelSection label="Email" error={errors.email?.message} />
-                <InputSection>
-                  <div className="relative">
-                    <Mail className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#D0B284]" />
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="your@email.com"
-                      {...register('email')}
-                      className="bg-transparent border-0 text-white placeholder:text-[#DCDDCC]/60 text-lg h-14 pl-12 focus-visible:!ring-golden-beige focus-visible:!ring-2 focus-visible:!ring-offset-0 focus-visible:!border-golden-beige"
-                    />
+                    <FormField
+                      label="Asset Type"
+                      icon={Layers}
+                      required
+                      error={errors.assetType?.message}
+                    >
+                      <Controller
+                        name="assetType"
+                        control={control}
+                        render={({ field }) => (
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <SelectTrigger className="bg-[#0F0F0F]/80 border-[#D0B284]/30 text-white h-12 focus-visible:ring-[#D0B284] focus-visible:border-[#D0B284]">
+                              <SelectValue
+                                placeholder="Select asset type"
+                                className="text-[#DCDDCC]/50"
+                              />
+                            </SelectTrigger>
+                            <SelectContent className="bg-[#1A1A1A] border-[#D0B284]/30 text-white">
+                              <SelectItem value="VEHICLE" className="hover:bg-[#D0B284]/10">
+                                Vehicle
+                              </SelectItem>
+                              <SelectItem value="JEWELRY" className="hover:bg-[#D0B284]/10">
+                                Jewelry
+                              </SelectItem>
+                              <SelectItem value="COLLECTIBLE" className="hover:bg-[#D0B284]/10">
+                                Collectible
+                              </SelectItem>
+                              <SelectItem value="ART" className="hover:bg-[#D0B284]/10">
+                                Art
+                              </SelectItem>
+                              <SelectItem value="FASHION" className="hover:bg-[#D0B284]/10">
+                                Fashion
+                              </SelectItem>
+                              <SelectItem value="ALCOHOL" className="hover:bg-[#D0B284]/10">
+                                Alcohol
+                              </SelectItem>
+                              <SelectItem value="OTHER" className="hover:bg-[#D0B284]/10">
+                                Other
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
+                    </FormField>
                   </div>
-                </InputSection>
 
-                {/* Asset Title Field */}
-                <LabelSection label="Asset Title" error={errors.title?.message} />
-                <InputSection>
-                  <Input
-                    id="title"
-                    placeholder="e.g., 2023 Lamborghini Huracán"
-                    {...register('title')}
-                    className="bg-transparent border-0 text-white placeholder:text-[#DCDDCC]/60 text-lg h-14 "
-                  />
-                </InputSection>
-
-                {/* Symbol Field */}
-                <LabelSection label="Token Symbol" error={errors.symbol?.message} />
-                <InputSection>
-                  <div className="space-y-3">
-                    <Input
-                      id="symbol"
-                      placeholder="LAMBO"
-                      {...register('symbol')}
-                      className="bg-transparent border-0 text-white placeholder:text-[#DCDDCC]/60 text-lg h-14  font-mono uppercase"
-                      onChange={(e) => {
-                        e.target.value = e.target.value.toUpperCase();
-                      }}
-                    />
-                  </div>
-                </InputSection>
-
-                {/* Description Field */}
-                <LabelSection label="Asset Description" error={errors.description?.message} />
-                <InputSection>
-                  <Textarea
-                    id="description"
-                    placeholder="Provide detailed information about your luxury asset..."
-                    {...register('description')}
-                    className="bg-transparent border-0 text-white placeholder:text-[#DCDDCC]/60 text-lg min-h-[120px]  resize-none"
-                  />
-                </InputSection>
-
-                {/* Type of Ownership Field */}
-                <LabelSection label="Type of Ownership" error={errors.typeOfOwnership?.message} />
-                <InputSection>
-                  <Input
-                    id="typeOfOwnership"
-                    placeholder="Vehicle number, Receipt Number, Item ID, etc."
-                    {...register('typeOfOwnership')}
-                    className="bg-transparent border-0 text-white placeholder:text-[#DCDDCC]/60 text-lg h-14 "
-                  />
-                </InputSection>
-
-                {/* Proof of Ownership Field */}
-                <LabelSection label="Proof of Ownership" error={errors.proofOfOwnership?.message} />
-                <InputSection>
-                  <Input
-                    id="proofOfOwnership"
-                    placeholder="VIN#, Serial#, Certificate# or other proof"
-                    {...register('proofOfOwnership')}
-                    className="bg-transparent border-0 text-white placeholder:text-[#DCDDCC]/60 text-lg h-14 "
-                  />
-                </InputSection>
-
-                {/* Location Field */}
-                <LabelSection label="Location" error={errors.location?.message} />
-                <InputSection>
-                  <Input
-                    id="location"
-                    placeholder="e.g., Los Angeles, CA"
-                    {...register('location')}
-                    className="bg-transparent border-0 text-white placeholder:text-[#DCDDCC]/60 text-lg h-14 "
-                  />
-                </InputSection>
-
-                {/* Contract Address Field */}
-                <LabelSection label="Contract Address" error={errors.contractAddress?.message} />
-                <InputSection>
-                  <div className="relative">
-                    <Wallet className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#D0B284]" />
-                    <Input
-                      id="contractAddress"
-                      placeholder="0x..."
-                      {...register('contractAddress')}
-                      className="bg-transparent border-0 text-white placeholder:text-[#DCDDCC]/60 text-lg h-14 pl-12  font-mono"
-                    />
-                  </div>
-                </InputSection>
-
-                {/* Image Upload Field */}
-                <LabelSection label="Upload Images" error={errors.imageGallery?.message} />
-                <InputSection>
-                  <div className="relative">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      onChange={handleImageUpload}
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                    />
-                    <div className="border-2 border-dashed border-[#D0B284]/50 rounded-xl p-8 text-center hover:border-[#D7BF75] transition-colors">
-                      {imagePreviews.length > 0 ? (
-                        <div className="space-y-4">
-                          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                            {imagePreviews.map((preview, index) => (
-                              <div key={index} className="relative group">
-                                <Image
-                                  src={preview.preview}
-                                  alt={`Preview ${index + 1}`}
-                                  width={200}
-                                  height={200}
-                                  className="w-full h-48 object-cover rounded-lg"
-                                />
-                                <button
-                                  onClick={() => removeImage(index)}
-                                  className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                                >
-                                  <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    className="h-5 w-5"
-                                    viewBox="0 0 20 20"
-                                    fill="currentColor"
-                                  >
-                                    <path
-                                      fillRule="evenodd"
-                                      d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                                      clipRule="evenodd"
-                                    />
-                                  </svg>
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                          <p className="text-sm text-[#DCDDCC]/70">Click to add more images</p>
-                        </div>
-                      ) : (
-                        <div className="space-y-4">
-                          <Upload className="w-12 h-12 text-[#D0B284] mx-auto" />
-                          <div>
-                            <p className="text-white font-medium text-lg">
-                              Upload your asset images
-                            </p>
-                            <p className="text-sm text-[#DCDDCC]/70">
-                              PNG, JPG up to 10MB each (you can upload multiple images)
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </InputSection>
-
-                {/* Add upload progress indicator */}
-                {uploadProgress > 0 && uploadProgress < 100 && (
-                  <div className="mt-4">
-                    <div className="w-full bg-[#231F20] rounded-full h-2.5">
-                      <div
-                        className="bg-[#D0B284] h-2.5 rounded-full transition-all duration-300"
-                        style={{ width: `${uploadProgress}%` }}
-                      ></div>
-                    </div>
-                    <p className="text-sm text-[#DCDDCC]/70 mt-2">
-                      Uploading images: {Math.round(uploadProgress)}%
-                    </p>
-                  </div>
-                )}
-
-                {/* Submit Button */}
-                <div className="flex justify-center pt-12">
-                  <Button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="bg-gradient-to-r from-[#D0B284] to-[#D7BF75] hover:from-[#D7BF75] hover:to-[#D0B284] text-black font-bold py-6 px-16 text-xl rounded-3xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-xl hover:shadow-2xl hover:shadow-[#D0B284]/30 transform hover:scale-105"
+                  <FormField
+                    label="Asset Title"
+                    icon={FileText}
+                    required
+                    error={errors.title?.message}
                   >
-                    {isSubmitting ? (
-                      <div className="flex items-center gap-3">
-                        <div className="w-6 h-6 border-3 border-black border-t-transparent rounded-full animate-spin" />
-                        Submitting...
+                    <Input
+                      {...register('title')}
+                      placeholder="e.g., 2023 Lamborghini Huracán STO"
+                      className="bg-[#0F0F0F]/80 border-[#D0B284]/30 text-white placeholder:text-[#DCDDCC]/50 h-12 focus-visible:ring-[#D0B284] focus-visible:border-[#D0B284]"
+                    />
+                  </FormField>
+
+                  <FormField label="Asset Description" required error={errors.description?.message}>
+                    <Textarea
+                      {...register('description')}
+                      placeholder="Provide detailed information about your luxury asset, including condition, specifications, unique features, and any relevant history..."
+                      className="bg-[#0F0F0F]/80 border-[#D0B284]/30 text-white placeholder:text-[#DCDDCC]/50 min-h-[120px] focus-visible:ring-[#D0B284] focus-visible:border-[#D0B284] resize-none"
+                    />
+                  </FormField>
+
+                  <FormField label="Location" icon={MapPin} error={errors.location?.message}>
+                    <Input
+                      {...register('location')}
+                      placeholder="e.g., Los Angeles, CA"
+                      className="bg-[#0F0F0F]/80 border-[#D0B284]/30 text-white placeholder:text-[#DCDDCC]/50 h-12 focus-visible:ring-[#D0B284] focus-visible:border-[#D0B284]"
+                    />
+                  </FormField>
+
+                  {/* Continue to Section 2 Button */}
+                  <div className="flex justify-end pt-4">
+                    <Button
+                      type="button"
+                      onClick={() => setCurrentStep(2)}
+                      disabled={!isSection1Complete}
+                      className="bg-gradient-to-r from-[#D0B284] to-[#D7BF75] hover:from-[#D7BF75] hover:to-[#D0B284] text-black font-semibold px-8 py-3 disabled:opacity-50"
+                    >
+                      Continue to Verification
+                      <ChevronRight className="w-5 h-5 ml-2" />
+                    </Button>
+                  </div>
+                </FormSection>
+
+                {/* Section 2: Proof of Ownership */}
+                {currentStep >= 2 && (
+                  <FormSection
+                    icon={Shield}
+                    title="Proof of Ownership & Verification"
+                    description="Provide documentation and proof to verify your ownership of the asset"
+                  >
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      <FormField
+                        label="Type of Ownership"
+                        required
+                        error={errors.typeOfOwnership?.message}
+                      >
+                        <Input
+                          {...register('typeOfOwnership')}
+                          placeholder="Vehicle Title, Deed, Certificate, etc."
+                          className="bg-[#0F0F0F]/80 border-[#D0B284]/30 text-white placeholder:text-[#DCDDCC]/50 h-12 focus-visible:ring-[#D0B284] focus-visible:border-[#D0B284]"
+                        />
+                      </FormField>
+
+                      <FormField
+                        label="Proof Identifier"
+                        required
+                        error={errors.proofOfOwnership?.message}
+                      >
+                        <Input
+                          {...register('proofOfOwnership')}
+                          placeholder="VIN#, Serial#, Certificate# etc."
+                          className="bg-[#0F0F0F]/80 border-[#D0B284]/30 text-white placeholder:text-[#DCDDCC]/50 h-12 focus-visible:ring-[#D0B284] focus-visible:border-[#D0B284]"
+                        />
+                      </FormField>
+                    </div>
+
+                    <FormField
+                      label="Contract Address (Optional)"
+                      icon={Wallet}
+                      error={errors.contractAddress?.message}
+                    >
+                      <Input
+                        {...register('contractAddress')}
+                        placeholder="0x... (if asset is already tokenized)"
+                        className="bg-[#0F0F0F]/80 border-[#D0B284]/30 text-white placeholder:text-[#DCDDCC]/50 h-12 font-mono focus-visible:ring-[#D0B284] focus-visible:border-[#D0B284]"
+                      />
+                    </FormField>
+
+                    {/* Image Upload */}
+                    <FormField
+                      label="Asset Images"
+                      icon={Camera}
+                      error={errors.imageGallery?.message}
+                    >
+                      <div className="relative">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          onChange={handleImageUpload}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                        />
+                        <div className="border-2 border-dashed border-[#D0B284]/40 rounded-xl p-8 text-center hover:border-[#D0B284]/60 transition-all duration-300 bg-[#0F0F0F]/50">
+                          {imagePreviews.length > 0 ? (
+                            <div className="space-y-6">
+                              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                {imagePreviews.map((preview, index) => (
+                                  <div key={index} className="relative group">
+                                    <Image
+                                      src={preview.preview}
+                                      alt={`Preview ${index + 1}`}
+                                      width={200}
+                                      height={200}
+                                      className="w-full h-32 object-cover rounded-lg border border-[#D0B284]/20"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => removeImage(index)}
+                                      className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-all duration-200 shadow-lg"
+                                    >
+                                      <svg
+                                        className="h-4 w-4"
+                                        viewBox="0 0 20 20"
+                                        fill="currentColor"
+                                      >
+                                        <path
+                                          fillRule="evenodd"
+                                          d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                                          clipRule="evenodd"
+                                        />
+                                      </svg>
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="border-t border-[#D0B284]/20 pt-4">
+                                <p className="text-[#DCDDCC]/70 text-sm">
+                                  Click anywhere to add more images
+                                </p>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="space-y-4">
+                              <div className="w-16 h-16 bg-gradient-to-r from-[#D0B284]/20 to-[#D7BF75]/20 rounded-xl flex items-center justify-center mx-auto">
+                                <Upload className="w-8 h-8 text-[#D0B284]" />
+                              </div>
+                              <div>
+                                <p className="text-white font-medium text-lg mb-2">
+                                  Upload Asset Images (Optional)
+                                </p>
+                                <p className="text-[#DCDDCC]/70 text-sm">
+                                  PNG, JPG up to 10MB each • Multiple images supported
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    ) : (
-                      <div className="flex items-center gap-3">
-                        <Crown className="w-6 h-6" />
-                        Submit for Approval
+                    </FormField>
+
+                    {/* Upload Progress */}
+                    {uploadProgress > 0 && uploadProgress < 100 && (
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-[#DCDDCC]/70">Uploading images...</span>
+                          <span className="text-[#D0B284]">{Math.round(uploadProgress)}%</span>
+                        </div>
+                        <div className="w-full bg-[#231F20] rounded-full h-2">
+                          <div
+                            className="bg-gradient-to-r from-[#D0B284] to-[#D7BF75] h-2 rounded-full transition-all duration-300"
+                            style={{ width: `${uploadProgress}%` }}
+                          />
+                        </div>
                       </div>
                     )}
-                  </Button>
-                </div>
-              </form>
-            </div>
+
+                    {/* Back and Submit Buttons */}
+                    <div className="flex justify-between items-center pt-8">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setCurrentStep(1)}
+                        className="border-[#D0B284]/50 text-[#D0B284] hover:bg-[#D0B284]/10"
+                      >
+                        Back to Asset Details
+                      </Button>
+
+                      <Button
+                        type="submit"
+                        disabled={isSubmitting}
+                        className="bg-gradient-to-r from-[#D0B284] to-[#D7BF75] hover:from-[#D7BF75] hover:to-[#D0B284] text-black font-bold py-4 px-12 text-lg rounded-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-xl hover:shadow-2xl hover:shadow-[#D0B284]/30 transform hover:scale-105"
+                      >
+                        {isSubmitting ? (
+                          <div className="flex items-center gap-3">
+                            <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                            Submitting...
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-3">
+                            <Crown className="w-6 h-6" />
+                            Submit for Approval
+                          </div>
+                        )}
+                      </Button>
+                    </div>
+                  </FormSection>
+                )}
+              </div>
+            </form>
           </div>
         </div>
-      </div>
 
-      {/* Footer Component - Below main container with z-50 */}
-      <div className="relative z-50">
-        <Footer />
+        {/* Footer */}
+        <div className="relative z-50 flex-shrink-0">
+          <Footer />
+        </div>
       </div>
 
       {/* Verification Modal */}
