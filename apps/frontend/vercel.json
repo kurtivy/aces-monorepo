@@ -1,0 +1,17 @@
+{
+  "git": {
+    "deploymentEnabled": {
+      "main": true,
+      "dev": true
+    }
+  },
+  "alias": [
+    "aces.fun",
+    {
+      "domain": "dev.aces.fun",
+      "deployment": {
+        "gitBranch": "dev"
+      }
+    }
+  ]
+}
