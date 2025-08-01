@@ -9,8 +9,8 @@ import {
 } from '@aces/utils';
 import { SubmissionService } from '../../services/submission-service';
 import { BiddingService } from '../../services/bidding-service';
-import { errors } from '../../lib/errors';
 import { StorageService } from '../../lib/storage-utils';
+import { errors } from '../../lib/errors';
 
 export async function submissionsRoutes(fastify: FastifyInstance) {
   const submissionService = new SubmissionService(fastify.prisma);

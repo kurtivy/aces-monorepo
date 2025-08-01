@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { SubmissionStatus } from '@prisma/client';
 import { errors } from '../../lib/errors';
-import { loggers } from '../../lib/logger';
+import { Boom } from '@hapi/boom';
+import { logger, loggers } from '../../lib/logger';
 import { getPrismaClient } from '../../lib/database';
 import { ApprovalService } from '../../services/approval-service';
 import { SubmissionService } from '../../services/submission-service';
@@ -11,6 +12,7 @@ import { RecoveryService } from '../../services/recovery-service';
 import { BiddingService } from '../../services/bidding-service';
 import { AccountVerificationService } from '../../services/account-verification-service';
 import { SellerService } from '../../services/seller-service';
+import { StorageService } from '../../lib/storage-utils';
 
 // Schema definitions
 const PaginationSchema = z.object({
@@ -148,16 +150,36 @@ export async function adminRoutes(fastify: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const { submissionId } = request.params as z.infer<typeof ApprovalSchema>;
-      const adminId = request.user!.id;
+      try {
+        const { submissionId } = request.params as z.infer<typeof ApprovalSchema>;
+        const adminId = request.user!.id;
 
-      const result = await approvalService.adminApproveSubmission(submissionId, adminId);
+        const result = await approvalService.adminApproveSubmission(submissionId, adminId);
 
-      return reply.send({
-        success: true,
-        data: result,
-        message: 'Submission approved successfully',
-      });
+        return reply.send({
+          success: true,
+          data: result,
+          message: 'Submission approved successfully',
+        });
+      } catch (error: unknown) {
+        const errorObj = error instanceof Error ? error : new Error('Unknown error');
+        loggers.error(errorObj, {
+          submissionId: (request.params as any)?.submissionId,
+          adminId: request.user?.id,
+        });
+
+        if (error instanceof Boom) {
+          return reply.status(error.output.statusCode).send({
+            success: false,
+            error: error.message,
+          });
+        }
+
+        return reply.status(500).send({
+          success: false,
+          error: 'Failed to approve submission',
+        });
+      }
     },
   );
 
@@ -171,16 +193,96 @@ export async function adminRoutes(fastify: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const { submissionId } = request.params as z.infer<typeof RejectionSchema>;
-      const { rejectionReason } = request.body as { rejectionReason: string };
-      const adminId = request.user!.id;
+      try {
+        const { submissionId } = request.params as z.infer<typeof RejectionSchema>;
+        const { rejectionReason } = request.body as { rejectionReason: string };
+        const adminId = request.user!.id;
 
-      await approvalService.rejectSubmission(submissionId, adminId, rejectionReason, request.id);
+        await approvalService.rejectSubmission(submissionId, adminId, rejectionReason, request.id);
 
-      return reply.send({
-        success: true,
-        message: 'Submission rejected successfully',
-      });
+        return reply.send({
+          success: true,
+          message: 'Submission rejected successfully',
+        });
+      } catch (error: unknown) {
+        const errorObj = error instanceof Error ? error : new Error('Unknown error');
+        loggers.error(errorObj, {
+          submissionId: (request.params as any)?.submissionId,
+          adminId: request.user?.id,
+        });
+
+        if (error instanceof Boom) {
+          return reply.status(error.output.statusCode).send({
+            success: false,
+            error: error.message,
+          });
+        }
+
+        return reply.status(500).send({
+          success: false,
+          error: 'Failed to reject submission',
+        });
+      }
+    },
+  );
+
+  // Get signed URLs for submission images
+  fastify.get(
+    '/submissions/:submissionId/images',
+    {
+      schema: {
+        params: zodToJsonSchema(z.object({ submissionId: z.string().cuid() })),
+      },
+    },
+    async (request, reply) => {
+      const { submissionId } = request.params as { submissionId: string };
+
+      try {
+        // Get submission to verify it exists and get image gallery
+        const submission = await submissionService.getSubmissionById(submissionId);
+
+        if (!submission) {
+          throw errors.notFound('Submission not found');
+        }
+
+        // Generate signed URLs for all images in the gallery
+        const signedUrls = await Promise.all(
+          submission.imageGallery.map(async (imageUrl) => {
+            // Extract filename from the stored URL
+            const urlParts = imageUrl.split('/');
+            const fileName = urlParts.slice(-2).join('/'); // Get "submissions/filename" part
+
+            try {
+              const signedUrl = await StorageService.getSignedReadUrl(fileName, 60); // 1 hour access
+              return {
+                originalUrl: imageUrl,
+                signedUrl,
+                expiresIn: 60 * 60, // 1 hour in seconds
+              };
+            } catch (error) {
+              // If signing fails, return the original URL (might work if bucket is public)
+              return {
+                originalUrl: imageUrl,
+                signedUrl: imageUrl,
+                expiresIn: 0,
+                error: 'Failed to generate signed URL',
+              };
+            }
+          }),
+        );
+
+        return reply.send({
+          success: true,
+          data: {
+            submissionId,
+            images: signedUrls,
+          },
+        });
+      } catch (error) {
+        throw errors.internal('Failed to generate signed URLs for submission images', {
+          cause: error,
+        });
+      }
     },
   );
 
@@ -340,6 +442,47 @@ export async function adminRoutes(fastify: FastifyInstance) {
       data: verifications,
     });
   });
+
+  // Get user verification details by user ID
+  fastify.get(
+    '/users/:userId/verification',
+    {
+      schema: {
+        params: zodToJsonSchema(z.object({ userId: z.string().cuid() })),
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { userId } = request.params as { userId: string };
+        const verification = await verificationService.getVerificationByUserId(userId);
+
+        if (!verification) {
+          return reply.send({
+            success: true,
+            data: null,
+            message: 'No verification found for this user',
+          });
+        }
+
+        return reply.send({
+          success: true,
+          data: verification,
+        });
+      } catch (error: unknown) {
+        if (error instanceof Boom) {
+          return reply.status(error.output.statusCode).send({
+            success: false,
+            error: error.message,
+          });
+        }
+
+        return reply.status(500).send({
+          success: false,
+          error: 'Failed to fetch user verification details',
+        });
+      }
+    },
+  );
 
   // Review verification
   fastify.post(
