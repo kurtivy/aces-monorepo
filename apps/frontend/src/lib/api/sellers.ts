@@ -20,6 +20,9 @@ export interface SellerData {
     submittedAt: string;
     reviewedAt: string | null;
     attempts: number;
+    firstName: string | null;
+    lastName: string | null;
+    documentType: string | null;
   } | null;
   listings: {
     total: number;
@@ -57,10 +60,14 @@ export class SellersApi {
   ): Promise<ApiResult<T>> {
     const url = `${API_BASE_URL}/api/v1${endpoint}`;
 
-    const finalHeaders = {
-      'Content-Type': 'application/json',
-      ...options.headers,
+    // Only set Content-Type to JSON if there's a body
+    const finalHeaders: HeadersInit = {
+      ...(options.headers && typeof options.headers === 'object' ? options.headers : {}),
     };
+
+    if (options.body) {
+      (finalHeaders as Record<string, string>)['Content-Type'] = 'application/json';
+    }
 
     try {
       const response = await fetch(url, {

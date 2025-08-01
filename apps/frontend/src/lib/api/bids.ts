@@ -23,6 +23,10 @@ export interface BidData {
     symbol: string;
     imageGallery: string[];
     isLive: boolean;
+    owner?: {
+      id: string;
+      displayName: string | null;
+    } | null;
   } | null;
   verification?: {
     id: string;
@@ -43,19 +47,20 @@ export interface ApiErrorResponse extends ApiResponse<never> {
 export type ApiResult<T> = ApiSuccessResponse<T> | ApiErrorResponse;
 
 export class BidsApi {
-  static getUserBids(_token: string) {
-    throw new Error('Method not implemented.');
-  }
   private static async request<T = unknown>(
     endpoint: string,
     options: RequestInit = {},
   ): Promise<ApiResult<T>> {
     const url = `${API_BASE_URL}/api/v1${endpoint}`;
 
-    const finalHeaders = {
-      'Content-Type': 'application/json',
-      ...options.headers,
+    // Only set Content-Type to JSON if there's a body
+    const finalHeaders: HeadersInit = {
+      ...(options.headers && typeof options.headers === 'object' ? options.headers : {}),
     };
+
+    if (options.body) {
+      (finalHeaders as Record<string, string>)['Content-Type'] = 'application/json';
+    }
 
     try {
       const response = await fetch(url, {
@@ -88,5 +93,20 @@ export class BidsApi {
         Authorization: `Bearer ${authToken}`,
       },
     });
+  }
+
+  static async getUserBids(authToken: string): Promise<BidData[]> {
+    const result = await this.request<BidData[]>('/bids/my', {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
+    });
+
+    if (result.success) {
+      return result.data;
+    } else {
+      throw new Error(result.error || 'Failed to fetch user bids');
+    }
   }
 }

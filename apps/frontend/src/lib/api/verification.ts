@@ -40,6 +40,24 @@ export interface VerificationResult {
   userId: string;
 }
 
+export interface FacialVerificationResult {
+  verificationId: string;
+  facialVerificationStatus: string;
+  overallScore: number;
+  recommendation: 'APPROVE' | 'REJECT' | 'MANUAL_REVIEW';
+  message: string;
+}
+
+export interface FacialVerificationStatus {
+  facialVerificationStatus: 'NOT_STARTED' | 'PENDING' | 'COMPLETED' | 'FAILED';
+  canStartFacialVerification: boolean;
+  overallScore?: number;
+  faceComparisonScore?: number;
+  visionApiRecommendation?: string;
+  facialVerificationAt?: string;
+  reason?: string;
+}
+
 // Backend response type for status endpoint
 export interface BackendVerificationStatus {
   sellerStatus: 'NOT_APPLIED' | 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -87,7 +105,16 @@ export class VerificationApi {
         };
       }
 
-      return data as ApiSuccessResponse<T>;
+      // Ensure the response has the correct structure
+      if (data && typeof data === 'object' && 'success' in data && 'data' in data) {
+        return data as ApiSuccessResponse<T>;
+      }
+
+      // If backend returns data directly without wrapper, wrap it
+      return {
+        success: true,
+        data: data as T,
+      } as ApiSuccessResponse<T>;
     } catch (error) {
       return {
         success: false,
@@ -221,6 +248,98 @@ export class VerificationApi {
       method: 'DELETE',
       headers: {
         Authorization: `Bearer ${authToken}`,
+      },
+    });
+  }
+
+  /**
+   * Submit facial verification (selfie)
+   */
+  static async submitFacialVerification(
+    selfieBlob: Blob,
+    authToken: string,
+  ): Promise<ApiResult<FacialVerificationResult>> {
+    const formData = new FormData();
+    formData.append('selfie', selfieBlob, 'selfie.jpg');
+
+    return this.request('/facial-verification', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: formData,
+    });
+  }
+
+  /**
+   * Get facial verification status
+   */
+  static async getFacialVerificationStatus(
+    authToken: string,
+  ): Promise<ApiResult<FacialVerificationStatus>> {
+    return this.request('/facial-verification/status', {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
+    });
+  }
+
+  /**
+   * Check if user is ready for facial verification
+   */
+  static async isReadyForFacialVerification(authToken: string): Promise<{
+    ready: boolean;
+    reason?: string;
+    requiresDocumentFirst?: boolean;
+  }> {
+    const statusResult = await this.getVerificationStatus(authToken);
+
+    if (!statusResult.success) {
+      return { ready: false, reason: statusResult.error };
+    }
+
+    const status = statusResult.data;
+
+    // Must have submitted document verification first
+    if (status.sellerStatus === 'NOT_APPLIED') {
+      return {
+        ready: false,
+        reason: 'Please submit document verification first',
+        requiresDocumentFirst: true,
+      };
+    }
+
+    // Document verification must be pending or approved
+    if (status.sellerStatus === 'REJECTED') {
+      return {
+        ready: false,
+        reason: 'Document verification was rejected. Please resubmit.',
+      };
+    }
+
+    // Check if facial verification is already completed
+    if (status.verificationDetails?.status === 'APPROVED') {
+      return {
+        ready: false,
+        reason: 'Verification already completed',
+      };
+    }
+
+    return { ready: true };
+  }
+
+  /**
+   * TEST METHOD: Create dummy verification to set status to PENDING
+   */
+  static async createDummyVerification(
+    authToken: string,
+  ): Promise<ApiResult<{ verificationId: string; message?: string }>> {
+    return this.request('/test/create-dummy-verification', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+        'Content-Type': 'application/json',
       },
     });
   }

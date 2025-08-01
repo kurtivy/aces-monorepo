@@ -7,13 +7,24 @@ export interface VerificationApplication {
   userId: string;
   documentType: string;
   documentNumber: string;
-  fullName: string;
+  firstName?: string;
+  lastName?: string;
+  fullName?: string; // For backward compatibility
   dateOfBirth: string;
   countryOfIssue: string;
   state?: string;
   address: string;
   emailAddress: string;
+  twitter?: string;
+  website?: string;
   documentImageUrl?: string;
+  selfieImageUrl?: string;
+  facialVerificationStatus?: string;
+  facialAnalysisResults?: unknown;
+  faceComparisonScore?: number;
+  overallVerificationScore?: number;
+  visionApiRecommendation?: string;
+  facialVerificationAt?: string;
   submittedAt: string;
   reviewedAt?: string;
   reviewedBy?: string;
@@ -27,6 +38,9 @@ export interface VerificationApplication {
     email?: string;
     walletAddress?: string;
     createdAt: string;
+    sellerStatus?: string;
+    verificationAttempts?: number;
+    lastVerificationAttempt?: string;
   };
 }
 
@@ -45,13 +59,19 @@ export class AdminApi {
   ): Promise<T> {
     const url = `${API_BASE_URL}/api/v1/account-verification/admin${endpoint}`;
 
+    // Only set Content-Type to JSON if there's a body
+    const headers: HeadersInit = {
+      ...(token && { Authorization: `Bearer ${token}` }),
+      ...(options.headers && typeof options.headers === 'object' ? options.headers : {}),
+    };
+
+    if (options.body) {
+      (headers as Record<string, string>)['Content-Type'] = 'application/json';
+    }
+
     const response = await fetch(url, {
       ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token && { Authorization: `Bearer ${token}` }),
-        ...options.headers,
-      },
+      headers,
     });
 
     if (!response.ok) {
@@ -69,13 +89,19 @@ export class AdminApi {
   ): Promise<T> {
     const url = `${API_BASE_URL}/api/v1/admin${endpoint}`;
 
+    // Only set Content-Type to JSON if there's a body
+    const headers: HeadersInit = {
+      ...(token && { Authorization: `Bearer ${token}` }),
+      ...(options.headers && typeof options.headers === 'object' ? options.headers : {}),
+    };
+
+    if (options.body) {
+      (headers as Record<string, string>)['Content-Type'] = 'application/json';
+    }
+
     const response = await fetch(url, {
       ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token && { Authorization: `Bearer ${token}` }),
-        ...options.headers,
-      },
+      headers,
     });
 
     if (!response.ok) {
@@ -124,6 +150,19 @@ export class AdminApi {
   ): Promise<VerificationApplication> {
     return this.adminRequest(
       `/verifications/${verificationId}`,
+      {
+        method: 'GET',
+      },
+      token,
+    );
+  }
+
+  static async getUserVerificationDetails(
+    userId: string,
+    token: string,
+  ): Promise<{ success: boolean; data: VerificationApplication | null; message?: string }> {
+    return this.adminRequest(
+      `/users/${userId}/verification`,
       {
         method: 'GET',
       },
@@ -191,6 +230,30 @@ export class AdminApi {
         body: JSON.stringify({
           rejectionReason,
         }),
+      },
+      token,
+    );
+  }
+
+  static async getSubmissionImages(
+    submissionId: string,
+    token?: string,
+  ): Promise<{
+    success: boolean;
+    data: {
+      submissionId: string;
+      images: Array<{
+        originalUrl: string;
+        signedUrl: string;
+        expiresIn: number;
+        error?: string;
+      }>;
+    };
+  }> {
+    return this.adminRequest(
+      `/submissions/${submissionId}/images`,
+      {
+        method: 'GET',
       },
       token,
     );

@@ -20,6 +20,11 @@ export interface ListingData {
     displayName: string | null;
     avatar: string | null;
     walletAddress: string | null;
+    accountVerification?: {
+      firstName: string | null;
+      lastName: string | null;
+      status: string;
+    } | null;
   };
   rwaSubmissionId: string;
   rwaSubmission?: {
