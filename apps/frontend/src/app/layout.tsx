@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Cinzel, Spectral, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import ErrorBoundary from '../components/error-boundary';
+import { DeviceProvider } from '../contexts/device-provider';
 
 const syne = Cinzel({
   subsets: ['latin'],
@@ -129,7 +130,9 @@ export default function RootLayout({
       <body
         className={`${syne.variable} ${spectral.variable} ${jetbrainsMono.variable} font-spectral antialiased  bg-black`}
       >
-        <ErrorBoundary>{children}</ErrorBoundary>
+        <ErrorBoundary>
+          <DeviceProvider>{children}</DeviceProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );
