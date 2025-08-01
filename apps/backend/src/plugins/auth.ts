@@ -16,7 +16,13 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
 
   // Skip auth verification if Privy credentials are missing
   if (!process.env.PRIVY_APP_ID || !process.env.PRIVY_APP_SECRET) {
-    fastify.log.warn('Privy credentials missing - authentication disabled');
+    fastify.log.warn(
+      {
+        hasAppId: !!process.env.PRIVY_APP_ID,
+        hasAppSecret: !!process.env.PRIVY_APP_SECRET,
+      },
+      'Privy credentials missing - authentication disabled',
+    );
 
     // Set default auth context for unauthenticated state
     fastify.addHook('preHandler', async (request) => {

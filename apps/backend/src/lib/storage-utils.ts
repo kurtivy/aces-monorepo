@@ -49,6 +49,20 @@ export class StorageService {
   }
 
   /**
+   * Generate a signed URL for reading an image (temporary access)
+   */
+  static async getSignedReadUrl(fileName: string, expiresInMinutes: number = 60): Promise<string> {
+    const options = {
+      version: 'v4' as const,
+      action: 'read' as const,
+      expires: Date.now() + expiresInMinutes * 60 * 1000,
+    };
+
+    const [url] = await bucket.file(fileName).getSignedUrl(options);
+    return url;
+  }
+
+  /**
    * Delete an image from storage
    */
   static async deleteImage(fileName: string): Promise<void> {

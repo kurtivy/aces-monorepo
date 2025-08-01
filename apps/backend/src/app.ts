@@ -57,7 +57,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   fastify.register(registerAuth);
 
   // Register v1 routes with proper API prefixes
-  fastify.register(submissionsRoutes, { prefix: '/submissions' });
+  fastify.register(submissionsRoutes, { prefix: '/api/v1/submissions' });
   fastify.register(adminRoutes, { prefix: '/api/v1/admin' });
   fastify.register(bidsRoutes, { prefix: '/api/v1/bids' });
   fastify.register(accountVerificationRoutes, { prefix: '/api/v1/account-verification' });
@@ -89,10 +89,30 @@ export const buildApp = async (): Promise<FastifyInstance> => {
 
   // Global error handler
   fastify.setErrorHandler((error, request, reply) => {
+    // Log the error with full context
+    loggers.error(error instanceof Error ? error : new Error('Unknown error'), {
+      url: request.url,
+      method: request.method,
+      headers: request.headers,
+      params: request.params,
+      query: request.query,
+      userId: request.user?.id,
+      requestId: request.id,
+    });
+
     try {
       handleError(error, reply);
-    } catch (error) {
-      handleError(error, reply);
+    } catch (handlerError) {
+      loggers.error(
+        handlerError instanceof Error ? handlerError : new Error('Error handler failed'),
+        {
+          originalError: error instanceof Error ? error.message : 'Unknown error',
+          url: request.url,
+          method: request.method,
+          requestId: request.id,
+        },
+      );
+      handleError(handlerError, reply);
     }
   });
 
