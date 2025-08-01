@@ -187,8 +187,8 @@ export const getImageCandidatesForPosition = (
       relativeY > tileHeight - edgeThreshold;
   }
 
-  // Option 1: Try to place a "Create Token" square (RESTORED OLD LOGIC)
-  // Place a "Create Token" square every 8th available square position (deterministic but sparse)
+  // Option 1: Try to place a "Submit Your Asset" image (USING ACTUAL IMAGE)
+  // Place a "Submit Your Asset" image every 8th available square position (deterministic but sparse)
   if (
     Math.abs(gridX * 13 + gridY * 17) % 8 === 0 && // Deterministic but sparse
     !isHomeArea(
@@ -209,17 +209,19 @@ export const getImageCandidatesForPosition = (
       unitSize,
     ) // Ensure it's not adjacent to home area
   ) {
-    candidates.push({
-      element: new Image(), // Placeholder, not used for rendering
-      type: 'create-token',
-      displayWidth: unitSize,
-      displayHeight: unitSize,
-      metadata: {
-        title: 'Create Token',
-        description: 'Create your own unique digital token.',
-        ticker: '$CREATE',
-      },
-    });
+    // Find the submit asset image from images array
+    const submitAssetImage = imagesRefCurrent.find(
+      (img: ImageInfo) => img.metadata.id === 'submit-asset',
+    );
+    if (submitAssetImage) {
+      candidates.push({
+        element: submitAssetImage.element,
+        type: 'submit-asset',
+        displayWidth: unitSize,
+        displayHeight: unitSize,
+        metadata: submitAssetImage.metadata,
+      });
+    }
   }
 
   // Option 2: Smart distribution of ALL images (KEEP PRODUCTION SAFETY IMPROVEMENTS)
@@ -234,9 +236,9 @@ export const getImageCandidatesForPosition = (
 
     // NEW: Filter images based on boundary constraints
     const boundaryFilteredImages = validImages.filter((img) => {
-      // At tile boundaries, only allow square images (including create-token)
+      // At tile boundaries, only allow square images (including submit-asset)
       if (isAtTileBoundary) {
-        return img.type === 'square' || img.type === 'create-token';
+        return img.type === 'square' || img.type === 'submit-asset';
       }
       // In tile interior, allow all image types but prefer non-squares
       return true;
@@ -307,7 +309,7 @@ export const getImageCandidatesForPosition = (
 
   // Filter out duplicates and ensure complete images
   return Array.from(new Set(candidates)).filter(
-    (img) => img.type === 'create-token' || img.element.complete,
+    (img) => img.type === 'submit-asset' || img.element.complete,
   );
 };
 

@@ -15,6 +15,7 @@ export const drawImage = (
   width: number,
   height: number,
   opacity = 1, // Direct opacity value (pre-calculated)
+  hoverProgress = 0, // Hover progress (0 to 1) for interactive effects
 ) => {
   ctx.save();
 
@@ -73,14 +74,19 @@ export const drawImage = (
   ctx.restore();
   ctx.globalAlpha = opacity;
 
-  // Safari optimization: Cache gradients to avoid recreation
-  const gradientKey = `border-${Math.round(height)}-${Math.round(opacity * 100)}`;
+  // Safari optimization: Cache gradients to avoid recreation (include hover in key)
+  const gradientKey = `border-${Math.round(height)}-${Math.round(opacity * 100)}-${Math.round(hoverProgress * 100)}`;
   let borderGradient = borderGradientCache.get(gradientKey);
 
   if (!borderGradient) {
     borderGradient = ctx.createLinearGradient(0, 0, 0, roundedHeight);
-    borderGradient.addColorStop(0, `rgba(208, 178, 100, ${0.3 * opacity})`);
-    borderGradient.addColorStop(1, `rgba(208, 178, 100, ${0.1 * opacity})`);
+
+    // Enhanced border opacity when hovering
+    const baseTopOpacity = 0.3 + hoverProgress * 0.4; // 0.3 -> 0.7 on hover
+    const baseBottomOpacity = 0.1 + hoverProgress * 0.3; // 0.1 -> 0.4 on hover
+
+    borderGradient.addColorStop(0, `rgba(208, 178, 100, ${baseTopOpacity * opacity})`);
+    borderGradient.addColorStop(1, `rgba(208, 178, 100, ${baseBottomOpacity * opacity})`);
 
     // Cache for reuse (limit cache size)
     if (borderGradientCache.size < 50) {
@@ -89,7 +95,8 @@ export const drawImage = (
   }
 
   ctx.strokeStyle = borderGradient;
-  ctx.lineWidth = 1.5;
+  // Enhanced border width when hovering
+  ctx.lineWidth = 1.5 + hoverProgress * 1.5; // 1.5px -> 3px on hover
   ctx.beginPath();
   ctx.roundRect(
     roundedX + scaleOffsetX,
@@ -125,6 +132,7 @@ export const drawImageWithoutContext = (
   y: number,
   width: number,
   height: number,
+  hoverProgress = 0, // Hover progress (0 to 1) for interactive effects
 ) => {
   // MOBILE SHIMMER FIX: Round all coordinates to integer pixels
   // This prevents subpixel rendering that causes visual instability on mobile
@@ -180,14 +188,19 @@ export const drawImageWithoutContext = (
   // Add subtle border without save/restore
   const currentAlpha = ctx.globalAlpha;
 
-  // Safari optimization: Cache gradients to avoid recreation
-  const gradientKey = `border-${Math.round(roundedHeight)}-${Math.round(currentAlpha * 100)}`;
+  // Safari optimization: Cache gradients to avoid recreation (include hover in key)
+  const gradientKey = `border-${Math.round(roundedHeight)}-${Math.round(currentAlpha * 100)}-${Math.round(hoverProgress * 100)}`;
   let borderGradient = borderGradientCache.get(gradientKey);
 
   if (!borderGradient) {
     borderGradient = ctx.createLinearGradient(0, 0, 0, roundedHeight);
-    borderGradient.addColorStop(0, `rgba(208, 178, 100, ${0.3 * currentAlpha})`);
-    borderGradient.addColorStop(1, `rgba(208, 178, 100, ${0.1 * currentAlpha})`);
+
+    // Enhanced border opacity when hovering
+    const baseTopOpacity = 0.3 + hoverProgress * 0.4; // 0.3 -> 0.7 on hover
+    const baseBottomOpacity = 0.1 + hoverProgress * 0.3; // 0.1 -> 0.4 on hover
+
+    borderGradient.addColorStop(0, `rgba(208, 178, 100, ${baseTopOpacity * currentAlpha})`);
+    borderGradient.addColorStop(1, `rgba(208, 178, 100, ${baseBottomOpacity * currentAlpha})`);
 
     // Cache for reuse (limit cache size)
     if (borderGradientCache.size < 50) {
@@ -196,7 +209,8 @@ export const drawImageWithoutContext = (
   }
 
   ctx.strokeStyle = borderGradient;
-  ctx.lineWidth = 1.5;
+  // Enhanced border width when hovering
+  ctx.lineWidth = 1.5 + hoverProgress * 1.5; // 1.5px -> 3px on hover
   ctx.beginPath();
   ctx.roundRect(
     roundedX + scaleOffsetX,

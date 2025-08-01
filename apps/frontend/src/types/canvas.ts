@@ -1,6 +1,6 @@
 export interface ImageInfo {
   element: HTMLImageElement;
-  type: 'square' | 'landscape' | 'portrait' | 'create-token';
+  type: 'square' | 'landscape' | 'portrait' | 'submit-asset';
   displayWidth: number;
   displayHeight: number;
   metadata: {

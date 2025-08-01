@@ -9,7 +9,7 @@ import { useViewState } from '../../hooks/canvas/use-view-state';
 import { useCanvasRenderer } from '../../hooks/canvas/use-canvas-renderer';
 import { useCanvasInteractions } from '../../hooks/canvas/use-canvas-interactions';
 import { useCoordinatedResize } from '../../hooks/use-coordinated-resize';
-import NavMenu from '../ui/custom/nav-menu';
+import ConnectWalletNav from '../ui/custom/connect-wallet-nav';
 import HomeButton from '../ui/custom/home-button';
 import ImageDetailsModal from '../ui/custom/image-details-modal';
 import IntroAnimation from '../loading/intro-animation';
@@ -69,7 +69,7 @@ const InfiniteCanvas = () => {
       viewState,
       imagesLoaded: imagesLoaded,
       canvasVisible: loadingState !== 'loading' || hasSeenIntro,
-      onCreateTokenClick: () => router.push('/create-token'), // Temporarily remove withNavigationSafety
+      onCreateTokenClick: () => router.push('/launch'), // Navigate to ICO launch page
       imagePlacementMap: imagePlacementMapRef,
       unitSize: unitSize,
       canvasRef: canvasRef,
@@ -114,8 +114,6 @@ const InfiniteCanvas = () => {
     canvasRef,
     repeatedPlacements,
     repeatedTokens,
-    // Issue #2: Pass momentum callback from canvas renderer to interactions
-    onMomentumUpdate: handleMomentumUpdate,
   });
 
   const interactionsEnabled = loadingState === 'ready' && imagesLoaded;
@@ -311,11 +309,12 @@ const InfiniteCanvas = () => {
       {/* Navigation Menu - cached visibility conditions */}
       {isUIVisible && (
         <motion.div
+          className="fixed top-4 right-4 z-50"
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, ease: 'easeOut', delay: 0.3 }}
         >
-          <NavMenu />
+          <ConnectWalletNav />
         </motion.div>
       )}
 

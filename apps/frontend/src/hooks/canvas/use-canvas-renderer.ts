@@ -4,7 +4,7 @@ import type React from 'react';
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import type { ImageInfo, ViewState } from '../../types/canvas';
 import { drawHomeArea, drawImage } from '../../lib/canvas/draw';
-import { drawTokenSquare } from '../../lib/canvas/draw/draw-token-square';
+
 import { drawImageWithoutContext } from '../../lib/canvas/draw/draw-image';
 import { batchRenderByOpacity, batchRenderAnimated } from '../../lib/utils/canvas-batch-renderer';
 import {
@@ -343,6 +343,7 @@ export const useCanvasRenderer = ({
   const [hoveredTokenIndex, setHoveredTokenIndex] = useState<number | null>(null);
   const mousePositionRef = useRef({ x: 0, y: 0 });
   const logoImageRef = useRef<HTMLImageElement | null>(null);
+  const submitAssetImageRef = useRef<HTMLImageElement | null>(null);
   const lastFrameTime = useRef<number>(performance.now());
 
   // Canvas loading progress tracking
@@ -580,6 +581,16 @@ export const useCanvasRenderer = ({
     };
   }, []);
 
+  // Find and store the submit asset image
+  useEffect(() => {
+    if (images && images.length > 0) {
+      const submitAssetImage = images.find((img) => img.metadata.id === 'submit-asset');
+      if (submitAssetImage) {
+        submitAssetImageRef.current = submitAssetImage.element;
+      }
+    }
+  }, [images]);
+
   // Space canvas initialization removed for performance optimization
 
   // Space animation completely removed for performance optimization
@@ -813,7 +824,7 @@ export const useCanvasRenderer = ({
             const placedItem = { image: imageInfo, x, y, width, height };
             imagePlacementMap.current.set(`${gridX},${gridY}`, placedItem);
 
-            if (imageInfo.type === 'create-token') {
+            if (imageInfo.type === 'submit-asset') {
               createTokenPositions.push({ worldX: x, worldY: y });
             } else {
               productPlacements.push({
@@ -1670,16 +1681,19 @@ export const useCanvasRenderer = ({
           ctx.scale(tokenElement.original.animatedScale, tokenElement.original.animatedScale);
           ctx.translate(-centerX, -centerY);
 
-          drawTokenSquare(
-            ctx,
-            tokenElement.screenX,
-            tokenElement.screenY,
-            actualHoverProgress,
-            unitSize,
-            logoImageRef.current,
-            null, // Space animation removed for performance
-            currentTime,
-          );
+          // Draw submit asset image instead of token square
+          if (submitAssetImageRef.current) {
+            drawImage(
+              ctx,
+              submitAssetImageRef.current,
+              tokenElement.screenX,
+              tokenElement.screenY,
+              unitSize,
+              unitSize,
+              1.0, // Full opacity
+              actualHoverProgress, // Hover progress for border effects
+            );
+          }
           ctx.restore();
           totalElementsRendered++;
         }
@@ -1730,16 +1744,19 @@ export const useCanvasRenderer = ({
             hoveredRepeatedToken.worldY === tokenElement.original.worldY;
           const actualHoverProgress = isCurrentlyHoveredRepeated ? currentHoverProgress : 0;
 
-          drawTokenSquare(
-            ctx,
-            tokenElement.screenX,
-            tokenElement.screenY,
-            actualHoverProgress,
-            unitSize,
-            logoImageRef.current,
-            null, // Space animation removed for performance
-            currentTime,
-          );
+          // Draw submit asset image instead of token square
+          if (submitAssetImageRef.current) {
+            drawImage(
+              ctx,
+              submitAssetImageRef.current,
+              tokenElement.screenX,
+              tokenElement.screenY,
+              unitSize,
+              unitSize,
+              1.0, // Full opacity
+              actualHoverProgress, // Hover progress for border effects
+            );
+          }
           ctx.restore();
           totalElementsRendered++;
         });

@@ -340,4 +340,17 @@ More than just a refrigerator, this piece represents the epitome of luxury enter
     marketCap: 117700,
     tokenSupply: 100000,
   },
+  // Special submit asset image to replace create token squares
+  {
+    id: 'submit-asset',
+    title: 'Submit Your Asset',
+    description: 'Submit your luxury asset for tokenization on the ACES platform. Transform your high-value collectibles, art, vehicles, and other assets into tradeable digital tokens.',
+    date: '2024-03-15',
+    ticker: '$SUBMIT',
+    image: '/canvas-images/outline/submit-your-asset.webp',
+    rrp: 0, // Special asset, no price
+    tokenPrice: 0,
+    marketCap: 0,
+    tokenSupply: 0,
+  },
 ];

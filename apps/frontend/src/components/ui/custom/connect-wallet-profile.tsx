@@ -148,8 +148,7 @@ export default function ConnectWalletProfile({
         <DropdownMenu open={isDropdownOpen} onOpenChange={onDropdownChange}>
           <DropdownMenuTrigger asChild>
             <Button
-              variant="ghost"
-              className="flex items-center gap-2 text-[#D0B264] hover:text-[#D0B264]/80 hover:bg-[#D0B264]/10 hover:border-[#D0B264] transition-colors duration-150 px-2 py-2 rounded-md group"
+              className="flex items-center gap-2 text-[#D0B264] bg-[#213F20]/50 hover:bg-[#213F20]/80 hover:border-[#D0B264] hover:text-[#D0B264] transition-colors duration-150 px-2 py-2 rounded-md group border-transparent"
               disabled={isLoading}
             >
               {/* Custom Avatar Component */}
@@ -264,7 +263,7 @@ export default function ConnectWalletProfile({
   return (
     <div className={className}>
       <motion.button
-        className="flex items-center justify-center text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 px-4 py-2 rounded-md bg-transparent border-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+        className="flex items-center justify-center text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 px-4 py-2 rounded-md bg-black/80 border border-[#D0B264]/30 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         disabled={isLoading}
         onClick={handleConnectWallet}
         whileHover={{ scale: 1.05 }}

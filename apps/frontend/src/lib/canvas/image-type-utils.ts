@@ -23,7 +23,7 @@ export const getDisplayDimensions = (type: ImageInfo['type'], unitSize: number) 
       return { width: unitSize * 2, height: unitSize };
     case 'portrait':
       return { width: unitSize, height: unitSize * 2 };
-    case 'create-token':
+    case 'submit-asset':
       return { width: unitSize, height: unitSize }; // Create token is always 1x1
     default:
       return { width: unitSize, height: unitSize };
