@@ -57,6 +57,7 @@ model RwaSubmission {
   title             String
   symbol            String
   description       String
+  assetType         AssetType
   imageGallery      String[]             @default([]) // Array of image URLs
   contractAddress   String?
   location          String?
@@ -88,6 +89,7 @@ model RwaListing {
   title             String
   symbol            String
   description       String
+  assetType         AssetType
   imageGallery      String[]             @default([]) // Array of image URLs
   contractAddress   String?
   location          String?
@@ -165,7 +167,17 @@ model AccountVerification {
   emailAddress     String
   twitter          String?     // New optional field
   website          String?     // New optional field
-  documentImageUrl String?     // URL to stored image in Supabase storage
+  documentImageUrl String?     // URL to stored image in secure storage
+  
+  // Facial Verification Fields
+  selfieImageUrl   String?     // URL to selfie image in secure storage
+  facialVerificationStatus String? // "PENDING", "COMPLETED", "FAILED"
+  facialAnalysisResults Json?  // Complete Vision API analysis results
+  faceComparisonScore Float?   // 0-100 face similarity score
+  overallVerificationScore Float? // 0-100 combined score
+  visionApiRecommendation String? // "APPROVE", "REJECT", "MANUAL_REVIEW"
+  facialVerificationAt DateTime? // When facial analysis was completed
+  
   submittedAt      DateTime    @default(now())
   reviewedAt       DateTime?
   reviewedBy       String?     // Admin user ID who reviewed
@@ -179,6 +191,7 @@ model AccountVerification {
 
   @@index([status])
   @@index([userId])
+  @@index([facialVerificationStatus])
   @@map("account_verifications")
 }
 
@@ -261,4 +274,14 @@ enum VerificationStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+enum AssetType {
+  VEHICLE
+  JEWELRY
+  COLLECTIBLE
+  ART
+  FASHION
+  ALCOHOL
+  OTHER
 }
