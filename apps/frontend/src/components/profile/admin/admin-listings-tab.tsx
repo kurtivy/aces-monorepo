@@ -4,9 +4,12 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Search, Eye, Edit, Trash2 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Search, Eye, Edit, Trash2, X } from 'lucide-react';
 import { useAuth } from '@/lib/auth/auth-context';
 import { ListingsApi, ListingData } from '@/lib/api/listings';
+import Image from 'next/image';
 
 interface AdminListingData {
   id: string;
@@ -39,7 +42,18 @@ const getListingStatus = (listing: ListingData): 'active' | 'pending' | 'suspend
 const formatListingForAdminDisplay = (listing: ListingData): AdminListingData => {
   const status = getListingStatus(listing);
   const imageUrl = listing.imageGallery?.[0] || '/placeholder.svg?height=40&width=40';
-  const sellerName = listing.owner?.displayName || 'Unknown';
+
+  // Get seller name from account verification first, then fallback to displayName
+  let sellerName = 'Unknown';
+  if (
+    listing.owner?.accountVerification?.firstName &&
+    listing.owner?.accountVerification?.lastName
+  ) {
+    sellerName = `${listing.owner.accountVerification.firstName} ${listing.owner.accountVerification.lastName}`;
+  } else if (listing.owner?.displayName) {
+    sellerName = listing.owner.displayName;
+  }
+
   const sellerAddress = listing.owner?.walletAddress || '0x0000...0000';
 
   return {
@@ -63,12 +77,17 @@ const formatListingForAdminDisplay = (listing: ListingData): AdminListingData =>
 export function AdminListingsTab() {
   const { getAccessToken } = useAuth();
   const [listings, setListings] = useState<AdminListingData[]>([]);
+  const [originalListings, setOriginalListings] = useState<ListingData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [sortBy, setSortBy] = useState<'latest' | 'seller' | 'volume'>('latest');
+
+  // Modal state
+  const [selectedListing, setSelectedListing] = useState<ListingData | null>(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
   useEffect(() => {
     const fetchListings = async () => {
@@ -86,6 +105,7 @@ export function AdminListingsTab() {
 
         if (result.success) {
           console.log('Admin listings API response:', result.data);
+          setOriginalListings(result.data);
           const formattedListings = result.data.map(formatListingForAdminDisplay);
           setListings(formattedListings);
         } else {
@@ -158,6 +178,14 @@ export function AdminListingsTab() {
         listing.id === id ? { ...listing, status: 'active' as const } : listing,
       ),
     );
+  };
+
+  const handleViewListing = (id: string) => {
+    const listing = originalListings.find((l) => l.id === id);
+    if (listing) {
+      setSelectedListing(listing);
+      setIsDetailModalOpen(true);
+    }
   };
 
   if (isLoading) {
@@ -292,10 +320,12 @@ export function AdminListingsTab() {
                   >
                     <td className="py-4 px-4">
                       <div className="flex items-center space-x-3">
-                        <img
+                        <Image
                           src={listing.image || '/placeholder.svg'}
                           alt={listing.name}
                           className="w-10 h-10 rounded-full object-cover border border-[#D0B284]/20"
+                          width={40}
+                          height={40}
                         />
                         <div>
                           <h3 className="text-white font-medium text-sm">
@@ -344,6 +374,7 @@ export function AdminListingsTab() {
                           variant="ghost"
                           size="sm"
                           className="text-[#D0B284] hover:bg-[#D0B284]/10"
+                          onClick={() => handleViewListing(listing.id)}
                         >
                           <Eye className="w-4 h-4 mr-1" />
                           View
@@ -385,6 +416,271 @@ export function AdminListingsTab() {
           </table>
         </div>
       </div>
+
+      {/* Detailed Listing View Modal */}
+      <Dialog open={isDetailModalOpen} onOpenChange={setIsDetailModalOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto bg-[#231F20] border border-[#D0B284]/20">
+          <DialogHeader>
+            <div className="flex items-center justify-between">
+              <DialogTitle className="text-2xl font-bold text-[#D0B284] font-libre-caslon">
+                Listing Details
+              </DialogTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsDetailModalOpen(false)}
+                className="text-[#DCDDCC] hover:bg-[#DCDDCC]/10"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          </DialogHeader>
+
+          {selectedListing && (
+            <Tabs defaultValue="overview" className="w-full">
+              <TabsList className="grid w-full grid-cols-4 bg-[#231F20] border border-[#D0B284]/20">
+                <TabsTrigger
+                  value="overview"
+                  className="data-[state=active]:bg-[#D0B284]/20 data-[state=active]:text-[#D0B284]"
+                >
+                  Overview
+                </TabsTrigger>
+                <TabsTrigger
+                  value="seller"
+                  className="data-[state=active]:bg-[#D0B284]/20 data-[state=active]:text-[#D0B284]"
+                >
+                  Seller Details
+                </TabsTrigger>
+                <TabsTrigger
+                  value="submission"
+                  className="data-[state=active]:bg-[#D0B284]/20 data-[state=active]:text-[#D0B284]"
+                >
+                  Submission
+                </TabsTrigger>
+                <TabsTrigger
+                  value="activity"
+                  className="data-[state=active]:bg-[#D0B284]/20 data-[state=active]:text-[#D0B284]"
+                >
+                  Activity
+                </TabsTrigger>
+              </TabsList>
+
+              {/* Overview Tab */}
+              <TabsContent value="overview" className="space-y-6 mt-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Asset Information */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-[#D0B284]">Asset Information</h3>
+                    <div className="bg-[#1A1A1A] border border-[#D0B284]/10 rounded-lg p-4 space-y-3">
+                      <div className="flex items-center space-x-4">
+                        <Image
+                          src={selectedListing.imageGallery?.[0] || '/placeholder.svg'}
+                          alt={selectedListing.title}
+                          className="w-16 h-16 rounded-lg object-cover border border-[#D0B284]/20"
+                          width={64}
+                          height={64}
+                        />
+                        <div>
+                          <h4 className="text-white font-medium">{selectedListing.title}</h4>
+                          <p className="text-[#DCDDCC] font-jetbrains text-sm">
+                            {selectedListing.symbol}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex justify-between">
+                          <span className="text-[#DCDDCC]">Description:</span>
+                          <span className="text-white max-w-64 text-right text-sm">
+                            {selectedListing.description || 'N/A'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-[#DCDDCC]">Status:</span>
+                          <Badge
+                            className={`${getStatusColor(getListingStatus(selectedListing))} border-none`}
+                          >
+                            {getListingStatus(selectedListing).charAt(0).toUpperCase() +
+                              getListingStatus(selectedListing).slice(1)}
+                          </Badge>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-[#DCDDCC]">Location:</span>
+                          <span className="text-white">{selectedListing.location || 'N/A'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-[#DCDDCC]">Contract Address:</span>
+                          <span className="text-white font-jetbrains text-xs">
+                            {selectedListing.contractAddress || 'N/A'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Image Gallery */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-[#D0B284]">Image Gallery</h3>
+                    <div className="bg-[#1A1A1A] border border-[#D0B284]/10 rounded-lg p-4">
+                      <div className="grid grid-cols-2 gap-2">
+                        {selectedListing.imageGallery
+                          ?.slice(0, 4)
+                          .map((image, index) => (
+                            <Image
+                              key={index}
+                              src={image}
+                              alt={`Asset ${index + 1}`}
+                              className="w-full h-24 rounded-lg object-cover border border-[#D0B284]/20"
+                              width={100}
+                              height={100}
+                            />
+                          ))}
+                      </div>
+                      {selectedListing.imageGallery && selectedListing.imageGallery.length > 4 && (
+                        <p className="text-[#DCDDCC] text-center mt-2 text-sm">
+                          +{selectedListing.imageGallery.length - 4} more images
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </TabsContent>
+
+              {/* Seller Details Tab */}
+              <TabsContent value="seller" className="space-y-6 mt-6">
+                <div className="bg-[#1A1A1A] border border-[#D0B284]/10 rounded-lg p-6">
+                  <h3 className="text-lg font-semibold text-[#D0B284] mb-4">Seller Information</h3>
+                  <div className="space-y-4">
+                    <div className="flex justify-between">
+                      <span className="text-[#DCDDCC]">Display Name:</span>
+                      <span className="text-white">
+                        {selectedListing.owner?.displayName || 'N/A'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#DCDDCC]">Wallet Address:</span>
+                      <span className="text-white font-jetbrains text-sm">
+                        {selectedListing.owner?.walletAddress || 'N/A'}
+                      </span>
+                    </div>
+                    {selectedListing.owner?.accountVerification && (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-[#DCDDCC]">First Name:</span>
+                          <span className="text-white">
+                            {selectedListing.owner.accountVerification.firstName || 'N/A'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-[#DCDDCC]">Last Name:</span>
+                          <span className="text-white">
+                            {selectedListing.owner.accountVerification.lastName || 'N/A'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-[#DCDDCC]">Verification Status:</span>
+                          <Badge
+                            className={`${selectedListing.owner.accountVerification.status === 'VERIFIED' ? 'text-[#184D37] bg-[#184D37]/10' : 'text-[#D7BF75] bg-[#D7BF75]/10'} border-none`}
+                          >
+                            {selectedListing.owner.accountVerification.status}
+                          </Badge>
+                        </div>
+                      </>
+                    )}
+                    <div className="flex justify-between">
+                      <span className="text-[#DCDDCC]">Contact Email:</span>
+                      <span className="text-white">{selectedListing.email || 'N/A'}</span>
+                    </div>
+                  </div>
+                </div>
+              </TabsContent>
+
+              {/* Submission Tab */}
+              <TabsContent value="submission" className="space-y-6 mt-6">
+                <div className="bg-[#1A1A1A] border border-[#D0B284]/10 rounded-lg p-6">
+                  <h3 className="text-lg font-semibold text-[#D0B284] mb-4">Original Submission</h3>
+                  <div className="space-y-4">
+                    <div className="flex justify-between">
+                      <span className="text-[#DCDDCC]">Submission ID:</span>
+                      <span className="text-white font-jetbrains text-sm">
+                        {selectedListing.rwaSubmissionId}
+                      </span>
+                    </div>
+                    {selectedListing.rwaSubmission && (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-[#DCDDCC]">Submission Status:</span>
+                          <Badge className="text-[#184D37] bg-[#184D37]/10 border-none">
+                            {selectedListing.rwaSubmission.status}
+                          </Badge>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-[#DCDDCC]">Submitted At:</span>
+                          <span className="text-white">
+                            {new Date(selectedListing.rwaSubmission.createdAt).toLocaleString()}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                    <div className="flex justify-between">
+                      <span className="text-[#DCDDCC]">Listed At:</span>
+                      <span className="text-white">
+                        {new Date(selectedListing.createdAt).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#DCDDCC]">Last Updated:</span>
+                      <span className="text-white">
+                        {new Date(selectedListing.updatedAt).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </TabsContent>
+
+              {/* Activity Tab */}
+              <TabsContent value="activity" className="space-y-6 mt-6">
+                <div className="bg-[#1A1A1A] border border-[#D0B284]/10 rounded-lg p-6">
+                  <h3 className="text-lg font-semibold text-[#D0B284] mb-4">Recent Activity</h3>
+                  {selectedListing.bids && selectedListing.bids.length > 0 ? (
+                    <div className="space-y-3">
+                      {selectedListing.bids.map((bid) => (
+                        <div
+                          key={bid.id}
+                          className="flex justify-between items-center p-3 bg-[#231F20] rounded-lg border border-[#D0B284]/10"
+                        >
+                          <div className="flex items-center space-x-3">
+                            <div className="w-8 h-8 rounded-full bg-[#D0B284]/20 flex items-center justify-center">
+                              <span className="text-[#D0B284] text-sm font-bold">
+                                {bid.bidder.displayName?.charAt(0) || '?'}
+                              </span>
+                            </div>
+                            <div>
+                              <p className="text-white font-medium">
+                                {bid.bidder.displayName || 'Unknown'}
+                              </p>
+                              <p className="text-[#DCDDCC] text-sm">
+                                {new Date(bid.createdAt).toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-white font-medium">
+                              {bid.amount} {bid.currency}
+                            </p>
+                            <p className="text-[#DCDDCC] text-sm">Bid</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[#DCDDCC] text-center py-8">No bids yet</p>
+                  )}
+                </div>
+              </TabsContent>
+            </Tabs>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
