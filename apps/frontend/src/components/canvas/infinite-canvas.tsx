@@ -14,12 +14,11 @@ import HomeButton from '../ui/home-button';
 import ImageDetailsModal from '../ui/image-details-modal';
 import IntroAnimation from '../loading/intro-animation';
 import {
-  browserUtils,
-  getDeviceCapabilities,
   mobileUtils,
   setScrollRestoration,
   getScrollRestoration,
 } from '../../lib/utils/browser-utils';
+import { useDeviceCapabilities, useInfiniteCanvasSettings } from '../../contexts/device-provider';
 import {
   addEventListenerSafe,
   removeEventListenerSafe,
@@ -38,6 +37,10 @@ const InfiniteCanvas = () => {
   // Restore session memory for intro animation
   const [hasSeenIntro, setHasSeenIntro] = useState(false);
 
+  // Week 3: Use enhanced capability system
+  const { configuration, isReady: capabilitiesReady } = useDeviceCapabilities();
+  const canvasSettings = useInfiniteCanvasSettings();
+
   const imagePlacementMapRef = useRef(
     new Map<string, { image: ImageInfo; x: number; y: number; width: number; height: number }>(),
   );
@@ -55,7 +58,9 @@ const InfiniteCanvas = () => {
     useViewState({
       imagesLoaded: imagesLoaded,
       _unitSize: unitSize,
-      animationDuration: browserUtils.getAnimationDuration() / 1000, // Convert ms to seconds for useViewState
+      animationDuration: capabilitiesReady
+        ? ((1000 / configuration.targetFrameRate) * 30) / 1000
+        : 0.5, // Week 3: Capability-aware animation duration
     });
 
   const { canvasReady, repeatedPlacements, repeatedTokens, handleMomentumUpdate } =
@@ -71,6 +76,20 @@ const InfiniteCanvas = () => {
       // Issue #2: Pass updateViewState for momentum integration
       updateViewState,
     });
+
+  // Week 3: Log capability-aware settings for debugging (if enabled)
+  useEffect(() => {
+    if (canvasSettings && capabilitiesReady) {
+      console.log('🎨 Canvas using capability-aware settings:', {
+        memoryBudget: configuration.canvasMemoryBudgetMB,
+        targetFPS: configuration.targetFrameRate,
+        imageQuality: configuration.imageQuality,
+        tileSize: canvasSettings.gridTileSize,
+        preloadRadius: canvasSettings.preloadRadius,
+        maxConcurrentTiles: canvasSettings.maxConcurrentTiles,
+      });
+    }
+  }, [canvasSettings, capabilitiesReady, configuration]);
 
   const imagesRef = useRef(images);
   imagesRef.current = images;
@@ -131,9 +150,12 @@ const InfiniteCanvas = () => {
 
   // Phase 2 Step 7 Action 4: Mobile loading state monitoring and validation
   useEffect(() => {
-    const capabilities = getDeviceCapabilities();
-    if (!capabilities.touchCapable && !capabilities.isMobileSafari) {
-      return; // Desktop - no mobile validation needed
+    // Week 3: Use capabilities from context instead of direct detection
+    if (
+      !capabilitiesReady ||
+      (!configuration.touchGestures && !configuration.safariMobileOptimizations)
+    ) {
+      return; // Desktop or capabilities not ready - no mobile validation needed
     }
 
     const validation = mobileUtils.validateMobileLoadingState(

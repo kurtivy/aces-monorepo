@@ -18,11 +18,10 @@ import { getDisplayDimensions } from '../../lib/canvas/image-type-utils';
 // Space animation removed for performance optimization
 import { easeInOutCubic, isApproximatelyEqual } from '../../lib/canvas/math-utils';
 import { useCoordinatedResize } from '../use-coordinated-resize';
-import {
-  getBrowserPerformanceSettings,
-  getDeviceCapabilities,
-  detectLowPowerMode,
-} from '../../lib/utils/browser-utils';
+import { detectLowPowerMode } from '../../lib/utils/browser-utils';
+import { useDeviceCapabilities } from '../../contexts/device-provider';
+import { BrowserOptimizations } from '../../lib/capabilities/browser-optimizations';
+import { AdaptiveQualityManager } from '../../lib/capabilities/adaptive-quality-manager';
 import {
   addEventListenerSafe,
   removeEventListenerSafe,
@@ -70,7 +69,7 @@ interface UseCanvasRendererProps {
   updateViewState?: (deltaX: number, deltaY: number) => void;
 }
 
-const browserPerf = getBrowserPerformanceSettings();
+// Removed global browserPerf - now using capability-based system per hook instance
 
 // Define grid tile structure for infinite repetition
 interface GridTile {
@@ -161,45 +160,190 @@ export const useCanvasRenderer = ({
 }: UseCanvasRendererProps) => {
   const canvasRefInternal = useRef<HTMLCanvasElement>(null);
 
+  // Week 3: Use enhanced capability system
+  const { capabilities, configuration, isReady: capabilitiesReady } = useDeviceCapabilities();
+
   // Use external canvasRef if provided, otherwise use internal one
   const activeCanvasRef = canvasRef || canvasRefInternal;
 
   useCoordinatedResize({ canvasRef: activeCanvasRef });
 
-  // Enhanced browser performance detection including mobile optimizations
-  const { browserPerf, deviceCapabilities } = useMemo(() => {
-    const perf = getBrowserPerformanceSettings();
-    const capabilities = getDeviceCapabilities();
+  // Production Integration: Enhanced capability-based performance system
+  const { browserPerf, deviceCapabilities, adaptiveQualityManager } = useMemo(() => {
+    // Use new capability system if available, fallback to old system
+    let finalConfiguration = configuration;
+    let finalCapabilities = capabilities;
 
-    // Phase 2 Step 7 Action 3: Mobile-specific animation optimizations
-    const isMobileDevice = capabilities.touchCapable || capabilities.isMobileSafari;
-    const performanceTier = capabilities.performanceTier;
+    if (capabilitiesReady && capabilities && configuration) {
+      // Apply browser-specific optimizations if browser capabilities are available
+      // Check if capabilities include browser features (from advanced detection)
+      const hasBrowserFeatures = 'browserName' in capabilities;
 
-    return {
-      browserPerf: {
-        ...perf,
-        // Mobile-optimized settings for smoother animation
-        frameThrottling: isMobileDevice && performanceTier === 'low',
-        mouseCheckInterval: isMobileDevice
-          ? performanceTier === 'high'
-            ? 32
-            : performanceTier === 'medium'
-              ? 50
-              : 100
-          : perf.mouseCheckInterval,
-        enableImageSmoothing: !isMobileDevice || performanceTier !== 'low',
-        adaptiveRendering: isMobileDevice, // Enable adaptive quality for mobile
-      },
-      // Issue #4 FIX: Memoize device capabilities to prevent expensive calls every frame
-      deviceCapabilities: capabilities,
-    };
-  }, []);
+      if (hasBrowserFeatures) {
+        // Cast to any to access browser properties that may be present
+        const capabilitiesWithBrowser = capabilities as any;
+
+        const browserCapabilities = {
+          // Event handling capabilities
+          supportsPassiveEvents: capabilitiesWithBrowser.supportsPassiveEvents || false,
+          supportsTouchEvents: capabilities.touchCapable,
+          supportsPointerEvents: capabilitiesWithBrowser.supportsPointerEvents || false,
+          eventPerformanceScore: capabilitiesWithBrowser.eventPerformanceScore || 75,
+          preferredEventStrategy:
+            capabilitiesWithBrowser.preferredEventStrategy || ('active' as const),
+
+          // API availability
+          supportsIntersectionObserver: capabilities.supportsIntersectionObserver,
+          supportsResizeObserver: capabilities.supportsResizeObserver,
+          supportsWebWorkers: capabilitiesWithBrowser.supportsWebWorkers || false,
+          supportsServiceWorkers: capabilitiesWithBrowser.supportsServiceWorkers || false,
+          supportsFileAPI: capabilitiesWithBrowser.supportsFileAPI || false,
+          supportsRequestIdleCallback: capabilitiesWithBrowser.supportsRequestIdleCallback || false,
+          supportsMemoryAPI: capabilitiesWithBrowser.supportsMemoryAPI || false,
+
+          // Canvas and rendering capabilities
+          supportsOffscreenCanvas: capabilities.supportsOffscreenCanvas,
+          supportsImageBitmap: capabilitiesWithBrowser.supportsImageBitmap || false,
+          supportsWebGLContextRecovery:
+            capabilitiesWithBrowser.supportsWebGLContextRecovery || false,
+          supportsGPUAcceleration: capabilitiesWithBrowser.supportsGPUAcceleration || true,
+          supportsHardwareCompositing: capabilitiesWithBrowser.supportsHardwareCompositing || true,
+          canvas2DFeatures: capabilitiesWithBrowser.canvas2DFeatures || [],
+
+          // Performance capabilities
+          supportsHighResTimer: capabilitiesWithBrowser.supportsHighResTimer || true,
+          jsPerformanceScore: capabilitiesWithBrowser.jsPerformanceScore || 75,
+
+          // Browser identification
+          browserName: capabilitiesWithBrowser.browserName || 'Unknown',
+          browserVersion: capabilitiesWithBrowser.browserVersion || 'Unknown',
+          engineName: capabilitiesWithBrowser.engineName || 'Unknown',
+          isMobile: capabilities.touchCapable,
+          isSafari: capabilitiesWithBrowser.browserName === 'Safari',
+          isChrome: capabilitiesWithBrowser.browserName === 'Chrome',
+          isFirefox: capabilitiesWithBrowser.browserName === 'Firefox',
+          isEdge: capabilitiesWithBrowser.browserName === 'Edge',
+
+          // Browser-specific quirks
+          safariQuirks: capabilitiesWithBrowser.safariQuirks || [],
+          mobileQuirks: capabilitiesWithBrowser.mobileQuirks || [],
+
+          // CSS capabilities
+          cssFeatures: capabilitiesWithBrowser.cssFeatures || [],
+        };
+
+        finalConfiguration = BrowserOptimizations.applyBrowserOptimizations(
+          configuration,
+          browserCapabilities,
+        );
+      }
+
+      // Initialize adaptive quality manager for production integration
+      const adaptiveManager = new AdaptiveQualityManager(finalConfiguration);
+
+      return {
+        browserPerf: {
+          // Convert new configuration to old browserPerf interface for compatibility
+          frameThrottling: finalConfiguration.targetFrameRate < 45,
+          mouseCheckInterval: finalConfiguration.mouseCheckInterval || 32,
+          enableImageSmoothing: finalConfiguration.enableImageSmoothing,
+          adaptiveRendering: finalConfiguration.mobileOptimized,
+          targetFPS: finalConfiguration.targetFrameRate,
+          animationDuration: (1000 / finalConfiguration.targetFrameRate) * 30,
+          enableComplexDotPattern: finalConfiguration.animationComplexity !== 'low',
+          gradientCacheSize: Math.floor(finalConfiguration.canvasMemoryBudgetMB / 10), // 10% of memory budget
+          gradientCacheClearInterval: 300000, // 5 minutes
+          useLinearEasing: finalConfiguration.mobileOptimized, // Use linear easing on mobile for performance
+        },
+        deviceCapabilities: {
+          // Convert new capabilities to old interface for compatibility
+          performanceTier: finalCapabilities?.performanceTier || 'medium',
+          touchCapable: finalCapabilities?.touchCapable || false,
+          isMobileSafari: (finalCapabilities as any)?.safariMobileOptimizations || false,
+          availableMemory: finalCapabilities?.availableMemoryMB || 2048,
+          memoryPressure: finalCapabilities?.memoryPressure || 'medium',
+          devicePixelRatio:
+            finalCapabilities?.devicePixelRatio ||
+            (typeof window !== 'undefined' ? window.devicePixelRatio : 1),
+          supportsWebGL: finalCapabilities?.supportsWebGL2 || false,
+          supportsOffscreenCanvas: finalCapabilities?.supportsOffscreenCanvas || false,
+          // GPU properties for adaptive quality manager
+          gpuMemoryMB: finalCapabilities?.gpuMemoryMB || 256,
+          maxTextureSize: finalCapabilities?.maxTextureSize || 4096,
+          supportsWebGL2: finalCapabilities?.supportsWebGL2 || false,
+        },
+        adaptiveQualityManager: adaptiveManager,
+      };
+    } else {
+      // Enhanced fallback: Use capability detector directly with conservative defaults
+      // SSR-safe touch detection
+      const isClient = typeof window !== 'undefined';
+      const hasTouchSupport = isClient && 'ontouchstart' in window;
+
+      const fallbackConfiguration = {
+        targetFrameRate: 45, // Conservative but reasonable default
+        enableImageSmoothing: true,
+        enableAntialiasing: false, // Conservative for unknown devices
+        mobileOptimized: false, // Will be detected properly when capabilities load
+        mouseCheckInterval: 32,
+        canvasMemoryBudgetMB: 512, // Conservative memory budget
+        imageQuality: 0.8,
+        animationComplexity: 'medium' as const,
+        enableAnimations: true,
+        enableViewportCulling: true,
+        cullBufferMultiplier: 1.5,
+        batchRenderingEnabled: true,
+        maxBatchSize: 25,
+        touchGestures: hasTouchSupport, // SSR-safe touch detection
+        enableGPUAcceleration: true,
+        enableOffscreenCanvas: false, // Conservative
+        maxTextureSize: 4096,
+        detectionMethod: 'fallback' as const,
+        generatedAt: Date.now(),
+        // Additional required properties
+        reducedMotion: false,
+        enableMomentumScrolling: hasTouchSupport,
+        touchSensitivity: 1.0,
+        safariMobileOptimizations: false,
+      };
+
+      return {
+        browserPerf: {
+          frameThrottling: false, // Let adaptive quality manager handle this
+          mouseCheckInterval: 32,
+          enableImageSmoothing: true,
+          adaptiveRendering: hasTouchSupport,
+          targetFPS: 45,
+          animationDuration: 500,
+          enableComplexDotPattern: true,
+          gradientCacheSize: 50,
+          gradientCacheClearInterval: 300000,
+          useLinearEasing: hasTouchSupport,
+        },
+        deviceCapabilities: {
+          performanceTier: 'medium' as const,
+          touchCapable: hasTouchSupport,
+          isMobileSafari: false,
+          availableMemory: 2048,
+          memoryPressure: 'medium' as const,
+          devicePixelRatio: isClient ? window.devicePixelRatio || 1 : 1,
+          supportsWebGL: isClient ? !!window.WebGLRenderingContext : false,
+          supportsOffscreenCanvas: isClient ? 'OffscreenCanvas' in window : false,
+          gpuMemoryMB: 256, // Conservative fallback
+          maxTextureSize: 4096,
+          supportsWebGL2: isClient ? !!window.WebGL2RenderingContext : false,
+        },
+        adaptiveQualityManager: new AdaptiveQualityManager(fallbackConfiguration),
+      };
+    }
+  }, [capabilitiesReady, capabilities, configuration]);
 
   // Phase 2 Step 2: Remove individual animation frame management
   // const animationFrameRef = useRef<number | null>(null); // Replaced by centralized manager
   const [hoveredTokenIndex, setHoveredTokenIndex] = useState<number | null>(null);
   const mousePositionRef = useRef({ x: 0, y: 0 });
   const logoImageRef = useRef<HTMLImageElement | null>(null);
+  const lastFrameTime = useRef<number>(performance.now());
 
   // Canvas loading progress tracking
   const [canvasProgress, setCanvasProgress] = useState(0);
@@ -445,8 +589,8 @@ export const useCanvasRenderer = ({
       return [];
     }
 
-    const screenWidth = window.innerWidth;
-    const screenHeight = window.innerHeight;
+    const screenWidth = typeof window !== 'undefined' ? window.innerWidth : 1920;
+    const screenHeight = typeof window !== 'undefined' ? window.innerHeight : 1080;
     const bufferDistance = 2.5; // 2.5 screen widths/heights
 
     // Calculate visible area with buffer
@@ -505,8 +649,8 @@ export const useCanvasRenderer = ({
       const newActiveTiles = new Set<string>();
 
       // Phase 3.2: Calculate viewport center for priority calculation
-      const screenWidth = window.innerWidth;
-      const screenHeight = window.innerHeight;
+      const screenWidth = typeof window !== 'undefined' ? window.innerWidth : 1920;
+      const screenHeight = typeof window !== 'undefined' ? window.innerHeight : 1080;
       const viewportCenterX =
         -currentViewState.x / currentViewState.scale + screenWidth / currentViewState.scale / 2;
       const viewportCenterY =
@@ -1624,6 +1768,61 @@ export const useCanvasRenderer = ({
       // Step 0: End performance monitoring for this frame
       performanceMonitor.endFrame(totalElementsRendered);
 
+      // Production Integration: Adaptive quality management with real-time monitoring
+      if (adaptiveQualityManager && capabilitiesReady) {
+        // Collect performance metrics for this frame
+        const frameTime = currentTime - lastFrameTime.current;
+        const frameRate = frameTime > 0 ? 1000 / frameTime : 60;
+
+        // Create performance metrics for adaptive quality manager
+        const performanceMetrics = {
+          timestamp: currentTime,
+          frameRate,
+          averageFrameTime: frameTime,
+          performanceTier: deviceCapabilities.performanceTier,
+          memoryUsage: (() => {
+            const memory = (performance as any)?.memory;
+            if (memory) {
+              const used = memory.usedJSHeapSize || 0;
+              const limit = memory.jsHeapSizeLimit || 0;
+              const available = Math.max(0, limit - used);
+              const usageRatio = limit > 0 ? used / limit : 0;
+
+              return {
+                available: Math.round(available / (1024 * 1024)), // Convert to MB
+                allocated: Math.round(used / (1024 * 1024)), // Convert to MB
+                pressure:
+                  usageRatio > 0.8
+                    ? ('high' as const)
+                    : usageRatio > 0.6
+                      ? ('medium' as const)
+                      : ('low' as const),
+              };
+            }
+
+            // Fallback when performance.memory isn't available
+            return {
+              available: deviceCapabilities.availableMemory || 2048,
+              allocated: 0,
+              pressure: deviceCapabilities.memoryPressure || ('medium' as const),
+            };
+          })(),
+          gpuMetrics: {
+            memory: deviceCapabilities.gpuMemoryMB,
+            maxTextureSize: deviceCapabilities.maxTextureSize,
+            webgl2Support: deviceCapabilities.supportsWebGL2,
+          },
+        };
+
+        // Let adaptive quality manager analyze and potentially adjust configuration
+        const updatedConfiguration = adaptiveQualityManager.adjustQuality(performanceMetrics);
+
+        // If configuration changed, we could update our browserPerf for next frame
+        // This creates a feedback loop for real-time optimization
+      }
+
+      lastFrameTime.current = currentTime;
+
       // Phase 2 Step 2: Animation frame handled by centralized manager
       // animationFrameRef.current = requestAnimationFrame(draw); // Removed
     };
@@ -1772,7 +1971,7 @@ export const useCanvasRenderer = ({
       lastFrameTime = currentTime;
 
       // Step 6: Balanced scroll and performance detection (FIX: prevents infinite canvas breakage)
-      const deviceCapabilities = getDeviceCapabilities();
+      // Use device capabilities from our enhanced capability system
       const isActiveScrolling = scrollVelocity.current > 5; // Restored higher threshold for active scrolling
       const velocity = scrollVelocity.current;
 
