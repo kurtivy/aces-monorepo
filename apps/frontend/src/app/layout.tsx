@@ -81,11 +81,41 @@ export default function RootLayout({
               if (typeof window !== 'undefined') {
                 try {
                   if (!window.ethereum) {
+                    // Create a complete mock with all required methods
                     window.ethereum = {
                       selectedAddress: null,
                       isConnected: () => false,
                       request: () => Promise.reject(new Error('No wallet connected')),
+                      on: function(event, handler) {
+                        // Mock event listener that does nothing
+                        console.log('Mock ethereum.on called for event:', event);
+                      },
+                      removeListener: function(event, handler) {
+                        // Mock remove listener that does nothing
+                        console.log('Mock ethereum.removeListener called for event:', event);
+                      },
+                      removeAllListeners: function(event) {
+                        // Mock remove all listeners
+                        console.log('Mock ethereum.removeAllListeners called for event:', event);
+                      }
                     };
+                  } else {
+                    // If window.ethereum exists but is missing methods, add them
+                    if (typeof window.ethereum.on !== 'function') {
+                      window.ethereum.on = function(event, handler) {
+                        console.log('Added mock ethereum.on for event:', event);
+                      };
+                    }
+                    if (typeof window.ethereum.removeListener !== 'function') {
+                      window.ethereum.removeListener = function(event, handler) {
+                        console.log('Added mock ethereum.removeListener for event:', event);
+                      };
+                    }
+                    if (typeof window.ethereum.removeAllListeners !== 'function') {
+                      window.ethereum.removeAllListeners = function(event) {
+                        console.log('Added mock ethereum.removeAllListeners for event:', event);
+                      };
+                    }
                   }
                   
                   if (window.ethereum && typeof window.ethereum.selectedAddress === 'undefined') {

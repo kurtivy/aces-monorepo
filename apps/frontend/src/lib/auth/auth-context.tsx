@@ -145,7 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Listen for account changes with very conservative debouncing
       let accountChangeTimeout: NodeJS.Timeout;
       
-      if (typeof window !== 'undefined' && window.ethereum) {
+      if (typeof window !== 'undefined' && window.ethereum && typeof window.ethereum.on === 'function') {
         const handleAccountsChanged = async (accounts: unknown) => {
           clearTimeout(accountChangeTimeout);
           
@@ -164,7 +164,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return () => {
           clearTimeout(timeoutId);
           clearTimeout(accountChangeTimeout);
-          if (window.ethereum) {
+          if (window.ethereum && typeof window.ethereum.removeListener === 'function') {
             window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
           }
         };
@@ -198,14 +198,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Listen for wallet connection changes
     if (typeof window !== 'undefined') {
       // MetaMask/Ethereum wallet events
-      if (window.ethereum) {
+      if (window.ethereum && typeof window.ethereum.on === 'function') {
         const handleAccountsChanged = () => {
           setTimeout(checkWalletStatus, 100); // Small delay to ensure wallet state is updated
         };
         window.ethereum.on('accountsChanged', handleAccountsChanged);
 
         return () => {
-          window.ethereum?.removeListener('accountsChanged', handleAccountsChanged);
+          if (window.ethereum && typeof window.ethereum.removeListener === 'function') {
+            window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
+          }
         };
       }
     }
