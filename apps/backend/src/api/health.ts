@@ -1,6 +1,5 @@
 import Fastify, { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
-import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import { User as PrismaUser, PrismaClient } from '@prisma/client';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
@@ -34,12 +33,7 @@ const buildHealthApp = async (): Promise<FastifyInstance> => {
   fastify.decorateRequest('user', null);
 
   // Register plugins
-  fastify.register(cors, {
-    origin: true, // Allow all origins
-    credentials: true, // Allow credentials (cookies, authorization headers)
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
-  });
+  // CORS handled at CDN level via vercel.json
   fastify.register(helmet);
 
   // Register hooks

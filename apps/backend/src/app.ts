@@ -1,6 +1,5 @@
 import Fastify, { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
-import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import multipart from '@fastify/multipart';
 import fastifyMetrics from 'fastify-metrics';
@@ -42,12 +41,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   fastify.decorate('prisma', prisma);
 
   // Register plugins
-  fastify.register(cors, {
-    origin: true, // Allow all origins
-    credentials: true, // Allow credentials (cookies, authorization headers)
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
-  });
+  // CORS handled at CDN level via vercel.json
   fastify.register(helmet);
   fastify.register(multipart, {
     limits: {
