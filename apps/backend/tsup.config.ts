@@ -36,6 +36,11 @@ export default defineConfig({
     'crypto',
     'node:crypto',
     '@vercel/node',
+    // Google Cloud packages
+    '@google-cloud/storage',
+    '@google-cloud/vision',
+    // Email service
+    'resend',
     // Privy and related packages with module resolution issues
     '@privy-io/server-auth',
     '@hpke/chacha20poly1305',
@@ -47,6 +52,15 @@ export default defineConfig({
     '@hpke/dhkem-secp256k1',
     '@hpke/dhkem-x25519',
     '@hpke/dhkem-x448',
+    // Additional packages that should be external
+    'sharp',
+    'bcrypt',
+    'pino',
+    'pino-pretty',
+    'zod',
+    'zod-to-json-schema',
+    '@hapi/boom',
+    'viem',
   ],
   cjsInterop: false,
   splitting: false,
