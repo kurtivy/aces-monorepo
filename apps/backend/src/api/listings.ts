@@ -59,7 +59,9 @@ const buildListingsApp = async (): Promise<FastifyInstance> => {
 
   fastify.addHook('onResponse', async (request, reply) => {
     const responseTime = request.startTime ? Date.now() - request.startTime : 0;
-    logger.info(`${request.id} ${request.method} ${request.url} ${reply.statusCode} ${responseTime}ms`);
+    logger.info(
+      `${request.id} ${request.method} ${request.url} ${reply.statusCode} ${responseTime}ms`,
+    );
   });
 
   // Global error handler
@@ -96,91 +98,97 @@ const buildListingsApp = async (): Promise<FastifyInstance> => {
     }
   });
 
-  fastify.get('/:listingId', async (
-    request: FastifyRequest<{
-      Params: z.infer<typeof listingParamsSchema>;
-    }>,
-    reply: FastifyReply,
-  ) => {
-    try {
-      const { listingId } = listingParamsSchema.parse(request.params);
+  fastify.get(
+    '/:listingId',
+    async (
+      request: FastifyRequest<{
+        Params: z.infer<typeof listingParamsSchema>;
+      }>,
+      reply: FastifyReply,
+    ) => {
+      try {
+        const { listingId } = listingParamsSchema.parse(request.params);
 
-      logger.info(`Getting listing by ID: ${listingId}`);
+        logger.info(`Getting listing by ID: ${listingId}`);
 
-      const listing = await listingService.getListingById(listingId);
+        const listing = await listingService.getListingById(listingId);
 
-      return reply.status(200).send({
-        success: true,
-        data: listing,
-      });
-    } catch (error) {
-      logger.error(`Error getting listing ${request.params.listingId}:`, error);
+        return reply.status(200).send({
+          success: true,
+          data: listing,
+        });
+      } catch (error) {
+        logger.error(`Error getting listing ${request.params.listingId}:`, error);
 
-      if (error instanceof Error && error.message.includes('not found')) {
-        return reply.status(404).send({
+        if (error instanceof Error && error.message.includes('not found')) {
+          return reply.status(404).send({
+            success: false,
+            error: 'Listing not found',
+          });
+        }
+
+        return reply.status(500).send({
           success: false,
-          error: 'Listing not found',
+          error: 'Failed to fetch listing',
         });
       }
+    },
+  );
 
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to fetch listing',
-      });
-    }
-  });
+  fastify.post(
+    '/:listingId/toggle',
+    async (
+      request: FastifyRequest<{
+        Params: z.infer<typeof listingParamsSchema>;
+        Body: z.infer<typeof toggleListingStatusSchema>;
+      }>,
+      reply: FastifyReply,
+    ) => {
+      try {
+        const { listingId } = listingParamsSchema.parse(request.params);
+        const { isLive } = toggleListingStatusSchema.parse(request.body);
 
-  fastify.post('/:listingId/toggle', async (
-    request: FastifyRequest<{
-      Params: z.infer<typeof listingParamsSchema>;
-      Body: z.infer<typeof toggleListingStatusSchema>;
-    }>,
-    reply: FastifyReply,
-  ) => {
-    try {
-      const { listingId } = listingParamsSchema.parse(request.params);
-      const { isLive } = toggleListingStatusSchema.parse(request.body);
+        // Get user from request (should be set by auth middleware)
+        const userId = request.user?.id;
+        const userRole = request.user?.role;
 
-      // Get user from request (should be set by auth middleware)
-      const userId = request.user?.id;
-      const userRole = request.user?.role;
+        if (!userId || userRole !== 'ADMIN') {
+          return reply.status(403).send({
+            success: false,
+            error: 'Admin access required',
+          });
+        }
 
-      if (!userId || userRole !== 'ADMIN') {
-        return reply.status(403).send({
+        logger.info(`Admin ${userId} toggling listing ${listingId} to isLive: ${isLive}`);
+
+        const updatedListing = await listingService.updateListingStatus({
+          listingId,
+          isLive,
+          updatedBy: userId,
+        });
+
+        return reply.status(200).send({
+          success: true,
+          data: updatedListing,
+          message: `Listing ${isLive ? 'activated' : 'deactivated'} successfully`,
+        });
+      } catch (error) {
+        logger.error(`Error toggling listing status for ${request.params.listingId}:`, error);
+
+        if (error instanceof Error && error.message.includes('not found')) {
+          return reply.status(404).send({
+            success: false,
+            error: 'Listing not found',
+          });
+        }
+
+        return reply.status(500).send({
           success: false,
-          error: 'Admin access required',
+          error: 'Failed to update listing status',
         });
       }
-
-      logger.info(`Admin ${userId} toggling listing ${listingId} to isLive: ${isLive}`);
-
-      const updatedListing = await listingService.updateListingStatus({
-        listingId,
-        isLive,
-        updatedBy: userId,
-      });
-
-      return reply.status(200).send({
-        success: true,
-        data: updatedListing,
-        message: `Listing ${isLive ? 'activated' : 'deactivated'} successfully`,
-      });
-    } catch (error) {
-      logger.error(`Error toggling listing status for ${request.params.listingId}:`, error);
-
-      if (error instanceof Error && error.message.includes('not found')) {
-        return reply.status(404).send({
-          success: false,
-          error: 'Listing not found',
-        });
-      }
-
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to update listing status',
-      });
-    }
-  });
+    },
+  );
 
   fastify.get('/admin/all', async (request: FastifyRequest, reply: FastifyReply) => {
     try {

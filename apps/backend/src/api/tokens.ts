@@ -64,7 +64,9 @@ const buildTokensApp = async (): Promise<FastifyInstance> => {
 
   fastify.addHook('onResponse', async (request, reply) => {
     const responseTime = request.startTime ? Date.now() - request.startTime : 0;
-    logger.info(`${request.id} ${request.method} ${request.url} ${reply.statusCode} ${responseTime}ms`);
+    logger.info(
+      `${request.id} ${request.method} ${request.url} ${reply.statusCode} ${responseTime}ms`,
+    );
   });
 
   // Global error handler
@@ -81,146 +83,158 @@ const buildTokensApp = async (): Promise<FastifyInstance> => {
   });
 
   // Register routes
-  fastify.post('/', async (
-    request: FastifyRequest<{
-      Body: z.infer<typeof createTokenSchema>;
-    }>,
-    reply: FastifyReply,
-  ) => {
-    try {
-      const { listingId, contractAddress } = createTokenSchema.parse(request.body);
+  fastify.post(
+    '/',
+    async (
+      request: FastifyRequest<{
+        Body: z.infer<typeof createTokenSchema>;
+      }>,
+      reply: FastifyReply,
+    ) => {
+      try {
+        const { listingId, contractAddress } = createTokenSchema.parse(request.body);
 
-      // Get user from request (should be set by auth middleware)
-      const userId = request.user?.id;
-      const userRole = request.user?.role;
+        // Get user from request (should be set by auth middleware)
+        const userId = request.user?.id;
+        const userRole = request.user?.role;
 
-      if (!userId) {
-        return reply.status(401).send({
-          success: false,
-          error: 'Authentication required',
-        });
-      }
-
-      // Only admins or listing owners can create tokens
-      if (userRole !== 'ADMIN') {
-        // Check if user owns the listing
-        const listing = await getPrismaClient().rwaListing.findUnique({
-          where: { id: listingId },
-          select: { ownerId: true },
-        });
-
-        if (!listing || listing.ownerId !== userId) {
-          return reply.status(403).send({
+        if (!userId) {
+          return reply.status(401).send({
             success: false,
-            error: 'Only listing owners or admins can create tokens',
+            error: 'Authentication required',
           });
         }
-      }
 
-      logger.info(`User ${userId} creating token for listing ${listingId}`);
+        // Only admins or listing owners can create tokens
+        if (userRole !== 'ADMIN') {
+          // Check if user owns the listing
+          const listing = await getPrismaClient().rwaListing.findUnique({
+            where: { id: listingId },
+            select: { ownerId: true },
+          });
 
-      const token = await tokenService.createTokenFromListing({
-        listingId,
-        contractAddress,
-        userId,
-      });
+          if (!listing || listing.ownerId !== userId) {
+            return reply.status(403).send({
+              success: false,
+              error: 'Only listing owners or admins can create tokens',
+            });
+          }
+        }
 
-      return reply.status(201).send({
-        success: true,
-        data: token,
-        message: 'Token created successfully',
-      });
-    } catch (error) {
-      logger.error('Error creating token:', error);
+        logger.info(`User ${userId} creating token for listing ${listingId}`);
 
-      if (error instanceof Error && error.message.includes('not found')) {
-        return reply.status(404).send({
+        const token = await tokenService.createTokenFromListing({
+          listingId,
+          contractAddress,
+          userId,
+        });
+
+        return reply.status(201).send({
+          success: true,
+          data: token,
+          message: 'Token created successfully',
+        });
+      } catch (error) {
+        logger.error('Error creating token:', error);
+
+        if (error instanceof Error && error.message.includes('not found')) {
+          return reply.status(404).send({
+            success: false,
+            error: 'Listing not found',
+          });
+        }
+
+        if (error instanceof Error && error.message.includes('validation')) {
+          return reply.status(400).send({
+            success: false,
+            error: error.message,
+          });
+        }
+
+        return reply.status(500).send({
           success: false,
-          error: 'Listing not found',
+          error: 'Failed to create token',
         });
       }
+    },
+  );
 
-      if (error instanceof Error && error.message.includes('validation')) {
-        return reply.status(400).send({
+  fastify.get(
+    '/:tokenId',
+    async (
+      request: FastifyRequest<{
+        Params: z.infer<typeof tokenParamsSchema>;
+      }>,
+      reply: FastifyReply,
+    ) => {
+      try {
+        const { tokenId } = tokenParamsSchema.parse(request.params);
+
+        logger.info(`Getting token by ID: ${tokenId}`);
+
+        const token = await tokenService.getTokenById(tokenId);
+
+        return reply.status(200).send({
+          success: true,
+          data: token,
+        });
+      } catch (error) {
+        logger.error(`Error getting token ${request.params.tokenId}:`, error);
+
+        if (error instanceof Error && error.message.includes('not found')) {
+          return reply.status(404).send({
+            success: false,
+            error: 'Token not found',
+          });
+        }
+
+        return reply.status(500).send({
           success: false,
-          error: error.message,
+          error: 'Failed to fetch token',
         });
       }
+    },
+  );
 
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to create token',
-      });
-    }
-  });
+  fastify.get(
+    '/contract/:contractAddress',
+    async (
+      request: FastifyRequest<{
+        Params: z.infer<typeof contractAddressParamsSchema>;
+      }>,
+      reply: FastifyReply,
+    ) => {
+      try {
+        const { contractAddress } = contractAddressParamsSchema.parse(request.params);
 
-  fastify.get('/:tokenId', async (
-    request: FastifyRequest<{
-      Params: z.infer<typeof tokenParamsSchema>;
-    }>,
-    reply: FastifyReply,
-  ) => {
-    try {
-      const { tokenId } = tokenParamsSchema.parse(request.params);
+        logger.info(`Getting token by contract address: ${contractAddress}`);
 
-      logger.info(`Getting token by ID: ${tokenId}`);
+        const token = await tokenService.getTokenByContractAddress(contractAddress);
 
-      const token = await tokenService.getTokenById(tokenId);
+        return reply.status(200).send({
+          success: true,
+          data: token,
+        });
+      } catch (error) {
+        logger.error(
+          `Error getting token by contract address ${request.params.contractAddress}:`,
+          error,
+        );
 
-      return reply.status(200).send({
-        success: true,
-        data: token,
-      });
-    } catch (error) {
-      logger.error(`Error getting token ${request.params.tokenId}:`, error);
+        if (error instanceof Error && error.message.includes('not found')) {
+          return reply.status(404).send({
+            success: false,
+            error: 'Token not found',
+          });
+        }
 
-      if (error instanceof Error && error.message.includes('not found')) {
-        return reply.status(404).send({
+        return reply.status(500).send({
           success: false,
-          error: 'Token not found',
+          error: 'Failed to fetch token',
         });
       }
-
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to fetch token',
-      });
-    }
-  });
-
-  fastify.get('/contract/:contractAddress', async (
-    request: FastifyRequest<{
-      Params: z.infer<typeof contractAddressParamsSchema>;
-    }>,
-    reply: FastifyReply,
-  ) => {
-    try {
-      const { contractAddress } = contractAddressParamsSchema.parse(request.params);
-
-      logger.info(`Getting token by contract address: ${contractAddress}`);
-
-      const token = await tokenService.getTokenByContractAddress(contractAddress);
-
-      return reply.status(200).send({
-        success: true,
-        data: token,
-      });
-    } catch (error) {
-      logger.error(`Error getting token by contract address ${request.params.contractAddress}:`, error);
-
-      if (error instanceof Error && error.message.includes('not found')) {
-        return reply.status(404).send({
-          success: false,
-          error: 'Token not found',
-        });
-      }
-
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to fetch token',
-      });
-    }
-  });
+    },
+  );
 
   fastify.get('/admin/all', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
@@ -281,50 +295,53 @@ const buildTokensApp = async (): Promise<FastifyInstance> => {
     }
   });
 
-  fastify.delete('/:tokenId', async (
-    request: FastifyRequest<{
-      Params: z.infer<typeof tokenParamsSchema>;
-    }>,
-    reply: FastifyReply,
-  ) => {
-    try {
-      const { tokenId } = tokenParamsSchema.parse(request.params);
+  fastify.delete(
+    '/:tokenId',
+    async (
+      request: FastifyRequest<{
+        Params: z.infer<typeof tokenParamsSchema>;
+      }>,
+      reply: FastifyReply,
+    ) => {
+      try {
+        const { tokenId } = tokenParamsSchema.parse(request.params);
 
-      // Get user from request (should be set by auth middleware)
-      const userId = request.user?.id;
-      const userRole = request.user?.role;
+        // Get user from request (should be set by auth middleware)
+        const userId = request.user?.id;
+        const userRole = request.user?.role;
 
-      if (!userId || userRole !== 'ADMIN') {
-        return reply.status(403).send({
+        if (!userId || userRole !== 'ADMIN') {
+          return reply.status(403).send({
+            success: false,
+            error: 'Admin access required',
+          });
+        }
+
+        logger.info(`Admin ${userId} deleting token ${tokenId}`);
+
+        await tokenService.deleteToken(tokenId);
+
+        return reply.status(200).send({
+          success: true,
+          message: 'Token deleted successfully',
+        });
+      } catch (error) {
+        logger.error(`Error deleting token ${request.params.tokenId}:`, error);
+
+        if (error instanceof Error && error.message.includes('not found')) {
+          return reply.status(404).send({
+            success: false,
+            error: 'Token not found',
+          });
+        }
+
+        return reply.status(500).send({
           success: false,
-          error: 'Admin access required',
+          error: 'Failed to delete token',
         });
       }
-
-      logger.info(`Admin ${userId} deleting token ${tokenId}`);
-
-      await tokenService.deleteToken(tokenId);
-
-      return reply.status(200).send({
-        success: true,
-        message: 'Token deleted successfully',
-      });
-    } catch (error) {
-      logger.error(`Error deleting token ${request.params.tokenId}:`, error);
-
-      if (error instanceof Error && error.message.includes('not found')) {
-        return reply.status(404).send({
-          success: false,
-          error: 'Token not found',
-        });
-      }
-
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to delete token',
-      });
-    }
-  });
+    },
+  );
 
   return fastify;
 };

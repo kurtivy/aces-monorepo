@@ -21,13 +21,32 @@ export default defineConfig({
   minify: true,
   sourcemap: false,
   clean: true,
-  noExternal: ['fastify', '@fastify/cors', '@fastify/multipart', 'zod'],
-  external: ['prisma', '@prisma/client', '.prisma/client'],
+  treeshake: true,
+  // Optimize for smaller bundles
+  noExternal: [],
+  external: [
+    'fastify',
+    '@fastify/cors',
+    '@fastify/helmet',
+    '@fastify/multipart',
+    'fastify-metrics',
+    'prisma',
+    '@prisma/client',
+    '.prisma/client',
+    'crypto',
+    'node:crypto',
+    '@vercel/node',
+  ],
   cjsInterop: true,
   splitting: false,
   esbuildOptions(options) {
     options.footer = {
       js: 'if (module.exports.default) module.exports = module.exports.default;',
     };
+    // Additional optimizations
+    options.treeShaking = true;
+    options.minifyIdentifiers = true;
+    options.minifySyntax = true;
+    options.minifyWhitespace = true;
   },
 });

@@ -9,6 +9,12 @@
       "dev": true
     }
   },
+  "functions": {
+    "api/*.js": {
+      "runtime": "nodejs22.x",
+      "maxDuration": 10
+    }
+  },
   "rewrites": [
     {
       "source": "/api/v1/health/(.*)",
