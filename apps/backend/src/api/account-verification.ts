@@ -79,8 +79,16 @@ const buildAccountVerificationApp = async (): Promise<FastifyInstance> => {
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+const handler = async (req: VercelRequest, res: VercelResponse) => {
   const app = await buildAccountVerificationApp();
   await app.ready();
+
+  // Handle path rewriting: /api/v1/account-verification/something → /something
+  if (req.url?.startsWith('/api/v1/account-verification')) {
+    req.url = req.url.replace('/api/v1/account-verification', '') || '/';
+  }
+
   app.server.emit('request', req, res);
-}
+};
+
+export default handler;

@@ -73,8 +73,16 @@ const buildContactApp = async (): Promise<FastifyInstance> => {
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+const handler = async (req: VercelRequest, res: VercelResponse) => {
   const app = await buildContactApp();
   await app.ready();
+
+  // Handle path rewriting: /api/v1/contact/something → /something
+  if (req.url?.startsWith('/api/v1/contact')) {
+    req.url = req.url.replace('/api/v1/contact', '') || '/';
+  }
+
   app.server.emit('request', req, res);
-}
+};
+
+export default handler;

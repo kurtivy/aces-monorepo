@@ -1,9 +1,27 @@
+import Fastify, { FastifyInstance } from 'fastify';
+import { randomUUID } from 'crypto';
+import cors from '@fastify/cors';
+import helmet from '@fastify/helmet';
+import fastifyMetrics from 'fastify-metrics';
+import { User as PrismaUser, PrismaClient } from '@prisma/client';
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { ListingService } from '../services/listing-service';
-import { getPrismaClient } from '../lib/database';
+import { getPrismaClient, disconnectDatabase } from '../lib/database';
 import { errors } from '../lib/errors';
 import { logger } from '../lib/logger';
+
+// Extend Fastify types to include custom properties
+declare module 'fastify' {
+  interface FastifyRequest {
+    startTime?: number;
+    user: PrismaUser | null;
+  }
+
+  interface FastifyInstance {
+    prisma: PrismaClient;
+  }
+}
 
 const listingService = new ListingService(getPrismaClient());
 
@@ -16,189 +34,228 @@ const listingParamsSchema = z.object({
   listingId: z.string().cuid(),
 });
 
-/**
- * Get all live listings for public view
- * GET /api/v1/listings
- */
-export async function getLiveListings(request: FastifyRequest, reply: FastifyReply) {
-  try {
-    logger.info('Getting all live listings');
+const buildListingsApp = async (): Promise<FastifyInstance> => {
+  const fastify = Fastify({
+    logger: false,
+    genReqId: () => randomUUID(),
+  });
 
-    const listings = await listingService.getLiveListings();
+  const prisma = getPrismaClient();
+  fastify.decorate('prisma', prisma);
 
-    return reply.status(200).send({
-      success: true,
-      data: listings,
-      count: listings.length,
-    });
-  } catch (error) {
-    logger.error('Error getting live listings:', error);
-    return reply.status(500).send({
-      success: false,
-      error: 'Failed to fetch live listings',
-    });
-  }
-}
+  // Register plugins
+  fastify.register(cors, { origin: '*' });
+  fastify.register(helmet);
+  fastify.register(fastifyMetrics, {
+    endpoint: '/metrics',
+    routeMetrics: { enabled: true },
+  });
 
-/**
- * Get a specific listing by ID
- * GET /api/v1/listings/:listingId
- */
-export async function getListingById(
-  request: FastifyRequest<{
-    Params: z.infer<typeof listingParamsSchema>;
-  }>,
-  reply: FastifyReply,
-) {
-  try {
-    const { listingId } = listingParamsSchema.parse(request.params);
+  // Register hooks
+  fastify.addHook('onRequest', async (request) => {
+    request.startTime = Date.now();
+    logger.info(`${request.id} ${request.method} ${request.url} ${request.headers['user-agent']}`);
+  });
 
-    logger.info(`Getting listing by ID: ${listingId}`);
+  fastify.addHook('onResponse', async (request, reply) => {
+    const responseTime = request.startTime ? Date.now() - request.startTime : 0;
+    logger.info(`${request.id} ${request.method} ${request.url} ${reply.statusCode} ${responseTime}ms`);
+  });
 
-    const listing = await listingService.getListingById(listingId);
+  // Global error handler
+  fastify.setErrorHandler((error, request, reply) => {
+    try {
+      handleError(error, reply);
+    } catch (error) {
+      handleError(error, reply);
+    }
+  });
 
-    return reply.status(200).send({
-      success: true,
-      data: listing,
-    });
-  } catch (error) {
-    logger.error(`Error getting listing ${request.params.listingId}:`, error);
+  fastify.addHook('onClose', async () => {
+    await disconnectDatabase();
+  });
 
-    if (error instanceof Error && error.message.includes('not found')) {
-      return reply.status(404).send({
+  // Register routes
+  fastify.get('/', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      logger.info('Getting all live listings');
+
+      const listings = await listingService.getLiveListings();
+
+      return reply.status(200).send({
+        success: true,
+        data: listings,
+        count: listings.length,
+      });
+    } catch (error) {
+      logger.error('Error getting live listings:', error);
+      return reply.status(500).send({
         success: false,
-        error: 'Listing not found',
+        error: 'Failed to fetch live listings',
       });
     }
+  });
 
-    return reply.status(500).send({
-      success: false,
-      error: 'Failed to fetch listing',
-    });
-  }
-}
+  fastify.get('/:listingId', async (
+    request: FastifyRequest<{
+      Params: z.infer<typeof listingParamsSchema>;
+    }>,
+    reply: FastifyReply,
+  ) => {
+    try {
+      const { listingId } = listingParamsSchema.parse(request.params);
 
-/**
- * Toggle listing live status (Admin only)
- * POST /api/v1/listings/:listingId/toggle
- */
-export async function toggleListingStatus(
-  request: FastifyRequest<{
-    Params: z.infer<typeof listingParamsSchema>;
-    Body: z.infer<typeof toggleListingStatusSchema>;
-  }>,
-  reply: FastifyReply,
-) {
-  try {
-    const { listingId } = listingParamsSchema.parse(request.params);
-    const { isLive } = toggleListingStatusSchema.parse(request.body);
+      logger.info(`Getting listing by ID: ${listingId}`);
 
-    // Get user from request (should be set by auth middleware)
-    const userId = request.user?.id;
-    const userRole = request.user?.role;
+      const listing = await listingService.getListingById(listingId);
 
-    if (!userId || userRole !== 'ADMIN') {
-      return reply.status(403).send({
+      return reply.status(200).send({
+        success: true,
+        data: listing,
+      });
+    } catch (error) {
+      logger.error(`Error getting listing ${request.params.listingId}:`, error);
+
+      if (error instanceof Error && error.message.includes('not found')) {
+        return reply.status(404).send({
+          success: false,
+          error: 'Listing not found',
+        });
+      }
+
+      return reply.status(500).send({
         success: false,
-        error: 'Admin access required',
+        error: 'Failed to fetch listing',
       });
     }
+  });
 
-    logger.info(`Admin ${userId} toggling listing ${listingId} to isLive: ${isLive}`);
+  fastify.post('/:listingId/toggle', async (
+    request: FastifyRequest<{
+      Params: z.infer<typeof listingParamsSchema>;
+      Body: z.infer<typeof toggleListingStatusSchema>;
+    }>,
+    reply: FastifyReply,
+  ) => {
+    try {
+      const { listingId } = listingParamsSchema.parse(request.params);
+      const { isLive } = toggleListingStatusSchema.parse(request.body);
 
-    const updatedListing = await listingService.updateListingStatus({
-      listingId,
-      isLive,
-      updatedBy: userId,
-    });
+      // Get user from request (should be set by auth middleware)
+      const userId = request.user?.id;
+      const userRole = request.user?.role;
 
-    return reply.status(200).send({
-      success: true,
-      data: updatedListing,
-      message: `Listing ${isLive ? 'activated' : 'deactivated'} successfully`,
-    });
-  } catch (error) {
-    logger.error(`Error toggling listing status for ${request.params.listingId}:`, error);
+      if (!userId || userRole !== 'ADMIN') {
+        return reply.status(403).send({
+          success: false,
+          error: 'Admin access required',
+        });
+      }
 
-    if (error instanceof Error && error.message.includes('not found')) {
-      return reply.status(404).send({
+      logger.info(`Admin ${userId} toggling listing ${listingId} to isLive: ${isLive}`);
+
+      const updatedListing = await listingService.updateListingStatus({
+        listingId,
+        isLive,
+        updatedBy: userId,
+      });
+
+      return reply.status(200).send({
+        success: true,
+        data: updatedListing,
+        message: `Listing ${isLive ? 'activated' : 'deactivated'} successfully`,
+      });
+    } catch (error) {
+      logger.error(`Error toggling listing status for ${request.params.listingId}:`, error);
+
+      if (error instanceof Error && error.message.includes('not found')) {
+        return reply.status(404).send({
+          success: false,
+          error: 'Listing not found',
+        });
+      }
+
+      return reply.status(500).send({
         success: false,
-        error: 'Listing not found',
+        error: 'Failed to update listing status',
       });
     }
+  });
 
-    return reply.status(500).send({
-      success: false,
-      error: 'Failed to update listing status',
-    });
-  }
-}
+  fastify.get('/admin/all', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const userId = request.user?.id;
+      const userRole = request.user?.role;
 
-/**
- * Get all listings for admin view (including inactive ones)
- * GET /api/v1/admin/listings
- */
-export async function getAllListingsForAdmin(request: FastifyRequest, reply: FastifyReply) {
-  try {
-    // Get user from request (should be set by auth middleware)
-    const userId = request.user?.id;
-    const userRole = request.user?.role;
+      if (!userId || userRole !== 'ADMIN') {
+        return reply.status(403).send({
+          success: false,
+          error: 'Admin access required',
+        });
+      }
 
-    if (!userId || userRole !== 'ADMIN') {
-      return reply.status(403).send({
+      logger.info(`Admin ${userId} getting all listings`);
+
+      const listings = await listingService.getAllListings();
+
+      return reply.status(200).send({
+        success: true,
+        data: listings,
+        count: listings.length,
+      });
+    } catch (error) {
+      logger.error('Error getting all listings for admin:', error);
+      return reply.status(500).send({
         success: false,
-        error: 'Admin access required',
+        error: 'Failed to fetch listings',
       });
     }
+  });
 
-    logger.info(`Admin ${userId} getting all listings`);
+  fastify.get('/my', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const userId = request.user?.id;
 
-    const listings = await listingService.getAllListings();
+      if (!userId) {
+        return reply.status(401).send({
+          success: false,
+          error: 'Authentication required',
+        });
+      }
 
-    return reply.status(200).send({
-      success: true,
-      data: listings,
-      count: listings.length,
-    });
-  } catch (error) {
-    logger.error('Error getting all listings for admin:', error);
-    return reply.status(500).send({
-      success: false,
-      error: 'Failed to fetch listings',
-    });
-  }
-}
+      logger.info(`User ${userId} getting their listings`);
 
-/**
- * Get listings by owner (for user dashboard)
- * GET /api/v1/listings/my-listings
- */
-export async function getMyListings(request: FastifyRequest, reply: FastifyReply) {
-  try {
-    // Get user from request (should be set by auth middleware)
-    const userId = request.user?.id;
+      const listings = await listingService.getListingsByOwner(userId);
 
-    if (!userId) {
-      return reply.status(401).send({
+      return reply.status(200).send({
+        success: true,
+        data: listings,
+        count: listings.length,
+      });
+    } catch (error) {
+      logger.error(`Error getting listings for user ${request.user?.id}:`, error);
+      return reply.status(500).send({
         success: false,
-        error: 'Authentication required',
+        error: 'Failed to fetch your listings',
       });
     }
+  });
 
-    logger.info(`User ${userId} getting their listings`);
+  return fastify;
+};
 
-    const listings = await listingService.getListingsByOwner(userId);
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-    return reply.status(200).send({
-      success: true,
-      data: listings,
-      count: listings.length,
-    });
-  } catch (error) {
-    logger.error(`Error getting listings for user ${request.user?.id}:`, error);
-    return reply.status(500).send({
-      success: false,
-      error: 'Failed to fetch your listings',
-    });
+const handler = async (req: VercelRequest, res: VercelResponse) => {
+  const app = await buildListingsApp();
+  await app.ready();
+
+  // Handle path rewriting: /api/v1/listings/something → /something
+  if (req.url?.startsWith('/api/v1/listings')) {
+    req.url = req.url.replace('/api/v1/listings', '') || '/';
   }
-}
+
+  app.server.emit('request', req, res);
+};
+
+export default handler;
