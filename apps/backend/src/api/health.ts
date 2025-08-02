@@ -34,7 +34,12 @@ const buildHealthApp = async (): Promise<FastifyInstance> => {
   fastify.decorateRequest('user', null);
 
   // Register plugins
-  fastify.register(cors, { origin: '*' });
+  fastify.register(cors, {
+    origin: true, // Allow all origins
+    credentials: true, // Allow credentials (cookies, authorization headers)
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
+  });
   fastify.register(helmet);
 
   // Register hooks

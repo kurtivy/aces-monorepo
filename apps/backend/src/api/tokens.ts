@@ -49,7 +49,12 @@ const buildTokensApp = async (): Promise<FastifyInstance> => {
   fastify.decorate('prisma', prisma);
 
   // Register plugins
-  fastify.register(cors, { origin: '*' });
+  fastify.register(cors, {
+    origin: true, // Allow all origins
+    credentials: true, // Allow credentials (cookies, authorization headers)
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
+  });
   fastify.register(helmet);
   fastify.register(fastifyMetrics, {
     endpoint: '/metrics',
