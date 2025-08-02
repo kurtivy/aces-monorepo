@@ -74,57 +74,27 @@ export default function RootLayout({
         <meta name="theme-color" content="#000000" />
         <meta name="color-scheme" content="dark" />
 
-        {/* Web3 compatibility script */}
+        {/* Web3 compatibility script - Only add missing properties, don't override existing wallets */}
         <script
           dangerouslySetInnerHTML={{
             __html: `
               if (typeof window !== 'undefined') {
                 try {
-                  if (!window.ethereum) {
-                    // Create a complete mock with all required methods
-                    window.ethereum = {
-                      selectedAddress: null,
-                      isConnected: () => false,
-                      request: () => Promise.reject(new Error('No wallet connected')),
-                      on: function(event, handler) {
-                        // Mock event listener that does nothing
-                        console.log('Mock ethereum.on called for event:', event);
-                      },
-                      removeListener: function(event, handler) {
-                        // Mock remove listener that does nothing
-                        console.log('Mock ethereum.removeListener called for event:', event);
-                      },
-                      removeAllListeners: function(event) {
-                        // Mock remove all listeners
-                        console.log('Mock ethereum.removeAllListeners called for event:', event);
-                      }
-                    };
-                  } else {
-                    // If window.ethereum exists but is missing methods, add them
-                    if (typeof window.ethereum.on !== 'function') {
-                      window.ethereum.on = function(event, handler) {
-                        console.log('Added mock ethereum.on for event:', event);
+                  // Wait for wallet providers to load before adding any polyfills
+                  setTimeout(() => {
+                    // Only add minimal polyfills if no real wallet exists
+                    if (!window.ethereum) {
+                      // Light polyfill - let Privy handle wallet detection
+                      window.ethereum = {
+                        selectedAddress: null,
+                        isConnected: () => false,
+                        request: () => Promise.reject(new Error('No wallet connected')),
+                        on: () => {},
+                        removeListener: () => {},
+                        removeAllListeners: () => {}
                       };
                     }
-                    if (typeof window.ethereum.removeListener !== 'function') {
-                      window.ethereum.removeListener = function(event, handler) {
-                        console.log('Added mock ethereum.removeListener for event:', event);
-                      };
-                    }
-                    if (typeof window.ethereum.removeAllListeners !== 'function') {
-                      window.ethereum.removeAllListeners = function(event) {
-                        console.log('Added mock ethereum.removeAllListeners for event:', event);
-                      };
-                    }
-                  }
-                  
-                  if (window.ethereum && typeof window.ethereum.selectedAddress === 'undefined') {
-                    Object.defineProperty(window.ethereum, 'selectedAddress', {
-                      value: null,
-                      writable: true,
-                      configurable: true
-                    });
-                  }
+                  }, 100); // Small delay to allow wallet extensions to load
                 } catch (error) {
                   console.warn('Web3 compatibility setup failed:', error);
                 }

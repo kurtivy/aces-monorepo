@@ -79,10 +79,39 @@ const wagmiConfig = createConfig({
 });
 
 export default function AppProviders({ children }: { children: ReactNode }) {
+  // Debug Privy configuration
+  const privyAppId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
+
+  // Log configuration issues in development/staging
+  if (typeof window !== 'undefined') {
+    if (!privyAppId) {
+      console.error('🚨 PRIVY_APP_ID is missing! Wallet connections will fail.');
+    } else {
+      console.log('✅ Privy App ID found:', privyAppId.slice(0, 8) + '...');
+    }
+    console.log('🌐 Current domain:', window.location.hostname);
+    console.log('🔧 Current origin:', window.location.origin);
+  }
+
+  // Don't render Privy if app ID is missing
+  if (!privyAppId) {
+    console.error('🛑 Cannot initialize Privy without app ID');
+    return (
+      <QueryClientProvider client={queryClient}>
+        <div className="flex items-center justify-center min-h-screen bg-black text-red-400">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold mb-4">Configuration Error</h2>
+            <p>Privy App ID is missing. Please check environment variables.</p>
+          </div>
+        </div>
+      </QueryClientProvider>
+    );
+  }
+
   return (
     <QueryClientProvider client={queryClient}>
       <PrivyProvider
-        appId={process.env.NEXT_PUBLIC_PRIVY_APP_ID || ''}
+        appId={privyAppId}
         config={{
           loginMethods: ['wallet', 'email'],
           appearance: {

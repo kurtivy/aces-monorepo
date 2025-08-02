@@ -40,6 +40,7 @@ import { useAuth } from '@/lib/auth/auth-context';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { VerificationForm } from '@/components/seller/verification-form';
 import AcesHeader from '@/components/ui/custom/aces-header';
+import { PrivyDebug } from '@/components/debug/privy-debug';
 
 // Modern Form Section Component
 const FormSection = ({
@@ -688,6 +689,9 @@ export default function CreateTokenForm() {
           />
         </DialogContent>
       </Dialog>
+
+      {/* Debug Component - Remove after testing */}
+      <PrivyDebug />
     </div>
   );
 }
