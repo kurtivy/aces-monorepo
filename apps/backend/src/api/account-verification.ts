@@ -18,7 +18,7 @@ declare module 'fastify' {
   }
 }
 
-import { getPrismaClient, checkDatabaseHealth, disconnectDatabase } from '../lib/database';
+import { getPrismaClient, disconnectDatabase } from '../lib/database';
 import { loggers } from '../lib/logger';
 import { handleError } from '../lib/errors';
 import { registerAuth } from '../plugins/auth';

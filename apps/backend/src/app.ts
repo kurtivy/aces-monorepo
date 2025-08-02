@@ -64,9 +64,9 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   fastify.register(accountVerificationRoutes, { prefix: '/api/v1/account-verification' });
   fastify.register(userProfileRoutes, { prefix: '/api/v1/users' });
   fastify.register(webhooksRoutes, { prefix: '/api/v1/webhooks' });
-  fastify.register(listingsRoutes, { prefix: '/api/v1' });
-  fastify.register(tokensRoutes, { prefix: '/api/v1' });
-  fastify.register(contactRoutes, { prefix: '/api/v1' });
+  fastify.register(listingsRoutes, { prefix: '/api/v1/listings' });
+  fastify.register(tokensRoutes, { prefix: '/api/v1/tokens' });
+  fastify.register(contactRoutes, { prefix: '/api/v1/contact' });
 
   // Register hooks
   fastify.addHook('onRequest', async (request) => {
