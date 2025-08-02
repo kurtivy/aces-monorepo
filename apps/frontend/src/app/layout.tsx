@@ -74,35 +74,6 @@ export default function RootLayout({
         <meta name="theme-color" content="#000000" />
         <meta name="color-scheme" content="dark" />
 
-        {/* Web3 compatibility script - Only add missing properties, don't override existing wallets */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              if (typeof window !== 'undefined') {
-                try {
-                  // Wait for wallet providers to load before adding any polyfills
-                  setTimeout(() => {
-                    // Only add minimal polyfills if no real wallet exists
-                    if (!window.ethereum) {
-                      // Light polyfill - let Privy handle wallet detection
-                      window.ethereum = {
-                        selectedAddress: null,
-                        isConnected: () => false,
-                        request: () => Promise.reject(new Error('No wallet connected')),
-                        on: () => {},
-                        removeListener: () => {},
-                        removeAllListeners: () => {}
-                      };
-                    }
-                  }, 100); // Small delay to allow wallet extensions to load
-                } catch (error) {
-                  console.warn('Web3 compatibility setup failed:', error);
-                }
-              }
-            `,
-          }}
-        />
-
         {/* Microsoft Clarity - User Journey & Heat Map Analytics */}
         {process.env.NODE_ENV === 'production' || process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID ? (
           <script

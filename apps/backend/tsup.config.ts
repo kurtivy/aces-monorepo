@@ -18,11 +18,11 @@ export default defineConfig({
   target: 'node22',
   platform: 'node',
   bundle: true,
-  minify: true,
-  sourcemap: false,
+  minify: false, // Disable minification to avoid module resolution issues
+  sourcemap: true, // Enable sourcemaps for debugging
   clean: true,
-  treeshake: true,
-  // Optimize for smaller bundles
+  treeshake: false, // Disable tree shaking for now
+  // Keep more packages external to avoid bundling issues
   noExternal: [],
   external: [
     'fastify',
@@ -47,6 +47,11 @@ export default defineConfig({
     'zod-to-json-schema',
     '@hapi/boom',
     'viem',
+    // Privy server auth and HPKE crypto packages
+    '@privy-io/server-auth',
+    '@hpke/common',
+    '@hpke/chacha20poly1305',
+    '@hpke/core',
   ],
   cjsInterop: false,
   splitting: false,
