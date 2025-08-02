@@ -41,7 +41,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   fastify.decorate('prisma', prisma);
 
   // Register plugins
-  // CORS handled at CDN level via vercel.json
+  // CORS headers handled by vercel.json, but we need to handle OPTIONS preflight requests
   fastify.register(helmet);
   fastify.register(multipart, {
     limits: {
@@ -55,6 +55,11 @@ export const buildApp = async (): Promise<FastifyInstance> => {
 
   // Register custom plugins
   fastify.register(registerAuth);
+
+  // Handle OPTIONS preflight requests globally
+  fastify.options('*', async (request, reply) => {
+    reply.code(204).send();
+  });
 
   // Register v1 routes with proper API prefixes
   fastify.register(submissionsRoutes, { prefix: '/api/v1/submissions' });
