@@ -36,9 +36,6 @@ export default defineConfig({
     'crypto',
     'node:crypto',
     '@vercel/node',
-    // Google Cloud packages
-    '@google-cloud/storage',
-    '@google-cloud/vision',
     // Email service
     'resend',
     // Additional packages that should be external
