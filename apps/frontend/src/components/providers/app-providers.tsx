@@ -118,9 +118,14 @@ export default function AppProviders({ children }: { children: ReactNode }) {
             theme: 'dark',
             accentColor: '#D0B264',
             logo: '/aces-logo.png',
+            loginMessage: 'Connect your wallet to ACES',
+            showWalletLoginFirst: false, // Show Privy options first
+            walletList: ['metamask', 'coinbase_wallet', 'wallet_connect'],
           },
           embeddedWallets: {
-            createOnLogin: 'users-without-wallets',
+            createOnLogin: 'all-users', // Create embedded wallet for everyone by default
+            requireUserPasswordOnCreate: false,
+            showWalletUIs: true,
           },
           defaultChain: baseSepolia,
           supportedChains: [baseSepolia, base],

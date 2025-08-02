@@ -208,7 +208,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [privyAuthenticated, state.user]); // Monitor both auth and user state
   */
 
-  // Monitor external wallet connections (for tracking only, not required for auth)
+  // External wallet monitoring disabled - let Privy handle everything
+  /*
   useEffect(() => {
     const checkWalletStatus = async () => {
       const hasExternal = await checkExternalWalletConnection();
@@ -217,36 +218,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         hasExternalWallet: hasExternal,
       }));
 
-      // Don't force logout if no external wallet - allow email-authenticated users
       console.log('🔍 External wallet status:', hasExternal ? 'Connected' : 'Not connected');
     };
 
     checkWalletStatus();
-
-    // Listen for wallet connection changes
-    if (typeof window !== 'undefined') {
-      // MetaMask/Ethereum wallet events
-      if (window.ethereum && typeof window.ethereum.on === 'function') {
-        const handleAccountsChanged = () => {
-          setTimeout(checkWalletStatus, 100); // Small delay to ensure wallet state is updated
-        };
-        window.ethereum.on('accountsChanged', handleAccountsChanged);
-
-        return () => {
-          if (window.ethereum && typeof window.ethereum.removeListener === 'function') {
-            window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
-          }
-        };
-      }
-    }
   }, [privyAuthenticated]);
+  */
 
   // Initialize auth state when Privy is ready (external wallet optional)
   useEffect(() => {
     console.log('🔄 Auth state changed:', {
       privyAuthenticated,
       privyUser: !!privyUser,
-      hasExternalWallet: state.hasExternalWallet,
     });
 
     if (privyAuthenticated && privyUser) {
@@ -311,49 +294,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Wallet Actions
+  // Wallet Actions - Simplified to prioritize Privy
   const connectWallet = async () => {
     try {
       setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
-      // If user is already authenticated with Privy, just request external wallet connection
+      // If user is already authenticated with Privy, they're good to go
       if (privyAuthenticated && privyUser) {
-        console.log('🔗 User already authenticated, connecting external wallet...');
-        const hasExternal = await requestExternalWalletConnection();
-
-        setState((prev) => ({ ...prev, hasExternalWallet: hasExternal }));
-
-        if (hasExternal) {
-          console.log('✅ External wallet connected successfully');
-        } else {
-          throw new Error('Failed to connect external wallet');
-        }
+        console.log('✅ User already authenticated with Privy');
         return;
       }
 
-      // For new users, try to connect external wallet first, then Privy
-      try {
-        console.log('🔌 Requesting external wallet connection...');
-        const hasExternal = await requestExternalWalletConnection();
-
-        if (hasExternal) {
-          setState((prev) => ({ ...prev, hasExternalWallet: true }));
-          console.log('✅ External wallet connected, proceeding with Privy login...');
-          await privyLogin();
-        } else {
-          // If external wallet fails, still allow Privy login (for email users)
-          console.log('🔑 External wallet not available, proceeding with Privy login...');
-          await privyLogin();
-        }
-      } catch (walletError) {
-        // If external wallet connection fails, still allow Privy login
-        console.log(
-          '⚠️ External wallet connection failed, proceeding with Privy login:',
-          walletError,
-        );
-        await privyLogin();
-      }
+      // For new users, start with Privy login (which will show embedded wallet option first)
+      console.log('🔑 Starting Privy login flow...');
+      await privyLogin();
     } catch (error) {
+      console.error('❌ Connect wallet error:', error);
       setState((prev) => ({
         ...prev,
         error: error instanceof Error ? error.message : 'Failed to connect wallet',
