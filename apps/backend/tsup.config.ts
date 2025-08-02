@@ -37,12 +37,9 @@ export default defineConfig({
     'node:crypto',
     '@vercel/node',
   ],
-  cjsInterop: true,
+  cjsInterop: false,
   splitting: false,
   esbuildOptions(options) {
-    options.footer = {
-      js: 'if (module.exports.default) module.exports = module.exports.default;',
-    };
     // Additional optimizations
     options.treeShaking = true;
     options.minifyIdentifiers = true;

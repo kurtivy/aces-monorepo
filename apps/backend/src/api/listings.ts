@@ -8,7 +8,7 @@ import { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { ListingService } from '../services/listing-service';
 import { getPrismaClient, disconnectDatabase } from '../lib/database';
-import { errors } from '../lib/errors';
+import { errors, handleError } from '../lib/errors';
 import { logger } from '../lib/logger';
 
 // Extend Fastify types to include custom properties

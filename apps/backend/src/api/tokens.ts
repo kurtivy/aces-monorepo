@@ -8,7 +8,7 @@ import { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { TokenService } from '../services/token-service';
 import { getPrismaClient, disconnectDatabase } from '../lib/database';
-import { errors } from '../lib/errors';
+import { errors, handleError } from '../lib/errors';
 import { logger } from '../lib/logger';
 
 // Extend Fastify types to include custom properties
@@ -279,7 +279,7 @@ const buildTokensApp = async (): Promise<FastifyInstance> => {
 
       logger.info(`User ${userId} getting their tokens`);
 
-      const tokens = await tokenService.getTokensByOwner(userId);
+      const tokens = await tokenService.getTokensByUser(userId);
 
       return reply.status(200).send({
         success: true,
