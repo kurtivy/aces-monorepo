@@ -467,6 +467,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return state.user?.id === resourceOwnerId;
   };
 
+  // Debug authentication state
+  console.log('🔍 Auth Debug:', {
+    privyAuthenticated,
+    stateUser: !!state.user,
+    isAuthenticated: privyAuthenticated && !!state.user,
+    error: state.error,
+  });
+
   // Context Value
   const contextValue: AuthContextType = {
     // Authentication state
