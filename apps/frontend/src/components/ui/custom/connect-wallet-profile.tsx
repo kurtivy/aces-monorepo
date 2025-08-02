@@ -44,8 +44,16 @@ export default function ConnectWalletProfile({
   isDropdownOpen,
   onDropdownChange,
 }: ConnectWalletProfileProps) {
-  const { isAuthenticated, isLoading, user, walletAddress, connectWallet, disconnectWallet } =
-    useAuth();
+  const {
+    isAuthenticated,
+    isLoading,
+    user,
+    walletAddress,
+    connectWallet,
+    disconnectWallet,
+    hasExternalWallet,
+  } = useAuth();
+
   const { fundWallet } = useFundWallet();
   const { isOnBaseMainnet, isSwitching, ensureCorrectChain, SUPPORTED_CHAINS } =
     useChainSwitching();
@@ -263,7 +271,7 @@ export default function ConnectWalletProfile({
   return (
     <div className={className}>
       <motion.button
-        className="flex items-center justify-center text-[#D0B264] hover:text-white hover:bg-[#D0B264]/10 transition-colors duration-150 px-4 py-2 rounded-md bg-black/80 border border-[#D0B264]/30 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+        className="flex items-center justify-center text-[#D0B264] hover:text-[#D0B264] transition-colors duration-150 px-4 py-2 rounded-md bg-black/80 hover:bg-black/70 border border-[#D0B264]/30 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed font-mono"
         disabled={isLoading}
         onClick={handleConnectWallet}
         whileHover={{ scale: 1.05 }}
@@ -276,6 +284,8 @@ export default function ConnectWalletProfile({
             <span className="mr-2">Connecting</span>
             <span className="animate-pulse">...</span>
           </div>
+        ) : hasExternalWallet ? (
+          'Connect Wallet'
         ) : (
           'Connect Wallet'
         )}

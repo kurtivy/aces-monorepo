@@ -30,7 +30,7 @@ const HomeButtonComponent: React.FC<HomeButtonProps> = ({ onClick }) => {
         fixed top-4 left-4 z-50 
         w-12 h-12 sm:w-16 sm:h-16 
         rounded-full 
-        bg-black/50 border border-[#D0B264]/40 
+        bg-black/80 border border-[#D0B264]/40 
         text-[#D0B264] 
         flex items-center justify-center 
         cursor-pointer

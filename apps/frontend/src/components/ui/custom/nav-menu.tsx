@@ -263,7 +263,7 @@ const NavMenu: React.FC<NavMenuProps> = ({
 
       {/* Compact Hamburger Menu Button */}
       <motion.button
-        className="w-12 h-12 sm:w-16 sm:h-16 bg-black/90 border border-[#D0B284]/40 text-[#D0B284] hover:text-[#D0B264]/80 hover:bg-black/95 hover:border-[#D0B284] transition-colors duration-150 flex items-center justify-center rounded-full shadow-lg"
+        className="w-12 h-12 sm:w-14 sm:h-14 bg-black/90 border border-[#D0B284]/40 text-[#D0B284] hover:text-[#D0B264]/80 hover:bg-black/95 hover:border-[#D0B284] transition-colors duration-150 flex items-center justify-center rounded-full shadow-lg"
         onClick={() => setIsOpen(!isOpen)}
         whileHover={isMobileDevice ? undefined : { scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
@@ -277,11 +277,7 @@ const NavMenu: React.FC<NavMenuProps> = ({
           transition={{ duration: 0.2, ease: 'easeInOut' }}
           style={{ willChange: 'transform' }}
         >
-          {isOpen ? (
-            <X className="h-6 w-6 sm:h-8 sm:w-8" />
-          ) : (
-            <Menu className="h-6 w-6 sm:h-8 sm:w-8" />
-          )}
+          {isOpen ? <X className="h-8 w-8" /> : <Menu className="h-8 w-8" />}
         </motion.div>
       </motion.button>
     </div>
