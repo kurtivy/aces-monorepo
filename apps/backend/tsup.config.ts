@@ -41,10 +41,12 @@ export default defineConfig({
     '@google-cloud/vision',
     // Email service
     'resend',
-    // Privy and related packages with module resolution issues
+    // Privy and related packages with module resolution issues - ALL variations
     '@privy-io/server-auth',
-    '@hpke/chacha20poly1305',
+    // HPKE packages - comprehensive list to avoid bundling issues
     '@hpke/common',
+    '@hpke/chacha20poly1305',
+    '@hpke/aes-gcm',
     '@hpke/core',
     '@hpke/dhkem-p256',
     '@hpke/dhkem-p384',
@@ -52,6 +54,9 @@ export default defineConfig({
     '@hpke/dhkem-secp256k1',
     '@hpke/dhkem-x25519',
     '@hpke/dhkem-x448',
+    '@hpke/hkdf-sha256',
+    '@hpke/hkdf-sha384',
+    '@hpke/hkdf-sha512',
     // Additional packages that should be external
     'sharp',
     'bcrypt',

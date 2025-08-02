@@ -9,6 +9,7 @@ import { TokenService } from '../services/token-service';
 import { getPrismaClient, disconnectDatabase } from '../lib/database';
 import { errors, handleError } from '../lib/errors';
 import { logger } from '../lib/logger';
+import { registerAuth } from '../plugins/auth';
 
 // Extend Fastify types to include custom properties
 declare module 'fastify' {
@@ -54,6 +55,9 @@ const buildTokensApp = async (): Promise<FastifyInstance> => {
     endpoint: '/metrics',
     routeMetrics: { enabled: true },
   });
+
+  // Register auth plugin - CRITICAL for request.user decoration
+  fastify.register(registerAuth);
 
   // Register hooks
   fastify.addHook('onRequest', async (request) => {

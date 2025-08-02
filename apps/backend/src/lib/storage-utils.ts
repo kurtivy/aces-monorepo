@@ -2,23 +2,43 @@ import { Storage } from '@google-cloud/storage';
 import { randomUUID } from 'crypto';
 import { MultipartFile } from '@fastify/multipart';
 
-// Initialize storage
-const storage = new Storage({
-  projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
-  credentials: {
-    client_email: process.env.GOOGLE_CLOUD_CLIENT_EMAIL,
-    private_key: process.env.GOOGLE_CLOUD_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-  },
-});
+// Check if Google Cloud credentials are available
+const hasGoogleCloudCredentials = !!(
+  process.env.GOOGLE_CLOUD_PROJECT_ID &&
+  process.env.GOOGLE_CLOUD_CLIENT_EMAIL &&
+  process.env.GOOGLE_CLOUD_PRIVATE_KEY
+);
 
-const bucketName = process.env.GOOGLE_CLOUD_BUCKET_NAME || 'aces-rwa-images';
-const bucket = storage.bucket(bucketName);
+// Initialize storage safely (only if credentials available)
+let storage: Storage | null = null;
+let bucket: ReturnType<Storage['bucket']> | null = null;
+let bucketName = '';
+
+if (hasGoogleCloudCredentials) {
+  storage = new Storage({
+    projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
+    credentials: {
+      client_email: process.env.GOOGLE_CLOUD_CLIENT_EMAIL,
+      private_key: process.env.GOOGLE_CLOUD_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+    },
+  });
+
+  bucketName = process.env.GOOGLE_CLOUD_BUCKET_NAME || 'aces-rwa-images';
+  bucket = storage.bucket(bucketName);
+} else {
+  console.warn(
+    'Google Cloud Storage credentials not configured. File upload will be disabled for testing.',
+  );
+}
 
 export class StorageService {
   /**
    * Get the bucket instance for direct operations
    */
   static getBucket() {
+    if (!bucket) {
+      throw new Error('Google Cloud Storage not initialized. Check credentials.');
+    }
     return bucket;
   }
 
@@ -29,6 +49,10 @@ export class StorageService {
     fileType: string,
     folder: string = 'submissions',
   ): Promise<{ url: string; fileName: string }> {
+    if (!bucket) {
+      throw new Error('Google Cloud Storage not initialized. Check credentials.');
+    }
+
     const fileName = `${folder}/${randomUUID()}-${Date.now()}`;
     const options = {
       version: 'v4' as const,
@@ -45,6 +69,9 @@ export class StorageService {
    * Get a public URL for an uploaded image
    */
   static getPublicUrl(fileName: string): string {
+    if (!bucketName) {
+      throw new Error('Google Cloud Storage not initialized. Check credentials.');
+    }
     return `https://storage.googleapis.com/${bucketName}/${fileName}`;
   }
 
@@ -52,6 +79,10 @@ export class StorageService {
    * Generate a signed URL for reading an image (temporary access)
    */
   static async getSignedReadUrl(fileName: string, expiresInMinutes: number = 60): Promise<string> {
+    if (!bucket) {
+      throw new Error('Google Cloud Storage not initialized. Check credentials.');
+    }
+
     const options = {
       version: 'v4' as const,
       action: 'read' as const,
@@ -66,6 +97,10 @@ export class StorageService {
    * Delete an image from storage
    */
   static async deleteImage(fileName: string): Promise<void> {
+    if (!bucket) {
+      throw new Error('Google Cloud Storage not initialized. Check credentials.');
+    }
+
     try {
       await bucket.file(fileName).delete();
     } catch (error) {
@@ -81,6 +116,10 @@ export class StorageService {
     file: MultipartFile & { buffer?: Buffer },
     userId: string,
   ): Promise<string> {
+    if (!bucket) {
+      throw new Error('Google Cloud Storage not initialized. Check credentials.');
+    }
+
     try {
       const buffer = file.buffer || (await file.toBuffer());
       const fileExt = file.filename.split('.').pop() || 'jpg';
@@ -101,6 +140,10 @@ export class StorageService {
    * Delete a verification document
    */
   static async deleteVerificationDocument(url: string): Promise<void> {
+    if (!bucketName) {
+      throw new Error('Google Cloud Storage not initialized. Check credentials.');
+    }
+
     try {
       // Extract filename from URL
       const fileName = url.split(`${bucketName}/`)[1];
