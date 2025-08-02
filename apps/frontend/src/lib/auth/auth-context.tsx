@@ -33,6 +33,36 @@ const checkExternalWalletConnection = async (): Promise<boolean> => {
   }
 };
 
+// Utility to request external wallet connection with proper permissions
+const requestExternalWalletConnection = async (): Promise<boolean> => {
+  if (typeof window === 'undefined') return false;
+
+  try {
+    // Request MetaMask/Ethereum wallet connection
+    if (window.ethereum) {
+      const accounts = (await window.ethereum.request({
+        method: 'eth_requestAccounts',
+      })) as string[];
+      if (accounts && accounts.length > 0) {
+        return true;
+      }
+    }
+
+    // Request Phantom (Solana wallet) connection
+    if ((window as any).solana && (window as any).solana.isPhantom) {
+      const response = await (window as any).solana.connect();
+      if (response && response.publicKey) {
+        return true;
+      }
+    }
+
+    return false;
+  } catch (error) {
+    console.log('Failed to request external wallet connection:', error);
+    throw new Error('Failed to connect external wallet');
+  }
+};
+
 // Re-export types for convenience
 export type { UserProfile, ProfileUpdateRequest };
 
@@ -60,6 +90,7 @@ interface AuthContextType {
   // Utility functions
   hasRole: (role: string | string[]) => boolean;
   isOwnerOf: (resourceOwnerId: string) => boolean;
+  requiresExternalWallet: () => { required: boolean; message?: string };
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -177,7 +208,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [privyAuthenticated, state.user]); // Monitor both auth and user state
   */
 
-  // Monitor external wallet connections
+  // Monitor external wallet connections (for tracking only, not required for auth)
   useEffect(() => {
     const checkWalletStatus = async () => {
       const hasExternal = await checkExternalWalletConnection();
@@ -186,11 +217,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         hasExternalWallet: hasExternal,
       }));
 
-      // If Privy is authenticated but no external wallet is connected, logout
-      if (privyAuthenticated && !hasExternal) {
-        console.log('🔌 No external wallet detected, logging out from Privy...');
-        await privyLogout();
-      }
+      // Don't force logout if no external wallet - allow email-authenticated users
+      console.log('🔍 External wallet status:', hasExternal ? 'Connected' : 'Not connected');
     };
 
     checkWalletStatus();
@@ -211,9 +239,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
       }
     }
-  }, [privyAuthenticated, privyLogout]);
+  }, [privyAuthenticated]);
 
-  // Initialize auth state when Privy is ready and external wallet is connected
+  // Initialize auth state when Privy is ready (external wallet optional)
   useEffect(() => {
     console.log('🔄 Auth state changed:', {
       privyAuthenticated,
@@ -221,18 +249,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       hasExternalWallet: state.hasExternalWallet,
     });
 
-    if (privyAuthenticated && privyUser && state.hasExternalWallet) {
-      console.log('✅ External wallet connected, calling initializeAuth...');
+    if (privyAuthenticated && privyUser) {
+      console.log('✅ Privy authenticated, calling initializeAuth...');
       initializeAuth();
     } else {
-      console.log('❌ Not fully authenticated (missing external wallet), clearing user...');
+      console.log('❌ Not authenticated with Privy, clearing user...');
       setState((prev) => ({
         ...prev,
         user: null,
         isLoading: false,
       }));
     }
-  }, [privyAuthenticated, privyUser, state.hasExternalWallet]);
+  }, [privyAuthenticated, privyUser]);
 
   const initializeAuth = async () => {
     try {
@@ -288,18 +316,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
-      // First check if an external wallet is connected
-      const hasExternal = await checkExternalWalletConnection();
+      // If user is already authenticated with Privy, just request external wallet connection
+      if (privyAuthenticated && privyUser) {
+        console.log('🔗 User already authenticated, connecting external wallet...');
+        const hasExternal = await requestExternalWalletConnection();
 
-      if (!hasExternal) {
-        throw new Error('Please connect an external wallet (MetaMask, Phantom, etc.) first');
+        setState((prev) => ({ ...prev, hasExternalWallet: hasExternal }));
+
+        if (hasExternal) {
+          console.log('✅ External wallet connected successfully');
+        } else {
+          throw new Error('Failed to connect external wallet');
+        }
+        return;
       }
 
-      // Update state with external wallet status
-      setState((prev) => ({ ...prev, hasExternalWallet: true }));
+      // For new users, try to connect external wallet first, then Privy
+      try {
+        console.log('🔌 Requesting external wallet connection...');
+        const hasExternal = await requestExternalWalletConnection();
 
-      // Proceed with Privy login only if external wallet is connected
-      await privyLogin();
+        if (hasExternal) {
+          setState((prev) => ({ ...prev, hasExternalWallet: true }));
+          console.log('✅ External wallet connected, proceeding with Privy login...');
+          await privyLogin();
+        } else {
+          // If external wallet fails, still allow Privy login (for email users)
+          console.log('🔑 External wallet not available, proceeding with Privy login...');
+          await privyLogin();
+        }
+      } catch (walletError) {
+        // If external wallet connection fails, still allow Privy login
+        console.log(
+          '⚠️ External wallet connection failed, proceeding with Privy login:',
+          walletError,
+        );
+        await privyLogin();
+      }
     } catch (error) {
       setState((prev) => ({
         ...prev,
@@ -336,6 +389,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (privyAuthenticated && privyUser) {
       await loadUserProfile();
     }
+  };
+
+  // Helper function to check if external wallet is required for transactions
+  const requiresExternalWallet = (): { required: boolean; message?: string } => {
+    if (!state.hasExternalWallet) {
+      return {
+        required: true,
+        message:
+          'An external wallet (MetaMask, Phantom, etc.) is required for this transaction. Please connect your wallet first.',
+      };
+    }
+    return { required: false };
   };
 
   // Profile Actions
@@ -449,7 +514,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Context Value
   const contextValue: AuthContextType = {
     // Authentication state
-    isAuthenticated: privyAuthenticated && state.hasExternalWallet,
+    isAuthenticated: privyAuthenticated && !!state.user, // Only require Privy auth and user profile
     isAdmin,
     error: state.error,
     isLoading: state.isLoading,
@@ -470,6 +535,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Utility functions
     hasRole,
     isOwnerOf,
+    requiresExternalWallet,
   };
 
   return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;

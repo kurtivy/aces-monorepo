@@ -44,7 +44,11 @@ export default function ProfilePage() {
         <div className="p-6">
           <div className="bg-[#231F20] rounded-xl p-6 border border-red-500">
             <h2 className="text-red-500 font-bold font-libre-caslon">Error Loading Profile</h2>
-            <p className="text-[#DCDDCC]">{error}</p>
+            <p className="text-[#DCDDCC] mb-4">{error}</p>
+            <p className="text-[#DCDDCC] text-sm">
+              If you're having trouble connecting, try refreshing the page or connecting your wallet
+              again.
+            </p>
           </div>
         </div>
         <Footer />
