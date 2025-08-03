@@ -35,7 +35,7 @@ const buildWebhooksApp = async (): Promise<FastifyInstance> => {
   fastify.decorateRequest('user', null);
 
   // Register plugins
-  // CORS handled at CDN level via vercel.json
+  // CORS handled dynamically in main app.ts
   fastify.register(helmet);
   fastify.register(fastifyMetrics, {
     endpoint: '/metrics',

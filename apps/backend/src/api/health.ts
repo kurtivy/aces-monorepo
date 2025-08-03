@@ -33,7 +33,7 @@ const buildHealthApp = async (): Promise<FastifyInstance> => {
   fastify.decorateRequest('user', null);
 
   // Register plugins
-  // CORS handled at CDN level via vercel.json
+  // CORS handled dynamically in main app.ts
   fastify.register(helmet);
 
   // Register hooks

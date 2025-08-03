@@ -44,7 +44,7 @@ const buildListingsApp = async (): Promise<FastifyInstance> => {
   fastify.decorate('prisma', prisma);
 
   // Register plugins
-  // CORS handled at CDN level via vercel.json
+  // CORS handled dynamically in main app.ts
   fastify.register(helmet);
   fastify.register(fastifyMetrics, {
     endpoint: '/metrics',

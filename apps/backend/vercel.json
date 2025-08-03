@@ -3,55 +3,6 @@
   "buildCommand": "pnpm vercel-build",
   "installCommand": "pnpm install --no-frozen-lockfile",
   "outputDirectory": ".",
-  "git": {
-    "deploymentEnabled": {
-      "main": true,
-      "dev": true
-    }
-  },
-  "headers": [
-    {
-      "source": "/api/(.*)",
-      "headers": [
-        {
-          "key": "Access-Control-Allow-Origin",
-          "value": "https://aces-monorepo-git-dev-dan-aces-fun.vercel.app"
-        },
-        {
-          "key": "Access-Control-Allow-Methods",
-          "value": "GET, POST, PUT, DELETE, OPTIONS"
-        },
-        {
-          "key": "Access-Control-Allow-Headers",
-          "value": "Content-Type, Authorization, Accept, Origin, X-Requested-With"
-        },
-        {
-          "key": "Access-Control-Allow-Credentials",
-          "value": "true"
-        },
-        {
-          "key": "Access-Control-Max-Age",
-          "value": "86400"
-        }
-      ]
-    },
-    {
-      "source": "/api/(.*)",
-      "headers": [
-        {
-          "key": "Vary",
-          "value": "Origin"
-        }
-      ],
-      "has": [
-        {
-          "type": "header",
-          "key": "origin",
-          "value": "http://localhost:3000"
-        }
-      ]
-    }
-  ],
   "rewrites": [
     {
       "source": "/api/v1/health/(.*)",
