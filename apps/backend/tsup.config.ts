@@ -47,11 +47,7 @@ export default defineConfig({
     'zod-to-json-schema',
     '@hapi/boom',
     'viem',
-    // Privy server auth and HPKE crypto packages
-    '@privy-io/server-auth',
-    '@hpke/common',
-    '@hpke/chacha20poly1305',
-    '@hpke/core',
+
   ],
   cjsInterop: false,
   splitting: false,
