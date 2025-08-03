@@ -4,6 +4,7 @@ import helmet from '@fastify/helmet';
 
 import { User as PrismaUser, PrismaClient } from '@prisma/client';
 import { z } from 'zod';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 // Extend Fastify types to include custom properties
@@ -44,14 +45,13 @@ const buildSubmissionsApp = async (): Promise<FastifyInstance> => {
   // Register plugins
   fastify.register(helmet);
 
-
   // Register auth plugin
   fastify.register(registerAuth);
 
   // Get signed URL for image upload
   fastify.post<{ Body: z.infer<typeof GetSignedUrlSchema> }>('/get-upload-url', {
     schema: {
-      body: GetSignedUrlSchema,
+      body: zodToJsonSchema(GetSignedUrlSchema),
     },
     handler: async (request) => {
       try {
@@ -67,7 +67,7 @@ const buildSubmissionsApp = async (): Promise<FastifyInstance> => {
   // Create submission endpoint
   fastify.post<{ Body: CreateSubmissionRequest }>('/', {
     schema: {
-      body: CreateSubmissionSchema,
+      body: zodToJsonSchema(CreateSubmissionSchema),
     },
     handler: async (request) => {
       try {
