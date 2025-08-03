@@ -98,7 +98,8 @@ const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnima
                 key={`aces-${index}`}
                 className="text-6xl sm:text-6xl md:text-9xl lg:text-9xl xl:text-9xl font-bold tracking-tight text-white leading-none"
                 style={{
-                  fontFamily: 'var(--font-heading), sans-serif',
+                  fontFamily: 'Futura, "Century Gothic", sans-serif',
+                  fontWeight: '700',
                   color: '#FFFFFF',
                   textShadow: '0 0 20px rgba(255, 255, 255, 0.3)',
                   filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',

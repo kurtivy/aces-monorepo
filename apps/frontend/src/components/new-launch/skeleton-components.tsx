@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import NeonText from '../loading/neon-text';
 
 // Skeleton for image tiles
 export const ImageTileSkeleton: React.FC<{
@@ -110,39 +111,17 @@ export const ChartSkeleton: React.FC = () => (
   </div>
 );
 
-// Loading overlay with progress
-interface LoadingOverlayProps {
-  progress: number;
-  message?: string;
-}
-
-export const LoadingOverlay: React.FC<LoadingOverlayProps> = ({
-  progress,
-  message = 'Loading luxury assets...',
-}) => (
+// Loading overlay with neon text animation
+export const LoadingOverlay: React.FC = () => (
   <div className="fixed inset-0 bg-black/95 backdrop-blur-sm z-50 flex items-center justify-center">
-    <div className="text-center space-y-6 max-w-md mx-auto p-8">
-      {/* ACES Logo area */}
-      <div className="flex items-center justify-center mb-8">
-        <div className="text-4xl font-bold text-[#D0B264] tracking-wider">ACES</div>
-      </div>
-
-      {/* Progress bar */}
-      <div className="space-y-3">
-        <div className="h-2 bg-[#1A1A1A] rounded-full overflow-hidden">
-          <div
-            className="h-full bg-gradient-to-r from-[#D0B264] to-[#F4E8C1] rounded-full transition-all duration-300 ease-out"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-        <div className="flex justify-between text-sm">
-          <span className="text-[#DCDDCC]">{message}</span>
-          <span className="text-[#D0B264] font-mono">{progress}%</span>
-        </div>
+    <div className="text-center space-y-8 max-w-5xl mx-auto p-8">
+      {/* Neon Text Animation - ACES.FUN */}
+      <div className="flex items-center justify-center">
+        <NeonText isComplete={false} skipLetterAnimation={false} />
       </div>
 
       {/* Loading animation - Three balls bouncing one at a time */}
-      <div className="flex items-center justify-center space-x-2">
+      <div className="flex items-center justify-center space-x-2 mt-12">
         <div
           className="w-3 h-3 bg-[#D0B264] rounded-full animate-bounce"
           style={{ animationDelay: '0ms' }}

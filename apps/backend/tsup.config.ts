@@ -29,7 +29,7 @@ export default defineConfig({
     '@fastify/cors',
     '@fastify/helmet',
     '@fastify/multipart',
-    'fastify-metrics',
+
     'prisma',
     '@prisma/client',
     '.prisma/client',
@@ -47,7 +47,6 @@ export default defineConfig({
     'zod-to-json-schema',
     '@hapi/boom',
     'viem',
-
   ],
   cjsInterop: false,
   splitting: false,

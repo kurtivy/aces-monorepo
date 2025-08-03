@@ -1,7 +1,7 @@
 import Fastify, { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
 import helmet from '@fastify/helmet';
-import fastifyMetrics from 'fastify-metrics';
+
 import { User as PrismaUser, PrismaClient } from '@prisma/client';
 
 // Extend Fastify types to include custom properties
@@ -37,10 +37,7 @@ const buildWebhooksApp = async (): Promise<FastifyInstance> => {
   // Register plugins
   // CORS handled dynamically in main app.ts
   fastify.register(helmet);
-  fastify.register(fastifyMetrics, {
-    endpoint: '/metrics',
-    routeMetrics: { enabled: true },
-  });
+
 
   // Register custom plugins
   // fastify.register(registerAuth); // Disabled - no auth needed

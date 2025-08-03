@@ -12,7 +12,6 @@ import AnimatedDotsBackground from '../ui/custom/animated-dots-background';
 import { useBondingCurveContracts } from '@/hooks/contracts/use-bonding-curve-contract';
 import { useAuth } from '@/lib/auth/auth-context';
 import { usePageLoading } from '@/hooks/use-page-loading';
-import { useChainSwitching } from '@/hooks/contracts/use-chain-switching';
 import { formatEther } from 'viem';
 import Footer from '@/components/ui/custom/footer';
 
@@ -413,16 +412,9 @@ const ICOLaunchPage: React.FC = () => {
 
   // Show loading overlay while images and contract data load
   if (!pageLoading.isReady) {
-    let loadingMessage = 'Loading luxury assets...';
-    if (pageLoading.imagesLoading) {
-      loadingMessage = 'Preloading luxury assets...';
-    } else if (pageLoading.contractLoading) {
-      loadingMessage = 'Connecting to blockchain...';
-    }
-
     return (
       <>
-        <LoadingOverlay progress={pageLoading.loadingProgress} message={loadingMessage} />
+        <LoadingOverlay />
         {/* Pre-render the page structure for faster transition */}
         <div className="opacity-0 pointer-events-none fixed inset-0">
           <ICOPageContent isMobile={isMobile} containerRef={containerRef} isReady={false} />

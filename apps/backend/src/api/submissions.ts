@@ -1,7 +1,7 @@
 import Fastify, { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
 import helmet from '@fastify/helmet';
-import fastifyMetrics from 'fastify-metrics';
+
 import { User as PrismaUser, PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
@@ -43,10 +43,7 @@ const buildSubmissionsApp = async (): Promise<FastifyInstance> => {
 
   // Register plugins
   fastify.register(helmet);
-  fastify.register(fastifyMetrics, {
-    endpoint: '/metrics',
-    routeMetrics: { enabled: true },
-  });
+
 
   // Register auth plugin
   fastify.register(registerAuth);

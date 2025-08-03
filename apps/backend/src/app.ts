@@ -2,7 +2,7 @@ import Fastify, { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
 import helmet from '@fastify/helmet';
 import multipart from '@fastify/multipart';
-import fastifyMetrics from 'fastify-metrics';
+
 import { User as PrismaUser, PrismaClient } from '@prisma/client';
 
 // Extend Fastify types to include custom properties
@@ -47,10 +47,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
       fileSize: 5 * 1024 * 1024, // 5MB
     },
   });
-  fastify.register(fastifyMetrics, {
-    endpoint: '/metrics',
-    routeMetrics: { enabled: true },
-  });
+
 
   // Register custom plugins
   fastify.register(registerAuth);

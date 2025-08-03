@@ -1,6 +1,6 @@
 'use client';
 
-import React, { memo } from 'react';
+import React, { memo, useState, useEffect } from 'react';
 import {
   getBrowserPerformanceSettings,
   getDeviceCapabilities,
@@ -11,11 +11,20 @@ interface ContactButtonProps {
 }
 
 const ContactButtonComponent: React.FC<ContactButtonProps> = ({ onClick }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
   const browserPerf = getBrowserPerformanceSettings();
   const deviceCaps = getDeviceCapabilities();
 
   const useAnimations = deviceCaps.performanceTier !== 'low';
   const useAdvancedAnimations = deviceCaps.performanceTier === 'high';
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsExpanded(true);
+    }, 6000);
+
+    return () => clearTimeout(timer);
+  }, []);
 
   // Message bubble SVG paths
   const messageBubble =
@@ -28,16 +37,17 @@ const ContactButtonComponent: React.FC<ContactButtonProps> = ({ onClick }) => {
     <button
       className={`
         fixed bottom-4 left-4 z-50 
-        px-4 py-3 sm:px-6 sm:py-4
+        ${isExpanded ? 'px-4 py-3 sm:px-6 sm:py-4' : 'p-3 sm:p-4'}
         rounded-full 
         bg-black/80 border border-[#D0B264]/40 
         text-[#D0B264] 
         flex items-center gap-2 sm:gap-3
         cursor-pointer
         hover:bg-black/90 hover:border-[#D0B264] 
-        ${useAnimations ? 'transition-colors duration-200' : ''}
-        ${useAdvancedAnimations ? 'hover:scale-105 active:scale-95 transition-transform' : ''}
-        max-w-xs sm:max-w-sm
+        ${useAnimations ? 'transition-all duration-500' : ''}
+        ${useAdvancedAnimations ? 'hover:scale-105 active:scale-95' : ''}
+        ${isExpanded ? 'max-w-xs sm:max-w-sm' : 'w-auto'}
+        overflow-hidden
       `}
       onClick={onClick}
       style={{
@@ -54,8 +64,14 @@ const ContactButtonComponent: React.FC<ContactButtonProps> = ({ onClick }) => {
         <path d={innerDot2} />
         <path d={innerDot3} />
       </svg>
-      <span className="text-xs sm:text-sm font-medium whitespace-nowrap">
-        Don't see what you're looking for? Reach out!
+      <span
+        className={`
+          text-xs sm:text-sm font-medium whitespace-nowrap
+          ${useAnimations ? 'transition-all duration-500' : ''}
+          ${isExpanded ? 'opacity-100 max-w-full ml-1 sm:ml-2' : 'opacity-0 max-w-0 ml-0'}
+        `}
+      >
+        Don&apos;t see what you&apos;re looking for? Reach out!
       </span>
     </button>
   );
