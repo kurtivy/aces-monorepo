@@ -266,9 +266,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loadUserProfile = async () => {
     try {
-      // Wait a bit for Privy to be fully ready
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
       console.log('🔑 Getting access token...');
       const token = await privyGetAccessToken();
       console.log('🔑 Token received:', token ? 'YES' : 'NO');
@@ -478,7 +475,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Context Value
   const contextValue: AuthContextType = {
     // Authentication state
-    isAuthenticated: privyAuthenticated && !!state.user, // Only require Privy auth and user profile
+    isAuthenticated: privyAuthenticated, // Show as authenticated immediately when Privy succeeds
     isAdmin,
     error: state.error,
     isLoading: state.isLoading,
