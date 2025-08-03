@@ -99,12 +99,21 @@ importers:
       '@hapi/boom':
         specifier: ^10.0.1
         version: 10.0.1
+      '@hpke/chacha20poly1305':
+        specifier: ^1.6.2
+        version: 1.6.2
+      '@hpke/common':
+        specifier: 1.7.2
+        version: 1.7.2
+      '@hpke/core':
+        specifier: ^1.6.3
+        version: 1.7.2
       '@prisma/client':
         specifier: 5.10.2
         version: 5.10.2(prisma@5.10.2)
       '@privy-io/server-auth':
-        specifier: ^1.29.0
-        version: 1.29.0(bufferutil@4.0.9)(encoding@0.1.13)(ethers@6.15.0(bufferutil@4.0.9)(utf-8-validate@5.0.10))(typescript@5.8.3)(utf-8-validate@5.0.10)(viem@2.31.6(bufferutil@4.0.9)(typescript@5.8.3)(utf-8-validate@5.0.10)(zod@3.25.67))
+        specifier: 1.25.1
+        version: 1.25.1(bufferutil@4.0.9)(encoding@0.1.13)(ethers@6.15.0(bufferutil@4.0.9)(utf-8-validate@5.0.10))(typescript@5.8.3)(utf-8-validate@5.0.10)(viem@2.31.6(bufferutil@4.0.9)(typescript@5.8.3)(utf-8-validate@5.0.10)(zod@3.25.67))
       '@supabase/supabase-js':
         specifier: ^2.52.0
         version: 2.52.0(bufferutil@4.0.9)(utf-8-validate@5.0.10)
@@ -2010,6 +2019,10 @@ packages:
   '@prisma/get-platform@5.10.2':
     resolution: {integrity: sha512-nqXP6vHiY2PIsebBAuDeWiUYg8h8mfjBckHh6Jezuwej0QJNnjDiOq30uesmg+JXxGk99nqyG3B7wpcOODzXvg==}
 
+  '@privy-io/api-base@1.5.1':
+    resolution: {integrity: sha512-UokueOxl2hoW+kfFTzwV8uqwCNajSaJJEGSWHpsuKvdDQ8ePwXe53Gr5ptnKznaZlMLivc25mrv92bVEJbclfQ==}
+    engines: {node: '>=18.0.0', npm: '>=8.0.0'}
+
   '@privy-io/api-base@1.5.2':
     resolution: {integrity: sha512-0eJBoQNmCSsWSWhzEVSU8WqPm7bgeN6VaAmqeXvjk8Ni0jM8nyTYjmRAqiCSs3mRzsnlQVchkGR6lsMTHkHKbw==}
     engines: {node: '>=18.0.0', npm: '>=8.0.0'}
@@ -2033,11 +2046,12 @@ packages:
       viem:
         optional: true
 
+  '@privy-io/public-api@2.31.0':
+    resolution: {integrity: sha512-Mni0WKCoxQqrJsxDRWrAQI8QdgpZon9MDyiKMQ/u0jXYWNiua8cVr8dS5+ivu+Z+ybrfDX3iWIIU9KzC/V9I9w==}
+    engines: {node: '>=18.0.0', npm: '>=8.0.0'}
+
   '@privy-io/public-api@2.40.1':
     resolution: {integrity: sha512-NzUKE2kDAV2nlb+iUyxrelv9qqpojjvfl99Z3sLmREyPsFb3keTGKVpfjyHzPwmCK/qDddOD/bXkgvVFktIW8g==}
-
-  '@privy-io/public-api@2.41.0':
-    resolution: {integrity: sha512-IByl1pdy9vhVLd2KSY1E1yVMmo4pD4KpYzIcGNr7VljN3zS1SZA4KGYrjF3AP2mT5FkzpAyxcqox7h87jhnWow==}
 
   '@privy-io/react-auth@2.20.0':
     resolution: {integrity: sha512-raFIEC2VLPFVnPoo8uTgU9EhCLz47Hi0B2ZfRwNQ8jxaXkz5jXGcxF5CFxYDQ3t6leZQ+sHuW7VIBugEN0S06g==}
@@ -2058,8 +2072,8 @@ packages:
       permissionless:
         optional: true
 
-  '@privy-io/server-auth@1.29.0':
-    resolution: {integrity: sha512-S8rl2b3USk/EPb88BMtxnjtOEsVgi0Zn1FRscWIiRSbidoI7jXPduO1rN3pzBHWk3M8vF3pYYpjcOAyucCXrQw==}
+  '@privy-io/server-auth@1.25.1':
+    resolution: {integrity: sha512-y+dFDCkkm/r5TWCCZ04cjLtbXovQqBUcbFQkoiWXkdtNE1uIblFP4tckHP5MTLGlTHmUjCDOTQj3NL9MCCXH8g==}
     peerDependencies:
       ethers: ^6
       viem: ^2.24.1
@@ -11159,6 +11173,10 @@ snapshots:
     dependencies:
       '@prisma/debug': 5.10.2
 
+  '@privy-io/api-base@1.5.1':
+    dependencies:
+      zod: 3.25.67
+
   '@privy-io/api-base@1.5.2':
     dependencies:
       zod: 3.25.67
@@ -11195,11 +11213,11 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@privy-io/public-api@2.40.1(bufferutil@4.0.9)(typescript@5.8.3)(utf-8-validate@5.0.10)':
+  '@privy-io/public-api@2.31.0(bufferutil@4.0.9)(typescript@5.8.3)(utf-8-validate@5.0.10)':
     dependencies:
-      '@privy-io/api-base': 1.5.2
+      '@privy-io/api-base': 1.5.1
       bs58: 5.0.0
-      libphonenumber-js: 1.12.9
+      libphonenumber-js: 1.12.10
       viem: 2.33.0(bufferutil@4.0.9)(typescript@5.8.3)(utf-8-validate@5.0.10)(zod@3.25.67)
       zod: 3.25.67
     transitivePeerDependencies:
@@ -11207,12 +11225,12 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@privy-io/public-api@2.41.0(bufferutil@4.0.9)(typescript@5.8.3)(utf-8-validate@5.0.10)':
+  '@privy-io/public-api@2.40.1(bufferutil@4.0.9)(typescript@5.8.3)(utf-8-validate@5.0.10)':
     dependencies:
       '@privy-io/api-base': 1.5.2
       bs58: 5.0.0
-      libphonenumber-js: 1.12.10
-      viem: 2.31.6(bufferutil@4.0.9)(typescript@5.8.3)(utf-8-validate@5.0.10)(zod@3.25.67)
+      libphonenumber-js: 1.12.9
+      viem: 2.33.0(bufferutil@4.0.9)(typescript@5.8.3)(utf-8-validate@5.0.10)(zod@3.25.67)
       zod: 3.25.67
     transitivePeerDependencies:
       - bufferutil
@@ -11296,13 +11314,11 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@privy-io/server-auth@1.29.0(bufferutil@4.0.9)(encoding@0.1.13)(ethers@6.15.0(bufferutil@4.0.9)(utf-8-validate@5.0.10))(typescript@5.8.3)(utf-8-validate@5.0.10)(viem@2.31.6(bufferutil@4.0.9)(typescript@5.8.3)(utf-8-validate@5.0.10)(zod@3.25.67))':
+  '@privy-io/server-auth@1.25.1(bufferutil@4.0.9)(encoding@0.1.13)(ethers@6.15.0(bufferutil@4.0.9)(utf-8-validate@5.0.10))(typescript@5.8.3)(utf-8-validate@5.0.10)(viem@2.31.6(bufferutil@4.0.9)(typescript@5.8.3)(utf-8-validate@5.0.10)(zod@3.25.67))':
     dependencies:
-      '@hpke/chacha20poly1305': 1.6.2
-      '@hpke/core': 1.7.2
       '@noble/curves': 1.9.2
       '@noble/hashes': 1.8.0
-      '@privy-io/public-api': 2.41.0(bufferutil@4.0.9)(typescript@5.8.3)(utf-8-validate@5.0.10)
+      '@privy-io/public-api': 2.31.0(bufferutil@4.0.9)(typescript@5.8.3)(utf-8-validate@5.0.10)
       '@solana/web3.js': 1.98.2(bufferutil@4.0.9)(encoding@0.1.13)(typescript@5.8.3)(utf-8-validate@5.0.10)
       canonicalize: 2.1.0
       dotenv: 16.6.1
@@ -13224,7 +13240,7 @@ snapshots:
 
   '@types/connect@3.4.38':
     dependencies:
-      '@types/node': 20.19.0
+      '@types/node': 20.19.9
 
   '@types/d3-array@3.2.1': {}
 
@@ -13406,7 +13422,7 @@ snapshots:
 
   '@types/pbkdf2@3.1.2':
     dependencies:
-      '@types/node': 20.19.0
+      '@types/node': 20.19.9
 
   '@types/phoenix@1.6.6': {}
 
@@ -13439,7 +13455,7 @@ snapshots:
 
   '@types/secp256k1@4.0.6':
     dependencies:
-      '@types/node': 20.19.0
+      '@types/node': 20.19.9
 
   '@types/semver@7.7.0': {}
 
@@ -13455,7 +13471,7 @@ snapshots:
 
   '@types/ws@7.4.7':
     dependencies:
-      '@types/node': 20.19.0
+      '@types/node': 20.19.9
 
   '@types/ws@8.18.1':
     dependencies:
