@@ -33,11 +33,20 @@ const checkExternalWalletConnection = async (): Promise<boolean> => {
   }
 };
 
+// Track ongoing connection requests to prevent duplicates
+let connectionInProgress = false;
+
 // Utility to request external wallet connection with proper permissions
 const requestExternalWalletConnection = async (): Promise<boolean> => {
   if (typeof window === 'undefined') return false;
+  if (connectionInProgress) {
+    console.log('🔄 Connection already in progress, skipping...');
+    return false;
+  }
 
   try {
+    connectionInProgress = true;
+
     // Request MetaMask/Ethereum wallet connection
     if (window.ethereum) {
       const accounts = (await window.ethereum.request({
@@ -59,7 +68,9 @@ const requestExternalWalletConnection = async (): Promise<boolean> => {
     return false;
   } catch (error) {
     console.log('Failed to request external wallet connection:', error);
-    throw new Error('Failed to connect external wallet');
+    return false;
+  } finally {
+    connectionInProgress = false;
   }
 };
 
@@ -252,7 +263,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('👤 Privy user:', privyUser);
 
       setState((prev) => ({ ...prev, isLoading: true, error: null }));
-      await loadUserProfile();
+
+      // Create user profile from Privy data directly
+      // Backend automatically creates users, so we don't need to call /me
+      const userProfile: UserProfile = {
+        id: privyUser?.id || '',
+        privyDid: privyUser?.id || '',
+        walletAddress: privyUser?.wallet?.address || null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        email: privyUser?.email?.address || null,
+        role: 'TRADER',
+        isActive: true,
+        firstName: null,
+        lastName: null,
+        displayName: privyUser?.email?.address?.split('@')[0] || 'User',
+        avatar: null,
+        bio: null,
+        website: null,
+        twitterHandle: null,
+        sellerStatus: 'NOT_APPLIED',
+        appliedAt: null,
+        verifiedAt: null,
+        rejectedAt: null,
+        rejectionReason: null,
+        notifications: true,
+        newsletter: true,
+        darkMode: false,
+      };
+
+      console.log('✅ Setting user profile from Privy data:', userProfile);
+      setState((prev) => ({
+        ...prev,
+        user: userProfile,
+      }));
     } catch (error) {
       console.error('❌ Auth initialization error:', error);
       setState((prev) => ({
@@ -264,36 +308,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const loadUserProfile = async () => {
+  // Optional: Load full user profile from backend (only when needed)
+  const loadFullUserProfile = async () => {
     try {
-      console.log('🔑 Getting access token...');
       const token = await privyGetAccessToken();
-      console.log('🔑 Token received:', token ? 'YES' : 'NO');
-
       if (!token) throw new Error('No auth token available');
 
-      console.log('📡 Making API call to:', `${API_BASE_URL}/api/v1/users/me`);
-      const result = await ProfileApi.getCurrentProfile(token);
-      console.log('📋 API Response:', result);
+      const walletAddress = privyUser?.wallet?.address;
+      const result = await ProfileApi.getCurrentProfile(token, walletAddress);
 
       if (result.success) {
-        console.log('✅ Setting user profile:', result.data);
         setState((prev) => ({
           ...prev,
           user: result.data,
         }));
+        return result.data;
       } else {
         throw new Error(result.error);
       }
     } catch (error) {
-      console.error('❌ Error loading user profile:', error);
+      console.error('❌ Error loading full user profile:', error);
       throw error instanceof Error ? error : new Error('Failed to load user profile');
     }
   };
 
+  // Track connection attempts to prevent duplicates
+  const [connectionAttempting, setConnectionAttempting] = useState(false);
+
   // Wallet Actions - Simplified to prioritize Privy
   const connectWallet = async () => {
+    // Prevent multiple simultaneous connection attempts
+    if (connectionAttempting) {
+      console.log('🔄 Connection already in progress, skipping...');
+      return;
+    }
+
     try {
+      setConnectionAttempting(true);
       setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
       // If user is already authenticated with Privy, they're good to go
@@ -313,6 +364,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }));
     } finally {
       setState((prev) => ({ ...prev, isLoading: false }));
+      setConnectionAttempting(false);
     }
   };
 
@@ -340,7 +392,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshUserProfile = async () => {
     if (privyAuthenticated && privyUser) {
-      await loadUserProfile();
+      // Re-initialize auth with current Privy data
+      await initializeAuth();
     }
   };
 
@@ -465,12 +518,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   // Debug authentication state
-  console.log('🔍 Auth Debug:', {
-    privyAuthenticated,
-    stateUser: !!state.user,
-    isAuthenticated: privyAuthenticated && !!state.user,
-    error: state.error,
-  });
+  // console.log('🔍 Auth Debug:', {
+  //   privyAuthenticated,
+  //   stateUser: !!state.user,
+  //   isAuthenticated: privyAuthenticated && !!state.user,
+  //   error: state.error,
+  // });
 
   // Context Value
   const contextValue: AuthContextType = {

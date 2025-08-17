@@ -4,7 +4,9 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   transpilePackages: ['three'],
 
-  // Security headers including CSP for Privy
+  // Security headers - CSP commented out for development
+  // TODO: Re-enable CSP for production deployment
+  /*
   async headers() {
     return [
       {
@@ -22,17 +24,17 @@ const nextConfig: NextConfig = {
               "object-src 'none'",
               "base-uri 'self'",
               "form-action 'self'",
-              "frame-ancestors 'none'",
+              "frame-ancestors 'self' https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app https://aces-monorepo-git-dev-dan-aces-fun.vercel.app https://aces.fun https://auth.privy.io",
               'child-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org',
               'frame-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org https://challenges.cloudflare.com',
-              "connect-src 'self' https://auth.privy.io wss://relay.walletconnect.com wss://relay.walletconnect.org wss://www.walletlink.org https://*.rpc.privy.systems https://explorer-api.walletconnect.com https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app https://pulse.walletconnect.org https://api.web3modal.org",
+              "connect-src 'self' http://localhost:3000 https://auth.privy.io wss://relay.walletconnect.com wss://relay.walletconnect.org wss://www.walletlink.org https://*.rpc.privy.systems https://explorer-api.walletconnect.com https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app https://pulse.walletconnect.org https://api.web3modal.org https://sepolia.base.org https://base-sepolia-rpc.publicnode.com https://base-sepolia.blockpi.network https://base-sepolia.gateway.tenderly.co https://1rpc.io https://min-api.cryptocompare.com https://api.thegraph.com https://api.coingecko.com https://api.coinbase.com https://api.binance.com",
               "worker-src 'self'",
               "manifest-src 'self'",
             ].join('; '),
           },
           {
             key: 'X-Frame-Options',
-            value: 'DENY',
+            value: 'SAMEORIGIN',
           },
           {
             key: 'X-Content-Type-Options',
@@ -50,6 +52,7 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  */
 
   // API proxy configuration
   async rewrites() {

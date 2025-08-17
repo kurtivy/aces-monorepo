@@ -1,7 +1,8 @@
 'use client';
 
 import { PrivyProvider } from '@privy-io/react-auth';
-import { WagmiProvider, createConfig, http, fallback } from 'wagmi';
+import { WagmiProvider } from '@privy-io/wagmi';
+import { createConfig, http, fallback } from 'wagmi';
 import { baseSepolia, base } from 'wagmi/chains';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from '../../lib/auth/auth-context';
@@ -39,28 +40,29 @@ const BASE_MAINNET_RPCS = [
   'https://1rpc.io/base',
 ];
 
-// Create wagmi config with reliable RPC endpoints
-const wagmiConfig = createConfig({
+// Create wagmi config for Privy integration
+export const wagmiConfig = createConfig({
   chains: [baseSepolia, base],
   transports: {
     // Base Sepolia with fallback RPC endpoints
     [baseSepolia.id]: fallback(
-      BASE_SEPOLIA_RPCS.map((url) =>
+      BASE_SEPOLIA_RPCS.map((url, index) =>
         http(url, {
           timeout: 15000, // 15 second timeout
           retryCount: 2,
           retryDelay: 1000,
+          key: `baseSepolia-${index}`,
         }),
       ),
     ),
     // Base Mainnet with fallback RPC endpoints
     [base.id]: fallback(
-      BASE_MAINNET_RPCS.map((url) =>
+      BASE_MAINNET_RPCS.map((url, index) =>
         http(url, {
           timeout: 15000,
           retryCount: 2,
           retryDelay: 1000,
-          // rank: index === 0 ? 1 : 2,
+          key: `baseMainnet-${index}`,
         }),
       ),
     ),
@@ -72,8 +74,6 @@ const wagmiConfig = createConfig({
       wait: 16,
     },
   },
-  // Disable provider discovery that might interfere
-  multiInjectedProviderDiscovery: false,
   // Enable SSR
   ssr: true,
 });
@@ -91,6 +91,14 @@ export default function AppProviders({ children }: { children: ReactNode }) {
     }
     console.log('🌐 Current domain:', window.location.hostname);
     console.log('🔧 Current origin:', window.location.origin);
+
+    // Check if we're on localhost and warn about origin configuration
+    if (window.location.hostname === 'localhost') {
+      console.warn(
+        '🚨 LOCALHOST DETECTED: Make sure to add "http://localhost:3000" to your Privy App\'s allowed origins in the dashboard!',
+      );
+      console.warn('📍 Dashboard URL: https://dashboard.privy.io/');
+    }
   }
 
   // Don't render Privy if app ID is missing
@@ -119,16 +127,28 @@ export default function AppProviders({ children }: { children: ReactNode }) {
             accentColor: '#D0B264',
             logo: '/aces-logo.png',
             loginMessage: 'Connect your wallet to ACES',
-            showWalletLoginFirst: false, // Show Privy options first
+            showWalletLoginFirst: true, // Show wallet options first
             walletList: ['metamask', 'coinbase_wallet', 'wallet_connect'],
           },
           embeddedWallets: {
-            createOnLogin: 'all-users', // Create embedded wallet for everyone by default
+            createOnLogin: 'users-without-wallets', // Only create embedded wallet if no external wallet
             requireUserPasswordOnCreate: false,
-            showWalletUIs: true,
+            showWalletUIs: false, // Reduce complexity
           },
           defaultChain: baseSepolia,
           supportedChains: [baseSepolia, base],
+          // Add SIWE configuration for better external wallet support
+          externalWallets: {
+            coinbaseWallet: {
+              // Provide the connection options
+              connectionOptions: 'smartWalletOnly',
+            },
+          },
+          // Legal config to avoid CSP issues
+          legal: {
+            termsAndConditionsUrl: 'https://aces.fun/terms',
+            privacyPolicyUrl: 'https://aces.fun/privacy',
+          },
         }}
       >
         <WagmiProvider config={wagmiConfig}>
