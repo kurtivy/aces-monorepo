@@ -33,7 +33,7 @@ export default function AboutModal({ isOpen, onClose }: AboutModalProps) {
             <div className="max-w-4xl w-full max-h-[90vh] bg-[#231F20] rounded-lg shadow-lg border border-[#D0B264]/40 overflow-hidden">
               {/* Header */}
               <div className="flex items-center justify-between p-6 border-b border-[#D0B264]/20">
-                <h1 className="text-3xl font-heading font-bold text-[#D0B264]">About ACES</h1>
+                <h1 className="text-3xl font-neue-world font-bold text-[#D0B264]">About ACES</h1>
                 <button
                   onClick={onClose}
                   className="text-[#D0B264] hover:text-white transition-colors duration-200"
@@ -46,7 +46,7 @@ export default function AboutModal({ isOpen, onClose }: AboutModalProps) {
               <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
                 <div className="text-gray-300 space-y-6 leading-relaxed">
                   <section>
-                    <h2 className="text-2xl font-heading font-semibold text-[#D0B264] mb-4">
+                    <h2 className="text-2xl font-neue-world font-semibold text-[#D0B264] mb-4">
                       Our Vision
                     </h2>
                     <p>
@@ -63,7 +63,7 @@ export default function AboutModal({ isOpen, onClose }: AboutModalProps) {
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-heading font-semibold text-[#D0B264] mb-4">
+                    <h2 className="text-2xl font-neue-world font-semibold text-[#D0B264] mb-4">
                       The Tokenization Revolution
                     </h2>
                     <p>
@@ -83,7 +83,7 @@ export default function AboutModal({ isOpen, onClose }: AboutModalProps) {
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-heading font-semibold text-[#D0B264] mb-4">
+                    <h2 className="text-2xl font-neue-world font-semibold text-[#D0B264] mb-4">
                       Our Ecosystem
                     </h2>
                     <p>
@@ -99,12 +99,12 @@ export default function AboutModal({ isOpen, onClose }: AboutModalProps) {
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-heading font-semibold text-[#D0B264] mb-4">
+                    <h2 className="text-2xl font-neue-world font-semibold text-[#D0B264] mb-4">
                       Benefits for All Participants
                     </h2>
                     <div className="space-y-4">
                       <div>
-                        <h3 className="text-xl font-heading font-medium text-[#D0B264]/80 mb-2">
+                        <h3 className="text-xl font-neue-world font-medium text-[#D0B264]/80 mb-2">
                           For Sellers
                         </h3>
                         <p>
@@ -114,7 +114,7 @@ export default function AboutModal({ isOpen, onClose }: AboutModalProps) {
                         </p>
                       </div>
                       <div>
-                        <h3 className="text-xl font-heading font-medium text-[#D0B264]/80 mb-2">
+                        <h3 className="text-xl font-neue-world font-medium text-[#D0B264]/80 mb-2">
                           For Buyers
                         </h3>
                         <p>
@@ -124,7 +124,7 @@ export default function AboutModal({ isOpen, onClose }: AboutModalProps) {
                         </p>
                       </div>
                       <div>
-                        <h3 className="text-xl font-heading font-medium text-[#D0B264]/80 mb-2">
+                        <h3 className="text-xl font-neue-world font-medium text-[#D0B264]/80 mb-2">
                           For Retail Traders
                         </h3>
                         <p>
@@ -137,7 +137,7 @@ export default function AboutModal({ isOpen, onClose }: AboutModalProps) {
                   </section>
 
                   <section>
-                    <h2 className="text-2xl font-heading font-semibold text-[#D0B264] mb-4">
+                    <h2 className="text-2xl font-neue-world font-semibold text-[#D0B264] mb-4">
                       The Future of Trading
                     </h2>
                     <p>

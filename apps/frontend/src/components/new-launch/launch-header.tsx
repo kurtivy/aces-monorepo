@@ -25,7 +25,7 @@ export default function LaunchHeader() {
         <div className="flex items-center">
           <span
             className="text-4xl font-bold text-white mr-2"
-            style={{ fontFamily: 'var(--font-heading), sans-serif' }}
+            style={{ fontFamily: 'var(--font-neue-world), sans-serif' }}
           >
             ACES.
           </span>

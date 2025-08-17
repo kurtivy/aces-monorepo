@@ -1,24 +1,9 @@
 import type { Metadata } from 'next';
-import { Libre_Caslon_Text, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import ErrorBoundary from '../components/error-boundary';
 import { DeviceProvider } from '../contexts/device-provider';
 import AppProviders from '@/components/providers/app-providers';
-
-const libreCaslon = Libre_Caslon_Text({
-  subsets: ['latin'],
-  display: 'swap',
-  variable: '--font-libre-caslon',
-  weight: ['400', '700'],
-  style: ['normal', 'italic'],
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ['latin'],
-  display: 'swap',
-  variable: '--font-jetbrains-mono',
-  weight: ['400', '700'],
-});
+import { fontVariables } from '@/lib/fonts';
 
 export const metadata: Metadata = {
   title: 'ACES.fun',
@@ -89,9 +74,7 @@ export default function RootLayout({
           />
         ) : null}
       </head>
-      <body
-        className={`${libreCaslon.variable} ${jetbrainsMono.variable} font-system antialiased bg-black`}
-      >
+      <body className={`${fontVariables} font-body antialiased bg-black`}>
         <ErrorBoundary>
           <AppProviders>
             <DeviceProvider>{children}</DeviceProvider>

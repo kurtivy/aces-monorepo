@@ -30,7 +30,7 @@ export default function AcesHeader({ className = '', title, onProfileClick }: Ac
             <div className="flex items-center">
               <span
                 className="text-2xl font-bold text-white mr-1"
-                style={{ fontFamily: 'var(--font-heading), sans-serif' }}
+                style={{ fontFamily: 'var(--font-neue-world), sans-serif' }}
               >
                 ACES.
               </span>

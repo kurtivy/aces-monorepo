@@ -127,15 +127,26 @@ const config: Config = {
           'Segoe UI Symbol',
           'Noto Color Emoji',
         ],
-        // Custom fonts
-        'libre-caslon': ['var(--font-libre-caslon)', 'serif'],
+        // Updated font definitions with your new fonts
+        heading: ['var(--font-neue-world)', 'sans-serif'], // NeueWorld for headings
+        body: ['var(--font-proxima-nova)', 'sans-serif'], // Proxima Nova for body
+        spray: ['var(--font-spray-letters)', 'cursive'], // Spray Letters for design
+        braah: ['var(--font-braah-one)', 'sans-serif'], // Braah One for design
+        mono: ['var(--font-jetbrains-mono)', 'monospace'], // JetBrains Mono for code
+
+        // Keep legacy aliases for backward compatibility
         'jetbrains-mono': ['var(--font-jetbrains-mono)', 'monospace'],
-        // Aliases
-        heading: ['var(--font-libre-caslon)', 'serif'],
         jetbrains: ['var(--font-jetbrains-mono)', 'monospace'],
-        // Ensure headings use Libre Caslon
-        sans: ['var(--font-system)', 'sans-serif'],
-        serif: ['var(--font-libre-caslon)', 'serif'],
+
+        // Direct font access
+        'neue-world': ['var(--font-neue-world)', 'sans-serif'],
+        'proxima-nova': ['var(--font-proxima-nova)', 'sans-serif'],
+        'spray-letters': ['var(--font-spray-letters)', 'cursive'],
+        'braah-one': ['var(--font-braah-one)', 'sans-serif'],
+
+        // Override default sans/serif to use your fonts
+        sans: ['var(--font-proxima-nova)', 'var(--font-system)', 'sans-serif'],
+        serif: ['var(--font-neue-world)', 'serif'], // If you want serif to use NeueWorld
       },
       boxShadow: {
         goldGlow: '0 0 20px rgba(208, 178, 100, 0.5)',

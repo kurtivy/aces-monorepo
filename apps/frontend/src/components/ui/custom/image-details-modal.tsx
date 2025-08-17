@@ -342,7 +342,7 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                 <div className="flex items-start justify-between mb-4 sm:mb-6">
                   <div className="flex-1 pr-2">
                     <div>
-                      <h2 className="text-xl sm:text-2xl lg:text-3xl xl:text-4xl font-bold text-[#D0B264] mb-2 sm:mb-3 font-heading tracking-wide leading-tight">
+                      <h2 className="text-xl sm:text-2xl lg:text-3xl xl:text-4xl font-bold text-[#D0B264] mb-2 sm:mb-3 font-neue-world tracking-wide leading-tight">
                         {safeMetadata.title}
                       </h2>
 
@@ -361,7 +361,7 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                               maximumFractionDigits: 0,
                             })}`;
                             return (
-                              <span className="text-xl sm:text-2xl lg:text-3xl font-heading text-[#FFFFFF]/80 font-bold leading-none">
+                              <span className="text-xl sm:text-2xl lg:text-3xl font-neue-world text-[#FFFFFF]/80 font-mono leading-none tracking-widest">
                                 {formatted}
                               </span>
                             );
@@ -369,7 +369,7 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                           <span className="text-[#D0B264]/60 text-lg sm:text-xl lg:text-2xl font-medium">
                             •
                           </span>
-                          <span className="text-lg sm:text-xl lg:text-2xl font-heading text-[#D0B264] font-semibold">
+                          <span className="text-lg sm:text-xl lg:text-2xl font-neue-world text-[#D0B264] font-mono tracking-widest">
                             {safeMetadata.ticker}
                           </span>
                         </div>
@@ -479,7 +479,7 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                           <span className="text-[10px] xs:text-xs sm:text-xs md:text-sm text-[#FFFFFF]/60 tracking-wide font-jetbrains-mono uppercase">
                             {label}
                           </span>
-                          <span className="text-xs xs:text-sm sm:text-sm md:text-base font-heading font-bold text-[#D0B264] mt-1">
+                          <span className="text-xs xs:text-sm sm:text-sm md:text-base font-neue-world font-bold text-[#D0B264] mt-1">
                             {value}
                           </span>
                         </div>
