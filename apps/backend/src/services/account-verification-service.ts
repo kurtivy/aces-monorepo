@@ -23,8 +23,6 @@ export class AccountVerificationService {
     },
     documentFile?: MultipartFile & { buffer?: Buffer },
   ) {
-    console.log('Starting verification submission for user:', userId);
-
     try {
       // Check rate limiting
       const user = await this.prisma.user.findUnique({
@@ -32,19 +30,15 @@ export class AccountVerificationService {
         include: { accountVerification: true }, // Changed from verification to accountVerification
       });
 
-      console.log('Found user:', { userId, hasVerification: !!user?.accountVerification });
-
       if (!user) throw errors.notFound('User not found');
 
       // Check if user can submit (max 3 attempts per 24h)
       if (user.verificationAttempts >= 3) {
         const lastAttempt = user.lastVerificationAttempt;
         if (lastAttempt && Date.now() - lastAttempt.getTime() < 24 * 60 * 60 * 1000) {
-          console.log('Too many attempts:', { attempts: user.verificationAttempts, lastAttempt });
           throw errors.badRequest('Too many verification attempts. Please try again in 24 hours.');
         }
         // Reset counter if 24h passed
-        console.log('Resetting attempt counter');
         await this.prisma.user.update({
           where: { id: userId },
           data: { verificationAttempts: 0 },
@@ -53,14 +47,12 @@ export class AccountVerificationService {
 
       // Delete previous document if it exists
       if (user.accountVerification?.documentImageUrl) {
-        console.log('Deleting previous document');
         await this.deleteVerificationDocument(userId);
       }
 
       // Upload document if provided
       let documentImageUrl: string | null = null;
       if (documentFile) {
-        console.log('Uploading new document to Google Cloud Secure Storage');
         documentImageUrl = await SecureStorageService.uploadSecureDocument(
           documentFile,
           userId,
@@ -75,10 +67,8 @@ export class AccountVerificationService {
       }
 
       // Use transaction to ensure all operations succeed or fail together
-      console.log('Starting database transaction');
       const result = await this.prisma.$transaction(async (tx) => {
         // Create or update verification record
-        console.log('Creating verification record');
         const verification = await tx.accountVerification.upsert({
           where: { userId },
           create: {
@@ -98,7 +88,6 @@ export class AccountVerificationService {
         });
 
         // Update user attempts
-        console.log('Updating user verification attempts');
         await tx.user.update({
           where: { id: userId },
           data: {
@@ -109,7 +98,6 @@ export class AccountVerificationService {
         });
 
         // Log audit trail
-        console.log('Creating audit log');
         await tx.verificationAuditLog.create({
           data: {
             verificationId: verification.id,
@@ -120,11 +108,9 @@ export class AccountVerificationService {
           },
         });
 
-        console.log('Transaction completed successfully');
         return verification;
       });
 
-      console.log('Verification submitted successfully');
       return result;
     } catch (error) {
       console.error('Error in submitVerification:', error);
@@ -149,8 +135,6 @@ export class AccountVerificationService {
     if (decision === VerificationStatus.PENDING) {
       throw errors.badRequest('Cannot set verification status to pending during review');
     }
-
-    console.log('Reviewing verification:', { verificationId, decision, reviewerId });
 
     try {
       const result = await this.prisma.$transaction(async (tx) => {
@@ -211,7 +195,6 @@ export class AccountVerificationService {
         return updatedVerification;
       });
 
-      console.log('Verification reviewed successfully');
       return result;
     } catch (error) {
       console.error('Error in reviewVerification:', error);
@@ -421,19 +404,14 @@ export class AccountVerificationService {
     },
   ) {
     try {
-      console.log('Creating verification record for user:', userId);
-
       // Check if user already has a verification
       const existingVerification = await this.prisma.accountVerification.findUnique({
         where: { userId },
       });
 
       if (existingVerification) {
-        console.log('Verification already exists for user:', userId);
-
         // If this is for testing and we have a documentImageUrl, update the existing record
         if (data.documentImageUrl) {
-          console.log('Updating existing verification with test document URL');
           const updatedVerification = await this.prisma.accountVerification.update({
             where: { id: existingVerification.id },
             data: {
@@ -448,7 +426,6 @@ export class AccountVerificationService {
             data: { sellerStatus: SellerStatus.PENDING },
           });
 
-          console.log('Existing verification updated with documentImageUrl');
           return updatedVerification;
         }
 
@@ -483,7 +460,6 @@ export class AccountVerificationService {
         },
       });
 
-      console.log('Verification record created successfully:', verification.id);
       return verification;
     } catch (error) {
       console.error('Error creating verification:', error);
@@ -499,14 +475,11 @@ export class AccountVerificationService {
     userId: string,
   ): Promise<string> {
     try {
-      console.log('Uploading selfie image to Google Cloud Secure Storage for user:', userId);
-
       const selfieImageUrl = await SecureStorageService.uploadSecureDocument(
         selfieFile,
         userId,
         'selfie',
       );
-      console.log('Selfie uploaded successfully to Google Cloud Secure Storage:', selfieImageUrl);
 
       return selfieImageUrl;
     } catch (error) {
@@ -531,14 +504,11 @@ export class AccountVerificationService {
     },
   ) {
     try {
-      console.log('Updating facial verification data:', { verificationId, facialData });
-
       const updatedVerification = await this.prisma.accountVerification.update({
         where: { id: verificationId },
         data: facialData,
       });
 
-      console.log('Facial verification data updated successfully');
       return updatedVerification;
     } catch (error) {
       console.error('Error updating facial verification:', error);

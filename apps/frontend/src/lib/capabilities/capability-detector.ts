@@ -32,17 +32,10 @@ export class CapabilityDetector {
    */
   async detectCapabilities(): Promise<DeviceCapabilities> {
     try {
-      if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-        console.log(`🔍 Starting capability detection (${this.estimationId})`);
-      }
-
       // Check cache first if caching is enabled
       if (CapabilityFeatureFlagManager.isEnabled('capabilityCache')) {
         const cached = CapabilityCache.getCachedCapabilities();
         if (cached) {
-          if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-            console.log(`✅ Using cached capabilities`);
-          }
           return cached;
         }
       }
@@ -67,10 +60,6 @@ export class CapabilityDetector {
         detectionTimestamp: Date.now(),
       };
 
-      if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-        console.log(`✅ Capability detection complete`, capabilities);
-      }
-
       // Cache the results if caching is enabled
       if (CapabilityFeatureFlagManager.isEnabled('capabilityCache')) {
         CapabilityCache.setCachedCapabilities(capabilities);
@@ -87,17 +76,10 @@ export class CapabilityDetector {
    * ENHANCED: Multi-tier memory capability detection with navigator API fallbacks
    */
   private async detectMemoryCapabilitiesEnhanced(): Promise<MemoryCapabilities> {
-    if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-      console.log('🧠 Starting enhanced memory detection...');
-    }
-
     try {
       // Tier 1: performance.memory API (Chrome-specific but most accurate)
       const memory = (performance as unknown as { memory?: PerformanceMemory }).memory;
       if (memory && memory.usedJSHeapSize && memory.totalJSHeapSize) {
-        if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-          console.log('📊 Using performance.memory API (Tier 1)');
-        }
         return this.analyzePerformanceMemory(memory);
       }
 
@@ -106,25 +88,13 @@ export class CapabilityDetector {
       const hardwareConcurrency = navigator.hardwareConcurrency;
 
       if (deviceMemory && hardwareConcurrency) {
-        if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-          console.log('📱 Using navigator.deviceMemory API (Tier 2)', {
-            deviceMemory,
-            hardwareConcurrency,
-          });
-        }
         return this.estimateFromNavigatorAPIs(deviceMemory, hardwareConcurrency);
       }
 
       // Tier 3: Conservative fallback (iOS/Safari will use this)
-      if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-        console.log('🍎 Using conservative fallback (Tier 3) - likely iOS/Safari');
-      }
       return this.getConservativeMemoryFallback();
     } catch (error) {
       console.warn('All memory detection methods failed:', error);
-      if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-        console.log('💥 Memory detection error, using fallback');
-      }
       return this.getConservativeMemoryFallback();
     }
   }
@@ -192,22 +162,8 @@ export class CapabilityDetector {
       const isSafari = userAgent.includes('safari') && !userAgent.includes('chrome');
       const isIOS = /iphone|ipad|ipod/.test(userAgent);
 
-      if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-        console.log('🍎 iOS/Safari Detection Check:', {
-          userAgent: navigator.userAgent,
-          userAgentLower: userAgent,
-          isSafari,
-          isIOS,
-          willUseEnhancedDetection: isSafari || isIOS,
-        });
-      }
-
       if (isSafari || isIOS) {
         const iosMemory = this.estimateIOSDeviceMemorySimplified(userAgent);
-
-        if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-          console.log('✅ Using simplified iOS memory detection:', iosMemory);
-        }
 
         return iosMemory;
       }
@@ -227,10 +183,6 @@ export class CapabilityDetector {
   private estimateIOSDeviceMemorySimplified(userAgent: string): MemoryCapabilities {
     // Simple Low Power Mode detection - this was likely the real culprit!
     const isLowPowerMode = this.detectLowPowerMode();
-
-    if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-      console.log('📱 iOS Detection - Low Power Mode:', isLowPowerMode);
-    }
 
     // iPad - assume modern and capable
     if (userAgent.includes('ipad')) {
@@ -285,16 +237,6 @@ export class CapabilityDetector {
 
     const isLowPowerMode = prefersReducedMotion || (limitedConcurrency && lowPerformance);
 
-    if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-      console.log('🔋 Low Power Mode Detection:', {
-        prefersReducedMotion,
-        limitedConcurrency,
-        iterationsPerMs,
-        lowPerformance,
-        result: isLowPowerMode,
-      });
-    }
-
     return isLowPowerMode;
   }
 
@@ -315,15 +257,8 @@ export class CapabilityDetector {
         }) as WebGL2RenderingContext | null;
         if (gl) {
           supportsWebGL2 = true;
-          if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-            console.log('✅ WebGL2 context created successfully');
-          }
         }
-      } catch (webgl2Error) {
-        if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-          console.log('⚠️ WebGL2 context creation failed:', webgl2Error);
-        }
-      }
+      } catch (webgl2Error) {}
 
       // Fallback to WebGL1 if WebGL2 failed
       if (!gl) {
@@ -332,21 +267,11 @@ export class CapabilityDetector {
             canvas.getContext('experimental-webgl', {
               failIfMajorPerformanceCaveat: false,
             })) as WebGLRenderingContext | null;
-          if (gl && CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-            console.log('✅ WebGL1 context created successfully');
-          }
-        } catch (webglError) {
-          if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-            console.log('⚠️ WebGL1 context creation failed:', webglError);
-          }
-        }
+        } catch (webglError) {}
       }
 
       // If no WebGL context available
       if (!gl) {
-        if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-          console.log('❌ No WebGL context available, using fallback');
-        }
         return this.getGPUFallback();
       }
 
@@ -360,53 +285,20 @@ export class CapabilityDetector {
           vendor = (gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) as string) || 'Unknown';
           renderer = (gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) as string) || 'Unknown';
         }
-      } catch (debugError) {
-        if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-          console.log('⚠️ GPU debug info not available:', debugError);
-        }
-      }
+      } catch (debugError) {}
 
       // Get max texture size safely
       let maxTextureSize = 2048; // Safe default
       try {
         maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
-      } catch (textureError) {
-        if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-          console.log('⚠️ Could not get max texture size:', textureError);
-        }
-      }
+      } catch (textureError) {}
 
       // Estimate GPU memory with enhanced error handling
       let gpuMemoryMB = 150; // Conservative default
 
-      if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-        console.log('🎮 Starting GPU memory estimation...', {
-          vendor,
-          renderer,
-          maxTextureSize,
-          webgl2Support: supportsWebGL2,
-        });
-      }
-
       try {
         gpuMemoryMB = await this.estimateGPUMemory(gl);
-
-        if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-          console.log('✅ GPU memory estimation completed:', {
-            estimatedMemoryMB: gpuMemoryMB,
-            vendor,
-            renderer,
-          });
-        }
       } catch (memoryError) {
-        if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-          console.log('⚠️ GPU memory estimation failed, using fallback:', {
-            error: memoryError,
-            fallbackMemoryMB: gpuMemoryMB,
-            vendor,
-            renderer,
-          });
-        }
         // Track GPU memory estimation failure
         this.trackCapabilityMetric('gpu_memory_estimation_failed', {
           error: memoryError instanceof Error ? memoryError.message : 'Unknown error',
@@ -440,11 +332,6 @@ export class CapabilityDetector {
    * GPU memory estimation with timeout and monitoring
    */
   private async estimateGPUMemory(gl: WebGLRenderingContext): Promise<number> {
-    if (CapabilityFeatureFlagManager.isEnabled('gpuMonitoring')) {
-      return this.estimateGPUMemoryWithMonitoring(gl);
-    }
-
-    // Basic GPU memory estimation without monitoring
     return this.estimateGPUMemoryCore(gl);
   }
 
@@ -455,10 +342,6 @@ export class CapabilityDetector {
     const startTime = performance.now();
 
     try {
-      if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-        console.log(`🔍 Starting GPU memory estimation (${this.estimationId})`);
-      }
-
       const result = await Promise.race([
         this.estimateGPUMemoryCore(gl),
         new Promise<number>((_, reject) =>
@@ -475,10 +358,6 @@ export class CapabilityDetector {
         estimatedMemory: result,
         maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE),
       });
-
-      if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-        console.log(`✅ GPU memory estimated: ${result}MB (${duration.toFixed(1)}ms)`);
-      }
 
       return result;
     } catch (error) {
@@ -525,9 +404,6 @@ export class CapabilityDetector {
         if (error === gl.NO_ERROR) {
           maxSuccessfulSize = size;
         } else {
-          if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-            console.log(`GPU texture allocation failed at ${size}x${size}, error: ${error}`);
-          }
           break;
         }
 
@@ -544,16 +420,6 @@ export class CapabilityDetector {
 
       // Cap at reasonable limits for mobile devices
       const finalMemory = Math.min(Math.max(estimatedMemory, 100), 1000);
-
-      if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-        console.log('🧮 GPU Memory Estimation Details:', {
-          maxSuccessfulTextureSize: `${maxSuccessfulSize}x${maxSuccessfulSize}`,
-          rawEstimatedMemory: `${estimatedMemory.toFixed(1)}MB`,
-          finalMemoryWithCaps: `${finalMemory.toFixed(1)}MB`,
-          texturesTestedCount: testSizes.length,
-          texturesTested: testSizes,
-        });
-      }
 
       return finalMemory;
     } catch (error) {

@@ -1,5 +1,4 @@
-import type { BrowserCapabilities } from '../../types/capabilities';
-import { CapabilityFeatureFlagManager } from '../utils/feature-flags';
+import { BrowserCapabilities } from '../../types/capabilities';
 
 /**
  * Advanced Browser Feature Detection System
@@ -25,10 +24,6 @@ export class BrowserFeatureDetector {
     }
 
     try {
-      if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-        console.log(`🔍 Starting browser feature detection (${this.detectionId})`);
-      }
-
       // Run all feature detection in parallel for speed
       const [
         eventCapabilities,
@@ -97,10 +92,6 @@ export class BrowserFeatureDetector {
       };
 
       this.cachedCapabilities = capabilities;
-
-      if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-        console.log(`✅ Browser capabilities detected:`, capabilities);
-      }
 
       return capabilities;
     } catch (error) {

@@ -107,8 +107,6 @@ export function useReliableETHPrice(refreshInterval: number = 30000) {
     // Try API sources first (faster and more reliable)
     for (const source of PRICE_SOURCES) {
       try {
-        // console.log(`💰 Trying ${source.name}...`);
-
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
 
@@ -136,7 +134,6 @@ export function useReliableETHPrice(refreshInterval: number = 30000) {
             error: null,
           });
 
-          // console.log(`✅ ETH price from ${source.name}: $${price.toLocaleString()}`);
           return;
         }
       } catch (error) {
@@ -147,8 +144,6 @@ export function useReliableETHPrice(refreshInterval: number = 30000) {
 
     // Try Uniswap as last resort
     try {
-      // console.log(`🦄 Trying Uniswap mainnet...`);
-
       const response = await fetch(UNISWAP_MAINNET.url, {
         method: 'POST',
         headers: {
@@ -174,7 +169,6 @@ export function useReliableETHPrice(refreshInterval: number = 30000) {
             poolInfo: result.poolInfo || undefined,
           });
 
-          // console.log(`✅ ETH price from Uniswap: $${result.price.toLocaleString()}`);
           return;
         }
       }

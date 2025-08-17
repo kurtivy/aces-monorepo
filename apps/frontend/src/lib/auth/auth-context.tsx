@@ -28,7 +28,6 @@ const checkExternalWalletConnection = async (): Promise<boolean> => {
 
     return false;
   } catch (error) {
-    console.log('No external wallet connected:', error);
     return false;
   }
 };
@@ -40,7 +39,6 @@ let connectionInProgress = false;
 const requestExternalWalletConnection = async (): Promise<boolean> => {
   if (typeof window === 'undefined') return false;
   if (connectionInProgress) {
-    console.log('🔄 Connection already in progress, skipping...');
     return false;
   }
 
@@ -67,7 +65,6 @@ const requestExternalWalletConnection = async (): Promise<boolean> => {
 
     return false;
   } catch (error) {
-    console.log('Failed to request external wallet connection:', error);
     return false;
   } finally {
     connectionInProgress = false;
@@ -144,110 +141,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isAdmin = state.user?.role === 'ADMIN';
 
-  // Monitor external wallet disconnection with improved race condition handling
-  // TEMPORARILY DISABLED - Enable this later once core auth is working
-  /*
-  useEffect(() => {
-    const checkWalletConnection = async () => {
-      if (typeof window !== 'undefined' && window.ethereum) {
-        try {
-          const accounts = (await window.ethereum.request({ method: 'eth_accounts' })) as string[];
-          
-          // Only disconnect if both conditions are true:
-          // 1. No accounts in MetaMask
-          // 2. Privy thinks we're authenticated
-          // 3. User has been authenticated for at least 10 seconds (avoid chain switching issues)
-          if (accounts.length === 0 && privyAuthenticated && state.user) {
-            // Much longer delay to avoid race conditions during chain switching
-            setTimeout(async () => {
-              // Triple-check after delay
-              try {
-                if (window.ethereum) {
-                  const recheckAccounts = (await window.ethereum.request({ method: 'eth_accounts' })) as string[];
-                  if (recheckAccounts.length === 0 && privyAuthenticated && state.user) {
-                    console.log('🔌 External wallet disconnected, logging out...');
-                    await disconnectWallet();
-                  }
-                }
-              } catch (error) {
-                console.error('Error rechecking wallet connection:', error);
-              }
-            }, 10000); // 10 second delay - much more conservative
-          }
-        } catch (error) {
-          console.error('Error checking wallet connection:', error);
-        }
-      }
-    };
-
-    // Only check after user is fully authenticated and profile is loaded
-    if (privyAuthenticated && state.user) {
-      const timeoutId = setTimeout(checkWalletConnection, 5000); // Wait 5 seconds after auth
-
-      // Listen for account changes with very conservative debouncing
-      let accountChangeTimeout: NodeJS.Timeout;
-      
-      if (typeof window !== 'undefined' && window.ethereum && typeof window.ethereum.on === 'function') {
-        const handleAccountsChanged = async (accounts: unknown) => {
-          clearTimeout(accountChangeTimeout);
-          
-          accountChangeTimeout = setTimeout(async () => {
-            const accountsArray = accounts as string[];
-            // Only disconnect if user has been authenticated for a while AND no accounts
-            if (accountsArray.length === 0 && privyAuthenticated && state.user) {
-              console.log('🔌 Wallet accounts changed - disconnected');
-              await disconnectWallet();
-            }
-          }, 10000); // 10 second debounce - very conservative
-        };
-
-        window.ethereum.on('accountsChanged', handleAccountsChanged);
-        
-        return () => {
-          clearTimeout(timeoutId);
-          clearTimeout(accountChangeTimeout);
-          if (window.ethereum && typeof window.ethereum.removeListener === 'function') {
-            window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
-          }
-        };
-      }
-
-      return () => {
-        clearTimeout(timeoutId);
-      };
-    }
-  }, [privyAuthenticated, state.user]); // Monitor both auth and user state
-  */
-
-  // External wallet monitoring disabled - let Privy handle everything
-  /*
-  useEffect(() => {
-    const checkWalletStatus = async () => {
-      const hasExternal = await checkExternalWalletConnection();
-      setState((prev) => ({
-        ...prev,
-        hasExternalWallet: hasExternal,
-      }));
-
-      console.log('🔍 External wallet status:', hasExternal ? 'Connected' : 'Not connected');
-    };
-
-    checkWalletStatus();
-  }, [privyAuthenticated]);
-  */
-
   // Initialize auth state when Privy is ready (external wallet optional)
   useEffect(() => {
-    console.log('🔄 Auth state changed:', {
-      privyAuthenticated,
-      privyUser: !!privyUser,
-    });
-
     if (privyAuthenticated && privyUser) {
-      console.log('✅ Privy authenticated, calling initializeAuth...');
       initializeAuth();
     } else {
-      console.log('❌ Not authenticated with Privy, clearing user...');
       setState((prev) => ({
         ...prev,
         user: null,
@@ -258,10 +156,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const initializeAuth = async () => {
     try {
-      console.log('🚀 Starting auth initialization...');
-      console.log('📱 Privy authenticated:', privyAuthenticated);
-      console.log('👤 Privy user:', privyUser);
-
       setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
       // Create user profile from Privy data directly
@@ -292,7 +186,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         darkMode: false,
       };
 
-      console.log('✅ Setting user profile from Privy data:', userProfile);
       setState((prev) => ({
         ...prev,
         user: userProfile,
@@ -313,9 +206,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const token = await privyGetAccessToken();
       if (!token) throw new Error('No auth token available');
-
-      const walletAddress = privyUser?.wallet?.address;
-      const result = await ProfileApi.getCurrentProfile(token, walletAddress);
+      const result = await ProfileApi.getCurrentProfile(token);
 
       if (result.success) {
         setState((prev) => ({
@@ -339,7 +230,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const connectWallet = async () => {
     // Prevent multiple simultaneous connection attempts
     if (connectionAttempting) {
-      console.log('🔄 Connection already in progress, skipping...');
       return;
     }
 
@@ -349,12 +239,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // If user is already authenticated with Privy, they're good to go
       if (privyAuthenticated && privyUser) {
-        console.log('✅ User already authenticated with Privy');
         return;
       }
 
       // For new users, start with Privy login (which will show embedded wallet option first)
-      console.log('🔑 Starting Privy login flow...');
       await privyLogin();
     } catch (error) {
       console.error('❌ Connect wallet error:', error);
@@ -516,14 +404,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isOwnerOf = (resourceOwnerId: string): boolean => {
     return state.user?.id === resourceOwnerId;
   };
-
-  // Debug authentication state
-  // console.log('🔍 Auth Debug:', {
-  //   privyAuthenticated,
-  //   stateUser: !!state.user,
-  //   isAuthenticated: privyAuthenticated && !!state.user,
-  //   error: state.error,
-  // });
 
   // Context Value
   const contextValue: AuthContextType = {

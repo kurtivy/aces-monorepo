@@ -39,7 +39,6 @@ export function VerificationsTab() {
         const result = await VerificationsApi.getAllVerifications(token);
 
         if (result.success) {
-          console.log('Verifications API response:', result.data);
           setVerifications(result.data);
         } else {
           setError(result.error || 'Failed to fetch verifications');

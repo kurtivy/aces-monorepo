@@ -32,7 +32,6 @@ export function BidsTab() {
         const result = await BidsApi.getAllBids(token);
 
         if (result.success) {
-          console.log('Bids API response:', result.data);
           setBids(result.data);
         } else {
           setError(result.error || 'Failed to fetch bids');

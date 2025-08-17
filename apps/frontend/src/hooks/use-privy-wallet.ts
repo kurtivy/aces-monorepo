@@ -25,7 +25,6 @@ export function usePrivyWallet() {
   const handleExportWallet = useCallback(() => {
     if (exportWallet && hasEmbeddedWallet()) {
       try {
-        console.log('🔑 Opening Privy export wallet dialog...');
         exportWallet();
       } catch (error) {
         console.error('❌ Export wallet failed:', error);

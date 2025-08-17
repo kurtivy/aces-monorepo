@@ -34,18 +34,7 @@ class CanvasPerformanceMonitor {
     this.frameCount++;
   }
 
-  private reportMetrics(): void {
-    // const recent = this.metrics.slice(-60);
-    // const avgFrameTime = recent.reduce((sum, m) => sum + m.frameTime, 0) / recent.length;
-    // const avgFPS = recent.reduce((sum, m) => sum + m.fps, 0) / recent.length;
-    // const maxFrameTime = Math.max(...recent.map((m) => m.frameTime));
-    // console.log(`📊 Canvas Performance:`, {
-    //   avgFrameTime: `${avgFrameTime.toFixed(2)}ms`,
-    //   avgFPS: `${avgFPS.toFixed(1)}fps`,
-    //   maxFrameTime: `${maxFrameTime.toFixed(2)}ms`,
-    //   status: avgFrameTime < 16 ? '✅ SMOOTH' : avgFrameTime < 33 ? '⚠️ CHOPPY' : '🔴 LAGGY',
-    // });
-  }
+  private reportMetrics(): void {}
 
   getMetrics(): PerformanceMetrics[] {
     return [...this.metrics];

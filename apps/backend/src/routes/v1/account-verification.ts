@@ -57,12 +57,9 @@ function validateFile(file: MultipartFile): DocumentFile {
 }
 
 export async function accountVerificationRoutes(fastify: FastifyInstance) {
-  console.log('🔐 Registering account verification routes...');
-
   try {
     const verificationService = new AccountVerificationService(fastify.prisma);
     const log = logger.child({ module: 'account-verification-routes' });
-    console.log('✅ Account verification service initialized');
 
     // Add debugging hook for account verification requests
     fastify.addHook('preHandler', async (request) => {

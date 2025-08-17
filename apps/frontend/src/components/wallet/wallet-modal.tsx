@@ -151,12 +151,10 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
     if (!sendTo || !sendAmount || !walletAddress) return;
 
     try {
-      const txHash = await sendTransaction({
+      await sendTransaction({
         to: sendTo as `0x${string}`,
         value: (parseFloat(sendAmount) * 1e18).toString(), // Convert ETH to wei
       });
-
-      console.log('Transaction sent:', txHash);
       setSendModalOpen(false);
       setSendAmount('');
       setSendTo('');
@@ -172,8 +170,7 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
     if (!messageToSign) return;
 
     try {
-      const signature = await signMessage({ message: messageToSign });
-      console.log('Message signed:', signature);
+      await signMessage({ message: messageToSign });
       setSignModalOpen(false);
       setMessageToSign('');
     } catch (error) {

@@ -388,7 +388,6 @@ export function VerificationForm({ onSuccess, onCancel }: VerificationFormProps)
         setDocumentVerificationId(result.data.id);
         setCurrentStep(3);
         setError(null);
-        console.log('✅ Document verification submitted successfully');
       } else {
         setError(result.error || 'Failed to submit document verification');
       }
@@ -453,15 +452,8 @@ export function VerificationForm({ onSuccess, onCancel }: VerificationFormProps)
 
       if (result.success) {
         // Success! Move to Step 2 to test facial verification
-        console.log('✅ Test verification created:', result.data);
         setCurrentStep(2);
         setError(null);
-
-        // Show success message briefly
-        console.log(
-          '✅ Test verification ready for facial verification:',
-          result.data.verificationId,
-        );
       } else {
         setError(result.error || 'Failed to create test verification');
       }
@@ -610,7 +602,6 @@ export function VerificationForm({ onSuccess, onCancel }: VerificationFormProps)
     try {
       // At this point, both document and facial verification are already submitted
       // Show success message
-      console.log('✅ Both document and facial verification completed - finalizing...');
 
       setShowSuccessMessage(true);
 

@@ -5,7 +5,6 @@ import type {
   PerformanceMetrics,
 } from '../../types/capabilities';
 import { CapabilityDetector } from './capability-detector';
-import { CapabilityFeatureFlagManager } from '../utils/feature-flags';
 
 /**
  * Capability Configuration System
@@ -28,12 +27,7 @@ export class CapabilityConfigManager {
    * Get optimized canvas configuration based on detected capabilities
    */
   async getCanvasConfiguration(): Promise<CanvasConfiguration> {
-    // Return cached config if still valid and not in debug mode
-    if (
-      this.cachedConfig &&
-      Date.now() - this.lastDetectionTime < this.configCacheDuration &&
-      !CapabilityFeatureFlagManager.isEnabled('capabilityDebug')
-    ) {
+    if (this.cachedConfig && Date.now() - this.lastDetectionTime < this.configCacheDuration) {
       return this.cachedConfig;
     }
 
@@ -42,10 +36,6 @@ export class CapabilityConfigManager {
 
     this.cachedConfig = config;
     this.lastDetectionTime = Date.now();
-
-    if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-      console.log('🎨 Generated canvas configuration:', config);
-    }
 
     return config;
   }
@@ -57,10 +47,6 @@ export class CapabilityConfigManager {
     capabilities: DeviceCapabilities,
   ): Promise<CanvasConfiguration> {
     const config = this.generateCanvasConfiguration(capabilities);
-
-    if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-      console.log('🎭 Generated configuration from provided capabilities:', config);
-    }
 
     return config;
   }
@@ -127,18 +113,6 @@ export class CapabilityConfigManager {
 
     // Take the more conservative limit
     const budget = Math.min(memoryBasedBudget, gpuBasedBudget);
-
-    // Debug logging to identify bottlenecks
-    if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-      console.log('💾 Memory Budget Calculation:', {
-        availableMemoryMB,
-        gpuMemoryMB,
-        memoryBasedBudget: memoryBasedBudget.toFixed(1),
-        gpuBasedBudget: gpuBasedBudget.toFixed(1),
-        finalBudget: budget.toFixed(1),
-        bottleneck: memoryBasedBudget < gpuBasedBudget ? 'System Memory' : 'GPU Memory',
-      });
-    }
 
     // Ensure reasonable bounds (min 50MB, max 1GB)
     return Math.max(50, Math.min(budget, 1024));

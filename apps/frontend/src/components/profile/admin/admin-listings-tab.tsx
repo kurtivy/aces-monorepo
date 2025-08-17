@@ -104,7 +104,6 @@ export function AdminListingsTab() {
         const result = await ListingsApi.getAllListingsForAdmin(token);
 
         if (result.success) {
-          console.log('Admin listings API response:', result.data);
           setOriginalListings(result.data);
           const formattedListings = result.data.map(formatListingForAdminDisplay);
           setListings(formattedListings);

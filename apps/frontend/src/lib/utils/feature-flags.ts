@@ -74,12 +74,8 @@ export class CapabilityFeatureFlagManager {
     if (!this.isEnabled('capabilityDebug')) return;
 
     const flags = this.getFlags();
-    const phase = this.getCurrentPhase();
 
-    console.group('🚩 Capability Feature Flags');
-    console.log('Current Phase:', phase);
     console.table(flags);
-    console.groupEnd();
   }
 }
 

@@ -30,15 +30,8 @@ export class CapabilityCache {
         userAgent === navigator.userAgent;
 
       if (isValid) {
-        console.log('✅ Using cached device capabilities');
         return capabilities;
       } else {
-        console.log('🗑️ Cache invalidated:', {
-          versionMatch: version === this.CURRENT_VERSION,
-          notExpired: Date.now() - timestamp < this.CACHE_DURATION,
-          userAgentMatch: userAgent === navigator.userAgent,
-        });
-
         // Clean up invalid cache
         this.clearCache();
         return null;
@@ -63,7 +56,6 @@ export class CapabilityCache {
       };
 
       localStorage.setItem(this.CACHE_KEY, JSON.stringify(cacheData));
-      console.log('💾 Cached device capabilities for 24 hours');
     } catch (error) {
       console.warn('Failed to cache capabilities:', error);
       // Continue without caching - not critical
@@ -111,16 +103,14 @@ export class CapabilityCache {
    * Force cache invalidation (useful for development/testing)
    */
   static invalidateCache(): void {
-    console.log('🔄 Force invalidating capability cache');
     this.clearCache();
   }
 
   /**
    * Update cache version (will invalidate all existing caches)
    */
-  static updateVersion(newVersion: string): void {
+  static updateVersion(): void {
     // This would typically be done during deployment
     // For now, just log the version change
-    console.log(`📦 Capability cache version updated: ${this.CURRENT_VERSION} → ${newVersion}`);
   }
 }

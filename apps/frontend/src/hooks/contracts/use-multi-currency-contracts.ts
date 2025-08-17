@@ -100,14 +100,21 @@ export function useMultiCurrencyContracts() {
 
       if (currency === 'ETH') {
         // Use existing ETH quote logic
-        const ethQuote = await bondingCurveHook.getQuote(amount);
+        const ethQuote = await bondingCurveHook.getQuote(amount.toString());
+
+        // Calculate missing properties from available data
+        const currentPrice = bondingCurveHook.contractState?.currentPrice || BigInt(0);
+        const ethPriceUSD = bondingCurveHook.ethPrice.current;
+        const ethCostInETH = Number(ethQuote.ethCost) / 1e18;
+        const tokensOutCount = Number(ethQuote.tokensOut) / 1e18;
+
         return {
           tokensOut: ethQuote.tokensOut,
           cost: ethQuote.ethCost,
           currency: 'ETH',
-          pricePerToken: ethQuote.pricePerToken,
-          usdCost: ethQuote.usdCost,
-          usdPerToken: ethQuote.usdPerToken,
+          pricePerToken: currentPrice,
+          usdCost: ethCostInETH * ethPriceUSD,
+          usdPerToken: tokensOutCount > 0 ? (ethCostInETH * ethPriceUSD) / tokensOutCount : 0,
         };
       } else {
         // For stablecoins, estimate the conversion path

@@ -9,7 +9,6 @@ import type {
 } from '../types/capabilities';
 import { CapabilityConfigManager } from '../lib/capabilities/capability-config';
 import { DeviceSimulator } from '../lib/testing/device-simulation';
-import { CapabilityFeatureFlagManager } from '../lib/utils/feature-flags';
 
 /**
  * Device Capabilities React Context
@@ -66,10 +65,6 @@ export function DeviceProvider({ children, fallbackConfiguration }: DeviceProvid
 
     const initializeCapabilities = async () => {
       try {
-        if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-          console.log('🚀 Initializing DeviceProvider capabilities...');
-        }
-
         // Update to show we're on client side but not ready yet
         if (mounted) {
           setContextValue((prev) => ({
@@ -86,7 +81,6 @@ export function DeviceProvider({ children, fallbackConfiguration }: DeviceProvid
 
         if (simulatedCapabilities) {
           // Use simulated capabilities instead of real detection
-          console.log('🎭 Using simulated device capabilities');
           capabilities = simulatedCapabilities;
           // CRITICAL: Generate configuration FROM the simulated capabilities, not from real detection
           configuration =
@@ -113,13 +107,6 @@ export function DeviceProvider({ children, fallbackConfiguration }: DeviceProvid
             isClient: true,
             isReady: true,
           });
-
-          if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-            console.log('✅ DeviceProvider capabilities initialized:', {
-              capabilities,
-              configuration: finalConfiguration,
-            });
-          }
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -154,7 +141,7 @@ export function DeviceProvider({ children, fallbackConfiguration }: DeviceProvid
   return (
     <DeviceContext.Provider value={contextValue}>
       {children}
-      {initializationError && CapabilityFeatureFlagManager.isEnabled('capabilityDebug') && (
+      {initializationError && (
         <div
           style={{
             position: 'fixed',
@@ -206,10 +193,6 @@ export function useInfiniteCanvasSettings(): InfiniteCanvasSettings | null {
 
         if (mounted) {
           setSettings(canvasSettings);
-
-          if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-            console.log('🎨 Infinite canvas settings loaded:', canvasSettings);
-          }
         }
       } catch (error) {
         console.error('Failed to load infinite canvas settings:', error);
@@ -240,10 +223,6 @@ export function useRefreshCapabilities() {
       configManager.getDetector().getConservativeFallback(); // This will trigger fresh detection
 
       const capabilities = await configManager.getDetector().detectCapabilities();
-
-      if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-        console.log('🔄 Capabilities refreshed:', capabilities);
-      }
 
       return capabilities;
     } catch (error) {

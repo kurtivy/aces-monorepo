@@ -1281,15 +1281,6 @@ export const useCanvasRenderer = ({
       // Apply image smoothing only if it actually changed (prevents shader recompilation)
       if (ctx.imageSmoothingEnabled !== shouldUseImageSmoothing) {
         ctx.imageSmoothingEnabled = shouldUseImageSmoothing;
-
-        // Debug logging for mobile optimization (reduced frequency to avoid spam)
-        if (deviceCapabilities.isMobileSafari && Math.random() < 0.01) {
-          console.log('🎯 M obile Safari Image Smoothing:', {
-            enabled: shouldUseImageSmoothing,
-            performanceTier: deviceCapabilities.performanceTier,
-            isThrottled,
-          });
-        }
       }
 
       const targetGlobalAlpha = 1.0; // Keep at full opacity for smooth animation

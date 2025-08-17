@@ -3,7 +3,6 @@ import type {
   PerformanceMetrics,
   DeviceCapabilities,
 } from '../../types/capabilities';
-import { CapabilityFeatureFlagManager } from '../utils/feature-flags';
 
 /**
  * Adaptive Quality Management System
@@ -33,18 +32,7 @@ export class AdaptiveQualityManager {
   startMonitoring(deviceCapabilities: DeviceCapabilities): void {
     if (this.isMonitoring) return;
 
-    if (!CapabilityFeatureFlagManager.isEnabled('adaptiveQuality')) {
-      if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-        console.log('📊 Adaptive quality disabled by feature flag');
-      }
-      return;
-    }
-
     this.isMonitoring = true;
-
-    if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-      console.log(`📊 Starting adaptive quality monitoring (${this.monitoringId})`);
-    }
 
     // Monitor performance based on device capabilities
     const monitoringInterval = this.getMonitoringInterval(deviceCapabilities);
@@ -66,10 +54,6 @@ export class AdaptiveQualityManager {
     if (this.monitoringInterval) {
       clearInterval(this.monitoringInterval);
       this.monitoringInterval = null;
-    }
-
-    if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-      console.log(`📊 Stopped adaptive quality monitoring (${this.monitoringId})`);
     }
   }
 
@@ -119,31 +103,18 @@ export class AdaptiveQualityManager {
       // Override conservative browser limitations
       this.applyBrowserOverrides(avgFrameRate);
     }
-
-    if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-      console.log('🔍 Browser override check:', {
-        avgFrameRate,
-        frameRateStable,
-        memoryPressureLow,
-        devicePerformingWell,
-        currentTargetFPS: this.currentConfiguration.targetFrameRate,
-      });
-    }
   }
 
   /**
    * Apply performance overrides when device exceeds browser expectations
    */
   private applyBrowserOverrides(currentFrameRate: number): void {
-    let overrideApplied = false;
-
     // Modern Safari override: If Safari is hitting 45fps consistently, try 60fps
     if (this.currentConfiguration.targetFrameRate <= 45 && currentFrameRate >= 42) {
       this.currentConfiguration.targetFrameRate = Math.min(
         60,
         this.baseConfiguration.targetFrameRate,
       );
-      overrideApplied = true;
     }
 
     // Mobile override: If mobile Safari is hitting 30fps consistently, try 45fps
@@ -152,7 +123,6 @@ export class AdaptiveQualityManager {
         45,
         this.baseConfiguration.targetFrameRate,
       );
-      overrideApplied = true;
     }
 
     // Quality override: If performance is good, restore quality settings
@@ -163,7 +133,6 @@ export class AdaptiveQualityManager {
         this.baseConfiguration.enableImageSmoothing
       ) {
         this.currentConfiguration.enableImageSmoothing = true;
-        overrideApplied = true;
       }
 
       // Restore antialiasing if it was disabled for performance
@@ -172,7 +141,6 @@ export class AdaptiveQualityManager {
         this.baseConfiguration.enableAntialiasing
       ) {
         this.currentConfiguration.enableAntialiasing = true;
-        overrideApplied = true;
       }
 
       // Increase image quality if it was reduced
@@ -181,17 +149,7 @@ export class AdaptiveQualityManager {
           this.currentConfiguration.imageQuality + 0.1,
           this.baseConfiguration.imageQuality,
         );
-        overrideApplied = true;
       }
-    }
-
-    if (overrideApplied && CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-      console.log('🚀 Browser override applied - device exceeds expectations:', {
-        newTargetFPS: this.currentConfiguration.targetFrameRate,
-        imageSmoothing: this.currentConfiguration.enableImageSmoothing,
-        antialiasing: this.currentConfiguration.enableAntialiasing,
-        imageQuality: this.currentConfiguration.imageQuality,
-      });
     }
   }
 
@@ -202,10 +160,6 @@ export class AdaptiveQualityManager {
     this.currentConfiguration = { ...this.baseConfiguration };
     this.performanceHistory = [];
     this.adjustmentHistory = [];
-
-    if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-      console.log('🔄 Reset adaptive quality to base configuration');
-    }
   }
 
   /**
@@ -239,10 +193,6 @@ export class AdaptiveQualityManager {
       // Keep only last 10 measurements
       if (this.performanceHistory.length > 10) {
         this.performanceHistory.shift();
-      }
-
-      if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-        console.log('📊 Performance metrics collected:', metrics);
       }
     } catch (error) {
       console.warn('Failed to collect performance metrics:', error);
@@ -454,13 +404,6 @@ export class AdaptiveQualityManager {
     // Keep only last 20 adjustments
     if (this.adjustmentHistory.length > 20) {
       this.adjustmentHistory.shift();
-    }
-
-    if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-      console.log(`📊 Quality adjusted: ${adjustment.type} (${adjustment.reason})`, {
-        oldConfig: oldConfig,
-        newConfig: this.currentConfiguration,
-      });
     }
   }
 

@@ -195,10 +195,6 @@ export class DeviceSimulator {
 
     this.simulatedCapabilities = profile.capabilities;
 
-    console.log(`🎭 Device simulation activated: ${profile.name}`);
-    console.log('📱 Simulated capabilities:', profile.capabilities);
-    console.log('🎯 Expected behavior:', profile.expectedBehavior);
-
     return profile.capabilities;
   }
 
@@ -221,7 +217,6 @@ export class DeviceSimulator {
    */
   static deactivateSimulation(): void {
     this.simulatedCapabilities = null;
-    console.log('🎭 Device simulation deactivated');
   }
 
   /**

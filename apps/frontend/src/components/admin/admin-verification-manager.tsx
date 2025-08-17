@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/lib/auth/auth-context';
 import { AdminApi, type VerificationApplication } from '@/lib/api/admin';
 import { VerificationApplicationCard } from '@/components/admin/verification-application-card';
@@ -24,7 +24,7 @@ export function AdminVerificationManager() {
   // Check if user is admin (you might want to add this to your auth context)
   const isAdmin = user?.role === 'ADMIN';
 
-  const fetchApplications = async () => {
+  const fetchApplications = useCallback(async () => {
     if (!isAdmin) {
       setError('Admin access required');
       setLoading(false);
@@ -45,7 +45,7 @@ export function AdminVerificationManager() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [isAdmin, getAccessToken]);
 
   const handleProcessVerification = async (
     verificationId: string,
@@ -76,7 +76,7 @@ export function AdminVerificationManager() {
 
   useEffect(() => {
     fetchApplications();
-  }, [isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fetchApplications]);
 
   if (!isAdmin) {
     return (

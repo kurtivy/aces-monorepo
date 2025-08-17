@@ -106,7 +106,6 @@ export class SecureStorageService {
       expires: Date.now() + expiresInMinutes * 60 * 1000,
     };
     if (!hasGoogleCloudCredentials || !secureBucket) {
-      console.log('Google Cloud Storage not configured, returning mock signed URL for testing');
       return `mock-signed://${fileName}?expires=${options.expires}`;
     }
 
@@ -119,7 +118,7 @@ export class SecureStorageService {
    */
   static async deleteSecureDocument(fileName: string): Promise<void> {
     if (!hasGoogleCloudCredentials || !secureBucket) {
-      console.log('Google Cloud Storage not configured, skipping document deletion for testing');
+      console.error('Google Cloud Storage not configured, skipping document deletion for testing');
       return;
     }
 

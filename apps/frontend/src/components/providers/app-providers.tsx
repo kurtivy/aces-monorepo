@@ -89,8 +89,6 @@ export default function AppProviders({ children }: { children: ReactNode }) {
     } else {
       console.log('✅ Privy App ID found:', privyAppId.slice(0, 8) + '...');
     }
-    console.log('🌐 Current domain:', window.location.hostname);
-    console.log('🔧 Current origin:', window.location.origin);
 
     // Check if we're on localhost and warn about origin configuration
     if (window.location.hostname === 'localhost') {

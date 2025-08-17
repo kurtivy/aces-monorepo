@@ -27,14 +27,6 @@ export default function ProgressionBar({ percentage }: ProgressionBarProps) {
   const roomTokenSupply = contractState.tokenSupply || BigInt(0); // This is shares in the room
   const bondingCurveSupply = contractState.bondingCurveSupply || BigInt(800000000); // 800M shares
 
-  // Debug the values to see what we're getting
-  console.log('🔍 ProgressionBar Debug:', {
-    roomTokenSupply: roomTokenSupply.toString(),
-    bondingCurveSupply: bondingCurveSupply.toString(),
-    roomTokenSupplyNumber: Number(roomTokenSupply),
-    bondingCurveSupplyNumber: Number(bondingCurveSupply),
-  });
-
   // Check if bondingCurveSupply looks like a wei value (too big)
   const actualBondingCurveSupply =
     bondingCurveSupply > BigInt(1e18)

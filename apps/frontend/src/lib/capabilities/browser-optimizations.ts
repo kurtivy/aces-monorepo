@@ -1,5 +1,4 @@
 import type { CanvasConfiguration, BrowserCapabilities } from '../../types/capabilities';
-import { CapabilityFeatureFlagManager } from '../utils/feature-flags';
 
 /**
  * Browser-Specific Performance Optimizations
@@ -18,10 +17,6 @@ export class BrowserOptimizations {
   ): CanvasConfiguration {
     let optimizedConfig = { ...baseConfig };
 
-    if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-      console.log(`🔧 Applying ${browserCapabilities.browserName} optimizations`);
-    }
-
     // Apply browser-specific optimizations
     if (browserCapabilities.isSafari) {
       optimizedConfig = this.applySafariOptimizations(optimizedConfig, browserCapabilities);
@@ -36,10 +31,6 @@ export class BrowserOptimizations {
     // Apply mobile-specific optimizations if applicable
     if (browserCapabilities.isMobile) {
       optimizedConfig = this.applyMobileOptimizations(optimizedConfig, browserCapabilities);
-    }
-
-    if (CapabilityFeatureFlagManager.isEnabled('capabilityDebug')) {
-      console.log('🔧 Browser optimizations applied:', optimizedConfig);
     }
 
     return optimizedConfig;

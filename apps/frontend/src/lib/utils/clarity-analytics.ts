@@ -74,7 +74,6 @@ export class ClarityAnalytics {
       const checkClarity = () => {
         if (window.clarity) {
           this.isInitialized = true;
-          console.log('[Clarity] Analytics initialized successfully');
         } else {
           setTimeout(checkClarity, 100);
         }
@@ -98,7 +97,6 @@ export class ClarityAnalytics {
 
     try {
       window.clarity!('start', options);
-      console.log('[Clarity] Tracking started', options);
     } catch (error) {
       console.warn('[Clarity] Failed to start tracking:', error);
     }
@@ -112,7 +110,6 @@ export class ClarityAnalytics {
 
     try {
       window.clarity!('stop');
-      console.log('[Clarity] Tracking stopped');
     } catch (error) {
       console.warn('[Clarity] Failed to stop tracking:', error);
     }
@@ -128,7 +125,6 @@ export class ClarityAnalytics {
     try {
       const { userId, sessionId, pageId, userHint } = userInfo;
       window.clarity!('identify', userId, sessionId, pageId, userHint);
-      console.log('[Clarity] User identified:', userId);
     } catch (error) {
       console.warn('[Clarity] Failed to identify user:', error);
     }
@@ -143,7 +139,6 @@ export class ClarityAnalytics {
 
     try {
       window.clarity!('set', key, value);
-      console.log(`[Clarity] Custom variable set: ${key}=${value}`);
     } catch (error) {
       console.warn('[Clarity] Failed to set custom variable:', error);
     }
@@ -167,7 +162,6 @@ export class ClarityAnalytics {
       }
 
       window.clarity!('event', eventName);
-      console.log(`[Clarity] Event tracked: ${eventName}`, properties);
     } catch (error) {
       console.warn('[Clarity] Failed to track event:', error);
     }
@@ -182,7 +176,6 @@ export class ClarityAnalytics {
 
     try {
       window.clarity!('upgrade', reason);
-      console.log(`[Clarity] Session upgraded: ${reason}`);
     } catch (error) {
       console.warn('[Clarity] Failed to upgrade session:', error);
     }
@@ -196,7 +189,6 @@ export class ClarityAnalytics {
 
     try {
       window.clarity!('consent', hasConsent);
-      console.log(`[Clarity] Consent set: ${hasConsent}`);
     } catch (error) {
       console.warn('[Clarity] Failed to set consent:', error);
     }

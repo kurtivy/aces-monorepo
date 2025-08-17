@@ -41,7 +41,6 @@ export function SellersTab() {
         const result = await SellersApi.getAllSellers(token);
 
         if (result.success) {
-          console.log('Sellers API response:', result.data);
           setSellers(result.data);
         } else {
           setError(result.error || 'Failed to fetch sellers');
