@@ -1,13 +1,13 @@
 export declare const CONTRACTS: {
     readonly localhost: {
+        readonly acesVault: "";
         readonly acesToken: "";
-        readonly mockRwaDeedNft: "";
-        readonly mockRwaFactory: "";
+        readonly implementation: "";
     };
     readonly baseSepolia: {
-        readonly acesToken: "0x2c9B029B2F232a5e5f3332A34d6EC6B668fEDd95";
-        readonly mockRwaDeedNft: "0xb5e4dA5EeaF3703da5e0CA66490f2bAF016c4A68";
-        readonly mockRwaFactory: "0x2e2aaDB15f11f1Ca7a0c5Acb5655e2f56701104A";
+        readonly acesVault: "0x4f585dFD5A3faA1F782E10DfBe3DbBA7e0dFD20d";
+        readonly acesToken: "0x4D74aCf5c51dbE8c89Ce14E624E6b5C338e68708";
+        readonly implementation: "0x90692cd2f4D0EDB93D009F4d3CEe3118D72C8831";
     };
 };
 export type NetworkName = keyof typeof CONTRACTS;
@@ -16,18 +16,27 @@ export declare function getContractAddress(network: NetworkName, contractName: C
 export declare const BONDING_CURVE_CONTRACTS: {
     readonly BASE_SEPOLIA: {
         readonly chainId: 84532;
-        readonly acesTest: "0x6474F13C2CEbD4Ca36cAE5a1055d44928822Ded9";
-        readonly bondingCurveTest: "0xafa9256Adffc24c3d34296304046647B77eEB139";
+        readonly acesVault: "0x4f585dFD5A3faA1F782E10DfBe3DbBA7e0dFD20d";
+        readonly acesToken: "0x4D74aCf5c51dbE8c89Ce14E624E6b5C338e68708";
+        readonly implementation: "0x90692cd2f4D0EDB93D009F4d3CEe3118D72C8831";
+        readonly sharesSubject: "0x246ca431fd1353610Bf20F9d4fbD240148522Dc8";
+        readonly roomNumber: 0;
     };
 };
 export declare function getBondingCurveContracts(chainId: number): {
     readonly chainId: 84532;
-    readonly acesTest: "0x6474F13C2CEbD4Ca36cAE5a1055d44928822Ded9";
-    readonly bondingCurveTest: "0xafa9256Adffc24c3d34296304046647B77eEB139";
+    readonly acesVault: "0x4f585dFD5A3faA1F782E10DfBe3DbBA7e0dFD20d";
+    readonly acesToken: "0x4D74aCf5c51dbE8c89Ce14E624E6b5C338e68708";
+    readonly implementation: "0x90692cd2f4D0EDB93D009F4d3CEe3118D72C8831";
+    readonly sharesSubject: "0x246ca431fd1353610Bf20F9d4fbD240148522Dc8";
+    readonly roomNumber: 0;
 };
 export interface BondingCurveContracts {
-    acesTest: string;
-    bondingCurveTest: string;
+    acesVault: string;
+    acesToken: string;
+    implementation: string;
+    sharesSubject: string;
+    roomNumber: number;
 }
 export interface RoomStats {
     tokenSupply: bigint;
@@ -35,9 +44,18 @@ export interface RoomStats {
     currentPrice: bigint;
     progress: bigint;
 }
+export declare const ROOM_CONFIG: {
+    readonly curve: 1;
+    readonly steepness: "10000000000000";
+    readonly floor: "0";
+    readonly maxPrice: "0";
+    readonly midPoint: "0";
+    readonly lockupPeriod: 0;
+};
 export declare const DEPLOYMENT_INFO: {
     readonly network: "baseSepolia";
     readonly chainId: 84532;
     readonly deployedAt: "2025-06-30T17:02:26.722Z";
+    readonly proxyPattern: "EIP-1967 Transparent Proxy";
 };
 //# sourceMappingURL=contracts.d.ts.map
