@@ -1,6 +1,5 @@
 'use client';
 
-import { formatEther } from 'viem';
 import { useBondingCurveContracts } from '@/hooks/contracts/use-bonding-curve-contract';
 
 interface ProgressionBarProps {
@@ -24,18 +23,28 @@ export default function ProgressionBar({ percentage }: ProgressionBarProps) {
     );
   }
 
-  // Calculate values from contract data with live ETH price
-  const tokenSupply = contractState.tokenSupply || BigInt(0);
-  const bondingCurveSupply = contractState.bondingCurveSupply || BigInt(8000000);
+  // Calculate values from contract data - using room token supply for progress
+  const roomTokenSupply = contractState.tokenSupply || BigInt(0); // This is shares in the room
+  const bondingCurveSupply = contractState.bondingCurveSupply || BigInt(800000000); // 800M shares
 
-  // Convert ETH to USD using live price
+  // Debug the values to see what we're getting
+  console.log('🔍 ProgressionBar Debug:', {
+    roomTokenSupply: roomTokenSupply.toString(),
+    bondingCurveSupply: bondingCurveSupply.toString(),
+    roomTokenSupplyNumber: Number(roomTokenSupply),
+    bondingCurveSupplyNumber: Number(bondingCurveSupply),
+  });
 
-  // Target amount in USD
+  // Check if bondingCurveSupply looks like a wei value (too big)
+  const actualBondingCurveSupply =
+    bondingCurveSupply > BigInt(1e18)
+      ? BigInt(800000000) // Use 800M if the value seems wrong
+      : bondingCurveSupply;
 
-  // Calculate percentage based on token supply progress
+  // Calculate percentage based on room token supply progress
   const tokenProgress =
-    bondingCurveSupply > 0
-      ? (Number(formatEther(tokenSupply)) / Number(formatEther(bondingCurveSupply))) * 100
+    actualBondingCurveSupply > 0
+      ? (Number(roomTokenSupply) / Number(actualBondingCurveSupply)) * 100
       : 0;
 
   // Use real values or fallback to props
@@ -135,16 +144,15 @@ export default function ProgressionBar({ percentage }: ProgressionBarProps) {
           </div>
         </div>
 
-        {/* Amount Display with Live ETH Price */}
+        {/* Amount Display - Updated to show room shares vs bonding curve supply */}
         <div className="text-center">
-          {/* Show token progress and ETH price source */}
           <div className="space-y-1 mt-2">
             <div
               className="text-xs text-[#928357]"
               style={{ fontFamily: 'JetBrains Mono, monospace' }}
             >
-              {Number(formatEther(contractState.tokenSupply)).toLocaleString()} /{' '}
-              {Number(formatEther(contractState.bondingCurveSupply)).toLocaleString()} tokens sold
+              {Number(roomTokenSupply).toLocaleString()} /{' '}
+              {Number(actualBondingCurveSupply).toLocaleString()} shares sold
             </div>
           </div>
         </div>

@@ -106,7 +106,7 @@ const productMapping: Record<string, string> = {
   'rect-vertical-3': '/canvas-images/outline/Tiffany-and-Co-Rimowa.webp',
 };
 
-// Token Info Components - Price square shows wallet connection prompt or live data
+// Token Info Components - Updated to use new hooks
 const CurrentPriceSquare: React.FC = () => {
   const { contractState, ethPrice } = useBondingCurveContracts();
 
@@ -115,15 +115,14 @@ const CurrentPriceSquare: React.FC = () => {
     return <TokenInfoSkeleton />;
   }
 
-  // Get the price of the NEXT token to be bought
-  // contractState.currentPrice is already the price for the next token (from getCurrentPrice function)
-  const nextTokenPriceETH = contractState?.currentPrice
+  // Get the price for 1 share from the current price
+  const nextSharePriceETH = contractState?.currentPrice
     ? Number(formatEther(contractState.currentPrice))
     : 0;
 
   // Use LIVE ETH price from the reliable price hook
-  const liveETHPriceUSD = ethPrice.current; // This is from your useReliableETHPrice hook
-  const nextTokenPriceUSD = nextTokenPriceETH * liveETHPriceUSD;
+  const liveETHPriceUSD = ethPrice.current;
+  const nextSharePriceUSD = nextSharePriceETH * liveETHPriceUSD;
 
   // Format price display - show more precision for small values
   const formatUSDPrice = (price: number) => {
@@ -145,7 +144,7 @@ const CurrentPriceSquare: React.FC = () => {
           className="text-[#D0B264] text-sm font-medium tracking-wider mb-3 uppercase"
           style={{ fontFamily: 'system, serif' }}
         >
-          Next Token Price
+          Next Share Price
         </h3>
         <div className="flex flex-col items-center">
           {/* USD Price - Primary display */}
@@ -153,7 +152,7 @@ const CurrentPriceSquare: React.FC = () => {
             className="text-white text-xl font-bold mb-1"
             style={{ fontFamily: 'JetBrains Mono, monospace' }}
           >
-            ${formatUSDPrice(nextTokenPriceUSD)}
+            ${formatUSDPrice(nextSharePriceUSD)}
           </span>
 
           {/* ETH Price - Secondary display in brackets */}
@@ -161,7 +160,7 @@ const CurrentPriceSquare: React.FC = () => {
             className="text-[#DCDDCC] text-sm font-medium"
             style={{ fontFamily: 'JetBrains Mono, monospace' }}
           >
-            ({formatETHPrice(nextTokenPriceETH)} ETH)
+            ({formatETHPrice(nextSharePriceETH)} ETH)
           </span>
         </div>
       </div>
@@ -176,7 +175,7 @@ const CurrentPriceSquare: React.FC = () => {
 };
 
 const UserBalanceSquare: React.FC = () => {
-  const { contractState } = useBondingCurveContracts();
+  const { contractState, ethPrice } = useBondingCurveContracts();
   const { isAuthenticated, connectWallet } = useAuth();
 
   // If wallet not connected, show connect prompt
@@ -233,18 +232,18 @@ const UserBalanceSquare: React.FC = () => {
     return <TokenInfoSkeleton />;
   }
 
-  // Get user's token balance from contract state
-  const userTokenBalance = contractState?.tokenBalance
-    ? Number(formatEther(contractState.tokenBalance))
+  // Get user's token balance from contract state (this is share count, not minted tokens)
+  const userShareBalance = contractState?.tokenBalance
+    ? Number(contractState.tokenBalance) // This is already in share count
     : 0;
 
-  // Calculate USD value of user's tokens
-  const tokenPriceETH = contractState?.currentPrice
+  // Calculate USD value of user's shares
+  const sharePriceETH = contractState?.currentPrice
     ? Number(formatEther(contractState.currentPrice))
     : 0;
 
-  const ethPriceUSD = contractState?.ethPriceUSD || 3540; // Live ETH price
-  const userBalanceUSD = userTokenBalance * tokenPriceETH * ethPriceUSD;
+  const ethPriceUSD = ethPrice?.current || 3000;
+  const userBalanceUSD = userShareBalance * sharePriceETH * ethPriceUSD;
 
   // Format balance display
   const formatBalance = (balance: number) => {
@@ -269,15 +268,15 @@ const UserBalanceSquare: React.FC = () => {
             className="text-white text-lg font-bold mb-1"
             style={{ fontFamily: 'JetBrains Mono, monospace' }}
           >
-            {formatBalance(userTokenBalance)}
+            {formatBalance(userShareBalance)}
           </span>
           <span
             className="text-[#DCDDCC] text-xs font-medium"
             style={{ fontFamily: 'system, serif' }}
           >
-            ACES Tokens
+            ACES Shares
           </span>
-          {userTokenBalance > 0 && (
+          {userShareBalance > 0 && (
             <span
               className="text-[#D0B264] text-xs font-medium mt-1"
               style={{ fontFamily: 'JetBrains Mono, monospace' }}
@@ -285,12 +284,12 @@ const UserBalanceSquare: React.FC = () => {
               ≈ ${userBalanceUSD.toFixed(2)}
             </span>
           )}
-          {userTokenBalance === 0 && (
+          {userShareBalance === 0 && (
             <span
               className="text-[#928357] text-xs font-medium mt-1"
               style={{ fontFamily: 'system, serif' }}
             >
-              No tokens yet
+              No shares yet
             </span>
           )}
         </div>
@@ -394,9 +393,11 @@ const ICOLaunchPage: React.FC = () => {
   );
 
   // Page loading coordination - now using real contract state since public data is available
+  // For development: allow page to load even if contract isn't ready yet
+  const isDevMode = typeof window !== 'undefined' && window.location.hostname === 'localhost';
   const pageLoading = usePageLoading({
     imagePaths,
-    contractReady: !!contractState, // Use real contract state
+    contractReady: !!contractState || isDevMode, // Allow loading in dev mode
     enableIntroAnimation: true,
   });
 

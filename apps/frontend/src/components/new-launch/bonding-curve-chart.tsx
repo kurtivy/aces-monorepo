@@ -19,58 +19,76 @@ interface TooltipData {
   y: number;
 }
 
-// Generate bonding curve data based on the actual contract formula
+// Generate bonding curve data based on the linear curve formula from the contract
 const generateBondingCurveData = (
   currentTokensSold: number,
   currentPriceETH: number,
   bondingCurveSupply: number,
-  basePrice: number,
+  steepness: number,
+  floor: number,
 ) => {
   const data = [];
-  const steps = 100; // More data points for smoother curve
-  // Show full 8 million tokens range
-  const maxRange = bondingCurveSupply;
+  const steps = 100;
+
+  // Check if bondingCurveSupply seems like a wei value (too big) and correct it
+  const actualBondingCurveSupply = bondingCurveSupply > 1e15 ? 800000000 : bondingCurveSupply;
+
+  // Show a more reasonable range: either current position + 50%, or at least 10K shares
+  const minDisplayRange = Math.max(10000, currentTokensSold * 1.5);
+  const maxRange = Math.min(
+    actualBondingCurveSupply,
+    Math.max(minDisplayRange, actualBondingCurveSupply * 0.1),
+  );
   const stepSize = maxRange / steps;
 
   for (let i = 0; i <= steps; i++) {
-    const tokensSold = i * stepSize;
+    const shareCount = i * stepSize;
 
-    // Use the same formula as the contract: price = BASE_PRICE * (1 + supply/BONDING_CURVE_SUPPLY)^2
+    // Use the contract's linear curve formula:
+    // price = (summation * 1 ether) / (steepness / 50) + (floor * amount)
+    // For linear: summation = (supply - 1 + amount) * (supply + amount) - (supply - 1) * supply
     let priceETH: number;
 
-    if (tokensSold >= bondingCurveSupply) {
-      // Fixed price after bonding curve completion
-      priceETH = basePrice * 2;
+    if (shareCount === 0) {
+      priceETH = floor;
     } else {
-      const progress = tokensSold / bondingCurveSupply;
-      const multiplier = 1 + progress;
-      priceETH = basePrice * multiplier * multiplier;
+      const supply = shareCount + 1; // Contract starts with supply of 1
+      const amount = 1; // Price for 1 share
+
+      const sum1 = (supply - 1) * supply;
+      const sum2 = (supply - 1 + amount) * (supply + amount);
+      const summation = sum2 - sum1;
+
+      // Convert from wei to ETH: (summation * 1 ether) / (steepness / 50) + (floor * amount)
+      priceETH = summation / (steepness / 50) / 1e18 + floor * amount;
     }
 
     data.push({
-      tokensSold: Math.round(tokensSold),
-      priceETH: priceETH,
-      phase: tokensSold <= currentTokensSold ? 'completed' : 'upcoming',
-      isFixedPrice: tokensSold >= bondingCurveSupply,
+      tokensSold: Math.round(shareCount),
+      priceETH: Math.max(priceETH, 0), // Ensure non-negative
+      phase: shareCount <= currentTokensSold ? 'completed' : 'upcoming',
+      isFixedPrice: false, // Linear curve doesn't have fixed price phase
     });
   }
 
-  return data;
+  return { data, maxRange };
 };
 
-// Calculate price at any point on the bonding curve
-const calculatePriceAtTokens = (
-  tokensSold: number,
-  bondingCurveSupply: number,
-  basePrice: number,
-): number => {
-  if (tokensSold >= bondingCurveSupply) {
-    return basePrice * 2; // Fixed price after completion
-  }
+// Calculate price at any point on the linear bonding curve
+const calculatePriceAtShares = (shareCount: number, steepness: number, floor: number): number => {
+  if (shareCount === 0) return floor;
 
-  const progress = tokensSold / bondingCurveSupply;
-  const multiplier = 1 + progress;
-  return basePrice * multiplier * multiplier;
+  const supply = shareCount + 1; // Contract starts with supply of 1
+  const amount = 1; // Price for 1 share
+
+  const sum1 = (supply - 1) * supply;
+  const sum2 = (supply - 1 + amount) * (supply + amount);
+  const summation = sum2 - sum1;
+
+  // Convert from wei to ETH
+  const priceETH = summation / (steepness / 50) / 1e18 + floor * amount;
+
+  return Math.max(priceETH, 0);
 };
 
 export default function BondingCurveChart({
@@ -81,9 +99,9 @@ export default function BondingCurveChart({
   const svgRef = useRef<SVGSVGElement>(null);
   const [tooltipData, setTooltipData] = useState<TooltipData | null>(null);
 
-  // Use contract data or fallback to props
-  const currentTokensSold = contractState?.tokenSupply
-    ? Number(formatEther(contractState.tokenSupply))
+  // Use contract data - room token supply represents shares in the vault
+  const currentSharesSold = contractState?.tokenSupply
+    ? Number(contractState.tokenSupply) // This is already in share count, not wei
     : propTokensSold
       ? Number(formatEther(propTokensSold))
       : 0;
@@ -94,30 +112,28 @@ export default function BondingCurveChart({
       ? Number(formatEther(propCurrentPrice))
       : 0;
 
+  // Use the corrected bonding curve supply (800M shares, not wei)
   const bondingCurveSupply = contractState?.bondingCurveSupply
-    ? Number(formatEther(contractState.bondingCurveSupply))
-    : 8000000;
+    ? Number(contractState.bondingCurveSupply) // Should be 800M, not wei
+    : 800000000;
 
-  const basePrice = contractState?.basePrice
-    ? Number(formatEther(contractState.basePrice))
-    : 1.7869e-8;
-
-  // Debug logging
-  // console.log('🔍 D3 Bonding Curve Chart Debug:');
-  // console.log('   currentTokensSold:', currentTokensSold);
-  // console.log('   currentPriceETH:', currentPriceETH);
-  // console.log('   ethPrice.current:', ethPrice?.current);
-  // console.log('   Should show indicator:', currentTokensSold > 0);
+  // Linear curve parameters (from your transaction log)
+  const steepness = 10000000000000; // From transaction log
+  const floor = 0; // From transaction log
 
   // Generate bonding curve data
-  const bondingCurveData = useMemo(() => {
+  const { data: bondingCurveData, maxRange: displayRange } = useMemo(() => {
+    // Apply the same correction here that we do in the generation function
+    const correctedBondingCurveSupply = bondingCurveSupply > 1e15 ? 800000000 : bondingCurveSupply;
+
     return generateBondingCurveData(
-      currentTokensSold,
+      currentSharesSold,
       currentPriceETH,
-      bondingCurveSupply,
-      basePrice,
+      correctedBondingCurveSupply,
+      steepness,
+      floor,
     );
-  }, [currentTokensSold, currentPriceETH, bondingCurveSupply, basePrice]);
+  }, [currentSharesSold, currentPriceETH, bondingCurveSupply, steepness, floor]);
 
   useEffect(() => {
     if (!svgRef.current || bondingCurveData.length === 0) return;
@@ -125,10 +141,10 @@ export default function BondingCurveChart({
     // Clear previous content
     d3.select(svgRef.current).selectAll('*').remove();
 
-    // Set up dimensions - make chart properly sized for 600px container
-    const margin = { top: 30, right: 30, bottom: 50, left: 70 }; // Reduced margins
-    const width = 520 - margin.left - margin.right; // 420px chart width to fit 520px SVG
-    const height = 440 - margin.top - margin.bottom; // 360px chart height to fit 440px SVG
+    // Set up dimensions
+    const margin = { top: 30, right: 30, bottom: 50, left: 70 };
+    const width = 520 - margin.left - margin.right;
+    const height = 440 - margin.top - margin.bottom;
 
     // Create SVG container
     const svg = d3
@@ -138,13 +154,15 @@ export default function BondingCurveChart({
 
     const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
-    // Set up scales
-    const xScale = d3.scaleLinear().domain([0, bondingCurveSupply]).range([0, width]);
+    // Set up scales - use dynamic range instead of full bonding curve supply
+    const xScale = d3.scaleLinear().domain([0, displayRange]).range([0, width]);
 
-    // Calculate max ETH price for Y-axis (including the peak around 99.99%)
-    const maxETHPrice = d3.max(bondingCurveData, (d) => d.priceETH) || 0.000004;
-
-    const yScale = d3.scaleLinear().domain([0, maxETHPrice]).range([height, 0]);
+    // Calculate max ETH price for Y-axis
+    const maxETHPrice = d3.max(bondingCurveData, (d) => d.priceETH) || 0.000001;
+    const yScale = d3
+      .scaleLinear()
+      .domain([0, maxETHPrice * 1.1])
+      .range([height, 0]); // Add 10% padding
 
     // Create line generator
     const line = d3
@@ -153,7 +171,9 @@ export default function BondingCurveChart({
       .y((d) => yScale(d.priceETH))
       .curve(d3.curveMonotoneX);
 
-    // Add grid lines
+    // Add grid lines - use better tick values for the display range
+    const xTicks = [0, displayRange * 0.25, displayRange * 0.5, displayRange * 0.75, displayRange];
+
     g.append('g')
       .attr('class', 'grid')
       .attr('transform', `translate(0,${height})`)
@@ -162,7 +182,7 @@ export default function BondingCurveChart({
           .axisBottom(xScale)
           .tickSize(-height)
           .tickFormat(() => '')
-          .tickValues([0, 2000000, 4000000, 6000000, 8000000]),
+          .tickValues(xTicks),
       );
 
     g.append('g')
@@ -172,7 +192,7 @@ export default function BondingCurveChart({
           .axisLeft(yScale)
           .tickSize(-width)
           .tickFormat(() => '')
-          .tickValues([0, maxETHPrice]),
+          .tickValues([0, maxETHPrice * 0.5, maxETHPrice]),
       );
 
     // Style grid lines
@@ -181,40 +201,40 @@ export default function BondingCurveChart({
       .style('stroke-opacity', 0.3)
       .style('stroke-dasharray', '3,3');
 
-    // Add X axis with explicit tick values
+    // Add X axis with better formatting
     const xAxis = g
       .append('g')
       .attr('transform', `translate(0,${height})`)
       .call(
         d3
           .axisBottom(xScale)
-          .tickValues([0, 2000000, 4000000, 6000000, 8000000])
+          .tickValues(xTicks)
           .tickFormat((d: d3.NumberValue) => {
             const value = d.valueOf();
             if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
             if (value >= 1000) return `${(value / 1000).toFixed(0)}K`;
-            return value.toString();
+            return Math.round(value).toString();
           }),
       );
 
     xAxis.selectAll('text').style('fill', '#9CA3AF').style('font-size', '10px');
-
     xAxis.selectAll('line, path').style('stroke', '#9CA3AF');
 
-    // Add Y axis with only min and max values
+    // Add Y axis with proper formatting for very small ETH values
     const yAxis = g.append('g').call(
       d3
         .axisLeft(yScale)
-        .tickValues([0, maxETHPrice])
+        .tickValues([0, maxETHPrice * 0.5, maxETHPrice])
         .tickFormat((d: d3.NumberValue) => {
           const value = d.valueOf();
-          if (value === 0) return '0 ETH';
+          if (value === 0) return '0';
+          if (value < 0.000001) return `${(value * 1e9).toFixed(2)}e-9 ETH`; // Show in scientific notation
+          if (value < 0.001) return `${(value * 1e6).toFixed(2)}µ ETH`; // Show in micro ETH
           return `${value.toFixed(8)} ETH`;
         }),
     );
 
     yAxis.selectAll('text').style('fill', '#9CA3AF').style('font-size', '10px');
-
     yAxis.selectAll('line, path').style('stroke', '#9CA3AF');
 
     // Add axis labels
@@ -224,7 +244,7 @@ export default function BondingCurveChart({
       .style('text-anchor', 'middle')
       .style('fill', '#9CA3AF')
       .style('font-size', '11px')
-      .text('Tokens Sold');
+      .text('Shares Sold');
 
     g.append('text')
       .attr('transform', 'rotate(-90)')
@@ -274,14 +294,6 @@ export default function BondingCurveChart({
 
     g.append('path').datum(bondingCurveData).attr('fill', 'url(#areaGradient)').attr('d', area);
 
-    // Add the line
-    g.append('path')
-      .datum(bondingCurveData)
-      .attr('fill', 'none')
-      .attr('stroke', 'url(#bondingGradient)')
-      .attr('stroke-width', 2)
-      .attr('d', line);
-
     // Add gradient definition for the line
     const lineGradient = svg
       .append('defs')
@@ -294,16 +306,21 @@ export default function BondingCurveChart({
       .attr('y2', 0);
 
     lineGradient.append('stop').attr('offset', '0%').attr('stop-color', '#D0B264');
-
     lineGradient.append('stop').attr('offset', '30%').attr('stop-color', '#F59E0B');
-
     lineGradient.append('stop').attr('offset', '70%').attr('stop-color', '#10B981');
-
     lineGradient.append('stop').attr('offset', '100%').attr('stop-color', '#6366F1');
 
+    // Add the line
+    g.append('path')
+      .datum(bondingCurveData)
+      .attr('fill', 'none')
+      .attr('stroke', 'url(#bondingGradient)')
+      .attr('stroke-width', 2)
+      .attr('d', line);
+
     // Add current position line and dot
-    if (currentTokensSold > 0) {
-      const currentX = xScale(currentTokensSold);
+    if (currentSharesSold > 0) {
+      const currentX = xScale(currentSharesSold);
       const currentY = yScale(currentPriceETH);
 
       // Current position line
@@ -324,7 +341,7 @@ export default function BondingCurveChart({
         .style('fill', '#D0B264')
         .style('font-size', '10px')
         .style('font-weight', 'bold')
-        .text(`CURRENT (${currentTokensSold.toLocaleString()})`);
+        .text(`CURRENT (${currentSharesSold.toLocaleString()})`);
 
       // Current position dot
       g.append('circle')
@@ -390,29 +407,27 @@ export default function BondingCurveChart({
           return;
         }
 
-        // Convert mouse X to token position
-        const tokensAtX = xScale.invert(mouseX);
+        // Convert mouse X to share position
+        const sharesAtX = xScale.invert(mouseX);
 
-        // Constrain to bonding curve range
-        if (tokensAtX < 0 || tokensAtX > bondingCurveSupply) {
+        // Constrain to display range
+        if (sharesAtX < 0 || sharesAtX > displayRange) {
           crosshairGroup.style('display', 'none');
           setTooltipData(null);
           return;
         }
 
-        // Calculate price at this token position
-        const priceETH = calculatePriceAtTokens(tokensAtX, bondingCurveSupply, basePrice);
+        // Calculate price at this share position using contract formula
+        const priceETH = calculatePriceAtShares(sharesAtX, steepness, floor);
         const priceUSD = priceETH * (ethPrice?.current || 3000);
 
         // Convert back to chart coordinates
-        const chartX = xScale(tokensAtX);
+        const chartX = xScale(sharesAtX);
         const chartY = yScale(priceETH);
 
         // Update crosshairs
         verticalLine.attr('x1', chartX).attr('x2', chartX).attr('y1', 0).attr('y2', height);
-
         horizontalLine.attr('x1', 0).attr('x2', width).attr('y1', chartY).attr('y2', chartY);
-
         intersectionDot.attr('cx', chartX).attr('cy', chartY);
 
         crosshairGroup.style('display', null);
@@ -421,7 +436,7 @@ export default function BondingCurveChart({
         const containerRect = svgRef.current?.getBoundingClientRect();
         if (containerRect) {
           setTooltipData({
-            tokensSold: tokensAtX,
+            tokensSold: sharesAtX,
             priceETH,
             priceUSD,
             x: event.clientX - containerRect.left,
@@ -435,10 +450,11 @@ export default function BondingCurveChart({
       });
   }, [
     bondingCurveData,
-    currentTokensSold,
+    displayRange,
+    currentSharesSold,
     currentPriceETH,
-    bondingCurveSupply,
-    basePrice,
+    steepness,
+    floor,
     ethPrice?.current,
   ]);
 
@@ -456,37 +472,43 @@ export default function BondingCurveChart({
           style={{
             left: tooltipData.x + 10,
             top: (() => {
-              // Smart positioning: flip to bottom if near top edge
               const tooltipHeight = 80;
               const isNearTop = tooltipData.y < tooltipHeight + 20;
               const isNearBottom = tooltipData.y > 440 - tooltipHeight - 20;
 
               if (isNearTop) {
-                return tooltipData.y + 20; // Position below cursor
+                return tooltipData.y + 20;
               } else if (isNearBottom) {
-                return tooltipData.y - tooltipHeight - 10; // Position above cursor
+                return tooltipData.y - tooltipHeight - 10;
               } else {
-                return tooltipData.y - tooltipHeight; // Default above cursor
+                return tooltipData.y - tooltipHeight;
               }
             })(),
-            transform: tooltipData.x > 400 ? 'translateX(-100%)' : 'none', // Flip if near right edge
+            transform: tooltipData.x > 400 ? 'translateX(-100%)' : 'none',
           }}
         >
           <div className="bg-[#231F20] border border-[#D0B284] rounded-lg p-3 shadow-xl">
             <div className="text-xs space-y-1">
               <div className="text-[#FFFFFF] font-semibold">
                 {tooltipData.tokensSold.toLocaleString(undefined, { maximumFractionDigits: 0 })}{' '}
-                tokens
+                shares
               </div>
-              <div className="text-[#DCDDCC]">ETH: {tooltipData.priceETH.toFixed(12)}</div>
+              <div className="text-[#DCDDCC]">
+                ETH:{' '}
+                {tooltipData.priceETH < 0.000001
+                  ? `${(tooltipData.priceETH * 1e9).toFixed(2)}e-9`
+                  : tooltipData.priceETH.toFixed(12)}
+              </div>
               <div className="text-[#D7BF75]">
                 USD:{' '}
-                {tooltipData.priceUSD.toLocaleString(undefined, {
-                  style: 'currency',
-                  currency: 'USD',
-                  minimumFractionDigits: 6,
-                  maximumFractionDigits: 6,
-                })}
+                {tooltipData.priceUSD < 0.01
+                  ? `${tooltipData.priceUSD.toFixed(8)}`
+                  : tooltipData.priceUSD.toLocaleString(undefined, {
+                      style: 'currency',
+                      currency: 'USD',
+                      minimumFractionDigits: 6,
+                      maximumFractionDigits: 6,
+                    })}
               </div>
             </div>
           </div>

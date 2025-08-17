@@ -82,13 +82,6 @@ export default function BondingCurveChartD3({
     ? Number(formatEther(contractState.basePrice))
     : 1.7869e-8;
 
-  // Debug logging
-  // console.log('🔍 D3 Bonding Curve Chart Debug:');
-  // console.log('   currentTokensSold:', currentTokensSold);
-  // console.log('   currentPriceETH:', currentPriceETH);
-  // console.log('   ethPrice.current:', ethPrice?.current);
-  // console.log('   Should show indicator:', currentTokensSold > 0);
-
   // Generate bonding curve data
   const bondingCurveData = useMemo(() => {
     return generateBondingCurveData(

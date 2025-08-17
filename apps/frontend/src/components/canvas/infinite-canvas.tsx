@@ -80,20 +80,6 @@ const InfiniteCanvas = () => {
       updateViewState,
     });
 
-  // Week 3: Log capability-aware settings for debugging (if enabled)
-  useEffect(() => {
-    if (canvasSettings && capabilitiesReady) {
-      console.log('🎨 Canvas using capability-aware settings:', {
-        memoryBudget: configuration.canvasMemoryBudgetMB,
-        targetFPS: configuration.targetFrameRate,
-        imageQuality: configuration.imageQuality,
-        tileSize: canvasSettings.gridTileSize,
-        preloadRadius: canvasSettings.preloadRadius,
-        maxConcurrentTiles: canvasSettings.maxConcurrentTiles,
-      });
-    }
-  }, [canvasSettings, capabilitiesReady, configuration]);
-
   const imagesRef = useRef(images);
   imagesRef.current = images;
 
