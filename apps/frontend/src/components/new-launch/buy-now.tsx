@@ -53,10 +53,7 @@ export default function BuyNowSection() {
       <div className="relative z-10 h-full flex flex-col justify-between">
         {/* Payment Methods Section */}
         <div className="flex flex-col items-center space-y-3">
-          <h3
-            className="text-[#DCDDCC] text-sm font-medium tracking-wider"
-            style={{ fontFamily: 'system, serif' }}
-          >
+          <h3 className="text-[#DCDDCC] text-sm font-medium tracking-wider font-jetbrains-mono">
             BUY WITH
           </h3>
 
@@ -106,7 +103,7 @@ export default function BuyNowSection() {
           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -skew-x-12 transform translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
 
           {/* Button text */}
-          <span className="relative z-10 tracking-wider">BUY $ACES NOW</span>
+          <span className="relative z-10 tracking-wider font-proxima-nova">BUY $ACES NOW</span>
 
           {/* Hover glow */}
           <div

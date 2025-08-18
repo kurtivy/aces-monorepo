@@ -4,12 +4,33 @@ import { usePrivy } from '@privy-io/react-auth';
 import { useEffect, useState } from 'react';
 
 export function PrivyDebug() {
-  const { user, authenticated, ready } = usePrivy();
+  const { user, authenticated, ready, logout } = usePrivy();
   const [mountTime, setMountTime] = useState<Date | null>(null);
 
   useEffect(() => {
     setMountTime(new Date());
   }, []);
+
+  const clearAllPrivyData = () => {
+    // Clear localStorage
+    Object.keys(localStorage).forEach((key) => {
+      if (key.startsWith('privy:') || key.includes('privy') || key.includes('wallet')) {
+        localStorage.removeItem(key);
+      }
+    });
+
+    // Clear sessionStorage
+    Object.keys(sessionStorage).forEach((key) => {
+      if (key.startsWith('privy:') || key.includes('privy') || key.includes('wallet')) {
+        sessionStorage.removeItem(key);
+      }
+    });
+
+    // Logout from Privy
+    logout().then(() => {
+      window.location.reload();
+    });
+  };
 
   const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
 
@@ -64,6 +85,15 @@ export function PrivyDebug() {
           ⚠️ No Privy App ID found!
         </div>
       )}
+
+      {/* Development helper button */}
+      <button
+        onClick={clearAllPrivyData}
+        className="mt-2 w-full px-2 py-1 bg-red-600/20 hover:bg-red-600/40 border border-red-500/30 rounded text-red-400 text-xs transition-colors"
+        title="Clear all Privy data and reload page"
+      >
+        🗑️ Clear All Data
+      </button>
     </div>
   );
 }

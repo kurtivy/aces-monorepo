@@ -86,10 +86,10 @@ const productMapping: Record<string, string> = {
   'square-2':
     '/canvas-images/outline/new/webp/Tom-Brady-New-England-Patriots-Autographed-Riddell-1982-1989-Throwback-Speed-Flex-Authentic-Helmet.webp',
   'square-3': '/canvas-images/outline/new/webp/Keith-Haring-1989.webp',
-  'square-4': '/canvas-images/outline/tokenise-you-shit.webp',
+  'square-4': '/canvas-images/outline/new/webp/tokenize-your-shit.webp',
   'square-5': '/canvas-images/outline/new/webp/Nike-SB-Dunks-Freddy-Krueger.webp',
   'square-6': '/canvas-images/outline/new/webp/Andy-Warhol-Signed-Marilyn-Monroe.webp',
-  'square-7': '/canvas-images/outline/tokenise-you-shit.webp',
+  'square-7': '/canvas-images/outline/new/webp/tokenize-your-shit.webp',
   'square-8':
     '/canvas-images/outline/new/webp/Hermes-Matte-Niloticus-Crocodile-Himalaya-Kelly-Retourne-32-White.webp',
   'square-9':
@@ -105,17 +105,17 @@ const productMapping: Record<string, string> = {
     '/canvas-images/outline/new/webp/Richard-Mille-RM-88-Automatic-Tourbillon-Smiley.webp',
   'square-16':
     '/canvas-images/outline/new/webp/The-Macallan-Red-Collection-Trunk-40yo-50yo-60yo-Limited-Edition.webp',
-  'square-17': '/canvas-images/outline/tokenise-you-shit.webp',
+  'square-17': '/canvas-images/outline/new/webp/tokenize-your-shit.webp',
   'square-18': '/canvas-images/outline/new/webp/Hermes-Ostrich-Birkin-25.webp',
   'square-19': '/canvas-images/outline/new/webp/Original-iPhone-Apple.webp',
   'square-20': '/canvas-images/outline/new/webp/Louis-XIII-Rare-Cask-Cognac.webp',
-  'square-21': '/canvas-images/outline/tokenise-you-shit.webp',
-  'square-22': '/canvas-images/outline/tokenise-you-shit.webp',
+  'square-21': '/canvas-images/outline/new/webp/tokenize-your-shit.webp',
+  'square-22': '/canvas-images/outline/new/webp/tokenize-your-shit.webp',
   'square-23': '/canvas-images/outline/new/webp/Nike-SB-Dunks-Lobster.webp',
   'square-24': '/canvas-images/outline/new/webp/10xSouth-African-Gold-Krugerrands.webp',
   'square-25':
     '/canvas-images/outline/new/webp/Krug-Clos-dAmbonnay-Trilogy-Prestige-Champagne-Collection.webp',
-  'square-26': '/canvas-images/outline/tokenise-you-shit.webp',
+  'square-26': '/canvas-images/outline/new/webp/tokenize-your-shit.webp',
 
   // Horizontal
   'rect-horizontal-1': '/canvas-images/outline/new/webp/2009-F1-McLaren-MP4-24.webp',
@@ -538,18 +538,10 @@ const ICOPageContent: React.FC<ICOPageContentProps> = ({ isMobile, containerRef,
           <div className="w-full max-w-[1000px] mx-auto">
             {/* BUY ACES ICO NOW Header */}
             <div className="w-full flex flex-col items-center py-4 mb-4">
-              <h2
-                className="text-4xl font-bold text-white mb-2 tracking-widest"
-                style={{
-                  textShadow: '0 0 20px rgba(208, 178, 100, 0.3)',
-                }}
-              >
+              <h2 className="text-4xl font-bold text-white mb-2 tracking-widest font-neue-world">
                 BUY $ACES ICO NOW
               </h2>
-              <p
-                className="text-base text-[#DCDDCC] max-w-2xl text-center leading-relaxed"
-                style={{ fontFamily: 'system, serif' }}
-              >
+              <p className="text-base text-[#DCDDCC] max-w-2xl text-center leading-relaxed font-proxima-nova">
                 Participate in the ACES ICO and own a piece of the future of luxury asset
                 tokenization.
               </p>

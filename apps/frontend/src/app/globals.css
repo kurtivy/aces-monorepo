@@ -7,6 +7,12 @@
       -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans',
       sans-serif;
 
+    --font-neue-world: 'Neue World', sans-serif;
+    --font-proxima-nova: 'Proxima Nova', sans-serif;
+    --font-braah-one: 'Braah One', sans-serif;
+    --font-spray-letters: 'Spray Letters', cursive;
+    --font-jetbrains-mono: 'JetBrains Mono', monospace;
+
     /* Color variables */
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;

@@ -63,7 +63,7 @@ export const braahOne = localFont({
 });
 
 export const sprayLetters = localFont({
-  src: '../../public/fonts/Spray Letters.otf',
+  src: '../../public/fonts/Spray-Letters.otf',
   display: 'swap',
   variable: '--font-spray-letters',
   weight: '400',
