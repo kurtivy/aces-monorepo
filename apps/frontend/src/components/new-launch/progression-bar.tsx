@@ -144,7 +144,7 @@ export default function ProgressionBar({ percentage }: ProgressionBarProps) {
               style={{ fontFamily: 'JetBrains Mono, monospace' }}
             >
               {Number(roomTokenSupply).toLocaleString()} /{' '}
-              {Number(actualBondingCurveSupply).toLocaleString()} shares sold
+              {Number(actualBondingCurveSupply).toLocaleString()} tokens sold
             </div>
           </div>
         </div>

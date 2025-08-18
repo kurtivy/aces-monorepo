@@ -52,6 +52,17 @@ const imagePositions = {
   'square-17': { x: 1200, y: 600, width: 200, height: 200, type: 'square' },
   'square-18': { x: -400, y: 800, width: 200, height: 200, type: 'square' },
 
+  //new
+  'square-19': { x: -600, y: 0, width: 200, height: 200, type: 'square' },
+  'square-20': { x: -600, y: 400, width: 200, height: 200, type: 'square' },
+  'square-21': { x: -600, y: 200, width: 200, height: 200, type: 'square' },
+  'square-22': { x: -600, y: 1000, width: 200, height: 200, type: 'square' },
+  //new
+  'square-23': { x: 1400, y: 0, width: 200, height: 200, type: 'square' },
+  'square-24': { x: 1400, y: 200, width: 200, height: 200, type: 'square' },
+  'square-25': { x: 1400, y: 400, width: 200, height: 200, type: 'square' },
+  'square-26': { x: 1400, y: 1000, width: 200, height: 200, type: 'square' },
+
   // Token Info Squares
   'token-price': { x: 0, y: 400, width: 200, height: 200, type: 'token-info' },
   'token-allocation': { x: 800, y: 400, width: 200, height: 200, type: 'token-info' },
@@ -64,46 +75,62 @@ const imagePositions = {
   'rect-vertical-1': { x: -400, y: 400, width: 200, height: 400, type: 'vertical' },
   'rect-vertical-2': { x: 1200, y: 200, width: 200, height: 400, type: 'vertical' },
   'rect-vertical-3': { x: 1000, y: 400, width: 200, height: 400, type: 'vertical' },
+  'rect-vertical-4': { x: -600, y: 600, width: 200, height: 400, type: 'vertical' },
+  'rect-vertical-5': { x: 1400, y: 600, width: 200, height: 400, type: 'vertical' },
 };
 
 // Luxury product mapping - using the same high-end products as infinite canvas
 const productMapping: Record<string, string> = {
   'square-1':
-    '/canvas-images/outline/Audemars-Piguet-Royal-Oak-Concept-KAWS-Tourbillon-Companion-Dial-Limited-Edition.webp',
+    '/canvas-images/outline/new/webp/Audemars-Piguet-Royal-Oak-Concept-KAWS-Tourbillon-Companion-Dial-Limited-Edition.webp',
   'square-2':
-    '/canvas-images/outline/Tom-Brady-New-England-Patriots-Autographed-Riddell-1982-1989-Throwback-Speed-Flex-Authentic-Helmet.webp',
-  'square-3': '/canvas-images/outline/Andy-Warhol-Signed-Marilyn-Monroe.webp',
+    '/canvas-images/outline/new/webp/Tom-Brady-New-England-Patriots-Autographed-Riddell-1982-1989-Throwback-Speed-Flex-Authentic-Helmet.webp',
+  'square-3': '/canvas-images/outline/new/webp/Keith-Haring-1989.webp',
   'square-4': '/canvas-images/outline/tokenise-you-shit.webp',
-  'square-5': '/canvas-images/outline/Nike-SB-Dunks-Lobster.webp',
-  'square-6': '/canvas-images/outline/Original-iPhone-Apple.webp',
+  'square-5': '/canvas-images/outline/new/webp/Nike-SB-Dunks-Freddy-Krueger.webp',
+  'square-6': '/canvas-images/outline/new/webp/Andy-Warhol-Signed-Marilyn-Monroe.webp',
   'square-7': '/canvas-images/outline/tokenise-you-shit.webp',
   'square-8':
-    '/canvas-images/outline/Hermes-Matte-Niloticus-Crocodile-Himalaya-Kelly-Retourne-32-White.webp',
-  'square-9': '/canvas-images/outline/Richard-Mille-RM-88-Automatic-Tourbillon-Smiley.webp',
-  'square-10': '/canvas-images/outline/2010-Lamborghini-Murcielago-SV.webp',
+    '/canvas-images/outline/new/webp/Hermes-Matte-Niloticus-Crocodile-Himalaya-Kelly-Retourne-32-White.webp',
+  'square-9':
+    '/canvas-images/outline/new/webp/Autographed-Jersey-Mathew-Barzal-New-York-Islanders.webp',
+  'square-10': '/canvas-images/outline/new/webp/2010-Lamborghini-Murcielago-SV.webp',
   'square-11':
-    '/canvas-images/outline/Shohei-Ohtani-Los-Angeles-Angels-Autographed-Fanatics-Authentic-Game-Used-MLB-Baseball-from-2018-Rookie-Season-Limited-Edition-Number-1-of-5.webp',
-  'square-12':
-    '/canvas-images/outline/Krug-Clos-dAmbonnay-Trilogy-Prestige-Champagne-Collection.webp',
-  'square-13': '/canvas-images/outline/Nike-SB-Dunks-Lobster.webp',
-  'square-14': '/canvas-images/outline/Autographed-Jersey-Mathew-Barzal-New-York-Islanders.webp',
+    '/canvas-images/outline/new/webp/Shohei-Ohtani-Los-Angeles-Angels-Autographed-Fanatics-Authentic-Game-Used-MLB-Baseball-from-2018-Rookie-Season-Limited-Edition-Number-1-of-5.webp',
+  'square-12': '/canvas-images/outline/new/webp/Kanye-West-College-Dropout-Signed.webp',
+  'square-13': '/canvas-images/outline/new/webp/Nike-SB-Dunks-Freddy-Krueger.webp',
+  'square-14':
+    '/canvas-images/outline/new/webp/1991-Porsche-964-Turbo-Rubystone-Red-1-of-5-Limited-Edition-Paint.webp',
   'square-15':
-    '/canvas-images/outline/1991-Porsche-964-Turbo-Rubystone-Red-1-of-5-Limited-Edition-Paint.webp',
+    '/canvas-images/outline/new/webp/Richard-Mille-RM-88-Automatic-Tourbillon-Smiley.webp',
   'square-16':
-    '/canvas-images/outline/The-Macallan-Red-Collection-Trunk-40yo-50yo-60yo-Limited-Edition.webp',
+    '/canvas-images/outline/new/webp/The-Macallan-Red-Collection-Trunk-40yo-50yo-60yo-Limited-Edition.webp',
   'square-17': '/canvas-images/outline/tokenise-you-shit.webp',
-  'square-18':
-    '/canvas-images/outline/Hermes-Matte-Niloticus-Crocodile-Himalaya-Kelly-Retourne-32-White.webp',
+  'square-18': '/canvas-images/outline/new/webp/Hermes-Ostrich-Birkin-25.webp',
+  'square-19': '/canvas-images/outline/new/webp/Original-iPhone-Apple.webp',
+  'square-20': '/canvas-images/outline/new/webp/Louis-XIII-Rare-Cask-Cognac.webp',
+  'square-21': '/canvas-images/outline/tokenise-you-shit.webp',
+  'square-22': '/canvas-images/outline/tokenise-you-shit.webp',
+  'square-23': '/canvas-images/outline/new/webp/Nike-SB-Dunks-Lobster.webp',
+  'square-24': '/canvas-images/outline/new/webp/10xSouth-African-Gold-Krugerrands.webp',
+  'square-25':
+    '/canvas-images/outline/new/webp/Krug-Clos-dAmbonnay-Trilogy-Prestige-Champagne-Collection.webp',
+  'square-26': '/canvas-images/outline/tokenise-you-shit.webp',
 
   // Horizontal
-  'rect-horizontal-1': '/canvas-images/outline/2009-F1-McLaren-MP4-24.webp',
-  'rect-horizontal-2': '/canvas-images/outline/2010-Lamborghini-Murcielago-SV.webp',
-  'rect-horizontal-3': '/canvas-images/outline/2022-Azimut-Atlantis-45.webp',
+  'rect-horizontal-1': '/canvas-images/outline/new/webp/2009-F1-McLaren-MP4-24.webp',
+  'rect-horizontal-2': '/canvas-images/outline/new/webp/2010-Lamborghini-Murcielago-SV.webp',
+  'rect-horizontal-3': '/canvas-images/outline/new/webp/2022-Azimut-Atlantis-45.webp',
   // Vertical
   'rect-vertical-1':
-    '/canvas-images/outline/Louis-Vuitton-Monogram-Alzer-11-Hard-Case-Trunk-Set-Brown.webp',
-  'rect-vertical-2': '/canvas-images/outline/Veuve-Clicquot-Champagne-Vertical-Limit-Fridge.webp',
-  'rect-vertical-3': '/canvas-images/outline/Tiffany-and-Co-Rimowa.webp',
+    '/canvas-images/outline/new/webp/Louis-Vuitton-Monogram-Alzer-11-Hard-Case-Trunk-Set-Brown.webp',
+  'rect-vertical-2':
+    '/canvas-images/outline/new/webp/Veuve-Clicquot-Champagne-Vertical-Limit-Fridge.webp',
+  'rect-vertical-3': '/canvas-images/outline/new/webp/Tiffany-and-Co-Rimowa.webp',
+  'rect-vertical-4':
+    '/canvas-images/outline/new/webp/Veuve-Clicquot-Champagne-Vertical-Limit-Fridge.webp',
+  'rect-vertical-5':
+    '/canvas-images/outline/new/webp/Louis-Vuitton-Monogram-Alzer-11-Hard-Case-Trunk-Set-Brown.webp',
 };
 
 // Token Info Components - Updated to use new hooks
@@ -144,7 +171,7 @@ const CurrentPriceSquare: React.FC = () => {
           className="text-[#D0B264] text-sm font-medium tracking-wider mb-3 uppercase"
           style={{ fontFamily: 'system, serif' }}
         >
-          Next Share Price
+          Next Token Price
         </h3>
         <div className="flex flex-col items-center">
           {/* USD Price - Primary display */}
@@ -274,7 +301,7 @@ const UserBalanceSquare: React.FC = () => {
             className="text-[#DCDDCC] text-xs font-medium"
             style={{ fontFamily: 'system, serif' }}
           >
-            ACES Shares
+            ACES Tokens
           </span>
           {userShareBalance > 0 && (
             <span
@@ -289,7 +316,7 @@ const UserBalanceSquare: React.FC = () => {
               className="text-[#928357] text-xs font-medium mt-1"
               style={{ fontFamily: 'system, serif' }}
             >
-              No shares yet
+              No Tokens yet
             </span>
           )}
         </div>

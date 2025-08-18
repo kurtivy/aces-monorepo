@@ -244,7 +244,7 @@ export default function BondingCurveChart({
       .style('text-anchor', 'middle')
       .style('fill', '#9CA3AF')
       .style('font-size', '11px')
-      .text('Shares Sold');
+      .text('Tokens Sold');
 
     g.append('text')
       .attr('transform', 'rotate(-90)')
@@ -491,7 +491,7 @@ export default function BondingCurveChart({
             <div className="text-xs space-y-1">
               <div className="text-[#FFFFFF] font-semibold">
                 {tooltipData.tokensSold.toLocaleString(undefined, { maximumFractionDigits: 0 })}{' '}
-                shares
+                tokens
               </div>
               <div className="text-[#DCDDCC]">
                 ETH:{' '}

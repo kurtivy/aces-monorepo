@@ -16,6 +16,8 @@
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean && rm -rf node_modules",
     "convert:png-to-webp": "node scripts/convert-png-to-webp.js",
+    "convert:png-to-webp:outline": "node scripts/convert-png-to-webp.js",
+    "convert:png-to-webp:smart": "node scripts/convert-png-to-webp-smart.js",
     "move:png-to-old": "node scripts/move-png-to-old-outline.js",
     "convert:and-clean": "node scripts/convert-and-clean-png.js"
   },
