@@ -1517,9 +1517,6 @@ export const useCanvasRenderer = ({
         // Convert all repeated placements to array for culling
         const allRepeatedPlacements: RepeatedPlacement[] = [];
         repeatedPlacements.current.forEach((tilePlacements, tileId) => {
-          // FEATURED SECTION FIX: Skip tiles that would overlap with featured sections
-          const [tileX, tileY] = tileId.split(',').map(Number);
-          // Original tile: include all placements (featured section is drawn separately)
           allRepeatedPlacements.push(...tilePlacements);
         });
 
