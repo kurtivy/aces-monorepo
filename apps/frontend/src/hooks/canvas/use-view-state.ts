@@ -53,17 +53,21 @@ export const useViewState = ({
     if (!imagesLoaded || centeredOnce.current) return;
 
     const currentUnitSize = canvasWidth.current < 768 ? 150 : 200;
-    const currentHomeAreaWidth = currentUnitSize * 2;
-    const currentHomeAreaHeight = currentUnitSize;
-    const currentHomeAreaWorldX = -currentUnitSize;
-    const currentHomeAreaWorldY = -currentUnitSize;
+
+    // FEATURED SECTION: Update centering to account for featured + home area (total 2×3)
+    const currentTotalAreaWidth = currentUnitSize * 2; // Still 2 units wide
+    const currentTotalAreaHeight = currentUnitSize * 3; // Now 3 units tall (featured 2 + home 1)
+    const currentTotalAreaWorldX = -currentUnitSize; // Still starts at -unitSize
+    const currentTotalAreaWorldY = -currentUnitSize * 3; // Now starts at featured area top
 
     const screenCenterX = canvasWidth.current / 2;
     const screenCenterY = canvasHeight.current / 2;
 
-    const newX = screenCenterX - (currentHomeAreaWorldX + currentHomeAreaWidth / 2) * initialScale;
+    // Center on the combined featured + home area
+    const newX =
+      screenCenterX - (currentTotalAreaWorldX + currentTotalAreaWidth / 2) * initialScale;
     const newY =
-      screenCenterY - (currentHomeAreaWorldY + currentHomeAreaHeight / 2) * initialScale + 200; // Add 200px offset
+      screenCenterY - (currentTotalAreaWorldY + currentTotalAreaHeight / 2) * initialScale; // Centered view position
 
     setViewState((prev) => ({
       ...prev,
@@ -147,18 +151,21 @@ export const useViewState = ({
 
   const animateToHome = useCallback(() => {
     const currentUnitSize = canvasWidth.current < 768 ? 150 : 200;
-    const currentHomeAreaWidth = currentUnitSize * 2;
-    const currentHomeAreaHeight = currentUnitSize;
-    const currentHomeAreaWorldX = -currentUnitSize;
-    const currentHomeAreaWorldY = -currentUnitSize;
+
+    // FEATURED SECTION: Update home animation to center on featured + home area (total 2×3)
+    const currentTotalAreaWidth = currentUnitSize * 2; // Still 2 units wide
+    const currentTotalAreaHeight = currentUnitSize * 3; // Now 3 units tall (featured 2 + home 1)
+    const currentTotalAreaWorldX = -currentUnitSize; // Still starts at -unitSize
+    const currentTotalAreaWorldY = -currentUnitSize * 3; // Now starts at featured area top
 
     const screenCenterX = canvasWidth.current / 2;
     const screenCenterY = canvasHeight.current / 2;
 
+    // Center on the combined featured + home area
     const targetX =
-      screenCenterX - (currentHomeAreaWorldX + currentHomeAreaWidth / 2) * initialScale;
+      screenCenterX - (currentTotalAreaWorldX + currentTotalAreaWidth / 2) * initialScale;
     const targetY =
-      screenCenterY - (currentHomeAreaWorldY + currentHomeAreaHeight / 2) * initialScale + 200; // Add 200px offset
+      screenCenterY - (currentTotalAreaWorldY + currentTotalAreaHeight / 2) * initialScale; // Match initial load position
 
     setViewState((prev) => ({
       ...prev,

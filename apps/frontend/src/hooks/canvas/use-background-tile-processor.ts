@@ -98,6 +98,7 @@ interface BackgroundTileProcessor {
   // Cache management
   getCachedTileData: (tileId: string) => TileData | null;
   cacheTileData: (tileId: string, data: TileData) => void;
+  clearCache: () => void;
 
   // Streaming management
   addTilesToQueue: (tiles: GridTile[], viewportCenter: { x: number; y: number }) => void;
@@ -269,6 +270,9 @@ export const useBackgroundTileProcessor = ({
   });
 
   // Extracted generateRepeatedPlacementsForTile function from main hook
+  // Replace the generateTileInBackground function in your use-background-tile-processor.ts
+  // Find this function around line 200 and replace it with this updated version:
+
   const generateTileInBackground = useCallback(
     async (tile: GridTile): Promise<TileData> => {
       const tileId = `${tile.tileX},${tile.tileY}`;
@@ -321,21 +325,30 @@ export const useBackgroundTileProcessor = ({
 
       // Generate repeated token positions - extracted logic
       stableCreateTokenPositions.forEach((original) => {
+        const newTokenX = original.worldX + tile.offsetX;
+        const newTokenY = original.worldY + tile.offsetY;
+
         tokens.push({
-          worldX: original.worldX + tile.offsetX,
-          worldY: original.worldY + tile.offsetY,
+          worldX: newTokenX,
+          worldY: newTokenY,
           tileId,
         });
       });
 
-      // Home area gap filling - extracted logic
+      // CRITICAL FIX: Fill featured section area in repeated tiles to prevent black squares
       if (tile.tileX !== 0 || tile.tileY !== 0) {
+        // Home area gap filling - existing logic
         const homeAreaWorldX = -unitSize + tile.offsetX;
         const homeAreaWorldY = -unitSize + tile.offsetY;
+
+        // NEW: Featured area gap filling (this prevents the 2x2 black squares)
+        const featuredAreaWorldX = -unitSize + tile.offsetX;
+        const featuredAreaWorldY = -unitSize * 3 + tile.offsetY;
 
         const squareImages = images.filter((img) => img.type === 'square' && img.metadata);
 
         if (squareImages.length > 0) {
+          // Fill home area (existing logic)
           // Left square
           const leftSquareImage =
             squareImages[Math.abs(tile.tileX * 3 + tile.tileY * 7) % squareImages.length];
@@ -361,6 +374,25 @@ export const useBackgroundTileProcessor = ({
             index: placements.length,
             tileId,
           });
+
+          // NEW: Fill featured area (2x2 grid) to prevent black squares
+          for (let i = 0; i < 2; i++) {
+            for (let j = 0; j < 2; j++) {
+              const featuredSquareImage =
+                squareImages[
+                  Math.abs(tile.tileX * 13 + tile.tileY * 17 + i * 7 + j * 11) % squareImages.length
+                ];
+              placements.push({
+                image: featuredSquareImage,
+                x: featuredAreaWorldX + i * unitSize,
+                y: featuredAreaWorldY + j * unitSize,
+                width: unitSize,
+                height: unitSize,
+                index: placements.length,
+                tileId,
+              });
+            }
+          }
         }
       }
 
@@ -494,6 +526,11 @@ export const useBackgroundTileProcessor = ({
     };
   }, []);
 
+  // Clear cache function to invalidate cached tiles
+  const clearCache = useCallback((): void => {
+    lruTileCache.current.clear();
+  }, []);
+
   return {
     generateTileInBackground,
     getCachedTileData,
@@ -504,5 +541,6 @@ export const useBackgroundTileProcessor = ({
     clearTileQueue,
     getCacheStats,
     updateScrollState,
+    clearCache,
   };
 };

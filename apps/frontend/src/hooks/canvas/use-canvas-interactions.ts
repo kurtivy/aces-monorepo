@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ViewState, ImageInfo } from '../../types/canvas';
-import { isHomeArea } from '../../lib/canvas/grid-placement';
+import { isHomeArea, isFeaturedArea } from '../../lib/canvas/grid-placement'; // FEATURED SECTION: Added isFeaturedArea import
 import { mobileUtils } from '../../lib/utils/browser-utils';
 
 interface UseCanvasInteractionsProps {
@@ -38,6 +38,9 @@ interface UseCanvasInteractionsProps {
   onAboutClick?: () => void;
   onTermsClick?: () => void;
   onMomentumUpdate?: (momentum: { velocity: { x: number; y: number }; active: boolean }) => void;
+  // FEATURED SECTION: Add featured image props
+  featuredImage?: ImageInfo | null;
+  onFeaturedImageClick?: (imageInfo: ImageInfo) => void;
 }
 
 // MOMENTUM RESTORATION: Export enhanced momentum settings for canvas renderer
@@ -107,6 +110,8 @@ export const useCanvasInteractions = ({
   onAboutClick,
   onTermsClick,
   onMomentumUpdate,
+  featuredImage, // FEATURED SECTION: Add featured image
+  onFeaturedImageClick, // FEATURED SECTION: Add featured image click handler
 }: UseCanvasInteractionsProps) => {
   const router = useRouter();
   const [isPanning, setIsPanning] = useState(false);
@@ -116,10 +121,17 @@ export const useCanvasInteractions = ({
   const dragStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const boundsRef = useRef<DOMRect | null>(null);
 
+  // FEATURED SECTION: Updated area coordinates
   const homeAreaWidth = unitSize * 2;
   const homeAreaHeight = unitSize;
   const homeAreaWorldX = -unitSize;
   const homeAreaWorldY = -unitSize;
+
+  // FEATURED SECTION: New featured area coordinates (2×2 above home area)
+  const featuredAreaWidth = unitSize * 2;
+  const featuredAreaHeight = unitSize * 2;
+  const featuredAreaWorldX = -unitSize;
+  const featuredAreaWorldY = -unitSize * 3; // 2 units above home area
 
   // Optimized coordinate calculation with caching
   const getWorldCoordinates = useCallback(
@@ -175,6 +187,22 @@ export const useCanvasInteractions = ({
       if (!coords) return;
 
       const { worldX, worldY } = coords;
+
+      // FEATURED SECTION: Check featured area first (highest priority)
+      if (
+        featuredImage &&
+        isFeaturedArea(
+          worldX,
+          worldY,
+          featuredAreaWorldX,
+          featuredAreaWorldY,
+          featuredAreaWidth,
+          featuredAreaHeight,
+        )
+      ) {
+        onFeaturedImageClick?.(featuredImage);
+        return;
+      }
 
       // Check home area
       if (
@@ -290,12 +318,20 @@ export const useCanvasInteractions = ({
       homeAreaWorldY,
       homeAreaWidth,
       homeAreaHeight,
+      featuredAreaWorldX, // FEATURED SECTION: Add featured area coordinates
+      featuredAreaWorldY,
+      featuredAreaWidth,
+      featuredAreaHeight,
+      featuredImage, // FEATURED SECTION: Add featured image
+      onFeaturedImageClick, // FEATURED SECTION: Add featured image click handler
       imagePlacementMap,
       repeatedPlacements,
       repeatedTokens,
       unitSize,
       setSelectedImage,
       router,
+      onAboutClick,
+      onTermsClick,
     ],
   );
 
@@ -432,7 +468,20 @@ export const useCanvasInteractions = ({
       const coords = getWorldCoordinates(touch.clientX, touch.clientY);
       if (coords) {
         const { worldX, worldY } = coords;
-        const isClickable = isHomeArea(
+
+        // FEATURED SECTION: Check if touching featured area
+        const isTouchingFeatured =
+          featuredImage &&
+          isFeaturedArea(
+            worldX,
+            worldY,
+            featuredAreaWorldX,
+            featuredAreaWorldY,
+            featuredAreaWidth,
+            featuredAreaHeight,
+          );
+
+        const isTouchingHome = isHomeArea(
           worldX,
           worldY,
           homeAreaWorldX,
@@ -440,6 +489,8 @@ export const useCanvasInteractions = ({
           homeAreaWidth,
           homeAreaHeight,
         );
+
+        const isClickable = isTouchingFeatured || isTouchingHome;
         if (!isClickable) {
           event.preventDefault();
         }
@@ -452,6 +503,11 @@ export const useCanvasInteractions = ({
       homeAreaWorldY,
       homeAreaWidth,
       homeAreaHeight,
+      featuredAreaWorldX, // FEATURED SECTION: Add featured area coordinates
+      featuredAreaWorldY,
+      featuredAreaWidth,
+      featuredAreaHeight,
+      featuredImage, // FEATURED SECTION: Add featured image
     ],
   );
 

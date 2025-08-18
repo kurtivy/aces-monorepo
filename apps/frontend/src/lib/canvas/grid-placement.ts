@@ -1,5 +1,6 @@
 import { ImageInfo } from '../../types/canvas'; // Adjusted path
 
+// FEATURED SECTION: Updated home area check to include featured section
 export const isHomeArea = (
   x: number,
   y: number,
@@ -13,6 +14,40 @@ export const isHomeArea = (
     x < homeAreaWorldX + homeAreaWidth &&
     y >= homeAreaWorldY &&
     y < homeAreaWorldY + homeAreaHeight
+  );
+};
+
+// FEATURED SECTION: New function to check if position is in the combined reserved area (featured + home)
+export const isReservedArea = (
+  x: number,
+  y: number,
+  reservedAreaWorldX: number,
+  reservedAreaWorldY: number,
+  reservedAreaWidth: number,
+  reservedAreaHeight: number,
+) => {
+  return (
+    x >= reservedAreaWorldX &&
+    x < reservedAreaWorldX + reservedAreaWidth &&
+    y >= reservedAreaWorldY &&
+    y < reservedAreaWorldY + reservedAreaHeight
+  );
+};
+
+// FEATURED SECTION: New function to check if position is specifically in featured area
+export const isFeaturedArea = (
+  x: number,
+  y: number,
+  featuredAreaWorldX: number,
+  featuredAreaWorldY: number,
+  featuredAreaWidth: number,
+  featuredAreaHeight: number,
+) => {
+  return (
+    x >= featuredAreaWorldX &&
+    x < featuredAreaWorldX + featuredAreaWidth &&
+    y >= featuredAreaWorldY &&
+    y < featuredAreaWorldY + featuredAreaHeight
   );
 };
 
@@ -61,16 +96,17 @@ export const markSpaceOccupied = (
   }
 };
 
+// FEATURED SECTION: Updated canPlaceImage to use the new reserved area parameters
 export const canPlaceImage = (
   x: number,
   y: number,
   imgInfo: ImageInfo,
   currentOccupiedSpaces: Set<string>,
   unitSize: number,
-  homeAreaWorldX: number,
-  homeAreaWorldY: number,
-  homeAreaWidth: number,
-  homeAreaHeight: number,
+  reservedAreaWorldX: number, // FEATURED SECTION: Now refers to total reserved area
+  reservedAreaWorldY: number,
+  reservedAreaWidth: number,
+  reservedAreaHeight: number,
 ) => {
   // Use Math.ceil for cellsX/Y to ensure all cells the image would occupy are checked
   const cellsX = Math.ceil(imgInfo.displayWidth / unitSize);
@@ -82,15 +118,15 @@ export const canPlaceImage = (
       const cellX = Math.floor((x + i * unitSize) / unitSize);
       const cellY = Math.floor((y + j * unitSize) / unitSize);
 
-      // Check if this cell is part of the home area
+      // FEATURED SECTION: Check if this cell is part of the reserved area (featured + home)
       if (
-        isHomeArea(
+        isReservedArea(
           cellX * unitSize,
           cellY * unitSize,
-          homeAreaWorldX,
-          homeAreaWorldY,
-          homeAreaWidth,
-          homeAreaHeight,
+          reservedAreaWorldX,
+          reservedAreaWorldY,
+          reservedAreaWidth,
+          reservedAreaHeight,
         )
       ) {
         return false;
@@ -144,15 +180,16 @@ const isAdjacentToPreviousPlacement = (
   return false;
 };
 
+// FEATURED SECTION: Updated getImageCandidatesForPosition to use new reserved area parameters
 export const getImageCandidatesForPosition = (
   gridX: number,
   gridY: number,
   imagesRefCurrent: ImageInfo[],
   unitSize: number,
-  homeAreaWorldX: number,
-  homeAreaWorldY: number,
-  homeAreaWidth: number,
-  homeAreaHeight: number,
+  reservedAreaWorldX: number, // FEATURED SECTION: Now refers to total reserved area
+  reservedAreaWorldY: number,
+  reservedAreaWidth: number,
+  reservedAreaHeight: number,
   // NEW: Optional grid bounds for boundary detection
   gridBounds?: {
     startX: number;
@@ -191,23 +228,25 @@ export const getImageCandidatesForPosition = (
   // Place a "Submit Your Asset" image every 8th available square position (deterministic but sparse)
   if (
     Math.abs(gridX * 13 + gridY * 17) % 8 === 0 && // Deterministic but sparse
-    !isHomeArea(
+    !isReservedArea(
+      // FEATURED SECTION: Use new reserved area check
       gridX * unitSize,
       gridY * unitSize,
-      homeAreaWorldX,
-      homeAreaWorldY,
-      homeAreaWidth,
-      homeAreaHeight,
-    ) && // Ensure it's not in home area
-    !isAdjacentToHomeArea(
+      reservedAreaWorldX,
+      reservedAreaWorldY,
+      reservedAreaWidth,
+      reservedAreaHeight,
+    ) && // Ensure it's not in reserved area
+    !isAdjacentToReservedArea(
+      // FEATURED SECTION: Use new adjacent check
       gridX * unitSize,
       gridY * unitSize,
-      homeAreaWorldX,
-      homeAreaWorldY,
-      homeAreaWidth,
-      homeAreaHeight,
+      reservedAreaWorldX,
+      reservedAreaWorldY,
+      reservedAreaWidth,
+      reservedAreaHeight,
       unitSize,
-    ) // Ensure it's not adjacent to home area
+    ) // Ensure it's not adjacent to reserved area
   ) {
     // Find the submit asset image from images array
     const submitAssetImage = imagesRefCurrent.find(
@@ -357,7 +396,47 @@ export const getImageUsageStats = () => {
   };
 };
 
-// New helper function to check if a position is adjacent to the home area
+// FEATURED SECTION: Updated helper function to check if a position is adjacent to the reserved area
+export const isAdjacentToReservedArea = (
+  x: number,
+  y: number,
+  reservedAreaWorldX: number,
+  reservedAreaWorldY: number,
+  reservedAreaWidth: number,
+  reservedAreaHeight: number,
+  unitSize: number,
+) => {
+  // Convert world coordinates to grid coordinates
+  const gridX = Math.floor(x / unitSize);
+  const gridY = Math.floor(y / unitSize);
+
+  // Convert reserved area bounds to grid coordinates
+  const reservedStartGridX = Math.floor(reservedAreaWorldX / unitSize);
+  const reservedEndGridX = Math.floor((reservedAreaWorldX + reservedAreaWidth) / unitSize);
+  const reservedStartGridY = Math.floor(reservedAreaWorldY / unitSize);
+  const reservedEndGridY = Math.floor((reservedAreaWorldY + reservedAreaHeight) / unitSize);
+
+  // Check if the position is adjacent (within 1 grid cell) of the reserved area
+  const isWithinAdjacentBounds =
+    gridX >= reservedStartGridX - 1 &&
+    gridX <= reservedEndGridX &&
+    gridY >= reservedStartGridY - 1 &&
+    gridY <= reservedEndGridY;
+
+  return (
+    isWithinAdjacentBounds &&
+    !isReservedArea(
+      x,
+      y,
+      reservedAreaWorldX,
+      reservedAreaWorldY,
+      reservedAreaWidth,
+      reservedAreaHeight,
+    )
+  );
+};
+
+// FEATURED SECTION: Keep old function for backward compatibility
 export const isAdjacentToHomeArea = (
   x: number,
   y: number,

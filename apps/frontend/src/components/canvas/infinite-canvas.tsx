@@ -31,7 +31,17 @@ import { performEventListenerHealthCheck } from '../../lib/utils/event-listener-
 
 type LoadingState = 'loading' | 'ready';
 
-const InfiniteCanvas = () => {
+// FEATURED SECTION: Add interface for props
+interface InfiniteCanvasProps {
+  featuredImageId?: string;
+  onFeaturedImageClick?: (imageInfo: ImageInfo) => void;
+}
+
+// FEATURED SECTION: Update component declaration to accept props
+const InfiniteCanvas = ({
+  featuredImageId = '7', // Default to KAWS watch (Audemars Piguet Royal Oak Concept KAWS)
+  onFeaturedImageClick,
+}: InfiniteCanvasProps = {}) => {
   const router = useRouter();
   const [selectedImage, setSelectedImage] = useState<ImageInfo | null>(null);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
@@ -67,23 +77,33 @@ const InfiniteCanvas = () => {
         : 0.5, // Week 3: Capability-aware animation duration
     });
 
-  const { canvasReady, repeatedPlacements, repeatedTokens, handleMomentumUpdate } =
-    useCanvasRenderer({
-      images,
-      viewState,
-      imagesLoaded: imagesLoaded,
-      canvasVisible: loadingState !== 'loading' || hasSeenIntro,
-      onCreateTokenClick: () => router.push('/launch'), // Navigate to ICO launch page
-      imagePlacementMap: imagePlacementMapRef,
-      unitSize: unitSize,
-      canvasRef: canvasRef,
-      // Issue #2: Pass updateViewState for momentum integration
-      updateViewState,
-    });
+  // FEATURED SECTION: Updated useCanvasRenderer call with featured section props
+  const {
+    canvasReady,
+    repeatedPlacements,
+    repeatedTokens,
+    handleMomentumUpdate,
+    featuredImage, // FEATURED SECTION: Add featured image return value
+  } = useCanvasRenderer({
+    images,
+    viewState,
+    imagesLoaded: imagesLoaded,
+    canvasVisible: loadingState !== 'loading' || hasSeenIntro,
+    onCreateTokenClick: () => router.push('/launch'), // Navigate to ICO launch page
+    imagePlacementMap: imagePlacementMapRef,
+    unitSize: unitSize,
+    canvasRef: canvasRef,
+    // Issue #2: Pass updateViewState for momentum integration
+    updateViewState,
+    // FEATURED SECTION: Add featured section props
+    featuredImageId,
+    onFeaturedImageClick: onFeaturedImageClick || setSelectedImage,
+  });
 
   const imagesRef = useRef(images);
   imagesRef.current = images;
 
+  // FEATURED SECTION: Updated useCanvasInteractions call with featured section props
   const {
     isPanning,
     isDragging,
@@ -104,6 +124,9 @@ const InfiniteCanvas = () => {
     canvasRef,
     repeatedPlacements,
     repeatedTokens,
+    // FEATURED SECTION: Add featured section props
+    featuredImage,
+    onFeaturedImageClick: onFeaturedImageClick || setSelectedImage,
   });
 
   const interactionsEnabled = loadingState === 'ready' && imagesLoaded;

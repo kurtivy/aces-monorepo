@@ -54,6 +54,9 @@ import {
   type CanvasOperationResult,
 } from '../../lib/utils/canvas-error-boundary';
 
+// FEATURED SECTION: Import featured section drawing functions
+import { drawFeaturedSection } from '../../lib/canvas/draw';
+
 interface UseCanvasRendererProps {
   images: ImageInfo[];
   viewState: ViewState;
@@ -67,6 +70,10 @@ interface UseCanvasRendererProps {
   canvasRef?: React.RefObject<HTMLCanvasElement | null>; // Match the nullable type
   // Issue #2: Add updateViewState for momentum handling
   updateViewState?: (deltaX: number, deltaY: number) => void;
+  // FEATURED SECTION: Add featured image ID prop
+  featuredImageId?: string;
+  // FEATURED SECTION: Add modal handler for featured section clicks
+  onFeaturedImageClick?: (imageInfo: ImageInfo) => void;
 }
 
 // Removed global browserPerf - now using capability-based system per hook instance
@@ -157,6 +164,8 @@ export const useCanvasRenderer = ({
   imagePlacementMap,
   canvasRef,
   updateViewState,
+  featuredImageId = undefined, // FEATURED SECTION: Default to KAWS watch
+  onFeaturedImageClick,
 }: UseCanvasRendererProps) => {
   const canvasRefInternal = useRef<HTMLCanvasElement>(null);
 
@@ -167,6 +176,19 @@ export const useCanvasRenderer = ({
   const activeCanvasRef = canvasRef || canvasRefInternal;
 
   useCoordinatedResize({ canvasRef: activeCanvasRef });
+
+  // FEATURED SECTION: Find featured image by ID
+  const featuredImage = useMemo(() => {
+    const found = images.find((img) => img.metadata.id === featuredImageId) || null;
+    console.log('Featured Image Debug:', {
+      featuredImageId,
+      totalImages: images.length,
+      foundImage: !!found,
+      foundImageId: found?.metadata?.id,
+      allImageIds: images.map((img) => img.metadata?.id).filter(Boolean),
+    });
+    return found;
+  }, [images, featuredImageId]);
 
   // Production Integration: Enhanced capability-based performance system
   const { browserPerf, deviceCapabilities, adaptiveQualityManager } = useMemo(() => {
@@ -728,10 +750,36 @@ export const useCanvasRenderer = ({
 
     resetGlobalPlacementTracking();
 
+    // FEATURED SECTION: Updated reserved area - now 2×3 instead of 2×1
     const homeAreaWorldX = -unitSize;
     const homeAreaWorldY = -unitSize;
     const homeAreaWidth = unitSize * 2;
-    const homeAreaHeight = unitSize;
+    const homeAreaHeight = unitSize; // Home area stays 2×1
+
+    // FEATURED SECTION: New featured area above home area (2×2)
+    const featuredAreaWorldX = -unitSize;
+    const featuredAreaWorldY = -unitSize * 3; // 2 units above home area
+    const featuredAreaWidth = unitSize * 2;
+    const featuredAreaHeight = unitSize * 2;
+
+    // FEATURED SECTION: Combined reserved area is 2×3
+    const totalReservedAreaWorldX = -unitSize;
+    const totalReservedAreaWorldY = -unitSize * 3; // Top of featured area
+    const totalReservedAreaWidth = unitSize * 2;
+    const totalReservedAreaHeight = unitSize * 3; // Featured (2) + Home (1)
+
+    // DEBUG: Log the coordinates
+    console.log('Reserved Area Debug:', {
+      featuredImageId,
+      unitSize,
+      totalReservedAreaWorldX,
+      totalReservedAreaWorldY,
+      totalReservedAreaWidth,
+      totalReservedAreaHeight,
+      homeAreaWorldX: -unitSize,
+      homeAreaWorldY: -unitSize,
+      featuredAreaWorldY: -unitSize * 3,
+    });
 
     const totalProducts = images.length;
     const estimatedGridCells = Math.ceil(Math.sqrt(totalProducts * 1.5)); // 1.5x for create tokens and spacing
@@ -765,10 +813,11 @@ export const useCanvasRenderer = ({
     }> = [];
     const createTokenPositions: Array<{ worldX: number; worldY: number }> = [];
 
+    // FEATURED SECTION: Mark entire reserved area (2×3) as occupied
     for (let i = 0; i < 2; i++) {
-      for (let j = 0; j < 1; j++) {
-        const cellX = Math.floor((homeAreaWorldX + i * unitSize) / unitSize);
-        const cellY = Math.floor((homeAreaWorldY + j * unitSize) / unitSize);
+      for (let j = 0; j < 3; j++) {
+        const cellX = Math.floor((totalReservedAreaWorldX + i * unitSize) / unitSize);
+        const cellY = Math.floor((totalReservedAreaWorldY + j * unitSize) / unitSize);
         occupiedSpaces.add(`${cellX},${cellY}`);
       }
     }
@@ -798,10 +847,10 @@ export const useCanvasRenderer = ({
           gridY,
           images,
           unitSize,
-          homeAreaWorldX,
-          homeAreaWorldY,
-          homeAreaWidth,
-          homeAreaHeight,
+          totalReservedAreaWorldX, // FEATURED SECTION: Use total reserved area
+          totalReservedAreaWorldY,
+          totalReservedAreaWidth,
+          totalReservedAreaHeight,
           originalGridBounds.current,
         );
 
@@ -815,10 +864,10 @@ export const useCanvasRenderer = ({
               { ...imageInfo, displayWidth: width, displayHeight: height },
               occupiedSpaces,
               unitSize,
-              homeAreaWorldX,
-              homeAreaWorldY,
-              homeAreaWidth,
-              homeAreaHeight,
+              totalReservedAreaWorldX, // FEATURED SECTION: Use total reserved area
+              totalReservedAreaWorldY,
+              totalReservedAreaWidth,
+              totalReservedAreaHeight,
             )
           ) {
             const placedItem = { image: imageInfo, x, y, width, height };
@@ -1052,7 +1101,7 @@ export const useCanvasRenderer = ({
         return;
       }
 
-      // Check if clicking on repeated token
+      // FEATURED SECTION: Check if clicking on featured section
       const mouseEvent = event as MouseEvent;
       // Phase 2 Step 9: Safe getBoundingClientRect with precision handling
       const rectResult = safeGetBoundingClientRect(currentCanvas);
@@ -1065,6 +1114,25 @@ export const useCanvasRenderer = ({
       const worldMouseX = (mouseX - viewState.x) / viewState.scale;
       const worldMouseY = (mouseY - viewState.y) / viewState.scale;
 
+      // FEATURED SECTION: Featured area bounds (2×2 above home area)
+      const featuredAreaWorldX = -unitSize;
+      const featuredAreaWorldY = -unitSize * 3;
+      const featuredAreaWidth = unitSize * 2;
+      const featuredAreaHeight = unitSize * 2;
+
+      // FEATURED SECTION: Check if clicking within featured area
+      if (
+        featuredImage &&
+        worldMouseX >= featuredAreaWorldX &&
+        worldMouseX <= featuredAreaWorldX + featuredAreaWidth &&
+        worldMouseY >= featuredAreaWorldY &&
+        worldMouseY <= featuredAreaWorldY + featuredAreaHeight
+      ) {
+        onFeaturedImageClick?.(featuredImage);
+        return;
+      }
+
+      // Check if clicking on repeated token
       let clickedRepeatedToken = false;
       repeatedTokens.current.forEach((tileTokens) => {
         tileTokens.forEach((token) => {
@@ -1115,7 +1183,15 @@ export const useCanvasRenderer = ({
         }
       }
     };
-  }, [hoveredTokenIndex, onCreateTokenClick, viewState, unitSize, activeCanvasRef]); // Phase 2 Step 3: Added activeCanvasRef dependency
+  }, [
+    hoveredTokenIndex,
+    onCreateTokenClick,
+    viewState,
+    unitSize,
+    activeCanvasRef,
+    featuredImage,
+    onFeaturedImageClick,
+  ]); // FEATURED SECTION: Added dependencies
 
   // CRITICAL FIX: Separate canvas initialization from animation loop to prevent infinite re-renders
   useEffect(() => {
@@ -1164,10 +1240,25 @@ export const useCanvasRenderer = ({
     // Phase 2 Step 9: Lightweight performance monitoring (removed heavy monitoring for performance)
     // Performance monitoring moved to development mode only
 
+    // FEATURED SECTION: Updated area dimensions
     const homeAreaWorldX = -unitSize;
     const homeAreaWorldY = -unitSize;
     const homeAreaWidth = unitSize * 2;
     const homeAreaHeight = unitSize;
+
+    // FEATURED SECTION: New featured area coordinates
+    const featuredAreaWorldX = -unitSize;
+    const featuredAreaWorldY = -unitSize * 3;
+    const featuredAreaWidth = unitSize * 2;
+    const featuredAreaHeight = unitSize * 2;
+
+    console.log('Drawing Coordinates:', {
+      featuredAreaWorldX,
+      featuredAreaWorldY,
+      homeAreaWorldX,
+      homeAreaWorldY,
+      featuredImage: !!featuredImage,
+    });
 
     const draw = (currentTime: number) => {
       // Step 0: Start performance monitoring for this frame
@@ -1425,7 +1516,10 @@ export const useCanvasRenderer = ({
       if (placementsCalculated && originalGridBounds.current) {
         // Convert all repeated placements to array for culling
         const allRepeatedPlacements: RepeatedPlacement[] = [];
-        repeatedPlacements.current.forEach((tilePlacements) => {
+        repeatedPlacements.current.forEach((tilePlacements, tileId) => {
+          // FEATURED SECTION FIX: Skip tiles that would overlap with featured sections
+          const [tileX, tileY] = tileId.split(',').map(Number);
+          // Original tile: include all placements (featured section is drawn separately)
           allRepeatedPlacements.push(...tilePlacements);
         });
 
@@ -1584,20 +1678,6 @@ export const useCanvasRenderer = ({
             });
           }
 
-          // Mark new hovered repeated token as dirty (if any)
-          // TEMPORARY FIX: Comment out to resolve TypeScript error - will fix properly later
-          /*
-          if (newHoveredRepeatedToken) {
-            dirtyRegionManager.current.addDirtyRegion({
-              x: newHoveredRepeatedToken.worldX - buffer,
-              y: newHoveredRepeatedToken.worldY - buffer,
-              width: unitSize + buffer * 2,
-              height: unitSize + buffer * 2,
-              reason: 'hover',
-            });
-          }
-          */
-
           setHoveredRepeatedToken(newHoveredRepeatedToken);
 
           // PERFORMANCE OPTIMIZATION: Reuse existing hover animation system
@@ -1753,6 +1833,39 @@ export const useCanvasRenderer = ({
         });
       }
 
+      // FEATURED SECTION: Draw featured section using screen coordinates
+      const featuredAreaScreenPos = worldToScreen(
+        featuredAreaWorldX,
+        featuredAreaWorldY,
+        viewTransform,
+      );
+      const featuredAreaScreenWidth = (featuredAreaWidth * viewTransform.scaleX) | 0;
+      const featuredAreaScreenHeight = (featuredAreaHeight * viewTransform.scaleY) | 0;
+
+      // DEBUG: Uncomment for coordinate debugging
+      // console.log('Featured Section Drawing Debug:', {
+      //   worldCoords: { x: featuredAreaWorldX, y: featuredAreaWorldY, w: featuredAreaWidth, h: featuredAreaHeight },
+      //   screenCoords: { x: featuredAreaScreenPos.x, y: featuredAreaScreenPos.y, w: featuredAreaScreenWidth, h: featuredAreaScreenHeight },
+      //   viewTransform: { scaleX: viewTransform.scaleX, scaleY: viewTransform.scaleY },
+      //   canvasSize: { w: canvas.width, h: canvas.height },
+      //   featuredImage: !!featuredImage,
+      //   featuredImageComplete: featuredImage?.element?.complete,
+      // });
+
+      // Always draw featured section (will show placeholder if no image)
+      drawFeaturedSection(
+        ctx,
+        featuredAreaScreenPos.x,
+        featuredAreaScreenPos.y,
+        featuredAreaScreenWidth,
+        featuredAreaScreenHeight,
+        featuredImage,
+        mousePositionRef.current.x, // Screen mouse coordinates
+        mousePositionRef.current.y, // Screen mouse coordinates
+        currentTime,
+      );
+      totalElementsRendered++; // Count featured section as one element
+
       // Draw home area using screen coordinates
       const homeAreaScreenPos = worldToScreen(homeAreaWorldX, homeAreaWorldY, viewTransform);
       const homeAreaScreenWidth = (homeAreaWidth * viewTransform.scaleX) | 0;
@@ -1881,6 +1994,7 @@ export const useCanvasRenderer = ({
     // REMOVED: productAnimationStartTime (it's a ref, not state)
     canvasVisible,
     activeCanvasRef, // Phase 2 Step 4 Action 3: Added missing canvas ref dependency
+    featuredImage, // FEATURED SECTION: Added featured image dependency
   ]); // Phase 2 Step 4 Action 3: Most refs are intentionally stable and don't need dependencies
 
   // Step 6: Enhanced scroll detection and background processor coordination
@@ -2163,5 +2277,7 @@ export const useCanvasRenderer = ({
     repeatedTokens: repeatedTokens.current,
     // Issue #2: Return momentum handler for interactions integration
     handleMomentumUpdate,
+    // FEATURED SECTION: Return featured image for external use
+    featuredImage,
   };
 };
