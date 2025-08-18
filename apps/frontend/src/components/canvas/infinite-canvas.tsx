@@ -12,6 +12,7 @@ import { useCoordinatedResize } from '../../hooks/use-coordinated-resize';
 import ConnectWalletNav from '../ui/custom/connect-wallet-nav';
 import HomeButton from '../ui/custom/home-button';
 import ContactButton from '../ui/custom/contact-button';
+import BuiltOnBaseOverlay from '../ui/custom/built-on-base-overlay';
 import ImageDetailsModal from '../ui/custom/image-details-modal';
 import ContactFormModal from '../ui/custom/contact-form-modal';
 import IntroAnimation from '../loading/intro-animation';
@@ -380,6 +381,9 @@ const InfiniteCanvas = () => {
           </motion.div>
         </>
       )}
+
+      {/* Built on BASE overlay */}
+      {isUIVisible && <BuiltOnBaseOverlay />}
     </>
   );
 };
