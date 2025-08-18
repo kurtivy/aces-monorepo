@@ -21,7 +21,12 @@ const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnima
   const totalLetters = acesText.length + funText.length;
 
   const funFonts = [
-    { family: '"Spray Letters", cursive', weight: '400', name: 'Spray Letters' },
+    {
+      family: 'var(--font-spray-letters), "Spray Letters", cursive',
+      weight: '400',
+      name: 'Spray Letters',
+      className: 'font-spray-letters',
+    },
     { family: 'Verdana, Geneva, sans-serif', weight: '700', name: 'Clear' },
     { family: '"Lucida Console", Monaco, monospace', weight: '400', name: 'Code' },
     { family: 'ui-monospace, Menlo, monospace', weight: '500', name: 'Mono' },
@@ -96,10 +101,8 @@ const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnima
             return (
               <motion.span
                 key={`aces-${index}`}
-                className="text-6xl sm:text-6xl md:text-9xl lg:text-9xl xl:text-9xl font-bold tracking-tight text-white leading-none"
+                className="text-6xl sm:text-6xl md:text-9xl lg:text-9xl xl:text-9xl font-braah-one font-normal tracking-tight text-white leading-none"
                 style={{
-                  fontFamily: 'Futura, "Century Gothic", sans-serif',
-                  fontWeight: '700',
                   color: '#FFFFFF',
                   textShadow: '0 0 20px rgba(255, 255, 255, 0.3)',
                   filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
@@ -145,7 +148,7 @@ const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnima
                     }}
                   >
                     <span
-                      className="text-6xl sm:text-6xl md:text-[10.5rem] lg:text-[10.5rem] xl:text-[10.5rem] font-bold tracking-tight leading-none"
+                      className={`text-6xl sm:text-6xl md:text-[10.5rem] lg:text-[10.5rem] xl:text-[10.5rem] font-bold tracking-tight leading-none ${currentFont.className || ''}`}
                       style={{
                         fontFamily: currentFont.family,
                         fontWeight: currentFont.weight,
