@@ -8,12 +8,12 @@ import Image from 'next/image';
 const imagePositions = {
   // Left side - positioned directly against left edge of content, starting from header
   'square-2': { x: -400, y: 0, width: 200, height: 200, type: 'square' },
-  'square-3': { x: -200, y: 400, width: 200, height: 200, type: 'square' },
+  'square-3': { x: -200, y: 800, width: 200, height: 200, type: 'square' }, // Moved to clear position below rect-vertical-1
   // 'square-4': { x: -200, y: 600, width: 200, height: 200, type: 'square' },
   'square-5': { x: -200, y: 0, width: 200, height: 200, type: 'square' }, // Bottom left, next to BUY NOW
 
   // Right side - positioned directly against right edge of content (1000px + 0px = 1000px)
-  'square-6': { x: 1200, y: 0, width: 200, height: 200, type: 'square' },
+  'square-6': { x: 1200, y: 0, width: 200, height: 200, type: 'square' }, // Moved further right to clear position
   // 'square-7': { x: 1000, y: 200, width: 200, height: 200, type: 'square' },
   'square-8': { x: 1000, y: 0, width: 200, height: 200, type: 'square' },
 
@@ -38,34 +38,36 @@ const imagePositions = {
 // Luxury product mapping - using the same high-end products as infinite canvas
 const productMapping: Record<string, string> = {
   'square-2':
-    '/canvas-images/outline/Tom-Brady-New-England-Patriots-Autographed-Riddell-1982-1989-Throwback-Speed-Flex-Authentic-Helmet.webp',
+    '/canvas-images/outline/new/webp/Tom-Brady-New-England-Patriots-Autographed-Riddell-1982-1989-Throwback-Speed-Flex-Authentic-Helmet.webp',
   'square-3':
-    '/canvas-images/outline/1991-Porsche-964-Turbo-Rubystone-Red-1-of-5-Limited-Edition-Paint.webp',
+    '/canvas-images/outline/new/webp/1991-Porsche-964-Turbo-Rubystone-Red-1-of-5-Limited-Edition-Paint.webp',
   'square-5':
-    '/canvas-images/outline/Audemars-Piguet-Royal-Oak-Concept-KAWS-Tourbillon-Companion-Dial-Limited-Edition.webp',
-  'square-6': '/canvas-images/outline/Original-iPhone-Apple.webp',
+    '/canvas-images/outline/new/webp/Audemars-Piguet-Royal-Oak-Concept-KAWS-Tourbillon-Companion-Dial-Limited-Edition.webp',
+  'square-6': '/canvas-images/outline/new/webp/Original-iPhone-Apple.webp',
   'square-8':
-    '/canvas-images/outline/The-Macallan-Red-Collection-Trunk-40yo-50yo-60yo-Limited-Edition.webp',
-  'square-9': '/canvas-images/outline/Nike-SB-Dunks-Lobster.webp',
-  'square-10': '/canvas-images/outline/Nike-SB-Dunks-Lobster.webp',
+    '/canvas-images/outline/new/webp/The-Macallan-Red-Collection-Trunk-40yo-50yo-60yo-Limited-Edition.webp',
+  'square-9': '/canvas-images/outline/new/webp/Nike-SB-Dunks-Lobster.webp',
+  'square-10': '/canvas-images/outline/new/webp/Nike-SB-Dunks-Lobster.webp',
   'square-11':
-    '/canvas-images/outline/Shohei-Ohtani-Los-Angeles-Angels-Autographed-Fanatics-Authentic-Game-Used-MLB-Baseball-from-2018-Rookie-Season-Limited-Edition-Number-1-of-5.webp',
+    '/canvas-images/outline/new/webp/Shohei-Ohtani-Los-Angeles-Angels-Autographed-Fanatics-Authentic-Game-Used-MLB-Baseball-from-2018-Rookie-Season-Limited-Edition-Number-1-of-5.webp',
   'square-12':
-    '/canvas-images/outline/Krug-Clos-dAmbonnay-Trilogy-Prestige-Champagne-Collection.webp',
+    '/canvas-images/outline/new/webp/Krug-Clos-dAmbonnay-Trilogy-Prestige-Champagne-Collection.webp',
   'square-13':
-    '/canvas-images/outline/Hermes-Matte-Niloticus-Crocodile-Himalaya-Kelly-Retourne-32-White.webp',
-  'square-14': '/canvas-images/outline/Richard-Mille-RM-88-Automatic-Tourbillon-Smiley.webp',
-  'square-15': '/canvas-images/outline/Marilyn-Monroe-1953-Signed-Photo.webp',
+    '/canvas-images/outline/new/webp/Hermes-Matte-Niloticus-Crocodile-Himalaya-Kelly-Retourne-32-White.webp',
+  'square-14':
+    '/canvas-images/outline/new/webp/Richard-Mille-RM-88-Automatic-Tourbillon-Smiley.webp',
+  'square-15': '/canvas-images/outline/new/webp/Marilyn-Monroe-1953-Signed-Photo.webp',
 
   // Horizontal
-  'rect-horizontal-1': '/canvas-images/outline/2009-F1-McLaren-MP4-24.webp',
-  'rect-horizontal-2': '/canvas-images/outline/2010-Lamborghini-Murcielago-SV.webp',
-  'rect-horizontal-3': '/canvas-images/outline/2022-Azimut-Atlantis-45.webp',
+  'rect-horizontal-1': '/canvas-images/outline/new/webp/2009-F1-McLaren-MP4-24.webp',
+  'rect-horizontal-2': '/canvas-images/outline/new/webp/2010-Lamborghini-Murcielago-SV.webp',
+  'rect-horizontal-3': '/canvas-images/outline/new/webp/2022-Azimut-Atlantis-45.webp',
   // Vertical
   'rect-vertical-1':
-    '/canvas-images/outline/Louis-Vuitton-Monogram-Alzer-11-Hard-Case-Trunk-Set-Brown.webp',
-  'rect-vertical-2': '/canvas-images/outline/Tiffany-and-Co-Rimowa.webp',
-  'rect-vertical-3': '/canvas-images/outline/Tiffany-and-Co-Rimowa.webp',
+    '/canvas-images/outline/new/webp/Louis-Vuitton-Monogram-Alzer-11-Hard-Case-Trunk-Set-Brown.webp',
+  'rect-vertical-2': '/canvas-images/outline/new/webp/Tiffany-and-Co-Rimowa.webp',
+  'rect-vertical-3':
+    '/canvas-images/outline/new/webp/Veuve-Clicquot-Yellow-Label-Champagne-Magnum-1-of-1.webp',
 };
 
 // Image tile component that mimics the infinite canvas drawing system
@@ -210,31 +212,24 @@ const LuxuryAssetsBackground: React.FC<PageBackgroundProps> = ({
           {/* Add additional images for extended coverage */}
           <ImageTile
             key="extended-1"
-            position={{ x: -400, y: 1100, width: 200, height: 200, type: 'square' }}
-            imageUrl="/canvas-images/outline/1991-Porsche-964-Turbo-Rubystone-Red-1-of-5-Limited-Edition-Paint.webp"
+            position={{ x: -400, y: 1000, width: 200, height: 200, type: 'square' }}
+            imageUrl="/canvas-images/outline/new/webp/1991-Porsche-964-Turbo-Rubystone-Red-1-of-5-Limited-Edition-Paint.webp"
             alt="Extended luxury asset 1"
             tileKey="extended-1"
           />
           <ImageTile
             key="extended-2"
             position={{ x: 1200, y: 1200, width: 200, height: 200, type: 'square' }}
-            imageUrl="/canvas-images/outline/Audemars-Piguet-Royal-Oak-Concept-KAWS-Tourbillon-Companion-Dial-Limited-Edition.webp"
+            imageUrl="/canvas-images/outline/new/webp/Audemars-Piguet-Royal-Oak-Concept-KAWS-Tourbillon-Companion-Dial-Limited-Edition.webp"
             alt="Extended luxury asset 2"
             tileKey="extended-2"
           />
           <ImageTile
             key="extended-3"
             position={{ x: -200, y: 1200, width: 200, height: 200, type: 'square' }}
-            imageUrl="/canvas-images/outline/Andy-Warhol-Signed-Marilyn-Monroe.webp"
+            imageUrl="/canvas-images/outline/new/webp/Andy-Warhol-Signed-Marilyn-Monroe.webp"
             alt="Extended luxury asset 3"
             tileKey="extended-3"
-          />
-          <ImageTile
-            key="extended-4"
-            position={{ x: 0, y: 1200, width: 200, height: 200, type: 'square' }}
-            imageUrl="/canvas-images/outline/Original-iPhone-Apple.webp"
-            alt="Extended luxury asset 4"
-            tileKey="extended-4"
           />
         </div>
       </div>

@@ -36,11 +36,11 @@ import Image from 'next/image';
 import Footer from '@/components/ui/custom/footer';
 import AnimatedDotsBackground from '@/components/ui/custom/animated-dots-background';
 import LuxuryAssetsBackground from '@/components/ui/custom/luxury-assets-background';
-import { useAuth } from '@/lib/auth/auth-context';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { VerificationForm } from '@/components/seller/verification-form';
+// import { useAuth } from '@/lib/auth/auth-context';
+// import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+// import { VerificationForm } from '@/components/seller/verification-form';
 import AcesHeader from '@/components/ui/custom/aces-header';
-import { PrivyDebug } from '@/components/debug/privy-debug';
+// import { PrivyDebug } from '@/components/debug/privy-debug';
 
 // Modern Form Section Component
 const FormSection = ({
@@ -132,12 +132,12 @@ const ProgressSteps = ({ currentStep }: { currentStep: number }) => (
 
 export default function CreateTokenForm() {
   const { user, ready } = usePrivy();
-  const { user: authUser } = useAuth();
+  // const { user: authUser } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [imagePreviews, setImagePreviews] = useState<Array<{ preview: string; file: File }>>([]);
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [submitMessage, setSubmitMessage] = useState<string>('');
-  const [showVerificationModal, setShowVerificationModal] = useState(false);
+  // const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [currentStep, setCurrentStep] = useState(1);
 
@@ -232,12 +232,18 @@ export default function CreateTokenForm() {
   });
 
   // Check if user is a verified seller
-  const canCreateToken = authUser?.sellerStatus === 'APPROVED';
-  const isPendingVerification = authUser?.sellerStatus === 'PENDING';
-  const isRejected = authUser?.sellerStatus === 'REJECTED';
+  // TODO: Re-enable verification system later
+  // const canCreateToken = authUser?.sellerStatus === 'APPROVED';
+  // const isPendingVerification = authUser?.sellerStatus === 'PENDING';
+  // const isRejected = authUser?.sellerStatus === 'REJECTED';
+
+  // Temporarily allow all authenticated users to submit for manual review
+  // const canCreateToken = !!user; // Only require basic authentication
+  // const isPendingVerification = false; // Disable verification status checks
+  // const isRejected = false;
 
   return (
-    <div className="h-screen max-h-[1200px] bg-gradient-to-b from-black via-[#0A0A0A] to-[#231F20] relative overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-b from-black via-[#0A0A0A] to-[#231F20] relative">
       {/* Header Component */}
       <div className="relative z-50">
         <AcesHeader />
@@ -262,11 +268,12 @@ export default function CreateTokenForm() {
         }}
       />
 
-      {/* Main Content */}
-      <div className="relative z-20 h-full flex flex-col overflow-hidden">
-        <LuxuryAssetsBackground opacity={0.6} className="absolute inset-0 z-0" />
+      {/* Main Content - Fixed 1400px height for background images */}
+      <div className="relative z-20 h-[1400px]">
+        <LuxuryAssetsBackground opacity={0.6} minHeight={1400} className="absolute inset-0 z-0" />
 
-        <div className="relative z-10 flex-1 overflow-y-auto">
+        {/* Scrollable content area */}
+        <div className="relative z-10 h-full overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
           <div className="max-w-5xl mx-auto px-6 py-12">
             {/* Authentication Warning */}
             {ready && !user && (
@@ -319,7 +326,9 @@ export default function CreateTokenForm() {
             {/* Progress Steps */}
             <ProgressSteps currentStep={currentStep} />
 
-            {/* Verification Status Banner */}
+            {/* Verification Status Banner - Temporarily commented out */}
+            {/* TODO: Re-enable verification system later */}
+            {/*
             {!canCreateToken && (
               <div className="mb-8">
                 <FormSection
@@ -384,12 +393,11 @@ export default function CreateTokenForm() {
                 </FormSection>
               </div>
             )}
+            */}
 
             {/* Main Form */}
             <form onSubmit={onSubmit} className="space-y-8">
-              <div
-                className={`transition-all duration-300 ${!canCreateToken ? 'opacity-50 pointer-events-none' : ''}`}
-              >
+              <div className={`transition-all duration-300`}>
                 {/* Section 1: Asset Details */}
                 <FormSection
                   icon={Info}
@@ -670,14 +678,16 @@ export default function CreateTokenForm() {
             </form>
           </div>
         </div>
-
-        {/* Footer */}
-        <div className="relative z-50 flex-shrink-0">
-          <Footer />
-        </div>
       </div>
 
-      {/* Verification Modal */}
+      {/* Footer - Fixed at bottom */}
+      <div className="relative z-50">
+        <Footer />
+      </div>
+
+      {/* Verification Modal - Temporarily commented out */}
+      {/* TODO: Re-enable verification system later */}
+      {/*
       <Dialog open={showVerificationModal} onOpenChange={setShowVerificationModal}>
         <DialogContent className="sm:max-w-[800px] bg-black border-[#D0B284]">
           <DialogHeader>
@@ -689,9 +699,7 @@ export default function CreateTokenForm() {
           />
         </DialogContent>
       </Dialog>
-
-      {/* Debug Component - Remove after testing */}
-      <PrivyDebug />
+      */}
     </div>
   );
 }
