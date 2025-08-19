@@ -8,7 +8,7 @@
     "dev": "nodemon src/dev-server.ts",
     "build": "npx prisma generate && tsc",
     "start": "node dist/dev-server.js",
-    "vercel-build": "npx prisma generate && tsup",
+    "vercel-build": "npx prisma generate && tsc",
     "test": "vitest run --reporter=verbose --run",
     "test:watch": "vitest --reporter=verbose",
     "test:services": "vitest run test/services/ --reporter=verbose --run",

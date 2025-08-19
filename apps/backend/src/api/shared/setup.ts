@@ -29,12 +29,7 @@ export const setupCommonPlugins = async (fastify: FastifyInstance, options: Setu
         }
       }
 
-      // Allow all vercel.app deployments (preview deployments)
-      if (origin.endsWith('.vercel.app')) {
-        return callback(null, true);
-      }
-
-      // Production domains
+      // Production domains (your main sites)
       const allowedDomains = [
         'https://www.aces.fun',
         'https://aces.fun',
@@ -47,8 +42,39 @@ export const setupCommonPlugins = async (fastify: FastifyInstance, options: Setu
         allowedDomains.push(process.env.FRONTEND_URL);
       }
 
+      // Check exact domain matches first
       if (allowedDomains.includes(origin)) {
         return callback(null, true);
+      }
+
+      // Enhanced Vercel deployment patterns
+      const vercelPatterns = [
+        // Standard vercel.app domains
+        /^https:\/\/.*\.vercel\.app$/,
+
+        // Your specific monorepo patterns
+        /^https:\/\/aces-monorepo-.*\.vercel\.app$/,
+
+        // Branch-specific deployments (git-<branch-name>)
+        /^https:\/\/aces-monorepo-git-.*\.vercel\.app$/,
+
+        // User-specific deployments (with your username)
+        /^https:\/\/aces-monorepo-.*-dan-aces-fun\.vercel\.app$/,
+
+        // Combined patterns (covers most Vercel deployment scenarios)
+        /^https:\/\/aces-monorepo-[a-z0-9-]+\.vercel\.app$/,
+      ];
+
+      // Check if origin matches any Vercel pattern
+      const isVercelDeployment = vercelPatterns.some((pattern) => pattern.test(origin));
+
+      if (isVercelDeployment) {
+        return callback(null, true);
+      }
+
+      // Log rejected origins for debugging (only in development)
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`🚫 CORS rejected origin: ${origin}`);
       }
 
       // Reject origin
