@@ -17,12 +17,15 @@ declare module 'fastify' {
   }
 }
 
-import { StorageService } from '../lib/storage-utils';
+import { StorageService } from '../../lib/storage-utils';
 import { CreateSubmissionSchema, type CreateSubmissionRequest } from '@aces/utils';
-import { errors } from '../lib/errors';
-import { SubmissionService } from '../services/submission-service';
-import { getPrismaClient } from '../lib/database';
-import { setupCommonPlugins, setupErrorHandling, setupCommonHooks } from './shared/setup';
+import { errors } from '../../lib/errors';
+import { SubmissionService } from '../../services/submission-service';
+import { getPrismaClient } from '../../lib/database';
+import { setupErrorHandling, setupCommonHooks } from '../shared/setup';
+import helmet from '@fastify/helmet';
+import multipart from '@fastify/multipart';
+import { registerAuth } from '../../plugins/auth';
 
 const GetSignedUrlSchema = z.object({
   fileType: z.string(),
@@ -39,8 +42,48 @@ const buildSubmissionsApp = async (): Promise<FastifyInstance> => {
 
   fastify.decorate('prisma', prisma);
 
-  // Setup common plugins (CORS, helmet, auth, multipart)
-  await setupCommonPlugins(fastify, { multipart: true });
+  // Setup CORS manually for Vercel serverless functions
+  fastify.addHook('onRequest', async (request, reply) => {
+    const origin = request.headers.origin;
+
+    // Allow all vercel.app deployments
+    if (!origin || origin.endsWith('.vercel.app')) {
+      reply.header('Access-Control-Allow-Origin', origin || '*');
+      reply.header('Access-Control-Allow-Credentials', 'true');
+      reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      reply.header(
+        'Access-Control-Allow-Headers',
+        'Content-Type, Authorization, Accept, Origin, X-Requested-With',
+      );
+    }
+  });
+
+  // Handle OPTIONS preflight requests
+  fastify.options('*', async (request, reply) => {
+    const origin = request.headers.origin;
+
+    if (!origin || origin.endsWith('.vercel.app')) {
+      reply.header('Access-Control-Allow-Origin', origin || '*');
+      reply.header('Access-Control-Allow-Credentials', 'true');
+      reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      reply.header(
+        'Access-Control-Allow-Headers',
+        'Content-Type, Authorization, Accept, Origin, X-Requested-With',
+      );
+      reply.header('Access-Control-Max-Age', '86400');
+    }
+
+    return reply.code(204).send();
+  });
+
+  // Setup common plugins (helmet, auth, multipart) - Skip CORS since we handle it manually above
+  fastify.register(helmet);
+  fastify.register(multipart, {
+    limits: {
+      fileSize: 5 * 1024 * 1024, // 5MB
+    },
+  });
+  fastify.register(registerAuth);
 
   // Setup error handling
   setupErrorHandling(fastify);
@@ -78,7 +121,8 @@ const buildSubmissionsApp = async (): Promise<FastifyInstance> => {
       }
 
       // Upload to Google Cloud Storage
-      const fileName = `submissions/${Date.now()}-${data.filename}`;
+      const cleanFilename = data.filename.replace(/[^a-zA-Z0-9.-]/g, '_');
+      const fileName = `submissions/${Date.now()}-${cleanFilename}`;
       const bucket = StorageService.getBucket();
       const file = bucket.file(fileName);
 

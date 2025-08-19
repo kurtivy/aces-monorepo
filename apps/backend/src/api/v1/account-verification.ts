@@ -1,6 +1,7 @@
 import Fastify, { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
 import helmet from '@fastify/helmet';
+import multipart from '@fastify/multipart';
 
 import { User as PrismaUser, PrismaClient } from '@prisma/client';
 
@@ -16,13 +17,13 @@ declare module 'fastify' {
   }
 }
 
-import { getPrismaClient, checkDatabaseHealth, disconnectDatabase } from '../lib/database';
-import { loggers } from '../lib/logger';
-import { handleError } from '../lib/errors';
-// import { registerAuth } from '../plugins/auth'; // Disabled - no auth needed
-import { webhooksRoutes } from '../routes/v1/webhooks';
+import { getPrismaClient, disconnectDatabase } from '../../lib/database';
+import { loggers } from '../../lib/logger';
+import { handleError } from '../../lib/errors';
+import { registerAuth } from '../../plugins/auth';
+import { accountVerificationRoutes } from '../../routes/v1/account-verification';
 
-const buildWebhooksApp = async (): Promise<FastifyInstance> => {
+const buildAccountVerificationApp = async (): Promise<FastifyInstance> => {
   const fastify = Fastify({
     logger: false,
     genReqId: () => randomUUID(),
@@ -31,17 +32,18 @@ const buildWebhooksApp = async (): Promise<FastifyInstance> => {
   const prisma = getPrismaClient();
   fastify.decorate('prisma', prisma);
 
-  // Always decorate the request with user property for compatibility
-  fastify.decorateRequest('user', null);
-
   // Register plugins
   // CORS handled dynamically in main app.ts
   fastify.register(helmet);
-
+  fastify.register(multipart, {
+    limits: {
+      fileSize: 5 * 1024 * 1024, // 5MB
+    },
+  });
 
   // Register custom plugins
-  // fastify.register(registerAuth); // Disabled - no auth needed
-  fastify.register(webhooksRoutes);
+  fastify.register(registerAuth);
+  fastify.register(accountVerificationRoutes);
 
   // Register hooks
   fastify.addHook('onRequest', async (request) => {
@@ -73,12 +75,12 @@ const buildWebhooksApp = async (): Promise<FastifyInstance> => {
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const handler = async (req: VercelRequest, res: VercelResponse) => {
-  const app = await buildWebhooksApp();
+  const app = await buildAccountVerificationApp();
   await app.ready();
 
-  // Handle path rewriting: /api/v1/webhooks/something → /something
-  if (req.url?.startsWith('/api/v1/webhooks')) {
-    req.url = req.url.replace('/api/v1/webhooks', '') || '/';
+  // Handle path rewriting: /api/v1/account-verification/something → /something
+  if (req.url?.startsWith('/api/v1/account-verification')) {
+    req.url = req.url.replace('/api/v1/account-verification', '') || '/';
   }
 
   app.server.emit('request', req, res);

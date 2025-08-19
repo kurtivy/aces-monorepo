@@ -66,6 +66,16 @@ export class SubmissionsApi {
   }
 
   static async createTestSubmission(data: CreateSubmissionRequest) {
+    // 🔍 ADD DEBUGGING HERE
+    console.log('Sending submission data:', JSON.stringify(data, null, 2));
+    console.log('ImageGallery URLs:');
+    data.imageGallery?.forEach((url, i) => {
+      console.log(`URL ${i}:`, url);
+      console.log(`Is valid URL?`, /^https?:\/\/.+/.test(url));
+      console.log(`URL length:`, url.length);
+      console.log(`Has spaces?`, url.includes(' '));
+    });
+
     const response = await fetch(`${this.baseUrl}/api/v1/submissions/test`, {
       method: 'POST',
       headers: {

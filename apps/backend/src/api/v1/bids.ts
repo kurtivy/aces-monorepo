@@ -16,11 +16,11 @@ declare module 'fastify' {
   }
 }
 
-import { getPrismaClient, disconnectDatabase } from '../lib/database';
-import { loggers } from '../lib/logger';
-import { handleError } from '../lib/errors';
-import { registerAuth } from '../plugins/auth';
-import { bidsRoutes } from '../routes/v1/bids';
+import { getPrismaClient, disconnectDatabase } from '../../lib/database';
+import { loggers } from '../../lib/logger';
+import { handleError } from '../../lib/errors';
+import { registerAuth } from '../../plugins/auth';
+import { bidsRoutes } from '../../routes/v1/bids';
 
 const buildBidsApp = async (): Promise<FastifyInstance> => {
   const fastify = Fastify({
@@ -34,7 +34,6 @@ const buildBidsApp = async (): Promise<FastifyInstance> => {
   // Register plugins
   // CORS handled dynamically in main app.ts
   fastify.register(helmet);
-
 
   // Register custom plugins
   fastify.register(registerAuth);

@@ -1,8 +1,8 @@
 import Fastify, { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
 import helmet from '@fastify/helmet';
-
 import { User as PrismaUser, PrismaClient } from '@prisma/client';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 // Extend Fastify types to include custom properties
 declare module 'fastify' {
@@ -16,13 +16,11 @@ declare module 'fastify' {
   }
 }
 
-import { getPrismaClient, checkDatabaseHealth, disconnectDatabase } from '../lib/database';
-import { loggers } from '../lib/logger';
-import { handleError } from '../lib/errors';
-import { registerAuth } from '../plugins/auth';
-import contactRoutes from '../routes/v1/contact';
+import { getPrismaClient, checkDatabaseHealth, disconnectDatabase } from '../../lib/database';
+import { loggers } from '../../lib/logger';
+import { handleError } from '../../lib/errors';
 
-const buildContactApp = async (): Promise<FastifyInstance> => {
+const buildHealthApp = async (): Promise<FastifyInstance> => {
   const fastify = Fastify({
     logger: false,
     genReqId: () => randomUUID(),
@@ -31,14 +29,12 @@ const buildContactApp = async (): Promise<FastifyInstance> => {
   const prisma = getPrismaClient();
   fastify.decorate('prisma', prisma);
 
+  // Always decorate the request with user property for compatibility
+  fastify.decorateRequest('user', null);
+
   // Register plugins
   // CORS handled dynamically in main app.ts
   fastify.register(helmet);
-
-
-  // Register custom plugins
-  fastify.register(registerAuth);
-  fastify.register(contactRoutes);
 
   // Register hooks
   fastify.addHook('onRequest', async (request) => {
@@ -49,6 +45,20 @@ const buildContactApp = async (): Promise<FastifyInstance> => {
   fastify.addHook('onResponse', async (request, reply) => {
     const responseTime = request.startTime ? Date.now() - request.startTime : 0;
     loggers.response(request.id, request.method, request.url, reply.statusCode, responseTime);
+  });
+
+  // Health check routes
+  fastify.get('/live', async () => ({
+    status: 'ok',
+    version: '1.0.0',
+    timestamp: new Date().toISOString(),
+  }));
+  fastify.get('/ready', async () => {
+    const isDbReady = await checkDatabaseHealth();
+    if (!isDbReady) {
+      throw new Error('Database not ready');
+    }
+    return { status: 'ready', version: '1.0.0', timestamp: new Date().toISOString() };
   });
 
   // Global error handler
@@ -67,15 +77,13 @@ const buildContactApp = async (): Promise<FastifyInstance> => {
   return fastify;
 };
 
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-
 const handler = async (req: VercelRequest, res: VercelResponse) => {
-  const app = await buildContactApp();
+  const app = await buildHealthApp();
   await app.ready();
 
-  // Handle path rewriting: /api/v1/contact/something → /something
-  if (req.url?.startsWith('/api/v1/contact')) {
-    req.url = req.url.replace('/api/v1/contact', '') || '/';
+  // Handle path rewriting: /api/v1/health/live → /live
+  if (req.url?.startsWith('/api/v1/health')) {
+    req.url = req.url.replace('/api/v1/health', '') || '/';
   }
 
   app.server.emit('request', req, res);

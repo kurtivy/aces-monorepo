@@ -15,9 +15,9 @@ declare module 'fastify' {
   }
 }
 
-import { getPrismaClient } from '../lib/database';
-import { setupCommonPlugins, setupErrorHandling, setupCommonHooks } from './shared/setup';
-import { adminRoutes } from '../routes/v1/admin';
+import { getPrismaClient } from '../../lib/database';
+import { setupCommonPlugins, setupErrorHandling, setupCommonHooks } from '../shared/setup';
+import { adminRoutes } from '../../routes/v1/admin';
 
 const buildAdminApp = async (): Promise<FastifyInstance> => {
   const fastify = Fastify({

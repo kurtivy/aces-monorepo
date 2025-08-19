@@ -1,7 +1,6 @@
 import Fastify, { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
 import helmet from '@fastify/helmet';
-import multipart from '@fastify/multipart';
 
 import { User as PrismaUser, PrismaClient } from '@prisma/client';
 
@@ -17,13 +16,13 @@ declare module 'fastify' {
   }
 }
 
-import { getPrismaClient, disconnectDatabase } from '../lib/database';
-import { loggers } from '../lib/logger';
-import { handleError } from '../lib/errors';
-import { registerAuth } from '../plugins/auth';
-import { accountVerificationRoutes } from '../routes/v1/account-verification';
+import { getPrismaClient, checkDatabaseHealth, disconnectDatabase } from '../../lib/database';
+import { loggers } from '../../lib/logger';
+import { handleError } from '../../lib/errors';
+import { registerAuth } from '../../plugins/auth';
+import contactRoutes from '../../routes/v1/contact';
 
-const buildAccountVerificationApp = async (): Promise<FastifyInstance> => {
+const buildContactApp = async (): Promise<FastifyInstance> => {
   const fastify = Fastify({
     logger: false,
     genReqId: () => randomUUID(),
@@ -35,16 +34,10 @@ const buildAccountVerificationApp = async (): Promise<FastifyInstance> => {
   // Register plugins
   // CORS handled dynamically in main app.ts
   fastify.register(helmet);
-  fastify.register(multipart, {
-    limits: {
-      fileSize: 5 * 1024 * 1024, // 5MB
-    },
-  });
-
 
   // Register custom plugins
   fastify.register(registerAuth);
-  fastify.register(accountVerificationRoutes);
+  fastify.register(contactRoutes);
 
   // Register hooks
   fastify.addHook('onRequest', async (request) => {
@@ -76,12 +69,12 @@ const buildAccountVerificationApp = async (): Promise<FastifyInstance> => {
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const handler = async (req: VercelRequest, res: VercelResponse) => {
-  const app = await buildAccountVerificationApp();
+  const app = await buildContactApp();
   await app.ready();
 
-  // Handle path rewriting: /api/v1/account-verification/something → /something
-  if (req.url?.startsWith('/api/v1/account-verification')) {
-    req.url = req.url.replace('/api/v1/account-verification', '') || '/';
+  // Handle path rewriting: /api/v1/contact/something → /something
+  if (req.url?.startsWith('/api/v1/contact')) {
+    req.url = req.url.replace('/api/v1/contact', '') || '/';
   }
 
   app.server.emit('request', req, res);

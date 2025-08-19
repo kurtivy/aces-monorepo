@@ -16,9 +16,9 @@ declare module 'fastify' {
   }
 }
 
-import { getPrismaClient } from '../lib/database';
-import { setupCommonPlugins, setupErrorHandling, setupCommonHooks } from './shared/setup';
-import { userProfileRoutes } from '../routes/v1/user-profile';
+import { getPrismaClient } from '../../lib/database';
+import { setupCommonPlugins, setupErrorHandling, setupCommonHooks } from '../shared/setup';
+import { usersRoutes } from '../../routes/v1/users';
 
 const buildUsersApp = async (): Promise<FastifyInstance> => {
   const fastify = Fastify({
@@ -39,7 +39,7 @@ const buildUsersApp = async (): Promise<FastifyInstance> => {
   setupCommonHooks(fastify);
 
   // Register user profile routes
-  fastify.register(userProfileRoutes);
+  fastify.register(usersRoutes);
 
   // Common hooks and error handling are now setup via setupCommonHooks() and setupErrorHandling()
 

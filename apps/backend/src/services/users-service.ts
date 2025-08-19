@@ -2,7 +2,7 @@ import {
   PrismaClient,
   UserRole,
   SellerStatus,
-  SubmissionStatus,
+  // SubmissionStatus,
   VerificationStatus,
 } from '@prisma/client';
 import { errors } from '../lib/errors';
@@ -66,7 +66,7 @@ export interface UserPublicProfile {
   verificationStatus: VerificationStatus | null;
 }
 
-export class UserProfileService {
+export class UsersService {
   constructor(private prisma: PrismaClient) {}
 
   /**

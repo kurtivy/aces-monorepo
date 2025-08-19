@@ -5,11 +5,11 @@ import helmet from '@fastify/helmet';
 import { User as PrismaUser, PrismaClient } from '@prisma/client';
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { ListingService } from '../services/listing-service';
-import { getPrismaClient, disconnectDatabase } from '../lib/database';
-import { errors, handleError } from '../lib/errors';
-import { logger } from '../lib/logger';
-import { registerAuth } from '../plugins/auth';
+import { ListingService } from '../../services/listing-service';
+import { getPrismaClient, disconnectDatabase } from '../../lib/database';
+import { errors, handleError } from '../../lib/errors';
+import { logger } from '../../lib/logger';
+import { registerAuth } from '../../plugins/auth';
 
 // Extend Fastify types to include custom properties
 declare module 'fastify' {
@@ -46,7 +46,6 @@ const buildListingsApp = async (): Promise<FastifyInstance> => {
   // Register plugins
   // CORS handled dynamically in main app.ts
   fastify.register(helmet);
-
 
   // Register auth plugin - CRITICAL for request.user decoration
   fastify.register(registerAuth);

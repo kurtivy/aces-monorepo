@@ -2,7 +2,8 @@ import Fastify, { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
 import helmet from '@fastify/helmet';
 import multipart from '@fastify/multipart';
-import cors from '@fastify/cors';
+// Remove this import since we're not using the CORS plugin anymore
+// import cors from '@fastify/cors';
 
 import { User as PrismaUser, PrismaClient } from '@prisma/client';
 
@@ -26,7 +27,7 @@ import { submissionsRoutes } from './routes/v1/submissions';
 import { adminRoutes } from './routes/v1/admin';
 import { bidsRoutes } from './routes/v1/bids';
 import { accountVerificationRoutes } from './routes/v1/account-verification';
-import { userProfileRoutes } from './routes/v1/user-profile';
+import { usersRoutes } from './routes/v1/users';
 import { webhooksRoutes } from './routes/v1/webhooks';
 import listingsRoutes from './routes/v1/listings';
 import tokensRoutes from './routes/v1/tokens';
@@ -49,24 +50,20 @@ export const buildApp = async (): Promise<FastifyInstance> => {
     },
   });
 
-  // Register CORS with dynamic origin checking
-  fastify.register(cors, {
-    origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps or curl requests)
-      if (!origin) return callback(null, true);
+  // Manual CORS handling (replaces the CORS plugin)
+  fastify.addHook('onRequest', async (request, reply) => {
+    const origin = request.headers.origin;
 
-      // Development origins
-      if (process.env.NODE_ENV === 'development') {
-        if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
-          return callback(null, true);
-        }
-      }
+    // Check if origin is allowed
+    let isAllowed = false;
 
-      // Allow all vercel.app deployments (preview deployments)
-      if (origin.endsWith('.vercel.app')) {
-        return callback(null, true);
-      }
-
+    if (!origin) {
+      isAllowed = true; // Allow requests with no origin (like mobile apps or curl requests)
+    } else if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+      isAllowed = true; // Always allow localhost for development
+    } else if (origin.endsWith('.vercel.app')) {
+      isAllowed = true; // Allow all vercel.app deployments (preview deployments)
+    } else {
       // Production domains
       const allowedDomains = [
         'https://www.aces.fun',
@@ -80,16 +77,33 @@ export const buildApp = async (): Promise<FastifyInstance> => {
         allowedDomains.push(process.env.FRONTEND_URL);
       }
 
-      if (allowedDomains.includes(origin)) {
-        return callback(null, true);
-      }
+      isAllowed = allowedDomains.includes(origin);
+    }
 
-      // Reject origin
-      return callback(new Error('Not allowed by CORS'), false);
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
+    if (isAllowed) {
+      // Set CORS headers for allowed origins
+      reply.header('Access-Control-Allow-Origin', origin || '*');
+      reply.header('Access-Control-Allow-Credentials', 'true');
+      reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      reply.header(
+        'Access-Control-Allow-Headers',
+        'Content-Type, Authorization, Accept, Origin, X-Requested-With, X-Wallet-Address',
+      );
+    } else {
+      console.log('🚫 CORS rejected origin:', origin);
+    }
+
+    // Handle OPTIONS preflight requests
+    if (request.method === 'OPTIONS') {
+      console.log('🔍 OPTIONS request for:', request.url, 'from origin:', origin);
+
+      if (isAllowed) {
+        reply.header('Access-Control-Max-Age', '86400');
+        return reply.code(204).send();
+      } else {
+        return reply.code(403).send('CORS not allowed');
+      }
+    }
   });
 
   // Register custom plugins
@@ -100,7 +114,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   fastify.register(adminRoutes, { prefix: '/api/v1/admin' });
   fastify.register(bidsRoutes, { prefix: '/api/v1/bids' });
   fastify.register(accountVerificationRoutes, { prefix: '/api/v1/account-verification' });
-  fastify.register(userProfileRoutes, { prefix: '/api/v1/users' });
+  fastify.register(usersRoutes, { prefix: '/api/v1/users' });
   fastify.register(webhooksRoutes, { prefix: '/api/v1/webhooks' });
   fastify.register(listingsRoutes, { prefix: '/api/v1/listings' });
   fastify.register(tokensRoutes, { prefix: '/api/v1/tokens' });
