@@ -48,6 +48,61 @@ const buildSubmissionsApp = async (): Promise<FastifyInstance> => {
   // Setup common hooks (logging, cleanup)
   setupCommonHooks(fastify);
 
+  // Direct image upload endpoint
+  fastify.post('/upload-image', async (request, reply) => {
+    try {
+      const data = await request.file();
+
+      if (!data) {
+        return reply.status(400).send({
+          success: false,
+          error: 'No file provided',
+        });
+      }
+
+      // Validate file type
+      if (!data.mimetype.startsWith('image/')) {
+        return reply.status(400).send({
+          success: false,
+          error: 'File must be an image',
+        });
+      }
+
+      // Validate file size (5MB limit)
+      const buffer = await data.toBuffer();
+      if (buffer.length > 5 * 1024 * 1024) {
+        return reply.status(400).send({
+          success: false,
+          error: 'File size too large (max 5MB)',
+        });
+      }
+
+      // Upload to Google Cloud Storage
+      const fileName = `submissions/${Date.now()}-${data.filename}`;
+      const bucket = StorageService.getBucket();
+      const file = bucket.file(fileName);
+
+      await file.save(buffer, {
+        metadata: {
+          contentType: data.mimetype,
+        },
+      });
+
+      const publicUrl = StorageService.getPublicUrl(fileName);
+
+      return reply.send({
+        success: true,
+        data: { publicUrl },
+      });
+    } catch (error) {
+      fastify.log.error({ error, operation: 'uploadImage' }, 'Failed to upload image');
+      return reply.status(500).send({
+        success: false,
+        error: 'Failed to upload image',
+      });
+    }
+  });
+
   // Get signed URL for image upload
   fastify.post<{ Body: z.infer<typeof GetSignedUrlSchema> }>('/get-upload-url', {
     schema: {
