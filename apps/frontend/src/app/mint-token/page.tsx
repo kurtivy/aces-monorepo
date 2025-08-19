@@ -10,7 +10,6 @@ import {
   Crown,
   CheckCircle,
   AlertCircle,
-  Wallet,
   FileText,
   MapPin,
   Tag,
@@ -198,7 +197,6 @@ export default function CreateTokenForm() {
         ...formData,
         imageGallery: uploadedUrls,
         location: formData.location || undefined,
-        contractAddress: formData.contractAddress || undefined,
       };
 
       const response = await SubmissionsApi.createTestSubmission(submissionData);
@@ -281,7 +279,7 @@ export default function CreateTokenForm() {
                 <div className="p-6 rounded-2xl flex items-center gap-4 bg-gradient-to-r from-yellow-900/30 to-orange-900/30 border border-yellow-500/50 text-yellow-300 shadow-xl backdrop-blur-sm">
                   <AlertCircle className="w-6 h-6 flex-shrink-0" />
                   <p className="text-lg font-medium">
-                    Please log in to submit your token for approval.
+                    Please connect walletto submit your token for approval.
                   </p>
                 </div>
               </div>
@@ -542,18 +540,6 @@ export default function CreateTokenForm() {
                         />
                       </FormField>
                     </div>
-
-                    <FormField
-                      label="Contract Address (Optional)"
-                      icon={Wallet}
-                      error={errors.contractAddress?.message}
-                    >
-                      <Input
-                        {...register('contractAddress')}
-                        placeholder="0x... (if asset is already tokenized)"
-                        className="bg-[#0F0F0F]/80 border-[#D0B284]/30 text-white placeholder:text-[#DCDDCC]/50 h-12 font-mono focus-visible:ring-[#D0B284] focus-visible:border-[#D0B284]"
-                      />
-                    </FormField>
 
                     {/* Image Upload */}
                     <FormField
