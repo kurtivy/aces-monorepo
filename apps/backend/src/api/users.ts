@@ -1,9 +1,8 @@
 // backend/src/api/v1/users.ts
 import Fastify, { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
-import helmet from '@fastify/helmet';
-
 import { User as PrismaUser, PrismaClient } from '@prisma/client';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 // Extend Fastify types to include custom properties
 declare module 'fastify' {
@@ -17,10 +16,8 @@ declare module 'fastify' {
   }
 }
 
-import { getPrismaClient, disconnectDatabase } from '../lib/database';
-import { loggers } from '../lib/logger';
-import { handleError } from '../lib/errors';
-import { registerAuth } from '../plugins/auth';
+import { getPrismaClient } from '../lib/database';
+import { setupCommonPlugins, setupErrorHandling, setupCommonHooks } from './shared/setup';
 import { userProfileRoutes } from '../routes/v1/user-profile';
 
 const buildUsersApp = async (): Promise<FastifyInstance> => {
@@ -32,43 +29,22 @@ const buildUsersApp = async (): Promise<FastifyInstance> => {
   const prisma = getPrismaClient();
   fastify.decorate('prisma', prisma);
 
-  // Register plugins
-  // CORS handled dynamically in main app.ts
-  fastify.register(helmet);
+  // Setup common plugins (CORS, helmet, auth)
+  await setupCommonPlugins(fastify);
 
+  // Setup error handling
+  setupErrorHandling(fastify);
 
-  // Register custom plugins
-  fastify.register(registerAuth);
+  // Setup common hooks (logging, cleanup)
+  setupCommonHooks(fastify);
+
+  // Register user profile routes
   fastify.register(userProfileRoutes);
 
-  // Register hooks
-  fastify.addHook('onRequest', async (request) => {
-    request.startTime = Date.now();
-    loggers.request(request.id, request.method, request.url, request.headers['user-agent']);
-  });
-
-  fastify.addHook('onResponse', async (request, reply) => {
-    const responseTime = request.startTime ? Date.now() - request.startTime : 0;
-    loggers.response(request.id, request.method, request.url, reply.statusCode, responseTime);
-  });
-
-  // Global error handler
-  fastify.setErrorHandler((error, request, reply) => {
-    try {
-      handleError(error, reply);
-    } catch (error) {
-      handleError(error, reply);
-    }
-  });
-
-  fastify.addHook('onClose', async () => {
-    await disconnectDatabase();
-  });
+  // Common hooks and error handling are now setup via setupCommonHooks() and setupErrorHandling()
 
   return fastify;
 };
-
-import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const handler = async (req: VercelRequest, res: VercelResponse) => {
   const app = await buildUsersApp();

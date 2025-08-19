@@ -1,7 +1,5 @@
 import Fastify, { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
-import helmet from '@fastify/helmet';
-
 import { User as PrismaUser, PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
@@ -21,11 +19,10 @@ declare module 'fastify' {
 
 import { StorageService } from '../lib/storage-utils';
 import { CreateSubmissionSchema, type CreateSubmissionRequest } from '@aces/utils';
-import { errors, handleError } from '../lib/errors';
+import { errors } from '../lib/errors';
 import { SubmissionService } from '../services/submission-service';
-import { getPrismaClient, disconnectDatabase } from '../lib/database';
-import { loggers } from '../lib/logger';
-import { registerAuth } from '../plugins/auth';
+import { getPrismaClient } from '../lib/database';
+import { setupCommonPlugins, setupErrorHandling, setupCommonHooks } from './shared/setup';
 
 const GetSignedUrlSchema = z.object({
   fileType: z.string(),
@@ -42,11 +39,14 @@ const buildSubmissionsApp = async (): Promise<FastifyInstance> => {
 
   fastify.decorate('prisma', prisma);
 
-  // Register plugins
-  fastify.register(helmet);
+  // Setup common plugins (CORS, helmet, auth, multipart)
+  await setupCommonPlugins(fastify, { multipart: true });
 
-  // Register auth plugin
-  fastify.register(registerAuth);
+  // Setup error handling
+  setupErrorHandling(fastify);
+
+  // Setup common hooks (logging, cleanup)
+  setupCommonHooks(fastify);
 
   // Get signed URL for image upload
   fastify.post<{ Body: z.infer<typeof GetSignedUrlSchema> }>('/get-upload-url', {
@@ -90,29 +90,7 @@ const buildSubmissionsApp = async (): Promise<FastifyInstance> => {
     },
   });
 
-  // Register hooks
-  fastify.addHook('onRequest', async (request) => {
-    request.startTime = Date.now();
-    loggers.request(request.id, request.method, request.url, request.headers['user-agent']);
-  });
-
-  fastify.addHook('onResponse', async (request, reply) => {
-    const responseTime = request.startTime ? Date.now() - request.startTime : 0;
-    loggers.response(request.id, request.method, request.url, reply.statusCode, responseTime);
-  });
-
-  // Global error handler
-  fastify.setErrorHandler((error, request, reply) => {
-    try {
-      handleError(error, reply);
-    } catch (error) {
-      handleError(error, reply);
-    }
-  });
-
-  fastify.addHook('onClose', async () => {
-    await disconnectDatabase();
-  });
+  // Common hooks and error handling are now setup via setupCommonHooks() and setupErrorHandling()
 
   return fastify;
 };
