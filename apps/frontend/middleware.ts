@@ -14,8 +14,8 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Handle aces.fun domain (main site)
-  if (hostname === 'aces.fun' || hostname === 'www.aces.fun') {
+  // Handle aces.fun domain (main site) AND Vercel preview URLs for testing
+  if (hostname === 'aces.fun' || hostname === 'www.aces.fun' || hostname?.includes('vercel.app')) {
     if (pathname === '/launch' || pathname === '/profile' || pathname === '/rwa') {
       return NextResponse.rewrite(new URL('/404', request.url));
     }
