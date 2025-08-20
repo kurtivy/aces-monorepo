@@ -15,13 +15,13 @@ export default defineConfig({
   },
   outDir: 'api',
   format: ['cjs'],
-  target: 'node20',
+  target: 'node22',
   platform: 'node',
   bundle: true,
-  minify: false,
-  sourcemap: false, // Disable sourcemaps to reduce file size
+  minify: false, // Disable minification to avoid module resolution issues
+  sourcemap: true, // Enable sourcemaps for debugging
   clean: true,
-  treeshake: false,
+  treeshake: false, // Disable tree shaking for now
   // Keep more packages external to avoid bundling issues
   noExternal: [],
   external: [
@@ -48,12 +48,13 @@ export default defineConfig({
     '@hapi/boom',
     'viem',
   ],
-  cjsInterop: true,
+  cjsInterop: false,
   splitting: false,
   esbuildOptions(options) {
-    // Ensure proper module format for Vercel
-    options.platform = 'node';
-    options.target = 'node20';
-    options.format = 'cjs';
+    // Additional optimizations
+    options.treeShaking = true;
+    options.minifyIdentifiers = true;
+    options.minifySyntax = true;
+    options.minifyWhitespace = true;
   },
 });
