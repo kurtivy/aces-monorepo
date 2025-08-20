@@ -3,7 +3,6 @@ import { randomUUID } from 'crypto';
 import { User as PrismaUser, PrismaClient } from '@prisma/client';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-// Extend Fastify types to include custom properties
 declare module 'fastify' {
   interface FastifyRequest {
     startTime?: number;
