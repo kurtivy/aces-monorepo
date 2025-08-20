@@ -16,7 +16,7 @@ const listingParamsSchema = z.object({
   listingId: z.string().cuid(),
 });
 
-export default async function listingsRoutes(fastify: FastifyInstance) {
+export async function listingsRoutes(fastify: FastifyInstance) {
   // Authentication middleware for protected routes
   fastify.addHook('preHandler', async (request) => {
     // Skip auth check for public routes
@@ -78,7 +78,10 @@ export default async function listingsRoutes(fastify: FastifyInstance) {
         data: listing,
       });
     } catch (error) {
-      logger.error(`Error getting listing ${(request.params as any)?.listingId}:`, error);
+      logger.error(
+        `Error getting listing ${(request.params as { listingId: string })?.listingId}:`,
+        error,
+      );
       if (error instanceof Error && error.message.includes('not found')) {
         return reply.status(404).send({
           success: false,

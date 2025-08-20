@@ -29,9 +29,9 @@ import { bidsRoutes } from './routes/v1/bids';
 import { accountVerificationRoutes } from './routes/v1/account-verification';
 import { usersRoutes } from './routes/v1/users';
 import { webhooksRoutes } from './routes/v1/webhooks';
-import listingsRoutes from './routes/v1/listings';
-import tokensRoutes from './routes/v1/tokens';
-import contactRoutes from './routes/v1/contact';
+import { listingsRoutes } from './routes/v1/listings';
+import { tokensRoutes } from './routes/v1/tokens';
+import { contactRoutes } from './routes/v1/contact';
 
 export const buildApp = async (): Promise<FastifyInstance> => {
   const fastify = Fastify({

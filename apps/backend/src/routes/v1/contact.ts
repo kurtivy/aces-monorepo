@@ -8,7 +8,7 @@ const contactFormSchema = z.object({
   email: z.string().email('Valid email is required'),
 });
 
-export default async function contactRoutes(fastify: FastifyInstance) {
+export async function contactRoutes(fastify: FastifyInstance) {
   // POST /api/v1/contact - Submit contact form
   fastify.post('/contact', async (request, reply) => {
     try {

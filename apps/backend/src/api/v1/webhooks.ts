@@ -1,8 +1,7 @@
 import Fastify, { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
-import helmet from '@fastify/helmet';
-
 import { User as PrismaUser, PrismaClient } from '@prisma/client';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 // Extend Fastify types to include custom properties
 declare module 'fastify' {
@@ -16,10 +15,8 @@ declare module 'fastify' {
   }
 }
 
-import { getPrismaClient, checkDatabaseHealth, disconnectDatabase } from '../../lib/database';
-import { loggers } from '../../lib/logger';
-import { handleError } from '../../lib/errors';
-// import { registerAuth } from '../plugins/auth'; // Disabled - no auth needed
+import { getPrismaClient } from '../../lib/database';
+import { setupCommonPlugins, setupErrorHandling, setupCommonHooks } from '../shared/setup';
 import { webhooksRoutes } from '../../routes/v1/webhooks';
 
 const buildWebhooksApp = async (): Promise<FastifyInstance> => {
@@ -34,48 +31,25 @@ const buildWebhooksApp = async (): Promise<FastifyInstance> => {
   // Always decorate the request with user property for compatibility
   fastify.decorateRequest('user', null);
 
-  // Register plugins
-  // CORS handled dynamically in main app.ts
-  fastify.register(helmet);
+  // Use shared plugins setup (includes CORS, helmet)
+  // Note: webhooks typically don't need auth, so we'll skip it
+  await setupCommonPlugins(fastify, { multipart: false });
 
-  // Register custom plugins
-  // fastify.register(registerAuth); // Disabled - no auth needed
+  // Register route handlers
   fastify.register(webhooksRoutes);
 
-  // Register hooks
-  fastify.addHook('onRequest', async (request) => {
-    request.startTime = Date.now();
-    loggers.request(request.id, request.method, request.url, request.headers['user-agent']);
-  });
-
-  fastify.addHook('onResponse', async (request, reply) => {
-    const responseTime = request.startTime ? Date.now() - request.startTime : 0;
-    loggers.response(request.id, request.method, request.url, reply.statusCode, responseTime);
-  });
-
-  // Global error handler
-  fastify.setErrorHandler((error, request, reply) => {
-    try {
-      handleError(error, reply);
-    } catch (error) {
-      handleError(error, reply);
-    }
-  });
-
-  fastify.addHook('onClose', async () => {
-    await disconnectDatabase();
-  });
+  // Use shared error handling and hooks
+  setupErrorHandling(fastify);
+  setupCommonHooks(fastify);
 
   return fastify;
 };
-
-import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const handler = async (req: VercelRequest, res: VercelResponse) => {
   const app = await buildWebhooksApp();
   await app.ready();
 
-  // Handle path rewriting: /api/v1/webhooks/something → /something
+  // Handle path rewriting: /api/v1/webhooks/... → /...
   if (req.url?.startsWith('/api/v1/webhooks')) {
     req.url = req.url.replace('/api/v1/webhooks', '') || '/';
   }

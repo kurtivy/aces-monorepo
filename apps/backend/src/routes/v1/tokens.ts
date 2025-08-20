@@ -21,7 +21,7 @@ const createTokenSchema = z.object({
   listingId: z.string().cuid(),
 });
 
-export default async function tokensRoutes(fastify: FastifyInstance) {
+export async function tokensRoutes(fastify: FastifyInstance) {
   // Authentication middleware for protected routes
   fastify.addHook('preHandler', async (request) => {
     // Skip auth check for public routes
@@ -64,7 +64,10 @@ export default async function tokensRoutes(fastify: FastifyInstance) {
         data: token,
       });
     } catch (error) {
-      logger.error(`Error getting token ${(request.params as any)?.tokenId}:`, error);
+      logger.error(
+        `Error getting token ${(request.params as { tokenId: string })?.tokenId}:`,
+        error,
+      );
       if (error instanceof Error && error.message.includes('not found')) {
         return reply.status(404).send({
           success: false,
@@ -89,7 +92,7 @@ export default async function tokensRoutes(fastify: FastifyInstance) {
       });
     } catch (error) {
       logger.error(
-        `Error getting token by contract ${(request.params as any)?.contractAddress}:`,
+        `Error getting token by contract ${(request.params as { contractAddress: string })?.contractAddress}:`,
         error,
       );
       if (error instanceof Error && error.message.includes('not found')) {
