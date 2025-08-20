@@ -4,7 +4,7 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 import { SubmissionStatus } from '@prisma/client';
 import { errors } from '../../lib/errors';
 import { Boom } from '@hapi/boom';
-import { logger, loggers } from '../../lib/logger';
+import { loggers } from '../../lib/logger';
 import { getPrismaClient } from '../../lib/database';
 import { ApprovalService } from '../../services/approval-service';
 import { SubmissionService } from '../../services/submission-service';
@@ -164,7 +164,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
       } catch (error: unknown) {
         const errorObj = error instanceof Error ? error : new Error('Unknown error');
         loggers.error(errorObj, {
-          submissionId: (request.params as any)?.submissionId,
+          submissionId: (request.params as { submissionId: string })?.submissionId,
           adminId: request.user?.id,
         });
 
@@ -207,7 +207,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
       } catch (error: unknown) {
         const errorObj = error instanceof Error ? error : new Error('Unknown error');
         loggers.error(errorObj, {
-          submissionId: (request.params as any)?.submissionId,
+          submissionId: (request.params as { submissionId: string })?.submissionId,
           adminId: request.user?.id,
         });
 

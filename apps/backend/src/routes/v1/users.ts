@@ -34,7 +34,7 @@ const UserSearchSchema = z.object({
 });
 
 export async function usersRoutes(fastify: FastifyInstance) {
-  const usersService = new UsersService(fastify.prisma);
+  const profileService = new UsersService(fastify.prisma);
 
   /**
    * Get current user's profile
@@ -46,7 +46,7 @@ export async function usersRoutes(fastify: FastifyInstance) {
     },
     async (request, reply) => {
       try {
-        const profile = await usersService.getUserProfile(request.user!.id);
+        const profile = await profileService.getUserProfile(request.user!.id);
 
         return reply.send({
           success: true,
@@ -79,7 +79,7 @@ export async function usersRoutes(fastify: FastifyInstance) {
       const correlationId = request.id;
 
       try {
-        const updatedProfile = await usersService.updateUserProfile(request.user!.id, updates);
+        const updatedProfile = await profileService.updateUserProfile(request.user!.id, updates);
 
         return reply.send({
           success: true,
@@ -117,7 +117,7 @@ export async function usersRoutes(fastify: FastifyInstance) {
       try {
         // If accessing own profile, return full details
         if (request.auth.isAuthenticated && request.user!.id === userId) {
-          const profile = await usersService.getUserProfile(userId);
+          const profile = await profileService.getUserProfile(userId);
           return reply.send({
             success: true,
             data: profile,
@@ -125,7 +125,7 @@ export async function usersRoutes(fastify: FastifyInstance) {
         }
 
         // Otherwise, return public profile
-        const publicProfile = await usersService.getPublicUserProfile(userId);
+        const publicProfile = await profileService.getPublicUserProfile(userId);
         return reply.send({
           success: true,
           data: publicProfile,
@@ -157,14 +157,12 @@ export async function usersRoutes(fastify: FastifyInstance) {
 
       try {
         // Get user activity summary instead of transaction history
-        const activity = await usersService.getUserActivitySummary(request.user!.id);
-        const submissions = await usersService.getUserSubmissions(request.user!.id);
-        const bids = await usersService.getUserBids(request.user!.id);
+        const activity = await profileService.getUserActivitySummary(request.user!.id);
+        const submissions = await profileService.getUserSubmissions(request.user!.id);
+        const bids = await profileService.getUserBids(request.user!.id);
 
         // Apply pagination to submissions (as a proxy for transaction history)
-        const startIndex = cursor
-          ? submissions.findIndex((s: { id: string }) => s.id === cursor) + 1
-          : 0;
+        const startIndex = cursor ? submissions.findIndex((s) => s.id === cursor) + 1 : 0;
         const endIndex = startIndex + limit;
         const paginatedSubmissions = submissions.slice(startIndex, endIndex);
         const hasMore = endIndex < submissions.length;
@@ -220,14 +218,12 @@ export async function usersRoutes(fastify: FastifyInstance) {
         }
 
         // Get user activity summary instead of transaction history
-        const activity = await usersService.getUserActivitySummary(userId);
-        const submissions = await usersService.getUserSubmissions(userId);
-        const bids = await usersService.getUserBids(userId);
+        const activity = await profileService.getUserActivitySummary(userId);
+        const submissions = await profileService.getUserSubmissions(userId);
+        const bids = await profileService.getUserBids(userId);
 
         // Apply pagination to submissions
-        const startIndex = cursor
-          ? submissions.findIndex((s: { id: string }) => s.id === cursor) + 1
-          : 0;
+        const startIndex = cursor ? submissions.findIndex((s) => s.id === cursor) + 1 : 0;
         const endIndex = startIndex + limit;
         const paginatedSubmissions = submissions.slice(startIndex, endIndex);
         const hasMore = endIndex < submissions.length;
@@ -269,8 +265,8 @@ export async function usersRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       try {
         // Get user portfolio summary instead of on-chain assets
-        const portfolio = await usersService.getUserPortfolioSummary(request.user!.id);
-        const tokens = await usersService.getUserTokens(request.user!.id);
+        const portfolio = await profileService.getUserPortfolioSummary(request.user!.id);
+        const tokens = await profileService.getUserTokens(request.user!.id);
 
         return reply.send({
           success: true,
@@ -325,8 +321,8 @@ export async function usersRoutes(fastify: FastifyInstance) {
         }
 
         // Get user portfolio summary instead of on-chain assets
-        const portfolio = await usersService.getUserPortfolioSummary(userId);
-        const tokens = await usersService.getUserTokens(userId);
+        const portfolio = await profileService.getUserPortfolioSummary(userId);
+        const tokens = await profileService.getUserTokens(userId);
 
         const assets = {
           portfolio,
@@ -429,10 +425,10 @@ export async function usersRoutes(fastify: FastifyInstance) {
 
         // Get comprehensive user statistics
         const [profile, activity, portfolio, tokens] = await Promise.all([
-          usersService.getUserProfile(userId),
-          usersService.getUserActivitySummary(userId),
-          usersService.getUserPortfolioSummary(userId),
-          usersService.getUserTokens(userId),
+          profileService.getUserProfile(userId),
+          profileService.getUserActivitySummary(userId),
+          profileService.getUserPortfolioSummary(userId),
+          profileService.getUserTokens(userId),
         ]);
 
         const stats = {
@@ -495,7 +491,7 @@ export async function usersRoutes(fastify: FastifyInstance) {
           throw errors.forbidden('Access denied');
         }
 
-        const tokens = await usersService.getUserTokens(userId);
+        const tokens = await profileService.getUserTokens(userId);
 
         return reply.send({
           success: true,
@@ -519,7 +515,7 @@ export async function usersRoutes(fastify: FastifyInstance) {
     },
     async (request, reply) => {
       try {
-        const tokens = await usersService.getUserTokens(request.user!.id);
+        const tokens = await profileService.getUserTokens(request.user!.id);
 
         return reply.send({
           success: true,

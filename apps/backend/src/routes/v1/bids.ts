@@ -1,8 +1,8 @@
 import { FastifyInstance } from 'fastify';
 import { PaginationSchema } from '@aces/utils';
 import { z } from 'zod';
-import { zodToJsonSchema } from 'zod-to-json-schema';
-import { Bid } from '@prisma/client';
+import zodToJsonSchema from 'zod-to-json-schema';
+import { Bid, RwaListing } from '@prisma/client';
 import { BiddingService } from '../../services/bidding-service';
 import { errors } from '../../lib/errors';
 

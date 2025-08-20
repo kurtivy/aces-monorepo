@@ -62,6 +62,14 @@ export async function contactRoutes(fastify: FastifyInstance) {
         });
       }
 
+      // Log successful submission
+      console.log('Contact form submitted successfully:', {
+        email: formData.email,
+        category: formData.category,
+        itemName: formData.itemName,
+        messageId: emailResult.messageId,
+      });
+
       return reply.status(200).send({
         success: true,
         message: 'Thank you for your inquiry! We will get back to you soon.',

@@ -16,30 +16,8 @@ export async function submissionsRoutes(fastify: FastifyInstance) {
   const submissionService = new SubmissionService(fastify.prisma);
   const biddingService = new BiddingService(fastify.prisma);
 
-  // ✅ HANDLE ALL OPTIONS REQUESTS FIRST
-  fastify.addHook('onRequest', async (request, reply) => {
-    if (request.method === 'OPTIONS') {
-      console.log('🔍 OPTIONS request intercepted:', request.url);
-
-      // Set all CORS headers explicitly
-      reply.header('Access-Control-Allow-Origin', request.headers.origin || '*');
-      reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-      reply.header(
-        'Access-Control-Allow-Headers',
-        'Content-Type, Authorization, Accept, Origin, X-Requested-With, X-Wallet-Address',
-      );
-      reply.header('Access-Control-Allow-Credentials', 'true');
-      reply.header('Access-Control-Max-Age', '86400');
-
-      return reply.code(204).send();
-    }
-  });
-
-  // ✅ SPECIFIC ROUTES (remove the individual OPTIONS handler)
-
-  // Direct image upload endpoint
+  // Direct image upload endpoint (bypasses CORS)
   fastify.post('/upload-image', async (request, reply) => {
-    console.log('🔍 POST /upload-image route hit');
     try {
       const data = await request.file();
 
@@ -68,8 +46,7 @@ export async function submissionsRoutes(fastify: FastifyInstance) {
       }
 
       // Upload to Google Cloud Storage
-      const cleanFilename = data.filename.replace(/[^a-zA-Z0-9.-]/g, '_');
-      const fileName = `submissions/${Date.now()}-${cleanFilename}`;
+      const fileName = `submissions/${Date.now()}-${data.filename}`;
       const bucket = StorageService.getBucket();
       const file = bucket.file(fileName);
 
@@ -241,6 +218,114 @@ export async function submissionsRoutes(fastify: FastifyInstance) {
     },
   );
 
+  // Get single submission details
+  fastify.get(
+    '/:id',
+    {
+      schema: {
+        params: zodToJsonSchema(z.object({ id: z.string().cuid() })),
+      },
+    },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+
+      const submission = await submissionService.getSubmissionById(id);
+
+      if (!submission) {
+        throw errors.notFound('Submission not found');
+      }
+
+      // Only show full details to owner or make it public for approved submissions with live listings
+      const hasLiveListing = submission.rwaListing && submission.rwaListing.isLive;
+      if (!hasLiveListing && (!request.user || submission.ownerId !== request.user.id)) {
+        throw errors.forbidden('Cannot view this submission');
+      }
+
+      return reply.send({
+        success: true,
+        data: submission,
+      });
+    },
+  );
+
+  // Delete submission (soft delete)
+  fastify.delete(
+    '/:id',
+    {
+      schema: {
+        params: zodToJsonSchema(z.object({ id: z.string().cuid() })),
+      },
+    },
+    async (request, reply) => {
+      if (!request.user) {
+        throw errors.unauthorized('Authentication required');
+      }
+
+      const { id } = request.params as { id: string };
+
+      await submissionService.deleteSubmission(id, request.user.id);
+
+      return reply.send({
+        success: true,
+        message: 'Submission deleted successfully',
+      });
+    },
+  );
+
+  // Get bids for a submission
+  fastify.get(
+    '/:id/bids',
+    {
+      schema: {
+        params: zodToJsonSchema(z.object({ id: z.string().cuid() })),
+        querystring: zodToJsonSchema(PaginationSchema),
+      },
+    },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const { limit, cursor } = request.query as PaginationRequest;
+
+      // First check if submission exists and is viewable
+      const submission = await submissionService.getSubmissionById(id);
+
+      if (!submission) {
+        throw errors.notFound('Submission not found');
+      }
+
+      // Only show bids for submissions with live listings or to the owner
+      const hasLiveListing = submission.rwaListing && submission.rwaListing.isLive;
+      if (!hasLiveListing && (!request.user || submission.ownerId !== request.user.id)) {
+        throw errors.forbidden('Cannot view bids for this submission');
+      }
+
+      // If submission has a live listing, get bids for the listing
+      if (!submission.rwaListing) {
+        return reply.send({
+          success: true,
+          data: [],
+          hasMore: false,
+        });
+      }
+
+      const bids = await biddingService.getBidsForListing(submission.rwaListing.id);
+
+      // Apply pagination manually since getBidsForListing doesn't support it
+      const limitValue = Math.min(limit || 20, 100);
+      const startIndex = cursor ? bids.findIndex((bid) => bid.id === cursor) + 1 : 0;
+      const endIndex = startIndex + limitValue;
+      const paginatedBids = bids.slice(startIndex, endIndex);
+      const hasMore = endIndex < bids.length;
+      const nextCursor = hasMore ? paginatedBids[paginatedBids.length - 1]?.id : undefined;
+
+      return reply.send({
+        success: true,
+        data: paginatedBids,
+        nextCursor,
+        hasMore,
+      });
+    },
+  );
+
   // Get public list of live submissions (tokens)
   fastify.get(
     '/live',
@@ -370,114 +455,4 @@ export async function submissionsRoutes(fastify: FastifyInstance) {
       },
     });
   });
-
-  // ✅ PARAMETERIZED ROUTES LAST - These catch remaining patterns
-
-  // Get single submission details
-  fastify.get(
-    '/:id',
-    {
-      schema: {
-        params: zodToJsonSchema(z.object({ id: z.string().cuid() })),
-      },
-    },
-    async (request, reply) => {
-      const { id } = request.params as { id: string };
-
-      const submission = await submissionService.getSubmissionById(id);
-
-      if (!submission) {
-        throw errors.notFound('Submission not found');
-      }
-
-      // Only show full details to owner or make it public for approved submissions with live listings
-      const hasLiveListing = submission.rwaListing && submission.rwaListing.isLive;
-      if (!hasLiveListing && (!request.user || submission.ownerId !== request.user.id)) {
-        throw errors.forbidden('Cannot view this submission');
-      }
-
-      return reply.send({
-        success: true,
-        data: submission,
-      });
-    },
-  );
-
-  // Delete submission (soft delete)
-  fastify.delete(
-    '/:id',
-    {
-      schema: {
-        params: zodToJsonSchema(z.object({ id: z.string().cuid() })),
-      },
-    },
-    async (request, reply) => {
-      if (!request.user) {
-        throw errors.unauthorized('Authentication required');
-      }
-
-      const { id } = request.params as { id: string };
-
-      await submissionService.deleteSubmission(id, request.user.id);
-
-      return reply.send({
-        success: true,
-        message: 'Submission deleted successfully',
-      });
-    },
-  );
-
-  // Get bids for a submission
-  fastify.get(
-    '/:id/bids',
-    {
-      schema: {
-        params: zodToJsonSchema(z.object({ id: z.string().cuid() })),
-        querystring: zodToJsonSchema(PaginationSchema),
-      },
-    },
-    async (request, reply) => {
-      const { id } = request.params as { id: string };
-      const { limit, cursor } = request.query as PaginationRequest;
-
-      // First check if submission exists and is viewable
-      const submission = await submissionService.getSubmissionById(id);
-
-      if (!submission) {
-        throw errors.notFound('Submission not found');
-      }
-
-      // Only show bids for submissions with live listings or to the owner
-      const hasLiveListing = submission.rwaListing && submission.rwaListing.isLive;
-      if (!hasLiveListing && (!request.user || submission.ownerId !== request.user.id)) {
-        throw errors.forbidden('Cannot view bids for this submission');
-      }
-
-      // If submission has a live listing, get bids for the listing
-      if (!submission.rwaListing) {
-        return reply.send({
-          success: true,
-          data: [],
-          hasMore: false,
-        });
-      }
-
-      const bids = await biddingService.getBidsForListing(submission.rwaListing.id);
-
-      // Apply pagination manually since getBidsForListing doesn't support it
-      const limitValue = Math.min(limit || 20, 100);
-      const startIndex = cursor ? bids.findIndex((bid) => bid.id === cursor) + 1 : 0;
-      const endIndex = startIndex + limitValue;
-      const paginatedBids = bids.slice(startIndex, endIndex);
-      const hasMore = endIndex < bids.length;
-      const nextCursor = hasMore ? paginatedBids[paginatedBids.length - 1]?.id : undefined;
-
-      return reply.send({
-        success: true,
-        data: paginatedBids,
-        nextCursor,
-        hasMore,
-      });
-    },
-  );
 }

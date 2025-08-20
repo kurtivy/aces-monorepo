@@ -6,9 +6,8 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 import { MultipartFile } from '@fastify/multipart';
 import { errors } from '../../lib/errors';
 import { logger } from '../../lib/logger';
-import { getSignedSecureUrl, SecureStorageService } from '../../lib/secure-storage-utils';
+import { getSignedSecureUrl } from '../../lib/secure-storage-utils';
 import { VerificationStatus } from '@prisma/client';
-import { VisionService } from '../../lib/vision-service';
 
 interface CustomError extends Error {
   statusCode?: number;
@@ -57,9 +56,12 @@ function validateFile(file: MultipartFile): DocumentFile {
 }
 
 export async function accountVerificationRoutes(fastify: FastifyInstance) {
+  console.log('🔐 Registering account verification routes...');
+
   try {
     const verificationService = new AccountVerificationService(fastify.prisma);
     const log = logger.child({ module: 'account-verification-routes' });
+    console.log('✅ Account verification service initialized');
 
     // Add debugging hook for account verification requests
     fastify.addHook('preHandler', async (request) => {
@@ -612,7 +614,7 @@ export async function accountVerificationRoutes(fastify: FastifyInstance) {
             stack: error instanceof Error ? error.stack : undefined,
             userId: request.user!.id,
             errorType: error?.constructor?.name || 'Unknown',
-            errorCode: (error as any)?.statusCode || 'No status code',
+            errorCode: (error as { statusCode: number })?.statusCode || 'No status code',
           });
 
           console.error('🚨 Full error details:', error);
