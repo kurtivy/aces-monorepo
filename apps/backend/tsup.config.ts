@@ -14,7 +14,7 @@ export default defineConfig({
     contact: 'src/api/contact.ts',
   },
   outDir: 'api',
-  format: ['esm'],
+  format: ['cjs'],
   target: 'node20',
   platform: 'node',
   bundle: true,
@@ -48,12 +48,12 @@ export default defineConfig({
     '@hapi/boom',
     'viem',
   ],
-  cjsInterop: false,
+  cjsInterop: true,
   splitting: false,
   esbuildOptions(options) {
     // Ensure proper module format for Vercel
     options.platform = 'node';
     options.target = 'node20';
-    options.format = 'esm';
+    options.format = 'cjs';
   },
 });
