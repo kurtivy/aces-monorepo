@@ -23,7 +23,7 @@ import { StorageService } from '../lib/storage-utils';
 import { CreateSubmissionSchema, type CreateSubmissionRequest } from '@aces/utils';
 import { errors, handleError } from '../lib/errors';
 import { SubmissionService } from '../services/submission-service';
-import { getPrismaClient, disconnectDatabase } from '../lib/database';
+import { getPrismaClient } from '../lib/database';
 import { loggers } from '../lib/logger';
 import { registerAuth } from '../plugins/auth';
 
@@ -31,7 +31,15 @@ const GetSignedUrlSchema = z.object({
   fileType: z.string(),
 });
 
+// Cache the app instance to avoid rebuilding on every request
+let cachedApp: FastifyInstance | null = null;
+
 const buildSubmissionsApp = async (): Promise<FastifyInstance> => {
+  // Return cached instance if it exists
+  if (cachedApp) {
+    return cachedApp;
+  }
+
   const fastify = Fastify({
     logger: false,
     genReqId: () => randomUUID(),
@@ -105,28 +113,38 @@ const buildSubmissionsApp = async (): Promise<FastifyInstance> => {
   fastify.setErrorHandler((error, request, reply) => {
     try {
       handleError(error, reply);
-    } catch (error) {
-      handleError(error, reply);
+    } catch (handlerError) {
+      handleError(handlerError, reply);
     }
   });
 
-  fastify.addHook('onClose', async () => {
-    await disconnectDatabase();
-  });
-
+  // Cache the app instance
+  cachedApp = fastify;
   return fastify;
 };
 
 const handler = async (req: VercelRequest, res: VercelResponse) => {
-  const app = await buildSubmissionsApp();
-  await app.ready();
+  try {
+    const app = await buildSubmissionsApp();
+    await app.ready();
 
-  // Handle path rewriting: /api/v1/submissions/... → /...
-  if (req.url?.startsWith('/api/v1/submissions')) {
-    req.url = req.url.replace('/api/v1/submissions', '') || '/';
+    // Handle path rewriting: /api/v1/submissions/... → /...
+    if (req.url?.startsWith('/api/v1/submissions')) {
+      req.url = req.url.replace('/api/v1/submissions', '') || '/';
+    }
+
+    app.server.emit('request', req, res);
+  } catch (error) {
+    console.error('Submissions handler error:', error);
+
+    // Ensure we send a proper response even on error
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: 'Internal server error',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
   }
-
-  app.server.emit('request', req, res);
 };
 
 export default handler;

@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "ACES Backend API - RWA submission and approval system",
   "private": true,
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "postinstall": "npx prisma generate",
     "dev": "nodemon src/dev-server.ts",
