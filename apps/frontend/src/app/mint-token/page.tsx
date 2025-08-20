@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { usePrivy } from '@privy-io/react-auth';
+import { useAuth } from '@/lib/auth/auth-context';
 import {
   Upload,
   Crown,
@@ -131,6 +132,7 @@ const ProgressSteps = ({ currentStep }: { currentStep: number }) => (
 
 export default function CreateTokenForm() {
   const { user, ready } = usePrivy();
+  const { getAccessToken } = useAuth();
   // const { user: authUser } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [imagePreviews, setImagePreviews] = useState<Array<{ preview: string; file: File }>>([]);
@@ -184,11 +186,17 @@ export default function CreateTokenForm() {
     setUploadProgress(0);
 
     try {
+      // Get authentication token
+      const authToken = await getAccessToken();
+      if (!authToken) {
+        throw new Error('Authentication required. Please connect your wallet.');
+      }
+
       // Upload all images first
       const uploadedUrls: string[] = [];
       for (let i = 0; i < imagePreviews.length; i++) {
         const { file } = imagePreviews[i];
-        const publicUrl = await SubmissionsApi.uploadImage(file);
+        const publicUrl = await SubmissionsApi.uploadImage(file, authToken);
         uploadedUrls.push(publicUrl);
         setUploadProgress(((i + 1) / imagePreviews.length) * 100);
       }
@@ -199,7 +207,7 @@ export default function CreateTokenForm() {
         location: formData.location || undefined,
       };
 
-      const response = await SubmissionsApi.createTestSubmission(submissionData);
+      const response = await SubmissionsApi.createTestSubmission(submissionData, authToken);
 
       if (response.success) {
         setSubmitStatus('success');

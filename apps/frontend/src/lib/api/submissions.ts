@@ -25,16 +25,25 @@ export interface UserSubmissionsResponse {
 export class SubmissionsApi {
   private static baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
 
-  static async getUploadUrl(fileType: string): Promise<{
+  static async getUploadUrl(
+    fileType: string,
+    authToken?: string,
+  ): Promise<{
     url: string;
     fileName: string;
     publicUrl: string;
   }> {
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+
+    if (authToken) {
+      headers.Authorization = `Bearer ${authToken}`;
+    }
+
     const response = await fetch(`${this.baseUrl}/api/v1/submissions/get-upload-url`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify({ fileType }),
     });
 
@@ -46,13 +55,19 @@ export class SubmissionsApi {
     return result.data;
   }
 
-  static async uploadImage(file: File): Promise<string> {
+  static async uploadImage(file: File, authToken?: string): Promise<string> {
     // Use direct upload through backend to bypass CORS
     const formData = new FormData();
     formData.append('file', file);
 
+    const headers: HeadersInit = {};
+    if (authToken) {
+      headers.Authorization = `Bearer ${authToken}`;
+    }
+
     const uploadResponse = await fetch(`${this.baseUrl}/api/v1/submissions/upload-image`, {
       method: 'POST',
+      headers,
       body: formData,
     });
 
@@ -65,7 +80,7 @@ export class SubmissionsApi {
     return result.data.publicUrl;
   }
 
-  static async createTestSubmission(data: CreateSubmissionRequest) {
+  static async createTestSubmission(data: CreateSubmissionRequest, authToken?: string) {
     // 🔍 ADD DEBUGGING HERE
     console.log('Sending submission data:', JSON.stringify(data, null, 2));
     console.log('ImageGallery URLs:');
@@ -76,11 +91,17 @@ export class SubmissionsApi {
       console.log(`Has spaces?`, url.includes(' '));
     });
 
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+
+    if (authToken) {
+      headers.Authorization = `Bearer ${authToken}`;
+    }
+
     const response = await fetch(`${this.baseUrl}/api/v1/submissions/test`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify(data),
     });
 
