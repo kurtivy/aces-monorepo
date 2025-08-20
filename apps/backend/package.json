@@ -51,6 +51,7 @@
     "@privy-io/server-auth": "^1.15.3",
     "@supabase/supabase-js": "^2.52.0",
     "@types/bcrypt": "^6.0.0",
+    "@types/node": "^20.14.2",
     "bcrypt": "^6.0.0",
     "dotenv": "^17.2.1",
     "fastify": "^4.24.3",
@@ -61,12 +62,13 @@
     "prisma": "5.10.2",
     "resend": "^4.7.0",
     "sharp": "^0.34.3",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.3",
     "viem": "^2.31.6",
     "zod": "^3.23.8",
     "zod-to-json-schema": "^3.23.1"
   },
   "devDependencies": {
-    "@types/node": "^20.19.0",
     "@typescript-eslint/eslint-plugin": "^6.11.0",
     "@typescript-eslint/parser": "^6.11.0",
     "@vercel/node": "^5.3.2",
@@ -75,8 +77,6 @@
     "nodemon": "^3.0.1",
     "prettier": "^3.1.0",
     "ts-node": "^10.9.1",
-    "tsup": "^8.5.0",
-    "typescript": "^5.8.3",
     "vitest": "^0.34.6"
   },
   "prisma": {
