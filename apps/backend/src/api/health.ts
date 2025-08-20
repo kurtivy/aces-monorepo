@@ -2,7 +2,7 @@ import Fastify, { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
 import helmet from '@fastify/helmet';
 import { User as PrismaUser, PrismaClient } from '@prisma/client';
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { createServerlessHandler } from '../lib/serverless-adapter';
 
 // Extend Fastify types to include custom properties
 declare module 'fastify' {
@@ -77,16 +77,5 @@ const buildHealthApp = async (): Promise<FastifyInstance> => {
   return fastify;
 };
 
-const handler = async (req: VercelRequest, res: VercelResponse) => {
-  const app = await buildHealthApp();
-  await app.ready();
-
-  // Handle path rewriting: /api/v1/health/live → /live
-  if (req.url?.startsWith('/api/v1/health')) {
-    req.url = req.url.replace('/api/v1/health', '') || '/';
-  }
-
-  app.server.emit('request', req, res);
-};
-
-export default handler;
+// Export the serverless handler
+export default createServerlessHandler(buildHealthApp);
