@@ -1,5 +1,7 @@
 import Fastify, { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
+import helmet from '@fastify/helmet';
+
 import { User as PrismaUser, PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
@@ -17,12 +19,13 @@ declare module 'fastify' {
   }
 }
 
-import { StorageService } from '../../lib/storage-utils';
+import { StorageService } from '../lib/storage-utils';
 import { CreateSubmissionSchema, type CreateSubmissionRequest } from '@aces/utils';
-import { errors } from '../../lib/errors';
-import { SubmissionService } from '../../services/submission-service';
-import { getPrismaClient } from '../../lib/database';
-import { setupErrorHandling, setupCommonHooks, setupCommonPlugins } from '../shared/setup';
+import { errors, handleError } from '../lib/errors';
+import { SubmissionService } from '../services/submission-service';
+import { getPrismaClient, disconnectDatabase } from '../lib/database';
+import { loggers } from '../lib/logger';
+import { registerAuth } from '../plugins/auth';
 
 const GetSignedUrlSchema = z.object({
   fileType: z.string(),
@@ -39,73 +42,11 @@ const buildSubmissionsApp = async (): Promise<FastifyInstance> => {
 
   fastify.decorate('prisma', prisma);
 
-  // Setup common plugins (CORS, helmet, auth, multipart)
-  await setupCommonPlugins(fastify, {
-    multipart: true,
-    fileSize: 5 * 1024 * 1024, // 5MB
-  });
+  // Register plugins
+  fastify.register(helmet);
 
-  // Setup error handling
-  setupErrorHandling(fastify);
-
-  // Setup common hooks (logging, cleanup)
-  setupCommonHooks(fastify);
-
-  // Direct image upload endpoint
-  fastify.post('/upload-image', async (request, reply) => {
-    try {
-      const data = await request.file();
-
-      if (!data) {
-        return reply.status(400).send({
-          success: false,
-          error: 'No file provided',
-        });
-      }
-
-      // Validate file type
-      if (!data.mimetype.startsWith('image/')) {
-        return reply.status(400).send({
-          success: false,
-          error: 'File must be an image',
-        });
-      }
-
-      // Validate file size (5MB limit)
-      const buffer = await data.toBuffer();
-      if (buffer.length > 5 * 1024 * 1024) {
-        return reply.status(400).send({
-          success: false,
-          error: 'File size too large (max 5MB)',
-        });
-      }
-
-      // Upload to Google Cloud Storage
-      const cleanFilename = data.filename.replace(/[^a-zA-Z0-9.-]/g, '_');
-      const fileName = `submissions/${Date.now()}-${cleanFilename}`;
-      const bucket = StorageService.getBucket();
-      const file = bucket.file(fileName);
-
-      await file.save(buffer, {
-        metadata: {
-          contentType: data.mimetype,
-        },
-      });
-
-      const publicUrl = StorageService.getPublicUrl(fileName);
-
-      return reply.send({
-        success: true,
-        data: { publicUrl },
-      });
-    } catch (error) {
-      fastify.log.error({ error, operation: 'uploadImage' }, 'Failed to upload image');
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to upload image',
-      });
-    }
-  });
+  // Register auth plugin
+  fastify.register(registerAuth);
 
   // Get signed URL for image upload
   fastify.post<{ Body: z.infer<typeof GetSignedUrlSchema> }>('/get-upload-url', {
@@ -149,7 +90,29 @@ const buildSubmissionsApp = async (): Promise<FastifyInstance> => {
     },
   });
 
-  // Common hooks and error handling are now setup via setupCommonHooks() and setupErrorHandling()
+  // Register hooks
+  fastify.addHook('onRequest', async (request) => {
+    request.startTime = Date.now();
+    loggers.request(request.id, request.method, request.url, request.headers['user-agent']);
+  });
+
+  fastify.addHook('onResponse', async (request, reply) => {
+    const responseTime = request.startTime ? Date.now() - request.startTime : 0;
+    loggers.response(request.id, request.method, request.url, reply.statusCode, responseTime);
+  });
+
+  // Global error handler
+  fastify.setErrorHandler((error, request, reply) => {
+    try {
+      handleError(error, reply);
+    } catch (error) {
+      handleError(error, reply);
+    }
+  });
+
+  fastify.addHook('onClose', async () => {
+    await disconnectDatabase();
+  });
 
   return fastify;
 };

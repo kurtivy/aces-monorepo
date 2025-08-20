@@ -2,8 +2,6 @@ import Fastify, { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
 import helmet from '@fastify/helmet';
 import multipart from '@fastify/multipart';
-// Remove this import since we're not using the CORS plugin anymore
-// import cors from '@fastify/cors';
 
 import { User as PrismaUser, PrismaClient } from '@prisma/client';
 
@@ -50,64 +48,83 @@ export const buildApp = async (): Promise<FastifyInstance> => {
     },
   });
 
-  // Manual CORS handling (replaces the CORS plugin)
+  // Register custom plugins
+  fastify.register(registerAuth);
+
+  // Dynamic CORS configuration
+  const getAllowedOrigins = () => {
+    const origins = [];
+
+    // Development origins
+    if (process.env.NODE_ENV === 'development') {
+      origins.push('http://localhost:3000', 'http://localhost:3001');
+    }
+
+    // Production origins from environment variables
+    if (process.env.FRONTEND_URL) {
+      origins.push(process.env.FRONTEND_URL);
+    }
+
+    // Staging/dev branch URLs (common Vercel pattern)
+    if (process.env.VERCEL_URL) {
+      origins.push(`https://${process.env.VERCEL_URL}`);
+    }
+
+    // Default production domains if no env vars set
+    if (origins.length === 0 || process.env.NODE_ENV === 'production') {
+      origins.push(
+        'https://www.aces.fun',
+        'https://aces-monorepo-git-dev-dan-aces-fun.vercel.app',
+        'https://aces-monorepo-git-main-dan-aces-fun.vercel.app',
+      );
+    }
+
+    // Allow all preview deployments on Vercel (*.vercel.app)
+    return origins;
+  };
+
+  const isOriginAllowed = (origin: string | undefined): boolean => {
+    if (!origin) return false;
+
+    const allowedOrigins = getAllowedOrigins();
+
+    // Exact match for listed origins
+    if (allowedOrigins.includes(origin)) return true;
+
+    // Allow any vercel.app preview deployment
+    if (origin.endsWith('.vercel.app')) return true;
+
+    return false;
+  };
+
+  // Add CORS hook to all requests
   fastify.addHook('onRequest', async (request, reply) => {
     const origin = request.headers.origin;
 
-    // Check if origin is allowed
-    let isAllowed = false;
-
-    if (!origin) {
-      isAllowed = true; // Allow requests with no origin (like mobile apps or curl requests)
-    } else if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
-      isAllowed = true; // Always allow localhost for development
-    } else if (origin.endsWith('.vercel.app')) {
-      isAllowed = true; // Allow all vercel.app deployments (preview deployments)
-    } else {
-      // Production domains
-      const allowedDomains = [
-        'https://www.aces.fun',
-        'https://aces.fun',
-        'https://aceofbase.fun',
-        'https://www.aceofbase.fun',
-      ];
-
-      // Environment-specific origins
-      if (process.env.FRONTEND_URL) {
-        allowedDomains.push(process.env.FRONTEND_URL);
-      }
-
-      isAllowed = allowedDomains.includes(origin);
-    }
-
-    if (isAllowed) {
-      // Set CORS headers for allowed origins
-      reply.header('Access-Control-Allow-Origin', origin || '*');
-      reply.header('Access-Control-Allow-Credentials', 'true');
-      reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-      reply.header(
-        'Access-Control-Allow-Headers',
-        'Content-Type, Authorization, Accept, Origin, X-Requested-With, X-Wallet-Address',
-      );
-    } else {
-      console.log('🚫 CORS rejected origin:', origin);
-    }
-
-    // Handle OPTIONS preflight requests
-    if (request.method === 'OPTIONS') {
-      console.log('🔍 OPTIONS request for:', request.url, 'from origin:', origin);
-
-      if (isAllowed) {
-        reply.header('Access-Control-Max-Age', '86400');
-        return reply.code(204).send();
-      } else {
-        return reply.code(403).send('CORS not allowed');
-      }
+    if (isOriginAllowed(origin)) {
+      reply.header('Access-Control-Allow-Origin', origin);
     }
   });
 
-  // Register custom plugins
-  fastify.register(registerAuth);
+  // Handle OPTIONS preflight requests globally with proper CORS headers
+  fastify.options('*', async (request, reply) => {
+    const origin = request.headers.origin;
+
+    if (isOriginAllowed(origin)) {
+      reply
+        .header('Access-Control-Allow-Origin', origin)
+        .header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+        .header(
+          'Access-Control-Allow-Headers',
+          'Content-Type, Authorization, Accept, Origin, X-Requested-With',
+        )
+        .header('Access-Control-Allow-Credentials', 'true')
+        .header('Access-Control-Max-Age', '86400')
+        .header('Vary', 'Origin');
+    }
+
+    reply.code(204).send();
+  });
 
   // Register v1 routes with proper API prefixes
   fastify.register(submissionsRoutes, { prefix: '/api/v1/submissions' });

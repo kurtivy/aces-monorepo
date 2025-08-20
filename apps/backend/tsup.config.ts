@@ -2,71 +2,59 @@ import { defineConfig } from 'tsup';
 
 export default defineConfig({
   entryPoints: {
-    submissions: 'src/api/v1/submissions.ts',
-    bids: 'src/api/v1/bids.ts',
-    admin: 'src/api/v1/admin.ts',
-    webhooks: 'src/api/v1/webhooks.ts',
-    health: 'src/api/v1/health.ts',
-    listings: 'src/api/v1/listings.ts',
-    tokens: 'src/api/v1/tokens.ts',
-    users: 'src/api/v1/users.ts',
-    'account-verification': 'src/api/v1/account-verification.ts',
-    contact: 'src/api/v1/contact.ts',
+    submissions: 'src/api/submissions.ts',
+    bids: 'src/api/bids.ts',
+    admin: 'src/api/admin.ts',
+    webhooks: 'src/api/webhooks.ts',
+    health: 'src/api/health.ts',
+    listings: 'src/api/listings.ts',
+    tokens: 'src/api/tokens.ts',
+    users: 'src/api/users.ts',
+    'account-verification': 'src/api/account-verification.ts',
+    contact: 'src/api/contact.ts',
   },
   outDir: 'api',
   format: ['cjs'],
-  target: 'node18', // Changed from node22 - Vercel uses Node 18
+  target: 'node22',
   platform: 'node',
   bundle: true,
-  minify: false,
-  sourcemap: true,
+  minify: false, // Disable minification to avoid module resolution issues
+  sourcemap: true, // Enable sourcemaps for debugging
   clean: true,
-  treeshake: false,
+  treeshake: false, // Disable tree shaking for now
+  // Keep more packages external to avoid bundling issues
+  noExternal: [],
   external: [
-    // Core Node.js modules
-    'crypto',
-    'node:crypto',
+    'fastify',
+    '@fastify/cors',
+    '@fastify/helmet',
+    '@fastify/multipart',
 
-    // Vercel runtime
-    '@vercel/node',
-
-    // Database
     'prisma',
     '@prisma/client',
     '.prisma/client',
-
-    // Fastify ecosystem - bundle these instead of external
-    // 'fastify',
-    // '@fastify/cors',
-    // '@fastify/helmet',
-    // '@fastify/multipart',
-
-    // Heavy packages that should stay external
+    'crypto',
+    'node:crypto',
+    '@vercel/node',
+    // Email service
+    'resend',
+    // Additional packages that should be external
     'sharp',
     'bcrypt',
     'pino',
     'pino-pretty',
-
-    // Utility packages - bundle these
-    // 'zod',
-    // 'zod-to-json-schema',
-
-    // Email service
-    'resend',
-
-    // Blockchain
-    'viem',
-
-    // Error handling
+    'zod',
+    'zod-to-json-schema',
     '@hapi/boom',
+    'viem',
   ],
-  cjsInterop: true, // Enable CJS interop
+  cjsInterop: false,
   splitting: false,
   esbuildOptions(options) {
-    // Reduce optimizations that might cause issues
-    options.treeShaking = false;
-    options.minifyIdentifiers = false;
-    options.minifySyntax = false;
-    options.minifyWhitespace = false;
+    // Additional optimizations
+    options.treeShaking = true;
+    options.minifyIdentifiers = true;
+    options.minifySyntax = true;
+    options.minifyWhitespace = true;
   },
 });
