@@ -18,7 +18,7 @@ export default defineConfig({
   target: 'node22',
   platform: 'node',
   bundle: true,
-  minify: false, // Disable minification to avoid module resolution issues
+  minify: true, // Enable minification to match working version
   sourcemap: true, // Enable sourcemaps for debugging
   clean: true,
   treeshake: false, // Disable tree shaking for now

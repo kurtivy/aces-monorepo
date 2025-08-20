@@ -13,6 +13,8 @@
     "test:watch": "vitest --reporter=verbose",
     "test:services": "vitest run test/services/ --reporter=verbose --run",
     "test:single": "vitest run --reporter=verbose --run",
+    "test:endpoints": "node scripts/test-endpoints.js",
+    "test:endpoints:verbose": "node scripts/test-endpoints.js --verbose",
     "coverage": "vitest run --coverage --run",
     "coverage:check": "vitest run --coverage --run && node scripts/check-coverage.js",
     "cli": "ts-node src/scripts/cli.ts",
