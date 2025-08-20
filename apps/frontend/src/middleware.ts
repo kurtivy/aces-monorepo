@@ -44,14 +44,14 @@ export function middleware(request: NextRequest) {
   const domainType = getDomainType();
 
   // Routes that should NOT be accessible on aces.fun
-  const acesRestrictedRoutes = ['/profile', '/rwa', '/launch'];
+  const acesRestrictedRoutes = ['/profile', '/rwa']; // Removed '/launch'
 
   // Routes that should ONLY be accessible on aceofbase.com
-  const aceofbaseOnlyRoutes = ['/launch'];
+  // const aceofbaseOnlyRoutes = ['/launch']; // Commented out
 
   // Check domain type
   const isMainDomain = domainType === 'main';
-  const isLaunchDomain = domainType === 'launch';
+  // const isLaunchDomain = domainType === 'launch'; // Commented out
   const isDevEnvironment = domainType === 'dev';
 
   // Apply domain restrictions only in production-like environments
@@ -66,15 +66,16 @@ export function middleware(request: NextRequest) {
       }
     }
 
+    // COMMENTED OUT: Launch domain restrictions
     // If on launch domain (aceofbase.com or launch Vercel deployment), only allow launch routes
-    if (isLaunchDomain) {
-      const isAceofbaseRoute = aceofbaseOnlyRoutes.some((route) => pathname.startsWith(route));
+    // if (isLaunchDomain) {
+    //   const isAceofbaseRoute = aceofbaseOnlyRoutes.some((route) => pathname.startsWith(route));
 
-      if (!isAceofbaseRoute) {
-        console.log(`❌ Non-launch route ${pathname} on launch domain (${hostname})`);
-        return NextResponse.json({ error: 'Not Found' }, { status: 404 });
-      }
-    }
+    //   if (!isAceofbaseRoute) {
+    //     console.log(`❌ Non-launch route ${pathname} on launch domain (${hostname})`);
+    //     return NextResponse.json({ error: 'Not Found' }, { status: 404 });
+    //   }
+    // }
   }
 
   // Protected routes that require authentication (if you have any)
