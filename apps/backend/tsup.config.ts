@@ -15,46 +15,58 @@ export default defineConfig({
   },
   outDir: 'api',
   format: ['cjs'],
-  target: 'node22',
+  target: 'node18', // Changed from node22 - Vercel uses Node 18
   platform: 'node',
   bundle: true,
-  minify: false, // Disable minification to avoid module resolution issues
-  sourcemap: true, // Enable sourcemaps for debugging
+  minify: false,
+  sourcemap: true,
   clean: true,
-  treeshake: false, // Disable tree shaking for now
-  // Keep more packages external to avoid bundling issues
-  noExternal: [],
+  treeshake: false,
   external: [
-    'fastify',
-    '@fastify/cors',
-    '@fastify/helmet',
-    '@fastify/multipart',
+    // Core Node.js modules
+    'crypto',
+    'node:crypto',
 
+    // Vercel runtime
+    '@vercel/node',
+
+    // Database
     'prisma',
     '@prisma/client',
     '.prisma/client',
-    'crypto',
-    'node:crypto',
-    '@vercel/node',
-    // Email service
-    'resend',
-    // Additional packages that should be external
+
+    // Fastify ecosystem - bundle these instead of external
+    // 'fastify',
+    // '@fastify/cors',
+    // '@fastify/helmet',
+    // '@fastify/multipart',
+
+    // Heavy packages that should stay external
     'sharp',
     'bcrypt',
     'pino',
     'pino-pretty',
-    'zod',
-    'zod-to-json-schema',
-    '@hapi/boom',
+
+    // Utility packages - bundle these
+    // 'zod',
+    // 'zod-to-json-schema',
+
+    // Email service
+    'resend',
+
+    // Blockchain
     'viem',
+
+    // Error handling
+    '@hapi/boom',
   ],
-  cjsInterop: false,
+  cjsInterop: true, // Enable CJS interop
   splitting: false,
   esbuildOptions(options) {
-    // Additional optimizations
-    options.treeShaking = true;
-    options.minifyIdentifiers = true;
-    options.minifySyntax = true;
-    options.minifyWhitespace = true;
+    // Reduce optimizations that might cause issues
+    options.treeShaking = false;
+    options.minifyIdentifiers = false;
+    options.minifySyntax = false;
+    options.minifyWhitespace = false;
   },
 });
