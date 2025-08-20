@@ -14,14 +14,14 @@ export default defineConfig({
     contact: 'src/api/contact.ts',
   },
   outDir: 'api',
-  format: ['cjs'],
-  target: 'node22',
+  format: ['esm'],
+  target: 'node20',
   platform: 'node',
   bundle: true,
-  minify: false, // Disable minification to avoid module resolution issues
-  sourcemap: true, // Enable sourcemaps for debugging
+  minify: false,
+  sourcemap: false, // Disable sourcemaps to reduce file size
   clean: true,
-  treeshake: false, // Disable tree shaking for now
+  treeshake: false,
   // Keep more packages external to avoid bundling issues
   noExternal: [],
   external: [
@@ -51,10 +51,9 @@ export default defineConfig({
   cjsInterop: false,
   splitting: false,
   esbuildOptions(options) {
-    // Additional optimizations
-    options.treeShaking = true;
-    options.minifyIdentifiers = true;
-    options.minifySyntax = true;
-    options.minifyWhitespace = true;
+    // Ensure proper module format for Vercel
+    options.platform = 'node';
+    options.target = 'node20';
+    options.format = 'esm';
   },
 });
