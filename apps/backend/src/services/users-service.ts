@@ -354,22 +354,59 @@ export class UsersService {
    */
   async getPublicUserProfile(userId: string): Promise<UserPublicProfile> {
     try {
-      const user = await this.prisma.user.findUnique({
-        where: { id: userId },
-        select: {
-          id: true,
-          displayName: true,
-          avatar: true,
-          role: true,
-          sellerStatus: true,
-          createdAt: true,
-          accountVerification: {
-            select: {
-              status: true,
+      // First try to get user with verification relationship
+      let user = null;
+      let verificationStatus = null;
+
+      try {
+        user = await this.prisma.user.findUnique({
+          where: { id: userId },
+          select: {
+            id: true,
+            displayName: true,
+            avatar: true,
+            role: true,
+            sellerStatus: true,
+            createdAt: true,
+            accountVerification: {
+              select: {
+                status: true,
+              },
             },
           },
-        },
-      });
+        });
+        verificationStatus = user?.accountVerification?.status || null;
+      } catch (relationError) {
+        // If accountVerification relationship fails, fetch without it
+        console.warn(
+          'Failed to fetch user with accountVerification relationship, falling back to basic query:',
+          relationError,
+        );
+
+        user = await this.prisma.user.findUnique({
+          where: { id: userId },
+          select: {
+            id: true,
+            displayName: true,
+            avatar: true,
+            role: true,
+            sellerStatus: true,
+            createdAt: true,
+          },
+        });
+
+        // Try to fetch verification separately
+        try {
+          const verification = await this.prisma.accountVerification.findUnique({
+            where: { userId },
+            select: { status: true },
+          });
+          verificationStatus = verification?.status || null;
+        } catch (verificationError) {
+          console.warn('Could not fetch separate verification:', verificationError);
+          verificationStatus = null;
+        }
+      }
 
       if (!user) {
         throw errors.notFound('User not found');
@@ -382,7 +419,7 @@ export class UsersService {
         role: user.role,
         sellerStatus: user.sellerStatus,
         memberSince: user.createdAt,
-        verificationStatus: user.accountVerification?.status || null,
+        verificationStatus,
       };
     } catch (error) {
       loggers.error(error as Error, { userId, operation: 'getPublicUserProfile' });

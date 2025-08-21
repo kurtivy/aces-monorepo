@@ -257,10 +257,42 @@ export class AccountVerificationService {
 
   async getUserVerificationStatus(userId: string) {
     try {
-      const user = await this.prisma.user.findUnique({
-        where: { id: userId },
-        include: { accountVerification: true },
-      });
+      // Try to fetch user with verification relationship
+      let user = null;
+      let accountVerification = null;
+
+      try {
+        user = await this.prisma.user.findUnique({
+          where: { id: userId },
+          include: { accountVerification: true },
+        });
+        accountVerification = user?.accountVerification;
+      } catch (relationError) {
+        // If accountVerification relationship fails, fetch separately
+        console.warn(
+          'Failed to fetch user with accountVerification relationship, falling back to separate queries:',
+          relationError,
+        );
+
+        user = await this.prisma.user.findUnique({
+          where: { id: userId },
+          select: {
+            sellerStatus: true,
+            verificationAttempts: true,
+            lastVerificationAttempt: true,
+          },
+        });
+
+        // Try to fetch verification separately
+        try {
+          accountVerification = await this.prisma.accountVerification.findUnique({
+            where: { userId },
+          });
+        } catch (verificationError) {
+          console.warn('Could not fetch separate verification:', verificationError);
+          accountVerification = null;
+        }
+      }
 
       if (!user) throw errors.notFound('User not found');
 
@@ -268,7 +300,7 @@ export class AccountVerificationService {
         sellerStatus: user.sellerStatus,
         verificationAttempts: user.verificationAttempts,
         lastVerificationAttempt: user.lastVerificationAttempt,
-        verificationDetails: user.accountVerification,
+        verificationDetails: accountVerification,
       };
     } catch (error) {
       console.error('Error getting user verification status:', error);

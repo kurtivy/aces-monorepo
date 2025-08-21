@@ -25,6 +25,8 @@
     "test:api:both": "npm run test:api:dev && npm run test:api:main",
     "test:deployment": "node scripts/test-deployment.js",
     "diagnose:deployment": "node scripts/diagnose-deployment.js",
+    "fix:deployment": "node scripts/fix-deployment-issues.js",
+    "fix:prisma": "node scripts/regenerate-prisma.js",
     "coverage": "vitest run --coverage --run",
     "coverage:check": "vitest run --coverage --run && node scripts/check-coverage.js",
     "cli": "ts-node src/scripts/cli.ts",

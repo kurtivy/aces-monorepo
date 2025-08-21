@@ -892,16 +892,42 @@ var AccountVerificationService = class {
   }
   async getUserVerificationStatus(userId) {
     try {
-      const user = await this.prisma.user.findUnique({
-        where: { id: userId },
-        include: { accountVerification: true }
-      });
+      let user = null;
+      let accountVerification = null;
+      try {
+        user = await this.prisma.user.findUnique({
+          where: { id: userId },
+          include: { accountVerification: true }
+        });
+        accountVerification = user?.accountVerification;
+      } catch (relationError) {
+        console.warn(
+          "Failed to fetch user with accountVerification relationship, falling back to separate queries:",
+          relationError
+        );
+        user = await this.prisma.user.findUnique({
+          where: { id: userId },
+          select: {
+            sellerStatus: true,
+            verificationAttempts: true,
+            lastVerificationAttempt: true
+          }
+        });
+        try {
+          accountVerification = await this.prisma.accountVerification.findUnique({
+            where: { userId }
+          });
+        } catch (verificationError) {
+          console.warn("Could not fetch separate verification:", verificationError);
+          accountVerification = null;
+        }
+      }
       if (!user) throw errors.notFound("User not found");
       return {
         sellerStatus: user.sellerStatus,
         verificationAttempts: user.verificationAttempts,
         lastVerificationAttempt: user.lastVerificationAttempt,
-        verificationDetails: user.accountVerification
+        verificationDetails: accountVerification
       };
     } catch (error) {
       console.error("Error getting user verification status:", error);
@@ -1833,12 +1859,20 @@ var handler = /* @__PURE__ */ __name(async (req, res) => {
     const isOriginAllowed = /* @__PURE__ */ __name((origin2) => {
       if (!origin2) return false;
       if (origin2.endsWith(".vercel.app")) return true;
-      return ["http://localhost:3000", "http://localhost:3001", "https://www.aces.fun", "https://aces.fun"].includes(origin2);
+      return [
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "https://www.aces.fun",
+        "https://aces.fun"
+      ].includes(origin2);
     }, "isOriginAllowed");
     if (isOriginAllowed(origin) && origin) {
       res.setHeader("Access-Control-Allow-Origin", origin);
       res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin, X-Requested-With");
+      res.setHeader(
+        "Access-Control-Allow-Headers",
+        "Content-Type, Authorization, Accept, Origin, X-Requested-With"
+      );
       res.setHeader("Access-Control-Allow-Credentials", "true");
     }
     if (req.method === "OPTIONS") {

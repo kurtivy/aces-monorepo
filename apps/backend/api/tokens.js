@@ -857,12 +857,20 @@ var handler = /* @__PURE__ */ __name(async (req, res) => {
     const isOriginAllowed = /* @__PURE__ */ __name((origin2) => {
       if (!origin2) return false;
       if (origin2.endsWith(".vercel.app")) return true;
-      return ["http://localhost:3000", "http://localhost:3001", "https://www.aces.fun", "https://aces.fun"].includes(origin2);
+      return [
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "https://www.aces.fun",
+        "https://aces.fun"
+      ].includes(origin2);
     }, "isOriginAllowed");
     if (isOriginAllowed(origin) && origin) {
       res.setHeader("Access-Control-Allow-Origin", origin);
       res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin, X-Requested-With");
+      res.setHeader(
+        "Access-Control-Allow-Headers",
+        "Content-Type, Authorization, Accept, Origin, X-Requested-With"
+      );
       res.setHeader("Access-Control-Allow-Credentials", "true");
     }
     if (req.method === "OPTIONS") {
