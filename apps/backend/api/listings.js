@@ -35,6 +35,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/api/listings.ts
 var listings_exports = {};
 __export(listings_exports, {
+  config: () => config,
   default: () => listings_default
 });
 module.exports = __toCommonJS(listings_exports);
@@ -1049,20 +1050,12 @@ var buildListingsApp = /* @__PURE__ */ __name(async () => {
   });
   return fastify;
 }, "buildListingsApp");
+var appPromise;
 var handler = /* @__PURE__ */ __name(async (req, res) => {
   try {
-    const app = await buildListingsApp();
+    appPromise = appPromise ?? buildListingsApp();
+    const app = await appPromise;
     await app.ready();
-    let path = req.url || "/";
-    if (path.startsWith("/api/v1/listings")) {
-      path = path.replace("/api/v1/listings", "") || "/";
-    }
-    req.url = path;
-    console.log("\u{1F50D} Listings handler processing:", {
-      originalUrl: req.url,
-      rewrittenPath: path,
-      method: req.method
-    });
     app.server.emit("request", req, res);
   } catch (error) {
     console.error("\u274C Listings handler error:", error);
@@ -1077,3 +1070,8 @@ var handler = /* @__PURE__ */ __name(async (req, res) => {
   }
 }, "handler");
 var listings_default = handler;
+var config = { runtime: "nodejs" };
+// Annotate the CommonJS export names for ESM import in node:
+0 && (module.exports = {
+  config
+});

@@ -35,6 +35,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/api/submissions.ts
 var submissions_exports = {};
 __export(submissions_exports, {
+  config: () => config,
   default: () => submissions_default
 });
 module.exports = __toCommonJS(submissions_exports);
@@ -1778,10 +1779,8 @@ var buildSubmissionsApp = /* @__PURE__ */ __name(async () => {
   fastify.decorate("prisma", prisma2);
   await fastify.register(import_helmet.default);
   await fastify.register(import_multipart.default, {
-    limits: {
-      fileSize: 5 * 1024 * 1024
-      // 5MB
-    }
+    limits: { fileSize: 5 * 1024 * 1024 }
+    // 5MB
   });
   await fastify.register(registerAuth);
   fastify.addHook("onRequest", async (request, reply) => {
@@ -1858,20 +1857,12 @@ var buildSubmissionsApp = /* @__PURE__ */ __name(async () => {
   });
   return fastify;
 }, "buildSubmissionsApp");
+var appPromise;
 var handler = /* @__PURE__ */ __name(async (req, res) => {
   try {
-    const app = await buildSubmissionsApp();
+    appPromise = appPromise ?? buildSubmissionsApp();
+    const app = await appPromise;
     await app.ready();
-    let path = req.url || "/";
-    if (path.startsWith("/api/v1/submissions")) {
-      path = path.replace("/api/v1/submissions", "") || "/";
-    }
-    req.url = path;
-    console.log("\u{1F50D} Submissions handler processing:", {
-      originalUrl: req.url,
-      rewrittenPath: path,
-      method: req.method
-    });
     app.server.emit("request", req, res);
   } catch (error) {
     console.error("\u274C Submissions handler error:", error);
@@ -1886,3 +1877,8 @@ var handler = /* @__PURE__ */ __name(async (req, res) => {
   }
 }, "handler");
 var submissions_default = handler;
+var config = { runtime: "nodejs" };
+// Annotate the CommonJS export names for ESM import in node:
+0 && (module.exports = {
+  config
+});

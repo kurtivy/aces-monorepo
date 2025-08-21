@@ -23,7 +23,6 @@ import { handleError } from '../lib/errors';
 import { registerAuth } from '../plugins/auth';
 import { submissionsRoutes } from '../routes/v1/submissions';
 
-// DON'T cache the app - rebuild each time for serverless
 const buildSubmissionsApp = async (): Promise<FastifyInstance> => {
   const fastify = Fastify({
     logger: {
@@ -48,15 +47,11 @@ const buildSubmissionsApp = async (): Promise<FastifyInstance> => {
   // Register plugins
   await fastify.register(helmet);
   await fastify.register(multipart, {
-    limits: {
-      fileSize: 5 * 1024 * 1024, // 5MB
-    },
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
   });
-
-  // Register auth plugin
   await fastify.register(registerAuth);
 
-  // Add CORS handling
+  // CORS handling
   fastify.addHook('onRequest', async (request, reply) => {
     const origin = request.headers.origin;
     const allowedOrigins = [
@@ -79,15 +74,14 @@ const buildSubmissionsApp = async (): Promise<FastifyInstance> => {
     }
   });
 
-  // Handle OPTIONS preflight
+  // OPTIONS preflight
   fastify.options('*', async (request, reply) => {
     reply.code(204).send();
   });
 
-  // Register ALL the submission routes from the routes file
   await fastify.register(submissionsRoutes);
 
-  // Register hooks
+  // Hooks
   fastify.addHook('onRequest', async (request) => {
     request.startTime = Date.now();
     loggers.request(request.id, request.method, request.url, request.headers['user-agent']);
@@ -98,9 +92,8 @@ const buildSubmissionsApp = async (): Promise<FastifyInstance> => {
     loggers.response(request.id, request.method, request.url, reply.statusCode, responseTime);
   });
 
-  // Enhanced error handler
+  // Error handler
   fastify.setErrorHandler((error, request, reply) => {
-    // Log the error with full context
     fastify.log.error(
       {
         err: error,
@@ -130,7 +123,6 @@ const buildSubmissionsApp = async (): Promise<FastifyInstance> => {
         'Error handler failed',
       );
 
-      // Fallback error response
       if (!reply.sent) {
         reply.status(500).send({
           success: false,
@@ -150,31 +142,16 @@ const buildSubmissionsApp = async (): Promise<FastifyInstance> => {
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
+let appPromise: Promise<FastifyInstance> | undefined;
+
 const handler = async (req: VercelRequest, res: VercelResponse) => {
   try {
-    const app = await buildSubmissionsApp();
+    appPromise = appPromise ?? buildSubmissionsApp();
+    const app = await appPromise;
     await app.ready();
-
-    // Handle path rewriting: /api/v1/submissions/... → /...
-    let path = req.url || '/';
-
-    if (path.startsWith('/api/v1/submissions')) {
-      path = path.replace('/api/v1/submissions', '') || '/';
-    }
-
-    // Update the request URL
-    req.url = path;
-
-    console.log('🔍 Submissions handler processing:', {
-      originalUrl: req.url,
-      rewrittenPath: path,
-      method: req.method,
-    });
-
     app.server.emit('request', req, res);
   } catch (error) {
     console.error('❌ Submissions handler error:', error);
-
     if (!res.headersSent) {
       res.status(500).json({
         success: false,
@@ -187,3 +164,4 @@ const handler = async (req: VercelRequest, res: VercelResponse) => {
 };
 
 export default handler;
+export const config = { runtime: 'nodejs' };

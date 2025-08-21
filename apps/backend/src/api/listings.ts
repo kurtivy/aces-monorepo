@@ -4,7 +4,6 @@ import helmet from '@fastify/helmet';
 
 import { User as PrismaUser, PrismaClient } from '@prisma/client';
 
-// Extend Fastify types to include custom properties
 declare module 'fastify' {
   interface FastifyRequest {
     startTime?: number;
@@ -43,11 +42,10 @@ const buildListingsApp = async (): Promise<FastifyInstance> => {
   const prisma = getPrismaClient();
   fastify.decorate('prisma', prisma);
 
-  // Register plugins
   await fastify.register(helmet);
   await fastify.register(registerAuth);
 
-  // Add CORS handling
+  // CORS
   fastify.addHook('onRequest', async (request, reply) => {
     const origin = request.headers.origin;
     const allowedOrigins = [
@@ -70,15 +68,12 @@ const buildListingsApp = async (): Promise<FastifyInstance> => {
     }
   });
 
-  // Handle OPTIONS preflight
   fastify.options('*', async (request, reply) => {
     reply.code(204).send();
   });
 
-  // Register the listings routes from the routes file
   await fastify.register(listingsRoutes);
 
-  // Register hooks
   fastify.addHook('onRequest', async (request) => {
     request.startTime = Date.now();
     loggers.request(request.id, request.method, request.url, request.headers['user-agent']);
@@ -89,7 +84,6 @@ const buildListingsApp = async (): Promise<FastifyInstance> => {
     loggers.response(request.id, request.method, request.url, reply.statusCode, responseTime);
   });
 
-  // Enhanced error handler
   fastify.setErrorHandler((error, request, reply) => {
     fastify.log.error(
       {
@@ -139,30 +133,16 @@ const buildListingsApp = async (): Promise<FastifyInstance> => {
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
+let appPromise: Promise<FastifyInstance> | undefined;
+
 const handler = async (req: VercelRequest, res: VercelResponse) => {
   try {
-    const app = await buildListingsApp();
+    appPromise = appPromise ?? buildListingsApp();
+    const app = await appPromise;
     await app.ready();
-
-    // Handle path rewriting: /api/v1/listings/... → /...
-    let path = req.url || '/';
-
-    if (path.startsWith('/api/v1/listings')) {
-      path = path.replace('/api/v1/listings', '') || '/';
-    }
-
-    req.url = path;
-
-    console.log('🔍 Listings handler processing:', {
-      originalUrl: req.url,
-      rewrittenPath: path,
-      method: req.method,
-    });
-
     app.server.emit('request', req, res);
   } catch (error) {
     console.error('❌ Listings handler error:', error);
-
     if (!res.headersSent) {
       res.status(500).json({
         success: false,
@@ -175,3 +155,4 @@ const handler = async (req: VercelRequest, res: VercelResponse) => {
 };
 
 export default handler;
+export const config = { runtime: 'nodejs' };
