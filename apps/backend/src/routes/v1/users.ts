@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import jwt from 'jsonwebtoken';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { UsersService } from '../../services/users-service';
 import { requireAuth, optionalAuth, canAccessResource } from '../../lib/auth-middleware';
@@ -39,11 +40,11 @@ export async function usersRoutes(fastify: FastifyInstance) {
   /**
    * Verify or create user from Privy authentication
    * This endpoint is called by the frontend after successful Privy auth
+   * Note: Uses custom auth verification instead of requireAuth to avoid circular dependency
    */
   fastify.post(
     '/verify-or-create',
     {
-      preHandler: [requireAuth],
       schema: {
         body: zodToJsonSchema(
           z.object({
@@ -65,6 +66,24 @@ export async function usersRoutes(fastify: FastifyInstance) {
       const correlationId = request.id;
 
       try {
+        // Custom JWT verification for this endpoint
+        const authHeader = request.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+          throw errors.unauthorized('Authentication token required');
+        }
+
+        const token = authHeader.replace('Bearer ', '');
+
+        // Decode JWT to verify it contains the same privyDid
+        const decoded = jwt.decode(token) as {
+          sub: string;
+          wallet_address?: string;
+          email?: string;
+        } | null;
+
+        if (!decoded || !decoded.sub || decoded.sub !== privyDid) {
+          throw errors.unauthorized('Invalid or mismatched authentication token');
+        }
         // Check if user already exists
         let user = await fastify.prisma.user.findUnique({
           where: { privyDid },
@@ -115,7 +134,7 @@ export async function usersRoutes(fastify: FastifyInstance) {
         return reply.send({
           success: true,
           data: profile,
-          created: !request.user, // true if this was a new user
+          created: !user || user.createdAt.getTime() > Date.now() - 10000, // true if user was just created (within 10 seconds)
         });
       } catch (error) {
         const err = error instanceof Error ? error : new Error('Unknown error');

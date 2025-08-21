@@ -4,14 +4,6 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const hostname = request.headers.get('host') || '';
 
-  console.log('🚀 Middleware running:', {
-    hostname,
-    pathname,
-    method: request.method,
-    timestamp: new Date().toISOString(),
-    note: 'All routes currently allowed on all domains',
-  });
-
   // Define your domains
   const domains = {
     main: 'aces.fun',
@@ -120,7 +112,6 @@ export function middleware(request: NextRequest) {
   response.headers.set('X-Middleware-Path', pathname);
   response.headers.set('X-Middleware-Timestamp', new Date().toISOString());
 
-  console.log('✅ Middleware completed successfully');
   return response;
 }
 

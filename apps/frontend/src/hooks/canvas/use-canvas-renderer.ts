@@ -180,13 +180,6 @@ export const useCanvasRenderer = ({
   // FEATURED SECTION: Find featured image by ID
   const featuredImage = useMemo(() => {
     const found = images.find((img) => img.metadata.id === featuredImageId) || null;
-    console.log('Featured Image Debug:', {
-      featuredImageId,
-      totalImages: images.length,
-      foundImage: !!found,
-      foundImageId: found?.metadata?.id,
-      allImageIds: images.map((img) => img.metadata?.id).filter(Boolean),
-    });
     return found;
   }, [images, featuredImageId]);
 
@@ -768,19 +761,6 @@ export const useCanvasRenderer = ({
     const totalReservedAreaWidth = unitSize * 2;
     const totalReservedAreaHeight = unitSize * 3; // Featured (2) + Home (1)
 
-    // DEBUG: Log the coordinates
-    console.log('Reserved Area Debug:', {
-      featuredImageId,
-      unitSize,
-      totalReservedAreaWorldX,
-      totalReservedAreaWorldY,
-      totalReservedAreaWidth,
-      totalReservedAreaHeight,
-      homeAreaWorldX: -unitSize,
-      homeAreaWorldY: -unitSize,
-      featuredAreaWorldY: -unitSize * 3,
-    });
-
     const totalProducts = images.length;
     const estimatedGridCells = Math.ceil(Math.sqrt(totalProducts * 1.5)); // 1.5x for create tokens and spacing
 
@@ -1251,14 +1231,6 @@ export const useCanvasRenderer = ({
     const featuredAreaWorldY = -unitSize * 3;
     const featuredAreaWidth = unitSize * 2;
     const featuredAreaHeight = unitSize * 2;
-
-    console.log('Drawing Coordinates:', {
-      featuredAreaWorldX,
-      featuredAreaWorldY,
-      homeAreaWorldX,
-      homeAreaWorldY,
-      featuredImage: !!featuredImage,
-    });
 
     const draw = (currentTime: number) => {
       // Step 0: Start performance monitoring for this frame

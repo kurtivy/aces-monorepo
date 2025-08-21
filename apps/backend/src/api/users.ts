@@ -33,8 +33,36 @@ const buildUsersApp = async (): Promise<FastifyInstance> => {
   fastify.decorate('prisma', prisma);
 
   // Register plugins
-  // CORS handled dynamically in main app.ts
   fastify.register(helmet);
+
+  // CORS configuration for local development
+  fastify.addHook('onRequest', async (request, reply) => {
+    const origin = request.headers.origin;
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:3002',
+      'https://www.aces.fun',
+      'https://aces.fun',
+      'https://aces-monorepo-git-dev-dan-aces-fun.vercel.app',
+      'https://aces-monorepo-git-main-dan-aces-fun.vercel.app',
+    ];
+
+    if (origin && (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app'))) {
+      reply.header('Access-Control-Allow-Origin', origin);
+      reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      reply.header(
+        'Access-Control-Allow-Headers',
+        'Content-Type, Authorization, Accept, Origin, X-Requested-With',
+      );
+      reply.header('Access-Control-Allow-Credentials', 'true');
+      reply.header('Vary', 'Origin');
+    }
+  });
+
+  // Handle OPTIONS preflight requests
+  fastify.options('*', async (request, reply) => {
+    reply.code(204).send();
+  });
 
   // Register custom plugins
   fastify.register(registerAuth);

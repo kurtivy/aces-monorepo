@@ -55,10 +55,8 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   const getAllowedOrigins = () => {
     const origins = [];
 
-    // Development origins
-    if (process.env.NODE_ENV === 'development') {
-      origins.push('http://localhost:3000', 'http://localhost:3001');
-    }
+    // Always allow localhost for development (regardless of NODE_ENV)
+    origins.push('http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002');
 
     // Production origins from environment variables
     if (process.env.FRONTEND_URL) {
@@ -70,16 +68,14 @@ export const buildApp = async (): Promise<FastifyInstance> => {
       origins.push(`https://${process.env.VERCEL_URL}`);
     }
 
-    // Default production domains if no env vars set
-    if (origins.length === 0 || process.env.NODE_ENV === 'production') {
-      origins.push(
-        'https://www.aces.fun',
-        'https://aces-monorepo-git-dev-dan-aces-fun.vercel.app',
-        'https://aces-monorepo-git-main-dan-aces-fun.vercel.app',
-      );
-    }
+    // Production domains
+    origins.push(
+      'https://www.aces.fun',
+      'https://aces.fun',
+      'https://aces-monorepo-git-dev-dan-aces-fun.vercel.app',
+      'https://aces-monorepo-git-main-dan-aces-fun.vercel.app',
+    );
 
-    // Allow all preview deployments on Vercel (*.vercel.app)
     return origins;
   };
 
