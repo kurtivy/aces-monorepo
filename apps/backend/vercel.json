@@ -1,7 +1,7 @@
 {
   "version": 2,
   "buildCommand": "pnpm vercel-build",
-  "installCommand": "pnpm install --no-frozen-lockfile",
+  "installCommand": "cd ../.. && pnpm install --no-frozen-lockfile",
   "outputDirectory": ".",
 
   "rewrites": [
