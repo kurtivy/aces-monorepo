@@ -17,13 +17,31 @@ export default defineConfig({
   format: ['cjs'],
   target: 'node20',
   platform: 'node',
-  bundle: false, // DISABLED - Let Vercel handle dependencies
+  bundle: true, // RE-ENABLED - This resolves relative imports
   minify: false,
   sourcemap: true,
   clean: true,
+  treeshake: false,
+  external: [
+    // Database & ORM
+    '@prisma/client',
+    '.prisma/client',
+    'prisma',
+
+    // Privy Auth (keep external to avoid crypto issues)
+    '@privy-io/server-auth',
+
+    // HPKE crypto libraries (the ones causing "Cannot find module" errors)
+    '@hpke/common',
+    '@hpke/chacha20poly1305',
+
+    // Other externals that don't play well with bundling
+    'sharp',
+    'bcrypt',
+    'pino-pretty',
+  ],
   cjsInterop: true,
   splitting: false,
-  // Remove external array when bundle: false
   esbuildOptions(options) {
     options.keepNames = true;
   },
