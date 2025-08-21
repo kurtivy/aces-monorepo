@@ -1863,6 +1863,9 @@ var handler = /* @__PURE__ */ __name(async (req, res) => {
     appPromise = appPromise ?? buildSubmissionsApp();
     const app = await appPromise;
     await app.ready();
+    if (req.url?.startsWith("/api/v1/submissions")) {
+      req.url = req.url.replace("/api/v1/submissions", "") || "/";
+    }
     app.server.emit("request", req, res);
   } catch (error) {
     console.error("\u274C Submissions handler error:", error);

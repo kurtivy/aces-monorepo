@@ -149,6 +149,12 @@ const handler = async (req: VercelRequest, res: VercelResponse) => {
     appPromise = appPromise ?? buildSubmissionsApp();
     const app = await appPromise;
     await app.ready();
+
+    // Handle path rewriting: /api/v1/submissions/upload-image → /upload-image
+    if (req.url?.startsWith('/api/v1/submissions')) {
+      req.url = req.url.replace('/api/v1/submissions', '') || '/';
+    }
+
     app.server.emit('request', req, res);
   } catch (error) {
     console.error('❌ Submissions handler error:', error);
