@@ -1,5 +1,5 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { UserRole, SellerStatus } from '@prisma/client';
+import { UserRole, SellerStatus, UserRoleType, SellerStatusType } from '../lib/prisma-enums';
 import { errors } from './errors';
 import { EnhancedUser, AuthContext } from '../types/fastify';
 
@@ -12,9 +12,14 @@ export function createAuthContext(user: EnhancedUser | null): AuthContext {
       userExists: !!user,
       userActive: user?.isActive,
       sellerStatus: user?.sellerStatus,
+      userRole: user?.role,
       enumsAvailable: {
-        SellerStatus: typeof SellerStatus,
-        UserRole: typeof UserRole,
+        SellerStatus: Object.keys(SellerStatus),
+        UserRole: Object.keys(UserRole),
+      },
+      enumValues: {
+        SellerStatus: Object.values(SellerStatus),
+        UserRole: Object.values(UserRole),
       },
     });
 
@@ -29,29 +34,27 @@ export function createAuthContext(user: EnhancedUser | null): AuthContext {
       };
     }
 
-    const isAuthenticated = !!user && user.isActive;
-    
+    // Ensure user has required fields with defaults
+    const isActive = user.isActive !== undefined ? user.isActive : true;
+    const isAuthenticated = !!user && isActive;
+
     console.log('🔍 Authentication calculation:', {
       userExists: !!user,
-      userIsActive: user?.isActive,
+      userIsActive: isActive,
       isAuthenticated,
-      userType: typeof user?.isActive
+      userRole: user.role,
     });
 
     // Safe seller status check with proper type handling
     let isSellerVerified = false;
     if (user.sellerStatus) {
-      // Direct string comparison (safest approach)
-      isSellerVerified = user.sellerStatus === 'APPROVED';
-
-      // Try the Prisma enum if available and comparison failed
-      if (!isSellerVerified && typeof SellerStatus !== 'undefined') {
-        try {
-          isSellerVerified = user.sellerStatus === SellerStatus.APPROVED;
-        } catch (enumError) {
-          console.warn('Prisma SellerStatus enum not available:', enumError);
-        }
-      }
+      // Use the Prisma enum directly
+      isSellerVerified = user.sellerStatus === SellerStatus.APPROVED;
+      console.log('🔍 Seller verification check:', {
+        userSellerStatus: user.sellerStatus,
+        approvedEnum: SellerStatus.APPROVED,
+        isVerified: isSellerVerified,
+      });
     }
 
     const canAccessSellerDashboard = isSellerVerified && !!user?.verifiedAt;
@@ -60,23 +63,20 @@ export function createAuthContext(user: EnhancedUser | null): AuthContext {
       isAuthenticated,
       isSellerVerified,
       canAccessSellerDashboard,
-      userRole: user.role,
+      userRole: user.role || 'TRADER',
     });
 
     return {
       user,
       isAuthenticated,
-      hasRole: (role: UserRole | UserRole[]) => {
-        if (!user) return false;
+      hasRole: (role: UserRoleType | UserRoleType[]) => {
+        if (!user || !user.role) return false;
 
         try {
           const roles = Array.isArray(role) ? role : [role];
 
-          // Safe role comparison
-          return roles.some((r) => {
-            // Direct comparison with user role
-            return user.role === r;
-          });
+          // Use direct enum comparison
+          return roles.some((r) => user.role === r);
         } catch (error) {
           console.error('Error checking user role:', error);
           return false;
@@ -91,6 +91,14 @@ export function createAuthContext(user: EnhancedUser | null): AuthContext {
       message: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined,
       userProvided: !!user,
+      userData: user
+        ? {
+            id: user.id,
+            isActive: user.isActive,
+            role: user.role,
+            sellerStatus: user.sellerStatus,
+          }
+        : null,
     });
 
     // Return safe default on any error
@@ -122,7 +130,7 @@ export async function requireAuth(request: FastifyRequest, _reply: FastifyReply)
 /**
  * Middleware to require specific role(s)
  */
-export function requireRole(role: UserRole | UserRole[]) {
+export function requireRole(role: UserRoleType | UserRoleType[]) {
   return async (request: FastifyRequest) => {
     if (!request.auth.isAuthenticated) {
       throw errors.unauthorized('Authentication required');
@@ -169,33 +177,7 @@ export async function requireAdmin(request: FastifyRequest, _reply: FastifyReply
     throw errors.unauthorized('Authentication required');
   }
 
-  // Safe role checking
-  try {
-    const user = request.auth.user;
-    if (!user) {
-      throw errors.forbidden('Admin access required');
-    }
-    // Direct string comparison for safety - only check valid roles
-    const isAdmin = user.role === 'ADMIN';
-
-    // Try enum comparison if available
-    if (!isAdmin && typeof UserRole !== 'undefined') {
-      try {
-        const enumAdmin = user.role === UserRole.ADMIN;
-        if (enumAdmin) return;
-      } catch (enumError) {
-        console.warn('Prisma UserRole enum not available:', enumError);
-      }
-    }
-
-    if (!isAdmin) {
-      throw errors.forbidden('Admin access required');
-    }
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('Admin access required')) {
-      throw error; // Re-throw expected errors
-    }
-    console.error('Error checking admin role:', error);
+  if (!request.auth.hasRole(UserRole.ADMIN)) {
     throw errors.forbidden('Admin access required');
   }
 }
@@ -214,7 +196,7 @@ export async function optionalAuth(_request: FastifyRequest) {
 export function canAccessResource(
   user: EnhancedUser | null,
   resourceOwnerId: string,
-  requiredRole?: UserRole | UserRole[],
+  requiredRole?: UserRoleType | UserRoleType[],
 ): boolean {
   if (!user) return false;
 

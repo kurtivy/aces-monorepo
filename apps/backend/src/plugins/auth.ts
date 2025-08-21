@@ -3,6 +3,7 @@ import fp from 'fastify-plugin';
 import jwt from 'jsonwebtoken';
 import { createAuthContext } from '../lib/auth-middleware';
 import { getPrismaClient } from '../lib/database';
+import { UserRole, SellerStatus } from '../lib/prisma-enums';
 
 const registerAuthPlugin = async (fastify: FastifyInstance) => {
   console.log('🔧 Registering enhanced auth plugin...');
@@ -84,7 +85,7 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
 
         // For clearly protected routes, return 401 immediately
         const protectedRoutes = ['/my', '/create', '/me'];
-        if (protectedRoutes.includes(request.url)) {
+        if (protectedRoutes.some((route) => request.url.startsWith(route))) {
           return reply.status(401).send({
             success: false,
             error: 'Authentication required',
@@ -103,7 +104,13 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
 
         // Use a simpler query that's less likely to fail
         await prisma.$queryRaw`SELECT 1 as test`;
-        console.log('✅ Database connection successful in', Date.now() - dbStart, 'ms');
+
+        const slowQueryTime = Date.now() - dbStart;
+        if (slowQueryTime > 2000) {
+          console.warn('⚠️ Slow database query detected:', slowQueryTime, 'ms');
+        } else {
+          console.log('✅ Database connection successful in', slowQueryTime, 'ms');
+        }
 
         // Verify Privy JWT token
         console.log('🔍 Verifying Privy JWT token...');
@@ -118,8 +125,6 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
           }
 
           // Decode JWT without verification to get user info
-          // Note: In production, you should verify the JWT signature
-          // For now, we'll decode it to get the user ID
           const decoded = jwt.decode(token) as {
             sub: string;
             wallet_address?: string;
@@ -134,26 +139,61 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
           const privyDid = decoded.sub;
           console.log('🔍 Privy DID from token:', privyDid);
 
-          // Look up or create user in database
+          // Look up user in database with all required fields
           let user = await prisma.user.findUnique({
             where: { privyDid },
+            select: {
+              id: true,
+              privyDid: true,
+              walletAddress: true,
+              email: true,
+              displayName: true,
+              avatar: true,
+              role: true,
+              isActive: true,
+              sellerStatus: true,
+              appliedAt: true,
+              verifiedAt: true,
+              rejectedAt: true,
+              rejectionReason: true,
+              createdAt: true,
+              updatedAt: true,
+            },
           });
 
           if (!user) {
             console.log('🆕 Creating new user for Privy DID:', privyDid);
 
-            // Extract wallet address from token if available
+            // Extract info from token
             const walletAddress = decoded.wallet_address || null;
+            const email = decoded.email || null;
 
             user = await prisma.user.create({
               data: {
                 privyDid,
                 walletAddress,
-                email: decoded.email || null,
-                displayName: decoded.email?.split('@')[0] || 'User',
-                role: 'TRADER',
+                email,
+                displayName: email?.split('@')[0] || 'User',
+                role: UserRole.TRADER,
                 isActive: true,
-                sellerStatus: 'NOT_APPLIED',
+                sellerStatus: SellerStatus.NOT_APPLIED,
+              },
+              select: {
+                id: true,
+                privyDid: true,
+                walletAddress: true,
+                email: true,
+                displayName: true,
+                avatar: true,
+                role: true,
+                isActive: true,
+                sellerStatus: true,
+                appliedAt: true,
+                verifiedAt: true,
+                rejectedAt: true,
+                rejectionReason: true,
+                createdAt: true,
+                updatedAt: true,
               },
             });
 
@@ -161,15 +201,57 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
           } else {
             console.log('✅ Existing user found:', user.id);
 
-            // Update wallet address if it changed
+            // Check if we need to update any fields
             const walletAddress = decoded.wallet_address || null;
-            if (walletAddress && user.walletAddress !== walletAddress) {
-              await prisma.user.update({
+            const email = decoded.email || null;
+
+            const needsUpdate =
+              (walletAddress && user.walletAddress !== walletAddress) ||
+              (email && user.email !== email && !user.email); // Only update email if user doesn't have one
+
+            if (needsUpdate) {
+              console.log('🔄 Updating user info...');
+
+              const updateData: any = {};
+
+              if (walletAddress && user.walletAddress !== walletAddress) {
+                updateData.walletAddress = walletAddress;
+              }
+
+              if (email && !user.email) {
+                updateData.email = email;
+                // Update display name if we're adding email for first time
+                if (!user.displayName || user.displayName === 'User') {
+                  updateData.displayName = email.split('@')[0];
+                }
+              }
+
+              // Always update the updatedAt timestamp
+              updateData.updatedAt = new Date();
+
+              user = await prisma.user.update({
                 where: { id: user.id },
-                data: { walletAddress },
+                data: updateData,
+                select: {
+                  id: true,
+                  privyDid: true,
+                  walletAddress: true,
+                  email: true,
+                  displayName: true,
+                  avatar: true,
+                  role: true,
+                  isActive: true,
+                  sellerStatus: true,
+                  appliedAt: true,
+                  verifiedAt: true,
+                  rejectedAt: true,
+                  rejectionReason: true,
+                  createdAt: true,
+                  updatedAt: true,
+                },
               });
-              user.walletAddress = walletAddress;
-              console.log('✅ Updated wallet address for user:', user.id);
+
+              console.log('✅ User updated successfully:', user.id);
             }
           }
 
