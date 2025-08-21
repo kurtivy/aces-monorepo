@@ -24,11 +24,47 @@ export class AccountVerificationService {
     documentFile?: MultipartFile & { buffer?: Buffer },
   ) {
     try {
-      // Check rate limiting
-      const user = await this.prisma.user.findUnique({
-        where: { id: userId },
-        include: { accountVerification: true }, // Changed from verification to accountVerification
-      });
+      // Check rate limiting with fallback handling
+      let user = null;
+      let accountVerification = null;
+
+      try {
+        user = await this.prisma.user.findUnique({
+          where: { id: userId },
+          include: { accountVerification: true },
+        });
+        accountVerification = user?.accountVerification;
+      } catch (relationError) {
+        // If accountVerification relationship fails, fetch separately
+        console.warn(
+          'Failed to fetch user with accountVerification in canSubmit, falling back to separate queries:',
+          relationError,
+        );
+
+        user = await this.prisma.user.findUnique({
+          where: { id: userId },
+        });
+
+        // Try to fetch verification separately
+        if (user) {
+          try {
+            accountVerification = await this.prisma.accountVerification.findUnique({
+              where: { userId },
+            });
+          } catch (verificationError) {
+            console.warn(
+              'Could not fetch separate accountVerification in canSubmit:',
+              verificationError,
+            );
+            accountVerification = null;
+          }
+        }
+      }
+
+      // Add accountVerification to user object for compatibility
+      if (user) {
+        (user as any).accountVerification = accountVerification;
+      }
 
       if (!user) throw errors.notFound('User not found');
 
@@ -46,7 +82,7 @@ export class AccountVerificationService {
       }
 
       // Delete previous document if it exists
-      if (user.accountVerification?.documentImageUrl) {
+      if (accountVerification?.documentImageUrl) {
         await this.deleteVerificationDocument(userId);
       }
 

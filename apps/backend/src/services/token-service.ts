@@ -102,23 +102,67 @@ export class TokenService {
    */
   async getTokenById(tokenId: string): Promise<TokenWithListing | null> {
     try {
-      const token = await this.prisma.token.findUnique({
-        where: { id: tokenId },
-        include: {
-          rwaListing: {
-            include: {
-              owner: {
-                select: {
-                  id: true,
-                  displayName: true,
+      // Try to get token with rwaListing relationship
+      let token = null;
+      let rwaListing = null;
+
+      try {
+        token = await this.prisma.token.findUnique({
+          where: { id: tokenId },
+          include: {
+            rwaListing: {
+              include: {
+                owner: {
+                  select: {
+                    id: true,
+                    displayName: true,
+                  },
                 },
               },
             },
           },
-        },
-      });
+        });
+        rwaListing = token?.rwaListing;
+      } catch (relationError) {
+        // If rwaListing relationship fails, fetch separately
+        console.warn(
+          `Failed to fetch token with rwaListing relationship, falling back to separate queries:`,
+          relationError,
+        );
 
-      return token as TokenWithListing | null;
+        token = await this.prisma.token.findUnique({
+          where: { id: tokenId },
+        });
+
+        // Try to fetch listing separately if token exists
+        if (token?.rwaListingId) {
+          try {
+            const listing = await this.prisma.rwaListing.findUnique({
+              where: { id: token.rwaListingId },
+              include: {
+                owner: {
+                  select: {
+                    id: true,
+                    displayName: true,
+                  },
+                },
+              },
+            });
+            rwaListing = listing;
+          } catch (listingError) {
+            console.warn(`Could not fetch separate rwaListing:`, listingError);
+            rwaListing = null;
+          }
+        }
+      }
+
+      if (!token) return null;
+
+      // Combine token with listing data
+      return {
+        ...token,
+        rwaListing,
+      } as TokenWithListing;
     } catch (error) {
       logger.error(`Error fetching token ${tokenId}:`, error);
       throw error;
@@ -130,23 +174,67 @@ export class TokenService {
    */
   async getTokenByContractAddress(contractAddress: string): Promise<TokenWithListing | null> {
     try {
-      const token = await this.prisma.token.findUnique({
-        where: { contractAddress },
-        include: {
-          rwaListing: {
-            include: {
-              owner: {
-                select: {
-                  id: true,
-                  displayName: true,
+      // Try to get token with rwaListing relationship
+      let token = null;
+      let rwaListing = null;
+
+      try {
+        token = await this.prisma.token.findUnique({
+          where: { contractAddress },
+          include: {
+            rwaListing: {
+              include: {
+                owner: {
+                  select: {
+                    id: true,
+                    displayName: true,
+                  },
                 },
               },
             },
           },
-        },
-      });
+        });
+        rwaListing = token?.rwaListing;
+      } catch (relationError) {
+        // If rwaListing relationship fails, fetch separately
+        console.warn(
+          `Failed to fetch token with rwaListing relationship, falling back to separate queries:`,
+          relationError,
+        );
 
-      return token as TokenWithListing | null;
+        token = await this.prisma.token.findUnique({
+          where: { contractAddress },
+        });
+
+        // Try to fetch listing separately if token exists
+        if (token?.rwaListingId) {
+          try {
+            const listing = await this.prisma.rwaListing.findUnique({
+              where: { id: token.rwaListingId },
+              include: {
+                owner: {
+                  select: {
+                    id: true,
+                    displayName: true,
+                  },
+                },
+              },
+            });
+            rwaListing = listing;
+          } catch (listingError) {
+            console.warn(`Could not fetch separate rwaListing:`, listingError);
+            rwaListing = null;
+          }
+        }
+      }
+
+      if (!token) return null;
+
+      // Combine token with listing data
+      return {
+        ...token,
+        rwaListing,
+      } as TokenWithListing;
     } catch (error) {
       logger.error(`Error fetching token by contract address ${contractAddress}:`, error);
       throw error;

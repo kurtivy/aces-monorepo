@@ -184,22 +184,58 @@ var TokenService = class {
    */
   async getTokenById(tokenId) {
     try {
-      const token = await this.prisma.token.findUnique({
-        where: { id: tokenId },
-        include: {
-          rwaListing: {
-            include: {
-              owner: {
-                select: {
-                  id: true,
-                  displayName: true
+      let token = null;
+      let rwaListing = null;
+      try {
+        token = await this.prisma.token.findUnique({
+          where: { id: tokenId },
+          include: {
+            rwaListing: {
+              include: {
+                owner: {
+                  select: {
+                    id: true,
+                    displayName: true
+                  }
                 }
               }
             }
           }
+        });
+        rwaListing = token?.rwaListing;
+      } catch (relationError) {
+        console.warn(
+          `Failed to fetch token with rwaListing relationship, falling back to separate queries:`,
+          relationError
+        );
+        token = await this.prisma.token.findUnique({
+          where: { id: tokenId }
+        });
+        if (token?.rwaListingId) {
+          try {
+            const listing = await this.prisma.rwaListing.findUnique({
+              where: { id: token.rwaListingId },
+              include: {
+                owner: {
+                  select: {
+                    id: true,
+                    displayName: true
+                  }
+                }
+              }
+            });
+            rwaListing = listing;
+          } catch (listingError) {
+            console.warn(`Could not fetch separate rwaListing:`, listingError);
+            rwaListing = null;
+          }
         }
-      });
-      return token;
+      }
+      if (!token) return null;
+      return {
+        ...token,
+        rwaListing
+      };
     } catch (error) {
       logger.error(`Error fetching token ${tokenId}:`, error);
       throw error;
@@ -210,22 +246,58 @@ var TokenService = class {
    */
   async getTokenByContractAddress(contractAddress) {
     try {
-      const token = await this.prisma.token.findUnique({
-        where: { contractAddress },
-        include: {
-          rwaListing: {
-            include: {
-              owner: {
-                select: {
-                  id: true,
-                  displayName: true
+      let token = null;
+      let rwaListing = null;
+      try {
+        token = await this.prisma.token.findUnique({
+          where: { contractAddress },
+          include: {
+            rwaListing: {
+              include: {
+                owner: {
+                  select: {
+                    id: true,
+                    displayName: true
+                  }
                 }
               }
             }
           }
+        });
+        rwaListing = token?.rwaListing;
+      } catch (relationError) {
+        console.warn(
+          `Failed to fetch token with rwaListing relationship, falling back to separate queries:`,
+          relationError
+        );
+        token = await this.prisma.token.findUnique({
+          where: { contractAddress }
+        });
+        if (token?.rwaListingId) {
+          try {
+            const listing = await this.prisma.rwaListing.findUnique({
+              where: { id: token.rwaListingId },
+              include: {
+                owner: {
+                  select: {
+                    id: true,
+                    displayName: true
+                  }
+                }
+              }
+            });
+            rwaListing = listing;
+          } catch (listingError) {
+            console.warn(`Could not fetch separate rwaListing:`, listingError);
+            rwaListing = null;
+          }
         }
-      });
-      return token;
+      }
+      if (!token) return null;
+      return {
+        ...token,
+        rwaListing
+      };
     } catch (error) {
       logger.error(`Error fetching token by contract address ${contractAddress}:`, error);
       throw error;

@@ -302,26 +302,64 @@ export class UsersService {
    */
   async getUserTokens(userId: string): Promise<UserPortfolioItem[]> {
     try {
-      const tokens = await this.prisma.token.findMany({
-        where: { userId },
-        include: {
-          rwaListing: {
-            select: {
-              title: true,
-              symbol: true,
-              imageGallery: true,
+      // Try to get tokens with rwaListing relationship
+      let tokens = [];
+
+      try {
+        tokens = await this.prisma.token.findMany({
+          where: { userId },
+          include: {
+            rwaListing: {
+              select: {
+                title: true,
+                symbol: true,
+                imageGallery: true,
+              },
             },
           },
-        },
-        orderBy: { createdAt: 'desc' },
-      });
+          orderBy: { createdAt: 'desc' },
+        });
+      } catch (relationError) {
+        // If rwaListing relationship fails, fetch separately
+        console.warn(
+          'Failed to fetch tokens with rwaListing relationship, falling back to separate queries:',
+          relationError,
+        );
+
+        const basicTokens = await this.prisma.token.findMany({
+          where: { userId },
+          orderBy: { createdAt: 'desc' },
+        });
+
+        // Fetch listings separately for each token
+        tokens = await Promise.all(
+          basicTokens.map(async (token) => {
+            let rwaListing = null;
+            if (token.rwaListingId) {
+              try {
+                rwaListing = await this.prisma.rwaListing.findUnique({
+                  where: { id: token.rwaListingId },
+                  select: {
+                    title: true,
+                    symbol: true,
+                    imageGallery: true,
+                  },
+                });
+              } catch (listingError) {
+                console.warn(`Could not fetch rwaListing for token ${token.id}:`, listingError);
+              }
+            }
+            return { ...token, rwaListing };
+          }),
+        );
+      }
 
       return tokens.map((token) => ({
         id: token.id,
         contractAddress: token.contractAddress,
         title: token.rwaListing?.title || 'Unknown',
         ticker: token.rwaListing?.symbol || 'UNK',
-        image: token.rwaListing?.imageGallery[0] || '/placeholder.svg',
+        image: token.rwaListing?.imageGallery?.[0] || '/placeholder.svg',
         value: '0', // Would need pricing data
         category: this.getCategoryFromTitle(token.rwaListing?.title || ''),
       }));

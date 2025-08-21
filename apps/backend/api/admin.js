@@ -2121,11 +2121,39 @@ var AccountVerificationService = class {
   }
   async submitVerification(userId, data, documentFile) {
     try {
-      const user = await this.prisma.user.findUnique({
-        where: { id: userId },
-        include: { accountVerification: true }
-        // Changed from verification to accountVerification
-      });
+      let user = null;
+      let accountVerification = null;
+      try {
+        user = await this.prisma.user.findUnique({
+          where: { id: userId },
+          include: { accountVerification: true }
+        });
+        accountVerification = user?.accountVerification;
+      } catch (relationError) {
+        console.warn(
+          "Failed to fetch user with accountVerification in canSubmit, falling back to separate queries:",
+          relationError
+        );
+        user = await this.prisma.user.findUnique({
+          where: { id: userId }
+        });
+        if (user) {
+          try {
+            accountVerification = await this.prisma.accountVerification.findUnique({
+              where: { userId }
+            });
+          } catch (verificationError) {
+            console.warn(
+              "Could not fetch separate accountVerification in canSubmit:",
+              verificationError
+            );
+            accountVerification = null;
+          }
+        }
+      }
+      if (user) {
+        user.accountVerification = accountVerification;
+      }
       if (!user) throw errors.notFound("User not found");
       if (user.verificationAttempts >= 3) {
         const lastAttempt = user.lastVerificationAttempt;
@@ -2137,7 +2165,7 @@ var AccountVerificationService = class {
           data: { verificationAttempts: 0 }
         });
       }
-      if (user.accountVerification?.documentImageUrl) {
+      if (accountVerification?.documentImageUrl) {
         await this.deleteVerificationDocument(userId);
       }
       let documentImageUrl = null;

@@ -6,6 +6,10 @@
 
   "rewrites": [
     {
+      "source": "/health(/.*)?",
+      "destination": "/api/health"
+    },
+    {
       "source": "/api/v1/health(/.*)?",
       "destination": "/api/health"
     },
