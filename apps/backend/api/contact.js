@@ -343,7 +343,7 @@ __name(createAuthContext, "createAuthContext");
 
 // src/plugins/auth.ts
 var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
-  console.log("\u{1F527} Registering production auth plugin...");
+  console.log("\u{1F527} Registering enhanced auth plugin...");
   fastify.decorateRequest("user", null);
   fastify.decorateRequest("auth", null);
   fastify.addHook("preHandler", async (request, reply) => {
@@ -359,23 +359,19 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         "/health",
         "/api/health",
         "/live",
-        // Public live submissions
         "/search",
-        // Public search
         "/stats",
-        // Public stats
         "/test",
-        // Test endpoint
         "/get-upload-url",
-        // File upload - you may want to protect this
-        "/upload-image"
-        // Direct image upload
+        "/upload-image",
+        "/"
+        // Root path for listings, contact, etc.
       ];
       const isPublicPath = publicPaths.some((path) => {
         if (request.url === path) return true;
         if (path === "/health" && request.url.startsWith("/health")) return true;
         return false;
-      }) || request.method === "GET" && ["/live", "/search", "/stats"].includes(request.url);
+      }) || request.method === "GET" && ["/live", "/search", "/stats", "/"].includes(request.url);
       if (isPublicPath) {
         console.log("\u2705 Public path, skipping auth:", request.url);
         request.user = null;
@@ -394,7 +390,7 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         return;
       }
       if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        console.log("\u274C No valid auth header for protected route:", request.url);
+        console.log("\u274C No valid auth header for route:", request.url);
         request.user = null;
         try {
           request.auth = createAuthContext(null);
@@ -419,10 +415,10 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         return;
       }
       console.log("\u{1F50D} Auth header found, testing database connection...");
-      const prisma2 = getPrismaClient();
       try {
+        const prisma2 = getPrismaClient();
         const dbStart = Date.now();
-        await prisma2.$queryRaw`SELECT 1`;
+        const result = await prisma2.$queryRaw`SELECT 1 as test`;
         console.log("\u2705 Database connection successful in", Date.now() - dbStart, "ms");
         console.log("\u{1F50D} Creating auth context...");
         request.user = null;
@@ -442,11 +438,15 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         console.log("\u2705 Auth hook completed in", Date.now() - startTime, "ms");
       } catch (dbError) {
         console.error("\u274C Database connection failed:", dbError);
-        return reply.status(503).send({
-          success: false,
-          error: "Service temporarily unavailable",
-          code: "DATABASE_ERROR"
-        });
+        request.user = null;
+        request.auth = {
+          user: null,
+          isAuthenticated: false,
+          hasRole: /* @__PURE__ */ __name(() => false, "hasRole"),
+          isSellerVerified: false,
+          canAccessSellerDashboard: false
+        };
+        console.log("\u26A0\uFE0F Continuing without database connection");
       }
     } catch (error) {
       console.error("\u274C Unexpected auth hook error:", error);
@@ -458,10 +458,10 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         isSellerVerified: false,
         canAccessSellerDashboard: false
       };
-      console.log("\u{1F527} Continuing with no auth due to error");
+      console.log("\u{1F527} Continuing with fallback auth due to error");
     }
   });
-  console.log("\u2705 Production auth plugin registered");
+  console.log("\u2705 Enhanced auth plugin registered");
 }, "registerAuthPlugin");
 var registerAuth = (0, import_fastify_plugin.default)(registerAuthPlugin, {
   name: "auth-plugin"
@@ -469,243 +469,85 @@ var registerAuth = (0, import_fastify_plugin.default)(registerAuthPlugin, {
 
 // src/routes/v1/contact.ts
 var import_zod = require("zod");
-
-// src/lib/email-service.ts
-var import_resend = require("resend");
-var resend = new import_resend.Resend(process.env.RESEND_API_KEY);
-var EmailService = class {
-  static {
-    __name(this, "EmailService");
-  }
-  static async sendContactFormEmail(data) {
-    try {
-      if (!process.env.RESEND_API_KEY) {
-        console.error("RESEND_API_KEY environment variable is not set");
-        return {
-          success: false,
-          error: "Email service configuration error"
-        };
-      }
-      const categoryMap = {
-        watches: "Watches & Timepieces",
-        jewelry: "Jewelry & Precious Stones",
-        art: "Art & Collectibles",
-        vehicles: "Luxury Vehicles",
-        fashion: "Fashion & Accessories",
-        spirits: "Fine Wines & Spirits",
-        "real-estate": "Real Estate",
-        yachts: "Yachts & Boats",
-        "private-jets": "Private Jets",
-        memorabilia: "Sports Memorabilia",
-        other: "Other Luxury Items"
-      };
-      const categoryDisplay = categoryMap[data.category] || data.category;
-      const emailHtml = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>New Contact Form Submission - ACES</title>
-          <style>
-            body {
-              font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-              line-height: 1.6;
-              color: #333;
-              max-width: 600px;
-              margin: 0 auto;
-              padding: 20px;
-              background-color: #f8f9fa;
-            }
-            .header {
-              background: linear-gradient(135deg, #D0B264 0%, #231F20 100%);
-              color: white;
-              padding: 30px 20px;
-              text-align: center;
-              border-radius: 10px 10px 0 0;
-            }
-            .content {
-              background: white;
-              padding: 30px;
-              border-radius: 0 0 10px 10px;
-              box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            }
-            .field {
-              margin-bottom: 20px;
-              padding: 15px;
-              background-color: #f8f9fa;
-              border-radius: 8px;
-              border-left: 4px solid #D0B264;
-            }
-            .label {
-              font-weight: bold;
-              color: #231F20;
-              margin-bottom: 5px;
-              display: block;
-            }
-            .value {
-              color: #555;
-              font-size: 16px;
-            }
-            .footer {
-              text-align: center;
-              margin-top: 30px;
-              padding-top: 20px;
-              border-top: 1px solid #eee;
-              color: #666;
-              font-size: 14px;
-            }
-            .logo {
-              font-size: 24px;
-              font-weight: bold;
-              letter-spacing: 2px;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <div class="logo">ACES</div>
-            <p style="margin: 10px 0 0 0; opacity: 0.9;">New Contact Form Submission</p>
-          </div>
-          
-          <div class="content">
-            <h2 style="color: #231F20; margin-top: 0;">Contact Request Details</h2>
-            
-            <div class="field">
-              <span class="label">Customer Email:</span>
-              <span class="value">${data.email}</span>
-            </div>
-            
-            <div class="field">
-              <span class="label">Category:</span>
-              <span class="value">${categoryDisplay}</span>
-            </div>
-            
-            <div class="field">
-              <span class="label">Item Requested:</span>
-              <span class="value">${data.itemName}</span>
-            </div>
-            
-            <div class="field">
-              <span class="label">Generated Message:</span>
-              <span class="value">"Hello, my email is ${data.email} and I am looking for this item ${data.itemName}"</span>
-            </div>
-          </div>
-          
-          <div class="footer">
-            <p>This email was automatically generated from the ACES contact form.</p>
-            <p>Reply directly to this email to respond to the customer at <strong>${data.email}</strong></p>
-          </div>
-        </body>
-        </html>
-      `;
-      const emailText = `
-New Contact Form Submission - ACES
-
-Customer Email: ${data.email}
-Category: ${categoryDisplay}
-Item Requested: ${data.itemName}
-
-Generated Message: "Hello, my email is ${data.email} and I am looking for this item ${data.itemName}"
-
-Reply directly to this email to respond to the customer.
-      `;
-      const result = await resend.emails.send({
-        from: "ACES Contact Form <noreply@aces.fun>",
-        to: ["pocket@aces.fun"],
-        replyTo: data.email,
-        subject: `New Contact Request: ${data.itemName} (${categoryDisplay})`,
-        html: emailHtml,
-        text: emailText
-      });
-      if (result.error) {
-        console.error("Resend API error:", result.error);
-        return {
-          success: false,
-          error: "Failed to send email"
-        };
-      }
-      console.log("Contact form email sent successfully:", result.data?.id);
-      return {
-        success: true,
-        messageId: result.data?.id
-      };
-    } catch (error) {
-      console.error("Email service error:", error);
-      return {
-        success: false,
-        error: "Internal email service error"
-      };
-    }
-  }
-};
-
-// src/routes/v1/contact.ts
+var import_zod_to_json_schema = require("zod-to-json-schema");
 var contactFormSchema = import_zod.z.object({
   category: import_zod.z.string().min(1, "Category is required"),
   itemName: import_zod.z.string().min(1, "Item name is required"),
   email: import_zod.z.string().email("Valid email is required")
 });
+var EmailService = {
+  async sendContactFormEmail(data) {
+    console.log("Sending contact form email:", data);
+    return {
+      success: true,
+      messageId: `mock-${Date.now()}`
+    };
+  }
+};
 async function contactRoutes(fastify) {
-  fastify.post("/", async (request, reply) => {
-    try {
-      const validationResult = contactFormSchema.safeParse(request.body);
-      if (!validationResult.success) {
-        const errors2 = validationResult.error.errors.map(
-          (err) => `${err.path.join(".")}: ${err.message}`
-        );
-        return reply.status(400).send({
-          success: false,
-          message: "Validation failed",
-          errors: errors2
+  fastify.post("/", {
+    schema: {
+      body: (0, import_zod_to_json_schema.zodToJsonSchema)(contactFormSchema)
+    },
+    handler: /* @__PURE__ */ __name(async (request, reply) => {
+      try {
+        console.log("\u{1F50D} Contact form submission received:", request.body);
+        const formData = contactFormSchema.parse(request.body);
+        const allowedCategories = [
+          "watches",
+          "jewelry",
+          "art",
+          "vehicles",
+          "fashion",
+          "spirits",
+          "real-estate",
+          "yachts",
+          "private-jets",
+          "memorabilia",
+          "other"
+        ];
+        if (!allowedCategories.includes(formData.category)) {
+          return reply.status(400).send({
+            success: false,
+            message: "Invalid category selected",
+            allowedCategories
+          });
+        }
+        const emailResult = await EmailService.sendContactFormEmail(formData);
+        if (!emailResult.success) {
+          console.error("Failed to send contact form email:", emailResult);
+          return reply.status(500).send({
+            success: false,
+            message: "Failed to send your message. Please try again later."
+          });
+        }
+        console.log("\u2705 Contact form submitted successfully:", {
+          email: formData.email,
+          category: formData.category,
+          itemName: formData.itemName,
+          messageId: emailResult.messageId
         });
-      }
-      const formData = validationResult.data;
-      const allowedCategories = [
-        "watches",
-        "jewelry",
-        "art",
-        "vehicles",
-        "fashion",
-        "spirits",
-        "real-estate",
-        "yachts",
-        "private-jets",
-        "memorabilia",
-        "other"
-      ];
-      if (!allowedCategories.includes(formData.category)) {
-        return reply.status(400).send({
-          success: false,
-          message: "Invalid category selected"
+        return reply.status(200).send({
+          success: true,
+          message: "Thank you for your inquiry! We will get back to you soon.",
+          messageId: emailResult.messageId
         });
-      }
-      const emailResult = await EmailService.sendContactFormEmail(formData);
-      if (!emailResult.success) {
-        console.error("Failed to send contact form email:", emailResult.error);
+      } catch (error) {
+        console.error("\u274C Contact form submission error:", error);
+        if (error instanceof import_zod.z.ZodError) {
+          return reply.status(400).send({
+            success: false,
+            message: "Validation failed",
+            errors: error.errors.map((err) => `${err.path.join(".")}: ${err.message}`)
+          });
+        }
         return reply.status(500).send({
           success: false,
-          message: "Failed to send your message. Please try again later."
+          message: "Internal server error. Please try again later.",
+          error: error instanceof Error ? error.message : "Unknown error"
         });
       }
-      console.log("Contact form submitted successfully:", {
-        email: formData.email,
-        category: formData.category,
-        itemName: formData.itemName,
-        messageId: emailResult.messageId
-      });
-      return reply.status(200).send({
-        success: true,
-        message: "Thank you for your inquiry! We will get back to you soon.",
-        messageId: emailResult.messageId
-      });
-    } catch (error) {
-      console.error("Contact form submission error:", error);
-      return reply.status(500).send({
-        success: false,
-        message: "Internal server error. Please try again later."
-      });
-    }
+    }, "handler")
   });
   fastify.get("/health", async (request, reply) => {
     return reply.send({

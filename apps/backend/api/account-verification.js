@@ -399,7 +399,7 @@ __name(requireAdmin, "requireAdmin");
 
 // src/plugins/auth.ts
 var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
-  console.log("\u{1F527} Registering production auth plugin...");
+  console.log("\u{1F527} Registering enhanced auth plugin...");
   fastify.decorateRequest("user", null);
   fastify.decorateRequest("auth", null);
   fastify.addHook("preHandler", async (request, reply) => {
@@ -415,23 +415,19 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         "/health",
         "/api/health",
         "/live",
-        // Public live submissions
         "/search",
-        // Public search
         "/stats",
-        // Public stats
         "/test",
-        // Test endpoint
         "/get-upload-url",
-        // File upload - you may want to protect this
-        "/upload-image"
-        // Direct image upload
+        "/upload-image",
+        "/"
+        // Root path for listings, contact, etc.
       ];
       const isPublicPath = publicPaths.some((path) => {
         if (request.url === path) return true;
         if (path === "/health" && request.url.startsWith("/health")) return true;
         return false;
-      }) || request.method === "GET" && ["/live", "/search", "/stats"].includes(request.url);
+      }) || request.method === "GET" && ["/live", "/search", "/stats", "/"].includes(request.url);
       if (isPublicPath) {
         console.log("\u2705 Public path, skipping auth:", request.url);
         request.user = null;
@@ -450,7 +446,7 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         return;
       }
       if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        console.log("\u274C No valid auth header for protected route:", request.url);
+        console.log("\u274C No valid auth header for route:", request.url);
         request.user = null;
         try {
           request.auth = createAuthContext(null);
@@ -475,10 +471,10 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         return;
       }
       console.log("\u{1F50D} Auth header found, testing database connection...");
-      const prisma2 = getPrismaClient();
       try {
+        const prisma2 = getPrismaClient();
         const dbStart = Date.now();
-        await prisma2.$queryRaw`SELECT 1`;
+        const result = await prisma2.$queryRaw`SELECT 1 as test`;
         console.log("\u2705 Database connection successful in", Date.now() - dbStart, "ms");
         console.log("\u{1F50D} Creating auth context...");
         request.user = null;
@@ -498,11 +494,15 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         console.log("\u2705 Auth hook completed in", Date.now() - startTime, "ms");
       } catch (dbError) {
         console.error("\u274C Database connection failed:", dbError);
-        return reply.status(503).send({
-          success: false,
-          error: "Service temporarily unavailable",
-          code: "DATABASE_ERROR"
-        });
+        request.user = null;
+        request.auth = {
+          user: null,
+          isAuthenticated: false,
+          hasRole: /* @__PURE__ */ __name(() => false, "hasRole"),
+          isSellerVerified: false,
+          canAccessSellerDashboard: false
+        };
+        console.log("\u26A0\uFE0F Continuing without database connection");
       }
     } catch (error) {
       console.error("\u274C Unexpected auth hook error:", error);
@@ -514,10 +514,10 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         isSellerVerified: false,
         canAccessSellerDashboard: false
       };
-      console.log("\u{1F527} Continuing with no auth due to error");
+      console.log("\u{1F527} Continuing with fallback auth due to error");
     }
   });
-  console.log("\u2705 Production auth plugin registered");
+  console.log("\u2705 Enhanced auth plugin registered");
 }, "registerAuthPlugin");
 var registerAuth = (0, import_fastify_plugin.default)(registerAuthPlugin, {
   name: "auth-plugin"

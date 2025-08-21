@@ -373,7 +373,7 @@ __name(createAuthContext, "createAuthContext");
 
 // src/plugins/auth.ts
 var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
-  console.log("\u{1F527} Registering production auth plugin...");
+  console.log("\u{1F527} Registering enhanced auth plugin...");
   fastify.decorateRequest("user", null);
   fastify.decorateRequest("auth", null);
   fastify.addHook("preHandler", async (request, reply) => {
@@ -389,23 +389,19 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         "/health",
         "/api/health",
         "/live",
-        // Public live submissions
         "/search",
-        // Public search
         "/stats",
-        // Public stats
         "/test",
-        // Test endpoint
         "/get-upload-url",
-        // File upload - you may want to protect this
-        "/upload-image"
-        // Direct image upload
+        "/upload-image",
+        "/"
+        // Root path for listings, contact, etc.
       ];
       const isPublicPath = publicPaths.some((path) => {
         if (request.url === path) return true;
         if (path === "/health" && request.url.startsWith("/health")) return true;
         return false;
-      }) || request.method === "GET" && ["/live", "/search", "/stats"].includes(request.url);
+      }) || request.method === "GET" && ["/live", "/search", "/stats", "/"].includes(request.url);
       if (isPublicPath) {
         console.log("\u2705 Public path, skipping auth:", request.url);
         request.user = null;
@@ -424,7 +420,7 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         return;
       }
       if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        console.log("\u274C No valid auth header for protected route:", request.url);
+        console.log("\u274C No valid auth header for route:", request.url);
         request.user = null;
         try {
           request.auth = createAuthContext(null);
@@ -449,10 +445,10 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         return;
       }
       console.log("\u{1F50D} Auth header found, testing database connection...");
-      const prisma2 = getPrismaClient();
       try {
+        const prisma2 = getPrismaClient();
         const dbStart = Date.now();
-        await prisma2.$queryRaw`SELECT 1`;
+        const result = await prisma2.$queryRaw`SELECT 1 as test`;
         console.log("\u2705 Database connection successful in", Date.now() - dbStart, "ms");
         console.log("\u{1F50D} Creating auth context...");
         request.user = null;
@@ -472,11 +468,15 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         console.log("\u2705 Auth hook completed in", Date.now() - startTime, "ms");
       } catch (dbError) {
         console.error("\u274C Database connection failed:", dbError);
-        return reply.status(503).send({
-          success: false,
-          error: "Service temporarily unavailable",
-          code: "DATABASE_ERROR"
-        });
+        request.user = null;
+        request.auth = {
+          user: null,
+          isAuthenticated: false,
+          hasRole: /* @__PURE__ */ __name(() => false, "hasRole"),
+          isSellerVerified: false,
+          canAccessSellerDashboard: false
+        };
+        console.log("\u26A0\uFE0F Continuing without database connection");
       }
     } catch (error) {
       console.error("\u274C Unexpected auth hook error:", error);
@@ -488,10 +488,10 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         isSellerVerified: false,
         canAccessSellerDashboard: false
       };
-      console.log("\u{1F527} Continuing with no auth due to error");
+      console.log("\u{1F527} Continuing with fallback auth due to error");
     }
   });
-  console.log("\u2705 Production auth plugin registered");
+  console.log("\u2705 Enhanced auth plugin registered");
 }, "registerAuthPlugin");
 var registerAuth = (0, import_fastify_plugin.default)(registerAuthPlugin, {
   name: "auth-plugin"
@@ -1303,8 +1303,15 @@ var deleteVerificationDocument = StorageService.deleteVerificationDocument.bind(
 
 // src/routes/v1/submissions.ts
 async function submissionsRoutes(fastify) {
-  const submissionService = new SubmissionService(fastify.prisma);
-  const biddingService = new BiddingService(fastify.prisma);
+  let submissionService;
+  let biddingService;
+  try {
+    submissionService = new SubmissionService(fastify.prisma);
+    biddingService = new BiddingService(fastify.prisma);
+  } catch (error) {
+    console.error("\u274C Failed to initialize services:", error);
+    throw error;
+  }
   fastify.post("/upload-image", async (request, reply) => {
     try {
       const data = await request.file();
@@ -1344,7 +1351,8 @@ async function submissionsRoutes(fastify) {
       fastify.log.error({ error, operation: "uploadImage" }, "Failed to upload image");
       return reply.status(500).send({
         success: false,
-        error: "Failed to upload image"
+        error: "Failed to upload image",
+        details: error instanceof Error ? error.message : "Unknown error"
       });
     }
   });
@@ -1360,8 +1368,8 @@ async function submissionsRoutes(fastify) {
       }
     },
     async (request, reply) => {
-      const { fileType } = request.body;
       try {
+        const { fileType } = request.body;
         const { url, fileName } = await StorageService.getSignedUploadUrl(fileType);
         const publicUrl = StorageService.getPublicUrl(fileName);
         return reply.send({
@@ -1370,7 +1378,11 @@ async function submissionsRoutes(fastify) {
         });
       } catch (error) {
         fastify.log.error({ error, operation: "getUploadUrl" }, "Failed to generate signed URL");
-        throw errors.internal("Failed to generate signed URL");
+        return reply.status(500).send({
+          success: false,
+          error: "Failed to generate signed URL",
+          details: error instanceof Error ? error.message : "Unknown error"
+        });
       }
     }
   );
@@ -1382,15 +1394,17 @@ async function submissionsRoutes(fastify) {
       }
     },
     async (request, reply) => {
-      const body = request.body;
-      const correlationId = request.id;
       try {
+        const body = request.body;
+        const correlationId = request.id;
+        console.log("\u{1F9EA} Test submission received:", { body, correlationId });
         const testUser = await fastify.prisma.user.upsert({
           where: { privyDid: "test-user" },
           update: {},
           create: {
             privyDid: "test-user",
-            walletAddress: "0xTestUser"
+            walletAddress: "0xTestUser",
+            email: "test@example.com"
           }
         });
         const submission = await submissionService.createSubmission(
@@ -1401,13 +1415,11 @@ async function submissionsRoutes(fastify) {
         return { success: true, data: submission };
       } catch (error) {
         const err = error instanceof Error ? error : new Error("Unknown error");
-        fastify.log.error(
-          { err, correlationId, operation: "testSubmission" },
-          "Failed to create test submission"
-        );
+        fastify.log.error({ err, operation: "testSubmission" }, "Failed to create test submission");
         return reply.status(500).send({
           success: false,
-          error: "Failed to create test submission"
+          error: "Failed to create test submission",
+          details: err.message
         });
       }
     }
@@ -1420,15 +1432,15 @@ async function submissionsRoutes(fastify) {
       }
     },
     async (request, reply) => {
-      const body = request.body;
-      const correlationId = request.id;
-      if (!request.user) {
-        return reply.status(401).send({
-          success: false,
-          error: "Authentication required"
-        });
-      }
       try {
+        const body = request.body;
+        const correlationId = request.id;
+        if (!request.user) {
+          return reply.status(401).send({
+            success: false,
+            error: "Authentication required"
+          });
+        }
         const submission = await submissionService.createSubmission(
           request.user.id,
           body,
@@ -1437,13 +1449,11 @@ async function submissionsRoutes(fastify) {
         return { success: true, data: submission };
       } catch (error) {
         const err = error instanceof Error ? error : new Error("Unknown error");
-        fastify.log.error(
-          { err, correlationId, operation: "createSubmission" },
-          "Failed to create submission"
-        );
+        fastify.log.error({ err, operation: "createSubmission" }, "Failed to create submission");
         return reply.status(500).send({
           success: false,
-          error: "Failed to create submission"
+          error: "Failed to create submission",
+          details: err.message
         });
       }
     }
@@ -1456,103 +1466,65 @@ async function submissionsRoutes(fastify) {
       }
     },
     async (request, reply) => {
-      if (!request.user) {
-        throw errors.unauthorized("Authentication required");
-      }
-      const { limit, cursor } = request.query;
-      const result = await submissionService.getUserSubmissions(
-        request.user.id,
-        void 0,
-        // no status filter
-        { limit, cursor }
-      );
-      return reply.send({
-        success: true,
-        ...result
-      });
-    }
-  );
-  fastify.get(
-    "/:id",
-    {
-      schema: {
-        params: (0, import_zod_to_json_schema.zodToJsonSchema)(import_zod.z.object({ id: import_zod.z.string().cuid() }))
-      }
-    },
-    async (request, reply) => {
-      const { id } = request.params;
-      const submission = await submissionService.getSubmissionById(id);
-      if (!submission) {
-        throw errors.notFound("Submission not found");
-      }
-      const hasLiveListing = submission.rwaListing && submission.rwaListing.isLive;
-      if (!hasLiveListing && (!request.user || submission.ownerId !== request.user.id)) {
-        throw errors.forbidden("Cannot view this submission");
-      }
-      return reply.send({
-        success: true,
-        data: submission
-      });
-    }
-  );
-  fastify.delete(
-    "/:id",
-    {
-      schema: {
-        params: (0, import_zod_to_json_schema.zodToJsonSchema)(import_zod.z.object({ id: import_zod.z.string().cuid() }))
-      }
-    },
-    async (request, reply) => {
-      if (!request.user) {
-        throw errors.unauthorized("Authentication required");
-      }
-      const { id } = request.params;
-      await submissionService.deleteSubmission(id, request.user.id);
-      return reply.send({
-        success: true,
-        message: "Submission deleted successfully"
-      });
-    }
-  );
-  fastify.get(
-    "/:id/bids",
-    {
-      schema: {
-        params: (0, import_zod_to_json_schema.zodToJsonSchema)(import_zod.z.object({ id: import_zod.z.string().cuid() })),
-        querystring: (0, import_zod_to_json_schema.zodToJsonSchema)(import_utils.PaginationSchema)
-      }
-    },
-    async (request, reply) => {
-      const { id } = request.params;
-      const { limit, cursor } = request.query;
-      const submission = await submissionService.getSubmissionById(id);
-      if (!submission) {
-        throw errors.notFound("Submission not found");
-      }
-      const hasLiveListing = submission.rwaListing && submission.rwaListing.isLive;
-      if (!hasLiveListing && (!request.user || submission.ownerId !== request.user.id)) {
-        throw errors.forbidden("Cannot view bids for this submission");
-      }
-      if (!submission.rwaListing) {
+      try {
+        if (!request.user) {
+          throw errors.unauthorized("Authentication required");
+        }
+        const { limit, cursor } = request.query;
+        const result = await submissionService.getUserSubmissions(
+          request.user.id,
+          void 0,
+          // no status filter
+          { limit, cursor }
+        );
         return reply.send({
           success: true,
-          data: [],
-          hasMore: false
+          ...result
+        });
+      } catch (error) {
+        return reply.status(500).send({
+          success: false,
+          error: "Failed to get user submissions",
+          details: error instanceof Error ? error.message : "Unknown error"
         });
       }
-      const bids = await biddingService.getBidsForListing(submission.rwaListing.id);
-      const limitValue = Math.min(limit || 20, 100);
-      const startIndex = cursor ? bids.findIndex((bid) => bid.id === cursor) + 1 : 0;
-      const endIndex = startIndex + limitValue;
-      const paginatedBids = bids.slice(startIndex, endIndex);
-      const hasMore = endIndex < bids.length;
-      const nextCursor = hasMore ? paginatedBids[paginatedBids.length - 1]?.id : void 0;
-      return reply.send({
-        success: true,
-        data: paginatedBids,
-        nextCursor,
-        hasMore
-      });
+    }
+  );
+  fastify.get(
+    "/:id",
+    {
+      schema: {
+        params: (0, import_zod_to_json_schema.zodToJsonSchema)(import_zod.z.object({ id: import_zod.z.string().cuid() }))
+      }
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params;
+        const submission = await submissionService.getSubmissionById(id);
+        if (!submission) {
+          return reply.status(404).send({
+            success: false,
+            error: "Submission not found"
+          });
+        }
+        const hasLiveListing = submission.rwaListing && submission.rwaListing.isLive;
+        if (!hasLiveListing && (!request.user || submission.ownerId !== request.user.id)) {
+          return reply.status(403).send({
+            success: false,
+            error: "Cannot view this submission"
+          });
+        }
+        return reply.send({
+          success: true,
+          data: submission
+        });
+      } catch (error) {
+        return reply.status(500).send({
+          success: false,
+          error: "Failed to get submission",
+          details: error instanceof Error ? error.message : "Unknown error"
+        });
+      }
     }
   );
   fastify.get(
@@ -1563,43 +1535,54 @@ async function submissionsRoutes(fastify) {
       }
     },
     async (request, reply) => {
-      const { limit, cursor } = request.query;
-      const limitValue = Math.min(limit || 20, 100);
-      const where = { isLive: true };
-      if (cursor) {
-        where.id = { lt: cursor };
+      try {
+        console.log("\u{1F50D} Getting live submissions...");
+        const { limit, cursor } = request.query;
+        const limitValue = Math.min(limit || 20, 100);
+        const where = { isLive: true };
+        if (cursor) {
+          where.id = { lt: cursor };
+        }
+        const listings = await fastify.prisma.rwaListing.findMany({
+          where,
+          include: {
+            owner: {
+              select: {
+                id: true,
+                walletAddress: true,
+                displayName: true
+              }
+            },
+            rwaSubmission: {
+              select: {
+                id: true,
+                status: true,
+                createdAt: true
+              }
+            },
+            token: true
+          },
+          orderBy: { createdAt: "desc" },
+          take: limitValue + 1
+        });
+        const hasMore = listings.length > limitValue;
+        const data = hasMore ? listings.slice(0, -1) : listings;
+        const nextCursor = hasMore ? data[data.length - 1]?.id : void 0;
+        console.log("\u2705 Live submissions retrieved:", { count: data.length, hasMore });
+        return reply.send({
+          success: true,
+          data,
+          nextCursor,
+          hasMore
+        });
+      } catch (error) {
+        console.error("\u274C Error getting live submissions:", error);
+        return reply.status(500).send({
+          success: false,
+          error: "Failed to get live submissions",
+          details: error instanceof Error ? error.message : "Unknown error"
+        });
       }
-      const listings = await fastify.prisma.rwaListing.findMany({
-        where,
-        include: {
-          owner: {
-            select: {
-              id: true,
-              walletAddress: true,
-              displayName: true
-            }
-          },
-          rwaSubmission: {
-            select: {
-              id: true,
-              status: true,
-              createdAt: true
-            }
-          },
-          token: true
-        },
-        orderBy: { createdAt: "desc" },
-        take: limitValue + 1
-      });
-      const hasMore = listings.length > limitValue;
-      const data = hasMore ? listings.slice(0, -1) : listings;
-      const nextCursor = hasMore ? data[data.length - 1]?.id : void 0;
-      return reply.send({
-        success: true,
-        data,
-        nextCursor,
-        hasMore
-      });
     }
   );
   fastify.get(
@@ -1614,61 +1597,162 @@ async function submissionsRoutes(fastify) {
       }
     },
     async (request, reply) => {
-      const { q, limit } = request.query;
-      const listings = await fastify.prisma.rwaListing.findMany({
-        where: {
-          isLive: true,
-          OR: [
-            { title: { contains: q, mode: "insensitive" } },
-            { symbol: { contains: q, mode: "insensitive" } },
-            { description: { contains: q, mode: "insensitive" } }
-          ]
-        },
-        include: {
-          owner: {
-            select: {
-              id: true,
-              walletAddress: true,
-              displayName: true
-            }
+      try {
+        const { q, limit } = request.query;
+        const listings = await fastify.prisma.rwaListing.findMany({
+          where: {
+            isLive: true,
+            OR: [
+              { title: { contains: q, mode: "insensitive" } },
+              { symbol: { contains: q, mode: "insensitive" } },
+              { description: { contains: q, mode: "insensitive" } }
+            ]
           },
-          rwaSubmission: {
-            select: {
-              id: true,
-              status: true
-            }
+          include: {
+            owner: {
+              select: {
+                id: true,
+                walletAddress: true,
+                displayName: true
+              }
+            },
+            rwaSubmission: {
+              select: {
+                id: true,
+                status: true
+              }
+            },
+            token: true
           },
-          token: true
-        },
-        orderBy: { createdAt: "desc" },
-        take: Math.min(limit || 20, 100)
-      });
-      return reply.send({
-        success: true,
-        data: listings,
-        hasMore: listings.length === (limit || 20)
-      });
+          orderBy: { createdAt: "desc" },
+          take: Math.min(limit || 20, 100)
+        });
+        return reply.send({
+          success: true,
+          data: listings,
+          hasMore: listings.length === (limit || 20)
+        });
+      } catch (error) {
+        return reply.status(500).send({
+          success: false,
+          error: "Failed to search submissions",
+          details: error instanceof Error ? error.message : "Unknown error"
+        });
+      }
     }
   );
   fastify.get("/stats", async (request, reply) => {
-    const [totalLive, totalPending, totalUsers] = await Promise.all([
-      fastify.prisma.rwaListing.count({
-        where: { isLive: true }
-      }),
-      fastify.prisma.rwaSubmission.count({
-        where: { status: "PENDING" }
-      }),
-      fastify.prisma.user.count()
-    ]);
-    return reply.send({
-      success: true,
-      data: {
-        totalLiveTokens: totalLive,
-        totalPendingSubmissions: totalPending,
-        totalUsers
-      }
-    });
+    try {
+      const [totalLive, totalPending, totalUsers] = await Promise.all([
+        fastify.prisma.rwaListing.count({
+          where: { isLive: true }
+        }),
+        fastify.prisma.rwaSubmission.count({
+          where: { status: "PENDING" }
+        }),
+        fastify.prisma.user.count()
+      ]);
+      return reply.send({
+        success: true,
+        data: {
+          totalLiveTokens: totalLive,
+          totalPendingSubmissions: totalPending,
+          totalUsers
+        }
+      });
+    } catch (error) {
+      return reply.status(500).send({
+        success: false,
+        error: "Failed to get submission statistics",
+        details: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
   });
+  fastify.delete(
+    "/:id",
+    {
+      schema: {
+        params: (0, import_zod_to_json_schema.zodToJsonSchema)(import_zod.z.object({ id: import_zod.z.string().cuid() }))
+      }
+    },
+    async (request, reply) => {
+      try {
+        if (!request.user) {
+          return reply.status(401).send({
+            success: false,
+            error: "Authentication required"
+          });
+        }
+        const { id } = request.params;
+        await submissionService.deleteSubmission(id, request.user.id);
+        return reply.send({
+          success: true,
+          message: "Submission deleted successfully"
+        });
+      } catch (error) {
+        return reply.status(500).send({
+          success: false,
+          error: "Failed to delete submission",
+          details: error instanceof Error ? error.message : "Unknown error"
+        });
+      }
+    }
+  );
+  fastify.get(
+    "/:id/bids",
+    {
+      schema: {
+        params: (0, import_zod_to_json_schema.zodToJsonSchema)(import_zod.z.object({ id: import_zod.z.string().cuid() })),
+        querystring: (0, import_zod_to_json_schema.zodToJsonSchema)(import_utils.PaginationSchema)
+      }
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params;
+        const { limit, cursor } = request.query;
+        const submission = await submissionService.getSubmissionById(id);
+        if (!submission) {
+          return reply.status(404).send({
+            success: false,
+            error: "Submission not found"
+          });
+        }
+        const hasLiveListing = submission.rwaListing && submission.rwaListing.isLive;
+        if (!hasLiveListing && (!request.user || submission.ownerId !== request.user.id)) {
+          return reply.status(403).send({
+            success: false,
+            error: "Cannot view bids for this submission"
+          });
+        }
+        if (!submission.rwaListing) {
+          return reply.send({
+            success: true,
+            data: [],
+            hasMore: false
+          });
+        }
+        const bids = await biddingService.getBidsForListing(submission.rwaListing.id);
+        const limitValue = Math.min(limit || 20, 100);
+        const startIndex = cursor ? bids.findIndex((bid) => bid.id === cursor) + 1 : 0;
+        const endIndex = startIndex + limitValue;
+        const paginatedBids = bids.slice(startIndex, endIndex);
+        const hasMore = endIndex < bids.length;
+        const nextCursor = hasMore ? paginatedBids[paginatedBids.length - 1]?.id : void 0;
+        return reply.send({
+          success: true,
+          data: paginatedBids,
+          nextCursor,
+          hasMore
+        });
+      } catch (error) {
+        return reply.status(500).send({
+          success: false,
+          error: "Failed to get submission bids",
+          details: error instanceof Error ? error.message : "Unknown error"
+        });
+      }
+    }
+  );
 }
 __name(submissionsRoutes, "submissionsRoutes");
 
