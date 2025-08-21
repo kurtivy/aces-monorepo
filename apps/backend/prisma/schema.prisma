@@ -4,7 +4,7 @@ generator client {
   binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
-// Force regeneration - major architectural changes
+// Force regeneration v2.0 - schema reset complete 2025-08-21
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
