@@ -57,8 +57,8 @@
     "@google-cloud/storage": "^7.16.0",
     "@google-cloud/vision": "^5.3.2",
     "@hapi/boom": "^10.0.1",
-    "@hpke/chacha20poly1305": "^1.7.1",
-    "@hpke/common": "1.7.2",
+    "@hpke/chacha20poly1305": "^1.6.2",
+    "@hpke/common": "^1.8.1",
     "@hpke/core": "^1.7.4",
     "@prisma/client": "5.10.2",
     "@privy-io/server-auth": "^1.31.1",
@@ -91,6 +91,11 @@
     "prettier": "^3.1.0",
     "ts-node": "^10.9.1",
     "vitest": "^0.34.6"
+  },
+  "overrides": {
+    "@hpke/core": "1.7.4",
+    "@hpke/common": "1.8.1",
+    "@hpke/chacha20poly1305": "1.6.2"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

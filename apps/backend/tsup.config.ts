@@ -22,20 +22,18 @@ export default defineConfig({
   sourcemap: false,
   clean: true,
   treeshake: false,
-  // Minimal externals - let HPKE deps bundle since they're now explicit
-  external: [
-    '@prisma/client',
-    '.prisma/client',
-    'sharp',
-    'bcrypt',
-    'pino-pretty',
-    // REMOVED: All Privy and HPKE externals - let them bundle with explicit deps
-  ],
+  external: ['@prisma/client', '.prisma/client', 'sharp', 'bcrypt', 'pino-pretty'],
   cjsInterop: true,
   splitting: false,
   esbuildOptions(options) {
     options.keepNames = true;
     options.mainFields = ['main', 'module'];
     options.conditions = ['node'];
+    options.resolveExtensions = ['.ts', '.js', '.mjs', '.cjs'];
+    options.loader = {
+      '.js': 'js',
+      '.mjs': 'js',
+      '.cjs': 'js',
+    };
   },
 });
