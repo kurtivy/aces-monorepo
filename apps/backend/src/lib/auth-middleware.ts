@@ -30,6 +30,13 @@ export function createAuthContext(user: EnhancedUser | null): AuthContext {
     }
 
     const isAuthenticated = !!user && user.isActive;
+    
+    console.log('🔍 Authentication calculation:', {
+      userExists: !!user,
+      userIsActive: user?.isActive,
+      isAuthenticated,
+      userType: typeof user?.isActive
+    });
 
     // Safe seller status check with proper type handling
     let isSellerVerified = false;
