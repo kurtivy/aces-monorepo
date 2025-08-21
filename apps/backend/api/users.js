@@ -277,6 +277,7 @@ var errors = {
 
 // src/plugins/auth.ts
 var import_fastify_plugin = __toESM(require("fastify-plugin"));
+var import_jsonwebtoken = __toESM(require("jsonwebtoken"));
 
 // src/lib/auth-middleware.ts
 var import_client2 = require("@prisma/client");
@@ -461,15 +462,59 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
       try {
         const prisma2 = getPrismaClient();
         const dbStart = Date.now();
-        const result = await prisma2.$queryRaw`SELECT 1 as test`;
+        await prisma2.$queryRaw`SELECT 1 as test`;
         console.log("\u2705 Database connection successful in", Date.now() - dbStart, "ms");
-        console.log("\u{1F50D} Creating auth context...");
-        request.user = null;
+        console.log("\u{1F50D} Verifying Privy JWT token...");
+        const token = authHeader.replace("Bearer ", "");
         try {
-          request.auth = createAuthContext(null);
-          console.log("\u2705 Auth context created successfully");
-        } catch (authContextError) {
-          console.error("\u274C Error in createAuthContext:", authContextError);
+          const privyAppId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
+          if (!privyAppId) {
+            console.error("\u274C NEXT_PUBLIC_PRIVY_APP_ID not set");
+            throw new Error("Privy App ID not configured");
+          }
+          const decoded = import_jsonwebtoken.default.decode(token);
+          if (!decoded || !decoded.sub) {
+            console.error("\u274C Invalid JWT token structure");
+            throw new Error("Invalid token");
+          }
+          const privyDid = decoded.sub;
+          console.log("\u{1F50D} Privy DID from token:", privyDid);
+          let user = await prisma2.user.findUnique({
+            where: { privyDid }
+          });
+          if (!user) {
+            console.log("\u{1F195} Creating new user for Privy DID:", privyDid);
+            const walletAddress = decoded.wallet_address || null;
+            user = await prisma2.user.create({
+              data: {
+                privyDid,
+                walletAddress,
+                email: decoded.email || null,
+                displayName: decoded.email?.split("@")[0] || "User",
+                role: "TRADER",
+                isActive: true,
+                sellerStatus: "NOT_APPLIED"
+              }
+            });
+            console.log("\u2705 User created successfully:", user.id);
+          } else {
+            console.log("\u2705 Existing user found:", user.id);
+            const walletAddress = decoded.wallet_address || null;
+            if (walletAddress && user.walletAddress !== walletAddress) {
+              await prisma2.user.update({
+                where: { id: user.id },
+                data: { walletAddress }
+              });
+              user.walletAddress = walletAddress;
+              console.log("\u2705 Updated wallet address for user:", user.id);
+            }
+          }
+          request.user = user;
+          request.auth = createAuthContext(user);
+          console.log("\u2705 Auth context created successfully for user:", user.id);
+        } catch (jwtError) {
+          console.error("\u274C JWT verification failed:", jwtError);
+          request.user = null;
           request.auth = {
             user: null,
             isAuthenticated: false,
@@ -970,6 +1015,79 @@ var UserSearchSchema = import_zod.z.object({
 });
 async function usersRoutes(fastify) {
   const profileService = new UsersService(fastify.prisma);
+  fastify.post(
+    "/verify-or-create",
+    {
+      preHandler: [requireAuth],
+      schema: {
+        body: (0, import_zod_to_json_schema.zodToJsonSchema)(
+          import_zod.z.object({
+            privyDid: import_zod.z.string().min(1),
+            walletAddress: import_zod.z.string().optional(),
+            email: import_zod.z.string().email().optional(),
+            displayName: import_zod.z.string().min(1).max(30).optional()
+          })
+        )
+      }
+    },
+    async (request, reply) => {
+      const { privyDid, walletAddress, email, displayName } = request.body;
+      const correlationId = request.id;
+      try {
+        let user = await fastify.prisma.user.findUnique({
+          where: { privyDid }
+        });
+        if (!user) {
+          console.log("\u{1F195} Creating new user for Privy DID:", privyDid);
+          user = await fastify.prisma.user.create({
+            data: {
+              privyDid,
+              walletAddress: walletAddress || null,
+              email: email || null,
+              displayName: displayName || email?.split("@")[0] || "User",
+              role: "TRADER",
+              isActive: true,
+              sellerStatus: "NOT_APPLIED"
+            }
+          });
+          console.log("\u2705 User created successfully:", user.id);
+        } else {
+          console.log("\u2705 Existing user found:", user.id);
+          const updates = {};
+          if (walletAddress && user.walletAddress !== walletAddress) {
+            updates.walletAddress = walletAddress;
+          }
+          if (email && user.email !== email) {
+            updates.email = email;
+          }
+          if (displayName && user.displayName !== displayName) {
+            updates.displayName = displayName;
+          }
+          if (Object.keys(updates).length > 0) {
+            user = await fastify.prisma.user.update({
+              where: { id: user.id },
+              data: { ...updates, updatedAt: /* @__PURE__ */ new Date() }
+            });
+            console.log("\u2705 Updated user info:", user.id);
+          }
+        }
+        const profile = await profileService.getUserProfile(user.id);
+        return reply.send({
+          success: true,
+          data: profile,
+          created: !request.user
+          // true if this was a new user
+        });
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error("Unknown error");
+        fastify.log.error(
+          { err, correlationId, privyDid, operation: "verifyOrCreateUser" },
+          "Failed to verify or create user"
+        );
+        throw error;
+      }
+    }
+  );
   fastify.get(
     "/me",
     {

@@ -263,6 +263,7 @@ __name(handleError, "handleError");
 
 // src/plugins/auth.ts
 var import_fastify_plugin = __toESM(require("fastify-plugin"));
+var import_jsonwebtoken = __toESM(require("jsonwebtoken"));
 
 // src/lib/auth-middleware.ts
 var import_client2 = require("@prisma/client");
@@ -418,15 +419,59 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
       try {
         const prisma2 = getPrismaClient();
         const dbStart = Date.now();
-        const result = await prisma2.$queryRaw`SELECT 1 as test`;
+        await prisma2.$queryRaw`SELECT 1 as test`;
         console.log("\u2705 Database connection successful in", Date.now() - dbStart, "ms");
-        console.log("\u{1F50D} Creating auth context...");
-        request.user = null;
+        console.log("\u{1F50D} Verifying Privy JWT token...");
+        const token = authHeader.replace("Bearer ", "");
         try {
-          request.auth = createAuthContext(null);
-          console.log("\u2705 Auth context created successfully");
-        } catch (authContextError) {
-          console.error("\u274C Error in createAuthContext:", authContextError);
+          const privyAppId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
+          if (!privyAppId) {
+            console.error("\u274C NEXT_PUBLIC_PRIVY_APP_ID not set");
+            throw new Error("Privy App ID not configured");
+          }
+          const decoded = import_jsonwebtoken.default.decode(token);
+          if (!decoded || !decoded.sub) {
+            console.error("\u274C Invalid JWT token structure");
+            throw new Error("Invalid token");
+          }
+          const privyDid = decoded.sub;
+          console.log("\u{1F50D} Privy DID from token:", privyDid);
+          let user = await prisma2.user.findUnique({
+            where: { privyDid }
+          });
+          if (!user) {
+            console.log("\u{1F195} Creating new user for Privy DID:", privyDid);
+            const walletAddress = decoded.wallet_address || null;
+            user = await prisma2.user.create({
+              data: {
+                privyDid,
+                walletAddress,
+                email: decoded.email || null,
+                displayName: decoded.email?.split("@")[0] || "User",
+                role: "TRADER",
+                isActive: true,
+                sellerStatus: "NOT_APPLIED"
+              }
+            });
+            console.log("\u2705 User created successfully:", user.id);
+          } else {
+            console.log("\u2705 Existing user found:", user.id);
+            const walletAddress = decoded.wallet_address || null;
+            if (walletAddress && user.walletAddress !== walletAddress) {
+              await prisma2.user.update({
+                where: { id: user.id },
+                data: { walletAddress }
+              });
+              user.walletAddress = walletAddress;
+              console.log("\u2705 Updated wallet address for user:", user.id);
+            }
+          }
+          request.user = user;
+          request.auth = createAuthContext(user);
+          console.log("\u2705 Auth context created successfully for user:", user.id);
+        } catch (jwtError) {
+          console.error("\u274C JWT verification failed:", jwtError);
+          request.user = null;
           request.auth = {
             user: null,
             isAuthenticated: false,

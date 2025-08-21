@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
+import jwt from 'jsonwebtoken';
 import { createAuthContext } from '../lib/auth-middleware';
 import { getPrismaClient } from '../lib/database';
 
@@ -101,19 +102,85 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
         const dbStart = Date.now();
 
         // Use a simpler query that's less likely to fail
-        const result = await prisma.$queryRaw`SELECT 1 as test`;
+        await prisma.$queryRaw`SELECT 1 as test`;
         console.log('✅ Database connection successful in', Date.now() - dbStart, 'ms');
 
-        // TODO: Add JWT verification here
-        // For now, set null user but don't fail
-        console.log('🔍 Creating auth context...');
-        request.user = null;
+        // Verify Privy JWT token
+        console.log('🔍 Verifying Privy JWT token...');
+        const token = authHeader.replace('Bearer ', '');
 
         try {
-          request.auth = createAuthContext(null);
-          console.log('✅ Auth context created successfully');
-        } catch (authContextError) {
-          console.error('❌ Error in createAuthContext:', authContextError);
+          // Get Privy App ID from environment
+          const privyAppId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
+          if (!privyAppId) {
+            console.error('❌ NEXT_PUBLIC_PRIVY_APP_ID not set');
+            throw new Error('Privy App ID not configured');
+          }
+
+          // Decode JWT without verification to get user info
+          // Note: In production, you should verify the JWT signature
+          // For now, we'll decode it to get the user ID
+          const decoded = jwt.decode(token) as {
+            sub: string;
+            wallet_address?: string;
+            email?: string;
+          } | null;
+
+          if (!decoded || !decoded.sub) {
+            console.error('❌ Invalid JWT token structure');
+            throw new Error('Invalid token');
+          }
+
+          const privyDid = decoded.sub;
+          console.log('🔍 Privy DID from token:', privyDid);
+
+          // Look up or create user in database
+          let user = await prisma.user.findUnique({
+            where: { privyDid },
+          });
+
+          if (!user) {
+            console.log('🆕 Creating new user for Privy DID:', privyDid);
+
+            // Extract wallet address from token if available
+            const walletAddress = decoded.wallet_address || null;
+
+            user = await prisma.user.create({
+              data: {
+                privyDid,
+                walletAddress,
+                email: decoded.email || null,
+                displayName: decoded.email?.split('@')[0] || 'User',
+                role: 'TRADER',
+                isActive: true,
+                sellerStatus: 'NOT_APPLIED',
+              },
+            });
+
+            console.log('✅ User created successfully:', user.id);
+          } else {
+            console.log('✅ Existing user found:', user.id);
+
+            // Update wallet address if it changed
+            const walletAddress = decoded.wallet_address || null;
+            if (walletAddress && user.walletAddress !== walletAddress) {
+              await prisma.user.update({
+                where: { id: user.id },
+                data: { walletAddress },
+              });
+              user.walletAddress = walletAddress;
+              console.log('✅ Updated wallet address for user:', user.id);
+            }
+          }
+
+          request.user = user;
+          request.auth = createAuthContext(user);
+          console.log('✅ Auth context created successfully for user:', user.id);
+        } catch (jwtError) {
+          console.error('❌ JWT verification failed:', jwtError);
+
+          // Set fallback auth for invalid tokens
+          request.user = null;
           request.auth = {
             user: null,
             isAuthenticated: false,

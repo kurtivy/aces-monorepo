@@ -38,6 +38,18 @@ export interface ProfileUpdateRequest {
   darkMode?: boolean;
 }
 
+export interface UserVerificationRequest {
+  privyDid: string;
+  walletAddress?: string;
+  email?: string;
+  displayName?: string;
+}
+
+export interface UserVerificationResponse {
+  profile: UserProfile;
+  created: boolean;
+}
+
 export interface UserTransaction {
   id: string;
   type: 'BID' | 'PURCHASE' | 'SALE';
@@ -192,6 +204,23 @@ export class ProfileApi {
       headers: {
         Authorization: `Bearer ${authToken}`,
       },
+    });
+  }
+
+  /**
+   * Verify or create user from Privy authentication
+   * This is called after successful Privy authentication to ensure user exists in database
+   */
+  static async verifyOrCreateUser(
+    userInfo: UserVerificationRequest,
+    authToken: string,
+  ): Promise<ApiResult<UserVerificationResponse>> {
+    return this.request('/verify-or-create', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify(userInfo),
     });
   }
 }

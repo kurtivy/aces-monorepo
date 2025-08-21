@@ -9,6 +9,7 @@ export function middleware(request: NextRequest) {
     pathname,
     method: request.method,
     timestamp: new Date().toISOString(),
+    note: 'All routes currently allowed on all domains',
   });
 
   // Define your domains
@@ -43,8 +44,8 @@ export function middleware(request: NextRequest) {
 
   const domainType = getDomainType();
 
-  // Routes that should NOT be accessible on aces.fun
-  const acesRestrictedRoutes = ['/profile', '/rwa']; // Removed '/launch'
+  // Routes that should NOT be accessible on aces.fun (temporarily disabled)
+  const acesRestrictedRoutes: string[] = []; // Temporarily allow all routes
 
   // Routes that should ONLY be accessible on aceofbase.com
   // const aceofbaseOnlyRoutes = ['/launch']; // Commented out
@@ -55,7 +56,8 @@ export function middleware(request: NextRequest) {
   const isDevEnvironment = domainType === 'dev';
 
   // Apply domain restrictions only in production-like environments
-  if (!isDevEnvironment) {
+  // TEMPORARILY DISABLED: Allowing all routes on all domains
+  if (false && !isDevEnvironment) {
     // If on main domain (aces.fun or main Vercel deployment), block restricted routes
     if (isMainDomain) {
       const isRestrictedOnAces = acesRestrictedRoutes.some((route) => pathname.startsWith(route));

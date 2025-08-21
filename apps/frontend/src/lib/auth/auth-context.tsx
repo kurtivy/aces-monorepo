@@ -2,7 +2,12 @@
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
-import { ProfileApi, UserProfile, ProfileUpdateRequest } from '@/lib/api/profile';
+import {
+  ProfileApi,
+  UserProfile,
+  ProfileUpdateRequest,
+  UserVerificationRequest,
+} from '@/lib/api/profile';
 import { VerificationApi, VerificationStatus } from '@/lib/api/verification';
 
 // Utility to check if external wallets are actually connected
@@ -158,9 +163,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
-      // Create user profile from Privy data directly
-      // Backend automatically creates users, so we don't need to call /me
-      const userProfile: UserProfile = {
+      // Get Privy access token
+      const token = await privyGetAccessToken();
+      if (!token) {
+        throw new Error('No access token available');
+      }
+
+      // Prepare user verification request
+      const userVerificationRequest: UserVerificationRequest = {
+        privyDid: privyUser?.id || '',
+        walletAddress: privyUser?.wallet?.address || undefined,
+        email: privyUser?.email?.address || undefined,
+        displayName: privyUser?.email?.address?.split('@')[0] || 'User',
+      };
+
+      // Call backend to verify or create user
+      const result = await ProfileApi.verifyOrCreateUser(userVerificationRequest, token);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to verify user');
+      }
+
+      console.log(result.data.created ? '🆕 New user created' : '✅ Existing user verified');
+
+      setState((prev) => ({
+        ...prev,
+        user: result.data.profile,
+      }));
+    } catch (error) {
+      console.error('❌ Auth initialization error:', error);
+
+      // Fallback: create local user profile if backend fails
+      const fallbackProfile: UserProfile = {
         id: privyUser?.id || '',
         privyDid: privyUser?.id || '',
         walletAddress: privyUser?.wallet?.address || null,
@@ -188,12 +222,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setState((prev) => ({
         ...prev,
-        user: userProfile,
-      }));
-    } catch (error) {
-      console.error('❌ Auth initialization error:', error);
-      setState((prev) => ({
-        ...prev,
+        user: fallbackProfile,
         error: error instanceof Error ? error.message : 'Authentication failed',
       }));
     } finally {

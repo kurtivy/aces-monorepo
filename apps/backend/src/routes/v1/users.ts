@@ -37,6 +37,98 @@ export async function usersRoutes(fastify: FastifyInstance) {
   const profileService = new UsersService(fastify.prisma);
 
   /**
+   * Verify or create user from Privy authentication
+   * This endpoint is called by the frontend after successful Privy auth
+   */
+  fastify.post(
+    '/verify-or-create',
+    {
+      preHandler: [requireAuth],
+      schema: {
+        body: zodToJsonSchema(
+          z.object({
+            privyDid: z.string().min(1),
+            walletAddress: z.string().optional(),
+            email: z.string().email().optional(),
+            displayName: z.string().min(1).max(30).optional(),
+          }),
+        ),
+      },
+    },
+    async (request, reply) => {
+      const { privyDid, walletAddress, email, displayName } = request.body as {
+        privyDid: string;
+        walletAddress?: string;
+        email?: string;
+        displayName?: string;
+      };
+      const correlationId = request.id;
+
+      try {
+        // Check if user already exists
+        let user = await fastify.prisma.user.findUnique({
+          where: { privyDid },
+        });
+
+        if (!user) {
+          console.log('🆕 Creating new user for Privy DID:', privyDid);
+
+          user = await fastify.prisma.user.create({
+            data: {
+              privyDid,
+              walletAddress: walletAddress || null,
+              email: email || null,
+              displayName: displayName || email?.split('@')[0] || 'User',
+              role: 'TRADER',
+              isActive: true,
+              sellerStatus: 'NOT_APPLIED',
+            },
+          });
+          console.log('✅ User created successfully:', user.id);
+        } else {
+          console.log('✅ Existing user found:', user.id);
+
+          // Update user info if provided
+          const updates: Record<string, unknown> = {};
+          if (walletAddress && user.walletAddress !== walletAddress) {
+            updates.walletAddress = walletAddress;
+          }
+          if (email && user.email !== email) {
+            updates.email = email;
+          }
+          if (displayName && user.displayName !== displayName) {
+            updates.displayName = displayName;
+          }
+
+          if (Object.keys(updates).length > 0) {
+            user = await fastify.prisma.user.update({
+              where: { id: user.id },
+              data: { ...updates, updatedAt: new Date() },
+            });
+            console.log('✅ Updated user info:', user.id);
+          }
+        }
+
+        // Get full user profile
+        const profile = await profileService.getUserProfile(user.id);
+
+        return reply.send({
+          success: true,
+          data: profile,
+          created: !request.user, // true if this was a new user
+        });
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error('Unknown error');
+        fastify.log.error(
+          { err, correlationId, privyDid, operation: 'verifyOrCreateUser' },
+          'Failed to verify or create user',
+        );
+        throw error;
+      }
+    },
+  );
+
+  /**
    * Get current user's profile
    */
   fastify.get(
