@@ -69,16 +69,60 @@ const buildUsersApp = async (): Promise<FastifyInstance> => {
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
+let appPromise: Promise<FastifyInstance> | undefined;
+
 const handler = async (req: VercelRequest, res: VercelResponse) => {
-  const app = await buildUsersApp();
-  await app.ready();
+  try {
+    appPromise = appPromise ?? buildUsersApp();
+    const app = await appPromise;
+    await app.ready();
 
-  // Handle path rewriting: /api/v1/users/me → /me
-  if (req.url?.startsWith('/api/v1/users')) {
-    req.url = req.url.replace('/api/v1/users', '') || '/';
+    // Add CORS for Vercel deployment
+    const origin = req.headers.origin;
+    const isOriginAllowed = (origin: string | undefined): boolean => {
+      if (!origin) return false;
+      if (origin.endsWith('.vercel.app')) return true;
+      return [
+        'http://localhost:3000',
+        'http://localhost:3001',
+        'https://www.aces.fun',
+        'https://aces.fun',
+      ].includes(origin);
+    };
+
+    if (isOriginAllowed(origin) && origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      res.setHeader(
+        'Access-Control-Allow-Headers',
+        'Content-Type, Authorization, Accept, Origin, X-Requested-With',
+      );
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    }
+
+    // Handle OPTIONS preflight
+    if (req.method === 'OPTIONS') {
+      res.status(204).end();
+      return;
+    }
+
+    // Handle path rewriting: /api/v1/users/me → /me
+    if (req.url?.startsWith('/api/v1/users')) {
+      req.url = req.url.replace('/api/v1/users', '') || '/';
+    }
+
+    app.server.emit('request', req, res);
+  } catch (error) {
+    console.error('❌ Users handler error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString(),
+      });
+    }
   }
-
-  app.server.emit('request', req, res);
 };
 
 export default handler;
