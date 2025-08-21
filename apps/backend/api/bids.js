@@ -1014,4 +1014,3 @@ var handler = /* @__PURE__ */ __name(async (req, res) => {
   app.server.emit("request", req, res);
 }, "handler");
 var bids_default = handler;
-//# sourceMappingURL=bids.js.map

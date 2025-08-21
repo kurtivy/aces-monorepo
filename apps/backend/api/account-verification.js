@@ -1670,4 +1670,3 @@ var handler = /* @__PURE__ */ __name(async (req, res) => {
   app.server.emit("request", req, res);
 }, "handler");
 var account_verification_default = handler;
-//# sourceMappingURL=account-verification.js.map

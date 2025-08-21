@@ -1208,4 +1208,3 @@ var handler = /* @__PURE__ */ __name(async (req, res) => {
   app.server.emit("request", req, res);
 }, "handler");
 var users_default = handler;
-//# sourceMappingURL=users.js.map

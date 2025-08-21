@@ -19,41 +19,24 @@ export default defineConfig({
   platform: 'node',
   bundle: true,
   minify: false,
-  sourcemap: true,
+  sourcemap: false, // Disable to reduce bundle size
   clean: true,
   treeshake: false,
-  // More aggressive external configuration
+  // MINIMAL externals - let Privy 1.15.3 bundle normally
   external: [
-    // Database
     '@prisma/client',
     '.prisma/client',
-    'prisma',
-
-    // ALL Privy and crypto related packages
-    '@privy-io/server-auth',
-    /^@privy-io\/.*/, // Regex pattern for all @privy-io packages
-    /^@hpke\/.*/, // Regex pattern for all @hpke packages
-    '@hpke/common',
-    '@hpke/chacha20poly1305',
-    '@hpke/dhkem-p256-hkdf-sha256',
-    '@hpke/dhkem-p384-hkdf-sha384',
-    '@hpke/dhkem-p521-hkdf-sha512',
-    '@hpke/dhkem-x25519-hkdf-sha256',
-    '@hpke/dhkem-x448-hkdf-sha512',
-    '@hpke/hkdf-sha256',
-    '@hpke/hkdf-sha384',
-    '@hpke/hkdf-sha512',
-
-    // Other problematic packages
     'sharp',
     'bcrypt',
     'pino-pretty',
+    // REMOVED: All Privy and @hpke externals - let them bundle
   ],
   cjsInterop: true,
   splitting: false,
   esbuildOptions(options) {
     options.keepNames = true;
-    // Additional esbuild external configuration
-    options.external = [...(options.external || []), '@privy-io/*', '@hpke/*'];
+    options.mainFields = ['main', 'module'];
+    options.conditions = ['node'];
+    // REMOVED: external patterns that don't work
   },
 });

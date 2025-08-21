@@ -959,4 +959,3 @@ var handler = /* @__PURE__ */ __name(async (req, res) => {
   app.server.emit("request", req, res);
 }, "handler");
 var webhooks_default = handler;
-//# sourceMappingURL=webhooks.js.map

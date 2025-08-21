@@ -321,4 +321,3 @@ var buildHealthApp = /* @__PURE__ */ __name(async () => {
   return fastify;
 }, "buildHealthApp");
 var health_default = createServerlessHandler(buildHealthApp);
-//# sourceMappingURL=health.js.map

@@ -786,4 +786,3 @@ var handler = /* @__PURE__ */ __name(async (req, res) => {
   app.server.emit("request", req, res);
 }, "handler");
 var listings_default = handler;
-//# sourceMappingURL=listings.js.map

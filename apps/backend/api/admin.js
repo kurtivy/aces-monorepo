@@ -3185,4 +3185,3 @@ var handler = /* @__PURE__ */ __name(async (req, res) => {
   app.server.emit("request", req, res);
 }, "handler");
 var admin_default = handler;
-//# sourceMappingURL=admin.js.map

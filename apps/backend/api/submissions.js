@@ -767,4 +767,3 @@ var handler = /* @__PURE__ */ __name(async (req, res) => {
   }
 }, "handler");
 var submissions_default = handler;
-//# sourceMappingURL=submissions.js.map
