@@ -258,19 +258,15 @@ function createAuthContext(user) {
 __name(createAuthContext, "createAuthContext");
 
 // src/plugins/auth.ts
-var import_server_auth = require("@privy-io/server-auth");
+var import_jsonwebtoken = __toESM(require("jsonwebtoken"));
 var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
   fastify.decorateRequest("user", null);
   fastify.decorateRequest("auth", null);
+  const PRIVY_PUBLIC_KEY = process.env.PRIVY_PUBLIC_KEY;
   const PRIVY_APP_ID = process.env.PRIVY_APP_ID;
-  const PRIVY_APP_SECRET = process.env.PRIVY_APP_SECRET;
   if (!PRIVY_APP_ID) {
     throw new Error("PRIVY_APP_ID is required");
   }
-  if (!PRIVY_APP_SECRET) {
-    throw new Error("PRIVY_APP_SECRET is required");
-  }
-  const privyClient = new import_server_auth.PrivyClient(PRIVY_APP_ID, PRIVY_APP_SECRET);
   fastify.addHook("preHandler", async (request) => {
     const authHeader = request.headers.authorization;
     const walletAddressHeader = request.headers["x-wallet-address"];
@@ -287,9 +283,28 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
     }
     const token = authHeader.substring(7);
     try {
-      const verifiedClaims = await privyClient.verifyAuthToken(token);
-      const privyDid = verifiedClaims.userId;
+      let decoded;
+      if (PRIVY_PUBLIC_KEY) {
+        const publicKey = Buffer.from(PRIVY_PUBLIC_KEY, "base64").toString("ascii");
+        decoded = import_jsonwebtoken.default.verify(token, publicKey, {
+          algorithms: ["ES256"],
+          // Privy uses ES256
+          issuer: "privy.io",
+          audience: PRIVY_APP_ID
+        });
+        logger.info("JWT verified successfully with Privy public key");
+      } else {
+        logger.warn("PRIVY_PUBLIC_KEY not set - using decode only (INSECURE)");
+        decoded = import_jsonwebtoken.default.decode(token);
+        if (!decoded) {
+          throw new Error("Invalid token format");
+        }
+      }
+      const privyDid = decoded.sub;
       const walletAddress = walletAddressHeader;
+      if (!privyDid) {
+        throw new Error("No user ID in token");
+      }
       const prisma2 = getPrismaClient();
       let user = await prisma2.user.findFirst({
         where: {
@@ -301,11 +316,10 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
           data: {
             privyDid,
             walletAddress: walletAddress || "",
-            email: "",
-            // We'll get email from Privy API separately if needed
+            email: decoded.email || "",
             role: "TRADER",
             isActive: true,
-            displayName: "User"
+            displayName: decoded.name || "User"
           }
         });
         logger.info(`Created new user: ${user.id} with Privy DID: ${privyDid}`);

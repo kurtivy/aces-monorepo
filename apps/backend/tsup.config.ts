@@ -22,6 +22,7 @@ export default defineConfig({
   sourcemap: false,
   clean: true,
   treeshake: false,
+  // Only external the packages that truly can't be bundled
   external: ['@prisma/client', '.prisma/client', 'sharp', 'bcrypt', 'pino-pretty'],
   cjsInterop: true,
   splitting: false,
@@ -29,11 +30,6 @@ export default defineConfig({
     options.keepNames = true;
     options.mainFields = ['main', 'module'];
     options.conditions = ['node'];
-    options.resolveExtensions = ['.ts', '.js', '.mjs', '.cjs'];
-    options.loader = {
-      '.js': 'js',
-      '.mjs': 'js',
-      '.cjs': 'js',
-    };
+    // Simplified - remove the extension/loader overrides unless you have specific issues
   },
 });
