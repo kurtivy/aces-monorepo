@@ -17,14 +17,13 @@ export default defineConfig({
   format: ['cjs'],
   target: 'node20',
   platform: 'node',
-  bundle: true,
-  minify: false, // Keep false for easier debugging
+  bundle: false, // DISABLED - Let Vercel handle dependencies
+  minify: false,
   sourcemap: true,
   clean: true,
-  treeshake: false,
-  external: ['@prisma/client', '.prisma/client', 'prisma', 'sharp', 'bcrypt', 'pino-pretty'],
   cjsInterop: true,
   splitting: false,
+  // Remove external array when bundle: false
   esbuildOptions(options) {
     options.keepNames = true;
   },
