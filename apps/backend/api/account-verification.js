@@ -293,85 +293,43 @@ async function requireAdmin(request, _reply) {
 __name(requireAdmin, "requireAdmin");
 
 // src/plugins/auth.ts
-var import_jsonwebtoken = __toESM(require("jsonwebtoken"));
 var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
+  console.log("\u{1F527} Registering SIMPLIFIED auth plugin for debugging...");
   fastify.decorateRequest("user", null);
   fastify.decorateRequest("auth", null);
-  const PRIVY_PUBLIC_KEY = process.env.PRIVY_PUBLIC_KEY;
-  const PRIVY_APP_ID = process.env.PRIVY_APP_ID;
-  if (!PRIVY_APP_ID) {
-    throw new Error("PRIVY_APP_ID is required");
-  }
   fastify.addHook("preHandler", async (request) => {
-    const authHeader = request.headers.authorization;
-    const walletAddressHeader = request.headers["x-wallet-address"];
-    const publicPaths = ["/health", "/api/health"];
-    if (publicPaths.includes(request.url)) {
-      request.user = null;
-      request.auth = createAuthContext(null);
-      return;
-    }
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      request.user = null;
-      request.auth = createAuthContext(null);
-      return;
-    }
-    const token = authHeader.substring(7);
     try {
-      let decoded;
-      if (PRIVY_PUBLIC_KEY) {
-        const publicKey = Buffer.from(PRIVY_PUBLIC_KEY, "base64").toString("ascii");
-        decoded = import_jsonwebtoken.default.verify(token, publicKey, {
-          algorithms: ["ES256"],
-          // Privy uses ES256
-          issuer: "privy.io",
-          audience: PRIVY_APP_ID
-        });
-        logger.info("JWT verified successfully with Privy public key");
-      } else {
-        logger.warn("PRIVY_PUBLIC_KEY not set - using decode only (INSECURE)");
-        decoded = import_jsonwebtoken.default.decode(token);
-        if (!decoded) {
-          throw new Error("Invalid token format");
-        }
+      console.log("\u{1F50D} Auth hook triggered for:", request.url);
+      const authHeader = request.headers.authorization;
+      const publicPaths = ["/health", "/api/health"];
+      if (publicPaths.includes(request.url)) {
+        console.log("\u2705 Skipping auth for public path");
+        request.user = null;
+        request.auth = createAuthContext(null);
+        return;
       }
-      const privyDid = decoded.sub;
-      const walletAddress = walletAddressHeader;
-      if (!privyDid) {
-        throw new Error("No user ID in token");
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        console.log("\u274C No auth header - setting null user");
+        request.user = null;
+        request.auth = createAuthContext(null);
+        return;
       }
+      console.log("\u{1F50D} Auth header found, but SKIPPING JWT verification for debugging");
+      console.log("\u{1F50D} Testing database connection...");
       const prisma2 = getPrismaClient();
-      let user = await prisma2.user.findFirst({
-        where: {
-          OR: [{ privyDid }, { walletAddress: walletAddress || "" }]
-        }
-      });
-      if (!user && privyDid) {
-        user = await prisma2.user.create({
-          data: {
-            privyDid,
-            walletAddress: walletAddress || "",
-            email: decoded.email || "",
-            role: "TRADER",
-            isActive: true,
-            displayName: decoded.name || "User"
-          }
-        });
-        logger.info(`Created new user: ${user.id} with Privy DID: ${privyDid}`);
-      } else if (user && walletAddress && user.walletAddress !== walletAddress) {
-        user = await prisma2.user.update({
-          where: { id: user.id },
-          data: { walletAddress }
-        });
-      }
-      request.user = user;
-      request.auth = createAuthContext(user);
+      const userCount = await prisma2.user.count();
+      console.log("\u2705 Database connection successful, user count:", userCount);
+      request.user = null;
+      request.auth = createAuthContext(null);
+      console.log("\u2705 Auth hook completed successfully");
     } catch (error) {
-      logger.error("JWT verification failed:", error);
+      console.error("\u274C Auth hook error:", error);
+      logger.error("Auth hook failed:", error);
       request.user = null;
       request.auth = createAuthContext(null);
     }
   });
+  console.log("\u2705 Simplified auth plugin registered");
 }, "registerAuthPlugin");
 var registerAuth = (0, import_fastify_plugin.default)(registerAuthPlugin);
 
