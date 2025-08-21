@@ -17,25 +17,34 @@ export default defineConfig({
   format: ['cjs'],
   target: 'node20',
   platform: 'node',
-  bundle: true, // RE-ENABLED - This resolves relative imports
+  bundle: true,
   minify: false,
   sourcemap: true,
   clean: true,
   treeshake: false,
+  // More aggressive external configuration
   external: [
-    // Database & ORM
+    // Database
     '@prisma/client',
     '.prisma/client',
     'prisma',
 
-    // Privy Auth (keep external to avoid crypto issues)
+    // ALL Privy and crypto related packages
     '@privy-io/server-auth',
-
-    // HPKE crypto libraries (the ones causing "Cannot find module" errors)
+    /^@privy-io\/.*/, // Regex pattern for all @privy-io packages
+    /^@hpke\/.*/, // Regex pattern for all @hpke packages
     '@hpke/common',
     '@hpke/chacha20poly1305',
+    '@hpke/dhkem-p256-hkdf-sha256',
+    '@hpke/dhkem-p384-hkdf-sha384',
+    '@hpke/dhkem-p521-hkdf-sha512',
+    '@hpke/dhkem-x25519-hkdf-sha256',
+    '@hpke/dhkem-x448-hkdf-sha512',
+    '@hpke/hkdf-sha256',
+    '@hpke/hkdf-sha384',
+    '@hpke/hkdf-sha512',
 
-    // Other externals that don't play well with bundling
+    // Other problematic packages
     'sharp',
     'bcrypt',
     'pino-pretty',
@@ -44,5 +53,7 @@ export default defineConfig({
   splitting: false,
   esbuildOptions(options) {
     options.keepNames = true;
+    // Additional esbuild external configuration
+    options.external = [...(options.external || []), '@privy-io/*', '@hpke/*'];
   },
 });
