@@ -1,11 +1,9 @@
 import Fastify, { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
 import helmet from '@fastify/helmet';
+import multipart from '@fastify/multipart';
 
 import { User as PrismaUser, PrismaClient } from '@prisma/client';
-import { z } from 'zod';
-import { zodToJsonSchema } from 'zod-to-json-schema';
-import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 // Extend Fastify types to include custom properties
 declare module 'fastify' {
@@ -19,84 +17,75 @@ declare module 'fastify' {
   }
 }
 
-import { StorageService } from '../lib/storage-utils';
-import { CreateSubmissionSchema, type CreateSubmissionRequest } from '@aces/utils';
-import { errors, handleError } from '../lib/errors';
-import { SubmissionService } from '../services/submission-service';
-import { getPrismaClient } from '../lib/database';
+import { getPrismaClient, disconnectDatabase } from '../lib/database';
 import { loggers } from '../lib/logger';
+import { handleError } from '../lib/errors';
 import { registerAuth } from '../plugins/auth';
+import { submissionsRoutes } from '../routes/v1/submissions';
 
-const GetSignedUrlSchema = z.object({
-  fileType: z.string(),
-});
-
-// Cache the app instance to avoid rebuilding on every request
-let cachedApp: FastifyInstance | null = null;
-
+// DON'T cache the app - rebuild each time for serverless
 const buildSubmissionsApp = async (): Promise<FastifyInstance> => {
-  // Return cached instance if it exists
-  if (cachedApp) {
-    return cachedApp;
-  }
-
   const fastify = Fastify({
-    logger: false,
+    logger: {
+      level: 'info',
+      serializers: {
+        req: (req) => ({
+          method: req.method,
+          url: req.url,
+          headers: req.headers,
+        }),
+        res: (res) => ({
+          statusCode: res.statusCode,
+        }),
+      },
+    },
     genReqId: () => randomUUID(),
   });
 
   const prisma = getPrismaClient();
-  const submissionService = new SubmissionService(prisma);
-
   fastify.decorate('prisma', prisma);
 
   // Register plugins
-  fastify.register(helmet);
+  await fastify.register(helmet);
+  await fastify.register(multipart, {
+    limits: {
+      fileSize: 5 * 1024 * 1024, // 5MB
+    },
+  });
 
   // Register auth plugin
-  fastify.register(registerAuth);
+  await fastify.register(registerAuth);
 
-  // Get signed URL for image upload
-  fastify.post<{ Body: z.infer<typeof GetSignedUrlSchema> }>('/get-upload-url', {
-    schema: {
-      body: zodToJsonSchema(GetSignedUrlSchema),
-    },
-    handler: async (request) => {
-      try {
-        const { fileType } = request.body;
-        const { url, fileName } = await StorageService.getSignedUploadUrl(fileType);
-        return { url, fileName, publicUrl: StorageService.getPublicUrl(fileName) };
-      } catch (error) {
-        throw errors.internal('Failed to generate signed URL', { cause: error });
-      }
-    },
+  // Add CORS handling
+  fastify.addHook('onRequest', async (request, reply) => {
+    const origin = request.headers.origin;
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'https://www.aces.fun',
+      'https://aces-monorepo-git-dev-dan-aces-fun.vercel.app',
+      'https://aces-monorepo-git-main-dan-aces-fun.vercel.app',
+    ];
+
+    if (origin && (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app'))) {
+      reply.header('Access-Control-Allow-Origin', origin);
+      reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      reply.header(
+        'Access-Control-Allow-Headers',
+        'Content-Type, Authorization, Accept, Origin, X-Requested-With',
+      );
+      reply.header('Access-Control-Allow-Credentials', 'true');
+      reply.header('Vary', 'Origin');
+    }
   });
 
-  // Create submission endpoint
-  fastify.post<{ Body: CreateSubmissionRequest }>('/', {
-    schema: {
-      body: zodToJsonSchema(CreateSubmissionSchema),
-    },
-    handler: async (request) => {
-      try {
-        // Get the user ID from the authenticated session
-        const userId = request.user?.id;
-        if (!userId) {
-          throw errors.unauthorized('User must be authenticated');
-        }
-
-        const submission = await submissionService.createSubmission(
-          userId,
-          request.body,
-          request.id, // Using request ID as correlation ID
-        );
-
-        return { success: true, data: submission };
-      } catch (error) {
-        throw errors.internal('Failed to create submission', { cause: error });
-      }
-    },
+  // Handle OPTIONS preflight
+  fastify.options('*', async (request, reply) => {
+    reply.code(204).send();
   });
+
+  // Register ALL the submission routes from the routes file
+  await fastify.register(submissionsRoutes);
 
   // Register hooks
   fastify.addHook('onRequest', async (request) => {
@@ -109,19 +98,57 @@ const buildSubmissionsApp = async (): Promise<FastifyInstance> => {
     loggers.response(request.id, request.method, request.url, reply.statusCode, responseTime);
   });
 
-  // Global error handler
+  // Enhanced error handler
   fastify.setErrorHandler((error, request, reply) => {
+    // Log the error with full context
+    fastify.log.error(
+      {
+        err: error,
+        req: request,
+        url: request.url,
+        method: request.method,
+        headers: request.headers,
+        params: request.params,
+        query: request.query,
+        userId: request.user?.id,
+        requestId: request.id,
+      },
+      'Submissions request failed',
+    );
+
     try {
       handleError(error, reply);
     } catch (handlerError) {
-      handleError(handlerError, reply);
+      fastify.log.error(
+        {
+          err: handlerError,
+          originalError: error,
+          url: request.url,
+          method: request.method,
+          requestId: request.id,
+        },
+        'Error handler failed',
+      );
+
+      // Fallback error response
+      if (!reply.sent) {
+        reply.status(500).send({
+          success: false,
+          error: 'Internal server error',
+          requestId: request.id,
+        });
+      }
     }
   });
 
-  // Cache the app instance
-  cachedApp = fastify;
+  fastify.addHook('onClose', async () => {
+    await disconnectDatabase();
+  });
+
   return fastify;
 };
+
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const handler = async (req: VercelRequest, res: VercelResponse) => {
   try {
@@ -129,19 +156,31 @@ const handler = async (req: VercelRequest, res: VercelResponse) => {
     await app.ready();
 
     // Handle path rewriting: /api/v1/submissions/... → /...
-    if (req.url?.startsWith('/api/v1/submissions')) {
-      req.url = req.url.replace('/api/v1/submissions', '') || '/';
+    let path = req.url || '/';
+
+    if (path.startsWith('/api/v1/submissions')) {
+      path = path.replace('/api/v1/submissions', '') || '/';
     }
+
+    // Update the request URL
+    req.url = path;
+
+    console.log('🔍 Submissions handler processing:', {
+      originalUrl: req.url,
+      rewrittenPath: path,
+      method: req.method,
+    });
 
     app.server.emit('request', req, res);
   } catch (error) {
-    console.error('Submissions handler error:', error);
+    console.error('❌ Submissions handler error:', error);
 
-    // Ensure we send a proper response even on error
     if (!res.headersSent) {
       res.status(500).json({
+        success: false,
         error: 'Internal server error',
         message: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString(),
       });
     }
   }

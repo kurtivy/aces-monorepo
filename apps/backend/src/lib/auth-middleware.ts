@@ -4,24 +4,97 @@ import { errors } from './errors';
 import { EnhancedUser, AuthContext } from '../types/fastify';
 
 /**
- * Creates auth context for the request
+ * Creates auth context for the request with safe enum handling
  */
 export function createAuthContext(user: EnhancedUser | null): AuthContext {
-  const isAuthenticated = !!user && user.isActive;
-  const isSellerVerified = user?.sellerStatus === SellerStatus.APPROVED;
-  const canAccessSellerDashboard = isSellerVerified && !!user?.verifiedAt;
+  try {
+    console.log('🔍 createAuthContext called with:', {
+      userExists: !!user,
+      userActive: user?.isActive,
+      sellerStatus: user?.sellerStatus,
+      enumsAvailable: {
+        SellerStatus: typeof SellerStatus,
+        UserRole: typeof UserRole,
+      },
+    });
 
-  return {
-    user,
-    isAuthenticated,
-    hasRole: (role: UserRole | UserRole[]) => {
-      if (!user) return false;
-      const roles = Array.isArray(role) ? role : [role];
-      return roles.includes(user.role);
-    },
-    isSellerVerified,
-    canAccessSellerDashboard,
-  };
+    // Handle null user case
+    if (!user) {
+      return {
+        user: null,
+        isAuthenticated: false,
+        hasRole: () => false,
+        isSellerVerified: false,
+        canAccessSellerDashboard: false,
+      };
+    }
+
+    const isAuthenticated = !!user && user.isActive;
+
+    // Safe seller status check with proper type handling
+    let isSellerVerified = false;
+    if (user.sellerStatus) {
+      // Direct string comparison (safest approach)
+      isSellerVerified = user.sellerStatus === 'APPROVED';
+
+      // Try the Prisma enum if available and comparison failed
+      if (!isSellerVerified && typeof SellerStatus !== 'undefined') {
+        try {
+          isSellerVerified = user.sellerStatus === SellerStatus.APPROVED;
+        } catch (enumError) {
+          console.warn('Prisma SellerStatus enum not available:', enumError);
+        }
+      }
+    }
+
+    const canAccessSellerDashboard = isSellerVerified && !!user?.verifiedAt;
+
+    console.log('✅ Auth context created:', {
+      isAuthenticated,
+      isSellerVerified,
+      canAccessSellerDashboard,
+      userRole: user.role,
+    });
+
+    return {
+      user,
+      isAuthenticated,
+      hasRole: (role: UserRole | UserRole[]) => {
+        if (!user) return false;
+
+        try {
+          const roles = Array.isArray(role) ? role : [role];
+
+          // Safe role comparison
+          return roles.some((r) => {
+            // Direct comparison with user role
+            return user.role === r;
+          });
+        } catch (error) {
+          console.error('Error checking user role:', error);
+          return false;
+        }
+      },
+      isSellerVerified,
+      canAccessSellerDashboard,
+    };
+  } catch (error) {
+    console.error('❌ Critical error in createAuthContext:', error);
+    console.error('Error details:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      userProvided: !!user,
+    });
+
+    // Return safe default on any error
+    return {
+      user,
+      isAuthenticated: false,
+      hasRole: () => false,
+      isSellerVerified: false,
+      canAccessSellerDashboard: false,
+    };
+  }
 }
 
 /**
@@ -89,7 +162,33 @@ export async function requireAdmin(request: FastifyRequest, _reply: FastifyReply
     throw errors.unauthorized('Authentication required');
   }
 
-  if (!request.auth.hasRole(UserRole.ADMIN)) {
+  // Safe role checking
+  try {
+    const user = request.auth.user;
+    if (!user) {
+      throw errors.forbidden('Admin access required');
+    }
+    // Direct string comparison for safety - only check valid roles
+    const isAdmin = user.role === 'ADMIN';
+
+    // Try enum comparison if available
+    if (!isAdmin && typeof UserRole !== 'undefined') {
+      try {
+        const enumAdmin = user.role === UserRole.ADMIN;
+        if (enumAdmin) return;
+      } catch (enumError) {
+        console.warn('Prisma UserRole enum not available:', enumError);
+      }
+    }
+
+    if (!isAdmin) {
+      throw errors.forbidden('Admin access required');
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('Admin access required')) {
+      throw error; // Re-throw expected errors
+    }
+    console.error('Error checking admin role:', error);
     throw errors.forbidden('Admin access required');
   }
 }
@@ -117,8 +216,13 @@ export function canAccessResource(
 
   // Check if user has required role for cross-user access
   if (requiredRole) {
-    const roles = Array.isArray(requiredRole) ? requiredRole : [requiredRole];
-    return roles.includes(user.role);
+    try {
+      const roles = Array.isArray(requiredRole) ? requiredRole : [requiredRole];
+      return roles.some((role) => user.role === role);
+    } catch (error) {
+      console.error('Error checking resource access role:', error);
+      return false;
+    }
   }
 
   return false;

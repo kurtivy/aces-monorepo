@@ -17,40 +17,9 @@ const listingParamsSchema = z.object({
 });
 
 export async function listingsRoutes(fastify: FastifyInstance) {
-  // Authentication middleware for protected routes
-  fastify.addHook('preHandler', async (request) => {
-    // Skip auth check for public routes
-    const publicRoutes = ['/listings', '/listings/:listingId'];
-
-    const isPublicRoute = publicRoutes.some((route) => {
-      const pattern = route.replace(':listingId', '[^/]+');
-      return new RegExp(`^${pattern}$`).test(request.routeOptions.url || '');
-    });
-
-    if (isPublicRoute) {
-      return;
-    }
-
-    // All other routes require authentication
-    if (!request.user) {
-      throw errors.unauthorized('Authentication required');
-    }
-
-    // Admin routes require admin role
-    const adminRoutes = ['/listings/:listingId/toggle', '/admin/listings'];
-
-    const isAdminRoute = adminRoutes.some((route) => {
-      const pattern = route.replace(':listingId', '[^/]+');
-      return new RegExp(`^${pattern}$`).test(request.routeOptions.url || '');
-    });
-
-    if (isAdminRoute && request.user.role !== 'ADMIN') {
-      throw errors.forbidden('Admin access required');
-    }
-  });
-
   // Public routes - no authentication required
-  fastify.get('/listings', async (request, reply) => {
+  // GET / - Get all live listings (was /listings, now / since path is rewritten)
+  fastify.get('/', async (request, reply) => {
     try {
       logger.info('Getting all live listings');
       const listings = await listingService.getLiveListings();
@@ -68,7 +37,8 @@ export async function listingsRoutes(fastify: FastifyInstance) {
     }
   });
 
-  fastify.get('/listings/:listingId', async (request, reply) => {
+  // GET /:listingId - Get specific listing
+  fastify.get('/:listingId', async (request, reply) => {
     try {
       const { listingId } = listingParamsSchema.parse(request.params);
       logger.info(`Getting listing by ID: ${listingId}`);
@@ -96,7 +66,8 @@ export async function listingsRoutes(fastify: FastifyInstance) {
   });
 
   // User routes - authentication required
-  fastify.get('/listings/my-listings', async (request, reply) => {
+  // GET /my - Get user's listings
+  fastify.get('/my', async (request, reply) => {
     try {
       const userId = request.user?.id;
       if (!userId) {
@@ -122,7 +93,8 @@ export async function listingsRoutes(fastify: FastifyInstance) {
   });
 
   // Admin routes - authentication + admin role required
-  fastify.post('/listings/:listingId/toggle', async (request, reply) => {
+  // POST /:listingId/toggle - Toggle listing status
+  fastify.post('/:listingId/toggle', async (request, reply) => {
     try {
       const { listingId } = listingParamsSchema.parse(request.params);
       const { isLive } = toggleListingStatusSchema.parse(request.body);
@@ -132,6 +104,13 @@ export async function listingsRoutes(fastify: FastifyInstance) {
         return reply.status(401).send({
           success: false,
           error: 'Authentication required',
+        });
+      }
+
+      if (request.user?.role !== 'ADMIN') {
+        return reply.status(403).send({
+          success: false,
+          error: 'Admin access required',
         });
       }
 
@@ -158,7 +137,8 @@ export async function listingsRoutes(fastify: FastifyInstance) {
     }
   });
 
-  fastify.get('/admin/listings', async (request, reply) => {
+  // GET /admin/all - Get all listings for admin
+  fastify.get('/admin/all', async (request, reply) => {
     try {
       const userId = request.user?.id;
       const userRole = request.user?.role;

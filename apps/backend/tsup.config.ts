@@ -22,14 +22,34 @@ export default defineConfig({
   sourcemap: false,
   clean: true,
   treeshake: false,
-  // Only external the packages that truly can't be bundled
-  external: ['@prisma/client', '.prisma/client', 'sharp', 'bcrypt', 'pino-pretty'],
+  // Updated external dependencies
+  external: [
+    '.prisma/client',
+    'sharp',
+    'bcrypt',
+    'pino-pretty',
+    // Don't externalize @prisma/client so enums get bundled
+  ],
   cjsInterop: true,
   splitting: false,
   esbuildOptions(options) {
     options.keepNames = true;
     options.mainFields = ['main', 'module'];
     options.conditions = ['node'];
-    // Simplified - remove the extension/loader overrides unless you have specific issues
+
+    // Ensure Prisma enums are properly bundled
+    options.define = {
+      'process.env.NODE_ENV': '"production"',
+    };
+
+    // Better handling for Prisma client
+    options.banner = {
+      js: `
+// Prisma runtime polyfill for serverless
+if (typeof globalThis.fetch === 'undefined') {
+  globalThis.fetch = require('node-fetch');
+}
+      `.trim(),
+    };
   },
 });

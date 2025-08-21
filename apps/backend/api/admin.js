@@ -1,3 +1,7 @@
+// Prisma runtime polyfill for serverless
+if (typeof globalThis.fetch === 'undefined') {
+  globalThis.fetch = require('node-fetch');
+}
 "use strict";
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -42,7 +46,7 @@ var import_helmet = __toESM(require("@fastify/helmet"));
 var import_pino = require("pino");
 var logger = (0, import_pino.pino)({
   level: process.env.LOG_LEVEL || "info",
-  transport: process.env.NODE_ENV === "development" ? {
+  transport: false ? {
     target: "pino-pretty",
     options: {
       colorize: true,
@@ -126,6 +130,8 @@ var loggers = {
 // src/lib/database.ts
 var import_client = require("@prisma/client");
 var createPrismaClient = /* @__PURE__ */ __name(() => {
+  console.log("\u{1F527} Creating Prisma client...");
+  console.log("Database URL exists:", !!process.env.DATABASE_URL);
   const prisma2 = new import_client.PrismaClient({
     log: [
       {
@@ -144,9 +150,10 @@ var createPrismaClient = /* @__PURE__ */ __name(() => {
         emit: "event",
         level: "warn"
       }
-    ]
+    ],
+    errorFormat: "pretty"
   });
-  if (process.env.NODE_ENV === "development") {
+  if (false) {
     prisma2.$on("query", (e) => {
       logger.debug(
         {
@@ -187,24 +194,55 @@ var createPrismaClient = /* @__PURE__ */ __name(() => {
       return result;
     }
   );
+  console.log("\u2705 Prisma client created successfully");
   return prisma2;
 }, "createPrismaClient");
-var prisma;
+var prisma = null;
 var getPrismaClient = /* @__PURE__ */ __name(() => {
-  if (!prisma) {
-    prisma = createPrismaClient();
+  try {
+    if (!prisma) {
+      prisma = createPrismaClient();
+    }
+    return prisma;
+  } catch (error) {
+    console.error("\u274C Failed to create Prisma client:", error);
+    logger.error("Failed to create Prisma client", error);
+    throw error;
   }
-  return prisma;
 }, "getPrismaClient");
-var disconnectDatabase = /* @__PURE__ */ __name(async () => {
+var disconnectDatabase = /* @__PURE__ */ __name(async (timeoutMs = 5e3) => {
   if (prisma) {
-    await prisma.$disconnect();
-    logger.info("Database connection closed");
+    try {
+      console.log("\u{1F527} Disconnecting from database...");
+      const disconnectPromise = prisma.$disconnect();
+      const timeoutPromise = new Promise(
+        (_, reject) => setTimeout(() => reject(new Error("Database disconnect timeout")), timeoutMs)
+      );
+      await Promise.race([disconnectPromise, timeoutPromise]);
+      prisma = null;
+      console.log("\u2705 Database disconnected successfully");
+      logger.info("Database connection closed");
+    } catch (error) {
+      console.error("\u274C Error disconnecting from database:", error);
+      logger.error("Error disconnecting from database", error);
+      prisma = null;
+    }
   }
 }, "disconnectDatabase");
 var withTransaction = /* @__PURE__ */ __name(async (callback) => {
   const client = getPrismaClient();
-  return await client.$transaction(callback);
+  try {
+    console.log("\u{1F527} Starting database transaction...");
+    const start = Date.now();
+    const result = await client.$transaction(callback);
+    const duration = Date.now() - start;
+    console.log(`\u2705 Transaction completed in ${duration}ms`);
+    return result;
+  } catch (error) {
+    console.error("\u274C Transaction failed:", error);
+    logger.error("Database transaction failed", error);
+    throw error;
+  }
 }, "withTransaction");
 
 // src/lib/errors.ts
@@ -258,63 +296,205 @@ var import_fastify_plugin = __toESM(require("fastify-plugin"));
 // src/lib/auth-middleware.ts
 var import_client2 = require("@prisma/client");
 function createAuthContext(user) {
-  const isAuthenticated = !!user && user.isActive;
-  const isSellerVerified = user?.sellerStatus === import_client2.SellerStatus.APPROVED;
-  const canAccessSellerDashboard = isSellerVerified && !!user?.verifiedAt;
-  return {
-    user,
-    isAuthenticated,
-    hasRole: /* @__PURE__ */ __name((role) => {
-      if (!user) return false;
-      const roles = Array.isArray(role) ? role : [role];
-      return roles.includes(user.role);
-    }, "hasRole"),
-    isSellerVerified,
-    canAccessSellerDashboard
-  };
+  try {
+    console.log("\u{1F50D} createAuthContext called with:", {
+      userExists: !!user,
+      userActive: user?.isActive,
+      sellerStatus: user?.sellerStatus,
+      enumsAvailable: {
+        SellerStatus: typeof import_client2.SellerStatus,
+        UserRole: typeof import_client2.UserRole
+      }
+    });
+    if (!user) {
+      return {
+        user: null,
+        isAuthenticated: false,
+        hasRole: /* @__PURE__ */ __name(() => false, "hasRole"),
+        isSellerVerified: false,
+        canAccessSellerDashboard: false
+      };
+    }
+    const isAuthenticated = !!user && user.isActive;
+    let isSellerVerified = false;
+    if (user.sellerStatus) {
+      isSellerVerified = user.sellerStatus === "APPROVED";
+      if (!isSellerVerified && typeof import_client2.SellerStatus !== "undefined") {
+        try {
+          isSellerVerified = user.sellerStatus === import_client2.SellerStatus.APPROVED;
+        } catch (enumError) {
+          console.warn("Prisma SellerStatus enum not available:", enumError);
+        }
+      }
+    }
+    const canAccessSellerDashboard = isSellerVerified && !!user?.verifiedAt;
+    console.log("\u2705 Auth context created:", {
+      isAuthenticated,
+      isSellerVerified,
+      canAccessSellerDashboard,
+      userRole: user.role
+    });
+    return {
+      user,
+      isAuthenticated,
+      hasRole: /* @__PURE__ */ __name((role) => {
+        if (!user) return false;
+        try {
+          const roles = Array.isArray(role) ? role : [role];
+          return roles.some((r) => {
+            return user.role === r;
+          });
+        } catch (error) {
+          console.error("Error checking user role:", error);
+          return false;
+        }
+      }, "hasRole"),
+      isSellerVerified,
+      canAccessSellerDashboard
+    };
+  } catch (error) {
+    console.error("\u274C Critical error in createAuthContext:", error);
+    console.error("Error details:", {
+      message: error instanceof Error ? error.message : "Unknown error",
+      stack: error instanceof Error ? error.stack : void 0,
+      userProvided: !!user
+    });
+    return {
+      user,
+      isAuthenticated: false,
+      hasRole: /* @__PURE__ */ __name(() => false, "hasRole"),
+      isSellerVerified: false,
+      canAccessSellerDashboard: false
+    };
+  }
 }
 __name(createAuthContext, "createAuthContext");
 
 // src/plugins/auth.ts
 var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
-  console.log("\u{1F527} Registering SIMPLIFIED auth plugin for debugging...");
+  console.log("\u{1F527} Registering production auth plugin...");
   fastify.decorateRequest("user", null);
   fastify.decorateRequest("auth", null);
-  fastify.addHook("preHandler", async (request) => {
+  fastify.addHook("preHandler", async (request, reply) => {
+    const startTime = Date.now();
     try {
-      console.log("\u{1F50D} Auth hook triggered for:", request.url);
+      console.log("\u{1F50D} Auth hook triggered for:", {
+        url: request.url,
+        method: request.method,
+        hasAuthHeader: !!request.headers.authorization
+      });
       const authHeader = request.headers.authorization;
-      const publicPaths = ["/health", "/api/health"];
-      if (publicPaths.includes(request.url)) {
-        console.log("\u2705 Skipping auth for public path");
+      const publicPaths = [
+        "/health",
+        "/api/health",
+        "/live",
+        // Public live submissions
+        "/search",
+        // Public search
+        "/stats",
+        // Public stats
+        "/test",
+        // Test endpoint
+        "/get-upload-url",
+        // File upload - you may want to protect this
+        "/upload-image"
+        // Direct image upload
+      ];
+      const isPublicPath = publicPaths.some((path) => {
+        if (request.url === path) return true;
+        if (path === "/health" && request.url.startsWith("/health")) return true;
+        return false;
+      }) || request.method === "GET" && ["/live", "/search", "/stats"].includes(request.url);
+      if (isPublicPath) {
+        console.log("\u2705 Public path, skipping auth:", request.url);
         request.user = null;
-        request.auth = createAuthContext(null);
+        try {
+          request.auth = createAuthContext(null);
+        } catch (authError) {
+          console.error("\u274C Error creating auth context for public path:", authError);
+          request.auth = {
+            user: null,
+            isAuthenticated: false,
+            hasRole: /* @__PURE__ */ __name(() => false, "hasRole"),
+            isSellerVerified: false,
+            canAccessSellerDashboard: false
+          };
+        }
         return;
       }
       if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        console.log("\u274C No auth header - setting null user");
+        console.log("\u274C No valid auth header for protected route:", request.url);
         request.user = null;
-        request.auth = createAuthContext(null);
+        try {
+          request.auth = createAuthContext(null);
+        } catch (authError) {
+          console.error("\u274C Error creating auth context for unauthenticated user:", authError);
+          request.auth = {
+            user: null,
+            isAuthenticated: false,
+            hasRole: /* @__PURE__ */ __name(() => false, "hasRole"),
+            isSellerVerified: false,
+            canAccessSellerDashboard: false
+          };
+        }
+        const protectedRoutes = ["/my", "/create", "/me"];
+        if (protectedRoutes.includes(request.url)) {
+          return reply.status(401).send({
+            success: false,
+            error: "Authentication required",
+            code: "UNAUTHORIZED"
+          });
+        }
         return;
       }
-      console.log("\u{1F50D} Auth header found, but SKIPPING JWT verification for debugging");
-      console.log("\u{1F50D} Testing database connection...");
+      console.log("\u{1F50D} Auth header found, testing database connection...");
       const prisma2 = getPrismaClient();
-      const userCount = await prisma2.user.count();
-      console.log("\u2705 Database connection successful, user count:", userCount);
-      request.user = null;
-      request.auth = createAuthContext(null);
-      console.log("\u2705 Auth hook completed successfully");
+      try {
+        const dbStart = Date.now();
+        await prisma2.$queryRaw`SELECT 1`;
+        console.log("\u2705 Database connection successful in", Date.now() - dbStart, "ms");
+        console.log("\u{1F50D} Creating auth context...");
+        request.user = null;
+        try {
+          request.auth = createAuthContext(null);
+          console.log("\u2705 Auth context created successfully");
+        } catch (authContextError) {
+          console.error("\u274C Error in createAuthContext:", authContextError);
+          request.auth = {
+            user: null,
+            isAuthenticated: false,
+            hasRole: /* @__PURE__ */ __name(() => false, "hasRole"),
+            isSellerVerified: false,
+            canAccessSellerDashboard: false
+          };
+        }
+        console.log("\u2705 Auth hook completed in", Date.now() - startTime, "ms");
+      } catch (dbError) {
+        console.error("\u274C Database connection failed:", dbError);
+        return reply.status(503).send({
+          success: false,
+          error: "Service temporarily unavailable",
+          code: "DATABASE_ERROR"
+        });
+      }
     } catch (error) {
-      console.error("\u274C Auth hook error:", error);
-      logger.error("Auth hook failed:", error);
+      console.error("\u274C Unexpected auth hook error:", error);
       request.user = null;
-      request.auth = createAuthContext(null);
+      request.auth = {
+        user: null,
+        isAuthenticated: false,
+        hasRole: /* @__PURE__ */ __name(() => false, "hasRole"),
+        isSellerVerified: false,
+        canAccessSellerDashboard: false
+      };
+      console.log("\u{1F527} Continuing with no auth due to error");
     }
   });
-  console.log("\u2705 Simplified auth plugin registered");
+  console.log("\u2705 Production auth plugin registered");
 }, "registerAuthPlugin");
-var registerAuth = (0, import_fastify_plugin.default)(registerAuthPlugin);
+var registerAuth = (0, import_fastify_plugin.default)(registerAuthPlugin, {
+  name: "auth-plugin"
+});
 
 // src/routes/v1/admin.ts
 var import_zod = require("zod");

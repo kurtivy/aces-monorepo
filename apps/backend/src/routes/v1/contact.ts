@@ -9,8 +9,8 @@ const contactFormSchema = z.object({
 });
 
 export async function contactRoutes(fastify: FastifyInstance) {
-  // POST /api/v1/contact - Submit contact form
-  fastify.post('/contact', async (request, reply) => {
+  // POST / - Submit contact form (was /contact, now / since path is rewritten)
+  fastify.post('/', async (request, reply) => {
     try {
       // Validate request body
       const validationResult = contactFormSchema.safeParse(request.body);
@@ -83,5 +83,14 @@ export async function contactRoutes(fastify: FastifyInstance) {
         message: 'Internal server error. Please try again later.',
       });
     }
+  });
+
+  // Health check for contact service
+  fastify.get('/health', async (request, reply) => {
+    return reply.send({
+      success: true,
+      service: 'contact',
+      timestamp: new Date().toISOString(),
+    });
   });
 }

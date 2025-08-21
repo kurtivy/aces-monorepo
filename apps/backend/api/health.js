@@ -1,3 +1,7 @@
+// Prisma runtime polyfill for serverless
+if (typeof globalThis.fetch === 'undefined') {
+  globalThis.fetch = require('node-fetch');
+}
 "use strict";
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -76,7 +80,7 @@ __name(createServerlessHandler, "createServerlessHandler");
 var import_pino = require("pino");
 var logger = (0, import_pino.pino)({
   level: process.env.LOG_LEVEL || "info",
-  transport: process.env.NODE_ENV === "development" ? {
+  transport: false ? {
     target: "pino-pretty",
     options: {
       colorize: true,
@@ -160,6 +164,8 @@ var loggers = {
 // src/lib/database.ts
 var import_client = require("@prisma/client");
 var createPrismaClient = /* @__PURE__ */ __name(() => {
+  console.log("\u{1F527} Creating Prisma client...");
+  console.log("Database URL exists:", !!process.env.DATABASE_URL);
   const prisma2 = new import_client.PrismaClient({
     log: [
       {
@@ -178,9 +184,10 @@ var createPrismaClient = /* @__PURE__ */ __name(() => {
         emit: "event",
         level: "warn"
       }
-    ]
+    ],
+    errorFormat: "pretty"
   });
-  if (process.env.NODE_ENV === "development") {
+  if (false) {
     prisma2.$on("query", (e) => {
       logger.debug(
         {
@@ -221,29 +228,54 @@ var createPrismaClient = /* @__PURE__ */ __name(() => {
       return result;
     }
   );
+  console.log("\u2705 Prisma client created successfully");
   return prisma2;
 }, "createPrismaClient");
-var prisma;
+var prisma = null;
 var getPrismaClient = /* @__PURE__ */ __name(() => {
-  if (!prisma) {
-    prisma = createPrismaClient();
+  try {
+    if (!prisma) {
+      prisma = createPrismaClient();
+    }
+    return prisma;
+  } catch (error) {
+    console.error("\u274C Failed to create Prisma client:", error);
+    logger.error("Failed to create Prisma client", error);
+    throw error;
   }
-  return prisma;
 }, "getPrismaClient");
 var checkDatabaseHealth = /* @__PURE__ */ __name(async () => {
   try {
+    console.log("\u{1F50D} Checking database health...");
     const client = getPrismaClient();
-    await client.$queryRaw`SELECT 1`;
+    const start = Date.now();
+    await client.$queryRaw`SELECT 1 as health_check`;
+    const duration = Date.now() - start;
+    console.log(`\u2705 Database health check passed in ${duration}ms`);
     return true;
   } catch (error) {
-    logger.error({ error }, "Database health check failed");
+    console.error("\u274C Database health check failed:", error);
+    logger.error("Database health check failed", error);
     return false;
   }
 }, "checkDatabaseHealth");
-var disconnectDatabase = /* @__PURE__ */ __name(async () => {
+var disconnectDatabase = /* @__PURE__ */ __name(async (timeoutMs = 5e3) => {
   if (prisma) {
-    await prisma.$disconnect();
-    logger.info("Database connection closed");
+    try {
+      console.log("\u{1F527} Disconnecting from database...");
+      const disconnectPromise = prisma.$disconnect();
+      const timeoutPromise = new Promise(
+        (_, reject) => setTimeout(() => reject(new Error("Database disconnect timeout")), timeoutMs)
+      );
+      await Promise.race([disconnectPromise, timeoutPromise]);
+      prisma = null;
+      console.log("\u2705 Database disconnected successfully");
+      logger.info("Database connection closed");
+    } catch (error) {
+      console.error("\u274C Error disconnecting from database:", error);
+      logger.error("Error disconnecting from database", error);
+      prisma = null;
+    }
   }
 }, "disconnectDatabase");
 

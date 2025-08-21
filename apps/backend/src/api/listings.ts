@@ -1,14 +1,8 @@
-import Fastify, { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import Fastify, { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
 import helmet from '@fastify/helmet';
 
 import { User as PrismaUser, PrismaClient } from '@prisma/client';
-import { z } from 'zod';
-import { ListingService } from '../services/listing-service';
-import { getPrismaClient, disconnectDatabase } from '../lib/database';
-import { handleError } from '../lib/errors';
-import { logger } from '../lib/logger';
-import { registerAuth } from '../plugins/auth';
 
 // Extend Fastify types to include custom properties
 declare module 'fastify' {
@@ -22,20 +16,27 @@ declare module 'fastify' {
   }
 }
 
-const listingService = new ListingService(getPrismaClient());
-
-// Schema definitions
-const toggleListingStatusSchema = z.object({
-  isLive: z.boolean(),
-});
-
-const listingParamsSchema = z.object({
-  listingId: z.string().cuid(),
-});
+import { getPrismaClient, disconnectDatabase } from '../lib/database';
+import { loggers } from '../lib/logger';
+import { handleError } from '../lib/errors';
+import { registerAuth } from '../plugins/auth';
+import { listingsRoutes } from '../routes/v1/listings';
 
 const buildListingsApp = async (): Promise<FastifyInstance> => {
   const fastify = Fastify({
-    logger: false,
+    logger: {
+      level: 'info',
+      serializers: {
+        req: (req) => ({
+          method: req.method,
+          url: req.url,
+          headers: req.headers,
+        }),
+        res: (res) => ({
+          statusCode: res.statusCode,
+        }),
+      },
+    },
     genReqId: () => randomUUID(),
   });
 
@@ -43,208 +44,94 @@ const buildListingsApp = async (): Promise<FastifyInstance> => {
   fastify.decorate('prisma', prisma);
 
   // Register plugins
-  // CORS handled dynamically in main app.ts
-  fastify.register(helmet);
+  await fastify.register(helmet);
+  await fastify.register(registerAuth);
 
-  // Register auth plugin - CRITICAL for request.user decoration
-  fastify.register(registerAuth);
+  // Add CORS handling
+  fastify.addHook('onRequest', async (request, reply) => {
+    const origin = request.headers.origin;
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'https://www.aces.fun',
+      'https://aces-monorepo-git-dev-dan-aces-fun.vercel.app',
+      'https://aces-monorepo-git-main-dan-aces-fun.vercel.app',
+    ];
+
+    if (origin && (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app'))) {
+      reply.header('Access-Control-Allow-Origin', origin);
+      reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      reply.header(
+        'Access-Control-Allow-Headers',
+        'Content-Type, Authorization, Accept, Origin, X-Requested-With',
+      );
+      reply.header('Access-Control-Allow-Credentials', 'true');
+      reply.header('Vary', 'Origin');
+    }
+  });
+
+  // Handle OPTIONS preflight
+  fastify.options('*', async (request, reply) => {
+    reply.code(204).send();
+  });
+
+  // Register the listings routes from the routes file
+  await fastify.register(listingsRoutes);
 
   // Register hooks
   fastify.addHook('onRequest', async (request) => {
     request.startTime = Date.now();
-    logger.info(`${request.id} ${request.method} ${request.url} ${request.headers['user-agent']}`);
+    loggers.request(request.id, request.method, request.url, request.headers['user-agent']);
   });
 
   fastify.addHook('onResponse', async (request, reply) => {
     const responseTime = request.startTime ? Date.now() - request.startTime : 0;
-    logger.info(
-      `${request.id} ${request.method} ${request.url} ${reply.statusCode} ${responseTime}ms`,
-    );
+    loggers.response(request.id, request.method, request.url, reply.statusCode, responseTime);
   });
 
-  // Global error handler
+  // Enhanced error handler
   fastify.setErrorHandler((error, request, reply) => {
+    fastify.log.error(
+      {
+        err: error,
+        req: request,
+        url: request.url,
+        method: request.method,
+        headers: request.headers,
+        params: request.params,
+        query: request.query,
+        userId: request.user?.id,
+        requestId: request.id,
+      },
+      'Listings request failed',
+    );
+
     try {
       handleError(error, reply);
-    } catch (error) {
-      handleError(error, reply);
+    } catch (handlerError) {
+      fastify.log.error(
+        {
+          err: handlerError,
+          originalError: error,
+          url: request.url,
+          method: request.method,
+          requestId: request.id,
+        },
+        'Error handler failed',
+      );
+
+      if (!reply.sent) {
+        reply.status(500).send({
+          success: false,
+          error: 'Internal server error',
+          requestId: request.id,
+        });
+      }
     }
   });
 
   fastify.addHook('onClose', async () => {
     await disconnectDatabase();
-  });
-
-  // Register routes
-  fastify.get('/', async (request: FastifyRequest, reply: FastifyReply) => {
-    try {
-      logger.info('Getting all live listings');
-
-      const listings = await listingService.getLiveListings();
-
-      return reply.status(200).send({
-        success: true,
-        data: listings,
-        count: listings.length,
-      });
-    } catch (error) {
-      logger.error('Error getting live listings:', error);
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to fetch live listings',
-      });
-    }
-  });
-
-  fastify.get(
-    '/:listingId',
-    async (
-      request: FastifyRequest<{
-        Params: z.infer<typeof listingParamsSchema>;
-      }>,
-      reply: FastifyReply,
-    ) => {
-      try {
-        const { listingId } = listingParamsSchema.parse(request.params);
-
-        logger.info(`Getting listing by ID: ${listingId}`);
-
-        const listing = await listingService.getListingById(listingId);
-
-        return reply.status(200).send({
-          success: true,
-          data: listing,
-        });
-      } catch (error) {
-        logger.error(`Error getting listing ${request.params.listingId}:`, error);
-
-        if (error instanceof Error && error.message.includes('not found')) {
-          return reply.status(404).send({
-            success: false,
-            error: 'Listing not found',
-          });
-        }
-
-        return reply.status(500).send({
-          success: false,
-          error: 'Failed to fetch listing',
-        });
-      }
-    },
-  );
-
-  fastify.post(
-    '/:listingId/toggle',
-    async (
-      request: FastifyRequest<{
-        Params: z.infer<typeof listingParamsSchema>;
-        Body: z.infer<typeof toggleListingStatusSchema>;
-      }>,
-      reply: FastifyReply,
-    ) => {
-      try {
-        const { listingId } = listingParamsSchema.parse(request.params);
-        const { isLive } = toggleListingStatusSchema.parse(request.body);
-
-        // Get user from request (should be set by auth middleware)
-        const userId = request.user?.id;
-        const userRole = request.user?.role;
-
-        if (!userId || userRole !== 'ADMIN') {
-          return reply.status(403).send({
-            success: false,
-            error: 'Admin access required',
-          });
-        }
-
-        logger.info(`Admin ${userId} toggling listing ${listingId} to isLive: ${isLive}`);
-
-        const updatedListing = await listingService.updateListingStatus({
-          listingId,
-          isLive,
-          updatedBy: userId,
-        });
-
-        return reply.status(200).send({
-          success: true,
-          data: updatedListing,
-          message: `Listing ${isLive ? 'activated' : 'deactivated'} successfully`,
-        });
-      } catch (error) {
-        logger.error(`Error toggling listing status for ${request.params.listingId}:`, error);
-
-        if (error instanceof Error && error.message.includes('not found')) {
-          return reply.status(404).send({
-            success: false,
-            error: 'Listing not found',
-          });
-        }
-
-        return reply.status(500).send({
-          success: false,
-          error: 'Failed to update listing status',
-        });
-      }
-    },
-  );
-
-  fastify.get('/admin/all', async (request: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const userId = request.user?.id;
-      const userRole = request.user?.role;
-
-      if (!userId || userRole !== 'ADMIN') {
-        return reply.status(403).send({
-          success: false,
-          error: 'Admin access required',
-        });
-      }
-
-      logger.info(`Admin ${userId} getting all listings`);
-
-      const listings = await listingService.getAllListings();
-
-      return reply.status(200).send({
-        success: true,
-        data: listings,
-        count: listings.length,
-      });
-    } catch (error) {
-      logger.error('Error getting all listings for admin:', error);
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to fetch listings',
-      });
-    }
-  });
-
-  fastify.get('/my', async (request: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const userId = request.user?.id;
-
-      if (!userId) {
-        return reply.status(401).send({
-          success: false,
-          error: 'Authentication required',
-        });
-      }
-
-      logger.info(`User ${userId} getting their listings`);
-
-      const listings = await listingService.getListingsByOwner(userId);
-
-      return reply.status(200).send({
-        success: true,
-        data: listings,
-        count: listings.length,
-      });
-    } catch (error) {
-      logger.error(`Error getting listings for user ${request.user?.id}:`, error);
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to fetch your listings',
-      });
-    }
   });
 
   return fastify;
@@ -253,15 +140,38 @@ const buildListingsApp = async (): Promise<FastifyInstance> => {
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const handler = async (req: VercelRequest, res: VercelResponse) => {
-  const app = await buildListingsApp();
-  await app.ready();
+  try {
+    const app = await buildListingsApp();
+    await app.ready();
 
-  // Handle path rewriting: /api/v1/listings/something → /something
-  if (req.url?.startsWith('/api/v1/listings')) {
-    req.url = req.url.replace('/api/v1/listings', '') || '/';
+    // Handle path rewriting: /api/v1/listings/... → /...
+    let path = req.url || '/';
+
+    if (path.startsWith('/api/v1/listings')) {
+      path = path.replace('/api/v1/listings', '') || '/';
+    }
+
+    req.url = path;
+
+    console.log('🔍 Listings handler processing:', {
+      originalUrl: req.url,
+      rewrittenPath: path,
+      method: req.method,
+    });
+
+    app.server.emit('request', req, res);
+  } catch (error) {
+    console.error('❌ Listings handler error:', error);
+
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString(),
+      });
+    }
   }
-
-  app.server.emit('request', req, res);
 };
 
 export default handler;
