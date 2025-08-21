@@ -19,17 +19,17 @@ export default defineConfig({
   platform: 'node',
   bundle: true,
   minify: false,
-  sourcemap: false, // Disable to reduce bundle size
+  sourcemap: false,
   clean: true,
   treeshake: false,
-  // MINIMAL externals - let Privy 1.15.3 bundle normally
+  // Minimal externals - let HPKE deps bundle since they're now explicit
   external: [
     '@prisma/client',
     '.prisma/client',
     'sharp',
     'bcrypt',
     'pino-pretty',
-    // REMOVED: All Privy and @hpke externals - let them bundle
+    // REMOVED: All Privy and HPKE externals - let them bundle with explicit deps
   ],
   cjsInterop: true,
   splitting: false,
@@ -37,6 +37,5 @@ export default defineConfig({
     options.keepNames = true;
     options.mainFields = ['main', 'module'];
     options.conditions = ['node'];
-    // REMOVED: external patterns that don't work
   },
 });
