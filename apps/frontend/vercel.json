@@ -2,7 +2,8 @@
   "git": {
     "deploymentEnabled": {
       "main": true,
-      "dev": true
+      "dev": true,
+      "feat/aceofbase-deployment": true
     }
   }
 }
