@@ -5,7 +5,7 @@ import { useState } from 'react';
 import ConnectWalletProfile from './connect-wallet-profile';
 import NavMenu from './nav-menu';
 
-interface ConnectWalletNavProps {
+export interface ConnectWalletNavProps {
   className?: string;
   onProfileClick?: () => void;
 }

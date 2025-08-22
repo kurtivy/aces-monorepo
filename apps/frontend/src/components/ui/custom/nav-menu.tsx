@@ -12,8 +12,8 @@ import { useModal } from '@/lib/contexts/modal-context';
 // Main navigation items
 // Main navigation items
 const mainNavItems = [
-  { href: '/launch', label: 'ICO Launch', external: false, action: 'navigate' },
-  { href: '/mint-token', label: 'Mint Token', external: false, action: 'navigate' },
+  // { href: '/launch', label: 'ICO Launch', external: false, action: 'navigate' },
+  { href: '/mint-token', label: 'Tokenize', external: false, action: 'navigate' },
   { href: '/about', label: 'About', external: false, action: 'modal' },
   { href: '/terms', label: 'Terms & PP', external: false, action: 'modal' },
 ];
@@ -171,7 +171,7 @@ const NavMenu: React.FC<NavMenuProps> = ({
       <AnimatePresence mode="wait">
         {isOpen && (
           <motion.div
-            className="absolute top-10 right-0 bg-black/95 border border-[#D0B264]/40 text-[#D0B264] rounded-lg overflow-hidden shadow-lg min-w-[180px] z-50"
+            className="absolute top-0 right-16 bg-black/95 border border-[#D0B264]/40 text-[#D0B264] rounded-lg overflow-hidden shadow-lg min-w-[180px] z-50"
             variants={compactMenuVariants}
             initial="closed"
             animate="open"
