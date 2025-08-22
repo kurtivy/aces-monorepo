@@ -287,7 +287,7 @@ export default function CreateTokenForm() {
                 <div className="p-6 rounded-2xl flex items-center gap-4 bg-gradient-to-r from-yellow-900/30 to-orange-900/30 border border-yellow-500/50 text-yellow-300 shadow-xl backdrop-blur-sm">
                   <AlertCircle className="w-6 h-6 flex-shrink-0" />
                   <p className="text-lg font-medium">
-                    Please connect walletto submit your token for approval.
+                    Please connect wallet to submit your token for approval.
                   </p>
                 </div>
               </div>

@@ -10,7 +10,8 @@ export function middleware(request: NextRequest) {
 
   // Block /launch and /profile routes on aces.fun (or localhost:3000)
   if (isDomain1 && (pathname.startsWith('/launch') || pathname.startsWith('/profile'))) {
-    return new NextResponse('Not Found', { status: 404 });
+    // Rewrite to a non-existent route to trigger the not-found.tsx page
+    return NextResponse.rewrite(new URL('/404', request.url));
   }
 
   // Redirect aceofbase.fun root to /launch
