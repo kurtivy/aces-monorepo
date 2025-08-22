@@ -4,12 +4,6 @@ export function middleware(request: NextRequest) {
   const hostname = request.headers.get('host');
   const pathname = request.nextUrl.pathname;
 
-  // Add comprehensive logging
-  console.log('🔍 MIDDLEWARE DEBUG:');
-  console.log('  Hostname:', hostname);
-  console.log('  Pathname:', pathname);
-  console.log('  Full URL:', request.url);
-
   // Define domain types
   const isAceofbaseDomain =
     hostname === 'aceofbase.fun' ||
@@ -25,9 +19,6 @@ export function middleware(request: NextRequest) {
     hostname === 'local.aces.fun:3000' ||
     (hostname?.includes('vercel.app') && !hostname?.includes('aceofbase'));
 
-  console.log('  Is Aceofbase Domain:', isAceofbaseDomain);
-  console.log('  Is Main Domain:', isMainDomain);
-
   // Main domain blocking logic
   if (isMainDomain) {
     if (
@@ -35,7 +26,6 @@ export function middleware(request: NextRequest) {
       pathname.startsWith('/launch') ||
       pathname.startsWith('/aceofbase')
     ) {
-      console.log('  🚫 BLOCKING route on main domain:', pathname);
       return NextResponse.rewrite(new URL('/404', request.url));
     }
   }
@@ -57,7 +47,6 @@ export function middleware(request: NextRequest) {
     const isAllowedPath = allowedPaths.some((path) => pathname.startsWith(path));
 
     if (!isAllowedPath) {
-      console.log('  🚫 BLOCKING non-root route on aceofbase domain:', pathname);
       return NextResponse.rewrite(new URL('/404', request.url));
     }
   }
@@ -72,8 +61,6 @@ export function middleware(request: NextRequest) {
   response.headers.set('X-Middleware-Path', pathname);
   response.headers.set('X-Middleware-Aceofbase', isAceofbaseDomain?.toString() || 'false');
   response.headers.set('X-Middleware-Main', isMainDomain?.toString() || 'false');
-
-  console.log('  ✅ CONTINUING to next()');
 
   return response;
 }
