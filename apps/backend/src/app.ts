@@ -3,13 +3,12 @@ import { randomUUID } from 'crypto';
 import helmet from '@fastify/helmet';
 import multipart from '@fastify/multipart';
 
-import { User as PrismaUser, PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 
 // Extend Fastify types to include custom properties
 declare module 'fastify' {
   interface FastifyRequest {
     startTime?: number;
-    user: PrismaUser | null;
   }
 
   interface FastifyInstance {

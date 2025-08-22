@@ -8,7 +8,6 @@ import { createServerlessHandler } from '../lib/serverless-adapter';
 declare module 'fastify' {
   interface FastifyRequest {
     startTime?: number;
-    user: PrismaUser | null;
   }
 
   interface FastifyInstance {

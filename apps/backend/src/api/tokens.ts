@@ -14,7 +14,6 @@ import { registerAuth } from '../plugins/auth';
 declare module 'fastify' {
   interface FastifyRequest {
     startTime?: number;
-    user: PrismaUser | null;
   }
 
   interface FastifyInstance {
