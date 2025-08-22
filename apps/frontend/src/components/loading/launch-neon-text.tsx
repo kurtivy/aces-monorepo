@@ -94,14 +94,12 @@ const LaunchNeonText: React.FC<LaunchNeonTextProps> = ({
   const currentFont = funFonts[currentFontIndex];
 
   return (
-    <div className="w-full max-w-5xl mx-auto text-center">
+    <div className="w-full max-w-6xl mx-auto text-center px-4">
       {/* Main Logo Text */}
-      <div className="flex items-center justify-center mb-6 sm:mb-8 md:mb-10 flex-wrap">
-        {/* Center the entire text block */}
-        <div className="flex items-center justify-center">
-          {/* ACES part */}
-          <div className="flex">
-            {acesText.split('').map((letter, index) => {
+      <div className="flex items-baseline justify-center mb-6 sm:mb-8 md:mb-10">
+        {/* ACES part */}
+        <div className="flex items-baseline">
+          {acesText.split('').map((letter, index) => {
               const isVisible = index < visibleLetters;
               return (
                 <motion.span
@@ -130,9 +128,9 @@ const LaunchNeonText: React.FC<LaunchNeonTextProps> = ({
             })}
           </div>
 
-          {/* TOKEN part - Using the v8 approach with fixed min-widths */}
-          <div className="ml-0.5 sm:ml-1 md:ml-1 -mt-1 sm:-mt-1.5 md:-mt-2">
-            <div className="inline-block w-[120px] sm:w-[135px] md:w-[250px] lg:w-[250px] xl:w-[250px] text-center">
+        {/* TOKEN part - Simplified without fixed widths */}
+        <div className="ml-1 sm:ml-2 md:ml-3">
+          <div className="inline-block text-center">
               {letterRevealComplete ? (
                 <motion.div
                   className="relative"
@@ -204,7 +202,6 @@ const LaunchNeonText: React.FC<LaunchNeonTextProps> = ({
                 </div>
               )}
             </div>
-          </div>
         </div>
       </div>
     </div>

@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Ace of Base',
-  description: 'Ace of Base',
+  title: 'Ace of Base | ACES TOKEN IPO',
+  description: 'Ace of Base | ACES TOKEN IPO',
   metadataBase: new URL('https://www.aceofbase.fun'),
   openGraph: {
     title: 'ACES TOKEN IPO - Buy $ACES Now',
@@ -36,7 +36,11 @@ export const metadata: Metadata = {
     ],
   },
   icons: {
-    icon: '/aceofbase-favicon.ico',
+    icon: [
+      { url: '/aceofbase-favicon.ico' },
+      { url: '/aceofbase-favicon.ico', sizes: '16x16', type: 'image/x-icon' },
+      { url: '/aceofbase-favicon.ico', sizes: '32x32', type: 'image/x-icon' },
+    ],
     shortcut: '/aceofbase-favicon.ico',
     apple: '/aceofbase-favicon.ico',
   },
