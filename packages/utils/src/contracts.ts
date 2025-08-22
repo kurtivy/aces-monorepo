@@ -17,6 +17,7 @@ export const CONTRACTS = {
     acesVault: '0x791a62cfc43390E800Fb81EaB9b1Cb86E50d68A0', // Proxy address
     acesToken: '0x9D517deF70aCa7fa668dA73b7252957BF5Afa410', // Token address
     implementation: '0x6fd697590ad40Ffc7ff039cfb32B43fBc1EF31E7', // Implementation (for reference)
+    acesSwap: '0x7466CF735c8AfD8ecDdd0914590d288566bE6522', // AcesSwap contract for USDC/USDT purchases
   },
 } as const;
 

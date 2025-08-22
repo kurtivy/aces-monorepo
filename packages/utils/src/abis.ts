@@ -1100,7 +1100,213 @@ export const ACES_VAULT_ABI = [
   },
 ] as const;
 
+// AcesSwap ABI - for USDC/USDT swapping functionality
+export const ACES_SWAP_ABI = [
+  {
+    type: 'constructor',
+    inputs: [
+      {
+        name: '_acesCurvesAddress',
+        type: 'address',
+        internalType: 'address',
+      },
+    ],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'sellUSDCAndBuyCurve',
+    inputs: [
+      {
+        name: 'amountIn',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+      {
+        name: 'amountOutMin',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+      {
+        name: 'roomOwner',
+        type: 'address',
+        internalType: 'address',
+      },
+      {
+        name: 'roomNumber',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+      {
+        name: 'amount',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+    ],
+    outputs: [
+      {
+        name: 'success',
+        type: 'bool',
+        internalType: 'bool',
+      },
+    ],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'sellUSDTAndBuyCurve',
+    inputs: [
+      {
+        name: 'amountIn',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+      {
+        name: 'amountOutMin',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+      {
+        name: 'roomOwner',
+        type: 'address',
+        internalType: 'address',
+      },
+      {
+        name: 'roomNumber',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+      {
+        name: 'amount',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+    ],
+    outputs: [
+      {
+        name: 'success',
+        type: 'bool',
+        internalType: 'bool',
+      },
+    ],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'getCurvesAddress',
+    inputs: [],
+    outputs: [
+      {
+        name: '',
+        type: 'address',
+        internalType: 'address',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'pause',
+    inputs: [],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'unpause',
+    inputs: [],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+] as const;
+
+// ERC20 ABI - for USDC/USDT approvals
+export const ERC20_ABI = [
+  {
+    type: 'function',
+    name: 'approve',
+    inputs: [
+      {
+        name: 'spender',
+        type: 'address',
+        internalType: 'address',
+      },
+      {
+        name: 'amount',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+    ],
+    outputs: [
+      {
+        name: '',
+        type: 'bool',
+        internalType: 'bool',
+      },
+    ],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'allowance',
+    inputs: [
+      {
+        name: 'owner',
+        type: 'address',
+        internalType: 'address',
+      },
+      {
+        name: 'spender',
+        type: 'address',
+        internalType: 'address',
+      },
+    ],
+    outputs: [
+      {
+        name: '',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'balanceOf',
+    inputs: [
+      {
+        name: 'account',
+        type: 'address',
+        internalType: 'address',
+      },
+    ],
+    outputs: [
+      {
+        name: '',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'decimals',
+    inputs: [],
+    outputs: [
+      {
+        name: '',
+        type: 'uint8',
+        internalType: 'uint8',
+      },
+    ],
+    stateMutability: 'view',
+  },
+] as const;
+
 // Exported for convenience
 export const ABIS = {
   AcesVault: ACES_VAULT_ABI,
+  AcesSwap: ACES_SWAP_ABI,
+  ERC20: ERC20_ABI,
 } as const;

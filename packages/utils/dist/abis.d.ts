@@ -846,6 +846,158 @@ export declare const ACES_VAULT_ABI: readonly [{
         readonly internalType: "bytes32";
     }];
 }];
+export declare const ACES_SWAP_ABI: readonly [{
+    readonly type: "constructor";
+    readonly inputs: readonly [{
+        readonly name: "_acesCurvesAddress";
+        readonly type: "address";
+        readonly internalType: "address";
+    }];
+    readonly stateMutability: "nonpayable";
+}, {
+    readonly type: "function";
+    readonly name: "sellUSDCAndBuyCurve";
+    readonly inputs: readonly [{
+        readonly name: "amountIn";
+        readonly type: "uint256";
+        readonly internalType: "uint256";
+    }, {
+        readonly name: "amountOutMin";
+        readonly type: "uint256";
+        readonly internalType: "uint256";
+    }, {
+        readonly name: "roomOwner";
+        readonly type: "address";
+        readonly internalType: "address";
+    }, {
+        readonly name: "roomNumber";
+        readonly type: "uint256";
+        readonly internalType: "uint256";
+    }, {
+        readonly name: "amount";
+        readonly type: "uint256";
+        readonly internalType: "uint256";
+    }];
+    readonly outputs: readonly [{
+        readonly name: "success";
+        readonly type: "bool";
+        readonly internalType: "bool";
+    }];
+    readonly stateMutability: "nonpayable";
+}, {
+    readonly type: "function";
+    readonly name: "sellUSDTAndBuyCurve";
+    readonly inputs: readonly [{
+        readonly name: "amountIn";
+        readonly type: "uint256";
+        readonly internalType: "uint256";
+    }, {
+        readonly name: "amountOutMin";
+        readonly type: "uint256";
+        readonly internalType: "uint256";
+    }, {
+        readonly name: "roomOwner";
+        readonly type: "address";
+        readonly internalType: "address";
+    }, {
+        readonly name: "roomNumber";
+        readonly type: "uint256";
+        readonly internalType: "uint256";
+    }, {
+        readonly name: "amount";
+        readonly type: "uint256";
+        readonly internalType: "uint256";
+    }];
+    readonly outputs: readonly [{
+        readonly name: "success";
+        readonly type: "bool";
+        readonly internalType: "bool";
+    }];
+    readonly stateMutability: "nonpayable";
+}, {
+    readonly type: "function";
+    readonly name: "getCurvesAddress";
+    readonly inputs: readonly [];
+    readonly outputs: readonly [{
+        readonly name: "";
+        readonly type: "address";
+        readonly internalType: "address";
+    }];
+    readonly stateMutability: "view";
+}, {
+    readonly type: "function";
+    readonly name: "pause";
+    readonly inputs: readonly [];
+    readonly outputs: readonly [];
+    readonly stateMutability: "nonpayable";
+}, {
+    readonly type: "function";
+    readonly name: "unpause";
+    readonly inputs: readonly [];
+    readonly outputs: readonly [];
+    readonly stateMutability: "nonpayable";
+}];
+export declare const ERC20_ABI: readonly [{
+    readonly type: "function";
+    readonly name: "approve";
+    readonly inputs: readonly [{
+        readonly name: "spender";
+        readonly type: "address";
+        readonly internalType: "address";
+    }, {
+        readonly name: "amount";
+        readonly type: "uint256";
+        readonly internalType: "uint256";
+    }];
+    readonly outputs: readonly [{
+        readonly name: "";
+        readonly type: "bool";
+        readonly internalType: "bool";
+    }];
+    readonly stateMutability: "nonpayable";
+}, {
+    readonly type: "function";
+    readonly name: "allowance";
+    readonly inputs: readonly [{
+        readonly name: "owner";
+        readonly type: "address";
+        readonly internalType: "address";
+    }, {
+        readonly name: "spender";
+        readonly type: "address";
+        readonly internalType: "address";
+    }];
+    readonly outputs: readonly [{
+        readonly name: "";
+        readonly type: "uint256";
+        readonly internalType: "uint256";
+    }];
+    readonly stateMutability: "view";
+}, {
+    readonly type: "function";
+    readonly name: "balanceOf";
+    readonly inputs: readonly [{
+        readonly name: "account";
+        readonly type: "address";
+        readonly internalType: "address";
+    }];
+    readonly outputs: readonly [{
+        readonly name: "";
+        readonly type: "uint256";
+        readonly internalType: "uint256";
+    }];
+    readonly stateMutability: "view";
+}, {
+    readonly type: "function";
+    readonly name: "decimals";
+    readonly inputs: readonly [];
+    readonly outputs: readonly [{
+        readonly name: "";
+        readonly type: "uint8";
+        readonly internalType: "uint8";
+    }];
+    readonly stateMutability: "view";
+}];
 export declare const ABIS: {
     readonly AcesVault: readonly [{
         readonly type: "constructor";
@@ -1694,6 +1846,158 @@ export declare const ABIS: {
             readonly type: "bytes32";
             readonly internalType: "bytes32";
         }];
+    }];
+    readonly AcesSwap: readonly [{
+        readonly type: "constructor";
+        readonly inputs: readonly [{
+            readonly name: "_acesCurvesAddress";
+            readonly type: "address";
+            readonly internalType: "address";
+        }];
+        readonly stateMutability: "nonpayable";
+    }, {
+        readonly type: "function";
+        readonly name: "sellUSDCAndBuyCurve";
+        readonly inputs: readonly [{
+            readonly name: "amountIn";
+            readonly type: "uint256";
+            readonly internalType: "uint256";
+        }, {
+            readonly name: "amountOutMin";
+            readonly type: "uint256";
+            readonly internalType: "uint256";
+        }, {
+            readonly name: "roomOwner";
+            readonly type: "address";
+            readonly internalType: "address";
+        }, {
+            readonly name: "roomNumber";
+            readonly type: "uint256";
+            readonly internalType: "uint256";
+        }, {
+            readonly name: "amount";
+            readonly type: "uint256";
+            readonly internalType: "uint256";
+        }];
+        readonly outputs: readonly [{
+            readonly name: "success";
+            readonly type: "bool";
+            readonly internalType: "bool";
+        }];
+        readonly stateMutability: "nonpayable";
+    }, {
+        readonly type: "function";
+        readonly name: "sellUSDTAndBuyCurve";
+        readonly inputs: readonly [{
+            readonly name: "amountIn";
+            readonly type: "uint256";
+            readonly internalType: "uint256";
+        }, {
+            readonly name: "amountOutMin";
+            readonly type: "uint256";
+            readonly internalType: "uint256";
+        }, {
+            readonly name: "roomOwner";
+            readonly type: "address";
+            readonly internalType: "address";
+        }, {
+            readonly name: "roomNumber";
+            readonly type: "uint256";
+            readonly internalType: "uint256";
+        }, {
+            readonly name: "amount";
+            readonly type: "uint256";
+            readonly internalType: "uint256";
+        }];
+        readonly outputs: readonly [{
+            readonly name: "success";
+            readonly type: "bool";
+            readonly internalType: "bool";
+        }];
+        readonly stateMutability: "nonpayable";
+    }, {
+        readonly type: "function";
+        readonly name: "getCurvesAddress";
+        readonly inputs: readonly [];
+        readonly outputs: readonly [{
+            readonly name: "";
+            readonly type: "address";
+            readonly internalType: "address";
+        }];
+        readonly stateMutability: "view";
+    }, {
+        readonly type: "function";
+        readonly name: "pause";
+        readonly inputs: readonly [];
+        readonly outputs: readonly [];
+        readonly stateMutability: "nonpayable";
+    }, {
+        readonly type: "function";
+        readonly name: "unpause";
+        readonly inputs: readonly [];
+        readonly outputs: readonly [];
+        readonly stateMutability: "nonpayable";
+    }];
+    readonly ERC20: readonly [{
+        readonly type: "function";
+        readonly name: "approve";
+        readonly inputs: readonly [{
+            readonly name: "spender";
+            readonly type: "address";
+            readonly internalType: "address";
+        }, {
+            readonly name: "amount";
+            readonly type: "uint256";
+            readonly internalType: "uint256";
+        }];
+        readonly outputs: readonly [{
+            readonly name: "";
+            readonly type: "bool";
+            readonly internalType: "bool";
+        }];
+        readonly stateMutability: "nonpayable";
+    }, {
+        readonly type: "function";
+        readonly name: "allowance";
+        readonly inputs: readonly [{
+            readonly name: "owner";
+            readonly type: "address";
+            readonly internalType: "address";
+        }, {
+            readonly name: "spender";
+            readonly type: "address";
+            readonly internalType: "address";
+        }];
+        readonly outputs: readonly [{
+            readonly name: "";
+            readonly type: "uint256";
+            readonly internalType: "uint256";
+        }];
+        readonly stateMutability: "view";
+    }, {
+        readonly type: "function";
+        readonly name: "balanceOf";
+        readonly inputs: readonly [{
+            readonly name: "account";
+            readonly type: "address";
+            readonly internalType: "address";
+        }];
+        readonly outputs: readonly [{
+            readonly name: "";
+            readonly type: "uint256";
+            readonly internalType: "uint256";
+        }];
+        readonly stateMutability: "view";
+    }, {
+        readonly type: "function";
+        readonly name: "decimals";
+        readonly inputs: readonly [];
+        readonly outputs: readonly [{
+            readonly name: "";
+            readonly type: "uint8";
+            readonly internalType: "uint8";
+        }];
+        readonly stateMutability: "view";
     }];
 };
 //# sourceMappingURL=abis.d.ts.map

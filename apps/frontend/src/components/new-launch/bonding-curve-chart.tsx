@@ -175,6 +175,13 @@ export default function BondingCurveChart({
           .tickValues(xTicks),
       );
 
+    // Use same tick values for grid as Y-axis
+    const gridYTickValues = [0, maxETHPrice * 0.5, maxETHPrice];
+    if (maxETHPrice > 10 && !gridYTickValues.some((val) => Math.abs(val - 10) < 0.5)) {
+      gridYTickValues.splice(-1, 0, 10); // Insert 10 ETH before the max value
+      gridYTickValues.sort((a, b) => a - b);
+    }
+
     g.append('g')
       .attr('class', 'grid')
       .call(
@@ -182,7 +189,7 @@ export default function BondingCurveChart({
           .axisLeft(yScale)
           .tickSize(-width)
           .tickFormat(() => '')
-          .tickValues([0, maxETHPrice * 0.5, maxETHPrice]),
+          .tickValues(gridYTickValues),
       );
 
     // Style grid lines
@@ -211,15 +218,24 @@ export default function BondingCurveChart({
     xAxis.selectAll('line, path').style('stroke', '#9CA3AF');
 
     // Add Y axis with proper formatting for very small ETH values
+    // Include 10 ETH as a reference point if it's within range
+    const yTickValues = [0, maxETHPrice * 0.5, maxETHPrice];
+    if (maxETHPrice > 10 && !yTickValues.some((val) => Math.abs(val - 10) < 0.5)) {
+      yTickValues.splice(-1, 0, 10); // Insert 10 ETH before the max value
+      yTickValues.sort((a, b) => a - b);
+    }
+
     const yAxis = g.append('g').call(
       d3
         .axisLeft(yScale)
-        .tickValues([0, maxETHPrice * 0.5, maxETHPrice])
+        .tickValues(yTickValues)
         .tickFormat((d: d3.NumberValue) => {
           const value = d.valueOf();
           if (value === 0) return '0';
+          if (value === 10) return '10 ETH'; // Clear label for 10 ETH
           if (value < 0.000001) return `${(value * 1e9).toFixed(2)}e-9 ETH`; // Show in scientific notation
           if (value < 0.001) return `${(value * 1e6).toFixed(2)}µ ETH`; // Show in micro ETH
+          if (value >= 1) return `${value.toFixed(1)} ETH`; // Cleaner format for larger values
           return `${value.toFixed(8)} ETH`;
         }),
     );

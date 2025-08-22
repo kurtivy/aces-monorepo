@@ -3,7 +3,7 @@
 // Generated from compiled contract artifacts
 // Run 'pnpm extract-abis' to regenerate
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ABIS = exports.ACES_VAULT_ABI = void 0;
+exports.ABIS = exports.ERC20_ABI = exports.ACES_SWAP_ABI = exports.ACES_VAULT_ABI = void 0;
 // Legacy ABIs (needed for backend)
 exports.ACES_VAULT_ABI = [
     {
@@ -1101,8 +1101,212 @@ exports.ACES_VAULT_ABI = [
         ],
     },
 ];
+// AcesSwap ABI - for USDC/USDT swapping functionality
+exports.ACES_SWAP_ABI = [
+    {
+        type: 'constructor',
+        inputs: [
+            {
+                name: '_acesCurvesAddress',
+                type: 'address',
+                internalType: 'address',
+            },
+        ],
+        stateMutability: 'nonpayable',
+    },
+    {
+        type: 'function',
+        name: 'sellUSDCAndBuyCurve',
+        inputs: [
+            {
+                name: 'amountIn',
+                type: 'uint256',
+                internalType: 'uint256',
+            },
+            {
+                name: 'amountOutMin',
+                type: 'uint256',
+                internalType: 'uint256',
+            },
+            {
+                name: 'roomOwner',
+                type: 'address',
+                internalType: 'address',
+            },
+            {
+                name: 'roomNumber',
+                type: 'uint256',
+                internalType: 'uint256',
+            },
+            {
+                name: 'amount',
+                type: 'uint256',
+                internalType: 'uint256',
+            },
+        ],
+        outputs: [
+            {
+                name: 'success',
+                type: 'bool',
+                internalType: 'bool',
+            },
+        ],
+        stateMutability: 'nonpayable',
+    },
+    {
+        type: 'function',
+        name: 'sellUSDTAndBuyCurve',
+        inputs: [
+            {
+                name: 'amountIn',
+                type: 'uint256',
+                internalType: 'uint256',
+            },
+            {
+                name: 'amountOutMin',
+                type: 'uint256',
+                internalType: 'uint256',
+            },
+            {
+                name: 'roomOwner',
+                type: 'address',
+                internalType: 'address',
+            },
+            {
+                name: 'roomNumber',
+                type: 'uint256',
+                internalType: 'uint256',
+            },
+            {
+                name: 'amount',
+                type: 'uint256',
+                internalType: 'uint256',
+            },
+        ],
+        outputs: [
+            {
+                name: 'success',
+                type: 'bool',
+                internalType: 'bool',
+            },
+        ],
+        stateMutability: 'nonpayable',
+    },
+    {
+        type: 'function',
+        name: 'getCurvesAddress',
+        inputs: [],
+        outputs: [
+            {
+                name: '',
+                type: 'address',
+                internalType: 'address',
+            },
+        ],
+        stateMutability: 'view',
+    },
+    {
+        type: 'function',
+        name: 'pause',
+        inputs: [],
+        outputs: [],
+        stateMutability: 'nonpayable',
+    },
+    {
+        type: 'function',
+        name: 'unpause',
+        inputs: [],
+        outputs: [],
+        stateMutability: 'nonpayable',
+    },
+];
+// ERC20 ABI - for USDC/USDT approvals
+exports.ERC20_ABI = [
+    {
+        type: 'function',
+        name: 'approve',
+        inputs: [
+            {
+                name: 'spender',
+                type: 'address',
+                internalType: 'address',
+            },
+            {
+                name: 'amount',
+                type: 'uint256',
+                internalType: 'uint256',
+            },
+        ],
+        outputs: [
+            {
+                name: '',
+                type: 'bool',
+                internalType: 'bool',
+            },
+        ],
+        stateMutability: 'nonpayable',
+    },
+    {
+        type: 'function',
+        name: 'allowance',
+        inputs: [
+            {
+                name: 'owner',
+                type: 'address',
+                internalType: 'address',
+            },
+            {
+                name: 'spender',
+                type: 'address',
+                internalType: 'address',
+            },
+        ],
+        outputs: [
+            {
+                name: '',
+                type: 'uint256',
+                internalType: 'uint256',
+            },
+        ],
+        stateMutability: 'view',
+    },
+    {
+        type: 'function',
+        name: 'balanceOf',
+        inputs: [
+            {
+                name: 'account',
+                type: 'address',
+                internalType: 'address',
+            },
+        ],
+        outputs: [
+            {
+                name: '',
+                type: 'uint256',
+                internalType: 'uint256',
+            },
+        ],
+        stateMutability: 'view',
+    },
+    {
+        type: 'function',
+        name: 'decimals',
+        inputs: [],
+        outputs: [
+            {
+                name: '',
+                type: 'uint8',
+                internalType: 'uint8',
+            },
+        ],
+        stateMutability: 'view',
+    },
+];
 // Exported for convenience
 exports.ABIS = {
     AcesVault: exports.ACES_VAULT_ABI,
+    AcesSwap: exports.ACES_SWAP_ABI,
+    ERC20: exports.ERC20_ABI,
 };
 //# sourceMappingURL=abis.js.map

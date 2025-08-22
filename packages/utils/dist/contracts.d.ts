@@ -13,6 +13,7 @@ export declare const CONTRACTS: {
         readonly acesVault: "0x791a62cfc43390E800Fb81EaB9b1Cb86E50d68A0";
         readonly acesToken: "0x9D517deF70aCa7fa668dA73b7252957BF5Afa410";
         readonly implementation: "0x6fd697590ad40Ffc7ff039cfb32B43fBc1EF31E7";
+        readonly acesSwap: "0x7466CF735c8AfD8ecDdd0914590d288566bE6522";
     };
 };
 export type NetworkName = keyof typeof CONTRACTS;
