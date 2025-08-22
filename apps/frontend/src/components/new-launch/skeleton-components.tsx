@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import NeonText from '../loading/neon-text';
+import LaunchNeonText from '../loading/launch-neon-text';
 
 // Skeleton for image tiles
 export const ImageTileSkeleton: React.FC<{
@@ -111,30 +111,57 @@ export const ChartSkeleton: React.FC = () => (
   </div>
 );
 
-// Loading overlay with neon text animation
+// Loading overlay with launch-specific neon text animation
 export const LoadingOverlay: React.FC = () => (
-  <div className="fixed inset-0 bg-black/95 backdrop-blur-sm z-50 flex items-center justify-center">
-    <div className="text-center space-y-8 max-w-5xl mx-auto p-8">
-      {/* Neon Text Animation - ACES.FUN */}
+  <div className="fixed inset-0 z-50 flex items-center justify-center"
+    style={{
+      background: 'linear-gradient(180deg, #000000 0%, #1A1A1A 50%, #000000 100%)',
+    }}
+  >
+    {/* Subtle animated background pattern */}
+    <div className="absolute inset-0 opacity-20">
+      <div 
+        className="absolute inset-0 animate-pulse"
+        style={{
+          background: 'radial-gradient(circle at 30% 40%, rgba(208, 178, 100, 0.1) 0%, transparent 50%), radial-gradient(circle at 70% 60%, rgba(215, 191, 117, 0.08) 0%, transparent 50%)',
+        }}
+      />
+    </div>
+
+    <div className="text-center space-y-8 max-w-6xl mx-auto p-8 relative z-10">
+      {/* Launch Neon Text Animation - $ACES ICO */}
       <div className="flex items-center justify-center">
-        <NeonText isComplete={false} skipLetterAnimation={false} />
+        <LaunchNeonText isComplete={false} skipLetterAnimation={false} />
       </div>
 
-      {/* Loading animation - Three balls bouncing one at a time */}
-      <div className="flex items-center justify-center space-x-2 mt-12">
+      {/* Loading animation - Enhanced golden bouncing dots */}
+      <div className="flex items-center justify-center space-x-3 mt-12">
         <div
-          className="w-3 h-3 bg-[#D0B264] rounded-full animate-bounce"
-          style={{ animationDelay: '0ms' }}
+          className="w-4 h-4 bg-[#D0B264] rounded-full animate-bounce shadow-lg"
+          style={{ 
+            animationDelay: '0ms',
+            boxShadow: '0 0 15px rgba(208, 178, 100, 0.5)',
+          }}
         ></div>
         <div
-          className="w-3 h-3 bg-[#D0B264] rounded-full animate-bounce"
-          style={{ animationDelay: '200ms' }}
+          className="w-4 h-4 bg-[#D7BF75] rounded-full animate-bounce shadow-lg"
+          style={{ 
+            animationDelay: '200ms',
+            boxShadow: '0 0 15px rgba(215, 191, 117, 0.5)',
+          }}
         ></div>
         <div
-          className="w-3 h-3 bg-[#D0B264] rounded-full animate-bounce"
-          style={{ animationDelay: '400ms' }}
+          className="w-4 h-4 bg-[#D0B264] rounded-full animate-bounce shadow-lg"
+          style={{ 
+            animationDelay: '400ms',
+            boxShadow: '0 0 15px rgba(208, 178, 100, 0.5)',
+          }}
         ></div>
       </div>
     </div>
+
+    {/* Golden glow effects */}
+    <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#D0B264] rounded-full opacity-5 blur-3xl animate-pulse" />
+    <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-[#D7BF75] rounded-full opacity-5 blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
   </div>
 );

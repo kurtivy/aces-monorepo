@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import AcesHeader from '@/components/ui/custom/aces-header';
+// import AcesHeader from '@/components/ui/custom/aces-header';
+import LaunchHeader from './launch-header';
 import Image from 'next/image';
 import BondingCurveChart from './bonding-curve-chart';
 import CountdownTimer from './countdown-timer';
@@ -14,6 +15,7 @@ import { useAuth } from '@/lib/auth/auth-context';
 import { usePageLoading } from '@/hooks/use-page-loading';
 import { formatEther } from 'viem';
 import Footer from '@/components/ui/custom/footer';
+import LaunchIntroAnimation from '../loading/launch-intro-animation';
 
 // Import skeleton components
 import {
@@ -411,6 +413,7 @@ const ImageTile: React.FC<ImageTileProps> = ({ position, imageUrl, alt, tileKey 
 // Main ICO Launch Page Component
 const ICOLaunchPage: React.FC = () => {
   const [isMobile, setIsMobile] = useState(false);
+  const [showIntroAnimation, setShowIntroAnimation] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
   const { contractState } = useBondingCurveContracts();
 
@@ -438,6 +441,11 @@ const ICOLaunchPage: React.FC = () => {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
+  // Handle intro animation completion
+  const handleIntroAnimationComplete = () => {
+    setShowIntroAnimation(false);
+  };
+
   // Show loading overlay while images and contract data load
   if (!pageLoading.isReady) {
     return (
@@ -451,7 +459,24 @@ const ICOLaunchPage: React.FC = () => {
     );
   }
 
-  // Page is ready - show with intro animation
+  // Show intro animation when ready, then transition to main content
+  if (showIntroAnimation) {
+    return (
+      <>
+        <LaunchIntroAnimation
+          isComplete={pageLoading.isReady}
+          onIntroAnimationComplete={handleIntroAnimationComplete}
+          skipLetterAnimation={false}
+        />
+        {/* Pre-render the page structure for faster transition */}
+        <div className="opacity-0 pointer-events-none fixed inset-0">
+          <ICOPageContent isMobile={isMobile} containerRef={containerRef} isReady={true} />
+        </div>
+      </>
+    );
+  }
+
+  // Page is ready and intro animation is complete - show main content
   return <ICOPageContent isMobile={isMobile} containerRef={containerRef} isReady={true} />;
 };
 
@@ -496,7 +521,8 @@ const ICOPageContent: React.FC<ICOPageContentProps> = ({ isMobile, containerRef,
 
       {/* Header - spans full width */}
       <div className="relative z-50">
-        <AcesHeader />
+        {/* <AcesHeader /> */}
+        <LaunchHeader />
       </div>
 
       {/* Main Layout Container - content starts right after header */}
