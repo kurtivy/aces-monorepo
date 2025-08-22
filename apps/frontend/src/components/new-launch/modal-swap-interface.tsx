@@ -869,7 +869,10 @@ export default function ModalSwapInterface({
                     ? 'Processing transaction...'
                     : approvalInProgress
                       ? `Approving ${selectedCurrency}...`
-                      : selectedCurrency !== 'ETH' && needsApproval && !approvalCompleted && isContractReady
+                      : selectedCurrency !== 'ETH' &&
+                          needsApproval &&
+                          !approvalCompleted &&
+                          isContractReady
                         ? `Approve ${selectedCurrency}`
                         : selectedCurrency !== 'ETH' && !isContractReady
                           ? `${selectedCurrency} purchases coming soon`
