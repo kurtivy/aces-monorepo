@@ -70,6 +70,17 @@ const nextConfig: NextConfig = {
           ],
           destination: '/aceofbase/:path*',
         },
+        // Rewrite www.aceofbase.fun requests to /aceofbase routes
+        {
+          source: '/:path*',
+          has: [
+            {
+              type: 'host',
+              value: 'www.aceofbase.fun',
+            },
+          ],
+          destination: '/aceofbase/:path*',
+        },
         // Handle localhost:3001 and local.aceofbase.fun for development
         {
           source: '/:path*',

@@ -13,12 +13,14 @@ export function middleware(request: NextRequest) {
   // Define domain types
   const isAceofbaseDomain =
     hostname === 'aceofbase.fun' ||
+    hostname === 'www.aceofbase.fun' ||
     hostname === 'localhost:3001' ||
     hostname === 'local.aceofbase.fun:3000' ||
     (hostname?.includes('vercel.app') && hostname?.includes('aceofbase'));
 
   const isMainDomain =
     hostname === 'aces.fun' ||
+    hostname === 'www.aces.fun' ||
     hostname === 'localhost:3000' ||
     hostname === 'local.aces.fun:3000' ||
     (hostname?.includes('vercel.app') && !hostname?.includes('aceofbase'));
