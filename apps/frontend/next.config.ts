@@ -61,7 +61,8 @@ const nextConfig: NextConfig = {
       beforeFiles: [
         // Rewrite aceofbase.fun requests to /aceofbase routes (excluding static assets)
         {
-          source: '/((?!_next/static|_next/image|favicon.ico|api|canvas-images|fonts|svg).*)',
+          source:
+            '/((?!_next/static|_next/image|favicon.ico|aceofbase-favicon.ico|aceofbase.svg|api|canvas-images|fonts|svg).*)',
           has: [
             {
               type: 'host',
@@ -72,7 +73,8 @@ const nextConfig: NextConfig = {
         },
         // Rewrite www.aceofbase.fun requests to /aceofbase routes (excluding static assets)
         {
-          source: '/((?!_next/static|_next/image|favicon.ico|api|canvas-images|fonts|svg).*)',
+          source:
+            '/((?!_next/static|_next/image|favicon.ico|aceofbase-favicon.ico|aceofbase.svg|api|canvas-images|fonts|svg).*)',
           has: [
             {
               type: 'host',
@@ -83,7 +85,8 @@ const nextConfig: NextConfig = {
         },
         // Handle localhost:3001 and local.aceofbase.fun for development
         {
-          source: '/((?!_next/static|_next/image|favicon.ico|api|canvas-images|fonts|svg).*)',
+          source:
+            '/((?!_next/static|_next/image|favicon.ico|aceofbase-favicon.ico|aceofbase.svg|api|canvas-images|fonts|svg).*)',
           has: [
             {
               type: 'host',
@@ -93,7 +96,8 @@ const nextConfig: NextConfig = {
           destination: '/aceofbase/$1',
         },
         {
-          source: '/((?!_next/static|_next/image|favicon.ico|api|canvas-images|fonts|svg).*)',
+          source:
+            '/((?!_next/static|_next/image|favicon.ico|aceofbase-favicon.ico|aceofbase.svg|api|canvas-images|fonts|svg).*)',
           has: [
             {
               type: 'host',
@@ -104,7 +108,8 @@ const nextConfig: NextConfig = {
         },
         // Handle Vercel deployments with 'aceofbase' in the URL
         {
-          source: '/((?!_next/static|_next/image|favicon.ico|api|canvas-images|fonts|svg).*)',
+          source:
+            '/((?!_next/static|_next/image|favicon.ico|aceofbase-favicon.ico|aceofbase.svg|api|canvas-images|fonts|svg).*)',
           has: [
             {
               type: 'host',

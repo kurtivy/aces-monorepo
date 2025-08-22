@@ -55,7 +55,7 @@ const LaunchIntroAnimation: React.FC<LaunchIntroAnimationProps> = ({
           className="fixed inset-0 min-h-screen bg-black flex flex-col items-center justify-center overflow-hidden z-50"
         >
           {/* Main content container */}
-          <div className="relative flex flex-col items-center justify-center z-20 px-8">
+          <div className="relative flex flex-col items-center justify-center z-20">
             <LaunchNeonText
               isComplete={isComplete}
               minimumTimeElapsed={minimumTimeElapsed}
