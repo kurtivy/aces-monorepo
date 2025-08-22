@@ -1,6 +1,118 @@
 import type { ImageInfo } from '../../../types/canvas';
 import { getDeviceCapabilities } from '../../utils/browser-utils';
 
+// Countdown timer utility function for canvas rendering
+interface TimeLeft {
+  days: number;
+  hours: number;
+  minutes: number;
+  seconds: number;
+}
+
+const calculateTimeLeft = (targetDate: Date): TimeLeft => {
+  const difference = +targetDate - +new Date();
+  let timeLeft: TimeLeft = {
+    days: 0,
+    hours: 0,
+    minutes: 0,
+    seconds: 0,
+  };
+
+  if (difference > 0) {
+    timeLeft = {
+      days: Math.floor(difference / (1000 * 60 * 60 * 24)),
+      hours: Math.floor((difference / (1000 * 60 * 60)) % 24),
+      minutes: Math.floor((difference / 1000 / 60) % 60),
+      seconds: Math.floor((difference / 1000) % 60),
+    };
+  }
+
+  return timeLeft;
+};
+
+// Draw countdown timer in top right corner of featured section
+const drawCountdownTimer = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  opacity: number = 1,
+) => {
+  const targetDate = new Date('2025-09-01T12:00:00-04:00'); // September 1, 2025 at 12PM Eastern Time
+  const timeLeft = calculateTimeLeft(targetDate);
+
+  // Don't render if countdown is over
+  if (
+    timeLeft.days === 0 &&
+    timeLeft.hours === 0 &&
+    timeLeft.minutes === 0 &&
+    timeLeft.seconds === 0
+  ) {
+    return;
+  }
+
+  ctx.save();
+  ctx.globalAlpha = opacity;
+
+  // Position in top right corner with padding
+  const padding = 16;
+  const timerHeight = Math.min(60, height * 0.2); // Responsive height, max 60px
+  const unitWidth = Math.min(45, width * 0.08); // Responsive width per unit
+  const gap = 4;
+  const totalWidth = unitWidth * 4 + gap * 3; // 4 units with gaps
+  const timerX = x + width - padding - totalWidth;
+  const timerY = y + padding;
+
+  // Ensure timer fits within bounds
+  if (timerX < x + padding) {
+    ctx.restore();
+    return;
+  }
+
+  const timeUnits = [
+    { value: timeLeft.days, label: 'DAYS' },
+    { value: timeLeft.hours, label: 'HRS' },
+    { value: timeLeft.minutes, label: 'MIN' },
+    { value: timeLeft.seconds, label: 'SEC' },
+  ];
+
+  // Draw each time unit
+  timeUnits.forEach(({ value, label }, index) => {
+    const unitX = timerX + index * (unitWidth + gap);
+    const unitY = timerY;
+
+    // Background for each unit
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.beginPath();
+    ctx.roundRect(unitX, unitY, unitWidth, timerHeight, 6);
+    ctx.fill();
+
+    // Border
+    ctx.strokeStyle = 'rgba(208, 178, 100, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Number value
+    ctx.fillStyle = '#D0B264';
+    ctx.font = `bold ${Math.min(16, timerHeight * 0.35)}px Arial, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(
+      value.toString().padStart(2, '0'),
+      unitX + unitWidth / 2,
+      unitY + timerHeight * 0.4,
+    );
+
+    // Label
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.font = `${Math.min(8, timerHeight * 0.15)}px Arial, sans-serif`;
+    ctx.fillText(label, unitX + unitWidth / 2, unitY + timerHeight * 0.75);
+  });
+
+  ctx.restore();
+};
+
 // Safari-specific performance optimizations
 const isSafari =
   typeof navigator !== 'undefined' &&
@@ -128,27 +240,35 @@ export const drawFeaturedSection = (
     ctx.restore();
   }
 
-  // Draw "FEATURED" label in top-left corner
+  // Draw "FEATURED" label aligned with countdown timer
   ctx.save();
+
+  // Calculate countdown timer position to align text with it
+  const padding = 16;
+  const timerHeight = Math.min(60, height * 0.2); // Same calculation as in countdown timer
+  const featuredTextY = y + padding + timerHeight / 2; // Center vertically with timer
 
   // Gold gradient for text (matching home area text)
   const textGradient = ctx.createLinearGradient(
     x + 16,
-    y + 16,
+    featuredTextY - 10, // Adjust gradient positioning
     x + 16 + width * 0.3, // Scale gradient width appropriately
-    y + 16 + height * 0.08, // Scale gradient height to text size
+    featuredTextY + 10, // Scale gradient height to text size
   );
   textGradient.addColorStop(0, '#FFFFFF');
-  textGradient.addColorStop(0.1, '#D0B264');
-  textGradient.addColorStop(0.9, '#D0B264');
+  textGradient.addColorStop(0.15, '#D0B264');
+  textGradient.addColorStop(0.95, '#D0B264');
   textGradient.addColorStop(1, '#FFFFFF');
 
   ctx.fillStyle = textGradient;
   ctx.font = `bold ${Math.min(width, height) * 0.08}px 'heading'`;
   ctx.textAlign = 'left';
-  ctx.textBaseline = 'top';
-  ctx.fillText('FEATURED', x + 16, y + 16);
+  ctx.textBaseline = 'middle'; // Changed from 'top' to 'middle' for better vertical centering
+  ctx.fillText('FEATURED', x + 16, featuredTextY);
   ctx.restore();
+
+  // Draw countdown timer in top-right corner
+  drawCountdownTimer(ctx, x, y, width, height, 1.0);
 
   // Draw premium border
   ctx.save();
@@ -315,16 +435,24 @@ export const drawAnimatedFeaturedSection = (
   // Restore context to remove scale transformation for borders and labels
   ctx.restore();
 
-  // Draw "FEATURED" label with fade-in
+  // Draw countdown timer in top-right corner with fade-in
+  drawCountdownTimer(ctx, drawX, drawY, width, height, opacity * borderAnimationProgress);
+
+  // Draw "FEATURED" label with fade-in, aligned with countdown timer
   ctx.save();
   ctx.globalAlpha = opacity * borderAnimationProgress;
+
+  // Calculate countdown timer position to align text with it
+  const padding = 16;
+  const timerHeight = Math.min(60, height * 0.2); // Same calculation as in countdown timer
+  const featuredTextY = drawY + padding + timerHeight / 2; // Center vertically with timer
 
   // Gold gradient for text (matching home area text)
   const textGradient = ctx.createLinearGradient(
     drawX + 16,
-    drawY + 16,
+    featuredTextY - 10, // Adjust gradient positioning
     drawX + 16 + width * 0.3, // Scale gradient width appropriately
-    drawY + 16 + height * 0.08, // Scale gradient height to text size
+    featuredTextY + 10, // Scale gradient height to text size
   );
   textGradient.addColorStop(0, '#FFFFFF');
   textGradient.addColorStop(0.1, '#D0B264');
@@ -334,8 +462,8 @@ export const drawAnimatedFeaturedSection = (
   ctx.fillStyle = textGradient;
   ctx.font = `bold ${Math.min(width, height) * 0.08}px 'heading'`;
   ctx.textAlign = 'left';
-  ctx.textBaseline = 'top';
-  ctx.fillText('FEATURED', drawX + 16, drawY + 16);
+  ctx.textBaseline = 'middle'; // Changed from 'top' to 'middle' for better vertical centering
+  ctx.fillText('FEATURED', drawX + 16, featuredTextY);
   ctx.restore();
 
   // Draw animated border with progressive appearance
