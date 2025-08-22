@@ -16,7 +16,10 @@ import ContactButton from '../ui/custom/contact-button';
 import BuiltOnBaseOverlay from '../ui/custom/built-on-base-overlay';
 import ImageDetailsModal from '../ui/custom/image-details-modal';
 import ContactFormModal from '../ui/custom/contact-form-modal';
+import AboutModal from '../ui/custom/about-modal';
+import TermsModal from '../ui/custom/terms-modal';
 import IntroAnimation from '../loading/intro-animation';
+import { useModal } from '../../lib/contexts/modal-context';
 import {
   mobileUtils,
   setScrollRestoration,
@@ -46,6 +49,16 @@ const InfiniteCanvas = ({
   const router = useRouter();
   const [selectedImage, setSelectedImage] = useState<ImageInfo | null>(null);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+
+  // Modal context for About and Terms modals
+  const {
+    isAboutModalOpen,
+    isTermsModalOpen,
+    openAboutModal,
+    openTermsModal,
+    closeAboutModal,
+    closeTermsModal,
+  } = useModal();
 
   const [loadingState, setLoadingState] = useState<LoadingState>('loading');
 
@@ -90,7 +103,7 @@ const InfiniteCanvas = ({
     viewState,
     imagesLoaded: imagesLoaded,
     canvasVisible: loadingState !== 'loading' || hasSeenIntro,
-    onCreateTokenClick: () => router.push('/launch'), // Navigate to ICO launch page
+    onCreateTokenClick: () => (window.location.href = 'https://www.aceofbase.fun'), // Navigate to aceofbase domain
     imagePlacementMap: imagePlacementMapRef,
     unitSize: unitSize,
     canvasRef: canvasRef,
@@ -128,6 +141,9 @@ const InfiniteCanvas = ({
     // FEATURED SECTION: Add featured section props
     featuredImage,
     onFeaturedImageClick: onFeaturedImageClick || setSelectedImage,
+    // Modal callbacks for home area buttons
+    onAboutClick: openAboutModal,
+    onTermsClick: openTermsModal,
   });
 
   const interactionsEnabled = loadingState === 'ready' && imagesLoaded;
@@ -388,6 +404,8 @@ const InfiniteCanvas = ({
       {/* Modals and UI */}
       <ImageDetailsModal imageInfo={selectedImage} onClose={handleModalClose} />
       <ContactFormModal isOpen={isContactModalOpen} onClose={handleContactModalClose} />
+      <AboutModal isOpen={isAboutModalOpen} onClose={closeAboutModal} />
+      <TermsModal isOpen={isTermsModalOpen} onClose={closeTermsModal} />
       {isUIVisible && !selectedImage && (
         <>
           <motion.div

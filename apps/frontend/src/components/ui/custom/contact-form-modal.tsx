@@ -165,7 +165,7 @@ export default function ContactFormModal({ isOpen, onClose }: ContactFormModalPr
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!validateForm()) {
       return;
     }
@@ -250,7 +250,7 @@ export default function ContactFormModal({ isOpen, onClose }: ContactFormModalPr
               <div>
                 <h2 className="text-xl font-bold text-[#D0B264] mb-1">Get in Touch</h2>
                 <p className="text-sm text-[#FFFFFF]/70">
-                  Don't see what you're looking for? Tell us what you need!
+                  Don&apos;t see what you&apos;re looking for? Tell us what you need!
                 </p>
               </div>
               <button
@@ -272,7 +272,7 @@ export default function ContactFormModal({ isOpen, onClose }: ContactFormModalPr
                 </div>
                 <h3 className="text-lg font-semibold text-emerald-400 mb-2">Message Sent!</h3>
                 <p className="text-sm text-[#FFFFFF]/70">
-                  Thank you for reaching out. We'll get back to you soon!
+                  Thank you for reaching out. We&apos;ll get back to you soon!
                 </p>
               </div>
             ) : (
