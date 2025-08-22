@@ -468,11 +468,15 @@ const ICOLaunchPage: React.FC = () => {
     imagePaths.length,
   ]);
 
-  // Show loading overlay while images and contract data load
+  // Show launch intro animation while images and contract data load
   if (!pageLoading.isReady) {
     return (
       <>
-        <LoadingOverlay />
+        <LaunchIntroAnimation
+          isComplete={false}
+          onIntroAnimationComplete={() => {}}
+          skipLetterAnimation={false}
+        />
         {/* Pre-render the page structure for faster transition */}
         <div className="opacity-0 pointer-events-none fixed inset-0">
           <ICOPageContent isMobile={isMobile} containerRef={containerRef} isReady={false} />
