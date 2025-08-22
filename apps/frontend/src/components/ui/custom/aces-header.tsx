@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import ConnectWalletNav from './connect-wallet-nav';
 
 interface AcesHeaderProps {
@@ -10,23 +11,35 @@ interface AcesHeaderProps {
 }
 
 export default function AcesHeader({ className = '', title, onProfileClick }: AcesHeaderProps) {
+  const router = useRouter();
+
+  const handleLogoClick = () => {
+    router.push('/');
+  };
+
   return (
     <header className={`w-full  ${className}`}>
       <div className="max-w-[1920px] mx-auto px-6 py-4">
         <div
           className={`grid items-center w-full ${title ? 'grid-cols-[250px_1fr_250px]' : 'grid-cols-[250px_1fr]'}`}
         >
-          {/* Left side - ACES.FUN Logo */}
+          {/* Left side - ACES.FUN Logo and Text */}
           <div className="flex items-center gap-4 min-w-[250px]">
-            <div className="w-12 h-12 flex items-center justify-center overflow-hidden">
+            {/* Clickable Logo Only */}
+            <button
+              onClick={handleLogoClick}
+              className="w-14 h-14 flex items-center justify-center overflow-hidden hover:opacity-80 transition-opacity duration-200 focus:outline-none"
+              aria-label="Navigate to home page"
+            >
               <Image
                 src="/aces-logo.png"
                 alt="ACES Logo"
-                width={48}
-                height={48}
-                className="w-10 h-10 object-contain"
+                width={56}
+                height={56}
+                className="w-12 h-12 object-contain"
               />
-            </div>
+            </button>
+            {/* Non-clickable Text */}
             <div className="flex items-center">
               <span className="text-2xl font-bold text-white mr-1 font-braah-one">ACES.</span>
               <span className="text-2xl font-bold ml-1 drop-shadow-lg font-spray-letters text-[#D7BF75] tracking-widest">
