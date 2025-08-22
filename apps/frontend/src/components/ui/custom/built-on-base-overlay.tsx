@@ -26,10 +26,10 @@ const BuiltOnBaseOverlayComponent: React.FC = () => {
     <div
       className={`
         fixed bottom-4 right-4 z-50 
-        px-4 py-3 sm:px-6 sm:py-4
+        px-2 py-1.5 sm:px-3 sm:py-2
         rounded-full 
         bg-black/80 border border-[#D0B264]/40 
-        flex items-center gap-2 sm:gap-3
+        flex items-center gap-1 sm:gap-2
         ${useAnimations ? 'transition-all duration-500' : ''}
         ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}
       `}
@@ -37,12 +37,12 @@ const BuiltOnBaseOverlayComponent: React.FC = () => {
         transitionDuration: useAnimations ? `${browserPerf.animationDuration}ms` : '0ms',
       }}
     >
-      <span className="text-xs sm:text-sm font-medium text-[#D0B264] whitespace-nowrap font-proxima-nova">
+      <span className="text-[10px] sm:text-xs font-medium text-[#D0B264] whitespace-nowrap font-proxima-nova">
         BUILT ON
       </span>
-      <div className="h-4 w-px bg-[#D0B264]"></div>
+      <div className="h-2.5 w-px bg-[#D0B264]"></div>
       <svg
-        className="h-4 sm:h-5 w-auto flex-shrink-0"
+        className="h-2.5 sm:h-3 w-auto flex-shrink-0"
         viewBox="0 0 2500 639"
         fill="white"
         xmlns="http://www.w3.org/2000/svg"

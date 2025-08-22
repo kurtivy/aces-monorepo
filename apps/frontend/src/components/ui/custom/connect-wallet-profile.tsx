@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Wallet,
-  User,
+  // User,
   CreditCard,
   AlertTriangle,
   Eye,
@@ -40,7 +40,7 @@ interface ConnectWalletProfileProps {
 
 export default function ConnectWalletProfile({
   className = '',
-  onProfileClick,
+  // onProfileClick,
   isDropdownOpen,
   onDropdownChange,
 }: ConnectWalletProfileProps) {
@@ -118,11 +118,11 @@ export default function ConnectWalletProfile({
     }
   };
 
-  const handleProfileClick = () => {
-    if (onProfileClick) {
-      onProfileClick();
-    }
-  };
+  // const handleProfileClick = () => {
+  //   if (onProfileClick) {
+  //     onProfileClick();
+  //   }
+  // };
 
   // Handle copying wallet address to clipboard
   const handleCopyAddress = async () => {
