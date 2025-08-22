@@ -42,16 +42,16 @@ export default function CountdownTimer() {
       {/* Subtle background texture/glow */}
       <div className="absolute inset-0   rounded-xl" />
       {/* Time Display Grid */}
-      <div className="relative z-10 grid grid-cols-4 gap-3 w-full max-w-md">
+      <div className="relative z-10 grid grid-cols-4 gap-2 sm:gap-3 w-full max-w-md">
         {timeUnits.map((unit) => (
           <div key={unit.label} className="flex flex-col items-center">
             {/* Time Value Tile */}
-            <div className="bg-gradient-to-br from-[#D0B284]/5 via-transparent to-[#184D37]/5 border border-[#D0B284]/30 rounded-lg p-3 w-full aspect-square flex items-center justify-center shadow-lg backdrop-blur-sm relative group hover:border-[#D0B284]/60 transition-all duration-300">
+            <div className="bg-gradient-to-br from-[#D0B284]/5 via-transparent to-[#184D37]/5 border border-[#D0B284]/30 rounded-lg p-2 sm:p-3 w-full aspect-square flex items-center justify-center shadow-lg backdrop-blur-sm relative group hover:border-[#D0B284]/60 transition-all duration-300">
               {/* Inner glow effect */}
               <div className="absolute inset-0 bg-gradient-to-br from-[#D0B284]/10 to-transparent rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
               <span
-                className="text-3xl font-bold text-white relative z-10 tabular-nums"
+                className="text-2xl sm:text-3xl font-bold text-white relative z-10 tabular-nums"
                 style={{ fontFamily: 'system, serif' }}
               >
                 {unit.value.toString().padStart(2, '0')}
@@ -63,7 +63,7 @@ export default function CountdownTimer() {
 
             {/* Label */}
             <span
-              className="text-sm text-[#DCDDCC] mt-2 font-medium tracking-wide uppercase"
+              className="text-xs sm:text-sm text-[#DCDDCC] mt-1 sm:mt-2 font-medium tracking-wide uppercase"
               style={{ fontFamily: 'system, serif' }}
             >
               {unit.label}

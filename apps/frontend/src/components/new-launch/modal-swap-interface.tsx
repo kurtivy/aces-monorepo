@@ -73,7 +73,7 @@ export default function ModalSwapInterface({
 
   // State - simplified to work with ETH
   const [selectedCurrency, setSelectedCurrency] = useState<Currency>('ETH');
-  const [ethAmount, setEthAmount] = useState(0.01); // Amount in ETH
+  const [ethAmount, setEthAmount] = useState(0); // Amount in ETH - start at 0
   const [expectedTokens, setExpectedTokens] = useState('0');
   const [actualCost, setActualCost] = useState('0'); // Cost in ETH
   const [shareCount, setShareCount] = useState(BigInt(0)); // Share count for contract
@@ -129,7 +129,7 @@ export default function ModalSwapInterface({
   };
 
   const maxAmount = getMaxAmount();
-  const minAmount = 0.001; // 0.001 ETH minimum
+  const minAmount = 0; // Allow starting from 0
 
   // Create our own buyTokens function that uses the modal's writeContractAsync
   // This ensures the hash gets set in our useWriteContract hook
@@ -409,8 +409,8 @@ export default function ModalSwapInterface({
       return;
     }
 
-    if (ethAmount < minAmount || ethAmount > maxAmount) {
-      alert(`Amount must be between ${minAmount} and ${maxAmount} ETH`);
+    if (ethAmount <= 0 || ethAmount > maxAmount) {
+      alert(`Amount must be greater than 0 and not exceed ${maxAmount} ETH`);
       return;
     }
 
@@ -491,7 +491,7 @@ export default function ModalSwapInterface({
     setTransactionState('idle');
     setTransactionError(null);
     setPurchaseDetails(null);
-    setEthAmount(minAmount);
+    setEthAmount(0.001); // Reset to a small starting amount
     setExpectedTokens('0');
     setActualCost('0');
     setShareCount(BigInt(0));
@@ -759,10 +759,10 @@ export default function ModalSwapInterface({
                     max={maxAmount}
                     min={minAmount}
                     step={0.001}
-                    className="w-full"
+                    className="w-full [&>*[data-slot=slider-track]]:bg-[#928357]/30 [&>*[data-slot=slider-range]]:bg-gradient-to-r [&>*[data-slot=slider-range]]:from-[#D0B284] [&>*[data-slot=slider-range]]:to-[#D7BF75] [&>*[data-slot=slider-thumb]]:bg-[#D0B284] [&>*[data-slot=slider-thumb]]:border-[#D0B284] [&>*[data-slot=slider-thumb]]:shadow-lg"
                   />
                   <div className="flex justify-between text-xs text-[#928357] mt-2 font-mono">
-                    <span>{minAmount} ETH</span>
+                    <span>0 ETH</span>
                     <span>{(maxAmount / 2).toFixed(3)} ETH</span>
                     <span>{maxAmount.toFixed(3)} ETH</span>
                   </div>
@@ -852,7 +852,7 @@ export default function ModalSwapInterface({
                   isPending ||
                   isConfirming ||
                   approvalInProgress ||
-                  ethAmount < minAmount ||
+                  ethAmount <= 0 ||
                   ethAmount > maxAmount ||
                   Number(expectedTokens) <= 0 ||
                   !!ethPrice.error ||
@@ -930,7 +930,7 @@ export default function ModalSwapInterface({
                   key={key}
                   onClick={() => {
                     setSelectedCurrency(key as Currency);
-                    setEthAmount(minAmount); // Reset amount when currency changes
+                    setEthAmount(0.001); // Reset to small starting amount when currency changes
                     setShowCurrencyModal(false);
                   }}
                   className={`w-full p-4 rounded-lg border transition-all duration-200 flex items-center justify-between ${

@@ -19,16 +19,16 @@ export default function AcesHeader({ className = '', title, onProfileClick }: Ac
 
   return (
     <header className={`w-full  ${className}`}>
-      <div className="max-w-[1920px] mx-auto px-6 py-4">
+      <div className="max-w-[1920px] mx-auto px-3 sm:px-6 py-2 sm:py-4">
         <div
-          className={`grid items-center w-full ${title ? 'grid-cols-[250px_1fr_250px]' : 'grid-cols-[250px_1fr]'}`}
+          className={`grid items-center w-full ${title ? 'grid-cols-[1fr_auto_1fr] sm:grid-cols-[250px_1fr_250px]' : 'grid-cols-[1fr_auto] sm:grid-cols-[250px_1fr]'}`}
         >
           {/* Left side - ACES.FUN Logo and Text */}
-          <div className="flex items-center gap-4 min-w-[250px]">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0 sm:min-w-[250px]">
             {/* Clickable Logo Only */}
             <button
               onClick={handleLogoClick}
-              className="w-14 h-14 flex items-center justify-center overflow-hidden hover:opacity-80 transition-opacity duration-200 focus:outline-none"
+              className="w-8 h-8 sm:w-14 sm:h-14 flex items-center justify-center overflow-hidden hover:opacity-80 transition-opacity duration-200 focus:outline-none flex-shrink-0"
               aria-label="Navigate to home page"
             >
               <Image
@@ -36,13 +36,15 @@ export default function AcesHeader({ className = '', title, onProfileClick }: Ac
                 alt="ACES Logo"
                 width={56}
                 height={56}
-                className="w-12 h-12 object-contain"
+                className="w-6 h-6 sm:w-12 sm:h-12 object-contain"
               />
             </button>
             {/* Non-clickable Text */}
-            <div className="flex items-center">
-              <span className="text-2xl font-bold text-white mr-1 font-braah-one">ACES.</span>
-              <span className="text-2xl font-bold ml-1 drop-shadow-lg font-spray-letters text-[#D7BF75] tracking-widest">
+            <div className="flex items-center min-w-0">
+              <span className="text-lg sm:text-2xl font-bold text-white mr-0.5 sm:mr-1 font-braah-one">
+                ACES.
+              </span>
+              <span className="text-lg sm:text-2xl font-bold ml-0.5 sm:ml-1 drop-shadow-lg font-spray-letters text-[#D7BF75] tracking-wider sm:tracking-widest">
                 FUN
               </span>
             </div>
@@ -50,9 +52,9 @@ export default function AcesHeader({ className = '', title, onProfileClick }: Ac
 
           {/* Center - Title (conditionally rendered) */}
           {title && (
-            <div className="flex justify-center px-4">
+            <div className="flex justify-center px-2 sm:px-4 min-w-0">
               <h1
-                className="text-xl sm:text-2xl lg:text-3xl text-center whitespace-nowrap text-[#D0B284] text-shadow-lg/30 text-shadow-[#231F20]"
+                className="text-sm sm:text-xl lg:text-2xl xl:text-3xl text-center truncate sm:whitespace-nowrap text-[#D0B284] text-shadow-lg/30 text-shadow-[#231F20]"
                 style={{ fontFamily: 'Spray Letters' }}
               >
                 {title}
@@ -61,7 +63,7 @@ export default function AcesHeader({ className = '', title, onProfileClick }: Ac
           )}
 
           {/* Right side - Connect Wallet and Nav Menu */}
-          <div className="flex items-center justify-end min-w-[250px]">
+          <div className="flex items-center justify-end min-w-0 sm:min-w-[250px]">
             <ConnectWalletNav onProfileClick={onProfileClick} />
           </div>
         </div>

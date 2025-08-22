@@ -43,7 +43,7 @@ export default function ProgressionBar({ percentage }: ProgressionBarProps) {
   const displayPercentage = percentage || tokenProgress;
 
   return (
-    <div className="w-full flex flex-col items-center justify-center rounded-xl px-6 py-2 flex-1 shadow-2xl relative overflow-hidden">
+    <div className="w-full flex flex-col items-center justify-center rounded-xl px-4 sm:px-6 py-2 flex-1 shadow-2xl relative overflow-hidden">
       {/* Background */}
       <div className="absolute inset-0 rounded-xl" />
       <div className="absolute inset-0 rounded-xl" />
@@ -56,7 +56,7 @@ export default function ProgressionBar({ percentage }: ProgressionBarProps) {
           <div className="absolute inset-0 bg-gradient-to-br from-[#D0B284]/10 to-transparent rounded-xl" />
 
           <span
-            className="text-[#D7BF75] text-lg font-bold min-w-[52px] text-center block tabular-nums relative z-10"
+            className="text-[#D7BF75] text-base sm:text-lg font-bold min-w-[52px] text-center block tabular-nums relative z-10"
             style={{ fontFamily: 'JetBrains Mono, monospace' }}
           >
             {displayPercentage.toFixed(1)}%
@@ -67,7 +67,7 @@ export default function ProgressionBar({ percentage }: ProgressionBarProps) {
         </div>
 
         {/* Progress Bar Container */}
-        <div className="flex items-center w-[510px] justify-center">
+        <div className="flex items-center w-full max-w-[510px] px-4 sm:px-0 justify-center">
           {/* Enhanced Progress Bar */}
           <div className="relative w-full h-6 group">
             {/* Outer container with premium styling */}

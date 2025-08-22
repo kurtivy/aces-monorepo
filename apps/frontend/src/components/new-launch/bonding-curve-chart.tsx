@@ -133,8 +133,10 @@ export default function BondingCurveChart({
 
     // Set up dimensions
     const margin = { top: 30, right: 30, bottom: 50, left: 70 };
-    const width = 520 - margin.left - margin.right;
-    const height = 440 - margin.top - margin.bottom;
+    const containerWidth = svgRef.current?.parentElement?.clientWidth || 520;
+    const containerHeight = svgRef.current?.parentElement?.clientHeight || 440;
+    const width = Math.max(300, containerWidth - margin.left - margin.right);
+    const height = Math.max(250, containerHeight - margin.top - margin.bottom);
 
     // Create SVG container
     const svg = d3
@@ -454,13 +456,23 @@ export default function BondingCurveChart({
         crosshairGroup.style('display', 'none');
         setTooltipData(null);
       });
+    // Add resize listener for responsive behavior
+    const handleResize = () => {
+      if (svgRef.current) {
+        const resizeEvent = new Event('resize');
+        window.dispatchEvent(resizeEvent);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, [bondingCurveData, displayRange, currentSharesSold, currentPriceETH, ethPrice?.current]);
 
   return (
     <div className="w-full h-full bg-transparent flex items-center justify-center relative">
       <svg
         ref={svgRef}
-        style={{ width: '100%', height: '100%', maxWidth: '520px', maxHeight: '440px' }}
+        style={{ width: '100%', height: '100%' }}
       ></svg>
 
       {/* Interactive Tooltip */}

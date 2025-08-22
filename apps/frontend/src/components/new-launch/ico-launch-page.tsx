@@ -205,7 +205,7 @@ const CurrentPriceSquare: React.FC = () => {
         <div className="flex flex-col items-center">
           {/* USD Price - Primary display */}
           <span
-            className="text-white text-xl font-bold mb-1"
+            className="text-white text-lg sm:text-xl font-bold mb-1"
             style={{ fontFamily: 'JetBrains Mono, monospace' }}
           >
             ${formatUSDPrice(nextSharePriceUSD)}
@@ -213,7 +213,7 @@ const CurrentPriceSquare: React.FC = () => {
 
           {/* ETH Price - Secondary display in brackets */}
           <span
-            className="text-[#DCDDCC] text-sm font-medium"
+            className="text-[#DCDDCC] text-xs sm:text-sm font-medium"
             style={{ fontFamily: 'JetBrains Mono, monospace' }}
           >
             ({formatETHPrice(nextSharePriceETH)} ETH)
@@ -321,7 +321,7 @@ const UserBalanceSquare: React.FC = () => {
         </h3>
         <div className="flex flex-col items-center">
           <span
-            className="text-white text-lg font-bold mb-1"
+            className="text-white text-base sm:text-lg font-bold mb-1"
             style={{ fontFamily: 'JetBrains Mono, monospace' }}
           >
             {formatBalance(userShareBalance)}
@@ -579,7 +579,7 @@ const ICOPageContent: React.FC<ICOPageContentProps> = ({ isMobile, containerRef,
       </div>
 
       {/* Main Layout Container - content starts right after header */}
-      <div className="relative w-full" style={{ minHeight: '1200px' }}>
+      <div className="relative w-full" style={{ minHeight: isMobile ? '800px' : '1200px' }}>
         {/* Image Grid Background - Hidden on mobile, positioned around content */}
         {!isMobile && (
           <motion.div
@@ -607,9 +607,9 @@ const ICOPageContent: React.FC<ICOPageContentProps> = ({ isMobile, containerRef,
           </motion.div>
         )}
 
-        {/* Central Content Area - 1000px max width, starts right after header */}
+        {/* Central Content Area - responsive width, starts right after header */}
         <motion.div
-          className="relative z-10 flex flex-col items-center"
+          className="relative z-10 flex flex-col items-center px-4 sm:px-6 lg:px-8"
           initial={{ opacity: 0 }}
           animate={{ opacity: isReady ? 1 : 0 }}
           transition={{ duration: 0.5, delay: 0.1, ease: 'easeOut' }}
@@ -617,10 +617,10 @@ const ICOPageContent: React.FC<ICOPageContentProps> = ({ isMobile, containerRef,
           <div className="w-full max-w-[1000px] mx-auto">
             {/* BUY ACES ICO NOW Header */}
             <div className="w-full flex flex-col items-center py-4 mb-4">
-              <h2 className="text-4xl font-bold text-white mb-2 tracking-widest font-neue-world">
+              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-2 tracking-widest font-neue-world text-center">
                 BUY $ACES ICO NOW
               </h2>
-              <p className="text-base text-[#DCDDCC] max-w-2xl text-center leading-relaxed font-proxima-nova">
+              <p className="text-sm sm:text-base text-[#DCDDCC] max-w-2xl text-center leading-relaxed font-proxima-nova px-4">
                 Participate in the ACES ICO and own a piece of the future of luxury asset
                 tokenization.
               </p>
@@ -628,17 +628,17 @@ const ICOPageContent: React.FC<ICOPageContentProps> = ({ isMobile, containerRef,
 
             {/* Buy Now Section - standalone */}
             <motion.div
-              className="w-full max-w-[1000px] mx-auto flex items-center justify-center mb-4"
+              className="w-full mx-auto flex items-center justify-center mb-4 px-4"
               initial={{ opacity: 0 }}
               animate={{ opacity: isReady ? 1 : 0 }}
               transition={{ duration: 0.4, delay: 0.3, ease: 'easeOut' }}
             >
-              <div className="w-[600px]">{isReady ? <BuyNowSection /> : <BuyNowSkeleton />}</div>
+              <div className="w-full max-w-[600px]">{isReady ? <BuyNowSection /> : <BuyNowSkeleton />}</div>
             </motion.div>
 
             {/* Countdown Timer section - standalone */}
             <motion.div
-              className="w-full flex flex-col items-center justify-center mb-4"
+              className="w-full flex flex-col items-center justify-center mb-4 px-4"
               initial={{ opacity: 0 }}
               animate={{ opacity: isReady ? 1 : 0 }}
               transition={{ duration: 0.4, delay: 0.4, ease: 'easeOut' }}
@@ -648,7 +648,7 @@ const ICOPageContent: React.FC<ICOPageContentProps> = ({ isMobile, containerRef,
 
             {/* Progression Bar - No props needed, gets data from hook */}
             <motion.div
-              className="w-full flex flex-col items-center justify-center mb-12 relative z-10"
+              className="w-full flex flex-col items-center justify-center mb-8 sm:mb-12 relative z-10 px-4"
               initial={{ opacity: 0 }}
               animate={{ opacity: isReady ? 1 : 0 }}
               transition={{ duration: 0.4, delay: 0.5, ease: 'easeOut' }}
@@ -658,14 +658,14 @@ const ICOPageContent: React.FC<ICOPageContentProps> = ({ isMobile, containerRef,
 
             {/* Bonding Curve Chart - No props needed, gets data from hook */}
             <motion.div
-              className="w-full max-w-[1000px] mx-auto flex items-center justify-center relative z-0"
-              style={{ height: '500px' }}
+              className="w-full mx-auto flex items-center justify-center relative z-0 px-4"
+              style={{ minHeight: isMobile ? '350px' : '500px' }}
               initial={{ opacity: 0 }}
               animate={{ opacity: isReady ? 1 : 0 }}
               transition={{ duration: 0.4, delay: 0.6, ease: 'easeOut' }}
             >
-              {/* Chart - Centered */}
-              <div className="w-[600px] h-[500px] rounded-xl flex items-center justify-center overflow-hidden">
+              {/* Chart - Responsive sizing */}
+              <div className={`w-full max-w-[600px] rounded-xl flex items-center justify-center overflow-hidden ${isMobile ? 'h-[350px]' : 'h-[500px]'}`}>
                 <div className="w-full h-full">
                   {isReady ? <BondingCurveChart /> : <ChartSkeleton />}
                 </div>
