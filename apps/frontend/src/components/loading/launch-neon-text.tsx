@@ -100,108 +100,108 @@ const LaunchNeonText: React.FC<LaunchNeonTextProps> = ({
         {/* ACES part */}
         <div className="flex items-baseline">
           {acesText.split('').map((letter, index) => {
-              const isVisible = index < visibleLetters;
-              return (
-                <motion.span
-                  key={`aces-${index}`}
-                  className="text-6xl sm:text-6xl md:text-9xl lg:text-9xl xl:text-9xl font-braah-one font-normal tracking-tight text-white leading-none"
-                  style={{
-                    color: '#FFFFFF',
-                    textShadow: '0 0 20px rgba(255, 255, 255, 0.3)',
-                    filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
-                  }}
-                  initial={{ opacity: 0, y: 20, scale: 0.8 }}
-                  animate={{
-                    opacity: isVisible ? 1 : 0,
-                    y: isVisible ? 0 : 20,
-                    scale: isVisible ? 1 : 0.8,
-                  }}
-                  transition={{
-                    duration: 0.3,
-                    ease: [0.25, 0.46, 0.45, 0.94],
-                    delay: index * 0.06,
-                  }}
-                >
-                  {letter}
-                </motion.span>
-              );
-            })}
-          </div>
+            const isVisible = index < visibleLetters;
+            return (
+              <motion.span
+                key={`aces-${index}`}
+                className="text-6xl sm:text-6xl md:text-9xl lg:text-9xl xl:text-9xl font-braah-one font-normal tracking-tight text-white leading-none"
+                style={{
+                  color: '#FFFFFF',
+                  textShadow: '0 0 20px rgba(255, 255, 255, 0.3)',
+                  filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
+                }}
+                initial={{ opacity: 0, y: 20, scale: 0.8 }}
+                animate={{
+                  opacity: isVisible ? 1 : 0,
+                  y: isVisible ? 0 : 20,
+                  scale: isVisible ? 1 : 0.8,
+                }}
+                transition={{
+                  duration: 0.3,
+                  ease: [0.25, 0.46, 0.45, 0.94],
+                  delay: index * 0.06,
+                }}
+              >
+                {letter}
+              </motion.span>
+            );
+          })}
+        </div>
 
         {/* TOKEN part - Simplified without fixed widths */}
         <div className="ml-1 sm:ml-2 md:ml-3">
           <div className="inline-block text-center">
-              {letterRevealComplete ? (
-                <motion.div
-                  className="relative"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.8, ease: 'easeOut' }}
-                >
-                  <AnimatePresence mode="wait" initial={false}>
-                    <motion.div
-                      key={currentFontIndex}
-                      className="relative"
-                      initial={{ y: -40, opacity: 0, rotateX: -90 }}
-                      animate={{ y: 0, opacity: 1, rotateX: 0 }}
-                      exit={{ y: 40, opacity: 0, rotateX: 90 }}
-                      transition={{
-                        duration: 0.6,
-                        ease: [0.25, 0.46, 0.45, 0.94],
+            {letterRevealComplete ? (
+              <motion.div
+                className="relative"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.8, ease: 'easeOut' }}
+              >
+                <AnimatePresence mode="wait" initial={false}>
+                  <motion.div
+                    key={currentFontIndex}
+                    className="relative"
+                    initial={{ y: -40, opacity: 0, rotateX: -90 }}
+                    animate={{ y: 0, opacity: 1, rotateX: 0 }}
+                    exit={{ y: 40, opacity: 0, rotateX: 90 }}
+                    transition={{
+                      duration: 0.6,
+                      ease: [0.25, 0.46, 0.45, 0.94],
+                    }}
+                  >
+                    <span
+                      className={`text-5xl sm:text-5xl md:text-[8.5rem] lg:text-[8.5rem] xl:text-[8.5rem] font-bold tracking-tight leading-none ${currentFont.className || ''}`}
+                      style={{
+                        fontFamily: currentFont.family,
+                        fontWeight: currentFont.weight,
+                        letterSpacing: currentFont.name === 'Spray Letters' ? '0.2em' : 'normal',
+                        color: '#D7BF75',
+                        textShadow: '0 0 30px rgba(215, 191, 117, 0.2)',
+                        filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
                       }}
                     >
-                      <span
-                        className={`text-5xl sm:text-5xl md:text-[8.5rem] lg:text-[8.5rem] xl:text-[8.5rem] font-bold tracking-tight leading-none ${currentFont.className || ''}`}
-                        style={{
-                          fontFamily: currentFont.family,
-                          fontWeight: currentFont.weight,
-                          letterSpacing: currentFont.name === 'Spray Letters' ? '0.2em' : 'normal',
-                          color: '#D7BF75',
-                          textShadow: '0 0 30px rgba(215, 191, 117, 0.2)',
-                          filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
-                        }}
-                      >
-                        {funText}
-                      </span>
-                    </motion.div>
-                  </AnimatePresence>
-                </motion.div>
-              ) : (
-                <div className="flex">
-                  {funText.split('').map((char, index) => {
-                    const letterIndex = acesText.length + index;
-                    const isVisible = letterIndex < visibleLetters;
-                    return (
-                      <motion.span
-                        key={`fun-char-${index}`}
-                        className="text-5xl sm:text-5xl md:text-[8.5rem] lg:text-[8.5rem] xl:text-[8.5rem] font-bold tracking-tight text-white leading-none"
-                        style={{
-                          fontFamily: currentFont.family,
-                          fontWeight: currentFont.weight,
-                          letterSpacing: currentFont.name === 'Spray Letters' ? '0.1em' : 'normal',
-                          color: '#D7BF75',
-                          textShadow: '0 0 30px rgba(215, 191, 117, 0.2)',
-                          filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
-                        }}
-                        initial={{ opacity: 0, y: 20, scale: 0.8 }}
-                        animate={{
-                          opacity: isVisible ? 1 : 0,
-                          y: isVisible ? 0 : 20,
-                          scale: isVisible ? 1 : 0.8,
-                        }}
-                        transition={{
-                          duration: 0.4,
-                          ease: [0.25, 0.46, 0.45, 0.94],
-                          delay: letterIndex * 0.15 + 0.05,
-                        }}
-                      >
-                        {char}
-                      </motion.span>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+                      {funText}
+                    </span>
+                  </motion.div>
+                </AnimatePresence>
+              </motion.div>
+            ) : (
+              <div className="flex">
+                {funText.split('').map((char, index) => {
+                  const letterIndex = acesText.length + index;
+                  const isVisible = letterIndex < visibleLetters;
+                  return (
+                    <motion.span
+                      key={`fun-char-${index}`}
+                      className="text-5xl sm:text-5xl md:text-[8.5rem] lg:text-[8.5rem] xl:text-[8.5rem] font-bold tracking-tight text-white leading-none"
+                      style={{
+                        fontFamily: currentFont.family,
+                        fontWeight: currentFont.weight,
+                        letterSpacing: currentFont.name === 'Spray Letters' ? '0.1em' : 'normal',
+                        color: '#D7BF75',
+                        textShadow: '0 0 30px rgba(215, 191, 117, 0.2)',
+                        filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
+                      }}
+                      initial={{ opacity: 0, y: 20, scale: 0.8 }}
+                      animate={{
+                        opacity: isVisible ? 1 : 0,
+                        y: isVisible ? 0 : 20,
+                        scale: isVisible ? 1 : 0.8,
+                      }}
+                      transition={{
+                        duration: 0.4,
+                        ease: [0.25, 0.46, 0.45, 0.94],
+                        delay: letterIndex * 0.15 + 0.05,
+                      }}
+                    >
+                      {char}
+                    </motion.span>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
