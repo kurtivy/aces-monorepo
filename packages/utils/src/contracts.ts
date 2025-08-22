@@ -7,11 +7,13 @@ export const CONTRACTS = {
     acesVault: '',
     acesToken: '',
     implementation: '',
+    acesSwap: '',
   },
   baseSepolia: {
     acesVault: '0x4f585dFD5A3faA1F782E10DfBe3DbBA7e0dFD20d', // Proxy address
     acesToken: '0x4D74aCf5c51dbE8c89Ce14E624E6b5C338e68708', // Token address
     implementation: '0x90692cd2f4D0EDB93D009F4d3CEe3118D72C8831', // Implementation (for reference)
+    acesSwap: 'NOT_DEPLOYED', // AcesSwap not deployed on testnet
   },
   baseMainnet: {
     acesVault: '0x791a62cfc43390E800Fb81EaB9b1Cb86E50d68A0', // Proxy address
@@ -40,6 +42,7 @@ export const BONDING_CURVE_CONTRACTS = {
     acesVault: '0x4f585dFD5A3faA1F782E10DfBe3DbBA7e0dFD20d', // Proxy address
     acesToken: '0x4D74aCf5c51dbE8c89Ce14E624E6b5C338e68708', // Token address
     implementation: '0x90692cd2f4D0EDB93D009F4d3CEe3118D72C8831', // Implementation
+    acesSwap: 'NOT_DEPLOYED', // AcesSwap not deployed on testnet
     sharesSubject: '0x246ca431fd1353610Bf20F9d4fbD240148522Dc8', // Dev wallet
     roomNumber: 0, // Room number for this subject
   },
@@ -48,6 +51,7 @@ export const BONDING_CURVE_CONTRACTS = {
     acesVault: '0x791a62cfc43390E800Fb81EaB9b1Cb86E50d68A0', // Proxy address
     acesToken: '0x9D517deF70aCa7fa668dA73b7252957BF5Afa410', // Token address
     implementation: '0x6fd697590ad40Ffc7ff039cfb32B43fBc1EF31E7', // Implementation
+    acesSwap: '0x7466CF735c8AfD8ecDdd0914590d288566bE6522', // AcesSwap contract for USDC/USDT purchases
     sharesSubject: '0x246ca431fd1353610Bf20F9d4fbD240148522Dc8', // Dev wallet (same)
     roomNumber: 0, // Room number for this subject
   },
@@ -67,9 +71,11 @@ export function getBondingCurveContracts(chainId: number) {
 
 // Types for the contracts
 export interface BondingCurveContracts {
+  chainId: number;
   acesVault: string;
   acesToken: string;
   implementation: string;
+  acesSwap: string;
   sharesSubject: string;
   roomNumber: number;
 }

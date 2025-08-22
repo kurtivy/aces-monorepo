@@ -39,9 +39,15 @@ export function useAcesSwapContract() {
 
   // Get contract addresses
   const BASE_MAINNET_CONTRACTS = getBondingCurveContracts(8453); // Base Mainnet
-  const ACES_SWAP_ADDRESS = BASE_MAINNET_CONTRACTS.acesSwap as Address; // TODO: Replace with actual address
+  const ACES_SWAP_ADDRESS = BASE_MAINNET_CONTRACTS.acesSwap; // AcesSwap contract address
   const SHARES_SUBJECT_ADDRESS = BASE_MAINNET_CONTRACTS.sharesSubject as Address;
   const ROOM_NUMBER = BigInt(BASE_MAINNET_CONTRACTS.roomNumber);
+
+  // Helper to check if contract is properly deployed
+  const isSwapContractReady = 
+    ACES_SWAP_ADDRESS.length > 10 && 
+    ACES_SWAP_ADDRESS.startsWith('0x') &&
+    ACES_SWAP_ADDRESS !== 'NOT_DEPLOYED';
 
   // Token contract addresses
   const USDC_ADDRESS = SUPPORTED_CURRENCIES.USDC.address as Address;
@@ -54,7 +60,7 @@ export function useAcesSwapContract() {
     const tokenAddress = currency === 'USDC' ? USDC_ADDRESS : USDT_ADDRESS;
     const decimals = SUPPORTED_CURRENCIES[currency].decimals;
 
-    const { data: balance = 0n } = useReadContract({
+    const { data: balance = BigInt(0) } = useReadContract({
       address: tokenAddress,
       abi: ERC20_ABI,
       functionName: 'balanceOf',
@@ -78,13 +84,13 @@ export function useAcesSwapContract() {
   const useTokenAllowance = (currency: Currency) => {
     const tokenAddress = currency === 'USDC' ? USDC_ADDRESS : USDT_ADDRESS;
 
-    const { data: allowance = 0n, refetch: refetchAllowance } = useReadContract({
+    const { data: allowance = BigInt(0), refetch: refetchAllowance } = useReadContract({
       address: tokenAddress,
       abi: ERC20_ABI,
       functionName: 'allowance',
-      args: [walletAddress!, ACES_SWAP_ADDRESS],
+      args: [walletAddress!, ACES_SWAP_ADDRESS as Address],
       query: {
-        enabled: !!walletAddress && ACES_SWAP_ADDRESS !== 'PLACEHOLDER_ADDRESS',
+        enabled: !!walletAddress && isSwapContractReady,
         refetchInterval: 5000, // Refetch every 5 seconds during active usage
       },
     });
@@ -110,8 +116,8 @@ export function useAcesSwapContract() {
       // Estimate ETH output with slippage protection
       // This is a simplified calculation - in production you'd query a price oracle
       // or use the contract's preview function if available
-      const estimatedETHOut = inputAmount / 3000n; // Rough ETH price estimate
-      const minimumETHOut = (estimatedETHOut * BigInt(100 - slippageTolerance * 10)) / 1000n;
+      const estimatedETHOut = inputAmount / BigInt(3000); // Rough ETH price estimate
+      const minimumETHOut = (estimatedETHOut * BigInt(100 - slippageTolerance * 10)) / BigInt(1000);
 
       return {
         inputAmount,
@@ -133,10 +139,10 @@ export function useAcesSwapContract() {
         return false;
       }
 
-      if (ACES_SWAP_ADDRESS === 'PLACEHOLDER_ADDRESS') {
+      if (!isSwapContractReady) {
         setSwapState({
           isLoading: false,
-          error: 'AcesSwap contract not deployed yet',
+          error: 'AcesSwap contract not deployed on this network',
           step: 'idle',
         });
         return false;
@@ -151,7 +157,7 @@ export function useAcesSwapContract() {
           address: tokenAddress,
           abi: ERC20_ABI,
           functionName: 'approve',
-          args: [ACES_SWAP_ADDRESS, amount],
+          args: [ACES_SWAP_ADDRESS as Address, amount],
           chain: base,
           account: walletAddress,
         });
@@ -188,10 +194,10 @@ export function useAcesSwapContract() {
         return false;
       }
 
-      if (ACES_SWAP_ADDRESS === 'PLACEHOLDER_ADDRESS') {
+      if (!isSwapContractReady) {
         setSwapState({
           isLoading: false,
-          error: 'AcesSwap contract not deployed yet',
+          error: 'AcesSwap contract not deployed on this network',
           step: 'idle',
         });
         return false;
@@ -203,7 +209,7 @@ export function useAcesSwapContract() {
         const functionName = currency === 'USDC' ? 'sellUSDCAndBuyCurve' : 'sellUSDTAndBuyCurve';
 
         const hash = await writeContractAsync({
-          address: ACES_SWAP_ADDRESS,
+          address: ACES_SWAP_ADDRESS as Address,
           abi: ACES_SWAP_ABI,
           functionName,
           args: [
@@ -324,6 +330,6 @@ export function useAcesSwapContract() {
     resetSwapState,
 
     // Utilities
-    isContractReady: ACES_SWAP_ADDRESS !== 'PLACEHOLDER_ADDRESS',
+    isContractReady: isSwapContractReady,
   };
 }
