@@ -423,11 +423,14 @@ const ICOLaunchPage: React.FC = () => {
   );
 
   // Page loading coordination - now using real contract state since public data is available
-  // For development: allow page to load even if contract isn't ready yet
+  // Allow page to load in dev mode or on aceofbase domain
   const isDevMode = typeof window !== 'undefined' && window.location.hostname === 'localhost';
+  const isAceofbaseDomain = typeof window !== 'undefined' && 
+    (window.location.hostname.includes('aceofbase') || (window as any).__ACEOFBASE_DOMAIN);
+  
   const pageLoading = usePageLoading({
     imagePaths,
-    contractReady: !!contractState || isDevMode, // Allow loading in dev mode
+    contractReady: !!contractState || isDevMode || isAceofbaseDomain, // Allow loading on aceofbase domain
     enableIntroAnimation: true,
   });
 
@@ -445,6 +448,18 @@ const ICOLaunchPage: React.FC = () => {
   const handleIntroAnimationComplete = () => {
     setShowIntroAnimation(false);
   };
+
+  // Debug logging for aceofbase domain
+  useEffect(() => {
+    if (isAceofbaseDomain) {
+      console.log('🎯 Aceofbase domain detected:', {
+        contractState: !!contractState,
+        pageLoadingReady: pageLoading.isReady,
+        showIntroAnimation,
+        imagePaths: imagePaths.length,
+      });
+    }
+  }, [contractState, pageLoading.isReady, showIntroAnimation, isAceofbaseDomain, imagePaths.length]);
 
   // Show loading overlay while images and contract data load
   if (!pageLoading.isReady) {
