@@ -4,6 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev -H 0.0.0.0",
+    "dev:3001": "next dev -H 0.0.0.0 -p 3001",
+    "dev:both": "concurrently \"npm run dev\" \"npm run dev:3001\"",
+    "dev:production-test": "next dev -H 0.0.0.0",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
@@ -59,6 +62,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "concurrently": "^8.2.2",
     "eslint": "^9",
     "eslint-config-next": "15.2.4",
     "raw-loader": "^4.0.2",

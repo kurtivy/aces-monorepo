@@ -6,6 +6,10 @@
   "packageManager": "pnpm@8.15.5",
   "scripts": {
     "dev": "turbo run dev --parallel",
+    "dev:full": "concurrently \"cd apps/frontend && pnpm run dev:both\" \"cd apps/backend && pnpm run dev\"",
+    "dev:backend": "cd apps/backend && pnpm run dev",
+    "dev:frontend": "cd apps/frontend && pnpm run dev",
+    "dev:frontend:both": "cd apps/frontend && pnpm run dev:both",
     "build": "turbo run build",
     "test": "turbo run test",
     "test:e2e": "playwright test",
@@ -31,6 +35,7 @@
     "@types/node": "^20.12.12",
     "@typescript-eslint/eslint-plugin": "^7.10.0",
     "@typescript-eslint/parser": "^7.10.0",
+    "concurrently": "^8.2.2",
     "eslint": "^8.57.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-import": "^2.29.1",
