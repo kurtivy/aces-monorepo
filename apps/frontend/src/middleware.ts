@@ -26,20 +26,22 @@ export function middleware(request: NextRequest) {
   console.log('  Is Aceofbase Domain:', isAceofbaseDomain);
   console.log('  Is Main Domain:', isMainDomain);
 
-  // Simple blocking approach: block /profile and /launch on all domains, /aceofbase on main domain
-  if (pathname.startsWith('/profile') || pathname.startsWith('/launch')) {
-    console.log('  🚫 BLOCKING /profile or /launch route');
-    return NextResponse.rewrite(new URL('/404', request.url));
+  // Main domain blocking logic
+  if (isMainDomain) {
+    if (
+      pathname.startsWith('/profile') ||
+      pathname.startsWith('/launch') ||
+      pathname.startsWith('/aceofbase')
+    ) {
+      console.log('  🚫 BLOCKING route on main domain:', pathname);
+      return NextResponse.rewrite(new URL('/404', request.url));
+    }
   }
 
-  if (isMainDomain && pathname.startsWith('/aceofbase')) {
-    console.log('  🚫 BLOCKING /aceofbase route on main domain');
-    return NextResponse.rewrite(new URL('/404', request.url));
-  }
-
-  // For aceofbase domain, block non-root paths except static assets
-  if (isAceofbaseDomain && pathname !== '/') {
+  // Aceofbase domain blocking logic - only allow root and static assets
+  if (isAceofbaseDomain) {
     const allowedPaths = [
+      '/',
       '/_next',
       '/api',
       '/favicon.ico',
@@ -49,6 +51,7 @@ export function middleware(request: NextRequest) {
       '/aces-logo.png',
       '/404-image.png',
     ];
+
     const isAllowedPath = allowedPaths.some((path) => pathname.startsWith(path));
 
     if (!isAllowedPath) {
