@@ -44,6 +44,12 @@ interface UseCanvasEntranceAnimationProps {
     index: number;
   }>;
   tokenPositions: Array<{ worldX: number; worldY: number }>;
+  featuredSectionPosition?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
 
   // Trigger conditions
   shouldAnimate: boolean; // When intro complete + everything loaded
@@ -79,9 +85,22 @@ export interface AnimatedTokenElement {
   animatedScale: number;
 }
 
+export interface AnimatedFeaturedElement {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  // Animated properties (final calculated values)
+  animatedX: number;
+  animatedY: number;
+  animatedOpacity: number;
+  animatedScale: number;
+}
+
 interface CanvasEntranceAnimation {
   animatedProductPlacements: AnimatedProductElement[];
   animatedTokenPositions: AnimatedTokenElement[];
+  animatedFeaturedSection: AnimatedFeaturedElement | null;
   isAnimationActive: boolean;
   animationProgress: number; // For debugging
 }
@@ -100,6 +119,7 @@ interface CanvasEntranceAnimation {
 export const useCanvasEntranceAnimation = ({
   productPlacements,
   tokenPositions,
+  featuredSectionPosition,
   shouldAnimate,
   unitSize,
   viewState,
@@ -162,6 +182,28 @@ export const useCanvasEntranceAnimation = ({
 
     return baseCalcs;
   }, [tokenPositions, unitSize, viewState, canvasWidth, canvasHeight]);
+
+  // Featured section calculation (comes from top, not bottom)
+  const baseFeaturedCalculation = useMemo(() => {
+    if (!featuredSectionPosition) return null;
+
+    return {
+      ...featuredSectionPosition,
+      baseY: featuredSectionPosition.y,
+      startOffset: -unitSize * 0.4, // Negative offset = starts above final position
+      isVisible:
+        !viewState ||
+        isElementInViewport(
+          featuredSectionPosition.x,
+          featuredSectionPosition.y,
+          featuredSectionPosition.width,
+          featuredSectionPosition.height,
+          viewState,
+          canvasWidth,
+          canvasHeight,
+        ),
+    };
+  }, [featuredSectionPosition, unitSize, viewState, canvasWidth, canvasHeight]);
 
   // Start animation when conditions are met
   useEffect(() => {
@@ -292,9 +334,44 @@ export const useCanvasEntranceAnimation = ({
         }
       });
 
+      // Calculate animated featured section (slides down from top)
+      let animatedFeaturedSection: AnimatedFeaturedElement | null = null;
+      if (
+        baseFeaturedCalculation &&
+        (currentIsAnimationActive || !baseFeaturedCalculation.isVisible || viewState === undefined)
+      ) {
+        if (animationProgress >= 1) {
+          // Animation complete - use final position
+          animatedFeaturedSection = {
+            x: baseFeaturedCalculation.x,
+            y: baseFeaturedCalculation.y,
+            width: baseFeaturedCalculation.width,
+            height: baseFeaturedCalculation.height,
+            animatedX: baseFeaturedCalculation.x,
+            animatedY: baseFeaturedCalculation.baseY,
+            animatedOpacity: 1,
+            animatedScale: 1,
+          };
+        } else {
+          // During animation - slides down from top (negative offset becomes 0)
+          const currentOffset = baseFeaturedCalculation.startOffset * (1 - animationProgress);
+          animatedFeaturedSection = {
+            x: baseFeaturedCalculation.x,
+            y: baseFeaturedCalculation.y,
+            width: baseFeaturedCalculation.width,
+            height: baseFeaturedCalculation.height,
+            animatedX: baseFeaturedCalculation.x,
+            animatedY: baseFeaturedCalculation.baseY + currentOffset, // Negative startOffset + positive baseY
+            animatedOpacity: animationProgress,
+            animatedScale: 0.95 + 0.05 * animationProgress, // Slight scale animation like tokens
+          };
+        }
+      }
+
       return {
         animatedProductPlacements,
         animatedTokenPositions,
+        animatedFeaturedSection,
         isAnimationActive: currentIsAnimationActive,
         animationProgress,
       };
@@ -304,6 +381,7 @@ export const useCanvasEntranceAnimation = ({
       hasAnimationStarted,
       baseProductCalculations,
       baseTokenCalculations,
+      baseFeaturedCalculation,
       ENTRANCE_ANIMATION_DURATION,
       TOKEN_DELAY,
     ],

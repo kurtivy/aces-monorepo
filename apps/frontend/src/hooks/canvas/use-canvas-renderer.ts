@@ -55,7 +55,7 @@ import {
 } from '../../lib/utils/canvas-error-boundary';
 
 // FEATURED SECTION: Import featured section drawing functions
-import { drawFeaturedSection } from '../../lib/canvas/draw';
+import { drawFeaturedSection, drawAnimatedFeaturedSection } from '../../lib/canvas/draw';
 
 interface UseCanvasRendererProps {
   images: ImageInfo[];
@@ -501,6 +501,12 @@ export const useCanvasRenderer = ({
   const entranceAnimationHook = useCanvasEntranceAnimation({
     productPlacements: stableProductPlacements.current,
     tokenPositions: stableCreateTokenPositions.current,
+    featuredSectionPosition: {
+      x: -unitSize,
+      y: -unitSize * 3,
+      width: unitSize * 2,
+      height: unitSize * 2,
+    },
     shouldAnimate: canvasVisible && canvasReady && imagesLoaded && placementsCalculated,
     unitSize,
     // OPTIMIZATION: Pass viewport info for mobile performance (viewport-aware animation)
@@ -1802,7 +1808,7 @@ export const useCanvasRenderer = ({
         });
       }
 
-      // FEATURED SECTION: Draw featured section using screen coordinates
+      // FEATURED SECTION: Draw featured section using screen coordinates with entrance animation
       const featuredAreaScreenPos = worldToScreen(
         featuredAreaWorldX,
         featuredAreaWorldY,
@@ -1821,18 +1827,50 @@ export const useCanvasRenderer = ({
       //   featuredImageComplete: featuredImage?.element?.complete,
       // });
 
-      // Always draw featured section (will show placeholder if no image)
-      drawFeaturedSection(
-        ctx,
-        featuredAreaScreenPos.x,
-        featuredAreaScreenPos.y,
-        featuredAreaScreenWidth,
-        featuredAreaScreenHeight,
-        featuredImage,
-        mousePositionRef.current.x, // Screen mouse coordinates
-        mousePositionRef.current.y, // Screen mouse coordinates
-        currentTime,
-      );
+      // Check if we have featured section animation data
+      const animatedFeaturedSection = entranceAnimation.animatedFeaturedSection;
+
+      if (animatedFeaturedSection && entranceAnimation.isAnimationActive) {
+        // During entrance animation - use animated version with position override
+        const animatedScreenPos = worldToScreen(
+          animatedFeaturedSection.animatedX,
+          animatedFeaturedSection.animatedY,
+          viewTransform,
+        );
+
+        drawAnimatedFeaturedSection(
+          ctx,
+          featuredAreaScreenPos.x, // Original position for size calculations
+          featuredAreaScreenPos.y,
+          featuredAreaScreenWidth,
+          featuredAreaScreenHeight,
+          featuredImage,
+          mousePositionRef.current.x, // Screen mouse coordinates
+          mousePositionRef.current.y, // Screen mouse coordinates
+          currentTime,
+          // Animation properties
+          animatedFeaturedSection.animatedOpacity,
+          animatedFeaturedSection.animatedScale,
+          entranceAnimation.animationProgress, // Border animation progress
+          entranceAnimation.animationProgress, // Image animation progress
+          // Position override for sliding animation
+          animatedScreenPos.x,
+          animatedScreenPos.y,
+        );
+      } else {
+        // After animation or no animation - use regular version
+        drawFeaturedSection(
+          ctx,
+          featuredAreaScreenPos.x,
+          featuredAreaScreenPos.y,
+          featuredAreaScreenWidth,
+          featuredAreaScreenHeight,
+          featuredImage,
+          mousePositionRef.current.x, // Screen mouse coordinates
+          mousePositionRef.current.y, // Screen mouse coordinates
+          currentTime,
+        );
+      }
       totalElementsRendered++; // Count featured section as one element
 
       // Draw home area using screen coordinates

@@ -216,6 +216,9 @@ export const drawAnimatedFeaturedSection = (
   scale = 1,
   borderAnimationProgress = 1,
   imageAnimationProgress = 1,
+  // Entrance animation position override (for sliding from top)
+  animatedX?: number,
+  animatedY?: number,
 ) => {
   void _animationTime; // Explicitly ignore unused parameter
   // Smart mobile optimization: detect mobile device
@@ -224,12 +227,16 @@ export const drawAnimatedFeaturedSection = (
 
   const radius = 12;
 
+  // Use animated position if provided, otherwise use original position
+  const drawX = animatedX !== undefined ? animatedX : x;
+  const drawY = animatedY !== undefined ? animatedY : y;
+
   // Apply scale transformation only to background and image, not borders
   ctx.save();
 
   // Apply scale transformation from center
-  const centerX = x + width / 2;
-  const centerY = y + height / 2;
+  const centerX = drawX + width / 2;
+  const centerY = drawY + height / 2;
   ctx.translate(centerX, centerY);
   ctx.scale(scale, scale);
   ctx.translate(-centerX, -centerY);
@@ -254,7 +261,7 @@ export const drawAnimatedFeaturedSection = (
 
   ctx.fillStyle = backgroundGradient;
   ctx.beginPath();
-  ctx.roundRect(x, y, width, height, radius);
+  ctx.roundRect(drawX, drawY, width, height, radius);
   ctx.fill();
 
   // Draw featured image with image animation progress
@@ -271,8 +278,8 @@ export const drawAnimatedFeaturedSection = (
 
     // Create rounded rectangle clipping path with padding
     const imagePadding = 12;
-    const imageX = x + imagePadding;
-    const imageY = y + imagePadding;
+    const imageX = drawX + imagePadding;
+    const imageY = drawY + imagePadding;
     const imageWidth = width - imagePadding * 2;
     const imageHeight = height - imagePadding * 2;
 
@@ -314,10 +321,10 @@ export const drawAnimatedFeaturedSection = (
 
   // Gold gradient for text (matching home area text)
   const textGradient = ctx.createLinearGradient(
-    x + 16,
-    y + 16,
-    x + 16 + width * 0.3, // Scale gradient width appropriately
-    y + 16 + height * 0.08, // Scale gradient height to text size
+    drawX + 16,
+    drawY + 16,
+    drawX + 16 + width * 0.3, // Scale gradient width appropriately
+    drawY + 16 + height * 0.08, // Scale gradient height to text size
   );
   textGradient.addColorStop(0, '#FFFFFF');
   textGradient.addColorStop(0.1, '#D0B264');
@@ -328,7 +335,7 @@ export const drawAnimatedFeaturedSection = (
   ctx.font = `bold ${Math.min(width, height) * 0.08}px 'heading'`;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
-  ctx.fillText('FEATURED', x + 16, y + 16);
+  ctx.fillText('FEATURED', drawX + 16, drawY + 16);
   ctx.restore();
 
   // Draw animated border with progressive appearance
@@ -337,7 +344,11 @@ export const drawAnimatedFeaturedSection = (
 
     // Check if mouse is hovering over the featured section
     const isHovered =
-      !isMobileDevice && mouseX >= x && mouseX <= x + width && mouseY >= y && mouseY <= y + height;
+      !isMobileDevice &&
+      mouseX >= drawX &&
+      mouseX <= drawX + width &&
+      mouseY >= drawY &&
+      mouseY <= drawY + height;
 
     // Enhanced border opacity and glow when hovering
     const borderOpacity = (isHovered ? 0.9 : 0.7) * opacity * borderAnimationProgress;
@@ -372,33 +383,36 @@ export const drawAnimatedFeaturedSection = (
 
     // Draw borders with animation (clockwise from top)
     // Top border
-    drawAnimatedLine(x + radius, y, x + width - radius, y);
+    drawAnimatedLine(drawX + radius, drawY, drawX + width - radius, drawY);
 
     // Right border (only if top border is complete enough)
     if (borderAnimationProgress > 0.25) {
       const rightProgress = Math.max(0, (borderAnimationProgress - 0.25) / 0.25);
-      const rightStartY = y + radius;
+      const rightStartY = drawY + radius;
       const rightEndY = Math.min(
-        y + height - radius,
+        drawY + height - radius,
         rightStartY + (height - radius * 2) * rightProgress,
       );
-      drawAnimatedLine(x + width, rightStartY, x + width, rightEndY);
+      drawAnimatedLine(drawX + width, rightStartY, drawX + width, rightEndY);
     }
 
     // Bottom border (only if right border is complete enough)
     if (borderAnimationProgress > 0.5) {
       const bottomProgress = Math.max(0, (borderAnimationProgress - 0.5) / 0.25);
-      const bottomStartX = x + width - radius;
-      const bottomEndX = Math.max(x + radius, bottomStartX - (width - radius * 2) * bottomProgress);
-      drawAnimatedLine(bottomStartX, y + height, bottomEndX, y + height);
+      const bottomStartX = drawX + width - radius;
+      const bottomEndX = Math.max(
+        drawX + radius,
+        bottomStartX - (width - radius * 2) * bottomProgress,
+      );
+      drawAnimatedLine(bottomStartX, drawY + height, bottomEndX, drawY + height);
     }
 
     // Left border (only if bottom border is complete enough)
     if (borderAnimationProgress > 0.75) {
       const leftProgress = Math.max(0, (borderAnimationProgress - 0.75) / 0.25);
-      const leftStartY = y + height - radius;
-      const leftEndY = Math.max(y + radius, leftStartY - (height - radius * 2) * leftProgress);
-      drawAnimatedLine(x, leftStartY, x, leftEndY);
+      const leftStartY = drawY + height - radius;
+      const leftEndY = Math.max(drawY + radius, leftStartY - (height - radius * 2) * leftProgress);
+      drawAnimatedLine(drawX, leftStartY, drawX, leftEndY);
     }
 
     // Draw corner animations (simplified for performance)
@@ -421,8 +435,8 @@ export const drawAnimatedFeaturedSection = (
     // Animate corners in sequence
     if (borderAnimationProgress > 0.1) {
       drawAnimatedCorner(
-        x + radius,
-        y + radius,
+        drawX + radius,
+        drawY + radius,
         Math.PI,
         Math.PI * 1.5,
         Math.min(1, (borderAnimationProgress - 0.1) / 0.15),
@@ -430,8 +444,8 @@ export const drawAnimatedFeaturedSection = (
     }
     if (borderAnimationProgress > 0.35) {
       drawAnimatedCorner(
-        x + width - radius,
-        y + radius,
+        drawX + width - radius,
+        drawY + radius,
         Math.PI * 1.5,
         0,
         Math.min(1, (borderAnimationProgress - 0.35) / 0.15),
@@ -439,8 +453,8 @@ export const drawAnimatedFeaturedSection = (
     }
     if (borderAnimationProgress > 0.6) {
       drawAnimatedCorner(
-        x + width - radius,
-        y + height - radius,
+        drawX + width - radius,
+        drawY + height - radius,
         0,
         Math.PI * 0.5,
         Math.min(1, (borderAnimationProgress - 0.6) / 0.15),
@@ -448,8 +462,8 @@ export const drawAnimatedFeaturedSection = (
     }
     if (borderAnimationProgress > 0.85) {
       drawAnimatedCorner(
-        x + radius,
-        y + height - radius,
+        drawX + radius,
+        drawY + height - radius,
         Math.PI * 0.5,
         Math.PI,
         Math.min(1, (borderAnimationProgress - 0.85) / 0.15),
