@@ -210,46 +210,67 @@ export const useCanvasInteractions = ({
       ) {
         const quadWidth = homeAreaWidth / 2;
         const quadHeight = homeAreaHeight / 2;
-        const createQuadX = homeAreaWorldX + quadWidth;
-        const createQuadY = homeAreaWorldY;
+        
+        // Quadrant coordinates based on draw-home-area.ts layout:
+        // Quadrant 0 (top-left): ABOUT
         const aboutQuadX = homeAreaWorldX;
         const aboutQuadY = homeAreaWorldY;
-        const termsQuadX = homeAreaWorldX;
-        const termsQuadY = homeAreaWorldY + quadHeight;
+        
+        // Quadrant 1 (top-right): MINT  
+        const mintQuadX = homeAreaWorldX + quadWidth;
+        const mintQuadY = homeAreaWorldY;
+        
+        // Quadrant 2 (bottom-left): DOCS
+        const docsQuadX = homeAreaWorldX;
+        const docsQuadY = homeAreaWorldY + quadHeight;
+        
+        // Quadrant 3 (bottom-right): CHAT
+        const chatQuadX = homeAreaWorldX + quadWidth;
+        const chatQuadY = homeAreaWorldY + quadHeight;
 
+        // ABOUT button (top-left quadrant)
         if (
           worldX >= aboutQuadX &&
           worldX < aboutQuadX + quadWidth &&
           worldY >= aboutQuadY &&
           worldY < aboutQuadY + quadHeight
         ) {
-          // Open About modal instead of navigating
           if (onAboutClick) {
             onAboutClick();
           }
           return;
         }
 
+        // MINT button (top-right quadrant) 
         if (
-          worldX >= createQuadX &&
-          worldX < createQuadX + quadWidth &&
-          worldY >= createQuadY &&
-          worldY < createQuadY + quadHeight
+          worldX >= mintQuadX &&
+          worldX < mintQuadX + quadWidth &&
+          worldY >= mintQuadY &&
+          worldY < mintQuadY + quadHeight
         ) {
-          window.location.href = '/launch';
+          window.location.href = '/mint-token';
           return;
         }
 
+        // DOCS button (bottom-left quadrant)
         if (
-          worldX >= termsQuadX &&
-          worldX < termsQuadX + quadWidth &&
-          worldY >= termsQuadY &&
-          worldY < termsQuadY + quadHeight
+          worldX >= docsQuadX &&
+          worldX < docsQuadX + quadWidth &&
+          worldY >= docsQuadY &&
+          worldY < docsQuadY + quadHeight
         ) {
-          // Open Terms modal instead of navigating
-          if (onTermsClick) {
-            onTermsClick();
-          }
+          window.open('https://docs.aces.fun', '_blank');
+          return;
+        }
+
+        // CHAT button (bottom-right quadrant)
+        if (
+          worldX >= chatQuadX &&
+          worldX < chatQuadX + quadWidth &&
+          worldY >= chatQuadY &&
+          worldY < chatQuadY + quadHeight
+        ) {
+          window.open('https://t.me/acesdotfun/', '_blank');
           return;
         }
         return;
