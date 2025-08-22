@@ -805,8 +805,8 @@ export default function ModalSwapInterface({
                 )}
               </div>
 
-              {/* Stablecoin Warning */}
-              {selectedCurrency !== 'ETH' && (
+              {/* Stablecoin Warning - Only show if AcesSwap not ready */}
+              {selectedCurrency !== 'ETH' && !isContractReady && (
                 <div className="bg-yellow-500/10 rounded-lg border border-yellow-500/20 p-2">
                   <div className="flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4 text-yellow-400" />
@@ -858,8 +858,8 @@ export default function ModalSwapInterface({
                   !!ethPrice.error ||
                   // For purchase (not approval), require terms acceptance
                   (!acceptTerms && (selectedCurrency === 'ETH' || approvalCompleted)) ||
-                  // Disable for stablecoins until AcesSwap is ready
-                  (selectedCurrency !== 'ETH' && !needsApproval)
+                  // Disable for stablecoins if AcesSwap is not ready
+                  (selectedCurrency !== 'ETH' && !isContractReady)
                 }
                 className="w-full bg-gradient-to-r from-[#D0B284] to-[#D7BF75] hover:from-[#D7BF75] hover:to-[#D0B284] text-black font-bold py-2.5 text-base rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -869,9 +869,9 @@ export default function ModalSwapInterface({
                     ? 'Processing transaction...'
                     : approvalInProgress
                       ? `Approving ${selectedCurrency}...`
-                      : selectedCurrency !== 'ETH' && needsApproval && !approvalCompleted
-                        ? `Approve ${selectedCurrency} (Coming Soon)`
-                        : selectedCurrency !== 'ETH'
+                      : selectedCurrency !== 'ETH' && needsApproval && !approvalCompleted && isContractReady
+                        ? `Approve ${selectedCurrency}`
+                        : selectedCurrency !== 'ETH' && !isContractReady
                           ? `${selectedCurrency} purchases coming soon`
                           : `Purchase ${tokenSymbol} with ${selectedCurrency}`}
               </Button>
