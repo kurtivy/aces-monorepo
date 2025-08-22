@@ -59,59 +59,59 @@ const nextConfig: NextConfig = {
     return {
       // Multi-tenant rewrites come first (beforeFiles)
       beforeFiles: [
-        // Rewrite aceofbase.fun requests to /aceofbase routes
+        // Rewrite aceofbase.fun requests to /aceofbase routes (excluding static assets)
         {
-          source: '/:path*',
+          source: '/((?!_next/static|_next/image|favicon.ico|api).*)',
           has: [
             {
               type: 'host',
               value: 'aceofbase.fun',
             },
           ],
-          destination: '/aceofbase/:path*',
+          destination: '/aceofbase/$1',
         },
-        // Rewrite www.aceofbase.fun requests to /aceofbase routes
+        // Rewrite www.aceofbase.fun requests to /aceofbase routes (excluding static assets)
         {
-          source: '/:path*',
+          source: '/((?!_next/static|_next/image|favicon.ico|api).*)',
           has: [
             {
               type: 'host',
               value: 'www.aceofbase.fun',
             },
           ],
-          destination: '/aceofbase/:path*',
+          destination: '/aceofbase/$1',
         },
         // Handle localhost:3001 and local.aceofbase.fun for development
         {
-          source: '/:path*',
+          source: '/((?!_next/static|_next/image|favicon.ico|api).*)',
           has: [
             {
               type: 'host',
               value: 'localhost:3001',
             },
           ],
-          destination: '/aceofbase/:path*',
+          destination: '/aceofbase/$1',
         },
         {
-          source: '/:path*',
+          source: '/((?!_next/static|_next/image|favicon.ico|api).*)',
           has: [
             {
               type: 'host',
               value: 'local.aceofbase.fun:3000',
             },
           ],
-          destination: '/aceofbase/:path*',
+          destination: '/aceofbase/$1',
         },
         // Handle Vercel deployments with 'aceofbase' in the URL
         {
-          source: '/:path*',
+          source: '/((?!_next/static|_next/image|favicon.ico|api).*)',
           has: [
             {
               type: 'host',
               value: '(?<host>.*aceofbase.*\\.vercel\\.app)',
             },
           ],
-          destination: '/aceofbase/:path*',
+          destination: '/aceofbase/$1',
         },
       ],
       // API proxy rewrites come after (afterFiles)
