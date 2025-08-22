@@ -4,41 +4,75 @@ export function middleware(request: NextRequest) {
   const hostname = request.headers.get('host');
   const pathname = request.nextUrl.pathname;
 
-  // Map localhost ports to domains for testing
-  const isDomain1 = hostname === 'aces.fun' || hostname === 'localhost:3000';
-  const isDomain2 = hostname === 'aceofbase.fun' || hostname === 'localhost:3001';
+  // Add comprehensive logging
+  console.log('🔍 MIDDLEWARE DEBUG:');
+  console.log('  Hostname:', hostname);
+  console.log('  Pathname:', pathname);
+  console.log('  Full URL:', request.url);
 
-  // Block /launch and /profile routes on aces.fun (or localhost:3000)
-  if (isDomain1 && (pathname.startsWith('/launch') || pathname.startsWith('/profile'))) {
-    // Rewrite to a non-existent route to trigger the not-found.tsx page
+  // Define domain types
+  const isAceofbaseDomain =
+    hostname === 'aceofbase.fun' ||
+    hostname === 'localhost:3001' ||
+    hostname === 'local.aceofbase.fun:3000' ||
+    (hostname?.includes('vercel.app') && hostname?.includes('aceofbase'));
+
+  const isMainDomain =
+    hostname === 'aces.fun' ||
+    hostname === 'localhost:3000' ||
+    hostname === 'local.aces.fun:3000' ||
+    (hostname?.includes('vercel.app') && !hostname?.includes('aceofbase'));
+
+  console.log('  Is Aceofbase Domain:', isAceofbaseDomain);
+  console.log('  Is Main Domain:', isMainDomain);
+
+  // Simple blocking approach: block /profile and /launch on all domains, /aceofbase on main domain
+  if (pathname.startsWith('/profile') || pathname.startsWith('/launch')) {
+    console.log('  🚫 BLOCKING /profile or /launch route');
     return NextResponse.rewrite(new URL('/404', request.url));
   }
 
-  // Redirect aceofbase.fun root to /launch
-  if (isDomain2 && pathname === '/') {
-    return NextResponse.rewrite(new URL('/launch', request.url));
+  if (isMainDomain && pathname.startsWith('/aceofbase')) {
+    console.log('  🚫 BLOCKING /aceofbase route on main domain');
+    return NextResponse.rewrite(new URL('/404', request.url));
   }
 
-  // Block aceofbase.fun from accessing other routes (except /launch and its assets)
-  if (
-    isDomain2 &&
-    !pathname.startsWith('/launch') &&
-    !pathname.startsWith('/_next') &&
-    !pathname.startsWith('/api') &&
-    !pathname.startsWith('/favicon') &&
-    !pathname.startsWith('/canvas-images') &&
-    !pathname.startsWith('/fonts') &&
-    !pathname.startsWith('/svg')
-  ) {
-    return NextResponse.redirect(new URL('/launch', request.url));
+  // For aceofbase domain, block non-root paths except static assets
+  if (isAceofbaseDomain && pathname !== '/') {
+    const allowedPaths = [
+      '/_next',
+      '/api',
+      '/favicon.ico',
+      '/canvas-images',
+      '/fonts',
+      '/svg',
+      '/aces-logo.png',
+      '/404-image.png',
+    ];
+    const isAllowedPath = allowedPaths.some((path) => pathname.startsWith(path));
+
+    if (!isAllowedPath) {
+      console.log('  🚫 BLOCKING non-root route on aceofbase domain:', pathname);
+      return NextResponse.rewrite(new URL('/404', request.url));
+    }
   }
 
-  return NextResponse.next();
+  // Add security headers
+  const response = NextResponse.next();
+  response.headers.set('X-Frame-Options', 'DENY');
+  response.headers.set('X-Content-Type-Options', 'nosniff');
+
+  // Debug headers
+  response.headers.set('X-Middleware-Domain', hostname || 'unknown');
+  response.headers.set('X-Middleware-Path', pathname);
+  response.headers.set('X-Middleware-Aceofbase', isAceofbaseDomain?.toString() || 'false');
+  response.headers.set('X-Middleware-Main', isMainDomain?.toString() || 'false');
+
+  console.log('  ✅ CONTINUING to next()');
+
+  return response;
 }
 
 export const config = {
-  matcher: [
-    // Only run middleware on page routes, not assets
-    '/((?!_next/static|_next/image|favicon.ico|canvas-images|fonts|svg|api).*)',
-  ],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|canvas-images|fonts|svg|api).*)'],
 };

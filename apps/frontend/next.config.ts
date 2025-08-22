@@ -54,12 +54,203 @@ const nextConfig: NextConfig = {
   },
   */
 
-  // API proxy configuration
+  // Multi-tenant and API proxy configuration
   async rewrites() {
+    return {
+      // Multi-tenant rewrites come first (beforeFiles)
+      beforeFiles: [
+        // Rewrite aceofbase.fun requests to /aceofbase routes
+        {
+          source: '/:path*',
+          has: [
+            {
+              type: 'host',
+              value: 'aceofbase.fun',
+            },
+          ],
+          destination: '/aceofbase/:path*',
+        },
+        // Handle localhost:3001 and local.aceofbase.fun for development
+        {
+          source: '/:path*',
+          has: [
+            {
+              type: 'host',
+              value: 'localhost:3001',
+            },
+          ],
+          destination: '/aceofbase/:path*',
+        },
+        {
+          source: '/:path*',
+          has: [
+            {
+              type: 'host',
+              value: 'local.aceofbase.fun:3000',
+            },
+          ],
+          destination: '/aceofbase/:path*',
+        },
+        // Handle Vercel deployments with 'aceofbase' in the URL
+        {
+          source: '/:path*',
+          has: [
+            {
+              type: 'host',
+              value: '(?<host>.*aceofbase.*\\.vercel\\.app)',
+            },
+          ],
+          destination: '/aceofbase/:path*',
+        },
+      ],
+      // API proxy rewrites come after (afterFiles)
+      afterFiles: [
+        {
+          source: '/submissions/:path*',
+          destination: 'http://localhost:3002/submissions/:path*',
+        },
+      ],
+    };
+  },
+
+  // Redirects for blocked routes on main domain
+  async redirects() {
     return [
+      // Block /aceofbase, /launch, and /profile on main domain (aces.fun)
       {
-        source: '/submissions/:path*',
-        destination: 'http://localhost:3002/submissions/:path*',
+        source: '/aceofbase/:path*',
+        has: [
+          {
+            type: 'host',
+            value: 'aces.fun',
+          },
+        ],
+        destination: '/404',
+        permanent: false,
+      },
+      {
+        source: '/launch/:path*',
+        has: [
+          {
+            type: 'host',
+            value: 'aces.fun',
+          },
+        ],
+        destination: '/404',
+        permanent: false,
+      },
+      {
+        source: '/profile/:path*',
+        has: [
+          {
+            type: 'host',
+            value: 'aces.fun',
+          },
+        ],
+        destination: '/404',
+        permanent: false,
+      },
+      // Handle localhost:3000 and local.aces.fun for development (main domain)
+      {
+        source: '/aceofbase/:path*',
+        has: [
+          {
+            type: 'host',
+            value: 'localhost:3000',
+          },
+        ],
+        destination: '/404',
+        permanent: false,
+      },
+      {
+        source: '/launch/:path*',
+        has: [
+          {
+            type: 'host',
+            value: 'localhost:3000',
+          },
+        ],
+        destination: '/404',
+        permanent: false,
+      },
+      {
+        source: '/profile/:path*',
+        has: [
+          {
+            type: 'host',
+            value: 'localhost:3000',
+          },
+        ],
+        destination: '/404',
+        permanent: false,
+      },
+      // Add local.aces.fun redirects for development
+      {
+        source: '/aceofbase/:path*',
+        has: [
+          {
+            type: 'host',
+            value: 'local.aces.fun:3000',
+          },
+        ],
+        destination: '/404',
+        permanent: false,
+      },
+      {
+        source: '/launch/:path*',
+        has: [
+          {
+            type: 'host',
+            value: 'local.aces.fun:3000',
+          },
+        ],
+        destination: '/404',
+        permanent: false,
+      },
+      {
+        source: '/profile/:path*',
+        has: [
+          {
+            type: 'host',
+            value: 'local.aces.fun:3000',
+          },
+        ],
+        destination: '/404',
+        permanent: false,
+      },
+      // Handle main Vercel deployments (without 'aceofbase' in URL)
+      {
+        source: '/aceofbase/:path*',
+        has: [
+          {
+            type: 'host',
+            value: '(?<host>(?!.*aceofbase).*\\.vercel\\.app)',
+          },
+        ],
+        destination: '/404',
+        permanent: false,
+      },
+      {
+        source: '/launch/:path*',
+        has: [
+          {
+            type: 'host',
+            value: '(?<host>(?!.*aceofbase).*\\.vercel\\.app)',
+          },
+        ],
+        destination: '/404',
+        permanent: false,
+      },
+      {
+        source: '/profile/:path*',
+        has: [
+          {
+            type: 'host',
+            value: '(?<host>(?!.*aceofbase).*\\.vercel\\.app)',
+          },
+        ],
+        destination: '/404',
+        permanent: false,
       },
     ];
   },
