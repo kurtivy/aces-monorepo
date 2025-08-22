@@ -21,14 +21,14 @@ export const SUPPORTED_CURRENCIES: Record<Currency, CurrencyInfo> = {
     symbol: 'USDC',
     name: 'USD Coin',
     decimals: 6,
-    address: '0x036CbD53842c5426634e7929541eC2318f3dCF7e', // Base Sepolia USDC
+    address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // Base Mainnet USDC
     isNative: false,
   },
   USDT: {
     symbol: 'USDT',
     name: 'Tether USD',
     decimals: 6,
-    address: '0x7c6b91D9Be155A6Db01f749217d76fF02A7227F2', // Base Sepolia USDT
+    address: '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2', // Base Mainnet USDT
     isNative: false,
   },
 } as const;

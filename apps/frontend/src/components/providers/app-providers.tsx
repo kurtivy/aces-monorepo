@@ -133,8 +133,8 @@ export default function AppProviders({ children }: { children: ReactNode }) {
             requireUserPasswordOnCreate: false,
             showWalletUIs: false, // Reduce complexity
           },
-          defaultChain: baseSepolia,
-          supportedChains: [baseSepolia, base],
+          defaultChain: base,
+          supportedChains: [base, baseSepolia],
           // Add SIWE configuration for better external wallet support
           externalWallets: {
             coinbaseWallet: {

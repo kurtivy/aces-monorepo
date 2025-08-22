@@ -5,26 +5,19 @@ import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useReadContract, useWriteContract, useBalance } from 'wagmi';
 import { readContract } from 'wagmi/actions';
 import { formatEther, parseEther } from 'viem';
-import { ACES_VAULT_ABI } from '@aces/utils';
+import { ACES_VAULT_ABI, getBondingCurveContracts } from '@aces/utils';
 import { useReliableETHPrice } from './use-reliable-eth-price';
 import { wagmiConfig } from '@/components/providers/app-providers';
+import { base } from 'wagmi/chains';
 
-// Contract addresses - UPDATED FOR PROXY ARCHITECTURE
-const ACES_VAULT_ADDRESS = '0x4f585dFD5A3faA1F782E10DfBe3DbBA7e0dFD20d' as const; // Proxy address
-const ACES_TOKEN_ADDRESS = '0x4D74aCf5c51dbE8c89Ce14E624E6b5C338e68708' as const; // Token address
-const SHARES_SUBJECT_ADDRESS = '0x246ca431fd1353610Bf20F9d4fbD240148522Dc8' as const; // Dev wallet as subject
-const ROOM_NUMBER = BigInt(0); // Fixed room number
+// Contract addresses - MAINNET CONFIGURATION
+const BASE_MAINNET_CONTRACTS = getBondingCurveContracts(8453); // Base Mainnet
+const ACES_VAULT_ADDRESS = BASE_MAINNET_CONTRACTS.acesVault; // Proxy address
+const ACES_TOKEN_ADDRESS = BASE_MAINNET_CONTRACTS.acesToken; // Token address
+const SHARES_SUBJECT_ADDRESS = BASE_MAINNET_CONTRACTS.sharesSubject; // Dev wallet as subject
+const ROOM_NUMBER = BigInt(BASE_MAINNET_CONTRACTS.roomNumber); // Fixed room number
 
-const baseSepolia = {
-  id: 84532,
-  name: 'Base Sepolia',
-  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-  rpcUrls: { default: { http: ['https://sepolia.base.org'] } },
-  blockExplorers: {
-    default: { name: 'Base Sepolia Explorer', url: 'https://sepolia.basescan.org' },
-  },
-  testnet: true,
-} as const;
+const baseMainnet = base;
 
 export interface BondingCurveState {
   tokenSupply: bigint;
@@ -216,7 +209,6 @@ export function useBondingCurveContracts() {
       }
 
       try {
-
         // If we don't have a current share price, return zeros
         if (!currentSharePrice || currentSharePrice === BigInt(0)) {
           return {
@@ -251,8 +243,6 @@ export function useBondingCurveContracts() {
               functionName: 'getBuyPriceAfterFee',
               args: [SHARES_SUBJECT_ADDRESS, ROOM_NUMBER, mid],
             });
-
-          
 
             if (exactCost <= ethAmountWei) {
               bestShares = mid;
@@ -307,7 +297,6 @@ export function useBondingCurveContracts() {
       }
 
       try {
-
         // Get the EXACT cost from contract one more time to be sure
         const exactCost = await readContract(wagmiConfig, {
           address: ACES_VAULT_ADDRESS,
@@ -325,7 +314,7 @@ export function useBondingCurveContracts() {
           functionName: 'buyShares',
           args: [SHARES_SUBJECT_ADDRESS, ROOM_NUMBER, shareCount],
           value: finalCost,
-          chain: baseSepolia,
+          chain: baseMainnet,
           account: walletAddress as `0x${string}`,
         });
 

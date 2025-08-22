@@ -19,76 +19,84 @@ interface TooltipData {
   y: number;
 }
 
-// Generate bonding curve data based on the linear curve formula from the contract
-const generateBondingCurveData = (
-  currentTokensSold: number,
-  currentPriceETH: number,
-  bondingCurveSupply: number,
-  steepness: number,
-  floor: number,
-) => {
+// Real bonding curve data points from mainnet contract
+const BONDING_CURVE_POINTS = [
+  { tokens: 0, priceETH: 0 }, // Start at zero
+  { tokens: 75000000, priceETH: 0.009381258109573598 }, // Real data
+  { tokens: 150000000, priceETH: 0.07505004911607849 }, // Real data
+  { tokens: 225000000, priceETH: 0.25329389803619246 }, // Real data
+  { tokens: 250000000, priceETH: 0.3474539019068286 }, // Real data
+  { tokens: 300000000, priceETH: 0.9534134725094533 }, // Real data
+  { tokens: 400000000, priceETH: 1.4231711149655355 }, // Real data
+  { tokens: 450000000, priceETH: 2.0263510424449667 }, // Real data
+  { tokens: 500000000, priceETH: 2.779631040137873 }, // Real data
+  { tokens: 600000000, priceETH: 4.803202386924621 }, // Real data
+  { tokens: 700000000, priceETH: 7.627307436846792 }, // Real data
+  { tokens: 800000000, priceETH: 11.3853684714254 }, // Real data - bonding curve completion
+];
+
+// Generate bonding curve data from real contract points
+const generateBondingCurveData = (currentTokensSold: number) => {
   const data = [];
   const steps = 100;
-
-  // Check if bondingCurveSupply seems like a wei value (too big) and correct it
-  const actualBondingCurveSupply = bondingCurveSupply > 1e15 ? 800000000 : bondingCurveSupply;
-
-  // Show a more reasonable range: either current position + 50%, or at least 10K shares
-  const minDisplayRange = Math.max(10000, currentTokensSold * 1.5);
-  const maxRange = Math.min(
-    actualBondingCurveSupply,
-    Math.max(minDisplayRange, actualBondingCurveSupply * 0.1),
-  );
-  const stepSize = maxRange / steps;
+  const maxTokens = 800000000; // 800M tokens - full range
+  const stepSize = maxTokens / steps;
 
   for (let i = 0; i <= steps; i++) {
-    const shareCount = i * stepSize;
+    const tokensSold = i * stepSize;
 
-    // Use the contract's linear curve formula:
-    // price = (summation * 1 ether) / (steepness / 50) + (floor * amount)
-    // For linear: summation = (supply - 1 + amount) * (supply + amount) - (supply - 1) * supply
-    let priceETH: number;
+    // Find the price by interpolating between known points
+    let priceETH = 0;
 
-    if (shareCount === 0) {
-      priceETH = floor;
-    } else {
-      const supply = shareCount + 1; // Contract starts with supply of 1
-      const amount = 1; // Price for 1 share
+    for (let j = 0; j < BONDING_CURVE_POINTS.length - 1; j++) {
+      const point1 = BONDING_CURVE_POINTS[j];
+      const point2 = BONDING_CURVE_POINTS[j + 1];
 
-      const sum1 = (supply - 1) * supply;
-      const sum2 = (supply - 1 + amount) * (supply + amount);
-      const summation = sum2 - sum1;
+      if (tokensSold >= point1.tokens && tokensSold <= point2.tokens) {
+        // Linear interpolation between points
+        const ratio = (tokensSold - point1.tokens) / (point2.tokens - point1.tokens);
+        priceETH = point1.priceETH + (point2.priceETH - point1.priceETH) * ratio;
+        break;
+      }
+    }
 
-      // Convert from wei to ETH: (summation * 1 ether) / (steepness / 50) + (floor * amount)
-      priceETH = summation / (steepness / 50) / 1e18 + floor * amount;
+    // Handle edge cases
+    if (tokensSold <= BONDING_CURVE_POINTS[0].tokens) {
+      priceETH = BONDING_CURVE_POINTS[0].priceETH;
+    } else if (tokensSold >= BONDING_CURVE_POINTS[BONDING_CURVE_POINTS.length - 1].tokens) {
+      priceETH = BONDING_CURVE_POINTS[BONDING_CURVE_POINTS.length - 1].priceETH;
     }
 
     data.push({
-      tokensSold: Math.round(shareCount),
-      priceETH: Math.max(priceETH, 0), // Ensure non-negative
-      phase: shareCount <= currentTokensSold ? 'completed' : 'upcoming',
-      isFixedPrice: false, // Linear curve doesn't have fixed price phase
+      tokensSold: Math.round(tokensSold),
+      priceETH: priceETH,
+      phase: tokensSold <= currentTokensSold ? 'completed' : 'upcoming',
+      isFixedPrice: false,
     });
   }
 
-  return { data, maxRange };
+  return { data, maxRange: maxTokens };
 };
 
-// Calculate price at any point on the linear bonding curve
-const calculatePriceAtShares = (shareCount: number, steepness: number, floor: number): number => {
-  if (shareCount === 0) return floor;
+// Calculate price at any point using real contract data interpolation
+const calculatePriceAtShares = (shareCount: number): number => {
+  // Use the same interpolation logic as generateBondingCurveData
+  for (let j = 0; j < BONDING_CURVE_POINTS.length - 1; j++) {
+    const point1 = BONDING_CURVE_POINTS[j];
+    const point2 = BONDING_CURVE_POINTS[j + 1];
 
-  const supply = shareCount + 1; // Contract starts with supply of 1
-  const amount = 1; // Price for 1 share
+    if (shareCount >= point1.tokens && shareCount <= point2.tokens) {
+      // Linear interpolation between points
+      const ratio = (shareCount - point1.tokens) / (point2.tokens - point1.tokens);
+      return point1.priceETH + (point2.priceETH - point1.priceETH) * ratio;
+    }
+  }
 
-  const sum1 = (supply - 1) * supply;
-  const sum2 = (supply - 1 + amount) * (supply + amount);
-  const summation = sum2 - sum1;
-
-  // Convert from wei to ETH
-  const priceETH = summation / (steepness / 50) / 1e18 + floor * amount;
-
-  return Math.max(priceETH, 0);
+  // Handle edge cases
+  if (shareCount <= BONDING_CURVE_POINTS[0].tokens) {
+    return BONDING_CURVE_POINTS[0].priceETH;
+  }
+  return BONDING_CURVE_POINTS[BONDING_CURVE_POINTS.length - 1].priceETH;
 };
 
 export default function BondingCurveChart({
@@ -112,28 +120,10 @@ export default function BondingCurveChart({
       ? Number(formatEther(propCurrentPrice))
       : 0;
 
-  // Use the corrected bonding curve supply (800M shares, not wei)
-  const bondingCurveSupply = contractState?.bondingCurveSupply
-    ? Number(contractState.bondingCurveSupply) // Should be 800M, not wei
-    : 800000000;
-
-  // Linear curve parameters (from your transaction log)
-  const steepness = 10000000000000; // From transaction log
-  const floor = 0; // From transaction log
-
-  // Generate bonding curve data
+  // Generate bonding curve data using real contract points
   const { data: bondingCurveData, maxRange: displayRange } = useMemo(() => {
-    // Apply the same correction here that we do in the generation function
-    const correctedBondingCurveSupply = bondingCurveSupply > 1e15 ? 800000000 : bondingCurveSupply;
-
-    return generateBondingCurveData(
-      currentSharesSold,
-      currentPriceETH,
-      correctedBondingCurveSupply,
-      steepness,
-      floor,
-    );
-  }, [currentSharesSold, currentPriceETH, bondingCurveSupply, steepness, floor]);
+    return generateBondingCurveData(currentSharesSold);
+  }, [currentSharesSold]);
 
   useEffect(() => {
     if (!svgRef.current || bondingCurveData.length === 0) return;
@@ -417,8 +407,8 @@ export default function BondingCurveChart({
           return;
         }
 
-        // Calculate price at this share position using contract formula
-        const priceETH = calculatePriceAtShares(sharesAtX, steepness, floor);
+        // Calculate price at this share position using real contract data
+        const priceETH = calculatePriceAtShares(sharesAtX);
         const priceUSD = priceETH * (ethPrice?.current || 3000);
 
         // Convert back to chart coordinates
@@ -448,15 +438,7 @@ export default function BondingCurveChart({
         crosshairGroup.style('display', 'none');
         setTooltipData(null);
       });
-  }, [
-    bondingCurveData,
-    displayRange,
-    currentSharesSold,
-    currentPriceETH,
-    steepness,
-    floor,
-    ethPrice?.current,
-  ]);
+  }, [bondingCurveData, displayRange, currentSharesSold, currentPriceETH, ethPrice?.current]);
 
   return (
     <div className="w-full h-full bg-transparent flex items-center justify-center relative">

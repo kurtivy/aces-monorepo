@@ -25,10 +25,13 @@ import { useChainSwitching } from '@/hooks/contracts/use-chain-switching';
 import { ACES_VAULT_ABI } from '@aces/utils';
 import Image from 'next/image';
 
-// Contract addresses - must match the hook
-const ACES_VAULT_ADDRESS = '0x4f585dFD5A3faA1F782E10DfBe3DbBA7e0dFD20d' as const;
-const SHARES_SUBJECT_ADDRESS = '0x246ca431fd1353610Bf20F9d4fbD240148522Dc8' as const;
-const ROOM_NUMBER = BigInt(0);
+// Contract addresses - must match the hook (MAINNET)
+import { getBondingCurveContracts } from '@aces/utils';
+
+const BASE_MAINNET_CONTRACTS = getBondingCurveContracts(8453); // Base Mainnet
+const ACES_VAULT_ADDRESS = BASE_MAINNET_CONTRACTS.acesVault;
+const SHARES_SUBJECT_ADDRESS = BASE_MAINNET_CONTRACTS.sharesSubject;
+const ROOM_NUMBER = BigInt(BASE_MAINNET_CONTRACTS.roomNumber);
 
 interface ModalSwapInterfaceProps {
   isOpen: boolean;

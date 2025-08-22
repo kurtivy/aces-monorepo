@@ -167,6 +167,8 @@ const nextConfig: NextConfig = {
         permanent: false,
       },
       // Handle localhost:3000 and local.aces.fun for development (main domain)
+      // Temporarily disabled for testing
+      /*
       {
         source: '/aceofbase/:path*',
         has: [
@@ -178,6 +180,7 @@ const nextConfig: NextConfig = {
         destination: '/404',
         permanent: false,
       },
+      */
       {
         source: '/launch/:path*',
         has: [

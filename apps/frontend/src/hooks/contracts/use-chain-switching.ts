@@ -13,7 +13,7 @@ export const SUPPORTED_CHAINS = {
 // Define your preferred chain for different operations
 export const CHAIN_CONFIG = {
   // Default chain for general app usage
-  DEFAULT: baseSepolia,
+  DEFAULT: base,
   // Chain for real money operations (MoonPay, etc.)
   FUNDING: base,
   // Chain for development/testing

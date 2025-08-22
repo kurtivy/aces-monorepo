@@ -25,7 +25,6 @@ import {
   CountdownSkeleton,
   ProgressionSkeleton,
   ChartSkeleton,
-  LoadingOverlay,
 } from './skeleton-components';
 
 // Image positioning system - 200x200px squares, no gaps, RIGHT AGAINST content edges
@@ -153,18 +152,46 @@ const CurrentPriceSquare: React.FC = () => {
   const liveETHPriceUSD = ethPrice.current;
   const nextSharePriceUSD = nextSharePriceETH * liveETHPriceUSD;
 
-  // Format price display - show more precision for small values
+  // Format price display - show more precision for small values with better UX for very small numbers
   const formatUSDPrice = (price: number) => {
+    if (price === 0) return '0.00';
     if (price >= 1) return price.toFixed(4);
-    if (price >= 0.001) return price.toFixed(6);
-    return price.toFixed(8);
+    if (price >= 0.01) return price.toFixed(6);
+    if (price >= 0.001) return price.toFixed(8);
+    if (price >= 0.0001) return price.toFixed(10);
+    // For very small numbers, show in a more readable format
+    if (price >= 0.000000001) {
+      // Show as "< $0.000001" for very small values
+      return '< 0.000001';
+    }
+    // For extremely small numbers, use scientific notation
+    return price.toExponential(2);
   };
 
   const formatETHPrice = (price: number) => {
+    if (price === 0) return '0.000000';
     if (price >= 0.01) return price.toFixed(6);
-    if (price >= 0.000001) return price.toFixed(9);
-    return price.toFixed(12);
+    if (price >= 0.001) return price.toFixed(9);
+    if (price >= 0.0001) return price.toFixed(12);
+    if (price >= 0.000000001) {
+      // Show as "< 0.000001 ETH" for very small values
+      return '< 0.000001';
+    }
+    // For extremely small numbers, use scientific notation
+    return price.toExponential(2);
   };
+
+  // Debug logging for price values (after function definitions)
+  console.log('🎯 Price Debug:', {
+    currentPriceWei: contractState?.currentPrice?.toString(),
+    nextSharePriceETH,
+    liveETHPriceUSD,
+    nextSharePriceUSD,
+    formatted: {
+      usd: formatUSDPrice(nextSharePriceUSD),
+      eth: formatETHPrice(nextSharePriceETH),
+    },
+  });
 
   return (
     <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-[#231F20] to-[#0A0A0A] p-4 relative">
