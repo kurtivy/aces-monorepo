@@ -142,7 +142,51 @@ export function useBondingCurveContracts() {
     },
   });
 
-  // Fee information (static data)
+  // Try calling getBuyPrice (without fees) to see if that works
+  const { data: baseBuyPrice, error: baseBuyPriceError } = useReadContract({
+    address: ACES_VAULT_ADDRESS,
+    abi: ACES_VAULT_ABI,
+    functionName: 'getBuyPrice',
+    args: [SHARES_SUBJECT_ADDRESS, ROOM_NUMBER, BigInt(1)],
+    query: {
+      enabled: true,
+      retry: 3,
+      retryDelay: 1000,
+    },
+  });
+
+  // Debug the getBuyPriceAfterFee call
+  useEffect(() => {
+    console.log('🔍 getBuyPriceAfterFee Debug:', {
+      vault: ACES_VAULT_ADDRESS,
+      subject: SHARES_SUBJECT_ADDRESS,
+      room: ROOM_NUMBER.toString(),
+      amount: '1',
+      result: currentSharePrice?.toString(),
+      error: currentSharePriceError?.message,
+      isLoading: currentSharePriceLoading,
+      tokenSupply: roomTokenSupply?.toString(),
+      baseBuyPrice: baseBuyPrice?.toString(),
+      baseBuyPriceError: baseBuyPriceError?.message,
+    });
+
+    if (currentSharePriceError) {
+      console.error('❌ getBuyPriceAfterFee Error Details:', currentSharePriceError);
+    }
+
+    if (baseBuyPriceError) {
+      console.error('❌ getBuyPrice Error Details:', baseBuyPriceError);
+    }
+  }, [
+    currentSharePrice,
+    currentSharePriceError,
+    currentSharePriceLoading,
+    roomTokenSupply,
+    baseBuyPrice,
+    baseBuyPriceError,
+  ]);
+
+  // Fee information (static data) - ADD THESE BACK
   const { data: protocolFeePercent } = useReadContract({
     address: ACES_VAULT_ADDRESS,
     abi: ACES_VAULT_ABI,
@@ -169,12 +213,11 @@ export function useBondingCurveContracts() {
     },
   });
 
-  // Token metadata - removed since we're not using ERC20 contract calls
+  // Token metadata
   const name = 'ACES';
   const symbol = 'ACES';
 
-  // Total minted tokens (for progression bar) - removed ERC20 call
-  // We'll use room token supply for now since we don't need separate ERC20 tracking
+  // Total minted tokens (for progression bar)
   const totalMintedSupply = roomTokenSupply;
 
   // Write contract functions
@@ -188,12 +231,40 @@ export function useBondingCurveContracts() {
     return ethPriceUSD || 3000;
   }, [ethPriceUSD, priceError, isPriceLoading]);
 
-  // Log fee data for debugging
+  // Log fee data for debugging - ADD THIS BACK
   useEffect(() => {
-    // Fee data loaded - no logging needed
+    if (protocolFeePercent !== undefined || subjectFeePercent !== undefined) {
+      console.log('Fee data loaded:', {
+        protocolFeePercent: protocolFeePercent?.toString(),
+        subjectFeePercent: subjectFeePercent?.toString(),
+      });
+    }
   }, [protocolFeePercent, subjectFeePercent]);
 
-  // SIMPLIFIED QUOTE FUNCTION - ETH-based, using contract pricing
+  // Caching for quote calculations to reduce RPC calls
+  const quoteCache = useMemo(
+    () => new Map<string, { result: QuoteResult; timestamp: number }>(),
+    [],
+  );
+  const CACHE_DURATION = 30000; // 30 seconds
+
+  // Mathematical approximation based on observed pricing pattern
+  const approximateSharesFromETH = useCallback(
+    (ethAmount: string, currentPrice?: bigint): bigint => {
+      const ethWei = parseEther(ethAmount);
+      if (!currentPrice || currentPrice <= BigInt(0)) {
+        // Fallback: Based on observed pattern, roughly 35M shares per 0.001 ETH
+        return (ethWei * BigInt(35000000)) / parseEther('0.001');
+      }
+
+      // Use current price as starting approximation
+      // Since price is per share, invert to get shares per ETH
+      return ethWei / currentPrice;
+    },
+    [],
+  );
+
+  // OPTIMIZED getQuote function with caching and fallback calculation
   const getQuote = useCallback(
     async (ethAmount: string): Promise<QuoteResult> => {
       if (!ready || !authenticated) throw new Error('Not authenticated');
@@ -208,41 +279,79 @@ export function useBondingCurveContracts() {
         };
       }
 
+      // Check cache first
+      const cacheKey = `${ethAmount}-${currentSharePrice?.toString() || '0'}`;
+      const cachedResult = quoteCache.get(cacheKey);
+      if (cachedResult && Date.now() - cachedResult.timestamp < CACHE_DURATION) {
+        console.log('💾 Using cached quote for', ethAmount, 'ETH');
+        return cachedResult.result;
+      }
+
       try {
-        // If we don't have a current share price, return zeros
-        if (!currentSharePrice || currentSharePrice === BigInt(0)) {
-          return {
-            tokensOut: BigInt(0),
-            ethCost: BigInt(0),
-            shareCount: BigInt(0),
-          };
-        }
+        console.log('🚀 Getting quote for ETH amount:', ethAmount);
 
-        // Estimate how many shares we can buy with this ETH amount
-        // This is an approximation - we'll use binary search for exact amount
-        const estimatedShares = ethAmountWei / currentSharePrice;
+        // Start with mathematical approximation to get better initial bounds
+        const approximateShares = approximateSharesFromETH(ethAmount, currentSharePrice);
+        console.log(`🧮 Mathematical approximation: ${approximateShares.toLocaleString()} shares`);
 
-        // Binary search to find exact share count within ETH budget
-        let low = BigInt(1);
-        let high = estimatedShares * BigInt(2); // Search up to 2x estimated
+        // Use approximation to set smarter bounds (±50% range)
+        let low =
+          approximateShares > BigInt(1000000)
+            ? (approximateShares * BigInt(50)) / BigInt(100)
+            : BigInt(1000000);
+        let high = (approximateShares * BigInt(150)) / BigInt(100);
+
+        // Cap the search range to avoid excessive calls
+        if (high > BigInt(100000000)) high = BigInt(100000000);
+        if (low < BigInt(100000)) low = BigInt(100000);
+
         let bestShares = BigInt(0);
         let bestCost = BigInt(0);
 
-        // Cap the search to prevent infinite loops
-        const maxIterations = 50;
+        console.log(`🎯 Smart bounds: ${low.toLocaleString()} to ${high.toLocaleString()} shares`);
+
+        // Test the approximation first
+        try {
+          const approxCost = await readContract(wagmiConfig, {
+            address: ACES_VAULT_ADDRESS,
+            abi: ACES_VAULT_ABI,
+            functionName: 'getPrice',
+            args: [SHARES_SUBJECT_ADDRESS, ROOM_NUMBER, approximateShares, true],
+          });
+
+          console.log(
+            `🎯 Approximation test: ${approximateShares.toLocaleString()} shares = ${formatEther(approxCost)} ETH`,
+          );
+
+          if (approxCost <= ethAmountWei) {
+            bestShares = approximateShares;
+            bestCost = approxCost;
+            low = approximateShares + BigInt(1);
+          } else {
+            high = approximateShares - BigInt(1);
+          }
+        } catch (error) {
+          console.warn('⚠️ Approximation test failed, using binary search');
+        }
+
+        // Efficient binary search with reduced iterations
+        const maxIterations = 8; // Much fewer iterations
         let iterations = 0;
 
         while (low <= high && iterations < maxIterations) {
           const mid = (low + high) / BigInt(2);
 
           try {
-            // Get exact cost from contract for this many shares
             const exactCost = await readContract(wagmiConfig, {
               address: ACES_VAULT_ADDRESS,
               abi: ACES_VAULT_ABI,
-              functionName: 'getBuyPriceAfterFee',
-              args: [SHARES_SUBJECT_ADDRESS, ROOM_NUMBER, mid],
+              functionName: 'getPrice',
+              args: [SHARES_SUBJECT_ADDRESS, ROOM_NUMBER, mid, true],
             });
+
+            console.log(
+              `🔍 Binary search: ${mid.toLocaleString()} shares = ${formatEther(exactCost)} ETH`,
+            );
 
             if (exactCost <= ethAmountWei) {
               bestShares = mid;
@@ -252,13 +361,45 @@ export function useBondingCurveContracts() {
               high = mid - BigInt(1);
             }
           } catch (error) {
+            console.error(`❌ Error querying price for ${mid.toLocaleString()} shares:`, error);
+
+            // If we hit rate limit, break early and use best result
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            if (errorMessage.includes('429') || errorMessage.includes('Too Many Requests')) {
+              console.log('⏳ Rate limited, using best result found');
+              break;
+            }
+
             high = mid - BigInt(1);
           }
 
           iterations++;
+
+          // Add minimal delay to avoid rate limits
+          if (iterations % 3 === 0) {
+            await new Promise((resolve) => setTimeout(resolve, 100));
+          }
         }
 
+        // If we couldn't find a good result, use mathematical approximation as fallback
+        if (bestShares === BigInt(0) && approximateShares > BigInt(0)) {
+          console.log('📐 Using mathematical approximation as fallback');
+          bestShares = approximateShares;
+
+          // Estimate cost based on current price
+          if (currentSharePrice && currentSharePrice > BigInt(0)) {
+            bestCost = bestShares * currentSharePrice;
+          } else {
+            bestCost = ethAmountWei;
+          }
+        }
+
+        console.log(
+          `🎉 Final result: ${bestShares.toLocaleString()} shares for ${formatEther(bestCost)} ETH`,
+        );
+
         if (bestShares === BigInt(0)) {
+          console.log('⚠️ No shares can be purchased with this ETH amount');
           return {
             tokensOut: BigInt(0),
             ethCost: BigInt(0),
@@ -266,19 +407,61 @@ export function useBondingCurveContracts() {
           };
         }
 
-        // Tokens are minted as shares * 1e18 (from contract buyShares function)
+        // Calculate tokens (1 share = 1e18 tokens)
         const tokensOut = bestShares * BigInt(1e18);
 
-        return {
+        // Add fees to the cost for accurate total cost display
+        let totalCostWithFees = bestCost;
+        if (protocolFeePercent && subjectFeePercent) {
+          const protocolFee = (bestCost * protocolFeePercent) / parseEther('1');
+          const subjectFee = (bestCost * subjectFeePercent) / parseEther('1');
+          totalCostWithFees = bestCost + protocolFee + subjectFee;
+        }
+
+        const result = {
           tokensOut,
-          ethCost: bestCost,
+          ethCost: totalCostWithFees,
           shareCount: bestShares,
         };
+
+        // Cache the result
+        quoteCache.set(cacheKey, { result, timestamp: Date.now() });
+
+        // Clean old cache entries
+        for (const [key, value] of quoteCache.entries()) {
+          if (Date.now() - value.timestamp > CACHE_DURATION) {
+            quoteCache.delete(key);
+          }
+        }
+
+        return result;
       } catch (error) {
+        console.error('❌ Failed to get price quote:', error);
+
+        // Fallback to mathematical approximation if everything fails
+        if (currentSharePrice && currentSharePrice > BigInt(0)) {
+          const fallbackShares = approximateSharesFromETH(ethAmount, currentSharePrice);
+          console.log(`🔄 Using fallback calculation: ${fallbackShares.toLocaleString()} shares`);
+
+          return {
+            tokensOut: fallbackShares * BigInt(1e18),
+            ethCost: ethAmountWei,
+            shareCount: fallbackShares,
+          };
+        }
+
         throw new Error('Failed to get price quote');
       }
     },
-    [ready, authenticated, currentSharePrice],
+    [
+      ready,
+      authenticated,
+      protocolFeePercent,
+      subjectFeePercent,
+      currentSharePrice,
+      approximateSharesFromETH,
+      quoteCache,
+    ],
   );
 
   // BUY TOKENS FUNCTION - simplified for proxy contract
@@ -298,22 +481,38 @@ export function useBondingCurveContracts() {
 
       try {
         // Get the EXACT cost from contract one more time to be sure
-        const exactCost = await readContract(wagmiConfig, {
+        // Use getPrice + fees calculation to match our quote
+        const baseCost = await readContract(wagmiConfig, {
           address: ACES_VAULT_ADDRESS,
           abi: ACES_VAULT_ABI,
-          functionName: 'getBuyPriceAfterFee',
-          args: [SHARES_SUBJECT_ADDRESS, ROOM_NUMBER, shareCount],
+          functionName: 'getPrice',
+          args: [SHARES_SUBJECT_ADDRESS, ROOM_NUMBER, shareCount, true],
+        });
+
+        // Calculate fees
+        let finalCost = baseCost;
+        if (protocolFeePercent && subjectFeePercent) {
+          const protocolFee = (baseCost * protocolFeePercent) / parseEther('1');
+          const subjectFee = (baseCost * subjectFeePercent) / parseEther('1');
+          finalCost = baseCost + protocolFee + subjectFee;
+        }
+
+        console.log('💸 Final purchase cost:', {
+          shareCount: shareCount.toString(),
+          baseCost: formatEther(baseCost),
+          finalCost: formatEther(finalCost),
+          quotedCost: formatEther(ethCost),
         });
 
         // Use the higher of the two costs to be safe
-        const finalCost = ethCost > exactCost ? ethCost : exactCost;
+        const safeFinalCost = ethCost > finalCost ? ethCost : finalCost;
 
         const hash = await writeContractAsync({
           address: ACES_VAULT_ADDRESS,
           abi: ACES_VAULT_ABI,
           functionName: 'buyShares',
           args: [SHARES_SUBJECT_ADDRESS, ROOM_NUMBER, shareCount],
-          value: finalCost,
+          value: safeFinalCost,
           chain: baseMainnet,
           account: walletAddress as `0x${string}`,
         });
@@ -340,6 +539,8 @@ export function useBondingCurveContracts() {
       refetchRoomTokenSupply,
       refetchUserShareBalance,
       refetchCurrentSharePrice,
+      protocolFeePercent,
+      subjectFeePercent,
     ],
   );
 

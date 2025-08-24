@@ -18,7 +18,7 @@ export default function ProgressionBar({ percentage }: ProgressionBarProps) {
         <div className="text-[#DCDDCC] text-sm font-medium tracking-wide">
           Loading contract data...
         </div>
-        <div className="text-[#928357] text-xs mt-2">Connecting to Base Sepolia network...</div>
+        <div className="text-[#928357] text-xs mt-2">Connecting to Base Mainnet...</div>
       </div>
     );
   }

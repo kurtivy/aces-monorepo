@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 import { Button } from '@/components/ui/button';
-import { Slider } from '@/components/ui/slider';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
   Wallet,
@@ -17,7 +16,10 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { usePrivy, useFundWallet } from '@privy-io/react-auth';
-import { useBondingCurveContracts } from '@/hooks/contracts/use-bonding-curve-contract';
+import {
+  useBondingCurveContracts,
+  type BondingCurveState,
+} from '@/hooks/contracts/use-bonding-curve-contract';
 import { useAcesSwapContract } from '@/hooks/contracts/use-aces-swap-contract';
 import { parseEther, formatEther } from 'viem';
 import { useWaitForTransactionReceipt, useWriteContract } from 'wagmi';
@@ -25,6 +27,7 @@ import { Currency, SUPPORTED_CURRENCIES } from '@/types/contracts';
 import { useChainSwitching } from '@/hooks/contracts/use-chain-switching';
 import { ACES_VAULT_ABI } from '@aces/utils';
 import Image from 'next/image';
+import { CryptoSlider } from './crypto-slider';
 
 // Contract addresses - must match the hook (MAINNET)
 import { getBondingCurveContracts } from '@aces/utils';
@@ -52,6 +55,18 @@ export default function ModalSwapInterface({
   const { contractState, getQuote, ethPrice, refresh } = useBondingCurveContracts();
   const { data: hash, isPending, error, writeContractAsync } = useWriteContract();
 
+  // Stable contract state that persists once loaded (prevents modal from closing during re-fetches)
+  const stableContractStateRef = useRef<BondingCurveState | null>(null);
+  const [stableContractState, setStableContractState] = useState<BondingCurveState | null>(null);
+
+  // Update stable state when we get valid contract data
+  useEffect(() => {
+    if (contractState && contractState.ethBalance !== undefined) {
+      stableContractStateRef.current = contractState;
+      setStableContractState(contractState);
+    }
+  }, [contractState]);
+
   // AcesSwap integration for USDC/USDT
   const {
     swapState,
@@ -73,8 +88,10 @@ export default function ModalSwapInterface({
 
   // State - simplified to work with ETH
   const [selectedCurrency, setSelectedCurrency] = useState<Currency>('ETH');
-  const [ethAmount, setEthAmount] = useState(0); // Amount in ETH - start at 0
+  const [ethAmount, setEthAmount] = useState(0.001); // FIXED: Start with a small valid amount instead of 0
+  const [isBackgroundRefreshing, setIsBackgroundRefreshing] = useState(false);
   const [expectedTokens, setExpectedTokens] = useState('0');
+  const [isCalculatingTokens, setIsCalculatingTokens] = useState(false);
   const [actualCost, setActualCost] = useState('0'); // Cost in ETH
   const [shareCount, setShareCount] = useState(BigInt(0)); // Share count for contract
   const [acceptTerms, setAcceptTerms] = useState(false);
@@ -102,9 +119,24 @@ export default function ModalSwapInterface({
   const usdcAllowance = useTokenAllowance('USDC');
   const usdtAllowance = useTokenAllowance('USDT');
 
-  // Current currency info
+  // Current currency info - use stable contract state to prevent modal flickering
   const currencyInfo = SUPPORTED_CURRENCIES[selectedCurrency];
-  const userEthBalance = contractState?.ethBalance || BigInt(0);
+  const activeContractState = stableContractState || contractState; // Use stable state if available
+  const userEthBalance = activeContractState?.ethBalance || BigInt(0);
+
+  // Background refresh mechanism - refresh prices every 30 seconds without disrupting UI
+  useEffect(() => {
+    if (!isOpen || !activeContractState) return;
+
+    const refreshInterval = setInterval(() => {
+      // Only refresh pricing data, not balance data to avoid disruption
+      if (refresh?.price) {
+        refresh.price();
+      }
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(refreshInterval);
+  }, [isOpen, activeContractState, refresh]);
   const userCurrencyBalance =
     selectedCurrency === 'ETH'
       ? userEthBalance
@@ -112,12 +144,16 @@ export default function ModalSwapInterface({
         ? usdcBalanceInfo.balance
         : usdtBalanceInfo.balance;
 
-  // Calculate max amount based on currency and balance
+  // Calculate max amount based on currency and balance - using the EXACT same balance source
+  const walletBalanceEth = Number(formatEther(userEthBalance)); // Same source as balance display
+
   const getMaxAmount = () => {
     if (selectedCurrency === 'ETH') {
-      const maxEthFromWallet = Number(formatEther(userEthBalance));
-      // Reserve some ETH for gas fees
-      const maxUsableEth = Math.max(0, maxEthFromWallet - 0.01);
+      // Base network gas fees: < $0.01 (from gas tracker)
+      // Conservative estimate: $0.01 / $3000 ETH = 0.0000033 ETH actual cost
+      // Use 5x buffer for safety: 0.00002 ETH (~$0.06)
+      const gasReserve = 0.00002; // 0.00002 ETH (~$0.06) reserve for gas + safety margin
+      const maxUsableEth = Math.max(0, walletBalanceEth - gasReserve);
       return Math.min(1, maxUsableEth); // Cap at 1 ETH for safety
     } else {
       // For stablecoins, convert balance to ETH equivalent for now
@@ -128,8 +164,21 @@ export default function ModalSwapInterface({
     }
   };
 
-  const maxAmount = getMaxAmount();
-  const minAmount = 0; // Allow starting from 0
+  const calculatedMaxAmount = getMaxAmount();
+  const maxAmount = Math.max(calculatedMaxAmount, walletBalanceEth * 0.1); // At least 10% of wallet
+  const minAmount = Math.min(walletBalanceEth * 0.01, maxAmount * 0.1); // 1% of wallet or 10% of max
+
+  // Calculate step size: divide the range into 100 steps for smooth movement
+  const stepSize = (maxAmount - minAmount) / 100;
+
+  // Adjust ethAmount if it's outside the valid range
+  useEffect(() => {
+    if (ethAmount < minAmount) {
+      setEthAmount(minAmount);
+    } else if (ethAmount > maxAmount) {
+      setEthAmount(maxAmount);
+    }
+  }, [minAmount, maxAmount, ethAmount]);
 
   // Create our own buyTokens function that uses the modal's writeContractAsync
   // This ensures the hash gets set in our useWriteContract hook
@@ -166,10 +215,23 @@ export default function ModalSwapInterface({
     }
   };
 
+  // FIND THIS EXISTING useEffect IN YOUR FILE (around line 200-300)
+  // AND REPLACE THE ENTIRE useEffect WITH THE NEW CODE BELOW
+
   // Calculate expected tokens when amount changes
   useEffect(() => {
     const calculateExpectedTokens = async () => {
-      if (ethAmount < minAmount || ethAmount > maxAmount) {
+      console.log('calculateExpectedTokens called:', {
+        ethAmount,
+        minAmount,
+        maxAmount,
+        activeContractState: !!activeContractState,
+        getQuote: !!getQuote,
+      });
+
+      // More lenient validation - allow very small amounts for calculations
+      if (ethAmount <= 0) {
+        console.log('Amount is zero or negative, setting to 0');
         setExpectedTokens('0');
         setActualCost('0');
         setShareCount(BigInt(0));
@@ -177,15 +239,76 @@ export default function ModalSwapInterface({
         return;
       }
 
+      // Only warn about max amount, don't block calculation
+      if (ethAmount > maxAmount) {
+        console.log('Amount exceeds max, but calculating anyway');
+      }
+
+      // Don't calculate if contract state isn't ready
+      if (!activeContractState || !getQuote) {
+        console.log('Contract state or getQuote not ready');
+        setExpectedTokens('0');
+        setActualCost('0');
+        setShareCount(BigInt(0));
+        return;
+      }
+
       try {
         if (selectedCurrency === 'ETH') {
-          // Direct ETH quote from contract
-          const quote = await getQuote(ethAmount.toString());
+          console.log('Getting ETH quote for amount:', ethAmount);
+          console.log('Contract state currentPrice:', activeContractState?.currentPrice);
+          setIsCalculatingTokens(true);
 
-          setExpectedTokens(formatEther(quote.tokensOut));
-          setActualCost(formatEther(quote.ethCost));
-          setShareCount(quote.shareCount);
+          // Use a smaller minimum for more accurate small calculations
+          const calculationAmount = Math.max(ethAmount, 0.0001); // Reduced from 0.001 to 0.0001
+          console.log('Using calculation amount:', calculationAmount);
+
+          try {
+            // Get real quote from the updated getQuote function
+            const quote = await getQuote(calculationAmount.toString());
+            console.log('Quote result:', quote);
+
+            // Use real values from quote
+            if (quote.tokensOut > BigInt(0)) {
+              setExpectedTokens(formatEther(quote.tokensOut));
+              setActualCost(formatEther(quote.ethCost));
+              setShareCount(quote.shareCount);
+
+              console.log('✅ Real quote values:', {
+                ethAmount: calculationAmount,
+                tokensOut: formatEther(quote.tokensOut),
+                actualCost: formatEther(quote.ethCost),
+                shareCount: quote.shareCount.toString(),
+              });
+            } else {
+              // If quote returns zeros, show user why
+              console.log('⚠️ Quote returned zero tokens - possible reasons:');
+              console.log('  - Contract not deployed or not returning valid prices');
+              console.log('  - Room not initialized');
+              console.log('  - Amount too small for current bonding curve');
+
+              setExpectedTokens('0');
+              setActualCost('0');
+              setShareCount(BigInt(0));
+            }
+          } catch (quoteError) {
+            console.error('❌ getQuote failed:', quoteError);
+
+            // Show user-friendly error in development
+            if (process.env.NODE_ENV === 'development') {
+              console.log('🔧 Debug info for quote failure:');
+              console.log('  - Check if contract is deployed on Base Mainnet');
+              console.log('  - Verify room exists and has shares > 0');
+              console.log('  - Check if getPrice function works directly');
+            }
+
+            setExpectedTokens('0');
+            setActualCost('0');
+            setShareCount(BigInt(0));
+          }
+
           setNeedsApproval(false);
+          setIsCalculatingTokens(false);
         } else if (isContractReady) {
           // For stablecoins with AcesSwap
           const shareCountEstimate = BigInt(Math.floor(ethAmount * 1000)); // Rough estimate for shares
@@ -223,10 +346,11 @@ export default function ModalSwapInterface({
         setActualCost('0');
         setShareCount(BigInt(0));
         setNeedsApproval(false);
+        setIsCalculatingTokens(false);
       }
     };
 
-    const debounceTimer = setTimeout(calculateExpectedTokens, 300);
+    const debounceTimer = setTimeout(calculateExpectedTokens, 150); // Reduced from 300ms to 150ms for more responsive UI
     return () => clearTimeout(debounceTimer);
   }, [
     ethAmount,
@@ -234,6 +358,7 @@ export default function ModalSwapInterface({
     getQuote,
     minAmount,
     maxAmount,
+    activeContractState,
     isContractReady,
     calculateSwapQuote,
     usdcAllowance.allowance,
@@ -424,14 +549,15 @@ export default function ModalSwapInterface({
         // Use the exact values from our quote
         const ethCostWei = parseEther(actualCost);
 
-        // Add small buffer for gas estimation
-        const gasBuffer = parseEther('0.01'); // 0.01 ETH buffer for gas
-        const totalNeeded = ethCostWei + gasBuffer;
+        // Simple check: just verify user has enough ETH for the purchase
+        // Let wallet handle gas estimation and failure - Base fees are < $0.01
+        if (userEthBalance < ethCostWei) {
+          const neededEth = Number(formatEther(ethCostWei - userEthBalance));
+          const ethCostDisplay = Number(formatEther(ethCostWei));
+          const userBalanceDisplay = Number(formatEther(userEthBalance));
 
-        if (userEthBalance < totalNeeded) {
-          const neededEth = Number(formatEther(totalNeeded - userEthBalance));
           alert(
-            `Insufficient ETH balance. You need approximately ${neededEth.toFixed(4)} more ETH to cover the purchase and gas fees.`,
+            `Insufficient ETH balance.\n\nRequired: ${ethCostDisplay.toFixed(6)} ETH\nYour balance: ${userBalanceDisplay.toFixed(6)} ETH\nNeed ${neededEth.toFixed(6)} more ETH\n\nNote: Additional gas fees (~$0.01) will be estimated by your wallet.`,
           );
           return;
         }
@@ -674,8 +800,21 @@ export default function ModalSwapInterface({
             </div>
           )}
 
+          {/* Contract Loading State */}
+          {!activeContractState && transactionState === 'idle' && (
+            <div className="bg-[#231F20]/70 rounded-xl border border-[#D0B284]/30 p-8 text-center">
+              <div className="flex items-center justify-center mb-3">
+                <RefreshCw className="w-8 h-8 text-[#D0B284] animate-spin" />
+              </div>
+              <h3 className="text-white text-lg font-bold mb-2">Loading Contract Data...</h3>
+              <p className="text-[#DCDDCC] text-sm">
+                Please wait while we fetch the latest pricing and contract information.
+              </p>
+            </div>
+          )}
+
           {/* Hide form during transaction states except for idle */}
-          {transactionState === 'idle' && (
+          {transactionState === 'idle' && activeContractState && (
             <>
               {/* Currency Selector Dropdown */}
               <div className="bg-[#231F20]/50 rounded-xl border border-[#D0B284]/20 p-2">
@@ -708,102 +847,73 @@ export default function ModalSwapInterface({
                 </button>
 
                 {/* Currency Balance Display */}
-                <div className="text-xs text-[#928357] text-center mt-1 font-mono">
-                  Balance:{' '}
-                  {(Number(userCurrencyBalance) / Math.pow(10, currencyInfo.decimals)).toFixed(4)}{' '}
-                  {selectedCurrency}
-                  {selectedCurrency === 'ETH' &&
-                    ` ($${(Number(formatEther(userCurrencyBalance)) * ethPrice.current).toFixed(0)})`}
-                </div>
-              </div>
-
-              {/* Amount Slider - Updated for ETH */}
-              <div className="bg-[#231F20]/50 rounded-xl border border-[#D0B284]/20 p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-[#DCDDCC] font-mono">
-                    {selectedCurrency === 'ETH' ? 'ETH AMOUNT' : `${selectedCurrency} AMOUNT`}
+                <div className="text-xs text-[#928357] text-center mt-1 font-mono flex items-center justify-center gap-2">
+                  <span>
+                    Balance:{' '}
+                    {(Number(userCurrencyBalance) / Math.pow(10, currencyInfo.decimals)).toFixed(4)}{' '}
+                    {selectedCurrency}
+                    {selectedCurrency === 'ETH' &&
+                      ` ($${(Number(formatEther(userCurrencyBalance)) * ethPrice.current).toFixed(0)})`}
                   </span>
                   <button
-                    onClick={() => setEthAmount(maxAmount)}
-                    disabled={maxAmount <= 0}
-                    className="px-2 py-1 text-xs font-bold text-[#D0B284] border border-[#D0B284]/50 rounded bg-[#D0B284]/10 hover:bg-[#D0B284]/20 hover:border-[#D0B284] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={async () => {
+                      if (refresh?.userBalance) {
+                        setIsBackgroundRefreshing(true);
+                        try {
+                          await refresh.userBalance();
+                        } finally {
+                          setIsBackgroundRefreshing(false);
+                        }
+                      }
+                    }}
+                    className="text-[#D0B284] hover:text-[#D7BF75] transition-colors"
+                    title="Refresh balance"
+                    disabled={isBackgroundRefreshing}
                   >
-                    MAX
+                    <RefreshCw
+                      className={`w-3 h-3 ${isBackgroundRefreshing ? 'animate-spin' : ''}`}
+                    />
                   </button>
                 </div>
 
-                {/* Amount Display */}
-                <div className="text-center mb-4">
-                  <div className="text-4xl font-bold text-white font-mono mb-2">
-                    {ethAmount.toFixed(4)} ETH
-                  </div>
-
-                  {/* USD Value Display */}
-                  <div className="text-sm text-[#928357] font-mono">
-                    ≈ ${(ethAmount * ethPrice.current).toFixed(2)} USD
-                  </div>
-
-                  {/* Actual Cost Display */}
-                  {actualCost !== '0' && (
-                    <div className="text-xs text-[#928357] font-mono mt-1">
-                      Actual Cost: {Number(actualCost).toFixed(6)} ETH
+                {/* Debug: Show the exact balance sources being used */}
+                {process.env.NODE_ENV === 'development' && (
+                  <div className="text-xs text-yellow-400 text-center mt-1 font-mono space-y-1">
+                    <div>
+                      Debug: walletBalanceEth = {walletBalanceEth.toFixed(6)} ETH, maxAmount ={' '}
+                      {maxAmount.toFixed(6)} ETH
                     </div>
-                  )}
-                </div>
-
-                {/* Slider */}
-                <div className="px-2">
-                  <Slider
-                    value={[ethAmount]}
-                    onValueChange={(value) => setEthAmount(value[0])}
-                    max={maxAmount}
-                    min={minAmount}
-                    step={0.001}
-                    className="w-full [&>*[data-slot=slider-track]]:bg-[#928357]/30 [&>*[data-slot=slider-range]]:bg-gradient-to-r [&>*[data-slot=slider-range]]:from-[#D0B284] [&>*[data-slot=slider-range]]:to-[#D7BF75] [&>*[data-slot=slider-thumb]]:bg-[#D0B284] [&>*[data-slot=slider-thumb]]:border-[#D0B284] [&>*[data-slot=slider-thumb]]:shadow-lg"
-                  />
-                  <div className="flex justify-between text-xs text-[#928357] mt-2 font-mono">
-                    <span>0 ETH</span>
-                    <span>{(maxAmount / 2).toFixed(3)} ETH</span>
-                    <span>{maxAmount.toFixed(3)} ETH</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Expected Tokens Display */}
-              <div className="bg-[#231F20]/50 rounded-xl border border-[#D0B284]/20 p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-[#DCDDCC] font-mono">YOU RECEIVE</span>
-                  <div className="flex items-center gap-2">
-                    <Image
-                      src={'/aces-logo.png'}
-                      alt={tokenSymbol}
-                      width={24}
-                      height={24}
-                      className="rounded-full"
-                    />
-                    <span className="text-[#D0B284] font-medium">{tokenSymbol}</span>
-                  </div>
-                </div>
-                <div className="text-3xl font-bold text-[#D0B284] font-mono">
-                  {Number(expectedTokens) > 1000
-                    ? `${(Number(expectedTokens) / 1000).toFixed(1)}K`
-                    : Number(expectedTokens).toFixed(0)}
-                </div>
-                <div className="text-sm text-[#928357] font-mono mt-1">
-                  ≈ {Number(expectedTokens).toLocaleString()} {tokenSymbol} Tokens
-                </div>
-                {contractState?.currentPrice && (
-                  <div className="text-xs text-[#928357] font-mono mt-1">
-                    Current Price: {Number(formatEther(contractState.currentPrice)).toFixed(8)} ETH
-                    per share
-                  </div>
-                )}
-                {shareCount > BigInt(0) && (
-                  <div className="text-xs text-[#928357] font-mono mt-1">
-                    Share Count: {shareCount.toString()}
+                    <div>
+                      Token Calc: ethAmount = {ethAmount}, expectedTokens = {expectedTokens},
+                      isCalculating = {isCalculatingTokens.toString()}
+                    </div>
                   </div>
                 )}
               </div>
+
+              {/* Crypto Slider Component */}
+              <CryptoSlider
+                value={ethAmount}
+                onValueChange={setEthAmount}
+                selectedCurrency={selectedCurrency}
+                userCurrencyBalance={userCurrencyBalance}
+                ethPrice={ethPrice.current}
+                minAmount={minAmount}
+                maxAmount={maxAmount}
+                expectedTokens={expectedTokens}
+                actualCost={actualCost}
+                shareCount={shareCount}
+                contractState={activeContractState}
+                isCalculating={isCalculatingTokens}
+                tokenSymbol={tokenSymbol}
+                step={stepSize}
+                onMaxClick={() => {
+                  // Use the exact same calculation as getMaxAmount()
+                  const gasReserve = 0.00002; // 0.00002 ETH (~$0.06) reserve for gas + safety margin
+                  const maxUsable = Math.max(0, walletBalanceEth - gasReserve);
+                  setEthAmount(Math.min(maxUsable, maxAmount));
+                }}
+              />
 
               {/* Stablecoin Warning - Only show if AcesSwap not ready */}
               {selectedCurrency !== 'ETH' && !isContractReady && (

@@ -470,10 +470,7 @@ export default function BondingCurveChart({
 
   return (
     <div className="w-full h-full bg-transparent flex items-center justify-center relative">
-      <svg
-        ref={svgRef}
-        style={{ width: '100%', height: '100%' }}
-      ></svg>
+      <svg ref={svgRef} style={{ width: '100%', height: '100%' }}></svg>
 
       {/* Interactive Tooltip */}
       {tooltipData && (
