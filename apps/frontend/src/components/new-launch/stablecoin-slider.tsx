@@ -2,21 +2,22 @@
 
 import { Slider } from '@/components/ui/slider';
 import { Loader2 } from 'lucide-react';
+import { formatUnits } from 'viem';
 
 import Image from 'next/image';
 import { Currency, SUPPORTED_CURRENCIES } from '@/types/contracts';
 
-interface CryptoSliderProps {
-  // Value and onChange
-  value: number;
+interface StablecoinSliderProps {
+  // Value and onChange - using USD values directly
+  value: number; // USD value (e.g., 4.95)
   onValueChange: (value: number) => void;
 
   // Currency and balance info
-  selectedCurrency: Currency;
+  selectedCurrency: 'USDC' | 'USDT';
   userCurrencyBalance: bigint;
   ethPrice: number;
 
-  // Slider bounds
+  // Slider bounds (in USD)
   minAmount: number;
   maxAmount: number;
 
@@ -39,10 +40,7 @@ interface CryptoSliderProps {
   onMaxClick: () => void;
 }
 
-// Note: getCurrencyIcon function removed as it's not used in this component
-// Currency icons are handled in the parent modal component
-
-export function CryptoSlider({
+export function StablecoinSlider({
   value,
   onValueChange,
   selectedCurrency,
@@ -58,8 +56,14 @@ export function CryptoSlider({
   tokenSymbol = 'ACES',
   step = 0.001,
   onMaxClick,
-}: CryptoSliderProps) {
+}: StablecoinSliderProps) {
   const currencyInfo = SUPPORTED_CURRENCIES[selectedCurrency];
+
+  // Value is already in USD
+  const usdValue = value;
+
+  // Convert balance to USD for display
+  const balanceUSD = Number(formatUnits(userCurrencyBalance, currencyInfo.decimals));
 
   // Suppress unused variable warning
   void _contractState;
@@ -69,7 +73,9 @@ export function CryptoSlider({
       {/* Amount Slider */}
       <div className="bg-[#231F20]/50 rounded-xl border border-[#D0B284]/20 p-3">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium text-[#DCDDCC] font-mono">ETH AMOUNT</span>
+          <span className="text-sm font-medium text-[#DCDDCC] font-mono">
+            {selectedCurrency} AMOUNT
+          </span>
           <button
             onClick={onMaxClick}
             disabled={maxAmount <= 0}
@@ -79,12 +85,14 @@ export function CryptoSlider({
           </button>
         </div>
 
-        {/* Amount Display */}
+        {/* Amount Display - Show USD instead of ETH */}
         <div className="text-center mb-4">
-          <div className="text-4xl font-bold text-white font-mono mb-2">{value.toFixed(4)} ETH</div>
-          {/* USD Value Display */}
+          <div className="text-4xl font-bold text-white font-mono mb-2">
+            ${usdValue.toFixed(2)} {selectedCurrency}
+          </div>
+          {/* ETH Equivalent Display */}
           <div className="text-sm text-[#928357] font-mono">
-            ≈ ${(value * ethPrice).toFixed(2)} USD
+            ≈ {(value / ethPrice).toFixed(6)} ETH
           </div>
           {/* Percentage of Available Balance */}
           <div className="text-xs text-[#D0B284] font-mono mt-1">
@@ -94,7 +102,7 @@ export function CryptoSlider({
           {/* Actual Cost Display */}
           {actualCost !== '0' && (
             <div className="text-xs text-[#928357] font-mono mt-1">
-              Actual Cost: {Number(actualCost).toFixed(6)} ETH
+              Actual Cost: ${Number(actualCost).toFixed(2)} {selectedCurrency}
             </div>
           )}
         </div>
@@ -123,11 +131,15 @@ export function CryptoSlider({
             />
           </div>
 
-          {/* Percentage Indicators */}
+          {/* Percentage Indicators - Show USD values */}
           <div className="flex justify-between text-xs text-[#928357] mt-2 font-mono">
-            <span>0 ETH</span>
-            <span>{(maxAmount / 2).toFixed(4)} ETH</span>
-            <span>{maxAmount.toFixed(4)} ETH</span>
+            <span>$0 {selectedCurrency}</span>
+            <span>
+              ${(balanceUSD / 2).toFixed(2)} {selectedCurrency}
+            </span>
+            <span>
+              ${balanceUSD.toFixed(2)} {selectedCurrency}
+            </span>
           </div>
 
           {/* Percentage Quick Selection Buttons */}
@@ -136,9 +148,23 @@ export function CryptoSlider({
               <button
                 key={percentage}
                 onClick={() => {
-                  // For ETH, calculate percentage of available balance
-                  const targetValue = minAmount + ((maxAmount - minAmount) * percentage) / 100;
-                  onValueChange(targetValue);
+                  // Calculate based on actual USDC/USDT balance - direct USD calculation
+                  const targetUSDAmount = (balanceUSD * percentage) / 100;
+
+                  // Ensure it's within bounds (now all in USD)
+                  const boundedValue = Math.max(minAmount, Math.min(maxAmount, targetUSDAmount));
+
+                  console.log('💰 Corrected stablecoin percentage button clicked:', {
+                    percentage,
+                    balanceUSD,
+                    targetUSDAmount,
+                    boundedValue,
+                    minAmount,
+                    maxAmount,
+                    selectedCurrency,
+                  });
+
+                  onValueChange(boundedValue);
                 }}
                 className="px-2 py-1 text-xs font-medium text-[#D0B284] border border-[#D0B284]/30 rounded bg-[#D0B284]/5 hover:bg-[#D0B284]/15 hover:border-[#D0B284]/60 transition-all duration-150"
               >
@@ -149,14 +175,12 @@ export function CryptoSlider({
 
           {/* Wallet Balance Reference */}
           <div className="text-xs text-[#928357]/70 mt-2 text-center font-mono">
-            Available:{' '}
-            {(Number(userCurrencyBalance) / Math.pow(10, currencyInfo.decimals)).toFixed(4)} ETH
-            (Gas reserved)
+            Available: {balanceUSD.toFixed(4)} {selectedCurrency}
           </div>
         </div>
       </div>
 
-      {/* Expected Tokens Display */}
+      {/* Expected Tokens Display - Identical to ETH slider */}
       <div className="bg-[#231F20]/50 rounded-xl border border-[#D0B284]/20 p-3">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-medium text-[#DCDDCC] font-mono">YOU RECEIVE</span>
@@ -185,13 +209,6 @@ export function CryptoSlider({
         <div className="text-sm text-[#928357] font-mono mt-1">
           ≈ {Number(expectedTokens).toLocaleString()} {tokenSymbol} Tokens
         </div>
-
-        {/* {contractState?.currentPrice && (
-          <div className="text-xs text-[#928357] font-mono mt-1">
-            Current Price: {Number(formatEther(contractState.currentPrice)).toFixed(8)} ETH per
-            share
-          </div>
-        )} */}
 
         {shareCount > BigInt(0) && (
           <div className="text-xs text-[#928357] font-mono mt-1">

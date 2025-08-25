@@ -157,26 +157,7 @@ export function useBondingCurveContracts() {
 
   // Debug the getBuyPriceAfterFee call
   useEffect(() => {
-    console.log('🔍 getBuyPriceAfterFee Debug:', {
-      vault: ACES_VAULT_ADDRESS,
-      subject: SHARES_SUBJECT_ADDRESS,
-      room: ROOM_NUMBER.toString(),
-      amount: '1',
-      result: currentSharePrice?.toString(),
-      error: currentSharePriceError?.message,
-      isLoading: currentSharePriceLoading,
-      tokenSupply: roomTokenSupply?.toString(),
-      baseBuyPrice: baseBuyPrice?.toString(),
-      baseBuyPriceError: baseBuyPriceError?.message,
-    });
-
-    if (currentSharePriceError) {
-      console.error('❌ getBuyPriceAfterFee Error Details:', currentSharePriceError);
-    }
-
-    if (baseBuyPriceError) {
-      console.error('❌ getBuyPrice Error Details:', baseBuyPriceError);
-    }
+    // Debug logging removed for production
   }, [
     currentSharePrice,
     currentSharePriceError,
@@ -233,12 +214,7 @@ export function useBondingCurveContracts() {
 
   // Log fee data for debugging - ADD THIS BACK
   useEffect(() => {
-    if (protocolFeePercent !== undefined || subjectFeePercent !== undefined) {
-      console.log('Fee data loaded:', {
-        protocolFeePercent: protocolFeePercent?.toString(),
-        subjectFeePercent: subjectFeePercent?.toString(),
-      });
-    }
+    // Fee data logging removed for production
   }, [protocolFeePercent, subjectFeePercent]);
 
   // Caching for quote calculations to reduce RPC calls
@@ -248,17 +224,18 @@ export function useBondingCurveContracts() {
   );
   const CACHE_DURATION = 30000; // 30 seconds
 
-  // Mathematical approximation based on observed pricing pattern
+  // Mathematical approximation based on current contract pricing
   const approximateSharesFromETH = useCallback(
     (ethAmount: string, currentPrice?: bigint): bigint => {
       const ethWei = parseEther(ethAmount);
+
       if (!currentPrice || currentPrice <= BigInt(0)) {
-        // Fallback: Based on observed pattern, roughly 35M shares per 0.001 ETH
-        return (ethWei * BigInt(35000000)) / parseEther('0.001');
+        // If we don't have current price, return a conservative estimate
+        // This should rarely happen since we fetch currentSharePrice
+        return BigInt(1000); // Very conservative fallback
       }
 
-      // Use current price as starting approximation
-      // Since price is per share, invert to get shares per ETH
+      // Use current price: shares = ethAmount / pricePerShare
       return ethWei / currentPrice;
     },
     [],
@@ -283,56 +260,50 @@ export function useBondingCurveContracts() {
       const cacheKey = `${ethAmount}-${currentSharePrice?.toString() || '0'}`;
       const cachedResult = quoteCache.get(cacheKey);
       if (cachedResult && Date.now() - cachedResult.timestamp < CACHE_DURATION) {
-        console.log('💾 Using cached quote for', ethAmount, 'ETH');
         return cachedResult.result;
       }
 
       try {
-        console.log('🚀 Getting quote for ETH amount:', ethAmount);
+        // For quadratic bonding curve, we can't use linear approximation
+        // Start with reasonable bounds for binary search based on ETH amount
+        const ethWei = parseEther(ethAmount);
 
-        // Start with mathematical approximation to get better initial bounds
-        const approximateShares = approximateSharesFromETH(ethAmount, currentSharePrice);
-        console.log(`🧮 Mathematical approximation: ${approximateShares.toLocaleString()} shares`);
+        // For small amounts of ETH, use conservative bounds
+        // Based on contract data: ~53K shares for $0.54 ≈ 0.0001 ETH
+        let low = BigInt(1000); // Start low
+        let high = BigInt(100000); // Conservative upper bound
 
-        // Use approximation to set smarter bounds (±50% range)
-        let low =
-          approximateShares > BigInt(1000000)
-            ? (approximateShares * BigInt(50)) / BigInt(100)
-            : BigInt(1000000);
-        let high = (approximateShares * BigInt(150)) / BigInt(100);
+        // Scale bounds based on ETH amount
+        if (ethWei > parseEther('0.001')) {
+          high = BigInt(1000000); // 1M shares for larger amounts
+        }
+        if (ethWei > parseEther('0.01')) {
+          high = BigInt(10000000); // 10M shares for very large amounts
+        }
 
-        // Cap the search range to avoid excessive calls
-        if (high > BigInt(100000000)) high = BigInt(100000000);
-        if (low < BigInt(100000)) low = BigInt(100000);
+        // Cap the search range to avoid excessive calls and contract reverts
+        if (high > BigInt(10000000)) high = BigInt(10000000); // Keep maximum cap
+
+        // CRITICAL FIX: Allow low values for small ETH amounts, but set a reasonable minimum
+        if (low < BigInt(100)) low = BigInt(100); // Much lower minimum: 100 instead of 10,000
 
         let bestShares = BigInt(0);
         let bestCost = BigInt(0);
 
-        console.log(`🎯 Smart bounds: ${low.toLocaleString()} to ${high.toLocaleString()} shares`);
-
-        // Test the approximation first
+        // First, test if the contract works at all with a very small amount
         try {
-          const approxCost = await readContract(wagmiConfig, {
+          const testShares = BigInt(1000); // Test with just 1,000 shares
+          const testCost = await readContract(wagmiConfig, {
             address: ACES_VAULT_ADDRESS,
             abi: ACES_VAULT_ABI,
-            functionName: 'getPrice',
-            args: [SHARES_SUBJECT_ADDRESS, ROOM_NUMBER, approximateShares, true],
+            functionName: 'getBuyPriceAfterFee',
+            args: [SHARES_SUBJECT_ADDRESS, ROOM_NUMBER, testShares],
           });
-
-          console.log(
-            `🎯 Approximation test: ${approximateShares.toLocaleString()} shares = ${formatEther(approxCost)} ETH`,
-          );
-
-          if (approxCost <= ethAmountWei) {
-            bestShares = approximateShares;
-            bestCost = approxCost;
-            low = approximateShares + BigInt(1);
-          } else {
-            high = approximateShares - BigInt(1);
-          }
         } catch (error) {
-          console.warn('⚠️ Approximation test failed, using binary search');
+          throw new Error('Bonding curve contract not available for this room');
         }
+
+        // Skip linear approximation for quadratic curves - go straight to binary search
 
         // Efficient binary search with reduced iterations
         const maxIterations = 8; // Much fewer iterations
@@ -345,32 +316,33 @@ export function useBondingCurveContracts() {
             const exactCost = await readContract(wagmiConfig, {
               address: ACES_VAULT_ADDRESS,
               abi: ACES_VAULT_ABI,
-              functionName: 'getPrice',
-              args: [SHARES_SUBJECT_ADDRESS, ROOM_NUMBER, mid, true],
+              functionName: 'getBuyPriceAfterFee',
+              args: [SHARES_SUBJECT_ADDRESS, ROOM_NUMBER, mid],
             });
-
-            console.log(
-              `🔍 Binary search: ${mid.toLocaleString()} shares = ${formatEther(exactCost)} ETH`,
-            );
 
             if (exactCost <= ethAmountWei) {
               bestShares = mid;
               bestCost = exactCost;
+
               low = mid + BigInt(1);
             } else {
               high = mid - BigInt(1);
             }
           } catch (error) {
-            console.error(`❌ Error querying price for ${mid.toLocaleString()} shares:`, error);
-
             // If we hit rate limit, break early and use best result
             const errorMessage = error instanceof Error ? error.message : String(error);
             if (errorMessage.includes('429') || errorMessage.includes('Too Many Requests')) {
-              console.log('⏳ Rate limited, using best result found');
               break;
             }
 
-            high = mid - BigInt(1);
+            // If the contract reverts on this amount, it might be too high
+            // Try reducing the search space
+            if (errorMessage.includes('reverted') || errorMessage.includes('execution reverted')) {
+              high = mid - BigInt(1);
+            } else {
+              // For other errors, also reduce search space
+              high = mid - BigInt(1);
+            }
           }
 
           iterations++;
@@ -381,25 +353,9 @@ export function useBondingCurveContracts() {
           }
         }
 
-        // If we couldn't find a good result, use mathematical approximation as fallback
-        if (bestShares === BigInt(0) && approximateShares > BigInt(0)) {
-          console.log('📐 Using mathematical approximation as fallback');
-          bestShares = approximateShares;
-
-          // Estimate cost based on current price
-          if (currentSharePrice && currentSharePrice > BigInt(0)) {
-            bestCost = bestShares * currentSharePrice;
-          } else {
-            bestCost = ethAmountWei;
-          }
-        }
-
-        console.log(
-          `🎉 Final result: ${bestShares.toLocaleString()} shares for ${formatEther(bestCost)} ETH`,
-        );
+        // If we couldn't find a good result, return zero (binary search should work for quadratic curves)
 
         if (bestShares === BigInt(0)) {
-          console.log('⚠️ No shares can be purchased with this ETH amount');
           return {
             tokensOut: BigInt(0),
             ethCost: BigInt(0),
@@ -407,8 +363,9 @@ export function useBondingCurveContracts() {
           };
         }
 
-        // Calculate tokens (1 share = 1e18 tokens)
-        const tokensOut = bestShares * BigInt(1e18);
+        // tokensOut represents the share count that user receives
+        // The contract will mint amount * 1e18 tokens, but we display just the amount
+        const tokensOut = bestShares;
 
         // Add fees to the cost for accurate total cost display
         let totalCostWithFees = bestCost;
@@ -436,21 +393,7 @@ export function useBondingCurveContracts() {
 
         return result;
       } catch (error) {
-        console.error('❌ Failed to get price quote:', error);
-
-        // Fallback to mathematical approximation if everything fails
-        if (currentSharePrice && currentSharePrice > BigInt(0)) {
-          const fallbackShares = approximateSharesFromETH(ethAmount, currentSharePrice);
-          console.log(`🔄 Using fallback calculation: ${fallbackShares.toLocaleString()} shares`);
-
-          return {
-            tokensOut: fallbackShares * BigInt(1e18),
-            ethCost: ethAmountWei,
-            shareCount: fallbackShares,
-          };
-        }
-
-        throw new Error('Failed to get price quote');
+        throw new Error('Failed to get price quote from bonding curve contract');
       }
     },
     [
@@ -496,13 +439,6 @@ export function useBondingCurveContracts() {
           const subjectFee = (baseCost * subjectFeePercent) / parseEther('1');
           finalCost = baseCost + protocolFee + subjectFee;
         }
-
-        console.log('💸 Final purchase cost:', {
-          shareCount: shareCount.toString(),
-          baseCost: formatEther(baseCost),
-          finalCost: formatEther(finalCost),
-          quotedCost: formatEther(ethCost),
-        });
 
         // Use the higher of the two costs to be safe
         const safeFinalCost = ethCost > finalCost ? ethCost : finalCost;

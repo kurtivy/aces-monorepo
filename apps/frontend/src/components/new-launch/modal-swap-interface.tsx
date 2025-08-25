@@ -21,13 +21,17 @@ import {
   type BondingCurveState,
 } from '@/hooks/contracts/use-bonding-curve-contract';
 import { useAcesSwapContract } from '@/hooks/contracts/use-aces-swap-contract';
-import { parseEther, formatEther } from 'viem';
+import { parseEther, formatEther, parseUnits, formatUnits } from 'viem';
 import { useWaitForTransactionReceipt, useWriteContract } from 'wagmi';
 import { Currency, SUPPORTED_CURRENCIES } from '@/types/contracts';
 import { useChainSwitching } from '@/hooks/contracts/use-chain-switching';
-import { ACES_VAULT_ABI } from '@aces/utils';
+import { ACES_VAULT_ABI, ACES_SWAP_ABI } from '@aces/utils';
 import Image from 'next/image';
 import { CryptoSlider } from './crypto-slider';
+import { StablecoinSlider } from './stablecoin-slider';
+import { readContract } from 'wagmi/actions';
+import { wagmiConfig } from '@/components/providers/app-providers';
+import { ERC20_ABI } from '@aces/utils';
 
 // Contract addresses - must match the hook (MAINNET)
 import { getBondingCurveContracts } from '@aces/utils';
@@ -70,12 +74,14 @@ export default function ModalSwapInterface({
   // AcesSwap integration for USDC/USDT
   const {
     swapState,
+    uniswapRates, // ✅ Add this
     useTokenBalance,
     useTokenAllowance,
     calculateSwapQuote,
-    performCompleteSwap,
     resetSwapState,
     isContractReady,
+    isUniswapRatesReady, // ✅ Add this
+    approveToken,
   } = useAcesSwapContract();
   const {
     data: receipt,
@@ -86,14 +92,17 @@ export default function ModalSwapInterface({
     hash,
   });
 
-  // State - simplified to work with ETH
+  // State - handle both ETH and USD amounts
   const [selectedCurrency, setSelectedCurrency] = useState<Currency>('ETH');
-  const [ethAmount, setEthAmount] = useState(0.001); // FIXED: Start with a small valid amount instead of 0
+  const [ethAmount, setEthAmount] = useState(0); // For ETH purchases
+  const [usdAmount, setUsdAmount] = useState(0); // For stablecoin purchases (USD value)
   const [isBackgroundRefreshing, setIsBackgroundRefreshing] = useState(false);
   const [expectedTokens, setExpectedTokens] = useState('0');
   const [isCalculatingTokens, setIsCalculatingTokens] = useState(false);
   const [actualCost, setActualCost] = useState('0'); // Cost in ETH
   const [shareCount, setShareCount] = useState(BigInt(0)); // Share count for contract
+  const [bondingCurveETHCost, setBondingCurveETHCost] = useState('0'); // Store the exact ETH cost from bonding curve
+  const [requiredTokenAmount, setRequiredTokenAmount] = useState(BigInt(0)); // Store the exact token amount needed
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [needsApproval, setNeedsApproval] = useState(false);
   const [approvalInProgress, setApprovalInProgress] = useState(false);
@@ -197,6 +206,8 @@ export default function ModalSwapInterface({
       args: [SHARES_SUBJECT_ADDRESS, ROOM_NUMBER, shareCount],
       value: ethCost,
       account: user.wallet.address as `0x${string}`,
+      // Add gas configuration for Base network
+      gas: BigInt(150000), // 150k gas limit for buyShares - should be ~$0.01 on Base
     });
     return hash;
   };
@@ -218,20 +229,12 @@ export default function ModalSwapInterface({
   // FIND THIS EXISTING useEffect IN YOUR FILE (around line 200-300)
   // AND REPLACE THE ENTIRE useEffect WITH THE NEW CODE BELOW
 
-  // Calculate expected tokens when amount changes
   useEffect(() => {
     const calculateExpectedTokens = async () => {
-      console.log('calculateExpectedTokens called:', {
-        ethAmount,
-        minAmount,
-        maxAmount,
-        activeContractState: !!activeContractState,
-        getQuote: !!getQuote,
-      });
+      const currentAmount = selectedCurrency === 'ETH' ? ethAmount : usdAmount;
 
       // More lenient validation - allow very small amounts for calculations
-      if (ethAmount <= 0) {
-        console.log('Amount is zero or negative, setting to 0');
+      if (currentAmount <= 0) {
         setExpectedTokens('0');
         setActualCost('0');
         setShareCount(BigInt(0));
@@ -239,69 +242,38 @@ export default function ModalSwapInterface({
         return;
       }
 
-      // Only warn about max amount, don't block calculation
-      if (ethAmount > maxAmount) {
-        console.log('Amount exceeds max, but calculating anyway');
-      }
-
-      // Don't calculate if contract state isn't ready
-      if (!activeContractState || !getQuote) {
-        console.log('Contract state or getQuote not ready');
+      // Don't calculate if contract state isn't ready for ETH
+      if (selectedCurrency === 'ETH' && (!activeContractState || !getQuote)) {
         setExpectedTokens('0');
         setActualCost('0');
         setShareCount(BigInt(0));
+        setNeedsApproval(false);
         return;
       }
 
       try {
         if (selectedCurrency === 'ETH') {
-          console.log('Getting ETH quote for amount:', ethAmount);
-          console.log('Contract state currentPrice:', activeContractState?.currentPrice);
           setIsCalculatingTokens(true);
 
           // Use a smaller minimum for more accurate small calculations
-          const calculationAmount = Math.max(ethAmount, 0.0001); // Reduced from 0.001 to 0.0001
-          console.log('Using calculation amount:', calculationAmount);
+          const calculationAmount = Math.max(ethAmount, 0.0001);
 
           try {
-            // Get real quote from the updated getQuote function
+            // Get real quote from the bonding curve
             const quote = await getQuote(calculationAmount.toString());
-            console.log('Quote result:', quote);
 
             // Use real values from quote
-            if (quote.tokensOut > BigInt(0)) {
-              setExpectedTokens(formatEther(quote.tokensOut));
+            if (quote.shareCount > BigInt(0)) {
+              // Display the raw share count (what user actually receives)
+              setExpectedTokens(quote.shareCount.toString());
               setActualCost(formatEther(quote.ethCost));
               setShareCount(quote.shareCount);
-
-              console.log('✅ Real quote values:', {
-                ethAmount: calculationAmount,
-                tokensOut: formatEther(quote.tokensOut),
-                actualCost: formatEther(quote.ethCost),
-                shareCount: quote.shareCount.toString(),
-              });
             } else {
-              // If quote returns zeros, show user why
-              console.log('⚠️ Quote returned zero tokens - possible reasons:');
-              console.log('  - Contract not deployed or not returning valid prices');
-              console.log('  - Room not initialized');
-              console.log('  - Amount too small for current bonding curve');
-
               setExpectedTokens('0');
               setActualCost('0');
               setShareCount(BigInt(0));
             }
           } catch (quoteError) {
-            console.error('❌ getQuote failed:', quoteError);
-
-            // Show user-friendly error in development
-            if (process.env.NODE_ENV === 'development') {
-              console.log('🔧 Debug info for quote failure:');
-              console.log('  - Check if contract is deployed on Base Mainnet');
-              console.log('  - Verify room exists and has shares > 0');
-              console.log('  - Check if getPrice function works directly');
-            }
-
             setExpectedTokens('0');
             setActualCost('0');
             setShareCount(BigInt(0));
@@ -309,39 +281,76 @@ export default function ModalSwapInterface({
 
           setNeedsApproval(false);
           setIsCalculatingTokens(false);
-        } else if (isContractReady) {
-          // For stablecoins with AcesSwap
-          const shareCountEstimate = BigInt(Math.floor(ethAmount * 1000)); // Rough estimate for shares
-          const quote = calculateSwapQuote(
-            ethAmount.toString(),
-            selectedCurrency,
-            shareCountEstimate,
-          );
+        } else if (selectedCurrency === 'USDC' || selectedCurrency === 'USDT') {
+          // USDC/USDT Flow: Convert to ETH with slippage, then get quote
+          if (!isUniswapRatesReady || !isContractReady || !getQuote) {
+            setExpectedTokens('0');
+            setActualCost('0');
+            setShareCount(BigInt(0));
+            setNeedsApproval(false);
+            return;
+          }
 
-          if (quote) {
-            setExpectedTokens(shareCountEstimate.toString());
-            setActualCost(ethAmount.toString()); // Input amount in selected currency
-            setShareCount(shareCountEstimate);
+          if (uniswapRates.error || usdAmount < 0.01) {
+            setExpectedTokens('0');
+            setActualCost('0');
+            setShareCount(BigInt(0));
+            setNeedsApproval(false);
+            return;
+          }
 
-            // Check if approval is needed
-            const currentAllowance =
-              selectedCurrency === 'USDC' ? usdcAllowance.allowance : usdtAllowance.allowance;
-            setNeedsApproval(currentAllowance < quote.inputAmount);
-          } else {
+          setIsCalculatingTokens(true);
+          try {
+            // Step 1: Convert USD to ETH using Uniswap rates
+            const usdcToEthRate =
+              selectedCurrency === 'USDC' ? uniswapRates.usdcToETH : uniswapRates.usdtToETH;
+            const ethEquivalent = usdAmount * usdcToEthRate;
+
+            // Step 2: Apply 7% slippage to the ETH amount (conservative estimate)
+            const ethWithSlippage = ethEquivalent * 0.93; // 7% slippage = 93% of original
+
+            // Step 3: Get quote from bonding curve using ETH with slippage
+            const quote = await getQuote(ethWithSlippage.toString());
+
+            if (quote.shareCount > BigInt(0)) {
+              // Step 4: Calculate actual USD cost needed (reverse calculation with buffer)
+              const exactEthNeeded = Number(formatEther(quote.ethCost));
+              const ethToUsdRate =
+                selectedCurrency === 'USDC' ? uniswapRates.ethToUSDC : uniswapRates.ethToUSDT;
+              const usdNeeded = exactEthNeeded * ethToUsdRate * 1.07; // 7% buffer for slippage
+
+              // Display the raw share count (what user actually receives)
+              setExpectedTokens(quote.shareCount.toString());
+              setActualCost(usdNeeded.toFixed(6));
+              setShareCount(quote.shareCount);
+
+              // Store values for transaction
+              setBondingCurveETHCost(formatEther(quote.ethCost));
+              const requiredTokenAmount = parseUnits(
+                usdNeeded.toFixed(SUPPORTED_CURRENCIES[selectedCurrency].decimals),
+                SUPPORTED_CURRENCIES[selectedCurrency].decimals,
+              );
+              setRequiredTokenAmount(requiredTokenAmount);
+
+              // Check if approval is needed
+              const currentAllowance =
+                selectedCurrency === 'USDC' ? usdcAllowance.allowance : usdtAllowance.allowance;
+              setNeedsApproval(currentAllowance < requiredTokenAmount);
+            } else {
+              setExpectedTokens('0');
+              setActualCost('0');
+              setShareCount(BigInt(0));
+              setNeedsApproval(false);
+            }
+          } catch (error) {
             setExpectedTokens('0');
             setActualCost('0');
             setShareCount(BigInt(0));
             setNeedsApproval(false);
           }
-        } else {
-          // AcesSwap not ready yet
-          setExpectedTokens('0');
-          setActualCost('0');
-          setShareCount(BigInt(0));
-          setNeedsApproval(false);
+          setIsCalculatingTokens(false);
         }
       } catch (error) {
-        console.error('Failed to calculate tokens:', error);
         setExpectedTokens('0');
         setActualCost('0');
         setShareCount(BigInt(0));
@@ -350,48 +359,76 @@ export default function ModalSwapInterface({
       }
     };
 
-    const debounceTimer = setTimeout(calculateExpectedTokens, 150); // Reduced from 300ms to 150ms for more responsive UI
+    const debounceTimer = setTimeout(calculateExpectedTokens, 150);
     return () => clearTimeout(debounceTimer);
   }, [
     ethAmount,
+    usdAmount,
     selectedCurrency,
     getQuote,
-    minAmount,
-    maxAmount,
     activeContractState,
     isContractReady,
-    calculateSwapQuote,
+    calculateSwapQuote, // Added this since we're now using the enhanced version
+    isUniswapRatesReady, // Added Uniswap rate dependencies
+    uniswapRates.error,
+    uniswapRates.usdcToETH,
+    uniswapRates.usdtToETH,
+    uniswapRates.ethToUSDC,
+    uniswapRates.ethToUSDT,
     usdcAllowance.allowance,
     usdtAllowance.allowance,
   ]);
 
-  // Handle approval for ERC20 tokens
+  // Handle approval for ERC20 tokens (STEP 1 of stablecoin purchase)
   const handleApproval = async () => {
     if (selectedCurrency === 'ETH' || !isContractReady) return;
 
     try {
       setApprovalInProgress(true);
+      // Clear any previous transaction errors during approval
+      setTransactionError(null);
+
+      // Use the exact token amount from the swap quote calculation
+      const amountToApprove = requiredTokenAmount;
 
       // Use the AcesSwap hook's approval function
-      const success = await performCompleteSwap(
-        selectedCurrency,
-        ethAmount.toString(),
-        shareCount,
-        2.5, // 2.5% slippage tolerance
-      );
+      const success = await approveToken(selectedCurrency, amountToApprove);
 
       if (success) {
+        // Wait a moment for blockchain state to update, then check actual allowance
+        setTimeout(async () => {
+          try {
+            // Refetch the actual allowance from the blockchain
+            const allowanceHook = selectedCurrency === 'USDC' ? usdcAllowance : usdtAllowance;
+            await allowanceHook.refetchAllowance();
+          } catch (refetchError) {
+            // Silently handle refetch errors
+          }
+        }, 2000); // Wait 2 seconds for blockchain confirmation
+
         setApprovalCompleted(true);
         setNeedsApproval(false);
+      } else {
+        setTransactionError('Token approval failed. Please try again.');
       }
     } catch (error) {
-      console.error('Approval failed:', error);
+      // Handle user cancellation gracefully
+      if (
+        error instanceof Error &&
+        (error.message.includes('User rejected') ||
+          error.message.includes('user denied') ||
+          error.message.includes('User denied'))
+      ) {
+        // User cancelled approval - don't show error, just reset state
+      } else {
+        setTransactionError(error instanceof Error ? error.message : 'Token approval failed');
+      }
     } finally {
       setApprovalInProgress(false);
     }
   };
 
-  // Check if approval is needed for ERC20 tokens
+  // Check if approval is needed for ERC20 tokens based on actual blockchain allowance
   useEffect(() => {
     if (selectedCurrency === 'ETH') {
       setNeedsApproval(false);
@@ -399,74 +436,120 @@ export default function ModalSwapInterface({
       return;
     }
 
-    // For stablecoins, approval will be needed when AcesSwap is ready
-    setNeedsApproval(true);
-    setApprovalCompleted(false);
-  }, [selectedCurrency]);
+    // For stablecoins, check actual allowance vs required amount
+    if (isContractReady && actualCost && Number(actualCost) > 0) {
+      try {
+        const requiredAmount = parseUnits(
+          actualCost,
+          SUPPORTED_CURRENCIES[selectedCurrency].decimals,
+        );
+
+        const currentAllowance =
+          selectedCurrency === 'USDC' ? usdcAllowance.allowance : usdtAllowance.allowance;
+
+        const needsApproval = currentAllowance < requiredAmount;
+
+        setNeedsApproval(needsApproval);
+        setApprovalCompleted(!needsApproval);
+      } catch (error) {
+        // Default to needing approval if we can't check
+        setNeedsApproval(true);
+        setApprovalCompleted(false);
+      }
+    } else {
+      // Default state when we don't have quote data yet
+      setNeedsApproval(true);
+      setApprovalCompleted(false);
+    }
+  }, [
+    selectedCurrency,
+    actualCost,
+    isContractReady,
+    usdcAllowance.allowance,
+    usdtAllowance.allowance,
+  ]);
 
   // Monitor transaction state changes (both ETH and AcesSwap)
+  // IMPORTANT: Approval steps should NOT trigger transaction UI changes
   useEffect(() => {
-    if (isPending || swapState.step === 'swapping') {
-      setTransactionState('submitting');
-      setTransactionError(null);
-    } else if (isConfirming || swapState.step === 'approving') {
-      setTransactionState('pending');
-    } else if (isConfirmed && receipt && transactionState !== 'success') {
-      setTransactionState('success');
+    // Handle ETH transaction states - ONLY for actual ETH purchases, not stablecoin approvals
+    if (selectedCurrency === 'ETH') {
+      if (isPending) {
+        setTransactionState('submitting');
+        setTransactionError(null);
+      } else if (isConfirming) {
+        setTransactionState('pending');
+      } else if (isConfirmed && receipt && transactionState !== 'success') {
+        setTransactionState('success');
 
-      // Store purchase details for success display
-      setPurchaseDetails({
-        ethSpent: actualCost,
-        tokensReceived: expectedTokens,
-        shareCount: shareCount.toString(),
-        transactionHash: receipt.transactionHash,
-        blockExplorerUrl: `https://basescan.org/tx/${receipt.transactionHash}`,
-      });
+        // Store purchase details for success display
+        setPurchaseDetails({
+          ethSpent: actualCost,
+          tokensReceived: expectedTokens,
+          shareCount: shareCount.toString(),
+          transactionHash: receipt.transactionHash,
+          blockExplorerUrl: `https://basescan.org/tx/${receipt.transactionHash}`,
+        });
 
-      // Refresh contract state to get updated balances
-      // Use setTimeout to prevent any potential issues with immediate state updates
-      setTimeout(() => {
-        if (refresh) {
-          refresh.tokenSupply();
-          refresh.userBalance();
-          refresh.price();
-        }
-      }, 1000);
-    } else if (
-      swapState.step === 'success' &&
-      swapState.transactionHash &&
-      transactionState !== 'success'
-    ) {
-      setTransactionState('success');
+        // Refresh contract state to get updated balances
+        setTimeout(() => {
+          if (refresh) {
+            refresh.tokenSupply();
+            refresh.userBalance();
+            refresh.price();
+          }
+        }, 1000);
+      } else if (isFailed || error) {
+        setTransactionState('failed');
+        setTransactionError(
+          error instanceof Error ? error.message : 'ETH transaction failed. Please try again.',
+        );
+      }
+    }
+    // Handle stablecoin transaction states (AcesSwap)
+    // ONLY handle actual SWAP transactions, NOT approval transactions
+    else if (selectedCurrency === 'USDC' || selectedCurrency === 'USDT') {
+      // CRITICAL: Only monitor swap state, NOT the general wagmi transaction states
+      // This prevents approval transactions from triggering the success modal
+      if (swapState.step === 'swapping') {
+        setTransactionState('submitting');
+        setTransactionError(null);
+      } else if (
+        swapState.step === 'success' &&
+        swapState.transactionHash &&
+        transactionState !== 'success'
+      ) {
+        setTransactionState('success');
 
-      // Store purchase details for AcesSwap success
-      setPurchaseDetails({
-        ethSpent: actualCost,
-        tokensReceived: expectedTokens,
-        shareCount: shareCount.toString(),
-        transactionHash: swapState.transactionHash,
-        blockExplorerUrl: `https://basescan.org/tx/${swapState.transactionHash}`,
-      });
+        // Store purchase details for AcesSwap success
+        setPurchaseDetails({
+          ethSpent: actualCost, // This will be the USD cost for stablecoins
+          tokensReceived: expectedTokens,
+          shareCount: shareCount.toString(),
+          transactionHash: swapState.transactionHash,
+          blockExplorerUrl: `https://basescan.org/tx/${swapState.transactionHash}`,
+        });
 
-      // Refresh contract state
-      setTimeout(() => {
-        if (refresh) {
-          refresh.tokenSupply();
-          refresh.userBalance();
-          refresh.price();
-        }
-      }, 1000);
-    } else if (isFailed || error || swapState.error) {
-      setTransactionState('failed');
+        // Refresh contract state
+        setTimeout(() => {
+          if (refresh) {
+            refresh.tokenSupply();
+            refresh.userBalance();
+            refresh.price();
+          }
+        }, 1000);
+      } else if (swapState.error && swapState.step === 'idle') {
+        // Only show swap errors when not in approval flow
+        setTransactionState('failed');
 
-      // Set error message
-      let errorMessage = 'Transaction failed. Please try again.';
-      const errorSource = error || swapState.error;
-
-      if (errorSource instanceof Error || typeof errorSource === 'string') {
+        // Set error message for stablecoin swaps
+        let errorMessage = 'Swap transaction failed. Please try again.';
         const errorStr = (
-          errorSource instanceof Error ? errorSource.message : errorSource
+          typeof swapState.error === 'string'
+            ? swapState.error
+            : String(swapState.error || 'Unknown error')
         ).toLowerCase();
+
         if (errorStr.includes('out of gas') || errorStr.includes('gas')) {
           errorMessage =
             'Transaction failed due to insufficient gas. Please try again with a smaller amount.';
@@ -477,24 +560,27 @@ export default function ModalSwapInterface({
           errorMessage = 'Insufficient balance to complete this transaction.';
         } else if (errorStr.includes('user rejected') || errorStr.includes('user denied')) {
           errorMessage = 'Transaction was cancelled by user.';
-        } else if (errorStr.includes('approval')) {
-          errorMessage = 'Token approval failed. Please try again.';
         } else if (errorStr.includes('swap')) {
-          errorMessage = 'Swap transaction failed. Please try again.';
+          errorMessage = 'Swap transaction failed. Please check your balance and try again.';
         } else if (errorStr.length > 0) {
-          errorMessage = `Transaction failed: ${errorStr}`;
+          errorMessage = `Swap failed: ${errorStr}`;
         }
+
+        setTransactionError(errorMessage);
       }
-      setTransactionError(errorMessage);
     }
   }, [
+    selectedCurrency,
+    // Always include all dependencies to maintain constant array size
     isPending,
     isConfirming,
     isConfirmed,
     isFailed,
     error,
     receipt,
-    swapState,
+    swapState.step,
+    swapState.transactionHash,
+    swapState.error,
     actualCost,
     expectedTokens,
     shareCount,
@@ -514,7 +600,7 @@ export default function ModalSwapInterface({
       });
       fundWallet(user.wallet.address);
     } catch (error) {
-      console.error('Failed to initiate funding:', error);
+      // Silently handle funding errors
     }
   };
 
@@ -534,8 +620,15 @@ export default function ModalSwapInterface({
       return;
     }
 
-    if (ethAmount <= 0 || ethAmount > maxAmount) {
-      alert(`Amount must be greater than 0 and not exceed ${maxAmount} ETH`);
+    const currentAmount = selectedCurrency === 'ETH' ? ethAmount : usdAmount;
+    const maxAmountCheck =
+      selectedCurrency === 'ETH'
+        ? maxAmount
+        : Number(userCurrencyBalance) /
+          Math.pow(10, SUPPORTED_CURRENCIES[selectedCurrency].decimals);
+
+    if (currentAmount <= 0 || currentAmount > maxAmountCheck) {
+      alert(`Amount must be greater than 0 and not exceed available balance`);
       return;
     }
 
@@ -572,29 +665,128 @@ export default function ModalSwapInterface({
         await buyTokensWithModalHook(shareCount, ethCostWei);
 
         // Note: Don't close modal here - transaction monitoring will handle success state
-      } else if (isContractReady) {
-        // USDC/USDT purchase via AcesSwap
+      } else if (selectedCurrency === 'USDC' || selectedCurrency === 'USDT') {
+        // USDC/USDT purchase via AcesSwap (STEP 2 of stablecoin purchase)
+        if (!isContractReady) {
+          alert(
+            `${selectedCurrency} purchases will be available once the AcesSwap contract is deployed!`,
+          );
+          return;
+        }
+
+        // Ensure approval is completed
+        if (needsApproval || !approvalCompleted) {
+          alert('Please approve token spending first');
+          return;
+        }
+
         setTransactionState('idle');
         setTransactionError(null);
         setPurchaseDetails(null);
 
-        const success = await performCompleteSwap(
-          selectedCurrency,
-          ethAmount.toString(),
-          shareCount,
-          2.5, // 2.5% slippage tolerance
-        );
+        // Use the exact ETH cost from our bonding curve calculation
+        // This ensures we use the same value that was used in the quote calculation
 
-        if (success) {
-          // Transaction monitoring will handle success state
-          console.log('Swap completed successfully');
+        // Pre-transaction validation
+        try {
+          const tokenAddress =
+            selectedCurrency === 'USDC'
+              ? SUPPORTED_CURRENCIES.USDC.address
+              : SUPPORTED_CURRENCIES.USDT.address;
+
+          // Check current balances and allowances just before transaction
+          const [userBalance, userAllowance] = await Promise.all([
+            readContract(wagmiConfig, {
+              address: tokenAddress as `0x${string}`,
+              abi: ERC20_ABI,
+              functionName: 'balanceOf',
+              args: [user?.wallet?.address as `0x${string}`],
+            }),
+            readContract(wagmiConfig, {
+              address: tokenAddress as `0x${string}`,
+              abi: ERC20_ABI,
+              functionName: 'allowance',
+              args: [
+                user?.wallet?.address as `0x${string}`,
+                BASE_MAINNET_CONTRACTS.acesSwap as `0x${string}`,
+              ],
+            }),
+          ]);
+
+          // Calculate the required amount from the stored state
+          const requiredAmount =
+            requiredTokenAmount ||
+            parseUnits(actualCost, SUPPORTED_CURRENCIES[selectedCurrency].decimals);
+
+          // Show alerts for specific issues
+          if ((userBalance as bigint) < requiredAmount) {
+            const deficit = formatUnits(
+              requiredAmount - (userBalance as bigint),
+              SUPPORTED_CURRENCIES[selectedCurrency].decimals,
+            );
+            alert(
+              `❌ Insufficient ${selectedCurrency} Balance!\n\n` +
+                `Need: ${formatUnits(requiredAmount, SUPPORTED_CURRENCIES[selectedCurrency].decimals)} ${selectedCurrency}\n` +
+                `Have: ${formatUnits(userBalance as bigint, SUPPORTED_CURRENCIES[selectedCurrency].decimals)} ${selectedCurrency}\n` +
+                `Short: ${deficit} ${selectedCurrency}\n\n` +
+                `Please add more ${selectedCurrency} to your wallet.`,
+            );
+            return;
+          }
+
+          if ((userAllowance as bigint) < requiredAmount) {
+            const deficit = formatUnits(
+              requiredAmount - (userAllowance as bigint),
+              SUPPORTED_CURRENCIES[selectedCurrency].decimals,
+            );
+            alert(
+              `❌ Insufficient ${selectedCurrency} Allowance!\n\n` +
+                `Need: ${formatUnits(requiredAmount, SUPPORTED_CURRENCIES[selectedCurrency].decimals)} ${selectedCurrency}\n` +
+                `Approved: ${formatUnits(userAllowance as bigint, SUPPORTED_CURRENCIES[selectedCurrency].decimals)} ${selectedCurrency}\n` +
+                `Need to approve: ${deficit} ${selectedCurrency}\n\n` +
+                `The approval transaction may have failed or been insufficient.`,
+            );
+            return;
+          }
+        } catch (debugError) {
+          alert(
+            `Failed to verify token balances: ${debugError instanceof Error ? debugError.message : 'Unknown error'}`,
+          );
+          return;
         }
-      } else {
-        // AcesSwap contract not deployed yet
-        alert(
-          `${selectedCurrency} purchases will be available once the AcesSwap contract is deployed!`,
-        );
-        return;
+
+        // Now proceed with the transaction using corrected amounts
+        // Call AcesSwap contract directly with our calculated values
+
+        // Reset swap state for manual transaction monitoring
+        resetSwapState();
+
+        // Get the correct contract function name
+        const functionName =
+          selectedCurrency === 'USDC' ? 'sellUSDCAndBuyCurve' : 'sellUSDTAndBuyCurve';
+
+        try {
+          await writeContractAsync({
+            address: BASE_MAINNET_CONTRACTS.acesSwap as `0x${string}`,
+            abi: ACES_SWAP_ABI,
+            functionName,
+            args: [
+              requiredTokenAmount, // amountIn - USD amount with buffer
+              parseEther(bondingCurveETHCost), // amountOutMin - exact ETH needed from bonding curve
+              SHARES_SUBJECT_ADDRESS, // roomOwner
+              ROOM_NUMBER, // roomNumber
+              shareCount, // amount - share count
+            ],
+            account: user?.wallet?.address as `0x${string}`,
+            gas: BigInt(500000), // Higher gas limit for complex swap operation
+          });
+
+          // Transaction hash is automatically captured by the useWriteContract hook
+          // and will be handled by the existing transaction monitoring logic
+        } catch (swapError) {
+          // Let the error bubble up to be handled by the transaction monitoring
+          throw swapError;
+        }
       }
     } catch (error) {
       // Transaction state monitoring will handle this error display
@@ -617,7 +809,8 @@ export default function ModalSwapInterface({
     setTransactionState('idle');
     setTransactionError(null);
     setPurchaseDetails(null);
-    setEthAmount(0.001); // Reset to a small starting amount
+    setEthAmount(0); // Reset ETH amount
+    setUsdAmount(0); // Reset USD amount
     setExpectedTokens('0');
     setActualCost('0');
     setShareCount(BigInt(0));
@@ -884,36 +1077,69 @@ export default function ModalSwapInterface({
                       {maxAmount.toFixed(6)} ETH
                     </div>
                     <div>
-                      Token Calc: ethAmount = {ethAmount}, expectedTokens = {expectedTokens},
-                      isCalculating = {isCalculatingTokens.toString()}
+                      Token Calc:{' '}
+                      {selectedCurrency === 'ETH'
+                        ? `ethAmount = ${ethAmount}`
+                        : `usdAmount = ${usdAmount}`}
+                      , expectedTokens = {expectedTokens}, isCalculating ={' '}
+                      {isCalculatingTokens.toString()}
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* Crypto Slider Component */}
-              <CryptoSlider
-                value={ethAmount}
-                onValueChange={setEthAmount}
-                selectedCurrency={selectedCurrency}
-                userCurrencyBalance={userCurrencyBalance}
-                ethPrice={ethPrice.current}
-                minAmount={minAmount}
-                maxAmount={maxAmount}
-                expectedTokens={expectedTokens}
-                actualCost={actualCost}
-                shareCount={shareCount}
-                contractState={activeContractState}
-                isCalculating={isCalculatingTokens}
-                tokenSymbol={tokenSymbol}
-                step={stepSize}
-                onMaxClick={() => {
-                  // Use the exact same calculation as getMaxAmount()
-                  const gasReserve = 0.00002; // 0.00002 ETH (~$0.06) reserve for gas + safety margin
-                  const maxUsable = Math.max(0, walletBalanceEth - gasReserve);
-                  setEthAmount(Math.min(maxUsable, maxAmount));
-                }}
-              />
+              {/* Slider Component - Conditional based on currency */}
+              {selectedCurrency === 'ETH' ? (
+                <CryptoSlider
+                  value={ethAmount}
+                  onValueChange={setEthAmount}
+                  selectedCurrency={selectedCurrency}
+                  userCurrencyBalance={userCurrencyBalance}
+                  ethPrice={ethPrice.current}
+                  minAmount={minAmount}
+                  maxAmount={maxAmount}
+                  expectedTokens={expectedTokens}
+                  actualCost={actualCost}
+                  shareCount={shareCount}
+                  contractState={activeContractState}
+                  isCalculating={isCalculatingTokens}
+                  tokenSymbol={tokenSymbol}
+                  step={stepSize}
+                  onMaxClick={() => {
+                    // Use the exact same calculation as getMaxAmount()
+                    const gasReserve = 0.00002; // 0.00002 ETH (~$0.06) reserve for gas + safety margin
+                    const maxUsable = Math.max(0, walletBalanceEth - gasReserve);
+                    setEthAmount(Math.min(maxUsable, maxAmount));
+                  }}
+                />
+              ) : (
+                <StablecoinSlider
+                  value={usdAmount}
+                  onValueChange={setUsdAmount}
+                  selectedCurrency={selectedCurrency as 'USDC' | 'USDT'}
+                  userCurrencyBalance={userCurrencyBalance}
+                  ethPrice={ethPrice.current}
+                  minAmount={0.5} // $0.50 minimum for stablecoins
+                  maxAmount={
+                    Number(userCurrencyBalance) /
+                    Math.pow(10, SUPPORTED_CURRENCIES[selectedCurrency].decimals)
+                  }
+                  expectedTokens={expectedTokens}
+                  actualCost={actualCost}
+                  shareCount={shareCount}
+                  contractState={activeContractState}
+                  isCalculating={isCalculatingTokens}
+                  tokenSymbol={tokenSymbol}
+                  step={0.01} // $0.01 steps for USD
+                  onMaxClick={() => {
+                    // Set to full available balance in USD
+                    const maxUSD =
+                      Number(userCurrencyBalance) /
+                      Math.pow(10, SUPPORTED_CURRENCIES[selectedCurrency].decimals);
+                    setUsdAmount(maxUSD);
+                  }}
+                />
+              )}
 
               {/* Stablecoin Warning - Only show if AcesSwap not ready */}
               {selectedCurrency !== 'ETH' && !isContractReady && (
@@ -928,15 +1154,29 @@ export default function ModalSwapInterface({
               )}
 
               {/* Approval Status for ERC20 tokens */}
-              {selectedCurrency !== 'ETH' && approvalCompleted && (
-                <div className="bg-green-500/10 rounded-lg border border-green-500/20 p-2">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4 text-green-400" />
-                    <span className="text-xs text-green-400 font-mono">
-                      ✅ {selectedCurrency} spending approved
-                    </span>
-                  </div>
-                </div>
+              {selectedCurrency !== 'ETH' && (
+                <>
+                  {approvalInProgress && (
+                    <div className="bg-blue-500/10 rounded-lg border border-blue-500/20 p-2">
+                      <div className="flex items-center gap-2">
+                        <RefreshCw className="w-4 h-4 text-blue-400 animate-spin" />
+                        <span className="text-xs text-blue-400 font-mono">
+                          🔄 Approving {selectedCurrency} spending... Please confirm in your wallet
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                  {approvalCompleted && !approvalInProgress && (
+                    <div className="bg-green-500/10 rounded-lg border border-green-500/20 p-2">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle className="w-4 h-4 text-green-400" />
+                        <span className="text-xs text-green-400 font-mono">
+                          ✅ {selectedCurrency} spending approved
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
 
               {/* Terms Checkbox */}
@@ -962,8 +1202,8 @@ export default function ModalSwapInterface({
                   isPending ||
                   isConfirming ||
                   approvalInProgress ||
-                  ethAmount <= 0 ||
-                  ethAmount > maxAmount ||
+                  swapState.isLoading ||
+                  (selectedCurrency === 'ETH' ? ethAmount <= 0 : usdAmount <= 0) ||
                   Number(expectedTokens) <= 0 ||
                   !!ethPrice.error ||
                   // For purchase (not approval), require terms acceptance
@@ -973,20 +1213,24 @@ export default function ModalSwapInterface({
                 }
                 className="w-full bg-gradient-to-r from-[#D0B284] to-[#D7BF75] hover:from-[#D7BF75] hover:to-[#D0B284] text-black font-bold py-2.5 text-base rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isPending
+                {/* Loading states */}
+                {isPending || swapState.step === 'swapping'
                   ? 'Confirming in wallet...'
-                  : isConfirming
+                  : isConfirming || swapState.step === 'checking-allowance'
                     ? 'Processing transaction...'
-                    : approvalInProgress
+                    : approvalInProgress || swapState.step === 'approving'
                       ? `Approving ${selectedCurrency}...`
-                      : selectedCurrency !== 'ETH' &&
-                          needsApproval &&
-                          !approvalCompleted &&
-                          isContractReady
-                        ? `Approve ${selectedCurrency}`
-                        : selectedCurrency !== 'ETH' && !isContractReady
-                          ? `${selectedCurrency} purchases coming soon`
-                          : `Purchase ${tokenSymbol} with ${selectedCurrency}`}
+                      : swapState.isLoading
+                        ? 'Processing...'
+                        : /* Step-specific button text for stablecoins */
+                          selectedCurrency !== 'ETH' && isContractReady
+                          ? needsApproval && !approvalCompleted
+                            ? `Approve ${selectedCurrency}` // STEP 1: Approval
+                            : `Purchase ${tokenSymbol} with ${selectedCurrency}` // STEP 2: Purchase
+                          : /* ETH or contract not ready */
+                            selectedCurrency !== 'ETH' && !isContractReady
+                            ? `${selectedCurrency} purchases coming soon`
+                            : `Purchase ${tokenSymbol} with ${selectedCurrency}`}
               </Button>
 
               {/* Error Messages */}
@@ -1040,7 +1284,12 @@ export default function ModalSwapInterface({
                   key={key}
                   onClick={() => {
                     setSelectedCurrency(key as Currency);
-                    setEthAmount(0.001); // Reset to small starting amount when currency changes
+                    // Reset appropriate amount based on currency type
+                    if (key === 'ETH') {
+                      setEthAmount(0); // Reset to 0 for ETH
+                    } else {
+                      setUsdAmount(0); // Reset to 0 for stablecoins
+                    }
                     setShowCurrencyModal(false);
                   }}
                   className={`w-full p-4 rounded-lg border transition-all duration-200 flex items-center justify-between ${
