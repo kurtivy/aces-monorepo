@@ -16,6 +16,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { usePrivy, useFundWallet } from '@privy-io/react-auth';
+import { useAuth } from '@/lib/auth/auth-context';
 import {
   useBondingCurveContracts,
   type BondingCurveState,
@@ -52,7 +53,8 @@ export default function ModalSwapInterface({
   onClose,
   tokenSymbol = 'ACES',
 }: ModalSwapInterfaceProps) {
-  const { login, authenticated, user } = usePrivy();
+  const { login, user: privyUser } = usePrivy();
+  const { isAuthenticated, user: authUser, connectWallet } = useAuth();
   const { fundWallet } = useFundWallet();
   const { isOnBaseMainnet, isSwitching, ensureCorrectChain, SUPPORTED_CHAINS } =
     useChainSwitching();
@@ -195,7 +197,7 @@ export default function ModalSwapInterface({
     shareCount: bigint,
     ethCost: bigint,
   ): Promise<`0x${string}`> => {
-    if (!authenticated || !user?.wallet?.address) {
+    if (!isAuthenticated || !privyUser?.wallet?.address) {
       throw new Error('Not authenticated');
     }
 
@@ -205,7 +207,7 @@ export default function ModalSwapInterface({
       functionName: 'buyShares',
       args: [SHARES_SUBJECT_ADDRESS, ROOM_NUMBER, shareCount],
       value: ethCost,
-      account: user.wallet.address as `0x${string}`,
+      account: privyUser.wallet.address as `0x${string}`,
       // Add gas configuration for Base network
       gas: BigInt(150000), // 150k gas limit for buyShares - should be ~$0.01 on Base
     });
@@ -359,7 +361,7 @@ export default function ModalSwapInterface({
       }
     };
 
-    const debounceTimer = setTimeout(calculateExpectedTokens, 150);
+    const debounceTimer = setTimeout(calculateExpectedTokens, 500);
     return () => clearTimeout(debounceTimer);
   }, [
     ethAmount,
@@ -590,7 +592,7 @@ export default function ModalSwapInterface({
 
   // Handle buy crypto with chain switching
   const handleBuyCrypto = async () => {
-    if (!user?.wallet?.address) return;
+    if (!privyUser?.wallet?.address) return;
 
     try {
       setShowCurrencyModal(false);
@@ -598,7 +600,7 @@ export default function ModalSwapInterface({
         showPrompt: true,
         autoSwitch: false,
       });
-      fundWallet(user.wallet.address);
+      fundWallet(privyUser.wallet.address);
     } catch (error) {
       // Silently handle funding errors
     }
@@ -700,14 +702,14 @@ export default function ModalSwapInterface({
               address: tokenAddress as `0x${string}`,
               abi: ERC20_ABI,
               functionName: 'balanceOf',
-              args: [user?.wallet?.address as `0x${string}`],
+              args: [privyUser?.wallet?.address as `0x${string}`],
             }),
             readContract(wagmiConfig, {
               address: tokenAddress as `0x${string}`,
               abi: ERC20_ABI,
               functionName: 'allowance',
               args: [
-                user?.wallet?.address as `0x${string}`,
+                privyUser?.wallet?.address as `0x${string}`,
                 BASE_MAINNET_CONTRACTS.acesSwap as `0x${string}`,
               ],
             }),
@@ -777,7 +779,7 @@ export default function ModalSwapInterface({
               ROOM_NUMBER, // roomNumber
               shareCount, // amount - share count
             ],
-            account: user?.wallet?.address as `0x${string}`,
+            account: privyUser?.wallet?.address as `0x${string}`,
             gas: BigInt(500000), // Higher gas limit for complex swap operation
           });
 
@@ -833,7 +835,7 @@ export default function ModalSwapInterface({
     onClose();
   };
 
-  if (!authenticated) {
+  if (!isAuthenticated) {
     return (
       <Dialog open={isOpen} onOpenChange={onClose}>
         <DialogContent className="bg-[#231F20] border-[#D0B284]/30 max-w-md">
@@ -851,7 +853,7 @@ export default function ModalSwapInterface({
               Connect your wallet to participate in the {tokenSymbol} token launch
             </p>
             <Button
-              onClick={login}
+              onClick={connectWallet}
               className="bg-gradient-to-r from-[#D0B284] to-[#D7BF75] hover:from-[#D7BF75] hover:to-[#D0B284] text-black font-bold py-3 px-8 rounded-xl transition-all duration-200"
             >
               Connect Wallet

@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Image from 'next/image';
+import { useAuth } from '@/lib/auth/auth-context';
 import ModalSwapInterface from './modal-swap-interface';
 
 type PaymentMethod = {
@@ -19,8 +20,39 @@ type PaymentMethod = {
 );
 
 export default function BuyNowSection() {
+  const { isAuthenticated, connectWallet } = useAuth();
   const [isHovered, setIsHovered] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Handle buy button click - check wallet connection first
+  const handleBuyClick = async () => {
+    if (!isAuthenticated) {
+      // Set flag to indicate user wants to buy
+      setUserClickedBuy(true);
+      // Connect wallet first, then open modal
+      try {
+        await connectWallet();
+        // Modal will open after wallet connection succeeds via the useEffect above
+      } catch (error) {
+        console.error('Failed to connect wallet:', error);
+        setUserClickedBuy(false); // Reset flag on error
+      }
+    } else {
+      // Wallet already connected, open modal directly
+      setIsModalOpen(true);
+    }
+  };
+
+  // State to track if user just clicked buy (to distinguish from wallet already being connected)
+  const [userClickedBuy, setUserClickedBuy] = useState(false);
+
+  // Open modal after successful wallet connection (only if user clicked buy button)
+  useEffect(() => {
+    if (isAuthenticated && userClickedBuy) {
+      setIsModalOpen(true);
+      setUserClickedBuy(false); // Reset flag
+    }
+  }, [isAuthenticated, userClickedBuy]);
 
   const paymentMethods: PaymentMethod[] = [
     {
@@ -94,7 +126,7 @@ export default function BuyNowSection() {
           }}
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
-          onClick={() => setIsModalOpen(true)}
+          onClick={handleBuyClick}
         >
           {/* Button background effects */}
           <div className="absolute inset-0 bg-gradient-to-r from-[#D7BF75] to-[#D0B284] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
@@ -103,7 +135,9 @@ export default function BuyNowSection() {
           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -skew-x-12 transform translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
 
           {/* Button text */}
-          <span className="relative z-10 tracking-wider font-proxima-nova">BUY $ACES NOW</span>
+          <span className="relative z-10 tracking-wider font-proxima-nova">
+            {!isAuthenticated ? 'CONNECT & BUY $ACES' : 'BUY $ACES NOW'}
+          </span>
 
           {/* Hover glow */}
           <div
