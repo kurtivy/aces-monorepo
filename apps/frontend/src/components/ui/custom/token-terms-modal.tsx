@@ -9,14 +9,12 @@ interface TokenTermsModalProps {
 }
 
 export default function TokenTermsModal({ isOpen, onClose }: TokenTermsModalProps) {
-  console.log('🔥 TokenTermsModal render - isOpen:', isOpen);
-
   if (typeof window === 'undefined') {
     return null; // Don't render on server
   }
 
   if (isOpen) {
-    console.log('🔥 TokenTermsModal: Modal should be visible now!');
+    // console.log('🔥 TokenTermsModal: Modal should be visible now!');
   }
 
   // Use simplified approach without animations until we get it working

@@ -126,12 +126,12 @@ export function useUniswapRates() {
         error: null,
       });
 
-      console.log('🦄 Uniswap rates updated:', {
-        ethToUSDC: `$${ethToUSDC.toFixed(2)}`,
-        ethToUSDT: `$${ethToUSDT.toFixed(2)}`,
-        usdcToETH: `${usdcToETH.toFixed(8)} ETH per USDC`,
-        usdtToETH: `${usdtToETH.toFixed(8)} ETH per USDT`,
-      });
+      // console.log('🦄 Uniswap rates updated:', {
+      //   ethToUSDC: `$${ethToUSDC.toFixed(2)}`,
+      //   ethToUSDT: `$${ethToUSDT.toFixed(2)}`,
+      //   usdcToETH: `${usdcToETH.toFixed(8)} ETH per USDC`,
+      //   usdtToETH: `${usdtToETH.toFixed(8)} ETH per USDT`,
+      // });
     } catch (error) {
       console.error('Failed to fetch Uniswap rates:', error);
       setRates((prev) => ({
@@ -199,15 +199,15 @@ export function useAccurateSwapCalculation() {
       const slippageMultiplier = (100 - slippageTolerance) / 100;
       const minimumETHOut = BigInt(Math.floor(Number(ethAmountWei) * slippageMultiplier));
 
-      console.log('🎯 Accurate swap calculation:', {
-        ethNeeded: ethAmountNeeded,
-        uniswapRate: `$${ethToStablecoinRate.toFixed(2)} ${currency}/ETH`,
-        theoreticalAmount: `$${theoreticalStablecoin.toFixed(6)}`,
-        bufferedAmount: `$${bufferedStablecoin.toFixed(6)}`,
-        minimumETHOut: formatUnits(minimumETHOut, 18),
-        buffer: '3%',
-        slippage: `${slippageTolerance}%`,
-      });
+      // console.log('🎯 Accurate swap calculation:', {
+      //   ethNeeded: ethAmountNeeded,
+      //   uniswapRate: `$${ethToStablecoinRate.toFixed(2)} ${currency}/ETH`,
+      //   theoreticalAmount: `$${theoreticalStablecoin.toFixed(6)}`,
+      //   bufferedAmount: `$${bufferedStablecoin.toFixed(6)}`,
+      //   minimumETHOut: formatUnits(minimumETHOut, 18),
+      //   buffer: '3%',
+      //   slippage: `${slippageTolerance}%`,
+      // });
 
       return {
         inputAmount,

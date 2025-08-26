@@ -176,7 +176,7 @@ export function useBondingCurveContracts() {
           currentSharePrice,
           timestamp: Date.now(),
         });
-        console.log('💾 [ACES Contract] Cached contract data', cacheData);
+        // console.log('💾 [ACES Contract] Cached contract data', cacheData);
       } catch (error) {
         console.warn('Failed to cache contract data:', error);
       }
@@ -267,7 +267,7 @@ export function useBondingCurveContracts() {
               : undefined,
             timestamp: parsed.timestamp,
           });
-          console.log('📁 [ACES Contract] Loaded cached contract data', parsed);
+          // console.log('📁 [ACES Contract] Loaded cached contract data', parsed);
         }
       }
     } catch (error) {
@@ -290,21 +290,21 @@ export function useBondingCurveContracts() {
 
       const [curve, floor, midPoint, maxPrice, steepness, sharesSupply] = roomConfig;
 
-      console.log('🎯 [Room Config]:', {
-        curve: curve.toString(),
-        floor: formatEther(floor),
-        steepness: steepness.toString(),
-        sharesSupply: sharesSupply.toString(),
-        ethAmount,
-      });
+      // console.log('🎯 [Room Config]:', {
+      //   curve: curve.toString(),
+      //   floor: formatEther(floor),
+      //   steepness: steepness.toString(),
+      //   sharesSupply: sharesSupply.toString(),
+      //   ethAmount,
+      // });
 
       // For quadratic curve (curve = 0), implement inverse formula
       if (curve === 0) {
         const result = calculateQuadraticInverse(ethWei, sharesSupply, steepness, floor);
-        console.log('🧮 [Quadratic Calculation]:', {
-          ethWei: formatEther(ethWei),
-          estimatedShares: result.toString(),
-        });
+        // console.log('🧮 [Quadratic Calculation]:', {
+        //   ethWei: formatEther(ethWei),
+        //   estimatedShares: result.toString(),
+        // });
         return result;
       }
 
@@ -410,7 +410,7 @@ export function useBondingCurveContracts() {
       usingCache: !roomTokenSupply && cachedContractData?.roomTokenSupply ? true : false,
     };
 
-    console.log('🔍 [ACES Contract Debug] Contract Data:', debugData);
+    // console.log('🔍 [ACES Contract Debug] Contract Data:', debugData);
 
     // Also log specific issues
     if (roomTokenSupplyError) {
@@ -540,7 +540,7 @@ export function useBondingCurveContracts() {
       const pendingRequest = pendingRequests.current.get(requestKey);
 
       if (pendingRequest) {
-        console.log('Using pending request for', requestKey);
+        // console.log('Using pending request for', requestKey);
         return pendingRequest;
       }
 

@@ -154,15 +154,15 @@ export function StablecoinSlider({
                   // Ensure it's within bounds (now all in USD)
                   const boundedValue = Math.max(minAmount, Math.min(maxAmount, targetUSDAmount));
 
-                  console.log('💰 Corrected stablecoin percentage button clicked:', {
-                    percentage,
-                    balanceUSD,
-                    targetUSDAmount,
-                    boundedValue,
-                    minAmount,
-                    maxAmount,
-                    selectedCurrency,
-                  });
+                  // console.log('💰 Corrected stablecoin percentage button clicked:', {
+                  //   percentage,
+                  //   balanceUSD,
+                  //   targetUSDAmount,
+                  //   boundedValue,
+                  //   minAmount,
+                  //   maxAmount,
+                  //   selectedCurrency,
+                  // });
 
                   onValueChange(boundedValue);
                 }}

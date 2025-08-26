@@ -60,7 +60,7 @@ export default function ModalSwapInterface({
   const { isOnBaseMainnet, isSwitching, ensureCorrectChain, SUPPORTED_CHAINS } =
     useChainSwitching();
   const { contractState, getQuote, ethPrice, refresh } = useBondingCurveContracts();
-  const { data: hash, isPending, error, writeContractAsync } = useWriteContract();
+  const { data: hash, isPending, error, writeContractAsync, reset } = useWriteContract();
 
   // Stable contract state that persists once loaded (prevents modal from closing during re-fetches)
   const stableContractStateRef = useRef<BondingCurveState | null>(null);
@@ -841,6 +841,7 @@ export default function ModalSwapInterface({
     setApprovalCompleted(false);
     setApprovalInProgress(false);
     resetSwapState(); // Reset AcesSwap state
+    reset(); // Reset wagmi transaction state to clear previous failed transaction
   };
 
   // Function to close modal with proper cleanup
@@ -1219,9 +1220,9 @@ export default function ModalSwapInterface({
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          console.log('🔥 Terms link clicked, setting state to true');
+                          // console.log('🔥 Terms link clicked, setting state to true');
                           setShowTokenTermsModal(true);
-                          console.log('🔥 State should now be true');
+                          // console.log('🔥 State should now be true');
                         }}
                         className="text-[#D0B284] hover:text-white underline transition-colors duration-200"
                       >

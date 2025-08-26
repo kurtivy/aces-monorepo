@@ -87,7 +87,7 @@ export default function AppProviders({ children }: { children: ReactNode }) {
     if (!privyAppId) {
       console.error('🚨 PRIVY_APP_ID is missing! Wallet connections will fail.');
     } else {
-      console.log('✅ Privy App ID found:', privyAppId.slice(0, 8) + '...');
+      // console.log('✅ Privy App ID found:', privyAppId.slice(0, 8) + '...');
     }
 
     // Check if we're on localhost and warn about origin configuration

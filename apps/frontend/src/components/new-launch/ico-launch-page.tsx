@@ -490,22 +490,22 @@ const ICOLaunchPage: React.FC = () => {
   };
 
   // Debug logging for aceofbase domain
-  useEffect(() => {
-    if (isAceofbaseDomain) {
-      console.log('🎯 Aceofbase domain detected:', {
-        contractState: !!contractState,
-        pageLoadingReady: pageLoading.isReady,
-        showIntroAnimation,
-        imagePaths: imagePaths.length,
-      });
-    }
-  }, [
-    contractState,
-    pageLoading.isReady,
-    showIntroAnimation,
-    isAceofbaseDomain,
-    imagePaths.length,
-  ]);
+  // useEffect(() => {
+  //   if (isAceofbaseDomain) {
+  //     console.log('🎯 Aceofbase domain detected:', {
+  //       contractState: !!contractState,
+  //       pageLoadingReady: pageLoading.isReady,
+  //       showIntroAnimation,
+  //       imagePaths: imagePaths.length,
+  //     });
+  //   }
+  // }, [
+  //   contractState,
+  //   pageLoading.isReady,
+  //   showIntroAnimation,
+  //   isAceofbaseDomain,
+  //   imagePaths.length,
+  // ]);
 
   // Show launch intro animation while images and contract data load
   if (!pageLoading.isReady) {

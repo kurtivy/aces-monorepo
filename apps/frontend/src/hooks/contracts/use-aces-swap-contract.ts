@@ -619,7 +619,7 @@ export function useAcesSwapContract() {
    * Reset swap state
    */
   const resetSwapState = useCallback(() => {
-    setSwapState({ isLoading: false, error: null, step: 'idle' });
+    setSwapState({ isLoading: false, error: null, step: 'idle', transactionHash: undefined });
   }, []);
 
   /**
