@@ -40,7 +40,7 @@ export interface BondingCurveState {
 }
 
 export interface QuoteResult {
-  tokensOut: bigint; // Raw tokens that will be minted (shares * 1e18)
+  tokensOut: bigint; // Amount of tokens user will receive
   ethCost: bigint; // Exact ETH cost from contract
   shareCount: bigint; // Raw share count for the contract
 }
@@ -275,13 +275,106 @@ export function useBondingCurveContracts() {
     }
   }, [CONTRACT_CACHE_DURATION]);
 
-  // Enhanced mathematical estimation for quadratic curves
-  const estimateSharesFromPrice = useCallback((ethAmount: string, currentPrice: bigint): bigint => {
-    if (!currentPrice || currentPrice <= BigInt(0)) return BigInt(1000);
-    const ethWei = parseEther(ethAmount);
-    // For quadratic curves, use square root relationship
-    return (ethWei * BigInt(1e18)) / currentPrice;
+  // Mathematical calculation for quadratic bonding curve
+  const calculateSharesFromETH = useCallback(async (ethAmount: string): Promise<bigint> => {
+    try {
+      const ethWei = parseEther(ethAmount);
+
+      // Get room configuration
+      const roomConfig = await readContract(wagmiConfig, {
+        address: ACES_VAULT_ADDRESS,
+        abi: ACES_VAULT_ABI,
+        functionName: 'rooms',
+        args: [SHARES_SUBJECT_ADDRESS, ROOM_NUMBER],
+      });
+
+      const [curve, floor, midPoint, maxPrice, steepness, sharesSupply] = roomConfig;
+
+      console.log('🎯 [Room Config]:', {
+        curve: curve.toString(),
+        floor: formatEther(floor),
+        steepness: steepness.toString(),
+        sharesSupply: sharesSupply.toString(),
+        ethAmount,
+      });
+
+      // For quadratic curve (curve = 0), implement inverse formula
+      if (curve === 0) {
+        const result = calculateQuadraticInverse(ethWei, sharesSupply, steepness, floor);
+        console.log('🧮 [Quadratic Calculation]:', {
+          ethWei: formatEther(ethWei),
+          estimatedShares: result.toString(),
+        });
+        return result;
+      }
+
+      // For other curves, fall back to estimation
+      return ethWei / BigInt(1e15); // Rough estimate: 0.001 ETH per share
+    } catch (error) {
+      // Fallback to simple estimation
+      return parseEther(ethAmount) / BigInt(1e15);
+    }
   }, []);
+
+  // Inverse quadratic formula - solve for shares given ETH amount
+  const calculateQuadraticInverse = (
+    ethWei: bigint,
+    supply: bigint,
+    steepness: bigint,
+    floor: bigint,
+  ): bigint => {
+    const ethNumber = Number(formatEther(ethWei));
+    const supplyNumber = Number(supply);
+    const steepnessNumber = Number(steepness);
+    const floorNumber = Number(formatEther(floor));
+
+    // For quadratic bonding curve: Price = (summation * 1e18) / steepness + (floor * amount)
+    // Where summation = sum2 - sum1, and sum_i = (i * (i+1) * (2i+1)) / 6
+
+    // We need to solve for 'amount' given ethNumber
+    // This is complex to solve analytically, so we use Newton's method for better approximation
+
+    let amount = 1000; // Starting guess (1000 shares)
+    const maxIterations = 20;
+    const tolerance = 0.0001; // 0.01% tolerance
+
+    for (let i = 0; i < maxIterations; i++) {
+      // Calculate current price for this amount
+      const sum1 = ((supplyNumber - 1) * supplyNumber * (2 * (supplyNumber - 1) + 1)) / 6;
+      const sum2 =
+        ((supplyNumber - 1 + amount) *
+          (supplyNumber + amount) *
+          (2 * (supplyNumber - 1 + amount) + 1)) /
+        6;
+      const summation = sum2 - sum1;
+      const currentPrice = summation / steepnessNumber + floorNumber * amount;
+
+      // Calculate derivative (rate of change)
+      const nextAmount = amount + 1;
+      const nextSum2 =
+        ((supplyNumber - 1 + nextAmount) *
+          (supplyNumber + nextAmount) *
+          (2 * (supplyNumber - 1 + nextAmount) + 1)) /
+        6;
+      const nextSummation = nextSum2 - sum1;
+      const nextPrice = nextSummation / steepnessNumber + floorNumber * nextAmount;
+      const derivative = nextPrice - currentPrice;
+
+      // Newton's method: x_new = x - f(x)/f'(x)
+      const error = currentPrice - ethNumber;
+      if (Math.abs(error) < tolerance) {
+        break; // Converged
+      }
+
+      if (derivative === 0) {
+        break; // Avoid division by zero
+      }
+
+      amount = Math.max(1, amount - error / derivative);
+    }
+
+    return BigInt(Math.floor(Math.max(1, amount)));
+  };
 
   // Debug contract data with enhanced logging
   useEffect(() => {
@@ -378,54 +471,41 @@ export function useBondingCurveContracts() {
       }
 
       try {
-        // OPTIMIZATION 1: Use current price for better initial estimate
-        const currentPrice = await readContract(wagmiConfig, {
+        // NEW APPROACH: Calculate shares mathematically then verify with contract
+        const estimatedShares = await calculateSharesFromETH(ethAmount);
+
+        // Verify the estimate by getting the actual cost
+        const exactCost = await readContract(wagmiConfig, {
           address: ACES_VAULT_ADDRESS,
           abi: ACES_VAULT_ABI,
           functionName: 'getBuyPriceAfterFee',
-          args: [SHARES_SUBJECT_ADDRESS, ROOM_NUMBER, BigInt(1)],
+          args: [SHARES_SUBJECT_ADDRESS, ROOM_NUMBER, estimatedShares],
         });
 
-        // OPTIMIZATION 2: Mathematical estimation reduces search space
-        const estimatedShares = estimateSharesFromPrice(ethAmount, currentPrice);
+        let bestShares = estimatedShares;
+        let bestCost = exactCost;
 
-        // OPTIMIZATION 3: Tighter bounds = fewer iterations
-        let low = (estimatedShares * BigInt(80)) / BigInt(100); // ±20% instead of starting from 1000
-        let high = (estimatedShares * BigInt(120)) / BigInt(100);
-
-        // OPTIMIZATION 4: Reduced iterations from 8 to 4
-        const maxIterations = 4;
-        let bestShares = BigInt(0);
-        let bestCost = BigInt(0);
-
-        for (let i = 0; i < maxIterations && low <= high; i++) {
-          const mid = (low + high) / BigInt(2);
+        // If our estimate is too high, do a quick adjustment
+        if (exactCost > ethAmountWei) {
+          // Reduce shares proportionally
+          const ratio = (ethAmountWei * BigInt(100)) / exactCost;
+          const adjustedShares = (estimatedShares * ratio) / BigInt(100);
 
           try {
-            const exactCost = await readContract(wagmiConfig, {
+            const adjustedCost = await readContract(wagmiConfig, {
               address: ACES_VAULT_ADDRESS,
               abi: ACES_VAULT_ABI,
               functionName: 'getBuyPriceAfterFee',
-              args: [SHARES_SUBJECT_ADDRESS, ROOM_NUMBER, mid],
+              args: [SHARES_SUBJECT_ADDRESS, ROOM_NUMBER, adjustedShares],
             });
 
-            if (exactCost <= ethAmountWei) {
-              bestShares = mid;
-              bestCost = exactCost;
-              low = mid + BigInt(1);
-            } else {
-              high = mid - BigInt(1);
+            if (adjustedCost <= ethAmountWei) {
+              bestShares = adjustedShares;
+              bestCost = adjustedCost;
             }
           } catch (error) {
-            // If RPC fails, use best result so far
-            break;
+            // Keep original estimate if adjustment fails
           }
-        }
-
-        if (bestShares === BigInt(0)) {
-          // Fallback: use estimation
-          bestShares = estimatedShares;
-          bestCost = ethAmountWei;
         }
 
         const result = {
@@ -449,7 +529,7 @@ export function useBondingCurveContracts() {
         throw new Error('Failed to get price quote');
       }
     },
-    [ready, authenticated, currentSharePrice, estimateSharesFromPrice, quoteCache],
+    [ready, authenticated, currentSharePrice, calculateSharesFromETH, quoteCache],
   );
 
   // Public getQuote function with request deduplication
@@ -576,12 +656,13 @@ export function useBondingCurveContracts() {
     const currentlyMinted = totalMintedSupply || effectiveRoomTokenSupply || BigInt(0);
 
     if (hasEssentialData) {
-      console.log('✅ [ACES Contract] Building contract state with:', {
-        tokenSupply: currentRoomSupply.toString(),
-        currentPrice: effectiveCurrentSharePrice?.toString(),
-        priceInETH: effectiveCurrentSharePrice ? formatEther(effectiveCurrentSharePrice) : 'N/A',
-        dataSource: roomTokenSupply ? 'live' : 'cached',
-      });
+      // console.log('✅ [ACES Contract] Building contract state with:', {
+      //   tokenSupply: currentRoomSupply.toString(),
+      //   currentPrice: effectiveCurrentSharePrice?.toString(),
+      //   priceInETH: effectiveCurrentSharePrice ? formatEther(effectiveCurrentSharePrice) : 'N/A',
+      //   dataSource: roomTokenSupply ? 'live' : 'cached',
+      // }
+      // );
 
       return {
         tokenSupply: currentRoomSupply, // Shares in the vault room

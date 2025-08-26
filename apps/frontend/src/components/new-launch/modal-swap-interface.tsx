@@ -28,6 +28,7 @@ import { Currency, SUPPORTED_CURRENCIES } from '@/types/contracts';
 import { useChainSwitching } from '@/hooks/contracts/use-chain-switching';
 import { ACES_VAULT_ABI, ACES_SWAP_ABI } from '@aces/utils';
 import Image from 'next/image';
+import TokenTermsModal from '@/components/ui/custom/token-terms-modal';
 import { CryptoSlider } from './crypto-slider';
 import { StablecoinSlider } from './stablecoin-slider';
 import { readContract } from 'wagmi/actions';
@@ -94,6 +95,13 @@ export default function ModalSwapInterface({
     hash,
   });
 
+  // Purchase limits
+  const PURCHASE_LIMITS = {
+    ETH: 0.5, // 0.5 ETH maximum
+    USDC: 2000, // $2000 USDC maximum
+    USDT: 2000, // $2000 USDT maximum
+  } as const;
+
   // State - handle both ETH and USD amounts
   const [selectedCurrency, setSelectedCurrency] = useState<Currency>('ETH');
   const [ethAmount, setEthAmount] = useState(0); // For ETH purchases
@@ -106,6 +114,8 @@ export default function ModalSwapInterface({
   const [bondingCurveETHCost, setBondingCurveETHCost] = useState('0'); // Store the exact ETH cost from bonding curve
   const [requiredTokenAmount, setRequiredTokenAmount] = useState(BigInt(0)); // Store the exact token amount needed
   const [acceptTerms, setAcceptTerms] = useState(false);
+  const [jurisdictionCompliance, setJurisdictionCompliance] = useState(false);
+  const [showTokenTermsModal, setShowTokenTermsModal] = useState(false);
   const [needsApproval, setNeedsApproval] = useState(false);
   const [approvalInProgress, setApprovalInProgress] = useState(false);
   const [approvalCompleted, setApprovalCompleted] = useState(false);
@@ -165,7 +175,8 @@ export default function ModalSwapInterface({
       // Use 5x buffer for safety: 0.00002 ETH (~$0.06)
       const gasReserve = 0.00002; // 0.00002 ETH (~$0.06) reserve for gas + safety margin
       const maxUsableEth = Math.max(0, walletBalanceEth - gasReserve);
-      return Math.min(1, maxUsableEth); // Cap at 1 ETH for safety
+      // Apply purchase limit: use lower of available balance or purchase limit
+      return Math.min(PURCHASE_LIMITS.ETH, maxUsableEth);
     } else {
       // For stablecoins, convert balance to ETH equivalent for now
       // This will be updated when the AcesSwap contract is integrated
@@ -266,7 +277,7 @@ export default function ModalSwapInterface({
 
             // Use real values from quote
             if (quote.shareCount > BigInt(0)) {
-              // Display the raw share count (what user actually receives)
+              // Display the share count (which equals the number of tokens when formatted properly)
               setExpectedTokens(quote.shareCount.toString());
               setActualCost(formatEther(quote.ethCost));
               setShareCount(quote.shareCount);
@@ -321,7 +332,7 @@ export default function ModalSwapInterface({
                 selectedCurrency === 'USDC' ? uniswapRates.ethToUSDC : uniswapRates.ethToUSDT;
               const usdNeeded = exactEthNeeded * ethToUsdRate * 1.07; // 7% buffer for slippage
 
-              // Display the raw share count (what user actually receives)
+              // Display the share count (which equals the number of tokens when formatted properly)
               setExpectedTokens(quote.shareCount.toString());
               setActualCost(usdNeeded.toFixed(6));
               setShareCount(quote.shareCount);
@@ -622,12 +633,20 @@ export default function ModalSwapInterface({
       return;
     }
 
+    if (!jurisdictionCompliance) {
+      alert('Please confirm your jurisdiction compliance');
+      return;
+    }
+
     const currentAmount = selectedCurrency === 'ETH' ? ethAmount : usdAmount;
     const maxAmountCheck =
       selectedCurrency === 'ETH'
         ? maxAmount
-        : Number(userCurrencyBalance) /
-          Math.pow(10, SUPPORTED_CURRENCIES[selectedCurrency].decimals);
+        : Math.min(
+            PURCHASE_LIMITS[selectedCurrency as 'USDC' | 'USDT'],
+            Number(userCurrencyBalance) /
+              Math.pow(10, SUPPORTED_CURRENCIES[selectedCurrency].decimals),
+          );
 
     if (currentAmount <= 0 || currentAmount > maxAmountCheck) {
       alert(`Amount must be greater than 0 and not exceed available balance`);
@@ -817,6 +836,7 @@ export default function ModalSwapInterface({
     setActualCost('0');
     setShareCount(BigInt(0));
     setAcceptTerms(false);
+    setJurisdictionCompliance(false);
     setNeedsApproval(false);
     setApprovalCompleted(false);
     setApprovalInProgress(false);
@@ -865,510 +885,557 @@ export default function ModalSwapInterface({
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleCloseModal}>
-      <DialogContent className="bg-black border-[#D0B284]/30 max-w-lg h-fit max-h-[90vh] overflow-hidden">
-        <DialogHeader className="pb-2">
-          <DialogTitle></DialogTitle>
-        </DialogHeader>
+    <>
+      <Dialog open={isOpen} onOpenChange={handleCloseModal}>
+        <DialogContent className="bg-black border-[#D0B284]/30 max-w-lg h-fit max-h-[90vh] overflow-hidden">
+          <DialogHeader className="pb-2">
+            <DialogTitle></DialogTitle>
+          </DialogHeader>
 
-        <div className="space-y-3 overflow-y-auto max-h-[calc(90vh-120px)] px-1">
-          {/* Transaction Status Display */}
-          {transactionState !== 'idle' && (
-            <div className="bg-[#231F20]/70 rounded-xl border border-[#D0B284]/30 p-4">
-              {/* Transaction in progress states */}
-              {(transactionState === 'submitting' || transactionState === 'pending') && (
-                <div className="text-center">
-                  <div className="flex items-center justify-center mb-3">
-                    <RefreshCw className="w-8 h-8 text-[#D0B284] animate-spin" />
+          <div className="space-y-3 overflow-y-auto max-h-[calc(90vh-120px)] px-1">
+            {/* Transaction Status Display */}
+            {transactionState !== 'idle' && (
+              <div className="bg-[#231F20]/70 rounded-xl border border-[#D0B284]/30 p-4">
+                {/* Transaction in progress states */}
+                {(transactionState === 'submitting' || transactionState === 'pending') && (
+                  <div className="text-center">
+                    <div className="flex items-center justify-center mb-3">
+                      <RefreshCw className="w-8 h-8 text-[#D0B284] animate-spin" />
+                    </div>
+                    <h3 className="text-white text-lg font-bold mb-2">
+                      {transactionState === 'submitting'
+                        ? 'Submitting Transaction...'
+                        : 'Transaction Pending...'}
+                    </h3>
+                    <p className="text-[#DCDDCC] text-sm mb-3">
+                      {transactionState === 'submitting'
+                        ? 'Please confirm the transaction in your wallet'
+                        : 'Your transaction is being processed on the blockchain'}
+                    </p>
+                    {hash && transactionState === 'pending' && (
+                      <div className="flex items-center justify-center gap-2">
+                        <span className="text-xs text-[#928357] font-mono">Transaction Hash:</span>
+                        <a
+                          href={`https://basescan.org/tx/${hash}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-[#D0B284] hover:text-[#D7BF75] font-mono flex items-center gap-1"
+                        >
+                          {hash.slice(0, 10)}...{hash.slice(-8)}
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+                    )}
                   </div>
-                  <h3 className="text-white text-lg font-bold mb-2">
-                    {transactionState === 'submitting'
-                      ? 'Submitting Transaction...'
-                      : 'Transaction Pending...'}
-                  </h3>
-                  <p className="text-[#DCDDCC] text-sm mb-3">
-                    {transactionState === 'submitting'
-                      ? 'Please confirm the transaction in your wallet'
-                      : 'Your transaction is being processed on the blockchain'}
-                  </p>
-                  {hash && transactionState === 'pending' && (
-                    <div className="flex items-center justify-center gap-2">
-                      <span className="text-xs text-[#928357] font-mono">Transaction Hash:</span>
-                      <a
-                        href={`https://basescan.org/tx/${hash}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-[#D0B284] hover:text-[#D7BF75] font-mono flex items-center gap-1"
-                      >
-                        {hash.slice(0, 10)}...{hash.slice(-8)}
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
-                    </div>
-                  )}
-                </div>
-              )}
+                )}
 
-              {/* Transaction success state */}
-              {transactionState === 'success' && purchaseDetails && (
-                <div className="text-center">
-                  <div className="flex items-center justify-center mb-3">
-                    <div className="w-12 h-12 bg-green-500/20 rounded-full flex items-center justify-center">
-                      <CheckCircle className="w-8 h-8 text-green-400" />
+                {/* Transaction success state */}
+                {transactionState === 'success' && purchaseDetails && (
+                  <div className="text-center">
+                    <div className="flex items-center justify-center mb-3">
+                      <div className="w-12 h-12 bg-green-500/20 rounded-full flex items-center justify-center">
+                        <CheckCircle className="w-8 h-8 text-green-400" />
+                      </div>
                     </div>
-                  </div>
-                  <h3 className="text-white text-xl font-bold mb-2">Purchase Successful!</h3>
-                  <p className="text-[#DCDDCC] text-sm mb-4">
-                    Your {tokenSymbol} tokens have been purchased successfully
-                  </p>
+                    <h3 className="text-white text-xl font-bold mb-2">Purchase Successful!</h3>
+                    <p className="text-[#DCDDCC] text-sm mb-4">
+                      Your {tokenSymbol} tokens have been purchased successfully
+                    </p>
 
-                  {/* Purchase Details */}
-                  <div className="bg-[#0A0A0A]/50 rounded-lg p-3 mb-4 space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[#928357] text-sm">ETH Spent:</span>
-                      <span className="text-white font-mono text-sm">
-                        {Number(purchaseDetails.ethSpent).toFixed(6)} ETH
-                      </span>
+                    {/* Purchase Details */}
+                    <div className="bg-[#0A0A0A]/50 rounded-lg p-3 mb-4 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[#928357] text-sm">ETH Spent:</span>
+                        <span className="text-white font-mono text-sm">
+                          {Number(purchaseDetails.ethSpent).toFixed(6)} ETH
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[#928357] text-sm">Tokens Received:</span>
+                        <span className="text-[#D0B284] font-mono text-sm">
+                          {Number(purchaseDetails.tokensReceived).toLocaleString()} {tokenSymbol}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-[#928357] text-sm">Tokens Received:</span>
-                      <span className="text-[#D0B284] font-mono text-sm">
-                        {Number(purchaseDetails.tokensReceived).toLocaleString()} {tokenSymbol}
-                      </span>
-                    </div>
-                  </div>
 
-                  {/* Transaction Hash */}
-                  {purchaseDetails.transactionHash && (
-                    <div className="flex items-center justify-center gap-2 mb-4">
-                      <span className="text-xs text-[#928357]">Transaction:</span>
-                      <a
-                        href={purchaseDetails.blockExplorerUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-[#D0B284] hover:text-[#D7BF75] font-mono flex items-center gap-1"
-                      >
-                        {purchaseDetails.transactionHash.slice(0, 10)}...
-                        {purchaseDetails.transactionHash.slice(-8)}
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
-                    </div>
-                  )}
+                    {/* Transaction Hash */}
+                    {purchaseDetails.transactionHash && (
+                      <div className="flex items-center justify-center gap-2 mb-4">
+                        <span className="text-xs text-[#928357]">Transaction:</span>
+                        <a
+                          href={purchaseDetails.blockExplorerUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-[#D0B284] hover:text-[#D7BF75] font-mono flex items-center gap-1"
+                        >
+                          {purchaseDetails.transactionHash.slice(0, 10)}...
+                          {purchaseDetails.transactionHash.slice(-8)}
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+                    )}
 
-                  {/* Action Button */}
-                  <Button
-                    onClick={handleCloseModal}
-                    className="w-full bg-gradient-to-r from-[#D0B284] to-[#D7BF75] hover:from-[#D7BF75] hover:to-[#D0B284] text-black font-bold transition-all duration-200"
-                  >
-                    Close
-                  </Button>
-                </div>
-              )}
-
-              {/* Transaction failed state */}
-              {transactionState === 'failed' && (
-                <div className="text-center">
-                  <div className="flex items-center justify-center mb-3">
-                    <div className="w-12 h-12 bg-red-500/20 rounded-full flex items-center justify-center">
-                      <AlertTriangle className="w-8 h-8 text-red-400" />
-                    </div>
-                  </div>
-                  <h3 className="text-white text-xl font-bold mb-2">Transaction Failed</h3>
-                  <p className="text-red-400 text-sm mb-4">{transactionError}</p>
-
-                  {/* Action Buttons */}
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={handleStartNewTransaction}
-                      className="flex-1 bg-[#231F20] border border-[#D0B284]/50 text-[#D0B284] hover:bg-[#D0B284]/10 hover:border-[#D0B284] transition-all duration-200"
-                    >
-                      Try Again
-                    </Button>
+                    {/* Action Button */}
                     <Button
                       onClick={handleCloseModal}
-                      className="flex-1 bg-gradient-to-r from-[#D0B284] to-[#D7BF75] hover:from-[#D7BF75] hover:to-[#D0B284] text-black font-bold transition-all duration-200"
+                      className="w-full bg-gradient-to-r from-[#D0B284] to-[#D7BF75] hover:from-[#D7BF75] hover:to-[#D0B284] text-black font-bold transition-all duration-200"
                     >
                       Close
                     </Button>
                   </div>
-                </div>
-              )}
-            </div>
-          )}
+                )}
 
-          {/* Contract Loading State */}
-          {!activeContractState && transactionState === 'idle' && (
-            <div className="bg-[#231F20]/70 rounded-xl border border-[#D0B284]/30 p-8 text-center">
-              <div className="flex items-center justify-center mb-3">
-                <RefreshCw className="w-8 h-8 text-[#D0B284] animate-spin" />
-              </div>
-              <h3 className="text-white text-lg font-bold mb-2">Loading Contract Data...</h3>
-              <p className="text-[#DCDDCC] text-sm">
-                Please wait while we fetch the latest pricing and contract information.
-              </p>
-            </div>
-          )}
-
-          {/* Hide form during transaction states except for idle */}
-          {transactionState === 'idle' && activeContractState && (
-            <>
-              {/* Currency Selector Dropdown */}
-              <div className="bg-[#231F20]/50 rounded-xl border border-[#D0B284]/20 p-2">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm font-medium text-[#DCDDCC] font-mono">
-                    PAYMENT METHOD
-                  </span>
-                </div>
-
-                <button
-                  onClick={() => setShowCurrencyModal(true)}
-                  className="w-full p-2 rounded-lg border border-[#D0B284]/30 bg-[#231F20]/30 hover:border-[#D0B284]/50 transition-all duration-200 flex items-center justify-between"
-                >
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center">
-                      <Image
-                        src={getCurrencyIcon(selectedCurrency)}
-                        alt={currencyInfo.name}
-                        width={20}
-                        height={20}
-                        className="rounded-full"
-                      />
+                {/* Transaction failed state */}
+                {transactionState === 'failed' && (
+                  <div className="text-center">
+                    <div className="flex items-center justify-center mb-3">
+                      <div className="w-12 h-12 bg-red-500/20 rounded-full flex items-center justify-center">
+                        <AlertTriangle className="w-8 h-8 text-red-400" />
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-base font-bold text-white">{currencyInfo.symbol}</span>
-                      <span className="text-sm text-[#928357]">{currencyInfo.name}</span>
-                    </div>
-                  </div>
-                  <ChevronDown className="w-4 h-4 text-[#928357]" />
-                </button>
+                    <h3 className="text-white text-xl font-bold mb-2">Transaction Failed</h3>
+                    <p className="text-red-400 text-sm mb-4">{transactionError}</p>
 
-                {/* Currency Balance Display */}
-                <div className="text-xs text-[#928357] text-center mt-1 font-mono flex items-center justify-center gap-2">
-                  <span>
-                    Balance:{' '}
-                    {(Number(userCurrencyBalance) / Math.pow(10, currencyInfo.decimals)).toFixed(4)}{' '}
-                    {selectedCurrency}
-                    {selectedCurrency === 'ETH' &&
-                      ` ($${(Number(formatEther(userCurrencyBalance)) * ethPrice.current).toFixed(0)})`}
-                  </span>
-                  <button
-                    onClick={async () => {
-                      if (refresh?.userBalance) {
-                        setIsBackgroundRefreshing(true);
-                        try {
-                          await refresh.userBalance();
-                        } finally {
-                          setIsBackgroundRefreshing(false);
-                        }
-                      }
-                    }}
-                    className="text-[#D0B284] hover:text-[#D7BF75] transition-colors"
-                    title="Refresh balance"
-                    disabled={isBackgroundRefreshing}
-                  >
-                    <RefreshCw
-                      className={`w-3 h-3 ${isBackgroundRefreshing ? 'animate-spin' : ''}`}
-                    />
-                  </button>
-                </div>
-
-                {/* Debug: Show the exact balance sources being used */}
-                {process.env.NODE_ENV === 'development' && (
-                  <div className="text-xs text-yellow-400 text-center mt-1 font-mono space-y-1">
-                    <div>
-                      Debug: walletBalanceEth = {walletBalanceEth.toFixed(6)} ETH, maxAmount ={' '}
-                      {maxAmount.toFixed(6)} ETH
-                    </div>
-                    <div>
-                      Token Calc:{' '}
-                      {selectedCurrency === 'ETH'
-                        ? `ethAmount = ${ethAmount}`
-                        : `usdAmount = ${usdAmount}`}
-                      , expectedTokens = {expectedTokens}, isCalculating ={' '}
-                      {isCalculatingTokens.toString()}
+                    {/* Action Buttons */}
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={handleStartNewTransaction}
+                        className="flex-1 bg-[#231F20] border border-[#D0B284]/50 text-[#D0B284] hover:bg-[#D0B284]/10 hover:border-[#D0B284] transition-all duration-200"
+                      >
+                        Try Again
+                      </Button>
+                      <Button
+                        onClick={handleCloseModal}
+                        className="flex-1 bg-gradient-to-r from-[#D0B284] to-[#D7BF75] hover:from-[#D7BF75] hover:to-[#D0B284] text-black font-bold transition-all duration-200"
+                      >
+                        Close
+                      </Button>
                     </div>
                   </div>
                 )}
               </div>
+            )}
 
-              {/* Slider Component - Conditional based on currency */}
-              {selectedCurrency === 'ETH' ? (
-                <CryptoSlider
-                  value={ethAmount}
-                  onValueChange={setEthAmount}
-                  selectedCurrency={selectedCurrency}
-                  userCurrencyBalance={userCurrencyBalance}
-                  ethPrice={ethPrice.current}
-                  minAmount={minAmount}
-                  maxAmount={maxAmount}
-                  expectedTokens={expectedTokens}
-                  actualCost={actualCost}
-                  shareCount={shareCount}
-                  contractState={activeContractState}
-                  isCalculating={isCalculatingTokens}
-                  tokenSymbol={tokenSymbol}
-                  step={stepSize}
-                  onMaxClick={() => {
-                    // Use the exact same calculation as getMaxAmount()
-                    const gasReserve = 0.00002; // 0.00002 ETH (~$0.06) reserve for gas + safety margin
-                    const maxUsable = Math.max(0, walletBalanceEth - gasReserve);
-                    setEthAmount(Math.min(maxUsable, maxAmount));
-                  }}
-                />
-              ) : (
-                <StablecoinSlider
-                  value={usdAmount}
-                  onValueChange={setUsdAmount}
-                  selectedCurrency={selectedCurrency as 'USDC' | 'USDT'}
-                  userCurrencyBalance={userCurrencyBalance}
-                  ethPrice={ethPrice.current}
-                  minAmount={0.5} // $0.50 minimum for stablecoins
-                  maxAmount={
-                    Number(userCurrencyBalance) /
-                    Math.pow(10, SUPPORTED_CURRENCIES[selectedCurrency].decimals)
-                  }
-                  expectedTokens={expectedTokens}
-                  actualCost={actualCost}
-                  shareCount={shareCount}
-                  contractState={activeContractState}
-                  isCalculating={isCalculatingTokens}
-                  tokenSymbol={tokenSymbol}
-                  step={0.01} // $0.01 steps for USD
-                  onMaxClick={() => {
-                    // Set to full available balance in USD
-                    const maxUSD =
-                      Number(userCurrencyBalance) /
-                      Math.pow(10, SUPPORTED_CURRENCIES[selectedCurrency].decimals);
-                    setUsdAmount(maxUSD);
-                  }}
-                />
-              )}
+            {/* Contract Loading State */}
+            {!activeContractState && transactionState === 'idle' && (
+              <div className="bg-[#231F20]/70 rounded-xl border border-[#D0B284]/30 p-8 text-center">
+                <div className="flex items-center justify-center mb-3">
+                  <RefreshCw className="w-8 h-8 text-[#D0B284] animate-spin" />
+                </div>
+                <h3 className="text-white text-lg font-bold mb-2">Loading Contract Data...</h3>
+                <p className="text-[#DCDDCC] text-sm">
+                  Please wait while we fetch the latest pricing and contract information.
+                </p>
+              </div>
+            )}
 
-              {/* Stablecoin Warning - Only show if AcesSwap not ready */}
-              {selectedCurrency !== 'ETH' && !isContractReady && (
-                <div className="bg-yellow-500/10 rounded-lg border border-yellow-500/20 p-2">
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-yellow-400" />
-                    <span className="text-xs text-yellow-400 font-mono">
-                      {selectedCurrency} purchases coming soon via AcesSwap contract
+            {/* Hide form during transaction states except for idle */}
+            {transactionState === 'idle' && activeContractState && (
+              <>
+                {/* Currency Selector Dropdown */}
+                <div className="bg-[#231F20]/50 rounded-xl border border-[#D0B284]/20 p-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm font-medium text-[#DCDDCC] font-mono">
+                      PAYMENT METHOD
                     </span>
                   </div>
-                </div>
-              )}
 
-              {/* Approval Status for ERC20 tokens */}
-              {selectedCurrency !== 'ETH' && (
-                <>
-                  {approvalInProgress && (
-                    <div className="bg-blue-500/10 rounded-lg border border-blue-500/20 p-2">
+                  <button
+                    onClick={() => setShowCurrencyModal(true)}
+                    className="w-full p-2 rounded-lg border border-[#D0B284]/30 bg-[#231F20]/30 hover:border-[#D0B284]/50 transition-all duration-200 flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center">
+                        <Image
+                          src={getCurrencyIcon(selectedCurrency)}
+                          alt={currencyInfo.name}
+                          width={20}
+                          height={20}
+                          className="rounded-full"
+                        />
+                      </div>
                       <div className="flex items-center gap-2">
-                        <RefreshCw className="w-4 h-4 text-blue-400 animate-spin" />
-                        <span className="text-xs text-blue-400 font-mono">
-                          🔄 Approving {selectedCurrency} spending... Please confirm in your wallet
+                        <span className="text-base font-bold text-white">
+                          {currencyInfo.symbol}
                         </span>
+                        <span className="text-sm text-[#928357]">{currencyInfo.name}</span>
                       </div>
                     </div>
-                  )}
-                  {approvalCompleted && !approvalInProgress && (
-                    <div className="bg-green-500/10 rounded-lg border border-green-500/20 p-2">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle className="w-4 h-4 text-green-400" />
-                        <span className="text-xs text-green-400 font-mono">
-                          ✅ {selectedCurrency} spending approved
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
+                    <ChevronDown className="w-4 h-4 text-[#928357]" />
+                  </button>
 
-              {/* Terms Checkbox */}
-              <div className="bg-[#231F20]/30 rounded-lg border border-[#D0B284]/10 p-2">
-                <div className="flex items-start gap-2">
-                  <input
-                    type="checkbox"
-                    id="modal-terms"
-                    checked={acceptTerms}
-                    onChange={(e) => setAcceptTerms(e.target.checked)}
-                    className="w-4 h-4 mt-0.5 text-[#D0B284] bg-[#231F20] border-[#928357] rounded focus:ring-[#D0B284] focus:ring-2"
-                  />
-                  <label htmlFor="modal-terms" className="text-sm text-[#DCDDCC] leading-relaxed">
-                    I understand the risks and accept the terms and conditions of this token launch
-                  </label>
-                </div>
-              </div>
-
-              {/* Purchase Button */}
-              <Button
-                onClick={handleMainAction}
-                disabled={
-                  isPending ||
-                  isConfirming ||
-                  approvalInProgress ||
-                  swapState.isLoading ||
-                  (selectedCurrency === 'ETH' ? ethAmount <= 0 : usdAmount <= 0) ||
-                  Number(expectedTokens) <= 0 ||
-                  !!ethPrice.error ||
-                  // For purchase (not approval), require terms acceptance
-                  (!acceptTerms && (selectedCurrency === 'ETH' || approvalCompleted)) ||
-                  // Disable for stablecoins if AcesSwap is not ready
-                  (selectedCurrency !== 'ETH' && !isContractReady)
-                }
-                className="w-full bg-gradient-to-r from-[#D0B284] to-[#D7BF75] hover:from-[#D7BF75] hover:to-[#D0B284] text-black font-bold py-2.5 text-base rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {/* Loading states */}
-                {isPending || swapState.step === 'swapping'
-                  ? 'Confirming in wallet...'
-                  : isConfirming || swapState.step === 'checking-allowance'
-                    ? 'Processing transaction...'
-                    : approvalInProgress || swapState.step === 'approving'
-                      ? `Approving ${selectedCurrency}...`
-                      : swapState.isLoading
-                        ? 'Processing...'
-                        : /* Step-specific button text for stablecoins */
-                          selectedCurrency !== 'ETH' && isContractReady
-                          ? needsApproval && !approvalCompleted
-                            ? `Approve ${selectedCurrency}` // STEP 1: Approval
-                            : `Purchase ${tokenSymbol} with ${selectedCurrency}` // STEP 2: Purchase
-                          : /* ETH or contract not ready */
-                            selectedCurrency !== 'ETH' && !isContractReady
-                            ? `${selectedCurrency} purchases coming soon`
-                            : `Purchase ${tokenSymbol} with ${selectedCurrency}`}
-              </Button>
-
-              {/* Error Messages */}
-              {error && (
-                <div className="text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg p-2 font-mono">
-                  Transaction failed: {error instanceof Error ? error.message : 'Unknown error'}
-                </div>
-              )}
-
-              {ethPrice.error && (
-                <div className="text-yellow-400 text-sm bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-2 font-mono">
-                  ⚠️ Price feed error: {ethPrice.error}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </DialogContent>
-
-      {/* Currency Selection Modal - Same as before */}
-      <Dialog open={showCurrencyModal} onOpenChange={setShowCurrencyModal}>
-        <DialogContent className="bg-[#231F20] border-[#D0B284]/30 max-w-md max-h-[80vh] overflow-hidden">
-          <DialogHeader>
-            <div className="flex items-center justify-between">
-              <DialogTitle className="text-white font-serif text-xl">Select Currency</DialogTitle>
-              <button
-                onClick={() => setShowCurrencyModal(false)}
-                className="text-[#928357] hover:text-white transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-          </DialogHeader>
-
-          <div className="space-y-2 py-4 overflow-y-auto max-h-[60vh]">
-            {Object.entries(SUPPORTED_CURRENCIES).map(([key, currency]) => {
-              const isSelected = selectedCurrency === key;
-              const balance =
-                key === 'ETH'
-                  ? userEthBalance
-                  : key === 'USDC'
-                    ? usdcBalanceInfo.balance
-                    : usdtBalanceInfo.balance;
-
-              const balanceFormatted = (Number(balance) / Math.pow(10, currency.decimals)).toFixed(
-                4,
-              );
-
-              return (
-                <button
-                  key={key}
-                  onClick={() => {
-                    setSelectedCurrency(key as Currency);
-                    // Reset appropriate amount based on currency type
-                    if (key === 'ETH') {
-                      setEthAmount(0); // Reset to 0 for ETH
-                    } else {
-                      setUsdAmount(0); // Reset to 0 for stablecoins
-                    }
-                    setShowCurrencyModal(false);
-                  }}
-                  className={`w-full p-4 rounded-lg border transition-all duration-200 flex items-center justify-between ${
-                    isSelected
-                      ? 'border-[#D0B284] bg-[#D0B284]/10'
-                      : 'border-[#928357]/30 bg-[#231F20]/30 hover:border-[#D0B284]/50 hover:bg-[#D0B284]/5'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
-                      <Image
-                        src={getCurrencyIcon(key as Currency)}
-                        alt={currency.name}
-                        width={28}
-                        height={28}
-                        className="rounded-full"
-                      />
-                    </div>
-                    <div className="text-left">
-                      <div
-                        className={`text-lg font-bold ${isSelected ? 'text-[#D0B284]' : 'text-white'}`}
-                      >
-                        {currency.symbol}
-                      </div>
-                      <div className="text-sm text-[#928357]">{currency.name}</div>
-                    </div>
-                  </div>
-
-                  <div className="text-right">
-                    <div
-                      className={`text-sm font-mono ${isSelected ? 'text-[#D0B284]' : 'text-white'}`}
+                  {/* Currency Balance Display */}
+                  <div className="text-xs text-[#928357] text-center mt-1 font-mono flex items-center justify-center gap-2">
+                    <span>
+                      Balance:{' '}
+                      {(Number(userCurrencyBalance) / Math.pow(10, currencyInfo.decimals)).toFixed(
+                        4,
+                      )}{' '}
+                      {selectedCurrency}
+                      {selectedCurrency === 'ETH' &&
+                        ` ($${(Number(formatEther(userCurrencyBalance)) * ethPrice.current).toFixed(0)})`}
+                    </span>
+                    <button
+                      onClick={async () => {
+                        if (refresh?.userBalance) {
+                          setIsBackgroundRefreshing(true);
+                          try {
+                            await refresh.userBalance();
+                          } finally {
+                            setIsBackgroundRefreshing(false);
+                          }
+                        }
+                      }}
+                      className="text-[#D0B284] hover:text-[#D7BF75] transition-colors"
+                      title="Refresh balance"
+                      disabled={isBackgroundRefreshing}
                     >
-                      {balanceFormatted}
-                    </div>
-                    <div className="text-xs text-[#928357]">
-                      {key === 'ETH' &&
-                        `${(Number(formatEther(balance)) * ethPrice.current).toFixed(0)}`}
-                      {key !== 'ETH' && `≈ ${balanceFormatted}`}
-                    </div>
+                      <RefreshCw
+                        className={`w-3 h-3 ${isBackgroundRefreshing ? 'animate-spin' : ''}`}
+                      />
+                    </button>
                   </div>
 
-                  {isSelected && (
-                    <div className="ml-2">
-                      <CheckCircle className="w-5 h-5 text-[#D0B284]" />
+                  {/* Purchase Limit Display */}
+                  <div className="text-xs text-[#928357] text-center mt-1 font-mono">
+                    Purchase limit:{' '}
+                    {selectedCurrency === 'ETH'
+                      ? `${PURCHASE_LIMITS.ETH} ETH`
+                      : `$${PURCHASE_LIMITS[selectedCurrency as 'USDC' | 'USDT'].toLocaleString()} ${selectedCurrency}`}
+                  </div>
+                </div>
+
+                {/* Slider Component - Conditional based on currency */}
+                {selectedCurrency === 'ETH' ? (
+                  <CryptoSlider
+                    value={ethAmount}
+                    onValueChange={setEthAmount}
+                    selectedCurrency={selectedCurrency}
+                    userCurrencyBalance={userCurrencyBalance}
+                    ethPrice={ethPrice.current}
+                    minAmount={minAmount}
+                    maxAmount={maxAmount}
+                    expectedTokens={expectedTokens}
+                    actualCost={actualCost}
+                    shareCount={shareCount}
+                    contractState={activeContractState}
+                    isCalculating={isCalculatingTokens}
+                    tokenSymbol={tokenSymbol}
+                    step={stepSize}
+                    onMaxClick={() => {
+                      // Use the exact same calculation as getMaxAmount()
+                      const gasReserve = 0.00002; // 0.00002 ETH (~$0.06) reserve for gas + safety margin
+                      const maxUsable = Math.max(0, walletBalanceEth - gasReserve);
+                      setEthAmount(Math.min(maxUsable, maxAmount));
+                    }}
+                  />
+                ) : (
+                  <StablecoinSlider
+                    value={usdAmount}
+                    onValueChange={setUsdAmount}
+                    selectedCurrency={selectedCurrency as 'USDC' | 'USDT'}
+                    userCurrencyBalance={userCurrencyBalance}
+                    ethPrice={ethPrice.current}
+                    minAmount={0.5} // $0.50 minimum for stablecoins
+                    maxAmount={Math.min(
+                      PURCHASE_LIMITS[selectedCurrency as 'USDC' | 'USDT'],
+                      Number(userCurrencyBalance) /
+                        Math.pow(10, SUPPORTED_CURRENCIES[selectedCurrency].decimals),
+                    )}
+                    expectedTokens={expectedTokens}
+                    actualCost={actualCost}
+                    shareCount={shareCount}
+                    contractState={activeContractState}
+                    isCalculating={isCalculatingTokens}
+                    tokenSymbol={tokenSymbol}
+                    step={0.01} // $0.01 steps for USD
+                    onMaxClick={() => {
+                      // Set to lower of available balance or purchase limit
+                      const maxUSD =
+                        Number(userCurrencyBalance) /
+                        Math.pow(10, SUPPORTED_CURRENCIES[selectedCurrency].decimals);
+                      const effectiveMax = Math.min(
+                        PURCHASE_LIMITS[selectedCurrency as 'USDC' | 'USDT'],
+                        maxUSD,
+                      );
+                      setUsdAmount(effectiveMax);
+                    }}
+                  />
+                )}
+
+                {/* Stablecoin Warning - Only show if AcesSwap not ready */}
+                {selectedCurrency !== 'ETH' && !isContractReady && (
+                  <div className="bg-yellow-500/10 rounded-lg border border-yellow-500/20 p-2">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-yellow-400" />
+                      <span className="text-xs text-yellow-400 font-mono">
+                        {selectedCurrency} purchases coming soon via AcesSwap contract
+                      </span>
                     </div>
-                  )}
-                </button>
-              );
-            })}
+                  </div>
+                )}
 
-            {/* Buy Crypto with Card Section */}
-            <button
-              onClick={handleBuyCrypto}
-              disabled={isSwitching}
-              className="w-full p-4 rounded-lg border border-[#928357]/30 bg-[#231F20]/30 hover:border-[#D0B284]/50 hover:bg-[#D0B284]/5 transition-all duration-200 flex items-center justify-between disabled:opacity-50"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
-                  <CreditCard className="w-7 h-7 text-[#D0B284]" />
+                {/* Approval Status for ERC20 tokens */}
+                {selectedCurrency !== 'ETH' && (
+                  <>
+                    {approvalInProgress && (
+                      <div className="bg-blue-500/10 rounded-lg border border-blue-500/20 p-2">
+                        <div className="flex items-center gap-2">
+                          <RefreshCw className="w-4 h-4 text-blue-400 animate-spin" />
+                          <span className="text-xs text-blue-400 font-mono">
+                            🔄 Approving {selectedCurrency} spending... Please confirm in your
+                            wallet
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                    {approvalCompleted && !approvalInProgress && (
+                      <div className="bg-green-500/10 rounded-lg border border-green-500/20 p-2">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle className="w-4 h-4 text-green-400" />
+                          <span className="text-xs text-green-400 font-mono">
+                            ✅ {selectedCurrency} spending approved
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Terms Checkbox */}
+                <div className="bg-[#231F20]/30 rounded-lg border border-[#D0B284]/10 p-2">
+                  <div className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      id="modal-terms"
+                      checked={acceptTerms}
+                      onChange={(e) => setAcceptTerms(e.target.checked)}
+                      className="w-4 h-4 mt-0.5 text-[#D0B284] bg-[#231F20] border-[#928357] rounded focus:ring-[#D0B284] focus:ring-2"
+                    />
+                    <label htmlFor="modal-terms" className="text-sm text-[#DCDDCC] leading-relaxed">
+                      I understand the risks and accept the{' '}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          console.log('🔥 Terms link clicked, setting state to true');
+                          setShowTokenTermsModal(true);
+                          console.log('🔥 State should now be true');
+                        }}
+                        className="text-[#D0B284] hover:text-white underline transition-colors duration-200"
+                      >
+                        terms and conditions
+                      </button>{' '}
+                      of this token launch
+                    </label>
+                  </div>
                 </div>
-                <div className="text-left">
-                  <div className="text-lg font-bold text-white">Buy Crypto</div>
-                  <div className="text-sm text-[#928357]">with Credit Card</div>
+
+                {/* Jurisdiction Compliance Checkbox */}
+                <div className="bg-[#231F20]/30 rounded-lg border border-[#D0B284]/10 p-2">
+                  <div className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      id="modal-jurisdiction"
+                      checked={jurisdictionCompliance}
+                      onChange={(e) => setJurisdictionCompliance(e.target.checked)}
+                      className="w-4 h-4 mt-0.5 text-[#D0B284] bg-[#231F20] border-[#928357] rounded focus:ring-[#D0B284] focus:ring-2"
+                    />
+                    <label
+                      htmlFor="modal-jurisdiction"
+                      className="text-sm text-[#DCDDCC] leading-relaxed"
+                    >
+                      I confirm that:
+                      <ul className="list-disc ml-4 mt-1 space-y-1">
+                        <li>You are NOT a US citizen</li>
+                        <li>You are NOT located in the United States</li>
+                        <li>
+                          You are NOT in any jurisdiction that prohibits participation in digital
+                          assets
+                        </li>
+                      </ul>
+                    </label>
+                  </div>
                 </div>
-              </div>
 
-              <div className="text-right">
-                {!isOnBaseMainnet && <AlertTriangle className="w-5 h-5 text-yellow-600" />}
-              </div>
-            </button>
+                {/* Purchase Button */}
+                <Button
+                  onClick={handleMainAction}
+                  disabled={
+                    isPending ||
+                    isConfirming ||
+                    approvalInProgress ||
+                    swapState.isLoading ||
+                    (selectedCurrency === 'ETH' ? ethAmount <= 0 : usdAmount <= 0) ||
+                    Number(expectedTokens) <= 0 ||
+                    !!ethPrice.error ||
+                    // For purchase (not approval), require terms acceptance and jurisdiction compliance
+                    ((!acceptTerms || !jurisdictionCompliance) &&
+                      (selectedCurrency === 'ETH' || approvalCompleted)) ||
+                    // Disable for stablecoins if AcesSwap is not ready
+                    (selectedCurrency !== 'ETH' && !isContractReady)
+                  }
+                  className="w-full bg-gradient-to-r from-[#D0B284] to-[#D7BF75] hover:from-[#D7BF75] hover:to-[#D0B284] text-black font-bold py-2.5 text-base rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {/* Loading states */}
+                  {isPending || swapState.step === 'swapping'
+                    ? 'Confirming in wallet...'
+                    : isConfirming || swapState.step === 'checking-allowance'
+                      ? 'Processing transaction...'
+                      : approvalInProgress || swapState.step === 'approving'
+                        ? `Approving ${selectedCurrency}...`
+                        : swapState.isLoading
+                          ? 'Processing...'
+                          : /* Step-specific button text for stablecoins */
+                            selectedCurrency !== 'ETH' && isContractReady
+                            ? needsApproval && !approvalCompleted
+                              ? `Approve ${selectedCurrency}` // STEP 1: Approval
+                              : `Purchase ${tokenSymbol} with ${selectedCurrency}` // STEP 2: Purchase
+                            : /* ETH or contract not ready */
+                              selectedCurrency !== 'ETH' && !isContractReady
+                              ? `${selectedCurrency} purchases coming soon`
+                              : `Purchase ${tokenSymbol} with ${selectedCurrency}`}
+                </Button>
 
-            <p className="text-xs text-[#928357] text-center mt-3">
-              Choose your preferred payment method for purchasing {tokenSymbol} tokens
-            </p>
+                {/* Error Messages */}
+                {error && (
+                  <div className="text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg p-2 font-mono">
+                    Transaction failed: {error instanceof Error ? error.message : 'Unknown error'}
+                  </div>
+                )}
+
+                {ethPrice.error && (
+                  <div className="text-yellow-400 text-sm bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-2 font-mono">
+                    ⚠️ Price feed error: {ethPrice.error}
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </DialogContent>
+
+        {/* Currency Selection Modal - Same as before */}
+        <Dialog open={showCurrencyModal} onOpenChange={setShowCurrencyModal}>
+          <DialogContent className="bg-[#231F20] border-[#D0B284]/30 max-w-md max-h-[80vh] overflow-hidden">
+            <DialogHeader>
+              <div className="flex items-center justify-between">
+                <DialogTitle className="text-white font-serif text-xl">Select Currency</DialogTitle>
+                <button
+                  onClick={() => setShowCurrencyModal(false)}
+                  className="text-[#928357] hover:text-white transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </DialogHeader>
+
+            <div className="space-y-2 py-4 overflow-y-auto max-h-[60vh]">
+              {Object.entries(SUPPORTED_CURRENCIES).map(([key, currency]) => {
+                const isSelected = selectedCurrency === key;
+                const balance =
+                  key === 'ETH'
+                    ? userEthBalance
+                    : key === 'USDC'
+                      ? usdcBalanceInfo.balance
+                      : usdtBalanceInfo.balance;
+
+                const balanceFormatted = (
+                  Number(balance) / Math.pow(10, currency.decimals)
+                ).toFixed(4);
+
+                return (
+                  <button
+                    key={key}
+                    onClick={() => {
+                      setSelectedCurrency(key as Currency);
+                      // Reset appropriate amount based on currency type
+                      if (key === 'ETH') {
+                        setEthAmount(0); // Reset to 0 for ETH
+                      } else {
+                        setUsdAmount(0); // Reset to 0 for stablecoins
+                      }
+                      setShowCurrencyModal(false);
+                    }}
+                    className={`w-full p-4 rounded-lg border transition-all duration-200 flex items-center justify-between ${
+                      isSelected
+                        ? 'border-[#D0B284] bg-[#D0B284]/10'
+                        : 'border-[#928357]/30 bg-[#231F20]/30 hover:border-[#D0B284]/50 hover:bg-[#D0B284]/5'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
+                        <Image
+                          src={getCurrencyIcon(key as Currency)}
+                          alt={currency.name}
+                          width={28}
+                          height={28}
+                          className="rounded-full"
+                        />
+                      </div>
+                      <div className="text-left">
+                        <div
+                          className={`text-lg font-bold ${isSelected ? 'text-[#D0B284]' : 'text-white'}`}
+                        >
+                          {currency.symbol}
+                        </div>
+                        <div className="text-sm text-[#928357]">{currency.name}</div>
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      <div
+                        className={`text-sm font-mono ${isSelected ? 'text-[#D0B284]' : 'text-white'}`}
+                      >
+                        {balanceFormatted}
+                      </div>
+                      <div className="text-xs text-[#928357]">
+                        {key === 'ETH' &&
+                          `${(Number(formatEther(balance)) * ethPrice.current).toFixed(0)}`}
+                        {key !== 'ETH' && `≈ ${balanceFormatted}`}
+                      </div>
+                    </div>
+
+                    {isSelected && (
+                      <div className="ml-2">
+                        <CheckCircle className="w-5 h-5 text-[#D0B284]" />
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+
+              {/* Buy Crypto with Card Section */}
+              <button
+                onClick={handleBuyCrypto}
+                disabled={isSwitching}
+                className="w-full p-4 rounded-lg border border-[#928357]/30 bg-[#231F20]/30 hover:border-[#D0B284]/50 hover:bg-[#D0B284]/5 transition-all duration-200 flex items-center justify-between disabled:opacity-50"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
+                    <CreditCard className="w-7 h-7 text-[#D0B284]" />
+                  </div>
+                  <div className="text-left">
+                    <div className="text-lg font-bold text-white">Buy Crypto</div>
+                    <div className="text-sm text-[#928357]">with Credit Card</div>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  {!isOnBaseMainnet && <AlertTriangle className="w-5 h-5 text-yellow-600" />}
+                </div>
+              </button>
+
+              <p className="text-xs text-[#928357] text-center mt-3">
+                Choose your preferred payment method for purchasing {tokenSymbol} tokens
+              </p>
+            </div>
+          </DialogContent>
+        </Dialog>
       </Dialog>
-    </Dialog>
+
+      {/* Token Terms Modal */}
+      <TokenTermsModal isOpen={showTokenTermsModal} onClose={() => setShowTokenTermsModal(false)} />
+    </>
   );
 }
