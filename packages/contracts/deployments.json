@@ -1,10 +1,23 @@
 {
-  "network": "baseSepolia",
-  "chainId": 84532,
-  "deployedAt": "2025-06-30T17:02:26.722Z",
-  "contracts": {
-    "acesToken": "0x2c9B029B2F232a5e5f3332A34d6EC6B668fEDd95",
-    "mockRwaDeedNft": "0xb5e4dA5EeaF3703da5e0CA66490f2bAF016c4A68",
-    "mockRwaFactory": "0x2e2aaDB15f11f1Ca7a0c5Acb5655e2f56701104A"
+  "baseMainnet": {
+    "network": "baseMainnet",
+    "chainId": 8453,
+    "deployedAt": "2024-12-20T12:00:00.000Z",
+    "contracts": {
+      "acesVault": "0x3C6d779a3e677E00843B2c9190A34b45A2e86f6C",
+      "acesToken": "0x726842d81f5b0050625c5d6c77CE4Ba8Ba7ee21E",
+      "acesSwap": "0x039d1E7A384b1BfcA199a403c8A263a385D25c7a",
+      "sharesSubject": "0xFa896e205975c4C77918e789898F766478144a54"
+    }
+  },
+  "baseSepolia": {
+    "network": "baseSepolia",
+    "chainId": 84532,
+    "deployedAt": "2025-06-30T17:02:26.722Z",
+    "contracts": {
+      "acesToken": "0x2c9B029B2F232a5e5f3332A34d6EC6B668fEDd95",
+      "mockRwaDeedNft": "0xb5e4dA5EeaF3703da5e0CA66490f2bAF016c4A68",
+      "mockRwaFactory": "0x2e2aaDB15f11f1Ca7a0c5Acb5655e2f56701104A"
+    }
   }
 }

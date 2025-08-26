@@ -3,32 +3,56 @@
 import { useState, useEffect } from 'react';
 
 export default function CountdownTimer() {
+  // Calculate next Tuesday dynamically
+  const getNextTuesday = () => {
+    const now = new Date();
+    const nextTuesday = new Date(now);
+
+    // Get days until next Tuesday (2 = Tuesday, 0 = Sunday)
+    const daysUntilTuesday = (2 + 7 - now.getDay()) % 7;
+    // If today is Tuesday, target next Tuesday (7 days)
+    const daysToAdd = daysUntilTuesday === 0 ? 7 : daysUntilTuesday;
+
+    nextTuesday.setDate(now.getDate() + daysToAdd);
+    nextTuesday.setHours(0, 0, 0, 0); // Set to start of day
+
+    return nextTuesday;
+  };
+
+  const [targetDate] = useState(getNextTuesday);
   const [timeLeft, setTimeLeft] = useState({
-    days: 12,
-    hours: 10,
-    minutes: 23,
-    seconds: 45,
+    days: 0,
+    hours: 0,
+    minutes: 0,
+    seconds: 0,
   });
 
-  // Optional: Add real countdown functionality
   useEffect(() => {
-    const timer = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev.seconds > 0) {
-          return { ...prev, seconds: prev.seconds - 1 };
-        } else if (prev.minutes > 0) {
-          return { ...prev, minutes: prev.minutes - 1, seconds: 59 };
-        } else if (prev.hours > 0) {
-          return { ...prev, hours: prev.hours - 1, minutes: 59, seconds: 59 };
-        } else if (prev.days > 0) {
-          return { ...prev, days: prev.days - 1, hours: 23, minutes: 59, seconds: 59 };
-        }
-        return prev;
-      });
-    }, 1000);
+    const calculateTimeLeft = () => {
+      const now = new Date().getTime();
+      const difference = targetDate.getTime() - now;
+
+      if (difference > 0) {
+        const days = Math.floor(difference / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((difference % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((difference % (1000 * 60)) / 1000);
+
+        setTimeLeft({ days, hours, minutes, seconds });
+      } else {
+        // Timer has reached zero
+        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+      }
+    };
+
+    // Calculate initial time
+    calculateTimeLeft();
+
+    // Update every second
+    const timer = setInterval(calculateTimeLeft, 1000);
 
     return () => clearInterval(timer);
-  }, []);
+  }, [targetDate]);
 
   const timeUnits = [
     { value: timeLeft.days, label: 'Days', shortLabel: 'D' },

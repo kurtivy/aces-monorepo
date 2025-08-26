@@ -12,10 +12,10 @@ export declare const CONTRACTS: {
         readonly acesSwap: "NOT_DEPLOYED";
     };
     readonly baseMainnet: {
-        readonly acesVault: "0x791a62cfc43390E800Fb81EaB9b1Cb86E50d68A0";
-        readonly acesToken: "0x9D517deF70aCa7fa668dA73b7252957BF5Afa410";
+        readonly acesVault: "0x3C6d779a3e677E00843B2c9190A34b45A2e86f6C";
+        readonly acesToken: "0x726842d81f5b0050625c5d6c77CE4Ba8Ba7ee21E";
         readonly implementation: "0x6fd697590ad40Ffc7ff039cfb32B43fBc1EF31E7";
-        readonly acesSwap: "0x7466CF735c8AfD8ecDdd0914590d288566bE6522";
+        readonly acesSwap: "0x039d1E7A384b1BfcA199a403c8A263a385D25c7a";
     };
 };
 export type NetworkName = keyof typeof CONTRACTS;
@@ -33,11 +33,11 @@ export declare const BONDING_CURVE_CONTRACTS: {
     };
     readonly BASE_MAINNET: {
         readonly chainId: 8453;
-        readonly acesVault: "0x791a62cfc43390E800Fb81EaB9b1Cb86E50d68A0";
-        readonly acesToken: "0x9D517deF70aCa7fa668dA73b7252957BF5Afa410";
+        readonly acesVault: "0x3C6d779a3e677E00843B2c9190A34b45A2e86f6C";
+        readonly acesToken: "0x726842d81f5b0050625c5d6c77CE4Ba8Ba7ee21E";
         readonly implementation: "0x6fd697590ad40Ffc7ff039cfb32B43fBc1EF31E7";
-        readonly acesSwap: "0x7466CF735c8AfD8ecDdd0914590d288566bE6522";
-        readonly sharesSubject: "0x246ca431fd1353610Bf20F9d4fbD240148522Dc8";
+        readonly acesSwap: "0x039d1E7A384b1BfcA199a403c8A263a385D25c7a";
+        readonly sharesSubject: "0xFa896e205975c4C77918e789898F766478144a54";
         readonly roomNumber: 0;
     };
 };
@@ -51,11 +51,11 @@ export declare function getBondingCurveContracts(chainId: number): {
     readonly roomNumber: 0;
 } | {
     readonly chainId: 8453;
-    readonly acesVault: "0x791a62cfc43390E800Fb81EaB9b1Cb86E50d68A0";
-    readonly acesToken: "0x9D517deF70aCa7fa668dA73b7252957BF5Afa410";
+    readonly acesVault: "0x3C6d779a3e677E00843B2c9190A34b45A2e86f6C";
+    readonly acesToken: "0x726842d81f5b0050625c5d6c77CE4Ba8Ba7ee21E";
     readonly implementation: "0x6fd697590ad40Ffc7ff039cfb32B43fBc1EF31E7";
-    readonly acesSwap: "0x7466CF735c8AfD8ecDdd0914590d288566bE6522";
-    readonly sharesSubject: "0x246ca431fd1353610Bf20F9d4fbD240148522Dc8";
+    readonly acesSwap: "0x039d1E7A384b1BfcA199a403c8A263a385D25c7a";
+    readonly sharesSubject: "0xFa896e205975c4C77918e789898F766478144a54";
     readonly roomNumber: 0;
 };
 export interface BondingCurveContracts {

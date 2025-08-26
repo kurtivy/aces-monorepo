@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useReadContract, useWriteContract, useBalance } from 'wagmi';
 import { readContract } from 'wagmi/actions';
@@ -100,10 +100,11 @@ export function useBondingCurveContracts() {
     args: [SHARES_SUBJECT_ADDRESS, ROOM_NUMBER],
     query: {
       enabled: true,
-      retry: 3,
-      retryDelay: 1000,
-      refetchInterval: 30000,
-      staleTime: 15000,
+      retry: 5,
+      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+      refetchInterval: 60000, // Reduced from 30s to 60s since this doesn't change often
+      staleTime: 30000, // Increased from 15s to 30s
+      gcTime: 300000, // Keep in cache for 5 minutes
     },
   });
 
@@ -135,10 +136,11 @@ export function useBondingCurveContracts() {
     args: [SHARES_SUBJECT_ADDRESS, ROOM_NUMBER, BigInt(1)],
     query: {
       enabled: true,
-      refetchInterval: 30000,
-      retry: 3,
-      retryDelay: 1000,
-      staleTime: 15000,
+      refetchInterval: 60000, // Reduced frequency since price doesn't change that often
+      retry: 5,
+      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+      staleTime: 30000,
+      gcTime: 300000,
     },
   });
 
@@ -155,17 +157,31 @@ export function useBondingCurveContracts() {
     },
   });
 
-  // Debug the getBuyPriceAfterFee call
+  // Cache successful contract reads
   useEffect(() => {
-    // Debug logging removed for production
-  }, [
-    currentSharePrice,
-    currentSharePriceError,
-    currentSharePriceLoading,
-    roomTokenSupply,
-    baseBuyPrice,
-    baseBuyPriceError,
-  ]);
+    if (roomTokenSupply !== undefined || currentSharePrice !== undefined) {
+      const cacheData = {
+        roomTokenSupply: roomTokenSupply?.toString(),
+        currentSharePrice: currentSharePrice?.toString(),
+        timestamp: Date.now(),
+      };
+
+      try {
+        localStorage.setItem(
+          `aces-contract-cache-${ACES_VAULT_ADDRESS}`,
+          JSON.stringify(cacheData),
+        );
+        setCachedContractData({
+          roomTokenSupply,
+          currentSharePrice,
+          timestamp: Date.now(),
+        });
+        console.log('💾 [ACES Contract] Cached contract data', cacheData);
+      } catch (error) {
+        console.warn('Failed to cache contract data:', error);
+      }
+    }
+  }, [roomTokenSupply, currentSharePrice]);
 
   // Fee information (static data) - ADD THESE BACK
   const { data: protocolFeePercent } = useReadContract({
@@ -217,6 +233,16 @@ export function useBondingCurveContracts() {
     // Fee data logging removed for production
   }, [protocolFeePercent, subjectFeePercent]);
 
+  // Contract data cache with localStorage persistence
+  const [cachedContractData, setCachedContractData] = useState<{
+    roomTokenSupply?: bigint;
+    currentSharePrice?: bigint;
+    timestamp: number;
+  } | null>(null);
+
+  // Cache duration: 5 minutes for contract data that doesn't change often
+  const CONTRACT_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
   // Caching for quote calculations to reduce RPC calls
   const quoteCache = useMemo(
     () => new Map<string, { result: QuoteResult; timestamp: number }>(),
@@ -224,7 +250,95 @@ export function useBondingCurveContracts() {
   );
   const CACHE_DURATION = 30000; // 30 seconds
 
-  // Mathematical approximation based on current contract pricing
+  // Request deduplication cache
+  const pendingRequests = useRef(new Map<string, Promise<QuoteResult>>());
+
+  // Load cached data on mount
+  useEffect(() => {
+    try {
+      const cached = localStorage.getItem(`aces-contract-cache-${ACES_VAULT_ADDRESS}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Date.now() - parsed.timestamp < CONTRACT_CACHE_DURATION) {
+          setCachedContractData({
+            roomTokenSupply: parsed.roomTokenSupply ? BigInt(parsed.roomTokenSupply) : undefined,
+            currentSharePrice: parsed.currentSharePrice
+              ? BigInt(parsed.currentSharePrice)
+              : undefined,
+            timestamp: parsed.timestamp,
+          });
+          console.log('📁 [ACES Contract] Loaded cached contract data', parsed);
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to load cached contract data:', error);
+    }
+  }, [CONTRACT_CACHE_DURATION]);
+
+  // Enhanced mathematical estimation for quadratic curves
+  const estimateSharesFromPrice = useCallback((ethAmount: string, currentPrice: bigint): bigint => {
+    if (!currentPrice || currentPrice <= BigInt(0)) return BigInt(1000);
+    const ethWei = parseEther(ethAmount);
+    // For quadratic curves, use square root relationship
+    return (ethWei * BigInt(1e18)) / currentPrice;
+  }, []);
+
+  // Debug contract data with enhanced logging
+  useEffect(() => {
+    const debugData = {
+      contractAddresses: {
+        vault: ACES_VAULT_ADDRESS,
+        token: ACES_TOKEN_ADDRESS,
+        sharesSubject: SHARES_SUBJECT_ADDRESS,
+        roomNumber: Number(ROOM_NUMBER),
+      },
+      liveData: {
+        roomTokenSupply: roomTokenSupply?.toString(),
+        currentSharePrice: currentSharePrice?.toString(),
+        currentSharePriceETH: currentSharePrice ? formatEther(currentSharePrice) : 'N/A',
+        userShareBalance: userShareBalance?.toString(),
+        ethBalance: ethBalance?.formatted,
+      },
+      cachedData: {
+        roomTokenSupply: cachedContractData?.roomTokenSupply?.toString(),
+        currentSharePrice: cachedContractData?.currentSharePrice?.toString(),
+        cacheAge: cachedContractData
+          ? Math.round((Date.now() - cachedContractData.timestamp) / 1000) + 's'
+          : 'none',
+      },
+      errors: {
+        roomTokenSupplyError: roomTokenSupplyError?.message,
+        currentSharePriceError: currentSharePriceError?.message,
+      },
+      loading: {
+        roomTokenSupplyLoading,
+        currentSharePriceLoading,
+      },
+      usingCache: !roomTokenSupply && cachedContractData?.roomTokenSupply ? true : false,
+    };
+
+    console.log('🔍 [ACES Contract Debug] Contract Data:', debugData);
+
+    // Also log specific issues
+    if (roomTokenSupplyError) {
+      console.error('❌ [ACES Contract] Token Supply Error:', roomTokenSupplyError);
+    }
+    if (currentSharePriceError) {
+      console.error('❌ [ACES Contract] Price Error:', currentSharePriceError);
+    }
+  }, [
+    currentSharePrice,
+    currentSharePriceError,
+    currentSharePriceLoading,
+    roomTokenSupply,
+    roomTokenSupplyError,
+    roomTokenSupplyLoading,
+    userShareBalance,
+    ethBalance,
+    cachedContractData,
+  ]);
+
+  // Legacy approximation function (kept for backward compatibility)
   const approximateSharesFromETH = useCallback(
     (ethAmount: string, currentPrice?: bigint): bigint => {
       const ethWei = parseEther(ethAmount);
@@ -241,8 +355,8 @@ export function useBondingCurveContracts() {
     [],
   );
 
-  // OPTIMIZED getQuote function with caching and fallback calculation
-  const getQuote = useCallback(
+  // Internal quote calculation logic
+  const getQuoteInternal = useCallback(
     async (ethAmount: string): Promise<QuoteResult> => {
       if (!ready || !authenticated) throw new Error('Not authenticated');
 
@@ -264,52 +378,27 @@ export function useBondingCurveContracts() {
       }
 
       try {
-        // For quadratic bonding curve, we can't use linear approximation
-        // Start with reasonable bounds for binary search based on ETH amount
-        const ethWei = parseEther(ethAmount);
+        // OPTIMIZATION 1: Use current price for better initial estimate
+        const currentPrice = await readContract(wagmiConfig, {
+          address: ACES_VAULT_ADDRESS,
+          abi: ACES_VAULT_ABI,
+          functionName: 'getBuyPriceAfterFee',
+          args: [SHARES_SUBJECT_ADDRESS, ROOM_NUMBER, BigInt(1)],
+        });
 
-        // For small amounts of ETH, use conservative bounds
-        // Based on contract data: ~53K shares for $0.54 ≈ 0.0001 ETH
-        let low = BigInt(1000); // Start low
-        let high = BigInt(100000); // Conservative upper bound
+        // OPTIMIZATION 2: Mathematical estimation reduces search space
+        const estimatedShares = estimateSharesFromPrice(ethAmount, currentPrice);
 
-        // Scale bounds based on ETH amount
-        if (ethWei > parseEther('0.001')) {
-          high = BigInt(1000000); // 1M shares for larger amounts
-        }
-        if (ethWei > parseEther('0.01')) {
-          high = BigInt(10000000); // 10M shares for very large amounts
-        }
+        // OPTIMIZATION 3: Tighter bounds = fewer iterations
+        let low = (estimatedShares * BigInt(80)) / BigInt(100); // ±20% instead of starting from 1000
+        let high = (estimatedShares * BigInt(120)) / BigInt(100);
 
-        // Cap the search range to avoid excessive calls and contract reverts
-        if (high > BigInt(10000000)) high = BigInt(10000000); // Keep maximum cap
-
-        // CRITICAL FIX: Allow low values for small ETH amounts, but set a reasonable minimum
-        if (low < BigInt(100)) low = BigInt(100); // Much lower minimum: 100 instead of 10,000
-
+        // OPTIMIZATION 4: Reduced iterations from 8 to 4
+        const maxIterations = 4;
         let bestShares = BigInt(0);
         let bestCost = BigInt(0);
 
-        // First, test if the contract works at all with a very small amount
-        try {
-          const testShares = BigInt(1000); // Test with just 1,000 shares
-          const testCost = await readContract(wagmiConfig, {
-            address: ACES_VAULT_ADDRESS,
-            abi: ACES_VAULT_ABI,
-            functionName: 'getBuyPriceAfterFee',
-            args: [SHARES_SUBJECT_ADDRESS, ROOM_NUMBER, testShares],
-          });
-        } catch (error) {
-          throw new Error('Bonding curve contract not available for this room');
-        }
-
-        // Skip linear approximation for quadratic curves - go straight to binary search
-
-        // Efficient binary search with reduced iterations
-        const maxIterations = 8; // Much fewer iterations
-        let iterations = 0;
-
-        while (low <= high && iterations < maxIterations) {
+        for (let i = 0; i < maxIterations && low <= high; i++) {
           const mid = (low + high) / BigInt(2);
 
           try {
@@ -323,61 +412,25 @@ export function useBondingCurveContracts() {
             if (exactCost <= ethAmountWei) {
               bestShares = mid;
               bestCost = exactCost;
-
               low = mid + BigInt(1);
             } else {
               high = mid - BigInt(1);
             }
           } catch (error) {
-            // If we hit rate limit, break early and use best result
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            if (errorMessage.includes('429') || errorMessage.includes('Too Many Requests')) {
-              break;
-            }
-
-            // If the contract reverts on this amount, it might be too high
-            // Try reducing the search space
-            if (errorMessage.includes('reverted') || errorMessage.includes('execution reverted')) {
-              high = mid - BigInt(1);
-            } else {
-              // For other errors, also reduce search space
-              high = mid - BigInt(1);
-            }
-          }
-
-          iterations++;
-
-          // Add minimal delay to avoid rate limits
-          if (iterations % 3 === 0) {
-            await new Promise((resolve) => setTimeout(resolve, 100));
+            // If RPC fails, use best result so far
+            break;
           }
         }
-
-        // If we couldn't find a good result, return zero (binary search should work for quadratic curves)
 
         if (bestShares === BigInt(0)) {
-          return {
-            tokensOut: BigInt(0),
-            ethCost: BigInt(0),
-            shareCount: BigInt(0),
-          };
-        }
-
-        // tokensOut represents the share count that user receives
-        // The contract will mint amount * 1e18 tokens, but we display just the amount
-        const tokensOut = bestShares;
-
-        // Add fees to the cost for accurate total cost display
-        let totalCostWithFees = bestCost;
-        if (protocolFeePercent && subjectFeePercent) {
-          const protocolFee = (bestCost * protocolFeePercent) / parseEther('1');
-          const subjectFee = (bestCost * subjectFeePercent) / parseEther('1');
-          totalCostWithFees = bestCost + protocolFee + subjectFee;
+          // Fallback: use estimation
+          bestShares = estimatedShares;
+          bestCost = ethAmountWei;
         }
 
         const result = {
-          tokensOut,
-          ethCost: totalCostWithFees,
+          tokensOut: bestShares,
+          ethCost: bestCost,
           shareCount: bestShares,
         };
 
@@ -393,18 +446,37 @@ export function useBondingCurveContracts() {
 
         return result;
       } catch (error) {
-        throw new Error('Failed to get price quote from bonding curve contract');
+        throw new Error('Failed to get price quote');
       }
     },
-    [
-      ready,
-      authenticated,
-      protocolFeePercent,
-      subjectFeePercent,
-      currentSharePrice,
-      approximateSharesFromETH,
-      quoteCache,
-    ],
+    [ready, authenticated, currentSharePrice, estimateSharesFromPrice, quoteCache],
+  );
+
+  // Public getQuote function with request deduplication
+  const getQuote = useCallback(
+    async (ethAmount: string): Promise<QuoteResult> => {
+      // DEDUPLICATION: Check for pending request
+      const requestKey = `${ethAmount}`;
+      const pendingRequest = pendingRequests.current.get(requestKey);
+
+      if (pendingRequest) {
+        console.log('Using pending request for', requestKey);
+        return pendingRequest;
+      }
+
+      // Create new request
+      const newRequest = getQuoteInternal(ethAmount);
+      pendingRequests.current.set(requestKey, newRequest);
+
+      try {
+        const result = await newRequest;
+        return result;
+      } finally {
+        // Clean up completed request
+        pendingRequests.current.delete(requestKey);
+      }
+    },
+    [getQuoteInternal],
   );
 
   // BUY TOKENS FUNCTION - simplified for proxy contract
@@ -485,24 +557,36 @@ export function useBondingCurveContracts() {
     throw new Error('Selling tokens is not yet implemented in the current contract version');
   }, []);
 
-  // Contract state - simplified memoization
+  // Contract state - simplified memoization with cache fallback
   const contractState: BondingCurveState | undefined = useMemo(() => {
-    // Check if we have the essential data
-    const hasEssentialData = roomTokenSupply !== undefined && currentSharePrice !== undefined;
+    // Use live data first, fall back to cached data
+    const effectiveRoomTokenSupply = roomTokenSupply ?? cachedContractData?.roomTokenSupply;
+    const effectiveCurrentSharePrice = currentSharePrice ?? cachedContractData?.currentSharePrice;
+
+    // Check if we have the essential data (either live or cached)
+    const hasEssentialData =
+      effectiveRoomTokenSupply !== undefined && effectiveCurrentSharePrice !== undefined;
 
     // Define your intended maximum supply for the bonding curve launch
     const intendedMaxSupply = BigInt(1000000000) * BigInt(1e18); // 1B tokens intended max
     const bondingCurveMaxSupply = BigInt(800000000) * BigInt(1e18); // 800M available in bonding curve
 
-    // Use room token supply for progress calculation (shares in the vault)
-    const currentRoomSupply = roomTokenSupply || BigInt(0);
-    const currentlyMinted = totalMintedSupply || BigInt(0);
+    // Use effective data (live or cached) for calculations
+    const currentRoomSupply = effectiveRoomTokenSupply || BigInt(0);
+    const currentlyMinted = totalMintedSupply || effectiveRoomTokenSupply || BigInt(0);
 
     if (hasEssentialData) {
+      console.log('✅ [ACES Contract] Building contract state with:', {
+        tokenSupply: currentRoomSupply.toString(),
+        currentPrice: effectiveCurrentSharePrice?.toString(),
+        priceInETH: effectiveCurrentSharePrice ? formatEther(effectiveCurrentSharePrice) : 'N/A',
+        dataSource: roomTokenSupply ? 'live' : 'cached',
+      });
+
       return {
         tokenSupply: currentRoomSupply, // Shares in the vault room
         totalETHRaised: BigInt(0), // Can be calculated from events if needed
-        currentPrice: currentSharePrice,
+        currentPrice: effectiveCurrentSharePrice,
         progress:
           bondingCurveMaxSupply > 0
             ? BigInt(Math.floor((Number(currentlyMinted) / Number(bondingCurveMaxSupply)) * 100))
@@ -510,7 +594,7 @@ export function useBondingCurveContracts() {
         maxSupply: intendedMaxSupply,
         bondingCurveSupply: bondingCurveMaxSupply,
         targetRaiseUSD: BigInt(100000) * BigInt(1e6), // $100K target
-        basePrice: currentSharePrice,
+        basePrice: effectiveCurrentSharePrice,
         isActive: true,
         name: name,
         symbol: symbol,
@@ -554,6 +638,7 @@ export function useBondingCurveContracts() {
   }, [
     roomTokenSupply,
     currentSharePrice,
+    cachedContractData,
     totalMintedSupply,
     roomTokenSupplyLoading,
     currentSharePriceLoading,

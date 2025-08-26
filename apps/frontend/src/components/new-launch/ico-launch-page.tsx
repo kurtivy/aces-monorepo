@@ -181,7 +181,16 @@ const CurrentPriceSquare: React.FC = () => {
     return price.toExponential(2);
   };
 
-  // Debug logging for price values (after function definitions)
+  // Debug logging for price values
+  console.log('🏷️ [Price Display] Current Price Square:', {
+    contractState: !!contractState,
+    currentPrice: contractState?.currentPrice?.toString(),
+    nextSharePriceETH,
+    nextSharePriceUSD,
+    liveETHPriceUSD,
+    ethPriceLoading: ethPrice.isLoading,
+    ethPriceError: ethPrice.error,
+  });
   console.log('🎯 Price Debug:', {
     currentPriceWei: contractState?.currentPrice?.toString(),
     nextSharePriceETH,
@@ -617,11 +626,11 @@ const ICOPageContent: React.FC<ICOPageContentProps> = ({ isMobile, containerRef,
           <div className="w-full max-w-[1000px] mx-auto">
             {/* BUY ACES ICO NOW Header */}
             <div className="w-full flex flex-col items-center py-4 mb-4">
-              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-2 tracking-widest font-neue-world text-center">
-                BUY $ACES ICO NOW
+              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-2 tracking-widest font-proxima-nova text-center">
+                BUY $ACES TOKEN NOW
               </h2>
               <p className="text-sm sm:text-base text-[#DCDDCC] max-w-2xl text-center leading-relaxed font-proxima-nova px-4">
-                Participate in the ACES ICO and own a piece of the future of luxury asset
+                Participate in the ACES Token launch and own a piece of the future of luxury asset
                 tokenization.
               </p>
             </div>
@@ -633,7 +642,9 @@ const ICOPageContent: React.FC<ICOPageContentProps> = ({ isMobile, containerRef,
               animate={{ opacity: isReady ? 1 : 0 }}
               transition={{ duration: 0.4, delay: 0.3, ease: 'easeOut' }}
             >
-              <div className="w-full max-w-[600px]">{isReady ? <BuyNowSection /> : <BuyNowSkeleton />}</div>
+              <div className="w-full max-w-[600px]">
+                {isReady ? <BuyNowSection /> : <BuyNowSkeleton />}
+              </div>
             </motion.div>
 
             {/* Countdown Timer section - standalone */}
@@ -665,7 +676,9 @@ const ICOPageContent: React.FC<ICOPageContentProps> = ({ isMobile, containerRef,
               transition={{ duration: 0.4, delay: 0.6, ease: 'easeOut' }}
             >
               {/* Chart - Responsive sizing */}
-              <div className={`w-full max-w-[600px] rounded-xl flex items-center justify-center overflow-hidden ${isMobile ? 'h-[350px]' : 'h-[500px]'}`}>
+              <div
+                className={`w-full max-w-[600px] rounded-xl flex items-center justify-center overflow-hidden ${isMobile ? 'h-[350px]' : 'h-[500px]'}`}
+              >
                 <div className="w-full h-full">
                   {isReady ? <BondingCurveChart /> : <ChartSkeleton />}
                 </div>

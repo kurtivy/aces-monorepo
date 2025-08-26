@@ -1,12 +1,28 @@
 {
-  "network": "baseSepolia",
-  "chainId": 84532,
-  "deployedAt": "2024-12-20T00:00:00.000Z",
-  "contracts": {
-    "acesTest": "0x6474F13C2CEbD4Ca36cAE5a1055d44928822Ded9",
-    "bondingCurveTest": "0xafa9256Adffc24c3d34296304046647B77eEB139"
+  "baseMainnet": {
+    "network": "baseMainnet",
+    "chainId": 8453,
+    "deployedAt": "2024-12-20T12:00:00.000Z",
+    "contracts": {
+      "acesVault": "0x3C6d779a3e677E00843B2c9190A34b45A2e86f6C",
+      "acesToken": "0x726842d81f5b0050625c5d6c77CE4Ba8Ba7ee21E",
+      "acesSwap": "0x039d1E7A384b1BfcA199a403c8A263a385D25c7a",
+      "sharesSubject": "0xFa896e205975c4C77918e789898F766478144a54"
+    },
+    "verified": true,
+    "testnet": false,
+    "description": "ACES platform mainnet contracts"
   },
-  "verified": true,
-  "testnet": true,
-  "description": "Bonding Curve Test contracts for ACES platform testing"
+  "baseSepolia": {
+    "network": "baseSepolia",
+    "chainId": 84532,
+    "deployedAt": "2024-12-20T00:00:00.000Z",
+    "contracts": {
+      "acesTest": "0x6474F13C2CEbD4Ca36cAE5a1055d44928822Ded9",
+      "bondingCurveTest": "0xafa9256Adffc24c3d34296304046647B77eEB139"
+    },
+    "verified": true,
+    "testnet": true,
+    "description": "Bonding Curve Test contracts for ACES platform testing"
+  }
 }
