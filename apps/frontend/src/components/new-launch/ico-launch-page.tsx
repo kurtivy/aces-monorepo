@@ -12,6 +12,7 @@ import BuyNowSection from './buy-now';
 import AnimatedDotsBackground from '../ui/custom/animated-dots-background';
 import { useBondingCurveContracts } from '@/hooks/contracts/use-bonding-curve-contract';
 import { useAuth } from '@/lib/auth/auth-context';
+import { usePrivy } from '@privy-io/react-auth';
 import { usePageLoading } from '@/hooks/use-page-loading';
 import { formatEther } from 'viem';
 import Footer from '@/components/ui/custom/footer';
@@ -138,10 +139,47 @@ const productMapping: Record<string, string> = {
 // Token Info Components - Updated to use new hooks
 const CurrentPriceSquare: React.FC = () => {
   const { contractState, ethPrice } = useBondingCurveContracts();
+  const { authenticated } = usePrivy();
 
   // Show loading state if contract data isn't ready
   if (!contractState || ethPrice.isLoading) {
     return <TokenInfoSkeleton />;
+  }
+
+  // Show placeholder when wallet is not connected
+  if (!authenticated) {
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-[#231F20] to-[#0A0A0A] p-4 relative">
+        <div className="text-center">
+          <h3
+            className="text-[#D0B264] text-sm font-medium tracking-wider mb-3 uppercase"
+            style={{ fontFamily: 'system, serif' }}
+          >
+            Next Token Price
+          </h3>
+          <div className="flex flex-col items-center">
+            <span
+              className="text-[#DCDDCC]/50 text-lg sm:text-xl font-bold mb-1"
+              style={{ fontFamily: 'JetBrains Mono, monospace' }}
+            >
+              Connect Wallet
+            </span>
+            <span
+              className="text-[#DCDDCC]/30 text-xs sm:text-sm font-medium"
+              style={{ fontFamily: 'JetBrains Mono, monospace' }}
+            >
+              to view price
+            </span>
+          </div>
+        </div>
+
+        {/* Corner accents */}
+        <div className="absolute top-2 left-2 w-2 h-2 border-l-2 border-t-2 border-[#D0B264]/40 rounded-tl-lg" />
+        <div className="absolute top-2 right-2 w-2 h-2 border-r-2 border-t-2 border-[#D0B264]/40 rounded-tr-lg" />
+        <div className="absolute bottom-2 left-2 w-2 h-2 border-l-2 border-b-2 border-[#D0B264]/40 rounded-bl-lg" />
+        <div className="absolute bottom-2 right-2 w-2 h-2 border-r-2 border-b-2 border-[#D0B264]/40 rounded-br-lg" />
+      </div>
+    );
   }
 
   // Get the price for 1 share from the current price
@@ -275,12 +313,16 @@ const UserBalanceSquare: React.FC = () => {
               </svg>
             </div>
             <span
-              className="text-[#D0B264] text-sm font-medium text-center leading-tight"
+              className="text-[#D0B264] text-xs sm:text-sm font-medium text-center leading-tight"
               style={{ fontFamily: 'system, serif' }}
             >
-              Connect Wallet
+              <span className="hidden sm:inline">Connect Wallet</span>
+              <span className="sm:hidden">Connect</span>
               <br />
-              <span className="text-xs text-[#928357]">to view balance</span>
+              <span className="text-xs text-[#928357]">
+                <span className="hidden sm:inline">to view balance</span>
+                <span className="sm:hidden">for balance</span>
+              </span>
             </span>
           </div>
         </div>
@@ -474,6 +516,8 @@ const ICOLaunchPage: React.FC = () => {
     enableIntroAnimation: true,
   });
 
+  const effectivePageReady = pageLoading.isReady;
+
   useEffect(() => {
     const checkMobile = () => {
       setIsMobile(window.innerWidth < 1100);
@@ -484,7 +528,6 @@ const ICOLaunchPage: React.FC = () => {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // Handle intro animation completion
   const handleIntroAnimationComplete = () => {
     setShowIntroAnimation(false);
   };
@@ -508,7 +551,7 @@ const ICOLaunchPage: React.FC = () => {
   // ]);
 
   // Show launch intro animation while images and contract data load
-  if (!pageLoading.isReady) {
+  if (!effectivePageReady) {
     return (
       <>
         <LaunchIntroAnimation
@@ -534,7 +577,7 @@ const ICOLaunchPage: React.FC = () => {
     return (
       <>
         <LaunchIntroAnimation
-          isComplete={pageLoading.isReady}
+          isComplete={effectivePageReady}
           onIntroAnimationComplete={handleIntroAnimationComplete}
           skipLetterAnimation={false}
         />
@@ -666,7 +709,7 @@ const ICOPageContent: React.FC<ICOPageContentProps> = ({
 
             {/* Buy Now Section - standalone */}
             <motion.div
-              className="w-full mx-auto flex items-center justify-center mb-4 px-4"
+              className="w-full mx-auto flex items-center justify-center mb-3 sm:mb-4 px-2 sm:px-4"
               initial={{ opacity: 0 }}
               animate={{ opacity: isReady ? 1 : 0 }}
               transition={{ duration: 0.4, delay: 0.3, ease: 'easeOut' }}
@@ -678,7 +721,7 @@ const ICOPageContent: React.FC<ICOPageContentProps> = ({
 
             {/* Countdown Timer section - standalone */}
             <motion.div
-              className="w-full flex flex-col items-center justify-center mb-4 px-4"
+              className="w-full flex flex-col items-center justify-center mb-3 sm:mb-4 px-2 sm:px-4"
               initial={{ opacity: 0 }}
               animate={{ opacity: isReady ? 1 : 0 }}
               transition={{ duration: 0.4, delay: 0.4, ease: 'easeOut' }}
@@ -688,7 +731,7 @@ const ICOPageContent: React.FC<ICOPageContentProps> = ({
 
             {/* Progression Bar - No props needed, gets data from hook */}
             <motion.div
-              className="w-full flex flex-col items-center justify-center mb-8 sm:mb-12 relative z-10 px-4"
+              className="w-full flex flex-col items-center justify-center mb-6 sm:mb-8 md:mb-12 relative z-10 px-2 sm:px-4"
               initial={{ opacity: 0 }}
               animate={{ opacity: isReady ? 1 : 0 }}
               transition={{ duration: 0.4, delay: 0.5, ease: 'easeOut' }}
@@ -698,15 +741,15 @@ const ICOPageContent: React.FC<ICOPageContentProps> = ({
 
             {/* Bonding Curve Chart - No props needed, gets data from hook */}
             <motion.div
-              className="w-full mx-auto flex items-center justify-center relative z-0 px-4"
-              style={{ minHeight: isMobile ? '350px' : '500px' }}
+              className="w-full mx-auto flex items-center justify-center relative z-0 px-2 sm:px-4"
+              style={{ minHeight: isMobile ? '300px' : '500px' }}
               initial={{ opacity: 0 }}
               animate={{ opacity: isReady ? 1 : 0 }}
               transition={{ duration: 0.4, delay: 0.6, ease: 'easeOut' }}
             >
               {/* Chart - Responsive sizing */}
               <div
-                className={`w-full max-w-[600px] rounded-xl flex items-center justify-center overflow-hidden ${isMobile ? 'h-[350px]' : 'h-[500px]'}`}
+                className={`w-full max-w-[600px] rounded-xl flex items-center justify-center overflow-hidden ${isMobile ? 'h-[300px]' : 'h-[500px]'}`}
               >
                 <div className="w-full h-full">
                   {isReady ? <BondingCurveChart /> : <ChartSkeleton />}

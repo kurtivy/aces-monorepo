@@ -126,12 +126,12 @@ export default function AppProviders({ children }: { children: ReactNode }) {
             logo: '/aces-logo.png',
             loginMessage: 'Connect your wallet to ACES',
             showWalletLoginFirst: true, // Show wallet options first
-            walletList: ['metamask', 'coinbase_wallet', 'wallet_connect'],
+            walletList: ['coinbase_wallet', 'metamask', 'wallet_connect'], // Prioritize mobile-friendly wallets
           },
           embeddedWallets: {
-            createOnLogin: 'users-without-wallets', // Only create embedded wallet if no external wallet
+            createOnLogin: 'off', // Disable embedded wallets to avoid HTTPS issues
             requireUserPasswordOnCreate: false,
-            showWalletUIs: false, // Reduce complexity
+            showWalletUIs: false,
           },
           defaultChain: base,
           supportedChains: [base, baseSepolia],

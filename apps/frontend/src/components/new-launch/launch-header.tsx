@@ -16,7 +16,10 @@ export default function LaunchHeader() {
       </div>
 
       <div className="flex items-center gap-6">
-        <SocialIcons iconSize={24} />
+        {/* Hide social icons on mobile and tablet, show on desktop (lg and above) */}
+        <div className="hidden lg:block">
+          <SocialIcons iconSize={24} />
+        </div>
         <LaunchWalletProfile
           isDropdownOpen={isWalletDropdownOpen}
           onDropdownChange={setIsWalletDropdownOpen}

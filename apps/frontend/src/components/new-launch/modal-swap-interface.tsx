@@ -60,6 +60,11 @@ export default function ModalSwapInterface({
   const { isOnBaseMainnet, isSwitching, ensureCorrectChain, SUPPORTED_CHAINS } =
     useChainSwitching();
   const { contractState, getQuote, ethPrice, refresh } = useBondingCurveContracts();
+
+  // Check if tokens are sold out (875M = maximum supply)
+  const MAXIMUM_SUPPLY = 875000000; // 875 million tokens
+  const currentSupply = contractState?.tokenSupply ? Number(contractState.tokenSupply) : 0;
+  const isSoldOut = currentSupply >= MAXIMUM_SUPPLY;
   const { data: hash, isPending, error, writeContractAsync, reset } = useWriteContract();
 
   // Stable contract state that persists once loaded (prevents modal from closing during re-fetches)
@@ -888,27 +893,27 @@ export default function ModalSwapInterface({
   return (
     <>
       <Dialog open={isOpen} onOpenChange={handleCloseModal}>
-        <DialogContent className="bg-black border-[#D0B284]/30 max-w-lg h-fit max-h-[90vh] overflow-hidden">
+        <DialogContent className="bg-black border-[#D0B284]/30 max-w-lg w-[95vw] sm:w-full h-fit max-h-[95vh] sm:max-h-[90vh] overflow-hidden mx-2 sm:mx-auto">
           <DialogHeader className="pb-2">
             <DialogTitle></DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-3 overflow-y-auto max-h-[calc(90vh-120px)] px-1">
+          <div className="space-y-2 sm:space-y-3 overflow-y-auto max-h-[calc(95vh-100px)] sm:max-h-[calc(90vh-120px)] px-1">
             {/* Transaction Status Display */}
             {transactionState !== 'idle' && (
-              <div className="bg-[#231F20]/70 rounded-xl border border-[#D0B284]/30 p-4">
+              <div className="bg-[#231F20]/70 rounded-xl border border-[#D0B284]/30 p-3 sm:p-4">
                 {/* Transaction in progress states */}
                 {(transactionState === 'submitting' || transactionState === 'pending') && (
                   <div className="text-center">
                     <div className="flex items-center justify-center mb-3">
                       <RefreshCw className="w-8 h-8 text-[#D0B284] animate-spin" />
                     </div>
-                    <h3 className="text-white text-lg font-bold mb-2">
+                    <h3 className="text-white text-base sm:text-lg font-bold mb-2">
                       {transactionState === 'submitting'
                         ? 'Submitting Transaction...'
                         : 'Transaction Pending...'}
                     </h3>
-                    <p className="text-[#DCDDCC] text-sm mb-3">
+                    <p className="text-[#DCDDCC] text-xs sm:text-sm mb-3">
                       {transactionState === 'submitting'
                         ? 'Please confirm the transaction in your wallet'
                         : 'Your transaction is being processed on the blockchain'}
@@ -938,8 +943,10 @@ export default function ModalSwapInterface({
                         <CheckCircle className="w-8 h-8 text-green-400" />
                       </div>
                     </div>
-                    <h3 className="text-white text-xl font-bold mb-2">Purchase Successful!</h3>
-                    <p className="text-[#DCDDCC] text-sm mb-4">
+                    <h3 className="text-white text-lg sm:text-xl font-bold mb-2">
+                      Purchase Successful!
+                    </h3>
+                    <p className="text-[#DCDDCC] text-xs sm:text-sm mb-4">
                       Your {tokenSymbol} tokens have been purchased successfully
                     </p>
 
@@ -994,8 +1001,10 @@ export default function ModalSwapInterface({
                         <AlertTriangle className="w-8 h-8 text-red-400" />
                       </div>
                     </div>
-                    <h3 className="text-white text-xl font-bold mb-2">Transaction Failed</h3>
-                    <p className="text-red-400 text-sm mb-4">{transactionError}</p>
+                    <h3 className="text-white text-lg sm:text-xl font-bold mb-2">
+                      Transaction Failed
+                    </h3>
+                    <p className="text-red-400 text-xs sm:text-sm mb-4">{transactionError}</p>
 
                     {/* Action Buttons */}
                     <div className="flex gap-2">
@@ -1017,33 +1026,67 @@ export default function ModalSwapInterface({
               </div>
             )}
 
+            {/* Sold Out State */}
+            {isSoldOut && activeContractState && transactionState === 'idle' && (
+              <div className="bg-[#231F20]/70 rounded-xl border border-gray-500/30 p-4 sm:p-8 text-center">
+                <div className="flex items-center justify-center mb-4">
+                  <div className="w-12 h-12 bg-gray-500/20 rounded-full flex items-center justify-center">
+                    <CheckCircle className="w-8 h-8 text-gray-400" />
+                  </div>
+                </div>
+                <h3 className="text-white text-lg sm:text-xl font-bold mb-2">
+                  🎉 Token Sale Complete! 🎉
+                </h3>
+                <p className="text-[#DCDDCC] text-sm sm:text-base mb-4">
+                  All {MAXIMUM_SUPPLY.toLocaleString()} {tokenSymbol} tokens have been sold!
+                </p>
+                <div className="bg-[#0A0A0A]/50 rounded-lg p-3 mb-4">
+                  <div className="text-[#D0B284] text-sm font-mono">
+                    Total Supply: {currentSupply.toLocaleString()} /{' '}
+                    {MAXIMUM_SUPPLY.toLocaleString()} tokens
+                  </div>
+                  <div className="text-[#928357] text-xs mt-1">
+                    Thank you for participating in the ACES token launch!
+                  </div>
+                </div>
+                <Button
+                  onClick={onClose}
+                  className="w-full bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-600 text-white font-bold transition-all duration-200"
+                >
+                  Close
+                </Button>
+              </div>
+            )}
+
             {/* Contract Loading State */}
             {!activeContractState && transactionState === 'idle' && (
-              <div className="bg-[#231F20]/70 rounded-xl border border-[#D0B284]/30 p-8 text-center">
+              <div className="bg-[#231F20]/70 rounded-xl border border-[#D0B284]/30 p-4 sm:p-8 text-center">
                 <div className="flex items-center justify-center mb-3">
-                  <RefreshCw className="w-8 h-8 text-[#D0B284] animate-spin" />
+                  <RefreshCw className="w-6 sm:w-8 h-6 sm:h-8 text-[#D0B284] animate-spin" />
                 </div>
-                <h3 className="text-white text-lg font-bold mb-2">Loading Contract Data...</h3>
-                <p className="text-[#DCDDCC] text-sm">
+                <h3 className="text-white text-base sm:text-lg font-bold mb-2">
+                  Loading Contract Data...
+                </h3>
+                <p className="text-[#DCDDCC] text-xs sm:text-sm">
                   Please wait while we fetch the latest pricing and contract information.
                 </p>
               </div>
             )}
 
-            {/* Hide form during transaction states except for idle */}
-            {transactionState === 'idle' && activeContractState && (
+            {/* Hide form during transaction states except for idle and when sold out */}
+            {transactionState === 'idle' && activeContractState && !isSoldOut && (
               <>
                 {/* Currency Selector Dropdown */}
-                <div className="bg-[#231F20]/50 rounded-xl border border-[#D0B284]/20 p-2">
+                <div className="bg-[#231F20]/50 rounded-xl border border-[#D0B284]/20 p-2 sm:p-3">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium text-[#DCDDCC] font-mono">
+                    <span className="text-xs sm:text-sm font-medium text-[#DCDDCC] font-mono">
                       PAYMENT METHOD
                     </span>
                   </div>
 
                   <button
                     onClick={() => setShowCurrencyModal(true)}
-                    className="w-full p-2 rounded-lg border border-[#D0B284]/30 bg-[#231F20]/30 hover:border-[#D0B284]/50 transition-all duration-200 flex items-center justify-between"
+                    className="w-full p-2 sm:p-3 rounded-lg border border-[#D0B284]/30 bg-[#231F20]/30 hover:border-[#D0B284]/50 transition-all duration-200 flex items-center justify-between"
                   >
                     <div className="flex items-center gap-2">
                       <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center">
@@ -1056,17 +1099,19 @@ export default function ModalSwapInterface({
                         />
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-base font-bold text-white">
+                        <span className="text-sm sm:text-base font-bold text-white">
                           {currencyInfo.symbol}
                         </span>
-                        <span className="text-sm text-[#928357]">{currencyInfo.name}</span>
+                        <span className="text-xs sm:text-sm text-[#928357]">
+                          {currencyInfo.name}
+                        </span>
                       </div>
                     </div>
                     <ChevronDown className="w-4 h-4 text-[#928357]" />
                   </button>
 
                   {/* Currency Balance Display */}
-                  <div className="text-xs text-[#928357] text-center mt-1 font-mono flex items-center justify-center gap-2">
+                  <div className="text-xs sm:text-sm text-[#928357] text-center mt-1 font-mono flex items-center justify-center gap-1 sm:gap-2">
                     <span>
                       Balance:{' '}
                       {(Number(userCurrencyBalance) / Math.pow(10, currencyInfo.decimals)).toFixed(
@@ -1098,7 +1143,7 @@ export default function ModalSwapInterface({
                   </div>
 
                   {/* Purchase Limit Display */}
-                  <div className="text-xs text-[#928357] text-center mt-1 font-mono">
+                  <div className="text-xs sm:text-sm text-[#928357] text-center mt-1 font-mono">
                     Purchase limit:{' '}
                     {selectedCurrency === 'ETH'
                       ? `${PURCHASE_LIMITS.ETH} ETH`
@@ -1166,10 +1211,10 @@ export default function ModalSwapInterface({
 
                 {/* Stablecoin Warning - Only show if AcesSwap not ready */}
                 {selectedCurrency !== 'ETH' && !isContractReady && (
-                  <div className="bg-yellow-500/10 rounded-lg border border-yellow-500/20 p-2">
+                  <div className="bg-yellow-500/10 rounded-lg border border-yellow-500/20 p-2 sm:p-3">
                     <div className="flex items-center gap-2">
                       <AlertTriangle className="w-4 h-4 text-yellow-400" />
-                      <span className="text-xs text-yellow-400 font-mono">
+                      <span className="text-xs sm:text-sm text-yellow-400 font-mono">
                         {selectedCurrency} purchases coming soon via AcesSwap contract
                       </span>
                     </div>
@@ -1204,7 +1249,7 @@ export default function ModalSwapInterface({
                 )}
 
                 {/* Terms Checkbox */}
-                <div className="bg-[#231F20]/30 rounded-lg border border-[#D0B284]/10 p-2">
+                <div className="bg-[#231F20]/30 rounded-lg border border-[#D0B284]/10 p-2 sm:p-3">
                   <div className="flex items-start gap-2">
                     <input
                       type="checkbox"
@@ -1213,7 +1258,10 @@ export default function ModalSwapInterface({
                       onChange={(e) => setAcceptTerms(e.target.checked)}
                       className="w-4 h-4 mt-0.5 text-[#D0B284] bg-[#231F20] border-[#928357] rounded focus:ring-[#D0B284] focus:ring-2"
                     />
-                    <label htmlFor="modal-terms" className="text-sm text-[#DCDDCC] leading-relaxed">
+                    <label
+                      htmlFor="modal-terms"
+                      className="text-xs sm:text-sm text-[#DCDDCC] leading-relaxed"
+                    >
                       I understand the risks and accept the{' '}
                       <button
                         type="button"
@@ -1234,7 +1282,7 @@ export default function ModalSwapInterface({
                 </div>
 
                 {/* Jurisdiction Compliance Checkbox */}
-                <div className="bg-[#231F20]/30 rounded-lg border border-[#D0B284]/10 p-2">
+                <div className="bg-[#231F20]/30 rounded-lg border border-[#D0B284]/10 p-2 sm:p-3">
                   <div className="flex items-start gap-2">
                     <input
                       type="checkbox"
@@ -1245,7 +1293,7 @@ export default function ModalSwapInterface({
                     />
                     <label
                       htmlFor="modal-jurisdiction"
-                      className="text-sm text-[#DCDDCC] leading-relaxed"
+                      className="text-xs sm:text-sm text-[#DCDDCC] leading-relaxed"
                     >
                       I confirm that:
                       <ul className="list-disc ml-4 mt-1 space-y-1">
@@ -1277,7 +1325,7 @@ export default function ModalSwapInterface({
                     // Disable for stablecoins if AcesSwap is not ready
                     (selectedCurrency !== 'ETH' && !isContractReady)
                   }
-                  className="w-full bg-gradient-to-r from-[#D0B284] to-[#D7BF75] hover:from-[#D7BF75] hover:to-[#D0B284] text-black font-bold py-2.5 text-base rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full bg-gradient-to-r from-[#D0B284] to-[#D7BF75] hover:from-[#D7BF75] hover:to-[#D0B284] text-black font-bold py-2.5 sm:py-3 text-sm sm:text-base rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {/* Loading states */}
                   {isPending || swapState.step === 'swapping'
@@ -1318,10 +1366,12 @@ export default function ModalSwapInterface({
 
         {/* Currency Selection Modal - Same as before */}
         <Dialog open={showCurrencyModal} onOpenChange={setShowCurrencyModal}>
-          <DialogContent className="bg-[#231F20] border-[#D0B284]/30 max-w-md max-h-[80vh] overflow-hidden">
+          <DialogContent className="bg-[#231F20] border-[#D0B284]/30 max-w-md w-[90vw] sm:w-full max-h-[85vh] sm:max-h-[80vh] overflow-hidden mx-2 sm:mx-auto">
             <DialogHeader>
               <div className="flex items-center justify-between">
-                <DialogTitle className="text-white font-serif text-xl">Select Currency</DialogTitle>
+                <DialogTitle className="text-white font-serif text-lg sm:text-xl">
+                  Select Currency
+                </DialogTitle>
                 <button
                   onClick={() => setShowCurrencyModal(false)}
                   className="text-[#928357] hover:text-white transition-colors"
@@ -1331,7 +1381,7 @@ export default function ModalSwapInterface({
               </div>
             </DialogHeader>
 
-            <div className="space-y-2 py-4 overflow-y-auto max-h-[60vh]">
+            <div className="space-y-2 py-3 sm:py-4 overflow-y-auto max-h-[65vh] sm:max-h-[60vh]">
               {Object.entries(SUPPORTED_CURRENCIES).map(([key, currency]) => {
                 const isSelected = selectedCurrency === key;
                 const balance =
@@ -1358,7 +1408,7 @@ export default function ModalSwapInterface({
                       }
                       setShowCurrencyModal(false);
                     }}
-                    className={`w-full p-4 rounded-lg border transition-all duration-200 flex items-center justify-between ${
+                    className={`w-full p-3 sm:p-4 rounded-lg border transition-all duration-200 flex items-center justify-between ${
                       isSelected
                         ? 'border-[#D0B284] bg-[#D0B284]/10'
                         : 'border-[#928357]/30 bg-[#231F20]/30 hover:border-[#D0B284]/50 hover:bg-[#D0B284]/5'
@@ -1376,23 +1426,23 @@ export default function ModalSwapInterface({
                       </div>
                       <div className="text-left">
                         <div
-                          className={`text-lg font-bold ${isSelected ? 'text-[#D0B284]' : 'text-white'}`}
+                          className={`text-base sm:text-lg font-bold ${isSelected ? 'text-[#D0B284]' : 'text-white'}`}
                         >
                           {currency.symbol}
                         </div>
-                        <div className="text-sm text-[#928357]">{currency.name}</div>
+                        <div className="text-xs sm:text-sm text-[#928357]">{currency.name}</div>
                       </div>
                     </div>
 
                     <div className="text-right">
                       <div
-                        className={`text-sm font-mono ${isSelected ? 'text-[#D0B284]' : 'text-white'}`}
+                        className={`text-xs sm:text-sm font-mono ${isSelected ? 'text-[#D0B284]' : 'text-white'}`}
                       >
                         {balanceFormatted}
                       </div>
                       <div className="text-xs text-[#928357]">
                         {key === 'ETH' &&
-                          `${(Number(formatEther(balance)) * ethPrice.current).toFixed(0)}`}
+                          `$${(Number(formatEther(balance)) * ethPrice.current).toFixed(0)}`}
                         {key !== 'ETH' && `≈ ${balanceFormatted}`}
                       </div>
                     </div>
@@ -1410,15 +1460,15 @@ export default function ModalSwapInterface({
               <button
                 onClick={handleBuyCrypto}
                 disabled={isSwitching}
-                className="w-full p-4 rounded-lg border border-[#928357]/30 bg-[#231F20]/30 hover:border-[#D0B284]/50 hover:bg-[#D0B284]/5 transition-all duration-200 flex items-center justify-between disabled:opacity-50"
+                className="w-full p-3 sm:p-4 rounded-lg border border-[#928357]/30 bg-[#231F20]/30 hover:border-[#D0B284]/50 hover:bg-[#D0B284]/5 transition-all duration-200 flex items-center justify-between disabled:opacity-50"
               >
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
                     <CreditCard className="w-7 h-7 text-[#D0B284]" />
                   </div>
                   <div className="text-left">
-                    <div className="text-lg font-bold text-white">Buy Crypto</div>
-                    <div className="text-sm text-[#928357]">with Credit Card</div>
+                    <div className="text-base sm:text-lg font-bold text-white">Buy Crypto</div>
+                    <div className="text-xs sm:text-sm text-[#928357]">with Credit Card</div>
                   </div>
                 </div>
 

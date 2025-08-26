@@ -17,55 +17,57 @@ const Footer = ({ onTermsClick }: FooterProps) => {
   };
 
   return (
-    <footer className="w-full bg-black border-t border-[#D0B284]/30 rounded-t-xl py-6 px-4">
+    <footer className="w-full bg-black border-t border-[#D0B284]/30 rounded-t-xl py-4 sm:py-6 px-2 sm:px-4">
       <div className="max-w-7xl mx-auto">
         {/* Social Icons Section */}
-        <SocialIcons className="mb-4" />
+        <SocialIcons className="mb-3 sm:mb-4" />
 
         {/* Divider */}
-        <div className="border-t border-[#D0B284]/30 mb-4"></div>
+        <div className="border-t border-[#D0B284]/30 mb-3 sm:mb-4"></div>
 
         {/* Main Footer Content */}
-        <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
+        <div className="flex flex-col sm:flex-row justify-between items-center space-y-2 sm:space-y-0">
           {/* Left side - Logo/Brand */}
-          <div className="flex items-center space-x-2">
-            <div className="w-6 h-6 rounded-sm flex items-center justify-center">
-              <Image
-                src="/aces-logo.png"
-                alt="ACES Logo"
-                className="w-5 h-5"
-                draggable={false}
-                width={20}
-                height={20}
-              />
+          <div className="flex flex-col sm:flex-row items-center space-y-2 sm:space-y-0 sm:space-x-2">
+            <div className="flex items-center space-x-2">
+              <div className="w-5 sm:w-6 h-5 sm:h-6 rounded-sm flex items-center justify-center">
+                <Image
+                  src="/aces-logo.png"
+                  alt="ACES Logo"
+                  className="w-4 sm:w-5 h-4 sm:h-5"
+                  draggable={false}
+                  width={20}
+                  height={20}
+                />
+              </div>
+              <span className="text-white text-sm sm:text-base">ACES.fun</span>
             </div>
-            <span className="text-white text-sm">ACES.fun</span>
-            <div className="text-[#DCDDCC] text-sm text-center">
+            <div className="text-[#DCDDCC] text-xs sm:text-sm text-center">
               © 2021-2025 ACES. All Rights Reserved.
             </div>
           </div>
 
           {/* Center - Terms of Use */}
-          <div className="flex justify-center">
+          <div className="flex justify-center order-2 sm:order-2">
             {onTermsClick ? (
               <button
                 onClick={onTermsClick}
-                className="text-[#DCDDCC] hover:text-[#D0B284]/80 transition-colors text-sm"
+                className="text-[#DCDDCC] hover:text-[#D0B284]/80 transition-colors text-xs sm:text-sm"
               >
                 Terms of Use
               </button>
             ) : (
               <a
                 href="#"
-                className="text-[#D0B284] hover:text-[#D0B284]/80 transition-colors text-sm"
+                className="text-[#D0B284] hover:text-[#D0B284]/80 transition-colors text-xs sm:text-sm"
               >
                 Terms of Use
               </a>
             )}
           </div>
 
-          {/* Right side - Token Address and Buy Button */}
-          <div className="flex items-center space-x-4">
+          {/* Right side - Token Address (Desktop Only) */}
+          <div className="hidden sm:flex items-center space-x-4 order-3">
             <div className="flex items-center gap-2 rounded-md bg-[#231F20]/60 px-2 py-1.5 border border-[#D0B284]/20">
               <span className="text-xs text-[#DCDDCC] font-mono">0x726842...7ee21E</span>
               <button
@@ -87,9 +89,6 @@ const Footer = ({ onTermsClick }: FooterProps) => {
                 </svg>
               </button>
             </div>
-            <button className="bg-[#D0B284] text-black px-3 py-1 rounded text-xs font-medium hover:bg-[#B89B6B] transition-colors">
-              Buy $ACES
-            </button>
           </div>
         </div>
       </div>

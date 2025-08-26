@@ -317,9 +317,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // console.log('🚀 privyLogin completed');
     } catch (error) {
       console.error('❌ Connect wallet error:', error);
+
+      // Handle embedded wallet HTTPS error specifically
+      let errorMessage = 'Failed to connect wallet';
+      if (error instanceof Error) {
+        if (error.message.includes('Embedded wallet is only available over HTTPS')) {
+          errorMessage = 'Please use an external wallet like MetaMask or Coinbase Wallet';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+
       setState((prev) => ({
         ...prev,
-        error: error instanceof Error ? error.message : 'Failed to connect wallet',
+        error: errorMessage,
       }));
     } finally {
       // console.log('🚀 Connection attempt finished');

@@ -11,6 +11,9 @@ interface ProgressionBarProps {
 export default function ProgressionBar({ percentage }: ProgressionBarProps) {
   const { contractState } = useBondingCurveContracts();
 
+  // Check if tokens are sold out (875M = maximum supply)
+  const MAXIMUM_SUPPLY = 875000000; // 875 million tokens
+
   // Simple loading state check
   if (!contractState) {
     return (
@@ -25,12 +28,12 @@ export default function ProgressionBar({ percentage }: ProgressionBarProps) {
 
   // Calculate values from contract data - using room token supply for progress
   const roomTokenSupply = contractState.tokenSupply || BigInt(0); // This is shares in the room
-  const bondingCurveSupply = contractState.bondingCurveSupply || BigInt(875000000); // 800M shares
+  const bondingCurveSupply = contractState.bondingCurveSupply || BigInt(875000000); // 875M shares
 
   // Check if bondingCurveSupply looks like a wei value (too big)
   const actualBondingCurveSupply =
     bondingCurveSupply > BigInt(1e18)
-      ? BigInt(875000000) // Use 800M if the value seems wrong
+      ? BigInt(875000000) // Use 875M if the value seems wrong
       : bondingCurveSupply;
 
   // Calculate percentage based on room token supply progress
@@ -41,6 +44,10 @@ export default function ProgressionBar({ percentage }: ProgressionBarProps) {
 
   // Use real values or fallback to props
   const displayPercentage = percentage || tokenProgress;
+
+  // Check if sold out
+  const currentSupply = Number(roomTokenSupply);
+  const isSoldOut = currentSupply >= MAXIMUM_SUPPLY;
 
   return (
     <div className="w-full flex flex-col items-center justify-center rounded-xl px-4 sm:px-6 py-2 flex-1 shadow-2xl relative overflow-hidden">
@@ -87,16 +94,20 @@ export default function ProgressionBar({ percentage }: ProgressionBarProps) {
 
                 {/* Progress fill with brand gradient */}
                 <div
-                  className="absolute left-0.5 top-0.5 bottom-0.5 rounded-full shadow-lg transition-all duration-1000 ease-out overflow-hidden"
+                  className={`absolute left-0.5 top-0.5 bottom-0.5 rounded-full shadow-lg transition-all duration-1000 ease-out overflow-hidden ${
+                    isSoldOut ? 'bg-gradient-to-r from-green-500 to-green-400' : ''
+                  }`}
                   style={{
                     width: `calc(${Math.min(displayPercentage, 100)}% - 2px)`,
-                    background: `linear-gradient(90deg, 
-                      #184D37 0%, 
-                      #928357 25%, 
-                      #D0B284 50%, 
-                      #D7BF75 75%, 
-                      #D0B284 100%
-                    )`,
+                    background: isSoldOut
+                      ? 'linear-gradient(90deg, #10b981 0%, #34d399 50%, #6ee7b7 100%)'
+                      : `linear-gradient(90deg, 
+                        #184D37 0%, 
+                        #928357 25%, 
+                        #D0B284 50%, 
+                        #D7BF75 75%, 
+                        #D0B284 100%
+                      )`,
                   }}
                 >
                   {/* Animated shine overlay */}
@@ -139,6 +150,11 @@ export default function ProgressionBar({ percentage }: ProgressionBarProps) {
         {/* Amount Display - Updated to show room shares vs bonding curve supply */}
         <div className="text-center">
           <div className="space-y-1 mt-2">
+            {isSoldOut && (
+              <div className="text-xs font-semibold text-[#D0B284] mb-1 uppercase tracking-wide">
+                🎉 ALL TOKENS SOLD! 🎉
+              </div>
+            )}
             <div
               className="text-xs text-[#928357]"
               style={{ fontFamily: 'JetBrains Mono, monospace' }}
@@ -146,6 +162,11 @@ export default function ProgressionBar({ percentage }: ProgressionBarProps) {
               {Number(roomTokenSupply).toLocaleString()} /{' '}
               {Number(actualBondingCurveSupply).toLocaleString()} tokens sold
             </div>
+            {isSoldOut && (
+              <div className="text-xs text-[#928357] italic">
+                Thank you for making this launch a success!
+              </div>
+            )}
           </div>
         </div>
       </div>

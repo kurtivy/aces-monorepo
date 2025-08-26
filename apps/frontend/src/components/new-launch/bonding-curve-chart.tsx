@@ -129,12 +129,18 @@ export default function BondingCurveChart({
     // Clear previous content
     d3.select(svgRef.current).selectAll('*').remove();
 
-    // Set up dimensions
-    const margin = { top: 30, right: 30, bottom: 50, left: 70 };
+    // Responsive dimensions based on container size
     const containerWidth = svgRef.current?.parentElement?.clientWidth || 520;
     const containerHeight = svgRef.current?.parentElement?.clientHeight || 440;
-    const width = Math.max(300, containerWidth - margin.left - margin.right);
-    const height = Math.max(250, containerHeight - margin.top - margin.bottom);
+    const isMobile = containerWidth < 600;
+    
+    // Mobile-optimized margins
+    const margin = isMobile 
+      ? { top: 20, right: 15, bottom: 35, left: 45 }
+      : { top: 30, right: 30, bottom: 50, left: 70 };
+    
+    const width = Math.max(isMobile ? 250 : 300, containerWidth - margin.left - margin.right);
+    const height = Math.max(isMobile ? 200 : 250, containerHeight - margin.top - margin.bottom);
 
     // Create SVG container
     const svg = d3
@@ -214,7 +220,7 @@ export default function BondingCurveChart({
           }),
       );
 
-    xAxis.selectAll('text').style('fill', '#9CA3AF').style('font-size', '10px');
+    xAxis.selectAll('text').style('fill', '#9CA3AF').style('font-size', isMobile ? '9px' : '10px');
     xAxis.selectAll('line, path').style('stroke', '#9CA3AF');
 
     // Add Y axis with proper formatting for very small ETH values
@@ -232,25 +238,25 @@ export default function BondingCurveChart({
         .tickFormat(() => ''), // Remove all Y-axis labels
     );
 
-    yAxis.selectAll('text').style('fill', '#9CA3AF').style('font-size', '10px');
+    yAxis.selectAll('text').style('fill', '#9CA3AF').style('font-size', isMobile ? '9px' : '10px');
     yAxis.selectAll('line, path').style('stroke', '#9CA3AF');
 
-    // Add axis labels
+    // Add axis labels with responsive font sizes
     g.append('text')
       .attr('x', width / 2)
-      .attr('y', height + margin.bottom - 10)
+      .attr('y', height + margin.bottom - (isMobile ? 5 : 10))
       .style('text-anchor', 'middle')
       .style('fill', '#9CA3AF')
-      .style('font-size', '11px')
+      .style('font-size', isMobile ? '9px' : '11px')
       .text('Tokens Sold');
 
     g.append('text')
       .attr('transform', 'rotate(-90)')
-      .attr('y', -margin.left + 15)
+      .attr('y', -margin.left + (isMobile ? 12 : 15))
       .attr('x', -height / 2)
       .style('text-anchor', 'middle')
       .style('fill', '#9CA3AF')
-      .style('font-size', '11px')
+      .style('font-size', isMobile ? '9px' : '11px')
       .text('Price (ETH)');
 
     // Create gradient for the area
@@ -331,15 +337,15 @@ export default function BondingCurveChart({
         .attr('stroke-width', 2)
         .attr('stroke-dasharray', '5,5');
 
-      // Current position label
+      // Current position label with responsive font size
       g.append('text')
         .attr('x', currentX)
         .attr('y', -8)
         .attr('text-anchor', 'middle')
         .style('fill', '#D0B264')
-        .style('font-size', '10px')
+        .style('font-size', isMobile ? '8px' : '10px')
         .style('font-weight', 'bold')
-        .text(`CURRENT (${currentSharesSold.toLocaleString()})`);
+        .text(isMobile ? 'CURRENT' : `CURRENT (${currentSharesSold.toLocaleString()})`);
     }
 
     // Interactive crosshairs and tooltip
@@ -445,16 +451,40 @@ export default function BondingCurveChart({
     <div className="w-full h-full bg-transparent flex items-center justify-center relative">
       <svg ref={svgRef} style={{ width: '100%', height: '100%' }}></svg>
 
-      {/* Interactive Tooltip */}
+      {/* Interactive Tooltip - Mobile optimized */}
       {tooltipData && (
         <div
           className="absolute pointer-events-none z-10"
           style={{
-            left: tooltipData.x + 10,
+            left: (() => {
+              const containerWidth = svgRef.current?.parentElement?.clientWidth || 520;
+              const isMobile = containerWidth < 600;
+              const tooltipWidth = isMobile ? 140 : 160;
+              
+              // Mobile: center tooltip above/below point
+              if (isMobile) {
+                return Math.max(10, Math.min(containerWidth - tooltipWidth - 10, tooltipData.x - tooltipWidth / 2));
+              }
+              
+              // Desktop: offset to the right, flip if near edge
+              return tooltipData.x > containerWidth - 200 ? tooltipData.x - 170 : tooltipData.x + 10;
+            })(),
             top: (() => {
-              const tooltipHeight = 80;
+              const containerWidth = svgRef.current?.parentElement?.clientWidth || 520;
+              const containerHeight = svgRef.current?.parentElement?.clientHeight || 440;
+              const isMobile = containerWidth < 600;
+              const tooltipHeight = isMobile ? 60 : 80;
+              
+              if (isMobile) {
+                // Mobile: position above or below the point
+                return tooltipData.y < containerHeight / 2 
+                  ? tooltipData.y + 20  // Position below if in upper half
+                  : tooltipData.y - tooltipHeight - 20;  // Position above if in lower half
+              }
+              
+              // Desktop behavior (existing logic)
               const isNearTop = tooltipData.y < tooltipHeight + 20;
-              const isNearBottom = tooltipData.y > 440 - tooltipHeight - 20;
+              const isNearBottom = tooltipData.y > containerHeight - tooltipHeight - 20;
 
               if (isNearTop) {
                 return tooltipData.y + 20;
@@ -464,14 +494,16 @@ export default function BondingCurveChart({
                 return tooltipData.y - tooltipHeight;
               }
             })(),
-            transform: tooltipData.x > 400 ? 'translateX(-100%)' : 'none',
           }}
         >
-          <div className="bg-[#231F20] border border-[#D0B284] rounded-lg p-3 shadow-xl">
-            <div className="text-xs space-y-1">
+          <div className="bg-[#231F20] border border-[#D0B284] rounded-lg p-2 sm:p-3 shadow-xl">
+            <div className="text-xs sm:text-sm space-y-1">
               <div className="text-[#FFFFFF] font-semibold">
                 {tooltipData.tokensSold.toLocaleString(undefined, { maximumFractionDigits: 0 })}{' '}
                 tokens
+              </div>
+              <div className="text-[#D0B284] text-xs">
+                {tooltipData.priceETH.toFixed(6)} ETH
               </div>
             </div>
           </div>
