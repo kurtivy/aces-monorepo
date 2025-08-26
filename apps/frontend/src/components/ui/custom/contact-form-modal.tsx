@@ -331,20 +331,11 @@ export default function ContactFormModal({ isOpen, onClose }: ContactFormModalPr
                 <div className="pt-2">
                   <Button
                     type="submit"
-                    disabled={isSubmitting}
+                    disabled={true}
                     className="w-full bg-gradient-to-r from-[#D0B264] to-[#D0B264]/80 hover:from-[#D0B264]/90 hover:to-[#D0B264]/70 text-black font-semibold py-3 px-6 rounded-lg transition-all duration-150 transform active:scale-[0.98] shadow-goldGlow text-sm md:hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                   >
-                    {isSubmitting ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Sending Message...
-                      </>
-                    ) : (
-                      <>
-                        <Send className="w-4 h-4 mr-2" />
-                        Send Message
-                      </>
-                    )}
+                    <Send className="w-4 h-4 mr-2" />
+                    Send Message (Coming Soon)
                   </Button>
                 </div>
               </form>
