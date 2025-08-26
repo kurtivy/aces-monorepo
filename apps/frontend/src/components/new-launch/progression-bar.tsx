@@ -25,12 +25,12 @@ export default function ProgressionBar({ percentage }: ProgressionBarProps) {
 
   // Calculate values from contract data - using room token supply for progress
   const roomTokenSupply = contractState.tokenSupply || BigInt(0); // This is shares in the room
-  const bondingCurveSupply = contractState.bondingCurveSupply || BigInt(800000000); // 800M shares
+  const bondingCurveSupply = contractState.bondingCurveSupply || BigInt(875000000); // 800M shares
 
   // Check if bondingCurveSupply looks like a wei value (too big)
   const actualBondingCurveSupply =
     bondingCurveSupply > BigInt(1e18)
-      ? BigInt(800000000) // Use 800M if the value seems wrong
+      ? BigInt(875000000) // Use 800M if the value seems wrong
       : bondingCurveSupply;
 
   // Calculate percentage based on room token supply progress

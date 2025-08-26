@@ -22,24 +22,22 @@ interface TooltipData {
 // Real bonding curve data points from mainnet contract
 const BONDING_CURVE_POINTS = [
   { tokens: 0, priceETH: 0 }, // Start at zero
-  { tokens: 75000000, priceETH: 0.009381258109573598 }, // Real data
-  { tokens: 150000000, priceETH: 0.07505004911607849 }, // Real data
-  { tokens: 225000000, priceETH: 0.25329389803619246 }, // Real data
-  { tokens: 250000000, priceETH: 0.3474539019068286 }, // Real data
-  { tokens: 300000000, priceETH: 0.9534134725094533 }, // Real data
-  { tokens: 400000000, priceETH: 1.4231711149655355 }, // Real data
-  { tokens: 450000000, priceETH: 2.0263510424449667 }, // Real data
-  { tokens: 500000000, priceETH: 2.779631040137873 }, // Real data
-  { tokens: 600000000, priceETH: 4.803202386924621 }, // Real data
-  { tokens: 700000000, priceETH: 7.627307436846792 }, // Real data
-  { tokens: 800000000, priceETH: 11.3853684714254 }, // Real data - bonding curve completion
+  { tokens: 100000000, priceETH: 0.000124262275681931972 }, // 124262275681931972 wei
+  { tokens: 200000000, priceETH: 0.000556691626580835978 }, // 556691626580835978 wei
+  { tokens: 300000000, priceETH: 0.001490152083554956957 }, // 1490152083554956957 wei
+  { tokens: 400000000, priceETH: 0.003117507677462539845 }, // 3117507677462539845 wei
+  { tokens: 500000000, priceETH: 0.00563162243916182958 }, // 5631622439161829580 wei
+  { tokens: 600000000, priceETH: 0.009225360399511071099 }, // 9225360399511071099 wei
+  { tokens: 700000000, priceETH: 0.014091585589368509339 }, // 14091585589368509339 wei
+  { tokens: 800000000, priceETH: 0.020423162039592389238 }, // 20423162039592389238 wei
+  { tokens: 875000000, priceETH: 0.025 }, // Extended to 875M with estimated value
 ];
 
 // Generate bonding curve data from real contract points
 const generateBondingCurveData = (currentTokensSold: number) => {
   const data = [];
   const steps = 100;
-  const maxTokens = 800000000; // 800M tokens - full range
+  const maxTokens = 875000000; // 875M tokens - full range
   const stepSize = maxTokens / steps;
 
   for (let i = 0; i <= steps; i++) {
@@ -231,15 +229,7 @@ export default function BondingCurveChart({
       d3
         .axisLeft(yScale)
         .tickValues(yTickValues)
-        .tickFormat((d: d3.NumberValue) => {
-          const value = d.valueOf();
-          if (value === 0) return '0';
-          if (value === 10) return '10 ETH'; // Clear label for 10 ETH
-          if (value < 0.000001) return `${(value * 1e9).toFixed(2)}e-9 ETH`; // Show in scientific notation
-          if (value < 0.001) return `${(value * 1e6).toFixed(2)}µ ETH`; // Show in micro ETH
-          if (value >= 1) return `${value.toFixed(1)} ETH`; // Cleaner format for larger values
-          return `${value.toFixed(8)} ETH`;
-        }),
+        .tickFormat(() => ''), // Remove all Y-axis labels
     );
 
     yAxis.selectAll('text').style('fill', '#9CA3AF').style('font-size', '10px');
@@ -350,23 +340,6 @@ export default function BondingCurveChart({
         .style('font-size', '10px')
         .style('font-weight', 'bold')
         .text(`CURRENT (${currentSharesSold.toLocaleString()})`);
-
-      // Current position dot
-      g.append('circle')
-        .attr('cx', currentX)
-        .attr('cy', currentY)
-        .attr('r', 6)
-        .attr('fill', '#D0B264')
-        .attr('stroke', '#fff')
-        .attr('stroke-width', 2)
-        .style('filter', 'drop-shadow(0 0 8px rgba(208, 178, 100, 0.8))');
-
-      // Inner white dot
-      g.append('circle')
-        .attr('cx', currentX)
-        .attr('cy', currentY)
-        .attr('r', 3)
-        .attr('fill', '#fff');
     }
 
     // Interactive crosshairs and tooltip
@@ -499,23 +472,6 @@ export default function BondingCurveChart({
               <div className="text-[#FFFFFF] font-semibold">
                 {tooltipData.tokensSold.toLocaleString(undefined, { maximumFractionDigits: 0 })}{' '}
                 tokens
-              </div>
-              <div className="text-[#DCDDCC]">
-                ETH:{' '}
-                {tooltipData.priceETH < 0.000001
-                  ? `${(tooltipData.priceETH * 1e9).toFixed(2)}e-9`
-                  : tooltipData.priceETH.toFixed(12)}
-              </div>
-              <div className="text-[#D7BF75]">
-                USD:{' '}
-                {tooltipData.priceUSD < 0.01
-                  ? `${tooltipData.priceUSD.toFixed(8)}`
-                  : tooltipData.priceUSD.toLocaleString(undefined, {
-                      style: 'currency',
-                      currency: 'USD',
-                      minimumFractionDigits: 6,
-                      maximumFractionDigits: 6,
-                    })}
               </div>
             </div>
           </div>

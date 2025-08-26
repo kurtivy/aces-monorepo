@@ -67,9 +67,9 @@ const Footer = ({ onTermsClick }: FooterProps) => {
           {/* Right side - Token Address and Buy Button */}
           <div className="flex items-center space-x-4">
             <div className="flex items-center gap-2 rounded-md bg-[#231F20]/60 px-2 py-1.5 border border-[#D0B284]/20">
-              <span className="text-xs text-[#DCDDCC] font-mono">0x0b3e...4e7E1b</span>
+              <span className="text-xs text-[#DCDDCC] font-mono">0x726842...7ee21E</span>
               <button
-                onClick={() => copyToClipboard('0x0b3e...4e7E1b')}
+                onClick={() => copyToClipboard('0x726842d81f5b0050625c5d6c77CE4Ba8Ba7ee21E')}
                 className="flex h-5 w-5 items-center justify-center rounded bg-[#D0B284]/10 hover:bg-[#D0B284]/20 transition-colors border border-[#D0B284]/20"
               >
                 <svg

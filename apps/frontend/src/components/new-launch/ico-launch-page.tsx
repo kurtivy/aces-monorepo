@@ -182,25 +182,25 @@ const CurrentPriceSquare: React.FC = () => {
   };
 
   // Debug logging for price values
-  console.log('🏷️ [Price Display] Current Price Square:', {
-    contractState: !!contractState,
-    currentPrice: contractState?.currentPrice?.toString(),
-    nextSharePriceETH,
-    nextSharePriceUSD,
-    liveETHPriceUSD,
-    ethPriceLoading: ethPrice.isLoading,
-    ethPriceError: ethPrice.error,
-  });
-  console.log('🎯 Price Debug:', {
-    currentPriceWei: contractState?.currentPrice?.toString(),
-    nextSharePriceETH,
-    liveETHPriceUSD,
-    nextSharePriceUSD,
-    formatted: {
-      usd: formatUSDPrice(nextSharePriceUSD),
-      eth: formatETHPrice(nextSharePriceETH),
-    },
-  });
+  // console.log('🏷️ [Price Display] Current Price Square:', {
+  //   contractState: !!contractState,
+  //   currentPrice: contractState?.currentPrice?.toString(),
+  //   nextSharePriceETH,
+  //   nextSharePriceUSD,
+  //   liveETHPriceUSD,
+  //   ethPriceLoading: ethPrice.isLoading,
+  //   ethPriceError: ethPrice.error,
+  // });
+  // console.log('🎯 Price Debug:', {
+  //   currentPriceWei: contractState?.currentPrice?.toString(),
+  //   nextSharePriceETH,
+  //   liveETHPriceUSD,
+  //   nextSharePriceUSD,
+  //   formatted: {
+  //     usd: formatUSDPrice(nextSharePriceUSD),
+  //     eth: formatETHPrice(nextSharePriceETH),
+  //   },
+  // });
 
   return (
     <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-[#231F20] to-[#0A0A0A] p-4 relative">
