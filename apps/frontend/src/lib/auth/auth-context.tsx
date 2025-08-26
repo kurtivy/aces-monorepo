@@ -9,6 +9,8 @@ import {
   UserVerificationRequest,
 } from '@/lib/api/profile';
 import { VerificationApi, VerificationStatus } from '@/lib/api/verification';
+import { useChainSwitching, SUPPORTED_CHAINS } from '@/hooks/contracts/use-chain-switching';
+import ChainSwitchModal from '@/components/ui/custom/chain-switch-modal';
 
 // Utility to check if external wallets are actually connected
 const checkExternalWalletConnection = async (): Promise<boolean> => {
@@ -117,6 +119,7 @@ interface AuthState {
   isLoading: boolean;
   error: string | null;
   hasExternalWallet: boolean;
+  showChainSwitchModal: boolean;
 }
 
 // Custom hook to use auth context
@@ -137,11 +140,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     getAccessToken: privyGetAccessToken,
   } = usePrivy();
 
+  // Chain switching hooks
+  const { isOnBaseMainnet, isSwitching, switchToChain, currentChain } = useChainSwitching();
+
   const [state, setState] = useState<AuthState>({
     user: null,
     isLoading: false,
     error: null,
     hasExternalWallet: false,
+    showChainSwitchModal: false,
   });
 
   const isAdmin = state.user?.role === 'ADMIN';
@@ -158,6 +165,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }));
     }
   }, [privyAuthenticated, privyUser]);
+
+  // Check chain after successful authentication
+  useEffect(() => {
+    const checkChainAfterConnection = async () => {
+      // Only check if user is authenticated, has a wallet, and we haven't shown the modal yet
+      if (
+        privyAuthenticated &&
+        privyUser?.wallet?.address &&
+        !state.showChainSwitchModal &&
+        !isOnBaseMainnet &&
+        currentChain // Ensure we have chain info
+      ) {
+        // Show the chain switch modal
+        setState((prev) => ({ ...prev, showChainSwitchModal: true }));
+      }
+    };
+
+    checkChainAfterConnection();
+  }, [
+    privyAuthenticated,
+    privyUser?.wallet?.address,
+    isOnBaseMainnet,
+    currentChain,
+    state.showChainSwitchModal,
+  ]);
 
   const initializeAuth = async () => {
     try {
@@ -261,7 +293,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     console.log('🚀 connectionAttempting:', connectionAttempting);
     console.log('🚀 privyAuthenticated:', privyAuthenticated);
     console.log('🚀 privyUser:', privyUser);
-    
+
     // Prevent multiple simultaneous connection attempts
     if (connectionAttempting) {
       console.log('🚀 Connection already in progress, skipping...');
@@ -445,6 +477,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return state.user?.id === resourceOwnerId;
   };
 
+  // Chain switching handlers
+  const handleChainSwitch = async () => {
+    try {
+      await switchToChain(SUPPORTED_CHAINS.BASE_MAINNET);
+      setState((prev) => ({ ...prev, showChainSwitchModal: false }));
+    } catch (error) {
+      console.error('Failed to switch chain:', error);
+      // Keep modal open on error so user can try again
+    }
+  };
+
+  const handleChainSwitchSkip = () => {
+    setState((prev) => ({ ...prev, showChainSwitchModal: false }));
+  };
+
+  const handleChainSwitchClose = () => {
+    setState((prev) => ({ ...prev, showChainSwitchModal: false }));
+  };
+
   // Context Value
   const contextValue: AuthContextType = {
     // Authentication state
@@ -472,5 +523,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     requiresExternalWallet,
   };
 
-  return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={contextValue}>
+      {children}
+
+      {/* Chain Switch Modal */}
+      <ChainSwitchModal
+        isOpen={state.showChainSwitchModal}
+        onClose={handleChainSwitchClose}
+        onSwitch={handleChainSwitch}
+        onSkip={handleChainSwitchSkip}
+        currentChainName={currentChain?.name}
+        targetChainName={SUPPORTED_CHAINS.BASE_MAINNET.name}
+        isSwitching={isSwitching}
+        showSkipOption={true}
+      />
+    </AuthContext.Provider>
+  );
 }

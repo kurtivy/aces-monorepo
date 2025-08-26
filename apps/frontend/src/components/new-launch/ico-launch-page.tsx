@@ -16,6 +16,7 @@ import { usePageLoading } from '@/hooks/use-page-loading';
 import { formatEther } from 'viem';
 import Footer from '@/components/ui/custom/footer';
 import LaunchIntroAnimation from '../loading/launch-intro-animation';
+import TokenTermsModal from '@/components/ui/custom/token-terms-modal';
 
 // Import skeleton components
 import {
@@ -450,6 +451,7 @@ const ImageTile: React.FC<ImageTileProps> = ({ position, imageUrl, alt, tileKey 
 const ICOLaunchPage: React.FC = () => {
   const [isMobile, setIsMobile] = useState(false);
   const [showIntroAnimation, setShowIntroAnimation] = useState(true);
+  const [showTermsModal, setShowTermsModal] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const { contractState } = useBondingCurveContracts();
 
@@ -463,7 +465,8 @@ const ICOLaunchPage: React.FC = () => {
   const isDevMode = typeof window !== 'undefined' && window.location.hostname === 'localhost';
   const isAceofbaseDomain =
     typeof window !== 'undefined' &&
-    (window.location.hostname.includes('aceofbase') || (window as any).__ACEOFBASE_DOMAIN);
+    (window.location.hostname.includes('aceofbase') ||
+      (window as typeof window & { __ACEOFBASE_DOMAIN?: boolean }).__ACEOFBASE_DOMAIN);
 
   const pageLoading = usePageLoading({
     imagePaths,
@@ -515,7 +518,12 @@ const ICOLaunchPage: React.FC = () => {
         />
         {/* Pre-render the page structure for faster transition */}
         <div className="opacity-0 pointer-events-none fixed inset-0">
-          <ICOPageContent isMobile={isMobile} containerRef={containerRef} isReady={false} />
+          <ICOPageContent
+            isMobile={isMobile}
+            containerRef={containerRef}
+            isReady={false}
+            onTermsClick={() => setShowTermsModal(true)}
+          />
         </div>
       </>
     );
@@ -532,14 +540,29 @@ const ICOLaunchPage: React.FC = () => {
         />
         {/* Pre-render the page structure for faster transition */}
         <div className="opacity-0 pointer-events-none fixed inset-0">
-          <ICOPageContent isMobile={isMobile} containerRef={containerRef} isReady={true} />
+          <ICOPageContent
+            isMobile={isMobile}
+            containerRef={containerRef}
+            isReady={true}
+            onTermsClick={() => setShowTermsModal(true)}
+          />
         </div>
       </>
     );
   }
 
   // Page is ready and intro animation is complete - show main content
-  return <ICOPageContent isMobile={isMobile} containerRef={containerRef} isReady={true} />;
+  return (
+    <>
+      <ICOPageContent
+        isMobile={isMobile}
+        containerRef={containerRef}
+        isReady={true}
+        onTermsClick={() => setShowTermsModal(true)}
+      />
+      <TokenTermsModal isOpen={showTermsModal} onClose={() => setShowTermsModal(false)} />
+    </>
+  );
 };
 
 // Separated page content for cleaner loading logic
@@ -547,9 +570,15 @@ interface ICOPageContentProps {
   isMobile: boolean;
   containerRef: React.RefObject<HTMLDivElement | null>;
   isReady: boolean;
+  onTermsClick?: () => void;
 }
 
-const ICOPageContent: React.FC<ICOPageContentProps> = ({ isMobile, containerRef, isReady }) => {
+const ICOPageContent: React.FC<ICOPageContentProps> = ({
+  isMobile,
+  containerRef,
+  isReady,
+  onTermsClick,
+}) => {
   return (
     <motion.div
       ref={containerRef}
@@ -695,7 +724,7 @@ const ICOPageContent: React.FC<ICOPageContentProps> = ({ isMobile, containerRef,
         animate={{ opacity: isReady ? 1 : 0 }}
         transition={{ duration: 0.4, delay: 0.7, ease: 'easeOut' }}
       >
-        <Footer />
+        <Footer onTermsClick={onTermsClick} />
       </motion.div>
     </motion.div>
   );

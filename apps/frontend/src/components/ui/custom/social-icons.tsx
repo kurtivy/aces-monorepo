@@ -11,25 +11,33 @@ const SocialIcons = ({ className = '', iconSize = 20 }: SocialIconsProps) => {
   return (
     <div className={`flex justify-start items-start space-x-6 ${className}`}>
       <a
-        href="https://www.instagram.com/acesdotfun/"
+        href="https://www.x.com/acesdotfun/"
+        target="_blank"
+        rel="noopener noreferrer"
         className="text-[#D0B284] hover:text-[#D0B284]/80 transition-colors"
       >
         <XIcon size={iconSize} />
       </a>
       <a
         href="https://www.instagram.com/acesdotfun/"
+        target="_blank"
+        rel="noopener noreferrer"
         className="text-[#D0B284] hover:text-[#D0B284]/80 transition-colors"
       >
         <InstagramIcon size={iconSize} />
       </a>
       <a
         href="https://www.tiktok.com/@acesdotfun"
+        target="_blank"
+        rel="noopener noreferrer"
         className="text-[#D0B284] hover:text-[#D0B284]/80 transition-colors"
       >
         <TikTokIcon size={iconSize} />
       </a>
       <a
         href="https://t.me/acesdotfun/"
+        target="_blank"
+        rel="noopener noreferrer"
         className="text-[#D0B284] hover:text-[#D0B284]/80 transition-colors"
       >
         <Send size={iconSize} />
