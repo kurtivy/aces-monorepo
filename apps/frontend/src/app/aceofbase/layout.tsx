@@ -1,21 +1,21 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Ace of Base | ACES TOKEN IPO',
-  description: 'Ace of Base | ACES TOKEN IPO',
+  title: 'Ace of Base | ACES TOKEN LAUNCH',
+  description: 'Ace of Base | ACES TOKEN LAUNCH',
   metadataBase: new URL('https://www.aceofbase.fun'),
   openGraph: {
-    title: 'ACES TOKEN IPO - Buy $ACES Now',
+    title: 'ACES TOKEN LAUNCH - Buy $ACES Now',
     description:
-      'Join the ACES TOKEN IPO. Buy $ACES tokens and participate in the future of luxury asset tokenization.',
+      'Join the ACES TOKEN LAUNCH. Buy $ACES tokens and participate in the future of luxury asset tokenization.',
     url: '/',
-    siteName: 'ACES TOKEN IPO',
+    siteName: 'ACES TOKEN LAUNCH',
     images: [
       {
         url: '/aceofbase.svg',
         width: 800,
         height: 800,
-        alt: 'ACES TOKEN IPO Logo',
+        alt: 'ACES TOKEN LAUNCH Logo',
       },
     ],
     locale: 'en_US',
@@ -23,15 +23,15 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'ACES TOKEN IPO - Buy $ACES Now',
+    title: 'ACES TOKEN LAUNCH - Buy $ACES Now',
     description:
-      'Join the ACES TOKEN IPO. Buy $ACES tokens and participate in the future of luxury asset tokenization.',
+      'Join the ACES TOKEN LAUNCH. Buy $ACES tokens and participate in the future of luxury asset tokenization.',
     images: [
       {
         url: '/aceofbase.svg',
         width: 800,
         height: 800,
-        alt: 'ACES TOKEN IPO Logo',
+        alt: 'ACES TOKEN LAUNCH Logo',
       },
     ],
   },
