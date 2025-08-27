@@ -4,6 +4,7 @@ import ErrorBoundary from '../components/error-boundary';
 import { DeviceProvider } from '../contexts/device-provider';
 import AppProviders from '@/components/providers/app-providers';
 import { fontVariables } from '@/lib/fonts';
+import { Analytics } from '@vercel/analytics/react';
 
 export const metadata: Metadata = {
   title: 'ACES.fun',
@@ -98,6 +99,7 @@ export default function RootLayout({
         <ErrorBoundary>
           <AppProviders>
             <DeviceProvider>{children}</DeviceProvider>
+            <Analytics />
           </AppProviders>
         </ErrorBoundary>
       </body>
