@@ -13,7 +13,7 @@ export declare const CONTRACTS: {
     };
     readonly baseMainnet: {
         readonly acesVault: "0x3C6d779a3e677E00843B2c9190A34b45A2e86f6C";
-        readonly acesToken: "0x726842d81f5b0050625c5d6c77CE4Ba8Ba7ee21E";
+        readonly acesToken: "0x55337650856299363c496065C836B9C6E9dE0367";
         readonly implementation: "0x6fd697590ad40Ffc7ff039cfb32B43fBc1EF31E7";
         readonly acesSwap: "0x039d1E7A384b1BfcA199a403c8A263a385D25c7a";
     };
@@ -34,7 +34,7 @@ export declare const BONDING_CURVE_CONTRACTS: {
     readonly BASE_MAINNET: {
         readonly chainId: 8453;
         readonly acesVault: "0x3C6d779a3e677E00843B2c9190A34b45A2e86f6C";
-        readonly acesToken: "0x726842d81f5b0050625c5d6c77CE4Ba8Ba7ee21E";
+        readonly acesToken: "0x55337650856299363c496065C836B9C6E9dE0367";
         readonly implementation: "0x6fd697590ad40Ffc7ff039cfb32B43fBc1EF31E7";
         readonly acesSwap: "0x039d1E7A384b1BfcA199a403c8A263a385D25c7a";
         readonly sharesSubject: "0xFa896e205975c4C77918e789898F766478144a54";
@@ -52,7 +52,7 @@ export declare function getBondingCurveContracts(chainId: number): {
 } | {
     readonly chainId: 8453;
     readonly acesVault: "0x3C6d779a3e677E00843B2c9190A34b45A2e86f6C";
-    readonly acesToken: "0x726842d81f5b0050625c5d6c77CE4Ba8Ba7ee21E";
+    readonly acesToken: "0x55337650856299363c496065C836B9C6E9dE0367";
     readonly implementation: "0x6fd697590ad40Ffc7ff039cfb32B43fBc1EF31E7";
     readonly acesSwap: "0x039d1E7A384b1BfcA199a403c8A263a385D25c7a";
     readonly sharesSubject: "0xFa896e205975c4C77918e789898F766478144a54";

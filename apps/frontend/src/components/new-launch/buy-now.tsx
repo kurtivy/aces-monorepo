@@ -1,9 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Image from 'next/image';
-import { useAuth } from '@/lib/auth/auth-context';
-import { useBondingCurveContracts } from '@/hooks/contracts/use-bonding-curve-contract';
 import ModalSwapInterface from './modal-swap-interface';
 
 type PaymentMethod = {
@@ -21,50 +19,7 @@ type PaymentMethod = {
 );
 
 export default function BuyNowSection() {
-  const { isAuthenticated, connectWallet } = useAuth();
-  const { contractState } = useBondingCurveContracts();
-  const [isHovered, setIsHovered] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-
-  // Check if tokens are sold out (875M = maximum supply)
-  const MAXIMUM_SUPPLY = 875000000; // 875 million tokens
-  const currentSupply = contractState?.tokenSupply ? Number(contractState.tokenSupply) : 0;
-  const isSoldOut = currentSupply >= MAXIMUM_SUPPLY;
-
-  // Handle buy button click - check wallet connection first
-  const handleBuyClick = async () => {
-    // Don't allow any action if sold out
-    if (isSoldOut) {
-      return;
-    }
-
-    if (!isAuthenticated) {
-      // Set flag to indicate user wants to buy
-      setUserClickedBuy(true);
-      // Connect wallet first, then open modal
-      try {
-        await connectWallet();
-        // Modal will open after wallet connection succeeds via the useEffect above
-      } catch (error) {
-        console.error('Failed to connect wallet:', error);
-        setUserClickedBuy(false); // Reset flag on error
-      }
-    } else {
-      // Wallet already connected, open modal directly
-      setIsModalOpen(true);
-    }
-  };
-
-  // State to track if user just clicked buy (to distinguish from wallet already being connected)
-  const [userClickedBuy, setUserClickedBuy] = useState(false);
-
-  // Open modal after successful wallet connection (only if user clicked buy button)
-  useEffect(() => {
-    if (isAuthenticated && userClickedBuy) {
-      setIsModalOpen(true);
-      setUserClickedBuy(false); // Reset flag
-    }
-  }, [isAuthenticated, userClickedBuy]);
 
   const paymentMethods: PaymentMethod[] = [
     {
@@ -132,54 +87,17 @@ export default function BuyNowSection() {
 
         {/* Buy Now Button */}
         <button
-          className={`relative w-full h-16 font-bold text-lg sm:text-xl lg:text-2xl rounded-xl shadow-2xl border-2 transition-all duration-300 overflow-hidden group mb-4 ${
-            isSoldOut
-              ? 'bg-gradient-to-r from-gray-600 to-gray-700 text-gray-300 border-gray-600 cursor-not-allowed'
-              : 'bg-gradient-to-r from-[#D0B284] to-[#D7BF75] text-black border-[#D0B284] hover:shadow-2xl'
-          }`}
+          className="relative w-full h-16 font-bold text-xl sm:text-2xl lg:text-3xl rounded-xl shadow-2xl border-2 transition-all duration-300 overflow-hidden group mb-4 bg-[#D0B284] text-black border-[#D7BF75] cursor-not-allowed"
           style={{
-            textShadow: isSoldOut ? 'none' : '0 2px 4px rgba(0,0,0,0.3)',
+            textShadow: 'none',
           }}
-          onMouseEnter={() => !isSoldOut && setIsHovered(true)}
-          onMouseLeave={() => !isSoldOut && setIsHovered(false)}
-          onClick={handleBuyClick}
-          disabled={isSoldOut}
+          disabled={true}
         >
-          {/* Button background effects - Only show when not sold out */}
-          {!isSoldOut && (
-            <>
-              <div className="absolute inset-0 bg-gradient-to-r from-[#D7BF75] to-[#D0B284] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-
-              {/* Animated shine effect */}
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -skew-x-12 transform translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
-            </>
-          )}
-
-          {/* Button text - Responsive sizing */}
-          <span className="relative z-10 tracking-wider font-proxima-nova px-2">
-            {isSoldOut ? (
-              <>
-                <span className="hidden sm:inline">🎉 SOLD OUT! 🎉</span>
-                <span className="sm:hidden">SOLD OUT!</span>
-              </>
-            ) : (
-              <>
-                <span className="hidden sm:inline">
-                  {!isAuthenticated ? 'CONNECT & BUY $ACES' : 'BUY $ACES NOW'}
-                </span>
-                <span className="sm:hidden">
-                  {!isAuthenticated ? 'CONNECT & BUY' : 'BUY $ACES'}
-                </span>
-              </>
-            )}
+          {/* Button text - Responsive sizing with bold font */}
+          <span className="relative z-10 tracking-wider font-proxima-nova font-bold px-2">
+            <span className="hidden sm:inline">SOLD OUT!</span>
+            <span className="sm:hidden">SOLD OUT!</span>
           </span>
-
-          {/* Hover glow - Only show when not sold out */}
-          {!isSoldOut && (
-            <div
-              className={`absolute inset-0 rounded-xl transition-all duration-300 ${isHovered ? 'shadow-[0_0_30px_rgba(208,178,100,0.6)]' : ''}`}
-            />
-          )}
         </button>
       </div>
 

@@ -1,53 +1,17 @@
 'use client';
 
-import { useBondingCurveContracts } from '@/hooks/contracts/use-bonding-curve-contract';
+// import { useBondingCurveContracts } from '@/hooks/contracts/use-bonding-curve-contract';
 
-interface ProgressionBarProps {
-  currentAmount?: number;
-  targetAmount?: number;
-  percentage?: number;
-}
+// interface ProgressionBarProps {
+//   currentAmount?: number;
+//   targetAmount?: number;
+//   percentage?: number;
+// }
 
-export default function ProgressionBar({ percentage }: ProgressionBarProps) {
-  const { contractState } = useBondingCurveContracts();
-
-  // Check if tokens are sold out (875M = maximum supply)
-  const MAXIMUM_SUPPLY = 875000000; // 875 million tokens
-
-  // Simple loading state check
-  if (!contractState) {
-    return (
-      <div className="w-full flex flex-col items-center justify-center rounded-xl px-6 py-2 flex-1 shadow-2xl relative overflow-hidden">
-        <div className="text-[#DCDDCC] text-sm font-medium tracking-wide">
-          Loading contract data...
-        </div>
-        <div className="text-[#928357] text-xs mt-2">Connecting to Base Mainnet...</div>
-      </div>
-    );
-  }
-
-  // Calculate values from contract data - using room token supply for progress
-  const roomTokenSupply = contractState.tokenSupply || BigInt(0); // This is shares in the room
-  const bondingCurveSupply = contractState.bondingCurveSupply || BigInt(875000000); // 875M shares
-
-  // Check if bondingCurveSupply looks like a wei value (too big)
-  const actualBondingCurveSupply =
-    bondingCurveSupply > BigInt(1e18)
-      ? BigInt(875000000) // Use 875M if the value seems wrong
-      : bondingCurveSupply;
-
-  // Calculate percentage based on room token supply progress
-  const tokenProgress =
-    actualBondingCurveSupply > 0
-      ? (Number(roomTokenSupply) / Number(actualBondingCurveSupply)) * 100
-      : 0;
-
-  // Use real values or fallback to props
-  const displayPercentage = percentage || tokenProgress;
-
-  // Check if sold out
-  const currentSupply = Number(roomTokenSupply);
-  const isSoldOut = currentSupply >= MAXIMUM_SUPPLY;
+export default function ProgressionBar() {
+  // Hard-coded sold out state - always show 100% progress
+  const displayPercentage = 100; // Always 100% for sold out state
+  // const isSoldOut = true; // Always true for sold out state
 
   return (
     <div className="w-full flex flex-col items-center justify-center rounded-xl px-4 sm:px-6 py-2 flex-1 shadow-2xl relative overflow-hidden">
@@ -92,29 +56,19 @@ export default function ProgressionBar({ percentage }: ProgressionBarProps) {
                   ))}
                 </div>
 
-                {/* Progress fill with brand gradient */}
+                {/* Progress fill with hard-coded sold out green color */}
                 <div
-                  className={`absolute left-0.5 top-0.5 bottom-0.5 rounded-full shadow-lg transition-all duration-1000 ease-out overflow-hidden ${
-                    isSoldOut ? 'bg-gradient-to-r from-green-500 to-green-400' : ''
-                  }`}
+                  className="absolute left-0.5 top-0.5 bottom-0.5 rounded-full shadow-lg transition-all duration-1000 ease-out overflow-hidden"
                   style={{
-                    width: `calc(${Math.min(displayPercentage, 100)}% - 2px)`,
-                    background: isSoldOut
-                      ? 'linear-gradient(90deg, #10b981 0%, #34d399 50%, #6ee7b7 100%)'
-                      : `linear-gradient(90deg, 
-                        #184D37 0%, 
-                        #928357 25%, 
-                        #D0B284 50%, 
-                        #D7BF75 75%, 
-                        #D0B284 100%
-                      )`,
+                    width: `calc(${displayPercentage}% - 2px)`,
+                    background: '#184D37', // Hard-coded sold out green color
                   }}
                 >
                   {/* Animated shine overlay */}
                   <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/25 to-transparent animate-pulse opacity-60" />
 
                   {/* Progress end glow */}
-                  <div className="absolute right-0 top-0 w-4 h-full bg-gradient-to-l from-[#D7BF75]/80 to-transparent" />
+                  <div className="absolute right-0 top-0 w-4 h-full bg-gradient-to-l from-[#184D37]/80 to-transparent" />
 
                   {/* Inner highlight */}
                   <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-white/20 to-white/10 rounded-full" />
@@ -123,7 +77,7 @@ export default function ProgressionBar({ percentage }: ProgressionBarProps) {
                 {/* Progress indicator dot */}
                 <div
                   className="absolute top-1/2 w-5 h-5 bg-gradient-to-br from-[#D7BF75] to-[#D0B284] rounded-full shadow-lg border-2 border-white/20 transition-all duration-1000 ease-out transform -translate-y-1/2"
-                  style={{ left: `calc(${Math.min(displayPercentage, 100)}% - 6px)` }}
+                  style={{ left: `calc(${displayPercentage}% - 6px)` }}
                 >
                   <div className="absolute inset-0.5 bg-gradient-to-br from-[#D7BF75] to-[#D0B284] rounded-full animate-pulse" />
                 </div>
@@ -147,26 +101,19 @@ export default function ProgressionBar({ percentage }: ProgressionBarProps) {
           </div>
         </div>
 
-        {/* Amount Display - Updated to show room shares vs bonding curve supply */}
+        {/* Amount Display - Hard-coded sold out values */}
         <div className="text-center">
           <div className="space-y-1 mt-2">
-            {isSoldOut && (
-              <div className="text-xs font-semibold text-[#D0B284] mb-1 uppercase tracking-wide">
-                🎉 ALL TOKENS SOLD! 🎉
-              </div>
-            )}
+            <div className="text-xs font-semibold text-[#D0B284] mb-1 uppercase tracking-wide">
+              ALL TOKENS SOLD!
+            </div>
             <div
               className="text-xs text-[#928357]"
               style={{ fontFamily: 'JetBrains Mono, monospace' }}
             >
-              {Number(roomTokenSupply).toLocaleString()} /{' '}
-              {Number(actualBondingCurveSupply).toLocaleString()} tokens sold
+              875,000,000 / 875,000,000 tokens sold
             </div>
-            {isSoldOut && (
-              <div className="text-xs text-[#928357] italic">
-                Thank you for making this launch a success!
-              </div>
-            )}
+            <div className="text-xs text-[#928357] italic">LFG!!</div>
           </div>
         </div>
       </div>
