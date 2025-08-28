@@ -1,12 +1,12 @@
 import Image from 'next/image';
 import React from 'react';
-import SocialIcons from './social-icons';
+import SocialIcons from '../ui/custom/social-icons';
 
-interface FooterProps {
+interface LaunchFooterProps {
   onTermsClick?: () => void;
 }
 
-const Footer = ({ onTermsClick }: FooterProps) => {
+const LaunchFooter = ({ onTermsClick }: LaunchFooterProps) => {
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -40,10 +40,10 @@ const Footer = ({ onTermsClick }: FooterProps) => {
                   height={20}
                 />
               </div>
-              <span className="text-white text-sm sm:text-base">ACES.fun</span>
+              <span className="text-white text-sm sm:text-base">ACEofBASE</span>
             </div>
             <div className="text-[#DCDDCC] text-xs sm:text-sm text-center">
-              © 2021-2025 ACES. All Rights Reserved.
+              © 2021-2025 Ace Of Base. All Rights Reserved.
             </div>
           </div>
 
@@ -96,4 +96,4 @@ const Footer = ({ onTermsClick }: FooterProps) => {
   );
 };
 
-export default Footer;
+export default LaunchFooter;

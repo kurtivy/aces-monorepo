@@ -15,7 +15,7 @@ import { useAuth } from '@/lib/auth/auth-context';
 import { usePrivy } from '@privy-io/react-auth';
 import { usePageLoading } from '@/hooks/use-page-loading';
 import { formatEther } from 'viem';
-import Footer from '@/components/ui/custom/footer';
+import LaunchFooter from './launch-footer';
 import LaunchIntroAnimation from '../loading/launch-intro-animation';
 import TokenTermsModal from '@/components/ui/custom/token-terms-modal';
 
@@ -146,7 +146,7 @@ const CurrentPriceSquare: React.FC = () => {
     return <TokenInfoSkeleton />;
   }
 
-  // Show placeholder when wallet is not connected
+  // Show placeholder when wallet is not connected - matching UserBalanceSquare styling
   if (!authenticated) {
     return (
       <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-[#231F20] to-[#0A0A0A] p-4 relative">
@@ -158,17 +158,32 @@ const CurrentPriceSquare: React.FC = () => {
             Next Token Price
           </h3>
           <div className="flex flex-col items-center">
+            <div className="w-8 h-8 mx-auto mb-2 border border-[#D0B264] rounded-lg flex items-center justify-center">
+              <svg
+                className="w-4 h-4 text-[#D0B264]"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                />
+              </svg>
+            </div>
             <span
-              className="text-[#DCDDCC]/50 text-lg sm:text-xl font-bold mb-1"
-              style={{ fontFamily: 'JetBrains Mono, monospace' }}
+              className="text-[#D0B264] text-xs sm:text-sm font-medium text-center leading-tight"
+              style={{ fontFamily: 'system, serif' }}
             >
-              Connect Wallet
-            </span>
-            <span
-              className="text-[#DCDDCC]/30 text-xs sm:text-sm font-medium"
-              style={{ fontFamily: 'JetBrains Mono, monospace' }}
-            >
-              to view price
+              <span className="hidden sm:inline">Connect Wallet</span>
+              <span className="sm:hidden">Connect</span>
+              <br />
+              <span className="text-xs text-[#928357]">
+                <span className="hidden sm:inline">to view price</span>
+                <span className="sm:hidden">for price</span>
+              </span>
             </span>
           </div>
         </div>
@@ -219,27 +234,6 @@ const CurrentPriceSquare: React.FC = () => {
     // For extremely small numbers, use scientific notation
     return price.toExponential(2);
   };
-
-  // Debug logging for price values
-  // console.log('🏷️ [Price Display] Current Price Square:', {
-  //   contractState: !!contractState,
-  //   currentPrice: contractState?.currentPrice?.toString(),
-  //   nextSharePriceETH,
-  //   nextSharePriceUSD,
-  //   liveETHPriceUSD,
-  //   ethPriceLoading: ethPrice.isLoading,
-  //   ethPriceError: ethPrice.error,
-  // });
-  // console.log('🎯 Price Debug:', {
-  //   currentPriceWei: contractState?.currentPrice?.toString(),
-  //   nextSharePriceETH,
-  //   liveETHPriceUSD,
-  //   nextSharePriceUSD,
-  //   formatted: {
-  //     usd: formatUSDPrice(nextSharePriceUSD),
-  //     eth: formatETHPrice(nextSharePriceETH),
-  //   },
-  // });
 
   return (
     <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-[#231F20] to-[#0A0A0A] p-4 relative">
@@ -767,7 +761,7 @@ const ICOPageContent: React.FC<ICOPageContentProps> = ({
         animate={{ opacity: isReady ? 1 : 0 }}
         transition={{ duration: 0.4, delay: 0.7, ease: 'easeOut' }}
       >
-        <Footer onTermsClick={onTermsClick} />
+        <LaunchFooter onTermsClick={onTermsClick} />
       </motion.div>
     </motion.div>
   );
