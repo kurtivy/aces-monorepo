@@ -58,9 +58,22 @@ export async function requireAuth(request: FastifyRequest, _reply: FastifyReply)
     throw errors.unauthorized('Authentication not initialized');
   }
 
-  if (!request.auth.isAuthenticated) {
+  if (!request.auth.isAuthenticated || !request.user) {
     console.error('User not authenticated');
     throw errors.unauthorized('Authentication required');
+  }
+}
+
+/**
+ * Middleware to require admin role - V1 simplified version
+ */
+export async function requireAdmin(request: FastifyRequest, _reply: FastifyReply) {
+  if (!request.auth?.isAuthenticated || !request.user) {
+    throw errors.unauthorized('Authentication required');
+  }
+
+  if (!request.auth.hasRole('ADMIN')) {
+    throw errors.forbidden('Admin access required');
   }
 }
 
@@ -81,16 +94,25 @@ export function requireRole(role: UserRoleType | UserRoleType[]) {
 }
 
 /**
- * Middleware to require admin role
+ * Middleware to require user to be verified (for future steps when verification gates other features)
  */
-export async function requireAdmin(request: FastifyRequest, _reply: FastifyReply) {
-  if (!request.auth?.isAuthenticated) {
+export async function requireVerified(request: FastifyRequest, reply: FastifyReply) {
+  if (!request.auth?.isAuthenticated || !request.user) {
     throw errors.unauthorized('Authentication required');
   }
 
-  if (!request.auth.hasRole('ADMIN')) {
-    throw errors.forbidden('Admin access required');
-  }
+  // Step 2: This will check verification status once we have the relationship set up
+  // For now, we'll implement a basic check that can be expanded later
+
+  // TODO: Implement verification check when needed for Step 4 (Submissions)
+  // const verification = await prisma.accountVerification.findUnique({
+  //   where: { userId: request.user.id },
+  //   select: { status: true }
+  // });
+  //
+  // if (verification?.status !== 'APPROVED') {
+  //   throw errors.forbidden('Account verification required');
+  // }
 }
 
 /**

@@ -1,3 +1,4 @@
+// backend/src/api/v1/account-verification.ts - V1 Clean Implementation
 import Fastify, { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
 import helmet from '@fastify/helmet';
@@ -20,7 +21,7 @@ import { getPrismaClient, disconnectDatabase } from '../lib/database';
 import { loggers } from '../lib/logger';
 import { handleError } from '../lib/errors';
 import { registerAuth } from '../plugins/auth';
-import { accountVerificationRoutes } from '../routes/v1/account-verification';
+import { accountVerificationRoutes } from '../routes/v1/verification';
 
 const buildAccountVerificationApp = async (): Promise<FastifyInstance> => {
   const fastify = Fastify({
@@ -32,7 +33,6 @@ const buildAccountVerificationApp = async (): Promise<FastifyInstance> => {
   fastify.decorate('prisma', prisma);
 
   // Register plugins
-  // CORS handled dynamically in main app.ts
   fastify.register(helmet);
   fastify.register(multipart, {
     limits: {
@@ -59,8 +59,8 @@ const buildAccountVerificationApp = async (): Promise<FastifyInstance> => {
   fastify.setErrorHandler((error, request, reply) => {
     try {
       handleError(error, reply);
-    } catch (error) {
-      handleError(error, reply);
+    } catch (handlerError) {
+      handleError(handlerError, reply);
     }
   });
 
@@ -117,7 +117,7 @@ const handler = async (req: VercelRequest, res: VercelResponse) => {
 
     app.server.emit('request', req, res);
   } catch (error) {
-    console.error('❌ Account verification handler error:', error);
+    console.error('⚠ Account verification handler error:', error);
     if (!res.headersSent) {
       res.status(500).json({
         success: false,

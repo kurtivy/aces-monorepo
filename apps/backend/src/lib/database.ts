@@ -6,41 +6,30 @@ const createPrismaClient = () => {
   console.log('Database URL exists:', !!process.env.DATABASE_URL);
 
   const prisma = new PrismaClient({
-    log: [
-      {
-        emit: 'event',
-        level: 'query',
-      },
-      {
-        emit: 'event',
-        level: 'error',
-      },
-      {
-        emit: 'event',
-        level: 'info',
-      },
-      {
-        emit: 'event',
-        level: 'warn',
-      },
-    ],
+    log:
+      process.env.NODE_ENV === 'development'
+        ? [
+            {
+              emit: 'event',
+              level: 'error',
+            },
+            {
+              emit: 'event',
+              level: 'warn',
+            },
+          ]
+        : [],
     errorFormat: 'pretty',
+    // Optimize for Supabase connection pooling
+    datasources: {
+      db: {
+        url: process.env.DATABASE_URL,
+      },
+    },
   });
 
-  // Log database queries in development
-  if (process.env.NODE_ENV === 'development') {
-    prisma.$on('query', (e: Prisma.QueryEvent) => {
-      logger.debug(
-        {
-          type: 'database',
-          query: e.query,
-          params: e.params,
-          duration: e.duration,
-        },
-        'Database query executed',
-      );
-    });
-  }
+  // Query logging disabled by default for performance
+  // Enable with LOG_QUERIES=true if needed for debugging
 
   // Log database errors
   prisma.$on('error', (e: Prisma.LogEvent) => {

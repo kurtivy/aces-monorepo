@@ -11,9 +11,9 @@ import { loggers } from './lib/logger';
 import { handleError } from './lib/errors';
 import { registerAuth } from './plugins/auth';
 // import { submissionsRoutes } from './routes/v1/submissions';
-// import { adminRoutes } from './routes/v1/admin';
+import { adminRoutes } from './routes/v1/admin'; // Step 2: Enabled
 // import { bidsRoutes } from './routes/v1/bids';
-// import { accountVerificationRoutes } from './routes/v1/account-verification';
+import { accountVerificationRoutes } from './routes/v1/verification'; // Step 2: Enabled
 import { usersRoutes } from './routes/v1/users';
 // import { webhooksRoutes } from './routes/v1/webhooks';
 // import { listingsRoutes } from './routes/v1/listings';
@@ -112,14 +112,14 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   });
 
   // Register v1 routes with proper API prefixes
-  // fastify.register(submissionsRoutes, { prefix: '/api/v1/submissions' });
-  // fastify.register(adminRoutes, { prefix: '/api/v1/admin' });
-  // fastify.register(bidsRoutes, { prefix: '/api/v1/bids' });
-  // fastify.register(accountVerificationRoutes, { prefix: '/api/v1/account-verification' });
+  // import { submissionsRoutes } from './routes/v1/submissions';
+  fastify.register(adminRoutes, { prefix: '/api/v1/admin' }); // Step 2: Enabled
+  // import { bidsRoutes } from './routes/v1/bids';
+  fastify.register(accountVerificationRoutes, { prefix: '/api/v1/account-verification' }); // Step 2: Enabled
   fastify.register(usersRoutes, { prefix: '/api/v1/users' });
-  // fastify.register(webhooksRoutes, { prefix: '/api/v1/webhooks' });
-  // fastify.register(listingsRoutes, { prefix: '/api/v1/listings' });
-  // fastify.register(tokensRoutes, { prefix: '/api/v1/tokens' });
+  // import { webhooksRoutes } from './routes/v1/webhooks';
+  // import { listingsRoutes } from './routes/v1/listings';
+  // import { tokensRoutes } from './routes/v1/tokens';
   fastify.register(contactRoutes, { prefix: '/api/v1/contact' });
 
   // Register hooks

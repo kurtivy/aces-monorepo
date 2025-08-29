@@ -24,6 +24,10 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  // Account verification relationship
+  accountVerification     AccountVerification?
+  reviewedVerifications   AccountVerification[] @relation("ReviewedBy")
+
   @@map("users")
 }
 
@@ -31,4 +35,47 @@ model User {
 enum UserRole {
   TRADER
   ADMIN
+}
+model AccountVerification {
+  id               String             @id @default(cuid())
+  userId           String             @unique
+  user             User               @relation(fields: [userId], references: [id])
+
+  documentType     DocumentType
+  documentNumber   String
+  documentImageUrl String?
+
+  firstName        String
+  lastName         String
+  dateOfBirth      DateTime
+  countryOfIssue   String
+  state            String?
+  address          String
+  emailAddress     String
+
+  status           VerificationStatus @default(PENDING)
+  submittedAt      DateTime           @default(now())
+  reviewedAt       DateTime?
+  reviewedBy       String?
+  reviewer         User?              @relation("ReviewedBy", fields: [reviewedBy], references: [id])
+  rejectionReason  String?
+
+  attempts         Int                @default(1)
+  lastAttemptAt    DateTime           @default(now())
+
+  @@index([status])
+  @@index([userId])
+  @@map("account_verifications")
+}
+
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum DocumentType {
+  DRIVERS_LICENSE
+  PASSPORT
+  ID_CARD
 }
