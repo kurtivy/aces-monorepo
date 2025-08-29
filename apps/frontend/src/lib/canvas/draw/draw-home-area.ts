@@ -216,7 +216,7 @@ export const drawHomeArea = (
 
   // Draw all quadrant buttons
   drawQuadrantButton('ABOUT', 0);
-  drawQuadrantButton('MINT', 1);
+  drawQuadrantButton('LIST', 1);
   drawQuadrantButton('DOCS', 2);
   drawQuadrantButton('CHAT', 3);
 

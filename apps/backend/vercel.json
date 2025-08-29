@@ -42,8 +42,8 @@
       "destination": "/api/users"
     },
     {
-      "source": "/api/v1/account-verification(/.*)?",
-      "destination": "/api/account-verification"
+      "source": "/api/v1/verification(/.*)?",
+      "destination": "/api/verification"
     },
     {
       "source": "/api/v1/contact(/.*)?",
