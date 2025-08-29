@@ -1,7 +1,7 @@
 // prisma/schema.prisma - Step 1: User Model Only
 generator client {
   provider      = "prisma-client-js"
-  output        = "../../../node_modules/.prisma/client"
+  output        = "../node_modules/.prisma/client"
   binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 

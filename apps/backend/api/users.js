@@ -129,58 +129,63 @@ var loggers = {
 
 // src/lib/database.ts
 var import_client = require("@prisma/client");
+var prisma = null;
 var createPrismaClient = /* @__PURE__ */ __name(() => {
   console.log("\u{1F527} Creating Prisma client...");
   console.log("Database URL exists:", !!process.env.DATABASE_URL);
-  const prisma2 = new import_client.PrismaClient({
-    log: false ? [
-      {
-        emit: "event",
-        level: "error"
-      },
-      {
-        emit: "event",
-        level: "warn"
+  try {
+    const prisma2 = new import_client.PrismaClient({
+      log: false ? [
+        {
+          emit: "event",
+          level: "error"
+        },
+        {
+          emit: "event",
+          level: "warn"
+        }
+      ] : [],
+      errorFormat: "pretty",
+      // Optimize for Supabase connection pooling
+      datasources: {
+        db: {
+          url: process.env.DATABASE_URL
+        }
       }
-    ] : [],
-    errorFormat: "pretty",
-    // Optimize for Supabase connection pooling
-    datasources: {
-      db: {
-        url: process.env.DATABASE_URL
-      }
-    }
-  });
-  prisma2.$on("error", (e) => {
-    logger.error(
-      {
-        type: "database",
-        error: e
-      },
-      "Database error occurred"
-    );
-  });
-  prisma2.$use(async (params, next) => {
-    const start = Date.now();
-    const result = await next(params);
-    const duration = Date.now() - start;
-    if (duration > 1e3) {
-      logger.warn(
+    });
+    prisma2.$on("error", (e) => {
+      logger.error(
         {
           type: "database",
-          action: params.action,
-          model: params.model,
-          duration
+          error: e
         },
-        "Slow database query detected"
+        "Database error occurred"
       );
-    }
-    return result;
-  });
-  console.log("\u2705 Prisma client created successfully");
-  return prisma2;
+    });
+    prisma2.$use(async (params, next) => {
+      const start = Date.now();
+      const result = await next(params);
+      const duration = Date.now() - start;
+      if (duration > 1e3) {
+        logger.warn(
+          {
+            type: "database",
+            action: params.action,
+            model: params.model,
+            duration
+          },
+          "Slow database query detected"
+        );
+      }
+      return result;
+    });
+    console.log("\u2705 Prisma client created successfully");
+    return prisma2;
+  } catch (error) {
+    console.error("\u274C Failed to create Prisma client:", error);
+    throw error;
+  }
 }, "createPrismaClient");
-var prisma = null;
 var getPrismaClient = /* @__PURE__ */ __name(() => {
   try {
     if (!prisma) {
