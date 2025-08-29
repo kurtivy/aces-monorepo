@@ -155,6 +155,8 @@ const nextConfig: NextConfig = {
         destination: '/404',
         permanent: false,
       },
+      // Temporarily disabled for development
+      /*
       {
         source: '/profile/:path*',
         has: [
@@ -166,6 +168,7 @@ const nextConfig: NextConfig = {
         destination: '/404',
         permanent: false,
       },
+      */
       // Handle localhost:3000 and local.aces.fun for development (main domain)
       // Temporarily disabled for testing
       /*
@@ -192,6 +195,8 @@ const nextConfig: NextConfig = {
         destination: '/404',
         permanent: false,
       },
+      // Temporarily disabled for development
+      /*
       {
         source: '/profile/:path*',
         has: [
@@ -203,6 +208,7 @@ const nextConfig: NextConfig = {
         destination: '/404',
         permanent: false,
       },
+      */
       // Add local.aces.fun redirects for development
       {
         source: '/aceofbase/:path*',
@@ -226,6 +232,8 @@ const nextConfig: NextConfig = {
         destination: '/404',
         permanent: false,
       },
+      // Temporarily disabled for development
+      /*
       {
         source: '/profile/:path*',
         has: [
@@ -237,6 +245,7 @@ const nextConfig: NextConfig = {
         destination: '/404',
         permanent: false,
       },
+      */
       // Handle main Vercel deployments (without 'aceofbase' in URL)
       {
         source: '/aceofbase/:path*',
@@ -260,6 +269,8 @@ const nextConfig: NextConfig = {
         destination: '/404',
         permanent: false,
       },
+      // Temporarily disabled for development
+      /*
       {
         source: '/profile/:path*',
         has: [
@@ -271,6 +282,7 @@ const nextConfig: NextConfig = {
         destination: '/404',
         permanent: false,
       },
+      */
     ];
   },
 

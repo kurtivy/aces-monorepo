@@ -216,8 +216,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error(result.error || 'Failed to verify user');
       }
 
-      console.log(result.data.created ? '🆕 New user created' : '✅ Existing user verified');
-
       setState((prev) => ({
         ...prev,
         user: result.data.profile,
@@ -289,32 +287,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Wallet Actions - Simplified to prioritize Privy
   const connectWallet = async () => {
-    // console.log('🚀 AuthContext connectWallet called');
-    // console.log('🚀 connectionAttempting:', connectionAttempting);
-    // console.log('🚀 privyAuthenticated:', privyAuthenticated);
-    // console.log('🚀 privyUser:', privyUser);
-
     // Prevent multiple simultaneous connection attempts
     if (connectionAttempting) {
-      // console.log('🚀 Connection already in progress, skipping...');
       return;
     }
 
     try {
-      // console.log('🚀 Starting connection attempt...');
       setConnectionAttempting(true);
       setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
       // If user is already authenticated with Privy, they're good to go
       if (privyAuthenticated && privyUser) {
-        // console.log('🚀 User already authenticated, no need to connect');
         return;
       }
 
       // For new users, start with Privy login (which will show embedded wallet option first)
-      // console.log('🚀 Calling privyLogin...');
       await privyLogin();
-      // console.log('🚀 privyLogin completed');
     } catch (error) {
       console.error('❌ Connect wallet error:', error);
 
@@ -333,7 +321,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         error: errorMessage,
       }));
     } finally {
-      // console.log('🚀 Connection attempt finished');
       setState((prev) => ({ ...prev, isLoading: false }));
       setConnectionAttempting(false);
     }

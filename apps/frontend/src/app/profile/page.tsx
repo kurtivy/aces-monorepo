@@ -46,8 +46,8 @@ export default function ProfilePage() {
             <h2 className="text-red-500 font-bold font-libre-caslon">Error Loading Profile</h2>
             <p className="text-[#DCDDCC] mb-4">{error}</p>
             <p className="text-[#DCDDCC] text-sm">
-              If you're having trouble connecting, try refreshing the page or connecting your wallet
-              again.
+              If you&apos;re having trouble connecting, try refreshing the page or connecting your
+              wallet again.
             </p>
           </div>
         </div>
@@ -64,20 +64,19 @@ export default function ProfilePage() {
     }
   };
 
-  const handleSellerDashboard = () => {
-    setIsSellerDashboardOpen(true);
-  };
+  // const handleSellerDashboard = () => {
+  //   setIsSellerDashboardOpen(true);
+  // };
 
-  const handleAdminDashboard = () => {
-    setIsAdminDashboardOpen(true);
-  };
+  // const handleAdminDashboard = () => {
+  //   setIsAdminDashboardOpen(true);
+  // };
 
   const profileData = {
-    displayName: user?.displayName || undefined,
     email: user?.email || undefined,
     walletAddress: walletAddress || undefined,
     role: user?.role || undefined,
-    sellerStatus: user?.sellerStatus || undefined,
+    // sellerStatus: user?.sellerStatus || undefined,
   };
 
   return (
@@ -119,12 +118,7 @@ export default function ProfilePage() {
           <div className="p-6">
             <div className="max-w-4xl mx-auto space-y-6">
               {/* Horizontal Profile Header */}
-              <HorizontalProfileHeader
-                user={profileData}
-                onUpdateEmail={handleUpdateEmail}
-                onSellerDashboardClick={handleSellerDashboard}
-                onAdminDashboardClick={handleAdminDashboard}
-              />
+              <HorizontalProfileHeader user={profileData} onUpdateEmail={handleUpdateEmail} />
 
               {/* Submission Status Notifications */}
               <SubmissionStatusNotifications />

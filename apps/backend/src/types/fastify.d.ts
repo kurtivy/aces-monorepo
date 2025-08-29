@@ -1,35 +1,32 @@
-// src/types/fastify.ts
-import { UserRoleType, SellerStatusType } from '../lib/prisma-enums';
+import { PrismaClient } from '@prisma/client';
 
-export interface EnhancedUser {
+// Step 1: Simplified User interface (matches your new User model)
+export interface SimpleUser {
   id: string;
   privyDid: string;
   walletAddress: string | null;
   email: string | null;
-  displayName: string | null;
-  avatar: string | null;
-  role: UserRoleType;
+  role: 'TRADER' | 'ADMIN';
   isActive: boolean;
-  sellerStatus: SellerStatusType;
-  appliedAt: Date | null;
-  verifiedAt: Date | null;
-  rejectedAt: Date | null;
-  rejectionReason: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
 
-export interface AuthContext {
-  user: EnhancedUser | null;
+// Step 1: Simplified Auth Context
+export interface SimpleAuthContext {
+  user: SimpleUser | null;
   isAuthenticated: boolean;
-  hasRole: (role: UserRoleType | UserRoleType[]) => boolean;
-  isSellerVerified: boolean;
-  canAccessSellerDashboard: boolean;
+  hasRole: (role: 'TRADER' | 'ADMIN' | ('TRADER' | 'ADMIN')[]) => boolean;
 }
 
 declare module 'fastify' {
   interface FastifyRequest {
-    user: EnhancedUser | null;
-    auth: AuthContext;
+    user?: SimpleUser | null;
+    auth?: SimpleAuthContext;
+    startTime?: number;
+  }
+
+  interface FastifyInstance {
+    prisma: PrismaClient;
   }
 }

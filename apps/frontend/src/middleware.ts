@@ -22,7 +22,7 @@ export function middleware(request: NextRequest) {
   // Main domain blocking logic
   if (isMainDomain) {
     if (
-      pathname.startsWith('/profile') ||
+      // pathname.startsWith('/profile') ||  // Temporarily disabled for development
       pathname.startsWith('/launch') ||
       pathname.startsWith('/aceofbase')
     ) {

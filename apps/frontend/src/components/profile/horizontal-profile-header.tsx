@@ -4,28 +4,17 @@ import { useState } from 'react';
 import { Edit2, Copy, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EmailEditModal } from './email-edit-modal';
-import { VerificationButton } from './verification-button';
-import { AdminDashboardButton } from './admin-dashboard-button';
 
 interface HorizontalProfileHeaderProps {
   user: {
-    displayName: string | undefined;
     email: string | undefined;
     walletAddress: string | undefined;
     role?: string;
-    sellerStatus?: string;
   };
   onUpdateEmail?: (email: string) => Promise<void>;
-  onSellerDashboardClick?: () => void;
-  onAdminDashboardClick?: () => void;
 }
 
-export function HorizontalProfileHeader({
-  user,
-  onUpdateEmail,
-  onSellerDashboardClick,
-  onAdminDashboardClick,
-}: HorizontalProfileHeaderProps) {
+export function HorizontalProfileHeader({ user, onUpdateEmail }: HorizontalProfileHeaderProps) {
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -66,17 +55,7 @@ export function HorizontalProfileHeader({
                 )}
               </div>
 
-              {/* Display Name */}
-              {user.displayName && (
-                <div className="border-l border-[#D0B284]/20 pl-6">
-                  <label className="text-[#DCDDCC] text-xs font-jetbrains uppercase tracking-wide">
-                    Display Name
-                  </label>
-                  <p className="text-white font-medium mt-1">{user.displayName}</p>
-                </div>
-              )}
-
-              {/* Verification Status */}
+              {/* Role Status */}
               {user.walletAddress && (
                 <div className="border-l border-[#D0B284]/20 pl-6">
                   <label className="text-[#DCDDCC] text-xs font-jetbrains uppercase tracking-wide">
@@ -84,16 +63,10 @@ export function HorizontalProfileHeader({
                   </label>
                   <div className="flex items-center space-x-2 mt-1">
                     {user.role === 'ADMIN' && (
-                      <span className="text-purple-400 text-sm">👑 Admin</span>
-                    )}
-                    {user.role === 'SELLER' && user.sellerStatus === 'APPROVED' && (
-                      <span className="text-[#184D37] text-sm">✅ Verified Seller</span>
-                    )}
-                    {user.role === 'SELLER' && user.sellerStatus === 'PENDING' && (
-                      <span className="text-[#D7BF75] text-sm">⏳ Pending Verification</span>
+                      <span className="text-purple-400 text-sm">Admin</span>
                     )}
                     {user.role === 'TRADER' && (
-                      <span className="text-[#D0B284] text-sm">💎 Trader</span>
+                      <span className="text-[#D0B284] text-sm">Trader</span>
                     )}
                   </div>
                 </div>
@@ -120,20 +93,15 @@ export function HorizontalProfileHeader({
               </div>
             </div>
 
-            {/* Right side - Portfolio value and verification button */}
+            {/* Right side - Coming Soon placeholder */}
             <div className="flex items-center space-x-6">
               <div className="text-right">
                 <label className="text-[#DCDDCC] text-xs font-jetbrains uppercase tracking-wide">
                   Portfolio Value
                 </label>
                 <div className="flex items-center space-x-4 mt-1">
-                  <span className="text-white text-lg font-medium">74.31 ETH</span>
-                  <span className="text-[#DCDDCC]">$243,541</span>
+                  <span className="text-[#DCDDCC] text-lg">Coming Soon</span>
                 </div>
-              </div>
-              <div className="flex flex-col space-y-2">
-                <VerificationButton onSellerDashboardClick={onSellerDashboardClick} />
-                <AdminDashboardButton onAdminDashboardClick={onAdminDashboardClick} />
               </div>
             </div>
           </div>
