@@ -57,7 +57,7 @@ var logger = (0, import_pino.pino)({
   formatters: {
     level: /* @__PURE__ */ __name((label) => ({ level: label }), "level")
   },
-  timestamp: import_pino.pino.stdTimeFunctions.isoTime,
+  timestamp: /* @__PURE__ */ __name(() => `,"time":"${(/* @__PURE__ */ new Date()).toISOString()}"`, "timestamp"),
   base: {
     service: "aces-backend",
     version: process.env.npm_package_version || "1.0.0"
@@ -133,39 +133,24 @@ var createPrismaClient = /* @__PURE__ */ __name(() => {
   console.log("\u{1F527} Creating Prisma client...");
   console.log("Database URL exists:", !!process.env.DATABASE_URL);
   const prisma2 = new import_client.PrismaClient({
-    log: [
-      {
-        emit: "event",
-        level: "query"
-      },
+    log: false ? [
       {
         emit: "event",
         level: "error"
       },
       {
         emit: "event",
-        level: "info"
-      },
-      {
-        emit: "event",
         level: "warn"
       }
-    ],
-    errorFormat: "pretty"
+    ] : [],
+    errorFormat: "pretty",
+    // Optimize for Supabase connection pooling
+    datasources: {
+      db: {
+        url: process.env.DATABASE_URL
+      }
+    }
   });
-  if (false) {
-    prisma2.$on("query", (e) => {
-      logger.debug(
-        {
-          type: "database",
-          query: e.query,
-          params: e.params,
-          duration: e.duration
-        },
-        "Database query executed"
-      );
-    });
-  }
   prisma2.$on("error", (e) => {
     logger.error(
       {
@@ -175,25 +160,23 @@ var createPrismaClient = /* @__PURE__ */ __name(() => {
       "Database error occurred"
     );
   });
-  prisma2.$use(
-    async (params, next) => {
-      const start = Date.now();
-      const result = await next(params);
-      const duration = Date.now() - start;
-      if (duration > 1e3) {
-        logger.warn(
-          {
-            type: "database",
-            action: params.action,
-            model: params.model,
-            duration
-          },
-          "Slow database query detected"
-        );
-      }
-      return result;
+  prisma2.$use(async (params, next) => {
+    const start = Date.now();
+    const result = await next(params);
+    const duration = Date.now() - start;
+    if (duration > 1e3) {
+      logger.warn(
+        {
+          type: "database",
+          action: params.action,
+          model: params.model,
+          duration
+        },
+        "Slow database query detected"
+      );
     }
-  );
+    return result;
+  });
   console.log("\u2705 Prisma client created successfully");
   return prisma2;
 }, "createPrismaClient");
@@ -278,116 +261,8 @@ var errors = {
 // src/plugins/auth.ts
 var import_fastify_plugin = __toESM(require("fastify-plugin"));
 var import_jsonwebtoken = __toESM(require("jsonwebtoken"));
-
-// src/lib/auth-middleware.ts
-var import_client2 = require("@prisma/client");
-function createAuthContext(user) {
-  try {
-    console.log("\u{1F50D} createAuthContext called with:", {
-      userExists: !!user,
-      userActive: user?.isActive,
-      sellerStatus: user?.sellerStatus,
-      enumsAvailable: {
-        SellerStatus: typeof import_client2.SellerStatus,
-        UserRole: typeof import_client2.UserRole
-      }
-    });
-    if (!user) {
-      return {
-        user: null,
-        isAuthenticated: false,
-        hasRole: /* @__PURE__ */ __name(() => false, "hasRole"),
-        isSellerVerified: false,
-        canAccessSellerDashboard: false
-      };
-    }
-    const isAuthenticated = !!user && user.isActive;
-    let isSellerVerified = false;
-    if (user.sellerStatus) {
-      isSellerVerified = user.sellerStatus === "APPROVED";
-      if (!isSellerVerified && typeof import_client2.SellerStatus !== "undefined") {
-        try {
-          isSellerVerified = user.sellerStatus === import_client2.SellerStatus.APPROVED;
-        } catch (enumError) {
-          console.warn("Prisma SellerStatus enum not available:", enumError);
-        }
-      }
-    }
-    const canAccessSellerDashboard = isSellerVerified && !!user?.verifiedAt;
-    console.log("\u2705 Auth context created:", {
-      isAuthenticated,
-      isSellerVerified,
-      canAccessSellerDashboard,
-      userRole: user.role
-    });
-    return {
-      user,
-      isAuthenticated,
-      hasRole: /* @__PURE__ */ __name((role) => {
-        if (!user) return false;
-        try {
-          const roles = Array.isArray(role) ? role : [role];
-          return roles.some((r) => {
-            return user.role === r;
-          });
-        } catch (error) {
-          console.error("Error checking user role:", error);
-          return false;
-        }
-      }, "hasRole"),
-      isSellerVerified,
-      canAccessSellerDashboard
-    };
-  } catch (error) {
-    console.error("\u274C Critical error in createAuthContext:", error);
-    console.error("Error details:", {
-      message: error instanceof Error ? error.message : "Unknown error",
-      stack: error instanceof Error ? error.stack : void 0,
-      userProvided: !!user
-    });
-    return {
-      user,
-      isAuthenticated: false,
-      hasRole: /* @__PURE__ */ __name(() => false, "hasRole"),
-      isSellerVerified: false,
-      canAccessSellerDashboard: false
-    };
-  }
-}
-__name(createAuthContext, "createAuthContext");
-async function requireAuth(request, _reply) {
-  if (!request.auth) {
-    console.error("\u274C request.auth is null/undefined");
-    throw errors.unauthorized("Authentication not initialized");
-  }
-  if (!request.auth.isAuthenticated) {
-    console.error("\u274C User not authenticated");
-    throw errors.unauthorized("Authentication required");
-  }
-}
-__name(requireAuth, "requireAuth");
-async function optionalAuth(_request) {
-}
-__name(optionalAuth, "optionalAuth");
-function canAccessResource(user, resourceOwnerId, requiredRole) {
-  if (!user) return false;
-  if (user.id === resourceOwnerId) return true;
-  if (requiredRole) {
-    try {
-      const roles = Array.isArray(requiredRole) ? requiredRole : [requiredRole];
-      return roles.some((role) => user.role === role);
-    } catch (error) {
-      console.error("Error checking resource access role:", error);
-      return false;
-    }
-  }
-  return false;
-}
-__name(canAccessResource, "canAccessResource");
-
-// src/plugins/auth.ts
 var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
-  console.log("\u{1F527} Registering enhanced auth plugin...");
+  console.log("\u{1F527} Registering simplified auth plugin...");
   fastify.decorateRequest("user", null);
   fastify.decorateRequest("auth", null);
   fastify.addHook("preHandler", async (request, reply) => {
@@ -419,37 +294,23 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
       if (isPublicPath) {
         console.log("\u2705 Public path, skipping auth:", request.url);
         request.user = null;
-        try {
-          request.auth = createAuthContext(null);
-        } catch (authError) {
-          console.error("\u274C Error creating auth context for public path:", authError);
-          request.auth = {
-            user: null,
-            isAuthenticated: false,
-            hasRole: /* @__PURE__ */ __name(() => false, "hasRole"),
-            isSellerVerified: false,
-            canAccessSellerDashboard: false
-          };
-        }
+        request.auth = {
+          user: null,
+          isAuthenticated: false,
+          hasRole: /* @__PURE__ */ __name(() => false, "hasRole")
+        };
         return;
       }
       if (!authHeader || !authHeader.startsWith("Bearer ")) {
         console.log("\u274C No valid auth header for route:", request.url);
         request.user = null;
-        try {
-          request.auth = createAuthContext(null);
-        } catch (authError) {
-          console.error("\u274C Error creating auth context for unauthenticated user:", authError);
-          request.auth = {
-            user: null,
-            isAuthenticated: false,
-            hasRole: /* @__PURE__ */ __name(() => false, "hasRole"),
-            isSellerVerified: false,
-            canAccessSellerDashboard: false
-          };
-        }
+        request.auth = {
+          user: null,
+          isAuthenticated: false,
+          hasRole: /* @__PURE__ */ __name(() => false, "hasRole")
+        };
         const protectedRoutes = ["/my", "/create", "/me"];
-        if (protectedRoutes.includes(request.url)) {
+        if (protectedRoutes.some((route) => request.url.startsWith(route))) {
           return reply.status(401).send({
             success: false,
             error: "Authentication required",
@@ -463,7 +324,12 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         const prisma2 = getPrismaClient();
         const dbStart = Date.now();
         await prisma2.$queryRaw`SELECT 1 as test`;
-        console.log("\u2705 Database connection successful in", Date.now() - dbStart, "ms");
+        const slowQueryTime = Date.now() - dbStart;
+        if (slowQueryTime > 2e3) {
+          console.warn("\u26A0\uFE0F Slow database query detected:", slowQueryTime, "ms");
+        } else {
+          console.log("\u2705 Database connection successful in", slowQueryTime, "ms");
+        }
         console.log("\u{1F50D} Verifying Privy JWT token...");
         const token = authHeader.replace("Bearer ", "");
         try {
@@ -480,37 +346,85 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
           const privyDid = decoded.sub;
           console.log("\u{1F50D} Privy DID from token:", privyDid);
           let user = await prisma2.user.findUnique({
-            where: { privyDid }
+            where: { privyDid },
+            select: {
+              id: true,
+              privyDid: true,
+              walletAddress: true,
+              email: true,
+              role: true,
+              isActive: true,
+              createdAt: true,
+              updatedAt: true
+            }
           });
           if (!user) {
             console.log("\u{1F195} Creating new user for Privy DID:", privyDid);
             const walletAddress = decoded.wallet_address || null;
+            const email = decoded.email || null;
             user = await prisma2.user.create({
               data: {
                 privyDid,
                 walletAddress,
-                email: decoded.email || null,
-                displayName: decoded.email?.split("@")[0] || "User",
+                email,
                 role: "TRADER",
+                // Using string literal to match enum
+                isActive: true
+              },
+              select: {
+                id: true,
+                privyDid: true,
+                walletAddress: true,
+                email: true,
+                role: true,
                 isActive: true,
-                sellerStatus: "NOT_APPLIED"
+                createdAt: true,
+                updatedAt: true
               }
             });
             console.log("\u2705 User created successfully:", user.id);
           } else {
             console.log("\u2705 Existing user found:", user.id);
             const walletAddress = decoded.wallet_address || null;
-            if (walletAddress && user.walletAddress !== walletAddress) {
-              await prisma2.user.update({
+            const email = decoded.email || null;
+            const needsUpdate = walletAddress && user.walletAddress !== walletAddress || email && user.email !== email && !user.email;
+            if (needsUpdate) {
+              console.log("\u{1F504} Updating user info...");
+              const updateData = {};
+              if (walletAddress && user.walletAddress !== walletAddress) {
+                updateData.walletAddress = walletAddress;
+              }
+              if (email && !user.email) {
+                updateData.email = email;
+              }
+              updateData.updatedAt = /* @__PURE__ */ new Date();
+              user = await prisma2.user.update({
                 where: { id: user.id },
-                data: { walletAddress }
+                data: updateData,
+                select: {
+                  id: true,
+                  privyDid: true,
+                  walletAddress: true,
+                  email: true,
+                  role: true,
+                  isActive: true,
+                  createdAt: true,
+                  updatedAt: true
+                }
               });
-              user.walletAddress = walletAddress;
-              console.log("\u2705 Updated wallet address for user:", user.id);
+              console.log("\u2705 User updated successfully:", user.id);
             }
           }
           request.user = user;
-          request.auth = createAuthContext(user);
+          request.auth = {
+            user,
+            isAuthenticated: !!user && user.isActive,
+            hasRole: /* @__PURE__ */ __name((role) => {
+              if (!user) return false;
+              const roles = Array.isArray(role) ? role : [role];
+              return roles.includes(user.role);
+            }, "hasRole")
+          };
           console.log("\u2705 Auth context created successfully for user:", user.id);
         } catch (jwtError) {
           console.error("\u274C JWT verification failed:", jwtError);
@@ -518,9 +432,7 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
           request.auth = {
             user: null,
             isAuthenticated: false,
-            hasRole: /* @__PURE__ */ __name(() => false, "hasRole"),
-            isSellerVerified: false,
-            canAccessSellerDashboard: false
+            hasRole: /* @__PURE__ */ __name(() => false, "hasRole")
           };
         }
         console.log("\u2705 Auth hook completed in", Date.now() - startTime, "ms");
@@ -530,9 +442,7 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         request.auth = {
           user: null,
           isAuthenticated: false,
-          hasRole: /* @__PURE__ */ __name(() => false, "hasRole"),
-          isSellerVerified: false,
-          canAccessSellerDashboard: false
+          hasRole: /* @__PURE__ */ __name(() => false, "hasRole")
         };
         console.log("\u26A0\uFE0F Continuing without database connection");
       }
@@ -542,14 +452,12 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
       request.auth = {
         user: null,
         isAuthenticated: false,
-        hasRole: /* @__PURE__ */ __name(() => false, "hasRole"),
-        isSellerVerified: false,
-        canAccessSellerDashboard: false
+        hasRole: /* @__PURE__ */ __name(() => false, "hasRole")
       };
       console.log("\u{1F527} Continuing with fallback auth due to error");
     }
   });
-  console.log("\u2705 Enhanced auth plugin registered");
+  console.log("\u2705 Simplified auth plugin registered");
 }, "registerAuthPlugin");
 var registerAuth = (0, import_fastify_plugin.default)(registerAuthPlugin, {
   name: "auth-plugin"
@@ -557,10 +465,10 @@ var registerAuth = (0, import_fastify_plugin.default)(registerAuthPlugin, {
 
 // src/routes/v1/users.ts
 var import_zod = require("zod");
+var import_jsonwebtoken2 = require("jsonwebtoken");
 var import_zod_to_json_schema = require("zod-to-json-schema");
 
 // src/services/users-service.ts
-var import_client3 = require("@prisma/client");
 var UsersService = class {
   constructor(prisma2) {
     this.prisma = prisma2;
@@ -569,7 +477,7 @@ var UsersService = class {
     __name(this, "UsersService");
   }
   /**
-   * Get user profile by ID
+   * Get user profile by ID - Step 1 version
    */
   async getUserProfile(userId) {
     try {
@@ -577,365 +485,26 @@ var UsersService = class {
         where: { id: userId },
         select: {
           id: true,
+          privyDid: true,
           walletAddress: true,
           email: true,
           role: true,
-          sellerStatus: true,
-          displayName: true,
-          avatar: true,
+          isActive: true,
           createdAt: true,
-          updatedAt: true,
-          verifiedAt: true,
-          rejectedAt: true,
-          rejectionReason: true
+          updatedAt: true
         }
       });
       if (!user) {
         throw errors.notFound("User not found");
       }
-      const isVerifiedSeller = user.sellerStatus === import_client3.SellerStatus.APPROVED;
-      return {
-        id: user.id,
-        walletAddress: user.walletAddress,
-        email: user.email,
-        role: user.role,
-        sellerStatus: user.sellerStatus,
-        displayName: user.displayName,
-        avatar: user.avatar,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
-        verifiedAt: user.verifiedAt,
-        rejectedAt: user.rejectedAt,
-        rejectionReason: user.rejectionReason,
-        isVerifiedSeller
-      };
+      return user;
     } catch (error) {
       loggers.error(error, { userId, operation: "getUserProfile" });
       throw error;
     }
   }
   /**
-   * Get user activity summary
-   */
-  async getUserActivitySummary(userId) {
-    try {
-      const [submissionsCount, listingsCount, bidsCount, tokensCount] = await Promise.all([
-        this.prisma.rwaSubmission.count({
-          where: { ownerId: userId }
-        }),
-        this.prisma.rwaListing.count({
-          where: { ownerId: userId }
-        }),
-        this.prisma.bid.count({
-          where: { bidderId: userId }
-        }),
-        this.prisma.token.count({
-          where: { userId }
-        })
-      ]);
-      return {
-        submissionsCount,
-        listingsCount,
-        bidsCount,
-        tokensCount
-      };
-    } catch (error) {
-      loggers.error(error, { userId, operation: "getUserActivitySummary" });
-      throw error;
-    }
-  }
-  /**
-   * Get user submissions
-   */
-  async getUserSubmissions(userId) {
-    try {
-      const submissions = await this.prisma.rwaSubmission.findMany({
-        where: { ownerId: userId },
-        select: {
-          id: true,
-          title: true,
-          symbol: true,
-          status: true,
-          createdAt: true,
-          imageGallery: true,
-          rwaListing: {
-            select: {
-              id: true,
-              isLive: true
-            }
-          }
-        },
-        orderBy: { createdAt: "desc" }
-      });
-      return submissions.map((sub) => ({
-        id: sub.id,
-        title: sub.title,
-        symbol: sub.symbol,
-        status: sub.status,
-        imageUrl: sub.imageGallery[0] || "/placeholder.svg",
-        createdAt: sub.createdAt,
-        hasListing: !!sub.rwaListing,
-        listingIsLive: sub.rwaListing?.isLive || false
-      }));
-    } catch (error) {
-      loggers.error(error, { userId, operation: "getUserSubmissions" });
-      throw error;
-    }
-  }
-  /**
-   * Get user listings
-   */
-  async getUserListings(userId) {
-    try {
-      const listings = await this.prisma.rwaListing.findMany({
-        where: { ownerId: userId },
-        select: {
-          id: true,
-          title: true,
-          symbol: true,
-          imageGallery: true,
-          isLive: true,
-          createdAt: true,
-          rwaSubmission: {
-            select: {
-              id: true,
-              status: true
-            }
-          },
-          bids: {
-            take: 5,
-            orderBy: { createdAt: "desc" },
-            select: {
-              id: true,
-              amount: true,
-              currency: true,
-              createdAt: true,
-              bidder: {
-                select: {
-                  displayName: true
-                }
-              }
-            }
-          },
-          token: {
-            select: {
-              id: true,
-              contractAddress: true
-            }
-          }
-        },
-        orderBy: { createdAt: "desc" }
-      });
-      return listings.map((listing) => ({
-        id: listing.id,
-        title: listing.title,
-        symbol: listing.symbol,
-        imageUrl: listing.imageGallery[0] || "/placeholder.svg",
-        isLive: listing.isLive,
-        createdAt: listing.createdAt,
-        submissionId: listing.rwaSubmission.id,
-        submissionStatus: listing.rwaSubmission.status,
-        bidsCount: listing.bids.length,
-        latestBid: listing.bids[0] || null,
-        hasToken: !!listing.token,
-        tokenAddress: listing.token?.contractAddress || null
-      }));
-    } catch (error) {
-      loggers.error(error, { userId, operation: "getUserListings" });
-      throw error;
-    }
-  }
-  /**
-   * Get user bids
-   */
-  async getUserBids(userId) {
-    try {
-      const bids = await this.prisma.bid.findMany({
-        where: { bidderId: userId },
-        include: {
-          listing: {
-            select: {
-              id: true,
-              title: true,
-              symbol: true,
-              imageGallery: true,
-              isLive: true
-            }
-          }
-        },
-        orderBy: { createdAt: "desc" }
-      });
-      return bids.map((bid) => ({
-        id: bid.id,
-        amount: bid.amount,
-        currency: bid.currency,
-        createdAt: bid.createdAt,
-        listing: {
-          id: bid.listing.id,
-          title: bid.listing.title,
-          symbol: bid.listing.symbol,
-          imageUrl: bid.listing.imageGallery[0] || "/placeholder.svg",
-          isLive: bid.listing.isLive
-        }
-      }));
-    } catch (error) {
-      loggers.error(error, { userId, operation: "getUserBids" });
-      throw error;
-    }
-  }
-  /**
-   * Get user tokens/portfolio
-   */
-  async getUserTokens(userId) {
-    try {
-      let tokens = [];
-      try {
-        tokens = await this.prisma.token.findMany({
-          where: { userId },
-          include: {
-            rwaListing: {
-              select: {
-                title: true,
-                symbol: true,
-                imageGallery: true
-              }
-            }
-          },
-          orderBy: { createdAt: "desc" }
-        });
-      } catch (relationError) {
-        console.warn(
-          "Failed to fetch tokens with rwaListing relationship, falling back to separate queries:",
-          relationError
-        );
-        const basicTokens = await this.prisma.token.findMany({
-          where: { userId },
-          orderBy: { createdAt: "desc" }
-        });
-        tokens = await Promise.all(
-          basicTokens.map(async (token) => {
-            let rwaListing = null;
-            if (token.rwaListingId) {
-              try {
-                rwaListing = await this.prisma.rwaListing.findUnique({
-                  where: { id: token.rwaListingId },
-                  select: {
-                    title: true,
-                    symbol: true,
-                    imageGallery: true
-                  }
-                });
-              } catch (listingError) {
-                console.warn(`Could not fetch rwaListing for token ${token.id}:`, listingError);
-              }
-            }
-            return { ...token, rwaListing };
-          })
-        );
-      }
-      return tokens.map((token) => ({
-        id: token.id,
-        contractAddress: token.contractAddress,
-        title: token.rwaListing?.title || "Unknown",
-        ticker: token.rwaListing?.symbol || "UNK",
-        image: token.rwaListing?.imageGallery?.[0] || "/placeholder.svg",
-        value: "0",
-        // Would need pricing data
-        category: this.getCategoryFromTitle(token.rwaListing?.title || "")
-      }));
-    } catch (error) {
-      loggers.error(error, { userId, operation: "getUserTokens" });
-      throw error;
-    }
-  }
-  /**
-   * Get user portfolio summary
-   */
-  async getUserPortfolioSummary(userId) {
-    try {
-      const tokens = await this.getUserTokens(userId);
-      return {
-        tokenSymbols: tokens.map((t) => t.ticker),
-        totalValueEstimate: "0",
-        // Would need pricing integration
-        tokens
-      };
-    } catch (error) {
-      loggers.error(error, { userId, operation: "getUserPortfolioSummary" });
-      throw error;
-    }
-  }
-  /**
-   * Get public user profile (for other users to view)
-   */
-  async getPublicUserProfile(userId) {
-    try {
-      let user = null;
-      let verificationStatus = null;
-      try {
-        user = await this.prisma.user.findUnique({
-          where: { id: userId },
-          select: {
-            id: true,
-            displayName: true,
-            avatar: true,
-            role: true,
-            sellerStatus: true,
-            createdAt: true,
-            accountVerification: {
-              select: {
-                status: true
-              }
-            }
-          }
-        });
-        verificationStatus = user?.accountVerification?.status || null;
-      } catch (relationError) {
-        console.warn(
-          "Failed to fetch user with accountVerification relationship, falling back to basic query:",
-          relationError
-        );
-        user = await this.prisma.user.findUnique({
-          where: { id: userId },
-          select: {
-            id: true,
-            displayName: true,
-            avatar: true,
-            role: true,
-            sellerStatus: true,
-            createdAt: true
-          }
-        });
-        try {
-          const verification = await this.prisma.accountVerification.findUnique({
-            where: { userId },
-            select: { status: true }
-          });
-          verificationStatus = verification?.status || null;
-        } catch (verificationError) {
-          console.warn("Could not fetch separate verification:", verificationError);
-          verificationStatus = null;
-        }
-      }
-      if (!user) {
-        throw errors.notFound("User not found");
-      }
-      return {
-        id: user.id,
-        displayName: user.displayName,
-        avatar: user.avatar,
-        role: user.role,
-        sellerStatus: user.sellerStatus,
-        memberSince: user.createdAt,
-        verificationStatus
-      };
-    } catch (error) {
-      loggers.error(error, { userId, operation: "getPublicUserProfile" });
-      throw error;
-    }
-  }
-  /**
-   * Update user profile
+   * Update user profile - Step 1 version (email only)
    */
   async updateUserProfile(userId, updates) {
     try {
@@ -947,112 +516,85 @@ var UsersService = class {
         },
         select: {
           id: true,
+          privyDid: true,
           walletAddress: true,
           email: true,
           role: true,
-          sellerStatus: true,
-          displayName: true,
-          avatar: true,
+          isActive: true,
           createdAt: true,
-          updatedAt: true,
-          verifiedAt: true,
-          rejectedAt: true,
-          rejectionReason: true
+          updatedAt: true
         }
       });
-      const isVerifiedSeller = updatedUser.sellerStatus === import_client3.SellerStatus.APPROVED;
-      return {
-        ...updatedUser,
-        isVerifiedSeller
-      };
+      return updatedUser;
     } catch (error) {
       loggers.error(error, { userId, updates, operation: "updateUserProfile" });
       throw error;
     }
   }
-  /**
-   * Helper method to categorize assets
-   */
-  getCategoryFromTitle(title) {
-    const titleLower = title.toLowerCase();
-    if (titleLower.includes("car") || titleLower.includes("vehicle") || titleLower.includes("porsche")) {
-      return "Vehicle";
-    }
-    if (titleLower.includes("house") || titleLower.includes("property") || titleLower.includes("real estate")) {
-      return "Real Estate";
-    }
-    if (titleLower.includes("art") || titleLower.includes("painting") || titleLower.includes("sculpture")) {
-      return "Art";
-    }
-    if (titleLower.includes("watch") || titleLower.includes("jewelry") || titleLower.includes("gold")) {
-      return "Luxury";
-    }
-    return "Other";
-  }
 };
 
+// src/lib/auth-middleware.ts
+async function requireAuth(request, _reply) {
+  if (!request.auth) {
+    console.error("request.auth is null/undefined");
+    throw errors.unauthorized("Authentication not initialized");
+  }
+  if (!request.auth.isAuthenticated || !request.user) {
+    console.error("User not authenticated");
+    throw errors.unauthorized("Authentication required");
+  }
+}
+__name(requireAuth, "requireAuth");
+
 // src/routes/v1/users.ts
-var import_client4 = require("@prisma/client");
 var UserProfileUpdateSchema = import_zod.z.object({
-  firstName: import_zod.z.string().min(1).max(50).optional(),
-  lastName: import_zod.z.string().min(1).max(50).optional(),
-  displayName: import_zod.z.string().min(1).max(30).optional(),
-  bio: import_zod.z.string().max(500).optional(),
-  website: import_zod.z.string().url().optional(),
-  twitterHandle: import_zod.z.string().regex(/^@?[A-Za-z0-9_]{1,15}$/).optional(),
-  avatar: import_zod.z.string().url().optional(),
-  notifications: import_zod.z.boolean().optional(),
-  newsletter: import_zod.z.boolean().optional(),
-  darkMode: import_zod.z.boolean().optional()
-});
-var PaginationSchema = import_zod.z.object({
-  limit: import_zod.z.coerce.number().min(1).max(100).default(20),
-  cursor: import_zod.z.string().optional()
-});
-var UserSearchSchema = import_zod.z.object({
-  q: import_zod.z.string().min(1, "Search query is required"),
-  limit: import_zod.z.coerce.number().min(1).max(50).default(10)
+  email: import_zod.z.string().email().optional()
 });
 async function usersRoutes(fastify) {
-  const profileService = new UsersService(fastify.prisma);
+  const usersService = new UsersService(fastify.prisma);
   fastify.post(
     "/verify-or-create",
     {
-      preHandler: [requireAuth],
       schema: {
         body: (0, import_zod_to_json_schema.zodToJsonSchema)(
           import_zod.z.object({
             privyDid: import_zod.z.string().min(1),
             walletAddress: import_zod.z.string().optional(),
-            email: import_zod.z.string().email().optional(),
-            displayName: import_zod.z.string().min(1).max(30).optional()
+            email: import_zod.z.string().email().optional()
           })
         )
       }
     },
     async (request, reply) => {
-      const { privyDid, walletAddress, email, displayName } = request.body;
+      const { privyDid, walletAddress, email } = request.body;
       const correlationId = request.id;
       try {
+        const authHeader = request.headers.authorization;
+        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+          throw errors.unauthorized("Authentication token required");
+        }
+        const token = authHeader.replace("Bearer ", "");
+        const decoded = (0, import_jsonwebtoken2.decode)(token);
+        if (!decoded || !decoded.sub || decoded.sub !== privyDid) {
+          throw errors.unauthorized("Invalid or mismatched authentication token");
+        }
         let user = await fastify.prisma.user.findUnique({
           where: { privyDid }
         });
         if (!user) {
-          console.log("\u{1F195} Creating new user for Privy DID:", privyDid);
+          console.log("Creating new user for Privy DID:", privyDid);
           user = await fastify.prisma.user.create({
             data: {
               privyDid,
               walletAddress: walletAddress || null,
               email: email || null,
-              displayName: displayName || email?.split("@")[0] || "User",
               role: "TRADER",
-              isActive: true,
-              sellerStatus: "NOT_APPLIED"
+              isActive: true
             }
           });
-          console.log("\u2705 User created successfully:", user.id);
+          console.log("User created successfully:", user.id);
         } else {
-          console.log("\u2705 Existing user found:", user.id);
+          console.log("Existing user found:", user.id);
           const updates = {};
           if (walletAddress && user.walletAddress !== walletAddress) {
             updates.walletAddress = walletAddress;
@@ -1060,23 +602,22 @@ async function usersRoutes(fastify) {
           if (email && user.email !== email) {
             updates.email = email;
           }
-          if (displayName && user.displayName !== displayName) {
-            updates.displayName = displayName;
-          }
           if (Object.keys(updates).length > 0) {
             user = await fastify.prisma.user.update({
               where: { id: user.id },
               data: { ...updates, updatedAt: /* @__PURE__ */ new Date() }
             });
-            console.log("\u2705 Updated user info:", user.id);
+            console.log("Updated user info:", user.id);
           }
         }
-        const profile = await profileService.getUserProfile(user.id);
+        const profile = await usersService.getUserProfile(user.id);
         return reply.send({
           success: true,
-          data: profile,
-          created: !request.user
-          // true if this was a new user
+          data: {
+            profile,
+            created: user.createdAt.getTime() > Date.now() - 1e4
+            // true if just created
+          }
         });
       } catch (error) {
         const err = error instanceof Error ? error : new Error("Unknown error");
@@ -1095,7 +636,7 @@ async function usersRoutes(fastify) {
     },
     async (request, reply) => {
       try {
-        const profile = await profileService.getUserProfile(request.user.id);
+        const profile = await usersService.getUserProfile(request.user.id);
         return reply.send({
           success: true,
           data: profile
@@ -1122,7 +663,7 @@ async function usersRoutes(fastify) {
       const updates = request.body;
       const correlationId = request.id;
       try {
-        const updatedProfile = await profileService.updateUserProfile(request.user.id, updates);
+        const updatedProfile = await usersService.updateUserProfile(request.user.id, updates);
         return reply.send({
           success: true,
           data: updatedProfile
@@ -1132,361 +673,6 @@ async function usersRoutes(fastify) {
         fastify.log.error(
           { err, correlationId, operation: "updateCurrentUserProfile" },
           "Failed to update current user profile"
-        );
-        throw error;
-      }
-    }
-  );
-  fastify.get(
-    "/:userId",
-    {
-      preHandler: [optionalAuth],
-      schema: {
-        params: (0, import_zod_to_json_schema.zodToJsonSchema)(
-          import_zod.z.object({
-            userId: import_zod.z.string().min(1)
-          })
-        )
-      }
-    },
-    async (request, reply) => {
-      const { userId } = request.params;
-      try {
-        if (request.auth.isAuthenticated && request.user.id === userId) {
-          const profile = await profileService.getUserProfile(userId);
-          return reply.send({
-            success: true,
-            data: profile
-          });
-        }
-        const publicProfile = await profileService.getPublicUserProfile(userId);
-        return reply.send({
-          success: true,
-          data: publicProfile
-        });
-      } catch (error) {
-        const err = error instanceof Error ? error : new Error("Unknown error");
-        fastify.log.error(
-          { err, userId, operation: "getUserProfileById" },
-          "Failed to get user profile"
-        );
-        throw error;
-      }
-    }
-  );
-  fastify.get(
-    "/me/transactions",
-    {
-      preHandler: [requireAuth],
-      schema: {
-        querystring: (0, import_zod_to_json_schema.zodToJsonSchema)(PaginationSchema)
-      }
-    },
-    async (request, reply) => {
-      const { limit, cursor } = request.query;
-      try {
-        const activity = await profileService.getUserActivitySummary(request.user.id);
-        const submissions = await profileService.getUserSubmissions(request.user.id);
-        const bids = await profileService.getUserBids(request.user.id);
-        const startIndex = cursor ? submissions.findIndex((s) => s.id === cursor) + 1 : 0;
-        const endIndex = startIndex + limit;
-        const paginatedSubmissions = submissions.slice(startIndex, endIndex);
-        const hasMore = endIndex < submissions.length;
-        const nextCursor = hasMore ? paginatedSubmissions[paginatedSubmissions.length - 1]?.id : void 0;
-        return reply.send({
-          success: true,
-          data: {
-            activity,
-            submissions: paginatedSubmissions,
-            bids: bids.slice(0, limit),
-            nextCursor,
-            hasMore
-          }
-        });
-      } catch (error) {
-        const err = error instanceof Error ? error : new Error("Unknown error");
-        fastify.log.error(
-          { err, operation: "getUserTransactionHistory" },
-          "Failed to get user transaction history"
-        );
-        throw error;
-      }
-    }
-  );
-  fastify.get(
-    "/:userId/transactions",
-    {
-      preHandler: [requireAuth],
-      schema: {
-        params: (0, import_zod_to_json_schema.zodToJsonSchema)(
-          import_zod.z.object({
-            userId: import_zod.z.string().min(1)
-          })
-        ),
-        querystring: (0, import_zod_to_json_schema.zodToJsonSchema)(PaginationSchema)
-      }
-    },
-    async (request, reply) => {
-      const { userId } = request.params;
-      const { limit, cursor } = request.query;
-      try {
-        if (!canAccessResource(request.user, userId, [import_client4.UserRole.ADMIN])) {
-          throw errors.forbidden("Access denied");
-        }
-        const activity = await profileService.getUserActivitySummary(userId);
-        const submissions = await profileService.getUserSubmissions(userId);
-        const bids = await profileService.getUserBids(userId);
-        const startIndex = cursor ? submissions.findIndex((s) => s.id === cursor) + 1 : 0;
-        const endIndex = startIndex + limit;
-        const paginatedSubmissions = submissions.slice(startIndex, endIndex);
-        const hasMore = endIndex < submissions.length;
-        const nextCursor = hasMore ? paginatedSubmissions[paginatedSubmissions.length - 1]?.id : void 0;
-        const transactions = {
-          activity,
-          submissions: paginatedSubmissions,
-          bids: bids.slice(0, limit),
-          nextCursor,
-          hasMore
-        };
-        return reply.send({
-          success: true,
-          data: transactions
-        });
-      } catch (error) {
-        const err = error instanceof Error ? error : new Error("Unknown error");
-        fastify.log.error(
-          { err, userId, operation: "getUserTransactionHistoryById" },
-          "Failed to get user transaction history"
-        );
-        throw error;
-      }
-    }
-  );
-  fastify.get(
-    "/me/assets",
-    {
-      preHandler: [requireAuth]
-    },
-    async (request, reply) => {
-      try {
-        const portfolio = await profileService.getUserPortfolioSummary(request.user.id);
-        const tokens = await profileService.getUserTokens(request.user.id);
-        return reply.send({
-          success: true,
-          data: {
-            portfolio,
-            tokens,
-            totalValue: portfolio.totalValueEstimate
-          }
-        });
-      } catch (error) {
-        const err = error instanceof Error ? error : new Error("Unknown error");
-        fastify.log.error(
-          { err, operation: "getUserOnChainAssets" },
-          "Failed to get user on-chain assets"
-        );
-        throw error;
-      }
-    }
-  );
-  fastify.get(
-    "/:userId/assets",
-    {
-      preHandler: [requireAuth],
-      schema: {
-        params: (0, import_zod_to_json_schema.zodToJsonSchema)(
-          import_zod.z.object({
-            userId: import_zod.z.string().min(1)
-          })
-        )
-      }
-    },
-    async (request, reply) => {
-      const { userId } = request.params;
-      try {
-        if (!canAccessResource(request.user, userId, [import_client4.UserRole.ADMIN])) {
-          throw errors.forbidden("Access denied");
-        }
-        const user = await fastify.prisma.user.findUnique({
-          where: { id: userId },
-          select: { walletAddress: true }
-        });
-        if (!user) {
-          throw errors.notFound("User not found");
-        }
-        const portfolio = await profileService.getUserPortfolioSummary(userId);
-        const tokens = await profileService.getUserTokens(userId);
-        const assets = {
-          portfolio,
-          tokens,
-          totalValue: portfolio.totalValueEstimate
-        };
-        return reply.send({
-          success: true,
-          data: assets
-        });
-      } catch (error) {
-        const err = error instanceof Error ? error : new Error("Unknown error");
-        fastify.log.error(
-          { err, userId, operation: "getUserOnChainAssetsById" },
-          "Failed to get user on-chain assets"
-        );
-        throw error;
-      }
-    }
-  );
-  fastify.get(
-    "/search",
-    {
-      preHandler: [optionalAuth],
-      schema: {
-        querystring: (0, import_zod_to_json_schema.zodToJsonSchema)(UserSearchSchema)
-      }
-    },
-    async (request, reply) => {
-      const { q, limit } = request.query;
-      try {
-        const users = await fastify.prisma.user.findMany({
-          where: {
-            OR: [
-              { displayName: { contains: q, mode: "insensitive" } },
-              { walletAddress: { contains: q, mode: "insensitive" } },
-              { email: { contains: q, mode: "insensitive" } }
-            ],
-            isActive: true
-          },
-          select: {
-            id: true,
-            displayName: true,
-            walletAddress: true,
-            avatar: true,
-            role: true,
-            sellerStatus: true,
-            createdAt: true
-          },
-          take: limit,
-          orderBy: { createdAt: "desc" }
-        });
-        return reply.send({
-          success: true,
-          data: {
-            users,
-            query: q,
-            total: users.length
-          }
-        });
-      } catch (error) {
-        const err = error instanceof Error ? error : new Error("Unknown error");
-        fastify.log.error({ err, query: q, operation: "searchUsers" }, "Failed to search users");
-        throw error;
-      }
-    }
-  );
-  fastify.get(
-    "/:userId/stats",
-    {
-      preHandler: [requireAuth],
-      schema: {
-        params: (0, import_zod_to_json_schema.zodToJsonSchema)(
-          import_zod.z.object({
-            userId: import_zod.z.string().min(1)
-          })
-        )
-      }
-    },
-    async (request, reply) => {
-      const { userId } = request.params;
-      try {
-        if (!canAccessResource(request.user, userId, [import_client4.UserRole.ADMIN])) {
-          throw errors.forbidden("Access denied");
-        }
-        const [profile, activity, portfolio, tokens] = await Promise.all([
-          profileService.getUserProfile(userId),
-          profileService.getUserActivitySummary(userId),
-          profileService.getUserPortfolioSummary(userId),
-          profileService.getUserTokens(userId)
-        ]);
-        const stats = {
-          profile: {
-            id: profile.id,
-            role: profile.role,
-            sellerStatus: profile.sellerStatus,
-            createdAt: profile.createdAt,
-            isVerifiedSeller: profile.isVerifiedSeller
-          },
-          activity: {
-            totalSubmissions: activity.submissionsCount,
-            totalListings: activity.listingsCount,
-            totalBids: activity.bidsCount,
-            totalTokens: activity.tokensCount
-          },
-          assets: {
-            totalTokens: tokens.length,
-            totalValue: portfolio.totalValueEstimate,
-            tokenSymbols: portfolio.tokenSymbols
-          }
-        };
-        return reply.send({
-          success: true,
-          data: stats
-        });
-      } catch (error) {
-        const err = error instanceof Error ? error : new Error("Unknown error");
-        fastify.log.error(
-          { err, userId, operation: "getUserStats" },
-          "Failed to get user statistics"
-        );
-        throw error;
-      }
-    }
-  );
-  fastify.get(
-    "/:userId/tokens",
-    {
-      preHandler: [requireAuth],
-      schema: {
-        params: (0, import_zod_to_json_schema.zodToJsonSchema)(
-          import_zod.z.object({
-            userId: import_zod.z.string().min(1)
-          })
-        )
-      }
-    },
-    async (request, reply) => {
-      const { userId } = request.params;
-      try {
-        if (!canAccessResource(request.user, userId, [import_client4.UserRole.ADMIN])) {
-          throw errors.forbidden("Access denied");
-        }
-        const tokens = await profileService.getUserTokens(userId);
-        return reply.send({
-          success: true,
-          data: tokens
-        });
-      } catch (error) {
-        const err = error instanceof Error ? error : new Error("Unknown error");
-        fastify.log.error({ err, userId, operation: "getUserTokens" }, "Failed to get user tokens");
-        throw error;
-      }
-    }
-  );
-  fastify.get(
-    "/me/tokens",
-    {
-      preHandler: [requireAuth]
-    },
-    async (request, reply) => {
-      try {
-        const tokens = await profileService.getUserTokens(request.user.id);
-        return reply.send({
-          success: true,
-          data: tokens
-        });
-      } catch (error) {
-        const err = error instanceof Error ? error : new Error("Unknown error");
-        fastify.log.error(
-          { err, operation: "getCurrentUserTokens" },
-          "Failed to get current user tokens"
         );
         throw error;
       }
@@ -1504,6 +690,30 @@ var buildUsersApp = /* @__PURE__ */ __name(async () => {
   const prisma2 = getPrismaClient();
   fastify.decorate("prisma", prisma2);
   fastify.register(import_helmet.default);
+  fastify.addHook("onRequest", async (request, reply) => {
+    const origin = request.headers.origin;
+    const allowedOrigins = [
+      "http://localhost:3000",
+      "http://localhost:3002",
+      "https://www.aces.fun",
+      "https://aces.fun",
+      "https://aces-monorepo-git-dev-dan-aces-fun.vercel.app",
+      "https://aces-monorepo-git-main-dan-aces-fun.vercel.app"
+    ];
+    if (origin && (allowedOrigins.includes(origin) || origin.endsWith(".vercel.app"))) {
+      reply.header("Access-Control-Allow-Origin", origin);
+      reply.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+      reply.header(
+        "Access-Control-Allow-Headers",
+        "Content-Type, Authorization, Accept, Origin, X-Requested-With"
+      );
+      reply.header("Access-Control-Allow-Credentials", "true");
+      reply.header("Vary", "Origin");
+    }
+  });
+  fastify.options("*", async (request, reply) => {
+    reply.code(204).send();
+  });
   fastify.register(registerAuth);
   fastify.register(usersRoutes);
   fastify.addHook("onRequest", async (request) => {

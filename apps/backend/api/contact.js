@@ -57,7 +57,7 @@ var logger = (0, import_pino.pino)({
   formatters: {
     level: /* @__PURE__ */ __name((label) => ({ level: label }), "level")
   },
-  timestamp: import_pino.pino.stdTimeFunctions.isoTime,
+  timestamp: /* @__PURE__ */ __name(() => `,"time":"${(/* @__PURE__ */ new Date()).toISOString()}"`, "timestamp"),
   base: {
     service: "aces-backend",
     version: process.env.npm_package_version || "1.0.0"
@@ -133,39 +133,24 @@ var createPrismaClient = /* @__PURE__ */ __name(() => {
   console.log("\u{1F527} Creating Prisma client...");
   console.log("Database URL exists:", !!process.env.DATABASE_URL);
   const prisma2 = new import_client.PrismaClient({
-    log: [
-      {
-        emit: "event",
-        level: "query"
-      },
+    log: false ? [
       {
         emit: "event",
         level: "error"
       },
       {
         emit: "event",
-        level: "info"
-      },
-      {
-        emit: "event",
         level: "warn"
       }
-    ],
-    errorFormat: "pretty"
+    ] : [],
+    errorFormat: "pretty",
+    // Optimize for Supabase connection pooling
+    datasources: {
+      db: {
+        url: process.env.DATABASE_URL
+      }
+    }
   });
-  if (false) {
-    prisma2.$on("query", (e) => {
-      logger.debug(
-        {
-          type: "database",
-          query: e.query,
-          params: e.params,
-          duration: e.duration
-        },
-        "Database query executed"
-      );
-    });
-  }
   prisma2.$on("error", (e) => {
     logger.error(
       {
@@ -175,25 +160,23 @@ var createPrismaClient = /* @__PURE__ */ __name(() => {
       "Database error occurred"
     );
   });
-  prisma2.$use(
-    async (params, next) => {
-      const start = Date.now();
-      const result = await next(params);
-      const duration = Date.now() - start;
-      if (duration > 1e3) {
-        logger.warn(
-          {
-            type: "database",
-            action: params.action,
-            model: params.model,
-            duration
-          },
-          "Slow database query detected"
-        );
-      }
-      return result;
+  prisma2.$use(async (params, next) => {
+    const start = Date.now();
+    const result = await next(params);
+    const duration = Date.now() - start;
+    if (duration > 1e3) {
+      logger.warn(
+        {
+          type: "database",
+          action: params.action,
+          model: params.model,
+          duration
+        },
+        "Slow database query detected"
+      );
     }
-  );
+    return result;
+  });
   console.log("\u2705 Prisma client created successfully");
   return prisma2;
 }, "createPrismaClient");
@@ -264,87 +247,8 @@ __name(handleError, "handleError");
 // src/plugins/auth.ts
 var import_fastify_plugin = __toESM(require("fastify-plugin"));
 var import_jsonwebtoken = __toESM(require("jsonwebtoken"));
-
-// src/lib/auth-middleware.ts
-var import_client2 = require("@prisma/client");
-function createAuthContext(user) {
-  try {
-    console.log("\u{1F50D} createAuthContext called with:", {
-      userExists: !!user,
-      userActive: user?.isActive,
-      sellerStatus: user?.sellerStatus,
-      enumsAvailable: {
-        SellerStatus: typeof import_client2.SellerStatus,
-        UserRole: typeof import_client2.UserRole
-      }
-    });
-    if (!user) {
-      return {
-        user: null,
-        isAuthenticated: false,
-        hasRole: /* @__PURE__ */ __name(() => false, "hasRole"),
-        isSellerVerified: false,
-        canAccessSellerDashboard: false
-      };
-    }
-    const isAuthenticated = !!user && user.isActive;
-    let isSellerVerified = false;
-    if (user.sellerStatus) {
-      isSellerVerified = user.sellerStatus === "APPROVED";
-      if (!isSellerVerified && typeof import_client2.SellerStatus !== "undefined") {
-        try {
-          isSellerVerified = user.sellerStatus === import_client2.SellerStatus.APPROVED;
-        } catch (enumError) {
-          console.warn("Prisma SellerStatus enum not available:", enumError);
-        }
-      }
-    }
-    const canAccessSellerDashboard = isSellerVerified && !!user?.verifiedAt;
-    console.log("\u2705 Auth context created:", {
-      isAuthenticated,
-      isSellerVerified,
-      canAccessSellerDashboard,
-      userRole: user.role
-    });
-    return {
-      user,
-      isAuthenticated,
-      hasRole: /* @__PURE__ */ __name((role) => {
-        if (!user) return false;
-        try {
-          const roles = Array.isArray(role) ? role : [role];
-          return roles.some((r) => {
-            return user.role === r;
-          });
-        } catch (error) {
-          console.error("Error checking user role:", error);
-          return false;
-        }
-      }, "hasRole"),
-      isSellerVerified,
-      canAccessSellerDashboard
-    };
-  } catch (error) {
-    console.error("\u274C Critical error in createAuthContext:", error);
-    console.error("Error details:", {
-      message: error instanceof Error ? error.message : "Unknown error",
-      stack: error instanceof Error ? error.stack : void 0,
-      userProvided: !!user
-    });
-    return {
-      user,
-      isAuthenticated: false,
-      hasRole: /* @__PURE__ */ __name(() => false, "hasRole"),
-      isSellerVerified: false,
-      canAccessSellerDashboard: false
-    };
-  }
-}
-__name(createAuthContext, "createAuthContext");
-
-// src/plugins/auth.ts
 var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
-  console.log("\u{1F527} Registering enhanced auth plugin...");
+  console.log("\u{1F527} Registering simplified auth plugin...");
   fastify.decorateRequest("user", null);
   fastify.decorateRequest("auth", null);
   fastify.addHook("preHandler", async (request, reply) => {
@@ -376,37 +280,23 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
       if (isPublicPath) {
         console.log("\u2705 Public path, skipping auth:", request.url);
         request.user = null;
-        try {
-          request.auth = createAuthContext(null);
-        } catch (authError) {
-          console.error("\u274C Error creating auth context for public path:", authError);
-          request.auth = {
-            user: null,
-            isAuthenticated: false,
-            hasRole: /* @__PURE__ */ __name(() => false, "hasRole"),
-            isSellerVerified: false,
-            canAccessSellerDashboard: false
-          };
-        }
+        request.auth = {
+          user: null,
+          isAuthenticated: false,
+          hasRole: /* @__PURE__ */ __name(() => false, "hasRole")
+        };
         return;
       }
       if (!authHeader || !authHeader.startsWith("Bearer ")) {
         console.log("\u274C No valid auth header for route:", request.url);
         request.user = null;
-        try {
-          request.auth = createAuthContext(null);
-        } catch (authError) {
-          console.error("\u274C Error creating auth context for unauthenticated user:", authError);
-          request.auth = {
-            user: null,
-            isAuthenticated: false,
-            hasRole: /* @__PURE__ */ __name(() => false, "hasRole"),
-            isSellerVerified: false,
-            canAccessSellerDashboard: false
-          };
-        }
+        request.auth = {
+          user: null,
+          isAuthenticated: false,
+          hasRole: /* @__PURE__ */ __name(() => false, "hasRole")
+        };
         const protectedRoutes = ["/my", "/create", "/me"];
-        if (protectedRoutes.includes(request.url)) {
+        if (protectedRoutes.some((route) => request.url.startsWith(route))) {
           return reply.status(401).send({
             success: false,
             error: "Authentication required",
@@ -420,7 +310,12 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         const prisma2 = getPrismaClient();
         const dbStart = Date.now();
         await prisma2.$queryRaw`SELECT 1 as test`;
-        console.log("\u2705 Database connection successful in", Date.now() - dbStart, "ms");
+        const slowQueryTime = Date.now() - dbStart;
+        if (slowQueryTime > 2e3) {
+          console.warn("\u26A0\uFE0F Slow database query detected:", slowQueryTime, "ms");
+        } else {
+          console.log("\u2705 Database connection successful in", slowQueryTime, "ms");
+        }
         console.log("\u{1F50D} Verifying Privy JWT token...");
         const token = authHeader.replace("Bearer ", "");
         try {
@@ -437,37 +332,85 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
           const privyDid = decoded.sub;
           console.log("\u{1F50D} Privy DID from token:", privyDid);
           let user = await prisma2.user.findUnique({
-            where: { privyDid }
+            where: { privyDid },
+            select: {
+              id: true,
+              privyDid: true,
+              walletAddress: true,
+              email: true,
+              role: true,
+              isActive: true,
+              createdAt: true,
+              updatedAt: true
+            }
           });
           if (!user) {
             console.log("\u{1F195} Creating new user for Privy DID:", privyDid);
             const walletAddress = decoded.wallet_address || null;
+            const email = decoded.email || null;
             user = await prisma2.user.create({
               data: {
                 privyDid,
                 walletAddress,
-                email: decoded.email || null,
-                displayName: decoded.email?.split("@")[0] || "User",
+                email,
                 role: "TRADER",
+                // Using string literal to match enum
+                isActive: true
+              },
+              select: {
+                id: true,
+                privyDid: true,
+                walletAddress: true,
+                email: true,
+                role: true,
                 isActive: true,
-                sellerStatus: "NOT_APPLIED"
+                createdAt: true,
+                updatedAt: true
               }
             });
             console.log("\u2705 User created successfully:", user.id);
           } else {
             console.log("\u2705 Existing user found:", user.id);
             const walletAddress = decoded.wallet_address || null;
-            if (walletAddress && user.walletAddress !== walletAddress) {
-              await prisma2.user.update({
+            const email = decoded.email || null;
+            const needsUpdate = walletAddress && user.walletAddress !== walletAddress || email && user.email !== email && !user.email;
+            if (needsUpdate) {
+              console.log("\u{1F504} Updating user info...");
+              const updateData = {};
+              if (walletAddress && user.walletAddress !== walletAddress) {
+                updateData.walletAddress = walletAddress;
+              }
+              if (email && !user.email) {
+                updateData.email = email;
+              }
+              updateData.updatedAt = /* @__PURE__ */ new Date();
+              user = await prisma2.user.update({
                 where: { id: user.id },
-                data: { walletAddress }
+                data: updateData,
+                select: {
+                  id: true,
+                  privyDid: true,
+                  walletAddress: true,
+                  email: true,
+                  role: true,
+                  isActive: true,
+                  createdAt: true,
+                  updatedAt: true
+                }
               });
-              user.walletAddress = walletAddress;
-              console.log("\u2705 Updated wallet address for user:", user.id);
+              console.log("\u2705 User updated successfully:", user.id);
             }
           }
           request.user = user;
-          request.auth = createAuthContext(user);
+          request.auth = {
+            user,
+            isAuthenticated: !!user && user.isActive,
+            hasRole: /* @__PURE__ */ __name((role) => {
+              if (!user) return false;
+              const roles = Array.isArray(role) ? role : [role];
+              return roles.includes(user.role);
+            }, "hasRole")
+          };
           console.log("\u2705 Auth context created successfully for user:", user.id);
         } catch (jwtError) {
           console.error("\u274C JWT verification failed:", jwtError);
@@ -475,9 +418,7 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
           request.auth = {
             user: null,
             isAuthenticated: false,
-            hasRole: /* @__PURE__ */ __name(() => false, "hasRole"),
-            isSellerVerified: false,
-            canAccessSellerDashboard: false
+            hasRole: /* @__PURE__ */ __name(() => false, "hasRole")
           };
         }
         console.log("\u2705 Auth hook completed in", Date.now() - startTime, "ms");
@@ -487,9 +428,7 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         request.auth = {
           user: null,
           isAuthenticated: false,
-          hasRole: /* @__PURE__ */ __name(() => false, "hasRole"),
-          isSellerVerified: false,
-          canAccessSellerDashboard: false
+          hasRole: /* @__PURE__ */ __name(() => false, "hasRole")
         };
         console.log("\u26A0\uFE0F Continuing without database connection");
       }
@@ -499,14 +438,12 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
       request.auth = {
         user: null,
         isAuthenticated: false,
-        hasRole: /* @__PURE__ */ __name(() => false, "hasRole"),
-        isSellerVerified: false,
-        canAccessSellerDashboard: false
+        hasRole: /* @__PURE__ */ __name(() => false, "hasRole")
       };
       console.log("\u{1F527} Continuing with fallback auth due to error");
     }
   });
-  console.log("\u2705 Enhanced auth plugin registered");
+  console.log("\u2705 Simplified auth plugin registered");
 }, "registerAuthPlugin");
 var registerAuth = (0, import_fastify_plugin.default)(registerAuthPlugin, {
   name: "auth-plugin"

@@ -1,5 +1,5 @@
 import { logger } from './logger';
-import { PrismaClient, Prisma } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 
 const createPrismaClient = () => {
   console.log('🔧 Creating Prisma client...');
@@ -31,8 +31,8 @@ const createPrismaClient = () => {
   // Query logging disabled by default for performance
   // Enable with LOG_QUERIES=true if needed for debugging
 
-  // Log database errors
-  prisma.$on('error', (e: Prisma.LogEvent) => {
+  // Log database errors - simplified for compatibility
+  prisma.$on('error', (e: any) => {
     logger.error(
       {
         type: 'database',
@@ -42,32 +42,27 @@ const createPrismaClient = () => {
     );
   });
 
-  // Add performance monitoring middleware
-  prisma.$use(
-    async (
-      params: Prisma.MiddlewareParams,
-      next: (params: Prisma.MiddlewareParams) => Promise<unknown>,
-    ) => {
-      const start = Date.now();
-      const result = await next(params);
-      const duration = Date.now() - start;
+  // Simplified middleware without problematic types
+  prisma.$use(async (params: any, next: any) => {
+    const start = Date.now();
+    const result = await next(params);
+    const duration = Date.now() - start;
 
-      // Log slow queries
-      if (duration > 1000) {
-        logger.warn(
-          {
-            type: 'database',
-            action: params.action,
-            model: params.model,
-            duration,
-          },
-          'Slow database query detected',
-        );
-      }
+    // Log slow queries
+    if (duration > 1000) {
+      logger.warn(
+        {
+          type: 'database',
+          action: params.action,
+          model: params.model,
+          duration,
+        },
+        'Slow database query detected',
+      );
+    }
 
-      return result;
-    },
-  );
+    return result;
+  });
 
   console.log('✅ Prisma client created successfully');
   return prisma;

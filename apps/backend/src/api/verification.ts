@@ -110,9 +110,9 @@ const handler = async (req: VercelRequest, res: VercelResponse) => {
       return;
     }
 
-    // Handle path rewriting: /api/v1/account-verification/something → /something
-    if (req.url?.startsWith('/api/v1/account-verification')) {
-      req.url = req.url.replace('/api/v1/account-verification', '') || '/';
+    // Handle path rewriting: /api/v1/verification/something → /something
+    if (req.url?.startsWith('/api/v1/verification')) {
+      req.url = req.url.replace('/api/v1/verification', '') || '/';
     }
 
     app.server.emit('request', req, res);

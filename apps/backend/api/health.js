@@ -91,7 +91,7 @@ var logger = (0, import_pino.pino)({
   formatters: {
     level: /* @__PURE__ */ __name((label) => ({ level: label }), "level")
   },
-  timestamp: import_pino.pino.stdTimeFunctions.isoTime,
+  timestamp: /* @__PURE__ */ __name(() => `,"time":"${(/* @__PURE__ */ new Date()).toISOString()}"`, "timestamp"),
   base: {
     service: "aces-backend",
     version: process.env.npm_package_version || "1.0.0"
@@ -167,39 +167,24 @@ var createPrismaClient = /* @__PURE__ */ __name(() => {
   console.log("\u{1F527} Creating Prisma client...");
   console.log("Database URL exists:", !!process.env.DATABASE_URL);
   const prisma2 = new import_client.PrismaClient({
-    log: [
-      {
-        emit: "event",
-        level: "query"
-      },
+    log: false ? [
       {
         emit: "event",
         level: "error"
       },
       {
         emit: "event",
-        level: "info"
-      },
-      {
-        emit: "event",
         level: "warn"
       }
-    ],
-    errorFormat: "pretty"
+    ] : [],
+    errorFormat: "pretty",
+    // Optimize for Supabase connection pooling
+    datasources: {
+      db: {
+        url: process.env.DATABASE_URL
+      }
+    }
   });
-  if (false) {
-    prisma2.$on("query", (e) => {
-      logger.debug(
-        {
-          type: "database",
-          query: e.query,
-          params: e.params,
-          duration: e.duration
-        },
-        "Database query executed"
-      );
-    });
-  }
   prisma2.$on("error", (e) => {
     logger.error(
       {
@@ -209,25 +194,23 @@ var createPrismaClient = /* @__PURE__ */ __name(() => {
       "Database error occurred"
     );
   });
-  prisma2.$use(
-    async (params, next) => {
-      const start = Date.now();
-      const result = await next(params);
-      const duration = Date.now() - start;
-      if (duration > 1e3) {
-        logger.warn(
-          {
-            type: "database",
-            action: params.action,
-            model: params.model,
-            duration
-          },
-          "Slow database query detected"
-        );
-      }
-      return result;
+  prisma2.$use(async (params, next) => {
+    const start = Date.now();
+    const result = await next(params);
+    const duration = Date.now() - start;
+    if (duration > 1e3) {
+      logger.warn(
+        {
+          type: "database",
+          action: params.action,
+          model: params.model,
+          duration
+        },
+        "Slow database query detected"
+      );
     }
-  );
+    return result;
+  });
   console.log("\u2705 Prisma client created successfully");
   return prisma2;
 }, "createPrismaClient");

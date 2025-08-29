@@ -115,7 +115,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   // import { submissionsRoutes } from './routes/v1/submissions';
   fastify.register(adminRoutes, { prefix: '/api/v1/admin' }); // Step 2: Enabled
   // import { bidsRoutes } from './routes/v1/bids';
-  fastify.register(accountVerificationRoutes, { prefix: '/api/v1/account-verification' }); // Step 2: Enabled
+  fastify.register(accountVerificationRoutes, { prefix: '/api/v1/verification' }); // Step 2: Enabled
   fastify.register(usersRoutes, { prefix: '/api/v1/users' });
   // import { webhooksRoutes } from './routes/v1/webhooks';
   // import { listingsRoutes } from './routes/v1/listings';
