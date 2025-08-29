@@ -210,20 +210,20 @@ export const useCanvasInteractions = ({
       ) {
         const quadWidth = homeAreaWidth / 2;
         const quadHeight = homeAreaHeight / 2;
-        
+
         // Quadrant coordinates based on draw-home-area.ts layout:
         // Quadrant 0 (top-left): ABOUT
         const aboutQuadX = homeAreaWorldX;
         const aboutQuadY = homeAreaWorldY;
-        
-        // Quadrant 1 (top-right): MINT  
+
+        // Quadrant 1 (top-right): LIST
         const mintQuadX = homeAreaWorldX + quadWidth;
         const mintQuadY = homeAreaWorldY;
-        
+
         // Quadrant 2 (bottom-left): DOCS
         const docsQuadX = homeAreaWorldX;
         const docsQuadY = homeAreaWorldY + quadHeight;
-        
+
         // Quadrant 3 (bottom-right): CHAT
         const chatQuadX = homeAreaWorldX + quadWidth;
         const chatQuadY = homeAreaWorldY + quadHeight;
@@ -241,7 +241,7 @@ export const useCanvasInteractions = ({
           return;
         }
 
-        // MINT button (top-right quadrant) 
+        // LIST button (top-right quadrant)
         if (
           worldX >= mintQuadX &&
           worldX < mintQuadX + quadWidth &&
