@@ -1,8 +1,27 @@
 // backend/src/services/account-verification-service.ts - V1 Clean Implementation
-import { PrismaClient, VerificationStatus, DocumentType } from '@prisma/client';
+import {
+  PrismaClient,
+  VerificationStatus,
+  DocumentType,
+  AccountVerification,
+} from '@prisma/client';
 import { errors } from '../lib/errors';
 import { MultipartFile } from '@fastify/multipart';
 import { SecureStorageService } from '../lib/secure-storage-utils';
+import { VisionService } from '../lib/vision-service';
+
+export interface DocumentAnalysisResults {
+  faceComparison: {
+    match: boolean;
+    similarity: number;
+  };
+  documentAnalysis: {
+    isValid: boolean;
+    confidence: number;
+  };
+  overallScore: number;
+  reasons: string[];
+}
 
 export interface CreateVerificationData {
   documentType: DocumentType;
@@ -14,28 +33,14 @@ export interface CreateVerificationData {
   state?: string;
   address: string;
   emailAddress: string;
+  selfieImageUrl: string | null;
+  facialComparisonScore: number | null;
+  visionApiRecommendation: string | null;
+  documentAnalysisResults: DocumentAnalysisResults | null;
+  facialVerificationAt: Date | null;
 }
 
-export interface VerificationWithUser {
-  id: string;
-  userId: string;
-  documentType: DocumentType;
-  documentNumber: string;
-  documentImageUrl: string | null;
-  firstName: string;
-  lastName: string;
-  dateOfBirth: Date;
-  countryOfIssue: string;
-  state: string | null;
-  address: string;
-  emailAddress: string;
-  status: VerificationStatus;
-  submittedAt: Date;
-  reviewedAt: Date | null;
-  reviewedBy: string | null;
-  rejectionReason: string | null;
-  attempts: number;
-  lastAttemptAt: Date;
+export interface VerificationWithUser extends AccountVerification {
   user: {
     id: string;
     email: string | null;
@@ -170,7 +175,7 @@ export class AccountVerificationService {
         },
       });
 
-      return verification;
+      return verification as VerificationWithUser | null;
     } catch (error) {
       console.error('Error getting verification:', error);
       throw error;
@@ -293,7 +298,7 @@ export class AccountVerificationService {
         },
       });
 
-      return verifications;
+      return verifications as VerificationWithUser[];
     } catch (error) {
       console.error('Error getting pending verifications:', error);
       throw error;
@@ -325,7 +330,7 @@ export class AccountVerificationService {
         },
       });
 
-      return verifications;
+      return verifications as VerificationWithUser[];
     } catch (error) {
       console.error('Error getting all verifications:', error);
       throw error;
@@ -356,6 +361,205 @@ export class AccountVerificationService {
     } catch (error) {
       console.error('Error deleting verification document:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Submit facial verification (selfie)
+   */
+  async submitFacialVerification(userId: string, selfieFile: MultipartFile & { buffer: Buffer }) {
+    try {
+      console.log('🔍 Starting facial verification for user:', userId);
+
+      // Check if user has a verification record with document
+      const verification = await this.prisma.accountVerification.findUnique({
+        where: { userId },
+      });
+
+      if (!verification) {
+        throw errors.badRequest('Please submit document verification first');
+      }
+
+      if (!verification.documentImageUrl) {
+        throw errors.badRequest('Document image is required for facial verification');
+      }
+
+      // Upload selfie to secure storage
+      let selfieImageUrl: string;
+      try {
+        selfieImageUrl = await SecureStorageService.uploadSecureDocument(
+          selfieFile,
+          userId,
+          'SELFIE',
+        );
+      } catch (error) {
+        console.error('Selfie upload failed:', error);
+        // For development/testing: Continue without selfie upload if GCS is not configured
+        if (
+          error instanceof Error &&
+          error.message.includes('Google Cloud Storage not configured')
+        ) {
+          console.warn('Continuing facial verification without selfie upload (GCS not configured)');
+          selfieImageUrl = `mock://selfie/${userId}/${Date.now()}.jpg`;
+        } else {
+          throw error;
+        }
+      }
+
+      // Process with Google Vision API
+      console.log('🔍 Processing with Google Vision API...');
+      const visionResult = await VisionService.analyzeVerification(
+        verification.documentImageUrl,
+        selfieFile.buffer,
+      );
+
+      console.log('✅ Vision API analysis completed:', {
+        overallScore: visionResult.overallScore,
+        recommendation: visionResult.recommendation,
+        faceMatch: visionResult.faceComparison.match,
+      });
+
+      // Update verification record with Vision API results
+      const updatedVerification = await this.prisma.accountVerification.update({
+        where: { userId },
+        data: {
+          selfieImageUrl,
+          facialComparisonScore: visionResult.faceComparison.similarity,
+          visionApiRecommendation: visionResult.recommendation,
+          documentAnalysisResults: {
+            faceComparison: visionResult.faceComparison,
+            documentAnalysis: visionResult.documentAnalysis,
+            overallScore: visionResult.overallScore,
+            reasons: visionResult.reasons,
+          },
+          facialVerificationAt: new Date(),
+        } as any,
+      });
+
+      return {
+        verificationId: updatedVerification.id,
+        facialVerificationStatus: 'COMPLETED',
+        overallScore: visionResult.overallScore,
+        faceComparisonScore: visionResult.faceComparison.similarity,
+        visionApiRecommendation: visionResult.recommendation,
+        recommendation: visionResult.recommendation,
+        message: this.getVerificationMessage(visionResult.recommendation, visionResult.reasons),
+      };
+    } catch (error) {
+      console.error('Error in facial verification:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get facial verification status
+   */
+  async getFacialVerificationStatus(userId: string) {
+    try {
+      const verification = await this.prisma.accountVerification.findUnique({
+        where: { userId },
+      });
+
+      if (!verification) {
+        return {
+          facialVerificationStatus: 'NOT_STARTED',
+          canStartFacialVerification: false,
+          reason: 'Please submit document verification first',
+        };
+      }
+
+      if (!verification.documentImageUrl) {
+        return {
+          facialVerificationStatus: 'NOT_STARTED',
+          canStartFacialVerification: false,
+          reason: 'Document image is required for facial verification',
+        };
+      }
+
+      if (!(verification as any).selfieImageUrl) {
+        return {
+          facialVerificationStatus: 'NOT_STARTED',
+          canStartFacialVerification: true,
+        };
+      }
+
+      if (!(verification as any).facialVerificationAt) {
+        return {
+          facialVerificationStatus: 'PENDING',
+          canStartFacialVerification: false,
+          reason: 'Facial verification is being processed',
+        };
+      }
+
+      return {
+        facialVerificationStatus: 'COMPLETED',
+        canStartFacialVerification: false,
+        overallScore: (verification as any).documentAnalysisResults?.overallScore,
+        faceComparisonScore: (verification as any).facialComparisonScore,
+        visionApiRecommendation: (verification as any).visionApiRecommendation,
+      };
+    } catch (error) {
+      console.error('Error getting facial verification status:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check if user is ready for facial verification
+   */
+  async isReadyForFacialVerification(userId: string) {
+    try {
+      const verification = await this.prisma.accountVerification.findUnique({
+        where: { userId },
+      });
+
+      if (!verification) {
+        return {
+          ready: false,
+          requiresDocumentFirst: true,
+          reason: 'Please submit document verification first',
+        };
+      }
+
+      if (!verification.documentImageUrl) {
+        return {
+          ready: false,
+          requiresDocumentFirst: true,
+          reason: 'Document image is required for facial verification',
+        };
+      }
+
+      if ((verification as any).selfieImageUrl && (verification as any).facialVerificationAt) {
+        return {
+          ready: false,
+          requiresDocumentFirst: false,
+          reason: 'Facial verification already completed',
+        };
+      }
+
+      return {
+        ready: true,
+        requiresDocumentFirst: false,
+      };
+    } catch (error) {
+      console.error('Error checking facial verification readiness:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get verification message based on recommendation
+   */
+  private getVerificationMessage(recommendation: string, reasons: string[]): string {
+    switch (recommendation) {
+      case 'APPROVE':
+        return 'Facial verification completed successfully. Your identity has been verified.';
+      case 'REJECT':
+        return `Facial verification failed: ${reasons.join(', ')}. Please try again with a clearer photo.`;
+      case 'MANUAL_REVIEW':
+        return `Facial verification completed but requires manual review: ${reasons.join(', ')}. We'll notify you of the result.`;
+      default:
+        return 'Facial verification completed.';
     }
   }
 }

@@ -63,6 +63,13 @@ model AccountVerification {
   attempts         Int                @default(1)
   lastAttemptAt    DateTime           @default(now())
 
+  // Google Vision API Integration Fields
+  selfieImageUrl          String?
+  facialComparisonScore   Float?
+  visionApiRecommendation String?
+  documentAnalysisResults Json?
+  facialVerificationAt    DateTime?
+
   @@index([status])
   @@index([userId])
   @@map("account_verifications")

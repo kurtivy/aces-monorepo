@@ -108,7 +108,14 @@ export async function accountVerificationRoutes(fastify: FastifyInstance) {
 
         const verification = await verificationService.submitVerification(
           request.user!.id,
-          verificationData,
+          {
+            ...verificationData,
+            selfieImageUrl: '',
+            facialComparisonScore: 0,
+            visionApiRecommendation: 'UNKNOWN',
+            documentAnalysisResults: null,
+            facialVerificationAt: new Date(),
+          },
           documentFile || undefined,
         );
 
@@ -338,6 +345,120 @@ export async function accountVerificationRoutes(fastify: FastifyInstance) {
         });
       } catch (error) {
         console.error('Error rejecting verification:', error);
+        throw error;
+      }
+    },
+  );
+
+  /**
+   * Submit facial verification (selfie)
+   */
+  fastify.post(
+    '/facial-verification',
+    {
+      preHandler: [requireAuth],
+    },
+    async (request, reply) => {
+      try {
+        console.log('🔍 Starting facial verification for user:', request.user?.id);
+        let selfieFile = null;
+
+        // Handle multipart data for selfie upload
+        if (request.isMultipart()) {
+          console.log('🔍 Processing selfie multipart request...');
+          for await (const part of request.parts()) {
+            console.log('🔍 Processing part:', { type: part.type, fieldname: part.fieldname });
+            if (part.type === 'file' && part.fieldname === 'selfie') {
+              console.log('🔍 Selfie file found, reading buffer...');
+              const buffer = await part.toBuffer();
+              selfieFile = {
+                ...part,
+                buffer,
+              } as MultipartFile & { buffer: Buffer };
+              console.log('🔍 Selfie file processed:', {
+                filename: selfieFile.filename,
+                mimetype: selfieFile.mimetype,
+                size: buffer.length,
+              });
+            }
+          }
+          console.log('✅ Selfie multipart processing completed');
+        } else {
+          console.log('❌ No multipart data found for selfie');
+          return reply.status(400).send({
+            success: false,
+            error: 'Selfie image is required',
+          });
+        }
+
+        if (!selfieFile) {
+          return reply.status(400).send({
+            success: false,
+            error: 'Selfie image is required',
+          });
+        }
+
+        console.log('🔍 Processing facial verification...');
+        const result = await verificationService.submitFacialVerification(
+          request.user!.id,
+          selfieFile,
+        );
+
+        console.log('✅ Facial verification completed:', result.visionApiRecommendation);
+
+        return reply.send({
+          success: true,
+          data: result,
+          message: 'Facial verification completed successfully',
+        });
+      } catch (error) {
+        console.error('Error in facial verification:', error);
+        throw error;
+      }
+    },
+  );
+
+  /**
+   * Get facial verification status
+   */
+  fastify.get(
+    '/facial-verification/status',
+    {
+      preHandler: [requireAuth],
+    },
+    async (request, reply) => {
+      try {
+        const status = await verificationService.getFacialVerificationStatus(request.user!.id);
+
+        return reply.send({
+          success: true,
+          data: status,
+        });
+      } catch (error) {
+        console.error('Error getting facial verification status:', error);
+        throw error;
+      }
+    },
+  );
+
+  /**
+   * Check if user is ready for facial verification
+   */
+  fastify.get(
+    '/facial-verification/ready',
+    {
+      preHandler: [requireAuth],
+    },
+    async (request, reply) => {
+      try {
+        const readiness = await verificationService.isReadyForFacialVerification(request.user!.id);
+
+        return reply.send({
+          success: true,
+          data: readiness,
+        });
+      } catch (error) {
+        console.error('Error checking facial verification readiness:', error);
         throw error;
       }
     },
