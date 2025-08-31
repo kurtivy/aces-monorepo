@@ -1,5 +1,6 @@
+/// <reference path="../types/fastify.d.ts" />
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { UserRoleType } from '../lib/prisma-enums';
+import { UserRole } from '@prisma/client';
 import { errors } from './errors';
 
 // Simplified User type for Step 1
@@ -8,7 +9,7 @@ export interface SimpleUser {
   privyDid: string;
   walletAddress: string | null;
   email: string | null;
-  role: string;
+  role: UserRole;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -18,7 +19,7 @@ export interface SimpleUser {
 export interface SimpleAuthContext {
   user: SimpleUser | null;
   isAuthenticated: boolean;
-  hasRole: (role: string | string[]) => boolean;
+  hasRole: (role: UserRole | UserRole[]) => boolean;
 }
 
 /**
@@ -80,7 +81,7 @@ export async function requireAdmin(request: FastifyRequest, _reply: FastifyReply
 /**
  * Middleware to require specific role(s)
  */
-export function requireRole(role: UserRoleType | UserRoleType[]) {
+export function requireRole(role: UserRole | UserRole[]) {
   return async (request: FastifyRequest) => {
     if (!request.auth?.isAuthenticated) {
       throw errors.unauthorized('Authentication required');
@@ -129,7 +130,7 @@ export async function optionalAuth(_request: FastifyRequest) {
 export function canAccessResource(
   user: SimpleUser | null,
   resourceOwnerId: string,
-  requiredRole?: UserRoleType | UserRoleType[],
+  requiredRole?: UserRole | UserRole[],
 ): boolean {
   if (!user) return false;
 

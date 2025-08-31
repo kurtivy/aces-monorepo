@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, UserRole } from '@prisma/client';
 
 // Step 1: Simplified User interface (matches your new User model)
 export interface SimpleUser {
@@ -6,7 +6,7 @@ export interface SimpleUser {
   privyDid: string;
   walletAddress: string | null;
   email: string | null;
-  role: 'TRADER' | 'ADMIN';
+  role: UserRole;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -16,7 +16,7 @@ export interface SimpleUser {
 export interface SimpleAuthContext {
   user: SimpleUser | null;
   isAuthenticated: boolean;
-  hasRole: (role: 'TRADER' | 'ADMIN' | ('TRADER' | 'ADMIN')[]) => boolean;
+  hasRole: (role: UserRole | UserRole[]) => boolean;
 }
 
 declare module 'fastify' {

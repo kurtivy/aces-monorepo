@@ -10,7 +10,7 @@ import { getPrismaClient, checkDatabaseHealth, disconnectDatabase } from './lib/
 import { loggers } from './lib/logger';
 import { handleError } from './lib/errors';
 import { registerAuth } from './plugins/auth';
-// import { submissionsRoutes } from './routes/v1/submissions';
+import { submissionRoutes } from './routes/v1/submissions';
 import { adminRoutes } from './routes/v1/admin'; // Step 2: Enabled
 // import { bidsRoutes } from './routes/v1/bids';
 import { accountVerificationRoutes } from './routes/v1/verification'; // Step 2: Enabled
@@ -112,7 +112,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   });
 
   // Register v1 routes with proper API prefixes
-  // import { submissionsRoutes } from './routes/v1/submissions';
+  fastify.register(submissionRoutes, { prefix: '/api/v1/submissions' }); // Step 4: Enabled
   fastify.register(adminRoutes, { prefix: '/api/v1/admin' }); // Step 2: Enabled
   // import { bidsRoutes } from './routes/v1/bids';
   fastify.register(accountVerificationRoutes, { prefix: '/api/v1/verification' }); // Step 2: Enabled

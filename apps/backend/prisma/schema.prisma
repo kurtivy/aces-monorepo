@@ -1,7 +1,5 @@
-// prisma/schema.prisma - Step 1: User Model Only
 generator client {
   provider      = "prisma-client-js"
-  output        = "../node_modules/.prisma/client"
   binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
@@ -11,68 +9,86 @@ datasource db {
 }
 
 model User {
-  id            String   @id @default(cuid())
-  privyDid      String   @unique
-  walletAddress String?  @unique
-  email         String?  @unique
-  
-  // User Status
-  role          UserRole @default(TRADER)
-  isActive      Boolean  @default(true)
-  
-  // Timestamps
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  // Account verification relationship
-  accountVerification     AccountVerification?
-  reviewedVerifications   AccountVerification[] @relation("ReviewedBy")
+  id                    String                @id @default(cuid())
+  privyDid              String                @unique
+  walletAddress         String?               @unique
+  email                 String?               @unique
+  role                  UserRole              @default(TRADER)
+  isActive              Boolean               @default(true)
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  reviewedVerifications AccountVerification[] @relation("ReviewedBy")
+  accountVerification   AccountVerification?
+  approvedSubmissions   Submission[]          @relation("ApprovedBy")
+  submissions           Submission[]
 
   @@map("users")
 }
 
-// Minimal enums for now
-enum UserRole {
-  TRADER
-  ADMIN
-}
 model AccountVerification {
-  id               String             @id @default(cuid())
-  userId           String             @unique
-  user             User               @relation(fields: [userId], references: [id])
-
-  documentType     DocumentType
-  documentNumber   String
-  documentImageUrl String?
-
-  firstName        String
-  lastName         String
-  dateOfBirth      DateTime
-  countryOfIssue   String
-  state            String?
-  address          String
-  emailAddress     String
-
-  status           VerificationStatus @default(PENDING)
-  submittedAt      DateTime           @default(now())
-  reviewedAt       DateTime?
-  reviewedBy       String?
-  reviewer         User?              @relation("ReviewedBy", fields: [reviewedBy], references: [id])
-  rejectionReason  String?
-
-  attempts         Int                @default(1)
-  lastAttemptAt    DateTime           @default(now())
-
-  // Google Vision API Integration Fields
+  id                      String             @id @default(cuid())
+  userId                  String             @unique
+  documentType            DocumentType
+  documentNumber          String
+  documentImageUrl        String?
+  firstName               String
+  lastName                String
+  dateOfBirth             DateTime
+  countryOfIssue          String
+  state                   String?
+  address                 String
+  emailAddress            String
+  status                  VerificationStatus @default(PENDING)
+  submittedAt             DateTime           @default(now())
+  reviewedAt              DateTime?
+  reviewedBy              String?
+  rejectionReason         String?
+  attempts                Int                @default(1)
+  lastAttemptAt           DateTime           @default(now())
   selfieImageUrl          String?
   facialComparisonScore   Float?
   visionApiRecommendation String?
   documentAnalysisResults Json?
   facialVerificationAt    DateTime?
+  reviewer                User?              @relation("ReviewedBy", fields: [reviewedBy], references: [id])
+  user                    User               @relation(fields: [userId], references: [id])
 
   @@index([status])
   @@index([userId])
   @@map("account_verifications")
+}
+
+model Submission {
+  id                       String           @id @default(cuid())
+  title                    String
+  symbol                   String
+  description              String
+  assetType                AssetType
+  imageGallery             String[]         @default([])
+  location                 String?
+  email                    String?
+  proofOfOwnership         String
+  proofOfOwnershipImageUrl String?
+  typeOfOwnership          String
+  status                   SubmissionStatus @default(PENDING)
+  rejectionType            RejectionType?
+  rejectionReason          String?
+  ownerId                  String
+  approvedBy               String?
+  createdAt                DateTime         @default(now())
+  updatedAt                DateTime         @updatedAt
+  approvedAt               DateTime?
+  approvedByUser           User?            @relation("ApprovedBy", fields: [approvedBy], references: [id])
+  owner                    User             @relation(fields: [ownerId], references: [id])
+
+  @@index([status, createdAt])
+  @@index([ownerId, createdAt])
+  @@map("submissions")
+}
+
+enum UserRole {
+  TRADER
+  ADMIN
 }
 
 enum VerificationStatus {
@@ -85,4 +101,25 @@ enum DocumentType {
   DRIVERS_LICENSE
   PASSPORT
   ID_CARD
+}
+
+enum SubmissionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum RejectionType {
+  MANUAL
+  TX_FAILURE
+}
+
+enum AssetType {
+  VEHICLE
+  JEWELRY
+  COLLECTIBLE
+  ART
+  FASHION
+  ALCOHOL
+  OTHER
 }

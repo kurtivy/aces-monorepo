@@ -1,6 +1,7 @@
 // backend/src/services/account-verification-service.ts - V1 Clean Implementation
 import {
   PrismaClient,
+  Prisma,
   VerificationStatus,
   DocumentType,
   AccountVerification,
@@ -115,14 +116,33 @@ export class AccountVerificationService {
         where: { userId },
         create: {
           userId,
-          ...data,
+          documentType: data.documentType,
+          documentNumber: data.documentNumber,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          dateOfBirth: data.dateOfBirth,
+          countryOfIssue: data.countryOfIssue,
+          state: data.state,
+          address: data.address,
+          emailAddress: data.emailAddress,
           documentImageUrl,
           status: VerificationStatus.PENDING,
           attempts: 1,
           lastAttemptAt: new Date(),
+          documentAnalysisResults: data.documentAnalysisResults
+            ? (data.documentAnalysisResults as unknown as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
         },
         update: {
-          ...data,
+          documentType: data.documentType,
+          documentNumber: data.documentNumber,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          dateOfBirth: data.dateOfBirth,
+          countryOfIssue: data.countryOfIssue,
+          state: data.state,
+          address: data.address,
+          emailAddress: data.emailAddress,
           documentImageUrl,
           status: VerificationStatus.PENDING,
           attempts: { increment: 1 },
@@ -130,6 +150,9 @@ export class AccountVerificationService {
           reviewedAt: null,
           reviewedBy: null,
           rejectionReason: null,
+          documentAnalysisResults: data.documentAnalysisResults
+            ? (data.documentAnalysisResults as unknown as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
         },
         include: {
           user: {
