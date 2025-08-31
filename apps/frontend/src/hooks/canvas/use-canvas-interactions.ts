@@ -248,7 +248,7 @@ export const useCanvasInteractions = ({
           worldY >= mintQuadY &&
           worldY < mintQuadY + quadHeight
         ) {
-          window.location.href = '/mint-token';
+          window.location.href = '/list-token';
           return;
         }
 
@@ -327,7 +327,7 @@ export const useCanvasInteractions = ({
 
       if (clickedImage) {
         if (clickedImage.type === 'submit-asset') {
-          window.location.href = '/mint-token';
+          window.location.href = '/list-token';
         } else {
           setSelectedImage(clickedImage);
         }

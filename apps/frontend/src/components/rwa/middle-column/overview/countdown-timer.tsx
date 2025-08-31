@@ -56,8 +56,8 @@ export default function CountdownTimer() {
             </div>
 
             <span
-              className="text-xs text-[#DCDDCC] mt-1.5 font-medium tracking-wide uppercase"
-              style={{ fontFamily: 'system, serif' }}
+              className="text-xs text-[#DCDDCC] mt-1.5 font-medium tracking-wide uppercase font-spray-letters"
+              style={{ fontFamily: "'Spray Letters', cursive" }}
             >
               {unit.label}
             </span>

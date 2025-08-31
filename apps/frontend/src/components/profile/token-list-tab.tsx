@@ -89,7 +89,7 @@ export function TokenListTab() {
           <p className="mb-4">No tokens found in your portfolio</p>
           <Button
             className="bg-[#184D37] hover:bg-[#184D37]/80 text-white"
-            onClick={() => (window.location.href = '/mint-token')}
+            onClick={() => (window.location.href = '/list-token')}
           >
             Create Token
           </Button>
