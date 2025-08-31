@@ -18,24 +18,12 @@
       "destination": "/api/submissions"
     },
     {
-      "source": "/api/v1/bids(/.*)?",
-      "destination": "/api/bids"
-    },
-    {
       "source": "/api/v1/admin(/.*)?",
       "destination": "/api/admin"
     },
     {
-      "source": "/api/v1/webhooks(/.*)?",
-      "destination": "/api/webhooks"
-    },
-    {
       "source": "/api/v1/listings(/.*)?",
       "destination": "/api/listings"
-    },
-    {
-      "source": "/api/v1/tokens(/.*)?",
-      "destination": "/api/tokens"
     },
     {
       "source": "/api/v1/users(/.*)?",

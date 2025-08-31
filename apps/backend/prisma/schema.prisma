@@ -21,6 +21,8 @@ model User {
   accountVerification   AccountVerification?
   approvedSubmissions   Submission[]          @relation("ApprovedBy")
   submissions           Submission[]
+  listings              Listing[]
+  approvedListings      Listing[]             @relation("ApprovedBy")
 
   @@map("users")
 }
@@ -80,10 +82,40 @@ model Submission {
   approvedAt               DateTime?
   approvedByUser           User?            @relation("ApprovedBy", fields: [approvedBy], references: [id])
   owner                    User             @relation(fields: [ownerId], references: [id])
+  listing                  Listing?
 
   @@index([status, createdAt])
   @@index([ownerId, createdAt])
   @@map("submissions")
+}
+
+model Listing {
+  id                String     @id @default(cuid())
+
+  title             String
+  symbol            String
+  description       String
+  assetType         AssetType
+  imageGallery      String[]   @default([])
+  location          String?
+  email             String?
+
+  isLive            Boolean    @default(false)
+
+  submissionId      String     @unique
+  ownerId           String
+  approvedBy        String?
+
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  submission        Submission @relation(fields: [submissionId], references: [id])
+  owner             User       @relation(fields: [ownerId], references: [id])
+  approvedByUser    User?      @relation("ApprovedBy", fields: [approvedBy], references: [id])
+
+  @@index([isLive, createdAt])
+  @@index([ownerId])
+  @@map("listings")
 }
 
 enum UserRole {
