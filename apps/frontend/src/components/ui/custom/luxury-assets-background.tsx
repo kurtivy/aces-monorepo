@@ -7,7 +7,10 @@ import Image from 'next/image';
 // Main content = 5 squares wide (1000px), images positioned directly adjacent
 // Grid-based spec so we can scale with contentWidth and squareSize
 // Coordinates are in grid units (squareSize). col=0 is left edge of content, rows start at 0.
-const imageGridSpec: Record<string, { col: number; row: number; w: number; h: number; type: string }> = {
+const imageGridSpec: Record<
+  string,
+  { col: number; row: number; w: number; h: number; type: string }
+> = {
   // Left side - positioned directly against left edge of content, starting from header
   'square-2': { col: -2, row: 0, w: 1, h: 1, type: 'square' },
   'square-3': { col: -1, row: 4, w: 1, h: 1, type: 'square' }, // below rect-vertical-1
@@ -189,11 +192,18 @@ const LuxuryAssetsBackground: React.FC<PageBackgroundProps> = ({
   const [isMobile, setIsMobile] = useState(false);
   const [dynamicTopOffset, setDynamicTopOffset] = useState<number>(topOffset);
   const squareSize = useMemo(() => Math.max(1, Math.round(contentWidth / 5)), [contentWidth]);
-  const effectiveLineInset = useMemo(() => (typeof lineInset === 'number' ? lineInset : Math.round(squareSize * 0.1)), [lineInset, squareSize]);
+  const effectiveLineInset = useMemo(
+    () => (typeof lineInset === 'number' ? lineInset : Math.round(squareSize * 0.1)),
+    [lineInset, squareSize],
+  );
+  const BOTTOM_RULE_HEIGHT = 8; // header's dashed bottom rule visual height in px
 
   // Build dynamic positions from grid spec
   const imagePositions = useMemo(() => {
-    const positions: Record<string, { x: number; y: number; width: number; height: number; type: string }> = {};
+    const positions: Record<
+      string,
+      { x: number; y: number; width: number; height: number; type: string }
+    > = {};
     Object.entries(imageGridSpec).forEach(([key, spec]) => {
       const x = spec.col * squareSize; // col 0 is content left; col 5 is content right
       const y = spec.row * squareSize; // rows scale with square size
@@ -226,10 +236,11 @@ const LuxuryAssetsBackground: React.FC<PageBackgroundProps> = ({
     }
     const headerEl = document.querySelector('[data-aces-header]') as HTMLElement | null;
     const measure = () => {
-      const target = headerEl || (document.querySelector('[data-aces-header]') as HTMLElement | null);
+      const target =
+        headerEl || (document.querySelector('[data-aces-header]') as HTMLElement | null);
       if (target) {
         const rect = target.getBoundingClientRect();
-        setDynamicTopOffset(Math.max(0, Math.round(rect.bottom)));
+        setDynamicTopOffset(Math.max(0, Math.round(rect.bottom + BOTTOM_RULE_HEIGHT)));
       } else {
         setDynamicTopOffset(topOffset);
       }
@@ -278,7 +289,18 @@ const LuxuryAssetsBackground: React.FC<PageBackgroundProps> = ({
           opacity: 1,
         }}
       >
-        <line x1="1" y1="0" x2="1" y2="100" stroke="#D7BF75" strokeOpacity={0.5} strokeWidth={1} strokeDasharray="12 12" vectorEffect="non-scaling-stroke" shapeRendering="crispEdges" />
+        <line
+          x1="1"
+          y1="0"
+          x2="1"
+          y2="100"
+          stroke="#D7BF75"
+          strokeOpacity={0.5}
+          strokeWidth={1}
+          strokeDasharray="12 12"
+          vectorEffect="non-scaling-stroke"
+          shapeRendering="crispEdges"
+        />
       </svg>
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -297,7 +319,18 @@ const LuxuryAssetsBackground: React.FC<PageBackgroundProps> = ({
           opacity: 1,
         }}
       >
-        <line x1="1" y1="0" x2="1" y2="100" stroke="#D7BF75" strokeOpacity={0.5} strokeWidth={1} strokeDasharray="12 12" vectorEffect="non-scaling-stroke" shapeRendering="crispEdges" />
+        <line
+          x1="1"
+          y1="0"
+          x2="1"
+          y2="100"
+          stroke="#D7BF75"
+          strokeOpacity={0.5}
+          strokeWidth={1}
+          strokeDasharray="12 12"
+          vectorEffect="non-scaling-stroke"
+          shapeRendering="crispEdges"
+        />
       </svg>
 
       {/* Center guide line inside content at ~1/3 from left (faint) */}
@@ -315,7 +348,18 @@ const LuxuryAssetsBackground: React.FC<PageBackgroundProps> = ({
           opacity: 1,
         }}
       >
-        <line x1="1" y1="0" x2="1" y2="100" stroke="#D7BF75" strokeOpacity={0.35} strokeWidth={1} strokeDasharray="12 12" vectorEffect="non-scaling-stroke" shapeRendering="crispEdges" />
+        <line
+          x1="1"
+          y1="0"
+          x2="1"
+          y2="100"
+          stroke="#D7BF75"
+          strokeOpacity={0.35}
+          strokeWidth={1}
+          strokeDasharray="12 12"
+          vectorEffect="non-scaling-stroke"
+          shapeRendering="crispEdges"
+        />
       </svg>
 
       {/* Solid horizontal accent near top between content edges */}
@@ -325,9 +369,24 @@ const LuxuryAssetsBackground: React.FC<PageBackgroundProps> = ({
         width={`${contentWidth}px`}
         height="8px"
         viewBox="0 0 100 2"
-        style={{ position: 'absolute', left: `calc(50% - ${contentWidth / 2}px)`, top: `${dynamicTopOffset + bandHeight}px`, pointerEvents: 'none' }}
+        style={{
+          position: 'absolute',
+          left: `calc(50% - ${contentWidth / 2}px)`,
+          top: `${dynamicTopOffset + bandHeight}px`,
+          pointerEvents: 'none',
+        }}
       >
-        <line x1="0" y1="1" x2="100" y2="1" stroke="#D7BF75" strokeOpacity={0.5} strokeWidth={1} vectorEffect="non-scaling-stroke" shapeRendering="crispEdges" />
+        <line
+          x1="0"
+          y1="1"
+          x2="100"
+          y2="1"
+          stroke="#D7BF75"
+          strokeOpacity={0.5}
+          strokeWidth={1}
+          vectorEffect="non-scaling-stroke"
+          shapeRendering="crispEdges"
+        />
       </svg>
       {/* Bottom dashed horizontal between content edges */}
       <svg
@@ -343,13 +402,30 @@ const LuxuryAssetsBackground: React.FC<PageBackgroundProps> = ({
           pointerEvents: 'none',
         }}
       >
-        <line x1="0" y1="1" x2="100" y2="1" stroke="#D7BF75" strokeOpacity={0.5} strokeWidth={1} strokeDasharray="12 12" vectorEffect="non-scaling-stroke" shapeRendering="crispEdges" />
+        <line
+          x1="0"
+          y1="1"
+          x2="100"
+          y2="1"
+          stroke="#D7BF75"
+          strokeOpacity={0.5}
+          strokeWidth={1}
+          strokeDasharray="12 12"
+          vectorEffect="non-scaling-stroke"
+          shapeRendering="crispEdges"
+        />
       </svg>
 
       {/* Image Grid Background - positioned around content */}
-      <div className="absolute left-1/2 transform -translate-x-1/2" style={{ top: `${dynamicTopOffset}px` }}>
+      <div
+        className="absolute left-1/2 transform -translate-x-1/2"
+        style={{ top: `${dynamicTopOffset}px` }}
+      >
         {/* Image positioning container - positioned relative to content start */}
-        <div className="relative h-full" style={{ minHeight: `${minHeight}px`, width: `${contentWidth}px` }}>
+        <div
+          className="relative h-full"
+          style={{ minHeight: `${minHeight}px`, width: `${contentWidth}px` }}
+        >
           {Object.entries(imagePositions).map(([key, position]) => (
             <ImageTile
               key={key}
@@ -363,21 +439,39 @@ const LuxuryAssetsBackground: React.FC<PageBackgroundProps> = ({
           {/* Add additional images for extended coverage */}
           <ImageTile
             key="extended-1"
-            position={{ x: -2 * squareSize, y: 5 * squareSize, width: 1 * squareSize, height: 1 * squareSize, type: 'square' }}
+            position={{
+              x: -2 * squareSize,
+              y: 5 * squareSize,
+              width: 1 * squareSize,
+              height: 1 * squareSize,
+              type: 'square',
+            }}
             imageUrl="/canvas-images/outline/new/webp/1991-Porsche-964-Turbo-Rubystone-Red-1-of-5-Limited-Edition-Paint.webp"
             alt="Extended luxury asset 1"
             tileKey="extended-1"
           />
           <ImageTile
             key="extended-2"
-            position={{ x: 6 * squareSize, y: 6 * squareSize, width: 1 * squareSize, height: 1 * squareSize, type: 'square' }}
+            position={{
+              x: 6 * squareSize,
+              y: 6 * squareSize,
+              width: 1 * squareSize,
+              height: 1 * squareSize,
+              type: 'square',
+            }}
             imageUrl="/canvas-images/outline/new/webp/Audemars-Piguet-Royal-Oak-Concept-KAWS-Tourbillon-Companion-Dial-Limited-Edition.webp"
             alt="Extended luxury asset 2"
             tileKey="extended-2"
           />
           <ImageTile
             key="extended-3"
-            position={{ x: -1 * squareSize, y: 6 * squareSize, width: 1 * squareSize, height: 1 * squareSize, type: 'square' }}
+            position={{
+              x: -1 * squareSize,
+              y: 6 * squareSize,
+              width: 1 * squareSize,
+              height: 1 * squareSize,
+              type: 'square',
+            }}
             imageUrl="/canvas-images/outline/new/webp/Andy-Warhol-Signed-Marilyn-Monroe.webp"
             alt="Extended luxury asset 3"
             tileKey="extended-3"
