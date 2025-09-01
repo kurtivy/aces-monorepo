@@ -18,7 +18,7 @@ export default function AcesHeader({ className = '', title, onProfileClick }: Ac
   };
 
   return (
-    <header className={`w-full  ${className}`}>
+    <header data-aces-header className={`w-full relative ${className}`}>
       <div className="max-w-[1920px] mx-auto px-3 sm:px-6 py-2 sm:py-4">
         <div
           className={`grid items-center w-full ${title ? 'grid-cols-[1fr_auto_1fr] sm:grid-cols-[250px_1fr_250px]' : 'grid-cols-[1fr_auto] sm:grid-cols-[250px_1fr]'}`}
@@ -68,6 +68,28 @@ export default function AcesHeader({ className = '', title, onProfileClick }: Ac
           </div>
         </div>
       </div>
+      {/* Full-width dashed bottom border to match ACES design */}
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="100%"
+        height="8"
+        viewBox="0 0 100 2"
+        preserveAspectRatio="none"
+        className="pointer-events-none absolute left-0 right-0 bottom-0"
+      >
+        <line
+          x1="0"
+          y1="1"
+          x2="100"
+          y2="1"
+          stroke="#D7BF75"
+          strokeOpacity={0.5}
+          strokeWidth={1}
+          strokeDasharray="12 12"
+          vectorEffect="non-scaling-stroke"
+          shapeRendering="crispEdges"
+        />
+      </svg>
     </header>
   );
 }
