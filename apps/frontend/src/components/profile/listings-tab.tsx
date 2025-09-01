@@ -152,17 +152,29 @@ export function ListingsTab() {
 
   if (isLoading) {
     return (
-      <div className="w-full rounded-xl bg-[#231F20] border border-[#D0B284]/20 shadow-lg overflow-hidden">
+      <div className="bg-[#0A120B] rounded-lg border border-dashed border-[#D7BF75]/25 relative h-full">
+        {/* Corner ticks */}
+        <span className="pointer-events-none absolute left-3 top-3 h-3 w-0.5 bg-[#D7BF75]" />
+        <span className="pointer-events-none absolute left-3 top-3 w-3 h-0.5 bg-[#D7BF75]" />
+        <span className="pointer-events-none absolute right-3 top-3 h-3 w-0.5 bg-[#D7BF75]" />
+        <span className="pointer-events-none absolute right-3 top-3 w-3 h-0.5 bg-[#D7BF75]" />
+        <span className="pointer-events-none absolute left-3 bottom-3 h-3 w-0.5 bg-[#D7BF75]" />
+        <span className="pointer-events-none absolute left-3 bottom-3 w-3 h-0.5 bg-[#D7BF75]" />
+        <span className="pointer-events-none absolute right-3 bottom-3 h-3 w-0.5 bg-[#D7BF75]" />
+        <span className="pointer-events-none absolute right-3 bottom-3 w-3 h-0.5 bg-[#D7BF75]" />
+
         <div className="p-6">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold text-[#D0B284] font-libre-caslon">Your Listings</h2>
-            <Button className="bg-[#D0B284] text-black hover:bg-[#D7BF75]">
+            <div className="text-[#D7BF75] text-sm uppercase tracking-wide font-medium">
+              Your Listings
+            </div>
+            <Button className="bg-[#D7BF75] text-black hover:bg-[#D7BF75]/80 text-sm px-4 py-2">
               Create New Listing
             </Button>
           </div>
           <div className="animate-pulse space-y-4">
             {[...Array(3)].map((_, i) => (
-              <div key={i} className="h-16 bg-[#D0B284]/10 rounded-lg" />
+              <div key={i} className="h-16 bg-[#D7BF75]/10 rounded-lg" />
             ))}
           </div>
         </div>
@@ -172,11 +184,23 @@ export function ListingsTab() {
 
   if (error) {
     return (
-      <div className="w-full rounded-xl bg-[#231F20] border border-[#D0B284]/20 shadow-lg overflow-hidden">
+      <div className="bg-[#0A120B] rounded-lg border border-dashed border-[#D7BF75]/25 relative h-full">
+        {/* Corner ticks */}
+        <span className="pointer-events-none absolute left-3 top-3 h-3 w-0.5 bg-[#D7BF75]" />
+        <span className="pointer-events-none absolute left-3 top-3 w-3 h-0.5 bg-[#D7BF75]" />
+        <span className="pointer-events-none absolute right-3 top-3 h-3 w-0.5 bg-[#D7BF75]" />
+        <span className="pointer-events-none absolute right-3 top-3 w-3 h-0.5 bg-[#D7BF75]" />
+        <span className="pointer-events-none absolute left-3 bottom-3 h-3 w-0.5 bg-[#D7BF75]" />
+        <span className="pointer-events-none absolute left-3 bottom-3 w-3 h-0.5 bg-[#D7BF75]" />
+        <span className="pointer-events-none absolute right-3 bottom-3 h-3 w-0.5 bg-[#D7BF75]" />
+        <span className="pointer-events-none absolute right-3 bottom-3 w-3 h-0.5 bg-[#D7BF75]" />
+
         <div className="p-6">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold text-[#D0B284] font-libre-caslon">Your Listings</h2>
-            <Button className="bg-[#D0B284] text-black hover:bg-[#D7BF75]">
+            <div className="text-[#D7BF75] text-sm uppercase tracking-wide font-medium">
+              Your Listings
+            </div>
+            <Button className="bg-[#D7BF75] text-black hover:bg-[#D7BF75]/80 text-sm px-4 py-2">
               Create New Listing
             </Button>
           </div>
@@ -189,11 +213,25 @@ export function ListingsTab() {
   }
 
   return (
-    <div className="w-full rounded-xl bg-[#231F20] border border-[#D0B284]/20 shadow-lg overflow-hidden">
+    <div className="bg-[#0A120B] rounded-lg border border-dashed border-[#D7BF75]/25 relative h-full">
+      {/* Corner ticks */}
+      <span className="pointer-events-none absolute left-3 top-3 h-3 w-0.5 bg-[#D7BF75]" />
+      <span className="pointer-events-none absolute left-3 top-3 w-3 h-0.5 bg-[#D7BF75]" />
+      <span className="pointer-events-none absolute right-3 top-3 h-3 w-0.5 bg-[#D7BF75]" />
+      <span className="pointer-events-none absolute right-3 top-3 w-3 h-0.5 bg-[#D7BF75]" />
+      <span className="pointer-events-none absolute left-3 bottom-3 h-3 w-0.5 bg-[#D7BF75]" />
+      <span className="pointer-events-none absolute left-3 bottom-3 w-3 h-0.5 bg-[#D7BF75]" />
+      <span className="pointer-events-none absolute right-3 bottom-3 h-3 w-0.5 bg-[#D7BF75]" />
+      <span className="pointer-events-none absolute right-3 bottom-3 w-3 h-0.5 bg-[#D7BF75]" />
+
       <div className="p-6">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-[#D0B284] font-libre-caslon">Your Listings</h2>
-          <Button className="bg-[#D0B284] text-black hover:bg-[#D7BF75]">Create New Listing</Button>
+          <div className="text-[#D7BF75] text-sm uppercase tracking-wide font-medium">
+            Your Listings
+          </div>
+          <Button className="bg-[#D7BF75] text-black hover:bg-[#D7BF75]/80 text-sm px-4 py-2">
+            Create New Listing
+          </Button>
         </div>
 
         {/* Table */}
@@ -201,29 +239,29 @@ export function ListingsTab() {
           <table className="w-full">
             {/* Table Header */}
             <thead>
-              <tr className="border-b border-[#D0B284]/20">
-                <th className="text-left text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
+              <tr className="border-b border-dashed border-[#D7BF75]/25">
+                <th className="text-left text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
                   RWA / Ticker
                 </th>
-                <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
+                <th className="text-center text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
                   Contract
                 </th>
-                <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
+                <th className="text-center text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
                   Volume
                 </th>
-                <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
+                <th className="text-center text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
                   Market Cap
                 </th>
-                <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
+                <th className="text-center text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
                   Token Price
                 </th>
-                <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
+                <th className="text-center text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
                   Holders
                 </th>
-                <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
+                <th className="text-center text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
                   Fees Made
                 </th>
-                <th className="text-right text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
+                <th className="text-right text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
                   Actions
                 </th>
               </tr>
@@ -234,14 +272,14 @@ export function ListingsTab() {
               {listings.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="text-center py-8">
-                    <p className="text-[#DCDDCC] font-jetbrains">No listings found</p>
+                    <p className="text-[#E6E3D3] font-jetbrains">No listings found</p>
                   </td>
                 </tr>
               ) : (
                 listings.map((listing) => (
                   <React.Fragment key={listing.id}>
                     {/* Main Listing Row */}
-                    <tr className="border-b border-[#D0B284]/10 hover:bg-[#D0B284]/5 transition-colors duration-200">
+                    <tr className="border-b border-dashed border-[#D7BF75]/10 last:border-b-0">
                       {/* RWA Info */}
                       <td className="py-4 px-2">
                         <div className="flex items-center space-x-3">
@@ -253,11 +291,11 @@ export function ListingsTab() {
                             height={40}
                           />
                           <div className="flex-1 min-w-0">
-                            <h3 className="text-white font-medium truncate text-sm">
+                            <h3 className="text-[#E6E3D3] font-medium truncate text-sm">
                               {listing.name.split(' ').slice(0, 2).join(' ')}
                             </h3>
                             <div className="flex items-center space-x-2 mt-1">
-                              <span className="text-[#DCDDCC] font-jetbrains text-xs">
+                              <span className="text-[#E6E3D3] font-mono text-xs">
                                 {listing.ticker}
                               </span>
                               <Badge
@@ -272,40 +310,36 @@ export function ListingsTab() {
 
                       {/* Contract */}
                       <td className="py-4 px-2 text-center">
-                        <span className="text-[#DCDDCC] font-jetbrains text-xs">
+                        <span className="text-[#E6E3D3] font-mono text-xs">
                           {listing.contractAddress}
                         </span>
                       </td>
 
                       {/* Volume */}
                       <td className="py-4 px-2 text-center">
-                        <span className="text-white font-medium text-sm">{listing.volume}</span>
+                        <span className="text-[#E6E3D3] text-sm">{listing.volume}</span>
                       </td>
 
                       {/* Market Cap */}
                       <td className="py-4 px-2 text-center">
-                        <span className="text-white font-medium text-sm">{listing.marketCap}</span>
+                        <span className="text-[#E6E3D3] text-sm">{listing.marketCap}</span>
                       </td>
 
                       {/* Token Price */}
                       <td className="py-4 px-2 text-center">
-                        <span className="text-[#D0B284] font-medium text-sm">
-                          {listing.tokenPrice}
-                        </span>
+                        <span className="text-[#E6E3D3] text-sm">{listing.tokenPrice}</span>
                       </td>
 
                       {/* Holders */}
                       <td className="py-4 px-2 text-center">
-                        <span className="text-white font-medium text-sm">
+                        <span className="text-[#E6E3D3] text-sm">
                           {listing.holders.toLocaleString()}
                         </span>
                       </td>
 
                       {/* Fees Made */}
                       <td className="py-4 px-2 text-center">
-                        <span className="text-[#184D37] font-medium text-sm">
-                          {listing.feesMade}
-                        </span>
+                        <span className="text-[#E6E3D3] text-sm">{listing.feesMade}</span>
                       </td>
 
                       {/* Actions */}
@@ -314,11 +348,11 @@ export function ListingsTab() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="text-[#D0B284] hover:bg-[#D0B284]/10 text-xs"
+                            className="bg-[#184D37] hover:bg-[#184D37]/80 text-white border border-[#184D37] text-xs px-3 py-1"
                             onClick={() => toggleOffers(listing.id)}
                           >
                             <Eye className="w-3 h-3 mr-1" />
-                            View Offers ({listing.offers.length})
+                            VIEW OFFERS ({listing.offers.length})
                           </Button>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>

@@ -120,11 +120,21 @@ export function OffersTab() {
 
   if (isLoading) {
     return (
-      <div className="w-full space-y-6">
-        <div className="bg-[#231F20] border border-[#D0B284]/20 rounded-xl p-4">
+      <div className="bg-[#0A120B] rounded-lg border border-dashed border-[#D7BF75]/25 relative h-full">
+        {/* Corner ticks */}
+        <span className="pointer-events-none absolute left-3 top-3 h-3 w-0.5 bg-[#D7BF75]" />
+        <span className="pointer-events-none absolute left-3 top-3 w-3 h-0.5 bg-[#D7BF75]" />
+        <span className="pointer-events-none absolute right-3 top-3 h-3 w-0.5 bg-[#D7BF75]" />
+        <span className="pointer-events-none absolute right-3 top-3 w-3 h-0.5 bg-[#D7BF75]" />
+        <span className="pointer-events-none absolute left-3 bottom-3 h-3 w-0.5 bg-[#D7BF75]" />
+        <span className="pointer-events-none absolute left-3 bottom-3 w-3 h-0.5 bg-[#D7BF75]" />
+        <span className="pointer-events-none absolute right-3 bottom-3 h-3 w-0.5 bg-[#D7BF75]" />
+        <span className="pointer-events-none absolute right-3 bottom-3 w-3 h-0.5 bg-[#D7BF75]" />
+
+        <div className="p-6">
           <div className="animate-pulse space-y-4">
             {[...Array(3)].map((_, i) => (
-              <div key={i} className="h-16 bg-[#D0B284]/10 rounded-lg" />
+              <div key={i} className="h-16 bg-[#D7BF75]/10 rounded-lg" />
             ))}
           </div>
         </div>
@@ -134,8 +144,18 @@ export function OffersTab() {
 
   if (error) {
     return (
-      <div className="w-full space-y-6">
-        <div className="bg-[#231F20] border border-[#D0B284]/20 rounded-xl p-4">
+      <div className="bg-[#0A120B] rounded-lg border border-dashed border-[#D7BF75]/25 relative h-full">
+        {/* Corner ticks */}
+        <span className="pointer-events-none absolute left-3 top-3 h-3 w-0.5 bg-[#D7BF75]" />
+        <span className="pointer-events-none absolute left-3 top-3 w-3 h-0.5 bg-[#D7BF75]" />
+        <span className="pointer-events-none absolute right-3 top-3 h-3 w-0.5 bg-[#D7BF75]" />
+        <span className="pointer-events-none absolute right-3 top-3 w-3 h-0.5 bg-[#D7BF75]" />
+        <span className="pointer-events-none absolute left-3 bottom-3 h-3 w-0.5 bg-[#D7BF75]" />
+        <span className="pointer-events-none absolute left-3 bottom-3 w-3 h-0.5 bg-[#D7BF75]" />
+        <span className="pointer-events-none absolute right-3 bottom-3 h-3 w-0.5 bg-[#D7BF75]" />
+        <span className="pointer-events-none absolute right-3 bottom-3 w-3 h-0.5 bg-[#D7BF75]" />
+
+        <div className="p-6">
           <div className="text-center py-8">
             <p className="text-red-400 font-jetbrains">{error}</p>
           </div>
@@ -145,299 +165,313 @@ export function OffersTab() {
   }
 
   return (
-    <div className="w-full space-y-6">
-      {/* Filters Section */}
-      <div className="bg-[#231F20] border border-[#D0B284]/20 rounded-xl p-4">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-[#D0B284]">Filter Offers</h3>
-        </div>
+    <div className="bg-[#0A120B] rounded-lg border border-dashed border-[#D7BF75]/25 relative h-full">
+      {/* Corner ticks */}
+      <span className="pointer-events-none absolute left-3 top-3 h-3 w-0.5 bg-[#D7BF75]" />
+      <span className="pointer-events-none absolute left-3 top-3 w-3 h-0.5 bg-[#D7BF75]" />
+      <span className="pointer-events-none absolute right-3 top-3 h-3 w-0.5 bg-[#D7BF75]" />
+      <span className="pointer-events-none absolute right-3 top-3 w-3 h-0.5 bg-[#D7BF75]" />
+      <span className="pointer-events-none absolute left-3 bottom-3 h-3 w-0.5 bg-[#D7BF75]" />
+      <span className="pointer-events-none absolute left-3 bottom-3 w-3 h-0.5 bg-[#D7BF75]" />
+      <span className="pointer-events-none absolute right-3 bottom-3 h-3 w-0.5 bg-[#D7BF75]" />
+      <span className="pointer-events-none absolute right-3 bottom-3 w-3 h-0.5 bg-[#D7BF75]" />
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-[#DCDDCC]" />
-            <input
-              type="text"
-              placeholder="Search offers..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-black/50 border border-[#D0B284]/20 rounded-md text-white placeholder-[#DCDDCC] focus:border-[#D0B284] focus:outline-none"
-            />
+      <div className="p-6 space-y-6 h-full overflow-y-auto">
+        {/* Filters Section */}
+        <div className="border border-dashed border-[#D7BF75]/25 rounded-lg p-4">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-[#D7BF75] text-sm uppercase tracking-wide font-medium">
+              Filter Offers
+            </h3>
           </div>
 
-          {/* Listing Filter */}
-          <select
-            value={listingFilter}
-            onChange={(e) => setListingFilter(e.target.value)}
-            className="px-3 py-2 bg-black/50 border border-[#D0B284]/20 rounded-md text-white focus:border-[#D0B284] focus:outline-none"
-          >
-            {listingOptions.map((listing) => (
-              <option key={listing} value={listing} className="bg-[#231F20]">
-                {listing === 'ALL' ? 'All Listings' : listing.split(' ').slice(0, 3).join(' ')}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-[#E6E3D3]" />
+              <input
+                type="text"
+                placeholder="Search offers..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-black/30 border border-[#D7BF75]/20 rounded-md text-[#E6E3D3] placeholder-[#E6E3D3]/50 focus:border-[#D7BF75] focus:outline-none"
+              />
+            </div>
+
+            {/* Listing Filter */}
+            <select
+              value={listingFilter}
+              onChange={(e) => setListingFilter(e.target.value)}
+              className="px-3 py-2 bg-black/30 border border-[#D7BF75]/20 rounded-md text-[#E6E3D3] focus:border-[#D7BF75] focus:outline-none"
+            >
+              {listingOptions.map((listing) => (
+                <option key={listing} value={listing} className="bg-[#0A120B]">
+                  {listing === 'ALL' ? 'All Listings' : listing.split(' ').slice(0, 3).join(' ')}
+                </option>
+              ))}
+            </select>
+
+            {/* Status Filter */}
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-3 py-2 bg-black/30 border border-[#D7BF75]/20 rounded-md text-[#E6E3D3] focus:border-[#D7BF75] focus:outline-none"
+            >
+              <option value="ALL" className="bg-[#0A120B]">
+                All Status
               </option>
-            ))}
-          </select>
+              <option value="active" className="bg-[#0A120B]">
+                Active
+              </option>
+              <option value="expired" className="bg-[#0A120B]">
+                Expired
+              </option>
+              <option value="accepted" className="bg-[#0A120B]">
+                Accepted
+              </option>
+              <option value="declined" className="bg-[#0A120B]">
+                Declined
+              </option>
+            </select>
 
-          {/* Status Filter */}
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-2 bg-black/50 border border-[#D0B284]/20 rounded-md text-white focus:border-[#D0B284] focus:outline-none"
-          >
-            <option value="ALL" className="bg-[#231F20]">
-              All Status
-            </option>
-            <option value="active" className="bg-[#231F20]">
-              Active
-            </option>
-            <option value="expired" className="bg-[#231F20]">
-              Expired
-            </option>
-            <option value="accepted" className="bg-[#231F20]">
-              Accepted
-            </option>
-            <option value="declined" className="bg-[#231F20]">
-              Declined
-            </option>
-          </select>
+            {/* Clear Filters */}
+            <Button
+              variant="outline"
+              onClick={() => {
+                setListingFilter('ALL');
+                setStatusFilter('ALL');
+                setSearchTerm('');
+              }}
+              className="border-[#D0B284]/20 text-[#DCDDCC] hover:bg-[#D0B284]/10"
+            >
+              <Filter className="w-4 h-4 mr-2" />
+              Clear Filters
+            </Button>
+          </div>
 
-          {/* Clear Filters */}
-          <Button
-            variant="outline"
-            onClick={() => {
-              setListingFilter('ALL');
-              setStatusFilter('ALL');
-              setSearchTerm('');
-            }}
-            className="border-[#D0B284]/20 text-[#DCDDCC] hover:bg-[#D0B284]/10"
-          >
-            <Filter className="w-4 h-4 mr-2" />
-            Clear Filters
-          </Button>
+          {/* Filter Summary */}
+          {(listingFilter !== 'ALL' || statusFilter !== 'ALL' || searchTerm) && (
+            <div className="mt-4 flex items-center space-x-2 text-sm">
+              <span className="text-[#DCDDCC]">Active filters:</span>
+              {listingFilter !== 'ALL' && (
+                <Badge variant="secondary" className="bg-[#D0B284]/10 text-[#D0B284]">
+                  Listing: {listingFilter.split(' ').slice(0, 2).join(' ')}
+                </Badge>
+              )}
+              {statusFilter !== 'ALL' && (
+                <Badge variant="secondary" className="bg-[#D0B284]/10 text-[#D0B284]">
+                  Status: {statusFilter}
+                </Badge>
+              )}
+              {searchTerm && (
+                <Badge variant="secondary" className="bg-[#D0B284]/10 text-[#D0B284]">
+                  Search: &quot;{searchTerm}&quot;
+                </Badge>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Filter Summary */}
-        {(listingFilter !== 'ALL' || statusFilter !== 'ALL' || searchTerm) && (
-          <div className="mt-4 flex items-center space-x-2 text-sm">
-            <span className="text-[#DCDDCC]">Active filters:</span>
-            {listingFilter !== 'ALL' && (
-              <Badge variant="secondary" className="bg-[#D0B284]/10 text-[#D0B284]">
-                Listing: {listingFilter.split(' ').slice(0, 2).join(' ')}
-              </Badge>
-            )}
-            {statusFilter !== 'ALL' && (
-              <Badge variant="secondary" className="bg-[#D0B284]/10 text-[#D0B284]">
-                Status: {statusFilter}
-              </Badge>
-            )}
-            {searchTerm && (
-              <Badge variant="secondary" className="bg-[#D0B284]/10 text-[#D0B284]">
-                Search: &quot;{searchTerm}&quot;
-              </Badge>
-            )}
-          </div>
-        )}
-      </div>
+        {/* Active Offers */}
+        {filteredActiveOffers.length > 0 && (
+          <div className="rounded-xl bg-[#231F20] border border-[#D0B284]/20 shadow-lg overflow-hidden">
+            <div className="p-6">
+              <h2 className="text-xl font-bold text-[#D0B284] mb-6 font-libre-caslon">
+                Active Offers ({filteredActiveOffers.length})
+              </h2>
 
-      {/* Active Offers */}
-      {filteredActiveOffers.length > 0 && (
-        <div className="rounded-xl bg-[#231F20] border border-[#D0B284]/20 shadow-lg overflow-hidden">
-          <div className="p-6">
-            <h2 className="text-xl font-bold text-[#D0B284] mb-6 font-libre-caslon">
-              Active Offers ({filteredActiveOffers.length})
-            </h2>
-
-            <div className="space-y-4">
-              {filteredActiveOffers.map((offer) => (
-                <div
-                  key={offer.id}
-                  className="flex items-center justify-between p-4 bg-[#184D37]/10 border border-[#184D37]/20 rounded-lg hover:bg-[#184D37]/20 transition-colors duration-200"
-                >
-                  {/* Left side - Item and offer info */}
-                  <div className="flex items-center space-x-4">
-                    <Image
-                      src={offer.image || '/placeholder.svg'}
-                      alt={offer.itemName}
-                      className="w-12 h-12 rounded-full object-cover border border-[#D0B284]/20"
-                      width={40}
-                      height={40}
-                    />
-                    <div>
-                      <div className="flex items-center space-x-2 mb-1">
-                        <h3 className="text-white font-medium">
-                          {offer.itemName.split(' ').slice(0, 3).join(' ')}
-                        </h3>
-                        <span className="text-[#DCDDCC] font-jetbrains text-sm">
-                          {offer.ticker}
-                        </span>
-                      </div>
-                      <div className="flex items-center space-x-4 text-sm">
-                        <span className="text-[#D0B284] font-medium">{offer.offerAmount}</span>
-                        <span className="text-[#DCDDCC]">
-                          from{' '}
-                          {offer.fromDisplayName ||
-                            `${offer.fromAddress.slice(0, 6)}...${offer.fromAddress.slice(-4)}`}
-                        </span>
-                        <div className="flex items-center space-x-1 text-[#DCDDCC]">
-                          <Clock className="w-3 h-3" />
-                          <span>Expires {offer.expiration}</span>
+              <div className="space-y-4">
+                {filteredActiveOffers.map((offer) => (
+                  <div
+                    key={offer.id}
+                    className="flex items-center justify-between p-4 bg-[#184D37]/10 border border-[#184D37]/20 rounded-lg hover:bg-[#184D37]/20 transition-colors duration-200"
+                  >
+                    {/* Left side - Item and offer info */}
+                    <div className="flex items-center space-x-4">
+                      <Image
+                        src={offer.image || '/placeholder.svg'}
+                        alt={offer.itemName}
+                        className="w-12 h-12 rounded-full object-cover border border-[#D0B284]/20"
+                        width={40}
+                        height={40}
+                      />
+                      <div>
+                        <div className="flex items-center space-x-2 mb-1">
+                          <h3 className="text-white font-medium">
+                            {offer.itemName.split(' ').slice(0, 3).join(' ')}
+                          </h3>
+                          <span className="text-[#DCDDCC] font-jetbrains text-sm">
+                            {offer.ticker}
+                          </span>
+                        </div>
+                        <div className="flex items-center space-x-4 text-sm">
+                          <span className="text-[#D0B284] font-medium">{offer.offerAmount}</span>
+                          <span className="text-[#DCDDCC]">
+                            from{' '}
+                            {offer.fromDisplayName ||
+                              `${offer.fromAddress.slice(0, 6)}...${offer.fromAddress.slice(-4)}`}
+                          </span>
+                          <div className="flex items-center space-x-1 text-[#DCDDCC]">
+                            <Clock className="w-3 h-3" />
+                            <span>Expires {offer.expiration}</span>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Right side - Actions */}
-                  <div className="flex items-center space-x-2">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="text-[#DCDDCC] hover:bg-[#D0B284]/10 border border-[#DCDDCC]/20"
-                    >
-                      <MessageCircle className="w-4 h-4 mr-2" />
-                      Counter
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="text-red-400 hover:bg-red-400/10 border border-red-400/20"
-                    >
-                      <X className="w-4 h-4 mr-2" />
-                      Decline
-                    </Button>
-                    <Button size="sm" className="bg-[#184D37] hover:bg-[#184D37]/80 text-white">
-                      <Check className="w-4 h-4 mr-2" />
-                      Accept
-                    </Button>
+                    {/* Right side - Actions */}
+                    <div className="flex items-center space-x-2">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-[#DCDDCC] hover:bg-[#D0B284]/10 border border-[#DCDDCC]/20"
+                      >
+                        <MessageCircle className="w-4 h-4 mr-2" />
+                        Counter
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-red-400 hover:bg-red-400/10 border border-red-400/20"
+                      >
+                        <X className="w-4 h-4 mr-2" />
+                        Decline
+                      </Button>
+                      <Button size="sm" className="bg-[#184D37] hover:bg-[#184D37]/80 text-white">
+                        <Check className="w-4 h-4 mr-2" />
+                        Accept
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* All Offers History */}
-      <div className="rounded-xl bg-[#231F20] border border-[#D0B284]/20 shadow-lg overflow-hidden">
-        <div className="p-6">
-          <h2 className="text-xl font-bold text-[#D0B284] mb-6 font-libre-caslon">
-            Offer History ({filteredAllOffers.length})
-          </h2>
+        {/* All Offers History */}
+        <div className="rounded-xl bg-[#231F20] border border-[#D0B284]/20 shadow-lg overflow-hidden">
+          <div className="p-6">
+            <h2 className="text-xl font-bold text-[#D0B284] mb-6 font-libre-caslon">
+              Offer History ({filteredAllOffers.length})
+            </h2>
 
-          {/* Empty State */}
-          {filteredAllOffers.length === 0 ? (
-            <div className="text-center py-8">
-              <p className="text-[#DCDDCC] font-jetbrains">
-                {listingFilter !== 'ALL' || statusFilter !== 'ALL' || searchTerm
-                  ? 'No offers match your current filters'
-                  : 'No offers found'}
-              </p>
-              {(listingFilter !== 'ALL' || statusFilter !== 'ALL' || searchTerm) && (
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    setListingFilter('ALL');
-                    setStatusFilter('ALL');
-                    setSearchTerm('');
-                  }}
-                  className="text-[#D0B284] hover:bg-[#D0B284]/10 mt-2"
-                >
-                  Clear filters to see all offers
-                </Button>
-              )}
-            </div>
-          ) : (
-            /* Table */
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                {/* Table Header */}
-                <thead>
-                  <tr className="border-b border-[#D0B284]/20">
-                    <th className="text-left text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
-                      Item
-                    </th>
-                    <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
-                      Offer Amount
-                    </th>
-                    <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
-                      From
-                    </th>
-                    <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
-                      Expiration
-                    </th>
-                    <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
-                      Status
-                    </th>
-                    <th className="text-right text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
-                      Date
-                    </th>
-                  </tr>
-                </thead>
-
-                {/* Table Body */}
-                <tbody>
-                  {filteredAllOffers.map((offer) => (
-                    <tr
-                      key={offer.id}
-                      className="border-b border-[#D0B284]/10 hover:bg-[#D0B284]/5 transition-colors duration-200"
-                    >
-                      {/* Item */}
-                      <td className="py-4 px-2">
-                        <div className="flex items-center space-x-3">
-                          <Image
-                            src={offer.image || '/placeholder.svg'}
-                            alt={offer.itemName}
-                            className="w-8 h-8 rounded-full object-cover border border-[#D0B284]/20"
-                            width={40}
-                            height={40}
-                          />
-                          <div>
-                            <h3 className="text-white font-medium text-sm">
-                              {offer.itemName.split(' ').slice(0, 2).join(' ')}
-                            </h3>
-                            <span className="text-[#DCDDCC] font-jetbrains text-xs">
-                              {offer.ticker}
-                            </span>
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Offer Amount */}
-                      <td className="py-4 px-2 text-center">
-                        <span className="text-[#D0B284] font-medium text-sm">
-                          {offer.offerAmount}
-                        </span>
-                      </td>
-
-                      {/* From */}
-                      <td className="py-4 px-2 text-center">
-                        <span className="text-white text-sm">
-                          {offer.fromDisplayName ||
-                            `${offer.fromAddress.slice(0, 6)}...${offer.fromAddress.slice(-4)}`}
-                        </span>
-                      </td>
-
-                      {/* Expiration */}
-                      <td className="py-4 px-2 text-center">
-                        <span className="text-[#DCDDCC] text-sm">{offer.expiration}</span>
-                      </td>
-
-                      {/* Status */}
-                      <td className="py-4 px-2 text-center">
-                        <Badge className={`${getStatusColor(offer.status)} border-none text-xs`}>
-                          {offer.status.charAt(0).toUpperCase() + offer.status.slice(1)}
-                        </Badge>
-                      </td>
-
-                      {/* Date */}
-                      <td className="py-4 px-2 text-right">
-                        <span className="text-[#DCDDCC] text-sm">{offer.createdAt}</span>
-                      </td>
+            {/* Empty State */}
+            {filteredAllOffers.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-[#DCDDCC] font-jetbrains">
+                  {listingFilter !== 'ALL' || statusFilter !== 'ALL' || searchTerm
+                    ? 'No offers match your current filters'
+                    : 'No offers found'}
+                </p>
+                {(listingFilter !== 'ALL' || statusFilter !== 'ALL' || searchTerm) && (
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setListingFilter('ALL');
+                      setStatusFilter('ALL');
+                      setSearchTerm('');
+                    }}
+                    className="text-[#D0B284] hover:bg-[#D0B284]/10 mt-2"
+                  >
+                    Clear filters to see all offers
+                  </Button>
+                )}
+              </div>
+            ) : (
+              /* Table */
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  {/* Table Header */}
+                  <thead>
+                    <tr className="border-b border-[#D0B284]/20">
+                      <th className="text-left text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
+                        Item
+                      </th>
+                      <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
+                        Offer Amount
+                      </th>
+                      <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
+                        From
+                      </th>
+                      <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
+                        Expiration
+                      </th>
+                      <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
+                        Status
+                      </th>
+                      <th className="text-right text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
+                        Date
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  </thead>
+
+                  {/* Table Body */}
+                  <tbody>
+                    {filteredAllOffers.map((offer) => (
+                      <tr
+                        key={offer.id}
+                        className="border-b border-[#D0B284]/10 hover:bg-[#D0B284]/5 transition-colors duration-200"
+                      >
+                        {/* Item */}
+                        <td className="py-4 px-2">
+                          <div className="flex items-center space-x-3">
+                            <Image
+                              src={offer.image || '/placeholder.svg'}
+                              alt={offer.itemName}
+                              className="w-8 h-8 rounded-full object-cover border border-[#D0B284]/20"
+                              width={40}
+                              height={40}
+                            />
+                            <div>
+                              <h3 className="text-white font-medium text-sm">
+                                {offer.itemName.split(' ').slice(0, 2).join(' ')}
+                              </h3>
+                              <span className="text-[#DCDDCC] font-jetbrains text-xs">
+                                {offer.ticker}
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Offer Amount */}
+                        <td className="py-4 px-2 text-center">
+                          <span className="text-[#D0B284] font-medium text-sm">
+                            {offer.offerAmount}
+                          </span>
+                        </td>
+
+                        {/* From */}
+                        <td className="py-4 px-2 text-center">
+                          <span className="text-white text-sm">
+                            {offer.fromDisplayName ||
+                              `${offer.fromAddress.slice(0, 6)}...${offer.fromAddress.slice(-4)}`}
+                          </span>
+                        </td>
+
+                        {/* Expiration */}
+                        <td className="py-4 px-2 text-center">
+                          <span className="text-[#DCDDCC] text-sm">{offer.expiration}</span>
+                        </td>
+
+                        {/* Status */}
+                        <td className="py-4 px-2 text-center">
+                          <Badge className={`${getStatusColor(offer.status)} border-none text-xs`}>
+                            {offer.status.charAt(0).toUpperCase() + offer.status.slice(1)}
+                          </Badge>
+                        </td>
+
+                        {/* Date */}
+                        <td className="py-4 px-2 text-right">
+                          <span className="text-[#DCDDCC] text-sm">{offer.createdAt}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

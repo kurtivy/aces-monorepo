@@ -1,238 +1,187 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { SellerDashboardOverlay } from './seller-dashboard-overlay';
 import Image from 'next/image';
-import { useAuth } from '@/lib/auth/auth-context';
-import { useEffect, useState } from 'react';
-import { ProfileApi, TokenData } from '@/lib/api/profile';
+import { useState } from 'react';
+
+// Mock data for testing
+const mockTokens = [
+  {
+    id: '1',
+    title: '1991 Porsche 964 Turbo',
+    ticker: '$PORSCHE',
+    image:
+      '/canvas-images/outline/new/webp/1991-Porsche-964-Turbo-Rubystone-Red-1-of-5-Limited-Edition-Paint.webp',
+    contractAddress: '0x7172...b4E1C',
+    amount: 69420,
+    totalValue: 4032.36,
+  },
+  {
+    id: '2',
+    title: 'Hermes Ostrich Birkin 25',
+    ticker: '$BIRKIN',
+    image:
+      '/canvas-images/outline/new/webp/Hermes-Matte-Niloticus-Crocodile-Himalaya-Kelly-Retourne-32-White.webp',
+    contractAddress: '0x7172...b4E1C',
+    amount: 36096,
+    totalValue: 2032.36,
+  },
+  {
+    id: '3',
+    title: '1991 Porsche 964 Turbo',
+    ticker: '$PORSCHE',
+    image:
+      '/canvas-images/outline/new/webp/1991-Porsche-964-Turbo-Rubystone-Red-1-of-5-Limited-Edition-Paint.webp',
+    contractAddress: '0x7172...b4E1C',
+    amount: 69420,
+    totalValue: 4032.36,
+  },
+  {
+    id: '4',
+    title: '1991 Porsche 964 Turbo',
+    ticker: '$PORSCHE',
+    image:
+      '/canvas-images/outline/new/webp/1991-Porsche-964-Turbo-Rubystone-Red-1-of-5-Limited-Edition-Paint.webp',
+    contractAddress: '0x7172...b4E1C',
+    amount: 69420,
+    totalValue: 4032.36,
+  },
+  {
+    id: '5',
+    title: '1991 Porsche 964 Turbo',
+    ticker: '$PORSCHE',
+    image:
+      '/canvas-images/outline/new/webp/1991-Porsche-964-Turbo-Rubystone-Red-1-of-5-Limited-Edition-Paint.webp',
+    contractAddress: '0x7172...b4E1C',
+    amount: 69420,
+    totalValue: 4032.36,
+  },
+];
 
 export function TokenListTab() {
-  const { getAccessToken } = useAuth();
-  const [tokens, setTokens] = useState<TokenData[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [totalValue, setTotalValue] = useState({ eth: 0, usd: 0 });
-
-  useEffect(() => {
-    const fetchUserTokens = async () => {
-      const authToken = await getAccessToken();
-      if (!authToken) return;
-
-      try {
-        const result = await ProfileApi.getUserTokens(authToken);
-        if (result.success) {
-          // Backend returns tokens directly in data, not in data.tokens
-          const backendTokens = result.data;
-
-          // Transform backend data to frontend TokenData format
-          const transformedTokens: TokenData[] = backendTokens.map((token) => ({
-            id: token.id,
-            title: token.title,
-            ticker: token.ticker,
-            image: token.image,
-            contractAddress: token.contractAddress,
-            category: token.category,
-            amount: 1, // Default to 1 since backend doesn't provide amount
-            totalInEth: parseFloat(token.value) || 0,
-            totalInAces: parseFloat(token.value) || 0, // Using same value for now
-            totalInUSD: parseFloat(token.value) || 0, // Using same value for now
-          }));
-
-          setTokens(transformedTokens);
-
-          // Calculate total value from tokens
-          const totalEth = transformedTokens.reduce((sum, token) => sum + token.totalInEth, 0);
-          const totalUsd = transformedTokens.reduce((sum, token) => sum + token.totalInUSD, 0);
-          setTotalValue({ eth: totalEth, usd: totalUsd });
-        } else {
-          setError(result.error);
-        }
-      } catch (err) {
-        setError('Failed to fetch tokens');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchUserTokens();
-  }, [getAccessToken]);
-
-  if (isLoading) {
-    return (
-      <div className="w-full rounded-xl bg-[#231F20] border border-[#D0B284]/20 shadow-lg p-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-[#D0B284]/10 rounded w-1/4"></div>
-          <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-16 bg-[#D0B284]/10 rounded"></div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="w-full rounded-xl bg-[#231F20] border border-red-500/20 shadow-lg p-6">
-        <div className="text-red-500">Error: {error}</div>
-      </div>
-    );
-  }
-
-  // Add null check for tokens array
-  if (!tokens || tokens.length === 0) {
-    return (
-      <div className="w-full rounded-xl bg-[#231F20] border border-[#D0B284]/20 shadow-lg p-6">
-        <div className="text-center text-[#DCDDCC]">
-          <p className="mb-4">No tokens found in your portfolio</p>
-          <Button
-            className="bg-[#184D37] hover:bg-[#184D37]/80 text-white"
-            onClick={() => (window.location.href = '/list-token')}
-          >
-            Create Token
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  const [isSellerDashboardOpen, setIsSellerDashboardOpen] = useState(false);
 
   return (
-    <div className="w-full rounded-xl bg-[#231F20] border border-[#D0B284]/20 shadow-lg overflow-hidden">
-      <div className="p-6">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <div className="text-2xl font-bold text-white font-libre-caslon mb-1">
-              {totalValue.eth.toFixed(6)} ETH
+    <div className="relative">
+      {/* Seller Dashboard Overlay - full screen overlay */}
+      <SellerDashboardOverlay
+        isOpen={isSellerDashboardOpen}
+        onClose={() => setIsSellerDashboardOpen(false)}
+      />
+
+      {/* Main Table */}
+      <div className="bg-[#0f1511] rounded-lg border border-dashed border-[#E6E3D3]/25">
+        {/* Corner ticks */}
+        <div className="relative">
+          <span className="pointer-events-none absolute left-3 top-3 h-3 w-0.5 bg-[#C9AE6A]" />
+          <span className="pointer-events-none absolute left-3 top-3 w-3 h-0.5 bg-[#C9AE6A]" />
+          <span className="pointer-events-none absolute right-3 top-3 h-3 w-0.5 bg-[#C9AE6A]" />
+          <span className="pointer-events-none absolute right-3 top-3 w-3 h-0.5 bg-[#C9AE6A]" />
+          <span className="pointer-events-none absolute left-3 bottom-3 h-3 w-0.5 bg-[#C9AE6A]" />
+          <span className="pointer-events-none absolute left-3 bottom-3 w-3 h-0.5 bg-[#C9AE6A]" />
+          <span className="pointer-events-none absolute right-3 bottom-3 h-3 w-0.5 bg-[#C9AE6A]" />
+          <span className="pointer-events-none absolute right-3 bottom-3 w-3 h-0.5 bg-[#C9AE6A]" />
+
+          {/* Table Content */}
+          <div className="p-6">
+            {/* Tab selectors and Seller Dashboard button - aligned on same line */}
+            <div className="flex justify-between items-center mb-6">
+              <div className="flex-1">
+                <TabsList className="bg-transparent border-none p-0 h-auto space-x-8">
+                  <TabsTrigger
+                    value="tokens"
+                    className="bg-transparent text-[#DCDDCC] text-lg font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-[#D0B284]"
+                  >
+                    TOKENS
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="bids"
+                    className="bg-transparent text-[#DCDDCC] text-lg font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-[#D0B284]"
+                  >
+                    BIDS
+                  </TabsTrigger>
+                </TabsList>
+              </div>
+
+              {/* Seller Dashboard Button - aligned with tabs */}
+              <Button
+                onClick={() => setIsSellerDashboardOpen(true)}
+                className="bg-[#C9AE6A] hover:bg-[#C9AE6A]/80 text-black font-medium text-sm px-4 py-2"
+              >
+                SELLER DASHBOARD
+              </Button>
             </div>
-            <div className="text-[#DCDDCC] text-sm">${totalValue.usd.toLocaleString()}</div>
-          </div>
-        </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 items-center text-[#D7BF75] text-sm uppercase tracking-wide font-medium mb-4 pb-4 border-b border-dashed border-[#E6E3D3]/25">
+              <div className="text-left">RWA</div>
+              <div className="text-center">TICKER</div>
+              <div className="text-center">CONTRACT</div>
+              <div className="text-center">AMOUNT</div>
+              <div className="text-center">TOTAL</div>
+              <div className="text-right"></div>
+            </div>
 
-        {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            {/* Table Header */}
-            <thead>
-              <tr className="border-b border-[#D0B284]/20">
-                <th className="text-left text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
-                  RWA
-                </th>
-                <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
-                  Ticker
-                </th>
-                <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
-                  Contract
-                </th>
-                <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
-                  Action
-                </th>
-                <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
-                  Amount
-                </th>
-                <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
-                  Total ETH
-                </th>
-                <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
-                  Total ACES
-                </th>
-                <th className="text-right text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
-                  Total USD
-                </th>
-              </tr>
-            </thead>
-
-            {/* Table Body */}
-            <tbody>
-              {tokens.map((token) => (
-                <tr
+            {/* Table Rows */}
+            <div className="space-y-4">
+              {mockTokens.map((token) => (
+                <div
                   key={token.id}
-                  className="border-b border-[#D0B284]/10 hover:bg-[#D0B284]/5 transition-colors duration-200"
+                  className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 items-center py-3 border-b border-dashed border-[#E6E3D3]/10 last:border-b-0"
                 >
-                  {/* RWA Info */}
-                  <td className="py-4 px-2">
-                    <div className="flex items-center space-x-3">
-                      <div className="relative">
-                        <Image
-                          src={token.image || '/placeholder.svg'}
-                          alt={token.title}
-                          className="w-10 h-10 rounded-full object-cover border border-[#D0B284]/20"
-                          width={40}
-                          height={40}
-                        />
-                        <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-blue-500 rounded-full border-2 border-[#231F20] flex items-center justify-center">
-                          <div className="w-2 h-2 bg-white rounded-full"></div>
-                        </div>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-white font-medium truncate text-sm">
-                          {token.title.split(' ').slice(0, 2).join(' ')}
-                        </h3>
-                        <Badge
-                          variant="secondary"
-                          className="bg-[#D0B284]/10 text-[#D0B284] text-xs px-2 py-0.5 mt-1"
-                        >
-                          {token.category}
-                        </Badge>
+                  {/* RWA with Image */}
+                  <div className="flex items-center gap-3">
+                    <Image
+                      src={token.image}
+                      alt={token.title}
+                      width={40}
+                      height={40}
+                      className="w-10 h-10 rounded object-cover border border-[#D0B284]/20"
+                    />
+                    <div className="min-w-0">
+                      <div className="text-[#E6E3D3] text-sm font-medium truncate">
+                        {token.title}
                       </div>
                     </div>
-                  </td>
+                  </div>
 
                   {/* Ticker */}
-                  <td className="py-4 px-2 text-center">
-                    <span className="text-[#DCDDCC] font-jetbrains text-sm">{token.ticker}</span>
-                  </td>
+                  <div className="text-center">
+                    <span className="text-[#E6E3D3] text-sm font-mono">{token.ticker}</span>
+                  </div>
 
-                  {/* Contract Address */}
-                  <td className="py-4 px-2 text-center">
-                    <span className="text-[#DCDDCC] font-jetbrains text-xs">
+                  {/* Contract */}
+                  <div className="text-center">
+                    <span className="text-[#E6E3D3] text-sm font-mono">
                       {token.contractAddress}
                     </span>
-                  </td>
-
-                  {/* Action Button */}
-                  <td className="py-4 px-2 text-center">
-                    <Button
-                      size="sm"
-                      className="bg-[#184D37] hover:bg-[#184D37]/80 text-white px-3 py-1 text-xs"
-                    >
-                      View Asset
-                    </Button>
-                  </td>
+                  </div>
 
                   {/* Amount */}
-                  <td className="py-4 px-2 text-center">
-                    <span className="text-white font-medium text-sm">
-                      {token.amount.toLocaleString()}
+                  <div className="text-center">
+                    <span className="text-[#E6E3D3] text-sm">
+                      {token.amount.toLocaleString()} Tokens
                     </span>
-                  </td>
+                  </div>
 
-                  {/* Total in ETH */}
-                  <td className="py-4 px-2 text-center">
-                    <span className="text-white font-medium text-sm">
-                      {token.totalInEth.toFixed(4)}
-                    </span>
-                  </td>
+                  {/* Total */}
+                  <div className="text-center">
+                    <span className="text-[#E6E3D3] text-sm">${token.totalValue.toFixed(2)}</span>
+                  </div>
 
-                  {/* Total in ACES */}
-                  <td className="py-4 px-2 text-center">
-                    <span className="text-white font-medium text-sm">
-                      {token.totalInAces.toFixed(6)}
-                    </span>
-                  </td>
-
-                  {/* Total in USD */}
-                  <td className="py-4 px-2 text-right">
-                    <span className="text-[#D0B284] font-medium text-sm">
-                      ${token.totalInUSD.toLocaleString()}
-                    </span>
-                  </td>
-                </tr>
+                  {/* View Asset Button */}
+                  <div className="text-right">
+                    <Button
+                      size="sm"
+                      className="bg-[#184D37] hover:bg-[#184D37]/80 text-white border border-[#184D37] text-xs px-3 py-1"
+                    >
+                      VIEW ASSET
+                    </Button>
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+          </div>
         </div>
       </div>
     </div>

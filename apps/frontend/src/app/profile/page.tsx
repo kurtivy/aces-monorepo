@@ -6,33 +6,61 @@ import { TokenListTab } from '@/components/profile/token-list-tab';
 import { BidsTab } from '@/components/profile/bids-tab';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Footer from '@/components/ui/custom/footer';
-import { SellerDashboardOverlay } from '@/components/profile/seller-dashboard-overlay';
-import { useState } from 'react';
+import { useState, useLayoutEffect } from 'react';
 import { AdminDashboardOverlay } from '@/components/profile/admin-dashboard-overlay';
 import { SubmissionStatusNotifications } from '@/components/profile/submission-status-notifications';
-import AnimatedDotsBackground from '@/components/ui/custom/animated-dots-background';
 import LuxuryAssetsBackground from '@/components/ui/custom/luxury-assets-background';
 import AcesHeader from '@/components/ui/custom/aces-header';
+import PageBandTitle from '@/components/ui/custom/page-band-title';
+import PageBandSubtitle from '@/components/ui/custom/page-band-subtitle';
 
 export default function ProfilePage() {
   const { user, isLoading, error, updateProfile, walletAddress } = useAuth();
-  const [isSellerDashboardOpen, setIsSellerDashboardOpen] = useState(false);
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-black">
-        <AcesHeader />
-        <div className="p-6">
-          <div className="animate-pulse space-y-6">
-            <div className="h-24 bg-[#231F20] rounded-xl border border-[#D0B284]/10" />
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="h-64 bg-[#231F20] rounded-xl border border-[#D0B284]/10" />
-              <div className="md:col-span-2 h-64 bg-[#231F20] rounded-xl border border-[#D0B284]/10" />
+      <div className="min-h-screen relative bg-[#151c16]">
+        <div className="relative z-50">
+          <AcesHeader />
+        </div>
+        <LuxuryAssetsBackground
+          className="absolute inset-0 z-0"
+          opacity={0.9}
+          showOnMobile={false}
+          contentWidth={1200}
+          bandHeight={96}
+        />
+        <PageBandTitle
+          title="Portfolio"
+          contentWidth={1200}
+          bandHeight={96}
+          contentLineOffset={8}
+        />
+        <PageBandSubtitle
+          text="Your tokenized RWA portfolio and bids"
+          contentWidth={1200}
+          bandHeight={96}
+          contentLineOffset={8}
+          offsetY={12}
+        />
+        <div className="relative z-20 h-[1000px]">
+          <div className="absolute top-[200px] left-1/2 -translate-x-1/2 w-full max-w-[1200px] px-4 sm:px-6 z-10 h-[760px] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+            <div className="relative bg-[#151c16]/80 border border-dashed border-[#E6E3D3]/20 rounded-2xl p-8 shadow-[0_10px_40px_rgba(215,191,117,0.06)]">
+              <div className="animate-pulse space-y-6">
+                <div className="h-24 bg-[#0f1511] rounded-xl border border-[#D0B284]/10" />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="h-64 bg-[#0f1511] rounded-xl border border-[#D0B284]/10" />
+                  <div className="md:col-span-2 h-64 bg-[#0f1511] rounded-xl border border-[#D0B284]/10" />
+                </div>
+              </div>
             </div>
+            <div className="h-24" />
           </div>
         </div>
-        <Footer />
+        <div className="relative z-50">
+          <Footer />
+        </div>
       </div>
     );
   }
@@ -79,94 +107,88 @@ export default function ProfilePage() {
     // sellerStatus: user?.sellerStatus || undefined,
   };
 
+  // Align content start to the solid line below the band
+  const BOTTOM_RULE_HEIGHT = 8;
+  const BAND_HEIGHT = 24;
+  const [contentTop, setContentTop] = useState<number>(0);
+  useLayoutEffect(() => {
+    const getHeader = () => document.querySelector('[data-aces-header]') as HTMLElement | null;
+    const measure = () => {
+      const header = getHeader();
+      if (header) {
+        const rect = header.getBoundingClientRect();
+        setContentTop(Math.max(0, Math.round(rect.bottom + BOTTOM_RULE_HEIGHT + BAND_HEIGHT)));
+      }
+    };
+    measure();
+    const ResizeObserverCtor: any = (window as any).ResizeObserver;
+    const header = getHeader();
+    const ro = ResizeObserverCtor && header ? new ResizeObserverCtor(measure) : null;
+    if (ro && header) ro.observe(header);
+    window.addEventListener('resize', measure);
+    return () => {
+      if (ro && header) ro.unobserve(header);
+      window.removeEventListener('resize', measure);
+    };
+  }, []);
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-black to-[#231F20] relative">
-      {/* Header Component - Fixed at top with z-50 */}
+    <div className="min-h-screen relative bg-[#151c16]">
+      {/* Header */}
       <div className="relative z-50">
         <AcesHeader />
       </div>
 
-      {/* Animated Dots Background - Full screen, outside of scroll container */}
-      <AnimatedDotsBackground
-        opacity={0.18}
-        dotSpacing={40}
-        dotSize={1.2}
-        animationSpeed={0.6}
-        waveType="radial"
-        minOpacity={0.06}
+      {/* Background + lines */}
+      <LuxuryAssetsBackground
         className="absolute inset-0 z-0"
+        opacity={0.9}
+        showOnMobile={false}
+        minHeight={1400}
+        contentWidth={1200}
+        bandHeight={96}
       />
 
-      {/* Subtle radial gradient overlay */}
-      <div
-        className="absolute inset-0 pointer-events-none z-10"
-        style={{
-          background:
-            'radial-gradient(circle at 50% 50%, rgba(26, 26, 26, 0) 0%, rgba(0, 0, 0, 0.3) 100%)',
-        }}
-      />
+      {/* Bands */}
+      <PageBandTitle title="Portfolio" contentWidth={1200} bandHeight={96} contentLineOffset={8} />
+      {/* Subtitle intentionally removed for profile */}
 
-      {/* Main Content Container - Fixed height with overflow hidden */}
-      <div className="relative overflow-hidden" style={{ height: '800px' }}>
-        {/* Background System - Static background that doesn't scroll */}
-        <div className="absolute inset-0 z-0">
-          <LuxuryAssetsBackground opacity={0.8} className="z-0" />
-        </div>
+      {/* Main content */}
+      <div className="relative z-20 h-[1400px]">
+        <div
+          className="absolute left-1/2 -translate-x-1/2 w-full max-w-[1200px] z-10 h-[1200px] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] px-2"
+          style={{ top: `${contentTop}px` }}
+        >
+          {/* Profile header bar - outside the panel, full content width */}
+          <HorizontalProfileHeader user={profileData} onUpdateEmail={handleUpdateEmail} />
 
-        {/* Profile Content Layer - Scrollable within fixed container */}
-        <div className="relative z-10 h-full overflow-y-auto">
-          <div className="p-6">
-            <div className="max-w-4xl mx-auto space-y-6">
-              {/* Horizontal Profile Header */}
-              <HorizontalProfileHeader user={profileData} onUpdateEmail={handleUpdateEmail} />
+          {/* Main panel below header - no gap */}
+          <div className="relative bg-[#151c16]/80 border border-dashed border-[#E6E3D3]/20 rounded-2xl p-8 shadow-[0_10px_40px_rgba(215,191,117,0.06)] space-y-8">
+            {/* Notifications */}
+            <SubmissionStatusNotifications />
 
-              {/* Submission Status Notifications */}
-              <SubmissionStatusNotifications />
-
-              {/* Main Content - Full Width Tabs */}
-              <div className="w-full">
-                <div className="flex justify-start mb-6">
-                  <Tabs defaultValue="tokens" className="w-full">
-                    <TabsList className="bg-transparent border-none p-0 h-auto space-x-8">
-                      <TabsTrigger
-                        value="tokens"
-                        className="bg-transparent text-[#DCDDCC] text-lg font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-[#D0B284]"
-                      >
-                        Tokens
-                      </TabsTrigger>
-                      <TabsTrigger
-                        value="bids"
-                        className="bg-transparent text-[#DCDDCC] text-lg font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-[#D0B284]"
-                      >
-                        Bids
-                      </TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="tokens" className="mt-6 w-full">
-                      <TokenListTab />
-                    </TabsContent>
-                    <TabsContent value="bids" className="mt-6 w-full">
-                      <BidsTab />
-                    </TabsContent>
-                  </Tabs>
-                </div>
-              </div>
+            {/* Tabs */}
+            <div className="w-full">
+              <Tabs defaultValue="tokens" className="w-full">
+                <TabsContent value="tokens" className="mt-0 w-full">
+                  <TokenListTab />
+                </TabsContent>
+                <TabsContent value="bids" className="mt-0 w-full">
+                  <BidsTab />
+                </TabsContent>
+              </Tabs>
             </div>
           </div>
+          <div className="h-24" />
         </div>
       </div>
-
-      {/* Seller Dashboard Overlay */}
-      <SellerDashboardOverlay
-        isOpen={isSellerDashboardOpen}
-        onClose={() => setIsSellerDashboardOpen(false)}
-      />
-      {/* Admin Dashboard Overlay */}
+      {/* Overlays */}
       <AdminDashboardOverlay
         isOpen={isAdminDashboardOpen}
         onClose={() => setIsAdminDashboardOpen(false)}
       />
 
-      {/* Footer Component - Below main container with z-50 */}
+      {/* Footer */}
       <div className="relative z-50">
         <Footer />
       </div>
