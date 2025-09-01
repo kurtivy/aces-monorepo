@@ -4,11 +4,12 @@ export declare const CreateSubmissionSchema: z.ZodObject<{
     symbol: z.ZodString;
     description: z.ZodString;
     assetType: z.ZodEnum<["VEHICLE", "JEWELRY", "COLLECTIBLE", "ART", "FASHION", "ALCOHOL", "OTHER"]>;
-    imageGallery: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    imageGallery: z.ZodArray<z.ZodString, "many">;
     proofOfOwnership: z.ZodString;
+    proofOfOwnershipImageUrl: z.ZodString;
     typeOfOwnership: z.ZodString;
     location: z.ZodOptional<z.ZodString>;
-    contractAddress: z.ZodOptional<z.ZodString>;
+    email: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     symbol: string;
     title: string;
@@ -16,19 +17,21 @@ export declare const CreateSubmissionSchema: z.ZodObject<{
     assetType: "VEHICLE" | "JEWELRY" | "COLLECTIBLE" | "ART" | "FASHION" | "ALCOHOL" | "OTHER";
     imageGallery: string[];
     proofOfOwnership: string;
+    proofOfOwnershipImageUrl: string;
     typeOfOwnership: string;
     location?: string | undefined;
-    contractAddress?: string | undefined;
+    email?: string | undefined;
 }, {
     symbol: string;
     title: string;
     description: string;
     assetType: "VEHICLE" | "JEWELRY" | "COLLECTIBLE" | "ART" | "FASHION" | "ALCOHOL" | "OTHER";
+    imageGallery: string[];
     proofOfOwnership: string;
+    proofOfOwnershipImageUrl: string;
     typeOfOwnership: string;
-    imageGallery?: string[] | undefined;
     location?: string | undefined;
-    contractAddress?: string | undefined;
+    email?: string | undefined;
 }>;
 export declare const CreateBidSchema: z.ZodObject<{
     listingId: z.ZodString;
@@ -36,13 +39,13 @@ export declare const CreateBidSchema: z.ZodObject<{
     currency: z.ZodEnum<["ETH", "ACES"]>;
     expiresAt: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    amount: string;
     listingId: string;
+    amount: string;
     currency: "ETH" | "ACES";
     expiresAt?: string | undefined;
 }, {
-    amount: string;
     listingId: string;
+    amount: string;
     currency: "ETH" | "ACES";
     expiresAt?: string | undefined;
 }>;
