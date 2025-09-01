@@ -44,12 +44,11 @@ export default function CreateTokenForm() {
 
       {/* Main Content - Fixed 1400px height for background images */}
       <div className="relative z-20 h-[1400px]">
-        {/* Scrollable content area */}
-        <div className="relative z-10 h-full overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-          <div className="max-w-5xl mx-auto px-4 pt-42 pb-12">
-            {/* Form extracted into component */}
-            <ListTokenForm />
-          </div>
+        {/* Scrollable form container positioned underneath text */}
+        <div className="absolute top-[200px] left-1/2 -translate-x-1/2 w-full max-w-[1200px] px-4 sm:px-6 z-10 h-[1200px] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          <ListTokenForm />
+          {/* Bottom padding to ensure footer clearance */}
+          <div className="h-24" />
         </div>
       </div>
 
