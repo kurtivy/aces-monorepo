@@ -2,6 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { PrismaClient, Prisma, User } from '@prisma/client';
 import { AssetType, SubmissionStatus } from '../lib/prisma-enums';
+import { ProductStorageService } from '../lib/product-storage-utils';
 import { errors } from '../lib/errors';
 
 // Type for listings with relations - using simpler type due to TypeScript language server caching
@@ -245,7 +246,15 @@ export class ListingService {
       const data = hasMore ? listings.slice(0, -1) : listings;
       const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
 
-      return { data, nextCursor, hasMore };
+      // Convert image URLs to signed URLs for secure access
+      const dataWithSignedUrls = await Promise.all(
+        data.map(async (listing: any) => ({
+          ...listing,
+          imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery),
+        })),
+      );
+
+      return { data: dataWithSignedUrls, nextCursor, hasMore };
     } catch (error) {
       console.error('Error fetching live listings:', error);
       throw error;
@@ -281,7 +290,15 @@ export class ListingService {
       const data = hasMore ? listings.slice(0, -1) : listings;
       const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
 
-      return { data, nextCursor, hasMore };
+      // Convert image URLs to signed URLs for secure access
+      const dataWithSignedUrls = await Promise.all(
+        data.map(async (listing: any) => ({
+          ...listing,
+          imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery),
+        })),
+      );
+
+      return { data: dataWithSignedUrls, nextCursor, hasMore };
     } catch (error) {
       console.error('Error fetching all listings:', error);
       throw error;
@@ -317,7 +334,15 @@ export class ListingService {
       const data = hasMore ? listings.slice(0, -1) : listings;
       const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
 
-      return { data, nextCursor, hasMore };
+      // Convert image URLs to signed URLs for secure access
+      const dataWithSignedUrls = await Promise.all(
+        data.map(async (listing: any) => ({
+          ...listing,
+          imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery),
+        })),
+      );
+
+      return { data: dataWithSignedUrls, nextCursor, hasMore };
     } catch (error) {
       console.error('Error fetching pending listings:', error);
       throw error;
@@ -338,7 +363,17 @@ export class ListingService {
         },
       });
 
-      return listing;
+      if (!listing) {
+        return null;
+      }
+
+      // Convert image URLs to signed URLs for secure access
+      const listingWithSignedUrls = {
+        ...listing,
+        imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery),
+      };
+
+      return listingWithSignedUrls;
     } catch (error) {
       console.error('Error fetching listing by ID:', error);
       throw error;
@@ -381,7 +416,15 @@ export class ListingService {
       const data = hasMore ? listings.slice(0, -1) : listings;
       const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
 
-      return { data, nextCursor, hasMore };
+      // Convert image URLs to signed URLs for secure access
+      const dataWithSignedUrls = await Promise.all(
+        data.map(async (listing: any) => ({
+          ...listing,
+          imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery),
+        })),
+      );
+
+      return { data: dataWithSignedUrls, nextCursor, hasMore };
     } catch (error) {
       console.error('Error fetching listings by owner:', error);
       throw error;

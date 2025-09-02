@@ -90,7 +90,7 @@ export async function submissionRoutes(fastify: FastifyInstance) {
    * Get user's submissions
    */
   fastify.get(
-    '/my-submissions',
+    '/my',
     {
       preHandler: [requireAuth],
       schema: {

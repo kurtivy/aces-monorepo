@@ -1,6 +1,7 @@
 // backend/src/services/submission-service.ts - V1 Clean Implementation
 import { PrismaClient, Prisma, User } from '@prisma/client';
 import { AssetType, SubmissionStatus, RejectionType } from '../lib/prisma-enums';
+import { ProductStorageService } from '../lib/product-storage-utils';
 import { errors } from '../lib/errors';
 
 // Type for submissions with relations
@@ -121,7 +122,17 @@ export class SubmissionService {
       const data = hasMore ? submissions.slice(0, -1) : submissions;
       const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
 
-      return { data, nextCursor, hasMore };
+      // Convert image URLs to signed URLs for secure access
+      const dataWithSignedUrls = await Promise.all(
+        data.map(async (submission) => ({
+          ...submission,
+          imageGallery: await ProductStorageService.convertToSignedUrls(
+            submission.imageGallery as string[],
+          ),
+        })),
+      );
+
+      return { data: dataWithSignedUrls, nextCursor, hasMore };
     } catch (error) {
       console.error('Error in getUserSubmissions:', error);
       throw error;
@@ -150,7 +161,19 @@ export class SubmissionService {
         },
       });
 
-      return submission;
+      if (!submission) {
+        return null;
+      }
+
+      // Convert image URLs to signed URLs for secure access
+      const submissionWithSignedUrls = {
+        ...submission,
+        imageGallery: await ProductStorageService.convertToSignedUrls(
+          submission.imageGallery as string[],
+        ),
+      };
+
+      return submissionWithSignedUrls;
     } catch (error) {
       console.error('Error in getSubmissionById:', error);
       throw error;

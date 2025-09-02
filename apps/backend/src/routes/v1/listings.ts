@@ -3,6 +3,7 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { ListingService, UpdateListingRequest } from '../../services/listing-service';
+import { ProductStorageService } from '../../lib/product-storage-utils';
 
 import { requireAuth, requireAdmin } from '../../lib/auth-middleware';
 import { errors } from '../../lib/errors';
