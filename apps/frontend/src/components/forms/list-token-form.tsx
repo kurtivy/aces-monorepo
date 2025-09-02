@@ -92,7 +92,7 @@ function Field({
 }
 
 export default function ListTokenForm() {
-  const { getAccessToken } = useAuth();
+  const { getAccessToken, isVerifiedSeller, isAuthenticated } = useAuth();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [imagePreviews, setImagePreviews] = useState<Array<{ preview: string; file: File }>>([]);
@@ -162,6 +162,15 @@ export default function ListTokenForm() {
   };
 
   const onSubmit = handleSubmit(async (formData) => {
+    // Prevent submission if user is not verified
+    if (!isVerifiedSeller) {
+      setSubmitStatus('error');
+      setSubmitMessage(
+        'You must be a verified user to submit tokens. Please complete verification first.',
+      );
+      return;
+    }
+
     setIsSubmitting(true);
     setSubmitStatus('idle');
     setSubmitMessage('');
@@ -235,8 +244,29 @@ export default function ListTokenForm() {
 
   return (
     <div className="relative pointer-events-auto">
+      {/* Verification Required Overlay */}
+      {isAuthenticated && !isVerifiedSeller && (
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm rounded-2xl z-20 flex items-center justify-center">
+          <div className="bg-[#151c16] border border-[#D7BF75] rounded-xl p-6 text-center max-w-md mx-4">
+            <Shield className="w-12 h-12 text-[#D7BF75] mx-auto mb-4" />
+            <h3 className="text-xl font-bold text-[#D7BF75] mb-2">Verification Required</h3>
+            <p className="text-[#DCDDCC]/80 mb-4">
+              You must complete identity verification before you can submit tokens for listing.
+            </p>
+            <Button
+              onClick={() => (window.location.href = '/verify')}
+              className="bg-[#D7BF75] hover:bg-[#D7BF75]/80 text-black font-medium px-6 py-2"
+            >
+              Complete Verification
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Outer form panel matching Figma */}
-      <div className="relative bg-[#151c16]/80 border border-dashed border-[#E6E3D3]/20 rounded-2xl p-8 shadow-[0_10px_40px_rgba(215,191,117,0.06)]">
+      <div
+        className={`relative bg-[#151c16]/80 border border-dashed border-[#E6E3D3]/20 rounded-2xl p-8 shadow-[0_10px_40px_rgba(215,191,117,0.06)] ${!isVerifiedSeller && isAuthenticated ? 'pointer-events-none opacity-50' : ''}`}
+      >
         {/* Corner ticks */}
         <span className="pointer-events-none absolute left-3 top-3 h-3 w-0.5 bg-[#C9AE6A]" />
         <span className="pointer-events-none absolute left-3 top-3 w-3 h-0.5 bg-[#C9AE6A]" />

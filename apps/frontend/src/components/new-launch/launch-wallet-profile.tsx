@@ -10,6 +10,7 @@ import { useFundWallet } from '@privy-io/react-auth';
 import { useChainSwitching } from '@/hooks/contracts/use-chain-switching';
 import { usePrivyWallet } from '@/hooks/use-privy-wallet';
 import { WalletModal } from '@/components/wallet/wallet-modal';
+import ChainSwitchModal from '@/components/ui/custom/chain-switch-modal';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -47,9 +48,13 @@ export default function LaunchWalletProfile({
     useChainSwitching();
   const { hasEmbeddedWallet } = usePrivyWallet();
 
-  // Local state for wallet modal
+  // Local state for wallet modal and chain switching
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
+  const [showChainSwitchModal, setShowChainSwitchModal] = useState(false);
+  const [chainSwitchTarget, setChainSwitchTarget] = useState<{ name: string; id: number } | null>(
+    null,
+  );
 
   const displayAddress = walletAddress
     ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
@@ -85,8 +90,38 @@ export default function LaunchWalletProfile({
       // Once on correct chain, open funding
       fundWallet(walletAddress);
     } catch (error) {
-      console.error('Failed to initiate funding:', error);
-      // Could show error toast here
+      // Check if this is a chain switch requirement
+      if (error instanceof Error && error.message.startsWith('CHAIN_SWITCH_REQUIRED:')) {
+        const [, chainName, chainId] = error.message.split(':');
+        setChainSwitchTarget({ name: chainName, id: parseInt(chainId) });
+        setShowChainSwitchModal(true);
+      } else {
+        console.error('Failed to initiate funding:', error);
+        // Could show error toast here
+      }
+    }
+  };
+
+  // Handle chain switch from modal
+  const handleChainSwitch = async () => {
+    if (!chainSwitchTarget) return;
+
+    try {
+      await ensureCorrectChain(SUPPORTED_CHAINS.BASE_MAINNET, {
+        showPrompt: false,
+        autoSwitch: true,
+      });
+
+      setShowChainSwitchModal(false);
+      setChainSwitchTarget(null);
+
+      // After successful switch, try funding again
+      if (walletAddress) {
+        fundWallet(walletAddress);
+      }
+    } catch (error) {
+      console.error('Failed to switch chain:', error);
+      // Keep modal open, maybe show error
     }
   };
 
@@ -238,6 +273,20 @@ export default function LaunchWalletProfile({
 
         {/* Custom Wallet Modal */}
         <WalletModal isOpen={isWalletModalOpen} onClose={() => setIsWalletModalOpen(false)} />
+
+        {/* Chain Switch Modal */}
+        <ChainSwitchModal
+          isOpen={showChainSwitchModal}
+          onClose={() => {
+            setShowChainSwitchModal(false);
+            setChainSwitchTarget(null);
+          }}
+          onSwitch={handleChainSwitch}
+          currentChainName="Current Network"
+          targetChainName={chainSwitchTarget?.name || 'Base Mainnet'}
+          isSwitching={isSwitching}
+          showSkipOption={false}
+        />
       </div>
     );
   }

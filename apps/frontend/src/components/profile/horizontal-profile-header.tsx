@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Edit2, Copy, Check } from 'lucide-react';
+import { Edit2, Copy, Check, Wallet } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { EmailEditModal } from './email-edit-modal';
 
@@ -10,13 +11,27 @@ interface HorizontalProfileHeaderProps {
     email: string | undefined;
     walletAddress: string | undefined;
     role?: string;
+    sellerStatus?: 'NOT_APPLIED' | 'PENDING' | 'APPROVED' | 'REJECTED';
   };
   onUpdateEmail?: (email: string) => Promise<void>;
+  onConnectWallet?: () => Promise<void>;
 }
 
-export function HorizontalProfileHeader({ user, onUpdateEmail }: HorizontalProfileHeaderProps) {
+export function HorizontalProfileHeader({
+  user,
+  onUpdateEmail,
+  onConnectWallet,
+}: HorizontalProfileHeaderProps) {
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Determine account status: show "VERIFIED" if seller is approved, otherwise show role
+  const getAccountStatus = () => {
+    if (user.sellerStatus === 'APPROVED') {
+      return 'VERIFIED';
+    }
+    return user.role || 'TRADER';
+  };
 
   const shortenAddress = (address: string) => {
     if (!address) return '';
@@ -52,18 +67,31 @@ export function HorizontalProfileHeader({ user, onUpdateEmail }: HorizontalProfi
               Wallet Address
             </div>
             <div className="flex items-center gap-2">
-              <div className="text-[#E6E3D3] text-xl md:text-2xl truncate">
-                {user.walletAddress ? shortenAddress(user.walletAddress) : 'Not connected'}
-              </div>
-              {user.walletAddress && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-[#D0B284] hover:bg-[#D0B284]/10 p-2"
-                  onClick={handleCopyAddress}
+              {user.walletAddress ? (
+                <>
+                  <div className="text-[#E6E3D3] text-xl md:text-2xl truncate">
+                    {shortenAddress(user.walletAddress)}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-[#D0B284] hover:bg-[#D0B284]/10 p-2"
+                    onClick={handleCopyAddress}
+                  >
+                    {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  </Button>
+                </>
+              ) : (
+                <motion.button
+                  className="flex items-center justify-center text-[#D0B264] hover:text-[#D0B264] transition-colors duration-150 px-4 py-2 rounded-md bg-black/80 hover:bg-black/70 border border-[#D0B264]/30 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed font-mono"
+                  onClick={onConnectWallet}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 20 }}
                 >
-                  {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                </Button>
+                  <Wallet className="w-4 h-4 mr-2" />
+                  Connect Wallet
+                </motion.button>
               )}
             </div>
           </div>
@@ -75,7 +103,7 @@ export function HorizontalProfileHeader({ user, onUpdateEmail }: HorizontalProfi
             </div>
             <div className="flex items-center gap-2">
               <div className="text-[#E6E3D3] text-xl md:text-2xl truncate">
-                {user.email || 'Not set'}
+                {!user.walletAddress ? '---' : user.email || 'Not set'}
               </div>
               {onUpdateEmail && (
                 <Button
@@ -95,7 +123,9 @@ export function HorizontalProfileHeader({ user, onUpdateEmail }: HorizontalProfi
             <div className="text-[#D7BF75] text-sm uppercase tracking-wide font-medium mb-1">
               Account Status
             </div>
-            <div className="text-[#E6E3D3] text-xl md:text-2xl">VERIFIED</div>
+            <div className="text-[#E6E3D3] text-xl md:text-2xl">
+              {!user.walletAddress ? '---' : getAccountStatus()}
+            </div>
           </div>
 
           {/* Portfolio Value */}
@@ -104,8 +134,14 @@ export function HorizontalProfileHeader({ user, onUpdateEmail }: HorizontalProfi
               Portfolio Value
             </div>
             <div className="text-right lg:text-left">
-              <div className="text-[#E6E3D3] text-xl md:text-2xl">5.423 ETH</div>
-              <div className="text-[#E6E3D3] text-lg md:text-xl opacity-90">23886.93 USD</div>
+              {!user.walletAddress ? (
+                <div className="text-[#E6E3D3] text-xl md:text-2xl">---</div>
+              ) : (
+                <>
+                  <div className="text-[#E6E3D3] text-xl md:text-2xl">5.423 ETH</div>
+                  <div className="text-[#E6E3D3] text-lg md:text-xl opacity-90">23886.93 USD</div>
+                </>
+              )}
             </div>
           </div>
         </div>
