@@ -59,6 +59,65 @@ const nextConfig: NextConfig = {
     return {
       // Multi-tenant rewrites come first (beforeFiles)
       beforeFiles: [
+        // Rewrite admin.aces.fun requests to /admin routes (excluding static assets)
+        {
+          source:
+            '/((?!_next/static|_next/image|favicon.ico|admin-favicon.ico|api|canvas-images|fonts|svg).*)',
+          has: [
+            {
+              type: 'host',
+              value: 'admin.aces.fun',
+            },
+          ],
+          destination: '/admin/$1',
+        },
+        // Rewrite www.admin.aces.fun requests to /admin routes (excluding static assets)
+        {
+          source:
+            '/((?!_next/static|_next/image|favicon.ico|admin-favicon.ico|api|canvas-images|fonts|svg).*)',
+          has: [
+            {
+              type: 'host',
+              value: 'www.admin.aces.fun',
+            },
+          ],
+          destination: '/admin/$1',
+        },
+        // Handle localhost:3003 and local.admin.aces.fun for development
+        {
+          source:
+            '/((?!_next/static|_next/image|favicon.ico|admin-favicon.ico|api|canvas-images|fonts|svg).*)',
+          has: [
+            {
+              type: 'host',
+              value: 'localhost:3003',
+            },
+          ],
+          destination: '/admin/$1',
+        },
+        {
+          source:
+            '/((?!_next/static|_next/image|favicon.ico|admin-favicon.ico|api|canvas-images|fonts|svg).*)',
+          has: [
+            {
+              type: 'host',
+              value: 'local.admin.aces.fun:3000',
+            },
+          ],
+          destination: '/admin/$1',
+        },
+        // Handle Vercel deployments with 'admin' in the URL
+        {
+          source:
+            '/((?!_next/static|_next/image|favicon.ico|admin-favicon.ico|api|canvas-images|fonts|svg).*)',
+          has: [
+            {
+              type: 'host',
+              value: '(?<host>.*admin.*\\.vercel\\.app)',
+            },
+          ],
+          destination: '/admin/$1',
+        },
         // Rewrite aceofbase.fun requests to /aceofbase routes (excluding static assets)
         {
           source:
@@ -132,6 +191,18 @@ const nextConfig: NextConfig = {
   // Redirects for blocked routes on main domain
   async redirects() {
     return [
+      // Block /admin routes on main domain (aces.fun)
+      {
+        source: '/admin/:path*',
+        has: [
+          {
+            type: 'host',
+            value: 'aces.fun',
+          },
+        ],
+        destination: '/404',
+        permanent: false,
+      },
       // Block /aceofbase, /launch, and /profile on main domain (aces.fun)
       {
         source: '/aceofbase/:path*',
@@ -170,6 +241,17 @@ const nextConfig: NextConfig = {
       },
       */
       // Handle localhost:3000 and local.aces.fun for development (main domain)
+      {
+        source: '/admin/:path*',
+        has: [
+          {
+            type: 'host',
+            value: 'localhost:3000',
+          },
+        ],
+        destination: '/404',
+        permanent: false,
+      },
       // Temporarily disabled for testing
       /*
       {
@@ -211,6 +293,17 @@ const nextConfig: NextConfig = {
       */
       // Add local.aces.fun redirects for development
       {
+        source: '/admin/:path*',
+        has: [
+          {
+            type: 'host',
+            value: 'local.aces.fun:3000',
+          },
+        ],
+        destination: '/404',
+        permanent: false,
+      },
+      {
         source: '/aceofbase/:path*',
         has: [
           {
@@ -246,7 +339,18 @@ const nextConfig: NextConfig = {
         permanent: false,
       },
       */
-      // Handle main Vercel deployments (without 'aceofbase' in URL)
+      // Handle main Vercel deployments (without 'admin' or 'aceofbase' in URL)
+      {
+        source: '/admin/:path*',
+        has: [
+          {
+            type: 'host',
+            value: '(?<host>(?!.*admin).*\\.vercel\\.app)',
+          },
+        ],
+        destination: '/404',
+        permanent: false,
+      },
       {
         source: '/aceofbase/:path*',
         has: [

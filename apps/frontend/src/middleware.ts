@@ -1,70 +1,36 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
-  const hostname = request.headers.get('host');
-  const pathname = request.nextUrl.pathname;
+  const { pathname } = request.nextUrl;
+  const host = request.headers.get('host') || '';
 
-  // Define domain types
-  const isAceofbaseDomain =
-    hostname === 'aceofbase.fun' ||
-    hostname === 'www.aceofbase.fun' ||
-    hostname === 'localhost:3001' ||
-    hostname === 'local.aceofbase.fun:3000' ||
-    (hostname?.includes('vercel.app') && hostname?.includes('aceofbase'));
+  // Check if this is an admin domain request
+  const isAdminDomain =
+    host.includes('admin.aces.fun') ||
+    host.includes('admin') ||
+    host.includes('localhost:3003') ||
+    host.includes('local.admin.aces.fun');
 
-  const isMainDomain =
-    hostname === 'aces.fun' ||
-    hostname === 'www.aces.fun' ||
-    hostname === 'localhost:3000' ||
-    hostname === 'local.aces.fun:3000' ||
-    (hostname?.includes('vercel.app') && !hostname?.includes('aceofbase'));
-
-  // Main domain blocking logic
-  if (isMainDomain) {
-    if (
-      // pathname.startsWith('/profile') ||  // Temporarily disabled for development
-      pathname.startsWith('/launch') ||
-      pathname.startsWith('/aceofbase')
-    ) {
-      return NextResponse.rewrite(new URL('/404', request.url));
-    }
+  // If it's an admin domain but not the login page, redirect to login
+  if (isAdminDomain && pathname !== '/login' && pathname !== '/unauthorized' && pathname !== '/') {
+    // For now, just continue - we'll handle auth checks in the components
+    // This middleware could be enhanced later for server-side auth checks
+    return NextResponse.next();
   }
 
-  // Aceofbase domain blocking logic - only allow root and static assets
-  if (isAceofbaseDomain) {
-    const allowedPaths = [
-      '/',
-      '/_next',
-      '/api',
-      '/favicon.ico',
-      '/canvas-images',
-      '/fonts',
-      '/svg',
-      '/aces-logo.png',
-      '/404-image.png',
-    ];
-
-    const isAllowedPath = allowedPaths.some((path) => pathname.startsWith(path));
-
-    if (!isAllowedPath) {
-      return NextResponse.rewrite(new URL('/404', request.url));
-    }
-  }
-
-  // Add security headers
-  const response = NextResponse.next();
-  response.headers.set('X-Frame-Options', 'DENY');
-  response.headers.set('X-Content-Type-Options', 'nosniff');
-
-  // Debug headers
-  response.headers.set('X-Middleware-Domain', hostname || 'unknown');
-  response.headers.set('X-Middleware-Path', pathname);
-  response.headers.set('X-Middleware-Aceofbase', isAceofbaseDomain?.toString() || 'false');
-  response.headers.set('X-Middleware-Main', isMainDomain?.toString() || 'false');
-
-  return response;
+  return NextResponse.next();
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|canvas-images|fonts|svg|api).*)'],
+  matcher: [
+    /*
+     * Match all request paths except for the ones starting with:
+     * - api (API routes)
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     */
+    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+  ],
 };

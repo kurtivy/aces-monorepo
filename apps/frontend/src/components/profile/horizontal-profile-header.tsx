@@ -5,6 +5,7 @@ import { Edit2, Copy, Check, Wallet } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { EmailEditModal } from './email-edit-modal';
+import { AdminButton } from './admin-button';
 
 interface HorizontalProfileHeaderProps {
   user: {
@@ -123,9 +124,11 @@ export function HorizontalProfileHeader({
             <div className="text-[#D7BF75] text-sm uppercase tracking-wide font-medium mb-1">
               Account Status
             </div>
-            <div className="text-[#E6E3D3] text-xl md:text-2xl">
+            <div className="text-[#E6E3D3] text-xl md:text-2xl mb-3">
               {!user.walletAddress ? '---' : getAccountStatus()}
             </div>
+            {/* Admin Button - only shows for admin users */}
+            <AdminButton />
           </div>
 
           {/* Portfolio Value */}

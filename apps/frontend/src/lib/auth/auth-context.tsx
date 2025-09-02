@@ -169,8 +169,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Check chain after successful authentication
   useEffect(() => {
     const checkChainAfterConnection = async () => {
+      // Skip chain switching on admin pages
+      const isAdminPage =
+        typeof window !== 'undefined' &&
+        (window.location.pathname.startsWith('/admin') ||
+          window.location.hostname.includes('admin'));
+
       // Only check if user is authenticated, has a wallet, and we haven't shown the modal yet
       if (
+        !isAdminPage && // Skip chain check on admin pages
         privyAuthenticated &&
         privyUser?.wallet?.address &&
         !state.showChainSwitchModal &&
