@@ -3,7 +3,6 @@
 import React from 'react';
 import { Wallet, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
 
 interface VerificationLoginPromptProps {
   onConnectWallet?: () => void;
