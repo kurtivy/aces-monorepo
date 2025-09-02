@@ -7,6 +7,13 @@ export const UserRole = {
   ADMIN: 'ADMIN',
 } as const;
 
+export const SellerStatus = {
+  NOT_APPLIED: 'NOT_APPLIED',
+  PENDING: 'PENDING',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+} as const;
+
 export const VerificationStatus = {
   PENDING: 'PENDING',
   APPROVED: 'APPROVED',
@@ -42,6 +49,7 @@ export const AssetType = {
 
 // Type exports for TypeScript
 export type UserRoleType = keyof typeof UserRole;
+export type SellerStatusType = keyof typeof SellerStatus;
 export type VerificationStatusType = keyof typeof VerificationStatus;
 export type DocumentTypeType = keyof typeof DocumentType;
 export type SubmissionStatusType = keyof typeof SubmissionStatus;

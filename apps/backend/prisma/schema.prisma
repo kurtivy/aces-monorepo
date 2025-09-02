@@ -15,6 +15,11 @@ model User {
   email                 String?               @unique
   role                  UserRole              @default(TRADER)
   isActive              Boolean               @default(true)
+  sellerStatus          SellerStatus          @default(NOT_APPLIED)
+  appliedAt             DateTime?
+  verifiedAt            DateTime?
+  rejectedAt            DateTime?
+  rejectionReason       String?
   createdAt             DateTime              @default(now())
   updatedAt             DateTime              @updatedAt
   reviewedVerifications AccountVerification[] @relation("ReviewedBy")
@@ -121,6 +126,13 @@ model Listing {
 enum UserRole {
   TRADER
   ADMIN
+}
+
+enum SellerStatus {
+  NOT_APPLIED
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum VerificationStatus {
