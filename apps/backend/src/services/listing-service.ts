@@ -444,4 +444,37 @@ export class ListingService {
       throw error;
     }
   }
+
+  /**
+   * Get all listings for admin dashboard
+   */
+  async getAllListingsForAdmin(): Promise<any[]> {
+    try {
+      const listings = await (this.prisma as any).listing.findMany({
+        include: {
+          owner: {
+            include: {
+              accountVerification: true,
+            },
+          },
+          submission: true,
+          approvedByUser: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      // Convert image URLs to signed URLs for secure access
+      const dataWithSignedUrls = await Promise.all(
+        listings.map(async (listing: any) => ({
+          ...listing,
+          imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery),
+        })),
+      );
+
+      return dataWithSignedUrls;
+    } catch (error) {
+      console.error('Error fetching all listings for admin:', error);
+      throw error;
+    }
+  }
 }

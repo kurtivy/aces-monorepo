@@ -310,4 +310,40 @@ export class SubmissionService {
       throw error;
     }
   }
+
+  /**
+   * Get all submissions for admin dashboard
+   */
+  async getAllSubmissionsForAdmin(options?: {
+    status?: string;
+    limit?: number;
+  }): Promise<SubmissionWithRelations[]> {
+    try {
+      const where: any = {};
+
+      if (options?.status && options.status !== 'ALL') {
+        where.status = options.status;
+      }
+
+      const submissions = await this.prisma.submission.findMany({
+        where,
+        include: {
+          owner: {
+            include: {
+              accountVerification: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        take: options?.limit || 50,
+      });
+
+      return submissions;
+    } catch (error) {
+      console.error('Error in getAllSubmissionsForAdmin:', error);
+      throw error;
+    }
+  }
 }
