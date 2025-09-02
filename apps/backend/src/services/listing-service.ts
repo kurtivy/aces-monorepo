@@ -1,6 +1,7 @@
 // backend/src/services/listing-service.ts - V1 Clean Implementation
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { PrismaClient, Prisma, User, $Enums } from '@prisma/client';
+import { PrismaClient, Prisma, User } from '@prisma/client';
+import { AssetType, SubmissionStatus } from '../lib/prisma-enums';
 import { errors } from '../lib/errors';
 
 // Type for listings with relations - using simpler type due to TypeScript language server caching
@@ -9,7 +10,7 @@ type ListingWithRelations = {
   title: string;
   symbol: string;
   description: string;
-  assetType: $Enums.AssetType;
+  assetType: keyof typeof AssetType;
   imageGallery: string[];
   location: string | null;
   email: string | null;
@@ -30,7 +31,7 @@ type ListingWithMinimalSubmission = {
   title: string;
   symbol: string;
   description: string;
-  assetType: $Enums.AssetType;
+  assetType: keyof typeof AssetType;
   imageGallery: string[];
   location: string | null;
   email: string | null;
@@ -48,7 +49,7 @@ type ListingWithMinimalSubmission = {
   };
   submission: {
     id: string;
-    status: $Enums.SubmissionStatus;
+    status: keyof typeof SubmissionStatus;
     createdAt: Date;
   };
   approvedByUser?: {
@@ -66,7 +67,7 @@ export interface UpdateListingRequest {
   title?: string;
   symbol?: string;
   description?: string;
-  assetType?: $Enums.AssetType;
+  assetType?: keyof typeof AssetType;
   imageGallery?: string[];
   location?: string;
   email?: string;
@@ -95,7 +96,7 @@ export class ListingService {
         throw errors.notFound('Submission not found');
       }
 
-      if (submission.status !== $Enums.SubmissionStatus.APPROVED) {
+      if (submission.status !== SubmissionStatus.APPROVED) {
         throw errors.validation(
           `Cannot create listing from submission with status: ${submission.status}. Submission must be approved first.`,
         );

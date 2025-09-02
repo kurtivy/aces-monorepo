@@ -1,5 +1,6 @@
 // backend/src/services/users-service.ts - Step 1: Basic User Operations Only
-import { PrismaClient, UserRole } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
+import { UserRole } from '../lib/prisma-enums';
 import { errors } from '../lib/errors';
 import { loggers } from '../lib/logger';
 
@@ -9,7 +10,7 @@ export interface SimpleUserProfile {
   privyDid: string;
   walletAddress: string | null;
   email: string | null;
-  role: UserRole;
+  role: keyof typeof UserRole;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;

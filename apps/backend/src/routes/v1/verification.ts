@@ -5,14 +5,13 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 import { MultipartFile } from '@fastify/multipart';
 import { AccountVerificationService } from '../../services/verification-service';
 import { requireAuth, requireAdmin } from '../../lib/auth-middleware';
-import { DocumentType, VerificationStatus } from '@prisma/client';
+import { DocumentType, VerificationStatus } from '../../lib/prisma-enums';
 
 // Validation schemas
 const SubmitVerificationSchema = z.object({
   documentType: z.enum(['DRIVERS_LICENSE', 'PASSPORT', 'ID_CARD']),
   documentNumber: z.string().min(1),
-  firstName: z.string().min(1),
-  lastName: z.string().min(1),
+  fullName: z.string().min(1),
   dateOfBirth: z.string().refine((date) => !isNaN(Date.parse(date)), {
     message: 'Invalid date format',
   }),
@@ -51,7 +50,7 @@ export async function accountVerificationRoutes(fastify: FastifyInstance) {
           console.log('🔍 Processing multipart request...');
           for await (const part of request.parts()) {
             console.log('🔍 Processing part:', { type: part.type, fieldname: part.fieldname });
-            if (part.type === 'file' && part.fieldname === 'documentImage') {
+            if (part.type === 'file' && part.fieldname === 'documentFile') {
               console.log('🔍 Document file found, reading buffer...');
               // Read the file buffer immediately to prevent hanging
               const buffer = await part.toBuffer();
@@ -93,11 +92,18 @@ export async function accountVerificationRoutes(fastify: FastifyInstance) {
         console.log('✅ Validation passed');
         const data = validationResult.data;
 
+        // Split fullName into firstName and lastName
+        const nameParts = data.fullName.trim().split(' ');
+        const firstName = nameParts[0] || '';
+        const lastName = nameParts.slice(1).join(' ') || '';
+
         // Convert date string to Date object
         const verificationData = {
           ...data,
+          firstName,
+          lastName,
           dateOfBirth: new Date(data.dateOfBirth),
-          documentType: data.documentType as DocumentType,
+          documentType: data.documentType as keyof typeof DocumentType,
         };
 
         console.log('🔍 Submitting verification with data:', {
@@ -253,7 +259,7 @@ export async function accountVerificationRoutes(fastify: FastifyInstance) {
         const verification = await verificationService.reviewVerification(
           id,
           request.user!.id,
-          decision as VerificationStatus,
+          decision as keyof typeof VerificationStatus,
           rejectionReason,
         );
 

@@ -3,7 +3,7 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { SubmissionService, CreateSubmissionRequest } from '../../services/submission-service';
-import { $Enums } from '@prisma/client';
+import { SubmissionStatus, RejectionType } from '../../lib/prisma-enums';
 import { requireAuth, requireAdmin } from '../../lib/auth-middleware';
 import { errors } from '../../lib/errors';
 
@@ -113,7 +113,7 @@ export async function submissionRoutes(fastify: FastifyInstance) {
 
         const result = await submissionService.getUserSubmissions(
           request.user!.id,
-          status ? { status: status as $Enums.SubmissionStatus } : undefined,
+          status ? { status: status as keyof typeof SubmissionStatus } : undefined,
           { limit, cursor },
         );
 
@@ -228,7 +228,7 @@ export async function submissionRoutes(fastify: FastifyInstance) {
         };
 
         const result = await submissionService.getAllSubmissions(
-          status ? { status: status as $Enums.SubmissionStatus } : undefined,
+          status ? { status: status as keyof typeof SubmissionStatus } : undefined,
           {
             limit,
             cursor,
@@ -351,7 +351,7 @@ export async function submissionRoutes(fastify: FastifyInstance) {
           id,
           request.user!.id,
           rejectionReason,
-          rejectionType as $Enums.RejectionType,
+          rejectionType as keyof typeof RejectionType,
         );
 
         return reply.send({

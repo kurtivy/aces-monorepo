@@ -1,5 +1,6 @@
 // backend/src/services/submission-service.ts - V1 Clean Implementation
-import { PrismaClient, Prisma, User, $Enums } from '@prisma/client';
+import { PrismaClient, Prisma, User } from '@prisma/client';
+import { AssetType, SubmissionStatus, RejectionType } from '../lib/prisma-enums';
 import { errors } from '../lib/errors';
 
 // Type for submissions with relations
@@ -15,7 +16,7 @@ export interface CreateSubmissionRequest {
   title: string;
   symbol: string;
   description: string;
-  assetType: $Enums.AssetType;
+  assetType: keyof typeof AssetType;
   imageGallery?: string[];
   location?: string;
   email?: string;
@@ -71,7 +72,7 @@ export class SubmissionService {
         location: data.location || null,
         email: data.email || user?.email || null,
         ownerId: userId,
-        status: $Enums.SubmissionStatus.PENDING,
+        status: SubmissionStatus.PENDING,
       };
 
       const submission = await this.prisma.submission.create({
@@ -93,7 +94,7 @@ export class SubmissionService {
    */
   async getUserSubmissions(
     userId: string,
-    filter?: { status?: $Enums.SubmissionStatus },
+    filter?: { status?: keyof typeof SubmissionStatus },
     options: { limit?: number; cursor?: string } = {},
   ): Promise<{ data: SubmissionWithRelations[]; nextCursor?: string; hasMore: boolean }> {
     try {
@@ -172,7 +173,7 @@ export class SubmissionService {
         throw errors.notFound('Submission not found or access denied');
       }
 
-      if (submission.status !== $Enums.SubmissionStatus.PENDING) {
+      if (submission.status !== SubmissionStatus.PENDING) {
         throw errors.validation(
           `Cannot delete submission with status: ${submission.status}. Only pending submissions can be deleted.`,
         );
@@ -191,7 +192,7 @@ export class SubmissionService {
    * Get all submissions (admin only)
    */
   async getAllSubmissions(
-    filter?: { status?: $Enums.SubmissionStatus },
+    filter?: { status?: keyof typeof SubmissionStatus },
     options: { limit?: number; cursor?: string } = {},
   ): Promise<{ data: SubmissionWithRelations[]; nextCursor?: string; hasMore: boolean }> {
     try {
@@ -230,7 +231,7 @@ export class SubmissionService {
   async getPendingSubmissions(
     options: { limit?: number; cursor?: string } = {},
   ): Promise<{ data: SubmissionWithRelations[]; nextCursor?: string; hasMore: boolean }> {
-    return this.getAllSubmissions({ status: $Enums.SubmissionStatus.PENDING }, options);
+    return this.getAllSubmissions({ status: SubmissionStatus.PENDING }, options);
   }
 
   /**
@@ -241,7 +242,7 @@ export class SubmissionService {
       const submission = await this.prisma.submission.update({
         where: { id: submissionId },
         data: {
-          status: $Enums.SubmissionStatus.APPROVED,
+          status: SubmissionStatus.APPROVED,
           approvedBy: adminId,
           approvedAt: new Date(),
         },
@@ -264,13 +265,13 @@ export class SubmissionService {
     submissionId: string,
     adminId: string,
     rejectionReason: string,
-    rejectionType: $Enums.RejectionType = $Enums.RejectionType.MANUAL,
+    rejectionType: keyof typeof RejectionType = RejectionType.MANUAL,
   ): Promise<SubmissionWithRelations> {
     try {
       const submission = await this.prisma.submission.update({
         where: { id: submissionId },
         data: {
-          status: $Enums.SubmissionStatus.REJECTED,
+          status: SubmissionStatus.REJECTED,
           approvedBy: adminId,
           rejectionReason,
           rejectionType,

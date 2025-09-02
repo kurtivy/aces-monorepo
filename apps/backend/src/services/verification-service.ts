@@ -1,11 +1,6 @@
 // backend/src/services/account-verification-service.ts - V1 Clean Implementation
-import {
-  PrismaClient,
-  Prisma,
-  VerificationStatus,
-  DocumentType,
-  AccountVerification,
-} from '@prisma/client';
+import { PrismaClient, Prisma, AccountVerification } from '@prisma/client';
+import { VerificationStatus, SellerStatus, DocumentType } from '../lib/prisma-enums';
 import { errors } from '../lib/errors';
 import { MultipartFile } from '@fastify/multipart';
 import { SecureStorageService } from '../lib/secure-storage-utils';
@@ -25,7 +20,7 @@ export interface DocumentAnalysisResults {
 }
 
 export interface CreateVerificationData {
-  documentType: DocumentType;
+  documentType: keyof typeof DocumentType;
   documentNumber: string;
   firstName: string;
   lastName: string;
@@ -111,59 +106,73 @@ export class AccountVerificationService {
         }
       }
 
-      // Create or update verification record
-      const verification = await this.prisma.accountVerification.upsert({
-        where: { userId },
-        create: {
-          userId,
-          documentType: data.documentType,
-          documentNumber: data.documentNumber,
-          firstName: data.firstName,
-          lastName: data.lastName,
-          dateOfBirth: data.dateOfBirth,
-          countryOfIssue: data.countryOfIssue,
-          state: data.state,
-          address: data.address,
-          emailAddress: data.emailAddress,
-          documentImageUrl,
-          status: VerificationStatus.PENDING,
-          attempts: 1,
-          lastAttemptAt: new Date(),
-          documentAnalysisResults: data.documentAnalysisResults
-            ? (data.documentAnalysisResults as unknown as Prisma.InputJsonValue)
-            : Prisma.JsonNull,
-        },
-        update: {
-          documentType: data.documentType,
-          documentNumber: data.documentNumber,
-          firstName: data.firstName,
-          lastName: data.lastName,
-          dateOfBirth: data.dateOfBirth,
-          countryOfIssue: data.countryOfIssue,
-          state: data.state,
-          address: data.address,
-          emailAddress: data.emailAddress,
-          documentImageUrl,
-          status: VerificationStatus.PENDING,
-          attempts: { increment: 1 },
-          lastAttemptAt: new Date(),
-          reviewedAt: null,
-          reviewedBy: null,
-          rejectionReason: null,
-          documentAnalysisResults: data.documentAnalysisResults
-            ? (data.documentAnalysisResults as unknown as Prisma.InputJsonValue)
-            : Prisma.JsonNull,
-        },
-        include: {
-          user: {
-            select: {
-              id: true,
-              email: true,
-              walletAddress: true,
-              createdAt: true,
+      // Use transaction to create verification record and update user status
+      const verification = await this.prisma.$transaction(async (tx) => {
+        // Create or update verification record
+        const verificationRecord = await tx.accountVerification.upsert({
+          where: { userId },
+          create: {
+            userId,
+            documentType: data.documentType,
+            documentNumber: data.documentNumber,
+            firstName: data.firstName,
+            lastName: data.lastName,
+            dateOfBirth: data.dateOfBirth,
+            countryOfIssue: data.countryOfIssue,
+            state: data.state,
+            address: data.address,
+            emailAddress: data.emailAddress,
+            documentImageUrl,
+            status: VerificationStatus.PENDING,
+            attempts: 1,
+            lastAttemptAt: new Date(),
+            documentAnalysisResults: data.documentAnalysisResults
+              ? (data.documentAnalysisResults as unknown as Prisma.InputJsonValue)
+              : Prisma.JsonNull,
+          },
+          update: {
+            documentType: data.documentType,
+            documentNumber: data.documentNumber,
+            firstName: data.firstName,
+            lastName: data.lastName,
+            dateOfBirth: data.dateOfBirth,
+            countryOfIssue: data.countryOfIssue,
+            state: data.state,
+            address: data.address,
+            emailAddress: data.emailAddress,
+            documentImageUrl,
+            status: VerificationStatus.PENDING,
+            attempts: { increment: 1 },
+            lastAttemptAt: new Date(),
+            reviewedAt: null,
+            reviewedBy: null,
+            rejectionReason: null,
+            documentAnalysisResults: data.documentAnalysisResults
+              ? (data.documentAnalysisResults as unknown as Prisma.InputJsonValue)
+              : Prisma.JsonNull,
+          },
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                walletAddress: true,
+                createdAt: true,
+              },
             },
           },
-        },
+        });
+
+        // Update user's seller status to PENDING when verification is submitted
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            sellerStatus: 'PENDING',
+            appliedAt: new Date(),
+          } as any,
+        });
+
+        return verificationRecord;
       });
 
       return verification;
@@ -242,7 +251,7 @@ export class AccountVerificationService {
   async reviewVerification(
     verificationId: string,
     reviewerId: string,
-    decision: VerificationStatus,
+    decision: keyof typeof VerificationStatus,
     rejectionReason?: string,
   ) {
     if (decision === VerificationStatus.PENDING) {
@@ -262,33 +271,58 @@ export class AccountVerificationService {
         throw errors.badRequest('Verification has already been reviewed');
       }
 
-      const updatedVerification = await this.prisma.accountVerification.update({
-        where: { id: verificationId },
-        data: {
-          status: decision,
-          reviewedAt: new Date(),
-          reviewedBy: reviewerId,
-          rejectionReason: decision === VerificationStatus.REJECTED ? rejectionReason : null,
-        },
-        include: {
-          user: {
-            select: {
-              id: true,
-              email: true,
-              walletAddress: true,
-              createdAt: true,
+      // Use transaction to update both verification and user status
+      const result = await this.prisma.$transaction(async (tx) => {
+        // Update verification status
+        const updatedVerification = await tx.accountVerification.update({
+          where: { id: verificationId },
+          data: {
+            status: decision,
+            reviewedAt: new Date(),
+            reviewedBy: reviewerId,
+            rejectionReason: decision === VerificationStatus.REJECTED ? rejectionReason : null,
+          },
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                walletAddress: true,
+                createdAt: true,
+              },
+            },
+            reviewer: {
+              select: {
+                id: true,
+                email: true,
+              },
             },
           },
-          reviewer: {
-            select: {
-              id: true,
-              email: true,
-            },
-          },
-        },
+        });
+
+        // Update user's seller status based on verification decision
+        const userUpdateData: any = {
+          sellerStatus: decision === VerificationStatus.APPROVED ? 'APPROVED' : 'REJECTED',
+        };
+
+        if (decision === VerificationStatus.APPROVED) {
+          userUpdateData.verifiedAt = new Date();
+          userUpdateData.rejectedAt = null;
+          userUpdateData.rejectionReason = null;
+        } else if (decision === VerificationStatus.REJECTED) {
+          userUpdateData.rejectedAt = new Date();
+          userUpdateData.rejectionReason = rejectionReason;
+        }
+
+        await tx.user.update({
+          where: { id: verification.userId },
+          data: userUpdateData,
+        });
+
+        return updatedVerification;
       });
 
-      return updatedVerification;
+      return result;
     } catch (error) {
       console.error('Error reviewing verification:', error);
       throw error;
