@@ -103,15 +103,9 @@ export function useChainSwitching() {
       }
 
       if (showPrompt) {
-        const userConfirmed = window.confirm(
-          `You need to switch to ${targetChain.name} to continue. Switch now?`,
-        );
-
-        if (userConfirmed) {
-          return await switchToChain(targetChain);
-        } else {
-          throw new Error('User cancelled chain switch');
-        }
+        // Return a promise that can be resolved by the UI component
+        // This allows the calling component to show a proper modal
+        throw new Error(`CHAIN_SWITCH_REQUIRED:${targetChain.name}:${targetChain.id}`);
       }
 
       return false;

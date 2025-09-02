@@ -1,7 +1,7 @@
 'use client';
 
 import { WagmiProvider, createConfig, http, fallback } from 'wagmi';
-import { baseSepolia } from 'wagmi/chains';
+import { base, baseSepolia } from 'wagmi/chains';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { type ReactNode } from 'react';
 
@@ -17,6 +17,14 @@ const queryClient = new QueryClient({
   },
 });
 
+// Multiple RPC endpoints for Base Mainnet reliability
+const BASE_MAINNET_RPCS = [
+  'https://mainnet.base.org',
+  'https://base-rpc.publicnode.com',
+  'https://base.blockpi.network/v1/rpc/public',
+  'https://base.gateway.tenderly.co',
+];
+
 // Multiple RPC endpoints for Base Sepolia reliability
 const BASE_SEPOLIA_RPCS = [
   'https://sepolia.base.org',
@@ -27,8 +35,17 @@ const BASE_SEPOLIA_RPCS = [
 
 // Create wagmi config with fallback RPC endpoints
 const config = createConfig({
-  chains: [baseSepolia],
+  chains: [base, baseSepolia],
   transports: {
+    [base.id]: fallback(
+      BASE_MAINNET_RPCS.map((url) =>
+        http(url, {
+          timeout: 10000,
+          retryCount: 2,
+          retryDelay: 1000,
+        }),
+      ),
+    ),
     [baseSepolia.id]: fallback(
       BASE_SEPOLIA_RPCS.map((url) =>
         http(url, {

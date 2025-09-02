@@ -58,6 +58,33 @@ export interface FacialVerificationStatus {
   reason?: string;
 }
 
+export interface VerificationDetails {
+  id: string;
+  userId: string;
+  documentType: string;
+  documentNumber: string;
+  documentImageUrl?: string;
+  firstName: string;
+  lastName: string;
+  dateOfBirth: string;
+  countryOfIssue: string;
+  state?: string;
+  address: string;
+  emailAddress: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  submittedAt: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
+  rejectionReason?: string;
+  attempts: number;
+  lastAttemptAt: string;
+  selfieImageUrl?: string;
+  facialComparisonScore?: number;
+  visionApiRecommendation?: string;
+  documentAnalysisResults?: Record<string, unknown>;
+  facialVerificationAt?: string;
+}
+
 // Backend response type for status endpoint
 export interface BackendVerificationStatus {
   sellerStatus: 'NOT_APPLIED' | 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -89,7 +116,7 @@ export class VerificationApi {
     endpoint: string,
     options: RequestInit = {},
   ): Promise<ApiResult<T>> {
-    const url = `${API_BASE_URL}/api/v1/account-verification${endpoint}`;
+    const url = `${API_BASE_URL}/api/v1/verification${endpoint}`;
 
     try {
       const response = await fetch(url, {
@@ -198,6 +225,18 @@ export class VerificationApi {
       success: true,
       data: transformedData,
     };
+  }
+
+  /**
+   * Get current user's verification details
+   */
+  static async getVerificationDetails(authToken: string): Promise<ApiResult<VerificationDetails>> {
+    return this.request('/details', {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
+    });
   }
 
   /**

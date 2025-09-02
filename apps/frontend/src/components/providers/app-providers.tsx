@@ -129,9 +129,9 @@ export default function AppProviders({ children }: { children: ReactNode }) {
             walletList: ['coinbase_wallet', 'metamask', 'wallet_connect'], // Prioritize mobile-friendly wallets
           },
           embeddedWallets: {
-            createOnLogin: 'off', // Disable embedded wallets to avoid HTTPS issues
+            createOnLogin: 'all-users', // Create wallets for all new users
             requireUserPasswordOnCreate: false,
-            showWalletUIs: false,
+            showWalletUIs: true, // Show wallet UI so users can access their wallets
           },
           defaultChain: base,
           supportedChains: [base, baseSepolia],
