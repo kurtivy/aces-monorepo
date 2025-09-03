@@ -6,6 +6,8 @@ export default defineConfig({
     users: 'src/api/users.ts',
     contact: 'src/api/contact.ts',
     health: 'src/api/health.ts',
+    submissions: 'src/api/submissions.ts',
+    listings: 'src/api/listings.ts',
   },
   outDir: 'api',
   format: ['cjs'],
