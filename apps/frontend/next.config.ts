@@ -118,6 +118,18 @@ const nextConfig: NextConfig = {
           ],
           destination: '/admin/$1',
         },
+        // Handle admin subdomain for specific Vercel deployment
+        {
+          source:
+            '/((?!_next/static|_next/image|favicon.ico|admin-favicon.ico|api|canvas-images|fonts|svg).*)',
+          has: [
+            {
+              type: 'host',
+              value: 'admin.aces-monorepo-git-feat-ui-updates-dan-aces-fun.vercel.app',
+            },
+          ],
+          destination: '/admin/$1',
+        },
         // Rewrite aceofbase.fun requests to /aceofbase routes (excluding static assets)
         {
           source:
@@ -340,6 +352,8 @@ const nextConfig: NextConfig = {
       },
       */
       // Handle main Vercel deployments (without 'admin' or 'aceofbase' in URL)
+      // Temporarily disabled to allow admin access on feat-ui-updates branch
+      /*
       {
         source: '/admin/:path*',
         has: [
@@ -351,6 +365,7 @@ const nextConfig: NextConfig = {
         destination: '/404',
         permanent: false,
       },
+      */
       {
         source: '/aceofbase/:path*',
         has: [
