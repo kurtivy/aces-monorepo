@@ -29,11 +29,22 @@ const ContactButtonComponent: React.FC<ContactButtonProps> = ({ onClick }) => {
       return; // Don't expand on mobile
     }
 
-    const timer = setTimeout(() => {
-      setIsExpanded(true);
-    }, 6000);
+    let collapseTimer: NodeJS.Timeout;
 
-    return () => clearTimeout(timer);
+    // Expand after 10 seconds
+    const expandTimer = setTimeout(() => {
+      setIsExpanded(true);
+
+      // Collapse back after 6 more seconds
+      collapseTimer = setTimeout(() => {
+        setIsExpanded(false);
+      }, 6000);
+    }, 10000);
+
+    return () => {
+      clearTimeout(expandTimer);
+      clearTimeout(collapseTimer);
+    };
   }, [isMobile]);
 
   // Determine if we should show expanded state (desktop only)
