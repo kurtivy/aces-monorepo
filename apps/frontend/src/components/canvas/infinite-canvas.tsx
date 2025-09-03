@@ -73,6 +73,17 @@ const InfiniteCanvas = ({
     new Map<string, { image: ImageInfo; x: number; y: number; width: number; height: number }>(),
   );
 
+  // HOVER ENHANCEMENT: Shared refs for hover state between hooks
+  const hoveredProductImageRef = useRef<{
+    image: ImageInfo;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    isRepeated?: boolean;
+    tileId?: string;
+  } | null>(null);
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const { unitSize } = useCoordinatedResize({ canvasRef });
@@ -112,6 +123,8 @@ const InfiniteCanvas = ({
     // FEATURED SECTION: Add featured section props
     featuredImageId,
     onFeaturedImageClick: onFeaturedImageClick || setSelectedImage,
+    // HOVER ENHANCEMENT: Pass hover functionality to renderer via ref
+    hoveredProductImageRef,
   });
 
   const imagesRef = useRef(images);

@@ -41,6 +41,11 @@ interface UseCanvasInteractionsProps {
   // FEATURED SECTION: Add featured image props
   featuredImage?: ImageInfo | null;
   onFeaturedImageClick?: (imageInfo: ImageInfo) => void;
+  // HOVER ENHANCEMENT: Add hover state callbacks for regular product images
+  onProductImageHover?: (
+    imageInfo: ImageInfo | null,
+    placement?: { x: number; y: number; width: number; height: number },
+  ) => void;
 }
 
 // MOMENTUM RESTORATION: Export enhanced momentum settings for canvas renderer
@@ -112,10 +117,22 @@ export const useCanvasInteractions = ({
   onMomentumUpdate,
   featuredImage, // FEATURED SECTION: Add featured image
   onFeaturedImageClick, // FEATURED SECTION: Add featured image click handler
+  onProductImageHover, // HOVER ENHANCEMENT: Add product image hover callback
 }: UseCanvasInteractionsProps) => {
   const router = useRouter();
   const [isPanning, setIsPanning] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+
+  // HOVER ENHANCEMENT: Add state for hovered product images
+  const [hoveredProductImage, setHoveredProductImage] = useState<{
+    image: ImageInfo;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    isRepeated?: boolean;
+    tileId?: string;
+  } | null>(null);
 
   const touchPhysicsRef = useRef<TouchPhysics>(createTouchPhysics());
   const dragStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
@@ -179,6 +196,108 @@ export const useCanvasInteractions = ({
       active: false,
     });
   }, [onMomentumUpdate]);
+
+  // HOVER ENHANCEMENT: Product image hover detection
+  const handleProductImageHover = useCallback(
+    (clientX: number, clientY: number) => {
+      const coords = getWorldCoordinates(clientX, clientY);
+      if (!coords) {
+        // Clear hover if coordinates are invalid
+        if (hoveredProductImage) {
+          setHoveredProductImage(null);
+          onProductImageHover?.(null);
+        }
+        return;
+      }
+
+      const { worldX, worldY } = coords;
+      let hoveredImage: {
+        image: ImageInfo;
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        isRepeated?: boolean;
+        tileId?: string;
+      } | null = null;
+
+      // Check original placements first
+      for (const placedItem of imagePlacementMap.current?.values() || []) {
+        if (!placedItem?.image) continue;
+        const { image, x, y, width, height } = placedItem;
+
+        // Skip submit-asset images (they already have their own hover system)
+        if (image.type === 'submit-asset') continue;
+
+        if (worldX >= x && worldX <= x + width && worldY >= y && worldY <= y + height) {
+          hoveredImage = { image, x, y, width, height, isRepeated: false };
+          break;
+        }
+      }
+
+      // Check repeated placements if no original placement found
+      if (!hoveredImage && repeatedPlacements) {
+        for (const tilePlacements of repeatedPlacements.values()) {
+          for (const placement of tilePlacements) {
+            // Skip submit-asset images (they already have their own hover system)
+            if (placement.image.type === 'submit-asset') continue;
+
+            if (
+              worldX >= placement.x &&
+              worldX <= placement.x + placement.width &&
+              worldY >= placement.y &&
+              worldY <= placement.y + placement.height
+            ) {
+              hoveredImage = {
+                image: placement.image,
+                x: placement.x,
+                y: placement.y,
+                width: placement.width,
+                height: placement.height,
+                isRepeated: true,
+                tileId: placement.tileId,
+              };
+              break;
+            }
+          }
+          if (hoveredImage) break;
+        }
+      }
+
+      // Update hover state if changed
+      const currentHover = hoveredProductImage;
+      const hasChanged =
+        (!currentHover && hoveredImage) ||
+        (currentHover && !hoveredImage) ||
+        (currentHover &&
+          hoveredImage &&
+          (currentHover.image.metadata.id !== hoveredImage.image.metadata.id ||
+            currentHover.x !== hoveredImage.x ||
+            currentHover.y !== hoveredImage.y));
+
+      if (hasChanged) {
+        setHoveredProductImage(hoveredImage);
+        onProductImageHover?.(
+          hoveredImage?.image || null,
+          hoveredImage
+            ? {
+                x: hoveredImage.x,
+                y: hoveredImage.y,
+                width: hoveredImage.width,
+                height: hoveredImage.height,
+              }
+            : undefined,
+        );
+      }
+    },
+    [
+      getWorldCoordinates,
+      imagePlacementMap,
+      repeatedPlacements,
+      hoveredProductImage,
+      onProductImageHover,
+    ],
+  );
 
   // Simplified click handling - minimal validation for speed
   const handleClick = useCallback(
@@ -652,5 +771,8 @@ export const useCanvasInteractions = ({
     handleTouchMove,
     handleTouchEnd,
     stopMomentum, // Expose for external momentum cancellation
+    // HOVER ENHANCEMENT: Expose hover detection function and state
+    handleProductImageHover,
+    hoveredProductImage,
   };
 };

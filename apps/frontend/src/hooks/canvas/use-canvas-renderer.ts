@@ -74,6 +74,16 @@ interface UseCanvasRendererProps {
   featuredImageId?: string;
   // FEATURED SECTION: Add modal handler for featured section clicks
   onFeaturedImageClick?: (imageInfo: ImageInfo) => void;
+  // HOVER ENHANCEMENT: Add product image hover ref
+  hoveredProductImageRef?: React.MutableRefObject<{
+    image: ImageInfo;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    isRepeated?: boolean;
+    tileId?: string;
+  } | null>;
 }
 
 // Removed global browserPerf - now using capability-based system per hook instance
@@ -166,6 +176,8 @@ export const useCanvasRenderer = ({
   updateViewState,
   featuredImageId = undefined, // FEATURED SECTION: Default to KAWS watch
   onFeaturedImageClick,
+  // HOVER ENHANCEMENT: Add hover ref
+  hoveredProductImageRef,
 }: UseCanvasRendererProps) => {
   const canvasRefInternal = useRef<HTMLCanvasElement>(null);
 
@@ -1052,6 +1064,91 @@ export const useCanvasRenderer = ({
     }
   }, [imagesLoaded, placementsCalculated, canvasVisible]);
 
+  // HOVER ENHANCEMENT: Product image hover detection function
+  const handleProductImageHoverDetection = useCallback(
+    (clientX: number, clientY: number) => {
+      if (!activeCanvasRef.current || !hoveredProductImageRef) return;
+
+      // Convert mouse coordinates to world coordinates
+      const canvas = activeCanvasRef.current;
+      const rectResult = safeGetBoundingClientRect(canvas);
+      if (!rectResult.success || !rectResult.data) return;
+
+      const rect = rectResult.data;
+      const worldX = (clientX - rect.left - viewState.x) / viewState.scale;
+      const worldY = (clientY - rect.top - viewState.y) / viewState.scale;
+
+      let hoveredImage: {
+        image: ImageInfo;
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        isRepeated?: boolean;
+        tileId?: string;
+      } | null = null;
+
+      // Check original placements first
+      for (const placedItem of imagePlacementMap.current?.values() || []) {
+        if (!placedItem?.image) continue;
+        const { image, x, y, width, height } = placedItem;
+
+        // Skip submit-asset images (they already have their own hover system)
+        if (image.type === 'submit-asset') continue;
+
+        if (worldX >= x && worldX <= x + width && worldY >= y && worldY <= y + height) {
+          hoveredImage = { image, x, y, width, height, isRepeated: false };
+          break;
+        }
+      }
+
+      // Check repeated placements if no original placement found
+      if (!hoveredImage && repeatedPlacements.current) {
+        for (const tilePlacements of repeatedPlacements.current.values()) {
+          for (const placement of tilePlacements) {
+            // Skip submit-asset images (they already have their own hover system)
+            if (placement.image.type === 'submit-asset') continue;
+
+            if (
+              worldX >= placement.x &&
+              worldX <= placement.x + placement.width &&
+              worldY >= placement.y &&
+              worldY <= placement.y + placement.height
+            ) {
+              hoveredImage = {
+                image: placement.image,
+                x: placement.x,
+                y: placement.y,
+                width: placement.width,
+                height: placement.height,
+                isRepeated: true,
+                tileId: placement.tileId,
+              };
+              break;
+            }
+          }
+          if (hoveredImage) break;
+        }
+      }
+
+      // Update hover state if changed
+      const currentHover = hoveredProductImageRef.current;
+      const hasChanged =
+        (!currentHover && hoveredImage) ||
+        (currentHover && !hoveredImage) ||
+        (currentHover &&
+          hoveredImage &&
+          (currentHover.image.metadata.id !== hoveredImage.image.metadata.id ||
+            currentHover.x !== hoveredImage.x ||
+            currentHover.y !== hoveredImage.y));
+
+      if (hasChanged) {
+        hoveredProductImageRef.current = hoveredImage;
+      }
+    },
+    [activeCanvasRef, hoveredProductImageRef, viewState, imagePlacementMap, repeatedPlacements],
+  );
+
   // Phase 2 Step 3: Enhanced event listener setup with ref change protection
   useEffect(() => {
     const canvas = activeCanvasRef.current;
@@ -1075,83 +1172,23 @@ export const useCanvasRenderer = ({
         x: mouseEvent.clientX - rect.left,
         y: mouseEvent.clientY - rect.top,
       };
-    };
 
-    const handleClick = (event: Event) => {
-      // Phase 2 Step 3: Validate canvas is still the same element
-      if (activeCanvasRef.current !== currentCanvas) return;
-
-      // Check if clicking on original token (with hover effect)
-      if (hoveredTokenIndex !== null) {
-        onCreateTokenClick();
-        return;
-      }
-
-      // FEATURED SECTION: Check if clicking on featured section
-      const mouseEvent = event as MouseEvent;
-      // Phase 2 Step 9: Safe getBoundingClientRect with precision handling
-      const rectResult = safeGetBoundingClientRect(currentCanvas);
-      if (!rectResult.success || !rectResult.data) {
-        return;
-      }
-      const rect = rectResult.data;
-      const mouseX = mouseEvent.clientX - rect.left;
-      const mouseY = mouseEvent.clientY - rect.top;
-      const worldMouseX = (mouseX - viewState.x) / viewState.scale;
-      const worldMouseY = (mouseY - viewState.y) / viewState.scale;
-
-      // FEATURED SECTION: Featured area bounds (2×2 above home area)
-      const featuredAreaWorldX = -unitSize;
-      const featuredAreaWorldY = -unitSize * 3;
-      const featuredAreaWidth = unitSize * 2;
-      const featuredAreaHeight = unitSize * 2;
-
-      // FEATURED SECTION: Check if clicking within featured area
-      if (
-        featuredImage &&
-        worldMouseX >= featuredAreaWorldX &&
-        worldMouseX <= featuredAreaWorldX + featuredAreaWidth &&
-        worldMouseY >= featuredAreaWorldY &&
-        worldMouseY <= featuredAreaWorldY + featuredAreaHeight
-      ) {
-        onFeaturedImageClick?.(featuredImage);
-        return;
-      }
-
-      // Check if clicking on repeated token
-      let clickedRepeatedToken = false;
-      repeatedTokens.current.forEach((tileTokens) => {
-        tileTokens.forEach((token) => {
-          if (
-            worldMouseX >= token.worldX &&
-            worldMouseX <= token.worldX + unitSize &&
-            worldMouseY >= token.worldY &&
-            worldMouseY <= token.worldY + unitSize
-          ) {
-            clickedRepeatedToken = true;
-          }
-        });
-      });
-
-      if (clickedRepeatedToken) {
-        onCreateTokenClick();
+      // HOVER ENHANCEMENT: Add product image hover detection
+      if (hoveredProductImageRef) {
+        handleProductImageHoverDetection(mouseEvent.clientX, mouseEvent.clientY);
       }
     };
+
+    // Removed canvas renderer click handler - all clicks now handled by useCanvasInteractions
 
     // Phase 2 Step 3 Action 5: Enhanced error handling for canvas mouse events
     const mouseMoveResult = addEventListenerSafe(currentCanvas, 'mousemove', handleMouseMove);
-    const clickResult = addEventListenerSafe(currentCanvas, 'click', handleClick);
+    // Removed click listener - all clicks now handled by useCanvasInteractions
 
     if (!mouseMoveResult.success) {
       // Canvas will still work, just without hover effects
     } else if (mouseMoveResult.fallbackApplied) {
       // Canvas will still work, just without hover effects
-    }
-
-    if (!clickResult.success) {
-      // Canvas will still work, just without click interactions
-    } else if (clickResult.fallbackApplied) {
-      // Canvas will still work, just without click interactions
     }
 
     return () => {
@@ -1162,12 +1199,7 @@ export const useCanvasRenderer = ({
           // Canvas will still work, just without hover effects
         }
       }
-      if (clickResult.success && currentCanvas) {
-        const removeResult = removeEventListenerSafe(currentCanvas, 'click', handleClick);
-        if (!removeResult.success) {
-          // Canvas will still work, just without click interactions
-        }
-      }
+      // Removed click listener cleanup - all clicks now handled by useCanvasInteractions
     };
   }, [
     hoveredTokenIndex,
@@ -1177,6 +1209,7 @@ export const useCanvasRenderer = ({
     activeCanvasRef,
     featuredImage,
     onFeaturedImageClick,
+    handleProductImageHoverDetection, // HOVER ENHANCEMENT: Added hover detection function dependency
   ]); // FEATURED SECTION: Added dependencies
 
   // CRITICAL FIX: Separate canvas initialization from animation loop to prevent infinite re-renders
@@ -1468,19 +1501,35 @@ export const useCanvasRenderer = ({
       const transformedProducts = batchTransformElements(visibleAnimatedProducts, viewTransform);
 
       // Issue #3: Batch render products by opacity to reduce save/restore calls
-      const imageRenderBatch = transformedProducts.map((element) => ({
-        opacity: element.opacity,
-        render: () => {
-          drawImageWithoutContext(
-            ctx,
-            element.original.image.element,
-            element.screenX,
-            element.screenY,
-            element.width,
-            element.height,
-          );
-        },
-      }));
+      const imageRenderBatch = transformedProducts.map((element) => {
+        // HOVER ENHANCEMENT: Calculate hover progress for this image
+        let hoverProgress = 0;
+        const hoveredProductImage = hoveredProductImageRef?.current;
+        if (
+          hoveredProductImage &&
+          hoveredProductImage.image.metadata.id === element.original.image.metadata.id &&
+          !hoveredProductImage.isRepeated &&
+          Math.abs(hoveredProductImage.x - element.original.x) < 1 &&
+          Math.abs(hoveredProductImage.y - element.original.y) < 1
+        ) {
+          hoverProgress = 1; // Full hover effect for exact match
+        }
+
+        return {
+          opacity: element.opacity,
+          render: () => {
+            drawImageWithoutContext(
+              ctx,
+              element.original.image.element,
+              element.screenX,
+              element.screenY,
+              element.width,
+              element.height,
+              hoverProgress, // HOVER ENHANCEMENT: Pass hover progress
+            );
+          },
+        };
+      });
 
       // Use optimized batch renderer during entrance animations
       if (entranceAnimation.isAnimationActive) {
@@ -1530,19 +1579,35 @@ export const useCanvasRenderer = ({
         );
 
         // Issue #3: Batch render repeated products with single opacity (all fully visible)
-        const repeatedImageRenderBatch = transformedRepeatedProducts.map((element) => ({
-          opacity: 1, // Always fully visible
-          render: () => {
-            drawImageWithoutContext(
-              ctx,
-              element.original.image.element,
-              element.screenX,
-              element.screenY,
-              element.width,
-              element.height,
-            );
-          },
-        }));
+        const repeatedImageRenderBatch = transformedRepeatedProducts.map((element) => {
+          // HOVER ENHANCEMENT: Calculate hover progress for repeated images
+          let hoverProgress = 0;
+          const hoveredProductImage = hoveredProductImageRef?.current;
+          if (
+            hoveredProductImage &&
+            hoveredProductImage.image.metadata.id === element.original.image.metadata.id &&
+            hoveredProductImage.isRepeated &&
+            Math.abs(hoveredProductImage.x - element.original.x) < 1 &&
+            Math.abs(hoveredProductImage.y - element.original.y) < 1
+          ) {
+            hoverProgress = 1; // Full hover effect for exact match
+          }
+
+          return {
+            opacity: 1, // Always fully visible
+            render: () => {
+              drawImageWithoutContext(
+                ctx,
+                element.original.image.element,
+                element.screenX,
+                element.screenY,
+                element.width,
+                element.height,
+                hoverProgress, // HOVER ENHANCEMENT: Pass hover progress
+              );
+            },
+          };
+        });
 
         batchRenderByOpacity(ctx, repeatedImageRenderBatch);
         totalElementsRendered += transformedRepeatedProducts.length;
@@ -2002,6 +2067,7 @@ export const useCanvasRenderer = ({
     canvasVisible,
     activeCanvasRef, // Phase 2 Step 4 Action 3: Added missing canvas ref dependency
     featuredImage, // FEATURED SECTION: Added featured image dependency
+    hoveredProductImageRef, // HOVER ENHANCEMENT: Added hover ref dependency
   ]); // Phase 2 Step 4 Action 3: Most refs are intentionally stable and don't need dependencies
 
   // Step 6: Enhanced scroll detection and background processor coordination

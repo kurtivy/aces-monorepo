@@ -340,11 +340,26 @@ More than just a refrigerator, this piece represents the epitome of luxury enter
     marketCap: 117700,
     tokenSupply: 100000,
   },
+  {
+    id: '25',
+    title: 'Bored Ape Yacht Club #4T (Very Rare)',
+    description: `An exceptionally rare Bored Ape Yacht Club NFT featuring the coveted "4T" trait combination. This digital collectible represents one of the most sought-after and valuable NFTs in the entire BAYC collection, known for its unique and highly desirable trait combinations.
+
+As one of the pioneering NFT projects that defined the digital art and collectibles space, BAYC has become a cultural phenomenon. This particular ape, with its rare trait combination, represents not just digital ownership but membership in an exclusive community of collectors and enthusiasts.`,
+    date: '2024-03-20',
+    ticker: '$BAYC4T',
+    image: '/canvas-images/Bored-Ape-Yacht-Club-Very-Rare-4T.webp',
+    rrp: 180000,
+    tokenPrice: 1.9726,
+    marketCap: 197260,
+    tokenSupply: 100000,
+  },
   // Special submit asset image to replace create token squares
   {
     id: 'submit-asset',
     title: 'Submit Your Asset',
-    description: 'Submit your luxury asset for tokenization on the ACES platform. Transform your high-value collectibles, art, vehicles, and other assets into tradeable digital tokens.',
+    description:
+      'Submit your luxury asset for tokenization on the ACES platform. Transform your high-value collectibles, art, vehicles, and other assets into tradeable digital tokens.',
     date: '2024-03-15',
     ticker: '$SUBMIT',
     image: '/canvas-images/outline/submit-your-asset.webp',
