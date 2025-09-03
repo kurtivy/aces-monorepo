@@ -367,7 +367,7 @@ export const useCanvasInteractions = ({
           worldY >= mintQuadY &&
           worldY < mintQuadY + quadHeight
         ) {
-          window.location.href = '/list-token';
+          window.location.href = '/tokenize';
           return;
         }
 
@@ -389,7 +389,7 @@ export const useCanvasInteractions = ({
           worldY >= chatQuadY &&
           worldY < chatQuadY + quadHeight
         ) {
-          window.open('https://t.me/acesdotfun/', '_blank');
+          window.location.href = '/upcoming';
           return;
         }
         return;
@@ -446,7 +446,7 @@ export const useCanvasInteractions = ({
 
       if (clickedImage) {
         if (clickedImage.type === 'submit-asset') {
-          window.location.href = '/list-token';
+          window.location.href = '/tokenize';
         } else {
           setSelectedImage(clickedImage);
         }

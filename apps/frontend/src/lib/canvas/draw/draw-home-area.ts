@@ -1,6 +1,20 @@
 import { UNIT_SIZE } from '../../../constants/canvas';
 import { browserUtils } from '../../utils/browser-utils';
 import { getDeviceCapabilities } from '../../utils/browser-utils';
+import { getCanvasFontStack } from '../../utils/font-loader';
+
+/**
+ * Home area drawing component with Aces.Fun style guide integration
+ *
+ * Uses colors and design principles from zBUGS/frontend/aces_fun_style_guide.md:
+ * - deepCharcoal (#231F20) for main backgrounds
+ * - goldenBeige (#D0B284) for primary accents and borders
+ * - highlightGold (#D7BF75) for text highlights and glows
+ * - pureWhite (#FFFFFF) for text and highlights
+ * - antiqueBronze (#928357) for gradient stops
+ *
+ * Supports customizable quadrant prompts for different use cases.
+ */
 
 // Safari-specific performance optimizations
 const isSafari =
@@ -10,6 +24,21 @@ const isSafari =
 
 // Gradient cache for Safari performance
 const homeAreaGradientCache = new Map<string, CanvasGradient>();
+
+// Style guide colors from aces_fun_style_guide.md
+const STYLE_COLORS = {
+  deepCharcoal: '#231F20',
+  goldenBeige: '#D0B284',
+  pureWhite: '#FFFFFF',
+  deepEmeraldGreen: '#184D37',
+  platinumGrey: '#DCDDCC',
+  highlightGold: '#D7BF75',
+  antiqueBronze: '#928357',
+  black: '#000000',
+} as const;
+
+// Default quadrant prompts - can be customized
+const DEFAULT_QUADRANT_PROMPTS = ['ABOUT', 'TOKENIZE', 'W.PAPER', 'UPCOMING'] as const;
 
 export const drawHomeArea = (
   ctx: CanvasRenderingContext2D,
@@ -23,6 +52,7 @@ export const drawHomeArea = (
   spaceCanvas: HTMLCanvasElement | null = null, // Add space canvas parameter
   animationTime = 0, // For any additional animations
   unitSize = UNIT_SIZE, // Add unitSize parameter
+  quadrantPrompts: readonly string[] = DEFAULT_QUADRANT_PROMPTS, // Add customizable prompts
 ) => {
   // Smart mobile optimization: detect mobile device
   const capabilities = getDeviceCapabilities();
@@ -38,8 +68,8 @@ export const drawHomeArea = (
 
   if (!backgroundGradient) {
     backgroundGradient = ctx.createLinearGradient(0, 0, homeAreaWidth, homeAreaHeight);
-    backgroundGradient.addColorStop(0, '#1A1A1A');
-    backgroundGradient.addColorStop(1, '#0A0A0A');
+    backgroundGradient.addColorStop(0, STYLE_COLORS.deepCharcoal);
+    backgroundGradient.addColorStop(1, STYLE_COLORS.black);
 
     // Cache for reuse (limit cache size)
     if (homeAreaGradientCache.size < 20) {
@@ -48,6 +78,12 @@ export const drawHomeArea = (
   }
 
   ctx.fillStyle = backgroundGradient;
+  ctx.beginPath();
+  ctx.roundRect(x, y, homeAreaWidth, homeAreaHeight, radius);
+  ctx.fill();
+
+  // Add deep emerald green overlay at 50% opacity
+  ctx.fillStyle = `rgba(21,28,22, 1)`; // #151C16 at 50% opacity
   ctx.beginPath();
   ctx.roundRect(x, y, homeAreaWidth, homeAreaHeight, radius);
   ctx.fill();
@@ -101,12 +137,12 @@ export const drawHomeArea = (
 
   // Safari optimization: Skip expensive shadow effects on Safari
   if (!isSafari && !isMobileDevice) {
-    // Layer 1: Outer glow (desktop only, not Safari)
-    ctx.shadowColor = 'rgba(208, 178, 100, 0.6)';
+    // Layer 1: Outer glow (desktop only, not Safari) - using highlightGold
+    ctx.shadowColor = 'rgba(215, 191, 117, 0.6)';
     ctx.shadowBlur = 15;
   }
 
-  ctx.strokeStyle = 'rgba(208, 178, 100, 0.8)';
+  ctx.strokeStyle = STYLE_COLORS.goldenBeige;
   ctx.lineWidth = 4; // Thick golden border as requested
   ctx.beginPath();
   ctx.roundRect(x, y, homeAreaWidth, homeAreaHeight, radius);
@@ -120,9 +156,9 @@ export const drawHomeArea = (
 
   if (!borderGradient) {
     borderGradient = ctx.createLinearGradient(0, 0, homeAreaWidth, homeAreaHeight);
-    borderGradient.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
-    borderGradient.addColorStop(0.5, 'rgba(208, 178, 100, 0.8)');
-    borderGradient.addColorStop(1, 'rgba(173, 142, 66, 0.9)');
+    borderGradient.addColorStop(0, STYLE_COLORS.pureWhite);
+    borderGradient.addColorStop(0.5, STYLE_COLORS.goldenBeige);
+    borderGradient.addColorStop(1, STYLE_COLORS.antiqueBronze);
 
     // Cache for reuse (limit cache size)
     if (homeAreaGradientCache.size < 20) {
@@ -140,7 +176,8 @@ export const drawHomeArea = (
 
   // Draw quadrant divider lines
   ctx.save();
-  ctx.strokeStyle = 'rgba(208, 178, 100, 0.4)';
+  ctx.strokeStyle = STYLE_COLORS.goldenBeige;
+  ctx.globalAlpha = 0.4;
   ctx.lineWidth = 1.5;
 
   // Vertical divider line
@@ -182,25 +219,26 @@ export const drawHomeArea = (
     ctx.shadowBlur = 0; // Disable shadow blur
     ctx.shadowOffsetY = 0; // Ensure no vertical offset
 
-    // Gold gradient for text (matching create token square)
+    // Gold gradient for text using style guide colors
     const textGradient = ctx.createLinearGradient(
       quadX,
       quadY + quadHeight / 2 - homeAreaHeight * 0.1, // Scale gradient start/end
       quadX + quadWidth,
       quadY + quadHeight / 2 + homeAreaHeight * 0.1, // Scale gradient start/end
     );
-    textGradient.addColorStop(0, '#FFFFFF');
-    textGradient.addColorStop(0.5, '#D0B264');
-    textGradient.addColorStop(1, '#FFFFFF');
+    textGradient.addColorStop(0, STYLE_COLORS.pureWhite);
+    textGradient.addColorStop(0.5, STYLE_COLORS.highlightGold);
+    textGradient.addColorStop(1, STYLE_COLORS.pureWhite);
 
     ctx.fillStyle = textGradient;
     // Mobile-specific font sizing: smaller unitSize (150) gets smaller font, desktop (200) keeps original size
     const isMobile = unitSize <= 150;
     const baseFontSize = isMobile ? unitSize * 0.12 : unitSize * 0.15; // Original desktop size
     const hoverFontSize = isMobile ? unitSize * 0.13 : unitSize * 0.16; // Original desktop size
-    ctx.font = `bold ${isHovered ? hoverFontSize : baseFontSize}px 'heading'`;
+    ctx.font = `bold ${isHovered ? hoverFontSize : baseFontSize}px ${getCanvasFontStack('NeueWorld')}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    ctx.letterSpacing = '3px';
 
     const textX = quadX + quadWidth / 2;
     const textY = quadY + quadHeight / 2;
@@ -214,16 +252,16 @@ export const drawHomeArea = (
     ctx.restore();
   };
 
-  // Draw all quadrant buttons
-  drawQuadrantButton('ABOUT', 0);
-  drawQuadrantButton('LIST', 1);
-  drawQuadrantButton('DOCS', 2);
-  drawQuadrantButton('CHAT', 3);
+  // Draw all quadrant buttons using customizable prompts
+  drawQuadrantButton(quadrantPrompts[0] || 'ABOUT US', 0);
+  drawQuadrantButton(quadrantPrompts[1] || 'TOKENIZE', 1);
+  drawQuadrantButton(quadrantPrompts[2] || 'W.PAPER', 2);
+  drawQuadrantButton(quadrantPrompts[3] || 'UPCOMING', 3);
 
   // Draw the circular background for logo with premium styling
-  const logoSize = Math.min(homeAreaWidth, homeAreaHeight) * 0.6; // 60% of the smaller dimension
+  const logoSize = Math.min(homeAreaWidth, homeAreaHeight) * 0.45; // 50% of the smaller dimension - tighter fit
 
-  // Logo background with gradient
+  // Logo background with gradient using style guide colors
   const logoGradient = ctx.createRadialGradient(
     centerX,
     centerY,
@@ -232,8 +270,8 @@ export const drawHomeArea = (
     centerY,
     logoSize / 2,
   );
-  logoGradient.addColorStop(0, '#2A2A2A');
-  logoGradient.addColorStop(1, '#1A1A1A');
+  logoGradient.addColorStop(0, STYLE_COLORS.deepCharcoal);
+  logoGradient.addColorStop(1, STYLE_COLORS.black);
 
   ctx.fillStyle = logoGradient;
   ctx.beginPath();
@@ -249,8 +287,9 @@ export const drawHomeArea = (
     ctx.shadowBlur = 10;
   }
 
-  // Multi-layered logo border
-  ctx.strokeStyle = 'rgba(208, 178, 100, 0.6)';
+  // Multi-layered logo border using style guide colors
+  ctx.strokeStyle = STYLE_COLORS.goldenBeige;
+  ctx.globalAlpha = 0.6;
   ctx.lineWidth = 3;
   ctx.beginPath();
   ctx.arc(centerX, centerY, logoSize / 2, 0, Math.PI * 2);
@@ -258,7 +297,8 @@ export const drawHomeArea = (
 
   // Inner logo border
   ctx.shadowBlur = 0;
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+  ctx.strokeStyle = STYLE_COLORS.pureWhite;
+  ctx.globalAlpha = 0.3;
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.arc(centerX, centerY, logoSize / 2 - 2, 0, Math.PI * 2);

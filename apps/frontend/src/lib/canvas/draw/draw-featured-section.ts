@@ -1,5 +1,6 @@
 import type { ImageInfo } from '../../../types/canvas';
 import { getDeviceCapabilities } from '../../utils/browser-utils';
+import { getCanvasFontStack } from '../../utils/font-loader';
 
 // Countdown timer utility function for canvas rendering
 interface TimeLeft {
@@ -30,114 +31,170 @@ const calculateTimeLeft = (targetDate: Date): TimeLeft => {
   return timeLeft;
 };
 
-// Draw countdown timer in top right corner of featured section
-const drawCountdownTimer = (
+// Overlay utilities for header rails, dashed columns, and right-side countdown
+const OVERLAY_COLORS = {
+  gold: '#D0B284',
+  emerald: '#184D37',
+  labelGray: '#DCDDCC',
+};
+
+const DASH_PATTERN = [12, 12];
+
+// Draw the top header rails and the FEATURED title centered between them
+const drawHeaderRailsAndTitle = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  rightRailLeftX: number,
+  radius: number,
+  opacity: number,
+) => {
+  ctx.save();
+  ctx.globalAlpha = opacity;
+
+  // Clip to the card rounded rect to ensure lines do not bleed
+  ctx.beginPath();
+  ctx.roundRect(x, y, width, Math.max(radius * 2 + 120, 120), radius);
+  ctx.clip();
+
+  const textSize = Math.min(width, radius * 10) * 0.33; // 3x larger than before (was 0.11)
+  const topY = y + 12;
+  const bottomY = topY + textSize + 4; // moved even closer to FEATURED text
+  const titleCenterY = (topY + bottomY) / 2 + 4; // center between rails with slight downward adjustment
+
+  // Top rail - full width
+  ctx.strokeStyle = OVERLAY_COLORS.gold;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x, topY);
+  ctx.lineTo(x + width, topY);
+  ctx.stroke();
+
+  // Subtle emerald accent just under the top rail
+  ctx.strokeStyle = OVERLAY_COLORS.emerald;
+  ctx.globalAlpha = opacity * 0.6;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x, topY + 3);
+  ctx.lineTo(x + width, topY + 3);
+  ctx.stroke();
+  ctx.globalAlpha = opacity;
+
+  // Bottom rail - from left edge until it hits the dashed left rail
+  const bottomRailEndX = Math.max(x, rightRailLeftX);
+  ctx.strokeStyle = OVERLAY_COLORS.gold;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x, bottomY);
+  ctx.lineTo(bottomRailEndX, bottomY);
+  ctx.stroke();
+
+  // Add green line below the bottom rail
+  ctx.strokeStyle = OVERLAY_COLORS.emerald;
+  ctx.globalAlpha = opacity * 0.8;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x, bottomY + 3);
+  ctx.lineTo(bottomRailEndX, bottomY + 3);
+  ctx.stroke();
+  ctx.globalAlpha = opacity;
+
+  const titleLeftX = x + 24; // positioned on left side with padding
+
+  ctx.fillStyle = '#D7BF75';
+  ctx.font = `bold ${textSize}px ${getCanvasFontStack('NeueWorld')}`;
+  ctx.letterSpacing = '8px'; // Increase letter spacing
+  ctx.textAlign = 'left'; // changed from right to left
+  ctx.textBaseline = 'middle';
+
+  ctx.fillText('FEATURED', titleLeftX, titleCenterY);
+
+  ctx.restore();
+};
+
+// Draw dashed vertical rails and the stacked right-side countdown
+const drawRightRailAndCountdown = (
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
   width: number,
   height: number,
-  opacity: number = 1,
+  radius: number,
+  opacity: number,
 ) => {
-  const targetDate = new Date('2025-09-19T12:00:00-04:00'); // September 19, 2025 at 12PM Eastern Time
+  const targetDate = new Date('2025-09-19T12:00:00-04:00');
   const timeLeft = calculateTimeLeft(targetDate);
 
-  // Don't render if countdown is over
-  if (
-    timeLeft.days === 0 &&
-    timeLeft.hours === 0 &&
-    timeLeft.minutes === 0 &&
-    timeLeft.seconds === 0
-  ) {
-    return;
-  }
+  const columnWidth = Math.max(80, Math.floor(width * 0.22));
+  const leftRailX = x + width - columnWidth + 20; // moved closer to right rail
+  const rightRailX = x + width - 12; // positioned at the outside edge of numbers
 
   ctx.save();
-  ctx.globalAlpha = opacity;
 
-  // Position along the bottom with padding
-  const padding = 16;
-  const timerHeight = Math.min(80, height * 0.15); // Slightly taller for better proportions
-  const unitWidth = Math.min(60, width * 0.12); // Wider units for better visibility
-  const gap = 16; // Much larger gap for better horizontal spacing
-  const totalWidth = unitWidth * 4 + gap * 3; // 4 units with gaps
-  const timerX = x + (width - totalWidth) / 2; // Center horizontally
-  const timerY = y + height - padding - timerHeight; // Position at bottom
+  // Clip to the card
+  ctx.beginPath();
+  ctx.roundRect(x, y, width, height, radius);
+  ctx.clip();
 
-  // Ensure timer fits within bounds
-  if (timerX < x + padding || timerY < y + padding) {
-    ctx.restore();
-    return;
-  }
+  // Draw dashed rails
+  ctx.strokeStyle = OVERLAY_COLORS.gold;
+  ctx.lineWidth = 1;
+  ctx.setLineDash(DASH_PATTERN);
+  ctx.globalAlpha = opacity * 0.9;
 
-  const timeUnits = [
+  ctx.beginPath();
+  ctx.moveTo(leftRailX, y);
+  ctx.lineTo(leftRailX, y + height);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(rightRailX, y);
+  ctx.lineTo(rightRailX, y + height);
+  ctx.stroke();
+
+  ctx.setLineDash([]);
+
+  // Align countdown to the right side of the right dashed line
+  const colRightX = rightRailX - 8; // balanced position from right dashed line
+
+  const numberFontSize = Math.min(Math.floor(columnWidth * 0.45), Math.floor(height * 0.13));
+  const labelFontSize = Math.max(14, Math.floor(numberFontSize * 0.38));
+  const blockGap = Math.floor(numberFontSize * 0.35);
+
+  const blocks = [
     { value: timeLeft.days, label: 'DAYS' },
-    { value: timeLeft.hours, label: 'HRS' },
+    { value: timeLeft.hours, label: 'HOUR' },
     { value: timeLeft.minutes, label: 'MIN' },
-    { value: timeLeft.seconds, label: 'SEC' },
+    { value: timeLeft.seconds, label: 'SECS' },
   ];
 
-  // Draw each time unit
-  timeUnits.forEach(({ value, label }, index) => {
-    const unitX = timerX + index * (unitWidth + gap);
-    const unitY = timerY;
+  const blockHeights = numberFontSize + labelFontSize + blockGap;
+  const totalHeight = blocks.length * blockHeights - blockGap;
+  let currentY = y + height - 20 - totalHeight; // start from bottom with padding
 
-    // Create gradient background for each unit
-    const unitGradient = ctx.createLinearGradient(unitX, unitY, unitX, unitY + timerHeight);
-    unitGradient.addColorStop(0, 'rgba(40, 40, 40, 0.2)');
-    unitGradient.addColorStop(0.5, 'rgba(20, 20, 20, 0.2)');
-    unitGradient.addColorStop(1, 'rgba(10, 10, 10, 0.2)');
+  ctx.textBaseline = 'top';
 
-    ctx.fillStyle = unitGradient;
-    ctx.beginPath();
-    ctx.roundRect(unitX, unitY, unitWidth, timerHeight, 8);
-    ctx.fill();
+  for (const { value, label } of blocks) {
+    ctx.fillStyle = '#D7BF75';
+    ctx.globalAlpha = opacity;
+    ctx.font = `bold ${numberFontSize}px ${getCanvasFontStack('NeueWorld')}`;
+    ctx.textAlign = 'right';
+    ctx.fillText(value.toString().padStart(2, '0'), colRightX, currentY);
 
-    // Add subtle inner shadow effect
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.roundRect(unitX + 1, unitY + 1, unitWidth - 2, timerHeight - 2, 7);
-    ctx.stroke();
+    const labelRightX = colRightX;
 
-    // Outer border with gold accent
-    ctx.strokeStyle = 'rgba(208, 178, 100, 0.3)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.roundRect(unitX, unitY, unitWidth, timerHeight, 8);
-    ctx.stroke();
+    ctx.fillStyle = OVERLAY_COLORS.labelGray;
+    ctx.font = `${labelFontSize}px ${getCanvasFontStack('Proxima Nova')}`;
+    ctx.textAlign = 'right';
+    ctx.fillText(label, labelRightX, currentY + numberFontSize + 6);
 
-    // Number value with gold gradient
-    const numberGradient = ctx.createLinearGradient(
-      unitX + unitWidth / 2 - 15,
-      unitY + timerHeight * 0.3,
-      unitX + unitWidth / 2 + 15,
-      unitY + timerHeight * 0.5,
-    );
-    numberGradient.addColorStop(0, '#FFFFFF');
-    numberGradient.addColorStop(0.2, '#D0B264');
-    numberGradient.addColorStop(0.8, '#D0B264');
-    numberGradient.addColorStop(1, '#FFFFFF');
-
-    ctx.fillStyle = numberGradient;
-    ctx.font = `bold ${Math.min(24, timerHeight * 0.4)}px Arial, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(
-      value.toString().padStart(2, '0'),
-      unitX + unitWidth / 2,
-      unitY + timerHeight * 0.4,
-    );
-
-    // Label with improved styling
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-    ctx.font = `${Math.min(11, timerHeight * 0.18)}px Arial, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(label, unitX + unitWidth / 2, unitY + timerHeight * 0.78);
-  });
+    currentY += blockHeights;
+  }
 
   ctx.restore();
+
+  return { leftRailX };
 };
 
 // Safari-specific performance optimizations
@@ -259,7 +316,7 @@ export const drawFeaturedSection = (
 
     // Add some visual content
     ctx.fillStyle = '#666666';
-    ctx.font = `${Math.min(imageWidth, imageHeight) * 0.1}px 'heading'`;
+    ctx.font = `${Math.min(imageWidth, imageHeight) * 0.1}px ${getCanvasFontStack('NeueWorld')}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('FEATURED ITEM', imageX + imageWidth / 2, imageY + imageHeight / 2);
@@ -267,33 +324,9 @@ export const drawFeaturedSection = (
     ctx.restore();
   }
 
-  // Draw "FEATURED" label in top-left corner
-  ctx.save();
-
-  const padding = 16;
-  const featuredTextY = y + padding + 20; // Fixed position in top area
-
-  // Gold gradient for text (matching home area text)
-  const textGradient = ctx.createLinearGradient(
-    x + 16,
-    featuredTextY - 10, // Adjust gradient positioning
-    x + 16 + width * 0.3, // Scale gradient width appropriately
-    featuredTextY + 10, // Scale gradient height to text size
-  );
-  textGradient.addColorStop(0, '#FFFFFF');
-  textGradient.addColorStop(0.15, '#D0B264');
-  textGradient.addColorStop(0.95, '#D0B264');
-  textGradient.addColorStop(1, '#FFFFFF');
-
-  ctx.fillStyle = textGradient;
-  ctx.font = `bold ${Math.min(width, height) * 0.08}px 'heading'`;
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('FEATURED', x + 16, featuredTextY);
-  ctx.restore();
-
-  // Draw countdown timer along the bottom
-  drawCountdownTimer(ctx, x, y, width, height, 1.0);
+  // Draw overlay: dashed right rails and stacked countdown, then header rails and title
+  const { leftRailX } = drawRightRailAndCountdown(ctx, x, y, width, height, radius, 1.0);
+  drawHeaderRailsAndTitle(ctx, x, y, width, leftRailX, radius, 1.0);
 
   // Draw premium border
   ctx.save();
@@ -461,32 +494,22 @@ export const drawAnimatedFeaturedSection = (
   ctx.restore();
 
   // Draw countdown timer along the bottom with fade-in
-  drawCountdownTimer(ctx, drawX, drawY, width, height, opacity * borderAnimationProgress);
+  const overlayOpacity = opacity * borderAnimationProgress;
+  const { leftRailX } = drawRightRailAndCountdown(
+    ctx,
+    drawX,
+    drawY,
+    width,
+    height,
+    radius,
+    overlayOpacity,
+  );
 
   // Draw "FEATURED" label with fade-in in top-left corner
   ctx.save();
   ctx.globalAlpha = opacity * borderAnimationProgress;
 
-  const padding = 16;
-  const featuredTextY = drawY + padding + 20; // Fixed position in top area
-
-  // Gold gradient for text (matching home area text)
-  const textGradient = ctx.createLinearGradient(
-    drawX + 16,
-    featuredTextY - 10, // Adjust gradient positioning
-    drawX + 16 + width * 0.3, // Scale gradient width appropriately
-    featuredTextY + 10, // Scale gradient height to text size
-  );
-  textGradient.addColorStop(0, '#FFFFFF');
-  textGradient.addColorStop(0.1, '#D0B264');
-  textGradient.addColorStop(0.9, '#D0B264');
-  textGradient.addColorStop(1, '#FFFFFF');
-
-  ctx.fillStyle = textGradient;
-  ctx.font = `bold ${Math.min(width, height) * 0.08}px 'heading'`;
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('FEATURED', drawX + 16, featuredTextY);
+  drawHeaderRailsAndTitle(ctx, drawX, drawY, width, leftRailX, radius, overlayOpacity);
   ctx.restore();
 
   // Draw animated border with progressive appearance
