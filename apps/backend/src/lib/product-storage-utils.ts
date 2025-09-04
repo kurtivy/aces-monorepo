@@ -95,14 +95,36 @@ export class ProductStorageService {
     imageUrls: string[],
     expiresInMinutes: number = 60,
   ): Promise<string[]> {
+    // Debug logging to identify the issue
+    console.log(
+      `[DEBUG] ProductStorageService.convertToSignedUrls called with ${imageUrls.length} URLs`,
+    );
+    console.log(`[DEBUG] productBucketName: "${productBucketName}"`);
+    console.log(`[DEBUG] hasGoogleCloudCredentials: ${hasGoogleCloudCredentials}`);
+
     const signedUrls = await Promise.all(
-      imageUrls.map(async (url) => {
+      imageUrls.map(async (url, index) => {
         try {
-          if (url.includes('storage.googleapis.com') && url.includes(productBucketName)) {
+          console.log(`[DEBUG] Processing URL ${index + 1}: ${url}`);
+
+          const isGCS = url.includes('storage.googleapis.com');
+          const includesBucket = url.includes(productBucketName);
+
+          console.log(
+            `[DEBUG] URL ${index + 1} - isGCS: ${isGCS}, includesBucket: ${includesBucket}`,
+          );
+
+          if (isGCS && includesBucket) {
+            console.log(`[DEBUG] Converting URL ${index + 1} to signed URL`);
             const fileName = this.extractFileName(url);
-            return await this.getSignedProductUrl(fileName, expiresInMinutes);
+            const signedUrl = await this.getSignedProductUrl(fileName, expiresInMinutes);
+            console.log(
+              `[DEBUG] URL ${index + 1} signed result: ${signedUrl.substring(0, 100)}...`,
+            );
+            return signedUrl;
           }
           // Return original URL if it's not a GCS product image URL
+          console.log(`[DEBUG] URL ${index + 1} returned unchanged`);
           return url;
         } catch (error) {
           console.error(`Failed to generate signed URL for ${url}:`, error);
@@ -111,6 +133,8 @@ export class ProductStorageService {
         }
       }),
     );
+
+    console.log(`[DEBUG] convertToSignedUrls completed, returning ${signedUrls.length} URLs`);
     return signedUrls;
   }
 

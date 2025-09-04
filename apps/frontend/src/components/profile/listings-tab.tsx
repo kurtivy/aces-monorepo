@@ -316,6 +316,7 @@ export function ListingsTab() {
                             className="w-10 h-10 rounded-full object-cover border border-[#D0B284]/20"
                             width={40}
                             height={40}
+                            unoptimized={listing.image.includes('storage.googleapis.com')}
                             onError={() => handleImageError(listing.image)}
                           />
                           <div className="flex-1 min-w-0">
