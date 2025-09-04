@@ -76,8 +76,8 @@ export default function ProgressionBar({ percentage = 26.9 }: ProgressionBarProp
             <div className="absolute inset-0 bg-gradient-to-br from-[#D0B284]/10 to-transparent rounded-xl" />
 
             <span
-              className="text-[#D7BF75] text-lg font-bold min-w-[52px] text-center block tabular-nums relative z-10"
-              style={{ fontFamily: 'JetBrains Mono, monospace' }}
+              className="text-[#D7BF75] text-lg font-bold min-w-[52px] text-center block tabular-nums relative z-10 font-spray-letters"
+              style={{ fontFamily: "'Spray Letters', cursive" }}
             >
               {percentage.toFixed(1)}%
             </span>

@@ -1,9 +1,12 @@
+// backend/src/api/listings.ts - V1 Clean Implementation
 import Fastify, { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
 import helmet from '@fastify/helmet';
+import multipart from '@fastify/multipart';
 
-import { User as PrismaUser, PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 
+// Extend Fastify types to include custom properties
 declare module 'fastify' {
   interface FastifyRequest {
     startTime?: number;
@@ -18,61 +21,30 @@ import { getPrismaClient, disconnectDatabase } from '../lib/database';
 import { loggers } from '../lib/logger';
 import { handleError } from '../lib/errors';
 import { registerAuth } from '../plugins/auth';
-import { listingsRoutes } from '../routes/v1/listings';
+import { listingRoutes } from '../routes/v1/listings';
 
 const buildListingsApp = async (): Promise<FastifyInstance> => {
   const fastify = Fastify({
-    logger: {
-      level: 'info',
-      serializers: {
-        req: (req) => ({
-          method: req.method,
-          url: req.url,
-          headers: req.headers,
-        }),
-        res: (res) => ({
-          statusCode: res.statusCode,
-        }),
-      },
-    },
+    logger: false,
     genReqId: () => randomUUID(),
   });
 
   const prisma = getPrismaClient();
   fastify.decorate('prisma', prisma);
 
-  await fastify.register(helmet);
-  await fastify.register(registerAuth);
-
-  // CORS
-  fastify.addHook('onRequest', async (request, reply) => {
-    const origin = request.headers.origin;
-    const allowedOrigins = [
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'https://www.aces.fun',
-      'https://aces-monorepo-git-dev-dan-aces-fun.vercel.app',
-      'https://aces-monorepo-git-main-dan-aces-fun.vercel.app',
-    ];
-
-    if (origin && (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app'))) {
-      reply.header('Access-Control-Allow-Origin', origin);
-      reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-      reply.header(
-        'Access-Control-Allow-Headers',
-        'Content-Type, Authorization, Accept, Origin, X-Requested-With',
-      );
-      reply.header('Access-Control-Allow-Credentials', 'true');
-      reply.header('Vary', 'Origin');
-    }
+  // Register plugins
+  fastify.register(helmet);
+  fastify.register(multipart, {
+    limits: {
+      fileSize: 10 * 1024 * 1024, // 10MB for listing images
+    },
   });
 
-  fastify.options('*', async (request, reply) => {
-    reply.code(204).send();
-  });
+  // Register custom plugins
+  fastify.register(registerAuth);
+  fastify.register(listingRoutes);
 
-  await fastify.register(listingsRoutes);
-
+  // Register hooks
   fastify.addHook('onRequest', async (request) => {
     request.startTime = Date.now();
     loggers.request(request.id, request.method, request.url, request.headers['user-agent']);
@@ -83,43 +55,12 @@ const buildListingsApp = async (): Promise<FastifyInstance> => {
     loggers.response(request.id, request.method, request.url, reply.statusCode, responseTime);
   });
 
+  // Global error handler
   fastify.setErrorHandler((error, request, reply) => {
-    fastify.log.error(
-      {
-        err: error,
-        req: request,
-        url: request.url,
-        method: request.method,
-        headers: request.headers,
-        params: request.params,
-        query: request.query,
-        userId: request.user?.id,
-        requestId: request.id,
-      },
-      'Listings request failed',
-    );
-
     try {
       handleError(error, reply);
     } catch (handlerError) {
-      fastify.log.error(
-        {
-          err: handlerError,
-          originalError: error,
-          url: request.url,
-          method: request.method,
-          requestId: request.id,
-        },
-        'Error handler failed',
-      );
-
-      if (!reply.sent) {
-        reply.status(500).send({
-          success: false,
-          error: 'Internal server error',
-          requestId: request.id,
-        });
-      }
+      handleError(handlerError, reply);
     }
   });
 
@@ -139,9 +80,59 @@ const handler = async (req: VercelRequest, res: VercelResponse) => {
     appPromise = appPromise ?? buildListingsApp();
     const app = await appPromise;
     await app.ready();
+
+    // Add CORS for Vercel deployment
+    const origin = req.headers.origin;
+    const isOriginAllowed = (origin: string | undefined): boolean => {
+      if (!origin) return false;
+      if (origin.endsWith('.vercel.app')) return true;
+      return [
+        'http://localhost:3000',
+        'http://localhost:3001',
+        'https://www.aces.fun',
+        'https://aces.fun',
+        'https://aces-monorepo-git-feat-ui-updates-dan-aces-fun.vercel.app',
+        'https://aces-monorepo-git-dev-dan-aces-fun.vercel.app',
+      ].includes(origin);
+    };
+
+    // Handle OPTIONS preflight first with proper CORS headers
+    if (req.method === 'OPTIONS') {
+      if (isOriginAllowed(origin) && origin) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+        res.setHeader(
+          'Access-Control-Allow-Headers',
+          'Content-Type, Authorization, Accept, Origin, X-Requested-With',
+        );
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        res.setHeader('Access-Control-Max-Age', '86400');
+        res.setHeader('Vary', 'Origin');
+      }
+      res.status(204).end();
+      return;
+    }
+
+    // Set CORS headers for actual requests
+    if (isOriginAllowed(origin) && origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      res.setHeader(
+        'Access-Control-Allow-Headers',
+        'Content-Type, Authorization, Accept, Origin, X-Requested-With',
+      );
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Vary', 'Origin');
+    }
+
+    // Handle path rewriting: /api/v1/listings/something → /something
+    if (req.url?.startsWith('/api/v1/listings')) {
+      req.url = req.url.replace('/api/v1/listings', '') || '/';
+    }
+
     app.server.emit('request', req, res);
   } catch (error) {
-    console.error('❌ Listings handler error:', error);
+    console.error('⚠ Listings handler error:', error);
     if (!res.headersSent) {
       res.status(500).json({
         success: false,
@@ -154,4 +145,3 @@ const handler = async (req: VercelRequest, res: VercelResponse) => {
 };
 
 export default handler;
-export const config = { runtime: 'nodejs' };

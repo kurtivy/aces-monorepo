@@ -8,6 +8,7 @@ export interface ImageInfo {
     title: string;
     description: string;
     date?: string;
+    countdownDate?: string; // ISO date string for countdown timer
     ticker?: string;
     image?: string;
     rrp?: number; // Recommended Retail Price (USD)

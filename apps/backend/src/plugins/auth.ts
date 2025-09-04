@@ -1,12 +1,10 @@
 import { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 import jwt from 'jsonwebtoken';
-import { createAuthContext } from '../lib/auth-middleware';
 import { getPrismaClient } from '../lib/database';
-import { UserRole, SellerStatus } from '../lib/prisma-enums';
 
 const registerAuthPlugin = async (fastify: FastifyInstance) => {
-  console.log('🔧 Registering enhanced auth plugin...');
+  console.log('🔧 Registering simplified auth plugin...');
 
   // Always decorate the request with user and auth properties
   fastify.decorateRequest('user', null);
@@ -50,18 +48,11 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
       if (isPublicPath) {
         console.log('✅ Public path, skipping auth:', request.url);
         request.user = null;
-        try {
-          request.auth = createAuthContext(null);
-        } catch (authError) {
-          console.error('❌ Error creating auth context for public path:', authError);
-          request.auth = {
-            user: null,
-            isAuthenticated: false,
-            hasRole: () => false,
-            isSellerVerified: false,
-            canAccessSellerDashboard: false,
-          };
-        }
+        request.auth = {
+          user: null,
+          isAuthenticated: false,
+          hasRole: () => false,
+        };
         return;
       }
 
@@ -69,19 +60,11 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
         console.log('❌ No valid auth header for route:', request.url);
         request.user = null;
-
-        try {
-          request.auth = createAuthContext(null);
-        } catch (authError) {
-          console.error('❌ Error creating auth context for unauthenticated user:', authError);
-          request.auth = {
-            user: null,
-            isAuthenticated: false,
-            hasRole: () => false,
-            isSellerVerified: false,
-            canAccessSellerDashboard: false,
-          };
-        }
+        request.auth = {
+          user: null,
+          isAuthenticated: false,
+          hasRole: () => false,
+        };
 
         // For clearly protected routes, return 401 immediately
         const protectedRoutes = ['/my', '/create', '/me'];
@@ -139,7 +122,7 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
           const privyDid = decoded.sub;
           console.log('🔍 Privy DID from token:', privyDid);
 
-          // Look up user in database with all required fields
+          // Look up user in database - SIMPLIFIED FIELDS ONLY
           let user = await prisma.user.findUnique({
             where: { privyDid },
             select: {
@@ -147,15 +130,8 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
               privyDid: true,
               walletAddress: true,
               email: true,
-              displayName: true,
-              avatar: true,
               role: true,
               isActive: true,
-              sellerStatus: true,
-              appliedAt: true,
-              verifiedAt: true,
-              rejectedAt: true,
-              rejectionReason: true,
               createdAt: true,
               updatedAt: true,
             },
@@ -168,30 +144,22 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
             const walletAddress = decoded.wallet_address || null;
             const email = decoded.email || null;
 
+            // SIMPLIFIED USER CREATION
             user = await prisma.user.create({
               data: {
                 privyDid,
                 walletAddress,
                 email,
-                displayName: email?.split('@')[0] || 'User',
-                role: UserRole.TRADER,
+                role: 'TRADER', // Using string literal to match enum
                 isActive: true,
-                sellerStatus: SellerStatus.NOT_APPLIED,
               },
               select: {
                 id: true,
                 privyDid: true,
                 walletAddress: true,
                 email: true,
-                displayName: true,
-                avatar: true,
                 role: true,
                 isActive: true,
-                sellerStatus: true,
-                appliedAt: true,
-                verifiedAt: true,
-                rejectedAt: true,
-                rejectionReason: true,
                 createdAt: true,
                 updatedAt: true,
               },
@@ -207,12 +175,16 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
 
             const needsUpdate =
               (walletAddress && user.walletAddress !== walletAddress) ||
-              (email && user.email !== email && !user.email); // Only update email if user doesn't have one
+              (email && user.email !== email && !user.email);
 
             if (needsUpdate) {
               console.log('🔄 Updating user info...');
 
-              const updateData: any = {};
+              const updateData: {
+                walletAddress?: string | null;
+                email?: string | null;
+                updatedAt?: Date;
+              } = {};
 
               if (walletAddress && user.walletAddress !== walletAddress) {
                 updateData.walletAddress = walletAddress;
@@ -220,13 +192,8 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
 
               if (email && !user.email) {
                 updateData.email = email;
-                // Update display name if we're adding email for first time
-                if (!user.displayName || user.displayName === 'User') {
-                  updateData.displayName = email.split('@')[0];
-                }
               }
 
-              // Always update the updatedAt timestamp
               updateData.updatedAt = new Date();
 
               user = await prisma.user.update({
@@ -237,15 +204,8 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
                   privyDid: true,
                   walletAddress: true,
                   email: true,
-                  displayName: true,
-                  avatar: true,
                   role: true,
                   isActive: true,
-                  sellerStatus: true,
-                  appliedAt: true,
-                  verifiedAt: true,
-                  rejectedAt: true,
-                  rejectionReason: true,
                   createdAt: true,
                   updatedAt: true,
                 },
@@ -255,8 +215,18 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
             }
           }
 
+          // SIMPLIFIED AUTH CONTEXT
           request.user = user;
-          request.auth = createAuthContext(user);
+          request.auth = {
+            user,
+            isAuthenticated: !!user && user.isActive,
+            hasRole: (role: string | string[]) => {
+              if (!user) return false;
+              const roles = Array.isArray(role) ? role : [role];
+              return roles.includes(user.role);
+            },
+          };
+
           console.log('✅ Auth context created successfully for user:', user.id);
         } catch (jwtError) {
           console.error('❌ JWT verification failed:', jwtError);
@@ -267,8 +237,6 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
             user: null,
             isAuthenticated: false,
             hasRole: () => false,
-            isSellerVerified: false,
-            canAccessSellerDashboard: false,
           };
         }
 
@@ -282,8 +250,6 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
           user: null,
           isAuthenticated: false,
           hasRole: () => false,
-          isSellerVerified: false,
-          canAccessSellerDashboard: false,
         };
 
         console.log('⚠️ Continuing without database connection');
@@ -297,15 +263,13 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
         user: null,
         isAuthenticated: false,
         hasRole: () => false,
-        isSellerVerified: false,
-        canAccessSellerDashboard: false,
       };
 
       console.log('🔧 Continuing with fallback auth due to error');
     }
   });
 
-  console.log('✅ Enhanced auth plugin registered');
+  console.log('✅ Simplified auth plugin registered');
 };
 
 export const registerAuth = fp(registerAuthPlugin, {

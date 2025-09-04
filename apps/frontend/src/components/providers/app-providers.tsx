@@ -8,6 +8,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from '../../lib/auth/auth-context';
 import { ModalProvider } from '../../lib/contexts/modal-context';
 import GlobalModals from '../ui/custom/global-modals';
+import NetworkBanner from '../ui/custom/network-banner';
 import { type ReactNode } from 'react';
 
 // Initialize QueryClient for wagmi with optimized settings
@@ -129,9 +130,9 @@ export default function AppProviders({ children }: { children: ReactNode }) {
             walletList: ['coinbase_wallet', 'metamask', 'wallet_connect', 'phantom'], // Prioritize mobile-friendly wallets
           },
           embeddedWallets: {
-            createOnLogin: 'off', // Disable embedded wallets to avoid HTTPS issues
+            createOnLogin: 'all-users', // Create wallets for all new users
             requireUserPasswordOnCreate: false,
-            showWalletUIs: false,
+            showWalletUIs: true, // Show wallet UI so users can access their wallets
           },
           defaultChain: base,
           supportedChains: [base, baseSepolia],
@@ -152,6 +153,7 @@ export default function AppProviders({ children }: { children: ReactNode }) {
         <WagmiProvider config={wagmiConfig}>
           <AuthProvider>
             <ModalProvider>
+              <NetworkBanner />
               {children}
               <GlobalModals />
             </ModalProvider>

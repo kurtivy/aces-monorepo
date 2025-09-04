@@ -1,238 +1,208 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { SellerDashboardOverlay } from './seller-dashboard-overlay';
 import Image from 'next/image';
-import { useAuth } from '@/lib/auth/auth-context';
-import { useEffect, useState } from 'react';
-import { ProfileApi, TokenData } from '@/lib/api/profile';
+import { useState } from 'react';
+import { useAcesTokenBalance } from '@/hooks/use-aces-token-balance';
 
 export function TokenListTab() {
-  const { getAccessToken } = useAuth();
-  const [tokens, setTokens] = useState<TokenData[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [totalValue, setTotalValue] = useState({ eth: 0, usd: 0 });
+  const [isSellerDashboardOpen, setIsSellerDashboardOpen] = useState(false);
+  const { tokenData, hasTokens, isLoading, error, isWalletConnected } = useAcesTokenBalance();
 
-  useEffect(() => {
-    const fetchUserTokens = async () => {
-      const authToken = await getAccessToken();
-      if (!authToken) return;
+  // Format contract address for display (show first 6 and last 4 characters)
+  const formatAddress = (address: string) => {
+    if (address.length < 10) return address;
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  };
 
-      try {
-        const result = await ProfileApi.getUserTokens(authToken);
-        if (result.success) {
-          // Backend returns tokens directly in data, not in data.tokens
-          const backendTokens = result.data;
-
-          // Transform backend data to frontend TokenData format
-          const transformedTokens: TokenData[] = backendTokens.map((token) => ({
-            id: token.id,
-            title: token.title,
-            ticker: token.ticker,
-            image: token.image,
-            contractAddress: token.contractAddress,
-            category: token.category,
-            amount: 1, // Default to 1 since backend doesn't provide amount
-            totalInEth: parseFloat(token.value) || 0,
-            totalInAces: parseFloat(token.value) || 0, // Using same value for now
-            totalInUSD: parseFloat(token.value) || 0, // Using same value for now
-          }));
-
-          setTokens(transformedTokens);
-
-          // Calculate total value from tokens
-          const totalEth = transformedTokens.reduce((sum, token) => sum + token.totalInEth, 0);
-          const totalUsd = transformedTokens.reduce((sum, token) => sum + token.totalInUSD, 0);
-          setTotalValue({ eth: totalEth, usd: totalUsd });
-        } else {
-          setError(result.error);
-        }
-      } catch (err) {
-        setError('Failed to fetch tokens');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchUserTokens();
-  }, [getAccessToken]);
-
-  if (isLoading) {
-    return (
-      <div className="w-full rounded-xl bg-[#231F20] border border-[#D0B284]/20 shadow-lg p-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-[#D0B284]/10 rounded w-1/4"></div>
-          <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-16 bg-[#D0B284]/10 rounded"></div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="w-full rounded-xl bg-[#231F20] border border-red-500/20 shadow-lg p-6">
-        <div className="text-red-500">Error: {error}</div>
-      </div>
-    );
-  }
-
-  // Add null check for tokens array
-  if (!tokens || tokens.length === 0) {
-    return (
-      <div className="w-full rounded-xl bg-[#231F20] border border-[#D0B284]/20 shadow-lg p-6">
-        <div className="text-center text-[#DCDDCC]">
-          <p className="mb-4">No tokens found in your portfolio</p>
-          <Button
-            className="bg-[#184D37] hover:bg-[#184D37]/80 text-white"
-            onClick={() => (window.location.href = '/mint-token')}
-          >
-            Create Token
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  // Create tokens array based on user's ACES balance
+  const userTokens = hasTokens
+    ? [
+        {
+          id: 'aces',
+          title: tokenData.name,
+          ticker: `$${tokenData.symbol}`,
+          image: '/aces-logo.png', // Using ACES logo as the token image
+          contractAddress: formatAddress(tokenData.address),
+          amount: parseFloat(tokenData.formattedBalance),
+          totalValue: 0, // TODO: Add USD value calculation when price feed is available
+        },
+      ]
+    : [];
 
   return (
-    <div className="w-full rounded-xl bg-[#231F20] border border-[#D0B284]/20 shadow-lg overflow-hidden">
-      <div className="p-6">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <div className="text-2xl font-bold text-white font-libre-caslon mb-1">
-              {totalValue.eth.toFixed(6)} ETH
+    <div className="relative">
+      {/* Seller Dashboard Overlay - full screen overlay */}
+      <SellerDashboardOverlay
+        isOpen={isSellerDashboardOpen}
+        onClose={() => setIsSellerDashboardOpen(false)}
+      />
+
+      {/* Main Table */}
+      <div className="bg-[#0f1511] rounded-lg border border-dashed border-[#E6E3D3]/25">
+        {/* Corner ticks */}
+        <div className="relative">
+          <span className="pointer-events-none absolute left-3 top-3 h-3 w-0.5 bg-[#C9AE6A]" />
+          <span className="pointer-events-none absolute left-3 top-3 w-3 h-0.5 bg-[#C9AE6A]" />
+          <span className="pointer-events-none absolute right-3 top-3 h-3 w-0.5 bg-[#C9AE6A]" />
+          <span className="pointer-events-none absolute right-3 top-3 w-3 h-0.5 bg-[#C9AE6A]" />
+          <span className="pointer-events-none absolute left-3 bottom-3 h-3 w-0.5 bg-[#C9AE6A]" />
+          <span className="pointer-events-none absolute left-3 bottom-3 w-3 h-0.5 bg-[#C9AE6A]" />
+          <span className="pointer-events-none absolute right-3 bottom-3 h-3 w-0.5 bg-[#C9AE6A]" />
+          <span className="pointer-events-none absolute right-3 bottom-3 w-3 h-0.5 bg-[#C9AE6A]" />
+
+          {/* Table Content */}
+          <div className="p-6">
+            {/* Tab selectors and Seller Dashboard button - aligned on same line */}
+            <div className="flex justify-between items-center mb-6">
+              <div className="flex-1">
+                <TabsList className="bg-transparent border-none p-0 h-auto space-x-8">
+                  <TabsTrigger
+                    value="tokens"
+                    className="bg-transparent text-[#DCDDCC] text-lg font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-[#D0B284]"
+                  >
+                    TOKENS
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="bids"
+                    className="bg-transparent text-[#DCDDCC] text-lg font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-[#D0B284]"
+                  >
+                    BIDS
+                  </TabsTrigger>
+                </TabsList>
+              </div>
+
+              {/* Seller Dashboard Button - aligned with tabs */}
+              <Button
+                onClick={() => setIsSellerDashboardOpen(true)}
+                className="bg-[#C9AE6A] hover:bg-[#C9AE6A]/80 text-black font-medium text-sm px-4 py-2"
+              >
+                SELLER DASHBOARD
+              </Button>
             </div>
-            <div className="text-[#DCDDCC] text-sm">${totalValue.usd.toLocaleString()}</div>
-          </div>
-        </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 items-center text-[#D7BF75] text-sm uppercase tracking-wide font-medium mb-4 pb-4 border-b border-dashed border-[#E6E3D3]/25">
+              <div className="text-left">RWA</div>
+              <div className="text-center">TICKER</div>
+              <div className="text-center">CONTRACT</div>
+              <div className="text-center">AMOUNT</div>
+              <div className="text-center">TOTAL</div>
+              <div className="text-right"></div>
+            </div>
 
-        {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            {/* Table Header */}
-            <thead>
-              <tr className="border-b border-[#D0B284]/20">
-                <th className="text-left text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
-                  RWA
-                </th>
-                <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
-                  Ticker
-                </th>
-                <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
-                  Contract
-                </th>
-                <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
-                  Action
-                </th>
-                <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
-                  Amount
-                </th>
-                <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
-                  Total ETH
-                </th>
-                <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
-                  Total ACES
-                </th>
-                <th className="text-right text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-2">
-                  Total USD
-                </th>
-              </tr>
-            </thead>
+            {/* Loading State */}
+            {isLoading && (
+              <div className="flex items-center justify-center py-12">
+                <div className="flex items-center gap-2 text-[#E6E3D3]">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#C9AE6A]"></div>
+                  <span className="text-sm">Loading your tokens...</span>
+                </div>
+              </div>
+            )}
 
-            {/* Table Body */}
-            <tbody>
-              {tokens.map((token) => (
-                <tr
-                  key={token.id}
-                  className="border-b border-[#D0B284]/10 hover:bg-[#D0B284]/5 transition-colors duration-200"
-                >
-                  {/* RWA Info */}
-                  <td className="py-4 px-2">
-                    <div className="flex items-center space-x-3">
-                      <div className="relative">
-                        <Image
-                          src={token.image || '/placeholder.svg'}
-                          alt={token.title}
-                          className="w-10 h-10 rounded-full object-cover border border-[#D0B284]/20"
-                          width={40}
-                          height={40}
-                        />
-                        <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-blue-500 rounded-full border-2 border-[#231F20] flex items-center justify-center">
-                          <div className="w-2 h-2 bg-white rounded-full"></div>
+            {/* Error State */}
+            {error && !isLoading && (
+              <div className="flex items-center justify-center py-12">
+                <div className="text-center">
+                  <div className="text-red-400 text-sm mb-2">Error loading token data</div>
+                  <div className="text-[#E6E3D3]/60 text-xs">{error.message}</div>
+                </div>
+              </div>
+            )}
+
+            {/* Wallet Not Connected State */}
+            {!isWalletConnected && !isLoading && (
+              <div className="flex items-center justify-center py-12">
+                <div className="text-center">
+                  <div className="text-[#E6E3D3] text-sm mb-2">
+                    Connect your wallet to view tokens
+                  </div>
+                  <div className="text-[#E6E3D3]/60 text-xs">
+                    Connect your wallet to see your ACES token holdings
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* No Tokens State */}
+            {isWalletConnected && !hasTokens && !isLoading && !error && (
+              <div className="flex items-center justify-center py-12">
+                <div className="text-center">
+                  <div className="text-[#E6E3D3] text-sm mb-2">No ACES tokens found</div>
+                  <div className="text-[#E6E3D3]/60 text-xs">You don't own any ACES tokens yet</div>
+                </div>
+              </div>
+            )}
+
+            {/* Table Rows */}
+            {isWalletConnected && !isLoading && !error && userTokens.length > 0 && (
+              <div className="space-y-4">
+                {userTokens.map((token) => (
+                  <div
+                    key={token.id}
+                    className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 items-center py-3 border-b border-dashed border-[#E6E3D3]/10 last:border-b-0"
+                  >
+                    {/* RWA with Image */}
+                    <div className="flex items-center gap-3">
+                      <Image
+                        src={token.image}
+                        alt={token.title}
+                        width={40}
+                        height={40}
+                        className="w-10 h-10 rounded object-cover border border-[#D0B284]/20"
+                      />
+                      <div className="min-w-0">
+                        <div className="text-[#E6E3D3] text-sm font-medium truncate">
+                          {token.title}
                         </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-white font-medium truncate text-sm">
-                          {token.title.split(' ').slice(0, 2).join(' ')}
-                        </h3>
-                        <Badge
-                          variant="secondary"
-                          className="bg-[#D0B284]/10 text-[#D0B284] text-xs px-2 py-0.5 mt-1"
-                        >
-                          {token.category}
-                        </Badge>
-                      </div>
                     </div>
-                  </td>
 
-                  {/* Ticker */}
-                  <td className="py-4 px-2 text-center">
-                    <span className="text-[#DCDDCC] font-jetbrains text-sm">{token.ticker}</span>
-                  </td>
+                    {/* Ticker */}
+                    <div className="text-center">
+                      <span className="text-[#E6E3D3] text-sm font-mono">{token.ticker}</span>
+                    </div>
 
-                  {/* Contract Address */}
-                  <td className="py-4 px-2 text-center">
-                    <span className="text-[#DCDDCC] font-jetbrains text-xs">
-                      {token.contractAddress}
-                    </span>
-                  </td>
+                    {/* Contract */}
+                    <div className="text-center">
+                      <span className="text-[#E6E3D3] text-sm font-mono">
+                        {token.contractAddress}
+                      </span>
+                    </div>
 
-                  {/* Action Button */}
-                  <td className="py-4 px-2 text-center">
-                    <Button
-                      size="sm"
-                      className="bg-[#184D37] hover:bg-[#184D37]/80 text-white px-3 py-1 text-xs"
-                    >
-                      View Asset
-                    </Button>
-                  </td>
+                    {/* Amount */}
+                    <div className="text-center">
+                      <span className="text-[#E6E3D3] text-sm">
+                        {token.amount.toLocaleString(undefined, {
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 4,
+                        })}{' '}
+                        Tokens
+                      </span>
+                    </div>
 
-                  {/* Amount */}
-                  <td className="py-4 px-2 text-center">
-                    <span className="text-white font-medium text-sm">
-                      {token.amount.toLocaleString()}
-                    </span>
-                  </td>
+                    {/* Total */}
+                    <div className="text-center">
+                      <span className="text-[#E6E3D3] text-sm">
+                        {token.totalValue > 0 ? `$${token.totalValue.toFixed(2)}` : 'N/A'}
+                      </span>
+                    </div>
 
-                  {/* Total in ETH */}
-                  <td className="py-4 px-2 text-center">
-                    <span className="text-white font-medium text-sm">
-                      {token.totalInEth.toFixed(4)}
-                    </span>
-                  </td>
-
-                  {/* Total in ACES */}
-                  <td className="py-4 px-2 text-center">
-                    <span className="text-white font-medium text-sm">
-                      {token.totalInAces.toFixed(6)}
-                    </span>
-                  </td>
-
-                  {/* Total in USD */}
-                  <td className="py-4 px-2 text-right">
-                    <span className="text-[#D0B284] font-medium text-sm">
-                      ${token.totalInUSD.toLocaleString()}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    {/* View Asset Button */}
+                    <div className="text-right">
+                      <Button
+                        size="sm"
+                        className="bg-[#184D37] hover:bg-[#184D37]/80 text-white border border-[#184D37] text-xs px-3 py-1"
+                      >
+                        VIEW ASSET
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

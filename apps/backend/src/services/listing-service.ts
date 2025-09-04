@@ -1,33 +1,92 @@
-import { PrismaClient } from '@prisma/client';
-import { logger } from '../lib/logger';
+// backend/src/services/listing-service.ts - V1 Clean Implementation
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { PrismaClient, Prisma, User } from '@prisma/client';
+import { AssetType, SubmissionStatus } from '../lib/prisma-enums';
+import { ProductStorageService } from '../lib/product-storage-utils';
+import { errors } from '../lib/errors';
 
-interface CreateListingFromSubmissionData {
+// Type for listings with relations - using simpler type due to TypeScript language server caching
+type ListingWithRelations = {
+  id: string;
+  title: string;
+  symbol: string;
+  description: string;
+  assetType: keyof typeof AssetType;
+  imageGallery: string[];
+  location: string | null;
+  email: string | null;
+  isLive: boolean;
   submissionId: string;
-  approvedBy: string;
+  ownerId: string;
+  approvedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  owner: User;
+  submission: any; // Will be properly typed when language server updates
+  approvedByUser?: User | null;
+};
+
+// Type for listings with minimal submission data
+type ListingWithMinimalSubmission = {
+  id: string;
+  title: string;
+  symbol: string;
+  description: string;
+  assetType: keyof typeof AssetType;
+  imageGallery: string[];
+  location: string | null;
+  email: string | null;
+  isLive: boolean;
+  submissionId: string;
+  ownerId: string;
+  approvedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  owner: {
+    id: string;
+    privyDid: string;
+    walletAddress: string | null;
+    email: string | null;
+  };
+  submission: {
+    id: string;
+    status: keyof typeof SubmissionStatus;
+    createdAt: Date;
+  };
+  approvedByUser?: {
+    id: string;
+    privyDid: string;
+  } | null;
+};
+
+export interface CreateListingFromSubmissionRequest {
+  submissionId: string;
+  adminId: string;
 }
 
-interface UpdateListingStatusData {
-  listingId: string;
-  isLive: boolean;
-  updatedBy: string;
+export interface UpdateListingRequest {
+  title?: string;
+  symbol?: string;
+  description?: string;
+  assetType?: keyof typeof AssetType;
+  imageGallery?: string[];
+  location?: string;
+  email?: string;
 }
 
 export class ListingService {
   constructor(private prisma: PrismaClient) {}
 
   /**
-   * Automatically creates an RWAListing when an RWASubmission is approved
-   * This is called when a submission status changes to APPROVED
+   * Create a listing from an approved submission
    */
-  async createListingFromApprovedSubmission({
-    submissionId,
-    approvedBy,
-  }: CreateListingFromSubmissionData) {
+  async createListingFromSubmission(
+    submissionId: string,
+    adminId: string,
+  ): Promise<ListingWithRelations> {
     try {
-      logger.info(`Creating RWAListing from approved submission: ${submissionId}`);
-
       // Get the approved submission with all necessary data
-      const submission = await this.prisma.rwaSubmission.findUnique({
+      const submission = await this.prisma.submission.findUnique({
         where: { id: submissionId },
         include: {
           owner: true,
@@ -35,321 +94,288 @@ export class ListingService {
       });
 
       if (!submission) {
-        throw new Error(`RWASubmission with id ${submissionId} not found`);
+        throw errors.notFound('Submission not found');
       }
 
-      if (submission.status !== 'APPROVED') {
-        throw new Error(`Cannot create listing from submission with status: ${submission.status}`);
+      if (submission.status !== SubmissionStatus.APPROVED) {
+        throw errors.validation(
+          `Cannot create listing from submission with status: ${submission.status}. Submission must be approved first.`,
+        );
       }
 
       // Check if listing already exists for this submission
-      const existingListing = await this.prisma.rwaListing.findUnique({
-        where: { rwaSubmissionId: submissionId },
+      const existingListing = await (this.prisma as any).listing.findUnique({
+        where: { submissionId: submissionId },
       });
 
       if (existingListing) {
-        logger.warn(`RWAListing already exists for submission: ${submissionId}`);
-        return existingListing;
+        throw errors.validation('Listing already exists for this submission');
       }
 
-      // Create the RWAListing with data from the approved submission
-      const listing = await this.prisma.rwaListing.create({
+      // Create the listing with data from the approved submission
+      const listing = await (this.prisma as any).listing.create({
         data: {
           title: submission.title,
           symbol: submission.symbol,
           description: submission.description,
           assetType: submission.assetType,
           imageGallery: submission.imageGallery,
-          contractAddress: submission.contractAddress,
           location: submission.location,
           email: submission.email,
           isLive: false, // Always start as not live
-          rwaSubmissionId: submission.id,
+          submissionId: submission.id,
           ownerId: submission.ownerId,
-          updatedBy: approvedBy,
+          approvedBy: adminId,
         },
         include: {
           owner: true,
-          rwaSubmission: true,
-          approvedBy: true,
+          submission: true,
+          approvedByUser: true,
         },
       });
 
-      logger.info(
-        `Successfully created RWAListing: ${listing.id} from submission: ${submissionId}`,
-      );
-
       return listing;
     } catch (error) {
-      logger.error(`Error creating listing from submission ${submissionId}:`, error);
+      console.error('Error creating listing from submission:', error);
       throw error;
     }
   }
 
   /**
-   * Updates the isLive status of an RWAListing
-   * This controls whether the listing appears on the platform
+   * Update listing details (admin only)
    */
-  async updateListingStatus({ listingId, isLive, updatedBy }: UpdateListingStatusData) {
+  async updateListing(
+    listingId: string,
+    data: UpdateListingRequest,
+    _adminId: string,
+  ): Promise<ListingWithRelations> {
     try {
-      logger.info(`Updating listing ${listingId} status to isLive: ${isLive}`);
-
-      const listing = await this.prisma.rwaListing.update({
+      const listing = await (this.prisma as any).listing.update({
         where: { id: listingId },
         data: {
-          isLive,
-          updatedBy,
+          ...data,
           updatedAt: new Date(),
         },
         include: {
           owner: true,
-          rwaSubmission: true,
-          approvedBy: true,
+          submission: true,
+          approvedByUser: true,
         },
       });
-
-      logger.info(`Successfully updated listing ${listingId} status to isLive: ${isLive}`);
 
       return listing;
     } catch (error) {
-      logger.error(`Error updating listing ${listingId} status:`, error);
+      console.error('Error updating listing:', error);
       throw error;
     }
   }
 
   /**
-   * Get all live listings for the platform
+   * Set listing live status (admin only)
    */
-  async getLiveListings() {
+  async setListingLive(
+    listingId: string,
+    isLive: boolean,
+    _adminId: string,
+  ): Promise<ListingWithRelations> {
     try {
-      const listings = await this.prisma.rwaListing.findMany({
-        where: { isLive: true },
+      const listing = await (this.prisma as any).listing.update({
+        where: { id: listingId },
+        data: {
+          isLive,
+          updatedAt: new Date(),
+        },
+        include: {
+          owner: true,
+          submission: true,
+          approvedByUser: true,
+        },
+      });
+
+      return listing;
+    } catch (error) {
+      console.error('Error updating listing live status:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all live listings (public endpoint)
+   */
+  async getLiveListings(
+    options: { limit?: number; cursor?: string } = {},
+  ): Promise<{ data: ListingWithMinimalSubmission[]; nextCursor?: string; hasMore: boolean }> {
+    try {
+      const limit = Math.min(options.limit || 20, 100);
+      const where: any = { isLive: true };
+
+      if (options.cursor) {
+        where.id = { lt: options.cursor };
+      }
+
+      const listings = await (this.prisma as any).listing.findMany({
+        where,
         include: {
           owner: {
             select: {
               id: true,
-              displayName: true,
-              avatar: true,
+              privyDid: true,
               walletAddress: true,
+              email: true,
             },
           },
-          bids: {
-            take: 5,
-            orderBy: { createdAt: 'desc' },
-            include: {
-              bidder: {
-                select: {
-                  id: true,
-                  displayName: true,
-                  avatar: true,
-                },
-              },
+          submission: {
+            select: {
+              id: true,
+              status: true,
+              createdAt: true,
             },
           },
-          token: true,
+          approvedByUser: {
+            select: {
+              id: true,
+              privyDid: true,
+            },
+          },
         },
         orderBy: { createdAt: 'desc' },
+        take: limit + 1, // Take one extra to check for more
       });
 
-      return listings;
-    } catch (error) {
-      logger.error('Error fetching live listings:', error);
-      throw error;
-    }
-  }
+      const hasMore = listings.length > limit;
+      const data = hasMore ? listings.slice(0, -1) : listings;
+      const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
 
-  /**
-   * Get all listings for admin view (including not live ones)
-   */
-  async getAllListings() {
-    try {
-      // First get all listings without any includes to avoid orphaned relationship errors
-      const listings = await this.prisma.rwaListing.findMany({
-        orderBy: { createdAt: 'desc' },
-      });
-
-      // Then manually fetch all relationships for each listing to handle orphaned records
-      const listingsWithRelations = await Promise.all(
-        listings.map(async (listing) => {
-          // Safely fetch owner with account verification
-          let owner = null;
-          try {
-            owner = await this.prisma.user.findUnique({
-              where: { id: listing.ownerId },
-              select: {
-                id: true,
-                displayName: true,
-                avatar: true,
-                walletAddress: true,
-              },
-            });
-
-            // Also fetch account verification for the owner
-            if (owner) {
-              try {
-                const verification = await this.prisma.accountVerification.findUnique({
-                  where: { userId: listing.ownerId },
-                  select: {
-                    firstName: true,
-                    lastName: true,
-                    status: true,
-                  },
-                });
-
-                // Add verification data to owner object
-                (owner as any).accountVerification = verification;
-              } catch (verificationError) {
-                logger.warn(
-                  `Failed to fetch verification for owner ${listing.ownerId}:`,
-                  verificationError,
-                );
-              }
-            }
-          } catch (error) {
-            logger.warn(
-              `Failed to fetch owner ${listing.ownerId} for listing ${listing.id}:`,
-              error,
-            );
-          }
-
-          // Safely fetch rwaSubmission
-          let rwaSubmission = null;
-          try {
-            rwaSubmission = await this.prisma.rwaSubmission.findUnique({
-              where: { id: listing.rwaSubmissionId },
-              select: {
-                id: true,
-                status: true,
-                createdAt: true,
-              },
-            });
-          } catch (error) {
-            logger.warn(
-              `Failed to fetch submission ${listing.rwaSubmissionId} for listing ${listing.id}:`,
-              error,
-            );
-          }
-
-          // Safely fetch bids
-          let bids: Array<{
-            id: string;
-            amount: string;
-            currency: string;
-            createdAt: Date;
-            bidder: {
-              id: string;
-              displayName: string | null;
-              avatar: string | null;
-            };
-            verification: {
-              id: string;
-              status: string;
-            };
-          }> = [];
-          try {
-            bids = await this.prisma.bid.findMany({
-              where: { listingId: listing.id },
-              take: 5,
-              orderBy: { createdAt: 'desc' },
-              include: {
-                bidder: {
-                  select: {
-                    id: true,
-                    displayName: true,
-                    avatar: true,
-                  },
-                },
-                verification: {
-                  select: {
-                    id: true,
-                    status: true,
-                  },
-                },
-              },
-            });
-          } catch (error) {
-            logger.warn(`Failed to fetch bids for listing ${listing.id}:`, error);
-          }
-
-          // Safely fetch token
-          let token = null;
-          try {
-            token = await this.prisma.token.findUnique({
-              where: { rwaListingId: listing.id },
-            });
-          } catch (error) {
-            logger.warn(`Failed to fetch token for listing ${listing.id}:`, error);
-          }
-
-          return {
-            ...listing,
-            owner,
-            rwaSubmission,
-            bids,
-            token,
-          };
-        }),
+      // Convert image URLs to signed URLs for secure access
+      const dataWithSignedUrls = await Promise.all(
+        data.map(async (listing: any) => ({
+          ...listing,
+          imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery),
+        })),
       );
 
-      return listingsWithRelations;
+      return { data: dataWithSignedUrls, nextCursor, hasMore };
     } catch (error) {
-      logger.error('Error fetching all listings:', error);
+      console.error('Error fetching live listings:', error);
       throw error;
     }
   }
 
   /**
-   * Get a specific listing by ID
+   * Get all listings (admin only)
    */
-  async getListingById(listingId: string) {
+  async getAllListings(
+    options: { limit?: number; cursor?: string } = {},
+  ): Promise<{ data: ListingWithRelations[]; nextCursor?: string; hasMore: boolean }> {
     try {
-      const listing = await this.prisma.rwaListing.findUnique({
+      const limit = Math.min(options.limit || 50, 100);
+      const where: any = {};
+
+      if (options.cursor) {
+        where.id = { lt: options.cursor };
+      }
+
+      const listings = await (this.prisma as any).listing.findMany({
+        where,
+        include: {
+          owner: true,
+          submission: true,
+          approvedByUser: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: limit + 1,
+      });
+
+      const hasMore = listings.length > limit;
+      const data = hasMore ? listings.slice(0, -1) : listings;
+      const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
+
+      // Convert image URLs to signed URLs for secure access
+      const dataWithSignedUrls = await Promise.all(
+        data.map(async (listing: any) => ({
+          ...listing,
+          imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery),
+        })),
+      );
+
+      return { data: dataWithSignedUrls, nextCursor, hasMore };
+    } catch (error) {
+      console.error('Error fetching all listings:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get pending listings (not live yet)
+   */
+  async getPendingListings(
+    options: { limit?: number; cursor?: string } = {},
+  ): Promise<{ data: ListingWithRelations[]; nextCursor?: string; hasMore: boolean }> {
+    try {
+      const limit = Math.min(options.limit || 50, 100);
+      const where: any = { isLive: false };
+
+      if (options.cursor) {
+        where.id = { lt: options.cursor };
+      }
+
+      const listings = await (this.prisma as any).listing.findMany({
+        where,
+        include: {
+          owner: true,
+          submission: true,
+          approvedByUser: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: limit + 1,
+      });
+
+      const hasMore = listings.length > limit;
+      const data = hasMore ? listings.slice(0, -1) : listings;
+      const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
+
+      // Convert image URLs to signed URLs for secure access
+      const dataWithSignedUrls = await Promise.all(
+        data.map(async (listing: any) => ({
+          ...listing,
+          imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery),
+        })),
+      );
+
+      return { data: dataWithSignedUrls, nextCursor, hasMore };
+    } catch (error) {
+      console.error('Error fetching pending listings:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get listing by ID
+   */
+  async getListingById(listingId: string): Promise<ListingWithRelations | null> {
+    try {
+      const listing = await (this.prisma as any).listing.findUnique({
         where: { id: listingId },
         include: {
-          owner: {
-            select: {
-              id: true,
-              displayName: true,
-              avatar: true,
-              walletAddress: true,
-            },
-          },
-          rwaSubmission: true,
-          bids: {
-            orderBy: { createdAt: 'desc' },
-            include: {
-              bidder: {
-                select: {
-                  id: true,
-                  displayName: true,
-                  avatar: true,
-                },
-              },
-              verification: {
-                select: {
-                  id: true,
-                  status: true,
-                },
-              },
-            },
-          },
-          token: true,
-          approvedBy: {
-            select: {
-              id: true,
-              displayName: true,
-            },
-          },
+          owner: true,
+          submission: true,
+          approvedByUser: true,
         },
       });
 
       if (!listing) {
-        throw new Error(`RWAListing with id ${listingId} not found`);
+        return null;
       }
 
-      return listing;
+      // Convert image URLs to signed URLs for secure access
+      const listingWithSignedUrls = {
+        ...listing,
+        imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery),
+      };
+
+      return listingWithSignedUrls;
     } catch (error) {
-      logger.error(`Error fetching listing ${listingId}:`, error);
+      console.error('Error fetching listing by ID:', error);
       throw error;
     }
   }
@@ -357,45 +383,97 @@ export class ListingService {
   /**
    * Get listings by owner
    */
-  async getListingsByOwner(ownerId: string) {
+  async getListingsByOwner(
+    ownerId: string,
+    options: { limit?: number; cursor?: string } = {},
+  ): Promise<{ data: ListingWithMinimalSubmission[]; nextCursor?: string; hasMore: boolean }> {
     try {
-      const listings = await this.prisma.rwaListing.findMany({
-        where: { ownerId },
+      const limit = Math.min(options.limit || 20, 100);
+      const where: any = { ownerId };
+
+      if (options.cursor) {
+        where.id = { lt: options.cursor };
+      }
+
+      const listings = await (this.prisma as any).listing.findMany({
+        where,
         include: {
-          rwaSubmission: {
+          owner: true,
+          submission: {
             select: {
               id: true,
               status: true,
               createdAt: true,
             },
           },
-          bids: {
-            take: 5,
-            orderBy: { createdAt: 'desc' },
+          approvedByUser: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: limit + 1,
+      });
+
+      const hasMore = listings.length > limit;
+      const data = hasMore ? listings.slice(0, -1) : listings;
+      const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
+
+      // Convert image URLs to signed URLs for secure access
+      const dataWithSignedUrls = await Promise.all(
+        data.map(async (listing: any) => ({
+          ...listing,
+          imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery),
+        })),
+      );
+
+      return { data: dataWithSignedUrls, nextCursor, hasMore };
+    } catch (error) {
+      console.error('Error fetching listings by owner:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete listing (admin only)
+   */
+  async deleteListing(listingId: string): Promise<void> {
+    try {
+      await (this.prisma as any).listing.delete({
+        where: { id: listingId },
+      });
+    } catch (error) {
+      console.error('Error deleting listing:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all listings for admin dashboard
+   */
+  async getAllListingsForAdmin(): Promise<any[]> {
+    try {
+      const listings = await (this.prisma as any).listing.findMany({
+        include: {
+          owner: {
             include: {
-              bidder: {
-                select: {
-                  id: true,
-                  displayName: true,
-                  avatar: true,
-                },
-              },
-              verification: {
-                select: {
-                  id: true,
-                  status: true,
-                },
-              },
+              accountVerification: true,
             },
           },
-          token: true,
+          submission: true,
+          approvedByUser: true,
         },
         orderBy: { createdAt: 'desc' },
       });
 
-      return listings;
+      // Convert image URLs to signed URLs for secure access
+      const dataWithSignedUrls = await Promise.all(
+        listings.map(async (listing: any) => ({
+          ...listing,
+          imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery),
+        })),
+      );
+
+      return dataWithSignedUrls;
     } catch (error) {
-      logger.error(`Error fetching listings for owner ${ownerId}:`, error);
+      console.error('Error fetching all listings for admin:', error);
       throw error;
     }
   }

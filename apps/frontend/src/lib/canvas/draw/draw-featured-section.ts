@@ -1,141 +1,159 @@
 import type { ImageInfo } from '../../../types/canvas';
 import { getDeviceCapabilities } from '../../utils/browser-utils';
+import { getCanvasFontStack } from '../../utils/font-loader';
 
-// Countdown timer utility function for canvas rendering
-interface TimeLeft {
-  days: number;
-  hours: number;
-  minutes: number;
-  seconds: number;
-}
+// Logo image cache for performance
+const logoImageCache = new Map<string, HTMLImageElement>();
 
-const calculateTimeLeft = (targetDate: Date): TimeLeft => {
-  const difference = +targetDate - +new Date();
-  let timeLeft: TimeLeft = {
-    days: 0,
-    hours: 0,
-    minutes: 0,
-    seconds: 0,
-  };
+const loadBuyCultureLogo = (): HTMLImageElement | null => {
+  const cacheKey = 'buy-culture-logo';
 
-  if (difference > 0) {
-    timeLeft = {
-      days: Math.floor(difference / (1000 * 60 * 60 * 24)),
-      hours: Math.floor((difference / (1000 * 60 * 60)) % 24),
-      minutes: Math.floor((difference / 1000 / 60) % 60),
-      seconds: Math.floor((difference / 1000) % 60),
-    };
+  if (logoImageCache.has(cacheKey)) {
+    return logoImageCache.get(cacheKey)!;
   }
 
-  return timeLeft;
+  const logoImg = new Image();
+  logoImg.crossOrigin = 'anonymous';
+  logoImg.src = '/png/buy-culture-trade-hype.png';
+
+  // Cache the image (even if not loaded yet)
+  logoImageCache.set(cacheKey, logoImg);
+
+  return logoImg;
 };
 
-// Draw countdown timer in top right corner of featured section
-const drawCountdownTimer = (
+const drawBuyCultureLogo = (
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
   width: number,
   height: number,
-  opacity: number = 1,
+  opacity: number,
 ) => {
-  const targetDate = new Date('2025-09-19T12:00:00-04:00'); // September 19, 2025 at 12PM Eastern Time
-  const timeLeft = calculateTimeLeft(targetDate);
-
-  // Don't render if countdown is over
-  if (
-    timeLeft.days === 0 &&
-    timeLeft.hours === 0 &&
-    timeLeft.minutes === 0 &&
-    timeLeft.seconds === 0
-  ) {
-    return;
-  }
-
   ctx.save();
   ctx.globalAlpha = opacity;
 
-  // Position along the bottom with padding
-  const padding = 16;
-  const timerHeight = Math.min(80, height * 0.15); // Slightly taller for better proportions
-  const unitWidth = Math.min(60, width * 0.12); // Wider units for better visibility
-  const gap = 16; // Much larger gap for better horizontal spacing
-  const totalWidth = unitWidth * 4 + gap * 3; // 4 units with gaps
-  const timerX = x + (width - totalWidth) / 2; // Center horizontally
-  const timerY = y + height - padding - timerHeight; // Position at bottom
+  const logoImg = loadBuyCultureLogo();
 
-  // Ensure timer fits within bounds
-  if (timerX < x + padding || timerY < y + padding) {
-    ctx.restore();
-    return;
+  if (logoImg && logoImg.complete && logoImg.naturalWidth > 0) {
+    // Position in bottom right where the button was - smaller size for bottom corner
+    const logoWidth = Math.min(width * 0.35, 220); // Match the button width dimensions
+    const logoHeight = (logoImg.naturalHeight / logoImg.naturalWidth) * logoWidth;
+    const logoX = x + width - logoWidth - 10; // 10px padding from right edge
+    const logoY = y + height - logoHeight - 10; // 10px padding from bottom edge
+
+    ctx.drawImage(logoImg, logoX, logoY, logoWidth, logoHeight);
   }
 
-  const timeUnits = [
-    { value: timeLeft.days, label: 'DAYS' },
-    { value: timeLeft.hours, label: 'HRS' },
-    { value: timeLeft.minutes, label: 'MIN' },
-    { value: timeLeft.seconds, label: 'SEC' },
-  ];
+  ctx.restore();
+};
 
-  // Draw each time unit
-  timeUnits.forEach(({ value, label }, index) => {
-    const unitX = timerX + index * (unitWidth + gap);
-    const unitY = timerY;
+const drawArtGalleryCard = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  opacity: number,
+) => {
+  ctx.save();
+  ctx.globalAlpha = opacity;
 
-    // Create gradient background for each unit
-    const unitGradient = ctx.createLinearGradient(unitX, unitY, unitX, unitY + timerHeight);
-    unitGradient.addColorStop(0, 'rgba(40, 40, 40, 0.2)');
-    unitGradient.addColorStop(0.5, 'rgba(20, 20, 20, 0.2)');
-    unitGradient.addColorStop(1, 'rgba(10, 10, 10, 0.2)');
+  // Card dimensions and positioning (bottom left) - wider card
+  const cardWidth = Math.min(width * 0.5, 230); // Wider card (increased from 35% to 45%)
+  const cardHeight = Math.min(height * 0.25, 100);
+  const cardX = x + 10; // 20px padding from left
+  const cardY = y + height - cardHeight - 10; // 20px padding from bottom
 
-    ctx.fillStyle = unitGradient;
-    ctx.beginPath();
-    ctx.roundRect(unitX, unitY, unitWidth, timerHeight, 8);
-    ctx.fill();
+  // Draw white card background
+  ctx.fillStyle = 'rgba(253, 255, 250, 0.95)';
+  ctx.beginPath();
+  ctx.roundRect(cardX, cardY, cardWidth, cardHeight, 4);
+  ctx.fill();
 
-    // Add subtle inner shadow effect
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.roundRect(unitX + 1, unitY + 1, unitWidth - 2, timerHeight - 2, 7);
-    ctx.stroke();
+  // Add subtle border
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
 
-    // Outer border with gold accent
-    ctx.strokeStyle = 'rgba(208, 178, 100, 0.3)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.roundRect(unitX, unitY, unitWidth, timerHeight, 8);
-    ctx.stroke();
+  // Text styling
+  ctx.fillStyle = '#000000';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
 
-    // Number value with gold gradient
-    const numberGradient = ctx.createLinearGradient(
-      unitX + unitWidth / 2 - 15,
-      unitY + timerHeight * 0.3,
-      unitX + unitWidth / 2 + 15,
-      unitY + timerHeight * 0.5,
-    );
-    numberGradient.addColorStop(0, '#FFFFFF');
-    numberGradient.addColorStop(0.2, '#D0B264');
-    numberGradient.addColorStop(0.8, '#D0B264');
-    numberGradient.addColorStop(1, '#FFFFFF');
+  const fontSize = Math.max(9.6, cardWidth * 0.059); // Reduced font size by 20% (was 12 and 0.08)
+  const lineHeight = fontSize * 1.75; // Much more spaced out lines
+  let currentY = cardY + 12;
 
-    ctx.fillStyle = numberGradient;
-    ctx.font = `bold ${Math.min(24, timerHeight * 0.4)}px Arial, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(
-      value.toString().padStart(2, '0'),
-      unitX + unitWidth / 2,
-      unitY + timerHeight * 0.4,
-    );
+  ctx.font = `${fontSize / 0.85}px ${getCanvasFontStack('NeueWorld')}`;
+  ctx.fillText('Audemars Piguet x KAWS (b.2015)', cardX + 8, currentY);
+  currentY += lineHeight;
 
-    // Label with improved styling
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-    ctx.font = `${Math.min(11, timerHeight * 0.18)}px Arial, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(label, unitX + unitWidth / 2, unitY + timerHeight * 0.78);
-  });
+  ctx.font = `bold ${fontSize * 1.1}px ${getCanvasFontStack('NeueWorld')}`; // Bigger "Tokenized" text
+  ctx.letterSpacing = '1px';
+  ctx.fillText('"Tokenized"', cardX + 8, currentY);
+  currentY += lineHeight;
+
+  ctx.font = `italic ${fontSize}px ${getCanvasFontStack('NeueWorld')}`; // Bigger "v. Create" text (was 0.8, now 1.0)
+  ctx.letterSpacing = '0px';
+  ctx.fillText('v. Create derivative token market.', cardX + 8, currentY);
+  currentY += lineHeight;
+
+  // Bottom line with mono font (using system mono font)
+  ctx.font = `${fontSize * 1.05}px 'Courier New', 'Monaco', 'Menlo', 'Consolas', monospace`;
+  ctx.fillText('AP KAWS TOKEN COMING SOON', cardX + 8, currentY);
+
+  ctx.restore();
+};
+
+const drawSaleStartsButton = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  opacity: number,
+) => {
+  ctx.save();
+  ctx.globalAlpha = opacity;
+
+  // Calculate text dimensions first to size button properly
+  const text = 'SALE STARTS 19/09/25 9AM EST';
+  const fontSize = Math.max(14, Math.min(18, height * 0.06)); // Responsive font size
+  ctx.font = `${fontSize}px ${getCanvasFontStack('Proxima Nova')}`;
+  ctx.letterSpacing = '2px';
+
+  // Measure text width with letter spacing
+  const textMetrics = ctx.measureText(text);
+  const textWidth = textMetrics.width + (text.length - 1) * 2; // Add letter spacing
+
+  // Size button to fit text with proper padding
+  const buttonPadding = 4; // Horizontal padding
+  const buttonWidth = Math.max(textWidth + buttonPadding * 2, Math.min(width * 0.6, 350)); // Ensure minimum width
+  const buttonHeight = Math.max(fontSize * 1.8, Math.min(height * 0.1, 45)); // Proper height for text
+  const buttonX = x + (width - buttonWidth) / 2; // Center horizontally across the top
+  const buttonY = y + 15; // Position at top with padding
+
+  // Draw button background
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+  ctx.beginPath();
+  ctx.roundRect(buttonX, buttonY, buttonWidth, buttonHeight, 6);
+  ctx.fill();
+
+  // Draw button border - thinner line
+  ctx.strokeStyle = '#D0B284';
+  ctx.lineWidth = 1; // Thinner border
+  ctx.stroke();
+
+  // Draw button text - single line
+  ctx.fillStyle = '#D0B284';
+  ctx.font = `${fontSize}px ${getCanvasFontStack('Proxima Nova')}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.letterSpacing = '2px';
+
+  // Single line: "SALE STARTS 19/09/25 9AM EST"
+  ctx.fillText(text, buttonX + buttonWidth / 2, buttonY + buttonHeight / 2);
 
   ctx.restore();
 };
@@ -161,16 +179,6 @@ export const drawFeaturedSection = (
   _animationTime = 0,
 ) => {
   void _animationTime; // Explicitly ignore unused parameter
-
-  // DEBUG: Uncomment for drawing debugging
-  // console.log('drawFeaturedSection called:', {
-  //   x, y, width, height,
-  //   featuredImage: !!featuredImage,
-  //   featuredImageId: featuredImage?.metadata?.id,
-  //   imageComplete: featuredImage?.element?.complete,
-  //   imageNaturalWidth: featuredImage?.element?.naturalWidth,
-  //   imageNaturalHeight: featuredImage?.element?.naturalHeight,
-  // });
 
   // Smart mobile optimization: detect mobile device
   const capabilities = getDeviceCapabilities();
@@ -242,8 +250,6 @@ export const drawFeaturedSection = (
     ctx.restore();
   } else {
     // Fallback: Draw placeholder content when no image is available
-    // console.log('Drawing featured section placeholder - no image available');
-
     ctx.save();
     const imagePadding = 12;
     const imageX = x + imagePadding;
@@ -259,7 +265,7 @@ export const drawFeaturedSection = (
 
     // Add some visual content
     ctx.fillStyle = '#666666';
-    ctx.font = `${Math.min(imageWidth, imageHeight) * 0.1}px 'heading'`;
+    ctx.font = `${Math.min(imageWidth, imageHeight) * 0.1}px ${getCanvasFontStack('NeueWorld')}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('FEATURED ITEM', imageX + imageWidth / 2, imageY + imageHeight / 2);
@@ -267,35 +273,12 @@ export const drawFeaturedSection = (
     ctx.restore();
   }
 
-  // Draw "FEATURED" label in top-left corner
-  ctx.save();
+  // Draw new overlay elements
+  drawSaleStartsButton(ctx, x, y, width, height, 1.0); // Button now at top
+  drawArtGalleryCard(ctx, x, y, width, height, 1.0);
+  drawBuyCultureLogo(ctx, x, y, width, height, 1.0); // Logo now at bottom right
 
-  const padding = 16;
-  const featuredTextY = y + padding + 20; // Fixed position in top area
-
-  // Gold gradient for text (matching home area text)
-  const textGradient = ctx.createLinearGradient(
-    x + 16,
-    featuredTextY - 10, // Adjust gradient positioning
-    x + 16 + width * 0.3, // Scale gradient width appropriately
-    featuredTextY + 10, // Scale gradient height to text size
-  );
-  textGradient.addColorStop(0, '#FFFFFF');
-  textGradient.addColorStop(0.15, '#D0B264');
-  textGradient.addColorStop(0.95, '#D0B264');
-  textGradient.addColorStop(1, '#FFFFFF');
-
-  ctx.fillStyle = textGradient;
-  ctx.font = `bold ${Math.min(width, height) * 0.08}px 'heading'`;
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('FEATURED', x + 16, featuredTextY);
-  ctx.restore();
-
-  // Draw countdown timer along the bottom
-  drawCountdownTimer(ctx, x, y, width, height, 1.0);
-
-  // Draw premium border
+  // Draw premium border (keeping existing colors and behavior)
   ctx.save();
 
   // Check if mouse is hovering over the featured section
@@ -308,7 +291,7 @@ export const drawFeaturedSection = (
 
   // Safari optimization: Skip expensive glow effects on Safari
   if (!isSafari && !isMobileDevice && isHovered) {
-    ctx.shadowColor = 'rgba(208, 178, 100, 0.4)';
+    ctx.shadowColor = 'rgba(24, 77, 55, 0.4)';
     ctx.shadowBlur = 8;
   }
 
@@ -460,36 +443,11 @@ export const drawAnimatedFeaturedSection = (
   // Restore context to remove scale transformation for borders and labels
   ctx.restore();
 
-  // Draw countdown timer along the bottom with fade-in
-  drawCountdownTimer(ctx, drawX, drawY, width, height, opacity * borderAnimationProgress);
+  // Draw new overlay elements with fade-in
+  const overlayOpacity = opacity * borderAnimationProgress;
+  drawSaleStartsButton(ctx, drawX, drawY, width, height, overlayOpacity); // Button now at top
 
-  // Draw "FEATURED" label with fade-in in top-left corner
-  ctx.save();
-  ctx.globalAlpha = opacity * borderAnimationProgress;
-
-  const padding = 16;
-  const featuredTextY = drawY + padding + 20; // Fixed position in top area
-
-  // Gold gradient for text (matching home area text)
-  const textGradient = ctx.createLinearGradient(
-    drawX + 16,
-    featuredTextY - 10, // Adjust gradient positioning
-    drawX + 16 + width * 0.3, // Scale gradient width appropriately
-    featuredTextY + 10, // Scale gradient height to text size
-  );
-  textGradient.addColorStop(0, '#FFFFFF');
-  textGradient.addColorStop(0.1, '#D0B264');
-  textGradient.addColorStop(0.9, '#D0B264');
-  textGradient.addColorStop(1, '#FFFFFF');
-
-  ctx.fillStyle = textGradient;
-  ctx.font = `bold ${Math.min(width, height) * 0.08}px 'heading'`;
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('FEATURED', drawX + 16, featuredTextY);
-  ctx.restore();
-
-  // Draw animated border with progressive appearance
+  // Draw animated border with progressive appearance (keeping existing colors)
   if (borderAnimationProgress > 0) {
     ctx.save();
 
@@ -513,8 +471,8 @@ export const drawAnimatedFeaturedSection = (
 
     ctx.lineWidth = borderWidth;
 
-    // Single color border - highlightGold
-    ctx.strokeStyle = `rgba(215, 191, 117, ${borderOpacity})`; // highlightGold (#D7BF75)
+    // Outer border - Green (#184D37)
+    ctx.strokeStyle = `rgba(24, 77, 55, ${borderOpacity})`; // Green (#184D37)
 
     // Helper function to draw animated lines
     const drawAnimatedLine = (startX: number, startY: number, endX: number, endY: number) => {
@@ -621,6 +579,28 @@ export const drawAnimatedFeaturedSection = (
       );
     }
 
+    // Draw inner border - Golden
+    ctx.shadowBlur = 0; // Remove shadow for inner border
+    ctx.lineWidth = Math.max(1, borderWidth - 2); // Slightly thinner inner border
+    ctx.strokeStyle = `rgba(215, 191, 117, ${borderOpacity})`; // highlightGold (#D7BF75)
+
+    // Draw inner border with slightly smaller radius
+    const innerPadding = 3;
+    const innerRadius = Math.max(2, radius - 2);
+    ctx.beginPath();
+    ctx.roundRect(
+      drawX + innerPadding,
+      drawY + innerPadding,
+      width - innerPadding * 2,
+      height - innerPadding * 2,
+      innerRadius,
+    );
+    ctx.stroke();
+
     ctx.restore();
   }
+
+  // Draw the new overlay elements last to ensure they appear on top
+  drawArtGalleryCard(ctx, drawX, drawY, width, height, overlayOpacity);
+  drawBuyCultureLogo(ctx, drawX, drawY, width, height, overlayOpacity); // Logo now at bottom right
 };

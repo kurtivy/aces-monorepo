@@ -75,10 +75,7 @@ export function LeftColumnNavigation({
               )}
               onClick={() => onSectionChange(index)}
             >
-              <span
-                className="font-bold text-base tracking-widest leading-none" // Increased from text-xs to text-base, more tracking, no line height
-                style={{ fontFamily: "'Spray Letters', cursive" }}
-              >
+              <span className="font-bold text-base tracking-widest leading-none font-spray-letters">
                 {section.label}
               </span>
 

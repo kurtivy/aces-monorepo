@@ -1,46 +1,23 @@
+// backend/src/routes/v1/users.ts - Step 1: Essential Endpoints Only
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import jwt from 'jsonwebtoken';
+import { decode } from 'jsonwebtoken';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { UsersService } from '../../services/users-service';
-import { requireAuth, optionalAuth, canAccessResource } from '../../lib/auth-middleware';
+import { requireAuth } from '../../lib/auth-middleware';
 import { errors } from '../../lib/errors';
-import { UserRole } from '@prisma/client';
 
-// Validation schemas
+// Step 1: Simple validation schema (only email updates allowed)
 const UserProfileUpdateSchema = z.object({
-  firstName: z.string().min(1).max(50).optional(),
-  lastName: z.string().min(1).max(50).optional(),
-  displayName: z.string().min(1).max(30).optional(),
-  bio: z.string().max(500).optional(),
-  website: z.string().url().optional(),
-  twitterHandle: z
-    .string()
-    .regex(/^@?[A-Za-z0-9_]{1,15}$/)
-    .optional(),
-  avatar: z.string().url().optional(),
-  notifications: z.boolean().optional(),
-  newsletter: z.boolean().optional(),
-  darkMode: z.boolean().optional(),
-});
-
-const PaginationSchema = z.object({
-  limit: z.coerce.number().min(1).max(100).default(20),
-  cursor: z.string().optional(),
-});
-
-const UserSearchSchema = z.object({
-  q: z.string().min(1, 'Search query is required'),
-  limit: z.coerce.number().min(1).max(50).default(10),
+  email: z.string().email().optional(),
 });
 
 export async function usersRoutes(fastify: FastifyInstance) {
-  const profileService = new UsersService(fastify.prisma);
+  const usersService = new UsersService(fastify.prisma);
 
   /**
    * Verify or create user from Privy authentication
    * This endpoint is called by the frontend after successful Privy auth
-   * Note: Uses custom auth verification instead of requireAuth to avoid circular dependency
    */
   fastify.post(
     '/verify-or-create',
@@ -51,17 +28,15 @@ export async function usersRoutes(fastify: FastifyInstance) {
             privyDid: z.string().min(1),
             walletAddress: z.string().optional(),
             email: z.string().email().optional(),
-            displayName: z.string().min(1).max(30).optional(),
           }),
         ),
       },
     },
     async (request, reply) => {
-      const { privyDid, walletAddress, email, displayName } = request.body as {
+      const { privyDid, walletAddress, email } = request.body as {
         privyDid: string;
         walletAddress?: string;
         email?: string;
-        displayName?: string;
       };
       const correlationId = request.id;
 
@@ -75,7 +50,7 @@ export async function usersRoutes(fastify: FastifyInstance) {
         const token = authHeader.replace('Bearer ', '');
 
         // Decode JWT to verify it contains the same privyDid
-        const decoded = jwt.decode(token) as {
+        const decoded = decode(token) as {
           sub: string;
           wallet_address?: string;
           email?: string;
@@ -84,30 +59,29 @@ export async function usersRoutes(fastify: FastifyInstance) {
         if (!decoded || !decoded.sub || decoded.sub !== privyDid) {
           throw errors.unauthorized('Invalid or mismatched authentication token');
         }
+
         // Check if user already exists
         let user = await fastify.prisma.user.findUnique({
           where: { privyDid },
         });
 
         if (!user) {
-          console.log('🆕 Creating new user for Privy DID:', privyDid);
+          console.log('Creating new user for Privy DID:', privyDid);
 
           user = await fastify.prisma.user.create({
             data: {
               privyDid,
               walletAddress: walletAddress || null,
               email: email || null,
-              displayName: displayName || email?.split('@')[0] || 'User',
               role: 'TRADER',
               isActive: true,
-              sellerStatus: 'NOT_APPLIED',
             },
           });
-          console.log('✅ User created successfully:', user.id);
+          console.log('User created successfully:', user.id);
         } else {
-          console.log('✅ Existing user found:', user.id);
+          console.log('Existing user found:', user.id);
 
-          // Update user info if provided
+          // Update user info if provided and different
           const updates: Record<string, unknown> = {};
           if (walletAddress && user.walletAddress !== walletAddress) {
             updates.walletAddress = walletAddress;
@@ -115,26 +89,25 @@ export async function usersRoutes(fastify: FastifyInstance) {
           if (email && user.email !== email) {
             updates.email = email;
           }
-          if (displayName && user.displayName !== displayName) {
-            updates.displayName = displayName;
-          }
 
           if (Object.keys(updates).length > 0) {
             user = await fastify.prisma.user.update({
               where: { id: user.id },
               data: { ...updates, updatedAt: new Date() },
             });
-            console.log('✅ Updated user info:', user.id);
+            console.log('Updated user info:', user.id);
           }
         }
 
-        // Get full user profile
-        const profile = await profileService.getUserProfile(user.id);
+        // Get user profile using service
+        const profile = await usersService.getUserProfile(user.id);
 
         return reply.send({
           success: true,
-          data: profile,
-          created: !user || user.createdAt.getTime() > Date.now() - 10000, // true if user was just created (within 10 seconds)
+          data: {
+            profile: profile,
+            created: user.createdAt.getTime() > Date.now() - 10000, // true if just created
+          },
         });
       } catch (error) {
         const err = error instanceof Error ? error : new Error('Unknown error');
@@ -157,7 +130,7 @@ export async function usersRoutes(fastify: FastifyInstance) {
     },
     async (request, reply) => {
       try {
-        const profile = await profileService.getUserProfile(request.user!.id);
+        const profile = await usersService.getUserProfile(request.user!.id);
 
         return reply.send({
           success: true,
@@ -175,7 +148,7 @@ export async function usersRoutes(fastify: FastifyInstance) {
   );
 
   /**
-   * Update current user's profile
+   * Update current user's profile (email only for Step 1)
    */
   fastify.put(
     '/me',
@@ -190,7 +163,7 @@ export async function usersRoutes(fastify: FastifyInstance) {
       const correlationId = request.id;
 
       try {
-        const updatedProfile = await profileService.updateUserProfile(request.user!.id, updates);
+        const updatedProfile = await usersService.updateUserProfile(request.user!.id, updates);
 
         return reply.send({
           success: true,
@@ -207,439 +180,6 @@ export async function usersRoutes(fastify: FastifyInstance) {
     },
   );
 
-  /**
-   * Get user profile by ID (public view)
-   */
-  fastify.get(
-    '/:userId',
-    {
-      preHandler: [optionalAuth],
-      schema: {
-        params: zodToJsonSchema(
-          z.object({
-            userId: z.string().min(1),
-          }),
-        ),
-      },
-    },
-    async (request, reply) => {
-      const { userId } = request.params as { userId: string };
-
-      try {
-        // If accessing own profile, return full details
-        if (request.auth.isAuthenticated && request.user!.id === userId) {
-          const profile = await profileService.getUserProfile(userId);
-          return reply.send({
-            success: true,
-            data: profile,
-          });
-        }
-
-        // Otherwise, return public profile
-        const publicProfile = await profileService.getPublicUserProfile(userId);
-        return reply.send({
-          success: true,
-          data: publicProfile,
-        });
-      } catch (error) {
-        const err = error instanceof Error ? error : new Error('Unknown error');
-        fastify.log.error(
-          { err, userId, operation: 'getUserProfileById' },
-          'Failed to get user profile',
-        );
-        throw error;
-      }
-    },
-  );
-
-  /**
-   * Get current user's transaction history
-   */
-  fastify.get(
-    '/me/transactions',
-    {
-      preHandler: [requireAuth],
-      schema: {
-        querystring: zodToJsonSchema(PaginationSchema),
-      },
-    },
-    async (request, reply) => {
-      const { limit, cursor } = request.query as z.infer<typeof PaginationSchema>;
-
-      try {
-        // Get user activity summary instead of transaction history
-        const activity = await profileService.getUserActivitySummary(request.user!.id);
-        const submissions = await profileService.getUserSubmissions(request.user!.id);
-        const bids = await profileService.getUserBids(request.user!.id);
-
-        // Apply pagination to submissions (as a proxy for transaction history)
-        const startIndex = cursor ? submissions.findIndex((s) => s.id === cursor) + 1 : 0;
-        const endIndex = startIndex + limit;
-        const paginatedSubmissions = submissions.slice(startIndex, endIndex);
-        const hasMore = endIndex < submissions.length;
-        const nextCursor = hasMore
-          ? paginatedSubmissions[paginatedSubmissions.length - 1]?.id
-          : undefined;
-
-        return reply.send({
-          success: true,
-          data: {
-            activity,
-            submissions: paginatedSubmissions,
-            bids: bids.slice(0, limit),
-            nextCursor,
-            hasMore,
-          },
-        });
-      } catch (error) {
-        const err = error instanceof Error ? error : new Error('Unknown error');
-        fastify.log.error(
-          { err, operation: 'getUserTransactionHistory' },
-          'Failed to get user transaction history',
-        );
-        throw error;
-      }
-    },
-  );
-
-  /**
-   * Get user's transaction history by ID (limited access)
-   */
-  fastify.get(
-    '/:userId/transactions',
-    {
-      preHandler: [requireAuth],
-      schema: {
-        params: zodToJsonSchema(
-          z.object({
-            userId: z.string().min(1),
-          }),
-        ),
-        querystring: zodToJsonSchema(PaginationSchema),
-      },
-    },
-    async (request, reply) => {
-      const { userId } = request.params as { userId: string };
-      const { limit, cursor } = request.query as z.infer<typeof PaginationSchema>;
-
-      try {
-        // Check if user can access this data
-        if (!canAccessResource(request.user, userId, [UserRole.ADMIN])) {
-          throw errors.forbidden('Access denied');
-        }
-
-        // Get user activity summary instead of transaction history
-        const activity = await profileService.getUserActivitySummary(userId);
-        const submissions = await profileService.getUserSubmissions(userId);
-        const bids = await profileService.getUserBids(userId);
-
-        // Apply pagination to submissions
-        const startIndex = cursor ? submissions.findIndex((s) => s.id === cursor) + 1 : 0;
-        const endIndex = startIndex + limit;
-        const paginatedSubmissions = submissions.slice(startIndex, endIndex);
-        const hasMore = endIndex < submissions.length;
-        const nextCursor = hasMore
-          ? paginatedSubmissions[paginatedSubmissions.length - 1]?.id
-          : undefined;
-
-        const transactions = {
-          activity,
-          submissions: paginatedSubmissions,
-          bids: bids.slice(0, limit),
-          nextCursor,
-          hasMore,
-        };
-
-        return reply.send({
-          success: true,
-          data: transactions,
-        });
-      } catch (error) {
-        const err = error instanceof Error ? error : new Error('Unknown error');
-        fastify.log.error(
-          { err, userId, operation: 'getUserTransactionHistoryById' },
-          'Failed to get user transaction history',
-        );
-        throw error;
-      }
-    },
-  );
-
-  /**
-   * Get current user's on-chain assets
-   */
-  fastify.get(
-    '/me/assets',
-    {
-      preHandler: [requireAuth],
-    },
-    async (request, reply) => {
-      try {
-        // Get user portfolio summary instead of on-chain assets
-        const portfolio = await profileService.getUserPortfolioSummary(request.user!.id);
-        const tokens = await profileService.getUserTokens(request.user!.id);
-
-        return reply.send({
-          success: true,
-          data: {
-            portfolio,
-            tokens,
-            totalValue: portfolio.totalValueEstimate,
-          },
-        });
-      } catch (error) {
-        const err = error instanceof Error ? error : new Error('Unknown error');
-        fastify.log.error(
-          { err, operation: 'getUserOnChainAssets' },
-          'Failed to get user on-chain assets',
-        );
-        throw error;
-      }
-    },
-  );
-
-  /**
-   * Get user's on-chain assets by ID (limited access)
-   */
-  fastify.get(
-    '/:userId/assets',
-    {
-      preHandler: [requireAuth],
-      schema: {
-        params: zodToJsonSchema(
-          z.object({
-            userId: z.string().min(1),
-          }),
-        ),
-      },
-    },
-    async (request, reply) => {
-      const { userId } = request.params as { userId: string };
-
-      try {
-        // Check if user can access this data
-        if (!canAccessResource(request.user, userId, [UserRole.ADMIN])) {
-          throw errors.forbidden('Access denied');
-        }
-
-        const user = await fastify.prisma.user.findUnique({
-          where: { id: userId },
-          select: { walletAddress: true },
-        });
-
-        if (!user) {
-          throw errors.notFound('User not found');
-        }
-
-        // Get user portfolio summary instead of on-chain assets
-        const portfolio = await profileService.getUserPortfolioSummary(userId);
-        const tokens = await profileService.getUserTokens(userId);
-
-        const assets = {
-          portfolio,
-          tokens,
-          totalValue: portfolio.totalValueEstimate,
-        };
-
-        return reply.send({
-          success: true,
-          data: assets,
-        });
-      } catch (error) {
-        const err = error instanceof Error ? error : new Error('Unknown error');
-        fastify.log.error(
-          { err, userId, operation: 'getUserOnChainAssetsById' },
-          'Failed to get user on-chain assets',
-        );
-        throw error;
-      }
-    },
-  );
-
-  /**
-   * Search users
-   */
-  fastify.get(
-    '/search',
-    {
-      preHandler: [optionalAuth],
-      schema: {
-        querystring: zodToJsonSchema(UserSearchSchema),
-      },
-    },
-    async (request, reply) => {
-      const { q, limit } = request.query as z.infer<typeof UserSearchSchema>;
-
-      try {
-        // Simple user search implementation using Prisma directly
-        const users = await fastify.prisma.user.findMany({
-          where: {
-            OR: [
-              { displayName: { contains: q, mode: 'insensitive' } },
-              { walletAddress: { contains: q, mode: 'insensitive' } },
-              { email: { contains: q, mode: 'insensitive' } },
-            ],
-            isActive: true,
-          },
-          select: {
-            id: true,
-            displayName: true,
-            walletAddress: true,
-            avatar: true,
-            role: true,
-            sellerStatus: true,
-            createdAt: true,
-          },
-          take: limit,
-          orderBy: { createdAt: 'desc' },
-        });
-
-        return reply.send({
-          success: true,
-          data: {
-            users,
-            query: q,
-            total: users.length,
-          },
-        });
-      } catch (error) {
-        const err = error instanceof Error ? error : new Error('Unknown error');
-        fastify.log.error({ err, query: q, operation: 'searchUsers' }, 'Failed to search users');
-        throw error;
-      }
-    },
-  );
-
-  /**
-   * Get user statistics (admin only)
-   */
-  fastify.get(
-    '/:userId/stats',
-    {
-      preHandler: [requireAuth],
-      schema: {
-        params: zodToJsonSchema(
-          z.object({
-            userId: z.string().min(1),
-          }),
-        ),
-      },
-    },
-    async (request, reply) => {
-      const { userId } = request.params as { userId: string };
-
-      try {
-        // Check if user can access this data (admin or own data)
-        if (!canAccessResource(request.user, userId, [UserRole.ADMIN])) {
-          throw errors.forbidden('Access denied');
-        }
-
-        // Get comprehensive user statistics
-        const [profile, activity, portfolio, tokens] = await Promise.all([
-          profileService.getUserProfile(userId),
-          profileService.getUserActivitySummary(userId),
-          profileService.getUserPortfolioSummary(userId),
-          profileService.getUserTokens(userId),
-        ]);
-
-        const stats = {
-          profile: {
-            id: profile.id,
-            role: profile.role,
-            sellerStatus: profile.sellerStatus,
-            createdAt: profile.createdAt,
-            isVerifiedSeller: profile.isVerifiedSeller,
-          },
-          activity: {
-            totalSubmissions: activity.submissionsCount,
-            totalListings: activity.listingsCount,
-            totalBids: activity.bidsCount,
-            totalTokens: activity.tokensCount,
-          },
-          assets: {
-            totalTokens: tokens.length,
-            totalValue: portfolio.totalValueEstimate,
-            tokenSymbols: portfolio.tokenSymbols,
-          },
-        };
-
-        return reply.send({
-          success: true,
-          data: stats,
-        });
-      } catch (error) {
-        const err = error instanceof Error ? error : new Error('Unknown error');
-        fastify.log.error(
-          { err, userId, operation: 'getUserStats' },
-          'Failed to get user statistics',
-        );
-        throw error;
-      }
-    },
-  );
-
-  /**
-   * Get user's tokens
-   */
-  fastify.get(
-    '/:userId/tokens',
-    {
-      preHandler: [requireAuth],
-      schema: {
-        params: zodToJsonSchema(
-          z.object({
-            userId: z.string().min(1),
-          }),
-        ),
-      },
-    },
-    async (request, reply) => {
-      const { userId } = request.params as { userId: string };
-
-      try {
-        // Check if user can access this data (admin or own data)
-        if (!canAccessResource(request.user, userId, [UserRole.ADMIN])) {
-          throw errors.forbidden('Access denied');
-        }
-
-        const tokens = await profileService.getUserTokens(userId);
-
-        return reply.send({
-          success: true,
-          data: tokens,
-        });
-      } catch (error) {
-        const err = error instanceof Error ? error : new Error('Unknown error');
-        fastify.log.error({ err, userId, operation: 'getUserTokens' }, 'Failed to get user tokens');
-        throw error;
-      }
-    },
-  );
-
-  /**
-   * Get current user's tokens
-   */
-  fastify.get(
-    '/me/tokens',
-    {
-      preHandler: [requireAuth],
-    },
-    async (request, reply) => {
-      try {
-        const tokens = await profileService.getUserTokens(request.user!.id);
-
-        return reply.send({
-          success: true,
-          data: tokens,
-        });
-      } catch (error) {
-        const err = error instanceof Error ? error : new Error('Unknown error');
-        fastify.log.error(
-          { err, operation: 'getCurrentUserTokens' },
-          'Failed to get current user tokens',
-        );
-        throw error;
-      }
-    },
-  );
+  // Note: All other endpoints (transactions, assets, search, etc.) will be added in later steps
+  // when the required models (submissions, listings, bids, tokens) are available
 }

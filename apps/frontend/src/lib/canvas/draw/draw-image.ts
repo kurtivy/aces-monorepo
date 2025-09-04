@@ -97,6 +97,7 @@ export const drawImage = (
   ctx.strokeStyle = borderGradient;
   // Enhanced border width when hovering
   ctx.lineWidth = 1.5 + hoverProgress * 1.5; // 1.5px -> 3px on hover
+
   ctx.beginPath();
   ctx.roundRect(
     roundedX + scaleOffsetX,
@@ -211,6 +212,7 @@ export const drawImageWithoutContext = (
   ctx.strokeStyle = borderGradient;
   // Enhanced border width when hovering
   ctx.lineWidth = 1.5 + hoverProgress * 1.5; // 1.5px -> 3px on hover
+
   ctx.beginPath();
   ctx.roundRect(
     roundedX + scaleOffsetX,

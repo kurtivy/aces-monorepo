@@ -1,3 +1,4 @@
+// backend/src/api/v1/account-verification.ts - V1 Clean Implementation
 import Fastify, { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
 import helmet from '@fastify/helmet';
@@ -20,7 +21,7 @@ import { getPrismaClient, disconnectDatabase } from '../lib/database';
 import { loggers } from '../lib/logger';
 import { handleError } from '../lib/errors';
 import { registerAuth } from '../plugins/auth';
-import { accountVerificationRoutes } from '../routes/v1/account-verification';
+import { accountVerificationRoutes } from '../routes/v1/verification';
 
 const buildAccountVerificationApp = async (): Promise<FastifyInstance> => {
   const fastify = Fastify({
@@ -32,7 +33,6 @@ const buildAccountVerificationApp = async (): Promise<FastifyInstance> => {
   fastify.decorate('prisma', prisma);
 
   // Register plugins
-  // CORS handled dynamically in main app.ts
   fastify.register(helmet);
   fastify.register(multipart, {
     limits: {
@@ -59,8 +59,8 @@ const buildAccountVerificationApp = async (): Promise<FastifyInstance> => {
   fastify.setErrorHandler((error, request, reply) => {
     try {
       handleError(error, reply);
-    } catch (error) {
-      handleError(error, reply);
+    } catch (handlerError) {
+      handleError(handlerError, reply);
     }
   });
 
@@ -91,9 +91,29 @@ const handler = async (req: VercelRequest, res: VercelResponse) => {
         'http://localhost:3001',
         'https://www.aces.fun',
         'https://aces.fun',
+        'https://aces-monorepo-git-feat-ui-updates-dan-aces-fun.vercel.app',
+        'https://aces-monorepo-git-dev-dan-aces-fun.vercel.app',
       ].includes(origin);
     };
 
+    // Handle OPTIONS preflight first with proper CORS headers
+    if (req.method === 'OPTIONS') {
+      if (isOriginAllowed(origin) && origin) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+        res.setHeader(
+          'Access-Control-Allow-Headers',
+          'Content-Type, Authorization, Accept, Origin, X-Requested-With',
+        );
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        res.setHeader('Access-Control-Max-Age', '86400');
+        res.setHeader('Vary', 'Origin');
+      }
+      res.status(204).end();
+      return;
+    }
+
+    // Set CORS headers for actual requests
     if (isOriginAllowed(origin) && origin) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -102,22 +122,17 @@ const handler = async (req: VercelRequest, res: VercelResponse) => {
         'Content-Type, Authorization, Accept, Origin, X-Requested-With',
       );
       res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Vary', 'Origin');
     }
 
-    // Handle OPTIONS preflight
-    if (req.method === 'OPTIONS') {
-      res.status(204).end();
-      return;
-    }
-
-    // Handle path rewriting: /api/v1/account-verification/something → /something
-    if (req.url?.startsWith('/api/v1/account-verification')) {
-      req.url = req.url.replace('/api/v1/account-verification', '') || '/';
+    // Handle path rewriting: /api/v1/verification/something → /something
+    if (req.url?.startsWith('/api/v1/verification')) {
+      req.url = req.url.replace('/api/v1/verification', '') || '/';
     }
 
     app.server.emit('request', req, res);
   } catch (error) {
-    console.error('❌ Account verification handler error:', error);
+    console.error('⚠ Account verification handler error:', error);
     if (!res.headersSent) {
       res.status(500).json({
         success: false,

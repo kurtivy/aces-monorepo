@@ -1,91 +1,106 @@
-import { PrismaClient, Prisma, SubmissionStatus } from '@prisma/client';
-import type { CreateSubmissionRequest, RwaSubmission } from '@aces/utils';
+// backend/src/services/submission-service.ts - V1 Clean Implementation
+import { PrismaClient, Prisma, User } from '@prisma/client';
+import { AssetType, SubmissionStatus, RejectionType } from '../lib/prisma-enums';
+import { ProductStorageService } from '../lib/product-storage-utils';
 import { errors } from '../lib/errors';
-import { loggers } from '../lib/logger';
-import { withTransaction } from '../lib/database';
 
-type SubmissionInclude = {
-  owner: true;
-  rwaListing: true; // Changed from token to rwaListing
+// Type for submissions with relations
+type SubmissionWithRelations = Prisma.SubmissionGetPayload<{
+  include: {
+    owner: true;
+  };
+}> & {
+  approvedByUser?: User | null;
 };
 
-type SubmissionWithRelations = Prisma.RwaSubmissionGetPayload<{
-  include: SubmissionInclude;
-}>;
+export interface CreateSubmissionRequest {
+  title: string;
+  symbol: string;
+  description: string;
+  assetType: keyof typeof AssetType;
+  imageGallery?: string[];
+  location?: string;
+  email?: string;
+  proofOfOwnership: string;
+  proofOfOwnershipImageUrl?: string;
+  typeOfOwnership: string;
+}
 
 export class SubmissionService {
   constructor(private prisma: PrismaClient) {}
 
+  /**
+   * Check if user is verified before allowing submission
+   */
+  async checkUserVerification(userId: string): Promise<boolean> {
+    const verification = await this.prisma.accountVerification.findUnique({
+      where: { userId },
+      select: { status: true },
+    });
+
+    return verification?.status === 'APPROVED';
+  }
+
+  /**
+   * Create a new submission
+   */
   async createSubmission(
     userId: string,
     data: CreateSubmissionRequest,
-    correlationId: string,
   ): Promise<SubmissionWithRelations> {
     try {
-      // Get user's email from their profile instead of requiring it in submission
+      // Check if user is verified
+      const isVerified = await this.checkUserVerification(userId);
+      if (!isVerified) {
+        throw errors.forbidden('Account verification required to submit assets');
+      }
+
+      // Get user's email from their profile
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
         select: { email: true },
       });
 
       const submissionData = {
-        title: data.title, // Use title directly
+        title: data.title,
         symbol: data.symbol,
         description: data.description,
         assetType: data.assetType,
-        imageGallery: data.imageGallery || [], // Use imageGallery directly
+        imageGallery: data.imageGallery || [],
         proofOfOwnership: data.proofOfOwnership,
-        typeOfOwnership: data.typeOfOwnership || 'General', // Use provided typeOfOwnership
+        proofOfOwnershipImageUrl: data.proofOfOwnershipImageUrl || null,
+        typeOfOwnership: data.typeOfOwnership,
         location: data.location || null,
-        contractAddress: data.contractAddress || null,
+        email: data.email || user?.email || null,
         ownerId: userId,
-        email: user?.email || null, // Use user's existing email instead of submitted email
-        status: 'PENDING' as SubmissionStatus,
+        status: SubmissionStatus.PENDING,
       };
 
-      const submission = await this.prisma.rwaSubmission.create({
+      const submission = await this.prisma.submission.create({
         data: submissionData,
         include: {
           owner: true,
-          rwaListing: true, // Changed from token to rwaListing
-        },
-      });
-
-      // Log to audit trail
-      await this.prisma.submissionAuditLog.create({
-        data: {
-          submissionId: submission.id,
-          actorId: userId,
-          actorType: 'USER',
-          toStatus: 'PENDING',
-          notes: 'Initial submission',
         },
       });
 
       return submission;
-    } catch (err: unknown) {
-      if (err instanceof Error) {
-        console.error('Error in createSubmission:', err);
-        console.error('Error details:', {
-          name: err.name,
-          message: err.message,
-          stack: err.stack,
-        });
-      } else {
-        console.error('Unknown error in createSubmission:', err);
-      }
-      throw err;
+    } catch (error) {
+      console.error('Error in createSubmission:', error);
+      throw error;
     }
   }
 
+  /**
+   * Get user's submissions
+   */
   async getUserSubmissions(
     userId: string,
-    filter?: { status?: SubmissionStatus },
+    filter?: { status?: keyof typeof SubmissionStatus },
     options: { limit?: number; cursor?: string } = {},
   ): Promise<{ data: SubmissionWithRelations[]; nextCursor?: string; hasMore: boolean }> {
     try {
       const limit = Math.min(options.limit || 20, 100);
-      const where: Prisma.RwaSubmissionWhereInput = {
+      const where: any = {
         ownerId: userId,
         ...(filter?.status && { status: filter.status }),
       };
@@ -94,11 +109,10 @@ export class SubmissionService {
         where.id = { lt: options.cursor };
       }
 
-      const submissions = await this.prisma.rwaSubmission.findMany({
+      const submissions = await this.prisma.submission.findMany({
         where,
         include: {
           owner: true,
-          rwaListing: true, // Changed from token to rwaListing
         },
         orderBy: { createdAt: 'desc' },
         take: limit + 1, // Take one extra to check for more
@@ -108,93 +122,105 @@ export class SubmissionService {
       const data = hasMore ? submissions.slice(0, -1) : submissions;
       const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
 
-      return { data, nextCursor, hasMore };
+      // Convert image URLs to signed URLs for secure access
+      const dataWithSignedUrls = await Promise.all(
+        data.map(async (submission) => ({
+          ...submission,
+          imageGallery: await ProductStorageService.convertToSignedUrls(
+            submission.imageGallery as string[],
+          ),
+        })),
+      );
+
+      return { data: dataWithSignedUrls, nextCursor, hasMore };
     } catch (error) {
-      loggers.error(error as Error, { userId, operation: 'getUserSubmissions' });
+      console.error('Error in getUserSubmissions:', error);
       throw error;
     }
   }
 
+  /**
+   * Get submission by ID
+   */
   async getSubmissionById(
     submissionId: string,
     userId?: string,
   ): Promise<SubmissionWithRelations | null> {
     try {
-      const where: Prisma.RwaSubmissionWhereInput = { id: submissionId };
+      const where: any = { id: submissionId };
 
       // If userId is provided, ensure the user can only see their own submissions
       if (userId) {
         where.ownerId = userId;
       }
 
-      const submission = await this.prisma.rwaSubmission.findUnique({
+      const submission = await this.prisma.submission.findUnique({
         where: { id: submissionId },
         include: {
           owner: true,
-          rwaListing: true, // Changed from token to rwaListing
         },
       });
 
-      return submission;
+      if (!submission) {
+        return null;
+      }
+
+      // Convert image URLs to signed URLs for secure access
+      const submissionWithSignedUrls = {
+        ...submission,
+        imageGallery: await ProductStorageService.convertToSignedUrls(
+          submission.imageGallery as string[],
+        ),
+      };
+
+      return submissionWithSignedUrls;
     } catch (error) {
-      loggers.error(error as Error, { submissionId, userId, operation: 'getSubmissionById' });
+      console.error('Error in getSubmissionById:', error);
       throw error;
     }
   }
 
+  /**
+   * Delete submission (only if pending)
+   */
   async deleteSubmission(submissionId: string, userId: string): Promise<void> {
     try {
-      await withTransaction(async (tx) => {
-        const submission = await tx.rwaSubmission.findUnique({
-          where: {
-            id: submissionId,
-            ownerId: userId, // Ensure user can only delete their own submissions
-          },
-        });
-
-        if (!submission) {
-          throw errors.notFound('Submission not found or access denied');
-        }
-
-        if (submission.status !== 'PENDING') {
-          throw errors.validation(
-            `Cannot delete submission with status: ${submission.status}. Only pending submissions can be deleted.`,
-          );
-        }
-
-        // Hard delete the submission since we removed soft delete
-        await tx.rwaSubmission.delete({
-          where: { id: submissionId },
-        });
-
-        // Log to audit trail
-        await tx.submissionAuditLog.create({
-          data: {
-            submissionId,
-            fromStatus: submission.status,
-            toStatus: 'REJECTED', // Use REJECTED as closest equivalent to deleted
-            actorId: userId,
-            actorType: 'USER',
-            notes: 'Submission deleted by user',
-          },
-        });
+      const submission = await this.prisma.submission.findUnique({
+        where: {
+          id: submissionId,
+          ownerId: userId, // Ensure user can only delete their own submissions
+        },
       });
 
-      loggers.database('deleted', 'rwa_submissions', submissionId);
+      if (!submission) {
+        throw errors.notFound('Submission not found or access denied');
+      }
+
+      if (submission.status !== SubmissionStatus.PENDING) {
+        throw errors.validation(
+          `Cannot delete submission with status: ${submission.status}. Only pending submissions can be deleted.`,
+        );
+      }
+
+      await this.prisma.submission.delete({
+        where: { id: submissionId },
+      });
     } catch (error) {
-      loggers.error(error as Error, { submissionId, userId, operation: 'deleteSubmission' });
+      console.error('Error in deleteSubmission:', error);
       throw error;
     }
   }
 
+  /**
+   * Get all submissions (admin only)
+   */
   async getAllSubmissions(
-    adminId: string,
-    filter?: { status?: SubmissionStatus },
+    filter?: { status?: keyof typeof SubmissionStatus },
     options: { limit?: number; cursor?: string } = {},
   ): Promise<{ data: SubmissionWithRelations[]; nextCursor?: string; hasMore: boolean }> {
     try {
       const limit = Math.min(options.limit || 50, 100);
-      const where: Prisma.RwaSubmissionWhereInput = {
+      const where: any = {
         ...(filter?.status && { status: filter.status }),
       };
 
@@ -202,11 +228,10 @@ export class SubmissionService {
         where.id = { lt: options.cursor };
       }
 
-      const submissions = await this.prisma.rwaSubmission.findMany({
+      const submissions = await this.prisma.submission.findMany({
         where,
         include: {
           owner: true,
-          rwaListing: true, // Changed from token to rwaListing
         },
         orderBy: { createdAt: 'desc' },
         take: limit + 1,
@@ -218,24 +243,106 @@ export class SubmissionService {
 
       return { data, nextCursor, hasMore };
     } catch (error) {
-      loggers.error(error as Error, { adminId, operation: 'getAllSubmissions' });
+      console.error('Error in getAllSubmissions:', error);
       throw error;
     }
   }
 
-  async getSubmissionByIds(submissionIds: string[]): Promise<SubmissionWithRelations[]> {
+  /**
+   * Get pending submissions (admin only)
+   */
+  async getPendingSubmissions(
+    options: { limit?: number; cursor?: string } = {},
+  ): Promise<{ data: SubmissionWithRelations[]; nextCursor?: string; hasMore: boolean }> {
+    return this.getAllSubmissions({ status: SubmissionStatus.PENDING }, options);
+  }
+
+  /**
+   * Approve submission (admin only)
+   */
+  async approveSubmission(submissionId: string, adminId: string): Promise<SubmissionWithRelations> {
     try {
-      return await this.prisma.rwaSubmission.findMany({
-        where: {
-          id: { in: submissionIds },
+      const submission = await this.prisma.submission.update({
+        where: { id: submissionId },
+        data: {
+          status: SubmissionStatus.APPROVED,
+          approvedBy: adminId,
+          approvedAt: new Date(),
         },
         include: {
           owner: true,
-          rwaListing: true, // Changed from token to rwaListing
         },
       });
+
+      return submission;
     } catch (error) {
-      loggers.error(error as Error, { submissionIds, operation: 'getSubmissionByIds' });
+      console.error('Error in approveSubmission:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Reject submission (admin only)
+   */
+  async rejectSubmission(
+    submissionId: string,
+    adminId: string,
+    rejectionReason: string,
+    rejectionType: keyof typeof RejectionType = RejectionType.MANUAL,
+  ): Promise<SubmissionWithRelations> {
+    try {
+      const submission = await this.prisma.submission.update({
+        where: { id: submissionId },
+        data: {
+          status: SubmissionStatus.REJECTED,
+          approvedBy: adminId,
+          rejectionReason,
+          rejectionType,
+        },
+        include: {
+          owner: true,
+        },
+      });
+
+      return submission;
+    } catch (error) {
+      console.error('Error in rejectSubmission:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all submissions for admin dashboard
+   */
+  async getAllSubmissionsForAdmin(options?: {
+    status?: string;
+    limit?: number;
+  }): Promise<SubmissionWithRelations[]> {
+    try {
+      const where: any = {};
+
+      if (options?.status && options.status !== 'ALL') {
+        where.status = options.status;
+      }
+
+      const submissions = await this.prisma.submission.findMany({
+        where,
+        include: {
+          owner: {
+            include: {
+              accountVerification: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        take: options?.limit || 50,
+      });
+
+      return submissions;
+    } catch (error) {
+      console.error('Error in getAllSubmissionsForAdmin:', error);
       throw error;
     }
   }

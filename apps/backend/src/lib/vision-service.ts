@@ -385,8 +385,13 @@ export class VisionService {
         return this.createMockDocumentImage();
       }
 
-      // Extract filename from URL
-      const fileName = imageUrl.split('/').pop();
+      // Extract the full file path from URL (everything after the bucket name)
+      const bucketPrefix = `https://storage.googleapis.com/${secureBucketName}/`;
+      if (!imageUrl.startsWith(bucketPrefix)) {
+        throw new Error('Invalid secure storage URL format');
+      }
+
+      const fileName = imageUrl.replace(bucketPrefix, '');
       if (!fileName) {
         throw new Error('Invalid image URL - no filename found');
       }

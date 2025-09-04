@@ -5,24 +5,30 @@ export const CreateSubmissionSchema = z.object({
   title: z
     .string()
     .min(1, 'Asset title is required')
-    .max(50, 'Asset title must be less than 50 characters'),
+    .max(200, 'Asset title must be less than 200 characters'),
   symbol: z.string().min(1, 'Symbol is required').max(10, 'Symbol must be less than 10 characters'),
   description: z
     .string()
     .min(10, 'Description must be at least 10 characters')
-    .max(1000, 'Description must be less than 1000 characters'),
+    .max(2000, 'Description must be less than 2000 characters'),
   assetType: z.enum(['VEHICLE', 'JEWELRY', 'COLLECTIBLE', 'ART', 'FASHION', 'ALCOHOL', 'OTHER'], {
     required_error: 'Asset type is required',
     invalid_type_error: 'Please select a valid asset type',
   }),
-  imageGallery: z.array(z.string().url('Please provide valid image URLs')).optional().default([]),
-  proofOfOwnership: z.string().min(10, 'Proof of ownership must be at least 10 characters'),
-  typeOfOwnership: z.string().min(1, 'Type of ownership is required'),
-  location: z.string().optional(),
-  contractAddress: z
+  imageGallery: z
+    .array(z.string().url('Please provide valid image URLs'))
+    .min(1, 'At least one asset image is required'),
+  proofOfOwnership: z
     .string()
-    .regex(/^0x[a-fA-F0-9]{40}$/, 'Please enter a valid Ethereum contract address')
-    .optional(),
+    .min(1, 'Proof of ownership is required')
+    .max(1000, 'Proof of ownership must be less than 1000 characters'),
+  proofOfOwnershipImageUrl: z.string().url('Please provide a valid proof documentation image'),
+  typeOfOwnership: z
+    .string()
+    .min(1, 'Type of ownership is required')
+    .max(100, 'Type of ownership must be less than 100 characters'),
+  location: z.string().max(200, 'Location must be less than 200 characters').optional(),
+  email: z.string().email('Please enter a valid email address').optional(),
 });
 
 export const CreateBidSchema = z.object({

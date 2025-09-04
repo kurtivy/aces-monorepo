@@ -1,265 +1,130 @@
 generator client {
   provider      = "prisma-client-js"
-  output        = "../../../node_modules/.prisma/client"
   binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
-// Force regeneration v2.0 - schema reset complete 2025-08-21
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
 model User {
-  id            String          @id @default(cuid())
-  privyDid      String          @unique
-  walletAddress String?         @unique
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-  email         String?         @unique
-  
-  // User Role & Status
-  role          UserRole        @default(TRADER)
-  isActive      Boolean         @default(true)
-  
-  // Profile Information  
-  displayName   String?
-  avatar        String?
-  
-  // Seller Verification System
-  sellerStatus  SellerStatus    @default(NOT_APPLIED)
-  appliedAt     DateTime?
-  verifiedAt    DateTime?
-  rejectedAt    DateTime?
-  rejectionReason String?
-  
-  // Relationship fields
-  bids          Bid[]
-  tokens        Token[]
-  rwaSubmissions RwaSubmission[]
-  rwaListings   RwaListing[]
-  accountVerification  AccountVerification?
-  verificationAttempts Int @default(0)
-  lastVerificationAttempt DateTime?
-  
-  // Admin actions
-  approvedSubmissions RwaSubmission[] @relation("ApprovedBy")
-  approvedListings    RwaListing[]    @relation("ApprovedBy")
+  id                    String                @id @default(cuid())
+  privyDid              String                @unique
+  walletAddress         String?               @unique
+  email                 String?               @unique
+  role                  UserRole              @default(TRADER)
+  isActive              Boolean               @default(true)
+  sellerStatus          SellerStatus          @default(NOT_APPLIED)
+  appliedAt             DateTime?
+  verifiedAt            DateTime?
+  rejectedAt            DateTime?
+  rejectionReason       String?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
   reviewedVerifications AccountVerification[] @relation("ReviewedBy")
+  accountVerification   AccountVerification?
+  approvedSubmissions   Submission[]          @relation("ApprovedBy")
+  submissions           Submission[]
+  listings              Listing[]
+  approvedListings      Listing[]             @relation("ApprovedBy")
 
   @@map("users")
 }
 
-model RwaSubmission {
-  id                String               @id @default(cuid())
-  status            SubmissionStatus     @default(PENDING)
-  rejectionType     RejectionType?
-  title             String
-  symbol            String
-  description       String
-  assetType         AssetType
-  imageGallery      String[]             @default([]) // Array of image URLs
-  contractAddress   String?
-  location          String?
-  email             String?
-  proofOfOwnership  String
-  typeOfOwnership   String               // Vehicle number, Receipt Number, Item ID, etc.
-  ownerId           String
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
-  approvedAt        DateTime?
-  rejectionReason   String?
-  updatedBy         String?              // Admin who approved/rejected
-  updatedByAdmin    User?                @relation("ApprovedBy", fields: [updatedBy], references: [id])
-  
-  // Relationships
-  owner             User                 @relation(fields: [ownerId], references: [id])
-  auditLogs         SubmissionAuditLog[]
-  rwaListing        RwaListing?          // 1:1 relationship when approved
-
-  @@index([status, createdAt])
-  @@index([ownerId, createdAt])
-  @@index([createdAt])
-  @@index([email])
-  @@map("rwa_submissions")
-}
-
-model RwaListing {
-  id                String               @id @default(cuid())
-  title             String
-  symbol            String
-  description       String
-  assetType         AssetType
-  imageGallery      String[]             @default([]) // Array of image URLs
-  contractAddress   String?
-  location          String?
-  email             String?
-  isLive            Boolean              @default(false)
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
-  
-  // Foreign Keys
-  rwaSubmissionId   String               @unique // Link back to original submission
-  ownerId           String               // Owner from submission
-  updatedBy         String?              // Admin who approved the submission
-  
-  // Relationships
-  rwaSubmission     RwaSubmission        @relation(fields: [rwaSubmissionId], references: [id])
-  owner             User                 @relation(fields: [ownerId], references: [id])
-  approvedBy        User?                @relation("ApprovedBy", fields: [updatedBy], references: [id])
-  bids              Bid[]
-  token             Token?
-
-  @@index([isLive, createdAt])
-  @@index([ownerId, createdAt])
-  @@index([createdAt])
-  @@map("rwa_listings")
-}
-
-model Token {
-  id              String        @id @default(cuid())
-  contractAddress String        @unique
-  rwaListingId    String        @unique // Changed from submissionId to rwaListingId
-  userId          String        // Required field for user relationship
-  createdAt       DateTime      @default(now())
-  
-  // Relationships
-  rwaListing      RwaListing    @relation(fields: [rwaListingId], references: [id])
-  user            User          @relation(fields: [userId], references: [id])
-
-  @@index([contractAddress])
-  @@index([userId])
-  @@map("tokens")
-}
-
-model Bid {
-  id               String        @id @default(cuid())
-  listingId        String        // Changed from submissionId to listingId
-  bidderId         String
-  verificationId   String        // Link to AccountVerification for KYC
-  amount           String        // Amount in USD
-  createdAt        DateTime      @default(now())
-  expiresAt        DateTime?     // New field for bid expiration
-  currency         String        @default("USD")
-  
-  // Relationships
-  bidder           User          @relation(fields: [bidderId], references: [id])
-  listing          RwaListing    @relation(fields: [listingId], references: [id])
-  verification     AccountVerification @relation(fields: [verificationId], references: [id])
-
-  @@unique([bidderId, listingId])
-  @@index([listingId, createdAt])
-  @@map("bids")
-}
-
 model AccountVerification {
-  id               String      @id @default(cuid())
-  userId           String      @unique
-  user             User        @relation(fields: [userId], references: [id])
-  documentType     String      // e.g., "DRIVERS_LICENSE", "PASSPORT"
-  documentNumber   String
-  firstName        String
-  lastName         String
-  dateOfBirth      DateTime
-  countryOfIssue   String
-  state            String?
-  address          String
-  emailAddress     String
-  twitter          String?     // New optional field
-  website          String?     // New optional field
-  documentImageUrl String?     // URL to stored image in secure storage
-  
-  // Facial Verification Fields
-  selfieImageUrl   String?     // URL to selfie image in secure storage
-  facialVerificationStatus String? // "PENDING", "COMPLETED", "FAILED"
-  facialAnalysisResults Json?  // Complete Vision API analysis results
-  faceComparisonScore Float?   // 0-100 face similarity score
-  overallVerificationScore Float? // 0-100 combined score
-  visionApiRecommendation String? // "APPROVE", "REJECT", "MANUAL_REVIEW"
-  facialVerificationAt DateTime? // When facial analysis was completed
-  
-  submittedAt      DateTime    @default(now())
-  reviewedAt       DateTime?
-  reviewedBy       String?     // Admin user ID who reviewed
-  reviewer         User?       @relation("ReviewedBy", fields: [reviewedBy], references: [id])
-  status           VerificationStatus @default(PENDING)
-  rejectionReason  String?
-  attempts         Int         @default(0)
-  lastAttemptAt    DateTime?
-  auditLogs        VerificationAuditLog[]
-  bids             Bid[]       // Bids made with this verification
+  id                      String             @id @default(cuid())
+  userId                  String             @unique
+  documentType            DocumentType
+  documentNumber          String
+  documentImageUrl        String?
+  firstName               String
+  lastName                String
+  dateOfBirth             DateTime
+  countryOfIssue          String
+  state                   String?
+  address                 String
+  emailAddress            String
+  status                  VerificationStatus @default(PENDING)
+  submittedAt             DateTime           @default(now())
+  reviewedAt              DateTime?
+  reviewedBy              String?
+  rejectionReason         String?
+  attempts                Int                @default(1)
+  lastAttemptAt           DateTime           @default(now())
+  selfieImageUrl          String?
+  facialComparisonScore   Float?
+  visionApiRecommendation String?
+  documentAnalysisResults Json?
+  facialVerificationAt    DateTime?
+  reviewer                User?              @relation("ReviewedBy", fields: [reviewedBy], references: [id])
+  user                    User               @relation(fields: [userId], references: [id])
 
   @@index([status])
   @@index([userId])
-  @@index([facialVerificationStatus])
   @@map("account_verifications")
 }
 
-model VerificationAuditLog {
-  id               String    @id @default(cuid())
-  verificationId   String
-  verification     AccountVerification @relation(fields: [verificationId], references: [id])
-  action           String    // e.g., "SUBMITTED", "REVIEWED", "APPROVED", "REJECTED"
-  actorId          String    // User ID who performed the action
-  timestamp        DateTime  @default(now())
-  details          Json?     // Additional details about the action
-  ipAddress        String?
-  userAgent        String?
+model Submission {
+  id                       String           @id @default(cuid())
+  title                    String
+  symbol                   String
+  description              String
+  assetType                AssetType
+  imageGallery             String[]         @default([])
+  location                 String?
+  email                    String?
+  proofOfOwnership         String
+  proofOfOwnershipImageUrl String?
+  typeOfOwnership          String
+  status                   SubmissionStatus @default(PENDING)
+  rejectionType            RejectionType?
+  rejectionReason          String?
+  ownerId                  String
+  approvedBy               String?
+  createdAt                DateTime         @default(now())
+  updatedAt                DateTime         @updatedAt
+  approvedAt               DateTime?
+  approvedByUser           User?            @relation("ApprovedBy", fields: [approvedBy], references: [id])
+  owner                    User             @relation(fields: [ownerId], references: [id])
+  listing                  Listing?
 
-  @@index([verificationId])
-  @@index([timestamp])
-  @@map("verification_audit_logs")
+  @@index([status, createdAt])
+  @@index([ownerId, createdAt])
+  @@map("submissions")
 }
 
-model WebhookLog {
-  id          String    @id @default(cuid())
-  payload     Json
-  processedAt DateTime?
-  createdAt   DateTime  @default(now())
-  error       String?
-  headers     Json
+model Listing {
+  id                String     @id @default(cuid())
 
-  @@index([processedAt, createdAt])
-  @@map("webhook_logs")
-}
+  title             String
+  symbol            String
+  description       String
+  assetType         AssetType
+  imageGallery      String[]   @default([])
+  location          String?
+  email             String?
 
-model SubmissionAuditLog {
-  id           String            @id @default(cuid())
-  submissionId String
-  fromStatus   SubmissionStatus?
-  toStatus     SubmissionStatus
-  actorId      String
-  notes        String?
-  createdAt    DateTime          @default(now())
-  actorType    ActionType
-  submission   RwaSubmission     @relation(fields: [submissionId], references: [id])
+  isLive            Boolean    @default(false)
 
-  @@index([submissionId])
-  @@index([actorId, actorType])
-  @@map("submission_audit_logs")
-}
+  submissionId      String     @unique
+  ownerId           String
+  approvedBy        String?
 
-enum SubmissionStatus {
-  PENDING
-  APPROVED
-  REJECTED
-}
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
 
-enum RejectionType {
-  MANUAL
-  TX_FAILURE
-}
+  submission        Submission @relation(fields: [submissionId], references: [id])
+  owner             User       @relation(fields: [ownerId], references: [id])
+  approvedByUser    User?      @relation("ApprovedBy", fields: [approvedBy], references: [id])
 
-enum ActionType {
-  USER
-  SYSTEM
-  WEBHOOK
-  ADMIN
+  @@index([isLive, createdAt])
+  @@index([ownerId])
+  @@map("listings")
 }
 
 enum UserRole {
   TRADER
-  SELLER
   ADMIN
 }
 
@@ -274,6 +139,23 @@ enum VerificationStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+enum DocumentType {
+  DRIVERS_LICENSE
+  PASSPORT
+  ID_CARD
+}
+
+enum SubmissionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum RejectionType {
+  MANUAL
+  TX_FAILURE
 }
 
 enum AssetType {

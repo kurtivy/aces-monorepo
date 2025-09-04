@@ -59,6 +59,77 @@ const nextConfig: NextConfig = {
     return {
       // Multi-tenant rewrites come first (beforeFiles)
       beforeFiles: [
+        // Rewrite admin.aces.fun requests to /admin routes (excluding static assets)
+        {
+          source:
+            '/((?!_next/static|_next/image|favicon.ico|admin-favicon.ico|api|canvas-images|fonts|svg).*)',
+          has: [
+            {
+              type: 'host',
+              value: 'admin.aces.fun',
+            },
+          ],
+          destination: '/admin/$1',
+        },
+        // Rewrite www.admin.aces.fun requests to /admin routes (excluding static assets)
+        {
+          source:
+            '/((?!_next/static|_next/image|favicon.ico|admin-favicon.ico|api|canvas-images|fonts|svg).*)',
+          has: [
+            {
+              type: 'host',
+              value: 'www.admin.aces.fun',
+            },
+          ],
+          destination: '/admin/$1',
+        },
+        // Handle localhost:3003 and local.admin.aces.fun for development
+        {
+          source:
+            '/((?!_next/static|_next/image|favicon.ico|admin-favicon.ico|api|canvas-images|fonts|svg).*)',
+          has: [
+            {
+              type: 'host',
+              value: 'localhost:3003',
+            },
+          ],
+          destination: '/admin/$1',
+        },
+        {
+          source:
+            '/((?!_next/static|_next/image|favicon.ico|admin-favicon.ico|api|canvas-images|fonts|svg).*)',
+          has: [
+            {
+              type: 'host',
+              value: 'local.admin.aces.fun:3000',
+            },
+          ],
+          destination: '/admin/$1',
+        },
+        // Handle Vercel deployments with 'admin' in the URL
+        {
+          source:
+            '/((?!_next/static|_next/image|favicon.ico|admin-favicon.ico|api|canvas-images|fonts|svg).*)',
+          has: [
+            {
+              type: 'host',
+              value: '(?<host>.*admin.*\\.vercel\\.app)',
+            },
+          ],
+          destination: '/admin/$1',
+        },
+        // Handle admin subdomain for specific Vercel deployment
+        {
+          source:
+            '/((?!_next/static|_next/image|favicon.ico|admin-favicon.ico|api|canvas-images|fonts|svg).*)',
+          has: [
+            {
+              type: 'host',
+              value: 'admin.aces-monorepo-git-feat-ui-updates-dan-aces-fun.vercel.app',
+            },
+          ],
+          destination: '/admin/$1',
+        },
         // Rewrite aceofbase.fun requests to /aceofbase routes (excluding static assets)
         {
           source:
@@ -132,6 +203,18 @@ const nextConfig: NextConfig = {
   // Redirects for blocked routes on main domain
   async redirects() {
     return [
+      // Block /admin routes on main domain (aces.fun)
+      {
+        source: '/admin/:path*',
+        has: [
+          {
+            type: 'host',
+            value: 'aces.fun',
+          },
+        ],
+        destination: '/404',
+        permanent: false,
+      },
       // Block /aceofbase, /launch, and /profile on main domain (aces.fun)
       {
         source: '/aceofbase/:path*',
@@ -155,6 +238,8 @@ const nextConfig: NextConfig = {
         destination: '/404',
         permanent: false,
       },
+      // Temporarily disabled for development
+      /*
       {
         source: '/profile/:path*',
         has: [
@@ -166,7 +251,19 @@ const nextConfig: NextConfig = {
         destination: '/404',
         permanent: false,
       },
+      */
       // Handle localhost:3000 and local.aces.fun for development (main domain)
+      {
+        source: '/admin/:path*',
+        has: [
+          {
+            type: 'host',
+            value: 'localhost:3000',
+          },
+        ],
+        destination: '/404',
+        permanent: false,
+      },
       // Temporarily disabled for testing
       /*
       {
@@ -192,6 +289,8 @@ const nextConfig: NextConfig = {
         destination: '/404',
         permanent: false,
       },
+      // Temporarily disabled for development
+      /*
       {
         source: '/profile/:path*',
         has: [
@@ -203,8 +302,20 @@ const nextConfig: NextConfig = {
         destination: '/404',
         permanent: false,
       },
+      */
       // Add local.aces.fun redirects for development
       {
+        source: '/admin/:path*',
+        has: [
+          {
+            type: 'host',
+            value: 'local.aces.fun:3000',
+          },
+        ],
+        destination: '/404',
+        permanent: false,
+      },
+      {
         source: '/aceofbase/:path*',
         has: [
           {
@@ -226,6 +337,8 @@ const nextConfig: NextConfig = {
         destination: '/404',
         permanent: false,
       },
+      // Temporarily disabled for development
+      /*
       {
         source: '/profile/:path*',
         has: [
@@ -237,7 +350,22 @@ const nextConfig: NextConfig = {
         destination: '/404',
         permanent: false,
       },
-      // Handle main Vercel deployments (without 'aceofbase' in URL)
+      */
+      // Handle main Vercel deployments (without 'admin' or 'aceofbase' in URL)
+      // Temporarily disabled to allow admin access on feat-ui-updates branch
+      /*
+      {
+        source: '/admin/:path*',
+        has: [
+          {
+            type: 'host',
+            value: '(?<host>(?!.*admin).*\\.vercel\\.app)',
+          },
+        ],
+        destination: '/404',
+        permanent: false,
+      },
+      */
       {
         source: '/aceofbase/:path*',
         has: [
@@ -260,6 +388,8 @@ const nextConfig: NextConfig = {
         destination: '/404',
         permanent: false,
       },
+      // Temporarily disabled for development
+      /*
       {
         source: '/profile/:path*',
         has: [
@@ -271,6 +401,7 @@ const nextConfig: NextConfig = {
         destination: '/404',
         permanent: false,
       },
+      */
     ];
   },
 
@@ -285,14 +416,22 @@ const nextConfig: NextConfig = {
     // Image sizes for different breakpoints
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
 
-    // Allow localhost and your domain
-    domains: [],
-
-    // Configure remote patterns if needed for external images
+    // Configure remote patterns for Google Cloud Storage - REMOVED domains property
     remotePatterns: [
       {
         protocol: 'https',
-        hostname: '**',
+        hostname: 'storage.googleapis.com',
+        pathname: '/aces-product-images/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'storage.googleapis.com',
+        pathname: '/aces-rwa-images/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'storage.googleapis.com',
+        pathname: '/aces-secure-documents/**',
       },
     ],
 

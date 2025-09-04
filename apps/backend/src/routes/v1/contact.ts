@@ -1,24 +1,13 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
+import { EmailService } from '../../lib/email-service';
 
 const contactFormSchema = z.object({
   category: z.string().min(1, 'Category is required'),
   itemName: z.string().min(1, 'Item name is required'),
   email: z.string().email('Valid email is required'),
 });
-
-// Mock EmailService since we don't know if it exists
-const EmailService = {
-  async sendContactFormEmail(data: any) {
-    // Mock implementation - replace with your actual email service
-    console.log('Sending contact form email:', data);
-    return {
-      success: true,
-      messageId: `mock-${Date.now()}`,
-    };
-  },
-};
 
 export async function contactRoutes(fastify: FastifyInstance) {
   // POST / - Submit contact form (path rewritten from /api/v1/contact → /)

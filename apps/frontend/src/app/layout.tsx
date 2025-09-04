@@ -5,6 +5,7 @@ import { DeviceProvider } from '../contexts/device-provider';
 import AppProviders from '@/components/providers/app-providers';
 import { fontVariables } from '@/lib/fonts';
 import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 
 export const metadata: Metadata = {
   title: 'ACES.fun',
@@ -100,6 +101,7 @@ export default function RootLayout({
           <AppProviders>
             <DeviceProvider>{children}</DeviceProvider>
             <Analytics />
+            <SpeedInsights />
           </AppProviders>
         </ErrorBoundary>
       </body>

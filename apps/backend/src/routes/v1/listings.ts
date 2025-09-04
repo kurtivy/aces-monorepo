@@ -1,169 +1,364 @@
+// backend/src/routes/v1/listings.ts - V1 Clean Implementation
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { ListingService } from '../../services/listing-service';
-import { getPrismaClient } from '../../lib/database';
+import { zodToJsonSchema } from 'zod-to-json-schema';
+import { ListingService, UpdateListingRequest } from '../../services/listing-service';
+import { ProductStorageService } from '../../lib/product-storage-utils';
+
+import { requireAuth, requireAdmin } from '../../lib/auth-middleware';
 import { errors } from '../../lib/errors';
-import { logger } from '../../lib/logger';
 
-const listingService = new ListingService(getPrismaClient());
+// Validation schemas
+const CreateListingFromSubmissionSchema = z.object({
+  submissionId: z.string(),
+});
 
-// Schema definitions
-const toggleListingStatusSchema = z.object({
+const UpdateListingSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+  symbol: z.string().min(1).max(10).optional(),
+  description: z.string().min(1).max(2000).optional(),
+  assetType: z
+    .enum(['VEHICLE', 'JEWELRY', 'COLLECTIBLE', 'ART', 'FASHION', 'ALCOHOL', 'OTHER'])
+    .optional(),
+  imageGallery: z.array(z.string().url()).optional(),
+  location: z.string().max(200).optional(),
+  email: z.string().email().optional(),
+});
+
+const SetListingLiveSchema = z.object({
   isLive: z.boolean(),
 });
 
-const listingParamsSchema = z.object({
-  listingId: z.string().cuid(),
-});
+export async function listingRoutes(fastify: FastifyInstance) {
+  const listingService = new ListingService(fastify.prisma);
 
-export async function listingsRoutes(fastify: FastifyInstance) {
-  // Public routes - no authentication required
-  // GET / - Get all live listings (was /listings, now / since path is rewritten)
-  fastify.get('/', async (request, reply) => {
-    try {
-      logger.info('Getting all live listings');
-      const listings = await listingService.getLiveListings();
-      return reply.status(200).send({
-        success: true,
-        data: listings,
-        count: listings.length,
-      });
-    } catch (error) {
-      logger.error('Error getting live listings:', error);
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to fetch live listings',
-      });
-    }
-  });
+  /**
+   * Get live listings (public endpoint)
+   */
+  fastify.get(
+    '/live',
+    {
+      schema: {
+        querystring: zodToJsonSchema(
+          z.object({
+            limit: z.string().transform(Number).optional(),
+            cursor: z.string().optional(),
+          }),
+        ),
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { limit, cursor } = request.query as {
+          limit?: number;
+          cursor?: string;
+        };
 
-  // GET /:listingId - Get specific listing
-  fastify.get('/:listingId', async (request, reply) => {
-    try {
-      const { listingId } = listingParamsSchema.parse(request.params);
-      logger.info(`Getting listing by ID: ${listingId}`);
-      const listing = await listingService.getListingById(listingId);
-      return reply.status(200).send({
-        success: true,
-        data: listing,
-      });
-    } catch (error) {
-      logger.error(
-        `Error getting listing ${(request.params as { listingId: string })?.listingId}:`,
-        error,
-      );
-      if (error instanceof Error && error.message.includes('not found')) {
-        return reply.status(404).send({
-          success: false,
-          error: 'Listing not found',
+        const result = await listingService.getLiveListings({ limit, cursor });
+
+        return reply.send({
+          success: true,
+          data: result.data,
+          pagination: {
+            hasMore: result.hasMore,
+            nextCursor: result.nextCursor,
+          },
         });
+      } catch (error) {
+        console.error('Error getting live listings:', error);
+        throw error;
       }
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to fetch listing',
-      });
-    }
-  });
+    },
+  );
 
-  // User routes - authentication required
-  // GET /my - Get user's listings
-  fastify.get('/my', async (request, reply) => {
-    try {
-      const userId = request.user?.id;
-      if (!userId) {
-        return reply.status(401).send({
-          success: false,
-          error: 'Authentication required',
+  /**
+   * Get specific listing by ID (public endpoint)
+   */
+  fastify.get(
+    '/:id',
+    {
+      schema: {
+        params: zodToJsonSchema(
+          z.object({
+            id: z.string(),
+          }),
+        ),
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+
+        const listing = await listingService.getListingById(id);
+
+        if (!listing) {
+          throw errors.notFound('Listing not found');
+        }
+
+        return reply.send({
+          success: true,
+          data: listing,
         });
+      } catch (error) {
+        console.error('Error getting listing:', error);
+        throw error;
       }
-      logger.info(`User ${userId} getting their listings`);
-      const listings = await listingService.getListingsByOwner(userId);
-      return reply.status(200).send({
-        success: true,
-        data: listings,
-        count: listings.length,
-      });
-    } catch (error) {
-      logger.error(`Error getting listings for user ${request.user?.id}:`, error);
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to fetch your listings',
-      });
-    }
-  });
+    },
+  );
 
-  // Admin routes - authentication + admin role required
-  // POST /:listingId/toggle - Toggle listing status
-  fastify.post('/:listingId/toggle', async (request, reply) => {
-    try {
-      const { listingId } = listingParamsSchema.parse(request.params);
-      const { isLive } = toggleListingStatusSchema.parse(request.body);
-      const userId = request.user?.id;
+  /**
+   * Get user's listings (authenticated)
+   */
+  fastify.get(
+    '/my-listings',
+    {
+      preHandler: [requireAuth],
+      schema: {
+        querystring: zodToJsonSchema(
+          z.object({
+            limit: z.string().transform(Number).optional(),
+            cursor: z.string().optional(),
+          }),
+        ),
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { limit, cursor } = request.query as {
+          limit?: number;
+          cursor?: string;
+        };
 
-      if (!userId) {
-        return reply.status(401).send({
-          success: false,
-          error: 'Authentication required',
+        const result = await listingService.getListingsByOwner(request.user!.id, { limit, cursor });
+
+        return reply.send({
+          success: true,
+          data: result.data,
+          pagination: {
+            hasMore: result.hasMore,
+            nextCursor: result.nextCursor,
+          },
         });
+      } catch (error) {
+        console.error('Error getting user listings:', error);
+        throw error;
       }
+    },
+  );
 
-      if (request.user?.role !== 'ADMIN') {
-        return reply.status(403).send({
-          success: false,
-          error: 'Admin access required',
+  // Admin routes
+
+  /**
+   * Create listing from approved submission (admin only)
+   */
+  fastify.post(
+    '/admin/create-from-submission',
+    {
+      preHandler: [requireAdmin],
+      schema: {
+        body: zodToJsonSchema(CreateListingFromSubmissionSchema),
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { submissionId } = request.body as { submissionId: string };
+
+        const listing = await listingService.createListingFromSubmission(
+          submissionId,
+          request.user!.id,
+        );
+
+        return reply.status(201).send({
+          success: true,
+          data: listing,
+          message: 'Listing created successfully from submission',
         });
+      } catch (error) {
+        console.error('Error creating listing from submission:', error);
+        throw error;
       }
+    },
+  );
 
-      logger.info(
-        `Admin ${userId} toggling listing ${listingId} to ${isLive ? 'live' : 'inactive'}`,
-      );
+  /**
+   * Get all listings (admin only)
+   */
+  fastify.get(
+    '/admin/all',
+    {
+      preHandler: [requireAdmin],
+      schema: {
+        querystring: zodToJsonSchema(
+          z.object({
+            limit: z.string().transform(Number).optional(),
+            cursor: z.string().optional(),
+          }),
+        ),
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { limit, cursor } = request.query as {
+          limit?: number;
+          cursor?: string;
+        };
 
-      const result = await listingService.updateListingStatus({
-        listingId,
-        isLive,
-        updatedBy: userId,
-      });
+        const result = await listingService.getAllListings({ limit, cursor });
 
-      return reply.status(200).send({
-        success: true,
-        data: result,
-      });
-    } catch (error) {
-      logger.error('Error toggling listing status:', error);
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to update listing status',
-      });
-    }
-  });
-
-  // GET /admin/all - Get all listings for admin
-  fastify.get('/admin/all', async (request, reply) => {
-    try {
-      const userId = request.user?.id;
-      const userRole = request.user?.role;
-
-      if (!userId || userRole !== 'ADMIN') {
-        return reply.status(403).send({
-          success: false,
-          error: 'Admin access required',
+        return reply.send({
+          success: true,
+          data: result.data,
+          pagination: {
+            hasMore: result.hasMore,
+            nextCursor: result.nextCursor,
+          },
         });
+      } catch (error) {
+        console.error('Error getting all listings:', error);
+        throw error;
       }
+    },
+  );
 
-      logger.info(`Admin ${userId} getting all listings`);
-      const listings = await listingService.getAllListings();
+  /**
+   * Get pending listings (admin only)
+   */
+  fastify.get(
+    '/admin/pending',
+    {
+      preHandler: [requireAdmin],
+      schema: {
+        querystring: zodToJsonSchema(
+          z.object({
+            limit: z.string().transform(Number).optional(),
+            cursor: z.string().optional(),
+          }),
+        ),
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { limit, cursor } = request.query as {
+          limit?: number;
+          cursor?: string;
+        };
 
-      return reply.status(200).send({
-        success: true,
-        data: listings,
-        count: listings.length,
-      });
-    } catch (error) {
-      logger.error('Error getting all listings for admin:', error);
-      return reply.status(500).send({
-        success: false,
-        error: 'Failed to fetch listings',
-      });
-    }
-  });
+        const result = await listingService.getPendingListings({ limit, cursor });
+
+        return reply.send({
+          success: true,
+          data: result.data,
+          pagination: {
+            hasMore: result.hasMore,
+            nextCursor: result.nextCursor,
+          },
+        });
+      } catch (error) {
+        console.error('Error getting pending listings:', error);
+        throw error;
+      }
+    },
+  );
+
+  /**
+   * Update listing (admin only)
+   */
+  fastify.put(
+    '/admin/:id',
+    {
+      preHandler: [requireAdmin],
+      schema: {
+        params: zodToJsonSchema(
+          z.object({
+            id: z.string(),
+          }),
+        ),
+        body: zodToJsonSchema(UpdateListingSchema),
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        const data = request.body as UpdateListingRequest;
+
+        const listing = await listingService.updateListing(id, data, request.user!.id);
+
+        return reply.send({
+          success: true,
+          data: listing,
+          message: 'Listing updated successfully',
+        });
+      } catch (error) {
+        console.error('Error updating listing:', error);
+        throw error;
+      }
+    },
+  );
+
+  /**
+   * Set listing live status (admin only)
+   */
+  fastify.put(
+    '/admin/:id/go-live',
+    {
+      preHandler: [requireAdmin],
+      schema: {
+        params: zodToJsonSchema(
+          z.object({
+            id: z.string(),
+          }),
+        ),
+        body: zodToJsonSchema(SetListingLiveSchema),
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        const { isLive } = request.body as { isLive: boolean };
+
+        const listing = await listingService.setListingLive(id, isLive, request.user!.id);
+
+        return reply.send({
+          success: true,
+          data: listing,
+          message: `Listing ${isLive ? 'made live' : 'taken offline'} successfully`,
+        });
+      } catch (error) {
+        console.error('Error setting listing live status:', error);
+        throw error;
+      }
+    },
+  );
+
+  /**
+   * Delete listing (admin only)
+   */
+  fastify.delete(
+    '/admin/:id',
+    {
+      preHandler: [requireAdmin],
+      schema: {
+        params: zodToJsonSchema(
+          z.object({
+            id: z.string(),
+          }),
+        ),
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+
+        await listingService.deleteListing(id);
+
+        return reply.send({
+          success: true,
+          message: 'Listing deleted successfully',
+        });
+      } catch (error) {
+        console.error('Error deleting listing:', error);
+        throw error;
+      }
+    },
+  );
 }

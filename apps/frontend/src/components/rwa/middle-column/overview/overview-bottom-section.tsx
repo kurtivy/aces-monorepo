@@ -18,9 +18,7 @@ export default function OverviewBottomSection() {
 
       {/* Buy Presale Button */}
       <button className="w-full bg-gradient-to-r from-[#D0B284] to-[#D7BF75] hover:from-[#D7BF75] hover:to-[#D0B284] text-black font-bold py-4 px-8 rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-[1.02]">
-        <span className="text-xl tracking-wider" style={{ fontFamily: "'Spray Letters', cursive" }}>
-          BUY PRESALE
-        </span>
+        <span className="text-xl tracking-wider font-spray-letters">BUY PRESALE</span>
       </button>
     </div>
   );

@@ -35,13 +35,13 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/api/listings.ts
 var listings_exports = {};
 __export(listings_exports, {
-  config: () => config,
   default: () => listings_default
 });
 module.exports = __toCommonJS(listings_exports);
 var import_fastify = __toESM(require("fastify"));
 var import_crypto = require("crypto");
 var import_helmet = __toESM(require("@fastify/helmet"));
+var import_multipart = __toESM(require("@fastify/multipart"));
 
 // src/lib/logger.ts
 var import_pino = require("pino");
@@ -58,7 +58,7 @@ var logger = (0, import_pino.pino)({
   formatters: {
     level: /* @__PURE__ */ __name((label) => ({ level: label }), "level")
   },
-  timestamp: import_pino.pino.stdTimeFunctions.isoTime,
+  timestamp: /* @__PURE__ */ __name(() => `,"time":"${(/* @__PURE__ */ new Date()).toISOString()}"`, "timestamp"),
   base: {
     service: "aces-backend",
     version: process.env.npm_package_version || "1.0.0"
@@ -130,54 +130,40 @@ var loggers = {
 
 // src/lib/database.ts
 var import_client = require("@prisma/client");
+var prisma = null;
 var createPrismaClient = /* @__PURE__ */ __name(() => {
   console.log("\u{1F527} Creating Prisma client...");
   console.log("Database URL exists:", !!process.env.DATABASE_URL);
-  const prisma2 = new import_client.PrismaClient({
-    log: [
-      {
-        emit: "event",
-        level: "query"
-      },
-      {
-        emit: "event",
-        level: "error"
-      },
-      {
-        emit: "event",
-        level: "info"
-      },
-      {
-        emit: "event",
-        level: "warn"
+  try {
+    const prisma2 = new import_client.PrismaClient({
+      log: false ? [
+        {
+          emit: "event",
+          level: "error"
+        },
+        {
+          emit: "event",
+          level: "warn"
+        }
+      ] : [],
+      errorFormat: "pretty",
+      // Optimize for Supabase connection pooling
+      datasources: {
+        db: {
+          url: process.env.DATABASE_URL
+        }
       }
-    ],
-    errorFormat: "pretty"
-  });
-  if (false) {
-    prisma2.$on("query", (e) => {
-      logger.debug(
+    });
+    prisma2.$on("error", (e) => {
+      logger.error(
         {
           type: "database",
-          query: e.query,
-          params: e.params,
-          duration: e.duration
+          error: e
         },
-        "Database query executed"
+        "Database error occurred"
       );
     });
-  }
-  prisma2.$on("error", (e) => {
-    logger.error(
-      {
-        type: "database",
-        error: e
-      },
-      "Database error occurred"
-    );
-  });
-  prisma2.$use(
-    async (params, next) => {
+    prisma2.$use(async (params, next) => {
       const start = Date.now();
       const result = await next(params);
       const duration = Date.now() - start;
@@ -193,12 +179,14 @@ var createPrismaClient = /* @__PURE__ */ __name(() => {
         );
       }
       return result;
-    }
-  );
-  console.log("\u2705 Prisma client created successfully");
-  return prisma2;
+    });
+    console.log("\u2705 Prisma client created successfully");
+    return prisma2;
+  } catch (error) {
+    console.error("\u274C Failed to create Prisma client:", error);
+    throw error;
+  }
 }, "createPrismaClient");
-var prisma = null;
 var getPrismaClient = /* @__PURE__ */ __name(() => {
   try {
     if (!prisma) {
@@ -261,91 +249,26 @@ async function handleError(error, reply) {
   await reply.status(internalError.output.statusCode).send(internalError.output.payload);
 }
 __name(handleError, "handleError");
+var errors = {
+  unauthorized: /* @__PURE__ */ __name((message) => (0, import_boom.unauthorized)(message || "Unauthorized"), "unauthorized"),
+  forbidden: /* @__PURE__ */ __name((message) => (0, import_boom.forbidden)(message || "Forbidden"), "forbidden"),
+  notFound: /* @__PURE__ */ __name((resource) => (0, import_boom.notFound)(resource ? `${resource} not found` : "Not found"), "notFound"),
+  validation: /* @__PURE__ */ __name((message, meta) => new AppError(message, "VALIDATION_ERROR", meta), "validation"),
+  conflict: /* @__PURE__ */ __name((message) => (0, import_boom.conflict)(message), "conflict"),
+  badRequest: /* @__PURE__ */ __name((message) => (0, import_boom.badRequest)(message), "badRequest"),
+  tooManyRequests: /* @__PURE__ */ __name((message) => new import_boom.Boom(message, { statusCode: 429 }), "tooManyRequests"),
+  internal: /* @__PURE__ */ __name((message, { cause } = {}) => {
+    const error = (0, import_boom.internal)(message);
+    if (cause) error.data = { cause };
+    return error;
+  }, "internal")
+};
 
 // src/plugins/auth.ts
 var import_fastify_plugin = __toESM(require("fastify-plugin"));
 var import_jsonwebtoken = __toESM(require("jsonwebtoken"));
-
-// src/lib/auth-middleware.ts
-var import_client2 = require("@prisma/client");
-function createAuthContext(user) {
-  try {
-    console.log("\u{1F50D} createAuthContext called with:", {
-      userExists: !!user,
-      userActive: user?.isActive,
-      sellerStatus: user?.sellerStatus,
-      enumsAvailable: {
-        SellerStatus: typeof import_client2.SellerStatus,
-        UserRole: typeof import_client2.UserRole
-      }
-    });
-    if (!user) {
-      return {
-        user: null,
-        isAuthenticated: false,
-        hasRole: /* @__PURE__ */ __name(() => false, "hasRole"),
-        isSellerVerified: false,
-        canAccessSellerDashboard: false
-      };
-    }
-    const isAuthenticated = !!user && user.isActive;
-    let isSellerVerified = false;
-    if (user.sellerStatus) {
-      isSellerVerified = user.sellerStatus === "APPROVED";
-      if (!isSellerVerified && typeof import_client2.SellerStatus !== "undefined") {
-        try {
-          isSellerVerified = user.sellerStatus === import_client2.SellerStatus.APPROVED;
-        } catch (enumError) {
-          console.warn("Prisma SellerStatus enum not available:", enumError);
-        }
-      }
-    }
-    const canAccessSellerDashboard = isSellerVerified && !!user?.verifiedAt;
-    console.log("\u2705 Auth context created:", {
-      isAuthenticated,
-      isSellerVerified,
-      canAccessSellerDashboard,
-      userRole: user.role
-    });
-    return {
-      user,
-      isAuthenticated,
-      hasRole: /* @__PURE__ */ __name((role) => {
-        if (!user) return false;
-        try {
-          const roles = Array.isArray(role) ? role : [role];
-          return roles.some((r) => {
-            return user.role === r;
-          });
-        } catch (error) {
-          console.error("Error checking user role:", error);
-          return false;
-        }
-      }, "hasRole"),
-      isSellerVerified,
-      canAccessSellerDashboard
-    };
-  } catch (error) {
-    console.error("\u274C Critical error in createAuthContext:", error);
-    console.error("Error details:", {
-      message: error instanceof Error ? error.message : "Unknown error",
-      stack: error instanceof Error ? error.stack : void 0,
-      userProvided: !!user
-    });
-    return {
-      user,
-      isAuthenticated: false,
-      hasRole: /* @__PURE__ */ __name(() => false, "hasRole"),
-      isSellerVerified: false,
-      canAccessSellerDashboard: false
-    };
-  }
-}
-__name(createAuthContext, "createAuthContext");
-
-// src/plugins/auth.ts
 var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
-  console.log("\u{1F527} Registering enhanced auth plugin...");
+  console.log("\u{1F527} Registering simplified auth plugin...");
   fastify.decorateRequest("user", null);
   fastify.decorateRequest("auth", null);
   fastify.addHook("preHandler", async (request, reply) => {
@@ -377,37 +300,23 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
       if (isPublicPath) {
         console.log("\u2705 Public path, skipping auth:", request.url);
         request.user = null;
-        try {
-          request.auth = createAuthContext(null);
-        } catch (authError) {
-          console.error("\u274C Error creating auth context for public path:", authError);
-          request.auth = {
-            user: null,
-            isAuthenticated: false,
-            hasRole: /* @__PURE__ */ __name(() => false, "hasRole"),
-            isSellerVerified: false,
-            canAccessSellerDashboard: false
-          };
-        }
+        request.auth = {
+          user: null,
+          isAuthenticated: false,
+          hasRole: /* @__PURE__ */ __name(() => false, "hasRole")
+        };
         return;
       }
       if (!authHeader || !authHeader.startsWith("Bearer ")) {
         console.log("\u274C No valid auth header for route:", request.url);
         request.user = null;
-        try {
-          request.auth = createAuthContext(null);
-        } catch (authError) {
-          console.error("\u274C Error creating auth context for unauthenticated user:", authError);
-          request.auth = {
-            user: null,
-            isAuthenticated: false,
-            hasRole: /* @__PURE__ */ __name(() => false, "hasRole"),
-            isSellerVerified: false,
-            canAccessSellerDashboard: false
-          };
-        }
+        request.auth = {
+          user: null,
+          isAuthenticated: false,
+          hasRole: /* @__PURE__ */ __name(() => false, "hasRole")
+        };
         const protectedRoutes = ["/my", "/create", "/me"];
-        if (protectedRoutes.includes(request.url)) {
+        if (protectedRoutes.some((route) => request.url.startsWith(route))) {
           return reply.status(401).send({
             success: false,
             error: "Authentication required",
@@ -421,7 +330,12 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         const prisma2 = getPrismaClient();
         const dbStart = Date.now();
         await prisma2.$queryRaw`SELECT 1 as test`;
-        console.log("\u2705 Database connection successful in", Date.now() - dbStart, "ms");
+        const slowQueryTime = Date.now() - dbStart;
+        if (slowQueryTime > 2e3) {
+          console.warn("\u26A0\uFE0F Slow database query detected:", slowQueryTime, "ms");
+        } else {
+          console.log("\u2705 Database connection successful in", slowQueryTime, "ms");
+        }
         console.log("\u{1F50D} Verifying Privy JWT token...");
         const token = authHeader.replace("Bearer ", "");
         try {
@@ -438,37 +352,85 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
           const privyDid = decoded.sub;
           console.log("\u{1F50D} Privy DID from token:", privyDid);
           let user = await prisma2.user.findUnique({
-            where: { privyDid }
+            where: { privyDid },
+            select: {
+              id: true,
+              privyDid: true,
+              walletAddress: true,
+              email: true,
+              role: true,
+              isActive: true,
+              createdAt: true,
+              updatedAt: true
+            }
           });
           if (!user) {
             console.log("\u{1F195} Creating new user for Privy DID:", privyDid);
             const walletAddress = decoded.wallet_address || null;
+            const email = decoded.email || null;
             user = await prisma2.user.create({
               data: {
                 privyDid,
                 walletAddress,
-                email: decoded.email || null,
-                displayName: decoded.email?.split("@")[0] || "User",
+                email,
                 role: "TRADER",
+                // Using string literal to match enum
+                isActive: true
+              },
+              select: {
+                id: true,
+                privyDid: true,
+                walletAddress: true,
+                email: true,
+                role: true,
                 isActive: true,
-                sellerStatus: "NOT_APPLIED"
+                createdAt: true,
+                updatedAt: true
               }
             });
             console.log("\u2705 User created successfully:", user.id);
           } else {
             console.log("\u2705 Existing user found:", user.id);
             const walletAddress = decoded.wallet_address || null;
-            if (walletAddress && user.walletAddress !== walletAddress) {
-              await prisma2.user.update({
+            const email = decoded.email || null;
+            const needsUpdate = walletAddress && user.walletAddress !== walletAddress || email && user.email !== email && !user.email;
+            if (needsUpdate) {
+              console.log("\u{1F504} Updating user info...");
+              const updateData = {};
+              if (walletAddress && user.walletAddress !== walletAddress) {
+                updateData.walletAddress = walletAddress;
+              }
+              if (email && !user.email) {
+                updateData.email = email;
+              }
+              updateData.updatedAt = /* @__PURE__ */ new Date();
+              user = await prisma2.user.update({
                 where: { id: user.id },
-                data: { walletAddress }
+                data: updateData,
+                select: {
+                  id: true,
+                  privyDid: true,
+                  walletAddress: true,
+                  email: true,
+                  role: true,
+                  isActive: true,
+                  createdAt: true,
+                  updatedAt: true
+                }
               });
-              user.walletAddress = walletAddress;
-              console.log("\u2705 Updated wallet address for user:", user.id);
+              console.log("\u2705 User updated successfully:", user.id);
             }
           }
           request.user = user;
-          request.auth = createAuthContext(user);
+          request.auth = {
+            user,
+            isAuthenticated: !!user && user.isActive,
+            hasRole: /* @__PURE__ */ __name((role) => {
+              if (!user) return false;
+              const roles = Array.isArray(role) ? role : [role];
+              return roles.includes(user.role);
+            }, "hasRole")
+          };
           console.log("\u2705 Auth context created successfully for user:", user.id);
         } catch (jwtError) {
           console.error("\u274C JWT verification failed:", jwtError);
@@ -476,9 +438,7 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
           request.auth = {
             user: null,
             isAuthenticated: false,
-            hasRole: /* @__PURE__ */ __name(() => false, "hasRole"),
-            isSellerVerified: false,
-            canAccessSellerDashboard: false
+            hasRole: /* @__PURE__ */ __name(() => false, "hasRole")
           };
         }
         console.log("\u2705 Auth hook completed in", Date.now() - startTime, "ms");
@@ -488,9 +448,7 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         request.auth = {
           user: null,
           isAuthenticated: false,
-          hasRole: /* @__PURE__ */ __name(() => false, "hasRole"),
-          isSellerVerified: false,
-          canAccessSellerDashboard: false
+          hasRole: /* @__PURE__ */ __name(() => false, "hasRole")
         };
         console.log("\u26A0\uFE0F Continuing without database connection");
       }
@@ -500,14 +458,12 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
       request.auth = {
         user: null,
         isAuthenticated: false,
-        hasRole: /* @__PURE__ */ __name(() => false, "hasRole"),
-        isSellerVerified: false,
-        canAccessSellerDashboard: false
+        hasRole: /* @__PURE__ */ __name(() => false, "hasRole")
       };
       console.log("\u{1F527} Continuing with fallback auth due to error");
     }
   });
-  console.log("\u2705 Enhanced auth plugin registered");
+  console.log("\u2705 Simplified auth plugin registered");
 }, "registerAuthPlugin");
 var registerAuth = (0, import_fastify_plugin.default)(registerAuthPlugin, {
   name: "auth-plugin"
@@ -515,6 +471,119 @@ var registerAuth = (0, import_fastify_plugin.default)(registerAuthPlugin, {
 
 // src/routes/v1/listings.ts
 var import_zod = require("zod");
+var import_zod_to_json_schema = require("zod-to-json-schema");
+
+// src/lib/prisma-enums.ts
+var SubmissionStatus = {
+  PENDING: "PENDING",
+  APPROVED: "APPROVED",
+  REJECTED: "REJECTED"
+};
+
+// src/lib/product-storage-utils.ts
+var import_storage = require("@google-cloud/storage");
+var hasGoogleCloudCredentials = !!(process.env.GOOGLE_CLOUD_PROJECT_ID && process.env.GOOGLE_CLOUD_CLIENT_EMAIL && process.env.GOOGLE_CLOUD_PRIVATE_KEY);
+var productStorage = null;
+var productBucket = null;
+var productBucketName = "";
+if (hasGoogleCloudCredentials) {
+  productStorage = new import_storage.Storage({
+    projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
+    credentials: {
+      client_email: process.env.GOOGLE_CLOUD_CLIENT_EMAIL,
+      private_key: process.env.GOOGLE_CLOUD_PRIVATE_KEY?.replace(/\\n/g, "\n")
+    }
+  });
+  productBucketName = process.env.GOOGLE_CLOUD_PRODUCT_BUCKET_NAME || "aces-product-images";
+  productBucket = productStorage.bucket(productBucketName);
+} else {
+  console.warn(
+    "Google Cloud Storage credentials not configured. Product image access will be disabled for testing."
+  );
+}
+var ProductStorageService = class {
+  static {
+    __name(this, "ProductStorageService");
+  }
+  /**
+   * Get the product bucket instance for direct operations
+   */
+  static getProductBucket() {
+    if (!hasGoogleCloudCredentials || !productBucket) {
+      throw new Error("Google Cloud Storage not configured");
+    }
+    return productBucket;
+  }
+  /**
+   * Get a public URL for a product image
+   */
+  static getProductUrl(fileName) {
+    if (!productBucketName) {
+      throw new Error("Google Cloud Storage not initialized. Check credentials.");
+    }
+    return `https://storage.googleapis.com/${productBucketName}/${fileName}`;
+  }
+  /**
+   * Generate a signed URL for product image access (temporary access)
+   */
+  static async getSignedProductUrl(fileName, expiresInMinutes = 60) {
+    if (!hasGoogleCloudCredentials || !productBucket) {
+      return `mock-signed://${fileName}?expires=${Date.now() + expiresInMinutes * 60 * 1e3}`;
+    }
+    const options = {
+      version: "v4",
+      action: "read",
+      expires: Date.now() + expiresInMinutes * 60 * 1e3
+    };
+    const [url] = await productBucket.file(fileName).getSignedUrl(options);
+    return url;
+  }
+  /**
+   * Extract filename from a product image URL
+   */
+  static extractFileName(imageUrl) {
+    const bucketPrefix = `https://storage.googleapis.com/${productBucketName}/`;
+    if (!imageUrl.startsWith(bucketPrefix)) {
+      throw new Error("Invalid product storage URL format");
+    }
+    return imageUrl.replace(bucketPrefix, "");
+  }
+  /**
+   * Convert product image URLs to signed URLs for secure access
+   */
+  static async convertToSignedUrls(imageUrls, expiresInMinutes = 60) {
+    const signedUrls = await Promise.all(
+      imageUrls.map(async (url) => {
+        try {
+          if (url.includes("storage.googleapis.com") && url.includes(productBucketName)) {
+            const fileName = this.extractFileName(url);
+            return await this.getSignedProductUrl(fileName, expiresInMinutes);
+          }
+          return url;
+        } catch (error) {
+          console.error(`Failed to generate signed URL for ${url}:`, error);
+          return url;
+        }
+      })
+    );
+    return signedUrls;
+  }
+  /**
+   * Check if file exists in product bucket
+   */
+  static async fileExists(fileName) {
+    if (!hasGoogleCloudCredentials || !productBucket) {
+      return false;
+    }
+    try {
+      const [exists] = await productBucket.file(fileName).exists();
+      return exists;
+    } catch (error) {
+      console.error(`Error checking if file exists: ${fileName}`, error);
+      return false;
+    }
+  }
+};
 
 // src/services/listing-service.ts
 var ListingService = class {
@@ -525,526 +594,659 @@ var ListingService = class {
     __name(this, "ListingService");
   }
   /**
-   * Automatically creates an RWAListing when an RWASubmission is approved
-   * This is called when a submission status changes to APPROVED
+   * Create a listing from an approved submission
    */
-  async createListingFromApprovedSubmission({
-    submissionId,
-    approvedBy
-  }) {
+  async createListingFromSubmission(submissionId, adminId) {
     try {
-      logger.info(`Creating RWAListing from approved submission: ${submissionId}`);
-      const submission = await this.prisma.rwaSubmission.findUnique({
+      const submission = await this.prisma.submission.findUnique({
         where: { id: submissionId },
         include: {
           owner: true
         }
       });
       if (!submission) {
-        throw new Error(`RWASubmission with id ${submissionId} not found`);
+        throw errors.notFound("Submission not found");
       }
-      if (submission.status !== "APPROVED") {
-        throw new Error(`Cannot create listing from submission with status: ${submission.status}`);
+      if (submission.status !== SubmissionStatus.APPROVED) {
+        throw errors.validation(
+          `Cannot create listing from submission with status: ${submission.status}. Submission must be approved first.`
+        );
       }
-      const existingListing = await this.prisma.rwaListing.findUnique({
-        where: { rwaSubmissionId: submissionId }
+      const existingListing = await this.prisma.listing.findUnique({
+        where: { submissionId }
       });
       if (existingListing) {
-        logger.warn(`RWAListing already exists for submission: ${submissionId}`);
-        return existingListing;
+        throw errors.validation("Listing already exists for this submission");
       }
-      const listing = await this.prisma.rwaListing.create({
+      const listing = await this.prisma.listing.create({
         data: {
           title: submission.title,
           symbol: submission.symbol,
           description: submission.description,
           assetType: submission.assetType,
           imageGallery: submission.imageGallery,
-          contractAddress: submission.contractAddress,
           location: submission.location,
           email: submission.email,
           isLive: false,
           // Always start as not live
-          rwaSubmissionId: submission.id,
+          submissionId: submission.id,
           ownerId: submission.ownerId,
-          updatedBy: approvedBy
+          approvedBy: adminId
         },
         include: {
           owner: true,
-          rwaSubmission: true,
-          approvedBy: true
+          submission: true,
+          approvedByUser: true
         }
       });
-      logger.info(
-        `Successfully created RWAListing: ${listing.id} from submission: ${submissionId}`
-      );
       return listing;
     } catch (error) {
-      logger.error(`Error creating listing from submission ${submissionId}:`, error);
+      console.error("Error creating listing from submission:", error);
       throw error;
     }
   }
   /**
-   * Updates the isLive status of an RWAListing
-   * This controls whether the listing appears on the platform
+   * Update listing details (admin only)
    */
-  async updateListingStatus({ listingId, isLive, updatedBy }) {
+  async updateListing(listingId, data, _adminId) {
     try {
-      logger.info(`Updating listing ${listingId} status to isLive: ${isLive}`);
-      const listing = await this.prisma.rwaListing.update({
+      const listing = await this.prisma.listing.update({
         where: { id: listingId },
         data: {
-          isLive,
-          updatedBy,
+          ...data,
           updatedAt: /* @__PURE__ */ new Date()
         },
         include: {
           owner: true,
-          rwaSubmission: true,
-          approvedBy: true
+          submission: true,
+          approvedByUser: true
         }
       });
-      logger.info(`Successfully updated listing ${listingId} status to isLive: ${isLive}`);
       return listing;
     } catch (error) {
-      logger.error(`Error updating listing ${listingId} status:`, error);
+      console.error("Error updating listing:", error);
       throw error;
     }
   }
   /**
-   * Get all live listings for the platform
+   * Set listing live status (admin only)
    */
-  async getLiveListings() {
+  async setListingLive(listingId, isLive, _adminId) {
     try {
-      const listings = await this.prisma.rwaListing.findMany({
-        where: { isLive: true },
-        include: {
-          owner: {
-            select: {
-              id: true,
-              displayName: true,
-              avatar: true,
-              walletAddress: true
-            }
-          },
-          bids: {
-            take: 5,
-            orderBy: { createdAt: "desc" },
-            include: {
-              bidder: {
-                select: {
-                  id: true,
-                  displayName: true,
-                  avatar: true
-                }
-              }
-            }
-          },
-          token: true
-        },
-        orderBy: { createdAt: "desc" }
-      });
-      return listings;
-    } catch (error) {
-      logger.error("Error fetching live listings:", error);
-      throw error;
-    }
-  }
-  /**
-   * Get all listings for admin view (including not live ones)
-   */
-  async getAllListings() {
-    try {
-      const listings = await this.prisma.rwaListing.findMany({
-        orderBy: { createdAt: "desc" }
-      });
-      const listingsWithRelations = await Promise.all(
-        listings.map(async (listing) => {
-          let owner = null;
-          try {
-            owner = await this.prisma.user.findUnique({
-              where: { id: listing.ownerId },
-              select: {
-                id: true,
-                displayName: true,
-                avatar: true,
-                walletAddress: true
-              }
-            });
-            if (owner) {
-              try {
-                const verification = await this.prisma.accountVerification.findUnique({
-                  where: { userId: listing.ownerId },
-                  select: {
-                    firstName: true,
-                    lastName: true,
-                    status: true
-                  }
-                });
-                owner.accountVerification = verification;
-              } catch (verificationError) {
-                logger.warn(
-                  `Failed to fetch verification for owner ${listing.ownerId}:`,
-                  verificationError
-                );
-              }
-            }
-          } catch (error) {
-            logger.warn(
-              `Failed to fetch owner ${listing.ownerId} for listing ${listing.id}:`,
-              error
-            );
-          }
-          let rwaSubmission = null;
-          try {
-            rwaSubmission = await this.prisma.rwaSubmission.findUnique({
-              where: { id: listing.rwaSubmissionId },
-              select: {
-                id: true,
-                status: true,
-                createdAt: true
-              }
-            });
-          } catch (error) {
-            logger.warn(
-              `Failed to fetch submission ${listing.rwaSubmissionId} for listing ${listing.id}:`,
-              error
-            );
-          }
-          let bids = [];
-          try {
-            bids = await this.prisma.bid.findMany({
-              where: { listingId: listing.id },
-              take: 5,
-              orderBy: { createdAt: "desc" },
-              include: {
-                bidder: {
-                  select: {
-                    id: true,
-                    displayName: true,
-                    avatar: true
-                  }
-                },
-                verification: {
-                  select: {
-                    id: true,
-                    status: true
-                  }
-                }
-              }
-            });
-          } catch (error) {
-            logger.warn(`Failed to fetch bids for listing ${listing.id}:`, error);
-          }
-          let token = null;
-          try {
-            token = await this.prisma.token.findUnique({
-              where: { rwaListingId: listing.id }
-            });
-          } catch (error) {
-            logger.warn(`Failed to fetch token for listing ${listing.id}:`, error);
-          }
-          return {
-            ...listing,
-            owner,
-            rwaSubmission,
-            bids,
-            token
-          };
-        })
-      );
-      return listingsWithRelations;
-    } catch (error) {
-      logger.error("Error fetching all listings:", error);
-      throw error;
-    }
-  }
-  /**
-   * Get a specific listing by ID
-   */
-  async getListingById(listingId) {
-    try {
-      const listing = await this.prisma.rwaListing.findUnique({
+      const listing = await this.prisma.listing.update({
         where: { id: listingId },
+        data: {
+          isLive,
+          updatedAt: /* @__PURE__ */ new Date()
+        },
         include: {
-          owner: {
-            select: {
-              id: true,
-              displayName: true,
-              avatar: true,
-              walletAddress: true
-            }
-          },
-          rwaSubmission: true,
-          bids: {
-            orderBy: { createdAt: "desc" },
-            include: {
-              bidder: {
-                select: {
-                  id: true,
-                  displayName: true,
-                  avatar: true
-                }
-              },
-              verification: {
-                select: {
-                  id: true,
-                  status: true
-                }
-              }
-            }
-          },
-          token: true,
-          approvedBy: {
-            select: {
-              id: true,
-              displayName: true
-            }
-          }
+          owner: true,
+          submission: true,
+          approvedByUser: true
         }
       });
-      if (!listing) {
-        throw new Error(`RWAListing with id ${listingId} not found`);
-      }
       return listing;
     } catch (error) {
-      logger.error(`Error fetching listing ${listingId}:`, error);
+      console.error("Error updating listing live status:", error);
       throw error;
     }
   }
   /**
-   * Get listings by owner
+   * Get all live listings (public endpoint)
    */
-  async getListingsByOwner(ownerId) {
+  async getLiveListings(options = {}) {
     try {
-      const listings = await this.prisma.rwaListing.findMany({
-        where: { ownerId },
+      const limit = Math.min(options.limit || 20, 100);
+      const where = { isLive: true };
+      if (options.cursor) {
+        where.id = { lt: options.cursor };
+      }
+      const listings = await this.prisma.listing.findMany({
+        where,
         include: {
-          rwaSubmission: {
+          owner: {
+            select: {
+              id: true,
+              privyDid: true,
+              walletAddress: true,
+              email: true
+            }
+          },
+          submission: {
             select: {
               id: true,
               status: true,
               createdAt: true
             }
           },
-          bids: {
-            take: 5,
-            orderBy: { createdAt: "desc" },
-            include: {
-              bidder: {
-                select: {
-                  id: true,
-                  displayName: true,
-                  avatar: true
-                }
-              },
-              verification: {
-                select: {
-                  id: true,
-                  status: true
-                }
-              }
+          approvedByUser: {
+            select: {
+              id: true,
+              privyDid: true
+            }
+          }
+        },
+        orderBy: { createdAt: "desc" },
+        take: limit + 1
+        // Take one extra to check for more
+      });
+      const hasMore = listings.length > limit;
+      const data = hasMore ? listings.slice(0, -1) : listings;
+      const nextCursor = hasMore ? data[data.length - 1]?.id : void 0;
+      const dataWithSignedUrls = await Promise.all(
+        data.map(async (listing) => ({
+          ...listing,
+          imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery)
+        }))
+      );
+      return { data: dataWithSignedUrls, nextCursor, hasMore };
+    } catch (error) {
+      console.error("Error fetching live listings:", error);
+      throw error;
+    }
+  }
+  /**
+   * Get all listings (admin only)
+   */
+  async getAllListings(options = {}) {
+    try {
+      const limit = Math.min(options.limit || 50, 100);
+      const where = {};
+      if (options.cursor) {
+        where.id = { lt: options.cursor };
+      }
+      const listings = await this.prisma.listing.findMany({
+        where,
+        include: {
+          owner: true,
+          submission: true,
+          approvedByUser: true
+        },
+        orderBy: { createdAt: "desc" },
+        take: limit + 1
+      });
+      const hasMore = listings.length > limit;
+      const data = hasMore ? listings.slice(0, -1) : listings;
+      const nextCursor = hasMore ? data[data.length - 1]?.id : void 0;
+      const dataWithSignedUrls = await Promise.all(
+        data.map(async (listing) => ({
+          ...listing,
+          imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery)
+        }))
+      );
+      return { data: dataWithSignedUrls, nextCursor, hasMore };
+    } catch (error) {
+      console.error("Error fetching all listings:", error);
+      throw error;
+    }
+  }
+  /**
+   * Get pending listings (not live yet)
+   */
+  async getPendingListings(options = {}) {
+    try {
+      const limit = Math.min(options.limit || 50, 100);
+      const where = { isLive: false };
+      if (options.cursor) {
+        where.id = { lt: options.cursor };
+      }
+      const listings = await this.prisma.listing.findMany({
+        where,
+        include: {
+          owner: true,
+          submission: true,
+          approvedByUser: true
+        },
+        orderBy: { createdAt: "desc" },
+        take: limit + 1
+      });
+      const hasMore = listings.length > limit;
+      const data = hasMore ? listings.slice(0, -1) : listings;
+      const nextCursor = hasMore ? data[data.length - 1]?.id : void 0;
+      const dataWithSignedUrls = await Promise.all(
+        data.map(async (listing) => ({
+          ...listing,
+          imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery)
+        }))
+      );
+      return { data: dataWithSignedUrls, nextCursor, hasMore };
+    } catch (error) {
+      console.error("Error fetching pending listings:", error);
+      throw error;
+    }
+  }
+  /**
+   * Get listing by ID
+   */
+  async getListingById(listingId) {
+    try {
+      const listing = await this.prisma.listing.findUnique({
+        where: { id: listingId },
+        include: {
+          owner: true,
+          submission: true,
+          approvedByUser: true
+        }
+      });
+      if (!listing) {
+        return null;
+      }
+      const listingWithSignedUrls = {
+        ...listing,
+        imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery)
+      };
+      return listingWithSignedUrls;
+    } catch (error) {
+      console.error("Error fetching listing by ID:", error);
+      throw error;
+    }
+  }
+  /**
+   * Get listings by owner
+   */
+  async getListingsByOwner(ownerId, options = {}) {
+    try {
+      const limit = Math.min(options.limit || 20, 100);
+      const where = { ownerId };
+      if (options.cursor) {
+        where.id = { lt: options.cursor };
+      }
+      const listings = await this.prisma.listing.findMany({
+        where,
+        include: {
+          owner: true,
+          submission: {
+            select: {
+              id: true,
+              status: true,
+              createdAt: true
             }
           },
-          token: true
+          approvedByUser: true
+        },
+        orderBy: { createdAt: "desc" },
+        take: limit + 1
+      });
+      const hasMore = listings.length > limit;
+      const data = hasMore ? listings.slice(0, -1) : listings;
+      const nextCursor = hasMore ? data[data.length - 1]?.id : void 0;
+      const dataWithSignedUrls = await Promise.all(
+        data.map(async (listing) => ({
+          ...listing,
+          imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery)
+        }))
+      );
+      return { data: dataWithSignedUrls, nextCursor, hasMore };
+    } catch (error) {
+      console.error("Error fetching listings by owner:", error);
+      throw error;
+    }
+  }
+  /**
+   * Delete listing (admin only)
+   */
+  async deleteListing(listingId) {
+    try {
+      await this.prisma.listing.delete({
+        where: { id: listingId }
+      });
+    } catch (error) {
+      console.error("Error deleting listing:", error);
+      throw error;
+    }
+  }
+  /**
+   * Get all listings for admin dashboard
+   */
+  async getAllListingsForAdmin() {
+    try {
+      const listings = await this.prisma.listing.findMany({
+        include: {
+          owner: {
+            include: {
+              accountVerification: true
+            }
+          },
+          submission: true,
+          approvedByUser: true
         },
         orderBy: { createdAt: "desc" }
       });
-      return listings;
+      const dataWithSignedUrls = await Promise.all(
+        listings.map(async (listing) => ({
+          ...listing,
+          imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery)
+        }))
+      );
+      return dataWithSignedUrls;
     } catch (error) {
-      logger.error(`Error fetching listings for owner ${ownerId}:`, error);
+      console.error("Error fetching all listings for admin:", error);
       throw error;
     }
   }
 };
 
+// src/lib/auth-middleware.ts
+async function requireAuth(request, _reply) {
+  if (!request.auth) {
+    console.error("request.auth is null/undefined");
+    throw errors.unauthorized("Authentication not initialized");
+  }
+  if (!request.auth.isAuthenticated || !request.user) {
+    console.error("User not authenticated");
+    throw errors.unauthorized("Authentication required");
+  }
+}
+__name(requireAuth, "requireAuth");
+async function requireAdmin(request, _reply) {
+  if (!request.auth?.isAuthenticated || !request.user) {
+    throw errors.unauthorized("Authentication required");
+  }
+  if (!request.auth.hasRole("ADMIN")) {
+    throw errors.forbidden("Admin access required");
+  }
+}
+__name(requireAdmin, "requireAdmin");
+
 // src/routes/v1/listings.ts
-var listingService = new ListingService(getPrismaClient());
-var toggleListingStatusSchema = import_zod.z.object({
+var CreateListingFromSubmissionSchema = import_zod.z.object({
+  submissionId: import_zod.z.string()
+});
+var UpdateListingSchema = import_zod.z.object({
+  title: import_zod.z.string().min(1).max(200).optional(),
+  symbol: import_zod.z.string().min(1).max(10).optional(),
+  description: import_zod.z.string().min(1).max(2e3).optional(),
+  assetType: import_zod.z.enum(["VEHICLE", "JEWELRY", "COLLECTIBLE", "ART", "FASHION", "ALCOHOL", "OTHER"]).optional(),
+  imageGallery: import_zod.z.array(import_zod.z.string().url()).optional(),
+  location: import_zod.z.string().max(200).optional(),
+  email: import_zod.z.string().email().optional()
+});
+var SetListingLiveSchema = import_zod.z.object({
   isLive: import_zod.z.boolean()
 });
-var listingParamsSchema = import_zod.z.object({
-  listingId: import_zod.z.string().cuid()
-});
-async function listingsRoutes(fastify) {
-  fastify.get("/", async (request, reply) => {
-    try {
-      logger.info("Getting all live listings");
-      const listings = await listingService.getLiveListings();
-      return reply.status(200).send({
-        success: true,
-        data: listings,
-        count: listings.length
-      });
-    } catch (error) {
-      logger.error("Error getting live listings:", error);
-      return reply.status(500).send({
-        success: false,
-        error: "Failed to fetch live listings"
-      });
-    }
-  });
-  fastify.get("/:listingId", async (request, reply) => {
-    try {
-      const { listingId } = listingParamsSchema.parse(request.params);
-      logger.info(`Getting listing by ID: ${listingId}`);
-      const listing = await listingService.getListingById(listingId);
-      return reply.status(200).send({
-        success: true,
-        data: listing
-      });
-    } catch (error) {
-      logger.error(
-        `Error getting listing ${request.params?.listingId}:`,
-        error
-      );
-      if (error instanceof Error && error.message.includes("not found")) {
-        return reply.status(404).send({
-          success: false,
-          error: "Listing not found"
-        });
+async function listingRoutes(fastify) {
+  const listingService = new ListingService(fastify.prisma);
+  fastify.get(
+    "/live",
+    {
+      schema: {
+        querystring: (0, import_zod_to_json_schema.zodToJsonSchema)(
+          import_zod.z.object({
+            limit: import_zod.z.string().transform(Number).optional(),
+            cursor: import_zod.z.string().optional()
+          })
+        )
       }
-      return reply.status(500).send({
-        success: false,
-        error: "Failed to fetch listing"
-      });
-    }
-  });
-  fastify.get("/my", async (request, reply) => {
-    try {
-      const userId = request.user?.id;
-      if (!userId) {
-        return reply.status(401).send({
-          success: false,
-          error: "Authentication required"
+    },
+    async (request, reply) => {
+      try {
+        const { limit, cursor } = request.query;
+        const result = await listingService.getLiveListings({ limit, cursor });
+        return reply.send({
+          success: true,
+          data: result.data,
+          pagination: {
+            hasMore: result.hasMore,
+            nextCursor: result.nextCursor
+          }
         });
+      } catch (error) {
+        console.error("Error getting live listings:", error);
+        throw error;
       }
-      logger.info(`User ${userId} getting their listings`);
-      const listings = await listingService.getListingsByOwner(userId);
-      return reply.status(200).send({
-        success: true,
-        data: listings,
-        count: listings.length
-      });
-    } catch (error) {
-      logger.error(`Error getting listings for user ${request.user?.id}:`, error);
-      return reply.status(500).send({
-        success: false,
-        error: "Failed to fetch your listings"
-      });
     }
-  });
-  fastify.post("/:listingId/toggle", async (request, reply) => {
-    try {
-      const { listingId } = listingParamsSchema.parse(request.params);
-      const { isLive } = toggleListingStatusSchema.parse(request.body);
-      const userId = request.user?.id;
-      if (!userId) {
-        return reply.status(401).send({
-          success: false,
-          error: "Authentication required"
-        });
+  );
+  fastify.get(
+    "/:id",
+    {
+      schema: {
+        params: (0, import_zod_to_json_schema.zodToJsonSchema)(
+          import_zod.z.object({
+            id: import_zod.z.string()
+          })
+        )
       }
-      if (request.user?.role !== "ADMIN") {
-        return reply.status(403).send({
-          success: false,
-          error: "Admin access required"
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params;
+        const listing = await listingService.getListingById(id);
+        if (!listing) {
+          throw errors.notFound("Listing not found");
+        }
+        return reply.send({
+          success: true,
+          data: listing
         });
+      } catch (error) {
+        console.error("Error getting listing:", error);
+        throw error;
       }
-      logger.info(
-        `Admin ${userId} toggling listing ${listingId} to ${isLive ? "live" : "inactive"}`
-      );
-      const result = await listingService.updateListingStatus({
-        listingId,
-        isLive,
-        updatedBy: userId
-      });
-      return reply.status(200).send({
-        success: true,
-        data: result
-      });
-    } catch (error) {
-      logger.error("Error toggling listing status:", error);
-      return reply.status(500).send({
-        success: false,
-        error: "Failed to update listing status"
-      });
     }
-  });
-  fastify.get("/admin/all", async (request, reply) => {
-    try {
-      const userId = request.user?.id;
-      const userRole = request.user?.role;
-      if (!userId || userRole !== "ADMIN") {
-        return reply.status(403).send({
-          success: false,
-          error: "Admin access required"
-        });
+  );
+  fastify.get(
+    "/my-listings",
+    {
+      preHandler: [requireAuth],
+      schema: {
+        querystring: (0, import_zod_to_json_schema.zodToJsonSchema)(
+          import_zod.z.object({
+            limit: import_zod.z.string().transform(Number).optional(),
+            cursor: import_zod.z.string().optional()
+          })
+        )
       }
-      logger.info(`Admin ${userId} getting all listings`);
-      const listings = await listingService.getAllListings();
-      return reply.status(200).send({
-        success: true,
-        data: listings,
-        count: listings.length
-      });
-    } catch (error) {
-      logger.error("Error getting all listings for admin:", error);
-      return reply.status(500).send({
-        success: false,
-        error: "Failed to fetch listings"
-      });
+    },
+    async (request, reply) => {
+      try {
+        const { limit, cursor } = request.query;
+        const result = await listingService.getListingsByOwner(request.user.id, { limit, cursor });
+        return reply.send({
+          success: true,
+          data: result.data,
+          pagination: {
+            hasMore: result.hasMore,
+            nextCursor: result.nextCursor
+          }
+        });
+      } catch (error) {
+        console.error("Error getting user listings:", error);
+        throw error;
+      }
     }
-  });
+  );
+  fastify.post(
+    "/admin/create-from-submission",
+    {
+      preHandler: [requireAdmin],
+      schema: {
+        body: (0, import_zod_to_json_schema.zodToJsonSchema)(CreateListingFromSubmissionSchema)
+      }
+    },
+    async (request, reply) => {
+      try {
+        const { submissionId } = request.body;
+        const listing = await listingService.createListingFromSubmission(
+          submissionId,
+          request.user.id
+        );
+        return reply.status(201).send({
+          success: true,
+          data: listing,
+          message: "Listing created successfully from submission"
+        });
+      } catch (error) {
+        console.error("Error creating listing from submission:", error);
+        throw error;
+      }
+    }
+  );
+  fastify.get(
+    "/admin/all",
+    {
+      preHandler: [requireAdmin],
+      schema: {
+        querystring: (0, import_zod_to_json_schema.zodToJsonSchema)(
+          import_zod.z.object({
+            limit: import_zod.z.string().transform(Number).optional(),
+            cursor: import_zod.z.string().optional()
+          })
+        )
+      }
+    },
+    async (request, reply) => {
+      try {
+        const { limit, cursor } = request.query;
+        const result = await listingService.getAllListings({ limit, cursor });
+        return reply.send({
+          success: true,
+          data: result.data,
+          pagination: {
+            hasMore: result.hasMore,
+            nextCursor: result.nextCursor
+          }
+        });
+      } catch (error) {
+        console.error("Error getting all listings:", error);
+        throw error;
+      }
+    }
+  );
+  fastify.get(
+    "/admin/pending",
+    {
+      preHandler: [requireAdmin],
+      schema: {
+        querystring: (0, import_zod_to_json_schema.zodToJsonSchema)(
+          import_zod.z.object({
+            limit: import_zod.z.string().transform(Number).optional(),
+            cursor: import_zod.z.string().optional()
+          })
+        )
+      }
+    },
+    async (request, reply) => {
+      try {
+        const { limit, cursor } = request.query;
+        const result = await listingService.getPendingListings({ limit, cursor });
+        return reply.send({
+          success: true,
+          data: result.data,
+          pagination: {
+            hasMore: result.hasMore,
+            nextCursor: result.nextCursor
+          }
+        });
+      } catch (error) {
+        console.error("Error getting pending listings:", error);
+        throw error;
+      }
+    }
+  );
+  fastify.put(
+    "/admin/:id",
+    {
+      preHandler: [requireAdmin],
+      schema: {
+        params: (0, import_zod_to_json_schema.zodToJsonSchema)(
+          import_zod.z.object({
+            id: import_zod.z.string()
+          })
+        ),
+        body: (0, import_zod_to_json_schema.zodToJsonSchema)(UpdateListingSchema)
+      }
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params;
+        const data = request.body;
+        const listing = await listingService.updateListing(id, data, request.user.id);
+        return reply.send({
+          success: true,
+          data: listing,
+          message: "Listing updated successfully"
+        });
+      } catch (error) {
+        console.error("Error updating listing:", error);
+        throw error;
+      }
+    }
+  );
+  fastify.put(
+    "/admin/:id/go-live",
+    {
+      preHandler: [requireAdmin],
+      schema: {
+        params: (0, import_zod_to_json_schema.zodToJsonSchema)(
+          import_zod.z.object({
+            id: import_zod.z.string()
+          })
+        ),
+        body: (0, import_zod_to_json_schema.zodToJsonSchema)(SetListingLiveSchema)
+      }
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params;
+        const { isLive } = request.body;
+        const listing = await listingService.setListingLive(id, isLive, request.user.id);
+        return reply.send({
+          success: true,
+          data: listing,
+          message: `Listing ${isLive ? "made live" : "taken offline"} successfully`
+        });
+      } catch (error) {
+        console.error("Error setting listing live status:", error);
+        throw error;
+      }
+    }
+  );
+  fastify.delete(
+    "/admin/:id",
+    {
+      preHandler: [requireAdmin],
+      schema: {
+        params: (0, import_zod_to_json_schema.zodToJsonSchema)(
+          import_zod.z.object({
+            id: import_zod.z.string()
+          })
+        )
+      }
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params;
+        await listingService.deleteListing(id);
+        return reply.send({
+          success: true,
+          message: "Listing deleted successfully"
+        });
+      } catch (error) {
+        console.error("Error deleting listing:", error);
+        throw error;
+      }
+    }
+  );
 }
-__name(listingsRoutes, "listingsRoutes");
+__name(listingRoutes, "listingRoutes");
 
 // src/api/listings.ts
 var buildListingsApp = /* @__PURE__ */ __name(async () => {
   const fastify = (0, import_fastify.default)({
-    logger: {
-      level: "info",
-      serializers: {
-        req: /* @__PURE__ */ __name((req) => ({
-          method: req.method,
-          url: req.url,
-          headers: req.headers
-        }), "req"),
-        res: /* @__PURE__ */ __name((res) => ({
-          statusCode: res.statusCode
-        }), "res")
-      }
-    },
+    logger: false,
     genReqId: /* @__PURE__ */ __name(() => (0, import_crypto.randomUUID)(), "genReqId")
   });
   const prisma2 = getPrismaClient();
   fastify.decorate("prisma", prisma2);
-  await fastify.register(import_helmet.default);
-  await fastify.register(registerAuth);
-  fastify.addHook("onRequest", async (request, reply) => {
-    const origin = request.headers.origin;
-    const allowedOrigins = [
-      "http://localhost:3000",
-      "http://localhost:3001",
-      "https://www.aces.fun",
-      "https://aces-monorepo-git-dev-dan-aces-fun.vercel.app",
-      "https://aces-monorepo-git-main-dan-aces-fun.vercel.app"
-    ];
-    if (origin && (allowedOrigins.includes(origin) || origin.endsWith(".vercel.app"))) {
-      reply.header("Access-Control-Allow-Origin", origin);
-      reply.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-      reply.header(
-        "Access-Control-Allow-Headers",
-        "Content-Type, Authorization, Accept, Origin, X-Requested-With"
-      );
-      reply.header("Access-Control-Allow-Credentials", "true");
-      reply.header("Vary", "Origin");
+  fastify.register(import_helmet.default);
+  fastify.register(import_multipart.default, {
+    limits: {
+      fileSize: 10 * 1024 * 1024
+      // 10MB for listing images
     }
   });
-  fastify.options("*", async (request, reply) => {
-    reply.code(204).send();
-  });
-  await fastify.register(listingsRoutes);
+  fastify.register(registerAuth);
+  fastify.register(listingRoutes);
   fastify.addHook("onRequest", async (request) => {
     request.startTime = Date.now();
     loggers.request(request.id, request.method, request.url, request.headers["user-agent"]);
@@ -1054,40 +1256,10 @@ var buildListingsApp = /* @__PURE__ */ __name(async () => {
     loggers.response(request.id, request.method, request.url, reply.statusCode, responseTime);
   });
   fastify.setErrorHandler((error, request, reply) => {
-    fastify.log.error(
-      {
-        err: error,
-        req: request,
-        url: request.url,
-        method: request.method,
-        headers: request.headers,
-        params: request.params,
-        query: request.query,
-        userId: request.user?.id,
-        requestId: request.id
-      },
-      "Listings request failed"
-    );
     try {
       handleError(error, reply);
     } catch (handlerError) {
-      fastify.log.error(
-        {
-          err: handlerError,
-          originalError: error,
-          url: request.url,
-          method: request.method,
-          requestId: request.id
-        },
-        "Error handler failed"
-      );
-      if (!reply.sent) {
-        reply.status(500).send({
-          success: false,
-          error: "Internal server error",
-          requestId: request.id
-        });
-      }
+      handleError(handlerError, reply);
     }
   });
   fastify.addHook("onClose", async () => {
@@ -1101,9 +1273,50 @@ var handler = /* @__PURE__ */ __name(async (req, res) => {
     appPromise = appPromise ?? buildListingsApp();
     const app = await appPromise;
     await app.ready();
+    const origin = req.headers.origin;
+    const isOriginAllowed = /* @__PURE__ */ __name((origin2) => {
+      if (!origin2) return false;
+      if (origin2.endsWith(".vercel.app")) return true;
+      return [
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "https://www.aces.fun",
+        "https://aces.fun",
+        "https://aces-monorepo-git-feat-ui-updates-dan-aces-fun.vercel.app",
+        "https://aces-monorepo-git-dev-dan-aces-fun.vercel.app"
+      ].includes(origin2);
+    }, "isOriginAllowed");
+    if (req.method === "OPTIONS") {
+      if (isOriginAllowed(origin) && origin) {
+        res.setHeader("Access-Control-Allow-Origin", origin);
+        res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        res.setHeader(
+          "Access-Control-Allow-Headers",
+          "Content-Type, Authorization, Accept, Origin, X-Requested-With"
+        );
+        res.setHeader("Access-Control-Allow-Credentials", "true");
+        res.setHeader("Access-Control-Max-Age", "86400");
+        res.setHeader("Vary", "Origin");
+      }
+      res.status(204).end();
+      return;
+    }
+    if (isOriginAllowed(origin) && origin) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+      res.setHeader(
+        "Access-Control-Allow-Headers",
+        "Content-Type, Authorization, Accept, Origin, X-Requested-With"
+      );
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+      res.setHeader("Vary", "Origin");
+    }
+    if (req.url?.startsWith("/api/v1/listings")) {
+      req.url = req.url.replace("/api/v1/listings", "") || "/";
+    }
     app.server.emit("request", req, res);
   } catch (error) {
-    console.error("\u274C Listings handler error:", error);
+    console.error("\u26A0 Listings handler error:", error);
     if (!res.headersSent) {
       res.status(500).json({
         success: false,
@@ -1115,8 +1328,3 @@ var handler = /* @__PURE__ */ __name(async (req, res) => {
   }
 }, "handler");
 var listings_default = handler;
-var config = { runtime: "nodejs" };
-// Annotate the CommonJS export names for ESM import in node:
-0 && (module.exports = {
-  config
-});

@@ -455,7 +455,10 @@ export default function RWAForum() {
     <div className="h-full bg-black relative flex flex-col">
       {/* Header */}
       <div className="px-4 py-3 border-b border-[#D0B284]/20 flex-shrink-0">
-        <h3 className="text-white text-lg font-semibold">
+        <h3
+          className="text-white text-lg font-semibold font-spray-letters"
+          style={{ fontFamily: "'Spray Letters', cursive" }}
+        >
           Discussion ({comments.length} comments)
         </h3>
       </div>

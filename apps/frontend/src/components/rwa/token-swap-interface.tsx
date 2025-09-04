@@ -60,9 +60,7 @@ export default function TokenSwapInterface({
               onClick={onMakeOffer}
               className="w-full h-12 bg-gradient-to-r from-[#D0B284] to-[#D7BF75] hover:from-[#D7BF75] hover:to-[#D0B284] text-black font-bold text-lg rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
             >
-              <span className="tracking-wider" style={{ fontFamily: "'Spray Letters', cursive" }}>
-                MAKE OFFER
-              </span>
+              <span className="tracking-wider font-spray-letters">MAKE OFFER</span>
             </Button>
           </div>
         )}

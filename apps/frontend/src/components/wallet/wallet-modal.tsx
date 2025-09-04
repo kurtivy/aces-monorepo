@@ -82,7 +82,18 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
     query: { enabled: !!walletAddress },
   });
 
-  const isLoadingBalances = ethLoading || usdcLoading || usdtLoading || priceLoading;
+  // ACES token balance
+  const {
+    data: acesBalance,
+    isLoading: acesLoading,
+    refetch: refetchAces,
+  } = useBalance({
+    address: walletAddress,
+    token: '0x55337650856299363c496065C836B9C6E9dE0367', // ACES token contract address
+    query: { enabled: !!walletAddress },
+  });
+
+  const isLoadingBalances = ethLoading || usdcLoading || usdtLoading || acesLoading || priceLoading;
 
   // Prepare token list for display with real prices
   const tokenBalances: TokenBalance[] = [
@@ -138,12 +149,30 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
       isPositive: true,
       decimals: 6,
     },
+    {
+      symbol: 'ACES',
+      name: 'Aces Token',
+      balance: acesBalance?.value ? formatUnits(acesBalance.value, 18) : '0',
+      formattedBalance: acesBalance?.value
+        ? `${parseFloat(formatUnits(acesBalance.value, 18)).toFixed(4)} ACES`
+        : '0.0000 ACES',
+      usdValue: acesBalance?.value
+        ? `$${(parseFloat(formatUnits(acesBalance.value, 18)) * 0.5).toFixed(2)}` // Mock price at $0.50
+        : '$0.00',
+      changePercent:
+        acesBalance?.value && parseFloat(formatUnits(acesBalance.value, 18)) > 0
+          ? `+$${(parseFloat(formatUnits(acesBalance.value, 18)) * 0.5 * 0.042).toFixed(2)}` // Mock 4.2% daily change
+          : '$0.00',
+      isPositive: true,
+      decimals: 18,
+    },
   ];
 
   const handleRefreshBalances = () => {
     refetchEth();
     refetchUsdc();
     refetchUsdt();
+    refetchAces();
   };
 
   // Handle sending ETH transaction
@@ -326,6 +355,18 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
                             <Image
                               src="/svg/tether.svg"
                               alt="Tether USD"
+                              width={40}
+                              height={40}
+                              className="w-full h-full"
+                            />
+                          </div>
+                        );
+                      case 'ACES':
+                        return (
+                          <div className="w-10 h-10 rounded-full overflow-hidden">
+                            <Image
+                              src="/aces-logo.png"
+                              alt="Aces Token"
                               width={40}
                               height={40}
                               className="w-full h-full"

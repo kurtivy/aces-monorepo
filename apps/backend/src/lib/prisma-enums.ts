@@ -1,21 +1,14 @@
-// src/lib/prisma-enums.ts
+// src/lib/prisma-enums.ts - Complete Enum Definitions
 // Safe enum definitions that work in serverless environments
 // These MUST match your Prisma schema exactly
 
 export const UserRole = {
-  TRADER: 'TRADER', // ← Changed from 'USER'
-  SELLER: 'SELLER',
+  TRADER: 'TRADER',
   ADMIN: 'ADMIN',
 } as const;
 
 export const SellerStatus = {
-  NOT_APPLIED: 'NOT_APPLIED', // ← Added this one
-  PENDING: 'PENDING',
-  APPROVED: 'APPROVED',
-  REJECTED: 'REJECTED',
-} as const;
-
-export const SubmissionStatus = {
+  NOT_APPLIED: 'NOT_APPLIED',
   PENDING: 'PENDING',
   APPROVED: 'APPROVED',
   REJECTED: 'REJECTED',
@@ -25,6 +18,23 @@ export const VerificationStatus = {
   PENDING: 'PENDING',
   APPROVED: 'APPROVED',
   REJECTED: 'REJECTED',
+} as const;
+
+export const DocumentType = {
+  DRIVERS_LICENSE: 'DRIVERS_LICENSE',
+  PASSPORT: 'PASSPORT',
+  ID_CARD: 'ID_CARD',
+} as const;
+
+export const SubmissionStatus = {
+  PENDING: 'PENDING',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+} as const;
+
+export const RejectionType = {
+  MANUAL: 'MANUAL',
+  TX_FAILURE: 'TX_FAILURE',
 } as const;
 
 export const AssetType = {
@@ -40,8 +50,10 @@ export const AssetType = {
 // Type exports for TypeScript
 export type UserRoleType = keyof typeof UserRole;
 export type SellerStatusType = keyof typeof SellerStatus;
-export type SubmissionStatusType = keyof typeof SubmissionStatus;
 export type VerificationStatusType = keyof typeof VerificationStatus;
+export type DocumentTypeType = keyof typeof DocumentType;
+export type SubmissionStatusType = keyof typeof SubmissionStatus;
+export type RejectionTypeType = keyof typeof RejectionType;
 export type AssetTypeType = keyof typeof AssetType;
 
 // Helper to safely get enum values

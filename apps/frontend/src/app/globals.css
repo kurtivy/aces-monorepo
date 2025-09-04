@@ -1,4 +1,28 @@
 @import 'tailwindcss';
+/* Font Face Declarations for Canvas Support */
+@font-face {
+  font-family: 'NeueWorld';
+  src: url('/fonts/NeueWorld-Regular.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Proxima Nova';
+  src: url('/fonts/ProximaNova-Regular.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Proxima Nova';
+  src: url('/fonts/ProximaNova-Bold.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
 
 @layer base {
   :root {
@@ -10,7 +34,7 @@
     --font-neue-world: 'Neue World', sans-serif;
     --font-proxima-nova: 'Proxima Nova', sans-serif;
     --font-braah-one: 'Braah One', sans-serif;
-    --font-spray-letters: 'Spray Letters', cursive;
+
     --font-jetbrains-mono: 'JetBrains Mono', monospace;
 
     /* Color variables */

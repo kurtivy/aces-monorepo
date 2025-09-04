@@ -1,0 +1,150 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
+import { FEATURED_TARGET_DATE, type TimeLeft, calculateTimeLeft } from '@/lib/constants/dates';
+
+export interface UpcomingAsset {
+  id: string;
+  title: string;
+  artist?: string;
+  description: string;
+  imageUrl: string;
+  symbol: string;
+  startDate: string; // ISO date string
+  category: string;
+}
+
+interface UpcomingCardProps {
+  asset?: UpcomingAsset;
+}
+
+export default function UpcomingCard({ asset }: UpcomingCardProps) {
+  // Use asset prop if provided, otherwise calculate time left from featured date
+  const targetDate = asset?.startDate || FEATURED_TARGET_DATE;
+
+  const [timeLeft, setTimeLeft] = useState<TimeLeft>({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+
+  useEffect(() => {
+    // Initial calculation
+    setTimeLeft(calculateTimeLeft(targetDate));
+
+    // Update every second
+    const timer = setInterval(() => {
+      setTimeLeft(calculateTimeLeft(targetDate));
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [targetDate]);
+
+  const formatTimeUnit = (value: number) => {
+    return value.toString().padStart(2, '0');
+  };
+
+  // Truncate description to specific character length
+  const truncateDescription = (text: string, maxLength: number = 132): string => {
+    if (text.length <= maxLength) return text;
+    // Find the last space before maxLength to avoid cutting words
+    const truncated = text.substring(0, maxLength);
+    const lastSpace = truncated.lastIndexOf(' ');
+    const cutPoint = lastSpace > 0 ? lastSpace : maxLength;
+    return text.substring(0, cutPoint).trim() + '...';
+  };
+
+  return (
+    <div className="relative pointer-events-auto">
+      {/* Card container matching the form/tokenize page styling */}
+      <div className="relative bg-[#151c16]/80 border border-dashed border-[#E6E3D3]/20 rounded-2xl overflow-hidden shadow-[0_10px_40px_rgba(215,191,117,0.06)] hover:border-[#C9AE6A]/40 transition-all duration-300">
+        {/* Bottom corner ticks only */}
+        <span className="pointer-events-none absolute left-3 bottom-3 h-3 w-0.5 bg-[#C9AE6A]" />
+        <span className="pointer-events-none absolute left-3 bottom-3 w-3 h-0.5 bg-[#C9AE6A]" />
+        <span className="pointer-events-none absolute right-3 bottom-3 h-3 w-0.5 bg-[#C9AE6A]" />
+        <span className="pointer-events-none absolute right-3 bottom-3 w-3 h-0.5 bg-[#C9AE6A]" />
+
+        {/* Asset Image - Full width, no padding */}
+        <div className="relative w-full h-48 mb-4 overflow-hidden">
+          {asset?.imageUrl ? (
+            <Image
+              src={asset.imageUrl}
+              alt={asset.title || 'Asset'}
+              fill
+              className="object-cover"
+              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+            />
+          ) : (
+            <div className="w-full h-full bg-[#0f1511] flex items-center justify-center">
+              <span className="text-[#C9AE6A] text-sm">No image available</span>
+            </div>
+          )}
+        </div>
+
+        {/* Content area with padding */}
+        <div className="px-6 pb-6">
+          {/* Asset Title and Symbol */}
+          <div className="mb-3">
+            <h3 className="text-xl font-bold text-[#D0B284] mb-1 line-clamp-1">
+              {asset?.title || 'Featured Asset'}
+            </h3>
+            <div className="flex items-center justify-between">
+              <span className="text-[#C9AE6A] font-mono text-sm font-medium">
+                ${asset?.symbol || '$TBD'}
+              </span>
+              {asset?.category && (
+                <span className="text-[#E6E3D3]/60 text-xs uppercase tracking-wide">JEWELRY</span>
+              )}
+            </div>
+          </div>
+
+          {/* Description - Fixed height for consistent card heights */}
+          <div className="h-20 overflow-hidden mb-4">
+            <p className="text-[#E6E3D3]/70 text-sm leading-relaxed">
+              {asset?.description
+                ? truncateDescription(asset.description)
+                : 'Details coming soon...'}
+            </p>
+          </div>
+
+          {/* Countdown Timer */}
+          <div className="bg-[#0f1511] border border-dashed border-[#E6E3D3]/15 rounded-xl p-4">
+            <p className="text-[#C9AE6A] text-xs uppercase tracking-wide mb-2 text-center">
+              Starts in
+            </p>
+            <div className="grid grid-cols-4 gap-2 text-center">
+              <div className="bg-[#151c16] rounded-lg p-2">
+                <div className="text-[#D0B284] font-bold text-lg font-mono">
+                  {formatTimeUnit(timeLeft.days)}
+                </div>
+                <div className="text-[#E6E3D3]/60 text-xs uppercase">D</div>
+              </div>
+              <div className="bg-[#151c16] rounded-lg p-2">
+                <div className="text-[#D0B284] font-bold text-lg font-mono">
+                  {formatTimeUnit(timeLeft.hours)}
+                </div>
+                <div className="text-[#E6E3D3]/60 text-xs uppercase">H</div>
+              </div>
+              <div className="bg-[#151c16] rounded-lg p-2">
+                <div className="text-[#D0B284] font-bold text-lg font-mono">
+                  {formatTimeUnit(timeLeft.minutes)}
+                </div>
+                <div className="text-[#E6E3D3]/60 text-xs uppercase">M</div>
+              </div>
+              <div className="bg-[#151c16] rounded-lg p-2">
+                <div className="text-[#D0B284] font-bold text-lg font-mono">
+                  {formatTimeUnit(timeLeft.seconds)}
+                </div>
+                <div className="text-[#E6E3D3]/60 text-xs uppercase">S</div>
+              </div>
+            </div>
+          </div>
+
+          {/* View Asset Button */}
+          <div className="mt-4">
+            <button className="w-full flex items-center justify-center text-[#D0B264] hover:text-[#D0B264] transition-colors duration-150 px-4 py-2 rounded-md bg-black/80 hover:bg-black/70 border border-[#D0B264]/30 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed font-mono text-sm font-medium uppercase tracking-wide">
+              View Asset
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

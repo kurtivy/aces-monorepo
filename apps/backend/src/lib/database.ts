@@ -1,64 +1,54 @@
 import { logger } from './logger';
-import { PrismaClient, Prisma } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
+
+// Ensure Prisma client is properly initialized for Vercel
+let prisma: PrismaClient | null = null;
 
 const createPrismaClient = () => {
   console.log('🔧 Creating Prisma client...');
   console.log('Database URL exists:', !!process.env.DATABASE_URL);
 
-  const prisma = new PrismaClient({
-    log: [
-      {
-        emit: 'event',
-        level: 'query',
+  // For Vercel, we need to ensure the client is properly generated
+  try {
+    const prisma = new PrismaClient({
+      log:
+        process.env.NODE_ENV === 'development'
+          ? [
+              {
+                emit: 'event',
+                level: 'error',
+              },
+              {
+                emit: 'event',
+                level: 'warn',
+              },
+            ]
+          : [],
+      errorFormat: 'pretty',
+      // Optimize for Supabase connection pooling
+      datasources: {
+        db: {
+          url: process.env.DATABASE_URL,
+        },
       },
-      {
-        emit: 'event',
-        level: 'error',
-      },
-      {
-        emit: 'event',
-        level: 'info',
-      },
-      {
-        emit: 'event',
-        level: 'warn',
-      },
-    ],
-    errorFormat: 'pretty',
-  });
+    });
 
-  // Log database queries in development
-  if (process.env.NODE_ENV === 'development') {
-    prisma.$on('query', (e: Prisma.QueryEvent) => {
-      logger.debug(
+    // Query logging disabled by default for performance
+    // Enable with LOG_QUERIES=true if needed for debugging
+
+    // Log database errors - simplified for compatibility
+    prisma.$on('error', (e: any) => {
+      logger.error(
         {
           type: 'database',
-          query: e.query,
-          params: e.params,
-          duration: e.duration,
+          error: e,
         },
-        'Database query executed',
+        'Database error occurred',
       );
     });
-  }
 
-  // Log database errors
-  prisma.$on('error', (e: Prisma.LogEvent) => {
-    logger.error(
-      {
-        type: 'database',
-        error: e,
-      },
-      'Database error occurred',
-    );
-  });
-
-  // Add performance monitoring middleware
-  prisma.$use(
-    async (
-      params: Prisma.MiddlewareParams,
-      next: (params: Prisma.MiddlewareParams) => Promise<unknown>,
-    ) => {
+    // Simplified middleware without problematic types
+    prisma.$use(async (params: any, next: any) => {
       const start = Date.now();
       const result = await next(params);
       const duration = Date.now() - start;
@@ -77,16 +67,17 @@ const createPrismaClient = () => {
       }
 
       return result;
-    },
-  );
+    });
 
-  console.log('✅ Prisma client created successfully');
-  return prisma;
+    console.log('✅ Prisma client created successfully');
+    return prisma;
+  } catch (error) {
+    console.error('❌ Failed to create Prisma client:', error);
+    throw error;
+  }
 };
 
 // Singleton instance with better error handling
-let prisma: PrismaClient | null = null;
-
 export const getPrismaClient = () => {
   try {
     if (!prisma) {

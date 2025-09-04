@@ -1,115 +1,53 @@
+/// <reference path="../types/fastify.d.ts" />
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { UserRole, SellerStatus, UserRoleType, SellerStatusType } from '../lib/prisma-enums';
+import { UserRole } from '@prisma/client';
 import { errors } from './errors';
-import { EnhancedUser, AuthContext } from '../types/fastify';
+
+// Simplified User type for Step 1
+export interface SimpleUser {
+  id: string;
+  privyDid: string;
+  walletAddress: string | null;
+  email: string | null;
+  role: UserRole;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Simplified Auth Context for Step 1
+export interface SimpleAuthContext {
+  user: SimpleUser | null;
+  isAuthenticated: boolean;
+  hasRole: (role: UserRole | UserRole[]) => boolean;
+}
 
 /**
- * Creates auth context for the request with safe enum handling
+ * Creates simplified auth context for Step 1
  */
-export function createAuthContext(user: EnhancedUser | null): AuthContext {
-  try {
-    console.log('🔍 createAuthContext called with:', {
-      userExists: !!user,
-      userActive: user?.isActive,
-      sellerStatus: user?.sellerStatus,
-      userRole: user?.role,
-      enumsAvailable: {
-        SellerStatus: Object.keys(SellerStatus),
-        UserRole: Object.keys(UserRole),
-      },
-      enumValues: {
-        SellerStatus: Object.values(SellerStatus),
-        UserRole: Object.values(UserRole),
-      },
-    });
+export function createAuthContext(user: SimpleUser | null): SimpleAuthContext {
+  console.log('Creating auth context for user:', user?.id || 'null');
 
-    // Handle null user case
-    if (!user) {
-      return {
-        user: null,
-        isAuthenticated: false,
-        hasRole: () => false,
-        isSellerVerified: false,
-        canAccessSellerDashboard: false,
-      };
-    }
-
-    // Ensure user has required fields with defaults
-    const isActive = user.isActive !== undefined ? user.isActive : true;
-    const isAuthenticated = !!user && isActive;
-
-    console.log('🔍 Authentication calculation:', {
-      userExists: !!user,
-      userIsActive: isActive,
-      isAuthenticated,
-      userRole: user.role,
-    });
-
-    // Safe seller status check with proper type handling
-    let isSellerVerified = false;
-    if (user.sellerStatus) {
-      // Use the Prisma enum directly
-      isSellerVerified = user.sellerStatus === SellerStatus.APPROVED;
-      console.log('🔍 Seller verification check:', {
-        userSellerStatus: user.sellerStatus,
-        approvedEnum: SellerStatus.APPROVED,
-        isVerified: isSellerVerified,
-      });
-    }
-
-    const canAccessSellerDashboard = isSellerVerified && !!user?.verifiedAt;
-
-    console.log('✅ Auth context created:', {
-      isAuthenticated,
-      isSellerVerified,
-      canAccessSellerDashboard,
-      userRole: user.role || 'TRADER',
-    });
-
+  // Handle null user case
+  if (!user) {
     return {
-      user,
-      isAuthenticated,
-      hasRole: (role: UserRoleType | UserRoleType[]) => {
-        if (!user || !user.role) return false;
-
-        try {
-          const roles = Array.isArray(role) ? role : [role];
-
-          // Use direct enum comparison
-          return roles.some((r) => user.role === r);
-        } catch (error) {
-          console.error('Error checking user role:', error);
-          return false;
-        }
-      },
-      isSellerVerified,
-      canAccessSellerDashboard,
-    };
-  } catch (error) {
-    console.error('❌ Critical error in createAuthContext:', error);
-    console.error('Error details:', {
-      message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined,
-      userProvided: !!user,
-      userData: user
-        ? {
-            id: user.id,
-            isActive: user.isActive,
-            role: user.role,
-            sellerStatus: user.sellerStatus,
-          }
-        : null,
-    });
-
-    // Return safe default on any error
-    return {
-      user,
+      user: null,
       isAuthenticated: false,
       hasRole: () => false,
-      isSellerVerified: false,
-      canAccessSellerDashboard: false,
     };
   }
+
+  const isAuthenticated = !!user && user.isActive;
+
+  return {
+    user,
+    isAuthenticated,
+    hasRole: (role: string | string[]) => {
+      if (!user) return false;
+      const roles = Array.isArray(role) ? role : [role];
+      return roles.includes(user.role);
+    },
+  };
 }
 
 /**
@@ -117,22 +55,35 @@ export function createAuthContext(user: EnhancedUser | null): AuthContext {
  */
 export async function requireAuth(request: FastifyRequest, _reply: FastifyReply) {
   if (!request.auth) {
-    console.error('❌ request.auth is null/undefined');
+    console.error('request.auth is null/undefined');
     throw errors.unauthorized('Authentication not initialized');
   }
 
-  if (!request.auth.isAuthenticated) {
-    console.error('❌ User not authenticated');
+  if (!request.auth.isAuthenticated || !request.user) {
+    console.error('User not authenticated');
     throw errors.unauthorized('Authentication required');
+  }
+}
+
+/**
+ * Middleware to require admin role - V1 simplified version
+ */
+export async function requireAdmin(request: FastifyRequest, _reply: FastifyReply) {
+  if (!request.auth?.isAuthenticated || !request.user) {
+    throw errors.unauthorized('Authentication required');
+  }
+
+  if (!request.auth.hasRole('ADMIN')) {
+    throw errors.forbidden('Admin access required');
   }
 }
 
 /**
  * Middleware to require specific role(s)
  */
-export function requireRole(role: UserRoleType | UserRoleType[]) {
+export function requireRole(role: UserRole | UserRole[]) {
   return async (request: FastifyRequest) => {
-    if (!request.auth.isAuthenticated) {
+    if (!request.auth?.isAuthenticated) {
       throw errors.unauthorized('Authentication required');
     }
 
@@ -144,42 +95,25 @@ export function requireRole(role: UserRoleType | UserRoleType[]) {
 }
 
 /**
- * Middleware to require seller verification
+ * Middleware to require user to be verified (for future steps when verification gates other features)
  */
-export async function requireSellerVerification(request: FastifyRequest, _reply: FastifyReply) {
-  if (!request.auth.isAuthenticated) {
+export async function requireVerified(request: FastifyRequest, reply: FastifyReply) {
+  if (!request.auth?.isAuthenticated || !request.user) {
     throw errors.unauthorized('Authentication required');
   }
 
-  if (!request.auth.isSellerVerified) {
-    throw errors.forbidden('Seller verification required');
-  }
-}
+  // Step 2: This will check verification status once we have the relationship set up
+  // For now, we'll implement a basic check that can be expanded later
 
-/**
- * Middleware to require seller dashboard access (verification + credentials)
- */
-export async function requireSellerDashboard(request: FastifyRequest, _reply: FastifyReply) {
-  if (!request.auth.isAuthenticated) {
-    throw errors.unauthorized('Authentication required');
-  }
-
-  if (!request.auth.canAccessSellerDashboard) {
-    throw errors.forbidden('Seller dashboard access required');
-  }
-}
-
-/**
- * Middleware to require admin role
- */
-export async function requireAdmin(request: FastifyRequest, _reply: FastifyReply) {
-  if (!request.auth.isAuthenticated) {
-    throw errors.unauthorized('Authentication required');
-  }
-
-  if (!request.auth.hasRole(UserRole.ADMIN)) {
-    throw errors.forbidden('Admin access required');
-  }
+  // TODO: Implement verification check when needed for Step 4 (Submissions)
+  // const verification = await prisma.accountVerification.findUnique({
+  //   where: { userId: request.user.id },
+  //   select: { status: true }
+  // });
+  //
+  // if (verification?.status !== 'APPROVED') {
+  //   throw errors.forbidden('Account verification required');
+  // }
 }
 
 /**
@@ -194,9 +128,9 @@ export async function optionalAuth(_request: FastifyRequest) {
  * Utility function to check if user can perform action on resource
  */
 export function canAccessResource(
-  user: EnhancedUser | null,
+  user: SimpleUser | null,
   resourceOwnerId: string,
-  requiredRole?: UserRoleType | UserRoleType[],
+  requiredRole?: UserRole | UserRole[],
 ): boolean {
   if (!user) return false;
 
@@ -205,13 +139,8 @@ export function canAccessResource(
 
   // Check if user has required role for cross-user access
   if (requiredRole) {
-    try {
-      const roles = Array.isArray(requiredRole) ? requiredRole : [requiredRole];
-      return roles.some((role) => user.role === role);
-    } catch (error) {
-      console.error('Error checking resource access role:', error);
-      return false;
-    }
+    const roles = Array.isArray(requiredRole) ? requiredRole : [requiredRole];
+    return roles.some((role) => user.role === role);
   }
 
   return false;

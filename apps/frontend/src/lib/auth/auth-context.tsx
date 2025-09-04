@@ -9,8 +9,6 @@ import {
   UserVerificationRequest,
 } from '@/lib/api/profile';
 import { VerificationApi, VerificationStatus } from '@/lib/api/verification';
-import { useChainSwitching, SUPPORTED_CHAINS } from '@/hooks/contracts/use-chain-switching';
-import ChainSwitchModal from '@/components/ui/custom/chain-switch-modal';
 
 // Utility to check if external wallets are actually connected
 const checkExternalWalletConnection = async (): Promise<boolean> => {
@@ -111,7 +109,10 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 // API Configuration - Fixed environment variable name
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 
+  (typeof window !== 'undefined' && window.location.hostname.includes('feat-ui-updates') 
+    ? 'https://aces-monorepo-backend-git-feat-ui-updates-dan-aces-fun.vercel.app'
+    : 'http://localhost:3002');
 
 // Internal state interface (simpler, just what we actually use)
 interface AuthState {
@@ -119,7 +120,6 @@ interface AuthState {
   isLoading: boolean;
   error: string | null;
   hasExternalWallet: boolean;
-  showChainSwitchModal: boolean;
 }
 
 // Custom hook to use auth context
@@ -140,15 +140,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     getAccessToken: privyGetAccessToken,
   } = usePrivy();
 
-  // Chain switching hooks
-  const { isOnBaseMainnet, isSwitching, switchToChain, currentChain } = useChainSwitching();
-
   const [state, setState] = useState<AuthState>({
     user: null,
     isLoading: false,
     error: null,
     hasExternalWallet: false,
-    showChainSwitchModal: false,
   });
 
   const isAdmin = state.user?.role === 'ADMIN';
@@ -165,31 +161,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }));
     }
   }, [privyAuthenticated, privyUser]);
-
-  // Check chain after successful authentication
-  useEffect(() => {
-    const checkChainAfterConnection = async () => {
-      // Only check if user is authenticated, has a wallet, and we haven't shown the modal yet
-      if (
-        privyAuthenticated &&
-        privyUser?.wallet?.address &&
-        !state.showChainSwitchModal &&
-        !isOnBaseMainnet &&
-        currentChain // Ensure we have chain info
-      ) {
-        // Show the chain switch modal
-        setState((prev) => ({ ...prev, showChainSwitchModal: true }));
-      }
-    };
-
-    checkChainAfterConnection();
-  }, [
-    privyAuthenticated,
-    privyUser?.wallet?.address,
-    isOnBaseMainnet,
-    currentChain,
-    state.showChainSwitchModal,
-  ]);
 
   const initializeAuth = async () => {
     try {
@@ -215,8 +186,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!result.success) {
         throw new Error(result.error || 'Failed to verify user');
       }
-
-      console.log(result.data.created ? '🆕 New user created' : '✅ Existing user verified');
 
       setState((prev) => ({
         ...prev,
@@ -289,32 +258,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Wallet Actions - Simplified to prioritize Privy
   const connectWallet = async () => {
-    // console.log('🚀 AuthContext connectWallet called');
-    // console.log('🚀 connectionAttempting:', connectionAttempting);
-    // console.log('🚀 privyAuthenticated:', privyAuthenticated);
-    // console.log('🚀 privyUser:', privyUser);
-
     // Prevent multiple simultaneous connection attempts
     if (connectionAttempting) {
-      // console.log('🚀 Connection already in progress, skipping...');
       return;
     }
 
     try {
-      // console.log('🚀 Starting connection attempt...');
       setConnectionAttempting(true);
       setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
       // If user is already authenticated with Privy, they're good to go
       if (privyAuthenticated && privyUser) {
-        // console.log('🚀 User already authenticated, no need to connect');
         return;
       }
 
       // For new users, start with Privy login (which will show embedded wallet option first)
-      // console.log('🚀 Calling privyLogin...');
       await privyLogin();
-      // console.log('🚀 privyLogin completed');
     } catch (error) {
       console.error('❌ Connect wallet error:', error);
 
@@ -333,7 +292,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         error: errorMessage,
       }));
     } finally {
-      // console.log('🚀 Connection attempt finished');
       setState((prev) => ({ ...prev, isLoading: false }));
       setConnectionAttempting(false);
     }
@@ -488,25 +446,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return state.user?.id === resourceOwnerId;
   };
 
-  // Chain switching handlers
-  const handleChainSwitch = async () => {
-    try {
-      await switchToChain(SUPPORTED_CHAINS.BASE_MAINNET);
-      setState((prev) => ({ ...prev, showChainSwitchModal: false }));
-    } catch (error) {
-      console.error('Failed to switch chain:', error);
-      // Keep modal open on error so user can try again
-    }
-  };
-
-  const handleChainSwitchSkip = () => {
-    setState((prev) => ({ ...prev, showChainSwitchModal: false }));
-  };
-
-  const handleChainSwitchClose = () => {
-    setState((prev) => ({ ...prev, showChainSwitchModal: false }));
-  };
-
   // Context Value
   const contextValue: AuthContextType = {
     // Authentication state
@@ -534,21 +473,5 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     requiresExternalWallet,
   };
 
-  return (
-    <AuthContext.Provider value={contextValue}>
-      {children}
-
-      {/* Chain Switch Modal */}
-      <ChainSwitchModal
-        isOpen={state.showChainSwitchModal}
-        onClose={handleChainSwitchClose}
-        onSwitch={handleChainSwitch}
-        onSkip={handleChainSwitchSkip}
-        currentChainName={currentChain?.name}
-        targetChainName={SUPPORTED_CHAINS.BASE_MAINNET.name}
-        isSwitching={isSwitching}
-        showSkipOption={true}
-      />
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;
 }

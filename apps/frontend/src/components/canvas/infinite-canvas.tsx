@@ -9,7 +9,7 @@ import { useViewState } from '../../hooks/canvas/use-view-state';
 import { useCanvasRenderer } from '../../hooks/canvas/use-canvas-renderer';
 import { useCanvasInteractions } from '../../hooks/canvas/use-canvas-interactions';
 import { useCoordinatedResize } from '../../hooks/use-coordinated-resize';
-// import ConnectWalletNav from '../ui/custom/connect-wallet-nav';
+import ConnectWalletNav from '../ui/custom/connect-wallet-nav';
 import NavMenu from '../ui/custom/nav-menu';
 import HomeButton from '../ui/custom/home-button';
 import ContactButton from '../ui/custom/contact-button';
@@ -73,6 +73,17 @@ const InfiniteCanvas = ({
     new Map<string, { image: ImageInfo; x: number; y: number; width: number; height: number }>(),
   );
 
+  // HOVER ENHANCEMENT: Shared refs for hover state between hooks
+  const hoveredProductImageRef = useRef<{
+    image: ImageInfo;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    isRepeated?: boolean;
+    tileId?: string;
+  } | null>(null);
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const { unitSize } = useCoordinatedResize({ canvasRef });
@@ -112,6 +123,8 @@ const InfiniteCanvas = ({
     // FEATURED SECTION: Add featured section props
     featuredImageId,
     onFeaturedImageClick: onFeaturedImageClick || setSelectedImage,
+    // HOVER ENHANCEMENT: Pass hover functionality to renderer via ref
+    hoveredProductImageRef,
   });
 
   const imagesRef = useRef(images);
@@ -354,8 +367,7 @@ const InfiniteCanvas = ({
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, ease: 'easeOut', delay: 0.3 }}
         >
-          {/* <ConnectWalletNav /> */}
-          <NavMenu />
+          <ConnectWalletNav />
         </motion.div>
       )}
 

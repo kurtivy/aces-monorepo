@@ -16,7 +16,7 @@ export const logger = pino({
   formatters: {
     level: (label) => ({ level: label }),
   },
-  timestamp: pino.stdTimeFunctions.isoTime,
+  timestamp: () => `,"time":"${new Date().toISOString()}"`,
   base: {
     service: 'aces-backend',
     version: process.env.npm_package_version || '1.0.0',

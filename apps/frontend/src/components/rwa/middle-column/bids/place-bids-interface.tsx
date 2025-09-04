@@ -111,7 +111,12 @@ export default function PlaceBidsInterface({
 
           {/* Make Offer Section */}
           <div className="space-y-4">
-            <h2 className="text-lg font-semibold text-white">MAKE OFFER</h2>
+            <h2
+              className="text-lg font-semibold text-white font-spray-letters"
+              style={{ fontFamily: "'Spray Letters', cursive" }}
+            >
+              MAKE OFFER
+            </h2>
 
             {/* Offer Amount Input - Single Row */}
             <div className="p-4 rounded-lg border border-[#D0B284]/20 bg-[#231F20]/60">

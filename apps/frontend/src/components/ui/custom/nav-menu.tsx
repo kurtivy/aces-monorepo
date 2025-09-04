@@ -13,7 +13,9 @@ import { useModal } from '@/lib/contexts/modal-context';
 // Main navigation items
 const mainNavItems = [
   // { href: '/launch', label: 'ICO Launch', external: false, action: 'navigate' },
-  { href: '/mint-token', label: 'Tokenize', external: false, action: 'navigate' },
+  { href: '/tokenize', label: 'Tokenize', external: false, action: 'navigate' },
+  { href: '/verify', label: 'Verify', external: false, action: 'navigate' },
+  { href: '/upcoming', label: 'Upcoming', external: false, action: 'navigate' },
   { href: '/about', label: 'About', external: false, action: 'modal' },
   { href: '/terms', label: 'Terms & PP', external: false, action: 'modal' },
 ];

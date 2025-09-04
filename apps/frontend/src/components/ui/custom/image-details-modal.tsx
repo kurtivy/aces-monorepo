@@ -399,7 +399,7 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                 {/* Add Countdown Timer */}
                 <div className="mb-2">
                   <CountdownTimer
-                    targetDate={new Date('2025-09-26T12:00:00-04:00')} // September 26, 2025 at 12PM Eastern Time (1 week after featured section)
+                    targetDate={new Date(safeMetadata.countdownDate || '2025-09-26T16:00:00.000Z')} // Use metadata countdown date or fallback
                   />
                 </div>
 

@@ -44,6 +44,7 @@ const buildUsersApp = async (): Promise<FastifyInstance> => {
       'https://aces.fun',
       'https://aces-monorepo-git-dev-dan-aces-fun.vercel.app',
       'https://aces-monorepo-git-main-dan-aces-fun.vercel.app',
+      'https://aces-monorepo-git-feat-ui-updates-dan-aces-fun.vercel.app',
     ];
 
     if (origin && (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app'))) {

@@ -40,7 +40,7 @@ export function ShareModal({ onClose }: ModalProps) {
       >
         <div className="flex items-center justify-between mb-6">
           <h3
-            className="text-[#D0B284] text-xl font-bold"
+            className="text-[#D0B284] text-xl font-bold font-spray-letters"
             style={{ fontFamily: "'Spray Letters', cursive" }}
           >
             SHARE WITH YOUR RICH BUDDY
@@ -79,7 +79,7 @@ export function DeliveryModal({ onClose }: ModalProps) {
       >
         <div className="flex items-center justify-between mb-6">
           <h3
-            className="text-[#D0B284] text-xl font-bold"
+            className="text-[#D0B284] text-xl font-bold font-spray-letters"
             style={{ fontFamily: "'Spray Letters', cursive" }}
           >
             DELIVERY INFORMATION
