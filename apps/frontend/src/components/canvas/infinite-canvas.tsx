@@ -9,7 +9,7 @@ import { useViewState } from '../../hooks/canvas/use-view-state';
 import { useCanvasRenderer } from '../../hooks/canvas/use-canvas-renderer';
 import { useCanvasInteractions } from '../../hooks/canvas/use-canvas-interactions';
 import { useCoordinatedResize } from '../../hooks/use-coordinated-resize';
-// import ConnectWalletNav from '../ui/custom/connect-wallet-nav';
+import ConnectWalletNav from '../ui/custom/connect-wallet-nav';
 import NavMenu from '../ui/custom/nav-menu';
 import HomeButton from '../ui/custom/home-button';
 import ContactButton from '../ui/custom/contact-button';
@@ -367,8 +367,7 @@ const InfiniteCanvas = ({
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, ease: 'easeOut', delay: 0.3 }}
         >
-          {/* <ConnectWalletNav /> */}
-          <NavMenu />
+          <ConnectWalletNav />
         </motion.div>
       )}
 
