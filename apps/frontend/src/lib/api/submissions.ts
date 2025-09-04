@@ -23,7 +23,10 @@ export interface UserSubmissionsResponse {
 }
 
 export class SubmissionsApi {
-  private static baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+  private static baseUrl = process.env.NEXT_PUBLIC_API_URL || 
+    (typeof window !== 'undefined' && window.location.hostname.includes('feat-ui-updates') 
+      ? 'https://aces-monorepo-backend-git-feat-ui-updates-dan-aces-fun.vercel.app'
+      : 'http://localhost:3002');
 
   static async getUploadUrl(
     fileType: string,

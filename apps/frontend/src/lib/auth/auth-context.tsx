@@ -109,7 +109,10 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 // API Configuration - Fixed environment variable name
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 
+  (typeof window !== 'undefined' && window.location.hostname.includes('feat-ui-updates') 
+    ? 'https://aces-monorepo-backend-git-feat-ui-updates-dan-aces-fun.vercel.app'
+    : 'http://localhost:3002');
 
 // Internal state interface (simpler, just what we actually use)
 interface AuthState {
