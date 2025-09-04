@@ -96,6 +96,24 @@ const handler = async (req: VercelRequest, res: VercelResponse) => {
       ].includes(origin);
     };
 
+    // Handle OPTIONS preflight first with proper CORS headers
+    if (req.method === 'OPTIONS') {
+      if (isOriginAllowed(origin) && origin) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+        res.setHeader(
+          'Access-Control-Allow-Headers',
+          'Content-Type, Authorization, Accept, Origin, X-Requested-With',
+        );
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        res.setHeader('Access-Control-Max-Age', '86400');
+        res.setHeader('Vary', 'Origin');
+      }
+      res.status(204).end();
+      return;
+    }
+
+    // Set CORS headers for actual requests
     if (isOriginAllowed(origin) && origin) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -104,12 +122,7 @@ const handler = async (req: VercelRequest, res: VercelResponse) => {
         'Content-Type, Authorization, Accept, Origin, X-Requested-With',
       );
       res.setHeader('Access-Control-Allow-Credentials', 'true');
-    }
-
-    // Handle OPTIONS preflight
-    if (req.method === 'OPTIONS') {
-      res.status(204).end();
-      return;
+      res.setHeader('Vary', 'Origin');
     }
 
     // Handle path rewriting: /api/v1/listings/something → /something
