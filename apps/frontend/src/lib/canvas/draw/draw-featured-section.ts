@@ -58,57 +58,57 @@ const drawHeaderRailsAndTitle = (
   ctx.roundRect(x, y, width, Math.max(radius * 2 + 120, 120), radius);
   ctx.clip();
 
-  const textSize = Math.min(width, radius * 10) * 0.33; // 3x larger than before (was 0.11)
-  const topY = y + 12;
-  const bottomY = topY + textSize + 4; // moved even closer to FEATURED text
-  const titleCenterY = (topY + bottomY) / 2 + 4; // center between rails with slight downward adjustment
+  // const textSize = Math.min(width, radius * 10) * 0.33; // 3x larger than before (was 0.11)
+  // const topY = y + 12;
+  // const bottomY = topY + textSize + 4; // moved even closer to FEATURED text
+  // const titleCenterY = (topY + bottomY) / 2 + 4; // center between rails with slight downward adjustment
 
   // Top rail - full width
-  ctx.strokeStyle = OVERLAY_COLORS.gold;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(x, topY);
-  ctx.lineTo(x + width, topY);
-  ctx.stroke();
+  // ctx.strokeStyle = OVERLAY_COLORS.gold;
+  // ctx.lineWidth = 1;
+  // ctx.beginPath();
+  // ctx.moveTo(x, topY);
+  // ctx.lineTo(x + width, topY);
+  // ctx.stroke();
 
   // Subtle emerald accent just under the top rail
-  ctx.strokeStyle = OVERLAY_COLORS.emerald;
-  ctx.globalAlpha = opacity * 0.6;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(x, topY + 3);
-  ctx.lineTo(x + width, topY + 3);
-  ctx.stroke();
-  ctx.globalAlpha = opacity;
+  // ctx.strokeStyle = OVERLAY_COLORS.emerald;
+  // ctx.globalAlpha = opacity * 0.6;
+  // ctx.lineWidth = 1;
+  // ctx.beginPath();
+  // ctx.moveTo(x, topY + 3);
+  // ctx.lineTo(x + width, topY + 3);
+  // ctx.stroke();
+  // ctx.globalAlpha = opacity;
 
   // Bottom rail - from left edge until it hits the dashed left rail
-  const bottomRailEndX = Math.max(x, rightRailLeftX);
-  ctx.strokeStyle = OVERLAY_COLORS.gold;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(x, bottomY);
-  ctx.lineTo(bottomRailEndX, bottomY);
-  ctx.stroke();
+  // const bottomRailEndX = Math.max(x, rightRailLeftX);
+  // ctx.strokeStyle = OVERLAY_COLORS.gold;
+  // ctx.lineWidth = 1;
+  // ctx.beginPath();
+  // ctx.moveTo(x, bottomY);
+  // ctx.lineTo(bottomRailEndX, bottomY);
+  // ctx.stroke();
 
   // Add green line below the bottom rail
-  ctx.strokeStyle = OVERLAY_COLORS.emerald;
-  ctx.globalAlpha = opacity * 0.8;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(x, bottomY + 3);
-  ctx.lineTo(bottomRailEndX, bottomY + 3);
-  ctx.stroke();
-  ctx.globalAlpha = opacity;
+  // ctx.strokeStyle = OVERLAY_COLORS.emerald;
+  // ctx.globalAlpha = opacity * 0.8;
+  // ctx.lineWidth = 1;
+  // ctx.beginPath();
+  // ctx.moveTo(x, bottomY + 3);
+  // ctx.lineTo(bottomRailEndX, bottomY + 3);
+  // ctx.stroke();
+  // ctx.globalAlpha = opacity;
 
-  const titleLeftX = x + 24; // positioned on left side with padding
+  // const titleLeftX = x + 24; // positioned on left side with padding
 
-  ctx.fillStyle = '#D7BF75';
-  ctx.font = `bold ${textSize}px ${getCanvasFontStack('NeueWorld')}`;
-  ctx.letterSpacing = '8px'; // Increase letter spacing
-  ctx.textAlign = 'left'; // changed from right to left
-  ctx.textBaseline = 'middle';
+  // ctx.fillStyle = '#D7BF75';
+  // ctx.font = `bold ${textSize}px ${getCanvasFontStack('NeueWorld')}`;
+  // ctx.letterSpacing = '8px'; // Increase letter spacing
+  // ctx.textAlign = 'left'; // changed from right to left
+  // ctx.textBaseline = 'middle';
 
-  ctx.fillText('FEATURED', titleLeftX, titleCenterY);
+  // ctx.fillText('FEATURED', titleLeftX, titleCenterY);
 
   ctx.restore();
 };
