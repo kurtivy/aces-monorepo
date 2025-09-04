@@ -13,11 +13,29 @@ let productBucket: ReturnType<Storage['bucket']> | null = null;
 let productBucketName = '';
 
 if (hasGoogleCloudCredentials) {
+  // Enhanced private key processing to handle various encoding issues
+  let privateKey = process.env.GOOGLE_CLOUD_PRIVATE_KEY || '';
+
+  // Remove extra quotes if present
+  if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
+    privateKey = privateKey.slice(1, -1);
+  }
+
+  // Replace escaped newlines with actual newlines
+  privateKey = privateKey.replace(/\\n/g, '\n');
+
+  console.log('[DEBUG] Private key processing:');
+  console.log(`[DEBUG] - Original length: ${process.env.GOOGLE_CLOUD_PRIVATE_KEY?.length}`);
+  console.log(`[DEBUG] - Processed length: ${privateKey.length}`);
+  console.log(`[DEBUG] - Starts with BEGIN: ${privateKey.startsWith('-----BEGIN')}`);
+  console.log(`[DEBUG] - Ends with END: ${privateKey.endsWith('-----')}`);
+  console.log(`[DEBUG] - Contains newlines: ${privateKey.includes('\n')}`);
+
   productStorage = new Storage({
     projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
     credentials: {
       client_email: process.env.GOOGLE_CLOUD_CLIENT_EMAIL,
-      private_key: process.env.GOOGLE_CLOUD_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+      private_key: privateKey,
     },
   });
 
@@ -95,36 +113,14 @@ export class ProductStorageService {
     imageUrls: string[],
     expiresInMinutes: number = 60,
   ): Promise<string[]> {
-    // Debug logging to identify the issue
-    console.log(
-      `[DEBUG] ProductStorageService.convertToSignedUrls called with ${imageUrls.length} URLs`,
-    );
-    console.log(`[DEBUG] productBucketName: "${productBucketName}"`);
-    console.log(`[DEBUG] hasGoogleCloudCredentials: ${hasGoogleCloudCredentials}`);
-
     const signedUrls = await Promise.all(
-      imageUrls.map(async (url, index) => {
+      imageUrls.map(async (url) => {
         try {
-          console.log(`[DEBUG] Processing URL ${index + 1}: ${url}`);
-
-          const isGCS = url.includes('storage.googleapis.com');
-          const includesBucket = url.includes(productBucketName);
-
-          console.log(
-            `[DEBUG] URL ${index + 1} - isGCS: ${isGCS}, includesBucket: ${includesBucket}`,
-          );
-
-          if (isGCS && includesBucket) {
-            console.log(`[DEBUG] Converting URL ${index + 1} to signed URL`);
+          if (url.includes('storage.googleapis.com') && url.includes(productBucketName)) {
             const fileName = this.extractFileName(url);
-            const signedUrl = await this.getSignedProductUrl(fileName, expiresInMinutes);
-            console.log(
-              `[DEBUG] URL ${index + 1} signed result: ${signedUrl.substring(0, 100)}...`,
-            );
-            return signedUrl;
+            return await this.getSignedProductUrl(fileName, expiresInMinutes);
           }
           // Return original URL if it's not a GCS product image URL
-          console.log(`[DEBUG] URL ${index + 1} returned unchanged`);
           return url;
         } catch (error) {
           console.error(`Failed to generate signed URL for ${url}:`, error);
@@ -133,8 +129,6 @@ export class ProductStorageService {
         }
       }),
     );
-
-    console.log(`[DEBUG] convertToSignedUrls completed, returning ${signedUrls.length} URLs`);
     return signedUrls;
   }
 
