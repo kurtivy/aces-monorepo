@@ -8,7 +8,6 @@ import { Edit, Eye, MoreHorizontal, X, Check, MessageCircle, Clock } from 'lucid
 import Image from 'next/image';
 import { useAuth } from '@/lib/auth/auth-context';
 import { ListingsApi, ListingData } from '@/lib/api/listings';
-import { ProductStorageService } from '@/lib/storage/product-storage';
 
 import {
   DropdownMenu,
@@ -133,32 +132,10 @@ export function ListingsTab() {
         const result = await ListingsApi.getMyListings(token);
 
         if (result.success) {
-          // Convert regular listing data to display format
+          // Convert regular listing data to display format and set listings
+          // Note: Backend already provides signed URLs, no additional conversion needed
           const formattedListings = result.data.map(formatListingForDisplay);
-
-          // Convert Google Cloud Storage URLs to signed URLs
-          const listingsWithSignedUrls = await Promise.all(
-            formattedListings.map(async (listing) => {
-              try {
-                // Convert the image URL to signed URL if it's a GCS URL
-                if (listing.image.includes('storage.googleapis.com')) {
-                  const fileName = ProductStorageService.extractFileName(listing.image);
-                  const signedUrl = await ProductStorageService.getSignedProductUrl(
-                    fileName,
-                    60, // 60 minutes expiry
-                  );
-                  return { ...listing, image: signedUrl };
-                }
-                return listing;
-              } catch (error) {
-                console.error('Failed to generate signed URL for listing:', listing.id, error);
-                // Keep original URL as fallback
-                return listing;
-              }
-            }),
-          );
-
-          setListings(listingsWithSignedUrls);
+          setListings(formattedListings);
         } else {
           setError(result.error || 'Failed to fetch listings');
         }
