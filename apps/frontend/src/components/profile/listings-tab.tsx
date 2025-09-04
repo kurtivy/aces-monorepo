@@ -8,6 +8,7 @@ import { Edit, Eye, MoreHorizontal, X, Check, MessageCircle, Clock } from 'lucid
 import Image from 'next/image';
 import { useAuth } from '@/lib/auth/auth-context';
 import { ListingsApi, ListingData } from '@/lib/api/listings';
+import { ProductStorageService } from '@/lib/storage/product-storage';
 
 import {
   DropdownMenu,
@@ -115,6 +116,7 @@ export function ListingsTab() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const fetchListings = async () => {
@@ -131,8 +133,32 @@ export function ListingsTab() {
         const result = await ListingsApi.getMyListings(token);
 
         if (result.success) {
+          // Convert regular listing data to display format
           const formattedListings = result.data.map(formatListingForDisplay);
-          setListings(formattedListings);
+
+          // Convert Google Cloud Storage URLs to signed URLs
+          const listingsWithSignedUrls = await Promise.all(
+            formattedListings.map(async (listing) => {
+              try {
+                // Convert the image URL to signed URL if it's a GCS URL
+                if (listing.image.includes('storage.googleapis.com')) {
+                  const fileName = ProductStorageService.extractFileName(listing.image);
+                  const signedUrl = await ProductStorageService.getSignedProductUrl(
+                    fileName,
+                    60, // 60 minutes expiry
+                  );
+                  return { ...listing, image: signedUrl };
+                }
+                return listing;
+              } catch (error) {
+                console.error('Failed to generate signed URL for listing:', listing.id, error);
+                // Keep original URL as fallback
+                return listing;
+              }
+            }),
+          );
+
+          setListings(listingsWithSignedUrls);
         } else {
           setError(result.error || 'Failed to fetch listings');
         }
@@ -148,6 +174,18 @@ export function ListingsTab() {
 
   const toggleOffers = (listingId: string) => {
     setExpandedRow(expandedRow === listingId ? null : listingId);
+  };
+
+  const handleImageError = (imageUrl: string) => {
+    setImageErrors((prev) => new Set(prev).add(imageUrl));
+  };
+
+  const getImageSrc = (imageUrl: string) => {
+    // If image has errored, use placeholder
+    if (imageErrors.has(imageUrl)) {
+      return '/placeholder.svg?height=40&width=40';
+    }
+    return imageUrl;
   };
 
   if (isLoading) {
@@ -284,12 +322,12 @@ export function ListingsTab() {
                       <td className="py-4 px-2">
                         <div className="flex items-center space-x-3">
                           <Image
-                            src={listing.image || '/placeholder.svg'}
+                            src={getImageSrc(listing.image)}
                             alt={listing.name}
                             className="w-10 h-10 rounded-full object-cover border border-[#D0B284]/20"
                             width={40}
                             height={40}
-                            unoptimized={true}
+                            onError={() => handleImageError(listing.image)}
                           />
                           <div className="flex-1 min-w-0">
                             <h3 className="text-[#E6E3D3] font-medium truncate text-sm">
