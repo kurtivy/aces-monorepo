@@ -1,4 +1,4 @@
-import { CreateSubmissionRequest } from '@aces/utils';
+import { CreateSubmissionRequest, ApiResponse } from '@aces/utils';
 
 export interface UserSubmission {
   id: string;
@@ -22,69 +22,151 @@ export interface UserSubmissionsResponse {
   hasMore: boolean;
 }
 
-export class SubmissionsApi {
-  private static baseUrl = process.env.NEXT_PUBLIC_API_URL || 
-    (typeof window !== 'undefined' && window.location.hostname.includes('feat-ui-updates') 
-      ? 'https://aces-monorepo-backend-git-feat-ui-updates-dan-aces-fun.vercel.app'
-      : 'http://localhost:3002');
+export interface UploadUrlResponse {
+  url: string;
+  fileName: string;
+  publicUrl: string;
+}
 
-  static async getUploadUrl(
-    fileType: string,
-    authToken?: string,
-  ): Promise<{
-    url: string;
-    fileName: string;
-    publicUrl: string;
-  }> {
-    const headers: HeadersInit = {
+export interface UploadImageResponse {
+  publicUrl: string;
+}
+
+export class SubmissionsApi {
+  private static getBaseUrl(): string {
+    // For development
+    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+      return 'http://localhost:3002';
+    }
+
+    // Use environment variable if available
+    if (process.env.NEXT_PUBLIC_API_URL) {
+      return process.env.NEXT_PUBLIC_API_URL;
+    }
+
+    // Dynamic URL based on current deployment
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname;
+
+      // Map frontend deployment to corresponding backend deployment
+      if (hostname.includes('feat-ui-updates')) {
+        return 'https://aces-monorepo-backend-git-feat-ui-updates-dan-aces-fun.vercel.app';
+      } else if (hostname.includes('git-dev') || hostname.includes('dev')) {
+        return 'https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app';
+      } else if (
+        hostname.includes('git-main') ||
+        hostname === 'aces.fun' ||
+        hostname === 'www.aces.fun'
+      ) {
+        return 'https://aces-monorepo-backend-git-main-dan-aces-fun.vercel.app';
+      }
+
+      // Default fallback for other Vercel deployments
+      if (hostname.includes('vercel.app')) {
+        return 'https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app';
+      }
+    }
+
+    // Production fallback
+    return 'https://aces-monorepo-backend-git-main-dan-aces-fun.vercel.app';
+  }
+
+  private static async makeRequest<T>(
+    endpoint: string,
+    options: {
+      method?: string;
+      body?: any;
+      headers?: Record<string, string>;
+      authToken?: string;
+    } = {},
+  ): Promise<T> {
+    const { method = 'GET', body, headers = {}, authToken } = options;
+    const baseUrl = this.getBaseUrl();
+
+    const requestHeaders: Record<string, string> = {
       'Content-Type': 'application/json',
+      ...headers,
     };
 
     if (authToken) {
-      headers.Authorization = `Bearer ${authToken}`;
+      requestHeaders['Authorization'] = `Bearer ${authToken}`;
     }
 
-    const response = await fetch(`${this.baseUrl}/api/v1/submissions/get-upload-url`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ fileType }),
-    });
+    const requestOptions: RequestInit = {
+      method,
+      headers: requestHeaders,
+      credentials: 'include', // Important for CORS
+    };
 
-    if (!response.ok) {
-      throw new Error('Failed to get upload URL');
+    if (body && method !== 'GET') {
+      if (body instanceof FormData) {
+        // Remove Content-Type header for FormData to let browser set it with boundary
+        delete requestHeaders['Content-Type'];
+        requestOptions.body = body;
+      } else {
+        requestOptions.body = JSON.stringify(body);
+      }
     }
 
-    const result = await response.json();
-    return result.data;
+    const url = `${baseUrl}${endpoint}`;
+    console.log(`Making ${method} request to:`, url);
+
+    try {
+      const response = await fetch(url, requestOptions);
+
+      if (!response.ok) {
+        let errorMessage = `Request failed with status ${response.status}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch {
+          // If we can't parse the error response, use the status text
+          errorMessage = response.statusText || errorMessage;
+        }
+        throw new Error(errorMessage);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error(`API request failed for ${endpoint}:`, error);
+      throw error;
+    }
+  }
+
+  static async getUploadUrl(fileType: string, authToken?: string): Promise<UploadUrlResponse> {
+    const result = await this.makeRequest<ApiResponse<UploadUrlResponse>>(
+      '/api/v1/submissions/get-upload-url',
+      {
+        method: 'POST',
+        body: { fileType },
+        authToken,
+      },
+    );
+
+    return result.data!;
   }
 
   static async uploadImage(file: File, authToken?: string): Promise<string> {
-    // Use direct upload through backend to bypass CORS
     const formData = new FormData();
     formData.append('file', file);
 
-    const headers: HeadersInit = {};
-    if (authToken) {
-      headers.Authorization = `Bearer ${authToken}`;
-    }
+    const result = await this.makeRequest<ApiResponse<UploadImageResponse>>(
+      '/api/v1/submissions/upload-image',
+      {
+        method: 'POST',
+        body: formData,
+        authToken,
+      },
+    );
 
-    const uploadResponse = await fetch(`${this.baseUrl}/api/v1/submissions/upload-image`, {
-      method: 'POST',
-      headers,
-      body: formData,
-    });
-
-    if (!uploadResponse.ok) {
-      const errorData = await uploadResponse.json();
-      throw new Error(errorData.error || 'Failed to upload image');
-    }
-
-    const result = await uploadResponse.json();
-    return result.data.publicUrl;
+    return result.data!.publicUrl;
   }
 
-  static async createTestSubmission(data: CreateSubmissionRequest, authToken?: string) {
-    // 🔍 ADD DEBUGGING HERE
+  static async createTestSubmission(
+    data: CreateSubmissionRequest,
+    authToken?: string,
+  ): Promise<ApiResponse<any>> {
+    // Debug logging
     console.log('Sending submission data:', JSON.stringify(data, null, 2));
     console.log('ImageGallery URLs:');
     data.imageGallery?.forEach((url, i) => {
@@ -94,21 +176,11 @@ export class SubmissionsApi {
       console.log(`Has spaces?`, url.includes(' '));
     });
 
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-    };
-
-    if (authToken) {
-      headers.Authorization = `Bearer ${authToken}`;
-    }
-
-    const response = await fetch(`${this.baseUrl}/api/v1/submissions/test`, {
+    return await this.makeRequest<ApiResponse<any>>('/api/v1/submissions/test', {
       method: 'POST',
-      headers,
-      body: JSON.stringify(data),
+      body: data,
+      authToken,
     });
-
-    return response.json();
   }
 
   static async getUserSubmissions(
@@ -121,19 +193,37 @@ export class SubmissionsApi {
 
     const query = params.toString() ? `?${params.toString()}` : '';
 
-    const response = await fetch(`${this.baseUrl}/api/v1/submissions/my${query}`, {
+    return await this.makeRequest<UserSubmissionsResponse>(`/api/v1/submissions/my${query}`, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token && { Authorization: `Bearer ${token}` }),
-      },
+      authToken: token,
     });
+  }
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'Failed to fetch submissions');
-    }
+  // Additional utility methods you might need
 
-    return response.json();
+  static async getSubmissionById(id: string, authToken?: string): Promise<ApiResponse<any>> {
+    return await this.makeRequest<ApiResponse<any>>(`/api/v1/submissions/${id}`, {
+      method: 'GET',
+      authToken,
+    });
+  }
+
+  static async updateSubmission(
+    id: string,
+    data: Partial<CreateSubmissionRequest>,
+    authToken?: string,
+  ): Promise<ApiResponse<any>> {
+    return await this.makeRequest<ApiResponse<any>>(`/api/v1/submissions/${id}`, {
+      method: 'PUT',
+      body: data,
+      authToken,
+    });
+  }
+
+  static async deleteSubmission(id: string, authToken?: string): Promise<ApiResponse<any>> {
+    return await this.makeRequest<ApiResponse<any>>(`/api/v1/submissions/${id}`, {
+      method: 'DELETE',
+      authToken,
+    });
   }
 }
