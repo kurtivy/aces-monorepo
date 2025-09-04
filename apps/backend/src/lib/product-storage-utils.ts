@@ -75,9 +75,15 @@ export class ProductStorageService {
    * Extract filename from a product image URL
    */
   static extractFileName(imageUrl: string): string {
+    // Handle case when credentials are not configured
+    if (!productBucketName) {
+      console.warn('Product bucket name not configured, cannot extract filename');
+      throw new Error('Product storage not configured');
+    }
+
     const bucketPrefix = `https://storage.googleapis.com/${productBucketName}/`;
     if (!imageUrl.startsWith(bucketPrefix)) {
-      throw new Error('Invalid product storage URL format');
+      throw new Error(`Invalid product storage URL format. Expected prefix: ${bucketPrefix}`);
     }
     return imageUrl.replace(bucketPrefix, '');
   }

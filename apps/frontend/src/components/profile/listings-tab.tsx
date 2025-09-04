@@ -16,6 +16,18 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
+// Placeholder image for when listing images fail to load or are missing
+const LISTING_PLACEHOLDER =
+  'data:image/svg+xml;base64,' +
+  btoa(`
+  <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect width="40" height="40" fill="#231F20" rx="4"/>
+    <rect x="8" y="8" width="24" height="24" fill="#184D37" fill-opacity="0.2" rx="2"/>
+    <path d="M16 22L20 18L24 22L28 18" stroke="#D0B284" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="18" cy="16" r="1.5" fill="#D0B284"/>
+  </svg>
+`);
+
 interface DisplayListingData {
   id: string;
   name: string;
@@ -78,7 +90,7 @@ const getListingStatus = (listing: ListingData): 'active' | 'pending' | 'sold' |
 // Helper function to format listing data for display
 const formatListingForDisplay = (listing: ListingData): DisplayListingData => {
   const status = getListingStatus(listing);
-  const imageUrl = listing.imageGallery?.[0] || '/placeholder.svg?height=40&width=40';
+  const imageUrl = listing.imageGallery?.[0] || LISTING_PLACEHOLDER;
 
   // Convert bids to offers format for display
   const offers =
@@ -160,7 +172,7 @@ export function ListingsTab() {
   const getImageSrc = (imageUrl: string) => {
     // If image has errored, use placeholder
     if (imageErrors.has(imageUrl)) {
-      return '/placeholder.svg?height=40&width=40';
+      return LISTING_PLACEHOLDER;
     }
     return imageUrl;
   };
