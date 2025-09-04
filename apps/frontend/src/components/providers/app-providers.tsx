@@ -8,6 +8,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from '../../lib/auth/auth-context';
 import { ModalProvider } from '../../lib/contexts/modal-context';
 import GlobalModals from '../ui/custom/global-modals';
+import NetworkBanner from '../ui/custom/network-banner';
 import { type ReactNode } from 'react';
 
 // Initialize QueryClient for wagmi with optimized settings
@@ -152,6 +153,7 @@ export default function AppProviders({ children }: { children: ReactNode }) {
         <WagmiProvider config={wagmiConfig}>
           <AuthProvider>
             <ModalProvider>
+              <NetworkBanner />
               {children}
               <GlobalModals />
             </ModalProvider>
