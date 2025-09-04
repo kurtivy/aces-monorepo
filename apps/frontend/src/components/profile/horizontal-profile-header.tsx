@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { EmailEditModal } from './email-edit-modal';
 import { AdminButton } from './admin-button';
+import { useAcesTokenBalance } from '@/hooks/use-aces-token-balance';
 
 interface HorizontalProfileHeaderProps {
   user: {
@@ -25,6 +26,14 @@ export function HorizontalProfileHeader({
 }: HorizontalProfileHeaderProps) {
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Get ACES token balance for portfolio value
+  const {
+    tokenData,
+    hasTokens,
+    isLoading: isTokenLoading,
+    isWalletConnected,
+  } = useAcesTokenBalance();
 
   // Determine account status: show "VERIFIED" if seller is approved, otherwise show role
   const getAccountStatus = () => {
@@ -70,7 +79,7 @@ export function HorizontalProfileHeader({
             <div className="flex items-center gap-2">
               {user.walletAddress ? (
                 <>
-                  <div className="text-[#E6E3D3] text-xl md:text-2xl truncate">
+                  <div className="text-[#E6E3D3] text-base md:text-lg truncate">
                     {shortenAddress(user.walletAddress)}
                   </div>
                   <Button
@@ -103,7 +112,7 @@ export function HorizontalProfileHeader({
               Email
             </div>
             <div className="flex items-center gap-2">
-              <div className="text-[#E6E3D3] text-xl md:text-2xl truncate">
+              <div className="text-[#E6E3D3] text-base md:text-lg truncate">
                 {!user.walletAddress ? '---' : user.email || 'Not set'}
               </div>
               {onUpdateEmail && (
@@ -124,7 +133,7 @@ export function HorizontalProfileHeader({
             <div className="text-[#D7BF75] text-sm uppercase tracking-wide font-medium mb-1">
               Account Status
             </div>
-            <div className="text-[#E6E3D3] text-xl md:text-2xl mb-3">
+            <div className="text-[#E6E3D3] text-base md:text-lg mb-3">
               {!user.walletAddress ? '---' : getAccountStatus()}
             </div>
             {/* Admin Button - only shows for admin users */}
@@ -137,13 +146,24 @@ export function HorizontalProfileHeader({
               Portfolio Value
             </div>
             <div className="text-right lg:text-left">
-              {!user.walletAddress ? (
-                <div className="text-[#E6E3D3] text-xl md:text-2xl">---</div>
-              ) : (
+              {!isWalletConnected ? (
+                <div className="text-[#E6E3D3] text-lg md:text-xl font-proxima-nova">---</div>
+              ) : isTokenLoading ? (
+                <div className="text-[#E6E3D3] text-lg md:text-xl font-proxima-nova">
+                  Loading...
+                </div>
+              ) : hasTokens ? (
                 <>
-                  <div className="text-[#E6E3D3] text-xl md:text-2xl">5.423 ETH</div>
-                  <div className="text-[#E6E3D3] text-lg md:text-xl opacity-90">23886.93 USD</div>
+                  <div className="text-[#E6E3D3] text-base md:text-lg font-proxima-nova">
+                    {parseFloat(tokenData.formattedBalance).toLocaleString(undefined, {
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 4,
+                    })}{' '}
+                    $ACES
+                  </div>
                 </>
+              ) : (
+                <div className="text-[#E6E3D3] text-lg md:text-xl font-proxima-nova">0 $ACES</div>
               )}
             </div>
           </div>
