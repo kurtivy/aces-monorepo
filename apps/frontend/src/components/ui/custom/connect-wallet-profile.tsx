@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Wallet,
-  // User,
+  User,
   CreditCard,
   AlertTriangle,
   Eye,
@@ -30,7 +30,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { CustomAvatar } from '@/components/ui/custom/custom-avatar';
 import Image from 'next/image';
-// import Link from 'next/link';
+import Link from 'next/link';
 
 interface ConnectWalletProfileProps {
   className?: string;
@@ -41,7 +41,7 @@ interface ConnectWalletProfileProps {
 
 export default function ConnectWalletProfile({
   className = '',
-  // onProfileClick,
+  onProfileClick,
   isDropdownOpen,
   onDropdownChange,
 }: ConnectWalletProfileProps) {
@@ -153,11 +153,11 @@ export default function ConnectWalletProfile({
     }
   };
 
-  // const handleProfileClick = () => {
-  //   if (onProfileClick) {
-  //     onProfileClick();
-  //   }
-  // };
+  const handleProfileClick = () => {
+    if (onProfileClick) {
+      onProfileClick();
+    }
+  };
 
   // Handle copying wallet address to clipboard
   const handleCopyAddress = async () => {
@@ -276,13 +276,13 @@ export default function ConnectWalletProfile({
             </DropdownMenuItem>
 
             {/* Profile */}
-            {/* <DropdownMenuItem
+            <DropdownMenuItem
               className="!text-[#D0B264] hover:!text-white hover:!bg-[#D0B264]/10 transition-colors duration-150 cursor-pointer group text-sm font-medium uppercase tracking-wide whitespace-nowrap rounded-md px-2 py-1.5"
               onClick={handleProfileClick}
             >
               <User className="w-4 h-4 mr-2 text-[#D0B264] group-hover:text-white transition-colors duration-150" />
               <Link href="/profile">{isLoading && !user ? 'Loading...' : 'Profile'}</Link>
-            </DropdownMenuItem> */}
+            </DropdownMenuItem>
 
             <DropdownMenuSeparator className="bg-[#D0B264]/20" />
 
