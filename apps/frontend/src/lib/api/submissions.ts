@@ -41,34 +41,58 @@ export class SubmissionsApi {
 
     // Use environment variable if available
     if (process.env.NEXT_PUBLIC_API_URL) {
+      console.log('Using NEXT_PUBLIC_API_URL:', process.env.NEXT_PUBLIC_API_URL);
       return process.env.NEXT_PUBLIC_API_URL;
     }
 
     // Dynamic URL based on current deployment
     if (typeof window !== 'undefined') {
       const hostname = window.location.hostname;
+      const href = window.location.href;
+      console.log('Full URL:', href);
+      console.log('Hostname:', hostname);
 
-      // Map frontend deployment to corresponding backend deployment
-      if (hostname.includes('feat-ui-updates')) {
-        return 'https://aces-monorepo-backend-git-feat-ui-updates-dan-aces-fun.vercel.app';
-      } else if (hostname.includes('git-dev') || hostname.includes('dev')) {
-        return 'https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app';
-      } else if (
+      // Check for feat-ui-updates more specifically
+      if (href.includes('feat-ui-updates') || hostname.includes('feat-ui-updates')) {
+        const backendUrl =
+          'https://aces-monorepo-backend-git-feat-ui-updates-dan-aces-fun.vercel.app';
+        console.log('MATCHED feat-ui-updates, using backend:', backendUrl);
+        return backendUrl;
+      }
+
+      // Check for dev/git-dev
+      if (href.includes('git-dev') || hostname.includes('git-dev') || hostname.includes('dev')) {
+        const backendUrl = 'https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app';
+        console.log('MATCHED dev, using backend:', backendUrl);
+        return backendUrl;
+      }
+
+      // Check for main/production
+      if (
+        href.includes('git-main') ||
         hostname.includes('git-main') ||
         hostname === 'aces.fun' ||
         hostname === 'www.aces.fun'
       ) {
-        return 'https://aces-monorepo-backend-git-main-dan-aces-fun.vercel.app';
+        const backendUrl = 'https://aces-monorepo-backend-git-main-dan-aces-fun.vercel.app';
+        console.log('MATCHED main/production, using backend:', backendUrl);
+        return backendUrl;
       }
 
       // Default fallback for other Vercel deployments
       if (hostname.includes('vercel.app')) {
-        return 'https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app';
+        const backendUrl = 'https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app';
+        console.log('FALLBACK for vercel.app, using backend:', backendUrl);
+        return backendUrl;
       }
+
+      console.log('No matches found for hostname:', hostname);
     }
 
     // Production fallback
-    return 'https://aces-monorepo-backend-git-main-dan-aces-fun.vercel.app';
+    const fallbackUrl = 'https://aces-monorepo-backend-git-main-dan-aces-fun.vercel.app';
+    console.log('Using final fallback backend URL:', fallbackUrl);
+    return fallbackUrl;
   }
 
   private static async makeRequest<T>(
