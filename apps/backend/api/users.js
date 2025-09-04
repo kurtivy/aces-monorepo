@@ -703,7 +703,8 @@ var buildUsersApp = /* @__PURE__ */ __name(async () => {
       "https://www.aces.fun",
       "https://aces.fun",
       "https://aces-monorepo-git-dev-dan-aces-fun.vercel.app",
-      "https://aces-monorepo-git-main-dan-aces-fun.vercel.app"
+      "https://aces-monorepo-git-main-dan-aces-fun.vercel.app",
+      "https://aces-monorepo-git-feat-ui-updates-dan-aces-fun.vercel.app"
     ];
     if (origin && (allowedOrigins.includes(origin) || origin.endsWith(".vercel.app"))) {
       reply.header("Access-Control-Allow-Origin", origin);

@@ -1214,9 +1214,26 @@ var handler = /* @__PURE__ */ __name(async (req, res) => {
         "http://localhost:3000",
         "http://localhost:3001",
         "https://www.aces.fun",
-        "https://aces.fun"
+        "https://aces.fun",
+        "https://aces-monorepo-git-feat-ui-updates-dan-aces-fun.vercel.app",
+        "https://aces-monorepo-git-dev-dan-aces-fun.vercel.app"
       ].includes(origin2);
     }, "isOriginAllowed");
+    if (req.method === "OPTIONS") {
+      if (isOriginAllowed(origin) && origin) {
+        res.setHeader("Access-Control-Allow-Origin", origin);
+        res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        res.setHeader(
+          "Access-Control-Allow-Headers",
+          "Content-Type, Authorization, Accept, Origin, X-Requested-With"
+        );
+        res.setHeader("Access-Control-Allow-Credentials", "true");
+        res.setHeader("Access-Control-Max-Age", "86400");
+        res.setHeader("Vary", "Origin");
+      }
+      res.status(204).end();
+      return;
+    }
     if (isOriginAllowed(origin) && origin) {
       res.setHeader("Access-Control-Allow-Origin", origin);
       res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
@@ -1225,10 +1242,7 @@ var handler = /* @__PURE__ */ __name(async (req, res) => {
         "Content-Type, Authorization, Accept, Origin, X-Requested-With"
       );
       res.setHeader("Access-Control-Allow-Credentials", "true");
-    }
-    if (req.method === "OPTIONS") {
-      res.status(204).end();
-      return;
+      res.setHeader("Vary", "Origin");
     }
     if (req.url?.startsWith("/api/v1/submissions")) {
       req.url = req.url.replace("/api/v1/submissions", "") || "/";
