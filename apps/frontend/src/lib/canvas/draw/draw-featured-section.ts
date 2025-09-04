@@ -2,199 +2,160 @@ import type { ImageInfo } from '../../../types/canvas';
 import { getDeviceCapabilities } from '../../utils/browser-utils';
 import { getCanvasFontStack } from '../../utils/font-loader';
 
-// Countdown timer utility function for canvas rendering
-interface TimeLeft {
-  days: number;
-  hours: number;
-  minutes: number;
-  seconds: number;
-}
+// Logo image cache for performance
+const logoImageCache = new Map<string, HTMLImageElement>();
 
-const calculateTimeLeft = (targetDate: Date): TimeLeft => {
-  const difference = +targetDate - +new Date();
-  let timeLeft: TimeLeft = {
-    days: 0,
-    hours: 0,
-    minutes: 0,
-    seconds: 0,
-  };
+const loadBuyCultureLogo = (): HTMLImageElement | null => {
+  const cacheKey = 'buy-culture-logo';
 
-  if (difference > 0) {
-    timeLeft = {
-      days: Math.floor(difference / (1000 * 60 * 60 * 24)),
-      hours: Math.floor((difference / (1000 * 60 * 60)) % 24),
-      minutes: Math.floor((difference / 1000 / 60) % 60),
-      seconds: Math.floor((difference / 1000) % 60),
-    };
+  if (logoImageCache.has(cacheKey)) {
+    return logoImageCache.get(cacheKey)!;
   }
 
-  return timeLeft;
+  const logoImg = new Image();
+  logoImg.crossOrigin = 'anonymous';
+  logoImg.src = '/png/buy-culture-trade-hype.png';
+
+  // Cache the image (even if not loaded yet)
+  logoImageCache.set(cacheKey, logoImg);
+
+  return logoImg;
 };
 
-// Overlay utilities for header rails, dashed columns, and right-side countdown
-const OVERLAY_COLORS = {
-  gold: '#D0B284',
-  emerald: '#184D37',
-  labelGray: '#DCDDCC',
-};
-
-const DASH_PATTERN = [12, 12];
-
-// Draw the top header rails and the FEATURED title centered between them
-const drawHeaderRailsAndTitle = (
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  rightRailLeftX: number,
-  radius: number,
-  opacity: number,
-) => {
-  ctx.save();
-  ctx.globalAlpha = opacity;
-
-  // Clip to the card rounded rect to ensure lines do not bleed
-  ctx.beginPath();
-  ctx.roundRect(x, y, width, Math.max(radius * 2 + 120, 120), radius);
-  ctx.clip();
-
-  // const textSize = Math.min(width, radius * 10) * 0.33; // 3x larger than before (was 0.11)
-  // const topY = y + 12;
-  // const bottomY = topY + textSize + 4; // moved even closer to FEATURED text
-  // const titleCenterY = (topY + bottomY) / 2 + 4; // center between rails with slight downward adjustment
-
-  // Top rail - full width
-  // ctx.strokeStyle = OVERLAY_COLORS.gold;
-  // ctx.lineWidth = 1;
-  // ctx.beginPath();
-  // ctx.moveTo(x, topY);
-  // ctx.lineTo(x + width, topY);
-  // ctx.stroke();
-
-  // Subtle emerald accent just under the top rail
-  // ctx.strokeStyle = OVERLAY_COLORS.emerald;
-  // ctx.globalAlpha = opacity * 0.6;
-  // ctx.lineWidth = 1;
-  // ctx.beginPath();
-  // ctx.moveTo(x, topY + 3);
-  // ctx.lineTo(x + width, topY + 3);
-  // ctx.stroke();
-  // ctx.globalAlpha = opacity;
-
-  // Bottom rail - from left edge until it hits the dashed left rail
-  // const bottomRailEndX = Math.max(x, rightRailLeftX);
-  // ctx.strokeStyle = OVERLAY_COLORS.gold;
-  // ctx.lineWidth = 1;
-  // ctx.beginPath();
-  // ctx.moveTo(x, bottomY);
-  // ctx.lineTo(bottomRailEndX, bottomY);
-  // ctx.stroke();
-
-  // Add green line below the bottom rail
-  // ctx.strokeStyle = OVERLAY_COLORS.emerald;
-  // ctx.globalAlpha = opacity * 0.8;
-  // ctx.lineWidth = 1;
-  // ctx.beginPath();
-  // ctx.moveTo(x, bottomY + 3);
-  // ctx.lineTo(bottomRailEndX, bottomY + 3);
-  // ctx.stroke();
-  // ctx.globalAlpha = opacity;
-
-  // const titleLeftX = x + 24; // positioned on left side with padding
-
-  // ctx.fillStyle = '#D7BF75';
-  // ctx.font = `bold ${textSize}px ${getCanvasFontStack('NeueWorld')}`;
-  // ctx.letterSpacing = '8px'; // Increase letter spacing
-  // ctx.textAlign = 'left'; // changed from right to left
-  // ctx.textBaseline = 'middle';
-
-  // ctx.fillText('FEATURED', titleLeftX, titleCenterY);
-
-  ctx.restore();
-};
-
-// Draw dashed vertical rails and the stacked right-side countdown
-const drawRightRailAndCountdown = (
+const drawBuyCultureLogo = (
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
   width: number,
   height: number,
-  radius: number,
   opacity: number,
 ) => {
-  const targetDate = new Date('2025-09-19T12:00:00-04:00');
-  const timeLeft = calculateTimeLeft(targetDate);
-
-  const columnWidth = Math.max(80, Math.floor(width * 0.22));
-  const leftRailX = x + width - columnWidth + 20; // moved closer to right rail
-  const rightRailX = x + width - 12; // positioned at the outside edge of numbers
-
   ctx.save();
+  ctx.globalAlpha = opacity;
 
-  // Clip to the card
-  ctx.beginPath();
-  ctx.roundRect(x, y, width, height, radius);
-  ctx.clip();
+  const logoImg = loadBuyCultureLogo();
 
-  // Draw dashed rails
-  ctx.strokeStyle = OVERLAY_COLORS.gold;
-  ctx.lineWidth = 1;
-  ctx.setLineDash(DASH_PATTERN);
-  ctx.globalAlpha = opacity * 0.9;
+  if (logoImg && logoImg.complete && logoImg.naturalWidth > 0) {
+    // Position in bottom right where the button was - smaller size for bottom corner
+    const logoWidth = Math.min(width * 0.35, 220); // Match the button width dimensions
+    const logoHeight = (logoImg.naturalHeight / logoImg.naturalWidth) * logoWidth;
+    const logoX = x + width - logoWidth - 10; // 10px padding from right edge
+    const logoY = y + height - logoHeight - 10; // 10px padding from bottom edge
 
-  ctx.beginPath();
-  ctx.moveTo(leftRailX, y);
-  ctx.lineTo(leftRailX, y + height);
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.moveTo(rightRailX, y);
-  ctx.lineTo(rightRailX, y + height);
-  ctx.stroke();
-
-  ctx.setLineDash([]);
-
-  // Align countdown to the right side of the right dashed line
-  const colRightX = rightRailX - 8; // balanced position from right dashed line
-
-  const numberFontSize = Math.min(Math.floor(columnWidth * 0.45), Math.floor(height * 0.13));
-  const labelFontSize = Math.max(14, Math.floor(numberFontSize * 0.38));
-  const blockGap = Math.floor(numberFontSize * 0.35);
-
-  const blocks = [
-    { value: timeLeft.days, label: 'DAYS' },
-    { value: timeLeft.hours, label: 'HOUR' },
-    { value: timeLeft.minutes, label: 'MIN' },
-    { value: timeLeft.seconds, label: 'SECS' },
-  ];
-
-  const blockHeights = numberFontSize + labelFontSize + blockGap;
-  const totalHeight = blocks.length * blockHeights - blockGap;
-  let currentY = y + height - 20 - totalHeight; // start from bottom with padding
-
-  ctx.textBaseline = 'top';
-
-  for (const { value, label } of blocks) {
-    ctx.fillStyle = '#D7BF75';
-    ctx.globalAlpha = opacity;
-    ctx.font = `bold ${numberFontSize}px ${getCanvasFontStack('NeueWorld')}`;
-    ctx.textAlign = 'right';
-    ctx.fillText(value.toString().padStart(2, '0'), colRightX, currentY);
-
-    const labelRightX = colRightX;
-
-    ctx.fillStyle = OVERLAY_COLORS.labelGray;
-    ctx.font = `${labelFontSize}px ${getCanvasFontStack('Proxima Nova')}`;
-    ctx.textAlign = 'right';
-    ctx.fillText(label, labelRightX, currentY + numberFontSize + 6);
-
-    currentY += blockHeights;
+    ctx.drawImage(logoImg, logoX, logoY, logoWidth, logoHeight);
   }
 
   ctx.restore();
+};
 
-  return { leftRailX };
+const drawArtGalleryCard = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  opacity: number,
+) => {
+  ctx.save();
+  ctx.globalAlpha = opacity;
+
+  // Card dimensions and positioning (bottom left) - wider card
+  const cardWidth = Math.min(width * 0.5, 230); // Wider card (increased from 35% to 45%)
+  const cardHeight = Math.min(height * 0.25, 100);
+  const cardX = x + 10; // 20px padding from left
+  const cardY = y + height - cardHeight - 10; // 20px padding from bottom
+
+  // Draw white card background
+  ctx.fillStyle = 'rgba(253, 255, 250, 0.95)';
+  ctx.beginPath();
+  ctx.roundRect(cardX, cardY, cardWidth, cardHeight, 4);
+  ctx.fill();
+
+  // Add subtle border
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Text styling
+  ctx.fillStyle = '#000000';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+
+  const fontSize = Math.max(9.6, cardWidth * 0.059); // Reduced font size by 20% (was 12 and 0.08)
+  const lineHeight = fontSize * 1.75; // Much more spaced out lines
+  let currentY = cardY + 12;
+
+  ctx.font = `${fontSize / 0.85}px ${getCanvasFontStack('NeueWorld')}`;
+  ctx.fillText('Audemars Piguet x KAWS (b.2015)', cardX + 8, currentY);
+  currentY += lineHeight;
+
+  ctx.font = `bold ${fontSize * 1.1}px ${getCanvasFontStack('NeueWorld')}`; // Bigger "Tokenized" text
+  ctx.letterSpacing = '1px';
+  ctx.fillText('"Tokenized"', cardX + 8, currentY);
+  currentY += lineHeight;
+
+  ctx.font = `italic ${fontSize}px ${getCanvasFontStack('NeueWorld')}`; // Bigger "v. Create" text (was 0.8, now 1.0)
+  ctx.letterSpacing = '0px';
+  ctx.fillText('v. Create derivative token market.', cardX + 8, currentY);
+  currentY += lineHeight;
+
+  // Bottom line with mono font (using system mono font)
+  ctx.font = `${fontSize * 1.05}px 'Courier New', 'Monaco', 'Menlo', 'Consolas', monospace`;
+  ctx.fillText('AP KAWS TOKEN COMING SOON', cardX + 8, currentY);
+
+  ctx.restore();
+};
+
+const drawSaleStartsButton = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  opacity: number,
+) => {
+  ctx.save();
+  ctx.globalAlpha = opacity;
+
+  // Calculate text dimensions first to size button properly
+  const text = 'SALE STARTS 19/09/25 9AM EST';
+  const fontSize = Math.max(14, Math.min(18, height * 0.06)); // Responsive font size
+  ctx.font = `${fontSize}px ${getCanvasFontStack('Proxima Nova')}`;
+  ctx.letterSpacing = '2px';
+
+  // Measure text width with letter spacing
+  const textMetrics = ctx.measureText(text);
+  const textWidth = textMetrics.width + (text.length - 1) * 2; // Add letter spacing
+
+  // Size button to fit text with proper padding
+  const buttonPadding = 4; // Horizontal padding
+  const buttonWidth = Math.max(textWidth + buttonPadding * 2, Math.min(width * 0.6, 350)); // Ensure minimum width
+  const buttonHeight = Math.max(fontSize * 1.8, Math.min(height * 0.1, 45)); // Proper height for text
+  const buttonX = x + (width - buttonWidth) / 2; // Center horizontally across the top
+  const buttonY = y + 15; // Position at top with padding
+
+  // Draw button background
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+  ctx.beginPath();
+  ctx.roundRect(buttonX, buttonY, buttonWidth, buttonHeight, 6);
+  ctx.fill();
+
+  // Draw button border - thinner line
+  ctx.strokeStyle = '#D0B284';
+  ctx.lineWidth = 1; // Thinner border
+  ctx.stroke();
+
+  // Draw button text - single line
+  ctx.fillStyle = '#D0B284';
+  ctx.font = `${fontSize}px ${getCanvasFontStack('Proxima Nova')}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.letterSpacing = '2px';
+
+  // Single line: "SALE STARTS 19/09/25 9AM EST"
+  ctx.fillText(text, buttonX + buttonWidth / 2, buttonY + buttonHeight / 2);
+
+  ctx.restore();
 };
 
 // Safari-specific performance optimizations
@@ -218,16 +179,6 @@ export const drawFeaturedSection = (
   _animationTime = 0,
 ) => {
   void _animationTime; // Explicitly ignore unused parameter
-
-  // DEBUG: Uncomment for drawing debugging
-  // console.log('drawFeaturedSection called:', {
-  //   x, y, width, height,
-  //   featuredImage: !!featuredImage,
-  //   featuredImageId: featuredImage?.metadata?.id,
-  //   imageComplete: featuredImage?.element?.complete,
-  //   imageNaturalWidth: featuredImage?.element?.naturalWidth,
-  //   imageNaturalHeight: featuredImage?.element?.naturalHeight,
-  // });
 
   // Smart mobile optimization: detect mobile device
   const capabilities = getDeviceCapabilities();
@@ -299,8 +250,6 @@ export const drawFeaturedSection = (
     ctx.restore();
   } else {
     // Fallback: Draw placeholder content when no image is available
-    // console.log('Drawing featured section placeholder - no image available');
-
     ctx.save();
     const imagePadding = 12;
     const imageX = x + imagePadding;
@@ -324,11 +273,12 @@ export const drawFeaturedSection = (
     ctx.restore();
   }
 
-  // Draw overlay: dashed right rails and stacked countdown, then header rails and title
-  const { leftRailX } = drawRightRailAndCountdown(ctx, x, y, width, height, radius, 1.0);
-  drawHeaderRailsAndTitle(ctx, x, y, width, leftRailX, radius, 1.0);
+  // Draw new overlay elements
+  drawSaleStartsButton(ctx, x, y, width, height, 1.0); // Button now at top
+  drawArtGalleryCard(ctx, x, y, width, height, 1.0);
+  drawBuyCultureLogo(ctx, x, y, width, height, 1.0); // Logo now at bottom right
 
-  // Draw premium border
+  // Draw premium border (keeping existing colors and behavior)
   ctx.save();
 
   // Check if mouse is hovering over the featured section
@@ -341,7 +291,7 @@ export const drawFeaturedSection = (
 
   // Safari optimization: Skip expensive glow effects on Safari
   if (!isSafari && !isMobileDevice && isHovered) {
-    ctx.shadowColor = 'rgba(208, 178, 100, 0.4)';
+    ctx.shadowColor = 'rgba(24, 77, 55, 0.4)';
     ctx.shadowBlur = 8;
   }
 
@@ -493,26 +443,11 @@ export const drawAnimatedFeaturedSection = (
   // Restore context to remove scale transformation for borders and labels
   ctx.restore();
 
-  // Draw countdown timer along the bottom with fade-in
+  // Draw new overlay elements with fade-in
   const overlayOpacity = opacity * borderAnimationProgress;
-  const { leftRailX } = drawRightRailAndCountdown(
-    ctx,
-    drawX,
-    drawY,
-    width,
-    height,
-    radius,
-    overlayOpacity,
-  );
+  drawSaleStartsButton(ctx, drawX, drawY, width, height, overlayOpacity); // Button now at top
 
-  // Draw "FEATURED" label with fade-in in top-left corner
-  ctx.save();
-  ctx.globalAlpha = opacity * borderAnimationProgress;
-
-  drawHeaderRailsAndTitle(ctx, drawX, drawY, width, leftRailX, radius, overlayOpacity);
-  ctx.restore();
-
-  // Draw animated border with progressive appearance
+  // Draw animated border with progressive appearance (keeping existing colors)
   if (borderAnimationProgress > 0) {
     ctx.save();
 
@@ -536,8 +471,8 @@ export const drawAnimatedFeaturedSection = (
 
     ctx.lineWidth = borderWidth;
 
-    // Single color border - highlightGold
-    ctx.strokeStyle = `rgba(215, 191, 117, ${borderOpacity})`; // highlightGold (#D7BF75)
+    // Outer border - Green (#184D37)
+    ctx.strokeStyle = `rgba(24, 77, 55, ${borderOpacity})`; // Green (#184D37)
 
     // Helper function to draw animated lines
     const drawAnimatedLine = (startX: number, startY: number, endX: number, endY: number) => {
@@ -644,6 +579,28 @@ export const drawAnimatedFeaturedSection = (
       );
     }
 
+    // Draw inner border - Golden
+    ctx.shadowBlur = 0; // Remove shadow for inner border
+    ctx.lineWidth = Math.max(1, borderWidth - 2); // Slightly thinner inner border
+    ctx.strokeStyle = `rgba(215, 191, 117, ${borderOpacity})`; // highlightGold (#D7BF75)
+
+    // Draw inner border with slightly smaller radius
+    const innerPadding = 3;
+    const innerRadius = Math.max(2, radius - 2);
+    ctx.beginPath();
+    ctx.roundRect(
+      drawX + innerPadding,
+      drawY + innerPadding,
+      width - innerPadding * 2,
+      height - innerPadding * 2,
+      innerRadius,
+    );
+    ctx.stroke();
+
     ctx.restore();
   }
+
+  // Draw the new overlay elements last to ensure they appear on top
+  drawArtGalleryCard(ctx, drawX, drawY, width, height, overlayOpacity);
+  drawBuyCultureLogo(ctx, drawX, drawY, width, height, overlayOpacity); // Logo now at bottom right
 };

@@ -50,7 +50,17 @@ export const safeMetadataAccess = <T>(
 };
 
 // Type-safe metadata access for ImageInfo objects
-export const getImageMetadata = (imageInfo: unknown) => {
+export const getImageMetadata = (
+  imageInfo: unknown,
+): {
+  id: string;
+  title: string;
+  description: string;
+  ticker: string;
+  date: string | undefined;
+  countdownDate: string | undefined;
+  image: string | undefined;
+} => {
   if (!imageInfo || typeof imageInfo !== 'object' || !('metadata' in imageInfo)) {
     return {
       id: 'unknown',
@@ -58,6 +68,7 @@ export const getImageMetadata = (imageInfo: unknown) => {
       description: 'No description available',
       ticker: '$UNKNOWN',
       date: undefined,
+      countdownDate: undefined,
       image: undefined,
     };
   }
@@ -70,6 +81,7 @@ export const getImageMetadata = (imageInfo: unknown) => {
       description: 'No description available',
       ticker: '$UNKNOWN',
       date: undefined,
+      countdownDate: undefined,
       image: undefined,
     };
   }
@@ -80,6 +92,7 @@ export const getImageMetadata = (imageInfo: unknown) => {
     description: (metadata.description as string) || 'No description available',
     ticker: (metadata.ticker as string) || '$UNKNOWN',
     date: metadata.date as string | undefined,
+    countdownDate: metadata.countdownDate as string | undefined,
     image: metadata.image as string | undefined,
   };
 };
