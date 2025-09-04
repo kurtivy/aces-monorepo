@@ -4,8 +4,6 @@ import { randomUUID } from 'crypto';
 import helmet from '@fastify/helmet';
 import multipart from '@fastify/multipart';
 
-import { PrismaClient } from '@prisma/client';
-
 import { getPrismaClient, checkDatabaseHealth, disconnectDatabase } from './lib/database';
 import { loggers } from './lib/logger';
 import { handleError } from './lib/errors';
@@ -63,6 +61,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
       'https://aces.fun',
       'https://aces-monorepo-git-dev-dan-aces-fun.vercel.app',
       'https://aces-monorepo-git-main-dan-aces-fun.vercel.app',
+      'https://aces-monorepo-git-feat-ui-updates-dan-aces-fun.vercel.app',
     );
 
     return origins;

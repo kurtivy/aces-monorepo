@@ -85,6 +85,8 @@ const handler = async (req: VercelRequest, res: VercelResponse) => {
         'http://localhost:3001',
         'https://www.aces.fun',
         'https://aces.fun',
+        'https://aces-monorepo-git-feat-ui-updates-dan-aces-fun.vercel.app',
+        'https://aces-monorepo-git-dev-dan-aces-fun.vercel.app',
       ].includes(origin);
     };
 
