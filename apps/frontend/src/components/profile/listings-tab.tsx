@@ -289,6 +289,7 @@ export function ListingsTab() {
                             className="w-10 h-10 rounded-full object-cover border border-[#D0B284]/20"
                             width={40}
                             height={40}
+                            unoptimized={true}
                           />
                           <div className="flex-1 min-w-0">
                             <h3 className="text-[#E6E3D3] font-medium truncate text-sm">

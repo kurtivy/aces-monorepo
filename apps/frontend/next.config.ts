@@ -416,10 +416,7 @@ const nextConfig: NextConfig = {
     // Image sizes for different breakpoints
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
 
-    // Allow specific domains for better security
-    domains: ['storage.googleapis.com'],
-
-    // Configure remote patterns for Google Cloud Storage
+    // Configure remote patterns for Google Cloud Storage - REMOVED domains property
     remotePatterns: [
       {
         protocol: 'https',
@@ -435,11 +432,6 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: 'storage.googleapis.com',
         pathname: '/aces-secure-documents/**',
-      },
-      // Keep wildcard for development/testing
-      {
-        protocol: 'https',
-        hostname: '**',
       },
     ],
 
