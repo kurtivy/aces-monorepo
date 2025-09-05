@@ -29,6 +29,7 @@ const drawBuyCultureLogo = (
   width: number,
   height: number,
   opacity: number,
+  isMobile = false,
 ) => {
   ctx.save();
   ctx.globalAlpha = opacity;
@@ -36,11 +37,13 @@ const drawBuyCultureLogo = (
   const logoImg = loadBuyCultureLogo();
 
   if (logoImg && logoImg.complete && logoImg.naturalWidth > 0) {
-    // Position in bottom right where the button was - smaller size for bottom corner
-    const logoWidth = Math.min(width * 0.35, 220); // Match the button width dimensions
+    // Mobile-responsive logo sizing and positioning
+    const logoWidth = isMobile
+      ? Math.min(width * 0.3, 120) // Slightly larger but still safe on mobile
+      : Math.min(width * 0.32, 180); // Smaller on desktop to balance better
     const logoHeight = (logoImg.naturalHeight / logoImg.naturalWidth) * logoWidth;
-    const logoX = x + width - logoWidth - 10; // 10px padding from right edge
-    const logoY = y + height - logoHeight - 10; // 10px padding from bottom edge
+    const logoX = x + width - logoWidth - (isMobile ? 8 : 10);
+    const logoY = y + height - logoHeight - (isMobile ? 8 : 10);
 
     ctx.drawImage(logoImg, logoX, logoY, logoWidth, logoHeight);
   }
@@ -55,15 +58,20 @@ const drawArtGalleryCard = (
   width: number,
   height: number,
   opacity: number,
+  isMobile = false,
 ) => {
   ctx.save();
   ctx.globalAlpha = opacity;
 
-  // Card dimensions and positioning (bottom left) - wider card
-  const cardWidth = Math.min(width * 0.5, 230); // Wider card (increased from 35% to 45%)
-  const cardHeight = Math.min(height * 0.25, 100);
-  const cardX = x + 10; // 20px padding from left
-  const cardY = y + height - cardHeight - 10; // 20px padding from bottom
+  // Mobile-responsive card dimensions and positioning
+  const cardWidth = isMobile
+    ? Math.min(width * 0.48, 170) // Even smaller on mobile to avoid logo overlap
+    : Math.min(width * 0.45, 210); // Keep desktop size
+  const cardHeight = isMobile
+    ? Math.min(height * 0.25, 100) // Slightly taller on mobile for better text spacing
+    : Math.min(height * 0.22, 85); // Keep desktop height
+  const cardX = x + (isMobile ? 8 : 10);
+  const cardY = y + height - cardHeight - (isMobile ? 8 : 10);
 
   // Draw white card background
   ctx.fillStyle = 'rgba(253, 255, 250, 0.95)';
@@ -81,27 +89,36 @@ const drawArtGalleryCard = (
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
 
-  const fontSize = Math.max(9.6, cardWidth * 0.059); // Reduced font size by 20% (was 12 and 0.08)
-  const lineHeight = fontSize * 1.75; // Much more spaced out lines
-  let currentY = cardY + 12;
+  // Mobile-responsive font sizing
+  const baseFontSize = isMobile
+    ? Math.max(7, cardWidth * 0.04) // Slightly larger font on mobile since card is narrower
+    : Math.max(8, cardWidth * 0.042); // Keep desktop font
+  const lineHeight = baseFontSize * (isMobile ? 1.7 : 2.0); // More line spacing on desktop
+  let currentY = cardY + (isMobile ? 8 : 10); // Restore some top padding
 
-  ctx.font = `${fontSize / 0.85}px ${getCanvasFontStack('NeueWorld')}`;
-  ctx.fillText('Audemars Piguet x KAWS (b.2015)', cardX + 8, currentY);
+  // Line 1: Artist and date - full title for both mobile and desktop
+  ctx.font = `${baseFontSize / 0.85}px ${getCanvasFontStack('NeueWorld')}`;
+  const line1Text = 'Audemars Piguet x KAWS (b.2015)';
+  ctx.fillText(line1Text, cardX + 8, currentY);
   currentY += lineHeight;
 
-  ctx.font = `bold ${fontSize * 1.1}px ${getCanvasFontStack('NeueWorld')}`; // Bigger "Tokenized" text
+  // Line 2: "Tokenized"
+  ctx.font = `bold ${baseFontSize * 1.1}px ${getCanvasFontStack('NeueWorld')}`;
   ctx.letterSpacing = '1px';
   ctx.fillText('"Tokenized"', cardX + 8, currentY);
   currentY += lineHeight;
 
-  ctx.font = `italic ${fontSize}px ${getCanvasFontStack('NeueWorld')}`; // Bigger "v. Create" text (was 0.8, now 1.0)
+  // Line 3: Description - shortened for mobile
+  ctx.font = `italic ${baseFontSize}px ${getCanvasFontStack('NeueWorld')}`;
   ctx.letterSpacing = '0px';
-  ctx.fillText('v. Create derivative token market.', cardX + 8, currentY);
+  const line3Text = isMobile ? 'v. Create token market.' : 'v. Create derivative token market.';
+  ctx.fillText(line3Text, cardX + 8, currentY);
   currentY += lineHeight;
 
-  // Bottom line with mono font (using system mono font)
-  ctx.font = `${fontSize * 1.05}px 'Courier New', 'Monaco', 'Menlo', 'Consolas', monospace`;
-  ctx.fillText('AP KAWS TOKEN COMING SOON', cardX + 8, currentY);
+  // Line 4: Bottom line - shortened for mobile
+  ctx.font = `${baseFontSize * 1.05}px 'Courier New', 'Monaco', 'Menlo', 'Consolas', monospace`;
+  const line4Text = isMobile ? 'AP KAWS TOKEN SOON' : 'AP KAWS TOKEN COMING SOON';
+  ctx.fillText(line4Text, cardX + 8, currentY);
 
   ctx.restore();
 };
@@ -113,47 +130,67 @@ const drawSaleStartsButton = (
   width: number,
   height: number,
   opacity: number,
+  isMobile = false,
 ) => {
   ctx.save();
   ctx.globalAlpha = opacity;
 
-  // Calculate text dimensions first to size button properly
-  const text = 'SALE STARTS 19/09/25 9AM EST';
-  const fontSize = Math.max(14, Math.min(18, height * 0.06)); // Responsive font size
+  // Mobile-responsive text and sizing
+  const text = isMobile ? 'SALE STARTS 19/09/25 9AM EST' : 'SALE STARTS 19/09/25 9AM EST'; // Keep full text
+  const fontSize = isMobile
+    ? Math.max(10, Math.min(12, height * 0.04)) // Much smaller font on mobile
+    : Math.max(12, Math.min(15, height * 0.05)); // Reduced desktop font size
+  const letterSpacing = isMobile ? '0.5px' : '1px'; // Reduced spacing
+
   ctx.font = `${fontSize}px ${getCanvasFontStack('Proxima Nova')}`;
-  ctx.letterSpacing = '2px';
+  ctx.letterSpacing = letterSpacing;
 
   // Measure text width with letter spacing
   const textMetrics = ctx.measureText(text);
-  const textWidth = textMetrics.width + (text.length - 1) * 2; // Add letter spacing
+  const spacingMultiplier = isMobile ? 0.5 : 1;
+  const textWidth = textMetrics.width + (text.length - 1) * spacingMultiplier;
 
-  // Size button to fit text with proper padding
-  const buttonPadding = 4; // Horizontal padding
-  const buttonWidth = Math.max(textWidth + buttonPadding * 2, Math.min(width * 0.6, 350)); // Ensure minimum width
-  const buttonHeight = Math.max(fontSize * 1.8, Math.min(height * 0.1, 45)); // Proper height for text
-  const buttonX = x + (width - buttonWidth) / 2; // Center horizontally across the top
-  const buttonY = y + 15; // Position at top with padding
+  // Mobile-responsive button sizing with 720px breakpoint
+  const buttonPadding = isMobile ? 8 : 12;
+
+  // Special handling for 720px width - make button bigger
+  let maxButtonWidth;
+  if (width <= 720 && width > 400) {
+    maxButtonWidth = width * 0.88; // Slightly bigger at 720px breakpoint
+  } else {
+    maxButtonWidth = isMobile ? width * 0.95 : width * 0.8;
+  }
+
+  const buttonWidth = Math.min(textWidth + buttonPadding * 2, maxButtonWidth);
+  const buttonHeight = Math.max(fontSize * 1.6, Math.min(height * 0.08, isMobile ? 35 : 40)); // Smaller height
+
+  // Better mobile positioning
+  const buttonX = x + (width - buttonWidth) / 2; // Keep centered
+  const buttonY = y + (isMobile ? 8 : 15); // Less top padding on mobile
+
+  // Ensure button doesn't go outside bounds
+  const clampedButtonX = Math.max(x + 4, Math.min(buttonX, x + width - buttonWidth - 4));
+  const clampedButtonWidth = Math.min(buttonWidth, width - 8); // Ensure 4px margin on each side
 
   // Draw button background
   ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
   ctx.beginPath();
-  ctx.roundRect(buttonX, buttonY, buttonWidth, buttonHeight, 6);
+  ctx.roundRect(clampedButtonX, buttonY, clampedButtonWidth, buttonHeight, 6);
   ctx.fill();
 
   // Draw button border - thinner line
   ctx.strokeStyle = '#D0B284';
-  ctx.lineWidth = 1; // Thinner border
+  ctx.lineWidth = 1;
   ctx.stroke();
 
-  // Draw button text - single line
+  // Draw button text
   ctx.fillStyle = '#D0B284';
   ctx.font = `${fontSize}px ${getCanvasFontStack('Proxima Nova')}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.letterSpacing = '2px';
+  ctx.letterSpacing = letterSpacing;
 
-  // Single line: "SALE STARTS 19/09/25 9AM EST"
-  ctx.fillText(text, buttonX + buttonWidth / 2, buttonY + buttonHeight / 2);
+  ctx.fillText(text, clampedButtonX + clampedButtonWidth / 2, buttonY + buttonHeight / 2);
 
   ctx.restore();
 };
@@ -273,10 +310,10 @@ export const drawFeaturedSection = (
     ctx.restore();
   }
 
-  // Draw new overlay elements
-  drawSaleStartsButton(ctx, x, y, width, height, 1.0); // Button now at top
-  drawArtGalleryCard(ctx, x, y, width, height, 1.0);
-  drawBuyCultureLogo(ctx, x, y, width, height, 1.0); // Logo now at bottom right
+  // Draw new overlay elements with mobile awareness
+  drawSaleStartsButton(ctx, x, y, width, height, 1.0, isMobileDevice); // Button now at top
+  drawArtGalleryCard(ctx, x, y, width, height, 1.0, isMobileDevice);
+  drawBuyCultureLogo(ctx, x, y, width, height, 1.0, isMobileDevice); // Logo now at bottom right
 
   // Draw premium border (keeping existing colors and behavior)
   ctx.save();
@@ -445,7 +482,7 @@ export const drawAnimatedFeaturedSection = (
 
   // Draw new overlay elements with fade-in
   const overlayOpacity = opacity * borderAnimationProgress;
-  drawSaleStartsButton(ctx, drawX, drawY, width, height, overlayOpacity); // Button now at top
+  drawSaleStartsButton(ctx, drawX, drawY, width, height, overlayOpacity, isMobileDevice); // Button now at top
 
   // Draw animated border with progressive appearance (keeping existing colors)
   if (borderAnimationProgress > 0) {
@@ -601,6 +638,6 @@ export const drawAnimatedFeaturedSection = (
   }
 
   // Draw the new overlay elements last to ensure they appear on top
-  drawArtGalleryCard(ctx, drawX, drawY, width, height, overlayOpacity);
-  drawBuyCultureLogo(ctx, drawX, drawY, width, height, overlayOpacity); // Logo now at bottom right
+  drawArtGalleryCard(ctx, drawX, drawY, width, height, overlayOpacity, isMobileDevice);
+  drawBuyCultureLogo(ctx, drawX, drawY, width, height, overlayOpacity, isMobileDevice); // Logo now at bottom right
 };

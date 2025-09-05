@@ -39,8 +39,8 @@ export default function AcesHeader({ className = '', title, onProfileClick }: Ac
                 className="w-6 h-6 sm:w-12 sm:h-12 object-contain"
               />
             </button>
-            {/* Non-clickable Text */}
-            <div className="flex items-center min-w-0">
+            {/* Non-clickable Text - Hidden on mobile, visible on desktop */}
+            <div className="hidden sm:flex items-center min-w-0">
               <span className="text-lg sm:text-2xl font-bold text-white mr-0.5 sm:mr-1 font-braah-one">
                 ACES.
               </span>
