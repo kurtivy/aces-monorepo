@@ -14,6 +14,7 @@ import NavMenu from '../ui/custom/nav-menu';
 import HomeButton from '../ui/custom/home-button';
 import ContactButton from '../ui/custom/contact-button';
 import BuiltOnBaseOverlay from '../ui/custom/built-on-base-overlay';
+import ContractAddressPill from '../ui/custom/contract-address-pill';
 import ImageDetailsModal from '../ui/custom/image-details-modal';
 import ContactFormModal from '../ui/custom/contact-form-modal';
 import AboutModal from '../ui/custom/about-modal';
@@ -439,6 +440,9 @@ const InfiniteCanvas = ({
 
       {/* Built on BASE overlay */}
       {isUIVisible && <BuiltOnBaseOverlay />}
+
+      {/* Contract Address Pill */}
+      {isUIVisible && <ContractAddressPill />}
     </>
   );
 };

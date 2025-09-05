@@ -66,17 +66,21 @@ const Footer = ({ onTermsClick }: FooterProps) => {
             )}
           </div>
 
-          {/* Right side - Token Address (Desktop Only) */}
-          <div className="hidden sm:flex items-center space-x-4 order-3">
-            <div className="flex items-center gap-2 rounded-md bg-[#231F20]/60 px-2 py-1.5 border border-[#D0B284]/20">
-              <span className="text-xs text-[#DCDDCC] font-mono">0x553376...0367</span>
+          {/* Right side - Token Address (Responsive) */}
+          <div className="flex items-center space-x-2 sm:space-x-4 order-3">
+            <div className="flex items-center gap-1 sm:gap-2 rounded-md bg-[#231F20]/60 px-1.5 sm:px-2 py-1 sm:py-1.5 border border-[#D0B284]/20">
+              <p className="text-[10px] sm:text-xs text-[#D0B284] font-mono">CA:</p>
+              <span className="text-[10px] sm:text-xs text-[#DCDDCC] font-mono">
+                0x553376...0367
+              </span>
               <button
                 onClick={() => copyToClipboard('0x55337650856299363c496065C836B9C6E9dE0367')}
-                className="flex h-5 w-5 items-center justify-center rounded bg-[#D0B284]/10 hover:bg-[#D0B284]/20 transition-colors border border-[#D0B284]/20"
+                className="flex h-4 w-4 sm:h-5 sm:w-5 items-center justify-center rounded bg-[#D0B284]/10 hover:bg-[#D0B284]/20 transition-colors border border-[#D0B284]/20"
               >
                 <svg
-                  width="12"
-                  height="12"
+                  width="10"
+                  height="10"
+                  className="sm:w-3 sm:h-3"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="#D0B284"

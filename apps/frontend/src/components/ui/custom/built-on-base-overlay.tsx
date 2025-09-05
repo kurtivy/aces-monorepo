@@ -28,7 +28,7 @@ const BuiltOnBaseOverlayComponent: React.FC = () => {
     <>
       <div
         className={`
-          fixed bottom-4 right-4 z-50 
+          fixed bottom-12 right-4 z-50 
           px-2 py-1.5 sm:px-3 sm:py-2
           rounded-full 
           bg-black/80 border border-[#D0B264]/40 

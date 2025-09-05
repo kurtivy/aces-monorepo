@@ -22,16 +22,24 @@ export default function PageBandSubtitle({
   className = '',
 }: Props) {
   const [top, setTop] = useState<number>(0);
+  const [isMobile, setIsMobile] = useState<boolean>(false);
 
   useEffect(() => {
     const getHeader = () => document.querySelector('[data-aces-header]') as HTMLElement | null;
+
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768); // Standard mobile breakpoint
+    };
+
     const measure = () => {
       const header = getHeader();
       if (header) {
         const rect = header.getBoundingClientRect();
         setTop(Math.max(0, Math.round(rect.bottom)) + bandHeight + offsetY);
       }
+      checkMobile(); // Check mobile on each measure
     };
+
     measure();
     const ResizeObserverCtor: any = (window as any).ResizeObserver;
     const header = getHeader();
@@ -49,21 +57,39 @@ export default function PageBandSubtitle({
   const rightGuide = `calc(${contentLeft} + ${contentWidth - contentLineOffset}px)`;
 
   return (
-    <div
-      className={`pointer-events-none absolute left-1/2 -translate-x-1/2 z-40 ${className}`}
-      style={{ top, width: `${contentWidth}px` }}
-    >
+    <>
+      {/* Mobile version - simple centered layout */}
       <div
-        className="relative"
+        className={`pointer-events-none absolute left-0 right-0 z-40 flex items-center justify-center px-4 md:hidden ${className}`}
         style={{
-          left: `calc(${dividerLeft} + ${gapFromDivider}px - ${contentLeft})`,
-          width: `calc(${rightGuide} - (${dividerLeft} + ${gapFromDivider}px))`,
+          top: top,
         }}
       >
-        <p className="text-lg md:text-xl text-[#E6E3D3]/80 leading-relaxed max-w-3xl ml-auto text-right">
+        <p className="text-sm sm:text-base text-[#E6E3D3]/80 leading-relaxed max-w-sm text-center">
           {text}
         </p>
       </div>
-    </div>
+
+      {/* Desktop version - original positioning */}
+      <div
+        className={`pointer-events-none absolute left-1/2 -translate-x-1/2 z-40 hidden md:block ${className}`}
+        style={{
+          top,
+          width: `${contentWidth}px`,
+        }}
+      >
+        <div
+          className="relative px-4"
+          style={{
+            left: `calc(${dividerLeft} + ${gapFromDivider}px - ${contentLeft})`,
+            width: `calc(${rightGuide} - (${dividerLeft} + ${gapFromDivider}px))`,
+          }}
+        >
+          <p className="text-lg md:text-xl text-[#E6E3D3]/80 leading-relaxed max-w-3xl ml-auto text-right">
+            {text}
+          </p>
+        </div>
+      </div>
+    </>
   );
 }

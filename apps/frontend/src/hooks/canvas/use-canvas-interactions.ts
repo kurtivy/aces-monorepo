@@ -335,17 +335,17 @@ export const useCanvasInteractions = ({
         const aboutQuadX = homeAreaWorldX;
         const aboutQuadY = homeAreaWorldY;
 
-        // Quadrant 1 (top-right): LIST
-        const mintQuadX = homeAreaWorldX + quadWidth;
-        const mintQuadY = homeAreaWorldY;
+        // Quadrant 1 (top-right): CREATE
+        const createQuadX = homeAreaWorldX + quadWidth;
+        const createQuadY = homeAreaWorldY;
 
         // Quadrant 2 (bottom-left): DOCS
         const docsQuadX = homeAreaWorldX;
         const docsQuadY = homeAreaWorldY + quadHeight;
 
-        // Quadrant 3 (bottom-right): CHAT
-        const chatQuadX = homeAreaWorldX + quadWidth;
-        const chatQuadY = homeAreaWorldY + quadHeight;
+        // Quadrant 3 (bottom-right): GRAILS
+        const grailsQuadX = homeAreaWorldX + quadWidth;
+        const grailsQuadY = homeAreaWorldY + quadHeight;
 
         // ABOUT button (top-left quadrant)
         if (
@@ -360,14 +360,14 @@ export const useCanvasInteractions = ({
           return;
         }
 
-        // LIST button (top-right quadrant)
+        // CREATE button (top-right quadrant)
         if (
-          worldX >= mintQuadX &&
-          worldX < mintQuadX + quadWidth &&
-          worldY >= mintQuadY &&
-          worldY < mintQuadY + quadHeight
+          worldX >= createQuadX &&
+          worldX < createQuadX + quadWidth &&
+          worldY >= createQuadY &&
+          worldY < createQuadY + quadHeight
         ) {
-          window.location.href = '/tokenize';
+          window.location.href = '/create';
           return;
         }
 
@@ -382,14 +382,14 @@ export const useCanvasInteractions = ({
           return;
         }
 
-        // CHAT button (bottom-right quadrant)
+        // GRAILS button (bottom-right quadrant)
         if (
-          worldX >= chatQuadX &&
-          worldX < chatQuadX + quadWidth &&
-          worldY >= chatQuadY &&
-          worldY < chatQuadY + quadHeight
+          worldX >= grailsQuadX &&
+          worldX < grailsQuadX + quadWidth &&
+          worldY >= grailsQuadY &&
+          worldY < grailsQuadY + quadHeight
         ) {
-          window.location.href = '/upcoming';
+          window.location.href = '/grails';
           return;
         }
         return;

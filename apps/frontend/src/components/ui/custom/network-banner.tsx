@@ -1,26 +1,26 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, Zap, X } from 'lucide-react';
 import { useAuth } from '@/lib/auth/auth-context';
 import { useChainSwitching, SUPPORTED_CHAINS } from '@/hooks/contracts/use-chain-switching';
 
 export default function NetworkBanner() {
-  const { user, walletAddress } = useAuth();
+  const { walletAddress } = useAuth();
   const { isOnBaseMainnet, isSwitching, switchToChain } = useChainSwitching();
   const [isDismissed, setIsDismissed] = useState(false);
 
   // Debug logging (remove in production)
-  useEffect(() => {
-    console.log('NetworkBanner debug:', {
-      user: !!user,
-      walletAddress: !!walletAddress,
-      isOnBaseMainnet,
-      isDismissed,
-      shouldShow: walletAddress && !isOnBaseMainnet && !isDismissed,
-    });
-  }, [user, walletAddress, isOnBaseMainnet, isDismissed]);
+  // useEffect(() => {
+  //   console.log('NetworkBanner debug:', {
+  //     user: !!user,
+  //     walletAddress: !!walletAddress,
+  //     isOnBaseMainnet,
+  //     isDismissed,
+  //     shouldShow: walletAddress && !isOnBaseMainnet && !isDismissed,
+  //   });
+  // }, [user, walletAddress, isOnBaseMainnet, isDismissed]);
 
   // Only show if wallet is connected, is NOT on Base mainnet, and hasn't dismissed
   const shouldShow = walletAddress && !isOnBaseMainnet && !isDismissed;
