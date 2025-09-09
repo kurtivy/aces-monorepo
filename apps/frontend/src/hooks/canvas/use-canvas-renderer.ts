@@ -61,7 +61,7 @@ import {
 import {
   drawFeaturedSection,
   drawAnimatedFeaturedSection,
-  getCalendarIconBounds,
+  getAuctionIconBounds,
 } from '../../lib/canvas/draw';
 import { drawCustomLogoBanner } from '@/lib/canvas/draw/draw-custom-logo-banner';
 
@@ -479,9 +479,9 @@ export const useCanvasRenderer = ({
     tileId: string;
   } | null>(null);
 
-  // Calendar icon hover state
-  const [isHoveringCalendarIcon, setIsHoveringCalendarIcon] = useState(false);
-  const calendarIconHoverRef = useRef(0); // Hover progress for calendar icon
+  // Auction icon hover state
+  const [isHoveringAuctionIcon, setIsHoveringAuctionIcon] = useState(false);
+  const auctionIconHoverRef = useRef(0); // Hover progress for auction icon
 
   // Animation durations now handled by entrance animation hook and browserPerf settings
 
@@ -1374,7 +1374,7 @@ export const useCanvasRenderer = ({
         navigator.userAgent.includes('Safari') &&
         !navigator.userAgent.includes('Chrome');
 
-      // Mobile device detection for calendar icon
+      // Mobile device detection for auction icon
       const isMobileDevice = deviceCapabilities.touchCapable || deviceCapabilities.isMobileSafari;
 
       // Phase 3.1: Check if we should use dirty region optimization
@@ -1949,12 +1949,12 @@ export const useCanvasRenderer = ({
       const featuredAreaScreenWidth = (featuredAreaWidth * viewTransform.scaleX) | 0;
       const featuredAreaScreenHeight = (featuredAreaHeight * viewTransform.scaleY) | 0;
 
-      // Calendar icon hover detection - separate check after featuredAreaScreenPos is available
+      // Auction icon hover detection - separate check after featuredAreaScreenPos is available
       if (featuredImage) {
         const screenMouseX = mousePositionRef.current.x;
         const screenMouseY = mousePositionRef.current.y;
 
-        const iconBounds = getCalendarIconBounds(
+        const iconBounds = getAuctionIconBounds(
           featuredAreaScreenPos.x,
           featuredAreaScreenPos.y,
           featuredAreaScreenWidth,
@@ -1962,25 +1962,25 @@ export const useCanvasRenderer = ({
           isMobileDevice,
         );
 
-        const isHoveringCalendar =
+        const isHoveringAuction =
           screenMouseX >= iconBounds.x &&
           screenMouseX <= iconBounds.x + iconBounds.width &&
           screenMouseY >= iconBounds.y &&
           screenMouseY <= iconBounds.y + iconBounds.height;
 
-        // Update calendar icon hover state
-        if (isHoveringCalendar !== isHoveringCalendarIcon) {
-          setIsHoveringCalendarIcon(isHoveringCalendar);
-          if (isHoveringCalendar) {
+        // Update auction icon hover state
+        if (isHoveringAuction !== isHoveringAuctionIcon) {
+          setIsHoveringAuctionIcon(isHoveringAuction);
+          if (isHoveringAuction) {
             canvas.style.cursor = 'pointer';
           }
         }
 
-        // Update calendar icon hover animation progress
-        if (isHoveringCalendarIcon) {
-          calendarIconHoverRef.current = Math.min(1, calendarIconHoverRef.current + 0.1);
+        // Update auction icon hover animation progress
+        if (isHoveringAuctionIcon) {
+          auctionIconHoverRef.current = Math.min(1, auctionIconHoverRef.current + 0.1);
         } else {
-          calendarIconHoverRef.current = Math.max(0, calendarIconHoverRef.current - 0.1);
+          auctionIconHoverRef.current = Math.max(0, auctionIconHoverRef.current - 0.1);
         }
       }
 
@@ -2005,7 +2005,7 @@ export const useCanvasRenderer = ({
         mousePositionRef.current.x,
         mousePositionRef.current.y,
         currentTime,
-        calendarIconHoverRef.current,
+        auctionIconHoverRef.current,
         uiOpacity, // Add opacity parameter
       );
       totalElementsRendered++; // Count featured section as one element

@@ -134,8 +134,8 @@ const InfiniteCanvas = ({
   const imagesRef = useRef(images);
   imagesRef.current = images;
 
-  // Calendar icon click handler - define before useCanvasInteractions
-  const handleCalendarIconClick = useCallback((productTitle: string) => {
+  // Auction icon click handler - define before useCanvasInteractions
+  const handleAuctionIconClick = useCallback((productTitle: string) => {
     setSelectedProductTitle(productTitle);
     setIsEmailSignupModalOpen(true);
   }, []);
@@ -169,8 +169,8 @@ const InfiniteCanvas = ({
     // FEATURED SECTION: Add featured section props
     featuredImage,
     onFeaturedImageClick: onFeaturedImageClick || setSelectedImage,
-    // Calendar icon click handler
-    onCalendarIconClick: handleCalendarIconClick,
+    // Auction icon click handler
+    onAuctionIconClick: handleAuctionIconClick,
     // Modal callbacks for home area buttons
     onAboutClick: openAboutModal,
     onTermsClick: openTermsModal,

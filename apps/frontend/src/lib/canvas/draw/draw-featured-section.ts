@@ -1,7 +1,7 @@
 import type { ImageInfo } from '../../../types/canvas';
 import { getDeviceCapabilities } from '../../utils/browser-utils';
 import { getCanvasFontStack } from '../../utils/font-loader';
-import { getCalendarIcon, initializeCalendarIcon } from '../utils/lucide-calendar-icon';
+import { getAuctionIcon, initializeAuctionIcon } from '../utils/lucide-auction-icon';
 
 const PIN = {
   radius: 3.5,
@@ -168,8 +168,8 @@ function getTextMetrics(ctx: CanvasRenderingContext2D, text: string, font: strin
 //   ctx.restore();
 // };
 
-// NEW: Lucide CalendarPlus icon drawing function
-const drawLucideCalendarIcon = (
+// NEW: Auction Notification icon drawing function
+const drawLucideAuctionIcon = (
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
@@ -179,7 +179,7 @@ const drawLucideCalendarIcon = (
   ctx.save();
 
   // Apply hover scale effect
-  const scale = 1 + hoverProgress * 0.1; // 10% scale increase on hover
+  const scale = 1 + hoverProgress * 0.05; // 5% scale increase on hover
   const scaledSize = size * scale;
   const offsetX = (scaledSize - size) / 2;
   const offsetY = (scaledSize - size) / 2;
@@ -187,14 +187,14 @@ const drawLucideCalendarIcon = (
   const iconX = x - offsetX;
   const iconY = y - offsetY;
 
-  // Initialize the calendar icon cache on first use
+  // Initialize the auction icon cache on first use
   if (typeof window !== 'undefined') {
-    initializeCalendarIcon();
+    initializeAuctionIcon();
   }
 
-  // Get the pre-rendered Lucide CalendarPlus icon
+  // Get the pre-rendered Auction Notification icon
   try {
-    const iconCanvas = getCalendarIcon(scaledSize, hoverProgress);
+    const iconCanvas = getAuctionIcon(scaledSize, hoverProgress);
 
     // Apply drop shadow for depth
     ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
@@ -202,7 +202,7 @@ const drawLucideCalendarIcon = (
     ctx.shadowOffsetX = 1;
     ctx.shadowOffsetY = 2;
 
-    // Draw the Lucide CalendarPlus icon
+    // Draw the high-resolution icon scaled down to target size
     ctx.drawImage(iconCanvas, iconX, iconY, scaledSize, scaledSize);
   } catch (error) {
     // Fallback: draw a simple plus sign if icon fails
@@ -233,15 +233,15 @@ const drawLucideCalendarIcon = (
   ctx.restore();
 };
 
-// Helper function to get calendar icon bounds for click detection
-export const getCalendarIconBounds = (
+// Helper function to get auction icon bounds for click detection
+export const getAuctionIconBounds = (
   featuredX: number,
   featuredY: number,
   featuredWidth: number,
   featuredHeight: number,
   isMobile = false,
 ) => {
-  const iconSize = isMobile ? 24 : 32;
+  const iconSize = isMobile ? 32 : 48; // Larger icon sizes for better visibility
   const padding = isMobile ? 12 : 16;
 
   const iconX = featuredX + featuredWidth - iconSize - padding;
@@ -608,9 +608,9 @@ export const drawFeaturedSection = (
   drawArtGalleryCard(ctx, x, y, width, height, opacity, isMobileDevice);
   drawDaysLeft(ctx, x, y, width, height, opacity, isMobileDevice); // Simplified call
 
-  // Draw calendar icon in top-right corner (using Lucide CalendarPlus)
-  const iconBounds = getCalendarIconBounds(x, y, width, height, isMobileDevice);
-  drawLucideCalendarIcon(
+  // Draw auction icon in top-right corner (using Auction Notification)
+  const iconBounds = getAuctionIconBounds(x, y, width, height, isMobileDevice);
+  drawLucideAuctionIcon(
     ctx,
     iconBounds.x,
     iconBounds.y,
@@ -946,11 +946,11 @@ export const drawAnimatedFeaturedSection = (
   drawArtGalleryCard(ctx, drawX, drawY, width, height, overlayOpacity, isMobileDevice);
   drawDaysLeft(ctx, drawX, drawY, width, height, overlayOpacity, isMobileDevice); // Simplified call
 
-  // Draw calendar icon with animation opacity (using Lucide CalendarPlus)
-  const iconBounds = getCalendarIconBounds(drawX, drawY, width, height, isMobileDevice);
+  // Draw auction icon with animation opacity (using Auction Notification)
+  const iconBounds = getAuctionIconBounds(drawX, drawY, width, height, isMobileDevice);
   ctx.save();
   ctx.globalAlpha = overlayOpacity; // Apply same opacity as other overlay elements
-  drawLucideCalendarIcon(
+  drawLucideAuctionIcon(
     ctx,
     iconBounds.x,
     iconBounds.y,

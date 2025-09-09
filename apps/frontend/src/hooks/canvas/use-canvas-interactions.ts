@@ -4,7 +4,7 @@ import { useCallback, useRef, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ViewState, ImageInfo } from '../../types/canvas';
 import { isHomeArea, isFeaturedArea } from '../../lib/canvas/grid-placement'; // FEATURED SECTION: Added isFeaturedArea import
-import { getCalendarIconBounds } from '../../lib/canvas/draw/draw-featured-section'; // Calendar icon import
+import { getAuctionIconBounds } from '../../lib/canvas/draw/draw-featured-section'; // Auction icon import
 import { mobileUtils } from '../../lib/utils/browser-utils';
 
 interface UseCanvasInteractionsProps {
@@ -42,8 +42,8 @@ interface UseCanvasInteractionsProps {
   // FEATURED SECTION: Add featured image props
   featuredImage?: ImageInfo | null;
   onFeaturedImageClick?: (imageInfo: ImageInfo) => void;
-  // Calendar icon click handler
-  onCalendarIconClick?: (productTitle: string) => void;
+  // Auction icon click handler
+  onAuctionIconClick?: (productTitle: string) => void;
   // HOVER ENHANCEMENT: Add hover state callbacks for regular product images
   onProductImageHover?: (
     imageInfo: ImageInfo | null,
@@ -120,7 +120,7 @@ export const useCanvasInteractions = ({
   onMomentumUpdate,
   featuredImage, // FEATURED SECTION: Add featured image
   onFeaturedImageClick, // FEATURED SECTION: Add featured image click handler
-  onCalendarIconClick, // Calendar icon click handler
+  onAuctionIconClick, // Auction icon click handler
   onProductImageHover, // HOVER ENHANCEMENT: Add product image hover callback
 }: UseCanvasInteractionsProps) => {
   const router = useRouter();
@@ -314,22 +314,22 @@ export const useCanvasInteractions = ({
 
       const { worldX, worldY } = coords;
 
-      // CALENDAR ICON: Check calendar icon click first (highest priority)
-      if (featuredImage && onCalendarIconClick) {
-        // Convert world coordinates to screen coordinates for calendar icon bounds check
+      // AUCTION ICON: Check auction icon click first (highest priority)
+      if (featuredImage && onAuctionIconClick) {
+        // Convert world coordinates to screen coordinates for auction icon bounds check
         const canvas = canvasRef.current;
         if (canvas) {
           const rect = canvas.getBoundingClientRect();
           const screenX = worldX * viewState.scale + viewState.x + rect.left;
           const screenY = worldY * viewState.scale + viewState.y + rect.top;
 
-          // Get calendar icon bounds in screen coordinates
+          // Get auction icon bounds in screen coordinates
           const screenFeaturedX = featuredAreaWorldX * viewState.scale + viewState.x;
           const screenFeaturedY = featuredAreaWorldY * viewState.scale + viewState.y;
           const screenFeaturedWidth = featuredAreaWidth * viewState.scale;
           const screenFeaturedHeight = featuredAreaHeight * viewState.scale;
 
-          const iconBounds = getCalendarIconBounds(
+          const iconBounds = getAuctionIconBounds(
             screenFeaturedX,
             screenFeaturedY,
             screenFeaturedWidth,
@@ -343,7 +343,7 @@ export const useCanvasInteractions = ({
             screenY >= iconBounds.y &&
             screenY <= iconBounds.y + iconBounds.height
           ) {
-            onCalendarIconClick(featuredImage.metadata.title);
+            onAuctionIconClick(featuredImage.metadata.title);
             return;
           }
         }
@@ -475,7 +475,7 @@ export const useCanvasInteractions = ({
       featuredAreaHeight,
       featuredImage, // FEATURED SECTION: Add featured image
       onFeaturedImageClick, // FEATURED SECTION: Add featured image click handler
-      onCalendarIconClick, // Calendar icon click handler
+      onAuctionIconClick, // Auction icon click handler
       imagePlacementMap,
       repeatedPlacements,
       repeatedTokens,
