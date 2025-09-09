@@ -13,8 +13,7 @@ import ConnectWalletNav from '../ui/custom/connect-wallet-nav';
 import NavMenu from '../ui/custom/nav-menu';
 import HomeButton from '../ui/custom/home-button';
 import ContactButton from '../ui/custom/contact-button';
-import BuiltOnBaseOverlay from '../ui/custom/built-on-base-overlay';
-import ContractAddressPill from '../ui/custom/contract-address-pill';
+import UnifiedInfoPill from '../ui/custom/unified-info-pill';
 import ImageDetailsModal from '../ui/custom/image-details-modal';
 import ContactFormModal from '../ui/custom/contact-form-modal';
 import AboutModal from '../ui/custom/about-modal';
@@ -424,25 +423,22 @@ const InfiniteCanvas = ({
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6, ease: 'easeOut', delay: 0.3 }}
+            transition={{ duration: 1.2, ease: 'easeOut', delay: 0.3 }}
           >
             <HomeButton onClick={handleHomeClick} />
           </motion.div>
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6, ease: 'easeOut', delay: 0.4 }}
+            transition={{ duration: 1.2, ease: 'easeOut', delay: 0.4 }}
           >
             <ContactButton onClick={handleContactClick} />
           </motion.div>
         </>
       )}
 
-      {/* Built on BASE overlay */}
-      {isUIVisible && <BuiltOnBaseOverlay />}
-
-      {/* Contract Address Pill */}
-      {isUIVisible && <ContractAddressPill />}
+      {/* Unified Info Pill - Contract Address & Built on Base */}
+      {isUIVisible && <UnifiedInfoPill />}
     </>
   );
 };

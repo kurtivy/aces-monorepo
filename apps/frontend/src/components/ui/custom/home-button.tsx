@@ -1,21 +1,52 @@
 'use client';
 
-import React, { memo } from 'react';
+import type React from 'react';
+import { memo, useState, useEffect } from 'react';
 import {
-  getBrowserPerformanceSettings,
+  // getBrowserPerformanceSettings,
   getDeviceCapabilities,
-} from '../../../lib/utils/browser-utils';
+  mobileUtils,
+} from '@/lib/utils/browser-utils';
 
 interface HomeButtonProps {
   onClick: () => void;
 }
 
 const HomeButtonComponent: React.FC<HomeButtonProps> = ({ onClick }) => {
-  const browserPerf = getBrowserPerformanceSettings();
+  const [isExpanded, setIsExpanded] = useState(false);
+  // const browserPerf = getBrowserPerformanceSettings();
   const deviceCaps = getDeviceCapabilities();
+
+  // Check if device is mobile using touchCapable or mobile detection
+  const isMobile = deviceCaps.touchCapable || mobileUtils.isMobileSafari();
 
   const useAnimations = deviceCaps.performanceTier !== 'low';
   const useAdvancedAnimations = deviceCaps.performanceTier === 'high';
+
+  useEffect(() => {
+    // Disable expansion animation on mobile devices
+    if (isMobile) {
+      return; // Don't expand on mobile
+    }
+
+    let expandTimer: NodeJS.Timeout;
+    let collapseTimer: NodeJS.Timeout;
+
+    // Expand after 2 seconds (changed from 1.5)
+    expandTimer = setTimeout(() => {
+      setIsExpanded(true);
+
+      // Collapse back after 5 more seconds (7 seconds total from load)
+      collapseTimer = setTimeout(() => {
+        setIsExpanded(false);
+      }, 5000);
+    }, 2000);
+
+    return () => {
+      clearTimeout(expandTimer);
+      clearTimeout(collapseTimer);
+    };
+  }, [isMobile]);
 
   // Crown SVG paths
   const crown =
@@ -28,26 +59,89 @@ const HomeButtonComponent: React.FC<HomeButtonProps> = ({ onClick }) => {
     <button
       className={`
         fixed top-4 left-4 z-50 
-        w-12 h-12 sm:w-16 sm:h-16 
+        h-10 sm:h-14
         rounded-full 
-        bg-black/80 border border-[#D0B264]/40 
-        text-[#D0B264] 
-        flex items-center justify-center 
+        border border-[#D0B264]/60 
+        text-white
+        flex items-center
         cursor-pointer
-        hover:bg-black/70 hover:border-[#D0B264] 
-        ${useAnimations ? 'transition-colors duration-200' : ''}
-        ${useAdvancedAnimations ? 'hover:scale-110 active:scale-90 transition-transform' : ''}
+        ${useAnimations && !isMobile ? 'transition-all duration-700 ease-in-out' : ''}
+        ${useAdvancedAnimations ? 'hover:scale-105 active:scale-95' : ''}
+        overflow-hidden
       `}
       onClick={onClick}
       style={{
-        transitionDuration: useAnimations ? `${browserPerf.animationDuration}ms` : '0ms',
+        backgroundColor: 'rgb(0, 0, 0)',
+        width: !isMobile && isExpanded ? '360px' : window.innerWidth >= 640 ? '54px' : '41px',
+        transitionDuration: useAnimations && !isMobile ? '700ms' : '0ms',
+        transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+      }}
+      onMouseEnter={(e) => {
+        if (useAdvancedAnimations && !isMobile) {
+          e.currentTarget.style.transform = 'scale(1.05)';
+          e.currentTarget.style.backgroundColor = 'rgb(0, 0, 0)';
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (useAdvancedAnimations && !isMobile) {
+          e.currentTarget.style.transform = 'scale(1)';
+          e.currentTarget.style.backgroundColor = 'rgb(0, 0, 0)';
+        }
+      }}
+      onMouseDown={(e) => {
+        if (useAdvancedAnimations && !isMobile) {
+          e.currentTarget.style.transform = 'scale(0.95)';
+        }
+      }}
+      onMouseUp={(e) => {
+        if (useAdvancedAnimations && !isMobile) {
+          e.currentTarget.style.transform = 'scale(1.05)';
+        }
       }}
     >
-      <svg className="w-full h-full p-2.5 sm:p-3" viewBox="50 50 334 335" fill="currentColor">
-        <path d={crown} />
-        <path d={horizontalLine} />
-        <path d={smileyFace} />
-      </svg>
+      <div
+        className="absolute flex items-center justify-center"
+        style={{
+          left: window.innerWidth >= 640 ? '27px' : '20px', // Center of circle (half of circle width)
+          top: '50%',
+          transform: 'translate(-50%, -50%)', // Center the logo perfectly
+          width: window.innerWidth >= 640 ? '54px' : '41px',
+          height: window.innerWidth >= 640 ? '54px' : '41px',
+        }}
+      >
+        <svg
+          className="text-[#D0B264]"
+          viewBox="0 0 400 400"
+          fill="currentColor"
+          style={{
+            width: window.innerWidth >= 640 ? '44px' : '34px', // 80-85% of circle size
+            height: window.innerWidth >= 640 ? '44px' : '34px',
+          }}
+        >
+          <g transform="translate(-25, -20) scale(1)">
+            <path d={crown} />
+            <path d={horizontalLine} />
+            <path d={smileyFace} />
+          </g>
+        </svg>
+      </div>
+
+      {!isMobile && (
+        <div
+          className="flex items-center"
+          style={{
+            marginLeft: window.innerWidth >= 640 ? '68px' : '54px', // Space for logo + padding
+            opacity: isExpanded ? 1 : 0,
+            width: isExpanded ? 'auto' : '0px',
+            transition: useAnimations ? 'opacity 700ms cubic-bezier(0.4, 0, 0.2, 1)' : 'none',
+            transitionDelay: isExpanded ? '200ms' : '0ms',
+          }}
+        >
+          <span className="text-xs sm:text-sm font-medium whitespace-nowrap text-[#D0B264]">
+            Click on an image to view the products info!
+          </span>
+        </div>
+      )}
     </button>
   );
 };

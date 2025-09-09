@@ -347,49 +347,18 @@ export const useCanvasInteractions = ({
         const grailsQuadX = homeAreaWorldX + quadWidth;
         const grailsQuadY = homeAreaWorldY + quadHeight;
 
-        // ABOUT button (top-left quadrant)
-        if (
-          worldX >= aboutQuadX &&
-          worldX < aboutQuadX + quadWidth &&
-          worldY >= aboutQuadY &&
-          worldY < aboutQuadY + quadHeight
-        ) {
-          if (onAboutClick) {
-            onAboutClick();
-          }
-          return;
-        }
+        // Home area button handling (simplified to 2 buttons)
+        const buttonWidth = homeAreaWidth / 2;
 
-        // CREATE button (top-right quadrant)
-        if (
-          worldX >= createQuadX &&
-          worldX < createQuadX + quadWidth &&
-          worldY >= createQuadY &&
-          worldY < createQuadY + quadHeight
-        ) {
+        // CREATE button (left half)
+        if (worldX >= homeAreaWorldX && worldX < homeAreaWorldX + buttonWidth) {
           window.location.href = '/create';
           return;
         }
 
-        // DOCS button (bottom-left quadrant)
-        if (
-          worldX >= docsQuadX &&
-          worldX < docsQuadX + quadWidth &&
-          worldY >= docsQuadY &&
-          worldY < docsQuadY + quadHeight
-        ) {
-          window.open('https://docs.aces.fun', '_blank');
-          return;
-        }
-
-        // GRAILS button (bottom-right quadrant)
-        if (
-          worldX >= grailsQuadX &&
-          worldX < grailsQuadX + quadWidth &&
-          worldY >= grailsQuadY &&
-          worldY < grailsQuadY + quadHeight
-        ) {
-          window.location.href = '/grails';
+        // DROPS button (right half)
+        if (worldX >= homeAreaWorldX + buttonWidth && worldX < homeAreaWorldX + homeAreaWidth) {
+          window.location.href = '/drops';
           return;
         }
         return;

@@ -2,27 +2,78 @@ import type { ImageInfo } from '../../../types/canvas';
 import { getDeviceCapabilities } from '../../utils/browser-utils';
 import { getCanvasFontStack } from '../../utils/font-loader';
 
-// Logo image cache for performance
-const logoImageCache = new Map<string, HTMLImageElement>();
-
-const loadBuyCultureLogo = (): HTMLImageElement | null => {
-  const cacheKey = 'buy-culture-logo';
-
-  if (logoImageCache.has(cacheKey)) {
-    return logoImageCache.get(cacheKey)!;
-  }
-
-  const logoImg = new Image();
-  logoImg.crossOrigin = 'anonymous';
-  logoImg.src = '/png/buy-culture-trade-hype.png';
-
-  // Cache the image (even if not loaded yet)
-  logoImageCache.set(cacheKey, logoImg);
-
-  return logoImg;
+const PIN = {
+  radius: 3.5,
+  insetDesktop: 8,
+  insetMobile: 6,
+  color: '#D8DCE2',
+  shadowBlur: 2,
+  shadowColor: 'rgba(0,0,0,0.18)',
+  highlight: 'rgba(255,255,255,0.8)',
+  alpha: 0.35, // <— control pin opacity here
 };
 
-const drawBuyCultureLogo = (
+// Update drawPin to multiply existing alpha by PIN.alpha
+function drawPin(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number) {
+  ctx.save();
+  const prevAlpha = ctx.globalAlpha;
+  ctx.globalAlpha = prevAlpha * PIN.alpha; // keeps your card’s overall opacity intact
+
+  ctx.shadowColor = PIN.shadowColor;
+  ctx.shadowBlur = PIN.shadowBlur;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 1;
+
+  const grad = ctx.createRadialGradient(cx - r * 0.25, cy - r * 0.25, r * 0.1, cx, cy, r);
+  grad.addColorStop(0, '#F4F6F9');
+  grad.addColorStop(0.6, PIN.color);
+  grad.addColorStop(1, '#B9C0C8');
+
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+
+  // tiny highlight (inherits the same alpha)
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = PIN.highlight;
+  ctx.beginPath();
+  ctx.arc(cx - r * 0.28, cy - r * 0.28, r * 0.14, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.globalAlpha = prevAlpha;
+  ctx.restore();
+}
+
+// metrics helper
+function getTextMetrics(ctx: CanvasRenderingContext2D, text: string, font: string) {
+  ctx.save();
+  ctx.font = font;
+  const m = ctx.measureText(text);
+  const ascent =
+    (m as any).actualBoundingBoxAscent ?? Math.max(0, m.emHeightAscent ?? parseFloat(font) * 0.8);
+  const descent =
+    (m as any).actualBoundingBoxDescent ?? Math.max(0, m.emHeightDescent ?? parseFloat(font) * 0.2);
+  ctx.restore();
+  return { width: m.width, ascent, descent };
+}
+
+// Days left utility function
+const calculateDaysLeft = (): { days: number; isExpired: boolean } => {
+  // Target date: September 19, 2025, 9:00 AM EST
+  const targetDate = new Date('2025-09-19T09:00:00-05:00'); // EST is UTC-5
+  const now = new Date();
+  const timeDiff = targetDate.getTime() - now.getTime();
+
+  if (timeDiff <= 0) {
+    return { days: 0, isExpired: true };
+  }
+
+  const days = Math.ceil(timeDiff / (1000 * 60 * 60 * 24)); // Use ceil to show full days remaining
+  return { days, isExpired: false };
+};
+
+const drawDaysLeft = (
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
@@ -34,24 +85,100 @@ const drawBuyCultureLogo = (
   ctx.save();
   ctx.globalAlpha = opacity;
 
-  const logoImg = loadBuyCultureLogo();
+  const { days, isExpired } = calculateDaysLeft();
 
-  if (logoImg && logoImg.complete && logoImg.naturalWidth > 0) {
-    // Mobile-responsive logo sizing and positioning
-    const logoWidth = isMobile
-      ? Math.min(width * 0.3, 120) // Slightly larger but still safe on mobile
-      : Math.min(width * 0.32, 180); // Smaller on desktop to balance better
-    const logoHeight = (logoImg.naturalHeight / logoImg.naturalWidth) * logoWidth;
-    const logoX = x + width - logoWidth - (isMobile ? 8 : 10);
-    const logoY = y + height - logoHeight - (isMobile ? 8 : 10);
+  // No card background - just text floating on the image
 
-    ctx.drawImage(logoImg, logoX, logoY, logoWidth, logoHeight);
+  if (isExpired) {
+    // Show "LIVE NOW" when expired
+    ctx.fillStyle = '#D0B284';
+    ctx.font = `bold ${isMobile ? 32 : 48}px ${getCanvasFontStack('NeueWorld')}`;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'bottom';
+    const textX = x + width - (isMobile ? 15 : 20);
+    const textY = y + height - (isMobile ? 15 : 20);
+    ctx.fillText('LIVE NOW', textX, textY);
+    ctx.restore();
+    return;
   }
+
+  // Format days with leading zero if less than 10
+  const daysText = String(days).padStart(2, '0');
+  // const daysText = '08';
+
+  // Calculate font sizes directly from card dimensions for perfect alignment
+
+  const numberFontSize = 92; // Fixed size for number
+  const daysFontSize = 42; // Fixed size for "DAYS"
+
+  // Measure text dimensions for positioning
+  ctx.font = `bold ${numberFontSize}px ${getCanvasFontStack('NeueWorld')}`;
+  const numberMetrics = ctx.measureText(daysText);
+
+  ctx.font = `${daysFontSize}px ${getCanvasFontStack('Spray Letters')}`;
+  const daysMetrics = ctx.measureText('DAYS');
+
+  // Use the same dimensions as the art card for positioning area
+  const cardWidth = isMobile
+    ? Math.min(width * 0.48, 170) // Same size as art gallery card
+    : Math.min(width * 0.45, 210); // Same size as art gallery card
+  const cardHeight = isMobile
+    ? Math.min(height * 0.25, 100) // Same height as art gallery card
+    : Math.min(height * 0.22, 85); // Same height as art gallery card
+  const cardX = x + width - cardWidth - (isMobile ? 8 : 10); // Right side positioning
+  const cardY = y + height - cardHeight - (isMobile ? 8 : 10); // Bottom positioning
+
+  // Calculate total width for side-by-side layout
+  const spacing = 20; // Spacing between number and "DAYS"
+  const totalWidth = numberMetrics.width + spacing + daysMetrics.width;
+
+  // Position countdown closer to the white card
+  const horizontalGap = 4; // Gap between countdown and white card
+  const startX = cardX - totalWidth - horizontalGap + 190; // Position to the left of white card
+  const baseY = cardY + cardHeight + 18; // Bottom alignment
+
+  // ============================================
+  // CALL 1: Draw the large number (e.g., "11")
+  // ============================================
+  ctx.fillStyle = '#D7BF75'; // Golden color
+  ctx.font = `bold 100px ${getCanvasFontStack('NeueWorld')}`;
+  ctx.letterSpacing = '4px';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(daysText, startX, baseY);
+
+  // ============================================
+  // CALL 2-4: Draw "DAYS" text with layered effect
+  // ============================================
+
+  const daysX = startX + numberMetrics.width + spacing;
+  const sprayLettersFont = `${daysFontSize}px var(--font-spray-letters), cursive, 'Arial Black', sans-serif`;
+  ctx.font = sprayLettersFont;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top'; // Top alignment for precise positioning
+
+  // Calculate the top position to align with the top of the number
+  const numberTop = baseY - 100; // Top of the number
+  const daysOffsetStep = daysFontSize * 0.3; // 40% of DAYS font height for layering
+
+  // Draw first "DAYS" - 100% opacity, aligned with top of number
+  ctx.fillStyle = '#D7BF75'; // 100% opacity
+  ctx.letterSpacing = '3px';
+  ctx.font = `28px ${getCanvasFontStack('Spray Letters')}`;
+  ctx.fillText('DAYS', daysX, numberTop);
+
+  // Draw second "DAYS" - 65% opacity, offset down
+  ctx.fillStyle = 'rgba(208, 178, 132, 0.55)'; // 65% opacity
+  ctx.fillText('DAYS', daysX, numberTop + daysOffsetStep);
+
+  // Draw third "DAYS" - 30% opacity, offset further down
+  ctx.fillStyle = 'rgba(208, 178, 132, 0.25)'; // 30% opacity
+  ctx.fillText('DAYS', daysX, numberTop + daysOffsetStep * 2);
 
   ctx.restore();
 };
 
-const drawArtGalleryCard = (
+export const drawArtGalleryCard = (
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
@@ -63,134 +190,99 @@ const drawArtGalleryCard = (
   ctx.save();
   ctx.globalAlpha = opacity;
 
-  // Mobile-responsive card dimensions and positioning
-  const cardWidth = isMobile
-    ? Math.min(width * 0.48, 170) // Even smaller on mobile to avoid logo overlap
-    : Math.min(width * 0.45, 210); // Keep desktop size
-  const cardHeight = isMobile
-    ? Math.min(height * 0.25, 100) // Slightly taller on mobile for better text spacing
-    : Math.min(height * 0.22, 85); // Keep desktop height
+  // Card size/position
+  const cardWidth = isMobile ? Math.min(width * 0.48, 170) : Math.min(width * 0.45, 210);
+  const cardHeight = isMobile ? Math.min(height * 0.25, 100) : Math.min(height * 0.22, 85);
   const cardX = x + (isMobile ? 8 : 10);
   const cardY = y + height - cardHeight - (isMobile ? 8 : 10);
 
-  // Draw white card background
-  ctx.fillStyle = 'rgba(253, 255, 250, 0.95)';
+  // Soft drop shadow (kept subtle)
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.filter = 'blur(5px)';
+  ctx.beginPath();
+  ctx.roundRect(cardX + 1, cardY + 2, cardWidth, cardHeight, 5);
+  ctx.fill();
+  ctx.restore();
+
+  // Card face
+  ctx.fillStyle = 'rgba(253, 255, 250, 0.97)';
   ctx.beginPath();
   ctx.roundRect(cardX, cardY, cardWidth, cardHeight, 4);
   ctx.fill();
 
-  // Add subtle border
-  ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
+  // Border
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.10)';
   ctx.lineWidth = 1;
   ctx.stroke();
 
-  // Text styling
+  // --- Pins (subtle + inset from edges) ---
+  const r = PIN.radius;
+  const inset = isMobile ? PIN.insetMobile : PIN.insetDesktop;
+  drawPin(ctx, cardX + inset, cardY + inset, r); // TL
+  drawPin(ctx, cardX + cardWidth - inset, cardY + inset, r); // TR
+  drawPin(ctx, cardX + inset, cardY + cardHeight - inset, r); // BL
+  drawPin(ctx, cardX + cardWidth - inset, cardY + cardHeight - inset, r); // BR
+
+  // --- Text (left-aligned + spacing) ---
+  const baseFontSize = isMobile ? Math.max(7, cardWidth * 0.04) : Math.max(8, cardWidth * 0.052);
+
+  const line1Font = `${baseFontSize / 0.85}px ${getCanvasFontStack('NeueWorld')}`;
+  const line2Font = `bold ${baseFontSize * 1.1}px ${getCanvasFontStack('NeueWorld')}`;
+  const line3Font = `italic ${baseFontSize}px ${getCanvasFontStack('NeueWorld')}`;
+  const line4Font = `${baseFontSize * 1.05}px 'Courier New', 'Monaco', 'Menlo', 'Consolas', monospace`;
+
+  const line1Text = 'Audemars Piguet x KAWS (b.2015)';
+  const line2Text = '"Tokenized"';
+  const line3Text = isMobile ? 'v. Create token market.' : 'v. Create derivative token market.';
+  const line4Text = isMobile ? 'AP KAWS TOKEN SOON' : 'AP KAWS TOKEN COMING SOON';
+
+  // metrics
+  const m1 = getTextMetrics(ctx, line1Text, line1Font);
+  const m2 = getTextMetrics(ctx, line2Text, line2Font);
+  const m3 = getTextMetrics(ctx, line3Text, line3Font);
+  const m4 = getTextMetrics(ctx, line4Text, line4Font);
+
+  // Line spacing multipliers
+  const ls = isMobile ? 1.45 : 2.2; // overall spacing
+  const ls12 = ls * 0.8; // tighter between line 1 → 2
+
+  const lh1 = (m1.ascent + m1.descent) * ls12;
+  const lh2 = (m2.ascent + m2.descent) * ls;
+  const lh3 = (m3.ascent + m3.descent) * ls;
+  const lh4 = (m4.ascent + m4.descent) * ls;
+
+  const totalTextHeight = lh1 + lh2 + lh3 + lh4;
+
+  // Layout: left-rag + vertical centering
+  const textPadX = Math.max(8, cardWidth * 0.06); // left padding
+  const textX = cardX + textPadX;
+
+  // Move the text block UP slightly (negative = up, positive = down)
+  const textBiasY = -(isMobile ? Math.max(2, cardHeight * 0.02) : Math.max(3, cardHeight * 0.02));
+  const startY = cardY + (cardHeight - totalTextHeight) / 2 + textBiasY;
+
   ctx.fillStyle = '#000000';
   ctx.textAlign = 'left';
-  ctx.textBaseline = 'top';
+  ctx.textBaseline = 'alphabetic';
 
-  // Mobile-responsive font sizing
-  const baseFontSize = isMobile
-    ? Math.max(7, cardWidth * 0.04) // Slightly larger font on mobile since card is narrower
-    : Math.max(8, cardWidth * 0.042); // Keep desktop font
-  const lineHeight = baseFontSize * (isMobile ? 1.7 : 2.0); // More line spacing on desktop
-  let currentY = cardY + (isMobile ? 8 : 10); // Restore some top padding
+  // Draw lines, advancing by the PREVIOUS line's height each time
+  let yCursor = startY + m1.ascent;
 
-  // Line 1: Artist and date - full title for both mobile and desktop
-  ctx.font = `${baseFontSize / 0.85}px ${getCanvasFontStack('NeueWorld')}`;
-  const line1Text = 'Audemars Piguet x KAWS (b.2015)';
-  ctx.fillText(line1Text, cardX + 8, currentY);
-  currentY += lineHeight;
+  ctx.font = line1Font;
+  ctx.fillText(line1Text, textX, yCursor);
 
-  // Line 2: "Tokenized"
-  ctx.font = `bold ${baseFontSize * 1.1}px ${getCanvasFontStack('NeueWorld')}`;
-  ctx.letterSpacing = '1px';
-  ctx.fillText('"Tokenized"', cardX + 8, currentY);
-  currentY += lineHeight;
+  yCursor += lh1;
+  ctx.font = line2Font;
+  ctx.fillText(line2Text, textX, yCursor);
 
-  // Line 3: Description - shortened for mobile
-  ctx.font = `italic ${baseFontSize}px ${getCanvasFontStack('NeueWorld')}`;
-  ctx.letterSpacing = '0px';
-  const line3Text = isMobile ? 'v. Create token market.' : 'v. Create derivative token market.';
-  ctx.fillText(line3Text, cardX + 8, currentY);
-  currentY += lineHeight;
+  yCursor += lh2;
+  ctx.font = line3Font;
+  ctx.fillText(line3Text, textX, yCursor);
 
-  // Line 4: Bottom line - shortened for mobile
-  ctx.font = `${baseFontSize * 1.05}px 'Courier New', 'Monaco', 'Menlo', 'Consolas', monospace`;
-  const line4Text = isMobile ? 'AP KAWS TOKEN SOON' : 'AP KAWS TOKEN COMING SOON';
-  ctx.fillText(line4Text, cardX + 8, currentY);
-
-  ctx.restore();
-};
-
-const drawSaleStartsButton = (
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  opacity: number,
-  isMobile = false,
-) => {
-  ctx.save();
-  ctx.globalAlpha = opacity;
-
-  // Mobile-responsive text and sizing
-  const text = isMobile ? 'SALE STARTS 19/09/25 9AM EST' : 'SALE STARTS 19/09/25 9AM EST'; // Keep full text
-  const fontSize = isMobile
-    ? Math.max(10, Math.min(12, height * 0.04)) // Much smaller font on mobile
-    : Math.max(12, Math.min(15, height * 0.05)); // Reduced desktop font size
-  const letterSpacing = isMobile ? '0.5px' : '1px'; // Reduced spacing
-
-  ctx.font = `${fontSize}px ${getCanvasFontStack('Proxima Nova')}`;
-  ctx.letterSpacing = letterSpacing;
-
-  // Measure text width with letter spacing
-  const textMetrics = ctx.measureText(text);
-  const spacingMultiplier = isMobile ? 0.5 : 1;
-  const textWidth = textMetrics.width + (text.length - 1) * spacingMultiplier;
-
-  // Mobile-responsive button sizing with 720px breakpoint
-  const buttonPadding = isMobile ? 8 : 12;
-
-  // Special handling for 720px width - make button bigger
-  let maxButtonWidth;
-  if (width <= 720 && width > 400) {
-    maxButtonWidth = width * 0.88; // Slightly bigger at 720px breakpoint
-  } else {
-    maxButtonWidth = isMobile ? width * 0.95 : width * 0.8;
-  }
-
-  const buttonWidth = Math.min(textWidth + buttonPadding * 2, maxButtonWidth);
-  const buttonHeight = Math.max(fontSize * 1.6, Math.min(height * 0.08, isMobile ? 35 : 40)); // Smaller height
-
-  // Better mobile positioning
-  const buttonX = x + (width - buttonWidth) / 2; // Keep centered
-  const buttonY = y + (isMobile ? 8 : 15); // Less top padding on mobile
-
-  // Ensure button doesn't go outside bounds
-  const clampedButtonX = Math.max(x + 4, Math.min(buttonX, x + width - buttonWidth - 4));
-  const clampedButtonWidth = Math.min(buttonWidth, width - 8); // Ensure 4px margin on each side
-
-  // Draw button background
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-  ctx.beginPath();
-  ctx.roundRect(clampedButtonX, buttonY, clampedButtonWidth, buttonHeight, 6);
-  ctx.fill();
-
-  // Draw button border - thinner line
-  ctx.strokeStyle = '#D0B284';
-  ctx.lineWidth = 1;
-  ctx.stroke();
-
-  // Draw button text
-  ctx.fillStyle = '#D0B284';
-  ctx.font = `${fontSize}px ${getCanvasFontStack('Proxima Nova')}`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.letterSpacing = letterSpacing;
-
-  ctx.fillText(text, clampedButtonX + clampedButtonWidth / 2, buttonY + buttonHeight / 2);
+  yCursor += lh3;
+  ctx.font = line4Font;
+  ctx.fillText(line4Text, textX, yCursor);
 
   ctx.restore();
 };
@@ -250,7 +342,7 @@ export const drawFeaturedSection = (
     ctx.save();
 
     // Create rounded rectangle clipping path with padding
-    const imagePadding = 12;
+    const imagePadding = 4;
     const imageX = x + imagePadding;
     const imageY = y + imagePadding;
     const imageWidth = width - imagePadding * 2;
@@ -263,7 +355,9 @@ export const drawFeaturedSection = (
     // Calculate scale to cover the entire area while maintaining aspect ratio
     const scaleX = imageWidth / featuredImage.element.naturalWidth;
     const scaleY = imageHeight / featuredImage.element.naturalHeight;
-    const imageScale = Math.max(scaleX, scaleY);
+    const baseScale = Math.max(scaleX, scaleY);
+    const zoomFactor = 1.15; // 15% additional zoom to reduce black space
+    const imageScale = baseScale * zoomFactor;
 
     const scaledImageWidth = featuredImage.element.naturalWidth * imageScale;
     const scaledImageHeight = featuredImage.element.naturalHeight * imageScale;
@@ -311,9 +405,8 @@ export const drawFeaturedSection = (
   }
 
   // Draw new overlay elements with mobile awareness
-  drawSaleStartsButton(ctx, x, y, width, height, 1.0, isMobileDevice); // Button now at top
   drawArtGalleryCard(ctx, x, y, width, height, 1.0, isMobileDevice);
-  drawBuyCultureLogo(ctx, x, y, width, height, 1.0, isMobileDevice); // Logo now at bottom right
+  drawDaysLeft(ctx, x, y, width, height, 1.0, isMobileDevice); // Simplified call
 
   // Draw premium border (keeping existing colors and behavior)
   ctx.save();
@@ -324,17 +417,17 @@ export const drawFeaturedSection = (
 
   // Enhanced border opacity and glow when hovering
   const borderOpacity = isHovered ? 0.9 : 0.7;
-  const borderWidth = isHovered ? 4 : 3;
+  const borderWidth = isHovered ? 2 : 1;
 
   // Safari optimization: Skip expensive glow effects on Safari
   if (!isSafari && !isMobileDevice && isHovered) {
-    ctx.shadowColor = 'rgba(24, 77, 55, 0.4)';
+    ctx.shadowColor = 'rgba(215, 191, 117, 0.4)';
     ctx.shadowBlur = 8;
   }
 
   // Outer border - Green (#184D37)
   ctx.lineWidth = borderWidth;
-  ctx.strokeStyle = `rgba(24, 77, 55, ${borderOpacity})`; // Green (#184D37)
+  ctx.strokeStyle = `rgba(215, 191, 117, ${borderOpacity})`; // Green (#184D37)
 
   // Draw outer border with rounded corners
   ctx.beginPath();
@@ -342,12 +435,12 @@ export const drawFeaturedSection = (
   ctx.stroke();
 
   // Inner border - Golden
-  ctx.shadowBlur = 0; // Remove shadow for inner border
-  ctx.lineWidth = Math.max(1, borderWidth - 2); // Slightly thinner inner border
-  ctx.strokeStyle = `rgba(215, 191, 117, ${borderOpacity})`; // highlightGold (#D7BF75)
+  // ctx.shadowBlur = 0; // Remove shadow for inner border
+  // ctx.lineWidth = Math.max(1, borderWidth - 2); // Slightly thinner inner border
+  // ctx.strokeStyle = `rgba(215, 191, 117, ${borderOpacity})`; // highlightGold (#D7BF75)
 
   // Draw inner border with slightly smaller radius
-  const innerPadding = 3;
+  const innerPadding = 1;
   const innerRadius = Math.max(2, radius - 2);
   ctx.beginPath();
   ctx.roundRect(
@@ -455,7 +548,9 @@ export const drawAnimatedFeaturedSection = (
     // Calculate scale to cover the entire area while maintaining aspect ratio
     const scaleX = imageWidth / featuredImage.element.naturalWidth;
     const scaleY = imageHeight / featuredImage.element.naturalHeight;
-    const imageScale = Math.max(scaleX, scaleY);
+    const baseScale = Math.max(scaleX, scaleY);
+    const zoomFactor = 1.15; // 15% additional zoom to reduce black space
+    const imageScale = baseScale * zoomFactor;
 
     const scaledImageWidth = featuredImage.element.naturalWidth * imageScale;
     const scaledImageHeight = featuredImage.element.naturalHeight * imageScale;
@@ -482,7 +577,6 @@ export const drawAnimatedFeaturedSection = (
 
   // Draw new overlay elements with fade-in
   const overlayOpacity = opacity * borderAnimationProgress;
-  drawSaleStartsButton(ctx, drawX, drawY, width, height, overlayOpacity, isMobileDevice); // Button now at top
 
   // Draw animated border with progressive appearance (keeping existing colors)
   if (borderAnimationProgress > 0) {
@@ -639,5 +733,5 @@ export const drawAnimatedFeaturedSection = (
 
   // Draw the new overlay elements last to ensure they appear on top
   drawArtGalleryCard(ctx, drawX, drawY, width, height, overlayOpacity, isMobileDevice);
-  drawBuyCultureLogo(ctx, drawX, drawY, width, height, overlayOpacity, isMobileDevice); // Logo now at bottom right
+  drawDaysLeft(ctx, drawX, drawY, width, height, overlayOpacity, isMobileDevice); // Simplified call
 };
