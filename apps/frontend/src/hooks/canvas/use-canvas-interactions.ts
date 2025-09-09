@@ -4,6 +4,7 @@ import { useCallback, useRef, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ViewState, ImageInfo } from '../../types/canvas';
 import { isHomeArea, isFeaturedArea } from '../../lib/canvas/grid-placement'; // FEATURED SECTION: Added isFeaturedArea import
+import { getCalendarIconBounds } from '../../lib/canvas/draw/draw-featured-section'; // Calendar icon import
 import { mobileUtils } from '../../lib/utils/browser-utils';
 
 interface UseCanvasInteractionsProps {
@@ -41,6 +42,8 @@ interface UseCanvasInteractionsProps {
   // FEATURED SECTION: Add featured image props
   featuredImage?: ImageInfo | null;
   onFeaturedImageClick?: (imageInfo: ImageInfo) => void;
+  // Calendar icon click handler
+  onCalendarIconClick?: (productTitle: string) => void;
   // HOVER ENHANCEMENT: Add hover state callbacks for regular product images
   onProductImageHover?: (
     imageInfo: ImageInfo | null,
@@ -117,6 +120,7 @@ export const useCanvasInteractions = ({
   onMomentumUpdate,
   featuredImage, // FEATURED SECTION: Add featured image
   onFeaturedImageClick, // FEATURED SECTION: Add featured image click handler
+  onCalendarIconClick, // Calendar icon click handler
   onProductImageHover, // HOVER ENHANCEMENT: Add product image hover callback
 }: UseCanvasInteractionsProps) => {
   const router = useRouter();
@@ -144,11 +148,14 @@ export const useCanvasInteractions = ({
   const homeAreaWorldX = -unitSize;
   const homeAreaWorldY = -unitSize;
 
-  // FEATURED SECTION: New featured area coordinates (2×2 above home area)
+  // FEATURED SECTION: New featured area coordinates - MUST match canvas renderer coordinates
   const featuredAreaWidth = unitSize * 2;
-  const featuredAreaHeight = unitSize * 2;
+  const featuredAreaHeight = unitSize * 1.95; // Match canvas renderer: 65% height
   const featuredAreaWorldX = -unitSize;
-  const featuredAreaWorldY = -unitSize * 3; // 2 units above home area
+  const featuredAreaWorldY = -unitSize * 2.25; // Match canvas renderer coordinates exactly
+
+  // Smart mobile optimization: detect mobile device (same detection as in canvas renderer)
+  const isMobileDevice = typeof window !== 'undefined' && window.navigator.maxTouchPoints > 0;
 
   // Optimized coordinate calculation with caching
   const getWorldCoordinates = useCallback(
@@ -307,7 +314,42 @@ export const useCanvasInteractions = ({
 
       const { worldX, worldY } = coords;
 
-      // FEATURED SECTION: Check featured area first (highest priority)
+      // CALENDAR ICON: Check calendar icon click first (highest priority)
+      if (featuredImage && onCalendarIconClick) {
+        // Convert world coordinates to screen coordinates for calendar icon bounds check
+        const canvas = canvasRef.current;
+        if (canvas) {
+          const rect = canvas.getBoundingClientRect();
+          const screenX = worldX * viewState.scale + viewState.x + rect.left;
+          const screenY = worldY * viewState.scale + viewState.y + rect.top;
+
+          // Get calendar icon bounds in screen coordinates
+          const screenFeaturedX = featuredAreaWorldX * viewState.scale + viewState.x;
+          const screenFeaturedY = featuredAreaWorldY * viewState.scale + viewState.y;
+          const screenFeaturedWidth = featuredAreaWidth * viewState.scale;
+          const screenFeaturedHeight = featuredAreaHeight * viewState.scale;
+
+          const iconBounds = getCalendarIconBounds(
+            screenFeaturedX,
+            screenFeaturedY,
+            screenFeaturedWidth,
+            screenFeaturedHeight,
+            isMobileDevice,
+          );
+
+          if (
+            screenX >= iconBounds.x &&
+            screenX <= iconBounds.x + iconBounds.width &&
+            screenY >= iconBounds.y &&
+            screenY <= iconBounds.y + iconBounds.height
+          ) {
+            onCalendarIconClick(featuredImage.metadata.title);
+            return;
+          }
+        }
+      }
+
+      // FEATURED SECTION: Check featured area (second priority)
       if (
         featuredImage &&
         isFeaturedArea(
@@ -433,6 +475,7 @@ export const useCanvasInteractions = ({
       featuredAreaHeight,
       featuredImage, // FEATURED SECTION: Add featured image
       onFeaturedImageClick, // FEATURED SECTION: Add featured image click handler
+      onCalendarIconClick, // Calendar icon click handler
       imagePlacementMap,
       repeatedPlacements,
       repeatedTokens,
@@ -441,6 +484,9 @@ export const useCanvasInteractions = ({
       router,
       onAboutClick,
       onTermsClick,
+      viewState, // Add viewState for coordinate conversion
+      canvasRef, // Add canvasRef for screen coordinate calculation
+      isMobileDevice, // Add mobile device detection
     ],
   );
 

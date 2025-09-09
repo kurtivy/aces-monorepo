@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '../button';
 import { Input } from '../input';
 import { Label } from '../label';
-import { X, Send, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { X, Send, CheckCircle, AlertCircle } from 'lucide-react';
 import {
   addWindowEventListenerSafe,
   removeWindowEventListenerSafe,

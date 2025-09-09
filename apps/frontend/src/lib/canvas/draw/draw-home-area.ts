@@ -88,6 +88,7 @@ export const drawHomeArea = (
   spaceCanvas: HTMLCanvasElement | null = null,
   animationTime = 0,
   unitSize = UNIT_SIZE,
+  opacity: number = 1, // Add opacity parameter
   quadrantPrompts: readonly string[] = ['LAUNCH', 'DROPS'], // Updated default prompts
 ) => {
   // Smart mobile optimization: detect mobile device
@@ -98,6 +99,9 @@ export const drawHomeArea = (
 
   // Background with gradient - Safari optimization: cache gradients
   ctx.save();
+
+  // Apply opacity for fade-in effect
+  ctx.globalAlpha = opacity;
 
   const gradientKey = `home-bg-${Math.round(homeAreaWidth)}-${Math.round(homeAreaHeight)}`;
   let backgroundGradient = homeAreaGradientCache.get(gradientKey);

@@ -183,27 +183,17 @@ export const useCanvasEntranceAnimation = ({
     return baseCalcs;
   }, [tokenPositions, unitSize, viewState, canvasWidth, canvasHeight]);
 
-  // Featured section calculation (comes from top, not bottom)
+  // Featured section calculation (simplified for fade-in only)
   const baseFeaturedCalculation = useMemo(() => {
     if (!featuredSectionPosition) return null;
 
     return {
       ...featuredSectionPosition,
       baseY: featuredSectionPosition.y,
-      startOffset: -unitSize * 0.4, // Negative offset = starts above final position
-      isVisible:
-        !viewState ||
-        isElementInViewport(
-          featuredSectionPosition.x,
-          featuredSectionPosition.y,
-          featuredSectionPosition.width,
-          featuredSectionPosition.height,
-          viewState,
-          canvasWidth,
-          canvasHeight,
-        ),
+      startOffset: 0, // No sliding animation needed
+      isVisible: true, // Always visible for fade-in
     };
-  }, [featuredSectionPosition, unitSize, viewState, canvasWidth, canvasHeight]);
+  }, [featuredSectionPosition]);
 
   // Start animation when conditions are met
   useEffect(() => {
@@ -334,38 +324,19 @@ export const useCanvasEntranceAnimation = ({
         }
       });
 
-      // Calculate animated featured section (slides down from top)
+      // Replace the complex featured section animation with:
       let animatedFeaturedSection: AnimatedFeaturedElement | null = null;
-      if (
-        baseFeaturedCalculation &&
-        (currentIsAnimationActive || !baseFeaturedCalculation.isVisible || viewState === undefined)
-      ) {
-        if (animationProgress >= 1) {
-          // Animation complete - use final position
-          animatedFeaturedSection = {
-            x: baseFeaturedCalculation.x,
-            y: baseFeaturedCalculation.y,
-            width: baseFeaturedCalculation.width,
-            height: baseFeaturedCalculation.height,
-            animatedX: baseFeaturedCalculation.x,
-            animatedY: baseFeaturedCalculation.baseY,
-            animatedOpacity: 1,
-            animatedScale: 1,
-          };
-        } else {
-          // During animation - slides down from top (negative offset becomes 0)
-          const currentOffset = baseFeaturedCalculation.startOffset * (1 - animationProgress);
-          animatedFeaturedSection = {
-            x: baseFeaturedCalculation.x,
-            y: baseFeaturedCalculation.y,
-            width: baseFeaturedCalculation.width,
-            height: baseFeaturedCalculation.height,
-            animatedX: baseFeaturedCalculation.x,
-            animatedY: baseFeaturedCalculation.baseY + currentOffset, // Negative startOffset + positive baseY
-            animatedOpacity: animationProgress,
-            animatedScale: 0.95 + 0.05 * animationProgress, // Slight scale animation like tokens
-          };
-        }
+      if (baseFeaturedCalculation) {
+        animatedFeaturedSection = {
+          x: baseFeaturedCalculation.x,
+          y: baseFeaturedCalculation.y,
+          width: baseFeaturedCalculation.width,
+          height: baseFeaturedCalculation.height,
+          animatedX: baseFeaturedCalculation.x,
+          animatedY: baseFeaturedCalculation.y, // No offset needed
+          animatedOpacity: animationProgress, // Use the same progress as other elements
+          animatedScale: 1, // No scaling needed
+        };
       }
 
       return {

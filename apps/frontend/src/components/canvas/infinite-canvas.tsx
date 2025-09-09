@@ -19,6 +19,7 @@ import ContactFormModal from '../ui/custom/contact-form-modal';
 import AboutModal from '../ui/custom/about-modal';
 import TermsModal from '../ui/custom/terms-modal';
 import IntroAnimation from '../loading/intro-animation';
+import { EmailSignupModal } from '../ui/email-signup-modal';
 import { useModal } from '../../lib/contexts/modal-context';
 import {
   mobileUtils,
@@ -49,6 +50,9 @@ const InfiniteCanvas = ({
   const router = useRouter();
   const [selectedImage, setSelectedImage] = useState<ImageInfo | null>(null);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+  // Calendar icon modal state
+  const [isEmailSignupModalOpen, setIsEmailSignupModalOpen] = useState(false);
+  const [selectedProductTitle, setSelectedProductTitle] = useState('');
 
   // Modal context for About and Terms modals
   const {
@@ -130,6 +134,17 @@ const InfiniteCanvas = ({
   const imagesRef = useRef(images);
   imagesRef.current = images;
 
+  // Calendar icon click handler - define before useCanvasInteractions
+  const handleCalendarIconClick = useCallback((productTitle: string) => {
+    setSelectedProductTitle(productTitle);
+    setIsEmailSignupModalOpen(true);
+  }, []);
+
+  const handleEmailSignupModalClose = () => {
+    setIsEmailSignupModalOpen(false);
+    setSelectedProductTitle('');
+  };
+
   // FEATURED SECTION: Updated useCanvasInteractions call with featured section props
   const {
     isPanning,
@@ -154,6 +169,8 @@ const InfiniteCanvas = ({
     // FEATURED SECTION: Add featured section props
     featuredImage,
     onFeaturedImageClick: onFeaturedImageClick || setSelectedImage,
+    // Calendar icon click handler
+    onCalendarIconClick: handleCalendarIconClick,
     // Modal callbacks for home area buttons
     onAboutClick: openAboutModal,
     onTermsClick: openTermsModal,
@@ -418,6 +435,11 @@ const InfiniteCanvas = ({
       <ContactFormModal isOpen={isContactModalOpen} onClose={handleContactModalClose} />
       <AboutModal isOpen={isAboutModalOpen} onClose={closeAboutModal} />
       <TermsModal isOpen={isTermsModalOpen} onClose={closeTermsModal} />
+      <EmailSignupModal
+        isOpen={isEmailSignupModalOpen}
+        onClose={handleEmailSignupModalClose}
+        productTitle={selectedProductTitle}
+      />
       {isUIVisible && !selectedImage && (
         <>
           <motion.div

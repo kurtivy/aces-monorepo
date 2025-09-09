@@ -1,6 +1,7 @@
 import type { ImageInfo } from '../../../types/canvas';
 import { getDeviceCapabilities } from '../../utils/browser-utils';
 import { getCanvasFontStack } from '../../utils/font-loader';
+import { getCalendarIcon, initializeCalendarIcon } from '../utils/lucide-calendar-icon';
 
 const PIN = {
   radius: 3.5,
@@ -51,12 +52,208 @@ function getTextMetrics(ctx: CanvasRenderingContext2D, text: string, font: strin
   ctx.font = font;
   const m = ctx.measureText(text);
   const ascent =
-    (m as any).actualBoundingBoxAscent ?? Math.max(0, m.emHeightAscent ?? parseFloat(font) * 0.8);
+    (m as unknown as { actualBoundingBoxAscent?: number; emHeightAscent?: number })
+      .actualBoundingBoxAscent ??
+    Math.max(
+      0,
+      (m as unknown as { emHeightAscent?: number }).emHeightAscent ?? parseFloat(font) * 0.8,
+    );
   const descent =
-    (m as any).actualBoundingBoxDescent ?? Math.max(0, m.emHeightDescent ?? parseFloat(font) * 0.2);
+    (m as unknown as { actualBoundingBoxDescent?: number; emHeightDescent?: number })
+      .actualBoundingBoxDescent ??
+    Math.max(
+      0,
+      (m as unknown as { emHeightDescent?: number }).emHeightDescent ?? parseFloat(font) * 0.2,
+    );
   ctx.restore();
   return { width: m.width, ascent, descent };
 }
+
+// // UNUSED: Calendar icon drawing function (replaced by drawLucideCalendarIcon)
+// // eslint-disable-next-line @typescript-eslint/no-unused-vars
+// const drawCalendarIcon = (
+//   ctx: CanvasRenderingContext2D,
+//   x: number,
+//   y: number,
+//   size: number,
+//   hoverProgress = 0,
+// ) => {
+//   ctx.save();
+
+//   // Apply hover scale effect
+//   const scale = 1 + hoverProgress * 0.1; // 10% scale increase on hover
+//   const scaledSize = size * scale;
+//   const offsetX = (scaledSize - size) / 2;
+//   const offsetY = (scaledSize - size) / 2;
+
+//   const iconX = x - offsetX;
+//   const iconY = y - offsetY;
+
+//   // Icon styling - match the golden theme
+//   const baseOpacity = 0.8 + hoverProgress * 0.2; // 80% to 100% opacity
+//   const iconColor = `rgba(215, 191, 117, ${baseOpacity})`; // Golden color
+//   const strokeWidth = Math.max(1, scaledSize * 0.08);
+
+//   // Drop shadow for depth
+//   ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+//   ctx.shadowBlur = 4;
+//   ctx.shadowOffsetX = 1;
+//   ctx.shadowOffsetY = 2;
+
+//   const calendarWidth = scaledSize * 0.55; // Slightly smaller to make room for plus
+//   const calendarHeight = scaledSize * 0.65;
+//   const calendarX = iconX + scaledSize * 0.1; // Positioned more to the left
+//   const calendarY = iconY + scaledSize * 0.15;
+//   const cornerRadius = scaledSize * 0.06;
+
+//   // Draw calendar base rectangle
+//   ctx.strokeStyle = iconColor;
+//   ctx.fillStyle = `rgba(215, 191, 117, ${baseOpacity * 0.2})`; // Subtle fill
+//   ctx.lineWidth = strokeWidth;
+
+//   // Calendar body
+//   ctx.beginPath();
+//   ctx.roundRect(calendarX, calendarY, calendarWidth, calendarHeight, cornerRadius);
+//   ctx.fill();
+//   ctx.stroke();
+
+//   // Calendar header separator line (like in Lucide design)
+//   ctx.strokeStyle = iconColor;
+//   ctx.lineWidth = strokeWidth;
+//   ctx.beginPath();
+//   ctx.moveTo(calendarX, calendarY + scaledSize * 0.18);
+//   ctx.lineTo(calendarX + calendarWidth, calendarY + scaledSize * 0.18);
+//   ctx.stroke();
+
+//   // Calendar rings (top tabs) - positioned like Lucide design
+//   ctx.shadowBlur = 0; // Remove shadow for rings
+//   const ringWidth = scaledSize * 0.03;
+//   const ringHeight = scaledSize * 0.12;
+//   const ring1X = calendarX + calendarWidth * 0.3;
+//   const ring2X = calendarX + calendarWidth * 0.7;
+//   const ringY = calendarY - ringHeight * 0.3;
+
+//   ctx.fillStyle = iconColor;
+//   // Left ring
+//   ctx.beginPath();
+//   ctx.roundRect(ring1X - ringWidth / 2, ringY, ringWidth, ringHeight, ringWidth / 2);
+//   ctx.fill();
+
+//   // Right ring
+//   ctx.beginPath();
+//   ctx.roundRect(ring2X - ringWidth / 2, ringY, ringWidth, ringHeight, ringWidth / 2);
+//   ctx.fill();
+
+//   const plusSize = scaledSize * 0.2;
+//   const plusX = calendarX + calendarWidth + scaledSize * 0.15; // Positioned to the right
+//   const plusY = iconY + scaledSize * 0.65; // Lower position
+//   const plusStroke = strokeWidth * 1.2;
+
+//   ctx.strokeStyle = iconColor;
+//   ctx.lineWidth = plusStroke;
+//   ctx.lineCap = 'round';
+
+//   // Horizontal line
+//   ctx.beginPath();
+//   ctx.moveTo(plusX - plusSize / 2, plusY);
+//   ctx.lineTo(plusX + plusSize / 2, plusY);
+//   ctx.stroke();
+
+//   // Vertical line
+//   ctx.beginPath();
+//   ctx.moveTo(plusX, plusY - plusSize / 2);
+//   ctx.lineTo(plusX, plusY + plusSize / 2);
+//   ctx.stroke();
+
+//   ctx.restore();
+// };
+
+// NEW: Lucide CalendarPlus icon drawing function
+const drawLucideCalendarIcon = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  size: number,
+  hoverProgress = 0,
+) => {
+  ctx.save();
+
+  // Apply hover scale effect
+  const scale = 1 + hoverProgress * 0.1; // 10% scale increase on hover
+  const scaledSize = size * scale;
+  const offsetX = (scaledSize - size) / 2;
+  const offsetY = (scaledSize - size) / 2;
+
+  const iconX = x - offsetX;
+  const iconY = y - offsetY;
+
+  // Initialize the calendar icon cache on first use
+  if (typeof window !== 'undefined') {
+    initializeCalendarIcon();
+  }
+
+  // Get the pre-rendered Lucide CalendarPlus icon
+  try {
+    const iconCanvas = getCalendarIcon(scaledSize, hoverProgress);
+
+    // Apply drop shadow for depth
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+    ctx.shadowBlur = 4;
+    ctx.shadowOffsetX = 1;
+    ctx.shadowOffsetY = 2;
+
+    // Draw the Lucide CalendarPlus icon
+    ctx.drawImage(iconCanvas, iconX, iconY, scaledSize, scaledSize);
+  } catch (error) {
+    // Fallback: draw a simple plus sign if icon fails
+    const baseOpacity = 0.8 + hoverProgress * 0.2;
+    const iconColor = `rgba(215, 191, 117, ${baseOpacity})`;
+
+    ctx.strokeStyle = iconColor;
+    ctx.lineWidth = 1;
+    ctx.lineCap = 'round';
+
+    const plusSize = scaledSize * 0.6;
+    const centerX = iconX + scaledSize / 2;
+    const centerY = iconY + scaledSize / 2;
+
+    // Horizontal line
+    ctx.beginPath();
+    ctx.moveTo(centerX - plusSize / 2, centerY);
+    ctx.lineTo(centerX + plusSize / 2, centerY);
+    ctx.stroke();
+
+    // Vertical line
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY - plusSize / 2);
+    ctx.lineTo(centerX, centerY + plusSize / 2);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+};
+
+// Helper function to get calendar icon bounds for click detection
+export const getCalendarIconBounds = (
+  featuredX: number,
+  featuredY: number,
+  featuredWidth: number,
+  featuredHeight: number,
+  isMobile = false,
+) => {
+  const iconSize = isMobile ? 24 : 32;
+  const padding = isMobile ? 12 : 16;
+
+  const iconX = featuredX + featuredWidth - iconSize - padding;
+  const iconY = featuredY + padding;
+
+  return {
+    x: iconX,
+    y: iconY,
+    width: iconSize,
+    height: iconSize,
+  };
+};
 
 // Days left utility function
 const calculateDaysLeft = (): { days: number; isExpired: boolean } => {
@@ -306,6 +503,8 @@ export const drawFeaturedSection = (
   mouseX = 0,
   mouseY = 0,
   _animationTime = 0,
+  calendarIconHoverProgress = 0,
+  opacity: number = 1, // Add opacity parameter with default
 ) => {
   void _animationTime; // Explicitly ignore unused parameter
 
@@ -316,6 +515,9 @@ export const drawFeaturedSection = (
   const radius = 12;
 
   ctx.save();
+
+  // Apply opacity for fade-in effect
+  ctx.globalAlpha = opacity;
 
   // Background with subtle gradient
   const gradientKey = `featured-bg-${Math.round(width)}-${Math.round(height)}`;
@@ -374,9 +576,7 @@ export const drawFeaturedSection = (
     }
 
     // Draw the featured image
-    ctx.globalAlpha = 0.9;
     ctx.drawImage(featuredImage.element, offsetX, offsetY, drawWidth, drawHeight);
-    ctx.globalAlpha = 1.0;
 
     ctx.restore();
   } else {
@@ -405,8 +605,18 @@ export const drawFeaturedSection = (
   }
 
   // Draw new overlay elements with mobile awareness
-  drawArtGalleryCard(ctx, x, y, width, height, 1.0, isMobileDevice);
-  drawDaysLeft(ctx, x, y, width, height, 1.0, isMobileDevice); // Simplified call
+  drawArtGalleryCard(ctx, x, y, width, height, opacity, isMobileDevice);
+  drawDaysLeft(ctx, x, y, width, height, opacity, isMobileDevice); // Simplified call
+
+  // Draw calendar icon in top-right corner (using Lucide CalendarPlus)
+  const iconBounds = getCalendarIconBounds(x, y, width, height, isMobileDevice);
+  drawLucideCalendarIcon(
+    ctx,
+    iconBounds.x,
+    iconBounds.y,
+    Math.max(iconBounds.width, iconBounds.height),
+    calendarIconHoverProgress,
+  );
 
   // Draw premium border (keeping existing colors and behavior)
   ctx.save();
@@ -477,6 +687,7 @@ export const drawAnimatedFeaturedSection = (
   // Entrance animation position override (for sliding from top)
   animatedX?: number,
   animatedY?: number,
+  calendarIconHoverProgress = 0,
 ) => {
   void _animationTime; // Explicitly ignore unused parameter
   // Smart mobile optimization: detect mobile device
@@ -734,4 +945,17 @@ export const drawAnimatedFeaturedSection = (
   // Draw the new overlay elements last to ensure they appear on top
   drawArtGalleryCard(ctx, drawX, drawY, width, height, overlayOpacity, isMobileDevice);
   drawDaysLeft(ctx, drawX, drawY, width, height, overlayOpacity, isMobileDevice); // Simplified call
+
+  // Draw calendar icon with animation opacity (using Lucide CalendarPlus)
+  const iconBounds = getCalendarIconBounds(drawX, drawY, width, height, isMobileDevice);
+  ctx.save();
+  ctx.globalAlpha = overlayOpacity; // Apply same opacity as other overlay elements
+  drawLucideCalendarIcon(
+    ctx,
+    iconBounds.x,
+    iconBounds.y,
+    Math.max(iconBounds.width, iconBounds.height),
+    calendarIconHoverProgress,
+  );
+  ctx.restore();
 };

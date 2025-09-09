@@ -61,8 +61,12 @@ export const drawCustomLogoBanner = (
   width: number,
   height: number,
   unitSize: number,
+  opacity: number = 1, // Add opacity parameter with default
 ) => {
   ctx.save();
+
+  // Apply opacity for fade-in effect
+  ctx.globalAlpha = opacity;
 
   // Background
   ctx.fillStyle = STYLE_COLORS.black;

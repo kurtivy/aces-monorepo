@@ -58,7 +58,11 @@ import {
 } from '../../lib/utils/canvas-error-boundary';
 
 // FEATURED SECTION: Import featured section drawing functions
-import { drawFeaturedSection, drawAnimatedFeaturedSection } from '../../lib/canvas/draw';
+import {
+  drawFeaturedSection,
+  drawAnimatedFeaturedSection,
+  getCalendarIconBounds,
+} from '../../lib/canvas/draw';
 import { drawCustomLogoBanner } from '@/lib/canvas/draw/draw-custom-logo-banner';
 
 interface UseCanvasRendererProps {
@@ -474,6 +478,10 @@ export const useCanvasRenderer = ({
     worldY: number;
     tileId: string;
   } | null>(null);
+
+  // Calendar icon hover state
+  const [isHoveringCalendarIcon, setIsHoveringCalendarIcon] = useState(false);
+  const calendarIconHoverRef = useRef(0); // Hover progress for calendar icon
 
   // Animation durations now handled by entrance animation hook and browserPerf settings
 
@@ -1352,6 +1360,11 @@ export const useCanvasRenderer = ({
         animationProgress: entranceAnimation.animationProgress,
       };
 
+      // Add UI opacity calculation for fade-in effect
+      const uiOpacity = entranceAnimation.isAnimationActive
+        ? entranceAnimation.animationProgress
+        : 1;
+
       // Step 4: Pre-calculate transform once per frame instead of per element (91% faster)
       const viewTransform = createViewTransform(viewState);
 
@@ -1360,6 +1373,9 @@ export const useCanvasRenderer = ({
         typeof navigator !== 'undefined' &&
         navigator.userAgent.includes('Safari') &&
         !navigator.userAgent.includes('Chrome');
+
+      // Mobile device detection for calendar icon
+      const isMobileDevice = deviceCapabilities.touchCapable || deviceCapabilities.isMobileSafari;
 
       // Phase 3.1: Check if we should use dirty region optimization
       const shouldUseDirtyRegions = dirtyRegionManager.current.regions.length > 0;
@@ -1921,6 +1937,7 @@ export const useCanvasRenderer = ({
         logoAreaScreenWidth,
         logoAreaScreenHeight,
         unitSize,
+        uiOpacity, // Add opacity parameter
       );
       totalElementsRendered++;
       // FEATURED SECTION: Draw featured section using screen coordinates with entrance animation
@@ -1932,6 +1949,41 @@ export const useCanvasRenderer = ({
       const featuredAreaScreenWidth = (featuredAreaWidth * viewTransform.scaleX) | 0;
       const featuredAreaScreenHeight = (featuredAreaHeight * viewTransform.scaleY) | 0;
 
+      // Calendar icon hover detection - separate check after featuredAreaScreenPos is available
+      if (featuredImage) {
+        const screenMouseX = mousePositionRef.current.x;
+        const screenMouseY = mousePositionRef.current.y;
+
+        const iconBounds = getCalendarIconBounds(
+          featuredAreaScreenPos.x,
+          featuredAreaScreenPos.y,
+          featuredAreaScreenWidth,
+          featuredAreaScreenHeight,
+          isMobileDevice,
+        );
+
+        const isHoveringCalendar =
+          screenMouseX >= iconBounds.x &&
+          screenMouseX <= iconBounds.x + iconBounds.width &&
+          screenMouseY >= iconBounds.y &&
+          screenMouseY <= iconBounds.y + iconBounds.height;
+
+        // Update calendar icon hover state
+        if (isHoveringCalendar !== isHoveringCalendarIcon) {
+          setIsHoveringCalendarIcon(isHoveringCalendar);
+          if (isHoveringCalendar) {
+            canvas.style.cursor = 'pointer';
+          }
+        }
+
+        // Update calendar icon hover animation progress
+        if (isHoveringCalendarIcon) {
+          calendarIconHoverRef.current = Math.min(1, calendarIconHoverRef.current + 0.1);
+        } else {
+          calendarIconHoverRef.current = Math.max(0, calendarIconHoverRef.current - 0.1);
+        }
+      }
+
       // DEBUG: Uncomment for coordinate debugging
       // console.log('Featured Section Drawing Debug:', {
       //   worldCoords: { x: featuredAreaWorldX, y: featuredAreaWorldY, w: featuredAreaWidth, h: featuredAreaHeight },
@@ -1942,50 +1994,20 @@ export const useCanvasRenderer = ({
       //   featuredImageComplete: featuredImage?.element?.complete,
       // });
 
-      // Check if we have featured section animation data
-      const animatedFeaturedSection = entranceAnimation.animatedFeaturedSection;
-
-      if (animatedFeaturedSection && entranceAnimation.isAnimationActive) {
-        // During entrance animation - use animated version with position override
-        const animatedScreenPos = worldToScreen(
-          animatedFeaturedSection.animatedX,
-          animatedFeaturedSection.animatedY,
-          viewTransform,
-        );
-
-        drawAnimatedFeaturedSection(
-          ctx,
-          featuredAreaScreenPos.x, // Original position for size calculations
-          featuredAreaScreenPos.y,
-          featuredAreaScreenWidth,
-          featuredAreaScreenHeight,
-          featuredImage,
-          mousePositionRef.current.x, // Screen mouse coordinates
-          mousePositionRef.current.y, // Screen mouse coordinates
-          currentTime,
-          // Animation properties
-          animatedFeaturedSection.animatedOpacity,
-          animatedFeaturedSection.animatedScale,
-          entranceAnimation.animationProgress, // Border animation progress
-          entranceAnimation.animationProgress, // Image animation progress
-          // Position override for sliding animation
-          animatedScreenPos.x,
-          animatedScreenPos.y,
-        );
-      } else {
-        // After animation or no animation - use regular version
-        drawFeaturedSection(
-          ctx,
-          featuredAreaScreenPos.x,
-          featuredAreaScreenPos.y,
-          featuredAreaScreenWidth,
-          featuredAreaScreenHeight,
-          featuredImage,
-          mousePositionRef.current.x, // Screen mouse coordinates
-          mousePositionRef.current.y, // Screen mouse coordinates
-          currentTime,
-        );
-      }
+      // Replace the entire featured section animation block with:
+      drawFeaturedSection(
+        ctx,
+        featuredAreaScreenPos.x,
+        featuredAreaScreenPos.y,
+        featuredAreaScreenWidth,
+        featuredAreaScreenHeight,
+        featuredImage,
+        mousePositionRef.current.x,
+        mousePositionRef.current.y,
+        currentTime,
+        calendarIconHoverRef.current,
+        uiOpacity, // Add opacity parameter
+      );
       totalElementsRendered++; // Count featured section as one element
 
       // Draw home area using screen coordinates
@@ -2005,6 +2027,7 @@ export const useCanvasRenderer = ({
         null,
         currentTime,
         unitSize,
+        uiOpacity, // Add opacity parameter
       );
       totalElementsRendered++; // Count home area as one element
 
