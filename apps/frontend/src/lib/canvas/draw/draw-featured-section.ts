@@ -244,13 +244,13 @@ const drawDaysLeft = (
   const cardY = y + height - cardHeight - (isMobile ? 8 : 10) * responsiveMetrics.paddingScale;
 
   // Calculate total width for side-by-side layout with responsive spacing
-  const spacing = 20 * responsiveMetrics.spacingScale; // Spacing between number and "DAYS"
+  const spacing = (isMobile ? 12 : 20) * responsiveMetrics.spacingScale; // Reduced spacing on mobile only
   const totalWidth = numberMetrics.width + spacing + daysMetrics.width;
 
   // Position countdown closer to the white card with responsive positioning
   const horizontalGap = 4 * responsiveMetrics.paddingScale; // Gap between countdown and white card
   // Different horizontal positioning for mobile vs desktop - moved further right
-  const horizontalOffset = responsiveMetrics.isMobile ? 210 : 190; // Moved mobile from 150 to 180 (more to the right)
+  const horizontalOffset = responsiveMetrics.isMobile ? 220 : 200; // Moved mobile further right to 230
   const startX =
     cardX - totalWidth - horizontalGap + horizontalOffset * responsiveMetrics.baseScale; // Position to the left of white card
 
