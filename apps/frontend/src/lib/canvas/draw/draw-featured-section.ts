@@ -1,33 +1,41 @@
 import type { ImageInfo } from '../../../types/canvas';
-import { getDeviceCapabilities } from '../../utils/browser-utils';
+import type { DeviceCapabilities } from '../../../types/capabilities';
 import { getCanvasFontStack } from '../../utils/font-loader';
 import { getAuctionIcon, initializeAuctionIcon } from '../utils/lucide-auction-icon';
+import { getResponsiveMetrics, type ResponsiveMetrics } from '../../utils/responsive-canvas-utils';
 
-const PIN = {
-  radius: 3.5,
-  insetDesktop: 8,
-  insetMobile: 6,
+// Responsive PIN configuration
+const createPinConfig = (responsiveMetrics: ResponsiveMetrics) => ({
+  radius: 3.5 * responsiveMetrics.iconScale,
+  insetDesktop: 8 * responsiveMetrics.paddingScale,
+  insetMobile: 6 * responsiveMetrics.paddingScale,
   color: '#D8DCE2',
-  shadowBlur: 2,
+  shadowBlur: 2 * responsiveMetrics.borderScale,
   shadowColor: 'rgba(0,0,0,0.18)',
   highlight: 'rgba(255,255,255,0.8)',
   alpha: 0.35, // <— control pin opacity here
-};
+});
 
 // Update drawPin to multiply existing alpha by PIN.alpha
-function drawPin(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number) {
+function drawPin(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  r: number,
+  pinConfig: ReturnType<typeof createPinConfig>,
+) {
   ctx.save();
   const prevAlpha = ctx.globalAlpha;
-  ctx.globalAlpha = prevAlpha * PIN.alpha; // keeps your card’s overall opacity intact
+  ctx.globalAlpha = prevAlpha * pinConfig.alpha; // keeps your card's overall opacity intact
 
-  ctx.shadowColor = PIN.shadowColor;
-  ctx.shadowBlur = PIN.shadowBlur;
+  ctx.shadowColor = pinConfig.shadowColor;
+  ctx.shadowBlur = pinConfig.shadowBlur;
   ctx.shadowOffsetX = 0;
   ctx.shadowOffsetY = 1;
 
   const grad = ctx.createRadialGradient(cx - r * 0.25, cy - r * 0.25, r * 0.1, cx, cy, r);
   grad.addColorStop(0, '#F4F6F9');
-  grad.addColorStop(0.6, PIN.color);
+  grad.addColorStop(0.6, pinConfig.color);
   grad.addColorStop(1, '#B9C0C8');
 
   ctx.fillStyle = grad;
@@ -37,7 +45,7 @@ function drawPin(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: numbe
 
   // tiny highlight (inherits the same alpha)
   ctx.shadowBlur = 0;
-  ctx.fillStyle = PIN.highlight;
+  ctx.fillStyle = pinConfig.highlight;
   ctx.beginPath();
   ctx.arc(cx - r * 0.28, cy - r * 0.28, r * 0.14, 0, Math.PI * 2);
   ctx.fill();
@@ -175,12 +183,14 @@ const drawLucideAuctionIcon = (
   y: number,
   size: number,
   hoverProgress = 0,
+  responsiveMetrics?: ResponsiveMetrics, // Add responsive metrics parameter
 ) => {
   ctx.save();
 
-  // Apply hover scale effect
-  const scale = 1 + hoverProgress * 0.05; // 5% scale increase on hover
-  const scaledSize = size * scale;
+  // Apply hover scale effect with responsive scaling
+  const iconScale = responsiveMetrics?.iconScale || 1;
+  const scale = 1 + hoverProgress * 0.05 * iconScale; // 5% scale increase on hover
+  const scaledSize = size * scale * iconScale;
   const offsetX = (scaledSize - size) / 2;
   const offsetY = (scaledSize - size) / 2;
 
@@ -239,10 +249,14 @@ export const getAuctionIconBounds = (
   featuredY: number,
   featuredWidth: number,
   featuredHeight: number,
-  isMobile = false,
+  responsiveMetrics?: ResponsiveMetrics,
 ) => {
-  const iconSize = isMobile ? 32 : 48; // Larger icon sizes for better visibility
-  const padding = isMobile ? 12 : 16;
+  const isMobile = responsiveMetrics?.isMobile || false;
+  const iconScale = responsiveMetrics?.iconScale || 1;
+  const paddingScale = responsiveMetrics?.paddingScale || 1;
+
+  const iconSize = (isMobile ? 80 : 36) * iconScale; // Larger on mobile (56), smaller on desktop (36)
+  const padding = (isMobile ? 12 : 16) * paddingScale;
 
   const iconX = featuredX + featuredWidth - iconSize - padding;
   const iconY = featuredY + padding;
@@ -277,23 +291,25 @@ const drawDaysLeft = (
   width: number,
   height: number,
   opacity: number,
-  isMobile = false,
+  responsiveMetrics: ResponsiveMetrics,
 ) => {
   ctx.save();
   ctx.globalAlpha = opacity;
 
   const { days, isExpired } = calculateDaysLeft();
+  const isMobile = responsiveMetrics.isMobile;
 
   // No card background - just text floating on the image
 
   if (isExpired) {
     // Show "LIVE NOW" when expired
     ctx.fillStyle = '#D0B284';
-    ctx.font = `bold ${isMobile ? 32 : 48}px ${getCanvasFontStack('NeueWorld')}`;
+    const fontSize = (isMobile ? 32 : 48) * responsiveMetrics.fontScale;
+    ctx.font = `bold ${fontSize}px ${getCanvasFontStack('NeueWorld')}`;
     ctx.textAlign = 'right';
     ctx.textBaseline = 'bottom';
-    const textX = x + width - (isMobile ? 15 : 20);
-    const textY = y + height - (isMobile ? 15 : 20);
+    const textX = x + width - (isMobile ? 15 : 20) * responsiveMetrics.paddingScale;
+    const textY = y + height - (isMobile ? 15 : 20) * responsiveMetrics.paddingScale;
     ctx.fillText('LIVE NOW', textX, textY);
     ctx.restore();
     return;
@@ -303,10 +319,11 @@ const drawDaysLeft = (
   const daysText = String(days).padStart(2, '0');
   // const daysText = '08';
 
-  // Calculate font sizes directly from card dimensions for perfect alignment
-
-  const numberFontSize = 92; // Fixed size for number
-  const daysFontSize = 42; // Fixed size for "DAYS"
+  // Calculate font sizes with responsive scaling
+  const baseNumberSize = responsiveMetrics.isMobile ? 140 : 100; // Bigger number on mobile, desktop uses 100
+  const numberFontSize = baseNumberSize * responsiveMetrics.fontScale; // Responsive size for number
+  const baseDaysSize = responsiveMetrics.isMobile ? 63 : 42; // 1.5x larger on mobile (42 * 1.5 = 63)
+  const daysFontSize = baseDaysSize * responsiveMetrics.fontScale; // Responsive size for "DAYS"
 
   // Measure text dimensions for positioning
   ctx.font = `bold ${numberFontSize}px ${getCanvasFontStack('NeueWorld')}`;
@@ -315,31 +332,36 @@ const drawDaysLeft = (
   ctx.font = `${daysFontSize}px ${getCanvasFontStack('Spray Letters')}`;
   const daysMetrics = ctx.measureText('DAYS');
 
-  // Use the same dimensions as the art card for positioning area
-  const cardWidth = isMobile
-    ? Math.min(width * 0.48, 170) // Same size as art gallery card
-    : Math.min(width * 0.45, 210); // Same size as art gallery card
-  const cardHeight = isMobile
-    ? Math.min(height * 0.25, 100) // Same height as art gallery card
-    : Math.min(height * 0.22, 85); // Same height as art gallery card
-  const cardX = x + width - cardWidth - (isMobile ? 8 : 10); // Right side positioning
-  const cardY = y + height - cardHeight - (isMobile ? 8 : 10); // Bottom positioning
+  // Use the same dimensions as the art card for positioning area with responsive scaling
+  const baseCardWidth = isMobile ? Math.min(width * 0.55, 220) : Math.min(width * 0.45, 210); // Match art card width (updated to 220)
+  const baseCardHeight = isMobile ? Math.min(height * 0.32, 120) : Math.min(height * 0.22, 85); // Match art card height
 
-  // Calculate total width for side-by-side layout
-  const spacing = 20; // Spacing between number and "DAYS"
+  const cardWidth = baseCardWidth * responsiveMetrics.baseScale;
+  const cardHeight = baseCardHeight * responsiveMetrics.baseScale;
+  // Position relative to right side for countdown positioning (not the actual art card position)
+  const cardX = x + width - cardWidth - (isMobile ? 8 : 10) * responsiveMetrics.paddingScale; // Right-aligned for countdown reference
+  const cardY = y + height - cardHeight - (isMobile ? 8 : 10) * responsiveMetrics.paddingScale;
+
+  // Calculate total width for side-by-side layout with responsive spacing
+  const spacing = 20 * responsiveMetrics.spacingScale; // Spacing between number and "DAYS"
   const totalWidth = numberMetrics.width + spacing + daysMetrics.width;
 
-  // Position countdown closer to the white card
-  const horizontalGap = 4; // Gap between countdown and white card
-  const startX = cardX - totalWidth - horizontalGap + 190; // Position to the left of white card
-  const baseY = cardY + cardHeight + 18; // Bottom alignment
+  // Position countdown closer to the white card with responsive positioning
+  const horizontalGap = 4 * responsiveMetrics.paddingScale; // Gap between countdown and white card
+  // Different horizontal positioning for mobile vs desktop - moved further right
+  const horizontalOffset = responsiveMetrics.isMobile ? 210 : 190; // Moved mobile from 150 to 180 (more to the right)
+  const startX =
+    cardX - totalWidth - horizontalGap + horizontalOffset * responsiveMetrics.baseScale; // Position to the left of white card
+
+  // Position number to align with card height using the calculated numberFontSize
+  const baseY = cardY + numberFontSize; // Align number baseline with card height
 
   // ============================================
   // CALL 1: Draw the large number (e.g., "11")
   // ============================================
   ctx.fillStyle = '#D7BF75'; // Golden color
-  ctx.font = `bold 100px ${getCanvasFontStack('NeueWorld')}`;
-  ctx.letterSpacing = '4px';
+  ctx.font = `bold ${numberFontSize}px ${getCanvasFontStack('NeueWorld')}`;
+  ctx.letterSpacing = `${4 * responsiveMetrics.spacingScale}px`;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'bottom';
   ctx.fillText(daysText, startX, baseY);
@@ -354,14 +376,14 @@ const drawDaysLeft = (
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top'; // Top alignment for precise positioning
 
-  // Calculate the top position to align with the top of the number
-  const numberTop = baseY - 100; // Top of the number
+  // Align "DAYS" text with the top of the white card
+  const numberTop = cardY; // Align with top of white card
   const daysOffsetStep = daysFontSize * 0.3; // 40% of DAYS font height for layering
 
   // Draw first "DAYS" - 100% opacity, aligned with top of number
   ctx.fillStyle = '#D7BF75'; // 100% opacity
-  ctx.letterSpacing = '3px';
-  ctx.font = `28px ${getCanvasFontStack('Spray Letters')}`;
+  ctx.letterSpacing = `${3 * responsiveMetrics.spacingScale}px`;
+  ctx.font = `${28 * responsiveMetrics.fontScale}px ${getCanvasFontStack('Spray Letters')}`;
   ctx.fillText('DAYS', daysX, numberTop);
 
   // Draw second "DAYS" - 65% opacity, offset down
@@ -382,16 +404,22 @@ export const drawArtGalleryCard = (
   width: number,
   height: number,
   opacity: number,
-  isMobile = false,
+  responsiveMetrics: ResponsiveMetrics,
 ) => {
   ctx.save();
   ctx.globalAlpha = opacity;
 
-  // Card size/position
-  const cardWidth = isMobile ? Math.min(width * 0.48, 170) : Math.min(width * 0.45, 210);
-  const cardHeight = isMobile ? Math.min(height * 0.25, 100) : Math.min(height * 0.22, 85);
-  const cardX = x + (isMobile ? 8 : 10);
-  const cardY = y + height - cardHeight - (isMobile ? 8 : 10);
+  const isMobile = responsiveMetrics.isMobile;
+  const pinConfig = createPinConfig(responsiveMetrics);
+
+  // Card size with responsive scaling - make mobile card larger
+  const baseCardWidth = isMobile ? Math.min(width * 0.65, 250) : Math.min(width * 0.45, 210); // Wider on mobile
+  const baseCardHeight = isMobile ? Math.min(height * 0.32, 120) : Math.min(height * 0.22, 85); // Taller on mobile
+
+  const cardWidth = baseCardWidth * responsiveMetrics.baseScale;
+  const cardHeight = baseCardHeight * responsiveMetrics.baseScale;
+  const cardX = x + (isMobile ? 8 : 10) * responsiveMetrics.paddingScale;
+  const cardY = y + height - cardHeight - (isMobile ? 8 : 10) * responsiveMetrics.paddingScale;
 
   // Soft drop shadow (kept subtle)
   ctx.save();
@@ -414,20 +442,23 @@ export const drawArtGalleryCard = (
   ctx.stroke();
 
   // --- Pins (subtle + inset from edges) ---
-  const r = PIN.radius;
-  const inset = isMobile ? PIN.insetMobile : PIN.insetDesktop;
-  drawPin(ctx, cardX + inset, cardY + inset, r); // TL
-  drawPin(ctx, cardX + cardWidth - inset, cardY + inset, r); // TR
-  drawPin(ctx, cardX + inset, cardY + cardHeight - inset, r); // BL
-  drawPin(ctx, cardX + cardWidth - inset, cardY + cardHeight - inset, r); // BR
+  const r = pinConfig.radius;
+  const inset = isMobile ? pinConfig.insetMobile : pinConfig.insetDesktop;
+  drawPin(ctx, cardX + inset, cardY + inset, r, pinConfig); // TL
+  drawPin(ctx, cardX + cardWidth - inset, cardY + inset, r, pinConfig); // TR
+  drawPin(ctx, cardX + inset, cardY + cardHeight - inset, r, pinConfig); // BL
+  drawPin(ctx, cardX + cardWidth - inset, cardY + cardHeight - inset, r, pinConfig); // BR
 
   // --- Text (left-aligned + spacing) ---
-  const baseFontSize = isMobile ? Math.max(7, cardWidth * 0.04) : Math.max(8, cardWidth * 0.052);
+  const baseFontSize = responsiveMetrics.isMobile
+    ? Math.max(10, cardWidth * 0.15 * responsiveMetrics.fontScale) // Larger font for bigger mobile card
+    : Math.max(8, cardWidth * 0.052);
 
-  const line1Font = `${baseFontSize / 0.85}px ${getCanvasFontStack('NeueWorld')}`;
-  const line2Font = `bold ${baseFontSize * 1.1}px ${getCanvasFontStack('NeueWorld')}`;
-  const line3Font = `italic ${baseFontSize}px ${getCanvasFontStack('NeueWorld')}`;
-  const line4Font = `${baseFontSize * 1.05}px 'Courier New', 'Monaco', 'Menlo', 'Consolas', monospace`;
+  // Apply responsive scaling to all font calculations
+  const line1Font = `${(baseFontSize / 0.85) * responsiveMetrics.fontScale}px ${getCanvasFontStack('NeueWorld')}`;
+  const line2Font = `bold ${baseFontSize * 1.1 * responsiveMetrics.fontScale}px ${getCanvasFontStack('NeueWorld')}`;
+  const line3Font = `italic ${baseFontSize * responsiveMetrics.fontScale}px ${getCanvasFontStack('NeueWorld')}`;
+  const line4Font = `${baseFontSize * 1.05 * responsiveMetrics.fontScale}px 'Courier New', 'Monaco', 'Menlo', 'Consolas', monospace`;
 
   const line1Text = 'Audemars Piguet x KAWS (b.2015)';
   const line2Text = '"Tokenized"';
@@ -440,8 +471,8 @@ export const drawArtGalleryCard = (
   const m3 = getTextMetrics(ctx, line3Text, line3Font);
   const m4 = getTextMetrics(ctx, line4Text, line4Font);
 
-  // Line spacing multipliers
-  const ls = isMobile ? 1.45 : 2.2; // overall spacing
+  // Line spacing multipliers - increased mobile spacing for better readability
+  const ls = isMobile ? 2 : 2.2; // increased mobile overall spacing from 1.45 to 1.8
   const ls12 = ls * 0.8; // tighter between line 1 → 2
 
   const lh1 = (m1.ascent + m1.descent) * ls12;
@@ -451,12 +482,14 @@ export const drawArtGalleryCard = (
 
   const totalTextHeight = lh1 + lh2 + lh3 + lh4;
 
-  // Layout: left-rag + vertical centering
-  const textPadX = Math.max(8, cardWidth * 0.06); // left padding
+  // Layout: left-rag + vertical centering with responsive scaling
+  const textPadX = Math.max(8, cardWidth * 0.06) * responsiveMetrics.paddingScale; // left padding
   const textX = cardX + textPadX;
 
-  // Move the text block UP slightly (negative = up, positive = down)
-  const textBiasY = -(isMobile ? Math.max(2, cardHeight * 0.02) : Math.max(3, cardHeight * 0.02));
+  // Move the text block UP slightly (negative = up, positive = down) with responsive scaling
+  const textBiasY =
+    -(isMobile ? Math.max(2, cardHeight * 0.02) : Math.max(3, cardHeight * 0.02)) *
+    responsiveMetrics.paddingScale;
   const startY = cardY + (cardHeight - totalTextHeight) / 2 + textBiasY;
 
   ctx.fillStyle = '#000000';
@@ -505,12 +538,14 @@ export const drawFeaturedSection = (
   _animationTime = 0,
   calendarIconHoverProgress = 0,
   opacity: number = 1, // Add opacity parameter with default
+  unitSize: number, // Add unitSize parameter
+  capabilities: DeviceCapabilities, // Add capabilities parameter
 ) => {
   void _animationTime; // Explicitly ignore unused parameter
 
+  const responsiveMetrics = getResponsiveMetrics(unitSize, capabilities);
   // Smart mobile optimization: detect mobile device
-  const capabilities = getDeviceCapabilities();
-  const isMobileDevice = capabilities.touchCapable || capabilities.isMobileSafari;
+  const isMobileDevice = responsiveMetrics.isMobile;
 
   const radius = 12;
 
@@ -604,18 +639,19 @@ export const drawFeaturedSection = (
     ctx.restore();
   }
 
-  // Draw new overlay elements with mobile awareness
-  drawArtGalleryCard(ctx, x, y, width, height, opacity, isMobileDevice);
-  drawDaysLeft(ctx, x, y, width, height, opacity, isMobileDevice); // Simplified call
+  // Draw new overlay elements with responsive scaling
+  drawArtGalleryCard(ctx, x, y, width, height, opacity, responsiveMetrics);
+  drawDaysLeft(ctx, x, y, width, height, opacity, responsiveMetrics);
 
   // Draw auction icon in top-right corner (using Auction Notification)
-  const iconBounds = getAuctionIconBounds(x, y, width, height, isMobileDevice);
+  const iconBounds = getAuctionIconBounds(x, y, width, height, responsiveMetrics);
   drawLucideAuctionIcon(
     ctx,
     iconBounds.x,
     iconBounds.y,
     Math.max(iconBounds.width, iconBounds.height),
     calendarIconHoverProgress,
+    responsiveMetrics,
   );
 
   // Draw premium border (keeping existing colors and behavior)
@@ -688,11 +724,24 @@ export const drawAnimatedFeaturedSection = (
   animatedX?: number,
   animatedY?: number,
   calendarIconHoverProgress = 0,
+  unitSize: number = 200, // Add unitSize parameter with default
+  capabilities?: DeviceCapabilities, // Add capabilities parameter (optional)
 ) => {
   void _animationTime; // Explicitly ignore unused parameter
+  const responsiveMetrics = capabilities
+    ? getResponsiveMetrics(unitSize, capabilities)
+    : {
+        isMobile: unitSize <= 150,
+        fontScale: 1,
+        paddingScale: 1,
+        iconScale: 1,
+        borderScale: 1,
+        spacingScale: 1,
+        unitSize,
+        baseScale: 1,
+      };
   // Smart mobile optimization: detect mobile device
-  const capabilities = getDeviceCapabilities();
-  const isMobileDevice = capabilities.touchCapable || capabilities.isMobileSafari;
+  const isMobileDevice = responsiveMetrics.isMobile;
 
   const radius = 12;
 
@@ -943,11 +992,11 @@ export const drawAnimatedFeaturedSection = (
   }
 
   // Draw the new overlay elements last to ensure they appear on top
-  drawArtGalleryCard(ctx, drawX, drawY, width, height, overlayOpacity, isMobileDevice);
-  drawDaysLeft(ctx, drawX, drawY, width, height, overlayOpacity, isMobileDevice); // Simplified call
+  drawArtGalleryCard(ctx, drawX, drawY, width, height, overlayOpacity, responsiveMetrics);
+  drawDaysLeft(ctx, drawX, drawY, width, height, overlayOpacity, responsiveMetrics);
 
   // Draw auction icon with animation opacity (using Auction Notification)
-  const iconBounds = getAuctionIconBounds(drawX, drawY, width, height, isMobileDevice);
+  const iconBounds = getAuctionIconBounds(drawX, drawY, width, height, responsiveMetrics);
   ctx.save();
   ctx.globalAlpha = overlayOpacity; // Apply same opacity as other overlay elements
   drawLucideAuctionIcon(
@@ -956,6 +1005,7 @@ export const drawAnimatedFeaturedSection = (
     iconBounds.y,
     Math.max(iconBounds.width, iconBounds.height),
     calendarIconHoverProgress,
+    responsiveMetrics,
   );
   ctx.restore();
 };

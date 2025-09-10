@@ -64,6 +64,7 @@ import {
   getAuctionIconBounds,
 } from '../../lib/canvas/draw';
 import { drawCustomLogoBanner } from '@/lib/canvas/draw/draw-custom-logo-banner';
+import { getResponsiveMetrics } from '../../lib/utils/responsive-canvas-utils';
 
 interface UseCanvasRendererProps {
   images: ImageInfo[];
@@ -1938,6 +1939,7 @@ export const useCanvasRenderer = ({
         logoAreaScreenHeight,
         unitSize,
         uiOpacity, // Add opacity parameter
+        capabilities!, // Add capabilities parameter
       );
       totalElementsRendered++;
       // FEATURED SECTION: Draw featured section using screen coordinates with entrance animation
@@ -1954,12 +1956,14 @@ export const useCanvasRenderer = ({
         const screenMouseX = mousePositionRef.current.x;
         const screenMouseY = mousePositionRef.current.y;
 
+        const responsiveMetrics = getResponsiveMetrics(unitSize, capabilities!);
+
         const iconBounds = getAuctionIconBounds(
           featuredAreaScreenPos.x,
           featuredAreaScreenPos.y,
           featuredAreaScreenWidth,
           featuredAreaScreenHeight,
-          isMobileDevice,
+          responsiveMetrics,
         );
 
         const isHoveringAuction =
@@ -2007,6 +2011,8 @@ export const useCanvasRenderer = ({
         currentTime,
         auctionIconHoverRef.current,
         uiOpacity, // Add opacity parameter
+        unitSize, // Add unitSize parameter
+        capabilities!, // Add capabilities parameter
       );
       totalElementsRendered++; // Count featured section as one element
 
@@ -2028,6 +2034,8 @@ export const useCanvasRenderer = ({
         currentTime,
         unitSize,
         uiOpacity, // Add opacity parameter
+        ['LAUNCH', 'DROPS'], // Default prompts
+        capabilities!, // Add capabilities parameter
       );
       totalElementsRendered++; // Count home area as one element
 

@@ -1,4 +1,6 @@
 import { getCanvasFontStack } from '../../utils/font-loader';
+import type { DeviceCapabilities } from '../../../types/capabilities';
+import { getResponsiveMetrics } from '../../utils/responsive-canvas-utils';
 
 const STYLE_COLORS = {
   deepCharcoal: '#231F20',
@@ -15,9 +17,12 @@ function getTextMetrics(ctx: CanvasRenderingContext2D, text: string, font: strin
   ctx.font = font;
   const m = ctx.measureText(text);
   const ascent =
-    (m as any).actualBoundingBoxAscent ?? Math.max(0, m.emHeightAscent ?? parseFloat(font) * 0.8);
+    (m as { actualBoundingBoxAscent?: number; emHeightAscent?: number }).actualBoundingBoxAscent ??
+    Math.max(0, (m as { emHeightAscent?: number }).emHeightAscent ?? parseFloat(font) * 0.8);
   const descent =
-    (m as any).actualBoundingBoxDescent ?? Math.max(0, m.emHeightDescent ?? parseFloat(font) * 0.2);
+    (m as { actualBoundingBoxDescent?: number; emHeightDescent?: number })
+      .actualBoundingBoxDescent ??
+    Math.max(0, (m as { emHeightDescent?: number }).emHeightDescent ?? parseFloat(font) * 0.2);
   ctx.restore();
   return { width: m.width, ascent, descent };
 }
@@ -62,7 +67,10 @@ export const drawCustomLogoBanner = (
   height: number,
   unitSize: number,
   opacity: number = 1, // Add opacity parameter with default
+  capabilities: DeviceCapabilities, // Add capabilities parameter
 ) => {
+  const responsiveMetrics = getResponsiveMetrics(unitSize, capabilities);
+
   ctx.save();
 
   // Apply opacity for fade-in effect
@@ -74,11 +82,19 @@ export const drawCustomLogoBanner = (
 
   // Sizing
   const base = Math.min(width, height);
-  const isMobile = unitSize <= 150;
 
-  const acesFontSize = Math.floor(base * (isMobile ? 0.48 : 0.58));
-  const funFontSize = Math.floor(base * (isMobile ? 0.43 : 0.55));
-  const tagFontSize = Math.floor(base * (isMobile ? 0.07 : 0.09));
+  // Responsive font sizing - make mobile fonts larger to fill more space
+  const acesFontSize = Math.floor(
+    base * (responsiveMetrics.isMobile ? 0.92 * responsiveMetrics.fontScale : 0.58),
+  );
+
+  const funFontSize = Math.floor(
+    base * (responsiveMetrics.isMobile ? 0.85 * responsiveMetrics.fontScale : 0.55),
+  );
+
+  const tagFontSize = Math.floor(
+    base * (responsiveMetrics.isMobile ? 0.16 * responsiveMetrics.fontScale : 0.09),
+  );
 
   const acesFont = `900 ${acesFontSize}px ${getCanvasFontStack('BraahOne')}`;
   const funFont = `${funFontSize}px ${getCanvasFontStack('Spray Letters')}`;
@@ -88,8 +104,8 @@ export const drawCustomLogoBanner = (
   const aces = getTextMetrics(ctx, 'ACES', acesFont);
   const fun = getTextMetrics(ctx, '.FUN', funFont);
 
-  // ACES ⇄ .FUN spacing
-  const spacing = base * 0.025;
+  // ACES ⇄ .FUN spacing with responsive scaling
+  const spacing = base * 0.025 * responsiveMetrics.spacingScale;
   const totalWidth = aces.width + spacing + fun.width;
   const centerX = x + width / 2;
   const startX = centerX - totalWidth / 2;
@@ -131,11 +147,15 @@ export const drawCustomLogoBanner = (
   const tagline = 'TRADE TOKENIZED COLLECTIBLES';
   const taglineY = bottomY + taglineOffset;
 
-  // Right padding for tagline alignment
-  const rightPadding = Math.max(base * 0.04, 24);
-  const rightX = x + width - rightPadding;
+  // Align tagline to the right edge of ".FUN" text instead of container edge
+  const funRightEdge = funX + fun.width;
+  const rightX = responsiveMetrics.isMobile
+    ? funRightEdge
+    : x + width - Math.max(base * 0.04, 24) * responsiveMetrics.paddingScale;
 
-  const track = isMobile ? tagFontSize * 0.14 : tagFontSize * 0.18;
+  const track = responsiveMetrics.isMobile
+    ? tagFontSize * 0.14 * responsiveMetrics.spacingScale
+    : tagFontSize * 0.18 * responsiveMetrics.spacingScale;
 
   ctx.fillStyle = STYLE_COLORS.pureWhite;
   ctx.font = tagFont;

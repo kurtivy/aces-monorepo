@@ -6,6 +6,8 @@ import type { ViewState, ImageInfo } from '../../types/canvas';
 import { isHomeArea, isFeaturedArea } from '../../lib/canvas/grid-placement'; // FEATURED SECTION: Added isFeaturedArea import
 import { getAuctionIconBounds } from '../../lib/canvas/draw/draw-featured-section'; // Auction icon import
 import { mobileUtils } from '../../lib/utils/browser-utils';
+import { getResponsiveMetrics } from '../../lib/utils/responsive-canvas-utils';
+import { useDeviceCapabilities } from '../../contexts/device-provider';
 
 interface UseCanvasInteractionsProps {
   viewState: ViewState;
@@ -124,6 +126,7 @@ export const useCanvasInteractions = ({
   onProductImageHover, // HOVER ENHANCEMENT: Add product image hover callback
 }: UseCanvasInteractionsProps) => {
   const router = useRouter();
+  const { capabilities } = useDeviceCapabilities();
   const [isPanning, setIsPanning] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -329,12 +332,16 @@ export const useCanvasInteractions = ({
           const screenFeaturedWidth = featuredAreaWidth * viewState.scale;
           const screenFeaturedHeight = featuredAreaHeight * viewState.scale;
 
+          const responsiveMetrics = capabilities
+            ? getResponsiveMetrics(unitSize, capabilities)
+            : ({ isMobile: isMobileDevice, iconScale: 1, paddingScale: 1 } as any);
+
           const iconBounds = getAuctionIconBounds(
             screenFeaturedX,
             screenFeaturedY,
             screenFeaturedWidth,
             screenFeaturedHeight,
-            isMobileDevice,
+            responsiveMetrics,
           );
 
           if (

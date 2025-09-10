@@ -1,7 +1,8 @@
 import { UNIT_SIZE } from '../../../constants/canvas';
+import type { DeviceCapabilities } from '../../../types/capabilities';
 import { browserUtils } from '../../utils/browser-utils';
-import { getDeviceCapabilities } from '../../utils/browser-utils';
 import { getCanvasFontStack } from '../../utils/font-loader';
+import { getResponsiveMetrics } from '../../utils/responsive-canvas-utils';
 
 /**
  * Home area drawing component with Aces.Fun style guide integration
@@ -40,23 +41,23 @@ const STYLE_COLORS = {
   black: '#000000',
 } as const;
 
-// Load ACES website logo
-const loadAcesWebsiteLogo = (): HTMLImageElement | null => {
-  const cacheKey = 'aces-website-logo';
+// // Load ACES website logo
+// const loadAcesWebsiteLogo = (): HTMLImageElement | null => {
+//   const cacheKey = 'aces-website-logo';
 
-  if (logoImageCache.has(cacheKey)) {
-    return logoImageCache.get(cacheKey)!;
-  }
+//   if (logoImageCache.has(cacheKey)) {
+//     return logoImageCache.get(cacheKey)!;
+//   }
 
-  const logoImg = new Image();
-  logoImg.crossOrigin = 'anonymous';
-  logoImg.src = '/png/aces-website-logo.webp';
+//   const logoImg = new Image();
+//   logoImg.crossOrigin = 'anonymous';
+//   logoImg.src = '/png/aces-website-logo.webp';
 
-  // Cache the image (even if not loaded yet)
-  logoImageCache.set(cacheKey, logoImg);
+//   // Cache the image (even if not loaded yet)
+//   logoImageCache.set(cacheKey, logoImg);
 
-  return logoImg;
-};
+//   return logoImg;
+// };
 
 // Load ACES circle logo
 const loadAcesCircleLogo = (): HTMLImageElement | null => {
@@ -90,10 +91,11 @@ export const drawHomeArea = (
   unitSize = UNIT_SIZE,
   opacity: number = 1, // Add opacity parameter
   quadrantPrompts: readonly string[] = ['LAUNCH', 'DROPS'], // Updated default prompts
+  capabilities: DeviceCapabilities, // Add capabilities parameter
 ) => {
+  const responsiveMetrics = getResponsiveMetrics(unitSize, capabilities);
   // Smart mobile optimization: detect mobile device
-  const capabilities = getDeviceCapabilities();
-  const isMobileDevice = capabilities.touchCapable || capabilities.isMobileSafari;
+  const isMobileDevice = responsiveMetrics.isMobile;
 
   const radius = 12;
 
@@ -139,7 +141,7 @@ export const drawHomeArea = (
 
   // Calculate layout dimensions
   const centerX = x + homeAreaWidth / 2;
-  const centerY = y + homeAreaHeight / 2;
+  // const centerY = y + homeAreaHeight / 2;
   // Old layout variables - no longer needed since we now have separate areas
   // const bannerHeight = homeAreaHeight * 0.2; // 20% for banner
   // const featuredHeight = homeAreaHeight * 0.6; // 60% for featured section
@@ -228,8 +230,8 @@ export const drawHomeArea = (
   if (circleLogo && circleLogo.complete) {
     ctx.save();
 
-    // Calculate logo size to use full available height with smaller padding
-    const padding = 4; // Reduced padding for bigger logo
+    // Calculate logo size with responsive scaling
+    const padding = 4 * responsiveMetrics.paddingScale; // Responsive padding
     const logoSize = buttonHeight - padding * 2;
     const logoRadius = logoSize / 2;
 
@@ -280,14 +282,17 @@ export const drawHomeArea = (
 
     // Solid golden beige color for text using style guide colors
     ctx.fillStyle = STYLE_COLORS.goldenBeige;
-    // Mobile-specific font sizing for half-height buttons
-    const isMobile = unitSize <= 150;
-    const baseFontSize = isMobile ? unitSize * 0.08 : unitSize * 0.1; // Smaller for half-height area
-    const hoverFontSize = isMobile ? unitSize * 0.09 : unitSize * 0.11;
+    // Responsive font sizing - much larger on mobile
+    const baseFontSize = responsiveMetrics.isMobile
+      ? unitSize * 0.2 * responsiveMetrics.fontScale // Doubled from 0.06 to 0.12
+      : unitSize * 0.1;
+    const hoverFontSize = responsiveMetrics.isMobile
+      ? unitSize * 0.22 * responsiveMetrics.fontScale // Doubled from 0.07 to 0.14
+      : unitSize * 0.11;
     ctx.font = `bold ${isHovered ? hoverFontSize : baseFontSize}px ${getCanvasFontStack('Proxima Nova')}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.letterSpacing = '2px'; // Slightly reduced letter spacing
+    ctx.letterSpacing = `${2 * responsiveMetrics.spacingScale}px`; // Responsive letter spacing
 
     const textX = btnX + buttonWidth / 2;
     const textY = btnY + buttonHeight / 2;
