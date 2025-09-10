@@ -1,12 +1,13 @@
 'use client';
 
 import type React from 'react';
+import Image from 'next/image';
 import Footer from '@/components/ui/custom/footer';
 import LuxuryAssetsBackground from '@/components/ui/custom/luxury-assets-background';
 import PageBandTitle from '@/components/ui/custom/page-band-title';
 import PageBandSubtitle from '@/components/ui/custom/page-band-subtitle';
 import AcesHeader from '@/components/ui/custom/aces-header';
-import ListTokenForm from '@/components/forms/list-token-form';
+// import ListTokenForm from '@/components/forms/list-token-form';
 
 export default function CreateTokenForm() {
   return (
@@ -29,13 +30,13 @@ export default function CreateTokenForm() {
 
       {/* Title band between header bottom and solid horizontal line */}
       <PageBandTitle
-        title="Submit Your RWA for Tokenization"
+        title="Tokenize your RWA"
         contentWidth={1200}
         bandHeight={96}
         contentLineOffset={8}
       />
       <PageBandSubtitle
-        text="Transform your high-value Real-World Asset into a digital token. Join our exclusive launch by submitting your luxury asset for tokenization."
+        text="Tokenizing your RWAs through ACES.fun will be launching soon."
         contentWidth={1200}
         bandHeight={96}
         contentLineOffset={8}
@@ -44,12 +45,59 @@ export default function CreateTokenForm() {
 
       {/* Main Content - Fixed 1400px height for background images */}
       <div className="relative z-20 h-[1400px]">
-        {/* Scrollable form container positioned underneath text */}
+        {/* Booster pack image and Coming Soon banner with grid-style background */}
+        <div className="absolute top-[200px] left-1/2 -translate-x-1/2 w-full max-w-[1200px] px-4 sm:px-6 z-10">
+          {/* Main container with upcoming-grid styling */}
+          <div className="relative pointer-events-auto">
+            <div className="relative bg-[#151c16]/80 border border-dashed border-[#E6E3D3]/20 rounded-2xl p-4 sm:p-6 md:p-8 shadow-[0_10px_40px_rgba(215,191,117,0.06)]">
+              {/* Corner ticks */}
+              <span className="pointer-events-none absolute left-3 top-3 h-3 w-0.5 bg-[#C9AE6A]" />
+              <span className="pointer-events-none absolute left-3 top-3 w-3 h-0.5 bg-[#C9AE6A]" />
+              <span className="pointer-events-none absolute right-3 top-3 h-3 w-0.5 bg-[#C9AE6A]" />
+              <span className="pointer-events-none absolute right-3 top-3 w-3 h-0.5 bg-[#C9AE6A]" />
+              <span className="pointer-events-none absolute left-3 bottom-3 h-3 w-0.5 bg-[#C9AE6A]" />
+              <span className="pointer-events-none absolute left-3 bottom-3 w-3 h-0.5 bg-[#C9AE6A]" />
+              <span className="pointer-events-none absolute right-3 bottom-3 h-3 w-0.5 bg-[#C9AE6A]" />
+              <span className="pointer-events-none absolute right-3 bottom-3 w-3 h-0.5 bg-[#C9AE6A]" />
+
+              {/* Content within the styled container */}
+              <div className="space-y-6 sm:space-y-8">
+                {/* Booster Pack Image - responsive sizing, no cropping needed */}
+                <div className="relative flex justify-center">
+                  <div className="relative w-full max-w-[500px] sm:w-[400px] md:w-[500px]">
+                    <Image
+                      src="/aces-booster-pack.png"
+                      alt="ACES Booster Pack"
+                      width={500}
+                      height={300}
+                      className="object-contain drop-shadow-lg w-full h-auto"
+                      priority
+                      sizes="(max-width: 640px) 100vw, (max-width: 768px) 400px, 500px"
+                    />
+                  </div>
+                </div>
+
+                {/* Coming Soon Banner - responsive text sizing */}
+                <div className="relative">
+                  <div className="bg-[#0A120B] border border-[#D7BF75] py-4 sm:py-6 rounded-lg">
+                    <div className="text-center">
+                      <h2 className="text-[#D7BF75] text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-neue-world uppercase tracking-widest leading-tight">
+                        Coming Soon
+                      </h2>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        {/* Commented out form for future use */}
+        {/* 
         <div className="absolute top-[200px] left-1/2 -translate-x-1/2 w-full max-w-[1200px] px-4 sm:px-6 z-10 h-[1200px] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
           <ListTokenForm />
-          {/* Bottom padding to ensure footer clearance */}
           <div className="h-24" />
         </div>
+        */}
       </div>
 
       {/* Footer - Fixed at bottom */}
@@ -57,8 +105,8 @@ export default function CreateTokenForm() {
         <Footer />
       </div>
 
-      {/* Verification Modal - Temporarily commented out */}
-      {/* TODO: Re-enable verification system later */}
+      {/* Verification Modal - Commented out for Coming Soon page */}
+      {/* TODO: Re-enable verification system when form is restored */}
       {/*
       <Dialog open={showVerificationModal} onOpenChange={setShowVerificationModal}>
         <DialogContent className="sm:max-w-[800px] bg-black border-[#D0B284]">
