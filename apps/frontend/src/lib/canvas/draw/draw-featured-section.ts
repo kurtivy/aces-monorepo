@@ -6,14 +6,14 @@ import { getResponsiveMetrics, type ResponsiveMetrics } from '../../utils/respon
 
 // Responsive PIN configuration
 const createPinConfig = (responsiveMetrics: ResponsiveMetrics) => ({
-  radius: 3.5 * responsiveMetrics.iconScale,
+  radius: 1.8 * responsiveMetrics.iconScale,
   insetDesktop: 8 * responsiveMetrics.paddingScale,
   insetMobile: 6 * responsiveMetrics.paddingScale,
-  color: '#D8DCE2',
+  color: '#1B1B1B',
   shadowBlur: 2 * responsiveMetrics.borderScale,
-  shadowColor: 'rgba(0,0,0,0.18)',
+  shadowColor: 'rgba(0,0,0,0.50)',
   highlight: 'rgba(255,255,255,0.8)',
-  alpha: 0.85, // <— control pin opacity here
+  alpha: 1, // <— control pin opacity here
 });
 
 // Update drawPin to multiply existing alpha by PIN.alpha
@@ -34,9 +34,9 @@ function drawPin(
   ctx.shadowOffsetY = 1;
 
   const grad = ctx.createRadialGradient(cx - r * 0.25, cy - r * 0.25, r * 0.1, cx, cy, r);
-  grad.addColorStop(0, '#F4F6F9');
+  grad.addColorStop(0, '#787C82');
   grad.addColorStop(0.6, pinConfig.color);
-  grad.addColorStop(1, '#B9C0C8');
+  grad.addColorStop(1, '#1B1B1B');
 
   ctx.fillStyle = grad;
   ctx.beginPath();
