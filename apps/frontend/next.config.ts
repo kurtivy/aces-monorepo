@@ -227,6 +227,8 @@ const nextConfig: NextConfig = {
         destination: '/404',
         permanent: false,
       },
+      // Enable /launch on aces.fun
+      /*
       {
         source: '/launch/:path*',
         has: [
@@ -238,6 +240,7 @@ const nextConfig: NextConfig = {
         destination: '/404',
         permanent: false,
       },
+      */
       // Temporarily disabled for development
       /*
       {
@@ -278,6 +281,8 @@ const nextConfig: NextConfig = {
         permanent: false,
       },
       */
+      // Enable /launch on localhost:3000
+      /*
       {
         source: '/launch/:path*',
         has: [
@@ -289,6 +294,7 @@ const nextConfig: NextConfig = {
         destination: '/404',
         permanent: false,
       },
+      */
       // Temporarily disabled for development
       /*
       {
