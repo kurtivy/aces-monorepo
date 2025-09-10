@@ -103,8 +103,7 @@ const UnifiedInfoPillComponent: React.FC = () => {
           title="Learn about ACES of Base"
         >
           <span className="text-xs font-medium text-[#D0B264] whitespace-nowrap font-proxima-nova">
-            <span className="sm:hidden">BASE</span>
-            <span className="hidden sm:inline">BUILT ON</span>
+            BUILT ON
           </span>
           <svg
             className="h-2.5 sm:h-3 w-auto flex-shrink-0 self-start mb-0.5"
