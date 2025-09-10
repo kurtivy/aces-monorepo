@@ -54,11 +54,11 @@ export const useViewState = ({
 
     const currentUnitSize = canvasWidth.current < 768 ? 150 : 200;
 
-    // FEATURED SECTION: Update centering to account for featured + home area (total 2×3)
+    // FEATURED SECTION: Update centering to account for logo + featured + home area (total 2×3)
     const currentTotalAreaWidth = currentUnitSize * 2; // Still 2 units wide
-    const currentTotalAreaHeight = currentUnitSize * 3; // Now 3 units tall (featured 2 + home 1)
+    const currentTotalAreaHeight = currentUnitSize * 3; // Now 3 units tall (logo 0.5 + featured 2 + home 0.5)
     const currentTotalAreaWorldX = -currentUnitSize; // Still starts at -unitSize
-    const currentTotalAreaWorldY = -currentUnitSize * 3; // Now starts at featured area top
+    const currentTotalAreaWorldY = -currentUnitSize * 3; // Now starts at logo area top
 
     const screenCenterX = canvasWidth.current / 2;
     const screenCenterY = canvasHeight.current / 2;

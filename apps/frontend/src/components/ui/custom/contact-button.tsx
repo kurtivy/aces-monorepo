@@ -1,12 +1,13 @@
 'use client';
 
-import React, { memo, useState, useEffect } from 'react';
+import type React from 'react';
+import { memo, useState, useEffect } from 'react';
 import { MessageSquare } from 'lucide-react';
 import {
-  getBrowserPerformanceSettings,
+  // getBrowserPerformanceSettings,
   getDeviceCapabilities,
   mobileUtils,
-} from '../../../lib/utils/browser-utils';
+} from '@/lib/utils/browser-utils';
 
 interface ContactButtonProps {
   onClick: () => void;
@@ -14,7 +15,7 @@ interface ContactButtonProps {
 
 const ContactButtonComponent: React.FC<ContactButtonProps> = ({ onClick }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const browserPerf = getBrowserPerformanceSettings();
+  // const browserPerf = getBrowserPerformanceSettings();
   const deviceCaps = getDeviceCapabilities();
 
   // Check if device is mobile using touchCapable or mobile detection
@@ -29,17 +30,16 @@ const ContactButtonComponent: React.FC<ContactButtonProps> = ({ onClick }) => {
       return; // Don't expand on mobile
     }
 
+    let expandTimer: NodeJS.Timeout;
     let collapseTimer: NodeJS.Timeout;
 
-    // Expand after 10 seconds
-    const expandTimer = setTimeout(() => {
+    expandTimer = setTimeout(() => {
       setIsExpanded(true);
 
-      // Collapse back after 6 more seconds
       collapseTimer = setTimeout(() => {
         setIsExpanded(false);
       }, 6000);
-    }, 10000);
+    }, 8000);
 
     return () => {
       clearTimeout(expandTimer);
@@ -47,42 +47,84 @@ const ContactButtonComponent: React.FC<ContactButtonProps> = ({ onClick }) => {
     };
   }, [isMobile]);
 
-  // Determine if we should show expanded state (desktop only)
-  const shouldExpand = !isMobile && isExpanded;
-
   return (
     <button
       className={`
         fixed bottom-4 left-4 z-50 
-        ${shouldExpand ? 'px-4 py-3 sm:px-6 sm:py-4' : 'p-3 sm:p-4'}
+        h-10 sm:h-14
         rounded-full 
-        bg-black/80 border border-[#D0B264]/40 
-        text-[#D0B264] 
-        flex items-center gap-2 sm:gap-3
+        border border-[#D0B264]/60 
+        text-white
+        flex items-center
         cursor-pointer
-        hover:bg-black/90 hover:border-[#D0B264] 
-        ${useAnimations && !isMobile ? 'transition-all duration-500' : ''}
+        ${useAnimations && !isMobile ? 'transition-all duration-700 ease-in-out' : ''}
         ${useAdvancedAnimations ? 'hover:scale-105 active:scale-95' : ''}
-        ${shouldExpand ? 'max-w-xs sm:max-w-sm' : 'w-auto'}
         overflow-hidden
       `}
       onClick={onClick}
       style={{
-        transitionDuration:
-          useAnimations && !isMobile ? `${browserPerf.animationDuration}ms` : '0ms',
+        backgroundColor: 'rgb(0, 0, 0)',
+        width: !isMobile && isExpanded ? '380px' : window.innerWidth >= 640 ? '54px' : '41px',
+        transitionDuration: useAnimations && !isMobile ? '700ms' : '0ms',
+        transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+      }}
+      onMouseEnter={(e) => {
+        if (useAdvancedAnimations && !isMobile) {
+          e.currentTarget.style.transform = 'scale(1.05)';
+          e.currentTarget.style.backgroundColor = 'rgb(0, 0, 0)';
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (useAdvancedAnimations && !isMobile) {
+          e.currentTarget.style.transform = 'scale(1)';
+          e.currentTarget.style.backgroundColor = 'rgb(0, 0, 0)';
+        }
+      }}
+      onMouseDown={(e) => {
+        if (useAdvancedAnimations && !isMobile) {
+          e.currentTarget.style.transform = 'scale(0.95)';
+        }
+      }}
+      onMouseUp={(e) => {
+        if (useAdvancedAnimations && !isMobile) {
+          e.currentTarget.style.transform = 'scale(1.05)';
+        }
       }}
     >
-      <MessageSquare className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" />
+      <div
+        className="absolute flex items-center justify-center"
+        style={{
+          left: window.innerWidth >= 640 ? '27px' : '20px', // Center of circle (half of circle width)
+          top: '50%',
+          transform: 'translate(-50%, -50%)', // Center the icon perfectly
+          width: window.innerWidth >= 640 ? '54px' : '41px',
+          height: window.innerWidth >= 640 ? '54px' : '41px',
+        }}
+      >
+        <MessageSquare
+          className="text-[#D0B264]"
+          style={{
+            width: window.innerWidth >= 640 ? '24px' : '20px', // Sized to fit nicely in circle
+            height: window.innerWidth >= 640 ? '24px' : '20px',
+          }}
+        />
+      </div>
+
       {!isMobile && (
-        <span
-          className={`
-            text-xs sm:text-sm font-medium whitespace-nowrap
-            ${useAnimations ? 'transition-all duration-500' : ''}
-            ${isExpanded ? 'opacity-100 max-w-full ml-1 sm:ml-2' : 'opacity-0 max-w-0 ml-0'}
-          `}
+        <div
+          className="flex items-center"
+          style={{
+            marginLeft: window.innerWidth >= 640 ? '68px' : '54px', // Space for icon + padding
+            opacity: isExpanded ? 1 : 0,
+            width: isExpanded ? 'auto' : '0px',
+            transition: useAnimations ? 'opacity 700ms cubic-bezier(0.4, 0, 0.2, 1)' : 'none',
+            transitionDelay: isExpanded ? '200ms' : '0ms',
+          }}
         >
-          Don&apos;t see what you&apos;re looking for? Reach out!
-        </span>
+          <span className="text-xs sm:text-sm font-medium whitespace-nowrap text-[#D0B264]">
+            Don&apos;t see what you&apos;re looking for? Reach out!
+          </span>
+        </div>
       )}
     </button>
   );

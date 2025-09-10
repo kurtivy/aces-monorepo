@@ -53,13 +53,14 @@ export const waitForFont = async (fontFamily: string): Promise<boolean> => {
  * Returns fonts in order of preference with fallbacks
  */
 export const getCanvasFontStack = (
-  primaryFont: 'NeueWorld' | 'Proxima Nova' | 'Futura' | 'BraahOne',
+  primaryFont: 'NeueWorld' | 'Proxima Nova' | 'Futura' | 'BraahOne' | 'Spray Letters',
 ): string => {
   const fontStacks = {
     NeueWorld: `'NeueWorld', 'Arial Black', 'Helvetica', sans-serif`,
     'Proxima Nova': `'Proxima Nova', 'Arial', 'Helvetica', sans-serif`,
     Futura: `'Futura', -apple-system, BlinkMacSystemFont, 'Arial', 'Helvetica', sans-serif`,
     BraahOne: `'BraahOne', 'Arial Black', 'Helvetica', sans-serif`,
+    'Spray Letters': `'Spray Letters', cursive, 'Arial Black', sans-serif`,
   };
 
   return fontStacks[primaryFont];
@@ -72,7 +73,7 @@ export const getCanvasFontStack = (
 export const initCanvasFonts = async (): Promise<void> => {
   if (typeof document === 'undefined') return;
 
-  const fontsToLoad = ['NeueWorld', 'Proxima Nova', 'Futura', 'BraahOne'];
+  const fontsToLoad = ['NeueWorld', 'Proxima Nova', 'Futura', 'BraahOne', 'Spray Letters'];
 
   // Wait for all fonts to be ready
   const loadPromises = fontsToLoad.map((font) => waitForFont(font));

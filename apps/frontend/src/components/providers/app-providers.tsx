@@ -9,7 +9,8 @@ import { AuthProvider } from '../../lib/auth/auth-context';
 import { ModalProvider } from '../../lib/contexts/modal-context';
 import GlobalModals from '../ui/custom/global-modals';
 import NetworkBanner from '../ui/custom/network-banner';
-import { type ReactNode } from 'react';
+import { type ReactNode, useEffect } from 'react';
+import { initCanvasFonts } from '../../lib/utils/font-loader';
 
 // Initialize QueryClient for wagmi with optimized settings
 const queryClient = new QueryClient({
@@ -80,6 +81,13 @@ export const wagmiConfig = createConfig({
 });
 
 export default function AppProviders({ children }: { children: ReactNode }) {
+  // Initialize canvas fonts on app startup
+  useEffect(() => {
+    initCanvasFonts().catch((error) => {
+      console.warn('Canvas fonts initialization failed:', error);
+    });
+  }, []);
+
   // Debug Privy configuration
   const privyAppId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
 

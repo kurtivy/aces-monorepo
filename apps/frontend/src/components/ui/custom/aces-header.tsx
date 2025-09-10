@@ -28,7 +28,7 @@ export default function AcesHeader({ className = '', title, onProfileClick }: Ac
             {/* Clickable Logo Only */}
             <button
               onClick={handleLogoClick}
-              className="w-8 h-8 sm:w-14 sm:h-14 flex items-center justify-center overflow-hidden hover:opacity-80 transition-opacity duration-200 focus:outline-none flex-shrink-0"
+              className="w-8 h-8 sm:w-14 sm:h-14 flex items-center justify-center overflow-hidden hover:opacity-80 transition-opacity duration-200 focus:outline-none flex-shrink-0 cursor-pointer"
               aria-label="Navigate to home page"
             >
               <Image

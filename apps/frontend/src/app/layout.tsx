@@ -9,16 +9,16 @@ import { SpeedInsights } from '@vercel/speed-insights/next';
 
 export const metadata: Metadata = {
   title: 'ACES.fun',
-  description: 'Tokenize your sh!t.',
+  description: 'Trade Tokenized Collectibles',
   metadataBase: new URL('https://aces.fun'),
   openGraph: {
     title: 'ACES.fun',
-    description: 'Tokenize your sh!t.',
+    description: 'Trade Tokenized Collectibles',
     url: '/',
     siteName: 'ACES.fun',
     images: [
       {
-        url: '/aces-logo.png',
+        url: '/aces-preview-logo.png',
         width: 800,
         height: 800,
         alt: 'ACES.fun Logo',
@@ -30,10 +30,10 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: 'ACES.fun',
-    description: 'Tokenize your sh!t.',
+    description: 'Trade Tokenized Collectibles',
     images: [
       {
-        url: '/aces-logo.png',
+        url: '/aces-preview-logo.png',
         width: 800,
         height: 800,
         alt: 'ACES.fun Logo',
@@ -44,8 +44,8 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: '/favicon.ico',
-    shortcut: '/aces-logo.png',
-    apple: '/aces-logo.png',
+    shortcut: '/aces-preview-logo.png',
+    apple: '/aces-preview-logo.png',
   },
 };
 

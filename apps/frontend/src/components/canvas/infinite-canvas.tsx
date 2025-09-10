@@ -13,13 +13,13 @@ import ConnectWalletNav from '../ui/custom/connect-wallet-nav';
 import NavMenu from '../ui/custom/nav-menu';
 import HomeButton from '../ui/custom/home-button';
 import ContactButton from '../ui/custom/contact-button';
-import BuiltOnBaseOverlay from '../ui/custom/built-on-base-overlay';
-import ContractAddressPill from '../ui/custom/contract-address-pill';
+import UnifiedInfoPill from '../ui/custom/unified-info-pill';
 import ImageDetailsModal from '../ui/custom/image-details-modal';
 import ContactFormModal from '../ui/custom/contact-form-modal';
 import AboutModal from '../ui/custom/about-modal';
 import TermsModal from '../ui/custom/terms-modal';
 import IntroAnimation from '../loading/intro-animation';
+import { EmailSignupModal } from '../ui/email-signup-modal';
 import { useModal } from '../../lib/contexts/modal-context';
 import {
   mobileUtils,
@@ -50,6 +50,9 @@ const InfiniteCanvas = ({
   const router = useRouter();
   const [selectedImage, setSelectedImage] = useState<ImageInfo | null>(null);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+  // Calendar icon modal state
+  const [isEmailSignupModalOpen, setIsEmailSignupModalOpen] = useState(false);
+  const [selectedProductTitle, setSelectedProductTitle] = useState('');
 
   // Modal context for About and Terms modals
   const {
@@ -131,6 +134,17 @@ const InfiniteCanvas = ({
   const imagesRef = useRef(images);
   imagesRef.current = images;
 
+  // Auction icon click handler - define before useCanvasInteractions
+  const handleAuctionIconClick = useCallback((productTitle: string) => {
+    setSelectedProductTitle(productTitle);
+    setIsEmailSignupModalOpen(true);
+  }, []);
+
+  const handleEmailSignupModalClose = () => {
+    setIsEmailSignupModalOpen(false);
+    setSelectedProductTitle('');
+  };
+
   // FEATURED SECTION: Updated useCanvasInteractions call with featured section props
   const {
     isPanning,
@@ -155,6 +169,8 @@ const InfiniteCanvas = ({
     // FEATURED SECTION: Add featured section props
     featuredImage,
     onFeaturedImageClick: onFeaturedImageClick || setSelectedImage,
+    // Auction icon click handler
+    onAuctionIconClick: handleAuctionIconClick,
     // Modal callbacks for home area buttons
     onAboutClick: openAboutModal,
     onTermsClick: openTermsModal,
@@ -419,30 +435,32 @@ const InfiniteCanvas = ({
       <ContactFormModal isOpen={isContactModalOpen} onClose={handleContactModalClose} />
       <AboutModal isOpen={isAboutModalOpen} onClose={closeAboutModal} />
       <TermsModal isOpen={isTermsModalOpen} onClose={closeTermsModal} />
+      <EmailSignupModal
+        isOpen={isEmailSignupModalOpen}
+        onClose={handleEmailSignupModalClose}
+        productTitle={selectedProductTitle}
+      />
       {isUIVisible && !selectedImage && (
         <>
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6, ease: 'easeOut', delay: 0.3 }}
+            transition={{ duration: 1.2, ease: 'easeOut', delay: 0.3 }}
           >
             <HomeButton onClick={handleHomeClick} />
           </motion.div>
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6, ease: 'easeOut', delay: 0.4 }}
+            transition={{ duration: 1.2, ease: 'easeOut', delay: 0.4 }}
           >
             <ContactButton onClick={handleContactClick} />
           </motion.div>
         </>
       )}
 
-      {/* Built on BASE overlay */}
-      {isUIVisible && <BuiltOnBaseOverlay />}
-
-      {/* Contract Address Pill */}
-      {isUIVisible && <ContractAddressPill />}
+      {/* Unified Info Pill - Contract Address & Built on Base */}
+      {isUIVisible && <UnifiedInfoPill />}
     </>
   );
 };

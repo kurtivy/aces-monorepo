@@ -1,7 +1,8 @@
 import { UNIT_SIZE } from '../../../constants/canvas';
+import type { DeviceCapabilities } from '../../../types/capabilities';
 import { browserUtils } from '../../utils/browser-utils';
-import { getDeviceCapabilities } from '../../utils/browser-utils';
 import { getCanvasFontStack } from '../../utils/font-loader';
+import { getResponsiveMetrics } from '../../utils/responsive-canvas-utils';
 
 /**
  * Home area drawing component with Aces.Fun style guide integration
@@ -13,7 +14,7 @@ import { getCanvasFontStack } from '../../utils/font-loader';
  * - pureWhite (#FFFFFF) for text and highlights
  * - antiqueBronze (#928357) for gradient stops
  *
- * Supports customizable quadrant prompts for different use cases.
+ * Layout: Banner at top, featured section centered, CREATE/DROPS buttons below
  */
 
 // Safari-specific performance optimizations
@@ -24,6 +25,9 @@ const isSafari =
 
 // Gradient cache for Safari performance
 const homeAreaGradientCache = new Map<string, CanvasGradient>();
+
+// Logo image cache for performance
+const logoImageCache = new Map<string, HTMLImageElement>();
 
 // Style guide colors from aces_fun_style_guide.md
 const STYLE_COLORS = {
@@ -37,31 +41,69 @@ const STYLE_COLORS = {
   black: '#000000',
 } as const;
 
-// Default quadrant prompts - can be customized
-const DEFAULT_QUADRANT_PROMPTS = ['ABOUT', 'CREATE', 'DOCS', 'GRAILS'] as const;
+// // Load ACES website logo
+// const loadAcesWebsiteLogo = (): HTMLImageElement | null => {
+//   const cacheKey = 'aces-website-logo';
+
+//   if (logoImageCache.has(cacheKey)) {
+//     return logoImageCache.get(cacheKey)!;
+//   }
+
+//   const logoImg = new Image();
+//   logoImg.crossOrigin = 'anonymous';
+//   logoImg.src = '/png/aces-website-logo.webp';
+
+//   // Cache the image (even if not loaded yet)
+//   logoImageCache.set(cacheKey, logoImg);
+
+//   return logoImg;
+// };
+
+// Load ACES circle logo
+const loadAcesCircleLogo = (): HTMLImageElement | null => {
+  const cacheKey = 'aces-logo';
+
+  if (logoImageCache.has(cacheKey)) {
+    return logoImageCache.get(cacheKey)!;
+  }
+
+  const logoImg = new Image();
+  logoImg.crossOrigin = 'anonymous';
+  logoImg.src = '/aces-logo.png';
+
+  // Cache the image (even if not loaded yet)
+  logoImageCache.set(cacheKey, logoImg);
+
+  return logoImg;
+};
 
 export const drawHomeArea = (
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
-  logoImage: HTMLImageElement | null,
+  logoImage: HTMLImageElement | null, // This param is kept for compatibility but not used
   mouseX = 0,
   mouseY = 0,
   homeAreaWidth: number,
   homeAreaHeight: number,
-  spaceCanvas: HTMLCanvasElement | null = null, // Add space canvas parameter
-  animationTime = 0, // For any additional animations
-  unitSize = UNIT_SIZE, // Add unitSize parameter
-  quadrantPrompts: readonly string[] = DEFAULT_QUADRANT_PROMPTS, // Add customizable prompts
+  spaceCanvas: HTMLCanvasElement | null = null,
+  animationTime = 0,
+  unitSize = UNIT_SIZE,
+  opacity: number = 1, // Add opacity parameter
+  quadrantPrompts: readonly string[] = ['LAUNCH', 'DROPS'], // Updated default prompts
+  capabilities: DeviceCapabilities, // Add capabilities parameter
 ) => {
+  const responsiveMetrics = getResponsiveMetrics(unitSize, capabilities);
   // Smart mobile optimization: detect mobile device
-  const capabilities = getDeviceCapabilities();
-  const isMobileDevice = capabilities.touchCapable || capabilities.isMobileSafari;
+  const isMobileDevice = responsiveMetrics.isMobile;
 
   const radius = 12;
 
   // Background with gradient - Safari optimization: cache gradients
   ctx.save();
+
+  // Apply opacity for fade-in effect
+  ctx.globalAlpha = opacity;
 
   const gradientKey = `home-bg-${Math.round(homeAreaWidth)}-${Math.round(homeAreaHeight)}`;
   let backgroundGradient = homeAreaGradientCache.get(gradientKey);
@@ -97,9 +139,13 @@ export const drawHomeArea = (
 
   ctx.restore();
 
-  // Calculate center position
+  // Calculate layout dimensions
   const centerX = x + homeAreaWidth / 2;
-  const centerY = y + homeAreaHeight / 2;
+  // const centerY = y + homeAreaHeight / 2;
+  // Old layout variables - no longer needed since we now have separate areas
+  // const bannerHeight = homeAreaHeight * 0.2; // 20% for banner
+  // const featuredHeight = homeAreaHeight * 0.6; // 60% for featured section
+  // const buttonHeight = homeAreaHeight * 0.2; // 20% for buttons
 
   // Smart mobile optimization: disable expensive dot animations on mobile
   const shouldShowDotPattern = !isMobileDevice && browserUtils.shouldUseComplexDotPattern();
@@ -112,11 +158,11 @@ export const drawHomeArea = (
 
     for (let dotX = x + 6; dotX < x + homeAreaWidth - 6; dotX += dotSpacing) {
       for (let dotY = y + 6; dotY < y + homeAreaHeight - 6; dotY += dotSpacing) {
-        // Skip dots that would be too close to the center logo area
+        // Skip dots that would interfere with content areas
         const distanceFromCenter = Math.sqrt(
-          Math.pow(dotX - centerX, 2) + Math.pow(dotY - centerY, 2),
+          Math.pow(dotX - centerX, 2) + Math.pow(dotY - (y + homeAreaHeight / 2), 2),
         );
-        if (distanceFromCenter > homeAreaHeight * 0.35) {
+        if (distanceFromCenter > homeAreaHeight * 0.25) {
           // Create subtle animation for each dot
           const dotIndex = (dotX / dotSpacing) * 100 + dotY / dotSpacing;
           const animationOffset = Math.sin(time * 2 + dotIndex * 0.1) * 0.3;
@@ -132,7 +178,7 @@ export const drawHomeArea = (
     ctx.restore();
   }
 
-  // Draw premium multi-layered border (matching create token square)
+  // Draw premium multi-layered border (MADE THINNER)
   ctx.save();
 
   // Safari optimization: Skip expensive shadow effects on Safari
@@ -143,7 +189,7 @@ export const drawHomeArea = (
   }
 
   ctx.strokeStyle = STYLE_COLORS.goldenBeige;
-  ctx.lineWidth = 4; // Thick golden border as requested
+  ctx.lineWidth = 1; // REDUCED from 4 to 2
   ctx.beginPath();
   ctx.roundRect(x, y, homeAreaWidth, homeAreaHeight, radius);
   ctx.stroke();
@@ -167,157 +213,115 @@ export const drawHomeArea = (
   }
 
   ctx.strokeStyle = borderGradient;
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 1; // REDUCED from 2 to 1
   ctx.beginPath();
-  ctx.roundRect(x + 2, y + 2, homeAreaWidth - 4, homeAreaHeight - 4, radius - 1);
+  ctx.roundRect(x + 1, y + 1, homeAreaWidth - 2, homeAreaHeight - 2, radius - 1);
   ctx.stroke();
 
   ctx.restore();
 
-  // Draw quadrant divider lines
-  ctx.save();
-  ctx.strokeStyle = STYLE_COLORS.goldenBeige;
-  ctx.globalAlpha = 0.4;
-  ctx.lineWidth = 1.5;
+  // The home area now only draws the two buttons (CREATE | DROPS)
+  // Logo banner and featured section are drawn separately
+  const buttonWidth = homeAreaWidth / 2;
+  const buttonHeight = homeAreaHeight; // Use the full height of the home area
 
-  // Vertical divider line
-  ctx.beginPath();
-  ctx.moveTo(centerX, y + 8); // Start slightly below top border
-  ctx.lineTo(centerX, y + homeAreaHeight - 8); // End slightly above bottom border
-  ctx.stroke();
+  // Draw circular logo in the center between the two buttons (full height)
+  const circleLogo = loadAcesCircleLogo();
+  if (circleLogo && circleLogo.complete) {
+    ctx.save();
 
-  // Horizontal divider line
-  ctx.beginPath();
-  ctx.moveTo(x + 8, centerY); // Start slightly right of left border
-  ctx.lineTo(x + homeAreaWidth - 8, centerY); // End slightly left of right border
-  ctx.stroke();
+    // Calculate logo size with responsive scaling
+    const padding = 4 * responsiveMetrics.paddingScale; // Responsive padding
+    const logoSize = buttonHeight - padding * 2;
+    const logoRadius = logoSize / 2;
 
-  ctx.restore();
+    // Position logo in center
+    const logoX = centerX - logoRadius;
+    const logoY = y + padding;
 
-  // Draw the four quadrant buttons with premium styling
-  const drawQuadrantButton = (text: string, quadrant: number) => {
-    const quadWidth = homeAreaWidth / 2;
-    const quadHeight = homeAreaHeight / 2;
-    const isRightSide = quadrant === 1 || quadrant === 3;
-    const isBottomHalf = quadrant === 2 || quadrant === 3;
-    const quadX = x + (isRightSide ? quadWidth : 0);
-    const quadY = y + (isBottomHalf ? quadHeight : 0);
+    // Create circular clipping path
+    ctx.beginPath();
+    ctx.arc(centerX, y + padding + logoRadius, logoRadius, 0, Math.PI * 2);
+    ctx.clip();
 
-    // Smart mobile optimization: disable hover effects on mobile (touch doesn't have hover)
+    // Draw the logo image
+    ctx.drawImage(circleLogo, logoX, logoY, logoSize, logoSize);
+
+    ctx.restore();
+
+    // Optional: Add a golden border around the circular logo
+    ctx.save();
+    ctx.strokeStyle = STYLE_COLORS.goldenBeige;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(centerX, y + padding + logoRadius, logoRadius + 1, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Draw the two buttons with premium styling
+  const drawButton = (text: string, isLeftButton: boolean) => {
+    const btnX = x + (isLeftButton ? 0 : buttonWidth);
+    const btnY = y; // Button area starts at y position
+
+    // Smart mobile optimization: disable hover effects on mobile
     const isHovered =
       !isMobileDevice &&
-      mouseX >= quadX &&
-      mouseX <= quadX + quadWidth &&
-      mouseY >= quadY &&
-      mouseY <= quadY + quadHeight;
+      mouseX >= btnX &&
+      mouseX <= btnX + buttonWidth &&
+      mouseY >= btnY &&
+      mouseY <= btnY + buttonHeight;
 
     // Button text with premium golden styling
     ctx.save();
 
     // Text glow effect (disabled for Safari artifact fix)
-    ctx.shadowColor = 'transparent'; // Set shadow color to transparent
-    ctx.shadowBlur = 0; // Disable shadow blur
-    ctx.shadowOffsetY = 0; // Ensure no vertical offset
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
 
     // Solid golden beige color for text using style guide colors
     ctx.fillStyle = STYLE_COLORS.goldenBeige;
-    // Mobile-specific font sizing: smaller unitSize (150) gets smaller font, desktop (200) keeps original size
-    const isMobile = unitSize <= 150;
-    const baseFontSize = isMobile ? unitSize * 0.12 : unitSize * 0.15; // Original desktop size
-    const hoverFontSize = isMobile ? unitSize * 0.13 : unitSize * 0.16; // Original desktop size
+    // Responsive font sizing - much larger on mobile
+    const baseFontSize = responsiveMetrics.isMobile
+      ? unitSize * 0.2 * responsiveMetrics.fontScale // Doubled from 0.06 to 0.12
+      : unitSize * 0.1;
+    const hoverFontSize = responsiveMetrics.isMobile
+      ? unitSize * 0.22 * responsiveMetrics.fontScale // Doubled from 0.07 to 0.14
+      : unitSize * 0.11;
     ctx.font = `bold ${isHovered ? hoverFontSize : baseFontSize}px ${getCanvasFontStack('Proxima Nova')}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.letterSpacing = '3px';
+    ctx.letterSpacing = `${2 * responsiveMetrics.spacingScale}px`; // Responsive letter spacing
 
-    const textX = quadX + quadWidth / 2;
-    const textY = quadY + quadHeight / 2;
+    const textX = btnX + buttonWidth / 2;
+    const textY = btnY + buttonHeight / 2;
 
-    // Position text closer to center (reduce offset from 0.25 to 0.1 for much more centered text)
-    const offsetBase = Math.min(quadWidth, quadHeight) * 0.1;
-    const textOffsetX = isRightSide ? offsetBase : -offsetBase;
-    const textOffsetY = isBottomHalf ? offsetBase : -offsetBase;
-
-    ctx.fillText(text, textX + textOffsetX, textY + textOffsetY);
+    ctx.fillText(text, textX, textY);
     ctx.restore();
   };
 
-  // Draw all quadrant buttons using customizable prompts
-  drawQuadrantButton(quadrantPrompts[0] || 'ABOUT', 0);
-  drawQuadrantButton(quadrantPrompts[1] || 'CREATE', 1);
-  drawQuadrantButton(quadrantPrompts[2] || 'DOCS', 2);
-  drawQuadrantButton(quadrantPrompts[3] || 'GRAILS', 3);
-
-  // Draw the circular background for logo with premium styling
-  const logoSize = Math.min(homeAreaWidth, homeAreaHeight) * 0.45; // 50% of the smaller dimension - tighter fit
-
-  // Logo background with gradient using style guide colors
-  const logoGradient = ctx.createRadialGradient(
-    centerX,
-    centerY,
-    0,
-    centerX,
-    centerY,
-    logoSize / 2,
-  );
-  logoGradient.addColorStop(0, STYLE_COLORS.deepCharcoal);
-  logoGradient.addColorStop(1, STYLE_COLORS.black);
-
-  ctx.fillStyle = logoGradient;
-  ctx.beginPath();
-  ctx.arc(centerX, centerY, logoSize / 2, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Add premium glow around the logo
-  ctx.save();
-
-  // Safari optimization: Skip expensive logo glow on Safari
-  if (!isSafari && !isMobileDevice) {
-    ctx.shadowColor = 'rgba(255, 255, 255, 0.3)';
-    ctx.shadowBlur = 10;
-  }
-
-  // Multi-layered logo border using style guide colors
-  ctx.strokeStyle = STYLE_COLORS.goldenBeige;
-  ctx.globalAlpha = 0.6;
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.arc(centerX, centerY, logoSize / 2, 0, Math.PI * 2);
-  ctx.stroke();
-
-  // Inner logo border
-  ctx.shadowBlur = 0;
-  ctx.strokeStyle = STYLE_COLORS.pureWhite;
-  ctx.globalAlpha = 0.3;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.arc(centerX, centerY, logoSize / 2 - 2, 0, Math.PI * 2);
-  ctx.stroke();
+  // Draw both buttons
+  drawButton(quadrantPrompts[0] || 'LAUNCH', true); // Left button
+  drawButton(quadrantPrompts[1] || 'DROPS', false); // Right button
 
   ctx.restore();
+};
 
-  // Draw the logo if available
-  if (logoImage && logoImage.complete) {
-    ctx.save();
-    // Create a circular clipping path
-    ctx.beginPath();
-    ctx.arc(centerX, centerY, logoSize / 2 - 4, 0, Math.PI * 2);
-    ctx.clip();
+// Export function to get featured section coordinates for the featured section component
+export const getFeaturedSectionBounds = (
+  x: number,
+  y: number,
+  homeAreaWidth: number,
+  homeAreaHeight: number,
+) => {
+  const bannerHeight = homeAreaHeight * 0.25;
+  const featuredHeight = homeAreaHeight * 0.5;
 
-    // Calculate dimensions to maintain aspect ratio
-    const scale = (logoSize - 8) / Math.max(logoImage.width, logoImage.height);
-    const drawWidth = logoImage.width * scale;
-    const drawHeight = logoImage.height * scale;
-
-    // Center the logo in the circle
-    const logoX = centerX - drawWidth / 2;
-    const logoY = centerY - drawHeight / 2;
-
-    // Draw the logo with enhanced opacity
-    ctx.globalAlpha = 0.9;
-    ctx.drawImage(logoImage, logoX, logoY, drawWidth, drawHeight);
-    ctx.restore();
-  }
-
-  ctx.restore();
+  return {
+    x: x + 8, // Add padding
+    y: y + bannerHeight,
+    width: homeAreaWidth - 16, // Subtract padding
+    height: featuredHeight,
+  };
 };

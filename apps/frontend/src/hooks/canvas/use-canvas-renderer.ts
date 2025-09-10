@@ -3,7 +3,10 @@
 import type React from 'react';
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import type { ImageInfo, ViewState } from '../../types/canvas';
-import { drawHomeArea, drawImage } from '../../lib/canvas/draw';
+import { drawHomeArea, drawImage, getFeaturedSectionBounds } from '../../lib/canvas/draw';
+
+// Phase 1: Import extracted animation timing hook
+import { useCanvasAnimationTiming } from './use-canvas-animation-timing';
 
 import { drawImageWithoutContext } from '../../lib/canvas/draw/draw-image';
 import { batchRenderByOpacity, batchRenderAnimated } from '../../lib/utils/canvas-batch-renderer';
@@ -55,7 +58,13 @@ import {
 } from '../../lib/utils/canvas-error-boundary';
 
 // FEATURED SECTION: Import featured section drawing functions
-import { drawFeaturedSection, drawAnimatedFeaturedSection } from '../../lib/canvas/draw';
+import {
+  drawFeaturedSection,
+  drawAnimatedFeaturedSection,
+  getAuctionIconBounds,
+} from '../../lib/canvas/draw';
+import { drawCustomLogoBanner } from '@/lib/canvas/draw/draw-custom-logo-banner';
+import { getResponsiveMetrics } from '../../lib/utils/responsive-canvas-utils';
 
 interface UseCanvasRendererProps {
   images: ImageInfo[];
@@ -377,9 +386,7 @@ export const useCanvasRenderer = ({
   const [canvasProgress, setCanvasProgress] = useState(0);
   const [canvasReady, setCanvasReady] = useState(false);
 
-  // Animation state - KEEP these in main hook (UI state, not animation timing)
-  const [isProductAnimationActive, setIsProductAnimationActive] = useState(false);
-  const [isHoveringToken, setIsHoveringToken] = useState(false);
+  // Phase 1: Animation timing extracted to dedicated hook
 
   // Issue #1: Safari RAF Throttling Detection State
   const [isThrottled, setIsThrottled] = useState(false);
@@ -473,6 +480,10 @@ export const useCanvasRenderer = ({
     tileId: string;
   } | null>(null);
 
+  // Auction icon hover state
+  const [isHoveringAuctionIcon, setIsHoveringAuctionIcon] = useState(false);
+  const auctionIconHoverRef = useRef(0); // Hover progress for auction icon
+
   // Animation durations now handled by entrance animation hook and browserPerf settings
 
   const frameThrottleRef = useRef(0);
@@ -495,33 +506,44 @@ export const useCanvasRenderer = ({
   const stableCreateTokenPositions = useRef<Array<{ worldX: number; worldY: number }>>([]);
   const [placementsCalculated, setPlacementsCalculated] = useState(false);
 
-  // Hover animation state (simple state management for hover effects)
-  const [currentHoverProgress, setCurrentHoverProgress] = useState(0);
-  const hoverAnimationStartTime = useRef(0);
+  // Phase 1: Initialize extracted animation timing hook
+  const animationTiming = useCanvasAnimationTiming({
+    hoverAnimationDuration: browserPerf.animationDuration,
+    useLinearEasing: browserPerf.useLinearEasing,
+  });
 
-  // Update hover state function
-  const updateHoverState = useCallback(
-    (isHovering: boolean, currentTime: number) => {
-      const wasHovering = currentHoverProgress > 0;
-      if (wasHovering === isHovering) return;
-      hoverAnimationStartTime.current = currentTime;
-    },
-    [currentHoverProgress],
-  );
+  // Extract animation state and actions for backward compatibility
+  const {
+    currentHoverProgress,
+    isHoveringToken,
+    isProductAnimationActive,
+    updateHoverState,
+    updateHoverAnimationProgress,
+    startProductAnimation,
+    stopProductAnimation,
+  } = animationTiming;
 
   // Phase 1: SAFE - Entrance animation hook called at top level (follows Rules of Hooks)
   const entranceAnimationHook = useCanvasEntranceAnimation({
     productPlacements: stableProductPlacements.current,
     tokenPositions: stableCreateTokenPositions.current,
-    featuredSectionPosition: {
-      x: -unitSize,
-      y: -unitSize * 3,
-      width: unitSize * 2,
-      height: unitSize * 2,
-    },
+    // UPDATED: Featured section position now comes from the middle of home area
+    featuredSectionPosition: (() => {
+      const homeAreaWorldX = -unitSize;
+      const homeAreaWorldY = -unitSize;
+      const homeAreaWidth = unitSize * 2;
+      const homeAreaHeight = unitSize;
+
+      // Get the featured section bounds from the new home area layout
+      return getFeaturedSectionBounds(
+        homeAreaWorldX,
+        homeAreaWorldY,
+        homeAreaWidth,
+        homeAreaHeight,
+      );
+    })(),
     shouldAnimate: canvasVisible && canvasReady && imagesLoaded && placementsCalculated,
     unitSize,
-    // OPTIMIZATION: Pass viewport info for mobile performance (viewport-aware animation)
     viewState,
     canvasWidth: activeCanvasRef.current?.width,
     canvasHeight: activeCanvasRef.current?.height,
@@ -605,14 +627,22 @@ export const useCanvasRenderer = ({
   const isScrolling = useRef(false);
   const scrollTimeout = useRef<NodeJS.Timeout | null>(null);
 
-  // Preload the logo image
+  // Preload the logo images
   useEffect(() => {
     const logoImage = new Image();
     logoImage.src = '/aces-logo.png';
     logoImage.onload = () => {
       logoImageRef.current = logoImage;
     };
+
+    const websiteLogo = new Image();
+    websiteLogo.src = '/png/new-aces-header.png';
+    websiteLogo.onload = () => {
+      websiteLogoRef.current = websiteLogo;
+    };
   }, []);
+
+  const websiteLogoRef = useRef<HTMLImageElement | null>(null);
 
   // Find and store the submit asset image
   useEffect(() => {
@@ -761,23 +791,45 @@ export const useCanvasRenderer = ({
 
     resetGlobalPlacementTracking();
 
-    // FEATURED SECTION: Updated reserved area - now 2×3 instead of 2×1
+    // Define the proper 2×3 layout structure for placement calculations
+    // Total height = 3 units: Logo(0.6) + Featured(2.1) + Buttons(0.3) = 3.0
+
+    // Buttons area (2×0.3) at the bottom - 10%
     const homeAreaWorldX = -unitSize;
-    const homeAreaWorldY = -unitSize;
+    const homeAreaWorldY = -unitSize * 0.3; // 0.3 units above center
     const homeAreaWidth = unitSize * 2;
-    const homeAreaHeight = unitSize; // Home area stays 2×1
+    const homeAreaHeight = unitSize * 0.3; // 10% height
 
-    // FEATURED SECTION: New featured area above home area (2×2)
+    // Logo banner area (2×0.6) at the top - 20%
+    const logoAreaWorldX = -unitSize;
+    const logoAreaWorldY = -unitSize * 3; // 3 units above center (top)
+    const logoAreaWidth = unitSize * 2;
+    const logoAreaHeight = unitSize * 0.6; // 20% height
+
+    // Featured section area (2×2.1) in the middle - 70%
     const featuredAreaWorldX = -unitSize;
-    const featuredAreaWorldY = -unitSize * 3; // 2 units above home area
+    const featuredAreaWorldY = -unitSize * 2.4; // Between logo and buttons (3 - 0.6 = 2.4 from center)
     const featuredAreaWidth = unitSize * 2;
-    const featuredAreaHeight = unitSize * 2;
+    const featuredAreaHeight = unitSize * 2.1; // 70% height
 
-    // FEATURED SECTION: Combined reserved area is 2×3
+    // FEATURED SECTION: Combined reserved area is now 2×3 (logo 0.6 + featured 2.1 + home 0.3)
     const totalReservedAreaWorldX = -unitSize;
-    const totalReservedAreaWorldY = -unitSize * 3; // Top of featured area
+    const totalReservedAreaWorldY = -unitSize * 3; // Top of logo area
     const totalReservedAreaWidth = unitSize * 2;
-    const totalReservedAreaHeight = unitSize * 3; // Featured (2) + Home (1)
+    const totalReservedAreaHeight = unitSize * 3; // Logo (0.6) + Featured (2.1) + Home (0.3)
+
+    const occupiedSpaces = new Set<string>();
+
+    // Mark all cells in the reserved 2×3 area as occupied
+    for (let i = 0; i < 2; i++) {
+      // 2 units wide
+      for (let j = 0; j < 3; j++) {
+        // 3 units tall (logo 0.75 + featured 1.95 + home 0.3)
+        const cellX = Math.floor((totalReservedAreaWorldX + i * unitSize) / unitSize);
+        const cellY = Math.floor((totalReservedAreaWorldY + j * unitSize) / unitSize);
+        occupiedSpaces.add(`${cellX},${cellY}`);
+      }
+    }
 
     const totalProducts = images.length;
     const estimatedGridCells = Math.ceil(Math.sqrt(totalProducts * 1.5)); // 1.5x for create tokens and spacing
@@ -800,7 +852,8 @@ export const useCanvasRenderer = ({
     };
 
     imagePlacementMap.current.clear();
-    const occupiedSpaces = new Set<string>();
+    // occupiedSpaces already declared above, reuse it
+    occupiedSpaces.clear();
     const productPlacements: Array<{
       image: ImageInfo;
       x: number;
@@ -1060,7 +1113,8 @@ export const useCanvasRenderer = ({
     if (imagesLoaded && placementsCalculated && canvasVisible) {
       // Don't automatically start animation - images should be visible immediately
       // Animation can be triggered later if needed
-      setIsProductAnimationActive(false);
+      // Animation state now managed by extracted hook
+      // setIsProductAnimationActive(false); // Commented out - not needed
     }
   }, [imagesLoaded, placementsCalculated, canvasVisible]);
 
@@ -1259,17 +1313,26 @@ export const useCanvasRenderer = ({
     // Phase 2 Step 9: Lightweight performance monitoring (removed heavy monitoring for performance)
     // Performance monitoring moved to development mode only
 
-    // FEATURED SECTION: Updated area dimensions
-    const homeAreaWorldX = -unitSize;
-    const homeAreaWorldY = -unitSize;
-    const homeAreaWidth = unitSize * 2;
-    const homeAreaHeight = unitSize;
+    // Define the proper 2×3 layout structure with correct proportions
+    // Total height = 3 units: Logo(0.75) + Featured(1.95) + Buttons(0.3) = 3.0
 
-    // FEATURED SECTION: New featured area coordinates
+    // Buttons area (2×0.3) at the bottom - 10%
+    const homeAreaWorldX = -unitSize;
+    const homeAreaWorldY = -unitSize * 0.3; // 0.3 units above center
+    const homeAreaWidth = unitSize * 2;
+    const homeAreaHeight = unitSize * 0.3; // 10% height
+
+    // Logo banner area (2×0.75) at the top - 25%
+    const logoAreaWorldX = -unitSize;
+    const logoAreaWorldY = -unitSize * 3; // 3 units above center (top)
+    const logoAreaWidth = unitSize * 2;
+    const logoAreaHeight = unitSize * 0.75; // 25% height
+
+    // Featured section area (2×1.95) in the middle - 65%
     const featuredAreaWorldX = -unitSize;
-    const featuredAreaWorldY = -unitSize * 3;
+    const featuredAreaWorldY = -unitSize * 2.25; // Between logo and buttons
     const featuredAreaWidth = unitSize * 2;
-    const featuredAreaHeight = unitSize * 2;
+    const featuredAreaHeight = unitSize * 1.95; // 65% height
 
     const draw = (currentTime: number) => {
       // Step 0: Start performance monitoring for this frame
@@ -1298,6 +1361,11 @@ export const useCanvasRenderer = ({
         animationProgress: entranceAnimation.animationProgress,
       };
 
+      // Add UI opacity calculation for fade-in effect
+      const uiOpacity = entranceAnimation.isAnimationActive
+        ? entranceAnimation.animationProgress
+        : 1;
+
       // Step 4: Pre-calculate transform once per frame instead of per element (91% faster)
       const viewTransform = createViewTransform(viewState);
 
@@ -1306,6 +1374,9 @@ export const useCanvasRenderer = ({
         typeof navigator !== 'undefined' &&
         navigator.userAgent.includes('Safari') &&
         !navigator.userAgent.includes('Chrome');
+
+      // Mobile device detection for auction icon
+      const isMobileDevice = deviceCapabilities.touchCapable || deviceCapabilities.isMobileSafari;
 
       // Phase 3.1: Check if we should use dirty region optimization
       const shouldUseDirtyRegions = dirtyRegionManager.current.regions.length > 0;
@@ -1399,37 +1470,20 @@ export const useCanvasRenderer = ({
       const productPlacements = stableProductPlacements.current;
       const createTokenPositions = stableCreateTokenPositions.current;
 
-      // Phase 1: Update hover animations and check if any animations are active
-      const updateHoverAnimationProgress = () => {
-        if (isHoveringToken || currentHoverProgress > 0) {
-          const elapsed = currentTime - hoverAnimationStartTime.current;
-          let progress = Math.min(1, elapsed / hoverAnimationDuration);
-          if (!isHoveringToken) {
-            progress = 1 - progress;
-          }
-
-          progress = browserPerf.useLinearEasing ? progress : easeInOutCubic(progress);
-          setCurrentHoverProgress(progress);
-
-          if (!isHoveringToken && progress <= 0) {
-            setCurrentHoverProgress(0);
-          }
-        }
-      };
-
-      updateHoverAnimationProgress();
+      // Phase 1: Use extracted animation timing hook for hover animation updates
+      updateHoverAnimationProgress(currentTime);
 
       // Check if any animations are active
       const hasActiveAnimations = entranceAnimation.isAnimationActive || currentHoverProgress > 0;
       const animationProgress = entranceAnimation.animationProgress;
 
-      // Stop product animation when complete
+      // Phase 1: Use extracted animation timing hook for product animation lifecycle
       if (
         isProductAnimationActive &&
         !entranceAnimation.isAnimationActive &&
         animationProgress >= 1
       ) {
-        setIsProductAnimationActive(false);
+        stopProductAnimation();
       }
 
       // Step 0: Track rendered elements for performance monitoring
@@ -1724,7 +1778,6 @@ export const useCanvasRenderer = ({
           // If we're switching from original to repeated token (or vice versa),
           // restart the animation to ensure smooth transition
           if (newHoveredRepeatedToken || hoveredRepeatedToken) {
-            setIsHoveringToken(newHoveredRepeatedToken !== null);
             updateHoverState(newHoveredRepeatedToken !== null, currentTime);
           }
         }
@@ -1758,7 +1811,6 @@ export const useCanvasRenderer = ({
           }
 
           setHoveredTokenIndex(newHoveredIndex);
-          setIsHoveringToken(newHoveredIndex !== null);
           updateHoverState(newHoveredIndex !== null, currentTime);
         }
 
@@ -1873,6 +1925,23 @@ export const useCanvasRenderer = ({
         });
       }
 
+      // LOGO BANNER: Draw logo banner area (2×1) at the top
+      const logoAreaScreenPos = worldToScreen(logoAreaWorldX, logoAreaWorldY, viewTransform);
+      const logoAreaScreenWidth = (logoAreaWidth * viewTransform.scaleX) | 0;
+      const logoAreaScreenHeight = (logoAreaHeight * viewTransform.scaleY) | 0;
+
+      // Draw custom logo banner with proper fonts (NO GREEN BORDER)
+      drawCustomLogoBanner(
+        ctx,
+        logoAreaScreenPos.x,
+        logoAreaScreenPos.y,
+        logoAreaScreenWidth,
+        logoAreaScreenHeight,
+        unitSize,
+        uiOpacity, // Add opacity parameter
+        capabilities!, // Add capabilities parameter
+      );
+      totalElementsRendered++;
       // FEATURED SECTION: Draw featured section using screen coordinates with entrance animation
       const featuredAreaScreenPos = worldToScreen(
         featuredAreaWorldX,
@@ -1881,6 +1950,43 @@ export const useCanvasRenderer = ({
       );
       const featuredAreaScreenWidth = (featuredAreaWidth * viewTransform.scaleX) | 0;
       const featuredAreaScreenHeight = (featuredAreaHeight * viewTransform.scaleY) | 0;
+
+      // Auction icon hover detection - separate check after featuredAreaScreenPos is available
+      if (featuredImage) {
+        const screenMouseX = mousePositionRef.current.x;
+        const screenMouseY = mousePositionRef.current.y;
+
+        const responsiveMetrics = getResponsiveMetrics(unitSize, capabilities!);
+
+        const iconBounds = getAuctionIconBounds(
+          featuredAreaScreenPos.x,
+          featuredAreaScreenPos.y,
+          featuredAreaScreenWidth,
+          featuredAreaScreenHeight,
+          responsiveMetrics,
+        );
+
+        const isHoveringAuction =
+          screenMouseX >= iconBounds.x &&
+          screenMouseX <= iconBounds.x + iconBounds.width &&
+          screenMouseY >= iconBounds.y &&
+          screenMouseY <= iconBounds.y + iconBounds.height;
+
+        // Update auction icon hover state
+        if (isHoveringAuction !== isHoveringAuctionIcon) {
+          setIsHoveringAuctionIcon(isHoveringAuction);
+          if (isHoveringAuction) {
+            canvas.style.cursor = 'pointer';
+          }
+        }
+
+        // Update auction icon hover animation progress
+        if (isHoveringAuctionIcon) {
+          auctionIconHoverRef.current = Math.min(1, auctionIconHoverRef.current + 0.1);
+        } else {
+          auctionIconHoverRef.current = Math.max(0, auctionIconHoverRef.current - 0.1);
+        }
+      }
 
       // DEBUG: Uncomment for coordinate debugging
       // console.log('Featured Section Drawing Debug:', {
@@ -1892,50 +1998,22 @@ export const useCanvasRenderer = ({
       //   featuredImageComplete: featuredImage?.element?.complete,
       // });
 
-      // Check if we have featured section animation data
-      const animatedFeaturedSection = entranceAnimation.animatedFeaturedSection;
-
-      if (animatedFeaturedSection && entranceAnimation.isAnimationActive) {
-        // During entrance animation - use animated version with position override
-        const animatedScreenPos = worldToScreen(
-          animatedFeaturedSection.animatedX,
-          animatedFeaturedSection.animatedY,
-          viewTransform,
-        );
-
-        drawAnimatedFeaturedSection(
-          ctx,
-          featuredAreaScreenPos.x, // Original position for size calculations
-          featuredAreaScreenPos.y,
-          featuredAreaScreenWidth,
-          featuredAreaScreenHeight,
-          featuredImage,
-          mousePositionRef.current.x, // Screen mouse coordinates
-          mousePositionRef.current.y, // Screen mouse coordinates
-          currentTime,
-          // Animation properties
-          animatedFeaturedSection.animatedOpacity,
-          animatedFeaturedSection.animatedScale,
-          entranceAnimation.animationProgress, // Border animation progress
-          entranceAnimation.animationProgress, // Image animation progress
-          // Position override for sliding animation
-          animatedScreenPos.x,
-          animatedScreenPos.y,
-        );
-      } else {
-        // After animation or no animation - use regular version
-        drawFeaturedSection(
-          ctx,
-          featuredAreaScreenPos.x,
-          featuredAreaScreenPos.y,
-          featuredAreaScreenWidth,
-          featuredAreaScreenHeight,
-          featuredImage,
-          mousePositionRef.current.x, // Screen mouse coordinates
-          mousePositionRef.current.y, // Screen mouse coordinates
-          currentTime,
-        );
-      }
+      // Replace the entire featured section animation block with:
+      drawFeaturedSection(
+        ctx,
+        featuredAreaScreenPos.x,
+        featuredAreaScreenPos.y,
+        featuredAreaScreenWidth,
+        featuredAreaScreenHeight,
+        featuredImage,
+        mousePositionRef.current.x,
+        mousePositionRef.current.y,
+        currentTime,
+        auctionIconHoverRef.current,
+        uiOpacity, // Add opacity parameter
+        unitSize, // Add unitSize parameter
+        capabilities!, // Add capabilities parameter
+      );
       totalElementsRendered++; // Count featured section as one element
 
       // Draw home area using screen coordinates
@@ -1955,6 +2033,9 @@ export const useCanvasRenderer = ({
         null,
         currentTime,
         unitSize,
+        uiOpacity, // Add opacity parameter
+        ['LAUNCH', 'DROPS'], // Default prompts
+        capabilities!, // Add capabilities parameter
       );
       totalElementsRendered++; // Count home area as one element
 
