@@ -1,6 +1,7 @@
 'use client';
 
 import type React from 'react';
+import { useState } from 'react';
 import Image from 'next/image';
 import Footer from '@/components/ui/custom/footer';
 import LuxuryAssetsBackground from '@/components/ui/custom/luxury-assets-background';
@@ -10,6 +11,8 @@ import AcesHeader from '@/components/ui/custom/aces-header';
 // import ListTokenForm from '@/components/forms/list-token-form';
 
 export default function CreateTokenForm() {
+  const [imageLoaded, setImageLoaded] = useState(false);
+
   return (
     <div className="min-h-screen relative bg-[#151c16]">
       {/* Header Component */}
@@ -66,27 +69,30 @@ export default function CreateTokenForm() {
                 <div className="relative flex justify-center">
                   <div className="relative w-full max-w-[500px] sm:w-[400px] md:w-[500px]">
                     <Image
-                      src="/aces-booster-pack.png"
+                      src="/webp/aces-booster-pack.webp"
                       alt="ACES Booster Pack"
                       width={500}
                       height={300}
                       className="object-contain drop-shadow-lg w-full h-auto"
                       priority
                       sizes="(max-width: 640px) 100vw, (max-width: 768px) 400px, 500px"
+                      onLoad={() => setImageLoaded(true)}
                     />
                   </div>
                 </div>
 
-                {/* Coming Soon Banner - responsive text sizing */}
-                <div className="relative">
-                  <div className="bg-[#0A120B] border border-[#D7BF75] py-4 sm:py-6 rounded-lg">
-                    <div className="text-center">
-                      <h2 className="text-[#D7BF75] text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-neue-world uppercase tracking-widest leading-tight">
-                        Coming Soon
-                      </h2>
+                {/* Coming Soon Banner - responsive text sizing - only show when image is loaded */}
+                {imageLoaded && (
+                  <div className="relative">
+                    <div className="bg-[#0A120B] border border-[#D7BF75] py-4 sm:py-6 rounded-lg">
+                      <div className="text-center">
+                        <h2 className="text-[#D7BF75] text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-neue-world uppercase tracking-widest leading-tight">
+                          Coming Soon
+                        </h2>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
               </div>
             </div>
           </div>
