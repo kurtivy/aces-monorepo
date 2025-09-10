@@ -13,7 +13,7 @@ const createPinConfig = (responsiveMetrics: ResponsiveMetrics) => ({
   shadowBlur: 2 * responsiveMetrics.borderScale,
   shadowColor: 'rgba(0,0,0,0.18)',
   highlight: 'rgba(255,255,255,0.8)',
-  alpha: 0.35, // <— control pin opacity here
+  alpha: 0.85, // <— control pin opacity here
 });
 
 // Update drawPin to multiply existing alpha by PIN.alpha
@@ -76,105 +76,6 @@ function getTextMetrics(ctx: CanvasRenderingContext2D, text: string, font: strin
   ctx.restore();
   return { width: m.width, ascent, descent };
 }
-
-// // UNUSED: Calendar icon drawing function (replaced by drawLucideCalendarIcon)
-// // eslint-disable-next-line @typescript-eslint/no-unused-vars
-// const drawCalendarIcon = (
-//   ctx: CanvasRenderingContext2D,
-//   x: number,
-//   y: number,
-//   size: number,
-//   hoverProgress = 0,
-// ) => {
-//   ctx.save();
-
-//   // Apply hover scale effect
-//   const scale = 1 + hoverProgress * 0.1; // 10% scale increase on hover
-//   const scaledSize = size * scale;
-//   const offsetX = (scaledSize - size) / 2;
-//   const offsetY = (scaledSize - size) / 2;
-
-//   const iconX = x - offsetX;
-//   const iconY = y - offsetY;
-
-//   // Icon styling - match the golden theme
-//   const baseOpacity = 0.8 + hoverProgress * 0.2; // 80% to 100% opacity
-//   const iconColor = `rgba(215, 191, 117, ${baseOpacity})`; // Golden color
-//   const strokeWidth = Math.max(1, scaledSize * 0.08);
-
-//   // Drop shadow for depth
-//   ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
-//   ctx.shadowBlur = 4;
-//   ctx.shadowOffsetX = 1;
-//   ctx.shadowOffsetY = 2;
-
-//   const calendarWidth = scaledSize * 0.55; // Slightly smaller to make room for plus
-//   const calendarHeight = scaledSize * 0.65;
-//   const calendarX = iconX + scaledSize * 0.1; // Positioned more to the left
-//   const calendarY = iconY + scaledSize * 0.15;
-//   const cornerRadius = scaledSize * 0.06;
-
-//   // Draw calendar base rectangle
-//   ctx.strokeStyle = iconColor;
-//   ctx.fillStyle = `rgba(215, 191, 117, ${baseOpacity * 0.2})`; // Subtle fill
-//   ctx.lineWidth = strokeWidth;
-
-//   // Calendar body
-//   ctx.beginPath();
-//   ctx.roundRect(calendarX, calendarY, calendarWidth, calendarHeight, cornerRadius);
-//   ctx.fill();
-//   ctx.stroke();
-
-//   // Calendar header separator line (like in Lucide design)
-//   ctx.strokeStyle = iconColor;
-//   ctx.lineWidth = strokeWidth;
-//   ctx.beginPath();
-//   ctx.moveTo(calendarX, calendarY + scaledSize * 0.18);
-//   ctx.lineTo(calendarX + calendarWidth, calendarY + scaledSize * 0.18);
-//   ctx.stroke();
-
-//   // Calendar rings (top tabs) - positioned like Lucide design
-//   ctx.shadowBlur = 0; // Remove shadow for rings
-//   const ringWidth = scaledSize * 0.03;
-//   const ringHeight = scaledSize * 0.12;
-//   const ring1X = calendarX + calendarWidth * 0.3;
-//   const ring2X = calendarX + calendarWidth * 0.7;
-//   const ringY = calendarY - ringHeight * 0.3;
-
-//   ctx.fillStyle = iconColor;
-//   // Left ring
-//   ctx.beginPath();
-//   ctx.roundRect(ring1X - ringWidth / 2, ringY, ringWidth, ringHeight, ringWidth / 2);
-//   ctx.fill();
-
-//   // Right ring
-//   ctx.beginPath();
-//   ctx.roundRect(ring2X - ringWidth / 2, ringY, ringWidth, ringHeight, ringWidth / 2);
-//   ctx.fill();
-
-//   const plusSize = scaledSize * 0.2;
-//   const plusX = calendarX + calendarWidth + scaledSize * 0.15; // Positioned to the right
-//   const plusY = iconY + scaledSize * 0.65; // Lower position
-//   const plusStroke = strokeWidth * 1.2;
-
-//   ctx.strokeStyle = iconColor;
-//   ctx.lineWidth = plusStroke;
-//   ctx.lineCap = 'round';
-
-//   // Horizontal line
-//   ctx.beginPath();
-//   ctx.moveTo(plusX - plusSize / 2, plusY);
-//   ctx.lineTo(plusX + plusSize / 2, plusY);
-//   ctx.stroke();
-
-//   // Vertical line
-//   ctx.beginPath();
-//   ctx.moveTo(plusX, plusY - plusSize / 2);
-//   ctx.lineTo(plusX, plusY + plusSize / 2);
-//   ctx.stroke();
-
-//   ctx.restore();
-// };
 
 // NEW: Auction Notification icon drawing function
 const drawLucideAuctionIcon = (

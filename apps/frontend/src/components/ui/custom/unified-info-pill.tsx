@@ -106,7 +106,7 @@ const UnifiedInfoPillComponent: React.FC = () => {
             BUILT ON
           </span>
           <svg
-            className="h-2.5 sm:h-3 w-auto flex-shrink-0 self-start mb-0.5"
+            className="h-2.5 sm:h-3 w-auto flex-shrink-0 self-start sm:mb-0.5 mt-0.5 sm:mt-0"
             viewBox="0 0 1280 323.84"
             xmlns="http://www.w3.org/2000/svg"
           >
