@@ -17,6 +17,7 @@ const mainNavItems = [
   // { href: '/verify', label: 'Verify', external: false, action: 'navigate' },
   { href: '/drops', label: 'Drops', external: false, action: 'navigate' },
   { href: '/about', label: 'About', external: false, action: 'modal' },
+  { href: 'https://docs.aces.fun', label: 'Docs', external: true },
   { href: '/terms', label: 'Terms & PP', external: false, action: 'modal' },
 ];
 

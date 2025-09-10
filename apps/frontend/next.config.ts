@@ -377,6 +377,8 @@ const nextConfig: NextConfig = {
         destination: '/404',
         permanent: false,
       },
+      // Temporarily disabled for development
+      /*
       {
         source: '/launch/:path*',
         has: [
@@ -388,6 +390,7 @@ const nextConfig: NextConfig = {
         destination: '/404',
         permanent: false,
       },
+      */
       // Temporarily disabled for development
       /*
       {

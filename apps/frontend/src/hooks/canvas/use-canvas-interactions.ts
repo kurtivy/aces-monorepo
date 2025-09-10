@@ -401,7 +401,7 @@ export const useCanvasInteractions = ({
 
         // CREATE button (left half)
         if (worldX >= homeAreaWorldX && worldX < homeAreaWorldX + buttonWidth) {
-          window.location.href = '/create';
+          window.location.href = '/launch';
           return;
         }
 
