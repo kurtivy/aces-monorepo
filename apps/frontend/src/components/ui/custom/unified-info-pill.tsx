@@ -62,10 +62,10 @@ const UnifiedInfoPillComponent: React.FC = () => {
       <div
         className={`
           fixed bottom-4 right-4 z-50 
-          px-3 py-2
+          px-2 py-1.5 sm:px-3 sm:py-2
           rounded-full 
           bg-black/80 border border-[#D0B264]/40 
-          flex items-center gap-2
+          flex items-center gap-1 sm:gap-2
           ${useAnimations ? 'transition-all duration-500' : ''}
           ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}
           hover:bg-black/90 hover:border-[#D0B264]/60
@@ -76,7 +76,7 @@ const UnifiedInfoPillComponent: React.FC = () => {
       >
         {/* Contract Address Section */}
         <div
-          className="flex items-center gap-2 cursor-pointer hover:bg-[#D0B264]/10 rounded-full px-2 py-1 transition-colors duration-200"
+          className="relative flex items-center gap-1 sm:gap-2 cursor-pointer hover:bg-[#D0B264]/10 rounded-full px-1.5 py-0.5 sm:px-2 sm:py-1 transition-colors duration-200"
           onClick={handleContractClick}
           title={`Click to copy: ${contractAddress}`}
         >
@@ -84,22 +84,30 @@ const UnifiedInfoPillComponent: React.FC = () => {
           <span className="text-xs font-medium text-white whitespace-nowrap font-mono">
             {truncatedAddress}
           </span>
+
+          {/* Copy feedback positioned over the contract section */}
+          {copied && (
+            <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 z-60 px-2 py-1 rounded bg-[#D0B264] text-white text-xs font-medium whitespace-nowrap">
+              Copied!
+            </div>
+          )}
         </div>
 
         {/* Divider */}
-        <div className="h-4 w-px bg-[#D0B264]/40"></div>
+        <div className="h-3 sm:h-4 w-px bg-[#D0B264]/40"></div>
 
         {/* Built on Base Section */}
         <div
-          className="flex items-center gap-2 cursor-pointer hover:bg-[#D0B264]/10 rounded-full px-2 py-1 transition-colors duration-200"
+          className="flex items-center gap-1 sm:gap-2 cursor-pointer hover:bg-[#D0B264]/10 rounded-full px-1.5 py-0.5 sm:px-2 sm:py-1 transition-colors duration-200"
           onClick={handleBaseClick}
           title="Learn about ACES of Base"
         >
           <span className="text-xs font-medium text-[#D0B264] whitespace-nowrap font-proxima-nova">
-            BUILT ON
+            <span className="sm:hidden">BASE</span>
+            <span className="hidden sm:inline">BUILT ON</span>
           </span>
           <svg
-            className="h-3 w-auto flex-shrink-0 self-start mb-0.5"
+            className="h-2.5 sm:h-3 w-auto flex-shrink-0 self-start mb-0.5"
             viewBox="0 0 1280 323.84"
             xmlns="http://www.w3.org/2000/svg"
           >
@@ -114,13 +122,6 @@ const UnifiedInfoPillComponent: React.FC = () => {
           </svg>
         </div>
       </div>
-
-      {/* Copy feedback */}
-      {copied && (
-        <div className="fixed bottom-16 right-4 z-50 px-2 py-1 rounded bg-[#D0B264] text-white text-xs font-medium whitespace-nowrap">
-          Copied!
-        </div>
-      )}
 
       <AcesOfBaseModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
     </>
