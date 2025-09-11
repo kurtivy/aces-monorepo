@@ -221,7 +221,7 @@ const drawDaysLeft = (
   // const daysText = '08';
 
   // Calculate font sizes with responsive scaling
-  const baseNumberSize = responsiveMetrics.isMobile ? 140 : 100; // Bigger number on mobile, desktop uses 100
+  const baseNumberSize = responsiveMetrics.isMobile ? 130 : 100; // Bigger number on mobile, desktop uses 100
   const numberFontSize = baseNumberSize * responsiveMetrics.fontScale; // Responsive size for number
   const baseDaysSize = responsiveMetrics.isMobile ? 63 : 42; // 1.5x larger on mobile (42 * 1.5 = 63)
   const daysFontSize = baseDaysSize * responsiveMetrics.fontScale; // Responsive size for "DAYS"
