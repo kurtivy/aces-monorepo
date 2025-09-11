@@ -86,7 +86,7 @@ export const getPrismaClient = () => {
     return prisma;
   } catch (error) {
     console.error('❌ Failed to create Prisma client:', error);
-    logger.error('Failed to create Prisma client', error);
+    logger.error({ error }, 'Failed to create Prisma client');
     throw error;
   }
 };
@@ -105,7 +105,7 @@ export const checkDatabaseHealth = async (): Promise<boolean> => {
     return true;
   } catch (error) {
     console.error('❌ Database health check failed:', error);
-    logger.error('Database health check failed', error);
+    logger.error({ error }, 'Database health check failed');
     return false;
   }
 };
@@ -154,7 +154,7 @@ export const testDatabaseConnection = async (): Promise<{
       name: error instanceof Error ? error.name : 'Unknown',
     };
 
-    logger.error('Database connection test failed', errorDetails);
+    logger.error({ errorDetails }, 'Database connection test failed');
 
     return {
       success: false,
@@ -182,7 +182,7 @@ export const disconnectDatabase = async (timeoutMs: number = 5000): Promise<void
       logger.info('Database connection closed');
     } catch (error) {
       console.error('❌ Error disconnecting from database:', error);
-      logger.error('Error disconnecting from database', error);
+      logger.error({ error }, 'Error disconnecting from database');
       // Force set to null even if disconnect failed
       prisma = null;
     }
@@ -212,7 +212,7 @@ export const withTransaction = async <T>(
     return result;
   } catch (error) {
     console.error('❌ Transaction failed:', error);
-    logger.error('Database transaction failed', error);
+    logger.error({ error }, 'Database transaction failed');
     throw error;
   }
 };
@@ -226,7 +226,7 @@ export const safeDbOperation = async <T>(
     return await operation();
   } catch (error) {
     console.error('❌ Database operation failed:', error);
-    logger.error('Database operation failed', error);
+    logger.error({ error }, 'Database operation failed');
 
     if (fallback !== undefined) {
       return fallback;

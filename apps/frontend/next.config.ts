@@ -425,7 +425,7 @@ const nextConfig: NextConfig = {
     // Image sizes for different breakpoints
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
 
-    // Configure remote patterns for Google Cloud Storage - REMOVED domains property
+    // Configure remote patterns for Google Cloud Storage and Vercel Blob Storage
     remotePatterns: [
       {
         protocol: 'https',
@@ -441,6 +441,11 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: 'storage.googleapis.com',
         pathname: '/aces-secure-documents/**',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.public.blob.vercel-storage.com',
+        pathname: '/**',
       },
     ],
 
