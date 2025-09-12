@@ -106,6 +106,7 @@ model Listing {
   email             String?
 
   isLive            Boolean    @default(false)
+  launchDate        DateTime?  // When the asset will go live for sale
 
   submissionId      String     @unique
   ownerId           String

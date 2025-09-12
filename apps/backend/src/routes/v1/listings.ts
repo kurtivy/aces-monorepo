@@ -3,7 +3,6 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { ListingService, UpdateListingRequest } from '../../services/listing-service';
-import { ProductStorageService } from '../../lib/product-storage-utils';
 
 import { requireAuth, requireAdmin } from '../../lib/auth-middleware';
 import { errors } from '../../lib/errors';
@@ -27,6 +26,10 @@ const UpdateListingSchema = z.object({
 
 const SetListingLiveSchema = z.object({
   isLive: z.boolean(),
+});
+
+const SetListingLaunchDateSchema = z.object({
+  launchDate: z.string().datetime().nullable(),
 });
 
 export async function listingRoutes(fastify: FastifyInstance) {
@@ -325,6 +328,46 @@ export async function listingRoutes(fastify: FastifyInstance) {
         });
       } catch (error) {
         console.error('Error setting listing live status:', error);
+        throw error;
+      }
+    },
+  );
+
+  /**
+   * Set listing launch date (admin only)
+   */
+  fastify.put(
+    '/admin/:id/launch-date',
+    {
+      preHandler: [requireAdmin],
+      schema: {
+        params: zodToJsonSchema(
+          z.object({
+            id: z.string(),
+          }),
+        ),
+        body: zodToJsonSchema(SetListingLaunchDateSchema),
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        const { launchDate } = request.body as { launchDate: string | null };
+
+        const parsedLaunchDate = launchDate ? new Date(launchDate) : null;
+        const listing = await listingService.setListingLaunchDate(
+          id,
+          parsedLaunchDate,
+          request.user!.id,
+        );
+
+        return reply.send({
+          success: true,
+          data: listing,
+          message: `Listing launch date ${parsedLaunchDate ? 'set to ' + parsedLaunchDate.toISOString() : 'cleared'} successfully`,
+        });
+      } catch (error) {
+        console.error('Error setting listing launch date:', error);
         throw error;
       }
     },

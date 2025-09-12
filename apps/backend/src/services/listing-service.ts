@@ -16,6 +16,7 @@ type ListingWithRelations = {
   location: string | null;
   email: string | null;
   isLive: boolean;
+  launchDate: Date | null;
   submissionId: string;
   ownerId: string;
   approvedBy: string | null;
@@ -37,6 +38,7 @@ type ListingWithMinimalSubmission = {
   location: string | null;
   email: string | null;
   isLive: boolean;
+  launchDate: Date | null;
   submissionId: string;
   ownerId: string;
   approvedBy: string | null;
@@ -72,6 +74,7 @@ export interface UpdateListingRequest {
   imageGallery?: string[];
   location?: string;
   email?: string;
+  launchDate?: Date | null;
 }
 
 export class ListingService {
@@ -195,6 +198,35 @@ export class ListingService {
       return listing;
     } catch (error) {
       console.error('Error updating listing live status:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Set listing launch date (admin only)
+   */
+  async setListingLaunchDate(
+    listingId: string,
+    launchDate: Date | null,
+    _adminId: string,
+  ): Promise<ListingWithRelations> {
+    try {
+      const listing = await (this.prisma as any).listing.update({
+        where: { id: listingId },
+        data: {
+          launchDate,
+          updatedAt: new Date(),
+        },
+        include: {
+          owner: true,
+          submission: true,
+          approvedByUser: true,
+        },
+      });
+
+      return listing;
+    } catch (error) {
+      console.error('Error updating listing launch date:', error);
       throw error;
     }
   }
