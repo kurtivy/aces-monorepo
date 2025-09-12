@@ -2,8 +2,13 @@
 
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import type { SectionNavigationProps } from '../../../types/rwa/section.types';
+import type { SectionNavigationProps, DatabaseListing } from '../../../types/rwa/section.types';
 import { ActiveSectionContent } from './active-section-content';
+
+interface DynamicLeftColumnNavigationProps extends SectionNavigationProps {
+  listing?: DatabaseListing | null;
+  loading?: boolean;
+}
 
 export function LeftColumnNavigation({
   sections,
@@ -13,7 +18,9 @@ export function LeftColumnNavigation({
   selectedImageIndex,
   setSelectedImageIndex,
   previousActiveSection,
-}: SectionNavigationProps) {
+  listing,
+  loading = false,
+}: DynamicLeftColumnNavigationProps) {
   const HEADER_HEIGHT = 56; // Reduced from 64 to fit more headers
   const CONTENT_HEIGHT = 320; // Reduced from 400 to make room for all headers
 
@@ -101,6 +108,8 @@ export function LeftColumnNavigation({
                   sectionIndex={index}
                   selectedImageIndex={selectedImageIndex}
                   setSelectedImageIndex={setSelectedImageIndex}
+                  listing={listing}
+                  loading={loading}
                 />
               </motion.div>
             )}

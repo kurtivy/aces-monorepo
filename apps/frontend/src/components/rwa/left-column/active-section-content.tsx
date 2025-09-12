@@ -1,18 +1,38 @@
 'use client';
 
-import Image from 'next/image';
-import { cn } from '@/lib/utils';
 import SeesawAnimation from '@/components/rwa/left-column/token-details/seesaw-animation';
 import ProductHeroLocation from '@/components/rwa/left-column/product/product-hero-location';
-import type { ActiveSectionContentProps } from '../../../types/rwa/section.types';
+import DynamicImageGallery from './overview/dynamic-image-gallery';
+import type { ActiveSectionContentProps, DatabaseListing } from '../../../types/rwa/section.types';
 import { mockImages } from '../../../constants/rwa';
 import BondingCurveChart from './overview/bonding-curve-chart';
+
+interface DynamicActiveSectionContentProps extends ActiveSectionContentProps {
+  listing?: DatabaseListing | null;
+  loading?: boolean;
+}
 
 export function ActiveSectionContent({
   sectionIndex,
   selectedImageIndex,
   setSelectedImageIndex,
-}: ActiveSectionContentProps) {
+  listing,
+  loading = false,
+}: DynamicActiveSectionContentProps) {
+  // Determine if we're in dynamic mode (listing prop provided) or static mode
+  const isDynamicMode = listing !== undefined;
+
+  // For dynamic mode, use database images; for static mode, use mock images
+  const displayImages =
+    isDynamicMode && listing?.imageGallery
+      ? listing.imageGallery.map((url, index) => ({
+          id: index + 1,
+          src: url,
+          thumbnail: url,
+          alt: `${listing.title} - Image ${index + 1}`,
+        }))
+      : mockImages;
+
   const content = [
     // Overview
     <div key="overview" className="h-full flex flex-col space-y-3 overflow-hidden">
@@ -21,39 +41,13 @@ export function ActiveSectionContent({
         <BondingCurveChart />
       </div>
 
-      {/* Image Thumbnails */}
-      <div className="flex-shrink-0 p-3">
-        <h4 className="text-[#D0B284] text-xs font-bold mb-2 tracking-wider">GALLERY</h4>
-        <div className="grid grid-cols-4 gap-1.5">
-          {mockImages.map((image, index) => (
-            <div
-              key={image.id}
-              className={cn(
-                'aspect-square  rounded border transition-all duration-200 overflow-hidden cursor-pointer',
-                selectedImageIndex === index
-                  ? 'border-[#D0B284] ring-2 ring-[#D0B284]/50'
-                  : 'border-[#D0B284]/20 hover:border-[#D0B284]',
-              )}
-              onClick={() => setSelectedImageIndex(index)}
-            >
-              {/* Show actual image thumbnails for the first 4, numbers for the rest */}
-              {index < 4 ? (
-                <Image
-                  src={image.thumbnail || '/placeholder.svg'}
-                  alt={image.alt}
-                  width={100}
-                  height={100}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-[#D0B284] font-bold text-sm">
-                  {index + 1}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
+      {/* Dynamic Image Gallery */}
+      <DynamicImageGallery
+        images={displayImages}
+        selectedImageIndex={selectedImageIndex}
+        onImageSelect={setSelectedImageIndex}
+        loading={loading}
+      />
     </div>,
 
     // Token Details - Compact version

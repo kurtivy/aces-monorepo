@@ -8,12 +8,14 @@ interface OverviewSectionProps {
   selectedImageIndex: number;
   setSelectedImageIndex: (index: number) => void;
   mockImages: ImageData[];
+  launchDate?: string | null;
 }
 
 export default function OverviewSection({
   selectedImageIndex,
   setSelectedImageIndex,
   mockImages,
+  launchDate,
 }: OverviewSectionProps) {
   return (
     <div className="h-full flex flex-col">
@@ -25,7 +27,7 @@ export default function OverviewSection({
       />
 
       {/* Bottom Section */}
-      <OverviewBottomSection />
+      <OverviewBottomSection launchDate={launchDate} />
     </div>
   );
 }

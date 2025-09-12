@@ -41,10 +41,57 @@ export interface MiddleContentAreaProps {
 export interface ImageData {
   id: number;
   src: string;
-  thumbnail: string;
+  thumbnail?: string;
   alt: string;
 }
 
 export interface ModalProps {
   onClose: () => void;
+}
+
+// Asset types - matching your Prisma enum
+export type AssetType =
+  | 'VEHICLE'
+  | 'JEWELRY'
+  | 'COLLECTIBLE'
+  | 'ART'
+  | 'FASHION'
+  | 'ALCOHOL'
+  | 'OTHER';
+
+// Navigation direction type
+export type NavigationDirection = 'up' | 'down';
+
+// Database types - matching your Prisma Listing model with relations
+export interface DatabaseListing {
+  id: string;
+  title: string;
+  symbol: string;
+  description: string;
+  assetType: AssetType;
+  imageGallery: string[];
+  location: string | null;
+  email: string | null;
+  isLive: boolean;
+  launchDate: string | null; // When the asset will go live for sale
+  submissionId: string;
+  ownerId: string;
+  approvedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  // Relations
+  owner?: {
+    id: string;
+    walletAddress: string | null;
+    email: string | null;
+    role: string;
+  };
+}
+
+// Keep DatabaseItem as alias for backwards compatibility if needed
+export type DatabaseItem = DatabaseListing;
+
+// Extended props for components that need listing data
+export interface WithListingProps {
+  listing?: DatabaseListing | null;
 }

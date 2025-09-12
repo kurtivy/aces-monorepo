@@ -2,32 +2,53 @@
 
 import { useState, useEffect } from 'react';
 
-export default function CountdownTimer() {
+interface CountdownTimerProps {
+  launchDate?: string | null;
+}
+
+export default function CountdownTimer({ launchDate }: CountdownTimerProps) {
   const [timeLeft, setTimeLeft] = useState({
-    days: 12,
-    hours: 10,
-    minutes: 23,
-    seconds: 45,
+    days: 0,
+    hours: 0,
+    minutes: 0,
+    seconds: 0,
   });
 
+  const [isLaunched, setIsLaunched] = useState(false);
+
   useEffect(() => {
-    const timer = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev.seconds > 0) {
-          return { ...prev, seconds: prev.seconds - 1 };
-        } else if (prev.minutes > 0) {
-          return { ...prev, minutes: prev.minutes - 1, seconds: 59 };
-        } else if (prev.hours > 0) {
-          return { ...prev, hours: prev.hours - 1, minutes: 59, seconds: 59 };
-        } else if (prev.days > 0) {
-          return { ...prev, days: prev.days - 1, hours: 23, minutes: 59, seconds: 59 };
-        }
-        return prev;
-      });
-    }, 1000);
+    if (!launchDate) {
+      setIsLaunched(true);
+      return;
+    }
+
+    const calculateTimeLeft = () => {
+      const now = new Date().getTime();
+      const launchTime = new Date(launchDate).getTime();
+      const difference = launchTime - now;
+
+      if (difference > 0) {
+        const days = Math.floor(difference / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((difference % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((difference % (1000 * 60)) / 1000);
+
+        setTimeLeft({ days, hours, minutes, seconds });
+        setIsLaunched(false);
+      } else {
+        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+        setIsLaunched(true);
+      }
+    };
+
+    // Calculate immediately
+    calculateTimeLeft();
+
+    // Then update every second
+    const timer = setInterval(calculateTimeLeft, 1000);
 
     return () => clearInterval(timer);
-  }, []);
+  }, [launchDate]);
 
   const timeUnits = [
     { value: timeLeft.days, label: 'Days', shortLabel: 'D' },
@@ -36,6 +57,24 @@ export default function CountdownTimer() {
     { value: timeLeft.seconds, label: 'Seconds', shortLabel: 'S' },
   ];
 
+  // If launched or no launch date, show "Available Now"
+  if (isLaunched) {
+    return (
+      <div className="w-full flex flex-col items-center justify-center py-1.5 rounded-xl px-3 flex-1 shadow-2xl relative overflow-hidden">
+        <div className="absolute inset-0 rounded-xl" />
+        <div className="relative z-10 text-center">
+          <div className="text-2xl font-bold text-[#D0B284] mb-2">Available Now</div>
+          <div className="text-sm text-[#DCDDCC]">This item is ready for trading</div>
+        </div>
+        <div className="absolute top-3 left-3 w-1 h-1 bg-[#D0B284]/40 rounded-full" />
+        <div className="absolute top-3 right-3 w-1 h-1 bg-[#D0B284]/40 rounded-full" />
+        <div className="absolute bottom-3 left-3 w-1 h-1 bg-[#D0B284]/40 rounded-full" />
+        <div className="absolute bottom-3 right-3 w-1 h-1 bg-[#D0B284]/40 rounded-full" />
+      </div>
+    );
+  }
+
+  // Show countdown timer
   return (
     <div className="w-full flex flex-col items-center justify-center py-1.5 rounded-xl px-3 flex-1 shadow-2xl relative overflow-hidden">
       <div className="absolute inset-0 rounded-xl" />
