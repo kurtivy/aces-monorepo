@@ -5,54 +5,52 @@ const nextConfig: NextConfig = {
   transpilePackages: ['three'],
 
   // Security headers - CSP commented out for development
-  // TODO: Re-enable CSP for production deployment
-  /*
   async headers() {
     return [
       {
         source: '/(.*)',
         headers: [
-          // CSP with all required domains for Privy, WalletConnect, and production
           {
             key: 'Content-Security-Policy',
             value: [
+              // sensible baseline
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://www.clarity.ms https://vercel.live",
+              "base-uri 'self'",
+              "object-src 'none'",
+
+              // scripts you load (added *.clarity.ms + va.vercel-scripts.com)
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://*.clarity.ms https://www.googletagmanager.com https://va.vercel-scripts.com https://vercel.live https://auth.privy.io",
+
+              // mirror for script elements (prevents fallback confusion)
+              "script-src-elem 'self' 'unsafe-inline' https://*.clarity.ms https://www.googletagmanager.com https://va.vercel-scripts.com https://vercel.live https://auth.privy.io",
+
+              // styles/fonts/images
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' data: https://fonts.gstatic.com",
               "img-src 'self' data: blob: https:",
-              "object-src 'none'",
-              "base-uri 'self'",
+
+              // form + embedding rules (unchanged + allow clarity iframes if any)
               "form-action 'self'",
               "frame-ancestors 'self' https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app https://aces-monorepo-git-dev-dan-aces-fun.vercel.app https://aces.fun https://auth.privy.io",
               'child-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org',
-              'frame-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org https://challenges.cloudflare.com',
-              "connect-src 'self' http://localhost:3000 https://auth.privy.io wss://relay.walletconnect.com wss://relay.walletconnect.org wss://www.walletlink.org https://*.rpc.privy.systems https://explorer-api.walletconnect.com https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app https://pulse.walletconnect.org https://api.web3modal.org https://sepolia.base.org https://base-sepolia-rpc.publicnode.com https://base-sepolia.blockpi.network https://base-sepolia.gateway.tenderly.co https://1rpc.io https://min-api.cryptocompare.com https://api.thegraph.com https://api.coingecko.com https://api.coinbase.com https://api.binance.com",
-              "worker-src 'self'",
+              'frame-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org https://challenges.cloudflare.com https://*.clarity.ms',
+
+              // where your app may connect (added localhost:3002, GA, Vercel vitals, *.clarity.ms beacons)
+              "connect-src 'self' http://localhost:3000 http://localhost:3002 https://auth.privy.io wss://relay.walletconnect.com wss://relay.walletconnect.org wss://www.walletlink.org https://*.rpc.privy.systems https://explorer-api.walletconnect.com https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app https://pulse.walletconnect.org https://api.web3modal.org https://sepolia.base.org https://base-sepolia-rpc.publicnode.com https://base-sepolia.blockpi.network https://base-sepolia.gateway.tenderly.co https://1rpc.io https://min-api.cryptocompare.com https://api.thegraph.com https://api.coingecko.com https://api.coinbase.com https://api.binance.com https://www.google-analytics.com https://analytics.google.com https://vitals.vercel-insights.com https://*.clarity.ms",
+
+              // workers, manifest
+              "worker-src 'self' blob:",
               "manifest-src 'self'",
             ].join('; '),
           },
-          {
-            key: 'X-Frame-Options',
-            value: 'SAMEORIGIN',
-          },
-          {
-            key: 'X-Content-Type-Options',
-            value: 'nosniff',
-          },
-          {
-            key: 'Referrer-Policy',
-            value: 'strict-origin-when-cross-origin',
-          },
-          {
-            key: 'Permissions-Policy',
-            value: 'camera=(), microphone=(), geolocation=()',
-          },
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
         ],
       },
     ];
   },
-  */
 
   // Multi-tenant and API proxy configuration
   async rewrites() {
