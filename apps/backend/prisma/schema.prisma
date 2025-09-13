@@ -119,6 +119,9 @@ model Listing {
   owner             User       @relation(fields: [ownerId], references: [id])
   approvedByUser    User?      @relation("ApprovedBy", fields: [approvedBy], references: [id])
 
+  // NEW: Optional token link (won't break existing functionality)
+  token             Token?     @relation("ListingToken")
+
   @@index([isLive, createdAt])
   @@index([ownerId])
   @@map("listings")
@@ -167,4 +170,95 @@ enum AssetType {
   FASHION
   ALCOHOL
   OTHER
+}
+
+// ========== TRADING SYSTEM EXTENSION ==========
+
+model Token {
+  id                String          @id @default(cuid())
+  contractAddress   String          @unique
+  symbol            String
+  name              String
+  decimals          Int             @default(18)
+  
+  // Financial precision - strings only
+  currentPrice      String          @default("0")
+  currentPriceACES  String          @default("0") 
+  volume24h         String          @default("0")
+  
+  // Basic metadata
+  phase             TokenPhase      @default(BONDING_CURVE)
+  isActive          Boolean         @default(true)
+  
+  // Optional link to existing listings (non-breaking)
+  listingId         String?         @unique
+  listing           Listing?        @relation("ListingToken", fields: [listingId], references: [id])
+  
+  // Timestamps
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  
+  @@index([contractAddress])
+  @@index([isActive])
+  @@map("tokens")
+}
+
+model TokenTrade {
+  id                String    @id @default(cuid())
+  contractAddress   String    // Direct reference, no foreign key initially
+  txHash            String    @unique
+  trader            String
+  tradeType         TradeType
+  tokenAmount       String
+  acesAmount        String
+  pricePerToken     String
+  timestamp         DateTime
+  source            String    @default("SUBGRAPH")
+  
+  createdAt         DateTime  @default(now())
+  
+  @@index([contractAddress, timestamp])
+  @@index([timestamp])
+  @@map("token_trades")
+}
+
+model TokenPriceSnapshot {
+  id              String      @id @default(cuid())
+  contractAddress String
+  price           String
+  volume          String?
+  timestamp       DateTime    @default(now())
+  
+  @@index([contractAddress, timestamp])
+  @@map("token_price_snapshots")
+}
+
+model TokenOHLCV {
+  id            String    @id @default(cuid())
+  contractAddress String
+  timeframe     String    // '1m', '5m', '15m', '1h', '1d'
+  timestamp     DateTime  // Start of the candle period
+  open          String    // Opening price in ACES
+  high          String    // Highest price in ACES
+  low           String    // Lowest price in ACES
+  close         String    // Closing price in ACES
+  volume        String    // Volume in ACES tokens
+  trades        Int       // Number of trades in this period
+  
+  createdAt     DateTime  @default(now())
+  
+  @@unique([contractAddress, timeframe, timestamp])
+  @@index([contractAddress, timeframe, timestamp])
+  @@map("token_ohlcv")
+}
+
+// NEW: Enums
+enum TokenPhase {
+  BONDING_CURVE
+  DEX_TRADING
+}
+
+enum TradeType {
+  BUY
+  SELL
 }
