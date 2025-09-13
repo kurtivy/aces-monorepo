@@ -19,6 +19,15 @@ interface SubgraphTokenDay {
   tokensSold: string;
 }
 
+interface SubgraphToken {
+  id: string;
+  address: string;
+  name: string;
+  symbol: string;
+  supply: string;
+  tradesCount: number;
+}
+
 export class TokenService {
   constructor(private prisma: PrismaClient) {}
 
@@ -193,7 +202,7 @@ export class TokenService {
 
   private async fetchFromSubgraph(
     contractAddress: string,
-  ): Promise<{ data: { tokens: any[]; trades: any[] } } | null> {
+  ): Promise<{ data: { tokens: SubgraphToken[]; trades: SubgraphTrade[] } } | null> {
     try {
       const query = `{
         tokens(where: {address: "${contractAddress.toLowerCase()}"}) {
@@ -230,7 +239,9 @@ export class TokenService {
         throw new Error(`Subgraph request failed: ${response.status}`);
       }
 
-      return (await response.json()) as { data: { tokens: any[]; trades: any[] } };
+      return (await response.json()) as {
+        data: { tokens: SubgraphToken[]; trades: SubgraphTrade[] };
+      };
     } catch (error) {
       console.error('Subgraph fetch error:', error);
       return null;
@@ -271,5 +282,56 @@ export class TokenService {
       orderBy: { timestamp: 'desc' },
       take: limit,
     });
+  }
+
+  // New method to fetch fresh trades from subgraph for trade history component
+  async getRecentTradesForToken(contractAddress: string, limit = 50) {
+    try {
+      const query = `{
+        trades(
+          where: { token: "${contractAddress.toLowerCase()}" }
+          orderBy: createdAt
+          orderDirection: desc
+          first: ${limit}
+        ) {
+          id
+          isBuy
+          trader { id }
+          tokenAmount
+          acesTokenAmount
+          createdAt
+          blockNumber
+        }
+      }`;
+
+      const response = await fetch(process.env.GOLDSKY_SUBGRAPH_URL!, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Subgraph request failed: ${response.status}`);
+      }
+
+      const result = (await response.json()) as {
+        data: {
+          trades: Array<{
+            id: string;
+            isBuy: boolean;
+            trader: { id: string };
+            tokenAmount: string;
+            acesTokenAmount: string;
+            createdAt: string;
+            blockNumber: string;
+          }>;
+        };
+      };
+
+      return result.data.trades || [];
+    } catch (error) {
+      console.error('Trade history fetch error:', error);
+      return [];
+    }
   }
 }

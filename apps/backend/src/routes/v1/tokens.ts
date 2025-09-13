@@ -48,7 +48,7 @@ export async function tokensRoutes(fastify: FastifyInstance) {
     },
   );
 
-  // Get recent trades for a token
+  // Get recent trades for a token (fresh from subgraph)
   fastify.get(
     '/:address/trades',
     {
@@ -58,12 +58,21 @@ export async function tokensRoutes(fastify: FastifyInstance) {
             address: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
           }),
         ),
+        querystring: zodToJsonSchema(
+          z.object({
+            limit: z.string().transform(Number).default('50'),
+          }),
+        ),
       },
     },
-    async (request: FastifyRequest<{ Params: TokenParams }>, reply) => {
+    async (
+      request: FastifyRequest<{ Params: TokenParams; Querystring: { limit?: number } }>,
+      reply,
+    ) => {
       try {
         const { address } = request.params;
-        const trades = await tokenService.getRecentTrades(address);
+        const { limit = 50 } = request.query;
+        const trades = await tokenService.getRecentTradesForToken(address, limit);
 
         return reply.send({
           success: true,
