@@ -97,10 +97,15 @@ export default function RWAItemPage() {
         {/* Right Column - Token Swap Interface */}
         <div className="w-96 bg-[#231F20] border-l border-[#D0B284]/20 flex-shrink-0 overflow-y-auto">
           <TokenSwapInterface
-            tokenSymbol={listing.symbol}
-            tokenPrice={0.000268} // TODO: Make dynamic later
-            userBalance={1.2547} // TODO: Make dynamic later
-            onMakeOffer={handleMakeOffer}
+            tokenSymbol={listing.token?.symbol || listing.symbol}
+            tokenPrice={
+              listing.token?.currentPriceACES
+                ? parseFloat(listing.token.currentPriceACES)
+                : 0.000268
+            }
+            userBalance={1.2547} // TODO: Make dynamic later - this would come from wallet connection
+            tokenAddress={listing.token?.contractAddress}
+            tokenName={listing.token?.name || listing.title}
           />
         </div>
       </div>

@@ -107,12 +107,18 @@ export function MiddleContentArea({
       ? [
           <div key="token-details-main" className="space-y-0">
             <TradingChart
-              tokenAddress="0xa19763cfd3dcd1f47447954f5576e660f8b6e261"
-              tokenSymbol="TLT"
-              title="NewTest Launchpad Token"
+              tokenAddress={
+                listing?.token?.contractAddress || '0xa19763cfd3dcd1f47447954f5576e660f8b6e261'
+              }
+              tokenSymbol={listing?.token?.symbol || listing?.symbol || 'TLT'}
+              title={listing?.token?.name || listing?.title || 'NewTest Launchpad Token'}
             />
             <TokenInformation
-              tokenPrice={268.82}
+              tokenPrice={
+                listing?.token?.currentPriceACES
+                  ? parseFloat(listing.token.currentPriceACES)
+                  : 268.82
+              }
               priceChange={{
                 '5m': 0.04,
                 '1h': -6.31,

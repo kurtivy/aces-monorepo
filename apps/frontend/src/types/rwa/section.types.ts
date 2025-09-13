@@ -86,6 +86,19 @@ export interface DatabaseListing {
     email: string | null;
     role: string;
   };
+  // Token relationship
+  token?: {
+    id: string;
+    contractAddress: string;
+    symbol: string;
+    name: string;
+    decimals: number;
+    currentPrice: string;
+    currentPriceACES: string;
+    volume24h: string;
+    phase: 'BONDING_CURVE' | 'DEX_TRADING';
+    isActive: boolean;
+  };
 }
 
 // Keep DatabaseItem as alias for backwards compatibility if needed
