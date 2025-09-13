@@ -16,8 +16,10 @@ export default function RWAItemPage() {
   const symbol = params.symbol as string;
 
   const navigation = useSectionNavigation(sections);
-  const { listing, loading, error, isLive, isPreLaunch, launchDate, isLaunched } =
-    useListingBySymbol(symbol);
+  const { listing, loading, error, isLive, launchDate, isLaunched } = useListingBySymbol(symbol);
+
+  // TEMPORARY: Force show token details for testing the new graph
+  const forceShowTokenDetails = true;
 
   const handleMakeOffer = () => {
     navigation.handleSectionChange(3);
@@ -86,9 +88,9 @@ export default function RWAItemPage() {
             setSelectedImageIndex={navigation.setSelectedImageIndex}
             navigationDirection={navigation.navigationDirection}
             listing={listing}
-            isLive={isLive}
+            isLive={forceShowTokenDetails ? true : isLive}
             launchDate={launchDate}
-            isLaunched={isLaunched}
+            isLaunched={forceShowTokenDetails ? true : isLaunched}
           />
         </div>
 

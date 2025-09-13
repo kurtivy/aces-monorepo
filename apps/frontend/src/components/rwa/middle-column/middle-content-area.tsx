@@ -13,6 +13,8 @@ import type {
   NavigationDirection,
 } from '../../../types/rwa/section.types';
 import { mockImages } from '../../../constants/rwa';
+// import SimpleTokenChart from './token-details/simple-token-chart';
+import TradingChart from './token-details/trading-chart';
 
 // Extended interface with optional dynamic props
 interface DynamicMiddleContentAreaProps extends MiddleContentAreaProps {
@@ -104,13 +106,10 @@ export function MiddleContentArea({
     ...(isDynamicMode && actuallyLaunched && isLive
       ? [
           <div key="token-details-main" className="space-y-0">
-            <TokenGraph
-              tokenSymbol={displayData.symbol}
-              title={displayData.title}
-              tokenAddress="0x1234...5678"
-              fdv="$100,000"
-              createdAt="1 day ago"
-              height="h-[550px]"
+            <TradingChart
+              tokenAddress="0xa19763cfd3dcd1f47447954f5576e660f8b6e261"
+              tokenSymbol="TLT"
+              title="NewTest Launchpad Token"
             />
             <TokenInformation
               tokenPrice={268.82}
