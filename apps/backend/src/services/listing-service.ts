@@ -269,6 +269,21 @@ export class ListingService {
               privyDid: true,
             },
           },
+          // Include token relationship
+          token: {
+            select: {
+              id: true,
+              contractAddress: true,
+              symbol: true,
+              name: true,
+              decimals: true,
+              currentPrice: true,
+              currentPriceACES: true,
+              volume24h: true,
+              phase: true,
+              isActive: true,
+            },
+          },
         },
         orderBy: { createdAt: 'desc' },
         take: limit + 1, // Take one extra to check for more
