@@ -21,9 +21,9 @@ export default function RWAItemPage() {
   // TEMPORARY: Force show token details for testing the new graph
   const forceShowTokenDetails = true;
 
-  const handleMakeOffer = () => {
-    navigation.handleSectionChange(3);
-  };
+  // const handleMakeOffer = () => {
+  //   navigation.handleSectionChange(3);
+  // };
 
   // Error state
   if (error) {

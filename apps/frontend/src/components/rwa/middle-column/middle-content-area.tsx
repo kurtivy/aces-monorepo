@@ -3,7 +3,8 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import OverviewSection from '@/components/rwa/middle-column/overview/overview-section';
 import TokenGraph from '@/components/rwa/middle-column/token-details/token-graph';
-import TokenInformation from '@/components/rwa/middle-column/token-details/token-information';
+// import TokenInformation from '@/components/rwa/middle-column/token-details/token-information';
+import TradeHistory from '@/components/rwa/middle-column/token-details/trade-history';
 import AssetAboutDetails from '@/components/rwa/middle-column/product/asset-about-details';
 import PlaceBidsInterface from '@/components/rwa/middle-column/bids/place-bids-interface';
 import RWAForum from '@/components/rwa/middle-column/chat/rwa-forum';
@@ -113,27 +114,11 @@ export function MiddleContentArea({
               tokenSymbol={listing?.token?.symbol || listing?.symbol || 'TLT'}
               title={listing?.token?.name || listing?.title || 'NewTest Launchpad Token'}
             />
-            <TokenInformation
-              tokenPrice={
-                listing?.token?.currentPriceACES
-                  ? parseFloat(listing.token.currentPriceACES)
-                  : 268.82
+            <TradeHistory
+              tokenAddress={
+                listing?.token?.contractAddress || '0xa19763cfd3dcd1f47447954f5576e660f8b6e261'
               }
-              priceChange={{
-                '5m': 0.04,
-                '1h': -6.31,
-                '6h': -6.26,
-                '1d': -5.24,
-              }}
-              fdv="$100,000"
-              holders={372}
-              liquidity="$50,000"
-              volume={{
-                '5m': '$5.19k',
-                '1h': '$15.19k',
-                '6h': '$25.19k',
-                '1d': '$35.19k',
-              }}
+              tokenSymbol={listing?.token?.symbol || listing?.symbol || 'TLT'}
             />
           </div>,
         ]
@@ -169,23 +154,9 @@ export function MiddleContentArea({
                   createdAt="1 day ago"
                   height="h-[550px]"
                 />
-                <TokenInformation
-                  tokenPrice={268.82}
-                  priceChange={{
-                    '5m': 0.04,
-                    '1h': -6.31,
-                    '6h': -6.26,
-                    '1d': -5.24,
-                  }}
-                  fdv="$100,000"
-                  holders={372}
-                  liquidity="$50,000"
-                  volume={{
-                    '5m': '$5.19k',
-                    '1h': '$15.19k',
-                    '6h': '$25.19k',
-                    '1d': '$35.19k',
-                  }}
+                <TradeHistory
+                  tokenAddress="0xa19763cfd3dcd1f47447954f5576e660f8b6e261"
+                  tokenSymbol="RWA"
                 />
               </div>,
             ]
