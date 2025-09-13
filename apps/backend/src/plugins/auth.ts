@@ -33,6 +33,7 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
         '/test',
         '/get-upload-url',
         '/upload-image',
+        '/api/v1/tokens', // Token data and chart data endpoints
         '/', // Root path for listings, contact, etc.
       ];
 

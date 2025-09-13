@@ -15,8 +15,8 @@ import { accountVerificationRoutes } from './routes/v1/verification'; // Step 2:
 import { usersRoutes } from './routes/v1/users';
 // import { webhooksRoutes } from './routes/v1/webhooks';
 import { listingRoutes } from './routes/v1/listings'; // Step 5: Enabled
-// import { tokensRoutes } from './routes/v1/tokens';
 import { contactRoutes } from './routes/v1/contact';
+import { tokensRoutes } from './routes/v1/tokens';
 
 export const buildApp = async (): Promise<FastifyInstance> => {
   const fastify = Fastify({
@@ -118,7 +118,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   fastify.register(usersRoutes, { prefix: '/api/v1/users' });
   // import { webhooksRoutes } from './routes/v1/webhooks';
   fastify.register(listingRoutes, { prefix: '/api/v1/listings' }); // Step 5: Enabled
-  // import { tokensRoutes } from './routes/v1/tokens';
+  fastify.register(tokensRoutes, { prefix: '/api/v1/tokens' });
   fastify.register(contactRoutes, { prefix: '/api/v1/contact' });
 
   // Register hooks

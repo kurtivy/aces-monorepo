@@ -195,7 +195,7 @@ var getPrismaClient = /* @__PURE__ */ __name(() => {
     return prisma;
   } catch (error) {
     console.error("\u274C Failed to create Prisma client:", error);
-    logger.error("Failed to create Prisma client", error);
+    logger.error({ error }, "Failed to create Prisma client");
     throw error;
   }
 }, "getPrismaClient");
@@ -213,7 +213,7 @@ var disconnectDatabase = /* @__PURE__ */ __name(async (timeoutMs = 5e3) => {
       logger.info("Database connection closed");
     } catch (error) {
       console.error("\u274C Error disconnecting from database:", error);
-      logger.error("Error disconnecting from database", error);
+      logger.error({ error }, "Error disconnecting from database");
       prisma = null;
     }
   }
@@ -289,6 +289,8 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         "/test",
         "/get-upload-url",
         "/upload-image",
+        "/api/v1/tokens",
+        // Token data and chart data endpoints
         "/"
         // Root path for listings, contact, etc.
       ];

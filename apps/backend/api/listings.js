@@ -195,7 +195,7 @@ var getPrismaClient = /* @__PURE__ */ __name(() => {
     return prisma;
   } catch (error) {
     console.error("\u274C Failed to create Prisma client:", error);
-    logger.error("Failed to create Prisma client", error);
+    logger.error({ error }, "Failed to create Prisma client");
     throw error;
   }
 }, "getPrismaClient");
@@ -213,7 +213,7 @@ var disconnectDatabase = /* @__PURE__ */ __name(async (timeoutMs = 5e3) => {
       logger.info("Database connection closed");
     } catch (error) {
       console.error("\u274C Error disconnecting from database:", error);
-      logger.error("Error disconnecting from database", error);
+      logger.error({ error }, "Error disconnecting from database");
       prisma = null;
     }
   }
@@ -289,6 +289,8 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         "/test",
         "/get-upload-url",
         "/upload-image",
+        "/api/v1/tokens",
+        // Token data and chart data endpoints
         "/"
         // Root path for listings, contact, etc.
       ];
@@ -487,11 +489,22 @@ var productStorage = null;
 var productBucket = null;
 var productBucketName = "";
 if (hasGoogleCloudCredentials) {
+  let privateKey = process.env.GOOGLE_CLOUD_PRIVATE_KEY || "";
+  if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
+    privateKey = privateKey.slice(1, -1);
+  }
+  privateKey = privateKey.replace(/\\n/g, "\n");
+  console.log("[DEBUG] Private key processing:");
+  console.log(`[DEBUG] - Original length: ${process.env.GOOGLE_CLOUD_PRIVATE_KEY?.length}`);
+  console.log(`[DEBUG] - Processed length: ${privateKey.length}`);
+  console.log(`[DEBUG] - Starts with BEGIN: ${privateKey.startsWith("-----BEGIN")}`);
+  console.log(`[DEBUG] - Ends with END: ${privateKey.endsWith("-----")}`);
+  console.log(`[DEBUG] - Contains newlines: ${privateKey.includes("\n")}`);
   productStorage = new import_storage.Storage({
     projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
     credentials: {
       client_email: process.env.GOOGLE_CLOUD_CLIENT_EMAIL,
-      private_key: process.env.GOOGLE_CLOUD_PRIVATE_KEY?.replace(/\\n/g, "\n")
+      private_key: privateKey
     }
   });
   productBucketName = process.env.GOOGLE_CLOUD_PRODUCT_BUCKET_NAME || "aces-product-images";
@@ -542,9 +555,13 @@ var ProductStorageService = class {
    * Extract filename from a product image URL
    */
   static extractFileName(imageUrl) {
+    if (!productBucketName) {
+      console.warn("Product bucket name not configured, cannot extract filename");
+      throw new Error("Product storage not configured");
+    }
     const bucketPrefix = `https://storage.googleapis.com/${productBucketName}/`;
     if (!imageUrl.startsWith(bucketPrefix)) {
-      throw new Error("Invalid product storage URL format");
+      throw new Error(`Invalid product storage URL format. Expected prefix: ${bucketPrefix}`);
     }
     return imageUrl.replace(bucketPrefix, "");
   }
@@ -688,6 +705,29 @@ var ListingService = class {
       return listing;
     } catch (error) {
       console.error("Error updating listing live status:", error);
+      throw error;
+    }
+  }
+  /**
+   * Set listing launch date (admin only)
+   */
+  async setListingLaunchDate(listingId, launchDate, _adminId) {
+    try {
+      const listing = await this.prisma.listing.update({
+        where: { id: listingId },
+        data: {
+          launchDate,
+          updatedAt: /* @__PURE__ */ new Date()
+        },
+        include: {
+          owner: true,
+          submission: true,
+          approvedByUser: true
+        }
+      });
+      return listing;
+    } catch (error) {
+      console.error("Error updating listing launch date:", error);
       throw error;
     }
   }
@@ -964,6 +1004,9 @@ var UpdateListingSchema = import_zod.z.object({
 var SetListingLiveSchema = import_zod.z.object({
   isLive: import_zod.z.boolean()
 });
+var SetListingLaunchDateSchema = import_zod.z.object({
+  launchDate: import_zod.z.string().datetime().nullable()
+});
 async function listingRoutes(fastify) {
   const listingService = new ListingService(fastify.prisma);
   fastify.get(
@@ -1197,6 +1240,40 @@ async function listingRoutes(fastify) {
         });
       } catch (error) {
         console.error("Error setting listing live status:", error);
+        throw error;
+      }
+    }
+  );
+  fastify.put(
+    "/admin/:id/launch-date",
+    {
+      preHandler: [requireAdmin],
+      schema: {
+        params: (0, import_zod_to_json_schema.zodToJsonSchema)(
+          import_zod.z.object({
+            id: import_zod.z.string()
+          })
+        ),
+        body: (0, import_zod_to_json_schema.zodToJsonSchema)(SetListingLaunchDateSchema)
+      }
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params;
+        const { launchDate } = request.body;
+        const parsedLaunchDate = launchDate ? new Date(launchDate) : null;
+        const listing = await listingService.setListingLaunchDate(
+          id,
+          parsedLaunchDate,
+          request.user.id
+        );
+        return reply.send({
+          success: true,
+          data: listing,
+          message: `Listing launch date ${parsedLaunchDate ? "set to " + parsedLaunchDate.toISOString() : "cleared"} successfully`
+        });
+      } catch (error) {
+        console.error("Error setting listing launch date:", error);
         throw error;
       }
     }
