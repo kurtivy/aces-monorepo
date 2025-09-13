@@ -33,6 +33,16 @@ export interface ChartData {
   count: number;
 }
 
+export interface TradeData {
+  id: string;
+  isBuy: boolean;
+  trader: { id: string };
+  tokenAmount: string;
+  acesTokenAmount: string;
+  createdAt: string;
+  blockNumber: string;
+}
+
 export interface ApiSuccessResponse<T> extends ApiResponse<T> {
   success: true;
 }
@@ -105,5 +115,9 @@ export class TokensApi {
     timeframe: string,
   ): Promise<ApiResult<ChartData>> {
     return this.request<ChartData>(`/api/v1/tokens/${tokenAddress}/ohlcv?timeframe=${timeframe}`);
+  }
+
+  static async getTrades(tokenAddress: string, limit = 50): Promise<ApiResult<TradeData[]>> {
+    return this.request<TradeData[]>(`/api/v1/tokens/${tokenAddress}/trades?limit=${limit}`);
   }
 }
