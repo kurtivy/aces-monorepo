@@ -5,7 +5,7 @@ import { ethers } from 'ethers';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/lib/auth/auth-context';
-import { FACTORY_ABI } from '@/app/testing/abi';
+import { ACES_FACTORY_ABI } from '@aces/utils';
 
 // Contract addresses
 const CONTRACTS = {
@@ -95,7 +95,7 @@ export default function TokenSwapInterface({
           setSigner(signer);
 
           // Initialize contracts
-          const factory = new ethers.Contract(CONTRACTS.FACTORY_PROXY, FACTORY_ABI.abi, signer);
+          const factory = new ethers.Contract(CONTRACTS.FACTORY_PROXY, ACES_FACTORY_ABI, signer);
           setFactoryContract(factory);
 
           // Get ACES token address
@@ -132,7 +132,7 @@ export default function TokenSwapInterface({
         setSigner(signer);
 
         // Initialize contracts
-        const factory = new ethers.Contract(CONTRACTS.FACTORY_PROXY, FACTORY_ABI.abi, signer);
+        const factory = new ethers.Contract(CONTRACTS.FACTORY_PROXY, ACES_FACTORY_ABI, signer);
         setFactoryContract(factory);
 
         // Get ACES token address
