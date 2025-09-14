@@ -165,11 +165,8 @@ export function MiddleContentArea({
     // Manifesto/About Content - Always shown
     <div key="manifesto-main" className="space-y-0">
       <AssetAboutDetails
-      // title={displayData.title}
-      // description={displayData.description}
-      // assetType={displayData.assetType}
-      // location={displayData.location}
-      // isLive={isDynamicMode ? isLive : true} // Default to live for static mode
+        description={displayData.description}
+        assetDetails={listing?.assetDetails}
       />
     </div>,
 

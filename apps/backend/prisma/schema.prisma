@@ -100,6 +100,7 @@ model Listing {
   title             String
   symbol            String
   description       String
+  assetDetails      Json?      // Array of {key: string, value: string} objects
   assetType         AssetType
   imageGallery      String[]   @default([])
   location          String?

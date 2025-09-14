@@ -59,7 +59,7 @@ export function ActiveSectionContent({
 
     // Product Manifesto - Ensure it fits in smaller space
     <div key="manifesto" className="h-full overflow-hidden">
-      <ProductHeroLocation />
+      <ProductHeroLocation listing={listing} />
     </div>,
 
     // Place Bids - Compact version
