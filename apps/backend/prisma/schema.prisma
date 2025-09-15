@@ -13,6 +13,7 @@ model User {
   privyDid              String                @unique
   walletAddress         String?               @unique
   email                 String?               @unique
+  username              String?               @unique  // NEW: Optional username (defaults to walletAddress)
   role                  UserRole              @default(TRADER)
   isActive              Boolean               @default(true)
   sellerStatus          SellerStatus          @default(NOT_APPLIED)
@@ -28,6 +29,10 @@ model User {
   submissions           Submission[]
   listings              Listing[]
   approvedListings      Listing[]             @relation("ApprovedBy")
+  
+  // NEW: Comments system relations
+  comments              ListingComment[]      @relation("CommentAuthor")
+  commentLikes          ListingCommentLike[]
 
   @@map("users")
 }
@@ -122,6 +127,9 @@ model Listing {
 
   // NEW: Optional token link (won't break existing functionality)
   token             Token?     @relation("ListingToken")
+  
+  // NEW: Comments relation
+  comments          ListingComment[]
 
   @@index([isLive, createdAt])
   @@index([ownerId])
@@ -262,4 +270,53 @@ enum TokenPhase {
 enum TradeType {
   BUY
   SELL
+}
+
+// ========== COMMENTS SYSTEM ==========
+
+model ListingComment {
+  id          String    @id @default(cuid())
+  content     String    // The actual comment text
+  listingId   String    // Which listing this comment belongs to
+  authorId    String    // Who wrote the comment
+  parentId    String?   // NULL for top-level comments, ID of parent for replies
+  
+  // Moderation fields
+  isHidden    Boolean   @default(false)
+  isFlagged   Boolean   @default(false)
+  reportedCount Int     @default(0)
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  // Relations
+  listing     Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  author      User      @relation("CommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  parent      ListingComment? @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies     ListingComment[] @relation("CommentReplies")
+  likes       ListingCommentLike[]
+  
+  @@index([listingId, createdAt])
+  @@index([parentId])
+  @@index([authorId])
+  @@index([isHidden, isFlagged])
+  @@map("listing_comments")
+}
+
+model ListingCommentLike {
+  id        String   @id @default(cuid())
+  commentId String   // Which comment was liked
+  userId    String   // Who liked it
+  
+  createdAt DateTime @default(now())
+  
+  // Relations
+  comment   ListingComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Prevent duplicate likes from same user on same comment
+  @@unique([commentId, userId])
+  @@index([commentId])
+  @@index([userId])
+  @@map("listing_comment_likes")
 }
