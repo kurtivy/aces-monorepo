@@ -68,6 +68,7 @@ export interface DatabaseListing {
   title: string;
   symbol: string;
   description: string;
+  assetDetails: Array<{key: string; value: string}> | null; // Structured asset details
   assetType: AssetType;
   imageGallery: string[];
   location: string | null;
