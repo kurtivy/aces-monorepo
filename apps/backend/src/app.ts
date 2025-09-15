@@ -16,6 +16,7 @@ import { usersRoutes } from './routes/v1/users';
 // import { webhooksRoutes } from './routes/v1/webhooks';
 import { listingRoutes } from './routes/v1/listings'; // Step 5: Enabled
 import { contactRoutes } from './routes/v1/contact';
+import { commentsRoutes } from './routes/v1/comments';
 import { tokensRoutes } from './routes/v1/tokens';
 
 export const buildApp = async (): Promise<FastifyInstance> => {
@@ -86,7 +87,15 @@ export const buildApp = async (): Promise<FastifyInstance> => {
     const origin = request.headers.origin;
 
     if (isOriginAllowed(origin)) {
-      reply.header('Access-Control-Allow-Origin', origin);
+      reply
+        .header('Access-Control-Allow-Origin', origin)
+        .header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+        .header(
+          'Access-Control-Allow-Headers',
+          'Content-Type, Authorization, Accept, Origin, X-Requested-With',
+        )
+        .header('Access-Control-Allow-Credentials', 'true')
+        .header('Vary', 'Origin');
     }
   });
 
@@ -120,6 +129,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   fastify.register(listingRoutes, { prefix: '/api/v1/listings' }); // Step 5: Enabled
   fastify.register(tokensRoutes, { prefix: '/api/v1/tokens' });
   fastify.register(contactRoutes, { prefix: '/api/v1/contact' });
+  fastify.register(commentsRoutes, { prefix: '/api/v1/comments' });
 
   // Register hooks
   fastify.addHook('onRequest', async (request) => {
