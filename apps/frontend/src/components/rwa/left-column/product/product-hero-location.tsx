@@ -12,11 +12,13 @@ interface ProductHeroLocationProps {
 
 export default function ProductHeroLocation({ listing }: ProductHeroLocationProps) {
   // Get the first image from the gallery or use fallback
-  const heroImage = listing?.imageGallery?.[0] || "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/1-XLO1yYFWUAiJQZnkumrWt6GLOfTUV0.jpeg";
-  const imageAlt = listing?.title ? `${listing.title} - Hero Image` : "Asset - Hero Image";
-  
+  const heroImage =
+    listing?.imageGallery?.[0] ||
+    'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/1-XLO1yYFWUAiJQZnkumrWt6GLOfTUV0.jpeg';
+  const imageAlt = listing?.title ? `${listing.title} - Hero Image` : 'Asset - Hero Image';
+
   // Get location or use fallback
-  const location = listing?.location || "Worldwide";
+  const location = listing?.location || 'Worldwide';
 
   return (
     <div className="h-full flex flex-col">
@@ -32,7 +34,8 @@ export default function ProductHeroLocation({ listing }: ProductHeroLocationProp
             height={300}
             onError={(e) => {
               console.log('Hero image failed to load:', heroImage);
-              e.currentTarget.src = "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/1-XLO1yYFWUAiJQZnkumrWt6GLOfTUV0.jpeg";
+              e.currentTarget.src =
+                'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/1-XLO1yYFWUAiJQZnkumrWt6GLOfTUV0.jpeg';
             }}
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
