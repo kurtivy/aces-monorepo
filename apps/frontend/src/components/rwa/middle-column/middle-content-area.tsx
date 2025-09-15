@@ -7,7 +7,7 @@ import TokenGraph from '@/components/rwa/middle-column/token-details/token-graph
 import TradeHistory from '@/components/rwa/middle-column/token-details/trade-history';
 import AssetAboutDetails from '@/components/rwa/middle-column/product/asset-about-details';
 import PlaceBidsInterface from '@/components/rwa/middle-column/bids/place-bids-interface';
-import RWAForum from '@/components/rwa/middle-column/chat/rwa-forum';
+import RWAForumReal from '@/components/rwa/middle-column/chat/rwa-forum-real';
 import type {
   MiddleContentAreaProps,
   DatabaseListing,
@@ -224,10 +224,10 @@ export function MiddleContentArea({
 
     // Chats Content - Available for both modes
     <div key="chats-main" className="h-full">
-      <RWAForum
-      // listingId={listing?.id}
-      // listingTitle={displayData.title}
-      // isLive={isDynamicMode ? isLive : true}
+      <RWAForumReal
+        listingId={listing?.id}
+        listingTitle={displayData.title}
+        isLive={isDynamicMode ? isLive : true}
       />
     </div>,
   ];
