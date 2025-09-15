@@ -42,3 +42,11 @@
 //     </div>
 //   );
 // }
+
+export default function RWAPage() {
+  return (
+    <div className="h-screen bg-black text-white flex items-center justify-center">
+      <div className="text-[#D0B284] text-lg">Loading...</div>
+    </div>
+  );
+}
