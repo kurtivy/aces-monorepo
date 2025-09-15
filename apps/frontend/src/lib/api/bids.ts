@@ -179,7 +179,7 @@ export class BidsApi {
       cursor?: string;
       includeInactive?: boolean;
     },
-  ): Promise<ApiResponse<Bid[]>> {
+  ): Promise<ApiResponse<BidsListResponse>> {
     try {
       const params = new URLSearchParams();
       if (options?.limit) params.append('limit', options.limit.toString());
