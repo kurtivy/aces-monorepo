@@ -34,6 +34,9 @@ model User {
   comments              ListingComment[]      @relation("CommentAuthor")
   commentLikes          ListingCommentLike[]
 
+  // NEW: Bidding system relations
+  bids                  Bid[]                 @relation("UserBids")
+
   @@map("users")
 }
 
@@ -114,6 +117,10 @@ model Listing {
   isLive            Boolean    @default(false)
   launchDate        DateTime?  // When the asset will go live for sale
 
+  // NEW: Bidding fields
+  startingBidPrice  String?    // Minimum bid amount (USD)
+  reservePrice      String?    // Hidden reserve price (USD)
+
   submissionId      String     @unique
   ownerId           String
   approvedBy        String?
@@ -130,6 +137,9 @@ model Listing {
   
   // NEW: Comments relation
   comments          ListingComment[]
+
+  // NEW: Bids relation
+  bids              Bid[]
 
   @@index([isLive, createdAt])
   @@index([ownerId])
@@ -179,6 +189,14 @@ enum AssetType {
   FASHION
   ALCOHOL
   OTHER
+}
+
+enum BidStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  WITHDRAWN
 }
 
 // ========== TRADING SYSTEM EXTENSION ==========
@@ -319,4 +337,40 @@ model ListingCommentLike {
   @@index([commentId])
   @@index([userId])
   @@map("listing_comment_likes")
+}
+
+// ========== BIDDING SYSTEM ==========
+
+model Bid {
+  id              String    @id @default(cuid())
+  amount          String    // Bid amount in USD (using string for precision)
+  message         String?   // Optional message from bidder
+
+  listingId       String    // Which listing this bid is for
+  bidderId        String    // Who placed the bid
+
+  status          BidStatus @default(PENDING)
+  expiresAt       DateTime  // Auto-set to 30 days from creation
+
+  // Response from listing owner
+  respondedAt     DateTime?
+  responseMessage String?
+
+  // Audit trail for bid updates
+  previousBidId   String?   // Reference to the bid this replaces
+  isActive        Boolean   @default(true) // Only one active bid per user per listing
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  listing         Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  bidder          User      @relation("UserBids", fields: [bidderId], references: [id], onDelete: Cascade)
+  previousBid     Bid?      @relation("BidHistory", fields: [previousBidId], references: [id])
+  updatedBids     Bid[]     @relation("BidHistory")
+
+  @@index([listingId, status, createdAt])
+  @@index([bidderId, status, createdAt])
+  @@index([listingId, bidderId, isActive])
+  @@map("bids")
 }

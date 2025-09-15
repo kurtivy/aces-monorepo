@@ -47,6 +47,14 @@ export const AssetType = {
   OTHER: 'OTHER',
 } as const;
 
+export const BidStatus = {
+  PENDING: 'PENDING',
+  ACCEPTED: 'ACCEPTED',
+  REJECTED: 'REJECTED',
+  EXPIRED: 'EXPIRED',
+  WITHDRAWN: 'WITHDRAWN',
+} as const;
+
 // Type exports for TypeScript
 export type UserRoleType = keyof typeof UserRole;
 export type SellerStatusType = keyof typeof SellerStatus;
@@ -55,6 +63,7 @@ export type DocumentTypeType = keyof typeof DocumentType;
 export type SubmissionStatusType = keyof typeof SubmissionStatus;
 export type RejectionTypeType = keyof typeof RejectionType;
 export type AssetTypeType = keyof typeof AssetType;
+export type BidStatusType = keyof typeof BidStatus;
 
 // Helper to safely get enum values
 export const safeEnumValue = <T extends Record<string, string>>(

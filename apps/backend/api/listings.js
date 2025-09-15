@@ -764,6 +764,21 @@ var ListingService = class {
               id: true,
               privyDid: true
             }
+          },
+          // Include token relationship
+          token: {
+            select: {
+              id: true,
+              contractAddress: true,
+              symbol: true,
+              name: true,
+              decimals: true,
+              currentPrice: true,
+              currentPriceACES: true,
+              volume24h: true,
+              phase: true,
+              isActive: true
+            }
           }
         },
         orderBy: { createdAt: "desc" },

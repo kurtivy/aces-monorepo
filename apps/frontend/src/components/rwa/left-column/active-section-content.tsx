@@ -3,6 +3,7 @@
 import SeesawAnimation from '@/components/rwa/left-column/token-details/seesaw-animation';
 import ProductHeroLocation from '@/components/rwa/left-column/product/product-hero-location';
 import DynamicImageGallery from './overview/dynamic-image-gallery';
+import { HighestBidDisplay } from './bidding/highest-bid-display';
 import type { ActiveSectionContentProps, DatabaseListing } from '../../../types/rwa/section.types';
 import { mockImages } from '../../../constants/rwa';
 import BondingCurveChart from './overview/bonding-curve-chart';
@@ -68,12 +69,7 @@ export function ActiveSectionContent({
       <div className="flex-1 space-y-2 min-h-0 overflow-y-auto">
         <h4 className="text-[#D0B284] text-xs font-bold mb-2 tracking-wider">BIDDING</h4>
 
-        <div className="bg-[#231F20] border border-[#D0B284]/20 rounded-lg overflow-hidden">
-          <div className="flex items-center justify-between p-3">
-            <span className="text-[#DCDDCC] text-xs font-medium">Current High Bid:</span>
-            <span className="text-white text-xs font-semibold">$45,200</span>
-          </div>
-        </div>
+        <HighestBidDisplay listingId={listing?.id || ''} />
       </div>
     </div>,
 

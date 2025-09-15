@@ -16,6 +16,7 @@ import type {
 import { mockImages } from '../../../constants/rwa';
 // import SimpleTokenChart from './token-details/simple-token-chart';
 import TradingChart from './token-details/trading-chart';
+import { useAuth } from '@/lib/auth/auth-context';
 
 // Extended interface with optional dynamic props
 interface DynamicMiddleContentAreaProps extends MiddleContentAreaProps {
@@ -54,6 +55,7 @@ export function MiddleContentArea({
   launchDate,
   isLaunched = true,
 }: DynamicMiddleContentAreaProps) {
+  const { user } = useAuth();
   // Show loading state for dynamic mode
   if (loading && listing === undefined) {
     return (
@@ -171,19 +173,26 @@ export function MiddleContentArea({
     </div>,
 
     // Place Bids Content - Conditional for dynamic mode
-    ...(isDynamicMode && actuallyLaunched && isLive
+    ...(isDynamicMode && actuallyLaunched && isLive && listing
       ? [
           <div key="place-bids-main" className="space-y-0">
             <PlaceBidsInterface
+              listingId={listing.id}
               itemTitle={displayData.title}
               itemImage={displayData.imageUrl}
-              tokenAddress="0x7300...0219FE"
-              retailPrice={47000}
-              topOffer={45200}
-              onOfferSubmit={(amount, duration) => {
-                console.log(`Offer submitted: $${amount} for ${duration} days`);
+              tokenAddress={listing.token?.contractAddress || listing.symbol}
+              retailPrice={
+                listing.token?.currentPriceACES ? parseFloat(listing.token.currentPriceACES) : 47000
+              }
+              startingBidPrice={
+                listing.startingBidPrice ? parseFloat(listing.startingBidPrice) : undefined
+              }
+              isLive={isLive}
+              isOwner={user?.id === listing.ownerId}
+              onBidPlaced={(bid) => {
+                console.log('New bid placed:', bid);
+                // You can add additional logic here like showing notifications
               }}
-              // isLive={isLive}
             />
           </div>,
         ]
@@ -209,13 +218,16 @@ export function MiddleContentArea({
               // Static mode - show original bids interface
               <div key="place-bids-main" className="space-y-0">
                 <PlaceBidsInterface
+                  listingId="static-listing-123"
                   itemTitle="King Solomon's Baby"
                   itemImage="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/1-XLO1yYFWUAiJQZnkumrWt6GLOfTUV0.jpeg"
                   tokenAddress="0x7300...0219FE"
                   retailPrice={47000}
-                  topOffer={45200}
-                  onOfferSubmit={(amount, duration) => {
-                    console.log(`Offer submitted: $${amount} for ${duration} days`);
+                  startingBidPrice={45000}
+                  isLive={true}
+                  isOwner={false}
+                  onBidPlaced={(bid) => {
+                    console.log('New bid placed:', bid);
                   }}
                 />
               </div>,

@@ -10,7 +10,7 @@ import { handleError } from './lib/errors';
 import { registerAuth } from './plugins/auth';
 import { submissionRoutes } from './routes/v1/submissions';
 import { adminRoutes } from './routes/v1/admin'; // Step 2: Enabled
-// import { bidsRoutes } from './routes/v1/bids';
+import { bidsRoutes } from './routes/v1/bids';
 import { accountVerificationRoutes } from './routes/v1/verification'; // Step 2: Enabled
 import { usersRoutes } from './routes/v1/users';
 // import { webhooksRoutes } from './routes/v1/webhooks';
@@ -122,7 +122,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   // Register v1 routes with proper API prefixes
   fastify.register(submissionRoutes, { prefix: '/api/v1/submissions' }); // Step 4: Enabled
   fastify.register(adminRoutes, { prefix: '/api/v1/admin' }); // Step 2: Enabled
-  // import { bidsRoutes } from './routes/v1/bids';
+  fastify.register(bidsRoutes, { prefix: '/api/v1/bids' }); // NEW: Bidding system
   fastify.register(accountVerificationRoutes, { prefix: '/api/v1/verification' }); // Step 2: Enabled
   fastify.register(usersRoutes, { prefix: '/api/v1/users' });
   // import { webhooksRoutes } from './routes/v1/webhooks';

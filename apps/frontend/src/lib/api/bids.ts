@@ -1,115 +1,330 @@
 import type { ApiResponse } from '@aces/utils';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 
-  (typeof window !== 'undefined' && window.location.hostname.includes('feat-ui-updates') 
-    ? 'https://aces-monorepo-backend-git-feat-ui-updates-dan-aces-fun.vercel.app'
-    : 'http://localhost:3002');
-
-export interface BidData {
+export interface Bid {
   id: string;
+  amount: string;
+  message?: string;
   listingId: string;
   bidderId: string;
-  verificationId: string;
-  amount: string;
-  currency: string;
-  expiresAt: string | null;
+  status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED' | 'WITHDRAWN';
+  expiresAt: string;
+  respondedAt?: string;
+  responseMessage?: string;
   createdAt: string;
-  bidder?: {
+  updatedAt: string;
+  bidder: {
     id: string;
-    displayName: string | null;
-    walletAddress: string | null;
-    email: string | null;
-  } | null;
-  listing?: {
+    username?: string;
+    walletAddress?: string;
+    email?: string;
+  };
+  listing: {
     id: string;
     title: string;
     symbol: string;
-    imageGallery: string[];
+    ownerId: string;
     isLive: boolean;
-    owner?: {
-      id: string;
-      displayName: string | null;
-    } | null;
-  } | null;
-  verification?: {
-    id: string;
-    status: string;
-  } | null;
+    startingBidPrice?: string;
+    reservePrice?: string;
+  };
 }
 
-export interface ApiSuccessResponse<T> extends ApiResponse<T> {
-  success: true;
-  data: T;
+export interface CreateBidRequest {
+  listingId: string;
+  amount: string;
+  message?: string;
 }
 
-export interface ApiErrorResponse extends ApiResponse<never> {
-  success: false;
-  error: string;
+export interface RespondToBidRequest {
+  status: 'ACCEPTED' | 'REJECTED';
+  responseMessage?: string;
 }
 
-export type ApiResult<T> = ApiSuccessResponse<T> | ApiErrorResponse;
+export interface BidsListResponse {
+  data: Bid[];
+  pagination: {
+    hasMore: boolean;
+    nextCursor?: string;
+  };
+}
 
 export class BidsApi {
-  private static async request<T = unknown>(
-    endpoint: string,
-    options: RequestInit = {},
-  ): Promise<ApiResult<T>> {
-    const url = `${API_BASE_URL}/api/v1${endpoint}`;
-
-    // Only set Content-Type to JSON if there's a body
-    const finalHeaders: HeadersInit = {
-      ...(options.headers && typeof options.headers === 'object' ? options.headers : {}),
-    };
-
-    if (options.body) {
-      (finalHeaders as Record<string, string>)['Content-Type'] = 'application/json';
+  private static getBaseUrl(): string {
+    // For development
+    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+      return 'http://localhost:3002';
     }
 
-    try {
-      const response = await fetch(url, {
-        ...options,
-        headers: finalHeaders,
-      });
+    // For production/staging
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    if (apiUrl) {
+      return apiUrl;
+    }
 
-      const data = await response.json();
+    // Fallback for Vercel deployments
+    const fallbackUrl =
+      typeof window !== 'undefined' && window.location.hostname.includes('feat-ui-updates')
+        ? 'https://aces-monorepo-backend-git-feat-ui-updates-dan-aces-fun.vercel.app'
+        : 'https://aces-monorepo-backend-git-main-dan-aces-fun.vercel.app';
+
+    return fallbackUrl;
+  }
+
+  private static async makeRequest<T>(
+    endpoint: string,
+    options: {
+      method?: string;
+      body?: any;
+      headers?: Record<string, string>;
+      authToken?: string;
+    } = {},
+  ): Promise<T> {
+    const { method = 'GET', body, headers = {}, authToken } = options;
+    const baseUrl = this.getBaseUrl();
+
+    const requestHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...headers,
+    };
+
+    if (authToken) {
+      requestHeaders['Authorization'] = `Bearer ${authToken}`;
+    }
+
+    const requestOptions: RequestInit = {
+      method,
+      headers: requestHeaders,
+      credentials: 'include', // Important for CORS
+    };
+
+    if (body && method !== 'GET') {
+      requestOptions.body = JSON.stringify(body);
+    }
+
+    const url = `${baseUrl}${endpoint}`;
+    console.log(`Making ${method} request to:`, url);
+
+    try {
+      const response = await fetch(url, requestOptions);
 
       if (!response.ok) {
-        return {
-          success: false,
-          error: data.error || data.message || `Request failed with status ${response.status}`,
-        };
+        let errorMessage = `Request failed with status ${response.status}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch {
+          // If we can't parse the error response, use the status text
+          errorMessage = response.statusText || errorMessage;
+        }
+        throw new Error(errorMessage);
       }
 
-      return data as ApiSuccessResponse<T>;
+      return await response.json();
     } catch (error) {
+      console.error(`API request failed for ${endpoint}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check if user is eligible to place bids
+   */
+  static async checkBiddingEligibility(
+    authToken: string,
+  ): Promise<ApiResponse<{ isEligible: boolean; message: string }>> {
+    try {
+      const response = await this.makeRequest('/api/v1/bids/eligibility', {
+        method: 'GET',
+        authToken,
+      });
+
+      return response as ApiResponse<{ isEligible: boolean; message: string }>;
+    } catch (error) {
+      console.error('Error checking bidding eligibility:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'An unknown error occurred',
+        error: error instanceof Error ? error.message : 'Failed to check eligibility',
       };
     }
   }
 
-  static async getAllBids(authToken: string): Promise<ApiResult<BidData[]>> {
-    return this.request('/admin/bids', {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${authToken}`,
-      },
-    });
+  /**
+   * Create a new bid
+   */
+  static async createBid(data: CreateBidRequest, authToken: string): Promise<ApiResponse<Bid>> {
+    try {
+      const response = await this.makeRequest('/api/v1/bids', {
+        method: 'POST',
+        body: data,
+        authToken,
+      });
+
+      return response as ApiResponse<Bid>;
+    } catch (error) {
+      console.error('Error creating bid:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to create bid',
+      };
+    }
   }
 
-  static async getUserBids(authToken: string): Promise<BidData[]> {
-    const result = await this.request<BidData[]>('/bids/my', {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${authToken}`,
-      },
-    });
+  /**
+   * Get bids for a specific listing
+   */
+  static async getListingBids(
+    listingId: string,
+    options?: {
+      limit?: number;
+      cursor?: string;
+      includeInactive?: boolean;
+    },
+  ): Promise<ApiResponse<Bid[]>> {
+    try {
+      const params = new URLSearchParams();
+      if (options?.limit) params.append('limit', options.limit.toString());
+      if (options?.cursor) params.append('cursor', options.cursor);
+      if (options?.includeInactive) params.append('includeInactive', 'true');
 
-    if (result.success) {
-      return result.data;
-    } else {
-      throw new Error(result.error || 'Failed to fetch user bids');
+      const response = await this.makeRequest(`/api/v1/bids/listing/${listingId}?${params}`, {
+        method: 'GET',
+      });
+
+      return response as ApiResponse<BidsListResponse>;
+    } catch (error) {
+      console.error('Error getting listing bids:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to get listing bids',
+      };
+    }
+  }
+
+  /**
+   * Get highest bid for a listing
+   */
+  static async getHighestBid(listingId: string): Promise<ApiResponse<Bid | null>> {
+    try {
+      const response = await this.makeRequest(`/api/v1/bids/listing/${listingId}/highest`, {
+        method: 'GET',
+      });
+
+      return response as ApiResponse<Bid | null>;
+    } catch (error) {
+      console.error('Error getting highest bid:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to get highest bid',
+      };
+    }
+  }
+
+  /**
+   * Get user's bids
+   */
+  static async getUserBids(
+    authToken: string,
+    options?: {
+      status?: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED' | 'WITHDRAWN';
+      limit?: number;
+      cursor?: string;
+    },
+  ): Promise<ApiResponse<BidsListResponse>> {
+    try {
+      const params = new URLSearchParams();
+      if (options?.status) params.append('status', options.status);
+      if (options?.limit) params.append('limit', options.limit.toString());
+      if (options?.cursor) params.append('cursor', options.cursor);
+
+      const response = await this.makeRequest(`/api/v1/bids/my?${params}`, {
+        method: 'GET',
+        authToken,
+      });
+
+      return response as ApiResponse<BidsListResponse>;
+    } catch (error) {
+      console.error('Error getting user bids:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to get user bids',
+      };
+    }
+  }
+
+  /**
+   * Get bids received on user's listings
+   */
+  static async getReceivedBids(
+    authToken: string,
+    options?: {
+      status?: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED' | 'WITHDRAWN';
+      limit?: number;
+      cursor?: string;
+    },
+  ): Promise<ApiResponse<BidsListResponse>> {
+    try {
+      const params = new URLSearchParams();
+      if (options?.status) params.append('status', options.status);
+      if (options?.limit) params.append('limit', options.limit.toString());
+      if (options?.cursor) params.append('cursor', options.cursor);
+
+      const response = await this.makeRequest(`/api/v1/bids/received?${params}`, {
+        method: 'GET',
+        authToken,
+      });
+
+      return response as ApiResponse<BidsListResponse>;
+    } catch (error) {
+      console.error('Error getting received bids:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to get received bids',
+      };
+    }
+  }
+
+  /**
+   * Respond to a bid (accept/reject)
+   */
+  static async respondToBid(
+    bidId: string,
+    data: RespondToBidRequest,
+    authToken: string,
+  ): Promise<ApiResponse<Bid>> {
+    try {
+      const response = await this.makeRequest(`/api/v1/bids/${bidId}/respond`, {
+        method: 'PUT',
+        body: data,
+        authToken,
+      });
+
+      return response as ApiResponse<Bid>;
+    } catch (error) {
+      console.error('Error responding to bid:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to respond to bid',
+      };
+    }
+  }
+
+  /**
+   * Withdraw a bid
+   */
+  static async withdrawBid(bidId: string, authToken: string): Promise<ApiResponse<void>> {
+    try {
+      const response = await this.makeRequest(`/api/v1/bids/${bidId}`, {
+        method: 'DELETE',
+        authToken,
+      });
+
+      return response as ApiResponse<void>;
+    } catch (error) {
+      console.error('Error withdrawing bid:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to withdraw bid',
+      };
     }
   }
 }

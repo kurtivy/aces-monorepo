@@ -75,6 +75,11 @@ export interface DatabaseListing {
   email: string | null;
   isLive: boolean;
   launchDate: string | null; // When the asset will go live for sale
+
+  // NEW: Bidding fields
+  startingBidPrice: string | null; // Minimum bid amount (USD)
+  reservePrice: string | null; // Hidden reserve price (USD)
+
   submissionId: string;
   ownerId: string;
   approvedBy: string | null;
