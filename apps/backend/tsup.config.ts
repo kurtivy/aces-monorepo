@@ -2,6 +2,7 @@ import { defineConfig } from 'tsup';
 
 export default defineConfig({
   entryPoints: {
+    index: 'src/api/index.ts',
     verification: 'src/api/verification.ts',
     users: 'src/api/users.ts',
     contact: 'src/api/contact.ts',
