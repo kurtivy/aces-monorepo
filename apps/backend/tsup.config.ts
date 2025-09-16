@@ -8,6 +8,7 @@ export default defineConfig({
     health: 'src/api/health.ts',
     submissions: 'src/api/submissions.ts',
     listings: 'src/api/listings.ts',
+    'cron/sync-tokens': 'src/api/cron/sync-tokens.ts',
   },
   outDir: 'api',
   format: ['cjs'],
