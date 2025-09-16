@@ -116,5 +116,5 @@
     "skipLibCheck": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "test", "src/routes/v1/cron"]
+  "exclude": ["node_modules", "dist", "test"]
 }

@@ -9,20 +9,12 @@ const handler = async (req: VercelRequest, res: VercelResponse) => {
     if (!appPromise) {
       appPromise = buildApp();
     }
-    
+
     const app = await appPromise;
     await app.ready();
 
-    // Handle URL rewriting for v1 API paths
+    // Use the original URL since Fastify routes are registered with /api/v1/* prefixes
     let url = req.url || '/';
-    
-    // Remove /api prefix since we're already in the /api route
-    if (url.startsWith('/api')) {
-      url = url.substring(4); // Remove '/api'
-      if (!url.startsWith('/')) {
-        url = '/' + url;
-      }
-    }
 
     // Use Fastify's inject method for serverless
     const response = await app.inject({
@@ -40,9 +32,9 @@ const handler = async (req: VercelRequest, res: VercelResponse) => {
     res.status(response.statusCode).send(response.payload);
   } catch (error) {
     console.error('API handler error:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Internal server error',
-      message: error instanceof Error ? error.message : 'Unknown error'
+      message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 };

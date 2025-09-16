@@ -6288,12 +6288,6 @@ var handler = /* @__PURE__ */ __name(async (req, res) => {
     const app = await appPromise;
     await app.ready();
     let url = req.url || "/";
-    if (url.startsWith("/api")) {
-      url = url.substring(4);
-      if (!url.startsWith("/")) {
-        url = "/" + url;
-      }
-    }
     const response = await app.inject({
       method: req.method,
       url,
