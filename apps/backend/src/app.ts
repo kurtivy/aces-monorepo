@@ -18,7 +18,7 @@ import { listingRoutes } from './routes/v1/listings'; // Step 5: Enabled
 import { contactRoutes } from './routes/v1/contact';
 import { commentsRoutes } from './routes/v1/comments';
 import { tokensRoutes } from './routes/v1/tokens';
-// Import cron routes for both development and production
+
 import { cronRoutes } from './routes/v1/cron/trigger';
 
 export const buildApp = async (): Promise<FastifyInstance> => {
