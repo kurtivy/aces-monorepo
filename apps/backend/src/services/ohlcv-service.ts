@@ -86,15 +86,46 @@ export class OHLCVService {
   ): Promise<CandleData[]> {
     try {
       const trades = await this.tokenService.fetchTradesForChart(contractAddress, timeframe);
-
-      if (trades.length === 0) return [];
-
       const intervalMs = this.getIntervalMs(timeframe);
+
+      // Get the time range we need to cover
+      const endTime = Date.now();
+      const startTime = endTime - this.getHoursBack(timeframe) * 60 * 60 * 1000;
+
+      // Generate all possible time slots
+      const timeSlots = this.generateTimeSlots(startTime, endTime, intervalMs);
+
+      // Group trades by time intervals
       const candleGroups = this.groupTradesByInterval(trades, intervalMs);
 
-      const candles = candleGroups.map((group) => this.calculateOHLCV(group));
+      // Create candle data for each time slot
+      const candles: CandleData[] = [];
+      let lastClosePrice = await this.getLastKnownPrice(contractAddress);
 
-      // Store in database for caching
+      for (const slot of timeSlots) {
+        const slotTrades = candleGroups.find((g) => g.timestamp.getTime() === slot.getTime());
+
+        if (slotTrades && slotTrades.trades.length > 0) {
+          // Time slot has trades - calculate OHLCV normally
+          const candle = this.calculateOHLCV(slotTrades);
+          candles.push(candle);
+          lastClosePrice = parseFloat(candle.close);
+        } else {
+          // Empty time slot - create no-change candle
+          const emptyCandle: CandleData = {
+            timestamp: slot,
+            open: lastClosePrice.toString(),
+            high: lastClosePrice.toString(),
+            low: lastClosePrice.toString(),
+            close: lastClosePrice.toString(),
+            volume: '0',
+            trades: 0,
+          };
+          candles.push(emptyCandle);
+        }
+      }
+
+      // Store candles in database
       await this.storeCandles(contractAddress, timeframe, candles);
 
       return candles;
@@ -171,6 +202,55 @@ export class OHLCVService {
     };
 
     return intervals[timeframe] || intervals['1h'];
+  }
+
+  private generateTimeSlots(startTime: number, endTime: number, intervalMs: number): Date[] {
+    const slots: Date[] = [];
+
+    // Align start time to interval boundary
+    const alignedStart = Math.floor(startTime / intervalMs) * intervalMs;
+
+    for (let time = alignedStart; time < endTime; time += intervalMs) {
+      slots.push(new Date(time));
+    }
+
+    return slots;
+  }
+
+  private async getLastKnownPrice(contractAddress: string): Promise<number> {
+    try {
+      // Try to get the last close price from recent candles
+      const lastCandle = await this.prisma.tokenOHLCV.findFirst({
+        where: { contractAddress: contractAddress.toLowerCase() },
+        orderBy: { timestamp: 'desc' },
+      });
+
+      if (lastCandle) {
+        return parseFloat(lastCandle.close);
+      }
+
+      // Fallback to current token price
+      const token = await this.prisma.token.findUnique({
+        where: { contractAddress: contractAddress.toLowerCase() },
+      });
+
+      return token ? parseFloat(token.currentPriceACES) : 1.0;
+    } catch (error) {
+      console.warn('Could not get last known price, defaulting to 1.0:', error);
+      return 1.0;
+    }
+  }
+
+  private getHoursBack(timeframe: string): number {
+    const timeframeHours: { [key: string]: number } = {
+      '1m': 2, // 2 hours for minute data
+      '5m': 12, // 12 hours for 5-minute data
+      '15m': 48, // 48 hours for 15-minute data
+      '1h': 168, // 1 week for hourly data
+      '1d': 720, // 30 days for daily data
+    };
+
+    return timeframeHours[timeframe] || 168;
   }
 
   private async storeCandles(contractAddress: string, timeframe: string, candles: CandleData[]) {

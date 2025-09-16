@@ -202,50 +202,78 @@ export class TokenService {
 
   private async fetchFromSubgraph(
     contractAddress: string,
+    retries = 3,
   ): Promise<{ data: { tokens: SubgraphToken[]; trades: SubgraphTrade[] } } | null> {
-    try {
-      const query = `{
-        tokens(where: {address: "${contractAddress.toLowerCase()}"}) {
-          id
-          address
-          name
-          symbol
-          supply
-          tradesCount
-        }
-        trades(
-          where: {token: "${contractAddress.toLowerCase()}"}
-          orderBy: createdAt
-          orderDirection: desc
-          first: 50
-        ) {
-          id
-          isBuy
-          tokenAmount
-          acesTokenAmount
-          supply
-          createdAt
-          blockNumber
-        }
-      }`;
+    let lastError: Error;
 
-      const response = await fetch(process.env.GOLDSKY_SUBGRAPH_URL!, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query }),
-      });
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        const query = `{
+          tokens(where: {address: "${contractAddress.toLowerCase()}"}) {
+            id
+            address
+            name
+            symbol
+            supply
+            tradesCount
+          }
+          trades(
+            where: {token: "${contractAddress.toLowerCase()}"}
+            orderBy: createdAt
+            orderDirection: desc
+            first: 50
+          ) {
+            id
+            isBuy
+            tokenAmount
+            acesTokenAmount
+            supply
+            createdAt
+            blockNumber
+          }
+        }`;
 
-      if (!response.ok) {
-        throw new Error(`Subgraph request failed: ${response.status}`);
+        const response = await fetch(process.env.GOLDSKY_SUBGRAPH_URL!, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query }),
+          // Add timeout
+          signal: AbortSignal.timeout(15000), // 15 second timeout
+        });
+
+        if (!response.ok) {
+          throw new Error(`Subgraph request failed: ${response.status} ${response.statusText}`);
+        }
+
+        const result = (await response.json()) as any;
+
+        if (result.errors) {
+          throw new Error(`Subgraph GraphQL errors: ${JSON.stringify(result.errors)}`);
+        }
+
+        return result as {
+          data: { tokens: SubgraphToken[]; trades: SubgraphTrade[] };
+        };
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        console.warn(
+          `[TokenService] Subgraph attempt ${attempt}/${retries} failed:`,
+          lastError.message,
+        );
+
+        if (attempt < retries) {
+          // Exponential backoff: 1s, 2s, 4s
+          const delay = Math.pow(2, attempt - 1) * 1000;
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
       }
-
-      return (await response.json()) as {
-        data: { tokens: SubgraphToken[]; trades: SubgraphTrade[] };
-      };
-    } catch (error) {
-      console.error('Subgraph fetch error:', error);
-      return null;
     }
+
+    // All retries failed
+    console.error(
+      `Subgraph fetch failed after ${retries} attempts. Last error: ${lastError!.message}`,
+    );
+    return null;
   }
 
   private async storeRecentTrades(contractAddress: string, trades: SubgraphTrade[]) {
