@@ -18,14 +18,12 @@ import { listingRoutes } from './routes/v1/listings'; // Step 5: Enabled
 import { contactRoutes } from './routes/v1/contact';
 import { commentsRoutes } from './routes/v1/comments';
 import { tokensRoutes } from './routes/v1/tokens';
-// Conditionally import cron routes for development only
+// Import cron routes for both development and production
 let cronRoutes: any = null;
-if (process.env.NODE_ENV !== 'production') {
-  try {
-    cronRoutes = require('./routes/v1/cron/trigger').cronRoutes;
-  } catch (error) {
-    console.warn('Cron routes not available:', error);
-  }
+try {
+  cronRoutes = require('./routes/v1/cron/trigger').cronRoutes;
+} catch (error) {
+  console.warn('Cron routes not available:', error);
 }
 
 export const buildApp = async (): Promise<FastifyInstance> => {
