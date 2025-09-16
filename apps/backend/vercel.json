@@ -38,11 +38,7 @@
       "destination": "/api/health"
     },
     {
-      "source": "/api/cron/sync-tokens",
-      "destination": "/api/cron/sync-tokens"
-    },
-    {
-      "source": "/api/(.*)",
+      "source": "/api/(?!cron/)(.*)",
       "destination": "/api/index"
     }
   ]
