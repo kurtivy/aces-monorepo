@@ -18,6 +18,15 @@ import { listingRoutes } from './routes/v1/listings'; // Step 5: Enabled
 import { contactRoutes } from './routes/v1/contact';
 import { commentsRoutes } from './routes/v1/comments';
 import { tokensRoutes } from './routes/v1/tokens';
+// Conditionally import cron routes for development only
+let cronRoutes: any = null;
+if (process.env.NODE_ENV !== 'production') {
+  try {
+    cronRoutes = require('./routes/v1/cron/trigger').cronRoutes;
+  } catch (error) {
+    console.warn('Cron routes not available:', error);
+  }
+}
 
 export const buildApp = async (): Promise<FastifyInstance> => {
   const fastify = Fastify({
@@ -130,6 +139,10 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   fastify.register(tokensRoutes, { prefix: '/api/v1/tokens' });
   fastify.register(contactRoutes, { prefix: '/api/v1/contact' });
   fastify.register(commentsRoutes, { prefix: '/api/v1/comments' });
+  // Register cron routes only in development
+  if (cronRoutes) {
+    fastify.register(cronRoutes); // Cron routes for manual testing
+  }
 
   // Register hooks
   fastify.addHook('onRequest', async (request) => {
