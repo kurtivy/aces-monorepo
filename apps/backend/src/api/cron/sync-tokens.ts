@@ -15,15 +15,20 @@ interface VercelResponse {
 const prisma = new PrismaClient();
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Security: Only allow POST and verify it's actually a cron
-  if (req.method !== 'POST') {
+  // Vercel Cron uses GET with the x-vercel-cron header; allow POST for manual runs
+  if (req.method !== 'GET' && req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Optional: Add cron secret verification
-  const cronSecret = req.headers['x-vercel-cron-signature'] || req.headers.authorization;
-  if (process.env.CRON_SECRET && cronSecret !== process.env.CRON_SECRET) {
-    return res.status(401).json({ error: 'Unauthorized' });
+  const vercelCronHeader = req.headers['x-vercel-cron'];
+  const isVercelCron = Boolean(vercelCronHeader);
+
+  // Guard against unexpected callers; Vercel cron always includes the header
+  if (!isVercelCron) {
+    const cronSecret = req.headers['x-vercel-cron-signature'] || req.headers.authorization;
+    if (!process.env.CRON_SECRET || cronSecret !== process.env.CRON_SECRET) {
+      return res.status(401).json({ error: 'Unauthorized cron caller' });
+    }
   }
 
   // Allow manual disable during testing
