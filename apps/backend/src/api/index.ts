@@ -15,7 +15,7 @@ const handler = async (req: VercelRequest, res: VercelResponse) => {
 
     // Use the original URL since Fastify routes are registered with /api/v1/* prefixes
     let url = req.url || '/';
-    
+
     // Debug logging
     console.log('API Handler - Original URL:', req.url);
     console.log('API Handler - Method:', req.method);
