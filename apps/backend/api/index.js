@@ -308,6 +308,12 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         "/upload-image",
         "/api/v1/tokens",
         // Token data and chart data endpoints
+        "/api/v1/cron/trigger",
+        // Cron trigger endpoint for manual testing
+        "/api/v1/cron/status",
+        // Cron status endpoint
+        "/api/cron/sync-tokens",
+        // Vercel cron endpoint
         "/"
         // Root path for listings, contact, etc.
       ];

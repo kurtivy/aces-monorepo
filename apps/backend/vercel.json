@@ -42,7 +42,7 @@
       "destination": "/api/cron/sync-tokens"
     },
     {
-      "source": "/api/(?!cron/)(.*)",
+      "source": "/api/(.*)",
       "destination": "/api/index"
     }
   ]

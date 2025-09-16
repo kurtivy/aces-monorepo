@@ -570,12 +570,16 @@ var OHLCVService = class {
 // src/api/cron/sync-tokens.ts
 var prisma = new import_client.PrismaClient();
 async function handler(req, res) {
-  if (req.method !== "POST") {
+  if (req.method !== "GET" && req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
-  const cronSecret = req.headers["x-vercel-cron-signature"] || req.headers.authorization;
-  if (process.env.CRON_SECRET && cronSecret !== process.env.CRON_SECRET) {
-    return res.status(401).json({ error: "Unauthorized" });
+  const vercelCronHeader = req.headers["x-vercel-cron"];
+  const isVercelCron = Boolean(vercelCronHeader);
+  if (!isVercelCron) {
+    const cronSecret = req.headers["x-vercel-cron-signature"] || req.headers.authorization;
+    if (!process.env.CRON_SECRET || cronSecret !== process.env.CRON_SECRET) {
+      return res.status(401).json({ error: "Unauthorized cron caller" });
+    }
   }
   if (process.env.ENABLE_CRON !== "true") {
     return res.status(200).json({
