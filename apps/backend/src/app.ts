@@ -1,5 +1,5 @@
-/// <reference path="./types/fastify.d.ts" />
 import Fastify, { FastifyInstance } from 'fastify';
+import './types/fastify.d.ts';
 import { randomUUID } from 'crypto';
 import helmet from '@fastify/helmet';
 import multipart from '@fastify/multipart';
@@ -19,12 +19,7 @@ import { contactRoutes } from './routes/v1/contact';
 import { commentsRoutes } from './routes/v1/comments';
 import { tokensRoutes } from './routes/v1/tokens';
 // Import cron routes for both development and production
-let cronRoutes: any = null;
-try {
-  cronRoutes = require('./routes/v1/cron/trigger').cronRoutes;
-} catch (error) {
-  console.warn('Cron routes not available:', error);
-}
+import { cronRoutes } from './routes/v1/cron/trigger';
 
 export const buildApp = async (): Promise<FastifyInstance> => {
   const fastify = Fastify({
@@ -137,10 +132,8 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   fastify.register(tokensRoutes, { prefix: '/api/v1/tokens' });
   fastify.register(contactRoutes, { prefix: '/api/v1/contact' });
   fastify.register(commentsRoutes, { prefix: '/api/v1/comments' });
-  // Register cron routes only in development
-  if (cronRoutes) {
-    fastify.register(cronRoutes); // Cron routes for manual testing
-  }
+  // Register cron routes for manual testing
+  fastify.register(cronRoutes);
 
   // Register hooks
   fastify.addHook('onRequest', async (request) => {
