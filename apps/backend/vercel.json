@@ -4,6 +4,19 @@
   "installCommand": "cd ../.. && pnpm install --no-frozen-lockfile",
   "outputDirectory": ".",
 
+  "functions": {
+    "api/cron/sync-tokens.js": {
+      "maxDuration": 30
+    }
+  },
+
+  "crons": [
+    {
+      "path": "/api/cron/sync-tokens",
+      "schedule": "* * * * *"
+    }
+  ],
+
   "rewrites": [
     {
       "source": "/health(/.*)?",
