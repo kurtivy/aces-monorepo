@@ -42,6 +42,7 @@ const TradingChart: React.FC<TradingChartProps> = ({
   const [timeframe, setTimeframe] = useState('1h');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [priceChange24h, setPriceChange24h] = useState<string>('0');
+  const [lastSyncTime, setLastSyncTime] = useState<number>(0);
 
   // Add live price hook
   const { livePrice, isConnected } = useLivePrice(tokenAddress, 30000);
@@ -193,6 +194,13 @@ const TradingChart: React.FC<TradingChartProps> = ({
   // Fetch token data and chart data
   const fetchData = async () => {
     try {
+      // Smart caching: don't refetch if we just got fresh data
+      const now = Date.now();
+      if (now - lastSyncTime < 30000) {
+        // 30 second cache
+        return;
+      }
+
       setIsLoading(true);
       setError(null);
 
@@ -291,6 +299,8 @@ const TradingChart: React.FC<TradingChartProps> = ({
         // API error
         setError(chartResult.error || 'Failed to load chart data');
       }
+
+      setLastSyncTime(now);
     } catch (err) {
       setError('Failed to load chart data');
       console.error('Chart data fetch error:', err);
@@ -308,9 +318,19 @@ const TradingChart: React.FC<TradingChartProps> = ({
   // Load data when component mounts or timeframe changes
   useEffect(() => {
     if (tokenAddress) {
+      // Initial load
       fetchData();
+
+      // Set up smart polling that respects cache
+      const interval = setInterval(() => {
+        if (Date.now() - lastSyncTime >= 30000) {
+          fetchData();
+        }
+      }, 10000); // Check every 10 seconds, but only fetch if cache expired
+
+      return () => clearInterval(interval);
     }
-  }, [tokenAddress, timeframe]);
+  }, [tokenAddress, timeframe, lastSyncTime]);
 
   // Handle container resize with ResizeObserver
   useEffect(() => {

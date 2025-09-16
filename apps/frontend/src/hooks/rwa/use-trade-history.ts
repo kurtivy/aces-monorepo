@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { TokensApi, type TradeData } from '@/lib/api/tokens';
 
-export const useTradeHistory = (tokenAddress: string, intervalMs = 8000) => {
+export const useTradeHistory = (tokenAddress: string, intervalMs = 30000) => {
   const [trades, setTrades] = useState<TradeData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -43,9 +43,9 @@ export const useTradeHistory = (tokenAddress: string, intervalMs = 8000) => {
             const newTrades = tradesData.filter((trade: TradeData) => !existingIds.has(trade.id));
 
             if (newTrades.length > 0) {
-              console.log('New trades found:', newTrades.length);
-              // Add new trades to the top, keep existing ones
-              return [...newTrades, ...prevTrades];
+              console.log(`[TradeHistory] ${newTrades.length} new trades detected`);
+              // Add new trades to the top, keep existing ones, limit to 50
+              return [...newTrades, ...prevTrades].slice(0, 50);
             }
 
             // No new trades - keep existing list to prevent flicker
