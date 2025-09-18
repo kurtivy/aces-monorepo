@@ -86,7 +86,7 @@ export function ActiveSectionContent({
           </div>
         </div>
 
-        <div className="bg-[#231F20] border border-[#D0B284]/20 rounded-lg overflow-hidden">
+        <div className="bg-[#151c16] border border-[#D0B284]/20 rounded-lg overflow-hidden">
           <div className="flex items-center justify-between p-3">
             <span className="text-[#DCDDCC] text-xs font-medium">Total Comments:</span>
             <span className="text-white text-xs font-semibold">3,891</span>

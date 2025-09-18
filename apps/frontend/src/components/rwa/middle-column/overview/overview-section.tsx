@@ -20,11 +20,13 @@ export default function OverviewSection({
   return (
     <div className="h-full flex flex-col">
       {/* Image Carousel */}
-      <ImageCarousel
-        selectedImageIndex={selectedImageIndex}
-        setSelectedImageIndex={setSelectedImageIndex}
-        mockImages={mockImages}
-      />
+      <div className="flex-1">
+        <ImageCarousel
+          selectedImageIndex={selectedImageIndex}
+          setSelectedImageIndex={setSelectedImageIndex}
+          mockImages={mockImages}
+        />
+      </div>
 
       {/* Bottom Section */}
       <OverviewBottomSection launchDate={launchDate} />

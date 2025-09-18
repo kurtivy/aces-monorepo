@@ -24,7 +24,7 @@ export default function ProductHeroLocation({ listing }: ProductHeroLocationProp
     <div className="h-full flex flex-col">
       {/* Hero Image */}
       <div className="flex-shrink-0">
-        <div className="relative bg-black rounded-lg border border-[#D0B284]/20 overflow-hidden shadow-lg">
+        <div className="relative bg-[#151c16] rounded-lg border border-[#D0B284]/20 overflow-hidden shadow-lg">
           <Image
             src={heroImage}
             alt={imageAlt}

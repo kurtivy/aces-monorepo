@@ -1,7 +1,9 @@
 'use client';
 
-import CountdownTimer from './countdown-timer';
-import ProgressionBar from './progression-bar';
+// import CountdownTimer from './countdown-timer';
+// import ScoreboardCountdown from './scoreboard-countdown';
+import ScoreboardSplitFlap from './scorebaord-split-flap';
+// import ProgressionBar from './progression-bar';
 
 interface OverviewBottomSectionProps {
   launchDate?: string | null;
@@ -9,16 +11,18 @@ interface OverviewBottomSectionProps {
 
 export default function OverviewBottomSection({ launchDate }: OverviewBottomSectionProps) {
   return (
-    <div className="flex-shrink-0 mt-2 space-y-2">
+    <div className="flex-shrink-0 bg-transparent mt-2">
       {/* Countdown Timer */}
       <div className="h-32">
-        <CountdownTimer launchDate={launchDate} />
+        {/* <CountdownTimer launchDate={launchDate} /> */}
+        {/* <ScoreboardCountdown launchDate={launchDate} /> */}
+        <ScoreboardSplitFlap launchDate={launchDate} />
       </div>
 
       {/* Progress Bar */}
-      <div className="h-20">
+      {/* <div className="h-20">
         <ProgressionBar />
-      </div>
+      </div> */}
     </div>
   );
 }

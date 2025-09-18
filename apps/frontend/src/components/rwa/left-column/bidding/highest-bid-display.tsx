@@ -66,7 +66,7 @@ export function HighestBidDisplay({ listingId, className = '' }: HighestBidDispl
 
   return (
     <div
-      className={`bg-[#231F20] border border-[#D0B284]/20 rounded-lg overflow-hidden ${className}`}
+      className={`bg-[#151c16] border border-[#D0B284]/20 rounded-lg overflow-hidden ${className}`}
     >
       <div className="flex items-center justify-between p-3">
         <span className="text-[#DCDDCC] text-xs font-medium">Current High Bid:</span>
