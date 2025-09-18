@@ -1,5 +1,4 @@
 import Fastify, { FastifyInstance } from 'fastify';
-import './types/fastify.d.ts';
 import { randomUUID } from 'crypto';
 import helmet from '@fastify/helmet';
 import multipart from '@fastify/multipart';
