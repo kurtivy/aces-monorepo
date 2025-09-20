@@ -44,7 +44,7 @@ export default function ProductHeroLocation({ listing }: ProductHeroLocationProp
 
       {/* Location Sections */}
       <div className="flex-1 space-y-3">
-        <div className="bg-[#231F20] border border-[#D0B284]/20 rounded-lg overflow-hidden">
+        <div className="bg-[#151c16] border border-[#D0B284]/20 rounded-lg overflow-hidden">
           <div className="flex items-center justify-between p-4">
             <span className="text-[#DCDDCC] text-sm font-medium">Location:</span>
             <span className="text-white text-sm font-semibold">{location}</span>

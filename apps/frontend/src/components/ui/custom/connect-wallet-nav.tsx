@@ -14,7 +14,7 @@ type OpenDropdown = 'wallet' | 'nav' | null;
 
 export default function ConnectWalletNav({
   className = '',
-  onProfileClick,
+  // onProfileClick,
 }: ConnectWalletNavProps) {
   const [openDropdown, setOpenDropdown] = useState<OpenDropdown>(null);
 
@@ -30,7 +30,7 @@ export default function ConnectWalletNav({
     <div className={`flex items-center gap-2 relative ${className}`}>
       {/* Wallet Profile Component */}
       <ConnectWalletProfile
-        onProfileClick={onProfileClick}
+        // onProfileClick={onProfileClick}
         isDropdownOpen={openDropdown === 'wallet'}
         onDropdownChange={handleWalletDropdownChange}
       />

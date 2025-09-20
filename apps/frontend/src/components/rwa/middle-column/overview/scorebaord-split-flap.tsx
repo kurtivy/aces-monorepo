@@ -193,7 +193,7 @@ function SplitFlapDigit({
       aria-hidden
     >
       {/* base container */}
-      <div className="absolute inset-0 rounded-md bg-[#151c16] border border-[#D0B284] border-dashed shadow-[0_8px_20px_rgba(0,0,0,.45)]" />
+      <div className="absolute inset-0 rounded-md bg-[#151c16] border border-[#D0B284]/40 shadow-[0_8px_20px_rgba(0,0,0,.45)]" />
 
       {/* hinge line */}
       <div className="absolute left-0 right-0 top-1/2 h-px -translate-y-1/2 bg-black/60" />
@@ -334,9 +334,53 @@ export default function ScoreboardSplitFlap({
   }
 
   return (
-    <div
-      className={`w-full px-4 py-4 bg-[#151c16] border-t border-b border-t-[#D0B284] border-b-[#D0B284] border-dashed shadow-lg ${className}`}
-    >
+    <div className={`w-full px-4 py-4 bg-[#151c16] shadow-lg relative ${className}`}>
+      {/* SVG Dashed Border - Top */}
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="100%"
+        height="8"
+        viewBox="0 0 100 2"
+        preserveAspectRatio="none"
+        className="pointer-events-none absolute left-0 right-0 top-0"
+      >
+        <line
+          x1="0"
+          y1="1"
+          x2="100"
+          y2="1"
+          stroke="#D0B284"
+          strokeOpacity={0.5}
+          strokeWidth={1}
+          strokeDasharray="12 12"
+          vectorEffect="non-scaling-stroke"
+          shapeRendering="crispEdges"
+        />
+      </svg>
+
+      {/* SVG Dashed Border - Bottom */}
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="100%"
+        height="8"
+        viewBox="0 0 100 2"
+        preserveAspectRatio="none"
+        className="pointer-events-none absolute left-0 right-0 bottom-0"
+      >
+        <line
+          x1="0"
+          y1="1"
+          x2="100"
+          y2="1"
+          stroke="#D0B284"
+          strokeOpacity={0.5}
+          strokeWidth={1}
+          strokeDasharray="12 12"
+          vectorEffect="non-scaling-stroke"
+          shapeRendering="crispEdges"
+        />
+      </svg>
+
       <div className="grid grid-cols-4 gap-6 items-end">
         {nowPairs.map((unit, idx) => {
           const next = nextPairs[idx];
@@ -359,7 +403,7 @@ export default function ScoreboardSplitFlap({
                 />
               </div>
               {showLabels && (
-                <span className="mt-2 text-xs uppercase tracking-[0.12em] text-[#D0B284] font-spray-letters">
+                <span className="mt-2 text-base uppercase tracking-[0.12em] text-[#D0B284] font-spray-letters">
                   {unit.label}
                 </span>
               )}

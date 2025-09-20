@@ -63,7 +63,7 @@ export default function AcesHeader({ className = '', title, onProfileClick }: Ac
           )}
 
           {/* Right side - Connect Wallet and Nav Menu */}
-          <div className="flex items-center justify-end min-w-0 sm:min-w-[250px]">
+          <div className="flex items-center justify-end min-w-[120px] sm:min-w-[250px]">
             <ConnectWalletNav onProfileClick={onProfileClick} />
           </div>
         </div>

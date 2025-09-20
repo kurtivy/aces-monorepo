@@ -88,7 +88,7 @@ export default function TradeHistory({ tokenAddress, tokenSymbol = 'TOKEN' }: Tr
 
   if (isLoading) {
     return (
-      <div className="bg-black rounded-xl overflow-hidden">
+      <div className="bg-[#151c16] rounded-xl overflow-hidden">
         <div className="p-4">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-[#D0B284] text-lg font-bold">Recent Trades</h3>
@@ -101,7 +101,7 @@ export default function TradeHistory({ tokenAddress, tokenSymbol = 'TOKEN' }: Tr
             {[...Array(5)].map((_, i) => (
               <div
                 key={i}
-                className="flex items-center justify-between p-3 bg-[#231F20]/50 rounded-lg animate-pulse"
+                className="flex items-center justify-between p-3 bg-[#151c16]/50 rounded-lg animate-pulse"
               >
                 <div className="flex items-center gap-3">
                   <div className="w-6 h-6 bg-gray-600 rounded-full" />
@@ -121,7 +121,7 @@ export default function TradeHistory({ tokenAddress, tokenSymbol = 'TOKEN' }: Tr
 
   if (error) {
     return (
-      <div className="bg-black rounded-xl overflow-hidden">
+      <div className="bg-[#151c16] rounded-xl overflow-hidden">
         <div className="p-4">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-[#D0B284] text-lg font-bold">Recent Trades</h3>
@@ -150,7 +150,7 @@ export default function TradeHistory({ tokenAddress, tokenSymbol = 'TOKEN' }: Tr
 
   if (safeTrades.length === 0) {
     return (
-      <div className="bg-black rounded-xl overflow-hidden">
+      <div className="bg-[#151c16] rounded-xl overflow-hidden">
         <div className="p-4">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-[#D0B284] text-lg font-bold">Recent Trades</h3>
@@ -171,7 +171,7 @@ export default function TradeHistory({ tokenAddress, tokenSymbol = 'TOKEN' }: Tr
   }
 
   return (
-    <div className="bg-black rounded-xl overflow-hidden">
+    <div className="bg-[#151c16] rounded-xl overflow-hidden mt-0">
       <div className="p-4">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
@@ -278,7 +278,7 @@ export default function TradeHistory({ tokenAddress, tokenSymbol = 'TOKEN' }: Tr
           {safeTrades.map((trade, index) => (
             <div
               key={trade.id}
-              className={`bg-[#231F20]/50 rounded-lg p-3 border border-[#D0B284]/20 transition-all duration-300 ${
+              className={`bg-[#151c16]/50 rounded-lg p-3 border border-[#D0B284]/20 transition-all duration-300 ${
                 index < 3 ? 'animate-pulse bg-[#184D37]/5' : ''
               }`}
             >

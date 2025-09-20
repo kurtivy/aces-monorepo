@@ -35,7 +35,7 @@ export function ShareModal({ onClose }: ModalProps) {
       onClick={onClose}
     >
       <div
-        className="bg-[#231F20] border border-[#D0B284]/20 rounded-lg p-6 max-w-md w-full mx-4"
+        className="bg-[#151c16] border border-[#D0B284]/20 rounded-lg p-6 max-w-md w-full mx-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-6">
@@ -70,11 +70,11 @@ export function ShareModal({ onClose }: ModalProps) {
 export function DeliveryModal({ onClose }: ModalProps) {
   return (
     <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      className="fixed inset-0 bg-[#151c16]/50 flex items-center justify-center z-50"
       onClick={onClose}
     >
       <div
-        className="bg-[#231F20] border border-[#D0B284]/20 rounded-lg p-6 max-w-lg w-full mx-4 max-h-[80vh] overflow-y-auto"
+        className="bg-[#151c16] border border-[#D0B284]/20 rounded-lg p-6 max-w-lg w-full mx-4 max-h-[80vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-6">

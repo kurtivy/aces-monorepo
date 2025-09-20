@@ -58,7 +58,7 @@ export default function AssetAboutDetails({ description, assetDetails }: AssetAb
   return (
     <div className="min-h-screen w-full flex flex-col ">
       {/* Tab Navigation */}
-      <div className="flex bg-[#231F20] rounded-t-lg border border-[#D0B284]/20 border-b-0">
+      <div className="flex bg-[#151c16] rounded-t-lg">
         <button
           onClick={() => setActiveTab('about')}
           className={`flex-1 p-4 text-left transition-all duration-300 rounded-tl-lg ${
@@ -93,13 +93,13 @@ export default function AssetAboutDetails({ description, assetDetails }: AssetAb
       </div>
 
       {/* Content Area */}
-      <div className="flex-1 bg-[#231F20] rounded-b-lg border border-[#D0B284]/20 border-t-0 overflow-hidden">
+      <div className="flex-1 bg-[#151c16] rounded-b-lg overflow-hidden">
         <div className="p-4 h-full overflow-y-auto">
           {activeTab === 'about' ? (
             /* About This Asset Content */
             <div className="space-y-4">
               {hasDescription ? (
-                <div className="text-white leading-relaxed text-base whitespace-pre-wrap">
+                <div className="text-white leading-relaxed text-base whitespace-pre-wrap font-proxima-nova">
                   {description}
                 </div>
               ) : (

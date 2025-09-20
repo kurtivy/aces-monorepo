@@ -110,7 +110,7 @@ export default function DynamicImageGallery({
   }
 
   return (
-    <div className="flex-shrink-0 p-3">
+    <div className="flex-shrink-0 p-3 bg-transparent">
       <h4 className="text-[#D0B284] text-xs font-bold mb-2 tracking-wider">GALLERY</h4>
 
       {/* Scrollable container */}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Heart, MessageCircle, Share, MoreHorizontal, ArrowUp, ArrowDown } from 'lucide-react';
+import { Heart, MessageCircle, Share, MoreHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 // import Image from 'next/image';
@@ -19,9 +19,9 @@ interface RWAForumProps {
 export default function RWAForumReal({
   listingId,
   listingTitle = "King Solomon's Baby",
-  isLive = true,
+  // isLive = true,
 }: RWAForumProps) {
-  const { user, isAuthenticated, getAccessToken } = useAuth();
+  const { isAuthenticated, getAccessToken } = useAuth();
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
@@ -210,7 +210,7 @@ export default function RWAForumReal({
       key={comment.id}
       className={`${depth > 0 ? 'ml-8 border-l border-[#D0B284]/20 pl-4' : ''}`}
     >
-      <div className="bg-[#231F20]/60 border border-[#D0B284]/20 rounded-lg p-4 mb-4">
+      <div className="bg-[#231F20]/30 border border-[#D0B284]/20 rounded-lg p-4 mb-4">
         {/* Comment Header */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
@@ -305,7 +305,7 @@ export default function RWAForumReal({
       </div>
 
       {/* Render Replies */}
-      {comment.replies?.map((reply, index) =>
+      {comment.replies?.map((reply) =>
         renderComment(reply, depth + 1, [...path, comments.findIndex((c) => c.id === comment.id)]),
       )}
     </div>
@@ -314,7 +314,7 @@ export default function RWAForumReal({
   // Show loading state
   if (fetching && comments.length === 0) {
     return (
-      <div className="h-full bg-black relative flex flex-col">
+      <div className="h-full bg-[#151c16] relative flex flex-col">
         <div className="px-4 py-3 border-b border-[#D0B284]/20 flex-shrink-0">
           <h3 className="text-white text-lg font-semibold font-spray-letters">Discussion</h3>
         </div>
@@ -326,10 +326,10 @@ export default function RWAForumReal({
   }
 
   return (
-    <div className="h-full bg-black relative flex flex-col">
+    <div className="h-full bg-[#151c16] relative flex flex-col">
       {/* Header */}
       <div className="px-4 py-3 border-b border-[#D0B284]/20 flex-shrink-0">
-        <h3 className="text-white text-lg font-semibold font-spray-letters">
+        <h3 className="text-[#D0B284] text-lg font-semibold font-spray-letters">
           Discussion ({comments.length} comments)
         </h3>
       </div>
@@ -348,7 +348,7 @@ export default function RWAForumReal({
       )}
 
       {/* Comments Feed - Scrollable with bottom padding for comment input section */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#D0B284] scrollbar-track-[#231F20] pb-32">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#D0B284] scrollbar-track-[#151c16]/60 pb-32">
         <div className="px-4 py-4 space-y-4">
           {comments.length === 0 ? (
             <div className="text-center py-8 text-[#DCDDCC]">
@@ -362,14 +362,14 @@ export default function RWAForumReal({
 
       {/* New Comment Section - Positioned at bottom of this container */}
       {isAuthenticated && (
-        <div className="absolute bottom-0 left-0 right-0 border-t border-[#D0B284]/20 bg-[#231F20] z-10 p-4">
+        <div className="absolute bottom-0 left-0 right-0 border-t border-[#D0B284]/20 bg-[#151c16] z-10 p-4">
           <div className="flex gap-3 items-end w-full">
             <Textarea
               placeholder={`Share your thoughts about ${listingTitle}...`}
               value={newComment}
               onChange={(e) => setNewComment(e.target.value)}
               disabled={loading || !!rateLimitError}
-              className="flex-1 bg-black border-[#D0B284]/20 text-white placeholder:text-[#DCDDCC] resize-none min-h-[60px] max-h-[200px] overflow-y-auto"
+              className="flex-1 bg-[#151c16] border-[#D0B284]/20 text-white placeholder:text-[#DCDDCC] resize-none min-h-[60px] max-h-[200px] overflow-y-auto"
               style={{
                 height: 'auto',
                 minHeight: '60px',
@@ -394,7 +394,7 @@ export default function RWAForumReal({
 
       {/* Not authenticated message */}
       {!isAuthenticated && (
-        <div className="absolute bottom-0 left-0 right-0 border-t border-[#D0B284]/20 bg-[#231F20] z-10 p-4">
+        <div className="absolute bottom-0 left-0 right-0 border-t border-[#D0B284]/20 bg-[#151c16] z-10 p-4">
           <div className="text-center text-[#DCDDCC] text-sm">
             Please connect your wallet to join the discussion
           </div>

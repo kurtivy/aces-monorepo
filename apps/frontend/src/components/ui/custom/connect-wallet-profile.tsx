@@ -4,16 +4,7 @@ import type React from 'react';
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import {
-  Wallet,
-  User,
-  CreditCard,
-  AlertTriangle,
-  Eye,
-  ExternalLink,
-  Copy,
-  Check,
-} from 'lucide-react';
+import { Wallet, CreditCard, AlertTriangle, Eye, ExternalLink, Copy, Check } from 'lucide-react';
 import { useAuth } from '@/lib/auth/auth-context';
 import { useFundWallet } from '@privy-io/react-auth';
 import { useChainSwitching } from '@/hooks/contracts/use-chain-switching';
@@ -30,18 +21,17 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { CustomAvatar } from '@/components/ui/custom/custom-avatar';
 import Image from 'next/image';
-import Link from 'next/link';
 
 interface ConnectWalletProfileProps {
   className?: string;
-  onProfileClick?: () => void;
+  // onProfileClick?: () => void;
   isDropdownOpen?: boolean;
   onDropdownChange?: (isOpen: boolean) => void;
 }
 
 export default function ConnectWalletProfile({
   className = '',
-  onProfileClick,
+  // onProfileClick,
   isDropdownOpen,
   onDropdownChange,
 }: ConnectWalletProfileProps) {
@@ -153,11 +143,11 @@ export default function ConnectWalletProfile({
     }
   };
 
-  const handleProfileClick = () => {
-    if (onProfileClick) {
-      onProfileClick();
-    }
-  };
+  // const handleProfileClick = () => {
+  //   if (onProfileClick) {
+  //     onProfileClick();
+  //   }
+  // };
 
   // Handle copying wallet address to clipboard
   const handleCopyAddress = async () => {
@@ -191,12 +181,12 @@ export default function ConnectWalletProfile({
         <DropdownMenu open={isDropdownOpen} onOpenChange={onDropdownChange}>
           <DropdownMenuTrigger asChild>
             <Button
-              className="flex items-center gap-2 text-[#D0B264] bg-[#213F20]/50 hover:bg-[#213F20]/80 hover:border-[#D0B264] hover:text-[#D0B264] transition-colors duration-150 px-2 py-2 rounded-md group border-transparent"
+              className="flex items-center gap-2 text-[#D0B264] bg-black hover:bg-black/80 border border-dashed border-[#D0B264]/30 hover:border-[#D0B264]/60 hover:text-[#D0B264] transition-colors duration-150 px-2 py-2 rounded-md group"
               disabled={isLoading}
             >
               {/* Custom Avatar Component */}
               {user?.avatar ? (
-                <div className="relative w-10 h-10">
+                <div className="relative w-10 h-10 z-10">
                   <CustomAvatar
                     variant={getAvatarVariant()}
                     size="sm"
@@ -211,11 +201,13 @@ export default function ConnectWalletProfile({
                   />
                 </div>
               ) : (
-                <CustomAvatar
-                  variant={getAvatarVariant()}
-                  size="sm"
-                  className="cursor-pointer w-6 h-6"
-                />
+                <div className="z-10">
+                  <CustomAvatar
+                    variant={getAvatarVariant()}
+                    size="sm"
+                    className="cursor-pointer w-6 h-6"
+                  />
+                </div>
               )}
 
               <div className="flex flex-col items-start min-w-0 pl-2">
@@ -322,7 +314,7 @@ export default function ConnectWalletProfile({
   return (
     <div className={className}>
       <motion.button
-        className="flex items-center justify-center text-[#D0B264] hover:text-[#D0B264] transition-colors duration-150 px-4 py-2 rounded-md bg-black/80 hover:bg-black/70 border border-[#D0B264]/30 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed font-mono"
+        className="flex items-center justify-center text-[#D0B264] hover:text-[#D0B264] transition-colors duration-150 px-4 py-2 rounded-md bg-black/80 hover:bg-black/70 border border-[#D0B264]/30 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed font-mono whitespace-nowrap"
         disabled={isLoading}
         onClick={handleConnectWallet}
         whileHover={{ scale: 1.05 }}

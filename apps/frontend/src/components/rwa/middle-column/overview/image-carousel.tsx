@@ -8,12 +8,14 @@ interface ImageCarouselProps {
   selectedImageIndex: number;
   setSelectedImageIndex: (index: number) => void;
   mockImages: ImageData[];
+  onImageClick?: (image: ImageData) => void;
 }
 
 export default function ImageCarousel({
   selectedImageIndex,
   setSelectedImageIndex,
   mockImages,
+  onImageClick,
 }: ImageCarouselProps) {
   const handlePrevImage = () => {
     setSelectedImageIndex(
@@ -27,20 +29,26 @@ export default function ImageCarousel({
     );
   };
 
+  const handleImageClick = () => {
+    if (onImageClick) {
+      onImageClick(mockImages[selectedImageIndex]);
+    }
+  };
+
   return (
     <div className="relative w-full h-full bg-black/20 rounded-xl overflow-hidden">
-      <div className="relative h-full flex justify-center items-center px-2 py-2">
-        <div className="relative border-2 border-[#D0B284] rounded-xl p-2">
+      <div className="relative w-full h-full flex justify-center items-center">
+        <div className="relative w-full h-full cursor-pointer" onClick={handleImageClick}>
           <Image
             src={mockImages[selectedImageIndex].src || '/placeholder.svg'}
             alt={mockImages[selectedImageIndex].alt}
-            className="max-w-full max-h-[60vh] object-contain rounded-xl"
+            className="w-full h-full object-contain rounded-xl"
             onError={(e) => {
               console.log('Image failed to load:', mockImages[selectedImageIndex].src);
               e.currentTarget.src = '/placeholder.svg?height=400&width=600&text=Image Error';
             }}
-            width={800}
-            height={600}
+            fill
+            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
           />
         </div>
       </div>

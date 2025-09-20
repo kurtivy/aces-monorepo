@@ -7,82 +7,62 @@ interface ProgressionBarProps {
 }
 
 export default function ProgressionBar({ percentage = 26.9 }: ProgressionBarProps) {
+  const clampedPercentage = Math.min(Math.max(percentage, 0), 100);
+
   return (
-    <div className="w-full flex flex-col items-center justify-center rounded-xl px-6 py-2 flex-1 shadow-2xl relative overflow-hidden">
-      <div className="absolute inset-0 rounded-xl" />
-      <div className="absolute inset-0 rounded-xl" />
+    <div className="relative w-full overflow-hidden px-4 py-4">
+      <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-transparent via-[#D0B284]/10 to-transparent opacity-40" />
 
-      <div className="relative z-10 w-full flex flex-col items-center justify-center space-y-4">
-        <div className="flex items-center w-[510px] justify-center gap-4">
-          {/* Progress Bar */}
-          <div className="flex-1">
-            <div className="relative w-full h-6 group">
-              <div className="relative h-full bg-gradient-to-r from-[#231F20] to-[#1a1718] rounded-full border border-[#D0B284]/20 shadow-2xl overflow-hidden">
-                <div className="absolute inset-0.5 bg-gradient-to-r from-[#0f0d0e] to-[#231F20] rounded-full shadow-inner">
-                  <div className="absolute inset-0 flex items-center">
-                    {[25, 50, 75].map((milestone) => (
-                      <div
-                        key={milestone}
-                        className="absolute w-0.5 h-3 bg-[#D0B264]/30 rounded-full"
-                        style={{ left: `${milestone}%`, transform: 'translateX(-50%)' }}
-                      />
-                    ))}
-                  </div>
-
+      <div className="relative z-10 flex flex-col gap-3">
+        <div className="relative h-4 w-full group">
+          <div className="relative h-full w-full overflow-hidden rounded-full border border-[#D0B284]/20 bg-gradient-to-r from-[#231F20] to-[#1a1718] shadow-inner">
+            <div className="absolute inset-[3px] rounded-full bg-gradient-to-r from-[#0f0d0e] to-[#231F20]">
+              <div className="absolute inset-0 flex items-center">
+                {[25, 50, 75].map((milestone) => (
                   <div
-                    className="absolute left-0.5 top-0.5 bottom-0.5 rounded-full shadow-lg transition-all duration-1000 ease-out overflow-hidden"
-                    style={{
-                      width: `calc(${Math.min(percentage, 100)}% - 2px)`,
-                      background: `linear-gradient(90deg, 
-                        #184D37 0%, 
-                        #928357 25%, 
-                        #D0B284 50%, 
-                        #D7BF75 75%, 
-                        #D0B284 100%
-                      )`,
-                    }}
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/25 to-transparent animate-pulse opacity-60" />
-                    <div className="absolute right-0 top-0 w-4 h-full bg-gradient-to-l from-[#D7BF75]/80 to-transparent" />
-                    <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-white/20 to-white/10 rounded-full" />
-                  </div>
-
-                  <div
-                    className="absolute top-1/2 w-5 h-5 bg-gradient-to-br from-[#D7BF75] to-[#D0B284] rounded-full shadow-lg border-2 border-white/20 transition-all duration-1000 ease-out transform -translate-y-1/2"
-                    style={{ left: `calc(${Math.min(percentage, 100)}% - 6px)` }}
-                  >
-                    <div className="absolute inset-0.5 bg-gradient-to-br from-[#D7BF75] to-[#D0B284] rounded-full animate-pulse" />
-                  </div>
-                </div>
-
-                <div className="absolute inset-0 rounded-full shadow-[0_0_20px_rgba(208,178,132,0.3)] opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                    key={milestone}
+                    className="absolute h-2 w-0.5 rounded-full bg-[#D0B264]/30"
+                    style={{ left: `${milestone}%`, transform: 'translateX(-50%)' }}
+                  />
+                ))}
               </div>
 
               <div
-                className="absolute -bottom-6 w-full flex justify-between text-xs text-[#DCDDCC]/60"
-                style={{ fontFamily: 'JetBrains Mono, monospace' }}
+                className="absolute left-0.5 top-0.5 bottom-0.5 overflow-hidden rounded-full shadow-lg transition-all duration-1000 ease-out"
+                style={{
+                  width: `${clampedPercentage}%`,
+                  background: `linear-gradient(90deg,
+                    #184D37 0%,
+                    #928357 25%,
+                    #D0B284 50%,
+                    #D7BF75 75%,
+                    #D0B284 100%
+                  )`,
+                }}
               >
-                <span>0%</span>
-                <span>25%</span>
-                <span>50%</span>
-                <span>75%</span>
-                <span>100%</span>
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/25 to-transparent opacity-60" />
+                <div className="absolute right-0 top-0 h-full w-3 bg-gradient-to-l from-[#D7BF75]/80 to-transparent" />
+                <div className="absolute left-0 right-0 top-0 h-0.5 rounded-full bg-gradient-to-r from-white/20 to-transparent" />
+              </div>
+
+              <div
+                className="absolute top-1/2 h-4 w-4 -translate-y-1/2 -translate-x-1/2 rounded-full border-2 border-white/30 bg-gradient-to-br from-[#D7BF75] to-[#D0B284] shadow-lg transition-all duration-1000 ease-out"
+                style={{ left: `${clampedPercentage}%` }}
+              >
+                <div className="absolute inset-[2px] rounded-full bg-gradient-to-br from-[#D7BF75] to-[#D0B284]" />
               </div>
             </div>
           </div>
 
-          {/* Percentage Display - Now on the right */}
-          <div className="bg-gradient-to-br from-[#231F20] to-[#1a1718] border-2 border-[#D0B284]/40 rounded-xl px-4 py-2 shadow-xl backdrop-blur-sm relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-br from-[#D0B284]/10 to-transparent rounded-xl" />
-
-            <span
-              className="text-[#D7BF75] text-lg font-bold min-w-[52px] text-center block tabular-nums relative z-10 font-spray-letters"
-              style={{ fontFamily: "'Spray Letters', cursive" }}
-            >
-              {percentage.toFixed(1)}%
-            </span>
-
-            <div className="absolute top-1 right-1 w-1.5 h-1.5 bg-[#D0B284]/40 rounded-full" />
+          <div
+            className="absolute -bottom-5 flex w-full justify-between text-[10px] uppercase tracking-[0.3em] text-[#DCDDCC]/60"
+            style={{ fontFamily: 'JetBrains Mono, monospace' }}
+          >
+            <span>0%</span>
+            <span>25%</span>
+            <span>50%</span>
+            <span>75%</span>
+            <span>100%</span>
           </div>
         </div>
       </div>
