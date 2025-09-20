@@ -2,14 +2,14 @@
 'use client';
 
 import { useParams } from 'next/navigation';
-import TokenSwapInterface from '@/components/rwa/token-swap-interface';
+import TokenSwapWithProgression from '@/components/rwa/token-swap-with-progression';
 import { LeftColumnNavigation } from '../../../components/rwa/left-column/left-column-navigation';
 import { MiddleContentArea } from '../../../components/rwa/middle-column/middle-content-area';
 import { ShareModal, DeliveryModal } from '../../../components/rwa/modals';
 import { useSectionNavigation } from '@/hooks/rwa/use-section-navigation';
 import { useListingBySymbol } from '@/hooks/rwa/use-listing-by-symbol';
 import { sections } from '@/constants/rwa';
-import AcesHeader from '@/components/ui/custom/aces-header';
+import RWAHeader from '@/components/rwa/rwa-header';
 import DashedGridBackground from '@/components/ui/custom/dashed-grid-background';
 
 export default function RWAItemPage() {
@@ -21,10 +21,6 @@ export default function RWAItemPage() {
 
   // TEMPORARY: Force show token details for testing the new graph
   const forceShowTokenDetails = true;
-
-  // const handleMakeOffer = () => {
-  //   navigation.handleSectionChange(3);
-  // };
 
   // Error state
   if (error) {
@@ -64,14 +60,14 @@ export default function RWAItemPage() {
       <DashedGridBackground className="absolute inset-0 -z-10" bg="#151c16" opacity={0.8} />
 
       {/* Header */}
-      <div className="relative z-10">
-        <AcesHeader />
+      <div className="relative z-50">
+        <RWAHeader title={listing?.title} />
       </div>
 
       {/* Main 3-Column Layout */}
-      <div className="flex flex-1 overflow-hidden relative z-10">
+      <div className="flex flex-1 relative z-10 min-h-0">
         {/* Left Column - Navigation System */}
-        <div className="w-80 bg-[#151c16] border-r border-dashed border-[#D0B284]/30 relative overflow-hidden flex-shrink-0">
+        <div className="w-80 bg-[#151c16] overflow-hidden flex-shrink-0">
           <LeftColumnNavigation
             sections={sections}
             activeSection={navigation.activeSection}
@@ -85,33 +81,103 @@ export default function RWAItemPage() {
           />
         </div>
 
-        {/* Middle Column - Main Content */}
-        <div className="flex-1 relative overflow-hidden backdrop-blur-sm bg-[#151c16] ">
-          <MiddleContentArea
-            activeSection={navigation.activeSection}
-            selectedImageIndex={navigation.selectedImageIndex}
-            setSelectedImageIndex={navigation.setSelectedImageIndex}
-            navigationDirection={navigation.navigationDirection}
-            listing={listing}
-            isLive={forceShowTokenDetails ? true : isLive}
-            launchDate={launchDate}
-            isLaunched={forceShowTokenDetails ? true : isLaunched}
+        {/* SVG Dashed Border - Between Left and Middle columns */}
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="8"
+          height="100%"
+          viewBox="0 0 2 100"
+          preserveAspectRatio="none"
+          className="pointer-events-none flex-shrink-0 bg-[#151c16]"
+          style={{ height: 'calc(100vh - 120px)', minHeight: '750px' }}
+        >
+          <line
+            x1="1"
+            y1="0"
+            x2="1"
+            y2="100"
+            stroke="#D0B284"
+            strokeOpacity={0.5}
+            strokeWidth={1}
+            strokeDasharray="12 12"
+            vectorEffect="non-scaling-stroke"
+            shapeRendering="crispEdges"
           />
+        </svg>
+
+        {/* Middle Column - Main Content with Internal Scrolling */}
+        <div className="flex-1 relative backdrop-blur-sm bg-[#151c16]">
+          <div
+            className="h-full overflow-y-auto"
+            style={{
+              height: 'calc(100vh - 120px)',
+              minHeight: '750px',
+            }}
+          >
+            <MiddleContentArea
+              activeSection={navigation.activeSection}
+              selectedImageIndex={navigation.selectedImageIndex}
+              setSelectedImageIndex={navigation.setSelectedImageIndex}
+              navigationDirection={navigation.navigationDirection}
+              listing={listing}
+              isLive={forceShowTokenDetails ? true : isLive}
+              launchDate={launchDate}
+              isLaunched={forceShowTokenDetails ? true : isLaunched}
+            />
+          </div>
         </div>
 
-        {/* Right Column - Token Swap Interface */}
-        <div className="w-96 bg-[#151c16] border-l border-[#D0B284]/20 flex-shrink-0 overflow-y-auto backdrop-blur-sm">
-          <TokenSwapInterface
-            tokenSymbol={listing.token?.symbol || listing.symbol}
-            tokenPrice={
-              listing.token?.currentPriceACES
-                ? parseFloat(listing.token.currentPriceACES)
-                : 0.000268
-            }
-            userBalance={1.2547} // TODO: Make dynamic later - this would come from wallet connection
-            tokenAddress={listing.token?.contractAddress}
-            tokenName={listing.token?.name || listing.title}
+        {/* SVG Dashed Border - Between Middle and Right columns */}
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="8"
+          height="100%"
+          viewBox="0 0 2 100"
+          preserveAspectRatio="none"
+          className="pointer-events-none flex-shrink-0 bg-[#151c16]"
+          style={{ height: 'calc(100vh - 120px)', minHeight: '750px' }}
+        >
+          <line
+            x1="1"
+            y1="0"
+            x2="1"
+            y2="100"
+            stroke="#D0B284"
+            strokeOpacity={0.5}
+            strokeWidth={1}
+            strokeDasharray="12 12"
+            vectorEffect="non-scaling-stroke"
+            shapeRendering="crispEdges"
           />
+        </svg>
+
+        {/* Right Column - Token Swap Interface with Progression */}
+        <div className="w-96 bg-[#151c16] flex-shrink-0 overflow-hidden backdrop-blur-sm">
+          <div
+            style={{
+              height: 'calc(100vh - 120px)',
+              minHeight: '750px',
+            }}
+          >
+            <TokenSwapWithProgression
+              tokenSymbol={listing.token?.symbol || listing.symbol}
+              tokenPrice={
+                listing.token?.currentPriceACES
+                  ? parseFloat(listing.token.currentPriceACES)
+                  : 0.000268
+              }
+              userBalance={1.2547} // TODO: Make dynamic later - this would come from wallet connection
+              tokenAddress={listing.token?.contractAddress}
+              tokenName={listing.token?.name || listing.title}
+              // Image props - pass the first image from the gallery
+              primaryImage={listing.imageGallery?.[0]}
+              imageGallery={listing.imageGallery}
+              // Progression bar props - these would be connected to bonding curve data
+              currentAmount={0} // TODO: Connect to actual bonding curve data
+              targetAmount={1000000} // Example target - this would come from bonding curve config
+              percentage={26.9} // TODO: Calculate from actual bonding curve progress
+            />
+          </div>
         </div>
       </div>
 

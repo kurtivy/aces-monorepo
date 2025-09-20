@@ -36,10 +36,10 @@ export function ActiveSectionContent({
 
   const content = [
     // Overview
-    <div key="overview" className="h-full flex flex-col space-y-3 overflow-hidden">
+    <div key="overview" className="h-full flex flex-col space-y-2 overflow-hidden">
       {/* Bonding Curve Chart */}
-      <div className="flex-1 rounded-lg border-dashed p-3 min-h-0">
-        <BondingCurveChart />
+      <div className="flex-1 rounded-lg p-3 min-h-0 bg-transparent relative">
+        <BondingCurveChart tokenAddress={listing?.token?.contractAddress} />
       </div>
 
       {/* Dynamic Image Gallery */}
@@ -64,7 +64,10 @@ export function ActiveSectionContent({
     </div>,
 
     // Place Bids - Compact version
-    <div key="place-bids" className="h-full flex flex-col space-y-3 p-4 overflow-hidden bg-black">
+    <div
+      key="place-bids"
+      className="h-full flex flex-col space-y-3 p-4 overflow-hidden bg-[#151c16]"
+    >
       {/* Bidding Details */}
       <div className="flex-1 space-y-2 min-h-0 overflow-y-auto">
         <h4 className="text-[#D0B284] text-xs font-bold mb-2 tracking-wider">BIDDING</h4>
@@ -74,19 +77,19 @@ export function ActiveSectionContent({
     </div>,
 
     // Chats - Compact version
-    <div key="chats" className="h-full flex flex-col space-y-3 p-4 overflow-hidden bg-black">
+    <div key="chats" className="h-full flex flex-col space-y-3 p-4 overflow-hidden bg-[#151c16]">
       {/* Community Stats */}
       <div className="flex-1 space-y-2 min-h-0 overflow-y-auto">
         <h4 className="text-[#D0B284] text-xs font-bold mb-2 tracking-wider">COMMUNITY</h4>
 
-        <div className="bg-[#231F20] border border-[#D0B284]/20 rounded-lg overflow-hidden">
+        <div className="bg-[#151c16] border border-[#D0B284]/20 rounded-lg overflow-hidden">
           <div className="flex items-center justify-between p-3">
             <span className="text-[#DCDDCC] text-xs font-medium">Active Members:</span>
             <span className="text-white text-xs font-semibold">1,247</span>
           </div>
         </div>
 
-        <div className="bg-[#151c16] border border-[#D0B284]/20 rounded-lg overflow-hidden">
+        <div className="bg-[#231F20]/30 border border-[#D0B284]/20 rounded-lg overflow-hidden">
           <div className="flex items-center justify-between p-3">
             <span className="text-[#DCDDCC] text-xs font-medium">Total Comments:</span>
             <span className="text-white text-xs font-semibold">3,891</span>

@@ -60,14 +60,7 @@ export function LeftColumnNavigation({
   };
 
   return (
-    <div
-      className="relative flex h-full flex-col overflow-hidden bg-[#151c16]"
-      style={{
-        height: 'calc(100vh - 120px)', // Use available viewport height minus header
-        width: '320px',
-        minHeight: '750px', // Minimum height to fit all 7 headers + content
-      }}
-    >
+    <div className="relative flex h-full flex-col overflow-hidden bg-[#151c16] w-80">
       <div className="relative flex-1 overflow-hidden">
         {contentSections.map(({ section, originalIndex }, index) => {
           const isActive = originalIndex === activeSection;
@@ -93,8 +86,8 @@ export function LeftColumnNavigation({
               {/* Card Header */}
               <div
                 className={cn(
-                  'h-14 border-b border-[#D0B284]/30 border-dashed cursor-pointer', // h-14 = 56px
-                  'flex items-center justify-center relative overflow-hidden',
+                  'h-14 cursor-pointer relative', // h-14 = 56px
+                  'flex items-center justify-center overflow-hidden',
                   'bg-[#151c16] text-[#D0B284]',
                 )}
                 onClick={() => onSectionChange(originalIndex)}
@@ -104,13 +97,36 @@ export function LeftColumnNavigation({
                 </span>
 
                 {/* Active indicator */}
-                {isActive && <div className="absolute left-0 top-0 h-full w-1 bg-[#D0B284]" />}
+                {isActive && <div className="absolute left-0 top-0 h-12 w-1 bg-[#D0B284]" />}
+
+                {/* SVG Dashed Border */}
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="100%"
+                  height="8"
+                  viewBox="0 0 100 2"
+                  preserveAspectRatio="none"
+                  className="pointer-events-none absolute left-0 right-0 bottom-0"
+                >
+                  <line
+                    x1="0"
+                    y1="1"
+                    x2="100"
+                    y2="1"
+                    stroke="#D0B284"
+                    strokeOpacity={0.5}
+                    strokeWidth={1}
+                    strokeDasharray="12 12"
+                    vectorEffect="non-scaling-stroke"
+                    shapeRendering="crispEdges"
+                  />
+                </svg>
               </div>
 
               {/* Card Content - Show for active content sections OR animating out card */}
               {shouldShowContent && (
                 <motion.div
-                  className="border-b border-[#D0B284]/30 border-dashed bg-[#151c16] overflow-y-auto"
+                  className="bg-[#151c16] overflow-y-auto relative"
                   style={{
                     height: `${CONTENT_HEIGHT}px`, // Now 320px instead of 400px
                     width: '320px', // Fixed width to match container
@@ -126,6 +142,29 @@ export function LeftColumnNavigation({
                     listing={listing}
                     loading={loading}
                   />
+
+                  {/* SVG Dashed Border */}
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="100%"
+                    height="8"
+                    viewBox="0 0 100 2"
+                    preserveAspectRatio="none"
+                    className="pointer-events-none absolute left-0 right-0 bottom-0"
+                  >
+                    <line
+                      x1="0"
+                      y1="1"
+                      x2="100"
+                      y2="1"
+                      stroke="#D0B284"
+                      strokeOpacity={0.5}
+                      strokeWidth={1}
+                      strokeDasharray="12 12"
+                      vectorEffect="non-scaling-stroke"
+                      shapeRendering="crispEdges"
+                    />
+                  </svg>
                 </motion.div>
               )}
             </div>
@@ -143,13 +182,37 @@ export function LeftColumnNavigation({
         />
       </div>
 
+      {/* Modal sections - Fixed at bottom within container bounds */}
       {modalSections.length > 0 && (
-        <div className="mt-auto border-t border-[#D0B284]/30 border-dashed">
-          {modalSections.map(({ section, originalIndex }) => (
+        <div className="flex-shrink-0 relative">
+          {/* SVG Dashed Border for top of modal section */}
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="100%"
+            height="8"
+            viewBox="0 0 100 2"
+            preserveAspectRatio="none"
+            className="pointer-events-none absolute left-0 right-0 top-0"
+          >
+            <line
+              x1="0"
+              y1="1"
+              x2="100"
+              y2="1"
+              stroke="#D0B284"
+              strokeOpacity={0.3}
+              strokeWidth={1}
+              strokeDasharray="12 12"
+              vectorEffect="non-scaling-stroke"
+              shapeRendering="crispEdges"
+            />
+          </svg>
+
+          {modalSections.map(({ section, originalIndex }, index) => (
             <div
               key={section.id}
               className={cn(
-                'h-14 border-b border-[#D0B284]/30 border-dashed cursor-pointer',
+                'h-14 cursor-pointer relative',
                 'flex items-center justify-center overflow-hidden bg-[#151c16] text-[#D0B284]',
               )}
               onClick={() => onSectionChange(originalIndex)}
@@ -157,6 +220,54 @@ export function LeftColumnNavigation({
               <span className="font-bold text-base tracking-widest leading-none font-spray-letters">
                 {section.label}
               </span>
+
+              {/* SVG Dashed Border - Top (only for first modal button) */}
+              {index === 0 && (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="100%"
+                  height="8"
+                  viewBox="0 0 100 2"
+                  preserveAspectRatio="none"
+                  className="pointer-events-none absolute left-0 right-0 top-0"
+                >
+                  <line
+                    x1="0"
+                    y1="1"
+                    x2="100"
+                    y2="1"
+                    stroke="#D0B284"
+                    strokeOpacity={0.5}
+                    strokeWidth={1}
+                    strokeDasharray="12 12"
+                    vectorEffect="non-scaling-stroke"
+                    shapeRendering="crispEdges"
+                  />
+                </svg>
+              )}
+
+              {/* SVG Dashed Border - Bottom */}
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="100%"
+                height="8"
+                viewBox="0 0 100 2"
+                preserveAspectRatio="none"
+                className="pointer-events-none absolute left-0 right-0 bottom-0"
+              >
+                <line
+                  x1="0"
+                  y1="1"
+                  x2="100"
+                  y2="1"
+                  stroke="#D0B284"
+                  strokeOpacity={0.5}
+                  strokeWidth={1}
+                  strokeDasharray="12 12"
+                  vectorEffect="non-scaling-stroke"
+                  shapeRendering="crispEdges"
+                />
+              </svg>
             </div>
           ))}
         </div>
