@@ -270,15 +270,15 @@ export default function PlaceBidsInterface({
   };
 
   return (
-    <div className="bg-black border border-[#D0B284]/20 rounded-lg">
+    <div className="bg-[#151c16]  rounded-lg">
       <div className="p-6">
         <div className="flex flex-col gap-6">
           {/* Item Details Section */}
           <div className="space-y-4">
-            <h2 className="text-lg font-semibold text-white">Item Details</h2>
+            <h2 className="text-lg font-semibold font-neue-world text-white">ITEM DETAILS</h2>
 
             {/* Item Details with Price on Same Line */}
-            <div className="flex items-center justify-between p-3 rounded-lg border border-[#D0B284]/20 bg-[#231F20]/60">
+            <div className="flex items-center justify-between p-3 rounded-lg border border-[#D0B284]/20 bg-[#151c16]/60">
               <div className="flex items-center gap-3">
                 <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg border border-[#D0B284]/20">
                   <Image
@@ -290,9 +290,11 @@ export default function PlaceBidsInterface({
                   />
                 </div>
                 <div>
-                  <h3 className="text-sm font-medium text-white">{itemTitle}</h3>
+                  <h3 className="text-sm font-medium text-white font-proxima-nova">{itemTitle}</h3>
                   <div className="flex items-center gap-2 mt-1">
-                    <span className="text-xs text-[#DCDDCC]">{tokenAddress}</span>
+                    <span className="text-xs text-[#DCDDCC] font-jetbrains-mono">
+                      {tokenAddress}
+                    </span>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -305,7 +307,7 @@ export default function PlaceBidsInterface({
                 </div>
               </div>
               <div className="text-right">
-                <div className="text-sm font-medium text-white">
+                <div className="text-sm font-medium text-white font-proxima-nova">
                   ${retailPrice.toLocaleString()}
                 </div>
                 <div className="text-xs text-[#DCDDCC]">Retail Price</div>
@@ -314,26 +316,28 @@ export default function PlaceBidsInterface({
 
             {/* Price Details */}
             <div className="space-y-3">
-              <div className="flex justify-between items-center p-3 rounded-lg border border-[#D0B284]/20 bg-[#231F20]/60">
-                <span className="text-sm text-[#DCDDCC]">Current Highest Bid</span>
+              <div className="flex justify-between items-center p-3 rounded-lg border border-[#D0B284]/20 bg-[#151c16]/60">
+                <span className="text-sm text-[#DCDDCC] font-proxima-nova">
+                  Current Highest Bid
+                </span>
                 <div className="text-right">
                   <div className="text-sm font-medium text-white">
                     {highestBid ? `$${highestBid.toLocaleString()}` : 'No bids have been made yet'}
                   </div>
-                  <div className="text-xs text-[#DCDDCC]">
+                  <div className="text-xs text-[#DCDDCC] font-proxima-nova">
                     {highestBid ? 'Current Best' : 'Be the first to bid'}
                   </div>
                 </div>
               </div>
 
               {startingBidPrice && (
-                <div className="flex justify-between items-center p-3 rounded-lg border border-[#D0B284]/20 bg-[#231F20]/60">
-                  <span className="text-sm text-[#DCDDCC]">Starting Bid</span>
+                <div className="flex justify-between items-center p-3 rounded-lg border border-[#D0B284]/20 bg-[#151c16]/60">
+                  <span className="text-sm text-[#DCDDCC] font-proxima-nova">Starting Bid</span>
                   <div className="text-right">
                     <div className="text-sm font-medium text-white">
                       ${startingBidPrice.toLocaleString()}
                     </div>
-                    <div className="text-xs text-[#DCDDCC]">Minimum Required</div>
+                    <div className="text-xs text-[#DCDDCC] font-proxima-nova">Minimum Required</div>
                   </div>
                 </div>
               )}
@@ -387,25 +391,24 @@ export default function PlaceBidsInterface({
 
           {/* Make Offer Section */}
           <div className="space-y-4">
-            <h2
-              className="text-lg font-semibold text-white font-spray-letters"
-              style={{ fontFamily: "'Spray Letters', cursive" }}
-            >
-              MAKE OFFER
-            </h2>
+            <h2 className="text-lg font-semibold text-white font-neue-world">MAKE OFFER</h2>
 
             {/* Offer Amount Input - Single Row */}
-            <div className="p-4 rounded-lg border border-[#D0B284]/20 bg-[#231F20]/60">
+            <div className="p-4 rounded-lg border border-[#D0B284]/20 bg-[#151c16]/60">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-sm text-[#DCDDCC] whitespace-nowrap">Your Offer</span>
+                <span className="text-sm text-[#DCDDCC] whitespace-nowrap font-proxima-nova">
+                  Your Offer
+                </span>
                 <Input
                   type="number"
                   placeholder="0.00"
                   value={offerAmount}
                   onChange={(e) => setOfferAmount(e.target.value)}
-                  className="flex-1 h-10 text-sm bg-[#231F20] border-[#D0B284]/20 text-white placeholder:text-[#DCDDCC]"
+                  className="flex-1 h-10 text-sm bg-[#151c16] border-[#D0B284]/20 text-white placeholder:text-[#DCDDCC]"
                 />
-                <span className="text-sm text-[#DCDDCC] whitespace-nowrap">USD</span>
+                <span className="text-sm text-[#DCDDCC] whitespace-nowrap font-proxima-nova">
+                  USD
+                </span>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -419,7 +422,7 @@ export default function PlaceBidsInterface({
             </div>
 
             {/* Message Input */}
-            <div className="p-4 rounded-lg border border-[#D0B284]/20 bg-[#231F20]/60">
+            <div className="p-4 rounded-lg border border-[#D0B284]/20 bg-[#151c16]/60">
               <div className="space-y-2">
                 <span className="text-sm text-[#DCDDCC]">Message (Optional)</span>
                 <Input
@@ -427,7 +430,7 @@ export default function PlaceBidsInterface({
                   placeholder="Add a message with your bid..."
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
-                  className="h-10 text-sm bg-[#231F20] border-[#D0B284]/20 text-white placeholder:text-[#DCDDCC]"
+                  className="h-10 text-sm bg-[#151c16] border-[#D0B284]/20 text-white placeholder:text-[#DCDDCC]"
                 />
               </div>
             </div>
@@ -435,21 +438,21 @@ export default function PlaceBidsInterface({
             {/* Summary Section */}
             <div className="space-y-3 border-t border-[#D0B284]/20 pt-4">
               <div className="flex justify-between text-sm">
-                <span className="text-[#DCDDCC]">Total offer value:</span>
+                <span className="text-[#DCDDCC] font-proxima-nova">Total offer value:</span>
                 <span className="text-white">
                   ${offerAmount ? Number.parseFloat(offerAmount).toLocaleString() : '0.00'}
                 </span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-[#DCDDCC]">Bid difference:</span>
+                <span className="text-[#DCDDCC] font-proxima-nova">Bid difference:</span>
                 <span className="text-white">{offerAmount ? calculateFloorDifference() : '-'}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-[#DCDDCC]">Platform fees:</span>
+                <span className="text-[#DCDDCC] font-proxima-nova">Platform fees:</span>
                 <span className="text-white">$0.00</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-[#DCDDCC]">Total est. proceeds:</span>
+                <span className="text-[#DCDDCC] font-proxima-nova">Total est. proceeds:</span>
                 <span className="text-white">
                   ${offerAmount ? Number.parseFloat(offerAmount).toLocaleString() : '0.00'}
                 </span>
@@ -459,7 +462,7 @@ export default function PlaceBidsInterface({
             {/* Submit Section */}
             <div className="space-y-3 pt-4">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-[#DCDDCC]">Bid expires in:</span>
+                <span className="text-sm text-[#DCDDCC] font-proxima-nova">Bid expires in:</span>
                 <span className="text-sm text-white">30 days</span>
               </div>
               <div className="flex justify-end py-6">
@@ -473,7 +476,7 @@ export default function PlaceBidsInterface({
                     !isLive ||
                     loading
                   }
-                  className="w-32 bg-[#D0B284] hover:bg-[#D0B284]/90 text-[#231F20] font-bold disabled:opacity-50"
+                  className="w-32 bg-[#D0B284] hover:bg-[#D0B284]/90 text-[#151c16] font-bold disabled:opacity-50"
                 >
                   {loading ? 'Placing...' : 'Place Bid'}
                 </Button>
@@ -484,7 +487,7 @@ export default function PlaceBidsInterface({
           {/* View All Bids Section */}
           <div className="space-y-4 pt-6 border-t border-[#D0B284]/20">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-white">All Bids</h3>
+              <h3 className="text-lg font-semibold text-white font-neue-world">All Bids</h3>
               <Button
                 variant="outline"
                 size="sm"
@@ -514,14 +517,16 @@ export default function PlaceBidsInterface({
                 {bidsLoading ? (
                   <div className="flex items-center justify-center p-4">
                     <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#D0B284]"></div>
-                    <span className="ml-2 text-sm text-[#DCDDCC]">Loading bids...</span>
+                    <span className="ml-2 text-sm text-[#DCDDCC] font-proxima-nova">
+                      Loading bids...
+                    </span>
                   </div>
                 ) : allBids && Array.isArray(allBids) && allBids.length > 0 ? (
                   <div className="space-y-2">
                     {allBids.map((bid) => (
                       <div
                         key={bid.id}
-                        className="flex items-center justify-between p-3 rounded-lg border border-[#D0B284]/20 bg-[#231F20]/60"
+                        className="flex items-center justify-between p-3 rounded-lg border border-[#D0B284]/20 bg-[#151c16]/60"
                       >
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 rounded-full bg-[#D0B284]/20 flex items-center justify-center">

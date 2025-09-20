@@ -1,11 +1,14 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { ethers } from 'ethers';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/lib/auth/auth-context';
-import { ACES_FACTORY_ABI } from '@aces/utils';
+import { Copy, Check } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import Image from 'next/image';
+import ProgressionBar from './middle-column/overview/progression-bar';
 
 // Contract addresses
 const CONTRACTS = {
@@ -26,6 +29,14 @@ const LAUNCHPAD_TOKEN_ABI = [
   'function totalSupply() view returns (uint256)',
 ];
 
+const ACES_FACTORY_ABI = [
+  'function acesTokenAddress() view returns (address)',
+  'function getBuyPriceAfterFee(address token, uint256 amount) view returns (uint256)',
+  'function getSellPriceAfterFee(address token, uint256 amount) view returns (uint256)',
+  'function buyTokens(address token, uint256 amount, uint256 maxPrice) payable',
+  'function sellTokens(address token, uint256 amount) returns (uint256)',
+];
+
 interface TokenSwapInterfaceProps {
   tokenSymbol?: string;
   tokenPrice?: number;
@@ -33,14 +44,26 @@ interface TokenSwapInterfaceProps {
   // Additional dynamic props for better integration
   tokenAddress?: string;
   tokenName?: string;
+  tokenOwner?: string;
+  showFrame?: boolean;
+  imageGallery?: string[];
+  // Primary image for the token (from listing.imageGallery[0])
+  primaryImage?: string;
+  // Progression bar props
+  currentAmount?: number;
+  targetAmount?: number;
+  percentage?: number;
 }
 
 export default function TokenSwapInterface({
   tokenSymbol = 'RWA',
-  tokenPrice = 0.000268,
-  userBalance = 0.5,
   tokenAddress,
-  tokenName,
+  showFrame = true,
+  imageGallery,
+  primaryImage,
+  currentAmount,
+  targetAmount,
+  percentage = 26.9,
 }: TokenSwapInterfaceProps) {
   // Wallet state from global auth
   const { walletAddress, isAuthenticated } = useAuth();
@@ -63,11 +86,111 @@ export default function TokenSwapInterface({
   // UI state
   const [activeTab, setActiveTab] = useState<'buy' | 'sell'>('buy');
   const [amount, setAmount] = useState('');
-  const [slippage] = useState('0.5');
+  const [slippage, setSlippage] = useState('0.5');
+  const [showSlippageDropdown, setShowSlippageDropdown] = useState(false);
   const [loading, setLoading] = useState<string>('');
+
+  const [copied, setCopied] = useState(false);
+
+  // Slippage options
+  const slippageOptions = ['0.5', '1.0', '2.0'];
 
   // Debounce ref for price calculation
   const priceCalculationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
+    }
+  };
+
+  // Refresh balances - memoized to prevent unnecessary re-renders
+  const refreshBalances = useCallback(async () => {
+    if (!acesContract || !tokenAddress || !signer) {
+      console.log('Refresh balances skipped - missing requirements:', {
+        acesContract: !!acesContract,
+        tokenAddress,
+        signer: !!signer,
+      });
+      return;
+    }
+
+    try {
+      const address = await signer.getAddress();
+      console.log('Refreshing balances for address:', address);
+      console.log('Token address:', tokenAddress);
+
+      // Refresh ACES balance
+      const acesBalance = await acesContract.balanceOf(address);
+      const formattedAcesBalance = ethers.utils.formatEther(acesBalance);
+      setAcesBalance(formattedAcesBalance);
+      console.log('ACES balance:', formattedAcesBalance);
+
+      // Refresh token balance
+      const tokenContract = new ethers.Contract(tokenAddress, LAUNCHPAD_TOKEN_ABI, signer);
+      const tokenBalance = await tokenContract.balanceOf(address);
+      const formattedTokenBalance = ethers.utils.formatEther(tokenBalance);
+      setTokenBalance(formattedTokenBalance);
+      console.log('Token balance:', formattedTokenBalance);
+    } catch (error) {
+      console.error('Failed to refresh balances:', error);
+    }
+  }, [acesContract, tokenAddress, signer]);
+
+  // Get buy price quote - memoized
+  const getBuyPriceQuote = useCallback(async () => {
+    if (!factoryContract || !tokenAddress || !amount) {
+      setPriceQuote('0');
+      return;
+    }
+
+    try {
+      const amountWei = ethers.utils.parseEther(amount);
+      const buyPrice = await factoryContract.getBuyPriceAfterFee(tokenAddress, amountWei);
+      setPriceQuote(ethers.utils.formatEther(buyPrice));
+    } catch (error) {
+      console.error('Failed to get buy price quote:', error);
+      setPriceQuote('0');
+    }
+  }, [factoryContract, tokenAddress, amount]);
+
+  // Get sell price quote - memoized
+  const getSellPriceQuote = useCallback(async () => {
+    if (!factoryContract || !tokenAddress || !amount) {
+      setSellPriceQuote('0');
+      return;
+    }
+
+    try {
+      const amountWei = ethers.utils.parseEther(amount);
+      const sellPrice = await factoryContract.getSellPriceAfterFee(tokenAddress, amountWei);
+      setSellPriceQuote(ethers.utils.formatEther(sellPrice));
+    } catch (error) {
+      console.error('Failed to get sell price quote:', error);
+      setSellPriceQuote('0');
+    }
+  }, [factoryContract, tokenAddress, amount]);
+
+  // Debounced price calculation - memoized
+  const calculatePriceQuote = useCallback(() => {
+    // Clear existing timeout
+    if (priceCalculationTimeoutRef.current) {
+      clearTimeout(priceCalculationTimeoutRef.current);
+    }
+
+    // Set new timeout for 1 second
+    priceCalculationTimeoutRef.current = setTimeout(() => {
+      if (activeTab === 'buy') {
+        getBuyPriceQuote();
+      } else {
+        getSellPriceQuote();
+      }
+    }, 1000);
+  }, [activeTab, getBuyPriceQuote, getSellPriceQuote]);
 
   // Auto-initialize provider when user is already authenticated through Privy
   useEffect(() => {
@@ -106,8 +229,6 @@ export default function TokenSwapInterface({
           const aces = new ethers.Contract(acesAddress, ACES_TOKEN_ABI, signer);
           setAcesContract(aces);
 
-          // Get balances
-          await refreshBalances();
           console.log('Auto-initialization complete');
         } catch (error) {
           console.error('Failed to initialize from auth:', error);
@@ -118,6 +239,18 @@ export default function TokenSwapInterface({
     initializeFromAuth();
   }, [isAuthenticated, walletAddress, provider]);
 
+  // Refresh balances when dependencies change
+  useEffect(() => {
+    if (acesContract && tokenAddress && signer) {
+      refreshBalances();
+    }
+  }, [acesContract, refreshBalances, signer, tokenAddress]);
+
+  // Update price quotes when amount or active tab changes
+  useEffect(() => {
+    calculatePriceQuote();
+  }, [calculatePriceQuote]);
+
   // Connect wallet using direct MetaMask interaction (like testing page)
   const connectWallet = async () => {
     if (typeof window !== 'undefined' && (window as any).ethereum) {
@@ -126,7 +259,6 @@ export default function TokenSwapInterface({
         const provider = new ethers.providers.Web3Provider((window as any).ethereum);
         await provider.send('eth_requestAccounts', []);
         const signer = provider.getSigner();
-        const address = await signer.getAddress();
 
         setProvider(provider);
         setSigner(signer);
@@ -142,9 +274,6 @@ export default function TokenSwapInterface({
         const aces = new ethers.Contract(acesAddress, ACES_TOKEN_ABI, signer);
         setAcesContract(aces);
 
-        // Get balances
-        await refreshBalances();
-
         setLoading('');
       } catch (error) {
         console.error('Failed to connect wallet:', error);
@@ -153,107 +282,6 @@ export default function TokenSwapInterface({
     } else {
       alert('Please install MetaMask!');
     }
-  };
-
-  // Refresh balances
-  const refreshBalances = async () => {
-    if (!acesContract || !tokenAddress || !signer) {
-      console.log('Refresh balances skipped - missing requirements:', {
-        acesContract: !!acesContract,
-        tokenAddress,
-        signer: !!signer,
-      });
-      return;
-    }
-
-    try {
-      const address = await signer.getAddress();
-      console.log('Refreshing balances for address:', address);
-      console.log('Token address:', tokenAddress);
-
-      // Refresh ACES balance
-      const acesBalance = await acesContract.balanceOf(address);
-      const formattedAcesBalance = ethers.utils.formatEther(acesBalance);
-      setAcesBalance(formattedAcesBalance);
-      console.log('ACES balance:', formattedAcesBalance);
-
-      // Refresh token balance
-      const tokenContract = new ethers.Contract(tokenAddress, LAUNCHPAD_TOKEN_ABI, signer);
-      const tokenBalance = await tokenContract.balanceOf(address);
-      const formattedTokenBalance = ethers.utils.formatEther(tokenBalance);
-      setTokenBalance(formattedTokenBalance);
-      console.log('Token balance:', formattedTokenBalance);
-    } catch (error) {
-      console.error('Failed to refresh balances:', error);
-    }
-  };
-
-  // Get buy price quote
-  const getBuyPriceQuote = async () => {
-    if (!factoryContract || !tokenAddress || !amount) {
-      setPriceQuote('0');
-      return;
-    }
-
-    try {
-      const amountWei = ethers.utils.parseEther(amount);
-      const buyPrice = await factoryContract.getBuyPriceAfterFee(tokenAddress, amountWei);
-      setPriceQuote(ethers.utils.formatEther(buyPrice));
-    } catch (error) {
-      console.error('Failed to get buy price quote:', error);
-      setPriceQuote('0');
-    }
-  };
-
-  // Get sell price quote
-  const getSellPriceQuote = async () => {
-    if (!factoryContract || !tokenAddress || !amount) {
-      setSellPriceQuote('0');
-      return;
-    }
-
-    try {
-      const amountWei = ethers.utils.parseEther(amount);
-      const sellPrice = await factoryContract.getSellPriceAfterFee(tokenAddress, amountWei);
-      setSellPriceQuote(ethers.utils.formatEther(sellPrice));
-    } catch (error) {
-      console.error('Failed to get sell price quote:', error);
-      setSellPriceQuote('0');
-    }
-  };
-
-  // Debounced price calculation
-  const calculatePriceQuote = () => {
-    // Clear existing timeout
-    if (priceCalculationTimeoutRef.current) {
-      clearTimeout(priceCalculationTimeoutRef.current);
-    }
-
-    // Set new timeout for 1 second
-    priceCalculationTimeoutRef.current = setTimeout(() => {
-      if (activeTab === 'buy') {
-        getBuyPriceQuote();
-      } else {
-        getSellPriceQuote();
-      }
-    }, 1000);
-  };
-
-  // Update price quotes when amount or active tab changes
-  useEffect(() => {
-    calculatePriceQuote();
-  }, [amount, activeTab, tokenAddress]);
-
-  const quickAmounts = [
-    { label: 'Reset', value: '' },
-    { label: `0.01 ${tokenSymbol}`, value: '0.01' },
-    { label: `0.1 ${tokenSymbol}`, value: '0.1' },
-    { label: `0.5 ${tokenSymbol}`, value: '0.5' },
-    { label: 'Max', value: tokenBalance },
-  ];
-
-  const handleQuickAmount = (value: string) => {
-    setAmount(value);
   };
 
   // Buy tokens
@@ -364,28 +392,153 @@ export default function TokenSwapInterface({
 
   return (
     <div className="h-full">
-      <div className="bg-black rounded-lg border border-[#D0B284]/20 p-6 h-full flex flex-col">
-        <h3 className="text-[#D0B284] text-xl font-bold mb-6 text-center">
-          Trade {tokenName || tokenSymbol}
-        </h3>
+      <div
+        className={cn(
+          'bg-[#151c16] h-full flex flex-col relative',
+          showFrame ? 'rounded-lg border border-[#D0B284]/20 p-6' : 'px-6 pt-6 pb-6',
+        )}
+      >
+        {/* Header Section */}
+        <div className="mb-6">
+          {/* Two-column layout */}
+          <div className="flex items-start gap-4 mb-4">
+            {/* Left Column - Token Info Stack */}
+            <div className="flex-1">
+              {/* Token symbol with image */}
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-8 h-8 rounded-xl overflow-hidden border border-[#D0B284]/30">
+                  <Image
+                    src={
+                      primaryImage ||
+                      imageGallery?.[0] ||
+                      '/placeholder.svg?height=64&width=64&query=token logo'
+                    }
+                    alt={`${tokenSymbol} logo`}
+                    width={24}
+                    height={24}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      console.log('Token image failed to load:', primaryImage || imageGallery?.[0]);
+                      e.currentTarget.src = '/placeholder.svg?height=64&width=64&text=Error';
+                    }}
+                  />
+                </div>
+                <h2 className="text-[#D0B284] text-2xl font-mono font-bold leading-none">
+                  ${tokenSymbol}
+                </h2>
+              </div>
 
-        {/* Token Address Display (for debugging/verification) */}
-        {tokenAddress && (
-          <div className="mb-4 p-2 bg-[#231F20]/50 rounded border border-[#D0B284]/20">
-            <div className="text-xs text-[#DCDDCC] text-center">
-              Contract: {tokenAddress.slice(0, 6)}...{tokenAddress.slice(-4)}
+              {/* Contract address */}
+              {tokenAddress && (
+                <div className="flex items-center gap-2 rounded-md bg-black/20 px-3 py-1.5 border border-[#D0B284]/20 w-fit">
+                  <span className="text-xs text-[#D0B284] font-mono">
+                    {tokenAddress.slice(0, 6)}...{tokenAddress.slice(-4)}
+                  </span>
+                  <button
+                    onClick={() => copyToClipboard(tokenAddress)}
+                    className="flex h-4 w-4 items-center justify-center rounded bg-[#D0B284]/10 hover:bg-[#D0B284]/20 transition-colors border border-[#D0B284]/20"
+                  >
+                    {copied ? (
+                      <Check className="h-2.5 w-2.5 text-[#D0B284]" />
+                    ) : (
+                      <Copy className="h-2.5 w-2.5 text-[#D0B284]" />
+                    )}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Right Column - Balances section */}
+            <div className="flex flex-col items-end gap-1 px-3 py-2 backdrop-blur-sm rounded-lg">
+              <div className="flex items-start gap-2">
+                <span className="text-[#D0B284]/60 text-xs leading-none">Balance</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[#D0B284]/60 text-xs">ACES:</span>
+                <span className="text-[#D0B284] font-mono text-xs">
+                  {Number.parseFloat(acesBalance).toFixed(4)}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[#D0B284]/60 text-xs">{tokenSymbol}:</span>
+                <span className="text-[#D0B284] font-mono text-xs">
+                  {Number.parseFloat(tokenBalance).toFixed(4)}
+                </span>
+              </div>
             </div>
           </div>
-        )}
+        </div>
 
-        {/* Buy/Sell Toggle */}
-        <div className="flex mb-6 bg-[#231F20] rounded-lg p-1 border border-[#D0B284]/20">
+        {/* Dashed Border after Header - Full width */}
+        <div className="relative -mx-6 mb-6">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="100%"
+            height="8"
+            viewBox="0 0 100 2"
+            preserveAspectRatio="none"
+            className="pointer-events-none"
+          >
+            <line
+              x1="0"
+              y1="1"
+              x2="100"
+              y2="1"
+              stroke="#D0B284"
+              strokeOpacity={0.5}
+              strokeWidth={1}
+              strokeDasharray="12 12"
+              vectorEffect="non-scaling-stroke"
+              shapeRendering="crispEdges"
+            />
+          </svg>
+        </div>
+
+        {/* Progression Bar Section */}
+        <div className="mb-6">
+          <ProgressionBar
+            currentAmount={currentAmount}
+            targetAmount={targetAmount}
+            percentage={percentage}
+          />
+          <div className="mt-2 text-xs font-semibold uppercase tracking-[0.3em] text-center text-[#D7BF75]/80">
+            Bonded {Math.min(percentage, 100).toFixed(1)}% / 100%
+          </div>
+        </div>
+
+        {/* Dashed Border after Progression Bar - Full width */}
+        <div className="relative -mx-6 mb-6">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="100%"
+            height="8"
+            viewBox="0 0 100 2"
+            preserveAspectRatio="none"
+            className="pointer-events-none"
+          >
+            <line
+              x1="0"
+              y1="1"
+              x2="100"
+              y2="1"
+              stroke="#D0B284"
+              strokeOpacity={0.5}
+              strokeWidth={1}
+              strokeDasharray="12 12"
+              vectorEffect="non-scaling-stroke"
+              shapeRendering="crispEdges"
+            />
+          </svg>
+        </div>
+
+        {/* Buy/Sell Tabs */}
+        <div className="flex mb-6 bg-[#1a2318] rounded-lg p-1 border border-[#D0B284]/20">
           <button
             onClick={() => setActiveTab('buy')}
             className={`flex-1 py-3 px-4 rounded-md font-semibold transition-all duration-200 ${
               activeTab === 'buy'
                 ? 'bg-[#184D37] text-white shadow-lg'
-                : 'text-[#DCDDCC] hover:text-white hover:bg-[#D0B284]/10'
+                : 'text-[#D0B284] hover:text-white hover:bg-[#D0B284]/10'
             }`}
           >
             Buy
@@ -395,120 +548,76 @@ export default function TokenSwapInterface({
             className={`flex-1 py-3 px-4 rounded-md font-semibold transition-all duration-200 ${
               activeTab === 'sell'
                 ? 'bg-[#8B4513] text-white shadow-lg'
-                : 'text-[#DCDDCC] hover:text-white hover:bg-[#D0B284]/10'
+                : 'text-[#D0B284] hover:text-white hover:bg-[#D0B284]/10'
             }`}
           >
             Sell
           </button>
         </div>
 
-        {/* Settings Row */}
-        <div className="flex justify-between mb-4">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-[#DCDDCC] hover:text-[#D0B284] border border-[#D0B284]/20 hover:border-[#D0B284]/40"
-          >
-            Switch to Base
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-[#DCDDCC] hover:text-[#D0B284] border border-[#D0B284]/20 hover:border-[#D0B284]/40"
-          >
-            Slippage: {slippage}%
-          </Button>
+        {/* Slippage Dropdown */}
+        <div className="flex justify-end mb-4">
+          <div className="relative">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowSlippageDropdown(!showSlippageDropdown)}
+              className="text-[#D0B284] hover:text-white border border-[#D0B284]/20 hover:border-[#D0B284]/40"
+            >
+              Slippage: {slippage}%
+            </Button>
+
+            {showSlippageDropdown && (
+              <div className="absolute top-full right-0 mt-1 bg-[#151c16] border border-[#D0B284]/30 rounded-lg shadow-lg z-50 min-w-[80px]">
+                {slippageOptions.map((option) => (
+                  <button
+                    key={option}
+                    onClick={() => {
+                      setSlippage(option);
+                      setShowSlippageDropdown(false);
+                    }}
+                    className={`w-full px-3 py-2 text-sm text-left hover:bg-[#D0B284]/10 transition-colors ${
+                      slippage === option
+                        ? 'text-[#D0B284] bg-[#D0B284]/10'
+                        : 'text-[#D0B284]/70 hover:text-[#D0B284]'
+                    } ${option === slippageOptions[0] ? 'rounded-t-lg' : ''} ${
+                      option === slippageOptions[slippageOptions.length - 1] ? 'rounded-b-lg' : ''
+                    }`}
+                  >
+                    {option}%
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Amount Input */}
-        <div className="mb-4">
+        {/* Input Field */}
+        <div className="mb-6">
           <div className="relative">
             <Input
               type="number"
               placeholder="0"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="h-16 text-2xl font-bold bg-[#231F20] border-[#D0B284]/20 text-white placeholder:text-[#DCDDCC] pr-20"
+              className="h-16 text-2xl font-bold bg-[#1a2318] border-[#D0B284]/20 text-[#D0B284] placeholder:text-[#D0B284]/50 pr-20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
             <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
               <div className="w-8 h-8 bg-[#D0B284] rounded-full flex items-center justify-center">
-                <span className="text-black text-xs font-bold">{tokenSymbol}</span>
+                <span className="text-[#151c16] text-xs font-bold">{tokenSymbol}</span>
               </div>
               <span className="text-[#D0B284] font-semibold">{tokenSymbol}</span>
             </div>
           </div>
-
-          {/* Price Quote Display */}
-          {amount && parseFloat(amount) > 0 && (
-            <div className="mt-2 p-3 bg-[#231F20]/50 rounded-lg border border-[#D0B284]/20">
-              <div className="text-center">
-                <div className="text-sm text-[#DCDDCC] mb-1">
-                  {activeTab === 'buy' ? 'Cost to buy' : 'ACES received'}
-                </div>
-                <div className="text-lg font-bold text-[#D0B284]">
-                  ≈ {activeTab === 'buy' ? priceQuote : sellPriceQuote} ACES
-                </div>
-                <div className="text-xs text-[#DCDDCC] mt-1">
-                  {activeTab === 'buy'
-                    ? `To buy ${amount} ${tokenSymbol} tokens`
-                    : `For selling ${amount} ${tokenSymbol} tokens`}
-                </div>
-                <div className="text-xs text-[#D0B284] mt-1">
-                  {activeTab === 'buy' ? 'Cost in ACES' : 'Receive in ACES'}
-                </div>
-              </div>
-            </div>
-          )}
         </div>
 
-        {/* Quick Amount Buttons */}
-        <div className="flex gap-2 mb-6 flex-wrap">
-          {quickAmounts.map((quick) => (
-            <Button
-              key={quick.label}
-              variant="ghost"
-              size="sm"
-              onClick={() => handleQuickAmount(quick.value)}
-              className="text-[#DCDDCC] hover:text-[#D0B284] border border-[#D0B284]/20 hover:border-[#D0B284]/40 hover:bg-[#D0B284]/10"
-            >
-              {quick.label}
-            </Button>
-          ))}
-        </div>
-
-        {/* Balance Display */}
-        <div className="mb-6 p-3 bg-[#231F20] rounded-lg border border-[#D0B284]/20">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-sm text-[#DCDDCC]">Balances</span>
-            <Button
-              onClick={refreshBalances}
-              disabled={!provider}
-              variant="ghost"
-              size="sm"
-              className="text-[#D0B284] hover:text-white text-xs px-2 py-1"
-            >
-              Refresh
-            </Button>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-[#DCDDCC]">ACES Balance:</span>
-            <span className="text-white font-mono">{parseFloat(acesBalance).toFixed(4)} ACES</span>
-          </div>
-          <div className="flex justify-between text-sm mt-1">
-            <span className="text-[#DCDDCC]">{tokenSymbol} Holdings:</span>
-            <span className="text-white font-mono">
-              {parseFloat(tokenBalance).toFixed(4)} {tokenSymbol}
-            </span>
-          </div>
-        </div>
-
-        {/* Trade Button */}
-        <div className="mt-auto">
+        {/* Buy/Sell Button - Fixed Position */}
+        <div className="mb-6">
           {!isAuthenticated || !provider ? (
             <Button
               onClick={connectWallet}
               disabled={!!loading}
-              className="w-full h-14 bg-[#184D37] hover:bg-[#184D37]/90 text-white font-bold text-lg rounded-lg disabled:opacity-50"
+              className="w-full h-14 bg-[#D0B284]/10 hover:bg-[#D0B284]/20 border border-[#D0B284] text-[#D0B284] font-proxima-nova font-bold text-lg rounded-lg disabled:opacity-50"
             >
               {loading || 'Connect Wallet'}
             </Button>
@@ -516,9 +625,9 @@ export default function TokenSwapInterface({
             <Button
               onClick={activeTab === 'buy' ? buyTokens : sellTokens}
               disabled={!amount || Number.parseFloat(amount) <= 0 || !!loading}
-              className={`w-full h-14 font-bold text-lg rounded-lg transition-all duration-200 ${
+              className={`w-full h-14 font-proxima-nova font-bold text-lg rounded-lg transition-all duration-200 ${
                 activeTab === 'buy'
-                  ? 'bg-[#184D37] hover:bg-[#184D37]/90 text-white'
+                  ? 'bg-[#D0B284]/10 hover:bg-[#D0B284]/20 border border-[#D0B284] text-[#D0B284]'
                   : 'bg-[#8B4513] hover:bg-[#8B4513]/90 text-white'
               } disabled:opacity-50 disabled:cursor-not-allowed`}
             >
@@ -527,32 +636,40 @@ export default function TokenSwapInterface({
           )}
         </div>
 
-        {/* Transaction Info */}
-        {amount && Number.parseFloat(amount) > 0 && (
-          <div className="mt-4 p-3 bg-[#231F20]/50 rounded-lg border border-[#D0B284]/10">
-            <div className="text-xs space-y-1">
-              <div className="flex justify-between">
-                <span className="text-[#DCDDCC]">Price Impact:</span>
-                <span className="text-[#184D37]">{'<0.01%'}</span>
+        {/* Combined Quote and Fees Section - Reserved Space */}
+        <div className="min-h-[140px]">
+          {amount && Number.parseFloat(amount) > 0 && (
+            <div className="p-3 bg-[#1a2318]/50 rounded-lg border border-[#D0B284]/20 space-y-3">
+              {/* Quote Section */}
+              <div className="text-center border-b border-[#D0B284]/20 pb-2">
+                <div className="text-sm font-bold text-[#D0B284]">
+                  {activeTab === 'buy'
+                    ? `Quote = ${priceQuote} $ACES`
+                    : `Receive = ${sellPriceQuote} $ACES`}
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span className="text-[#DCDDCC]">Network Fee:</span>
-                <span className="text-white">~$2.50</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[#DCDDCC]">Slippage Tolerance:</span>
-                <span className="text-white">{slippage}%</span>
+
+              {/* Fees Section */}
+              <div className="text-xs space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-[#D0B284]/70">Platform Fees:</span>
+                  <span className="text-[#D0B284]">0.5%</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#D0B284]/70">Creator Fees:</span>
+                  <span className="text-[#D0B284]">0.5%</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#D0B284]/70">Slippage Tolerance:</span>
+                  <span className="text-[#D0B284]">{slippage}%</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#D0B284]/70">Price Impact:</span>
+                  <span className="text-[#184D37]">{'<0.01%'}</span>
+                </div>
               </div>
             </div>
-          </div>
-        )}
-
-        {/* Network Badge */}
-        <div className="mt-4 flex justify-center">
-          <div className="flex items-center gap-2 px-3 py-1 bg-[#D0B284]/20 border border-[#D0B284]/40 rounded-full">
-            <div className="w-4 h-4 bg-[#D0B284] rounded-full"></div>
-            <span className="text-[#D0B284] text-xs font-medium">Base Mainnet</span>
-          </div>
+          )}
         </div>
       </div>
     </div>
