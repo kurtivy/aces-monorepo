@@ -8,6 +8,7 @@ import NavMenu from './nav-menu';
 export interface ConnectWalletNavProps {
   className?: string;
   onProfileClick?: () => void;
+  isMobileHeader?: boolean;
 }
 
 type OpenDropdown = 'wallet' | 'nav' | null;
@@ -15,8 +16,17 @@ type OpenDropdown = 'wallet' | 'nav' | null;
 export default function ConnectWalletNav({
   className = '',
   // onProfileClick,
+  isMobileHeader = false,
 }: ConnectWalletNavProps) {
   const [openDropdown, setOpenDropdown] = useState<OpenDropdown>(null);
+
+  const containerClassName = [
+    'flex items-center gap-2 relative',
+    isMobileHeader ? 'justify-center w-full' : '',
+    className,
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   const handleWalletDropdownChange = (isOpen: boolean) => {
     setOpenDropdown(isOpen ? 'wallet' : null);
@@ -27,7 +37,7 @@ export default function ConnectWalletNav({
   };
 
   return (
-    <div className={`flex items-center gap-2 relative ${className}`}>
+    <div className={containerClassName}>
       {/* Wallet Profile Component */}
       <ConnectWalletProfile
         // onProfileClick={onProfileClick}
