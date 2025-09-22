@@ -19,7 +19,7 @@ import {
 } from '../../lib/canvas/grid-placement';
 import { getDisplayDimensions } from '../../lib/canvas/image-type-utils';
 // Space animation removed for performance optimization
-import { easeInOutCubic, isApproximatelyEqual } from '../../lib/canvas/math-utils';
+import { isApproximatelyEqual } from '../../lib/canvas/math-utils';
 import { useCoordinatedResize } from '../use-coordinated-resize';
 import { detectLowPowerMode } from '../../lib/utils/browser-utils';
 import { useDeviceCapabilities } from '../../contexts/device-provider';
@@ -52,17 +52,10 @@ import { useBackgroundTileProcessor } from './use-background-tile-processor';
 import {
   safeGetCanvasContext,
   safeGetBoundingClientRect,
-  monitorCanvasPerformance,
-  recoverFromCanvasError,
-  type CanvasOperationResult,
 } from '../../lib/utils/canvas-error-boundary';
 
 // FEATURED SECTION: Import featured section drawing functions
-import {
-  drawFeaturedSection,
-  drawAnimatedFeaturedSection,
-  getAuctionIconBounds,
-} from '../../lib/canvas/draw';
+import { drawFeaturedSection, getAuctionIconBounds } from '../../lib/canvas/draw';
 import { drawCustomLogoBanner } from '@/lib/canvas/draw/draw-custom-logo-banner';
 import { getResponsiveMetrics } from '../../lib/utils/responsive-canvas-utils';
 
@@ -143,34 +136,6 @@ interface TilePriority {
   tile: GridTile;
   priority: number; // Lower = higher priority (center tiles first)
   distance: number; // Distance from viewport center
-}
-
-interface TileStreamingManager {
-  priorityQueue: TilePriority[];
-  processingTile: string | null;
-  addTiles: (tiles: GridTile[], viewportCenter: { x: number; y: number }) => void;
-  getNextTile: () => TilePriority | null;
-  isProcessing: () => boolean;
-  clear: () => void;
-}
-
-interface LRUTileCache {
-  cache: Map<
-    string,
-    { placements: RepeatedPlacement[]; tokens: RepeatedTokenPosition[]; lastAccess: number }
-  >;
-  maxSize: number;
-  get: (
-    tileId: string,
-  ) => { placements: RepeatedPlacement[]; tokens: RepeatedTokenPosition[] } | null;
-  set: (
-    tileId: string,
-    data: { placements: RepeatedPlacement[]; tokens: RepeatedTokenPosition[] },
-  ) => void;
-  delete: (tileId: string) => void;
-  clear: () => void;
-  getSize: () => number;
-  evictLRU: () => void;
 }
 
 export const useCanvasRenderer = ({
