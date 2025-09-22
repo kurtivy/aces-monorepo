@@ -401,7 +401,7 @@ export default function TokenSwapInterface({
           'bg-[#151c16] h-full flex flex-col relative',
           showFrame
             ? 'rounded-lg border border-[#D0B284]/20 p-4 sm:p-6'
-            : cn('px-4 sm:px-6 pb-6', showHeader ? 'pt-4' : 'pt-2')
+            : cn('px-4 sm:px-6 pb-6', showHeader ? 'pt-4' : 'pt-2'),
         )}
       >
         {showHeader && (
@@ -413,14 +413,19 @@ export default function TokenSwapInterface({
                     <div className="w-8 h-8 rounded-xl overflow-hidden border border-[#D0B284]/30">
                       <Image
                         src={
-                          primaryImage || imageGallery?.[0] || '/placeholder.svg?height=64&width=64&query=token logo'
+                          primaryImage ||
+                          imageGallery?.[0] ||
+                          '/placeholder.svg?height=64&width=64&query=token logo'
                         }
                         alt={`${tokenSymbol} logo`}
                         width={24}
                         height={24}
                         className="w-full h-full object-cover"
                         onError={(e) => {
-                          console.log('Token image failed to load:', primaryImage || imageGallery?.[0]);
+                          console.log(
+                            'Token image failed to load:',
+                            primaryImage || imageGallery?.[0],
+                          );
                           e.currentTarget.src = '/placeholder.svg?height=64&width=64&text=Error';
                         }}
                       />
@@ -649,26 +654,6 @@ export default function TokenSwapInterface({
                   {activeTab === 'buy'
                     ? `Quote = ${priceQuote} $ACES`
                     : `Receive = ${sellPriceQuote} $ACES`}
-                </div>
-              </div>
-
-              {/* Fees Section */}
-              <div className="text-xs space-y-1">
-                <div className="flex justify-between">
-                  <span className="text-[#D0B284]/70">Platform Fees:</span>
-                  <span className="text-[#D0B284]">0.5%</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[#D0B284]/70">Creator Fees:</span>
-                  <span className="text-[#D0B284]">0.5%</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[#D0B284]/70">Slippage Tolerance:</span>
-                  <span className="text-[#D0B284]">{slippage}%</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[#D0B284]/70">Price Impact:</span>
-                  <span className="text-[#184D37]">{'<0.01%'}</span>
                 </div>
               </div>
             </div>
