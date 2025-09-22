@@ -26,6 +26,7 @@ export interface Bid {
     isLive: boolean;
     startingBidPrice?: string;
     reservePrice?: string;
+    imageGallery?: string[];
   };
 }
 
