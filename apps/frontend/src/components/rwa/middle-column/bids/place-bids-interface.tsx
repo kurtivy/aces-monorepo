@@ -18,6 +18,7 @@ interface PlaceBidsInterfaceProps {
   isLive: boolean;
   isOwner: boolean;
   onBidPlaced?: (bid: Bid) => void;
+  variant?: 'default' | 'mobile';
 }
 
 export default function PlaceBidsInterface({
@@ -30,6 +31,7 @@ export default function PlaceBidsInterface({
   isLive,
   isOwner,
   onBidPlaced,
+  variant = 'default',
 }: PlaceBidsInterfaceProps) {
   const { user, getAccessToken } = useAuth();
   const [offerAmount, setOfferAmount] = useState('');
@@ -269,6 +271,12 @@ export default function PlaceBidsInterface({
       : `-$${Math.abs(difference).toLocaleString()}`;
   };
 
+  const isMobileVariant = variant === 'mobile';
+  const primaryPriceValue = startingBidPrice ?? retailPrice;
+  const formattedPrimaryPrice = primaryPriceValue
+    ? `$${primaryPriceValue.toLocaleString()}`
+    : 'Not set';
+
   return (
     <div className="bg-[#151c16]  rounded-lg">
       <div className="p-6">
@@ -291,27 +299,41 @@ export default function PlaceBidsInterface({
                 </div>
                 <div>
                   <h3 className="text-sm font-medium text-white font-proxima-nova">{itemTitle}</h3>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-xs text-[#DCDDCC] font-jetbrains-mono">
-                      {tokenAddress}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-4 w-4 p-0 hover:bg-[#D0B284]/10"
-                      onClick={() => copyToClipboard(tokenAddress)}
-                    >
-                      <Copy className="h-3 w-3 text-[#D0B284]" />
-                    </Button>
+                  {isMobileVariant && (
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[11px] uppercase tracking-wide text-[#8F9B8F]">
+                        Starting from
+                      </span>
+                      <span className="text-sm font-semibold text-[#D0B284]">
+                        {formattedPrimaryPrice}
+                      </span>
+                    </div>
+                  )}
+                  {!isMobileVariant && (
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-xs text-[#DCDDCC] font-jetbrains-mono">
+                        {tokenAddress}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-4 w-4 p-0 hover:bg-[#D0B284]/10"
+                        onClick={() => copyToClipboard(tokenAddress)}
+                      >
+                        <Copy className="h-3 w-3 text-[#D0B284]" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+              {!isMobileVariant && (
+                <div className="text-right">
+                  <div className="text-sm font-medium text-white font-proxima-nova">
+                    {formattedPrimaryPrice}
                   </div>
+                  <div className="text-xs text-[#DCDDCC]">Retail Price</div>
                 </div>
-              </div>
-              <div className="text-right">
-                <div className="text-sm font-medium text-white font-proxima-nova">
-                  ${retailPrice.toLocaleString()}
-                </div>
-                <div className="text-xs text-[#DCDDCC]">Retail Price</div>
-              </div>
+              )}
             </div>
 
             {/* Price Details */}
@@ -329,18 +351,6 @@ export default function PlaceBidsInterface({
                   </div>
                 </div>
               </div>
-
-              {startingBidPrice && (
-                <div className="flex justify-between items-center p-3 rounded-lg border border-[#D0B284]/20 bg-[#151c16]/60">
-                  <span className="text-sm text-[#DCDDCC] font-proxima-nova">Starting Bid</span>
-                  <div className="text-right">
-                    <div className="text-sm font-medium text-white">
-                      ${startingBidPrice.toLocaleString()}
-                    </div>
-                    <div className="text-xs text-[#DCDDCC] font-proxima-nova">Minimum Required</div>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
 
@@ -395,28 +405,34 @@ export default function PlaceBidsInterface({
 
             {/* Offer Amount Input - Single Row */}
             <div className="p-4 rounded-lg border border-[#D0B284]/20 bg-[#151c16]/60">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-sm text-[#DCDDCC] whitespace-nowrap font-proxima-nova">
-                  Your Offer
-                </span>
-                <Input
-                  type="number"
-                  placeholder="0.00"
-                  value={offerAmount}
-                  onChange={(e) => setOfferAmount(e.target.value)}
-                  className="flex-1 h-10 text-sm bg-[#151c16] border-[#D0B284]/20 text-white placeholder:text-[#DCDDCC]"
-                />
-                <span className="text-sm text-[#DCDDCC] whitespace-nowrap font-proxima-nova">
-                  USD
-                </span>
+              <div className={`gap-3 ${isMobileVariant ? 'flex flex-col' : 'flex items-center'}`}>
+                <div className="flex items-center gap-2 w-full">
+                  <span className="text-sm text-[#DCDDCC] whitespace-nowrap font-proxima-nova">
+                    Your Offer
+                  </span>
+                  <Input
+                    type="number"
+                    placeholder="0.00"
+                    value={offerAmount}
+                    onChange={(e) => setOfferAmount(e.target.value)}
+                    className="flex-1 h-10 text-sm bg-[#151c16] border-[#D0B284]/20 text-white placeholder:text-[#DCDDCC]"
+                  />
+                  <span className="text-sm text-[#DCDDCC] whitespace-nowrap font-proxima-nova">
+                    USD
+                  </span>
+                </div>
                 <Button
-                  variant="ghost"
+                  variant={isMobileVariant ? 'outline' : 'ghost'}
                   size="sm"
                   onClick={handleTopOfferClick}
                   disabled={!highestBid}
-                  className="border border-[#D0B284]/80 text-[#D0B284] hover:text-[#D0B284] hover:bg-[#D0B284]/30 text-xs whitespace-nowrap disabled:opacity-50"
+                  className={`${
+                    isMobileVariant
+                      ? 'w-full border border-[#D0B284]/20 text-[#D0B284] hover:bg-[#D0B284]/10 disabled:opacity-50 disabled:cursor-not-allowed'
+                      : 'border border-[#D0B284]/80 text-[#D0B284] hover:text-[#D0B284] hover:bg-[#D0B284]/30 text-xs whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed'
+                  }`}
                 >
-                  {highestBid ? 'Set to Highest Bid' : 'No Bids Yet'}
+                  {highestBid ? 'Match Top Offer' : 'No Bids Yet'}
                 </Button>
               </div>
             </div>
@@ -465,7 +481,9 @@ export default function PlaceBidsInterface({
                 <span className="text-sm text-[#DCDDCC] font-proxima-nova">Bid expires in:</span>
                 <span className="text-sm text-white">30 days</span>
               </div>
-              <div className="flex justify-end py-6">
+              <div
+                className={`py-6 ${isMobileVariant ? 'flex justify-center' : 'flex justify-end'}`}
+              >
                 <Button
                   onClick={handleSubmit}
                   disabled={
@@ -476,7 +494,9 @@ export default function PlaceBidsInterface({
                     !isLive ||
                     loading
                   }
-                  className="w-32 bg-[#D0B284] hover:bg-[#D0B284]/90 text-[#151c16] font-bold disabled:opacity-50"
+                  className={`bg-[#D0B284] hover:bg-[#D0B284]/90 text-[#151c16] font-bold disabled:opacity-50 ${
+                    isMobileVariant ? 'w-full max-w-xs py-4 text-base rounded-xl' : 'w-32'
+                  }`}
                 >
                   {loading ? 'Placing...' : 'Place Bid'}
                 </Button>
@@ -523,36 +543,56 @@ export default function PlaceBidsInterface({
                   </div>
                 ) : allBids && Array.isArray(allBids) && allBids.length > 0 ? (
                   <div className="space-y-2">
-                    {allBids.map((bid) => (
-                      <div
-                        key={bid.id}
-                        className="flex items-center justify-between p-3 rounded-lg border border-[#D0B284]/20 bg-[#151c16]/60"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-[#D0B284]/20 flex items-center justify-center">
-                            <span className="text-xs font-medium text-[#D0B284]">
-                              {bid.bidder?.username?.charAt(0).toUpperCase() || '?'}
+                    {allBids.map((bid) => {
+                      const wallet = bid.bidder?.walletAddress || '';
+                      const username = bid.bidder?.username || '';
+                      const isWalletLike = username.toLowerCase().startsWith('0x');
+                      const shortenedUsername = isWalletLike
+                        ? `${username.slice(0, 7)}…`
+                        : username;
+                      const condensedWallet = wallet ? `${wallet.slice(0, 7)}…` : null;
+                      const displayName = shortenedUsername || condensedWallet || 'Anonymous';
+                      const bidAmount = bid.amount ? Number.parseFloat(bid.amount) : 0;
+                      const status = (bid.status || 'Pending').toUpperCase();
+                      const statusStyles: Record<string, string> = {
+                        ACCEPTED: 'bg-[#184D37]/15 text-[#37d488] border-[#184D37]/30',
+                        REJECTED: 'bg-[#3b1d1d]/20 text-[#f87171] border-[#f87171]/30',
+                        PENDING: 'bg-[#373017]/20 text-[#facc15] border-[#facc15]/30',
+                      };
+                      const statusStyle =
+                        statusStyles[status as keyof typeof statusStyles] ||
+                        'bg-[#2a2a2a]/30 text-[#DCDDCC] border-[#404040]/40';
+
+                      return (
+                        <div
+                          key={bid.id}
+                          className="grid grid-cols-[1.5fr_auto] md:grid-cols-[1.5fr_auto_auto] gap-3 rounded-xl border border-[#2a3b2a] bg-[#101910] px-3 py-3"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-full bg-[#D0B284]/15 flex items-center justify-center text-sm font-semibold text-[#D0B284]">
+                              {displayName.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-sm font-medium text-white">{displayName}</span>
+                              <span className="text-[11px] uppercase tracking-wide text-[#8F9B8F]">
+                                {new Date(bid.createdAt).toLocaleDateString()}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col text-right">
+                            <span className="text-sm font-semibold text-white">
+                              ${bidAmount.toLocaleString()}
+                            </span>
+                            <span
+                              className={`mt-1 inline-flex items-center justify-center rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide ${statusStyle}`}
+                            >
+                              {status}
                             </span>
                           </div>
-                          <div>
-                            <div className="text-sm font-medium text-white">
-                              {bid.bidder?.username ||
-                                bid.bidder?.walletAddress?.slice(0, 6) + '...' ||
-                                'Anonymous'}
-                            </div>
-                            <div className="text-xs text-[#DCDDCC]">
-                              {new Date(bid.createdAt).toLocaleDateString()}
-                            </div>
-                          </div>
                         </div>
-                        <div className="text-right">
-                          <div className="text-sm font-medium text-white">
-                            ${bid.amount ? parseFloat(bid.amount).toLocaleString() : '0'}
-                          </div>
-                          <div className="text-xs text-[#DCDDCC]">{bid.status || 'Unknown'}</div>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="text-center py-8">

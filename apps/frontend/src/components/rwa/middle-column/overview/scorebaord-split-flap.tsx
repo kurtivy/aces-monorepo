@@ -296,8 +296,8 @@ export default function ScoreboardSplitFlap({
   launchDate,
   showLabels = true,
   className = '',
-  digitWidthClass = 'w-18',
-  digitHeightClass = 'h-24',
+  digitWidthClass = 'w-10 xs:w-11 sm:w-16 md:w-18 lg:w-12 xl:w-14 2xl:w-16',
+  digitHeightClass = 'h-12 xs:h-14 sm:h-18 md:h-20 lg:h-16 xl:h-18 2xl:h-20',
 }: SplitFlapProps) {
   const { isLaunched, timeLeft, nextTimeLeft, shouldAnimate } = useCountdown(launchDate);
 
@@ -324,9 +324,9 @@ export default function ScoreboardSplitFlap({
   if (isLaunched) {
     return (
       <div
-        className={`w-full flex items-center justify-center rounded-xl px-3 py-3 bg-[#151c16] border border-[#D0B284] border-dashed shadow-lg ${className}`}
+        className={`w-full flex items-center justify-center rounded-xl px-4 py-3 sm:py-4 bg-[#151c16] border border-[#D0B284] border-dashed shadow-lg ${className}`}
       >
-        <span className="text-base sm:text-lg font-semibold text-[#D0B284] tracking-wide font-spray-letters">
+        <span className="text-sm sm:text-base font-semibold text-[#D0B284] tracking-wide font-spray-letters">
           Available Now
         </span>
       </div>
@@ -334,7 +334,9 @@ export default function ScoreboardSplitFlap({
   }
 
   return (
-    <div className={`w-full px-4 py-4 bg-[#151c16] shadow-lg relative ${className}`}>
+    <div
+      className={`w-full px-0 sm:px-4 lg:px-0 xl:px-0 py-4 sm:py-6 lg:py-4 xl:py-4 bg-[#151c16] shadow-lg relative ${className}`}
+    >
       {/* SVG Dashed Border - Top */}
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -342,7 +344,7 @@ export default function ScoreboardSplitFlap({
         height="8"
         viewBox="0 0 100 2"
         preserveAspectRatio="none"
-        className="pointer-events-none absolute left-0 right-0 top-0"
+        className="pointer-events-none absolute inset-x-0 top-0"
       >
         <line
           x1="0"
@@ -365,7 +367,7 @@ export default function ScoreboardSplitFlap({
         height="8"
         viewBox="0 0 100 2"
         preserveAspectRatio="none"
-        className="pointer-events-none absolute left-0 right-0 bottom-0"
+        className="pointer-events-none absolute inset-x-0 bottom-0"
       >
         <line
           x1="0"
@@ -381,35 +383,38 @@ export default function ScoreboardSplitFlap({
         />
       </svg>
 
-      <div className="grid grid-cols-4 gap-6 items-end">
-        {nowPairs.map((unit, idx) => {
-          const next = nextPairs[idx];
-          return (
-            <div key={unit.label} className="flex flex-col items-center">
-              <div className="flex items-center justify-center gap-2 bg-[#151c16] rounded-lg px-3 py-3">
-                <SplitFlapDigit
-                  value={unit.value[0]}
-                  nextValue={next.value[0]}
-                  shouldAnimate={shouldAnimate}
-                  widthClass={digitWidthClass}
-                  heightClass={digitHeightClass}
-                />
-                <SplitFlapDigit
-                  value={unit.value[1]}
-                  nextValue={next.value[1]}
-                  shouldAnimate={shouldAnimate}
-                  widthClass={digitWidthClass}
-                  heightClass={digitHeightClass}
-                />
+      {/* Centered container for desktop - 80-85% width */}
+      <div className="w-full lg:w-[82%] lg:mx-auto xl:w-[80%] xl:mx-auto 2xl:w-[80%] 2xl:mx-auto">
+        <div className="grid grid-cols-4 gap-3 sm:gap-5 md:gap-6 lg:gap-4 xl:gap-5 2xl:gap-6 items-end">
+          {nowPairs.map((unit, idx) => {
+            const next = nextPairs[idx];
+            return (
+              <div key={unit.label} className="flex flex-col items-center">
+                <div className="flex items-center justify-center gap-1.5 sm:gap-2 md:gap-2.5 lg:gap-1.5 xl:gap-2 2xl:gap-2.5 bg-[#151c16] rounded-lg px-2 sm:px-3 md:px-3.5 lg:px-2 xl:px-2.5 2xl:px-3 py-2 sm:py-3 md:py-3.5 lg:py-2 xl:py-2.5 2xl:py-3 border border-[#D0B284]/20 shadow-inner">
+                  <SplitFlapDigit
+                    value={unit.value[0]}
+                    nextValue={next.value[0]}
+                    shouldAnimate={shouldAnimate}
+                    widthClass={digitWidthClass}
+                    heightClass={digitHeightClass}
+                  />
+                  <SplitFlapDigit
+                    value={unit.value[1]}
+                    nextValue={next.value[1]}
+                    shouldAnimate={shouldAnimate}
+                    widthClass={digitWidthClass}
+                    heightClass={digitHeightClass}
+                  />
+                </div>
+                {showLabels && (
+                  <span className="mt-2 text-xs sm:text-sm lg:text-xs xl:text-sm 2xl:text-sm uppercase tracking-[0.16em] text-[#D0B284] font-spray-letters text-center">
+                    {unit.label}
+                  </span>
+                )}
               </div>
-              {showLabels && (
-                <span className="mt-2 text-base uppercase tracking-[0.12em] text-[#D0B284] font-spray-letters">
-                  {unit.label}
-                </span>
-              )}
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );

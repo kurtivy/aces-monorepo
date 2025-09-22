@@ -57,7 +57,9 @@ export default function TradeHistory({ tokenAddress, tokenSymbol = 'TOKEN' }: Tr
 
   // Format wallet address (truncate)
   const formatWalletAddress = (address: string) => {
-    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+    const prefix = address.slice(0, 7);
+    const suffix = address.slice(-4);
+    return `${prefix}…${suffix}`;
   };
 
   // Format transaction hash (truncate)
@@ -173,39 +175,18 @@ export default function TradeHistory({ tokenAddress, tokenSymbol = 'TOKEN' }: Tr
   return (
     <div className="bg-[#151c16] rounded-xl overflow-hidden mt-0">
       <div className="p-4">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-[#D0B284] text-lg font-bold">Recent Trades</h3>
-          <div className="flex items-center gap-2">
-            <div
-              className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-400' : 'bg-red-400'}`}
-            />
-            <span className="text-xs text-gray-400">{isConnected ? 'Live' : 'Offline'}</span>
-            <button
-              onClick={refresh}
-              className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-[#D0B284]/20 text-[#D0B284] border border-[#D0B284]/40 hover:bg-[#D0B284]/30 transition-colors"
-            >
-              <RefreshCw className="h-3 w-3" />
-              Refresh
-            </button>
-          </div>
-        </div>
 
         {/* Desktop Table */}
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b border-[#D0B284]/20">
-                <th className="text-left py-2 px-3 text-xs text-[#DCDDCC] font-medium">Account</th>
-                <th className="text-left py-2 px-3 text-xs text-[#DCDDCC] font-medium">Type</th>
-                <th className="text-right py-2 px-3 text-xs text-[#DCDDCC] font-medium">
-                  Amount (ACES)
-                </th>
-                <th className="text-right py-2 px-3 text-xs text-[#DCDDCC] font-medium">
-                  Amount ({tokenSymbol})
-                </th>
-                <th className="text-left py-2 px-3 text-xs text-[#DCDDCC] font-medium">Time</th>
-                <th className="text-left py-2 px-3 text-xs text-[#DCDDCC] font-medium">Txn</th>
+                <th className="py-2 px-3 text-xs text-[#DCDDCC] font-medium text-left">Account</th>
+                <th className="py-2 px-3 text-xs text-[#DCDDCC] font-medium text-center">Trade</th>
+                <th className="py-2 px-3 text-xs text-[#DCDDCC] font-medium text-right">$ ACES</th>
+                <th className="py-2 px-3 text-xs text-[#DCDDCC] font-medium text-right">$ {tokenSymbol}</th>
+                <th className="py-2 px-3 text-xs text-[#DCDDCC] font-medium text-center">Time</th>
+                <th className="py-2 px-3 text-xs text-[#DCDDCC] font-medium text-center">Txn</th>
               </tr>
             </thead>
             <tbody>
@@ -230,7 +211,7 @@ export default function TradeHistory({ tokenAddress, tokenSymbol = 'TOKEN' }: Tr
                       <ExternalLink className="h-3 w-3 opacity-60" />
                     </a>
                   </td>
-                  <td className="py-3 px-3">
+                  <td className="py-3 px-3 text-center">
                     <span
                       className={`text-sm font-medium ${trade.isBuy ? 'text-[#184D37]' : 'text-red-400'}`}
                     >
@@ -251,12 +232,12 @@ export default function TradeHistory({ tokenAddress, tokenSymbol = 'TOKEN' }: Tr
                       {formatTokenAmount(trade.tokenAmount)}
                     </span>
                   </td>
-                  <td className="py-3 px-3">
+                  <td className="py-3 px-3 text-center">
                     <span className="text-sm text-gray-400">
                       {formatRelativeTime(trade.createdAt)}
                     </span>
                   </td>
-                  <td className="py-3 px-3">
+                  <td className="py-3 px-3 text-center">
                     <a
                       href={getTxUrl(trade.id)}
                       target="_blank"
@@ -273,68 +254,68 @@ export default function TradeHistory({ tokenAddress, tokenSymbol = 'TOKEN' }: Tr
           </table>
         </div>
 
-        {/* Mobile Cards */}
-        <div className="md:hidden space-y-3">
-          {safeTrades.map((trade, index) => (
-            <div
-              key={trade.id}
-              className={`bg-[#151c16]/50 rounded-lg p-3 border border-[#D0B284]/20 transition-all duration-300 ${
-                index < 3 ? 'animate-pulse bg-[#184D37]/5' : ''
-              }`}
-            >
-              <div className="flex items-center justify-between mb-2">
+        {/* Mobile Table */}
+        <div className="md:hidden space-y-3 text-xs">
+          <div className="grid grid-cols-[1.4fr_1fr_1fr_1fr_auto] items-center gap-2 px-3 text-[11px] uppercase tracking-wide text-[#8F9B8F] justify-items-center">
+            <span className="justify-self-start text-left">Account</span>
+            <span>Trade</span>
+            <span>$ ACES</span>
+            <span>$ {tokenSymbol}</span>
+            <span>Txn</span>
+          </div>
+
+          <div className="space-y-2">
+            {safeTrades.map((trade, index) => (
+              <div
+                key={trade.id}
+                className={`grid grid-cols-[1.4fr_1fr_1fr_1fr_auto] items-center gap-2 rounded-xl border border-[#2a3b2a] bg-[#101910] px-3 py-3 transition-all duration-300 justify-items-center ${
+                  index < 3 ? 'shadow-[0_0_0_1px_rgba(24,77,55,0.3)]' : ''
+                }`}
+              >
                 <a
                   href={getAddressUrl(trade.trader.id)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-sm text-white hover:text-[#D0B284] transition-colors"
+                  className="flex flex-col items-start justify-center gap-1 text-sm text-white hover:text-[#D0B284] transition-colors w-full"
                 >
-                  <div className="w-6 h-6 bg-[#D0B284] rounded-full flex items-center justify-center">
-                    <span className="text-black text-xs font-bold">👤</span>
-                  </div>
-                  <span className="font-mono">{formatWalletAddress(trade.trader.id)}</span>
-                  <ExternalLink className="h-3 w-3 opacity-60" />
+                  <span className="font-mono text-[13px]">{formatWalletAddress(trade.trader.id)}</span>
+                  <span className="text-[#8F9B8F] text-[11px]">
+                    {trade.trader.id.slice(-4)} · {formatRelativeTime(trade.createdAt)}
+                  </span>
                 </a>
-                <span
-                  className={`text-sm font-medium ${trade.isBuy ? 'text-[#184D37]' : 'text-red-400'}`}
-                >
-                  {trade.isBuy ? 'Buy' : 'Sell'}
-                </span>
+
+                <div className="flex flex-col items-center text-[12px] text-center">
+                  <span className={`font-semibold ${trade.isBuy ? 'text-[#37d488]' : 'text-[#f87171]'}`}>
+                    {trade.isBuy ? 'Buy' : 'Sell'}
+                  </span>
+                </div>
+
+                <div className="text-center">
+                  <span className={`font-mono text-[13px] ${trade.isBuy ? 'text-[#37d488]' : 'text-[#f87171]'}`}>
+                    {formatAcesAmount(trade.acesTokenAmount)}
+                  </span>
+                </div>
+
+                <div className="text-center">
+                  <span className={`font-mono text-[13px] ${trade.isBuy ? 'text-[#37d488]' : 'text-[#f87171]'}`}>
+                    {formatTokenAmount(trade.tokenAmount)}
+                  </span>
+                </div>
+
+                <div className="flex justify-center">
+                  <a
+                    href={getTxUrl(trade.id)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 rounded-lg border border-[#2a3b2a] px-2 py-1 text-[11px] text-[#D0B284] hover:bg-[#D0B284]/10 transition-colors"
+                  >
+                    Txn
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </div>
               </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-400">ACES:</span>
-                <span
-                  className={`font-mono font-medium ${trade.isBuy ? 'text-[#184D37]' : 'text-red-400'}`}
-                >
-                  {formatAcesAmount(trade.acesTokenAmount)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-sm mt-1">
-                <span className="text-gray-400">{tokenSymbol}:</span>
-                <span
-                  className={`font-mono font-medium ${trade.isBuy ? 'text-[#184D37]' : 'text-red-400'}`}
-                >
-                  {formatTokenAmount(trade.tokenAmount)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-sm mt-1">
-                <span className="text-gray-400">Time:</span>
-                <span className="text-gray-400">{formatRelativeTime(trade.createdAt)}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm mt-1">
-                <span className="text-gray-400">Txn:</span>
-                <a
-                  href={getTxUrl(trade.id)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-white hover:text-[#D0B284] transition-colors"
-                >
-                  <span className="font-mono">{formatTxHash(trade.id)}</span>
-                  <ExternalLink className="h-3 w-3 opacity-60" />
-                </a>
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
     </div>

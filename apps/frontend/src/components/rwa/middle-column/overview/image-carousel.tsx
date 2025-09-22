@@ -55,16 +55,18 @@ export default function ImageCarousel({
 
       <button
         onClick={handlePrevImage}
-        className="absolute left-4 top-1/2 -translate-y-1/2 bg-[#D0B284] hover:bg-[#D0B284]/80 p-3 text-black rounded-full shadow-lg transition-all duration-200 z-10"
+        className="absolute left-4 top-1/2 -translate-y-1/2 text-[#D0B284] hover:text-[#F1DFA4] transition-colors duration-200 z-10"
+        aria-label="Previous image"
       >
-        <ChevronLeft size={20} />
+        <ChevronLeft size={28} strokeWidth={2.5} />
       </button>
 
       <button
         onClick={handleNextImage}
-        className="absolute right-4 top-1/2 -translate-y-1/2 bg-[#D0B284] hover:bg-[#D0B284]/80 p-3 text-black rounded-full shadow-lg transition-all duration-200 z-10"
+        className="absolute right-4 top-1/2 -translate-y-1/2 text-[#D0B284] hover:text-[#F1DFA4] transition-colors duration-200 z-10"
+        aria-label="Next image"
       >
-        <ChevronRight size={20} />
+        <ChevronRight size={28} strokeWidth={2.5} />
       </button>
     </div>
   );

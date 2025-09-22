@@ -46,6 +46,8 @@ interface TokenSwapInterfaceProps {
   tokenName?: string;
   tokenOwner?: string;
   showFrame?: boolean;
+  showHeader?: boolean;
+  showProgression?: boolean;
   imageGallery?: string[];
   // Primary image for the token (from listing.imageGallery[0])
   primaryImage?: string;
@@ -59,6 +61,8 @@ export default function TokenSwapInterface({
   tokenSymbol = 'RWA',
   tokenAddress,
   showFrame = true,
+  showHeader = true,
+  showProgression = true,
   imageGallery,
   primaryImage,
   currentAmount,
@@ -395,141 +399,140 @@ export default function TokenSwapInterface({
       <div
         className={cn(
           'bg-[#151c16] h-full flex flex-col relative',
-          showFrame ? 'rounded-lg border border-[#D0B284]/20 p-6' : 'px-6 pt-6 pb-6',
+          showFrame
+            ? 'rounded-lg border border-[#D0B284]/20 p-4 sm:p-6'
+            : cn('px-4 sm:px-6 pb-6', showHeader ? 'pt-4' : 'pt-2')
         )}
       >
-        {/* Header Section */}
-        <div className="mb-6">
-          {/* Two-column layout */}
-          <div className="flex items-start gap-4 mb-4">
-            {/* Left Column - Token Info Stack */}
-            <div className="flex-1">
-              {/* Token symbol with image */}
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-8 h-8 rounded-xl overflow-hidden border border-[#D0B284]/30">
-                  <Image
-                    src={
-                      primaryImage ||
-                      imageGallery?.[0] ||
-                      '/placeholder.svg?height=64&width=64&query=token logo'
-                    }
-                    alt={`${tokenSymbol} logo`}
-                    width={24}
-                    height={24}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      console.log('Token image failed to load:', primaryImage || imageGallery?.[0]);
-                      e.currentTarget.src = '/placeholder.svg?height=64&width=64&text=Error';
-                    }}
-                  />
-                </div>
-                <h2 className="text-[#D0B284] text-2xl font-mono font-bold leading-none">
-                  ${tokenSymbol}
-                </h2>
-              </div>
+        {showHeader && (
+          <>
+            <div className={cn('mb-4 sm:mb-6', !showFrame && 'px-0')}>
+              <div className="flex flex-col sm:flex-row items-start gap-4 mb-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-8 h-8 rounded-xl overflow-hidden border border-[#D0B284]/30">
+                      <Image
+                        src={
+                          primaryImage || imageGallery?.[0] || '/placeholder.svg?height=64&width=64&query=token logo'
+                        }
+                        alt={`${tokenSymbol} logo`}
+                        width={24}
+                        height={24}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          console.log('Token image failed to load:', primaryImage || imageGallery?.[0]);
+                          e.currentTarget.src = '/placeholder.svg?height=64&width=64&text=Error';
+                        }}
+                      />
+                    </div>
+                    <h2 className="text-[#D0B284] text-2xl font-mono font-bold leading-none">
+                      ${tokenSymbol}
+                    </h2>
+                  </div>
 
-              {/* Contract address */}
-              {tokenAddress && (
-                <div className="flex items-center gap-2 rounded-md bg-black/20 px-3 py-1.5 border border-[#D0B284]/20 w-fit">
-                  <span className="text-xs text-[#D0B284] font-mono">
-                    {tokenAddress.slice(0, 6)}...{tokenAddress.slice(-4)}
-                  </span>
-                  <button
-                    onClick={() => copyToClipboard(tokenAddress)}
-                    className="flex h-4 w-4 items-center justify-center rounded bg-[#D0B284]/10 hover:bg-[#D0B284]/20 transition-colors border border-[#D0B284]/20"
-                  >
-                    {copied ? (
-                      <Check className="h-2.5 w-2.5 text-[#D0B284]" />
-                    ) : (
-                      <Copy className="h-2.5 w-2.5 text-[#D0B284]" />
-                    )}
-                  </button>
+                  {tokenAddress && (
+                    <div className="flex items-center gap-2 rounded-md bg-black/20 px-3 py-1.5 border border-[#D0B284]/20 w-fit">
+                      <span className="text-xs text-[#D0B284] font-mono">
+                        {tokenAddress.slice(0, 6)}...{tokenAddress.slice(-4)}
+                      </span>
+                      <button
+                        onClick={() => copyToClipboard(tokenAddress)}
+                        className="flex h-4 w-4 items-center justify-center rounded bg-[#D0B284]/10 hover:bg-[#D0B284]/20 transition-colors border border-[#D0B284]/20"
+                      >
+                        {copied ? (
+                          <Check className="h-2.5 w-2.5 text-[#D0B284]" />
+                        ) : (
+                          <Copy className="h-2.5 w-2.5 text-[#D0B284]" />
+                        )}
+                      </button>
+                    </div>
+                  )}
                 </div>
-              )}
+
+                <div className="flex w-full sm:w-auto flex-col sm:items-end gap-1 px-3 py-2 backdrop-blur-sm rounded-lg border border-[#D0B284]/10 sm:border-transparent">
+                  <div className="flex items-start gap-2">
+                    <span className="text-[#D0B284]/60 text-xs leading-none">Balance</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[#D0B284]/60 text-xs">ACES:</span>
+                    <span className="text-[#D0B284] font-mono text-xs">
+                      {Number.parseFloat(acesBalance).toFixed(4)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[#D0B284]/60 text-xs">{tokenSymbol}:</span>
+                    <span className="text-[#D0B284] font-mono text-xs">
+                      {Number.parseFloat(tokenBalance).toFixed(4)}
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {/* Right Column - Balances section */}
-            <div className="flex flex-col items-end gap-1 px-3 py-2 backdrop-blur-sm rounded-lg">
-              <div className="flex items-start gap-2">
-                <span className="text-[#D0B284]/60 text-xs leading-none">Balance</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[#D0B284]/60 text-xs">ACES:</span>
-                <span className="text-[#D0B284] font-mono text-xs">
-                  {Number.parseFloat(acesBalance).toFixed(4)}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[#D0B284]/60 text-xs">{tokenSymbol}:</span>
-                <span className="text-[#D0B284] font-mono text-xs">
-                  {Number.parseFloat(tokenBalance).toFixed(4)}
-                </span>
+            <div className="relative -mx-6 mb-6">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="100%"
+                height="8"
+                viewBox="0 0 100 2"
+                preserveAspectRatio="none"
+                className="pointer-events-none"
+              >
+                <line
+                  x1="0"
+                  y1="1"
+                  x2="100"
+                  y2="1"
+                  stroke="#D0B284"
+                  strokeOpacity={0.5}
+                  strokeWidth={1}
+                  strokeDasharray="12 12"
+                  vectorEffect="non-scaling-stroke"
+                  shapeRendering="crispEdges"
+                />
+              </svg>
+            </div>
+          </>
+        )}
+
+        {showProgression && (
+          <>
+            <div className="mb-6">
+              <ProgressionBar
+                currentAmount={currentAmount}
+                targetAmount={targetAmount}
+                percentage={percentage}
+              />
+              <div className="mt-2 text-xs font-semibold uppercase tracking-[0.3em] text-center text-[#D7BF75]/80">
+                Bonded {Math.min(percentage, 100).toFixed(1)}% / 100%
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* Dashed Border after Header - Full width */}
-        <div className="relative -mx-6 mb-6">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="100%"
-            height="8"
-            viewBox="0 0 100 2"
-            preserveAspectRatio="none"
-            className="pointer-events-none"
-          >
-            <line
-              x1="0"
-              y1="1"
-              x2="100"
-              y2="1"
-              stroke="#D0B284"
-              strokeOpacity={0.5}
-              strokeWidth={1}
-              strokeDasharray="12 12"
-              vectorEffect="non-scaling-stroke"
-              shapeRendering="crispEdges"
-            />
-          </svg>
-        </div>
-
-        {/* Progression Bar Section */}
-        <div className="mb-6">
-          <ProgressionBar
-            currentAmount={currentAmount}
-            targetAmount={targetAmount}
-            percentage={percentage}
-          />
-          <div className="mt-2 text-xs font-semibold uppercase tracking-[0.3em] text-center text-[#D7BF75]/80">
-            Bonded {Math.min(percentage, 100).toFixed(1)}% / 100%
-          </div>
-        </div>
-
-        {/* Dashed Border after Progression Bar - Full width */}
-        <div className="relative -mx-6 mb-6">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="100%"
-            height="8"
-            viewBox="0 0 100 2"
-            preserveAspectRatio="none"
-            className="pointer-events-none"
-          >
-            <line
-              x1="0"
-              y1="1"
-              x2="100"
-              y2="1"
-              stroke="#D0B284"
-              strokeOpacity={0.5}
-              strokeWidth={1}
-              strokeDasharray="12 12"
-              vectorEffect="non-scaling-stroke"
-              shapeRendering="crispEdges"
-            />
-          </svg>
-        </div>
+            <div className="relative -mx-6 mb-6">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="100%"
+                height="8"
+                viewBox="0 0 100 2"
+                preserveAspectRatio="none"
+                className="pointer-events-none"
+              >
+                <line
+                  x1="0"
+                  y1="1"
+                  x2="100"
+                  y2="1"
+                  stroke="#D0B284"
+                  strokeOpacity={0.5}
+                  strokeWidth={1}
+                  strokeDasharray="12 12"
+                  vectorEffect="non-scaling-stroke"
+                  shapeRendering="crispEdges"
+                />
+              </svg>
+            </div>
+          </>
+        )}
 
         {/* Buy/Sell Tabs */}
         <div className="flex mb-6 bg-[#1a2318] rounded-lg p-1 border border-[#D0B284]/20">

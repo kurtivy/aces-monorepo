@@ -21,7 +21,7 @@ interface TradingChartProps {
   tokenSymbol?: string;
   title?: string;
   imageSrc?: string;
-  height?: string;
+  heightClass?: string;
 }
 
 const TradingChart: React.FC<TradingChartProps> = ({
@@ -29,7 +29,7 @@ const TradingChart: React.FC<TradingChartProps> = ({
   // tokenSymbol = 'TOKEN',
   // title = 'Trading Chart',
   // imageSrc = '/canvas-image/1991-Porsche-964-Turbo-Rubystone-Red-1-of-5-Limited-Edition-Paint.webp',
-  height = 'h-[600px]',
+  heightClass = 'h-[600px] min-h-[400px]',
 }) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi | null>(null);
@@ -252,7 +252,7 @@ const TradingChart: React.FC<TradingChartProps> = ({
           secondsVisible: false,
         },
         width: el.clientWidth,
-        height: 400,
+        height: Math.max(el.clientHeight, 320),
       };
 
       chart.current = createChart(el, chartOptions);
@@ -343,7 +343,7 @@ const TradingChart: React.FC<TradingChartProps> = ({
       if (cr && chart.current) {
         chart.current.applyOptions({
           width: Math.floor(cr.width),
-          height: 400,
+          height: Math.max(Math.floor(cr.height), 320),
         });
         chart.current.timeScale().fitContent();
       }
@@ -375,7 +375,7 @@ const TradingChart: React.FC<TradingChartProps> = ({
   const timeframes = ['1h', '4h', '1d']; // Simplified timeframes for MVP
 
   return (
-    <div className={`flex flex-col ${height} w-full bg-[#231f20]/50 overflow-hidden`}>
+    <div className={`flex flex-col ${heightClass} w-full bg-[#231f20]/50 overflow-hidden`}>
       {/* Header - Single Row Layout */}
       <div className="p-3 flex-shrink-0">
         <div className="flex items-center justify-between">
@@ -447,7 +447,7 @@ const TradingChart: React.FC<TradingChartProps> = ({
       </div>
 
       {/* Chart Container */}
-      <div className="flex-1 w-full bg-[#231F20] rounded-none border-t border-[#D0B284]/20 min-h-[400px] relative pb-0">
+      <div className={`w-full bg-[#231F20] rounded-none border-t border-[#D0B284]/20 relative pb-0 ${heightClass}`}>
         {isLoading && (
           <div className="absolute inset-0 flex items-center justify-center bg-[#231F20]/80">
             <div className="text-[#DCDDCC]">Loading chart data...</div>
@@ -466,7 +466,7 @@ const TradingChart: React.FC<TradingChartProps> = ({
             </div>
           </div>
         )}
-        <div ref={chartContainerRef} className="w-full h-full pb-0" style={{ height: '400px' }} />
+        <div ref={chartContainerRef} className="w-full h-full pb-0" />
       </div>
     </div>
   );

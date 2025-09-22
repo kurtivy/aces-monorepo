@@ -85,7 +85,7 @@ export default function OverviewSection({
 
         {/* Bottom Section - Countdown Timer */}
         <div className="w-full flex-shrink-0">
-          <OverviewBottomSection launchDate={launchDate} />
+          <OverviewBottomSection launchDate={launchDate} showProgression={false} />
         </div>
       </div>
 

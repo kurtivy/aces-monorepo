@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Heart, MessageCircle, Share, MoreHorizontal } from 'lucide-react';
+import { Heart, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 // import Image from 'next/image';
@@ -14,12 +14,14 @@ interface RWAForumProps {
   listingId?: string;
   listingTitle?: string;
   isLive?: boolean;
+  variant?: 'default' | 'mobile';
 }
 
 export default function RWAForumReal({
   listingId,
   listingTitle = "King Solomon's Baby",
   // isLive = true,
+  variant = 'default',
 }: RWAForumProps) {
   const { isAuthenticated, getAccessToken } = useAuth();
   const [comments, setComments] = useState<Comment[]>([]);
@@ -31,6 +33,8 @@ export default function RWAForumReal({
   const [error, setError] = useState<string | null>(null);
   const [rateLimitError, setRateLimitError] = useState<string | null>(null);
   const [retryAfter, setRetryAfter] = useState<number | null>(null);
+
+  const isMobileVariant = variant === 'mobile';
 
   // Fetch comments from API
   const fetchComments = useCallback(async () => {
@@ -205,114 +209,301 @@ export default function RWAForumReal({
     }
   };
 
-  const renderComment = (comment: Comment, depth = 0, path: number[] = []) => (
-    <div
-      key={comment.id}
-      className={`${depth > 0 ? 'ml-8 border-l border-[#D0B284]/20 pl-4' : ''}`}
-    >
-      <div className="bg-[#231F20]/30 border border-[#D0B284]/20 rounded-lg p-4 mb-4">
-        {/* Comment Header */}
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full border border-[#D0B284]/20 bg-gradient-to-br from-[#D0B284] to-[#184D37] flex items-center justify-center text-[#231F20] font-semibold text-xs">
-              {comment.author.username?.charAt(0).toUpperCase() || 'A'}
-            </div>
-            <div>
-              <span className="text-[#D0B284] font-semibold text-sm">
-                {comment.author.username}
-              </span>
-              <span className="text-[#DCDDCC] text-xs ml-2">
-                {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}
-              </span>
+  const formatAddress = (address?: string | null) => {
+    if (!address) return null;
+    return address.length <= 10 ? address : `${address.slice(0, 6)}...${address.slice(-4)}`;
+  };
+
+  const getDisplayName = (comment: Comment) => {
+    const username = comment.author.username?.trim();
+    if (username) {
+      return username.toLowerCase().startsWith('0x') && username.length > 7
+        ? `${username.slice(0, 7)}…`
+        : username;
+    }
+
+    return formatAddress(comment.author.walletAddress) || 'Anonymous';
+  };
+
+  const renderComment = (comment: Comment, depth = 0, path: number[] = []) => {
+    const displayName = getDisplayName(comment);
+    if (isMobileVariant) {
+      const initial = displayName.charAt(0).toUpperCase() || 'A';
+
+      return (
+        <div
+          key={comment.id}
+          className={`${depth > 0 ? 'ml-8 border-l border-[#2a3b2a]/60 pl-4' : ''}`}
+        >
+          <div className="py-4 px-2 border-b border-[#202c20]/80 last:border-b-0">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#D0B284] to-[#184D37] flex items-center justify-center text-[#231F20] font-semibold text-xs">
+                {initial}
+              </div>
+
+              <div className="flex-1 space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-white">{displayName}</div>
+                    <div className="text-xs text-[#9AAE9A]">
+                      {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleLike(comment.id, path)}
+                    disabled={!isAuthenticated}
+                    className={`flex items-center gap-1 rounded-full px-2 py-1 text-xs transition-colors ${
+                      comment.isLikedByUser
+                        ? 'bg-[#D0B284]/20 text-[#D0B284]'
+                        : 'text-[#A7B6A7] hover:text-[#D0B284]'
+                    }`}
+                  >
+                    <Heart size={14} fill={comment.isLikedByUser ? 'currentColor' : 'none'} />
+                    {comment.likeCount}
+                  </button>
+                </div>
+
+                <p className="text-sm leading-relaxed text-[#DCDDCC] whitespace-pre-wrap">
+                  {comment.content}
+                </p>
+
+                <div className="flex items-center gap-4 text-xs text-[#A7B6A7]">
+                  {isAuthenticated && !comment.parentId && (
+                    <button
+                      type="button"
+                      onClick={() => setReplyingTo(replyingTo === comment.id ? null : comment.id)}
+                      className="font-medium hover:text-white transition-colors"
+                    >
+                      Reply
+                    </button>
+                  )}
+                </div>
+
+                {replyingTo === comment.id && (
+                  <div className="mt-3 space-y-2">
+                    <Textarea
+                      placeholder={`Reply to ${displayName}...`}
+                      value={replyText}
+                      onChange={(e) => setReplyText(e.target.value)}
+                      className="bg-[#101910] border border-[#2a3b2a] text-white placeholder:text-[#8FA28F] rounded-xl text-sm min-h-[60px]"
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() => handleSubmitReply(comment.id)}
+                        disabled={!replyText.trim() || loading}
+                        className="flex-1 bg-[#D0B284] hover:bg-[#D0B284]/90 text-[#231F20] text-xs font-semibold"
+                      >
+                        {loading ? 'Posting...' : 'Reply'}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          setReplyingTo(null);
+                          setReplyText('');
+                        }}
+                        className="flex-1 text-[#A7B6A7] hover:text-white text-xs"
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-          <Button variant="ghost" size="sm" className="text-[#DCDDCC] hover:text-[#D0B284]">
-            <MoreHorizontal size={16} />
-          </Button>
+
+          {comment.replies?.map((reply) =>
+            renderComment(reply, depth + 1, [
+              ...path,
+              comments.findIndex((c) => c.id === comment.id),
+            ]),
+          )}
         </div>
+      );
+    }
 
-        {/* Comment Content */}
-        <p className="text-white text-sm leading-relaxed mb-4">{comment.content}</p>
+    return (
+      <div
+        key={comment.id}
+        className={`${depth > 0 ? 'ml-8 border-l border-[#D0B284]/20 pl-4' : ''}`}
+      >
+        <div className="bg-[#231F20]/30 border border-[#D0B284]/20 rounded-lg p-4 mb-4">
+          {/* Comment Header */}
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full border border-[#D0B284]/20 bg-gradient-to-br from-[#D0B284] to-[#184D37] flex items-center justify-center text-[#231F20] font-semibold text-xs">
+                {displayName.charAt(0).toUpperCase() || 'A'}
+              </div>
+              <div>
+                <span className="text-[#D0B284] font-semibold text-sm">{displayName}</span>
+                <span className="text-[#DCDDCC] text-xs ml-2">
+                  {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}
+                </span>
+              </div>
+            </div>
+          </div>
 
-        {/* Comment Actions */}
-        <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => handleLike(comment.id, path)}
-            disabled={!isAuthenticated}
-            className={`flex items-center gap-1 text-xs ${
-              comment.isLikedByUser ? 'text-red-400' : 'text-[#DCDDCC] hover:text-red-400'
-            }`}
-          >
-            <Heart size={14} fill={comment.isLikedByUser ? 'currentColor' : 'none'} />
-            {comment.likeCount}
-          </Button>
+          {/* Comment Content */}
+          <p className="text-white text-sm leading-relaxed mb-4">{comment.content}</p>
 
-          {isAuthenticated && !comment.parentId && (
+          {/* Comment Actions */}
+          <div className="flex items-center gap-4">
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setReplyingTo(replyingTo === comment.id ? null : comment.id)}
-              className="flex items-center gap-1 text-xs text-[#DCDDCC] hover:text-[#D0B284]"
+              onClick={() => handleLike(comment.id, path)}
+              disabled={!isAuthenticated}
+              className={`flex items-center gap-1 text-xs ${
+                comment.isLikedByUser ? 'text-red-400' : 'text-[#DCDDCC] hover:text-red-400'
+              }`}
             >
-              <MessageCircle size={14} />
-              Reply
+              <Heart size={14} fill={comment.isLikedByUser ? 'currentColor' : 'none'} />
+              {comment.likeCount}
             </Button>
-          )}
 
-          <Button
-            variant="ghost"
-            size="sm"
-            className="flex items-center gap-1 text-xs text-[#DCDDCC] hover:text-[#D0B284]"
-          >
-            <Share size={14} />
-            Share
-          </Button>
-        </div>
-
-        {/* Reply Input */}
-        {replyingTo === comment.id && (
-          <div className="mt-4 pt-4 border-t border-[#D0B284]/20">
-            <Textarea
-              placeholder={`Reply to ${comment.author.username}...`}
-              value={replyText}
-              onChange={(e) => setReplyText(e.target.value)}
-              className="bg-[#231F20] border-[#D0B284]/20 text-white placeholder:text-[#DCDDCC] mb-2"
-              rows={3}
-            />
-            <div className="flex gap-2">
-              <Button
-                onClick={() => handleSubmitReply(comment.id)}
-                disabled={!replyText.trim() || loading}
-                className="bg-[#D0B284] hover:bg-[#D0B284]/90 text-[#231F20] text-xs"
-              >
-                {loading ? 'Posting...' : 'Reply'}
-              </Button>
+            {isAuthenticated && !comment.parentId && (
               <Button
                 variant="ghost"
-                onClick={() => {
-                  setReplyingTo(null);
-                  setReplyText('');
-                }}
-                className="text-[#DCDDCC] hover:text-white text-xs"
+                size="sm"
+                onClick={() => setReplyingTo(replyingTo === comment.id ? null : comment.id)}
+                className="flex items-center gap-1 text-xs text-[#DCDDCC] hover:text-[#D0B284]"
               >
-                Cancel
+                <MessageCircle size={14} />
+                Reply
               </Button>
-            </div>
+            )}
+
           </div>
+
+          {/* Reply Input */}
+          {replyingTo === comment.id && (
+            <div className="mt-4 pt-4 border-t border-[#D0B284]/20">
+              <Textarea
+                placeholder={`Reply to ${displayName}...`}
+                value={replyText}
+                onChange={(e) => setReplyText(e.target.value)}
+                className="bg-[#231F20] border-[#D0B284]/20 text-white placeholder:text-[#DCDDCC] mb-2 rounded-lg text-sm md:text-base min-h-[56px]"
+                rows={3}
+              />
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => handleSubmitReply(comment.id)}
+                  disabled={!replyText.trim() || loading}
+                  className="bg-[#D0B284] hover:bg-[#D0B284]/90 text-[#231F20] text-xs md:text-sm font-semibold px-4 py-2 min-h-[40px] md:min-h-[44px] touch-manipulation"
+                >
+                  {loading ? 'Posting...' : 'Reply'}
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setReplyingTo(null);
+                    setReplyText('');
+                  }}
+                  className="text-[#DCDDCC] hover:text-white text-xs md:text-sm px-4 py-2 min-h-[40px] md:min-h-[44px] touch-manipulation"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Render Replies */}
+        {comment.replies?.map((reply) =>
+          renderComment(reply, depth + 1, [
+            ...path,
+            comments.findIndex((c) => c.id === comment.id),
+          ]),
         )}
       </div>
+    );
+  };
 
-      {/* Render Replies */}
-      {comment.replies?.map((reply) =>
-        renderComment(reply, depth + 1, [...path, comments.findIndex((c) => c.id === comment.id)]),
-      )}
-    </div>
-  );
+  const renderCommentComposer = (stackedLayout: boolean) => {
+    if (!isAuthenticated) {
+      if (stackedLayout) {
+        return (
+          <div className="rounded-xl border border-dashed border-[#2a3b2a] bg-[#101910] px-4 py-3 text-center text-sm text-[#A7B6A7]">
+            Please connect your wallet to join the discussion
+          </div>
+        );
+      }
+
+      return (
+        <div className="text-center text-[#DCDDCC] text-sm">
+          Please connect your wallet to join the discussion
+        </div>
+      );
+    }
+
+    if (stackedLayout) {
+      return (
+        <div className="space-y-3">
+          <Textarea
+            placeholder={`Add a comment about ${listingTitle}...`}
+            value={newComment}
+            onChange={(e) => setNewComment(e.target.value)}
+            disabled={loading || !!rateLimitError}
+            className="w-full rounded-2xl border border-[#2a3b2a] bg-[#101910] px-4 py-3 text-sm text-white placeholder:text-[#8FA28F] min-h-[56px]"
+            onInput={(e) => {
+              const target = e.target as HTMLTextAreaElement;
+              target.style.height = 'auto';
+              target.style.height = Math.min(target.scrollHeight, 200) + 'px';
+            }}
+          />
+          <Button
+            onClick={handleSubmitComment}
+            disabled={!newComment.trim() || loading || !!rateLimitError}
+            className="w-full rounded-xl bg-[#D0B284] hover:bg-[#D0B284]/90 text-[#231F20] text-sm font-semibold py-3"
+          >
+            {loading ? 'Posting...' : 'Post Comment'}
+          </Button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex gap-3 items-end w-full">
+        <Textarea
+          placeholder={`Share your thoughts about ${listingTitle}...`}
+          value={newComment}
+          onChange={(e) => setNewComment(e.target.value)}
+          disabled={loading || !!rateLimitError}
+          className="flex-1 bg-[#151c16] border-[#D0B284]/20 text-white placeholder:text-[#DCDDCC] resize-none min-h-[72px] max-h-[220px] overflow-y-auto rounded-lg text-sm md:text-base"
+          style={{
+            height: 'auto',
+            minHeight: '72px',
+            maxHeight: '220px',
+          }}
+          onInput={(e) => {
+            const target = e.target as HTMLTextAreaElement;
+            target.style.height = 'auto';
+            target.style.height = Math.min(target.scrollHeight, 220) + 'px';
+          }}
+        />
+        <Button
+          onClick={handleSubmitComment}
+          disabled={!newComment.trim() || loading || !!rateLimitError}
+          className="bg-[#D0B284] hover:bg-[#D0B284]/90 text-[#231F20] font-semibold px-5 py-2 h-auto self-end min-h-[44px] md:min-h-[48px] touch-manipulation"
+        >
+          {loading ? 'Posting...' : 'Post Comment'}
+        </Button>
+      </div>
+    );
+  };
 
   // Show loading state
   if (fetching && comments.length === 0) {
+    if (isMobileVariant) {
+      return (
+        <div className="bg-[#151c16] rounded-lg border border-[#D0B284]/20 p-6 text-center text-[#D0B284] text-sm">
+          Loading comments...
+        </div>
+      );
+    }
+
     return (
       <div className="h-full bg-[#151c16] relative flex flex-col">
         <div className="px-4 py-3 border-b border-[#D0B284]/20 flex-shrink-0">
@@ -320,6 +511,36 @@ export default function RWAForumReal({
         </div>
         <div className="flex-1 flex items-center justify-center">
           <div className="text-[#D0B284] text-lg">Loading comments...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isMobileVariant) {
+    return (
+      <div className="space-y-4 px-2">
+        {error && (
+          <div className="rounded-md border border-red-500/20 bg-red-900/20 px-3 py-2 text-xs text-red-300">
+            {error}
+          </div>
+        )}
+        {rateLimitError && (
+          <div className="rounded-md border border-yellow-500/20 bg-yellow-900/20 px-3 py-2 text-xs text-yellow-200">
+            {rateLimitError}
+            {retryAfter && ` Please wait ${retryAfter} seconds.`}
+          </div>
+        )}
+
+        {renderCommentComposer(true)}
+
+        <div className="space-y-2">
+          {comments.length === 0 ? (
+            <div className="text-center text-[#DCDDCC] text-sm py-6">
+              No comments yet. Be the first to comment!
+            </div>
+          ) : (
+            comments.map((comment, index) => renderComment(comment, 0, [index]))
+          )}
         </div>
       </div>
     );
@@ -361,45 +582,9 @@ export default function RWAForumReal({
       </div>
 
       {/* New Comment Section - Positioned at bottom of this container */}
-      {isAuthenticated && (
-        <div className="absolute bottom-0 left-0 right-0 border-t border-[#D0B284]/20 bg-[#151c16] z-10 p-4">
-          <div className="flex gap-3 items-end w-full">
-            <Textarea
-              placeholder={`Share your thoughts about ${listingTitle}...`}
-              value={newComment}
-              onChange={(e) => setNewComment(e.target.value)}
-              disabled={loading || !!rateLimitError}
-              className="flex-1 bg-[#151c16] border-[#D0B284]/20 text-white placeholder:text-[#DCDDCC] resize-none min-h-[60px] max-h-[200px] overflow-y-auto"
-              style={{
-                height: 'auto',
-                minHeight: '60px',
-                maxHeight: '200px',
-              }}
-              onInput={(e) => {
-                const target = e.target as HTMLTextAreaElement;
-                target.style.height = 'auto';
-                target.style.height = Math.min(target.scrollHeight, 200) + 'px';
-              }}
-            />
-            <Button
-              onClick={handleSubmitComment}
-              disabled={!newComment.trim() || loading || !!rateLimitError}
-              className="bg-[#D0B284] hover:bg-[#D0B284]/90 text-[#231F20] font-semibold px-6 py-2 h-auto self-end"
-            >
-              {loading ? 'Posting...' : 'Post Comment'}
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Not authenticated message */}
-      {!isAuthenticated && (
-        <div className="absolute bottom-0 left-0 right-0 border-t border-[#D0B284]/20 bg-[#151c16] z-10 p-4">
-          <div className="text-center text-[#DCDDCC] text-sm">
-            Please connect your wallet to join the discussion
-          </div>
-        </div>
-      )}
+      <div className="absolute bottom-0 left-0 right-0 border-t border-[#D0B284]/20 bg-[#151c16] z-10 p-4">
+        {renderCommentComposer(false)}
+      </div>
     </div>
   );
 }
