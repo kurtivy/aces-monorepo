@@ -102,5 +102,3 @@ async function getAcesSpotPriceUSD(): Promise<number> {
 */
 
 export {}; // keep file as a module
-
-
