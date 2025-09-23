@@ -18,6 +18,7 @@ import { contactRoutes } from './routes/v1/contact';
 import { commentsRoutes } from './routes/v1/comments';
 import { tokensRoutes } from './routes/v1/tokens';
 import { twitchRoutes } from './routes/v1/twitch';
+import { priceRoutes } from './routes/v1/price';
 
 import { cronRoutes } from './routes/v1/cron/trigger';
 
@@ -133,6 +134,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   fastify.register(contactRoutes, { prefix: '/api/v1/contact' });
   fastify.register(commentsRoutes, { prefix: '/api/v1/comments' });
   fastify.register(twitchRoutes, { prefix: '/api/v1/twitch' });
+  fastify.register(priceRoutes, { prefix: '/api/v1/price' });
   // Register cron routes for manual testing
   fastify.register(cronRoutes);
 

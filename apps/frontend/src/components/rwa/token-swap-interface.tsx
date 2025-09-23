@@ -9,6 +9,7 @@ import { Copy, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import ProgressionBar from './middle-column/overview/progression-bar';
+import { usePriceConversion } from '@/hooks/use-price-conversion';
 
 // Contract addresses
 const CONTRACTS = {
@@ -89,6 +90,11 @@ export default function TokenSwapInterface({
 
   // UI state
   const [activeTab, setActiveTab] = useState<'buy' | 'sell'>('buy');
+
+  // Price conversion hook
+  const { data: usdConversion, loading: priceLoading } = usePriceConversion(
+    activeTab === 'buy' ? priceQuote : sellPriceQuote,
+  );
   const [amount, setAmount] = useState('');
   const [slippage, setSlippage] = useState('0.5');
   const [showSlippageDropdown, setShowSlippageDropdown] = useState(false);
@@ -655,6 +661,20 @@ export default function TokenSwapInterface({
                     ? `Quote = ${priceQuote} $ACES`
                     : `Receive = ${sellPriceQuote} $ACES`}
                 </div>
+
+                {/* USD Conversion */}
+                {usdConversion && (
+                  <div className="text-xs text-[#D0B284]/70 mt-1">
+                    ≈ ${usdConversion.usdValue} USD
+                    {usdConversion.isStale && (
+                      <span className="ml-1 text-[#D0B284]/50">(cached)</span>
+                    )}
+                  </div>
+                )}
+
+                {priceLoading && (
+                  <div className="text-xs text-[#D0B284]/50 mt-1">Loading USD price...</div>
+                )}
               </div>
             </div>
           )}

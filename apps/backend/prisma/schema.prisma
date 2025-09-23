@@ -374,3 +374,13 @@ model Bid {
   @@index([listingId, bidderId, isActive])
   @@map("bids")
 }
+
+model TokenPrice {
+  id        String   @id @default(cuid())
+  symbol    String   @unique
+  priceUSD  Decimal  @db.Decimal(20, 8)
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@map("token_prices")
+}
