@@ -9,9 +9,20 @@ interface TokenHealthPanelProps {
   ratioText?: string; // e.g., "4.32x" (placeholder for now)
   // future props
   // ratioValue?: number; // raw value to compute slider position
+  // tokenAddress?: string; // launchpad token address (for real ratio wiring)
+  // reservePriceUSD?: string | number; // listing.reservePrice in USD (string per schema)
 }
 
 export default function TokenHealthPanel({ ratioText = '4.32x' }: TokenHealthPanelProps) {
+  // ===== Real ratio wiring (commented out for later enablement) =====
+  // const { ratio, usdMarketCap, loading: ratioLoading, error: ratioError, stale } = useAcesRatio({
+  //   factoryAddress: CONTRACTS.FACTORY_PROXY,
+  //   tokenAddress,
+  //   reservePriceUSD,
+  // });
+  // const displayRatioText = ratio != null ? `${ratio.toFixed(2)}x${stale ? ' (cached)' : ''}` : '-';
+  // ==================================================================
+
   // For now, slider is neutral at 50%
   const sliderPosition = 50; // percent
 

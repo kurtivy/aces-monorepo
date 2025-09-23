@@ -54,6 +54,14 @@ export function ActiveSectionContent({
     // Token Details - Compact version
     <div key="token-details" className="h-full flex flex-col space-y-3 overflow-hidden ">
       <div className="flex-1 min-h-0">
+        {/**
+         * Real ratio wiring (commented out for now):
+         *
+         * <TokenHealthPanel
+         *   tokenAddress={listing?.token?.contractAddress}
+         *   reservePriceUSD={listing?.reservePrice}
+         * />
+         */}
         <TokenHealthPanel />
       </div>
     </div>,
