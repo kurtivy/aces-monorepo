@@ -1,6 +1,6 @@
 'use client';
 
-import SeesawAnimation from '@/components/rwa/left-column/token-details/seesaw-animation';
+import TokenHealthPanel from '@/components/rwa/left-column/token-details/token-health-panel';
 import ProductHeroLocation from '@/components/rwa/left-column/product/product-hero-location';
 import DynamicImageGallery from './overview/dynamic-image-gallery';
 import { HighestBidDisplay } from './bidding/highest-bid-display';
@@ -54,7 +54,7 @@ export function ActiveSectionContent({
     // Token Details - Compact version
     <div key="token-details" className="h-full flex flex-col space-y-3 overflow-hidden ">
       <div className="flex-1 min-h-0">
-        <SeesawAnimation />
+        <TokenHealthPanel />
       </div>
     </div>,
 

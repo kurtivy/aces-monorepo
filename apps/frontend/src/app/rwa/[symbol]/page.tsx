@@ -14,7 +14,6 @@ import RWAHeader from '@/components/rwa/rwa-header';
 import DashedGridBackground from '@/components/ui/custom/dashed-grid-background';
 import { useDeviceCapabilities } from '@/contexts/device-provider';
 import MobileRWAItemPage from './mobile-page';
-import FloatingStreamButton from '@/components/twitch/floating-stream-button';
 
 export default function RWAItemPage() {
   const params = useParams();
@@ -209,11 +208,6 @@ export default function RWAItemPage() {
                 </div>
               </div>
             </div>
-
-            {/* Floating Stream Button - Desktop Only */}
-            <FloatingStreamButton
-              channelName={process.env.NEXT_PUBLIC_TWITCH_CHANNEL_NAME || 'testchannel'}
-            />
 
             {/* Modals */}
             {navigation.showShareModal && (
