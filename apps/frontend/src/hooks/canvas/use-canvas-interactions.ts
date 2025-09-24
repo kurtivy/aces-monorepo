@@ -464,7 +464,7 @@ export const useCanvasInteractions = ({
 
       if (clickedImage) {
         if (clickedImage.type === 'submit-asset') {
-          window.location.href = '/tokenize';
+          window.location.href = '/launch';
         } else {
           setSelectedImage(clickedImage);
         }

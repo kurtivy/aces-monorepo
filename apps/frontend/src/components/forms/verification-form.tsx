@@ -385,7 +385,7 @@ export function VerificationForm({ disabled = false }: VerificationFormProps) {
               tokenization.
             </p>
             <Button
-              onClick={() => (window.location.href = '/tokenize')}
+              onClick={() => (window.location.href = '/launch')}
               className="bg-[#D7BF75] hover:bg-[#D7BF75]/80 text-black font-medium px-8 py-3"
             >
               Submit Your First Asset
