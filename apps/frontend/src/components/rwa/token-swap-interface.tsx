@@ -668,7 +668,9 @@ export default function TokenSwapInterface({
                 {/* USD Conversion */}
                 {usdConversion && (
                   <div className="text-xs text-[#D0B284]/70 mt-1">
-                    ≈ ${usdConversion.usdValue} USD
+                    {Number.parseFloat(usdConversion.usdValue) < 0.01
+                      ? '≈ <$0.01 USD'
+                      : `≈ $${usdConversion.usdValue} USD`}
                     {usdConversion.isStale && (
                       <span className="ml-1 text-[#D0B284]/50">(cached)</span>
                     )}
