@@ -39,7 +39,7 @@ if (hasGoogleCloudCredentials) {
     },
   });
 
-  productBucketName = process.env.GOOGLE_CLOUD_PRODUCT_BUCKET_NAME || 'aces-product-images';
+  productBucketName = process.env.GOOGLE_CLOUD_BUCKET_NAME || 'aces-product-images';
   productBucket = productStorage.bucket(productBucketName);
 } else {
   console.warn(
