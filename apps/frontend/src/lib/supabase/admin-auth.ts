@@ -15,8 +15,9 @@ export const supabaseAdmin =
         auth: {
           // Use a separate storage key for admin auth to avoid conflicts with main auth
           storageKey: 'admin-auth-token',
-          autoRefreshToken: false, // We'll require re-authentication each time
-          persistSession: false, // Don't persist admin sessions for security
+          autoRefreshToken: true, // Enable auto-refresh for proper session handling
+          persistSession: true, // Need to persist session for authentication to work properly
+          // You can manually clear sessions on app start if you want fresh logins
         },
       })
     : null;
@@ -39,6 +40,9 @@ export async function signInAdmin(email: string, password: string): Promise<Admi
   try {
     console.log('🔐 Attempting admin login with email:', email);
 
+    // Clear any existing session first if you want fresh logins
+    await supabaseAdmin.auth.signOut();
+
     const { data, error } = await supabaseAdmin.auth.signInWithPassword({
       email,
       password,
@@ -52,7 +56,14 @@ export async function signInAdmin(email: string, password: string): Promise<Admi
       };
     }
 
-    console.log('✅ Admin login successful:', data.user?.email);
+    if (!data.user) {
+      return {
+        success: false,
+        error: 'No user returned from authentication',
+      };
+    }
+
+    console.log('✅ Admin login successful:', data.user.email);
     return {
       success: true,
       user: data.user,
@@ -69,6 +80,8 @@ export async function signInAdmin(email: string, password: string): Promise<Admi
 export async function signOutAdmin(): Promise<void> {
   if (supabaseAdmin) {
     await supabaseAdmin.auth.signOut();
+    // Also clear from localStorage if needed
+    localStorage.removeItem('admin-auth-token');
   }
 }
 
@@ -98,6 +111,13 @@ export async function getCurrentAdminUser() {
 export async function isAdminAuthenticated(): Promise<boolean> {
   const user = await getCurrentAdminUser();
   return !!user;
+}
+
+// Optional: Clear admin session on app start for security
+export function clearAdminSession(): void {
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('admin-auth-token');
+  }
 }
 
 export default supabaseAdmin;
