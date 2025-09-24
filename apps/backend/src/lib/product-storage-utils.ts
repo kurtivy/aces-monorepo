@@ -82,18 +82,6 @@ export class ProductStorageService {
     fileName: string,
     expiresInMinutes: number = 60,
   ): Promise<string> {
-    // Debug environment variables
-    console.log(`[ProductStorage] Environment check for ${fileName}:`);
-    console.log(
-      `[ProductStorage] - PROJECT_ID: ${process.env.GOOGLE_CLOUD_PROJECT_ID ? 'Set' : 'Missing'}`,
-    );
-    console.log(
-      `[ProductStorage] - CLIENT_EMAIL: ${process.env.GOOGLE_CLOUD_CLIENT_EMAIL ? 'Set' : 'Missing'}`,
-    );
-    console.log(
-      `[ProductStorage] - PRIVATE_KEY: ${process.env.GOOGLE_CLOUD_PRIVATE_KEY ? 'Set' : 'Missing'}`,
-    );
-
     // Check credentials dynamically
     const hasCredentials = !!(
       process.env.GOOGLE_CLOUD_PROJECT_ID &&

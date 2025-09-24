@@ -7,7 +7,7 @@ const gcsTestRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/debug/gcs-test', async (request, reply) => {
     try {
       console.log('[GCS-Test] Starting Google Cloud Storage test...');
-      
+
       // Check environment variables
       const envCheck = {
         GOOGLE_CLOUD_PROJECT_ID: !!process.env.GOOGLE_CLOUD_PROJECT_ID,
@@ -15,16 +15,16 @@ const gcsTestRoutes: FastifyPluginAsync = async (fastify) => {
         GOOGLE_CLOUD_PRIVATE_KEY: !!process.env.GOOGLE_CLOUD_PRIVATE_KEY,
         GOOGLE_CLOUD_BUCKET_NAME: process.env.GOOGLE_CLOUD_BUCKET_NAME || 'aces-product-images',
       };
-      
+
       console.log('[GCS-Test] Environment variables:', envCheck);
-      
+
       // Test signed URL generation for a known file
       const testFileName = 'apkaws/APxKaws-image-4.webp';
       console.log(`[GCS-Test] Testing signed URL for: ${testFileName}`);
-      
+
       const signedUrl = await ProductStorageService.getSignedProductUrl(testFileName, 5);
       console.log(`[GCS-Test] Generated signed URL: ${signedUrl.substring(0, 100)}...`);
-      
+
       // Test if the signed URL is accessible
       const response = await fetch(signedUrl, { method: 'HEAD' });
       const urlTest = {
@@ -34,17 +34,17 @@ const gcsTestRoutes: FastifyPluginAsync = async (fastify) => {
         contentType: response.headers.get('content-type'),
         contentLength: response.headers.get('content-length'),
       };
-      
+
       console.log('[GCS-Test] URL accessibility test:', urlTest);
-      
+
       // Test convertToSignedUrls method
       const testUrls = [
         'https://storage.googleapis.com/aces-product-images/apkaws/APxKaws-image-4.webp',
       ];
-      
+
       console.log('[GCS-Test] Testing convertToSignedUrls...');
       const convertedUrls = await ProductStorageService.convertToSignedUrls(testUrls, 5);
-      
+
       return {
         success: true,
         timestamp: new Date().toISOString(),
@@ -56,19 +56,19 @@ const gcsTestRoutes: FastifyPluginAsync = async (fastify) => {
         tests: {
           signedUrlGeneration: {
             success: !!signedUrl,
-            url: signedUrl.substring(0, 100) + '...',
+            url: signedUrl, // Show full URL for debugging
+            urlLength: signedUrl.length,
           },
           urlAccessibility: urlTest,
           convertToSignedUrls: {
             originalUrls: testUrls,
-            convertedUrls: convertedUrls.map(url => url.substring(0, 100) + '...'),
+            convertedUrls: convertedUrls.map((url) => url.substring(0, 100) + '...'),
           },
         },
       };
-      
     } catch (error) {
       console.error('[GCS-Test] Error:', error);
-      
+
       return reply.status(500).send({
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
