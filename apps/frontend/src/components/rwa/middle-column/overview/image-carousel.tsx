@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { ImageData } from '../../../../types/rwa/section.types';
+import { createImageErrorHandler, getValidImageSrc } from '@/lib/utils/image-error-handler';
 
 interface ImageCarouselProps {
   selectedImageIndex: number;
@@ -40,16 +41,25 @@ export default function ImageCarousel({
       <div className="relative w-full h-full flex justify-center items-center">
         <div className="relative w-full h-full cursor-pointer" onClick={handleImageClick}>
           <Image
-            src={mockImages[selectedImageIndex].src || '/placeholder.svg'}
+            src={getValidImageSrc(
+              mockImages[selectedImageIndex].src,
+              undefined,
+              { width: 600, height: 400, text: 'Image Error' }
+            )}
             alt={mockImages[selectedImageIndex].alt}
             className="w-full h-full object-contain rounded-xl"
             fill
             sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
             unoptimized={mockImages[selectedImageIndex].src?.includes('storage.googleapis.com')}
-            onError={(e) => {
-              console.log('Image failed to load:', mockImages[selectedImageIndex].src);
-              e.currentTarget.src = '/placeholder.svg?height=400&width=600&text=Image Error';
-            }}
+            onError={createImageErrorHandler({
+              fallbackText: 'Image Error',
+              width: 600,
+              height: 400,
+              onError: (src) => {
+                console.error('Carousel image failed to load:', src);
+              },
+              maxRetries: 2,
+            })}
           />
         </div>
       </div>

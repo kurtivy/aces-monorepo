@@ -1,4 +1,8 @@
+import { config } from 'dotenv';
 import { buildApp } from './app';
+
+// Load environment variables from .env file
+config();
 
 async function start() {
   try {

@@ -41,7 +41,7 @@ const getListingStatus = (listing: ListingData): 'active' | 'pending' | 'suspend
 // Helper function to format listing data for admin display
 const formatListingForAdminDisplay = (listing: ListingData): AdminListingData => {
   const status = getListingStatus(listing);
-  const imageUrl = listing.imageGallery?.[0] || '/placeholder.svg?height=40&width=40';
+  const imageUrl = listing.imageGallery?.[0] || '/placeholder.svg';
 
   // Get seller name from account verification first, then fallback to displayName
   let sellerName = 'Unknown';

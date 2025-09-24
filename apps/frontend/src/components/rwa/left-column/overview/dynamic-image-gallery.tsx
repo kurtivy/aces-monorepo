@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ImageData } from '../../../../types/rwa/section.types';
+import { createImageErrorHandler, getValidImageSrc } from '@/lib/utils/image-error-handler';
 
 interface DynamicImageGalleryProps {
   images: ImageData[];
@@ -160,16 +161,25 @@ export default function DynamicImageGallery({
               onClick={() => onImageSelect(index)}
             >
               <Image
-                src={image.thumbnail || image.src || '/placeholder.svg'}
+                src={getValidImageSrc(
+                  image.thumbnail || image.src,
+                  undefined,
+                  { width: 100, height: 100, text: 'Error' }
+                )}
                 alt={image.alt}
                 width={100}
                 height={100}
                 className="w-full h-full object-cover"
                 unoptimized={image.src?.includes('storage.googleapis.com')}
-                onError={(e) => {
-                  console.log('Gallery image failed to load:', image.src);
-                  e.currentTarget.src = '/placeholder.svg?height=100&width=100&text=Error';
-                }}
+                onError={createImageErrorHandler({
+                  fallbackText: 'Error',
+                  width: 100,
+                  height: 100,
+                  onError: (src) => {
+                    console.error('Gallery thumbnail failed to load:', src);
+                  },
+                  maxRetries: 1,
+                })}
               />
             </div>
           ))}

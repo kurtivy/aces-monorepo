@@ -8,6 +8,7 @@ import { useAuth } from '@/lib/auth/auth-context';
 import { Copy, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
+import { createImageErrorHandler, getValidImageSrc } from '@/lib/utils/image-error-handler';
 import ProgressionBar from './middle-column/overview/progression-bar';
 import { usePriceConversion } from '@/hooks/use-price-conversion';
 
@@ -418,22 +419,24 @@ export default function TokenSwapInterface({
                   <div className="flex items-center gap-3 mb-2">
                     <div className="w-8 h-8 rounded-xl overflow-hidden border border-[#D0B284]/30">
                       <Image
-                        src={
-                          primaryImage ||
-                          imageGallery?.[0] ||
-                          '/placeholder.svg?height=64&width=64&query=token logo'
-                        }
+                        src={getValidImageSrc(primaryImage || imageGallery?.[0], undefined, {
+                          width: 24,
+                          height: 24,
+                          text: 'Token',
+                        })}
                         alt={`${tokenSymbol} logo`}
                         width={24}
                         height={24}
                         className="w-full h-full object-cover"
-                        onError={(e) => {
-                          console.log(
-                            'Token image failed to load:',
-                            primaryImage || imageGallery?.[0],
-                          );
-                          e.currentTarget.src = '/placeholder.svg?height=64&width=64&text=Error';
-                        }}
+                        onError={createImageErrorHandler({
+                          fallbackText: 'Token',
+                          width: 24,
+                          height: 24,
+                          onError: (src) => {
+                            console.error('Token image failed to load:', src);
+                          },
+                          maxRetries: 1,
+                        })}
                       />
                     </div>
                     <h2 className="text-[#D0B284] text-2xl font-mono font-bold leading-none">

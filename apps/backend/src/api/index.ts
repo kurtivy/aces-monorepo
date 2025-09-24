@@ -1,5 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { config } from 'dotenv';
 import { buildApp } from '../app';
+
+// Load environment variables from .env file
+config();
 
 let appPromise: Promise<any> | undefined;
 

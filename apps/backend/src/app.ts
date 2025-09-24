@@ -19,6 +19,7 @@ import { commentsRoutes } from './routes/v1/comments';
 import { tokensRoutes } from './routes/v1/tokens';
 import { twitchRoutes } from './routes/v1/twitch';
 import { priceRoutes } from './routes/v1/price';
+import gcsTestRoutes from './routes/v1/debug/gcs-test';
 
 import { cronRoutes } from './routes/v1/cron/trigger';
 
@@ -66,6 +67,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
       'https://aces-monorepo-git-dev-dan-aces-fun.vercel.app',
       'https://aces-monorepo-git-main-dan-aces-fun.vercel.app',
       'https://aces-monorepo-git-feat-ui-updates-dan-aces-fun.vercel.app',
+      'https://aces-monorepo-git-feat-rwa-page-upgrade-dan-aces-fun.vercel.app',
     );
 
     return origins;
@@ -135,6 +137,8 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   fastify.register(commentsRoutes, { prefix: '/api/v1/comments' });
   fastify.register(twitchRoutes, { prefix: '/api/v1/twitch' });
   fastify.register(priceRoutes, { prefix: '/api/v1/price' });
+  // Register debug routes
+  fastify.register(gcsTestRoutes, { prefix: '/api/v1' });
   // Register cron routes for manual testing
   fastify.register(cronRoutes);
 
