@@ -165,6 +165,7 @@ export default function DynamicImageGallery({
                 width={100}
                 height={100}
                 className="w-full h-full object-cover"
+                unoptimized={image.src?.includes('storage.googleapis.com')}
                 onError={(e) => {
                   console.log('Gallery image failed to load:', image.src);
                   e.currentTarget.src = '/placeholder.svg?height=100&width=100&text=Error';

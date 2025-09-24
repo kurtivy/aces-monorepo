@@ -5,5 +5,15 @@
       "dev": true,
       "feat/aceofbase-deployment": true
     }
+  },
+  "functions": {
+    "app/**": {
+      "maxDuration": 30
+    }
+  },
+  "images": {
+    "domains": ["storage.googleapis.com"],
+    "minimumCacheTTL": 86400,
+    "formats": ["image/avif", "image/webp"]
   }
 }

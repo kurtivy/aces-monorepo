@@ -43,12 +43,13 @@ export default function ImageCarousel({
             src={mockImages[selectedImageIndex].src || '/placeholder.svg'}
             alt={mockImages[selectedImageIndex].alt}
             className="w-full h-full object-contain rounded-xl"
+            fill
+            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+            unoptimized={mockImages[selectedImageIndex].src?.includes('storage.googleapis.com')}
             onError={(e) => {
               console.log('Image failed to load:', mockImages[selectedImageIndex].src);
               e.currentTarget.src = '/placeholder.svg?height=400&width=600&text=Image Error';
             }}
-            fill
-            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
           />
         </div>
       </div>
