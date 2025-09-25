@@ -12,32 +12,8 @@ import { createImageErrorHandler, getValidImageSrc } from '@/lib/utils/image-err
 import ProgressionBar from './middle-column/overview/progression-bar';
 import { usePriceConversion } from '@/hooks/use-price-conversion';
 
-// Contract addresses
-const CONTRACTS = {
-  FACTORY_PROXY: '0xd484049526dF1325dEAc0D0DB67536b7431D8718',
-};
-
-// Minimal ABIs for other contracts
-const ACES_TOKEN_ABI = [
-  'function approve(address spender, uint256 amount) returns (bool)',
-  'function balanceOf(address owner) view returns (uint256)',
-  'function allowance(address owner, address spender) view returns (uint256)',
-];
-
-const LAUNCHPAD_TOKEN_ABI = [
-  'function balanceOf(address owner) view returns (uint256)',
-  'function name() view returns (string)',
-  'function symbol() view returns (string)',
-  'function totalSupply() view returns (uint256)',
-];
-
-const ACES_FACTORY_ABI = [
-  'function acesTokenAddress() view returns (address)',
-  'function getBuyPriceAfterFee(address token, uint256 amount) view returns (uint256)',
-  'function getSellPriceAfterFee(address token, uint256 amount) view returns (uint256)',
-  'function buyTokens(address token, uint256 amount, uint256 maxPrice) payable',
-  'function sellTokens(address token, uint256 amount) returns (uint256)',
-];
+import { getContractAddresses } from '@/lib/contracts/addresses';
+import { ACES_FACTORY_ABI, ERC20_ABI, LAUNCHPAD_TOKEN_ABI } from '@/lib/contracts/abi';
 
 interface TokenSwapInterfaceProps {
   tokenSymbol?: string;
@@ -79,7 +55,9 @@ export default function TokenSwapInterface({
   const [signer, setSigner] = useState<ethers.Signer | null>(null);
   const [factoryContract, setFactoryContract] = useState<ethers.Contract | null>(null);
   const [acesContract, setAcesContract] = useState<ethers.Contract | null>(null);
-  const [acesTokenAddress, setAcesTokenAddress] = useState<string>('');
+
+  // Get contract addresses
+  const contractAddresses = getContractAddresses();
 
   // Balance state
   const [acesBalance, setAcesBalance] = useState<string>('0');
@@ -210,7 +188,7 @@ export default function TokenSwapInterface({
         isAuthenticated,
         walletAddress,
         hasProvider: !!provider,
-        hasEthereum: !!(typeof window !== 'undefined' && (window as any).ethereum),
+        hasEthereum: !!(typeof window !== 'undefined' && window.ethereum),
       });
 
       if (
@@ -218,26 +196,29 @@ export default function TokenSwapInterface({
         walletAddress &&
         !provider &&
         typeof window !== 'undefined' &&
-        (window as any).ethereum
+        window.ethereum
       ) {
         try {
           console.log('Auto-initializing provider from auth...');
-          const provider = new ethers.providers.Web3Provider((window as any).ethereum);
+          const provider = new ethers.providers.Web3Provider(window.ethereum);
           const signer = provider.getSigner();
 
           setProvider(provider);
           setSigner(signer);
 
-          // Initialize contracts
-          const factory = new ethers.Contract(CONTRACTS.FACTORY_PROXY, ACES_FACTORY_ABI, signer);
+          // Initialize contracts using new addresses
+          const factory = new ethers.Contract(
+            contractAddresses.FACTORY_PROXY, // Use new proxy address
+            ACES_FACTORY_ABI, // Use new ABI
+            signer,
+          );
           setFactoryContract(factory);
 
-          // Get ACES token address
-          const acesAddress = await factory.acesTokenAddress();
-          setAcesTokenAddress(acesAddress);
+          // Get ACES token address from contract addresses
+          const acesAddress = contractAddresses.ACES_TOKEN;
           console.log('ACES token address:', acesAddress);
 
-          const aces = new ethers.Contract(acesAddress, ACES_TOKEN_ABI, signer);
+          const aces = new ethers.Contract(acesAddress, ERC20_ABI, signer);
           setAcesContract(aces);
 
           console.log('Auto-initialization complete');
@@ -248,7 +229,13 @@ export default function TokenSwapInterface({
     };
 
     initializeFromAuth();
-  }, [isAuthenticated, walletAddress, provider]);
+  }, [
+    isAuthenticated,
+    walletAddress,
+    provider,
+    contractAddresses.ACES_TOKEN,
+    contractAddresses.FACTORY_PROXY,
+  ]);
 
   // Refresh balances when dependencies change
   useEffect(() => {
@@ -264,25 +251,28 @@ export default function TokenSwapInterface({
 
   // Connect wallet using direct MetaMask interaction (like testing page)
   const connectWallet = async () => {
-    if (typeof window !== 'undefined' && (window as any).ethereum) {
+    if (typeof window !== 'undefined' && window.ethereum) {
       try {
         setLoading('Connecting wallet...');
-        const provider = new ethers.providers.Web3Provider((window as any).ethereum);
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
         await provider.send('eth_requestAccounts', []);
         const signer = provider.getSigner();
 
         setProvider(provider);
         setSigner(signer);
 
-        // Initialize contracts
-        const factory = new ethers.Contract(CONTRACTS.FACTORY_PROXY, ACES_FACTORY_ABI, signer);
+        // Initialize contracts using new addresses
+        const factory = new ethers.Contract(
+          contractAddresses.FACTORY_PROXY, // Use new proxy address
+          ACES_FACTORY_ABI, // Use new ABI
+          signer,
+        );
         setFactoryContract(factory);
 
-        // Get ACES token address
-        const acesAddress = await factory.acesTokenAddress();
-        setAcesTokenAddress(acesAddress);
+        // Get ACES token address from contract addresses
+        const acesAddress = contractAddresses.ACES_TOKEN;
 
-        const aces = new ethers.Contract(acesAddress, ACES_TOKEN_ABI, signer);
+        const aces = new ethers.Contract(acesAddress, ERC20_ABI, signer);
         setAcesContract(aces);
 
         setLoading('');
@@ -312,7 +302,10 @@ export default function TokenSwapInterface({
 
       // Check current allowance and balances
       const address = await signer.getAddress();
-      const currentAllowance = await acesContract.allowance(address, CONTRACTS.FACTORY_PROXY);
+      const currentAllowance = await acesContract.allowance(
+        address,
+        contractAddresses.FACTORY_PROXY,
+      );
       const currentAcesBalance = await acesContract.balanceOf(address);
 
       console.log('=== BALANCE CHECK ===');
@@ -325,12 +318,12 @@ export default function TokenSwapInterface({
       // Step 1: Approve ACES tokens
       setLoading('Approving ACES tokens...');
       console.log('Step 1: Approving ACES tokens for factory...');
-      const approveTx = await acesContract.approve(CONTRACTS.FACTORY_PROXY, priceWei);
+      const approveTx = await acesContract.approve(contractAddresses.FACTORY_PROXY, priceWei);
       console.log('Approval transaction sent:', approveTx.hash);
       await approveTx.wait();
       console.log('✅ Approval confirmed');
 
-      // Step 2: Buy tokens
+      // Step 2: Buy tokens with new function signature
       setLoading('Buying tokens...');
       console.log('Step 2: Calling buyTokens...');
 

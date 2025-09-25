@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect, useMemo, useState } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import * as d3 from 'd3';
 import { useAcesFactoryContract } from '@/hooks/contracts/use-aces-factory-contract';
 
@@ -17,65 +17,44 @@ interface TooltipData {
   y: number;
 }
 
-// Generate bonding curve data from contract
-const generateBondingCurveData = async (
-  tokenAddress: string,
-  currentTokensSold: number,
-  calculatePriceAtSupply: (supply: number) => Promise<number>,
-) => {
-  const data = [];
-  const supplyPoints = [
-    0, 100000000, 200000000, 300000000, 400000000, 500000000, 600000000, 700000000, 800000000,
-  ];
-
-  for (const supplyPoint of supplyPoints) {
-    try {
-      const priceACES = await calculatePriceAtSupply(supplyPoint);
-      data.push({
-        tokensSold: supplyPoint,
-        priceACES: priceACES,
-        phase: supplyPoint <= currentTokensSold ? 'completed' : 'upcoming',
-        isFixedPrice: false,
-      });
-    } catch (error) {
-      console.error(`Failed to calculate price at ${supplyPoint}:`, error);
-      data.push({
-        tokensSold: supplyPoint,
-        priceACES: 0,
-        phase: 'upcoming',
-        isFixedPrice: false,
-      });
-    }
-  }
-
-  return data;
-};
+// Legacy function removed - now using hook's generateBondingCurveData
 
 export default function BondingCurveChart({
   tokenAddress,
-  currentPrice: propCurrentPrice,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  currentPrice: _propCurrentPrice,
   tokensSold: propTokensSold,
 }: BondingCurveChartProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [tooltipData, setTooltipData] = useState<TooltipData | null>(null);
-  const [bondingCurveData, setBondingCurveData] = useState<any[]>([]);
+  const [bondingCurveData, setBondingCurveData] = useState<
+    Array<{
+      tokensSold: number;
+      priceACES: number;
+      phase: string;
+    }>
+  >([]);
 
-  // Use contract data
+  // Use new contract hook
   const {
     contractState,
     generateBondingCurveData: generateData,
     calculatePriceAtSupply,
-  } = useAcesFactoryContract(tokenAddress);
+  } = useAcesFactoryContract();
 
-  // Current tokens sold from contract or props
-  const currentTokensSold = contractState.currentSupply
+  // Get current supply and bonding threshold
+  const currentTokensSold = contractState.tokenInfo
     ? parseFloat(contractState.currentSupply)
     : propTokensSold || 0;
+
+  const tokensBondedAt = contractState.tokenInfo
+    ? parseFloat(contractState.tokenInfo.tokensBondedAt)
+    : 800000000; // Default fallback
 
   // Generate bonding curve data when contract data is available
   useEffect(() => {
     if (tokenAddress && !contractState.loading) {
-      generateData().then(setBondingCurveData);
+      generateData(tokenAddress).then(setBondingCurveData);
     }
   }, [tokenAddress, contractState.loading, generateData]);
 
@@ -95,7 +74,11 @@ export default function BondingCurveChart({
 
     const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
-    const xScale = d3.scaleLinear().domain([0, 800000000]).range([0, width]);
+    // Use dynamic scale based on tokensBondedAt
+    const xScale = d3
+      .scaleLinear()
+      .domain([0, tokensBondedAt]) // Dynamic domain
+      .range([0, width]);
     const maxACESPrice = d3.max(bondingCurveData, (d) => d.priceACES) || 0.0004;
     const yScale = d3
       .scaleLinear()
@@ -124,18 +107,18 @@ export default function BondingCurveChart({
       .style('stroke-opacity', 0.3)
       .style('stroke-dasharray', '2,2');
 
-    // Add axes - only show 50% (400M) and 100% (800M) marks
+    // Add axes - show 50% and 100% marks based on dynamic tokensBondedAt
     const xAxis = g
       .append('g')
       .attr('transform', `translate(0,${height})`)
       .call(
         d3
           .axisBottom(xScale)
-          .tickValues([400000000, 800000000])
+          .tickValues([tokensBondedAt * 0.5, tokensBondedAt])
           .tickFormat((d: d3.NumberValue) => {
             const value = d.valueOf();
-            if (value === 400000000) return '50%';
-            if (value === 800000000) return '100%';
+            if (value === tokensBondedAt * 0.5) return '50%';
+            if (value === tokensBondedAt) return '100%';
             return '';
           }),
       );
@@ -255,14 +238,14 @@ export default function BondingCurveChart({
 
         const tokensAtX = xScale.invert(mouseX);
 
-        if (tokensAtX < 0 || tokensAtX > 800000000) {
+        if (tokensAtX < 0 || tokensAtX > tokensBondedAt) {
           crosshairGroup.style('display', 'none');
           setTooltipData(null);
           return;
         }
 
         // Calculate price in ACES tokens at this supply point
-        const priceACES = await calculatePriceAtSupply(tokensAtX);
+        const priceACES = await calculatePriceAtSupply(tokenAddress || '', tokensAtX);
 
         const chartX = xScale(tokensAtX);
         const chartY = yScale(priceACES);
@@ -287,7 +270,7 @@ export default function BondingCurveChart({
         crosshairGroup.style('display', 'none');
         setTooltipData(null);
       });
-  }, [bondingCurveData, currentTokensSold, calculatePriceAtSupply]);
+  }, [bondingCurveData, currentTokensSold, tokensBondedAt, calculatePriceAtSupply, tokenAddress]);
 
   return (
     <div className="w-full h-full bg-transparent flex items-center justify-center relative pb-4">
