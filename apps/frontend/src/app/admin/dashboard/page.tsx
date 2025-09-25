@@ -15,7 +15,7 @@ import { BidsTab } from '@/components/profile/admin/bids-tab';
 import { SellersTab } from '@/components/profile/admin/sellers-tab';
 
 export default function AdminDashboardPage() {
-  const { isAuthenticated, isAdmin, isLoading } = useAuth();
+  const { isAuthenticated, isAdmin, isLoading, user } = useAuth();
   const {
     isAuthenticated: isAdminAuthenticated,
     isLoading: isAdminLoading,
@@ -23,21 +23,53 @@ export default function AdminDashboardPage() {
   } = useAdminAuth();
   const router = useRouter();
 
-  // Check authentication and redirect if necessary
+  // Check authentication and redirect if necessary with grace period
   useEffect(() => {
+    console.log('🛡️ Dashboard auth check:', {
+      isLoading,
+      isAdminLoading,
+      isAdminAuthenticated,
+      isAuthenticated,
+      isAdmin,
+      userRole: user?.role,
+      userEmail: user?.email,
+    });
+
     if (!isLoading && !isAdminLoading) {
       // Require both Supabase admin auth AND Privy admin auth
       if (!isAdminAuthenticated) {
+        console.log('❌ Dashboard: No admin auth, redirecting to login');
         router.push('/admin/login');
         return;
       }
 
+      // Add a small grace period for Privy auth to catch up
       if (!isAuthenticated || !isAdmin) {
-        router.push('/admin/unauthorized');
-        return;
+        console.log('⏳ Dashboard: Missing Privy auth or admin role, giving 2s grace period...', {
+          isAuthenticated,
+          isAdmin,
+          userRole: user?.role,
+        });
+
+        // Give 2 seconds for auth state to synchronize
+        const timer = setTimeout(() => {
+          // Re-check auth state after grace period
+          if (!isAuthenticated || !isAdmin) {
+            console.log(
+              '❌ Dashboard: Auth still missing after grace period, redirecting to unauthorized',
+            );
+            router.push('/admin/unauthorized');
+          } else {
+            console.log('✅ Dashboard: Auth recovered during grace period');
+          }
+        }, 2000);
+
+        return () => clearTimeout(timer);
       }
+
+      console.log('✅ Dashboard: All auth checks passed');
     }
-  }, [isAuthenticated, isAdmin, isAdminAuthenticated, isLoading, isAdminLoading, router]);
+  }, [isAuthenticated, isAdmin, isAdminAuthenticated, isLoading, isAdminLoading, router, user]);
 
   const handleLogout = async () => {
     await adminLogout();

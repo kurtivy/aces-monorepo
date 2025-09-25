@@ -166,11 +166,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
+      console.log('🔄 Initializing auth for user:', {
+        privyId: privyUser?.id,
+        email: privyUser?.email?.address,
+        walletAddress: privyUser?.wallet?.address,
+      });
+
       // Get Privy access token
       const token = await privyGetAccessToken();
       if (!token) {
         throw new Error('No access token available');
       }
+
+      console.log('🎫 Got access token, verifying/creating user...');
 
       // Prepare user verification request
       const userVerificationRequest: UserVerificationRequest = {
@@ -186,6 +194,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!result.success) {
         throw new Error(result.error || 'Failed to verify user');
       }
+
+      console.log('✅ User verification successful:', {
+        id: result.data.profile.id,
+        email: result.data.profile.email,
+        role: result.data.profile.role,
+        privyDid: result.data.profile.privyDid,
+        created: result.data.created,
+      });
 
       setState((prev) => ({
         ...prev,

@@ -12,7 +12,7 @@ import { Shield, Loader2, AlertCircle, Home } from 'lucide-react';
 import Link from 'next/link';
 
 export default function AdminLoginPage() {
-  const { isAuthenticated, isAdmin, connectWallet } = useAuth();
+  const { isAuthenticated, isAdmin, connectWallet, user } = useAuth();
   const {
     isAuthenticated: isAdminAuthenticated,
     isLoading: isAdminLoading,
@@ -27,17 +27,29 @@ export default function AdminLoginPage() {
 
   // Check authentication status and redirect accordingly
   useEffect(() => {
+    console.log('📋 Login page auth check:', {
+      isAdminLoading,
+      isAdminAuthenticated,
+      isAuthenticated,
+      isAdmin,
+      userRole: user?.role,
+      userEmail: user?.email,
+    });
+
     if (!isAdminLoading) {
       // If both auths are complete, redirect to dashboard
       if (isAdminAuthenticated && isAuthenticated && isAdmin) {
+        console.log('✅ Login: Both auths complete, redirecting to dashboard');
         router.push('/admin/dashboard');
       }
-      // If not Privy admin, redirect to unauthorized
+      // REMOVED: Don't auto-redirect to unauthorized - let user try to login first
+      // This was causing immediate redirects for authenticated non-admin users
       else if (isAuthenticated && !isAdmin) {
-        router.push('/admin/unauthorized');
+        console.log('⚠️ Login: User is authenticated but not admin - staying on login page');
+        // router.push('/admin/unauthorized'); // REMOVED
       }
     }
-  }, [isAdminAuthenticated, isAuthenticated, isAdmin, isAdminLoading, router]);
+  }, [isAdminAuthenticated, isAuthenticated, isAdmin, isAdminLoading, router, user]);
 
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,8 +57,16 @@ export default function AdminLoginPage() {
     setError(null);
 
     try {
-      // Step 1: Authenticate with Supabase admin credentials
+      console.log('🔐 Starting admin login process...', {
+        email: adminCredentials.email,
+        privyAuthenticated: isAuthenticated,
+        privyIsAdmin: isAdmin,
+      });
+
+      // Step 1: Authenticate with Supabase admin credentials first
       const result = await adminLogin(adminCredentials.email, adminCredentials.password);
+
+      console.log('🔑 Admin auth result:', result);
 
       if (!result.success) {
         setError(result.error || 'Invalid admin credentials. Please try again.');
@@ -54,24 +74,31 @@ export default function AdminLoginPage() {
         return;
       }
 
-      // Step 2: Check if user is also authenticated with Privy and has admin role
+      // Step 2: Ensure Privy wallet is connected
       if (!isAuthenticated) {
+        console.log('🔗 User not authenticated with Privy, triggering wallet connection...');
         setError('Please connect your admin wallet to complete verification.');
-        // Trigger wallet connection
         await connectWallet();
-        return;
+
+        // The dashboard will handle the timing with its grace period
+        console.log('⏳ Wallet connection initiated, redirecting to dashboard...');
       }
 
-      if (!isAdmin) {
-        setError('Your wallet account does not have admin privileges.');
-        setIsSubmitting(false);
-        return;
-      }
+      console.log('✅ Current auth state before redirect:', {
+        isAdminAuthenticated: true, // We know this is true since login succeeded
+        isAuthenticated,
+        isAdmin,
+        userRole: user?.role,
+        userEmail: user?.email,
+        userId: user?.id,
+      });
 
-      // Both authentications successful - show loading and redirect to dashboard
+      // Redirect to dashboard - let the dashboard handle final validation with grace period
+      console.log('🎉 Admin auth successful, redirecting to dashboard...');
       setIsRedirecting(true);
       router.push('/admin/dashboard');
     } catch (err) {
+      console.error('❌ Login error:', err);
       setError('Login failed. Please try again.');
       setIsSubmitting(false);
     }
