@@ -37,6 +37,9 @@ model User {
   // NEW: Bidding system relations
   bids                  Bid[]                 @relation("UserBids")
 
+  // NEW: Notifications system relations
+  notifications         UserNotification[]
+
   @@map("users")
 }
 
@@ -121,6 +124,11 @@ model Listing {
   startingBidPrice  String?    // Minimum bid amount (USD)
   reservePrice      String?    // Hidden reserve price (USD)
 
+  // NEW: Token creation workflow fields
+  tokenCreationStatus    String?  @default("AWAITING_USER_DETAILS")
+  userProvidedDetails    Json?    // Additional details provided by user for token creation
+  tokenParameters        Json?    // Admin-approved token parameters (steepness, floor, etc)
+
   submissionId      String     @unique
   ownerId           String
   approvedBy        String?
@@ -141,8 +149,12 @@ model Listing {
   // NEW: Bids relation
   bids              Bid[]
 
+  // NEW: Notifications relation
+  notifications     UserNotification[]
+
   @@index([isLive, createdAt])
   @@index([ownerId])
+  @@index([tokenCreationStatus])
   @@map("listings")
 }
 
@@ -245,6 +257,7 @@ model TokenTrade {
   createdAt         DateTime  @default(now())
   
   @@index([contractAddress, timestamp])
+  @@index([contractAddress, timestamp, tradeType])
   @@index([timestamp])
   @@map("token_trades")
 }
@@ -373,6 +386,29 @@ model Bid {
   @@index([bidderId, status, createdAt])
   @@index([listingId, bidderId, isActive])
   @@map("bids")
+}
+
+// ========== NOTIFICATIONS SYSTEM ==========
+
+model UserNotification {
+  id          String    @id @default(cuid())
+  userId      String    // Reference to users.id
+  listingId   String?   // Optional reference to listings.id
+  type        String    // Notification type (LISTING_APPROVED, READY_TO_MINT, etc)
+  title       String    // Display title
+  message     String    // Notification message
+  isRead      Boolean   @default(false)
+  actionUrl   String?   // Optional URL for notification action
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime? // Optional expiration
+
+  // Relations
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing     Listing?  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+  @@map("user_notifications")
 }
 
 model TokenPrice {

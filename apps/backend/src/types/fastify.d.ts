@@ -1,4 +1,5 @@
 import { PrismaClient, UserRole } from '@prisma/client';
+import { FastifyRequest, FastifyReply } from 'fastify';
 
 // Step 1: Simplified User interface (matches your new User model)
 export interface SimpleUser {
@@ -28,5 +29,6 @@ declare module 'fastify' {
 
   interface FastifyInstance {
     prisma: PrismaClient;
+    authenticate: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
   }
 }
