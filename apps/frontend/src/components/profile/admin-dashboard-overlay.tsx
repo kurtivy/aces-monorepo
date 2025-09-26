@@ -9,6 +9,7 @@ import { VerificationsTab } from './admin/verifications-tab';
 import { AdminListingsTab } from './admin/admin-listings-tab';
 import { BidsTab } from './admin/bids-tab';
 import { SellersTab } from './admin/sellers-tab';
+import { TokenManagementTab } from './admin/token-management-tab';
 
 interface AdminDashboardOverlayProps {
   isOpen: boolean;
@@ -93,6 +94,12 @@ export function AdminDashboardOverlay({ isOpen, onClose }: AdminDashboardOverlay
                   Bids
                 </TabsTrigger>
                 <TabsTrigger
+                  value="tokens"
+                  className="bg-transparent text-[#DCDDCC] text-lg font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-purple-400"
+                >
+                  Token Creation
+                </TabsTrigger>
+                <TabsTrigger
                   value="escrow"
                   className="bg-transparent text-[#DCDDCC] text-lg font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-purple-400"
                 >
@@ -116,6 +123,9 @@ export function AdminDashboardOverlay({ isOpen, onClose }: AdminDashboardOverlay
               </TabsContent>
               <TabsContent value="bids" className="mt-6 w-full">
                 <BidsTab />
+              </TabsContent>
+              <TabsContent value="tokens" className="mt-6 w-full">
+                <TokenManagementTab />
               </TabsContent>
               <TabsContent value="escrow" className="mt-6 w-full">
                 <div className="text-center py-16">

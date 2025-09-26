@@ -4,22 +4,20 @@ import { useAuth } from '@/lib/auth/auth-context';
 import { HorizontalProfileHeader } from '@/components/profile/horizontal-profile-header';
 import { TokenListTab } from '@/components/profile/token-list-tab';
 import { BidsTab } from '@/components/profile/bids-tab';
-import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Footer from '@/components/ui/custom/footer';
-import { useState, useLayoutEffect, useEffect } from 'react';
+import { useState, useLayoutEffect } from 'react';
 import { AdminDashboardOverlay } from '@/components/profile/admin-dashboard-overlay';
 import { SubmissionStatusNotifications } from '@/components/profile/submission-status-notifications';
+import { TokenCreationNotifications } from '@/components/profile/token-creation-notifications';
 import LuxuryAssetsBackground from '@/components/ui/custom/luxury-assets-background';
 import AcesHeader from '@/components/ui/custom/aces-header';
 import PageBandTitle from '@/components/ui/custom/page-band-title';
 import PageBandSubtitle from '@/components/ui/custom/page-band-subtitle';
-import VerificationNotificationPanel from '@/components/ui/verification-notification-panel';
-import { VerificationApi, type VerificationDetails } from '@/lib/api/verification';
 
 export default function ProfilePage() {
-  const { user, isLoading, error, updateProfile, getAccessToken, connectWallet } = useAuth();
+  const { user, isLoading, error, updateProfile, connectWallet } = useAuth();
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
-  const [verificationDetails, setVerificationDetails] = useState<VerificationDetails | null>(null);
 
   // Align content start to the solid line below the band
   const BOTTOM_RULE_HEIGHT = 8;
@@ -36,7 +34,8 @@ export default function ProfilePage() {
       }
     };
     measure();
-    const ResizeObserverCtor: any = (window as any).ResizeObserver;
+    const ResizeObserverCtor = (window as unknown as { ResizeObserver?: typeof ResizeObserver })
+      .ResizeObserver;
     const header = getHeader();
     const ro = ResizeObserverCtor && header ? new ResizeObserverCtor(measure) : null;
     if (ro && header) ro.observe(header);
@@ -46,31 +45,6 @@ export default function ProfilePage() {
       window.removeEventListener('resize', measure);
     };
   }, []);
-
-  // Fetch verification details when user is available
-  useEffect(() => {
-    const fetchVerificationDetails = async () => {
-      if (!user) {
-        setVerificationDetails(null);
-        return;
-      }
-
-      try {
-        const authToken = await getAccessToken();
-        if (!authToken) return;
-
-        const response = await VerificationApi.getVerificationDetails(authToken);
-        if (response.success && response.data) {
-          setVerificationDetails(response.data);
-        }
-      } catch (error) {
-        console.error('Error fetching verification details:', error);
-        // Silently fail - notification will just not show
-      }
-    };
-
-    fetchVerificationDetails();
-  }, [user, getAccessToken]);
 
   if (isLoading) {
     return (
@@ -97,13 +71,6 @@ export default function ProfilePage() {
           bandHeight={96}
           contentLineOffset={8}
           offsetY={12}
-        />
-        {/* Verification Notification Panel in loading state too */}
-        <VerificationNotificationPanel
-          verificationDetails={verificationDetails}
-          contentWidth={1200}
-          bandHeight={96}
-          contentLineOffset={8}
         />
         <div className="relative z-20 h-[1000px]">
           <div className="absolute top-[200px] left-1/2 -translate-x-1/2 w-full max-w-[1200px] px-4 sm:px-6 z-10 h-[760px] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
@@ -189,14 +156,6 @@ export default function ProfilePage() {
       <PageBandTitle title="Portfolio" contentWidth={1200} bandHeight={96} contentLineOffset={8} />
       {/* Subtitle intentionally removed for profile */}
 
-      {/* Verification Notification Panel - Left side of divider */}
-      <VerificationNotificationPanel
-        verificationDetails={verificationDetails}
-        contentWidth={1200}
-        bandHeight={96}
-        contentLineOffset={8}
-      />
-
       {/* Main content */}
       <div className="relative z-20 h-[1400px]">
         <div
@@ -212,12 +171,31 @@ export default function ProfilePage() {
 
           {/* Main panel below header - no gap */}
           <div className="relative bg-[#151c16]/80 border border-dashed border-[#E6E3D3]/20 rounded-2xl p-8 shadow-[0_10px_40px_rgba(215,191,117,0.06)] space-y-8">
-            {/* Notifications */}
-            <SubmissionStatusNotifications />
+            {/* Notifications - flush at top */}
+            <div className="-mt-8 -mx-8 mb-8">
+              <div className="p-8 pb-0">
+                <SubmissionStatusNotifications />
+                <TokenCreationNotifications />
+              </div>
+            </div>
 
             {/* Tabs */}
             <div className="w-full">
               <Tabs defaultValue="tokens" className="w-full">
+                <TabsList className="bg-transparent border-none p-0 h-auto space-x-8 mb-6">
+                  <TabsTrigger
+                    value="tokens"
+                    className="bg-transparent text-[#DCDDCC] text-lg font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-[#D7BF75]"
+                  >
+                    TOKENS
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="bids"
+                    className="bg-transparent text-[#DCDDCC] text-lg font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-[#D7BF75]"
+                  >
+                    BIDS
+                  </TabsTrigger>
+                </TabsList>
                 <TabsContent value="tokens" className="mt-0 w-full">
                   <TokenListTab />
                 </TabsContent>
