@@ -277,29 +277,59 @@ export class TokenService {
   }
 
   private async storeRecentTrades(contractAddress: string, trades: SubgraphTrade[]) {
-    for (const trade of trades.slice(0, 10)) {
-      try {
-        const tokenAmt = new Decimal(trade.tokenAmount);
-        const acesAmt = new Decimal(trade.acesTokenAmount);
-        const pricePerToken = tokenAmt.isZero() ? '0' : acesAmt.div(tokenAmt).toString();
+    if (trades.length === 0) return;
 
-        await this.prisma.tokenTrade.upsert({
-          where: { txHash: trade.id }, // Using trade ID as txHash
-          update: {},
-          create: {
-            contractAddress: contractAddress.toLowerCase(),
-            txHash: trade.id,
-            trader: 'unknown',
-            tradeType: trade.isBuy ? 'BUY' : 'SELL',
-            tokenAmount: trade.tokenAmount,
-            acesAmount: trade.acesTokenAmount,
-            pricePerToken: pricePerToken,
-            timestamp: new Date(parseInt(trade.createdAt) * 1000),
-            source: 'SUBGRAPH',
-          },
-        });
-      } catch (error) {
-        console.warn('Failed to store trade:', error);
+    const tradeData = trades.slice(0, 10).map((trade) => {
+      const tokenAmt = new Decimal(trade.tokenAmount);
+      const acesAmt = new Decimal(trade.acesTokenAmount);
+      const pricePerToken = tokenAmt.isZero() ? '0' : acesAmt.div(tokenAmt).toString();
+
+      return {
+        contractAddress: contractAddress.toLowerCase(),
+        txHash: trade.id,
+        trader: 'unknown',
+        tradeType: trade.isBuy ? ('BUY' as const) : ('SELL' as const),
+        tokenAmount: trade.tokenAmount,
+        acesAmount: trade.acesTokenAmount,
+        pricePerToken,
+        timestamp: new Date(parseInt(trade.createdAt) * 1000),
+        source: 'SUBGRAPH',
+      };
+    });
+
+    try {
+      // Batch operation - much faster than individual upserts
+      await this.prisma.tokenTrade.createMany({
+        data: tradeData,
+        skipDuplicates: true, // Same behavior as the empty upsert update
+      });
+    } catch (error) {
+      console.warn('Failed to store trades batch:', error);
+      // Fallback to individual upserts if batch fails
+      for (const trade of trades.slice(0, 10)) {
+        try {
+          const tokenAmt = new Decimal(trade.tokenAmount);
+          const acesAmt = new Decimal(trade.acesTokenAmount);
+          const pricePerToken = tokenAmt.isZero() ? '0' : acesAmt.div(tokenAmt).toString();
+
+          await this.prisma.tokenTrade.upsert({
+            where: { txHash: trade.id },
+            update: {},
+            create: {
+              contractAddress: contractAddress.toLowerCase(),
+              txHash: trade.id,
+              trader: 'unknown',
+              tradeType: trade.isBuy ? 'BUY' : 'SELL',
+              tokenAmount: trade.tokenAmount,
+              acesAmount: trade.acesTokenAmount,
+              pricePerToken: pricePerToken,
+              timestamp: new Date(parseInt(trade.createdAt) * 1000),
+              source: 'SUBGRAPH',
+            },
+          });
+        } catch (individualError) {
+          console.warn('Failed to store individual trade:', individualError);
+        }
       }
     }
   }

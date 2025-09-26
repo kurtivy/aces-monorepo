@@ -23,6 +23,11 @@ import gcsTestRoutes from './routes/v1/debug/gcs-test';
 
 import { cronRoutes } from './routes/v1/cron/trigger';
 
+// NEW: Phase 1 - Token creation and notifications
+import { notificationRoutes } from './routes/v1/notifications';
+import { tokenCreationRoutes } from './routes/v1/token-creation';
+import productImagesRoutes from './routes/v1/product-images';
+
 export const buildApp = async (): Promise<FastifyInstance> => {
   const fastify = Fastify({
     logger: false,
@@ -137,6 +142,12 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   fastify.register(commentsRoutes, { prefix: '/api/v1/comments' });
   fastify.register(twitchRoutes, { prefix: '/api/v1/twitch' });
   fastify.register(priceRoutes, { prefix: '/api/v1/price' });
+
+  // NEW: Phase 1 - Token creation and notifications
+  fastify.register(notificationRoutes, { prefix: '/api/v1/notifications' });
+  fastify.register(tokenCreationRoutes, { prefix: '/api/v1/token-creation' });
+  fastify.register(productImagesRoutes, { prefix: '/api/v1/product-images' });
+
   // Register debug routes
   fastify.register(gcsTestRoutes, { prefix: '/api/v1' });
   // Register cron routes for manual testing
