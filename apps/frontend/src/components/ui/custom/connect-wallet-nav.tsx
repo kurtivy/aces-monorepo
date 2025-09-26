@@ -4,6 +4,7 @@ import type React from 'react';
 import { useState } from 'react';
 import ConnectWalletProfile from './connect-wallet-profile';
 import NavMenu from './nav-menu';
+import { NotificationBell } from './notification-bell';
 
 export interface ConnectWalletNavProps {
   className?: string;
@@ -38,6 +39,12 @@ export default function ConnectWalletNav({
 
   return (
     <div className={containerClassName}>
+      {/* Notifications Bell */}
+      <NotificationBell />
+
+      {/* Vertical Line Separator */}
+      <div className="w-px h-6 bg-[#D0B264] mx-2" />
+
       {/* Wallet Profile Component */}
       <ConnectWalletProfile
         // onProfileClick={onProfileClick}

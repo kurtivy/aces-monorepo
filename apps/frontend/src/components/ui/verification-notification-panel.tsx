@@ -4,7 +4,7 @@ import React, { useLayoutEffect, useState } from 'react';
 import { CheckCircle, Clock, XCircle, AlertTriangle } from 'lucide-react';
 import type { VerificationDetails } from '@/lib/api/verification';
 
-type NotificationStatus = 'pending' | 'approved' | 'rejected' | 'processing';
+// type NotificationStatus = 'pending' | 'approved' | 'rejected' | 'processing';
 
 interface VerificationNotificationPanelProps {
   verificationDetails: VerificationDetails | null;
