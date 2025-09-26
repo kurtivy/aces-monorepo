@@ -2,173 +2,254 @@
 
 import { useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { cn } from '@/lib/utils';
-import { Info, Gift, Coins } from 'lucide-react';
 
-interface TokenHealthPanelProps {
-  ratioText?: string; // e.g., "4.32x" (placeholder for now)
-  // future props
-  // ratioValue?: number; // raw value to compute slider position
-  // tokenAddress?: string; // launchpad token address (for real ratio wiring)
-  // reservePriceUSD?: string | number; // listing.reservePrice in USD (string per schema)
+// Value Equilibrium Calculator (embedded)
+interface TokenMetrics {
+  totalSupply: number;
+  lpPoolTokens: number;
+  circulatingSupply: number;
+  tokenPrice: number;
+  communityReward: number;
+  rewardPerToken: number;
+  valueEquilibriumRatio: number;
+  rewardYield: number;
+  marketCap: number;
+  signal: MarketSignal;
+  equilibriumPrice: number;
 }
 
-export default function TokenHealthPanel({ ratioText = '4.32x' }: TokenHealthPanelProps) {
-  // ===== Real ratio wiring (commented out for later enablement) =====
-  // const { ratio, usdMarketCap, loading: ratioLoading, error: ratioError, stale } = useAcesRatio({
-  //   factoryAddress: CONTRACTS.FACTORY_PROXY,
-  //   tokenAddress,
-  //   reservePriceUSD,
-  // });
-  // const displayRatioText = ratio != null ? `${ratio.toFixed(2)}x${stale ? ' (cached)' : ''}` : '-';
-  // ==================================================================
+interface MarketSignal {
+  action: 'STRONG_BUY' | 'BUY' | 'HOLD' | 'SELL' | 'STRONG_SELL';
+  description: string;
+  confidence: number;
+}
 
-  // For now, slider is neutral at 50%
-  const sliderPosition = 50; // percent
+class ValueEquilibriumCalculator {
+  private readonly TOTAL_SUPPLY: number = 1_000_000_000;
 
-  const clampedPosition = useMemo(
-    () => Math.max(0, Math.min(100, sliderPosition)),
-    [sliderPosition],
-  );
+  calculateCirculatingSupply(lpPoolTokens: number): number {
+    return this.TOTAL_SUPPLY - lpPoolTokens;
+  }
+
+  calculateRewardPerToken(communityReward: number, circulatingSupply: number): number {
+    if (circulatingSupply <= 0) return 0;
+    return communityReward / circulatingSupply;
+  }
+
+  calculateVER(tokenPrice: number, rewardPerToken: number): number {
+    if (rewardPerToken <= 0) return Infinity;
+    return tokenPrice / rewardPerToken;
+  }
+
+  calculateRewardYield(rewardPerToken: number, tokenPrice: number): number {
+    if (tokenPrice <= 0) return 0;
+    return (rewardPerToken / tokenPrice) * 100;
+  }
+
+  generateMarketSignal(ver: number): MarketSignal {
+    if (ver < 0.8) {
+      return {
+        action: 'STRONG_BUY',
+        description: 'High reward potential',
+        confidence: 90,
+      };
+    } else if (ver < 1.2) {
+      return {
+        action: 'HOLD',
+        description: 'Fair Value',
+        confidence: 60,
+      };
+    } else if (ver < 2.0) {
+      return {
+        action: 'SELL',
+        description: 'Price premium over rewards',
+        confidence: 80,
+      };
+    } else {
+      return {
+        action: 'STRONG_SELL',
+        description: 'Significantly overvalued',
+        confidence: 95,
+      };
+    }
+  }
+
+  findEquilibriumPrice(communityReward: number, lpPoolTokens: number): number {
+    const circulatingSupply = this.calculateCirculatingSupply(lpPoolTokens);
+    return this.calculateRewardPerToken(communityReward, circulatingSupply);
+  }
+
+  getMetrics(lpPoolTokens: number, tokenPrice: number, communityReward: number): TokenMetrics {
+    const circulatingSupply = this.calculateCirculatingSupply(lpPoolTokens);
+    const rewardPerToken = this.calculateRewardPerToken(communityReward, circulatingSupply);
+    const valueEquilibriumRatio = this.calculateVER(tokenPrice, rewardPerToken);
+    const rewardYield = this.calculateRewardYield(rewardPerToken, tokenPrice);
+    const marketCap = tokenPrice * circulatingSupply;
+    const signal = this.generateMarketSignal(valueEquilibriumRatio);
+    const equilibriumPrice = this.findEquilibriumPrice(communityReward, lpPoolTokens);
+
+    return {
+      totalSupply: this.TOTAL_SUPPLY,
+      lpPoolTokens,
+      circulatingSupply,
+      tokenPrice,
+      communityReward,
+      rewardPerToken,
+      valueEquilibriumRatio,
+      rewardYield,
+      marketCap,
+      signal,
+      equilibriumPrice,
+    };
+  }
+}
+
+// Utility functions
+const formatNumber = (num: number, decimals: number = 2): string => {
+  if (num >= 1_000_000_000) return `${(num / 1_000_000_000).toFixed(decimals)}B`;
+  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(decimals)}M`;
+  if (num >= 1_000) return `${(num / 1_000).toFixed(decimals)}K`;
+  return num.toFixed(decimals);
+};
+
+const formatPrice = (price: number): string => {
+  if (price < 0.00001) return price.toExponential(2);
+  if (price < 0.01) return price.toFixed(6);
+  if (price < 1) return price.toFixed(4);
+  return price.toFixed(2);
+};
+const getSignalColor = (action: string) => {
+  switch (action) {
+    case 'STRONG_BUY':
+      return '#22c55e';
+    case 'BUY':
+      return '#84cc16';
+    case 'HOLD':
+      return '#eab308';
+    case 'SELL':
+      return '#f97316';
+    case 'STRONG_SELL':
+      return '#ef4444';
+    default:
+      return '#6b7280';
+  }
+};
+interface TokenHealthPanelProps {
+  ratioText?: string;
+}
+
+export default function TokenHealthPanel({ ratioText }: TokenHealthPanelProps) {
+  // Hardcoded values to produce HOLD signal (VER between 0.8-1.2)
+  const lpPoolTokens = 150_000_000; // Less LP = more circulating = lower reward per token
+  const tokenPrice = 0.001; // Lower price
+  const communityReward = 850_000; // Higher reward pool
+  const userTokenHoldings = 1_000_000; // User's token holdings for trading credits
+
+  const calculator = useMemo(() => new ValueEquilibriumCalculator(), []);
+
+  const metrics = useMemo(() => {
+    return calculator.getMetrics(lpPoolTokens, tokenPrice, communityReward);
+  }, [calculator, lpPoolTokens, tokenPrice, communityReward]);
+
+  // Get signal color
+  const tradingCredits = useMemo(() => {
+    return userTokenHoldings * metrics.rewardPerToken;
+  }, [userTokenHoldings, metrics.rewardPerToken]);
 
   return (
     <motion.div
-      className="h-full flex flex-col items-stretch justify-between bg-[#151c16] relative"
+      className="h-full flex flex-col bg-[#151c16] p-6 font-mono"
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.8, ease: 'easeInOut' }}
     >
-      {/* ACES RATIO Header */}
-      <div className="w-full px-4 pt-4">
-        <motion.div
-          className="flex flex-col items-center gap-1"
-          initial={{ opacity: 0, scale: 0.98 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.6, ease: 'easeOut', delay: 0.1 }}
-        >
-          <div className="relative">
-            <div className="flex items-center gap-2 rounded-full border border-[#D0B284]/50 px-3 py-1">
-              <div className="font-spray-letters text-[#D0B284] tracking-widest text-lg sm:text-xl">
-                ACES RATIO
-              </div>
-              {/* Info tooltip */}
-              <div className="group relative">
-                <Info className="w-4 h-4 text-[#D0B284] opacity-80" />
-                <div className="pointer-events-none absolute left-1/2 top-full z-10 mt-2 -translate-x-1/2 whitespace-nowrap rounded-md border border-[#D0B284]/30 bg-[#151c16] px-3 py-2 text-[11px] text-[#D0B284] opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
-                  Aces Ratio ≈ Market Cap / Reserve Price (P/E-like indicator)
-                </div>
-              </div>
-            </div>
-          </div>
-          <motion.div
-            className="font-proxima-nova text-white text-2xl leading-none"
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, ease: 'easeOut', delay: 0.15 }}
-          >
-            {ratioText}
-          </motion.div>
-        </motion.div>
-
-        {/* removed dashed separator for a cleaner look */}
-      </div>
-
-      {/* Slider Indicator */}
-      <div className="w-full px-4 pb-4 flex-1 flex items-center">
-        <div className="w-full">
-          {/* Top-left label */}
-          <motion.div
-            className="mb-2 font-spray-letters text-[#D0B284] text-sm sm:text-base"
-            initial={{ opacity: 0, x: -10 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5, ease: 'easeOut', delay: 0.15 }}
-          >
-            Reward per token
-          </motion.div>
-
-          {/* Track with dual gradient (0-50 and 50-100) */}
-          <motion.div
-            className="relative h-3.5 rounded-full overflow-hidden"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, ease: 'easeOut', delay: 0.2 }}
-          >
-            {/* left half */}
-            <div
-              className="absolute left-0 top-0 h-full w-1/2"
-              style={{
-                background:
-                  'linear-gradient(90deg, rgba(24,77,55,0.4) 0%, rgba(24,77,55,0.8) 100%)',
-              }}
-            />
-            {/* right half */}
-            <div
-              className="absolute right-0 top-0 h-full w-1/2"
-              style={{
-                background:
-                  'linear-gradient(90deg, rgba(139,69,19,0.8) 0%, rgba(139,69,19,0.4) 100%)',
-              }}
-            />
-            {/* subtle border */}
-            <div className="absolute inset-0 border border-[#D0B284]/20 rounded-full" />
-
-            {/* Ticks at every 10% from 10 to 90, with a stronger 50% */}
-            {([10, 20, 30, 40, 50, 60, 70, 80, 90] as const).map((t) => (
-              <div
-                key={t}
-                className={cn(
-                  'absolute top-0 bottom-0 bg-[#D0B284]/40',
-                  t === 50 ? 'w-[2px] bg-[#D0B284]/70' : 'w-px',
-                )}
-                style={{ left: `${t}%` }}
-              />
-            ))}
-
-            {/* Indicator - subtle oscillation */}
-            <motion.div
-              className="absolute -top-3 h-10 w-[3px] bg-[#D0B284] shadow-[0_0_10px_rgba(208,178,132,0.7)]"
-              style={{ left: `${clampedPosition}%` }}
-              animate={{ y: [-0.8, 0.8, -0.8] }}
-              transition={{ duration: 2.2, repeat: Number.POSITIVE_INFINITY, ease: 'easeInOut' }}
-            />
-          </motion.div>
-
-          {/* Bottom-right label */}
-          <motion.div
-            className="mt-2 flex justify-end"
-            initial={{ opacity: 0, x: 10 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5, ease: 'easeOut', delay: 0.15 }}
-          >
-            <div className="font-spray-letters text-[#D0B284] text-sm sm:text-base">
-              Price per token
-            </div>
-          </motion.div>
-        </div>
-      </div>
-
-      {/* Animated icons: Gift (left) and Coins (right) starting on same row */}
+      {/* ACES RATIO - Single Line */}
       <motion.div
-        className="absolute left-6 right-6 top-8 pointer-events-none"
-        initial={false}
-        animate={{ opacity: 1 }}
+        className="mb-6"
+        initial={{ opacity: 0, scale: 0.98 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.6, ease: 'easeOut', delay: 0.05 }}
       >
-        {/* Gift - left, moves up while coins moves down */}
-        <motion.div
-          className="absolute left-0 text-[#D0B284]"
-          animate={{ y: [-4, 4, -4] }}
-          transition={{ duration: 2.4, repeat: Number.POSITIVE_INFINITY, ease: 'easeInOut' }}
-        >
-          <Gift className="w-4 h-4" />
-        </motion.div>
-        {/* Coins - right, moves down while gift moves up */}
-        <motion.div
-          className="absolute right-0 text-[#D0B284]"
-          animate={{ y: [4, -4, 4] }}
-          transition={{ duration: 2.4, repeat: Number.POSITIVE_INFINITY, ease: 'easeInOut' }}
-        >
-          <Coins className="w-4 h-4" />
-        </motion.div>
+        <div className="text-[#D0B284] text-xs tracking-wider mb-1">ACES RATIO</div>
+        <div className="text-white text-3xl font-bold tracking-tight">
+          {ratioText || `${metrics.valueEquilibriumRatio.toFixed(2)}x`}
+        </div>
+      </motion.div>
+
+      {/* VER and SIGNAL - Two Columns */}
+      <motion.div
+        className="mb-6 grid grid-cols-2 gap-6"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.5, delay: 0.1 }}
+      >
+        <div>
+          <div className="text-[#D0B284] text-xs tracking-wider mb-1">VER</div>
+          <div className="text-white text-3xl font-bold">
+            {metrics.valueEquilibriumRatio.toFixed(2)}
+          </div>
+        </div>
+        <div>
+          <div className="text-[#D0B284] text-xs tracking-wider mb-1">SIGNAL</div>
+          <div className="flex items-center gap-2">
+            <div
+              className="w-3 h-3 rounded-full"
+              style={{ backgroundColor: getSignalColor(metrics.signal.action) }}
+            />
+            <span
+              className="text-2xl font-bold"
+              style={{ color: getSignalColor(metrics.signal.action) }}
+            >
+              {metrics.signal.action}
+            </span>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Reward Per Token and Reward Yield - Two Columns */}
+      <motion.div
+        className="mb-6 grid grid-cols-2 gap-6"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.5, delay: 0.15 }}
+      >
+        <div>
+          <div className="text-[#D0B284] text-xs tracking-wider mb-1">REWARD PER TOKEN</div>
+          <div className="text-white text-2xl font-bold">
+            ${formatPrice(metrics.rewardPerToken)}
+          </div>
+        </div>
+        <div>
+          <div className="text-[#D0B284] text-xs tracking-wider mb-1">REWARD YIELD</div>
+          <div className="text-white text-2xl font-bold">{metrics.rewardYield.toFixed(1)}%</div>
+        </div>
+      </motion.div>
+
+      {/* Trading Credits - Single Line */}
+      <motion.div
+        className="mb-6"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.5, delay: 0.2 }}
+      >
+        <div className="text-[#D0B284] text-xs tracking-wider mb-1">TRADING CREDITS</div>
+        <div className="text-white text-2xl font-bold">${formatNumber(tradingCredits)}</div>
+        <div className="text-[#D0B284] text-xs mt-1 opacity-70">
+          {formatNumber(userTokenHoldings)} tokens × ${formatPrice(metrics.rewardPerToken)}
+        </div>
+      </motion.div>
+
+      {/* Circulating Supply - Single Line */}
+      <motion.div
+        className="mb-6"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.5, delay: 0.25 }}
+      >
+        <div className="text-[#D0B284] text-xs tracking-wider mb-1">CIRCULATING SUPPLY</div>
+        <div className="text-white text-2xl font-bold">
+          {formatNumber(metrics.circulatingSupply)} tokens
+        </div>
       </motion.div>
     </motion.div>
   );
