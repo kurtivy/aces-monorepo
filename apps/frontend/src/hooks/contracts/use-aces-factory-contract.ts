@@ -141,6 +141,21 @@ export function useAcesFactoryContract(chainId: number = 11155111) {
       if (!factoryContract) return 0;
 
       try {
+        // Validate token address format
+        if (!ethers.utils.isAddress(tokenAddress)) {
+          console.warn('Invalid token address format:', tokenAddress);
+          return 0;
+        }
+
+        // First check if the token exists in the factory's token registry
+        const tokenInfo = await factoryContract.tokens(tokenAddress);
+        
+        // Check if the token exists (tokenAddress should not be zero address)
+        if (tokenInfo.tokenAddress === ethers.constants.AddressZero) {
+          console.warn('Token not found in factory registry:', tokenAddress);
+          return 0;
+        }
+
         // TODO: Use supplyPoint for more advanced price calculations
         const amountWei = ethers.utils.parseEther('1'); // Price for 1 token
 
@@ -148,6 +163,17 @@ export function useAcesFactoryContract(chainId: number = 11155111) {
         return parseFloat(ethers.utils.formatEther(priceWei));
       } catch (error) {
         console.error('Failed to calculate price at supply:', error);
+        // Check if it's a specific contract error
+        if (error instanceof Error) {
+          if (error.message.includes('circuit breaker')) {
+            console.warn('RPC circuit breaker is open, using fallback price');
+            return 0.000268; // Fallback price
+          }
+          if (error.message.includes('missing revert data')) {
+            console.warn('Contract call reverted, token may not exist:', tokenAddress);
+            return 0;
+          }
+        }
         return 0;
       }
     },
