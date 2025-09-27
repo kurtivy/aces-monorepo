@@ -35,8 +35,8 @@ const nextConfig: NextConfig = {
               'child-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org',
               'frame-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org https://challenges.cloudflare.com https://*.clarity.ms https://www.twitch.tv https://player.twitch.tv https://embed.twitch.tv',
 
-              // where your app may connect (added Supabase URL + backend localhost:8787)
-              "connect-src 'self' http://localhost:3000 http://localhost:3002 https://auth.privy.io wss://relay.walletconnect.com wss://relay.walletconnect.org wss://www.walletlink.org https://*.rpc.privy.systems https://explorer-api.walletconnect.com https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app https://aces-monorepo-backend-git-feat-rwa-page-upgrade-dan-aces-fun.vercel.app https://pulse.walletconnect.org https://api.web3modal.org https://sepolia.base.org https://base-sepolia-rpc.publicnode.com https://base-sepolia.blockpi.network/v1/rpc/public https://base-sepolia.gateway.tenderly.co https://mainnet.base.org https://base-rpc.publicnode.com https://base.blockpi.network/v1/rpc/public https://base.gateway.tenderly.co https://1rpc.io https://min-api.cryptocompare.com https://api.thegraph.com https://api.coingecko.com https://api.coinbase.com https://api.binance.com https://www.google-analytics.com https://analytics.google.com https://vitals.vercel-insights.com https://*.clarity.ms https://api.twitch.tv https://id.twitch.tv https://fdglhdxswemqcaslsdwt.supabase.co",
+              // where your app may connect (added Supabase URL + backend localhost:8787 + WebSocket support for Next.js HMR)
+              "connect-src 'self' http://localhost:3000 http://localhost:3002 ws://localhost:3000 wss://localhost:3000 https://auth.privy.io wss://relay.walletconnect.com wss://relay.walletconnect.org wss://www.walletlink.org https://*.rpc.privy.systems https://explorer-api.walletconnect.com https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app https://aces-monorepo-backend-git-feat-rwa-page-upgrade-dan-aces-fun.vercel.app https://pulse.walletconnect.org https://api.web3modal.org https://sepolia.base.org https://base-sepolia-rpc.publicnode.com https://base-sepolia.blockpi.network/v1/rpc/public https://base-sepolia.gateway.tenderly.co https://mainnet.base.org https://base-rpc.publicnode.com https://base.blockpi.network/v1/rpc/public https://base.gateway.tenderly.co https://1rpc.io https://min-api.cryptocompare.com https://api.thegraph.com https://api.coingecko.com https://api.coinbase.com https://api.binance.com https://www.google-analytics.com https://analytics.google.com https://vitals.vercel-insights.com https://*.clarity.ms https://api.twitch.tv https://id.twitch.tv https://fdglhdxswemqcaslsdwt.supabase.co",
 
               // workers, manifest
               "worker-src 'self' blob:",
@@ -148,18 +148,6 @@ const nextConfig: NextConfig = {
             {
               type: 'host',
               value: 'www.aceofbase.fun',
-            },
-          ],
-          destination: '/aceofbase/$1',
-        },
-        // Handle localhost:3001 and local.aceofbase.fun for development
-        {
-          source:
-            '/((?!_next/static|_next/image|favicon.ico|aceofbase-favicon.ico|aceofbase.svg|api|canvas-images|fonts|svg).*)',
-          has: [
-            {
-              type: 'host',
-              value: 'localhost:3001',
             },
           ],
           destination: '/aceofbase/$1',
