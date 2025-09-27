@@ -56,17 +56,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const tokenService = new TokenService(prisma);
     const ohlcvService = new OHLCVService(prisma, tokenService);
 
+    // Track efficiency metrics
+    let tokensWithActivity = 0;
+    let tokensRecentlyViewed = 0;
+    let tokensSkipped = 0;
+
     // Process each active token
     for (const tokenData of activeTokensFromSubgraph) {
       try {
-        await syncTokenData(tokenData, tokenService, ohlcvService);
-        results.processed++;
-        results.tokenResults.push({
-          address: tokenData.address,
-          symbol: tokenData.symbol,
-          tradesCount: tokenData.tradesCount,
-          status: 'success',
-        });
+        const result = await syncTokenData(tokenData, tokenService, ohlcvService);
+
+        if (result.processed) {
+          results.processed++;
+          if (result.reason === 'active') tokensWithActivity++;
+          if (result.reason === 'recently_viewed') tokensRecentlyViewed++;
+
+          results.tokenResults.push({
+            address: tokenData.address,
+            symbol: tokenData.symbol,
+            tradesCount: tokenData.tradesCount,
+            status: 'success',
+            reason: result.reason,
+          });
+        } else {
+          tokensSkipped++;
+          results.skipped++;
+          results.tokenResults.push({
+            address: tokenData.address,
+            symbol: tokenData.symbol,
+            tradesCount: tokenData.tradesCount,
+            status: 'skipped',
+            reason: result.reason,
+          });
+        }
       } catch (error) {
         console.error(`[CRON] Error syncing token ${tokenData.address}:`, error);
         results.errors++;
@@ -80,8 +102,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const duration = Date.now() - startTime;
+    const efficiencyGain =
+      tokensSkipped > 0 ? Math.round((tokensSkipped / activeTokensFromSubgraph.length) * 100) : 0;
+
     console.log(
       `[CRON] Completed in ${duration}ms: ${results.processed} successful, ${results.errors} errors`,
+    );
+    console.log(
+      `[CRON] Efficiency: ${tokensSkipped} tokens skipped (${efficiencyGain}% reduction in API calls)`,
+    );
+    console.log(
+      `[CRON] Activity breakdown: ${tokensWithActivity} active, ${tokensRecentlyViewed} recently viewed`,
     );
 
     res.status(200).json({
@@ -195,13 +226,16 @@ async function syncTokenData(
   tokenData: any,
   tokenService: TokenService,
   ohlcvService: OHLCVService,
-) {
+): Promise<{ processed: boolean; reason: string }> {
   const contractAddress = tokenData.address;
 
-  // Skip dormant tokens unless recently viewed
-  if (tokenData.tradesCount === 0) {
-    console.log(`[CRON] Skipping dormant token ${tokenData.symbol} (${contractAddress})`);
-    return;
+  // Enhanced filtering: Only sync tokens with recent activity OR recently viewed
+  const hasRecentActivity = tokenData.tradesCount > 0;
+  const isRecentlyViewed = await isTokenRecentlyViewed(contractAddress);
+
+  if (!hasRecentActivity && !isRecentlyViewed) {
+    console.log(`[CRON] Skipping inactive token ${tokenData.symbol} (${contractAddress})`);
+    return { processed: false, reason: 'inactive' };
   }
 
   // Use database transaction for atomicity
@@ -210,20 +244,39 @@ async function syncTokenData(
     const txTokenService = new TokenService(tx as any);
     const txOhlcvService = new OHLCVService(tx as any, txTokenService);
 
-    // 1. Fetch and update basic token data
+    // 1. Update basic token data
     await txTokenService.fetchAndUpdateTokenData(contractAddress);
 
-    // 2. Generate and store OHLCV data for all timeframes
-    const timeframes = ['1h', '4h', '1d'];
+    // 2. Generate cached data for popular timeframes only (REDUCED from 3 to 2 timeframes)
+    const popularTimeframes = ['1h', '4h']; // Reduced from ['1h', '4h', '1d']
 
-    for (const timeframe of timeframes) {
+    for (const timeframe of popularTimeframes) {
+      // Use enhanced service with smart caching - will only generate if cache is stale
       await txOhlcvService.generateOHLCVCandles(contractAddress, timeframe);
     }
 
-    // 3. Update the token's lastSyncedAt timestamp
+    // 3. Update timestamp
     await tx.token.update({
       where: { contractAddress: contractAddress.toLowerCase() },
       data: { updatedAt: new Date() },
     });
   });
+
+  // Return success with reason
+  const reason = hasRecentActivity ? 'active' : 'recently_viewed';
+  return { processed: true, reason };
+}
+
+// Enhanced helper function for better token filtering
+async function isTokenRecentlyViewed(tokenAddress: string): Promise<boolean> {
+  const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000);
+
+  const recentToken = await prisma.token.findFirst({
+    where: {
+      contractAddress: tokenAddress.toLowerCase(),
+      updatedAt: { gte: sixHoursAgo },
+    },
+  });
+
+  return !!recentToken;
 }
