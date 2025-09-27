@@ -18,23 +18,96 @@ interface CandleData {
   trades: number;
 }
 
+interface GenerateOptions {
+  startTime?: number; // Unix timestamp in milliseconds
+  endTime?: number; // Unix timestamp in milliseconds
+  forceRefresh?: boolean;
+}
+
+interface SubgraphResponse {
+  data: {
+    trades: TradeForCandle[];
+  };
+  errors?: any[];
+}
+
 export class OHLCVService {
   constructor(
     private prisma: PrismaClient,
     private tokenService: TokenService,
   ) {}
 
-  async generateOHLCVCandles(contractAddress: string, timeframe: string): Promise<CandleData[]> {
+  async generateOHLCVCandles(
+    contractAddress: string,
+    timeframe: string,
+    options: GenerateOptions = {},
+  ): Promise<CandleData[]> {
     try {
-      if (timeframe === '1d') {
-        // Use aggregated TokenDay data for efficiency
-        return await this.generateDailyCandles(contractAddress);
-      } else {
-        // Use individual trades for minute/hour data
-        return await this.generateIntradayCandles(contractAddress, timeframe);
+      // For live data requests, always generate fresh candles
+      if (options.startTime || options.forceRefresh) {
+        return await this.generateFreshCandles(contractAddress, timeframe, options);
       }
+
+      // For regular requests, use cached data if available and fresh
+      const cachedCandles = await this.getCachedCandles(contractAddress, timeframe);
+
+      if (this.isCacheValid(cachedCandles, timeframe)) {
+        console.log(`[OHLCV] Using cached data for ${contractAddress} ${timeframe}`);
+        return cachedCandles;
+      }
+
+      // Cache is stale, generate fresh data
+      console.log(`[OHLCV] Cache stale, generating fresh data for ${contractAddress} ${timeframe}`);
+      return await this.generateFreshCandles(contractAddress, timeframe, options);
     } catch (error) {
       console.error('Error generating OHLCV candles:', error);
+
+      // Fallback to cached data even if stale
+      const fallbackCandles = await this.getCachedCandles(contractAddress, timeframe);
+      if (fallbackCandles.length > 0) {
+        console.warn('Using stale cached data as fallback');
+        return fallbackCandles;
+      }
+
+      return [];
+    }
+  }
+
+  /**
+   * NEW: Generate live candles for real-time updates
+   * This is used by the new /live endpoint
+   */
+  async generateLiveCandles(
+    contractAddress: string,
+    timeframe: string,
+    since: number,
+  ): Promise<CandleData[]> {
+    const options: GenerateOptions = {
+      startTime: since,
+      endTime: Date.now(),
+      forceRefresh: true,
+    };
+
+    return await this.generateFreshCandles(contractAddress, timeframe, options);
+  }
+
+  /**
+   * Generate fresh candles from subgraph data
+   * This uses your existing logic but with enhanced time range support
+   */
+  private async generateFreshCandles(
+    contractAddress: string,
+    timeframe: string,
+    options: GenerateOptions = {},
+  ): Promise<CandleData[]> {
+    try {
+      if (timeframe === '1d') {
+        return await this.generateDailyCandles(contractAddress);
+      } else {
+        return await this.generateIntradayCandles(contractAddress, timeframe, options);
+      }
+    } catch (error) {
+      console.error('Error generating fresh candles:', error);
       return [];
     }
   }
@@ -83,14 +156,20 @@ export class OHLCVService {
   private async generateIntradayCandles(
     contractAddress: string,
     timeframe: string,
+    options: GenerateOptions = {},
   ): Promise<CandleData[]> {
     try {
-      const trades = await this.tokenService.fetchTradesForChart(contractAddress, timeframe);
       const intervalMs = this.getIntervalMs(timeframe);
 
-      // Get the time range we need to cover
-      const endTime = Date.now();
-      const startTime = endTime - this.getHoursBack(timeframe) * 60 * 60 * 1000;
+      // Determine time range - use options if provided for live data
+      const endTime = options.endTime || Date.now();
+      const startTime =
+        options.startTime || endTime - this.getHoursBack(timeframe) * 60 * 60 * 1000;
+
+      // Fetch trades for the time range
+      const trades = options.startTime
+        ? await this.fetchTradesForTimeRange(contractAddress, startTime, endTime)
+        : await this.tokenService.fetchTradesForChart(contractAddress, timeframe);
 
       // Generate all possible time slots
       const timeSlots = this.generateTimeSlots(startTime, endTime, intervalMs);
@@ -125,8 +204,10 @@ export class OHLCVService {
         }
       }
 
-      // Store candles in database
-      await this.storeCandles(contractAddress, timeframe, candles);
+      // Store candles in database only if not a live/partial request
+      if (!options.startTime) {
+        await this.storeCandles(contractAddress, timeframe, candles);
+      }
 
       return candles;
     } catch (error) {
@@ -323,14 +404,124 @@ export class OHLCVService {
     }
   }
 
-  async getStoredOHLCVData(contractAddress: string, timeframe: string, limit = 100) {
+  async getStoredOHLCVData(
+    contractAddress: string,
+    timeframe: string,
+    limit: string | number = 100,
+  ) {
     return await this.prisma.tokenOHLCV.findMany({
       where: {
         contractAddress: contractAddress.toLowerCase(),
         timeframe,
       },
       orderBy: { timestamp: 'desc' },
-      take: limit,
+      take: typeof limit === 'string' ? parseInt(limit) : limit,
     });
+  }
+
+  /**
+   * NEW: Fetch trades for a specific time range from subgraph
+   * This is optimized for live data requests
+   */
+  private async fetchTradesForTimeRange(
+    contractAddress: string,
+    startTime: number,
+    endTime: number,
+  ): Promise<TradeForCandle[]> {
+    try {
+      const startTimeSeconds = Math.floor(startTime / 1000);
+      const endTimeSeconds = Math.floor(endTime / 1000);
+
+      const query = `{
+        trades(
+          where: {
+            token: "${contractAddress.toLowerCase()}"
+            createdAt_gte: "${startTimeSeconds}"
+            createdAt_lte: "${endTimeSeconds}"
+          }
+          orderBy: createdAt
+          orderDirection: asc
+          first: 1000
+        ) {
+          id
+          isBuy
+          tokenAmount
+          acesTokenAmount
+          supply
+          createdAt
+          blockNumber
+        }
+      }`;
+
+      const response = await fetch(process.env.GOLDSKY_SUBGRAPH_URL!, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query }),
+        signal: AbortSignal.timeout(10000), // 10 second timeout for live queries
+      });
+
+      if (!response.ok) {
+        throw new Error(`Subgraph request failed: ${response.status}`);
+      }
+
+      const result = (await response.json()) as SubgraphResponse;
+      if (result.errors) {
+        throw new Error(`Subgraph errors: ${JSON.stringify(result.errors)}`);
+      }
+
+      return result.data.trades || [];
+    } catch (error) {
+      console.error('Error fetching trades for time range:', error);
+      return [];
+    }
+  }
+
+  /**
+   * NEW: Check if cached data is still valid
+   */
+  private isCacheValid(candles: CandleData[], timeframe: string): boolean {
+    if (candles.length === 0) return false;
+
+    const latestCandle = candles[candles.length - 1];
+    const now = Date.now();
+    const candleAge = now - latestCandle.timestamp.getTime();
+
+    // Cache validity based on timeframe
+    const maxAge = this.getIntervalMs(timeframe) * 2; // 2 intervals old max
+
+    return candleAge < maxAge;
+  }
+
+  /**
+   * NEW: Get cached candles from database
+   */
+  private async getCachedCandles(
+    contractAddress: string,
+    timeframe: string,
+    limit = 200,
+  ): Promise<CandleData[]> {
+    try {
+      const stored = await this.prisma.tokenOHLCV.findMany({
+        where: {
+          contractAddress: contractAddress.toLowerCase(),
+          timeframe,
+        },
+        orderBy: { timestamp: 'asc' },
+        take: limit,
+      });
+
+      return stored.map((candle) => ({
+        timestamp: candle.timestamp,
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
+        volume: candle.volume,
+        trades: candle.trades,
+      }));
+    } catch (error) {
+      console.error('Error fetching cached candles:', error);
+      return [];
+    }
   }
 }
