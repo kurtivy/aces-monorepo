@@ -156,48 +156,93 @@ export default function TokenHealthPanel({ ratioText }: TokenHealthPanelProps) {
     return userTokenHoldings * metrics.rewardPerToken;
   }, [userTokenHoldings, metrics.rewardPerToken]);
 
+  const ratioDisplay = useMemo(() => {
+    const raw = ratioText ?? `${metrics.valueEquilibriumRatio.toFixed(2)}x`;
+    const match = raw.match(/^([0-9.,]+)/);
+
+    if (!match) {
+      return { numeric: '', suffix: raw };
+    }
+
+    return { numeric: match[1], suffix: raw.slice(match[1].length) };
+  }, [ratioText, metrics.valueEquilibriumRatio]);
+
+  const tradingCreditsDisplay = useMemo(() => {
+    const formatted = formatNumber(tradingCredits);
+    return {
+      numeric: formatted,
+      prefix: '$',
+    };
+  }, [tradingCredits]);
+
+  const metricCardClass =
+    'rounded-xl border border-[#D0B284]/20 bg-[#111712]/90 px-5 py-4 flex flex-col gap-3';
+
   return (
     <motion.div
-      className="h-full flex flex-col bg-[#151c16] p-6 font-mono"
+      className="h-full flex flex-col bg-[#151c16]"
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.8, ease: 'easeInOut' }}
     >
       {/* ACES RATIO - Single Line */}
       <motion.div
-        className="mb-6"
+        className={metricCardClass}
         initial={{ opacity: 0, scale: 0.98 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.6, ease: 'easeOut', delay: 0.05 }}
       >
-        <div className="text-[#D0B284] text-xs tracking-wider mb-1">ACES RATIO</div>
-        <div className="text-white text-3xl font-bold tracking-tight">
-          {ratioText || `${metrics.valueEquilibriumRatio.toFixed(2)}x`}
+        <div className="flex items-center justify-between">
+          <span className="text-[#D0B284] text-base uppercase tracking-[0.3em] font-spray-letters whitespace-nowrap">
+            ACES RATIO
+          </span>
+          <div className="flex items-end gap-2 text-white">
+            {ratioDisplay.numeric ? (
+              <>
+                <span className="text-3xl font-semibold font-proxima-nova leading-none">
+                  {ratioDisplay.numeric}
+                </span>
+                {ratioDisplay.suffix ? (
+                  <span className="text-2xl font-spray-letters leading-tight">
+                    {ratioDisplay.suffix}
+                  </span>
+                ) : null}
+              </>
+            ) : (
+              <span className="text-3xl font-spray-letters leading-none">
+                {ratioDisplay.suffix}
+              </span>
+            )}
+          </div>
         </div>
       </motion.div>
 
       {/* VER and SIGNAL - Two Columns */}
       <motion.div
-        className="mb-6 grid grid-cols-2 gap-6"
+        className="grid grid-cols-1 sm:grid-cols-2"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5, delay: 0.1 }}
       >
-        <div>
-          <div className="text-[#D0B284] text-xs tracking-wider mb-1">VER</div>
-          <div className="text-white text-3xl font-bold">
+        <div className={`${metricCardClass} text-center items-center`}>
+          <div className="text-[#D0B284] text-sm tracking-[0.28em] uppercase font-spray-letters">
+            VER
+          </div>
+          <div className="text-white text-2xl font-semibold font-proxima-nova">
             {metrics.valueEquilibriumRatio.toFixed(2)}
           </div>
         </div>
-        <div>
-          <div className="text-[#D0B284] text-xs tracking-wider mb-1">SIGNAL</div>
+        <div className={`${metricCardClass} text-center items-center`}>
+          <div className="text-[#D0B284] text-sm tracking-[0.28em] uppercase font-spray-letters">
+            SIGNAL
+          </div>
           <div className="flex items-center gap-2">
             <div
               className="w-3 h-3 rounded-full"
               style={{ backgroundColor: getSignalColor(metrics.signal.action) }}
             />
             <span
-              className="text-2xl font-bold"
+              className="text-xl font-bold font-spray-letters tracking-[0.3em]"
               style={{ color: getSignalColor(metrics.signal.action) }}
             >
               {metrics.signal.action}
@@ -205,50 +250,76 @@ export default function TokenHealthPanel({ ratioText }: TokenHealthPanelProps) {
           </div>
         </div>
       </motion.div>
-
-      {/* Reward Per Token and Reward Yield - Two Columns */}
-      <motion.div
-        className="mb-6 grid grid-cols-2 gap-6"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.5, delay: 0.15 }}
-      >
-        <div>
-          <div className="text-[#D0B284] text-xs tracking-wider mb-1">REWARD PER TOKEN</div>
-          <div className="text-white text-2xl font-bold">
-            ${formatPrice(metrics.rewardPerToken)}
-          </div>
-        </div>
-        <div>
-          <div className="text-[#D0B284] text-xs tracking-wider mb-1">REWARD YIELD</div>
-          <div className="text-white text-2xl font-bold">{metrics.rewardYield.toFixed(1)}%</div>
-        </div>
-      </motion.div>
-
       {/* Trading Credits - Single Line */}
       <motion.div
-        className="mb-6"
+        className={metricCardClass}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5, delay: 0.2 }}
       >
-        <div className="text-[#D0B284] text-xs tracking-wider mb-1">TRADING CREDITS</div>
-        <div className="text-white text-2xl font-bold">${formatNumber(tradingCredits)}</div>
-        <div className="text-[#D0B284] text-xs mt-1 opacity-70">
-          {formatNumber(userTokenHoldings)} tokens × ${formatPrice(metrics.rewardPerToken)}
+        <div className="flex items-center justify-between gap-4 text-white">
+          <span className="text-[#D0B284] text-base uppercase tracking-[0.28em] font-spray-letters whitespace-nowrap">
+            TRADING CREDITS
+          </span>
+          <div className="flex items-end gap-1">
+            <span className="text-2xl font-proxima-nova leading-none">
+              {tradingCreditsDisplay.prefix}
+            </span>
+            <span className="text-3xl font-semibold font-proxima-nova leading-none">
+              {tradingCreditsDisplay.numeric}
+            </span>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Reward Per Token and Reward Yield - Two Columns */}
+      <motion.div
+        className="grid grid-cols-1 sm:grid-cols-2"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.5, delay: 0.15 }}
+      >
+        <div className={metricCardClass}>
+          <div className="text-[#D0B284] text-xs tracking-[0.28em] uppercase font-spray-letters">
+            REWARD PER TOKEN
+          </div>
+          <div className="flex items-end gap-1 text-white">
+            <span className="text-base font-proxima-nova leading-none">$</span>
+            <span className="text-2xl font-semibold font-proxima-nova leading-none">
+              {formatPrice(metrics.rewardPerToken)}
+            </span>
+          </div>
+        </div>
+        <div className={metricCardClass}>
+          <div className="text-[#D0B284] text-xs tracking-[0.28em] uppercase font-spray-letters">
+            REWARD YIELD
+          </div>
+          <div className="flex items-end gap-1 text-white">
+            <span className="text-2xl font-semibold font-proxima-nova leading-none">
+              {metrics.rewardYield.toFixed(1)}
+            </span>
+            <span className="text-base font-proxima-nova leading-none">%</span>
+          </div>
         </div>
       </motion.div>
 
       {/* Circulating Supply - Single Line */}
       <motion.div
-        className="mb-6"
+        className={metricCardClass}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5, delay: 0.25 }}
       >
-        <div className="text-[#D0B284] text-xs tracking-wider mb-1">CIRCULATING SUPPLY</div>
-        <div className="text-white text-2xl font-bold">
-          {formatNumber(metrics.circulatingSupply)} tokens
+        <div className="text-[#D0B284] text-sm tracking-[0.28em] uppercase font-spray-letters">
+          CIRCULATING SUPPLY
+        </div>
+        <div className="flex flex-wrap items-end gap-2 text-white">
+          <span className="text-2xl font-semibold font-proxima-nova leading-none">
+            {formatNumber(metrics.circulatingSupply)}
+          </span>
+          <span className="text-xs uppercase tracking-[0.32em] font-spray-letters text-[#D0B284]">
+            tokens
+          </span>
         </div>
       </motion.div>
     </motion.div>
