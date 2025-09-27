@@ -15,6 +15,7 @@ import { usersRoutes } from './routes/v1/users';
 // import { webhooksRoutes } from './routes/v1/webhooks';
 import { listingRoutes } from './routes/v1/listings'; // Step 5: Enabled
 import { contactRoutes } from './routes/v1/contact';
+import { purchaseRoutes } from './routes/v1/purchase';
 import { commentsRoutes } from './routes/v1/comments';
 import { tokensRoutes } from './routes/v1/tokens';
 import { twitchRoutes } from './routes/v1/twitch';
@@ -139,6 +140,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   fastify.register(listingRoutes, { prefix: '/api/v1/listings' }); // Step 5: Enabled
   fastify.register(tokensRoutes, { prefix: '/api/v1/tokens' });
   fastify.register(contactRoutes, { prefix: '/api/v1/contact' });
+  fastify.register(purchaseRoutes, { prefix: '/api/v1/purchase' });
   fastify.register(commentsRoutes, { prefix: '/api/v1/comments' });
   fastify.register(twitchRoutes, { prefix: '/api/v1/twitch' });
   fastify.register(priceRoutes, { prefix: '/api/v1/price' });
