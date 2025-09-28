@@ -18,9 +18,11 @@ import { contactRoutes } from './routes/v1/contact';
 import { purchaseRoutes } from './routes/v1/purchase';
 import { commentsRoutes } from './routes/v1/comments';
 import { tokensRoutes } from './routes/v1/tokens';
+import { portfolioRoutes } from './routes/v1/portfolio';
 import { twitchRoutes } from './routes/v1/twitch';
 import { priceRoutes } from './routes/v1/price';
 import gcsTestRoutes from './routes/v1/debug/gcs-test';
+import { portfolioTestRoutes } from './routes/v1/debug/portfolio-test';
 
 import { cronRoutes } from './routes/v1/cron/trigger';
 
@@ -139,6 +141,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   // import { webhooksRoutes } from './routes/v1/webhooks';
   fastify.register(listingRoutes, { prefix: '/api/v1/listings' }); // Step 5: Enabled
   fastify.register(tokensRoutes, { prefix: '/api/v1/tokens' });
+  fastify.register(portfolioRoutes, { prefix: '/api/v1/portfolio' });
   fastify.register(contactRoutes, { prefix: '/api/v1/contact' });
   fastify.register(purchaseRoutes, { prefix: '/api/v1/purchase' });
   fastify.register(commentsRoutes, { prefix: '/api/v1/comments' });
@@ -152,6 +155,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
 
   // Register debug routes
   fastify.register(gcsTestRoutes, { prefix: '/api/v1' });
+  fastify.register(portfolioTestRoutes, { prefix: '/api/v1/debug/portfolio-test' });
   // Register cron routes for manual testing
   fastify.register(cronRoutes);
 
