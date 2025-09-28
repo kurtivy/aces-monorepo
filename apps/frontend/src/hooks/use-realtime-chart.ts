@@ -260,4 +260,3 @@ export const useRealtimeChart = (tokenAddress: string, timeframe: string = '1h')
     lastUpdateTime: new Date(data.lastUpdate),
   };
 };
-

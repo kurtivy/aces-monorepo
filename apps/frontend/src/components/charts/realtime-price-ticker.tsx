@@ -79,4 +79,3 @@ const RealtimePriceTicker: React.FC<RealtimePriceTickerProps> = ({
 };
 
 export default RealtimePriceTicker;
-

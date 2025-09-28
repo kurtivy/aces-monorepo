@@ -40,9 +40,8 @@ const MobileTradingChartSection = forwardRef<HTMLDivElement, MobileTradingChartS
           tokenAddress={listing.token?.contractAddress ?? ''}
           tokenSymbol={listing.token?.symbol ?? listing.symbol}
           title={listing.token?.name ?? listing.title}
-          heightClass="h-[360px]"
+          heightClass="h-[400px]"
         />
-
       </section>
     );
   },

@@ -26,6 +26,28 @@ interface SubgraphToken {
   symbol: string;
   supply: string;
   tradesCount: number;
+  // New fields from enhanced subgraph
+  owner?: {
+    id: string;
+    address: string;
+  };
+  bonded?: boolean;
+  tokensBought?: string;
+  tokensSold?: string;
+  subjectFeeAmount?: string;
+  protocolFeeAmount?: string;
+  tokenHours?: Array<{
+    id: string;
+    tradesCount: number;
+    tokensBought: string;
+    tokensSold: string;
+  }>;
+  tokenDays?: Array<{
+    id: string;
+    tradesCount: number;
+    tokensBought: string;
+    tokensSold: string;
+  }>;
 }
 
 export class TokenService {
@@ -216,6 +238,27 @@ export class TokenService {
             symbol
             supply
             tradesCount
+            owner {
+              id
+              address
+            }
+            bonded
+            tokensBought
+            tokensSold
+            subjectFeeAmount
+            protocolFeeAmount
+            tokenHours(first: 24, orderBy: id, orderDirection: desc) {
+              id
+              tradesCount
+              tokensBought
+              tokensSold
+            }
+            tokenDays(first: 30, orderBy: id, orderDirection: desc) {
+              id
+              tradesCount
+              tokensBought
+              tokensSold
+            }
           }
           trades(
             where: {token: "${contractAddress.toLowerCase()}"}
@@ -230,6 +273,8 @@ export class TokenService {
             supply
             createdAt
             blockNumber
+            protocolFeeAmount
+            subjectFeeAmount
           }
         }`;
 
