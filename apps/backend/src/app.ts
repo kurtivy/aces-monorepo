@@ -22,7 +22,6 @@ import { portfolioRoutes } from './routes/v1/portfolio';
 import { twitchRoutes } from './routes/v1/twitch';
 import { priceRoutes } from './routes/v1/price';
 import gcsTestRoutes from './routes/v1/debug/gcs-test';
-import { portfolioTestRoutes } from './routes/v1/debug/portfolio-test';
 
 import { cronRoutes } from './routes/v1/cron/trigger';
 
@@ -155,7 +154,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
 
   // Register debug routes
   fastify.register(gcsTestRoutes, { prefix: '/api/v1' });
-  fastify.register(portfolioTestRoutes, { prefix: '/api/v1/debug/portfolio-test' });
+  // fastify.register(portfolioTestRoutes, { prefix: '/api/v1/debug/portfolio-test' });
   // Register cron routes for manual testing
   fastify.register(cronRoutes);
 
