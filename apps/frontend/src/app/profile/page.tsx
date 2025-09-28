@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/auth/auth-context';
 import { HorizontalProfileHeader } from '@/components/profile/horizontal-profile-header';
 import { TokenListTab } from '@/components/profile/token-list-tab';
 import { BidsTab } from '@/components/profile/bids-tab';
+import PortfolioOverview from '@/components/portfolio/portfolio-overview';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Footer from '@/components/ui/custom/footer';
 import { useState, useLayoutEffect } from 'react';
@@ -178,6 +179,11 @@ export default function ProfilePage() {
                 <TokenCreationNotifications />
               </div>
             </div>
+
+            {/* Portfolio Overview - Phase 3 Enhancement */}
+            {profileData.walletAddress && (
+              <PortfolioOverview walletAddress={profileData.walletAddress} className="mb-8" />
+            )}
 
             {/* Tabs */}
             <div className="w-full">
