@@ -2,31 +2,25 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/lib/auth/auth-context';
+import { useAdminAuth } from '@/lib/auth/admin-auth-context';
 import { Loader2 } from 'lucide-react';
 
 export default function AdminHomePage() {
-  const { isAuthenticated, isAdmin, isLoading } = useAuth();
+  const { isAuthenticated: isAdminAuthenticated, isLoading } = useAdminAuth();
   const router = useRouter();
 
   useEffect(() => {
     if (!isLoading) {
-      if (!isAuthenticated) {
-        // Not logged in with Privy - redirect to login
+      if (!isAdminAuthenticated) {
+        // Not logged in with Supabase admin - redirect to login
         router.push('/admin/login');
         return;
       }
 
-      if (!isAdmin) {
-        // Logged in but not admin - show error
-        router.push('/admin/unauthorized');
-        return;
-      }
-
-      // Admin user - redirect to dashboard
+      // Admin authenticated - redirect to dashboard
       router.push('/admin/dashboard');
     }
-  }, [isAuthenticated, isAdmin, isLoading, router]);
+  }, [isAdminAuthenticated, isLoading, router]);
 
   if (isLoading) {
     return (

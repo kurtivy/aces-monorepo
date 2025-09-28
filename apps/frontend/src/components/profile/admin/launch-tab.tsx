@@ -1,0 +1,1261 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { ethers } from 'ethers';
+import { getContractAddresses } from '@/lib/contracts/addresses';
+import { ACES_FACTORY_ABI, ERC20_ABI, LAUNCHPAD_TOKEN_ABI } from '@/lib/contracts/abi';
+import { useAcesFactoryContract } from '@/hooks/contracts/use-aces-factory-contract';
+import { type SaltMiningResult, mineVanitySaltWithTimeout } from '@/lib/utils/salt-mining';
+import { useAuth } from '@/lib/auth/auth-context';
+import { useWallets } from '@privy-io/react-auth';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import {
+  Wallet,
+  Coins,
+  TrendingUp,
+  TrendingDown,
+  RefreshCw,
+  Loader2,
+  Pickaxe,
+  CheckCircle,
+  AlertCircle,
+  Network,
+  DollarSign,
+} from 'lucide-react';
+
+export function LaunchTab() {
+  // Use Privy authentication system for wallet connection (required for contract deployment)
+  const { isAuthenticated, isLoading: authLoading, user, walletAddress, connectWallet } = useAuth();
+
+  // Get Privy wallets and signer
+  const { wallets } = useWallets();
+  const [signer, setSigner] = useState<ethers.Signer | null>(null);
+
+  // Get signer from Privy wallet
+  useEffect(() => {
+    const getSigner = async () => {
+      if (!walletAddress || !wallets.length) {
+        setSigner(null);
+        return;
+      }
+
+      try {
+        const wallet = wallets.find((w) => w.address.toLowerCase() === walletAddress.toLowerCase());
+        if (wallet && 'getEthersProvider' in wallet) {
+          // Type assertion for Privy wallet with ethers provider
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const provider = await (wallet as any).getEthersProvider();
+          const walletSigner = provider.getSigner();
+          setSigner(walletSigner);
+          console.log('✅ Privy signer initialized');
+        }
+      } catch (error) {
+        console.error('❌ Failed to get Privy signer:', error);
+        setSigner(null);
+      }
+    };
+
+    getSigner();
+  }, [walletAddress, wallets]);
+
+  const [acesBalance, setAcesBalance] = useState<string>('0');
+
+  // Factory contract instances
+  const [factoryContract, setFactoryContract] = useState<ethers.Contract | null>(null);
+  const [acesContract, setAcesContract] = useState<ethers.Contract | null>(null);
+
+  // Get contract addresses
+  const contractAddresses = getContractAddresses();
+
+  // Use new contract hook
+  const { createToken, isReady, tokenImplementation } = useAcesFactoryContract();
+
+  // Token creation state with new tokensBondedAt field
+  const [createForm, setCreateForm] = useState({
+    name: 'Admin Test Token',
+    symbol: 'ATT',
+    salt: '', // Empty by default - will be set manually or generated during mining
+    steepness: '100000000',
+    floor: '0',
+    tokensBondedAt: '800000000', // New field - 800M tokens (will be converted to wei)
+    curve: 0,
+  });
+
+  // Mining state
+  const [isMining, setIsMining] = useState(false);
+  const [miningProgress, setMiningProgress] = useState({
+    attempts: 0,
+    timeElapsed: 0,
+    predictedAddress: '',
+  });
+  const [saltMiningResult, setSaltMiningResult] = useState<SaltMiningResult | null>(null);
+
+  // Trading state
+  const [selectedToken, setSelectedToken] = useState<string>('');
+  const [tradeAmount, setTradeAmount] = useState<string>('');
+  const [priceQuote, setPriceQuote] = useState<string>('0');
+  const [sellPriceQuote, setSellPriceQuote] = useState<string>('0');
+  const [loading, setLoading] = useState<string>('');
+
+  // Created token state
+  const [createdTokens, setCreatedTokens] = useState<
+    Array<{
+      address: string;
+      name: string;
+      symbol: string;
+      balance: string;
+      totalSupply: string;
+    }>
+  >([
+    // Add your test token for quick testing
+    {
+      address: '0xa19763cfd3dcd1f47447954f5576e660f8b6e261',
+      name: 'Test Token',
+      symbol: 'TEST',
+      balance: '0',
+      totalSupply: '0',
+    },
+    {
+      address: '0x569805040d28B360d004bB9969E84C4E19dFd2B8',
+      name: 'New Launchpad Token',
+      symbol: 'NLT',
+      balance: '0',
+      totalSupply: '0',
+    },
+  ]);
+
+  // Initialize contracts when wallet is connected
+  useEffect(() => {
+    const initializeContracts = async () => {
+      if (!signer || !walletAddress) {
+        setFactoryContract(null);
+        setAcesContract(null);
+        setAcesBalance('0');
+        return;
+      }
+
+      try {
+        // Initialize contracts with Privy signer
+        const factory = new ethers.Contract(
+          contractAddresses.FACTORY_PROXY,
+          ACES_FACTORY_ABI,
+          signer,
+        );
+        setFactoryContract(factory);
+
+        const aces = new ethers.Contract(contractAddresses.ACES_TOKEN, ERC20_ABI, signer);
+        setAcesContract(aces);
+
+        // Get ACES balance
+        const balance = await aces.balanceOf(walletAddress);
+        setAcesBalance(ethers.utils.formatEther(balance));
+
+        console.log('✅ Contracts initialized with Privy wallet');
+      } catch (error) {
+        console.error('❌ Failed to initialize contracts:', error);
+      }
+    };
+
+    initializeContracts();
+  }, [signer, walletAddress, contractAddresses]);
+
+  // Separate salt mining function
+  const handleBeginSaltMine = async () => {
+    console.log('🎯 Beginning salt mining...');
+
+    if (!isReady) {
+      alert('Contract hook not ready. Please wait...');
+      return;
+    }
+
+    if (!signer || !walletAddress) {
+      alert('Please connect your wallet first');
+      return;
+    }
+
+    try {
+      setIsMining(true);
+      setLoading('Mining vanity address...');
+
+      // Reset progress
+      setMiningProgress({ attempts: 0, timeElapsed: 0, predictedAddress: '' });
+      setSaltMiningResult(null);
+
+      // Get factory and tokenImplementation from the hook
+      const factoryAddress = contractAddresses.FACTORY_PROXY;
+
+      if (!tokenImplementation) {
+        alert('Token implementation not loaded yet. Please wait...');
+        return;
+      }
+
+      const result = await mineVanitySaltWithTimeout(
+        walletAddress,
+        createForm.name,
+        createForm.symbol,
+        factoryAddress,
+        tokenImplementation,
+        {
+          targetSuffix: 'ACE',
+          maxAttempts: 200000,
+          onProgress: (attempts, timeElapsed) => {
+            console.log('Mining progress:', { attempts, timeElapsed });
+            setMiningProgress({ attempts, timeElapsed, predictedAddress: '' });
+            setLoading(
+              `Mining address... ${attempts} attempts, ${(timeElapsed / 1000).toFixed(1)}s`,
+            );
+          },
+        },
+        300000, // 5 minute timeout
+      );
+
+      // Success! Update the form with the mined salt
+      setCreateForm((prev) => ({
+        ...prev,
+        salt: result.salt,
+      }));
+
+      setSaltMiningResult(result);
+
+      alert(
+        `🎯 Vanity address found!\n\n` +
+          `Predicted Address: ${result.predictedAddress}\n` +
+          `Attempts: ${result.attempts.toLocaleString()}\n` +
+          `Time: ${(result.timeElapsed / 1000).toFixed(1)}s\n` +
+          `Salt: ${result.salt}\n\n` +
+          `Salt has been added to the form. You can now click "Create Token"!`,
+      );
+    } catch (error) {
+      console.error('Salt mining failed:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      alert(`Salt mining failed: ${errorMessage}`);
+    } finally {
+      setIsMining(false);
+      setLoading('');
+    }
+  };
+
+  // Enhanced createToken function using new hook
+  const handleCreateToken = async () => {
+    console.log('🚀 handleCreateToken called');
+    console.log('isReady:', isReady);
+    console.log('createForm:', createForm);
+
+    if (!isReady) {
+      alert('Contract hook not ready. Please wait...');
+      return;
+    }
+
+    // Validate salt requirements
+    if (!createForm.salt.trim()) {
+      alert(
+        'Please provide a salt value for token creation. You can enter one manually or use "Begin Salt Mine" to generate a vanity address.',
+      );
+      return;
+    }
+
+    // Validate tokensBondedAt (must be at least 1 token in the contract)
+    try {
+      const tokensBondedAtWei = ethers.utils.parseEther(createForm.tokensBondedAt);
+      const minTokensBondedAt = ethers.utils.parseEther('1'); // At least 1 token
+      if (tokensBondedAtWei.lt(minTokensBondedAt)) {
+        alert('Tokens Bonded At must be at least 1 token');
+        return;
+      }
+    } catch (error) {
+      alert('Invalid Tokens Bonded At value. Please enter a valid number.');
+      return;
+    }
+
+    try {
+      setLoading('Creating token...');
+
+      const result = await createToken(
+        {
+          curve: createForm.curve,
+          steepness: createForm.steepness,
+          floor: createForm.floor,
+          name: createForm.name,
+          symbol: createForm.symbol,
+          salt: createForm.salt,
+          tokensBondedAt: ethers.utils.parseEther(createForm.tokensBondedAt).toString(), // Convert to wei
+          useVanityMining: false, // Always false since we do mining separately
+        },
+        // Mining progress callback
+        (attempts, timeElapsed) => {
+          console.log('Mining progress:', { attempts, timeElapsed });
+          setMiningProgress({ attempts, timeElapsed, predictedAddress: '' });
+          setLoading(`Mining address... ${attempts} attempts, ${(timeElapsed / 1000).toFixed(1)}s`);
+        },
+      );
+
+      // Stop mining state
+      setIsMining(false);
+
+      if (result.success) {
+        // Handle successful creation
+        const newToken = {
+          address: result.tokenAddress!,
+          name: createForm.name,
+          symbol: createForm.symbol,
+          balance: '0',
+          totalSupply: '0',
+        };
+
+        setCreatedTokens((prev) => [...prev, newToken]);
+        setSelectedToken(result.tokenAddress!);
+
+        if (result.saltMiningResult) {
+          setSaltMiningResult(result.saltMiningResult);
+
+          // Update the salt input field with the mined salt
+          setCreateForm((prev) => ({
+            ...prev,
+            salt: result.saltMiningResult!.salt,
+          }));
+
+          const isVanitySuccess = result.tokenAddress?.toLowerCase().endsWith('ace');
+          alert(
+            `Token created successfully!\n\n` +
+              `Address: ${result.tokenAddress}\n` +
+              `Vanity Mining: ${result.saltMiningResult.attempts} attempts in ${(result.saltMiningResult.timeElapsed / 1000).toFixed(1)}s\n` +
+              `${isVanitySuccess ? '✅ Address ends with "ace"!' : '❌ Vanity mining failed'}\n` +
+              `Mined Salt: ${result.saltMiningResult.salt}`,
+          );
+        } else {
+          alert(`Token created successfully!\nAddress: ${result.tokenAddress}`);
+        }
+
+        // Reset form (but keep the mined salt for vanity addresses)
+        setCreateForm((prev) => ({
+          ...prev,
+          salt: result.saltMiningResult ? result.saltMiningResult.salt : `token-${Date.now()}`, // Generate new default salt
+        }));
+        setSaltMiningResult(null);
+        setMiningProgress({ attempts: 0, timeElapsed: 0, predictedAddress: '' });
+      } else {
+        console.error('Token creation failed:', result.error);
+        alert(`Token creation failed: ${result.error || 'Unknown error'}`);
+      }
+
+      setLoading('');
+    } catch (error) {
+      console.error('Token creation failed:', error);
+      setIsMining(false);
+      setLoading('');
+      setMiningProgress({ attempts: 0, timeElapsed: 0, predictedAddress: '' });
+
+      // Better error handling
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      alert(`Token creation failed: ${errorMessage}`);
+    }
+  };
+
+  // Handle Privy wallet connection
+  const handleConnectWallet = async () => {
+    try {
+      setLoading('Connecting wallet...');
+      await connectWallet();
+      setLoading('');
+    } catch (error) {
+      console.error('❌ Failed to connect wallet:', error);
+      setLoading('');
+      // Handle Privy-specific errors
+      if (error instanceof Error) {
+        alert(`Failed to connect wallet: ${error.message}`);
+      } else {
+        alert('Failed to connect wallet. Please try again.');
+      }
+    }
+  };
+
+  // Get price quote for buying
+  const getPriceQuote = async () => {
+    if (!factoryContract || !selectedToken || !tradeAmount) {
+      console.log('Missing requirements for price quote:', {
+        factoryContract: !!factoryContract,
+        selectedToken: !!selectedToken,
+        tradeAmount: !!tradeAmount,
+      });
+      return;
+    }
+
+    try {
+      console.log('Getting price quote for:', {
+        token: selectedToken,
+        amount: tradeAmount,
+      });
+
+      const amountWei = ethers.utils.parseEther(tradeAmount);
+      console.log('Amount in wei:', amountWei.toString());
+
+      const priceWei = await factoryContract.getBuyPriceAfterFee(selectedToken, amountWei);
+      console.log('Price quote (wei):', priceWei.toString());
+
+      const formattedPrice = ethers.utils.formatEther(priceWei);
+      console.log('Price quote (formatted):', formattedPrice);
+      setPriceQuote(formattedPrice);
+    } catch (error) {
+      console.error('Failed to get price quote:', error);
+
+      // More specific error handling
+      if (error && typeof error === 'object' && 'reason' in error) {
+        console.error('Error reason:', (error as { reason: unknown }).reason);
+      }
+      if (error && typeof error === 'object' && 'code' in error) {
+        console.error('Error code:', (error as { code: unknown }).code);
+      }
+      if (error && typeof error === 'object' && 'data' in error) {
+        console.error('Error data:', (error as { data: unknown }).data);
+      }
+
+      setPriceQuote('0');
+    }
+  };
+
+  // Get sell price quote
+  const getSellPriceQuote = async () => {
+    if (!factoryContract || !selectedToken || !tradeAmount) return;
+
+    try {
+      const amountWei = ethers.utils.parseEther(tradeAmount);
+      const sellPriceWei = await factoryContract.getSellPriceAfterFee(selectedToken, amountWei);
+      setSellPriceQuote(ethers.utils.formatEther(sellPriceWei));
+    } catch (error) {
+      console.error('Failed to get sell price quote:', error);
+      setSellPriceQuote('0');
+    }
+  };
+
+  // Buy tokens
+  const buyTokens = async () => {
+    if (!factoryContract || !acesContract || !selectedToken || !tradeAmount || !signer) return;
+
+    try {
+      const amountWei = ethers.utils.parseEther(tradeAmount);
+      const priceWei = ethers.utils.parseEther(priceQuote);
+
+      setLoading('Approving ACES tokens...');
+      console.log('Approving ACES tokens for amount:', priceWei.toString());
+      const approveTx = await acesContract.approve(contractAddresses.FACTORY_PROXY, priceWei);
+      console.log('Approval transaction hash:', approveTx.hash);
+
+      const approvalReceipt = await approveTx.wait();
+      console.log('Approval confirmed in block:', approvalReceipt.blockNumber);
+
+      // Add a small delay to ensure approval is fully processed
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
+      setLoading('Buying tokens...');
+      console.log(
+        'Buying tokens - Token:',
+        selectedToken,
+        'Amount:',
+        amountWei.toString(),
+        'Max Price:',
+        priceWei.toString(),
+      );
+
+      const buyTx = await factoryContract.buyTokens(selectedToken, amountWei, priceWei);
+      console.log('Buy transaction hash:', buyTx.hash);
+
+      const buyReceipt = await buyTx.wait();
+      console.log('Buy confirmed in block:', buyReceipt.blockNumber);
+
+      setLoading('Refreshing balances...');
+      await refreshBalances();
+      setLoading('');
+
+      alert('Tokens purchased successfully!');
+    } catch (error) {
+      console.error('Failed to buy tokens:', error);
+
+      // Better error handling
+      if (
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        (error as { code: unknown }).code === -32603
+      ) {
+        alert('Network error occurred. Please check your connection and try again.');
+      } else if (error && typeof error === 'object' && 'reason' in error) {
+        alert(`Transaction failed: ${(error as { reason: unknown }).reason}`);
+      } else if (error && typeof error === 'object' && 'message' in error) {
+        alert(`Error: ${(error as { message: unknown }).message}`);
+      } else {
+        alert('Unknown error occurred. Please try again.');
+      }
+
+      setLoading('');
+    }
+  };
+
+  // Sell tokens
+  const sellTokens = async () => {
+    if (!factoryContract || !selectedToken || !tradeAmount) return;
+
+    try {
+      const amountWei = ethers.utils.parseEther(tradeAmount);
+
+      setLoading('Selling tokens...');
+      console.log('Selling tokens - Token:', selectedToken, 'Amount:', amountWei.toString());
+
+      const tx = await factoryContract.sellTokens(selectedToken, amountWei);
+      console.log('Sell transaction hash:', tx.hash);
+
+      const receipt = await tx.wait();
+      console.log('Sell confirmed in block:', receipt.blockNumber);
+
+      setLoading('Refreshing balances...');
+      await refreshBalances();
+      setLoading('');
+
+      alert('Tokens sold successfully!');
+    } catch (error) {
+      console.error('Failed to sell tokens:', error);
+
+      // Better error handling
+      if (
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        (error as { code: unknown }).code === -32603
+      ) {
+        alert('Network error occurred. Please check your connection and try again.');
+      } else if (error && typeof error === 'object' && 'reason' in error) {
+        alert(`Transaction failed: ${(error as { reason: unknown }).reason}`);
+      } else if (error && typeof error === 'object' && 'message' in error) {
+        alert(`Error: ${(error as { message: unknown }).message}`);
+      } else {
+        alert('Unknown error occurred. Please try again.');
+      }
+
+      setLoading('');
+    }
+  };
+
+  // Refresh balances
+  const refreshBalances = async () => {
+    if (!acesContract || !walletAddress) return;
+
+    try {
+      console.log('Refreshing ACES balance for address:', walletAddress);
+      const acesBalance = await acesContract.balanceOf(walletAddress);
+      console.log('ACES balance (wei):', acesBalance.toString());
+      setAcesBalance(ethers.utils.formatEther(acesBalance));
+      console.log('ACES balance (formatted):', ethers.utils.formatEther(acesBalance));
+
+      // Update token balances for created tokens
+      if (createdTokens.length > 0) {
+        console.log('Refreshing balances for', createdTokens.length, 'created tokens');
+        const updatedTokens = await Promise.all(
+          createdTokens.map(async (token) => {
+            try {
+              if (!signer) return token;
+              console.log('Getting balance for token:', token.address);
+              const tokenContract = new ethers.Contract(token.address, LAUNCHPAD_TOKEN_ABI, signer);
+              const balance = await tokenContract.balanceOf(walletAddress);
+              const totalSupply = await tokenContract.totalSupply();
+              console.log(
+                `Token ${token.symbol} - Balance:`,
+                balance.toString(),
+                'Total Supply:',
+                totalSupply.toString(),
+              );
+              return {
+                ...token,
+                balance: ethers.utils.formatEther(balance),
+                totalSupply: ethers.utils.formatEther(totalSupply),
+              };
+            } catch (tokenError) {
+              console.error(`Failed to get balance for token ${token.address}:`, tokenError);
+              return token; // Return original token if balance fetch fails
+            }
+          }),
+        );
+        setCreatedTokens(updatedTokens);
+      }
+    } catch (error) {
+      console.error('Failed to refresh balances:', error);
+      // Privy-compatible error handling
+      if (error instanceof Error) {
+        console.error('Error message:', error.message);
+      }
+      if (error && typeof error === 'object' && 'reason' in error) {
+        console.error('Error reason:', (error as { reason: unknown }).reason);
+      }
+      if (error && typeof error === 'object' && 'code' in error) {
+        console.error('Error code:', (error as { code: unknown }).code);
+      }
+    }
+  };
+
+  // Update selected token and clear trade amount
+  const handleTokenSelect = (tokenAddress: string) => {
+    setSelectedToken(tokenAddress);
+    setTradeAmount('');
+    setPriceQuote('0');
+    setSellPriceQuote('0');
+  };
+
+  // Update trade amount and clear quotes
+  const handleTradeAmountChange = (amount: string) => {
+    setTradeAmount(amount);
+    setPriceQuote('0');
+    setSellPriceQuote('0');
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold text-white font-libre-caslon">Token Launch Center</h2>
+        <Badge variant="outline" className="text-purple-400 border-purple-400">
+          Admin Only
+        </Badge>
+      </div>
+
+      {/* Wallet Connection Section */}
+      <Card className="bg-black border-purple-400/20">
+        <CardHeader>
+          <CardTitle className="text-white font-libre-caslon flex items-center">
+            <Wallet className="w-5 h-5 mr-2 text-purple-400" />
+            Wallet Connection
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {!isAuthenticated ? (
+            <div className="space-y-4">
+              <p className="text-[#DCDDCC] text-sm">
+                Connect your admin wallet to deploy and manage token contracts.
+              </p>
+              <Button
+                onClick={connectWallet}
+                className="bg-purple-600 hover:bg-purple-700 text-white"
+                disabled={authLoading}
+              >
+                {authLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Connecting...
+                  </>
+                ) : (
+                  <>
+                    <Wallet className="w-4 h-4 mr-2" />
+                    Connect Admin Wallet
+                  </>
+                )}
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center space-x-2">
+                <CheckCircle className="w-5 h-5 text-green-400" />
+                <span className="text-green-400 font-medium">Wallet Connected</span>
+              </div>
+              <div className="text-sm text-[#DCDDCC]">
+                <p>
+                  <strong>Address:</strong> {walletAddress}
+                </p>
+                <p>
+                  <strong>Admin Role:</strong>{' '}
+                  {user?.role === 'ADMIN' ? '✅ Verified' : '❌ Not Admin'}
+                </p>
+              </div>
+              {user?.role !== 'ADMIN' && (
+                <div className="p-3 bg-red-500/10 border border-red-400/20 rounded">
+                  <div className="flex items-center space-x-2">
+                    <AlertCircle className="w-4 h-4 text-red-400" />
+                    <p className="text-red-400 text-sm">
+                      This wallet is not registered as an admin. Contract deployment will be
+                      restricted.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Debug Info Card */}
+      <Card className="bg-black border-purple-400/20">
+        <CardHeader>
+          <CardTitle className="text-white font-libre-caslon flex items-center">
+            <Network className="w-5 h-5 mr-2 text-purple-400" />
+            System Status
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div className="flex items-center space-x-2">
+              {isReady ? (
+                <CheckCircle className="w-4 h-4 text-green-400" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-red-400" />
+              )}
+              <span className="text-[#DCDDCC]">Hook Ready</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              {isAuthenticated && walletAddress ? (
+                <CheckCircle className="w-4 h-4 text-green-400" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-red-400" />
+              )}
+              <span className="text-[#DCDDCC]">Wallet Connected</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              {factoryContract ? (
+                <CheckCircle className="w-4 h-4 text-green-400" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-red-400" />
+              )}
+              <span className="text-[#DCDDCC]">Factory Contract</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              {acesContract ? (
+                <CheckCircle className="w-4 h-4 text-green-400" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-red-400" />
+              )}
+              <span className="text-[#DCDDCC]">ACES Contract</span>
+            </div>
+          </div>
+          {loading && (
+            <div className="flex items-center space-x-2 text-purple-400">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span className="font-jetbrains">{loading}</span>
+            </div>
+          )}
+
+          {/* Debug Info for Salt Mining Button */}
+          <div className="text-xs text-[#DCDDCC] space-y-1 p-2 bg-purple-500/5 rounded border border-purple-400/10">
+            <p>
+              <strong>Debug - Salt Mining Button Status:</strong>
+            </p>
+            <p>• isReady: {isReady ? '✅ True' : '❌ False'}</p>
+            <p>• walletAddress: {walletAddress ? '✅ Connected' : '❌ Not connected'}</p>
+            <p>• signer: {signer ? '✅ Available' : '❌ Not available'}</p>
+            <p>• isMining: {isMining ? '🔄 Mining' : '⏸️ Not mining'}</p>
+            <p>• tokenImplementation: {tokenImplementation ? '✅ Loaded' : '❌ Not loaded'}</p>
+            <p>
+              <strong>Button Disabled:</strong>{' '}
+              {isMining || !isReady || !walletAddress ? '❌ YES' : '✅ NO'}
+            </p>
+          </div>
+          {signer && (
+            <Button
+              onClick={async () => {
+                try {
+                  const provider = signer.provider;
+                  const blockNumber = await provider?.getBlockNumber();
+                  const network = await provider?.getNetwork();
+                  console.log('=== Network Status ===');
+                  console.log('Latest block:', blockNumber);
+                  console.log('Network:', network?.name);
+                  console.log('Chain ID:', network?.chainId);
+                  alert(`Network OK! Block: ${blockNumber}, Chain: ${network?.chainId}`);
+                } catch (error) {
+                  console.error('Network check failed:', error);
+                  alert('Network connection failed!');
+                }
+              }}
+              variant="outline"
+              size="sm"
+              className="text-purple-400 border-purple-400/20 hover:bg-purple-400/10"
+            >
+              <Network className="w-4 h-4 mr-2" />
+              Test Network
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Wallet Connection */}
+      <Card className="bg-black border-purple-400/20">
+        <CardHeader>
+          <CardTitle className="text-white font-libre-caslon flex items-center">
+            <Wallet className="w-5 h-5 mr-2 text-purple-400" />
+            Wallet Connection
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {!isAuthenticated || !walletAddress ? (
+            <div className="space-y-4">
+              <div className="text-center p-4 bg-purple-500/10 border border-purple-400/20 rounded-lg">
+                <p className="text-[#DCDDCC] text-sm mb-3">
+                  {authLoading
+                    ? 'Checking authentication...'
+                    : 'Connect your admin wallet to use the Launch Center'}
+                </p>
+                <Button
+                  onClick={handleConnectWallet}
+                  disabled={!!loading || authLoading}
+                  className="bg-purple-600 hover:bg-purple-700 text-white"
+                >
+                  {loading || authLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      {loading || 'Connecting...'}
+                    </>
+                  ) : (
+                    <>
+                      <Wallet className="w-4 h-4 mr-2" />
+                      Connect Admin Wallet
+                    </>
+                  )}
+                </Button>
+              </div>
+              {user && (
+                <div className="text-center">
+                  <p className="text-xs text-[#DCDDCC]">
+                    Logged in as:{' '}
+                    <span className="text-purple-400">{user.email || 'Admin User'}</span>
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-[#DCDDCC] text-sm">Admin Address</Label>
+                  <p className="text-white font-mono text-sm bg-purple-400/10 p-2 rounded border border-purple-400/20 break-all">
+                    {walletAddress}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-[#DCDDCC] text-sm">ACES Balance</Label>
+                  <p className="text-white font-mono text-sm bg-purple-400/10 p-2 rounded border border-purple-400/20">
+                    {parseFloat(acesBalance).toFixed(4)} ACES
+                  </p>
+                </div>
+              </div>
+              {user && (
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-[#DCDDCC]">
+                      Admin: <span className="text-purple-400">{user.email || 'Admin User'}</span>
+                    </p>
+                    <p className="text-xs text-[#DCDDCC]">
+                      Role: <span className="text-purple-400">{user.role || 'ADMIN'}</span>
+                    </p>
+                  </div>
+                  <Button
+                    onClick={refreshBalances}
+                    variant="outline"
+                    className="text-purple-400 border-purple-400/20 hover:bg-purple-400/10"
+                  >
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Refresh Balances
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {isAuthenticated && walletAddress && (
+        <>
+          {/* Token Creation */}
+          <Card className="bg-black border-purple-400/20">
+            <CardHeader>
+              <CardTitle className="text-white font-libre-caslon flex items-center">
+                <Coins className="w-5 h-5 mr-2 text-purple-400" />
+                Create New Launchpad Token
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Salt Mining Section */}
+              <div className="p-4 bg-gradient-to-r from-purple-500/10 to-cyan-500/10 border border-purple-400/20 rounded-lg">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-sm font-medium text-purple-400 mb-1 flex items-center">
+                      <Pickaxe className="w-4 h-4 mr-2" />
+                      Vanity Address Mining
+                    </h3>
+                    <p className="text-xs text-[#DCDDCC]">
+                      Mine a salt to create a token address ending in &quot;ACE&quot;
+                    </p>
+                  </div>
+                  <Button
+                    onClick={handleBeginSaltMine}
+                    disabled={isMining || !isReady || !walletAddress}
+                    className="bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-700 hover:to-cyan-700 text-white"
+                  >
+                    {isMining ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Mining...
+                      </>
+                    ) : (
+                      <>
+                        <Pickaxe className="w-4 h-4 mr-2" />
+                        Begin Salt Mine
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                {saltMiningResult && (
+                  <div className="p-3 bg-green-500/10 border border-green-400/20 rounded-md">
+                    <p className="text-xs font-medium text-green-400 mb-1 flex items-center">
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      Vanity Address Found!
+                    </p>
+                    <p className="text-xs text-green-300 break-all font-mono">
+                      <strong>Address:</strong> {saltMiningResult.predictedAddress}
+                    </p>
+                    <p className="text-xs text-green-300">
+                      <strong>Attempts:</strong> {saltMiningResult.attempts.toLocaleString()} |
+                      <strong> Time:</strong> {(saltMiningResult.timeElapsed / 1000).toFixed(1)}s
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Token Creation Form */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                  <Label className="text-[#DCDDCC]">Token Name</Label>
+                  <Input
+                    value={createForm.name}
+                    onChange={(e) => setCreateForm((p) => ({ ...p, name: e.target.value }))}
+                    disabled={isMining}
+                    className="bg-black border-purple-400/20 text-white"
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                  />
+                </div>
+                <div>
+                  <Label className="text-[#DCDDCC]">Token Symbol</Label>
+                  <Input
+                    value={createForm.symbol}
+                    onChange={(e) => setCreateForm((p) => ({ ...p, symbol: e.target.value }))}
+                    disabled={isMining}
+                    className="bg-black border-purple-400/20 text-white"
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                  />
+                </div>
+                <div>
+                  <Label className="text-[#DCDDCC]">Salt (unique identifier)</Label>
+                  <Input
+                    type="text"
+                    value={createForm.salt}
+                    onChange={(e) => setCreateForm((prev) => ({ ...prev, salt: e.target.value }))}
+                    className="bg-black border-purple-400/20 text-white"
+                    placeholder="Enter unique salt or use 'Begin Salt Mine'"
+                    disabled={isMining}
+                  />
+                  {saltMiningResult && (
+                    <p className="text-xs text-green-400 mt-1 flex items-center">
+                      <CheckCircle className="w-3 h-3 mr-1" />
+                      Vanity salt has been applied!
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <Label className="text-[#DCDDCC]">Curve Type</Label>
+                  <select
+                    value={createForm.curve}
+                    onChange={(e) =>
+                      setCreateForm((prev) => ({ ...prev, curve: parseInt(e.target.value) }))
+                    }
+                    className="w-full bg-black border border-purple-400/20 text-white rounded-md px-3 py-2"
+                    disabled={isMining}
+                  >
+                    <option value={0}>Quadratic (faster price increase)</option>
+                    <option value={1}>Linear (steady price increase)</option>
+                  </select>
+                </div>
+                <div>
+                  <Label className="text-[#DCDDCC]">Steepness</Label>
+                  <Input
+                    type="text"
+                    value={createForm.steepness}
+                    onChange={(e) =>
+                      setCreateForm((prev) => ({ ...prev, steepness: e.target.value }))
+                    }
+                    className="bg-black border-purple-400/20 text-white"
+                    placeholder="100000000"
+                    disabled={isMining}
+                  />
+                  <p className="text-xs text-[#DCDDCC] mt-1">Higher = steeper price curve</p>
+                </div>
+                <div>
+                  <Label className="text-[#DCDDCC]">Floor Price</Label>
+                  <Input
+                    type="text"
+                    value={createForm.floor}
+                    onChange={(e) => setCreateForm((prev) => ({ ...prev, floor: e.target.value }))}
+                    className="bg-black border-purple-400/20 text-white"
+                    placeholder="0"
+                    disabled={isMining}
+                  />
+                  <p className="text-xs text-[#DCDDCC] mt-1">Minimum price per token</p>
+                </div>
+                <div className="md:col-span-2 lg:col-span-1">
+                  <Label className="text-[#DCDDCC]">
+                    Tokens Bonded At (Bonding Curve Completion)
+                  </Label>
+                  <Input
+                    type="text"
+                    value={createForm.tokensBondedAt}
+                    onChange={(e) =>
+                      setCreateForm((prev) => ({ ...prev, tokensBondedAt: e.target.value }))
+                    }
+                    className="bg-black border-purple-400/20 text-white"
+                    placeholder="800000000"
+                    disabled={isMining}
+                  />
+                  <p className="text-xs text-[#DCDDCC] mt-1">
+                    Number of tokens that must be sold before bonding curve completes (default:
+                    800M). Enter in token units (e.g., 800000000 for 800M tokens).
+                  </p>
+                </div>
+              </div>
+
+              <Button
+                onClick={handleCreateToken}
+                disabled={!!loading || isMining}
+                className="bg-purple-600 hover:bg-purple-700 text-white"
+                size="lg"
+              >
+                {isMining ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Mining Address...
+                  </>
+                ) : loading === 'Creating token...' ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Creating...
+                  </>
+                ) : loading?.includes('Mining') ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    {loading}
+                  </>
+                ) : (
+                  <>
+                    <Coins className="w-4 h-4 mr-2" />
+                    Create Token
+                  </>
+                )}
+              </Button>
+
+              {/* Mining Progress Display */}
+              {isMining && (
+                <div className="p-4 bg-purple-500/10 border border-purple-400/20 rounded-lg">
+                  <h4 className="font-semibold text-purple-400 mb-3 flex items-center">
+                    <Pickaxe className="w-4 h-4 mr-2" />
+                    Mining Vanity Address...
+                  </h4>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm text-[#DCDDCC]">
+                    <div>
+                      <span className="text-purple-400">Attempts:</span>{' '}
+                      {miningProgress.attempts.toLocaleString()}
+                    </div>
+                    <div>
+                      <span className="text-purple-400">Time:</span>{' '}
+                      {(miningProgress.timeElapsed / 1000).toFixed(1)}s
+                    </div>
+                    <div>
+                      <span className="text-purple-400">Rate:</span>{' '}
+                      {miningProgress.timeElapsed > 0
+                        ? (miningProgress.attempts / (miningProgress.timeElapsed / 1000)).toFixed(0)
+                        : 0}{' '}
+                      attempts/sec
+                    </div>
+                    <div>
+                      <span className="text-purple-400">Target:</span> Address ending in
+                      &quot;ace&quot;
+                    </div>
+                    <div>
+                      <span className="text-purple-400">Max Attempts:</span> 200,000
+                    </div>
+                    <div>
+                      <span className="text-purple-400">Timeout:</span> 5 minutes
+                    </div>
+                  </div>
+                  {miningProgress.predictedAddress && (
+                    <div className="mt-3 p-2 bg-purple-400/10 rounded border border-purple-400/20">
+                      <p className="text-sm text-purple-400 break-all font-mono">
+                        <strong>Predicted Address:</strong> {miningProgress.predictedAddress}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Salt Mining Result Display */}
+              {saltMiningResult && (
+                <div className="p-4 bg-green-500/10 border border-green-400/20 rounded-lg">
+                  <h4 className="font-semibold text-green-400 mb-3 flex items-center">
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    Vanity Address Found!
+                  </h4>
+                  <div className="space-y-2 text-sm text-green-300">
+                    <p className="font-mono break-all">
+                      <strong>Predicted Address:</strong> {saltMiningResult.predictedAddress}
+                    </p>
+                    <p>
+                      <strong>Attempts:</strong> {saltMiningResult.attempts.toLocaleString()}
+                    </p>
+                    <p>
+                      <strong>Time:</strong> {(saltMiningResult.timeElapsed / 1000).toFixed(1)}s
+                    </p>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Created Tokens */}
+          {createdTokens.length > 0 && (
+            <Card className="bg-black border-purple-400/20">
+              <CardHeader>
+                <CardTitle className="text-white font-libre-caslon flex items-center">
+                  <Coins className="w-5 h-5 mr-2 text-purple-400" />
+                  Created Tokens
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {createdTokens.map((token) => (
+                    <div
+                      key={token.address}
+                      className={`p-4 border rounded-lg cursor-pointer transition-colors ${
+                        selectedToken === token.address
+                          ? 'border-purple-400 bg-purple-400/10'
+                          : 'border-purple-400/20 hover:border-purple-400/40 hover:bg-purple-400/5'
+                      }`}
+                      onClick={() => handleTokenSelect(token.address)}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h3 className="font-semibold text-white">
+                            {token.name} ({token.symbol})
+                          </h3>
+                          <p className="text-sm text-[#DCDDCC] font-mono break-all">
+                            {token.address}
+                          </p>
+                        </div>
+                        <div className="text-right text-sm">
+                          <p className="text-[#DCDDCC]">
+                            <strong className="text-purple-400">Your Balance:</strong>{' '}
+                            {parseFloat(token.balance).toFixed(4)}
+                          </p>
+                          <p className="text-[#DCDDCC]">
+                            <strong className="text-purple-400">Total Supply:</strong>{' '}
+                            {parseFloat(token.totalSupply).toFixed(0)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Trading Section */}
+          {selectedToken && (
+            <Card className="bg-black border-purple-400/20">
+              <CardHeader>
+                <CardTitle className="text-white font-libre-caslon flex items-center">
+                  <DollarSign className="w-5 h-5 mr-2 text-purple-400" />
+                  Trade Tokens
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div>
+                  <Label className="text-[#DCDDCC]">Amount to Trade</Label>
+                  <Input
+                    type="text"
+                    value={tradeAmount}
+                    onChange={(e) => handleTradeAmountChange(e.target.value)}
+                    className="bg-black border-purple-400/20 text-white"
+                    placeholder="1.0"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Buy Section */}
+                  <div className="space-y-4">
+                    <Button
+                      onClick={getPriceQuote}
+                      className="w-full bg-green-600 hover:bg-green-700 text-white"
+                      disabled={!tradeAmount || !!loading}
+                    >
+                      <TrendingUp className="w-4 h-4 mr-2" />
+                      Get Buy Price Quote
+                    </Button>
+                    {priceQuote !== '0' && (
+                      <div className="p-3 bg-green-500/10 border border-green-400/20 rounded">
+                        <p className="text-sm text-green-400">
+                          <strong>Buy Price:</strong> {priceQuote} ACES
+                        </p>
+                      </div>
+                    )}
+                    <Button
+                      onClick={buyTokens}
+                      className="w-full bg-purple-600 hover:bg-purple-700 text-white"
+                      disabled={!tradeAmount || priceQuote === '0' || !!loading}
+                    >
+                      <TrendingUp className="w-4 h-4 mr-2" />
+                      Buy Tokens
+                    </Button>
+                  </div>
+
+                  {/* Sell Section */}
+                  <div className="space-y-4">
+                    <Button
+                      onClick={getSellPriceQuote}
+                      className="w-full bg-yellow-600 hover:bg-yellow-700 text-white"
+                      disabled={!tradeAmount || !!loading}
+                    >
+                      <TrendingDown className="w-4 h-4 mr-2" />
+                      Get Sell Price Quote
+                    </Button>
+                    {sellPriceQuote !== '0' && (
+                      <div className="p-3 bg-yellow-500/10 border border-yellow-400/20 rounded">
+                        <p className="text-sm text-yellow-400">
+                          <strong>Sell Price:</strong> {sellPriceQuote} ACES
+                        </p>
+                      </div>
+                    )}
+                    <Button
+                      onClick={sellTokens}
+                      className="w-full bg-red-600 hover:bg-red-700 text-white"
+                      disabled={!tradeAmount || sellPriceQuote === '0' || !!loading}
+                    >
+                      <TrendingDown className="w-4 h-4 mr-2" />
+                      Sell Tokens
+                    </Button>
+                  </div>
+                </div>
+
+                {loading && (
+                  <div className="p-4 bg-purple-500/10 border border-purple-400/20 rounded text-center">
+                    <div className="flex items-center justify-center space-x-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-purple-400" />
+                      <p className="text-purple-400 font-jetbrains">{loading}</p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </>
+      )}
+    </div>
+  );
+}

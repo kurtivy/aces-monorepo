@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/lib/auth/auth-context';
 import { useAdminAuth } from '@/lib/auth/admin-auth-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,7 +11,6 @@ import { Shield, Loader2, AlertCircle, Home } from 'lucide-react';
 import Link from 'next/link';
 
 export default function AdminLoginPage() {
-  const { isAuthenticated, isAdmin, connectWallet, user } = useAuth();
   const {
     isAuthenticated: isAdminAuthenticated,
     isLoading: isAdminLoading,
@@ -30,26 +28,13 @@ export default function AdminLoginPage() {
     console.log('📋 Login page auth check:', {
       isAdminLoading,
       isAdminAuthenticated,
-      isAuthenticated,
-      isAdmin,
-      userRole: user?.role,
-      userEmail: user?.email,
     });
 
-    if (!isAdminLoading) {
-      // If both auths are complete, redirect to dashboard
-      if (isAdminAuthenticated && isAuthenticated && isAdmin) {
-        console.log('✅ Login: Both auths complete, redirecting to dashboard');
-        router.push('/admin/dashboard');
-      }
-      // REMOVED: Don't auto-redirect to unauthorized - let user try to login first
-      // This was causing immediate redirects for authenticated non-admin users
-      else if (isAuthenticated && !isAdmin) {
-        console.log('⚠️ Login: User is authenticated but not admin - staying on login page');
-        // router.push('/admin/unauthorized'); // REMOVED
-      }
+    if (!isAdminLoading && isAdminAuthenticated) {
+      console.log('✅ Login: Admin auth complete, redirecting to dashboard');
+      router.push('/admin/dashboard');
     }
-  }, [isAdminAuthenticated, isAuthenticated, isAdmin, isAdminLoading, router, user]);
+  }, [isAdminAuthenticated, isAdminLoading, router]);
 
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,11 +44,9 @@ export default function AdminLoginPage() {
     try {
       console.log('🔐 Starting admin login process...', {
         email: adminCredentials.email,
-        privyAuthenticated: isAuthenticated,
-        privyIsAdmin: isAdmin,
       });
 
-      // Step 1: Authenticate with Supabase admin credentials first
+      // Authenticate with Supabase admin credentials
       const result = await adminLogin(adminCredentials.email, adminCredentials.password);
 
       console.log('🔑 Admin auth result:', result);
@@ -74,26 +57,7 @@ export default function AdminLoginPage() {
         return;
       }
 
-      // Step 2: Ensure Privy wallet is connected
-      if (!isAuthenticated) {
-        console.log('🔗 User not authenticated with Privy, triggering wallet connection...');
-        setError('Please connect your admin wallet to complete verification.');
-        await connectWallet();
-
-        // The dashboard will handle the timing with its grace period
-        console.log('⏳ Wallet connection initiated, redirecting to dashboard...');
-      }
-
-      console.log('✅ Current auth state before redirect:', {
-        isAdminAuthenticated: true, // We know this is true since login succeeded
-        isAuthenticated,
-        isAdmin,
-        userRole: user?.role,
-        userEmail: user?.email,
-        userId: user?.id,
-      });
-
-      // Redirect to dashboard - let the dashboard handle final validation with grace period
+      // Redirect to dashboard
       console.log('🎉 Admin auth successful, redirecting to dashboard...');
       setIsRedirecting(true);
       router.push('/admin/dashboard');
@@ -134,8 +98,7 @@ export default function AdminLoginPage() {
           <CardContent className="space-y-6">
             <form onSubmit={handleAdminLogin} className="space-y-4">
               <p className="text-[#DCDDCC] text-sm font-jetbrains">
-                Enter your admin credentials. You&apos;ll also need to connect your admin wallet for
-                verification.
+                Enter your admin credentials to access the dashboard.
               </p>
 
               <div className="space-y-2">

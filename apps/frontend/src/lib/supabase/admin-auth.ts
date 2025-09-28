@@ -15,9 +15,9 @@ export const supabaseAdmin =
         auth: {
           // Use a separate storage key for admin auth to avoid conflicts with main auth
           storageKey: 'admin-auth-token',
-          autoRefreshToken: true, // Enable auto-refresh for proper session handling
-          persistSession: true, // Need to persist session for authentication to work properly
-          // You can manually clear sessions on app start if you want fresh logins
+          autoRefreshToken: false, // Disable auto-refresh for non-persistent sessions
+          persistSession: false, // Non-persistent sessions - logout on browser close
+          detectSessionInUrl: false, // Don't detect sessions from URL
         },
       })
     : null;
@@ -40,7 +40,7 @@ export async function signInAdmin(email: string, password: string): Promise<Admi
   try {
     console.log('🔐 Attempting admin login with email:', email);
 
-    // Clear any existing session first if you want fresh logins
+    // Clear any existing session first for fresh logins (non-persistent sessions)
     await supabaseAdmin.auth.signOut();
 
     const { data, error } = await supabaseAdmin.auth.signInWithPassword({
