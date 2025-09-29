@@ -39,7 +39,11 @@ export function ActiveSectionContent({
     <div key="overview" className="h-full flex flex-col space-y-2 overflow-hidden">
       {/* Bonding Curve Chart */}
       <div className="flex-1 rounded-lg p-3 min-h-0 bg-transparent relative">
-        <BondingCurveChart tokenAddress={listing?.token?.contractAddress} />
+        <BondingCurveChart
+          tokenAddress={
+            listing?.token?.contractAddress || '0xc318d8f3f930e0c5850a1d0a2e095db7077dbace'
+          }
+        />
       </div>
 
       {/* Dynamic Image Gallery */}

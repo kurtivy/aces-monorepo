@@ -35,7 +35,7 @@ interface CreateTokenParams {
   useVanityMining?: boolean;
 }
 
-export function useAcesFactoryContract(chainId: number = 11155111) {
+export function useAcesFactoryContract(chainId: number = 84532) {
   const [contractState, setContractState] = useState<ContractState>({
     tokenInfo: null,
     currentSupply: '0',
@@ -43,37 +43,126 @@ export function useAcesFactoryContract(chainId: number = 11155111) {
     error: null,
   });
 
+  // Rate limiting state
+  const [lastRequestTime, setLastRequestTime] = useState(0);
+  const REQUEST_COOLDOWN = 5000; // 5 seconds between requests during circuit breaker
+
   const [provider, setProvider] = useState<ethers.providers.Web3Provider | null>(null);
+  const [readOnlyProvider, setReadOnlyProvider] = useState<ethers.providers.JsonRpcProvider | null>(
+    null,
+  );
   const [factoryContract, setFactoryContract] = useState<ethers.Contract | null>(null);
+  const [readOnlyFactoryContract, setReadOnlyFactoryContract] = useState<ethers.Contract | null>(
+    null,
+  );
   const [signer, setSigner] = useState<ethers.Signer | null>(null);
   const [tokenImplementation, setTokenImplementation] = useState<string | null>(null);
+  const [isWalletConnected, setIsWalletConnected] = useState(false);
 
   const contractAddresses = getContractAddresses(chainId);
 
-  // Initialize provider and contracts
+  // Check if wallet is actually connected
+  const checkWalletConnection = async (): Promise<boolean> => {
+    if (typeof window === 'undefined' || !window.ethereum) {
+      return false;
+    }
+
+    try {
+      const accounts = (await window.ethereum.request({ method: 'eth_accounts' })) as string[];
+      return accounts && accounts.length > 0;
+    } catch (error) {
+      console.error('Failed to check wallet connection:', error);
+      return false;
+    }
+  };
+
+  // Initialize read-only provider first (always available)
+  useEffect(() => {
+    const initializeReadOnlyProvider = () => {
+      try {
+        // Set up read-only provider for Base Sepolia
+        const rpcUrl = 'https://sepolia.base.org';
+        const readOnlyProv = new ethers.providers.JsonRpcProvider(rpcUrl);
+        setReadOnlyProvider(readOnlyProv);
+
+        // Create read-only factory contract
+        const readOnlyFactory = new ethers.Contract(
+          contractAddresses.FACTORY_PROXY,
+          ACES_FACTORY_ABI,
+          readOnlyProv,
+        );
+        setReadOnlyFactoryContract(readOnlyFactory);
+
+        console.log('✅ Read-only provider initialized for Base Sepolia');
+      } catch (error) {
+        console.error('Failed to initialize read-only provider:', error);
+      }
+    };
+
+    initializeReadOnlyProvider();
+  }, [contractAddresses.FACTORY_PROXY]);
+
+  // Initialize provider and contracts only when wallet is connected
   useEffect(() => {
     const initializeContract = async () => {
+      const walletConnected = await checkWalletConnection();
+      setIsWalletConnected(walletConnected);
+
+      if (!walletConnected) {
+        // Clear all contract state when wallet is disconnected
+        setProvider(null);
+        setSigner(null);
+        setFactoryContract(null);
+        setTokenImplementation(null);
+        setContractState((prev) => ({
+          ...prev,
+          error: null,
+          loading: false,
+        }));
+        return;
+      }
+
       if (typeof window !== 'undefined' && window.ethereum) {
         try {
           const provider = new ethers.providers.Web3Provider(window.ethereum);
-          const signer = provider.getSigner();
-          const factory = new ethers.Contract(
-            contractAddresses.FACTORY_PROXY, // Use proxy address
-            ACES_FACTORY_ABI,
-            signer,
-          );
 
-          setProvider(provider);
-          setSigner(signer);
-          setFactoryContract(factory);
-
-          // Get the tokenImplementation address for vanity mining
+          // Check if we can get a signer (wallet is unlocked)
           try {
-            const implAddress = await factory.tokenImplementation();
-            setTokenImplementation(implAddress);
-            console.log('Token implementation address:', implAddress);
-          } catch (error) {
-            console.error('Failed to get token implementation address:', error);
+            const signer = provider.getSigner();
+            // Test if signer is accessible
+            await signer.getAddress();
+
+            const factory = new ethers.Contract(
+              contractAddresses.FACTORY_PROXY, // Use proxy address
+              ACES_FACTORY_ABI,
+              signer,
+            );
+
+            setProvider(provider);
+            setSigner(signer);
+            setFactoryContract(factory);
+
+            // Get the tokenImplementation address for vanity mining
+            try {
+              const implAddress = await factory.tokenImplementation();
+              setTokenImplementation(implAddress);
+              console.log('✅ Token implementation address:', implAddress);
+            } catch (error) {
+              console.error('Failed to get token implementation address:', error);
+              setTokenImplementation(null);
+            }
+          } catch (signerError) {
+            console.error('Failed to get signer (wallet may be locked):', signerError);
+            // Clear contract state if signer is not available
+            setProvider(null);
+            setSigner(null);
+            setFactoryContract(null);
+            setTokenImplementation(null);
+            setContractState((prev) => ({
+              ...prev,
+              error: 'Wallet is locked or not accessible',
+              loading: false,
+            }));
           }
         } catch (error) {
           console.error('Failed to initialize factory contract:', error);
@@ -83,20 +172,59 @@ export function useAcesFactoryContract(chainId: number = 11155111) {
     };
 
     initializeContract();
+
+    // Listen for account changes
+    if (typeof window !== 'undefined' && window.ethereum) {
+      const handleAccountsChanged = (accounts: unknown) => {
+        console.log('Accounts changed:', accounts);
+        // Re-initialize when accounts change
+        initializeContract();
+      };
+
+      const handleChainChanged = () => {
+        console.log('Chain changed');
+        // Re-initialize when chain changes
+        initializeContract();
+      };
+
+      window.ethereum.on('accountsChanged', handleAccountsChanged);
+      window.ethereum.on('chainChanged', handleChainChanged);
+
+      return () => {
+        window.ethereum?.removeListener('accountsChanged', handleAccountsChanged);
+        window.ethereum?.removeListener('chainChanged', handleChainChanged);
+      };
+    }
   }, [chainId, contractAddresses.FACTORY_PROXY]);
 
-  // Fetch token information
+  // Fetch token information with rate limiting - uses read-only contract if wallet not connected
   const fetchTokenInfo = useCallback(
-    async (tokenAddress: string) => {
-      if (!factoryContract || !provider) {
+    async (tokenAddress: string, bypassRateLimit = false) => {
+      const activeContract = factoryContract || readOnlyFactoryContract;
+      const activeProvider = provider || readOnlyProvider;
+
+      if (!activeContract || !activeProvider) {
+        console.warn('No contract available for token info fetch');
         return null;
       }
 
+      // Rate limiting to prevent overwhelming RPC during circuit breaker
+      const now = Date.now();
+      if (
+        !bypassRateLimit &&
+        now - lastRequestTime < REQUEST_COOLDOWN &&
+        contractState.error?.includes('circuit breaker')
+      ) {
+        console.log('Rate limiting active - skipping request');
+        return null;
+      }
+
+      setLastRequestTime(now);
       setContractState((prev) => ({ ...prev, loading: true, error: null }));
 
       try {
         // Get token info from factory
-        const tokenData = await factoryContract.tokens(tokenAddress);
+        const tokenData = await activeContract.tokens(tokenAddress);
         const tokenInfo: TokenInfo = {
           curve: tokenData.curve,
           tokenAddress: tokenData.tokenAddress,
@@ -109,7 +237,11 @@ export function useAcesFactoryContract(chainId: number = 11155111) {
         };
 
         // Get current token supply
-        const tokenContract = new ethers.Contract(tokenAddress, LAUNCHPAD_TOKEN_ABI, provider);
+        const tokenContract = new ethers.Contract(
+          tokenAddress,
+          LAUNCHPAD_TOKEN_ABI,
+          activeProvider,
+        );
         const totalSupply = await tokenContract.totalSupply();
         const currentSupply = ethers.utils.formatEther(totalSupply);
 
@@ -123,64 +255,92 @@ export function useAcesFactoryContract(chainId: number = 11155111) {
         return { tokenInfo, currentSupply };
       } catch (error) {
         console.error('Failed to fetch token info:', error);
+
+        // Handle circuit breaker errors differently
+        const errorMessage =
+          error instanceof Error && error.message.includes('circuit breaker')
+            ? 'Network congestion - token data temporarily unavailable'
+            : 'Failed to fetch token information';
+
         setContractState((prev) => ({
           ...prev,
           loading: false,
-          error: 'Failed to fetch token information',
+          error: errorMessage,
         }));
         return null;
       }
     },
-    [factoryContract, provider],
+    [
+      factoryContract,
+      readOnlyFactoryContract,
+      provider,
+      readOnlyProvider,
+      lastRequestTime,
+      contractState.error,
+      REQUEST_COOLDOWN,
+    ],
   );
 
-  // Calculate price at specific supply point
+  // Replace calculatePriceAtSupply - uses read-only contract if wallet not connected
   const calculatePriceAtSupply = useCallback(
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    async (tokenAddress: string, _supplyPoint: number): Promise<number> => {
-      if (!factoryContract) return 0;
+    async (tokenAddress: string, supplyPoint: number): Promise<number> => {
+      const activeContract = factoryContract || readOnlyFactoryContract;
+      if (!activeContract) return 0;
 
       try {
-        // Validate token address format
         if (!ethers.utils.isAddress(tokenAddress)) {
           console.warn('Invalid token address format:', tokenAddress);
           return 0;
         }
 
-        // First check if the token exists in the factory's token registry
-        const tokenInfo = await factoryContract.tokens(tokenAddress);
-        
-        // Check if the token exists (tokenAddress should not be zero address)
+        const tokenInfo = await activeContract.tokens(tokenAddress);
         if (tokenInfo.tokenAddress === ethers.constants.AddressZero) {
           console.warn('Token not found in factory registry:', tokenAddress);
           return 0;
         }
 
-        // TODO: Use supplyPoint for more advanced price calculations
-        const amountWei = ethers.utils.parseEther('1'); // Price for 1 token
+        const curve = tokenInfo.curve;
+        const steepness = tokenInfo.steepness;
+        const floor = tokenInfo.floor;
 
-        const priceWei = await factoryContract.getBuyPriceAfterFee(tokenAddress, amountWei);
+        // supplyPoint is in wei, convert to whole tokens
+        const supplyInWholeTokens = Math.floor(supplyPoint / 1e18);
+        const amount = 1;
+
+        let priceWei: ethers.BigNumber;
+
+        if (curve === 0) {
+          priceWei = await activeContract.getPriceQuadratic(
+            supplyInWholeTokens,
+            amount,
+            steepness,
+            floor,
+          );
+        } else {
+          priceWei = await activeContract.getPriceLinear(
+            supplyInWholeTokens,
+            amount,
+            steepness,
+            floor,
+          );
+        }
+
         return parseFloat(ethers.utils.formatEther(priceWei));
       } catch (error) {
         console.error('Failed to calculate price at supply:', error);
-        // Check if it's a specific contract error
-        if (error instanceof Error) {
-          if (error.message.includes('circuit breaker')) {
-            console.warn('RPC circuit breaker is open, using fallback price');
-            return 0.000268; // Fallback price
-          }
-          if (error.message.includes('missing revert data')) {
-            console.warn('Contract call reverted, token may not exist:', tokenAddress);
-            return 0;
-          }
+
+        // For circuit breaker errors, don't log as aggressively
+        if (error instanceof Error && error.message.includes('circuit breaker')) {
+          console.log('Circuit breaker active - price calculation skipped');
         }
+
         return 0;
       }
     },
-    [factoryContract],
+    [factoryContract, readOnlyFactoryContract],
   );
 
-  // Generate bonding curve data points based on tokensBondedAt
+  // Replace generateBondingCurveData
   const generateBondingCurveData = useCallback(
     async (tokenAddress: string) => {
       const tokenInfo = await fetchTokenInfo(tokenAddress);
@@ -190,9 +350,10 @@ export function useAcesFactoryContract(chainId: number = 11155111) {
       const currentSupply = parseFloat(tokenInfo.currentSupply);
 
       const dataPoints = [];
-      const numPoints = 8; // 1/8 intervals
+      const numPoints = 8;
 
-      for (let i = 1; i <= numPoints; i++) {
+      // Start from i=0 to include the starting point
+      for (let i = 0; i <= numPoints; i++) {
         const supplyPoint = Math.floor((tokensBondedAt / numPoints) * i);
 
         try {
@@ -202,6 +363,9 @@ export function useAcesFactoryContract(chainId: number = 11155111) {
             priceACES: priceInAces,
             phase: supplyPoint <= currentSupply ? 'completed' : 'upcoming',
           });
+
+          // Small delay to avoid rate limiting
+          await new Promise((resolve) => setTimeout(resolve, 100));
         } catch (error) {
           console.error(`Failed to calculate price at ${supplyPoint}:`, error);
           dataPoints.push({
@@ -216,7 +380,6 @@ export function useAcesFactoryContract(chainId: number = 11155111) {
     },
     [fetchTokenInfo, calculatePriceAtSupply],
   );
-
   // Create new token with improved salt mining
   const createToken = useCallback(
     async (
@@ -383,8 +546,20 @@ export function useAcesFactoryContract(chainId: number = 11155111) {
     createToken,
     buyTokens,
     sellTokens,
-    // Utility
-    isReady: !!factoryContract && !!signer && !!tokenImplementation,
+    // Connection state
+    isWalletConnected,
+    // Utility - ready if either wallet contracts OR read-only contracts are available
+    isReady:
+      (isWalletConnected && !!factoryContract && !!signer && !!tokenImplementation) ||
+      !!readOnlyFactoryContract,
+    // Read-only state
+    isReadOnly: !isWalletConnected && !!readOnlyFactoryContract,
     tokenImplementation,
+    // Contract instances for backward compatibility
+    provider,
+    readOnlyProvider,
+    factoryContract,
+    readOnlyFactoryContract,
+    signer,
   };
 }

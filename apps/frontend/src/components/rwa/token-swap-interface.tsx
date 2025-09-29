@@ -19,7 +19,6 @@ interface TokenSwapInterfaceProps {
   tokenSymbol?: string;
   tokenPrice?: number;
   userBalance?: number;
-  // Additional dynamic props for better integration
   tokenAddress?: string;
   tokenName?: string;
   tokenOwner?: string;
@@ -27,9 +26,7 @@ interface TokenSwapInterfaceProps {
   showHeader?: boolean;
   showProgression?: boolean;
   imageGallery?: string[];
-  // Primary image for the token (from listing.imageGallery[0])
   primaryImage?: string;
-  // Progression bar props
   currentAmount?: number;
   targetAmount?: number;
   percentage?: number;
@@ -47,7 +44,6 @@ export default function TokenSwapInterface({
   targetAmount,
   percentage = 26.9,
 }: TokenSwapInterfaceProps) {
-  // Wallet state from global auth
   const { walletAddress, isAuthenticated } = useAuth();
 
   // Contract state
@@ -56,7 +52,6 @@ export default function TokenSwapInterface({
   const [factoryContract, setFactoryContract] = useState<ethers.Contract | null>(null);
   const [acesContract, setAcesContract] = useState<ethers.Contract | null>(null);
 
-  // Get contract addresses
   const contractAddresses = getContractAddresses();
 
   // Balance state
@@ -70,7 +65,6 @@ export default function TokenSwapInterface({
   // UI state
   const [activeTab, setActiveTab] = useState<'buy' | 'sell'>('buy');
 
-  // Price conversion hook
   const { data: usdConversion, loading: priceLoading } = usePriceConversion(
     activeTab === 'buy' ? priceQuote : sellPriceQuote,
   );
@@ -78,13 +72,12 @@ export default function TokenSwapInterface({
   const [slippage, setSlippage] = useState('0.5');
   const [showSlippageDropdown, setShowSlippageDropdown] = useState(false);
   const [loading, setLoading] = useState<string>('');
+  const [networkError, setNetworkError] = useState<string | null>(null);
 
   const [copied, setCopied] = useState(false);
 
-  // Slippage options
   const slippageOptions = ['0.5', '1.0', '2.0'];
 
-  // Debounce ref for price calculation
   const priceCalculationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const copyToClipboard = async (text: string) => {
@@ -97,40 +90,59 @@ export default function TokenSwapInterface({
     }
   };
 
-  // Refresh balances - memoized to prevent unnecessary re-renders
+  // Refresh balances with circuit breaker error handling
   const refreshBalances = useCallback(async () => {
     if (!acesContract || !tokenAddress || !signer) {
-      console.log('Refresh balances skipped - missing requirements:', {
-        acesContract: !!acesContract,
-        tokenAddress,
-        signer: !!signer,
-      });
       return;
     }
 
     try {
+      // Verify signer is still valid before calling
       const address = await signer.getAddress();
-      console.log('Refreshing balances for address:', address);
-      console.log('Token address:', tokenAddress);
 
-      // Refresh ACES balance
       const acesBalance = await acesContract.balanceOf(address);
       const formattedAcesBalance = ethers.utils.formatEther(acesBalance);
       setAcesBalance(formattedAcesBalance);
-      console.log('ACES balance:', formattedAcesBalance);
 
-      // Refresh token balance
       const tokenContract = new ethers.Contract(tokenAddress, LAUNCHPAD_TOKEN_ABI, signer);
       const tokenBalance = await tokenContract.balanceOf(address);
       const formattedTokenBalance = ethers.utils.formatEther(tokenBalance);
       setTokenBalance(formattedTokenBalance);
-      console.log('Token balance:', formattedTokenBalance);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Failed to refresh balances:', error);
+
+      // Check for circuit breaker errors specifically
+      if (
+        error &&
+        typeof error === 'object' &&
+        'message' in error &&
+        typeof error.message === 'string' &&
+        error.message.includes('circuit breaker')
+      ) {
+        console.log('Circuit breaker active - keeping existing balances, will retry later');
+        // Don't clear balances for circuit breaker errors, just log and continue
+        return;
+      }
+
+      // If signer is invalid, clean up state
+      if (
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        (error.code === 'UNSUPPORTED_OPERATION' || error.code === 'CALL_EXCEPTION')
+      ) {
+        console.log('Signer no longer valid, cleaning up...');
+        setProvider(null);
+        setSigner(null);
+        setFactoryContract(null);
+        setAcesContract(null);
+        setAcesBalance('0');
+        setTokenBalance('0');
+      }
     }
   }, [acesContract, tokenAddress, signer]);
 
-  // Get buy price quote - memoized
+  // Get buy price quote with circuit breaker handling
   const getBuyPriceQuote = useCallback(async () => {
     if (!factoryContract || !tokenAddress || !amount) {
       setPriceQuote('0');
@@ -143,11 +155,24 @@ export default function TokenSwapInterface({
       setPriceQuote(ethers.utils.formatEther(buyPrice));
     } catch (error) {
       console.error('Failed to get buy price quote:', error);
+
+      // For circuit breaker errors, keep the last known price instead of setting to '0'
+      if (
+        error &&
+        typeof error === 'object' &&
+        'message' in error &&
+        typeof error.message === 'string' &&
+        error.message.includes('circuit breaker')
+      ) {
+        console.log('Circuit breaker active - keeping existing price quote');
+        return; // Don't update price to '0'
+      }
+
       setPriceQuote('0');
     }
   }, [factoryContract, tokenAddress, amount]);
 
-  // Get sell price quote - memoized
+  // Get sell price quote with circuit breaker handling
   const getSellPriceQuote = useCallback(async () => {
     if (!factoryContract || !tokenAddress || !amount) {
       setSellPriceQuote('0');
@@ -160,18 +185,29 @@ export default function TokenSwapInterface({
       setSellPriceQuote(ethers.utils.formatEther(sellPrice));
     } catch (error) {
       console.error('Failed to get sell price quote:', error);
+
+      // For circuit breaker errors, keep the last known price instead of setting to '0'
+      if (
+        error &&
+        typeof error === 'object' &&
+        'message' in error &&
+        typeof error.message === 'string' &&
+        error.message.includes('circuit breaker')
+      ) {
+        console.log('Circuit breaker active - keeping existing sell price quote');
+        return; // Don't update price to '0'
+      }
+
       setSellPriceQuote('0');
     }
   }, [factoryContract, tokenAddress, amount]);
 
-  // Debounced price calculation - memoized
+  // Debounced price calculation
   const calculatePriceQuote = useCallback(() => {
-    // Clear existing timeout
     if (priceCalculationTimeoutRef.current) {
       clearTimeout(priceCalculationTimeoutRef.current);
     }
 
-    // Set new timeout for 1 second
     priceCalculationTimeoutRef.current = setTimeout(() => {
       if (activeTab === 'buy') {
         getBuyPriceQuote();
@@ -181,16 +217,9 @@ export default function TokenSwapInterface({
     }, 1000);
   }, [activeTab, getBuyPriceQuote, getSellPriceQuote]);
 
-  // Auto-initialize provider when user is already authenticated through Privy
+  // Auto-initialize provider when user is authenticated
   useEffect(() => {
     const initializeFromAuth = async () => {
-      console.log('Auto-init check:', {
-        isAuthenticated,
-        walletAddress,
-        hasProvider: !!provider,
-        hasEthereum: !!(typeof window !== 'undefined' && window.ethereum),
-      });
-
       if (
         isAuthenticated &&
         walletAddress &&
@@ -199,6 +228,13 @@ export default function TokenSwapInterface({
         window.ethereum
       ) {
         try {
+          // Check if wallet is actually connected
+          const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+          if (!accounts || (Array.isArray(accounts) && accounts.length === 0)) {
+            console.log('No accounts connected, skipping initialization');
+            return;
+          }
+
           console.log('Auto-initializing provider from auth...');
           const provider = new ethers.providers.Web3Provider(window.ethereum);
           const signer = provider.getSigner();
@@ -206,18 +242,14 @@ export default function TokenSwapInterface({
           setProvider(provider);
           setSigner(signer);
 
-          // Initialize contracts using new addresses
           const factory = new ethers.Contract(
-            contractAddresses.FACTORY_PROXY, // Use new proxy address
-            ACES_FACTORY_ABI, // Use new ABI
+            contractAddresses.FACTORY_PROXY,
+            ACES_FACTORY_ABI,
             signer,
           );
           setFactoryContract(factory);
 
-          // Get ACES token address from contract addresses
           const acesAddress = contractAddresses.ACES_TOKEN;
-          console.log('ACES token address:', acesAddress);
-
           const aces = new ethers.Contract(acesAddress, ERC20_ABI, signer);
           setAcesContract(aces);
 
@@ -225,31 +257,36 @@ export default function TokenSwapInterface({
         } catch (error) {
           console.error('Failed to initialize from auth:', error);
         }
+      } else if (!isAuthenticated || !walletAddress) {
+        // Clean up when disconnected
+        console.log('User disconnected, cleaning up state...');
+        setProvider(null);
+        setSigner(null);
+        setFactoryContract(null);
+        setAcesContract(null);
+        setAcesBalance('0');
+        setTokenBalance('0');
+        setPriceQuote('0');
+        setSellPriceQuote('0');
       }
     };
 
     initializeFromAuth();
-  }, [
-    isAuthenticated,
-    walletAddress,
-    provider,
-    contractAddresses.ACES_TOKEN,
-    contractAddresses.FACTORY_PROXY,
-  ]);
+  }, [isAuthenticated, walletAddress, provider, contractAddresses]);
 
-  // Refresh balances when dependencies change
+  // Refresh balances only when properly connected
   useEffect(() => {
-    if (acesContract && tokenAddress && signer) {
+    if (acesContract && tokenAddress && signer && isAuthenticated) {
       refreshBalances();
     }
-  }, [acesContract, refreshBalances, signer, tokenAddress]);
+  }, [acesContract, tokenAddress, signer, isAuthenticated, refreshBalances]);
 
   // Update price quotes when amount or active tab changes
   useEffect(() => {
     calculatePriceQuote();
   }, [calculatePriceQuote]);
 
-  // Connect wallet using direct MetaMask interaction (like testing page)
+  // Connect wallet using direct MetaMask interaction
   const connectWallet = async () => {
     if (typeof window !== 'undefined' && window.ethereum) {
       try {
@@ -261,17 +298,14 @@ export default function TokenSwapInterface({
         setProvider(provider);
         setSigner(signer);
 
-        // Initialize contracts using new addresses
         const factory = new ethers.Contract(
-          contractAddresses.FACTORY_PROXY, // Use new proxy address
-          ACES_FACTORY_ABI, // Use new ABI
+          contractAddresses.FACTORY_PROXY,
+          ACES_FACTORY_ABI,
           signer,
         );
         setFactoryContract(factory);
 
-        // Get ACES token address from contract addresses
         const acesAddress = contractAddresses.ACES_TOKEN;
-
         const aces = new ethers.Contract(acesAddress, ERC20_ABI, signer);
         setAcesContract(aces);
 
@@ -297,10 +331,7 @@ export default function TokenSwapInterface({
       console.log('Token to buy:', tokenAddress);
       console.log('Amount (tokens):', amount);
       console.log('Price (ACES):', priceQuote);
-      console.log('Amount Wei:', amountWei.toString());
-      console.log('Price Wei:', priceWei.toString());
 
-      // Check current allowance and balances
       const address = await signer.getAddress();
       const currentAllowance = await acesContract.allowance(
         address,
@@ -308,40 +339,38 @@ export default function TokenSwapInterface({
       );
       const currentAcesBalance = await acesContract.balanceOf(address);
 
-      console.log('=== BALANCE CHECK ===');
       console.log('Current allowance:', ethers.utils.formatEther(currentAllowance));
       console.log('Required amount:', ethers.utils.formatEther(priceWei));
       console.log('Current ACES balance:', ethers.utils.formatEther(currentAcesBalance));
-      console.log('Allowance sufficient:', currentAllowance.gte(priceWei));
-      console.log('ACES balance sufficient:', currentAcesBalance.gte(priceWei));
 
       // Step 1: Approve ACES tokens
       setLoading('Approving ACES tokens...');
-      console.log('Step 1: Approving ACES tokens for factory...');
       const approveTx = await acesContract.approve(contractAddresses.FACTORY_PROXY, priceWei);
-      console.log('Approval transaction sent:', approveTx.hash);
       await approveTx.wait();
-      console.log('✅ Approval confirmed');
 
-      // Step 2: Buy tokens with new function signature
+      // Step 2: Buy tokens
       setLoading('Buying tokens...');
-      console.log('Step 2: Calling buyTokens...');
-
       const buyTx = await factoryContract.buyTokens(tokenAddress, amountWei, priceWei);
-      console.log('Buy transaction sent:', buyTx.hash);
       await buyTx.wait();
-      console.log('✅ Purchase confirmed');
 
       // Step 3: Refresh balances
       setLoading('Refreshing balances...');
       await refreshBalances();
 
       setLoading('');
-      console.log('🎉 Buy tokens completed successfully!');
+      setAmount('');
+      setNetworkError(null); // Clear any previous network errors on success
     } catch (error) {
       console.error('Failed to buy tokens:', error);
       setLoading('');
-      alert(`Buy failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+
+      // Handle circuit breaker errors specifically
+      if (error instanceof Error && error.message.includes('circuit breaker')) {
+        setNetworkError('Network congestion detected. Please try again in a few minutes.');
+        alert('Transaction failed due to network congestion. Please try again later.');
+      } else {
+        alert(`Buy failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
     }
   };
 
@@ -355,18 +384,13 @@ export default function TokenSwapInterface({
       console.log('=== SELL TOKENS DEBUG ===');
       console.log('Token to sell:', tokenAddress);
       console.log('Amount (tokens):', amount);
-      console.log('Amount Wei:', amountWei.toString());
 
-      // Check current token balance
       const address = await signer.getAddress();
       const tokenContract = new ethers.Contract(tokenAddress, LAUNCHPAD_TOKEN_ABI, signer);
       const currentTokenBalance = await tokenContract.balanceOf(address);
 
-      console.log('=== SELL BALANCE CHECK ===');
       console.log('Current token balance:', ethers.utils.formatEther(currentTokenBalance));
-      console.log('Amount to sell:', amount);
       console.log('Estimated ACES received:', sellPriceQuote);
-      console.log('Token balance sufficient:', currentTokenBalance.gte(amountWei));
 
       if (currentTokenBalance.lt(amountWei)) {
         throw new Error(
@@ -375,22 +399,26 @@ export default function TokenSwapInterface({
       }
 
       setLoading('Selling tokens...');
-      console.log('Executing sell transaction...');
       const tx = await factoryContract.sellTokens(tokenAddress, amountWei);
-      console.log('Sell transaction sent:', tx.hash);
       await tx.wait();
-      console.log('✅ Sell confirmed');
 
-      // Refresh balances
       setLoading('Refreshing balances...');
       await refreshBalances();
 
       setLoading('');
-      console.log('🎉 Sell tokens completed successfully!');
+      setAmount('');
+      setNetworkError(null); // Clear any previous network errors on success
     } catch (error) {
       console.error('Failed to sell tokens:', error);
       setLoading('');
-      alert(`Sell failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+
+      // Handle circuit breaker errors specifically
+      if (error instanceof Error && error.message.includes('circuit breaker')) {
+        setNetworkError('Network congestion detected. Please try again in a few minutes.');
+        alert('Transaction failed due to network congestion. Please try again later.');
+      } else {
+        alert(`Sell failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
     }
   };
 
@@ -430,6 +458,7 @@ export default function TokenSwapInterface({
                           },
                           maxRetries: 1,
                         })}
+                        unoptimized={true}
                       />
                     </div>
                     <h2 className="text-[#D0B284] text-2xl font-mono font-bold leading-none">
@@ -541,6 +570,24 @@ export default function TokenSwapInterface({
           </>
         )}
 
+        {/* Network Error Banner */}
+        {networkError && (
+          <div className="mb-4 p-3 bg-orange-900/50 border border-orange-600/50 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center text-orange-200 text-sm">
+                <span className="mr-2">⚠️</span>
+                {networkError}
+              </div>
+              <button
+                onClick={() => setNetworkError(null)}
+                className="text-orange-200 hover:text-orange-100 text-sm underline"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Buy/Sell Tabs */}
         <div className="flex mb-6 bg-[#1a2318] rounded-lg p-1 border border-[#D0B284]/20">
           <button
@@ -621,7 +668,7 @@ export default function TokenSwapInterface({
           </div>
         </div>
 
-        {/* Buy/Sell Button - Fixed Position */}
+        {/* Buy/Sell Button */}
         <div className="mb-6">
           {!isAuthenticated || !provider ? (
             <Button
@@ -646,11 +693,10 @@ export default function TokenSwapInterface({
           )}
         </div>
 
-        {/* Combined Quote and Fees Section - Reserved Space */}
+        {/* Quote Section */}
         <div className="min-h-[140px]">
           {amount && Number.parseFloat(amount) > 0 && (
             <div className="p-3 bg-[#1a2318]/50 rounded-lg border border-[#D0B284]/20 space-y-3">
-              {/* Quote Section */}
               <div className="text-center border-b border-[#D0B284]/20 pb-2">
                 <div className="text-sm font-bold text-[#D0B284]">
                   {activeTab === 'buy'
@@ -658,7 +704,6 @@ export default function TokenSwapInterface({
                     : `Receive = ${sellPriceQuote} $ACES`}
                 </div>
 
-                {/* USD Conversion */}
                 {usdConversion && (
                   <div className="text-xs text-[#D0B284]/70 mt-1">
                     {Number.parseFloat(usdConversion.usdValue) < 0.01
