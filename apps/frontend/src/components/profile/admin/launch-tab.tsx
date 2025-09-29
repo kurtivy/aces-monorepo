@@ -8,6 +8,8 @@ import { useAcesFactoryContract } from '@/hooks/contracts/use-aces-factory-contr
 import { type SaltMiningResult, mineVanitySaltWithTimeout } from '@/lib/utils/salt-mining';
 import { useAuth } from '@/lib/auth/auth-context';
 import { useWallets } from '@privy-io/react-auth';
+import { useChainSwitching } from '@/hooks/contracts/use-chain-switching';
+import ConnectWalletProfile from '@/components/ui/custom/connect-wallet-profile';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -29,7 +31,10 @@ import {
 
 export function LaunchTab() {
   // Use Privy authentication system for wallet connection (required for contract deployment)
-  const { isAuthenticated, isLoading: authLoading, user, walletAddress, connectWallet } = useAuth();
+  const { isAuthenticated, user, walletAddress } = useAuth();
+
+  // Chain switching hook to detect current network
+  const { currentChainId, currentChain, isOnSupportedChain } = useChainSwitching();
 
   // Get Privy wallets and signer
   const { wallets } = useWallets();
@@ -68,11 +73,18 @@ export function LaunchTab() {
   const [factoryContract, setFactoryContract] = useState<ethers.Contract | null>(null);
   const [acesContract, setAcesContract] = useState<ethers.Contract | null>(null);
 
-  // Get contract addresses
-  const contractAddresses = getContractAddresses();
+  // Get contract addresses for current chain
+  const contractAddresses = getContractAddresses(currentChainId);
 
-  // Use new contract hook
-  const { createToken, isReady, tokenImplementation } = useAcesFactoryContract();
+  // Use new contract hook with current chain ID
+  const {
+    createToken,
+    isReady,
+    tokenImplementation,
+    isWalletConnected,
+    factoryContract: hookFactoryContract,
+    signer: hookSigner,
+  } = useAcesFactoryContract(currentChainId);
 
   // Token creation state with new tokensBondedAt field
   const [createForm, setCreateForm] = useState({
@@ -128,52 +140,122 @@ export function LaunchTab() {
     },
   ]);
 
+  // Clear all state when wallet is disconnected
+  useEffect(() => {
+    if (!isAuthenticated || !walletAddress || !isWalletConnected) {
+      // Clear all contract state
+      setFactoryContract(null);
+      setAcesContract(null);
+      setAcesBalance('0');
+      setSigner(null);
+
+      // Clear mining state
+      setIsMining(false);
+      setSaltMiningResult(null);
+      setMiningProgress({ attempts: 0, timeElapsed: 0, predictedAddress: '' });
+
+      // Clear trading state
+      setSelectedToken('');
+      setTradeAmount('');
+      setPriceQuote('0');
+      setSellPriceQuote('0');
+      setLoading('');
+
+      console.log('🧹 Cleared all cached state due to wallet disconnection');
+      return;
+    }
+  }, [isAuthenticated, walletAddress, isWalletConnected]);
+
   // Initialize contracts when wallet is connected
   useEffect(() => {
     const initializeContracts = async () => {
-      if (!signer || !walletAddress) {
-        setFactoryContract(null);
-        setAcesContract(null);
-        setAcesBalance('0');
+      if (!walletAddress || !isAuthenticated || !isWalletConnected) {
         return;
       }
 
       try {
-        // Initialize contracts with Privy signer
-        const factory = new ethers.Contract(
-          contractAddresses.FACTORY_PROXY,
-          ACES_FACTORY_ABI,
-          signer,
-        );
-        setFactoryContract(factory);
+        // Use factory contract from hook if available, otherwise create with Privy signer
+        if (hookFactoryContract) {
+          setFactoryContract(hookFactoryContract);
+          console.log('✅ Using factory contract from hook');
+        } else if (signer) {
+          const factory = new ethers.Contract(
+            contractAddresses.FACTORY_PROXY,
+            ACES_FACTORY_ABI,
+            signer,
+          );
+          setFactoryContract(factory);
+          console.log('✅ Created factory contract with Privy signer');
+        }
 
-        const aces = new ethers.Contract(contractAddresses.ACES_TOKEN, ERC20_ABI, signer);
-        setAcesContract(aces);
+        // Initialize ACES contract - try with hook signer first, then Privy signer
+        const signerToUse = hookSigner || signer;
+        if (signerToUse) {
+          const aces = new ethers.Contract(contractAddresses.ACES_TOKEN, ERC20_ABI, signerToUse);
+          setAcesContract(aces);
 
-        // Get ACES balance
-        const balance = await aces.balanceOf(walletAddress);
-        setAcesBalance(ethers.utils.formatEther(balance));
+          // Get ACES balance
+          try {
+            const balance = await aces.balanceOf(walletAddress);
+            setAcesBalance(ethers.utils.formatEther(balance));
+            console.log('✅ ACES balance loaded:', ethers.utils.formatEther(balance));
+          } catch (balanceError) {
+            console.error('❌ Failed to get ACES balance:', balanceError);
+            setAcesBalance('0');
+          }
+        }
 
-        console.log('✅ Contracts initialized with Privy wallet');
+        console.log('✅ Contracts initialization completed');
       } catch (error) {
         console.error('❌ Failed to initialize contracts:', error);
+        setFactoryContract(null);
+        setAcesContract(null);
+        setAcesBalance('0');
       }
     };
 
     initializeContracts();
-  }, [signer, walletAddress, contractAddresses]);
+  }, [
+    signer,
+    hookSigner,
+    hookFactoryContract,
+    walletAddress,
+    contractAddresses,
+    isAuthenticated,
+    isWalletConnected,
+  ]);
 
   // Separate salt mining function
   const handleBeginSaltMine = async () => {
     console.log('🎯 Beginning salt mining...');
+    console.log('Debug values:', {
+      isReady,
+      signer: !!signer,
+      hookSigner: !!hookSigner,
+      walletAddress: !!walletAddress,
+      isAuthenticated,
+      isWalletConnected,
+    });
 
     if (!isReady) {
       alert('Contract hook not ready. Please wait...');
       return;
     }
 
-    if (!signer || !walletAddress) {
-      alert('Please connect your wallet first');
+    if (!walletAddress) {
+      alert('Wallet address not found. Please reconnect your wallet.');
+      return;
+    }
+
+    if (!isAuthenticated) {
+      alert('Please authenticate first.');
+      return;
+    }
+
+    // Use hook signer if available, fallback to Privy signer
+    const signerToUse = hookSigner || signer;
+    if (!signerToUse) {
+      alert('Wallet signer not available. Please make sure your wallet is connected and unlocked.');
       return;
     }
 
@@ -352,24 +434,6 @@ export function LaunchTab() {
       // Better error handling
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       alert(`Token creation failed: ${errorMessage}`);
-    }
-  };
-
-  // Handle Privy wallet connection
-  const handleConnectWallet = async () => {
-    try {
-      setLoading('Connecting wallet...');
-      await connectWallet();
-      setLoading('');
-    } catch (error) {
-      console.error('❌ Failed to connect wallet:', error);
-      setLoading('');
-      // Handle Privy-specific errors
-      if (error instanceof Error) {
-        alert(`Failed to connect wallet: ${error.message}`);
-      } else {
-        alert('Failed to connect wallet. Please try again.');
-      }
     }
   };
 
@@ -613,56 +677,45 @@ export function LaunchTab() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-white font-libre-caslon">Token Launch Center</h2>
-        <Badge variant="outline" className="text-purple-400 border-purple-400">
-          Admin Only
-        </Badge>
+        <div className="flex items-center space-x-4">
+          <Badge variant="outline" className="text-purple-400 border-purple-400">
+            Admin Only
+          </Badge>
+          {/* Wallet Connection Component */}
+          <ConnectWalletProfile className="ml-4" />
+        </div>
       </div>
 
-      {/* Wallet Connection Section */}
-      <Card className="bg-black border-purple-400/20">
-        <CardHeader>
-          <CardTitle className="text-white font-libre-caslon flex items-center">
-            <Wallet className="w-5 h-5 mr-2 text-purple-400" />
-            Wallet Connection
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {!isAuthenticated ? (
-            <div className="space-y-4">
-              <p className="text-[#DCDDCC] text-sm">
-                Connect your admin wallet to deploy and manage token contracts.
-              </p>
-              <Button
-                onClick={connectWallet}
-                className="bg-purple-600 hover:bg-purple-700 text-white"
-                disabled={authLoading}
-              >
-                {authLoading ? (
+      {/* Admin Role Verification */}
+      {isAuthenticated && walletAddress && (
+        <Card className="bg-black border-purple-400/20">
+          <CardHeader>
+            <CardTitle className="text-white font-libre-caslon flex items-center">
+              <Wallet className="w-5 h-5 mr-2 text-purple-400" />
+              Admin Verification
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <div className="flex items-center space-x-2">
+                {user?.role === 'ADMIN' ? (
                   <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Connecting...
+                    <CheckCircle className="w-5 h-5 text-green-400" />
+                    <span className="text-green-400 font-medium">Admin Access Verified</span>
                   </>
                 ) : (
                   <>
-                    <Wallet className="w-4 h-4 mr-2" />
-                    Connect Admin Wallet
+                    <AlertCircle className="w-5 h-5 text-red-400" />
+                    <span className="text-red-400 font-medium">Admin Access Required</span>
                   </>
                 )}
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="flex items-center space-x-2">
-                <CheckCircle className="w-5 h-5 text-green-400" />
-                <span className="text-green-400 font-medium">Wallet Connected</span>
               </div>
               <div className="text-sm text-[#DCDDCC]">
                 <p>
                   <strong>Address:</strong> {walletAddress}
                 </p>
                 <p>
-                  <strong>Admin Role:</strong>{' '}
-                  {user?.role === 'ADMIN' ? '✅ Verified' : '❌ Not Admin'}
+                  <strong>Role:</strong> {user?.role || 'Loading...'}
                 </p>
               </div>
               {user?.role !== 'ADMIN' && (
@@ -671,15 +724,15 @@ export function LaunchTab() {
                     <AlertCircle className="w-4 h-4 text-red-400" />
                     <p className="text-red-400 text-sm">
                       This wallet is not registered as an admin. Contract deployment will be
-                      restricted.
+                      restricted. Please contact an administrator to upgrade your account.
                     </p>
                   </div>
                 </div>
               )}
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Debug Info Card */}
       <Card className="bg-black border-purple-400/20">
@@ -731,94 +784,141 @@ export function LaunchTab() {
             </div>
           )}
 
-          {/* Debug Info for Salt Mining Button */}
+          {/* Debug Info for Contract Status */}
           <div className="text-xs text-[#DCDDCC] space-y-1 p-2 bg-purple-500/5 rounded border border-purple-400/10">
             <p>
-              <strong>Debug - Salt Mining Button Status:</strong>
+              <strong>Debug - Contract Hook Status:</strong>
             </p>
-            <p>• isReady: {isReady ? '✅ True' : '❌ False'}</p>
-            <p>• walletAddress: {walletAddress ? '✅ Connected' : '❌ Not connected'}</p>
-            <p>• signer: {signer ? '✅ Available' : '❌ Not available'}</p>
-            <p>• isMining: {isMining ? '🔄 Mining' : '⏸️ Not mining'}</p>
-            <p>• tokenImplementation: {tokenImplementation ? '✅ Loaded' : '❌ Not loaded'}</p>
             <p>
-              <strong>Button Disabled:</strong>{' '}
-              {isMining || !isReady || !walletAddress ? '❌ YES' : '✅ NO'}
+              • Chain ID: {currentChainId} ({currentChain?.name || 'Unknown'})
             </p>
+            <p>• Supported Chain: {isOnSupportedChain ? '✅ Yes' : '❌ No'}</p>
+            <p>• isAuthenticated: {isAuthenticated ? '✅ True' : '❌ False'}</p>
+            <p>• walletAddress: {walletAddress ? '✅ Connected' : '❌ Not connected'}</p>
+            <p>• isWalletConnected (Hook): {isWalletConnected ? '✅ True' : '❌ False'}</p>
+            <p>• isReady: {isReady ? '✅ True' : '❌ False'}</p>
+            <p>• Privy signer: {signer ? '✅ Available' : '❌ Not available'}</p>
+            <p>• Hook signer: {hookSigner ? '✅ Available' : '❌ Not available'}</p>
+            <p>• Hook factory: {hookFactoryContract ? '✅ Available' : '❌ Not available'}</p>
+            <p>• Local factory: {factoryContract ? '✅ Available' : '❌ Not available'}</p>
+            <p>• Local ACES: {acesContract ? '✅ Available' : '❌ Not available'}</p>
+            <p>• tokenImplementation: {tokenImplementation ? '✅ Loaded' : '❌ Not loaded'}</p>
+            <p>• ACES Balance: {acesBalance} ACES</p>
+            <p>• ACES Token Address: {contractAddresses.ACES_TOKEN}</p>
+            {currentChainId !== 11155111 && (
+              <p className="text-yellow-400">
+                ⚠️ Warning: Expected Sepolia (11155111), got {currentChainId}
+              </p>
+            )}
+            <p>
+              <strong>Salt Mining Disabled:</strong>{' '}
+              {isMining ||
+              !isReady ||
+              !walletAddress ||
+              !isAuthenticated ||
+              (!hookSigner && !signer)
+                ? '❌ YES'
+                : '✅ NO'}
+            </p>
+            {(isMining ||
+              !isReady ||
+              !walletAddress ||
+              !isAuthenticated ||
+              (!hookSigner && !signer)) && (
+              <p className="text-red-400 text-xs">
+                <strong>Disabled because:</strong>
+                {isMining && ' Currently mining'}
+                {!isReady && ' Contract hook not ready'}
+                {!walletAddress && ' No wallet address'}
+                {!isAuthenticated && ' Not authenticated'}
+                {!hookSigner && !signer && ' No signer available'}
+              </p>
+            )}
           </div>
-          {signer && (
-            <Button
-              onClick={async () => {
-                try {
-                  const provider = signer.provider;
-                  const blockNumber = await provider?.getBlockNumber();
-                  const network = await provider?.getNetwork();
-                  console.log('=== Network Status ===');
-                  console.log('Latest block:', blockNumber);
-                  console.log('Network:', network?.name);
-                  console.log('Chain ID:', network?.chainId);
-                  alert(`Network OK! Block: ${blockNumber}, Chain: ${network?.chainId}`);
-                } catch (error) {
-                  console.error('Network check failed:', error);
-                  alert('Network connection failed!');
-                }
-              }}
-              variant="outline"
-              size="sm"
-              className="text-purple-400 border-purple-400/20 hover:bg-purple-400/10"
-            >
-              <Network className="w-4 h-4 mr-2" />
-              Test Network
-            </Button>
-          )}
+          <div className="flex gap-2">
+            {signer && (
+              <Button
+                onClick={async () => {
+                  try {
+                    const provider = signer.provider;
+                    const blockNumber = await provider?.getBlockNumber();
+                    const network = await provider?.getNetwork();
+                    console.log('=== Network Status ===');
+                    console.log('Latest block:', blockNumber);
+                    console.log('Network:', network?.name);
+                    console.log('Chain ID:', network?.chainId);
+                    alert(`Network OK! Block: ${blockNumber}, Chain: ${network?.chainId}`);
+                  } catch (error) {
+                    console.error('Network check failed:', error);
+                    alert('Network connection failed!');
+                  }
+                }}
+                variant="outline"
+                size="sm"
+                className="text-purple-400 border-purple-400/20 hover:bg-purple-400/10"
+              >
+                <Network className="w-4 h-4 mr-2" />
+                Test Network
+              </Button>
+            )}
+            {walletAddress && (
+              <Button
+                onClick={async () => {
+                  try {
+                    console.log('=== Testing ACES Contract ===');
+                    console.log('Wallet Address:', walletAddress);
+                    console.log('ACES Token Address:', contractAddresses.ACES_TOKEN);
+
+                    // Try with different signers
+                    const signerToUse = hookSigner || signer;
+                    if (signerToUse) {
+                      const testAces = new ethers.Contract(
+                        contractAddresses.ACES_TOKEN,
+                        ERC20_ABI,
+                        signerToUse,
+                      );
+                      console.log('Contract created with signer');
+
+                      const balance = await testAces.balanceOf(walletAddress);
+                      const formattedBalance = ethers.utils.formatEther(balance);
+                      console.log('Raw Balance (wei):', balance.toString());
+                      console.log('Formatted Balance:', formattedBalance);
+
+                      alert(
+                        `ACES Balance Test:\nRaw: ${balance.toString()}\nFormatted: ${formattedBalance} ACES`,
+                      );
+                    } else {
+                      alert('No signer available for testing');
+                    }
+                  } catch (error) {
+                    console.error('ACES contract test failed:', error);
+                    alert(
+                      `ACES test failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                    );
+                  }
+                }}
+                variant="outline"
+                size="sm"
+                className="text-green-400 border-green-400/20 hover:bg-green-400/10"
+              >
+                <Coins className="w-4 h-4 mr-2" />
+                Test ACES Balance
+              </Button>
+            )}
+          </div>
         </CardContent>
       </Card>
 
-      {/* Wallet Connection */}
-      <Card className="bg-black border-purple-400/20">
-        <CardHeader>
-          <CardTitle className="text-white font-libre-caslon flex items-center">
-            <Wallet className="w-5 h-5 mr-2 text-purple-400" />
-            Wallet Connection
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {!isAuthenticated || !walletAddress ? (
-            <div className="space-y-4">
-              <div className="text-center p-4 bg-purple-500/10 border border-purple-400/20 rounded-lg">
-                <p className="text-[#DCDDCC] text-sm mb-3">
-                  {authLoading
-                    ? 'Checking authentication...'
-                    : 'Connect your admin wallet to use the Launch Center'}
-                </p>
-                <Button
-                  onClick={handleConnectWallet}
-                  disabled={!!loading || authLoading}
-                  className="bg-purple-600 hover:bg-purple-700 text-white"
-                >
-                  {loading || authLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      {loading || 'Connecting...'}
-                    </>
-                  ) : (
-                    <>
-                      <Wallet className="w-4 h-4 mr-2" />
-                      Connect Admin Wallet
-                    </>
-                  )}
-                </Button>
-              </div>
-              {user && (
-                <div className="text-center">
-                  <p className="text-xs text-[#DCDDCC]">
-                    Logged in as:{' '}
-                    <span className="text-purple-400">{user.email || 'Admin User'}</span>
-                  </p>
-                </div>
-              )}
-            </div>
-          ) : (
+      {/* ACES Balance and Controls */}
+      {isAuthenticated && walletAddress && (
+        <Card className="bg-black border-purple-400/20">
+          <CardHeader>
+            <CardTitle className="text-white font-libre-caslon flex items-center">
+              <Coins className="w-5 h-5 mr-2 text-purple-400" />
+              Account Balance
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -855,9 +955,9 @@ export function LaunchTab() {
                 </div>
               )}
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
       {isAuthenticated && walletAddress && (
         <>
@@ -884,7 +984,13 @@ export function LaunchTab() {
                   </div>
                   <Button
                     onClick={handleBeginSaltMine}
-                    disabled={isMining || !isReady || !walletAddress}
+                    disabled={
+                      isMining ||
+                      !isReady ||
+                      !walletAddress ||
+                      !isAuthenticated ||
+                      (!hookSigner && !signer)
+                    }
                     className="bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-700 hover:to-cyan-700 text-white"
                   >
                     {isMining ? (

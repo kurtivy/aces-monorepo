@@ -129,6 +129,14 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({
           'mainSeriesProperties.hollowCandleStyle.borderDownColor': '#FF5B5B',
           'mainSeriesProperties.hollowCandleStyle.wickUpColor': '#00C896',
           'mainSeriesProperties.hollowCandleStyle.wickDownColor': '#FF5B5B',
+
+          // Force price scale to never go below 0
+          'scalesProperties.autoScale': true,
+          'paneProperties.topMargin': 10,
+          'paneProperties.bottomMargin': 10,
+
+          // Set minimum visible value to 0 (or slightly above)
+          'mainSeriesProperties.minTick': '0.000001',
         },
         studies_overrides: {
           // Volume colors
