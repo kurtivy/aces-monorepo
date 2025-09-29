@@ -12,19 +12,17 @@ import NetworkBanner from '../ui/custom/network-banner';
 import { type ReactNode, useEffect } from 'react';
 import { initCanvasFonts } from '../../lib/utils/font-loader';
 
-// Initialize QueryClient for wagmi with optimized settings
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      gcTime: 1000 * 60 * 60 * 24, // 24 hours
-      staleTime: 1000 * 60 * 5, // 5 minutes (shorter for better real-time data)
+      gcTime: 1000 * 60 * 60 * 24,
+      staleTime: 1000 * 60 * 5,
       retry: 3,
       retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
     },
   },
 });
 
-// RELIABLE Base Sepolia RPC endpoints
 const BASE_SEPOLIA_RPCS = [
   'https://sepolia.base.org',
   'https://base-sepolia-rpc.publicnode.com',
@@ -33,7 +31,6 @@ const BASE_SEPOLIA_RPCS = [
   'https://1rpc.io/base-sepolia',
 ];
 
-// RELIABLE Base Mainnet RPC endpoints
 const BASE_MAINNET_RPCS = [
   'https://mainnet.base.org',
   'https://base-rpc.publicnode.com',
@@ -42,22 +39,19 @@ const BASE_MAINNET_RPCS = [
   'https://1rpc.io/base',
 ];
 
-// Create wagmi config for Privy integration
 export const wagmiConfig = createConfig({
   chains: [baseSepolia, base],
   transports: {
-    // Base Sepolia with fallback RPC endpoints
     [baseSepolia.id]: fallback(
       BASE_SEPOLIA_RPCS.map((url, index) =>
         http(url, {
-          timeout: 15000, // 15 second timeout
+          timeout: 15000,
           retryCount: 2,
           retryDelay: 1000,
           key: `baseSepolia-${index}`,
         }),
       ),
     ),
-    // Base Mainnet with fallback RPC endpoints
     [base.id]: fallback(
       BASE_MAINNET_RPCS.map((url, index) =>
         http(url, {
@@ -69,48 +63,38 @@ export const wagmiConfig = createConfig({
       ),
     ),
   },
-  // Enable batching for better performance
   batch: {
     multicall: {
       batchSize: 1024,
       wait: 16,
     },
   },
-  // Enable SSR
   ssr: true,
 });
 
 export default function AppProviders({ children }: { children: ReactNode }) {
-  // Initialize canvas fonts on app startup
   useEffect(() => {
     initCanvasFonts().catch((error) => {
       console.warn('Canvas fonts initialization failed:', error);
     });
   }, []);
 
-  // Debug Privy configuration
   const privyAppId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
 
-  // Log configuration issues in development/staging
   if (typeof window !== 'undefined') {
     if (!privyAppId) {
-      console.error('🚨 PRIVY_APP_ID is missing! Wallet connections will fail.');
-    } else {
-      // console.log('✅ Privy App ID found:', privyAppId.slice(0, 8) + '...');
+      console.error('PRIVY_APP_ID is missing! Wallet connections will fail.');
     }
 
-    // Check if we're on localhost and warn about origin configuration
     if (window.location.hostname === 'localhost') {
       console.warn(
-        '🚨 LOCALHOST DETECTED: Make sure to add "http://localhost:3000" to your Privy App\'s allowed origins in the dashboard!',
+        'LOCALHOST DETECTED: Make sure to add "http://localhost:3000" to your Privy App\'s allowed origins in the dashboard!',
       );
-      console.warn('📍 Dashboard URL: https://dashboard.privy.io/');
     }
   }
 
-  // Don't render Privy if app ID is missing
   if (!privyAppId) {
-    console.error('🛑 Cannot initialize Privy without app ID');
+    console.error('Cannot initialize Privy without app ID');
     return (
       <QueryClientProvider client={queryClient}>
         <div className="flex items-center justify-center min-h-screen bg-black text-red-400">
@@ -134,24 +118,21 @@ export default function AppProviders({ children }: { children: ReactNode }) {
             accentColor: '#D0B264',
             logo: '/aces-logo.png',
             loginMessage: 'Connect your wallet to ACES',
-            showWalletLoginFirst: true, // Show wallet options first
-            walletList: ['coinbase_wallet', 'metamask', 'wallet_connect', 'phantom'], // Prioritize mobile-friendly wallets
+            showWalletLoginFirst: true,
+            walletList: ['coinbase_wallet', 'metamask', 'wallet_connect', 'phantom'],
           },
           embeddedWallets: {
-            createOnLogin: 'all-users', // Create wallets for all new users
+            createOnLogin: 'all-users',
             requireUserPasswordOnCreate: false,
-            showWalletUIs: true, // Show wallet UI so users can access their wallets
+            showWalletUIs: true,
           },
           defaultChain: base,
           supportedChains: [base, baseSepolia],
-          // Add SIWE configuration for better external wallet support
           externalWallets: {
             coinbaseWallet: {
-              // Provide the connection options
               connectionOptions: 'smartWalletOnly',
             },
           },
-          // Legal config to avoid CSP issues
           legal: {
             termsAndConditionsUrl: 'https://aces.fun/terms',
             privacyPolicyUrl: 'https://aces.fun/privacy',
