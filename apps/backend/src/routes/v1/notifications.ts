@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { NotificationService, NotificationType } from '../../services/notification-service';
-import { requireAuth } from '../../lib/auth-middleware';
+import { requireAuth, requireAdmin } from '../../lib/auth-middleware';
 import { errors } from '../../lib/errors';
 
 // Validation schemas
@@ -21,6 +21,17 @@ const GetNotificationsQuerySchema = z.object({
     .string()
     .transform((val) => parseInt(val))
     .optional(),
+});
+
+const AdminMessageSchema = z.object({
+  userId: z.string().min(1, 'User ID is required'),
+  title: z.string().min(1, 'Title is required').max(100, 'Title must be 100 characters or less'),
+  message: z
+    .string()
+    .min(1, 'Message is required')
+    .max(500, 'Message must be 500 characters or less'),
+  actionUrl: z.string().url().optional(),
+  expiresAt: z.string().datetime().optional(),
 });
 
 // MarkAsReadSchema removed - not used in this file
@@ -172,6 +183,42 @@ export async function notificationRoutes(fastify: FastifyInstance) {
         });
       } catch (error) {
         console.error('Error deleting notification:', error);
+        throw error;
+      }
+    },
+  );
+
+  /**
+   * Send admin message to user (admin only)
+   */
+  fastify.post(
+    '/admin/message',
+    {
+      preHandler: [requireAdmin],
+      schema: {
+        body: zodToJsonSchema(AdminMessageSchema),
+      },
+    },
+    async (request, reply) => {
+      try {
+        const data = AdminMessageSchema.parse(request.body);
+
+        const notification = await notificationService.createNotification({
+          userId: data.userId,
+          type: NotificationType.ADMIN_MESSAGE,
+          title: data.title,
+          message: data.message,
+          actionUrl: data.actionUrl,
+          expiresAt: data.expiresAt ? new Date(data.expiresAt) : undefined,
+        });
+
+        return reply.send({
+          success: true,
+          data: notification,
+          message: 'Admin message sent successfully',
+        });
+      } catch (error) {
+        console.error('Error sending admin message:', error);
         throw error;
       }
     },

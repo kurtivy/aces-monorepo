@@ -26,11 +26,28 @@ export interface CreateNotificationData {
 }
 
 export enum NotificationType {
+  // Existing types
   LISTING_APPROVED = 'LISTING_APPROVED',
   READY_TO_MINT = 'READY_TO_MINT',
   TOKEN_MINTED = 'TOKEN_MINTED',
   ADMIN_MESSAGE = 'ADMIN_MESSAGE',
   SYSTEM_ALERT = 'SYSTEM_ALERT',
+
+  // Verification notifications
+  VERIFICATION_PENDING = 'VERIFICATION_PENDING',
+  VERIFICATION_APPROVED = 'VERIFICATION_APPROVED',
+  VERIFICATION_REJECTED = 'VERIFICATION_REJECTED',
+
+  // Bidding notifications
+  NEW_BID_RECEIVED = 'NEW_BID_RECEIVED',
+  BID_ACCEPTED = 'BID_ACCEPTED',
+  BID_REJECTED = 'BID_REJECTED',
+  BID_OUTBID = 'BID_OUTBID',
+
+  // Admin notifications
+  ADMIN_NEW_SUBMISSION = 'ADMIN_NEW_SUBMISSION',
+  ADMIN_NEW_VERIFICATION = 'ADMIN_NEW_VERIFICATION',
+  ADMIN_TOKEN_REVIEW_NEEDED = 'ADMIN_TOKEN_REVIEW_NEEDED',
 }
 
 export interface NotificationWithRelations {
@@ -302,5 +319,66 @@ export const NotificationTemplates = {
     title: 'System Alert',
     message: 'Important system information.',
     getActionUrl: () => '/profile',
+  },
+
+  // Verification notifications
+  [NotificationType.VERIFICATION_PENDING]: {
+    title: 'Verification Submitted',
+    message:
+      'Your identity verification has been submitted and is under review. You will be notified of the results.',
+    getActionUrl: () => '/profile',
+  },
+  [NotificationType.VERIFICATION_APPROVED]: {
+    title: 'Verification Approved!',
+    message:
+      'Your identity has been successfully verified! You can now submit assets for tokenization and place bids.',
+    getActionUrl: () => '/launch',
+  },
+  [NotificationType.VERIFICATION_REJECTED]: {
+    title: 'Verification Rejected',
+    message:
+      'Your verification was rejected. Please review the requirements and resubmit with correct information.',
+    getActionUrl: () => '/profile',
+  },
+
+  // Bidding notifications
+  [NotificationType.NEW_BID_RECEIVED]: {
+    title: 'New Bid Received!',
+    message: 'Someone has placed a bid on your listing. Check your bids to review and respond.',
+    getActionUrl: () => '/profile?tab=bids',
+  },
+  [NotificationType.BID_ACCEPTED]: {
+    title: 'Bid Accepted!',
+    message: 'Great news! Your bid has been accepted by the listing owner.',
+    getActionUrl: () => '/profile?tab=bids',
+  },
+  [NotificationType.BID_REJECTED]: {
+    title: 'Bid Not Accepted',
+    message:
+      'Your bid was not accepted by the listing owner. You can place a new bid if the listing is still available.',
+    getActionUrl: () => '/profile?tab=bids',
+  },
+  [NotificationType.BID_OUTBID]: {
+    title: 'You Have Been Outbid',
+    message:
+      "Another bidder has placed a higher bid on this listing. Consider placing a new bid if you're still interested.",
+    getActionUrl: () => '/profile?tab=bids',
+  },
+
+  // Admin notifications
+  [NotificationType.ADMIN_NEW_SUBMISSION]: {
+    title: 'New Asset Submission',
+    message: 'A new asset has been submitted for review and approval.',
+    getActionUrl: () => '/admin/submissions',
+  },
+  [NotificationType.ADMIN_NEW_VERIFICATION]: {
+    title: 'New Verification Request',
+    message: 'A user has submitted identity verification documents for review.',
+    getActionUrl: () => '/admin/verifications',
+  },
+  [NotificationType.ADMIN_TOKEN_REVIEW_NEEDED]: {
+    title: 'Token Parameters Need Review',
+    message: 'A user has completed token creation details and requires admin approval.',
+    getActionUrl: () => '/admin/listings',
   },
 };

@@ -3,6 +3,11 @@ import { PrismaClient, Prisma, User } from '@prisma/client';
 import { AssetType, SubmissionStatus, RejectionType } from '../lib/prisma-enums';
 import { ProductStorageService } from '../lib/product-storage-utils';
 import { errors } from '../lib/errors';
+import {
+  NotificationService,
+  NotificationType,
+  NotificationTemplates,
+} from './notification-service';
 
 // Type for submissions with relations
 type SubmissionWithRelations = Prisma.SubmissionGetPayload<{
@@ -27,7 +32,14 @@ export interface CreateSubmissionRequest {
 }
 
 export class SubmissionService {
-  constructor(private prisma: PrismaClient) {}
+  private notificationService: NotificationService;
+
+  constructor(
+    private prisma: PrismaClient,
+    notificationService?: NotificationService,
+  ) {
+    this.notificationService = notificationService || new NotificationService(prisma);
+  }
 
   /**
    * Check if user is verified before allowing submission
@@ -82,6 +94,28 @@ export class SubmissionService {
           owner: true,
         },
       });
+
+      // Create notification for admins about new submission
+      try {
+        const adminUsers = await this.prisma.user.findMany({
+          where: { role: 'ADMIN' },
+          select: { id: true },
+        });
+
+        const adminTemplate = NotificationTemplates[NotificationType.ADMIN_NEW_SUBMISSION];
+        for (const admin of adminUsers) {
+          await this.notificationService.createNotification({
+            userId: admin.id,
+            type: NotificationType.ADMIN_NEW_SUBMISSION,
+            title: adminTemplate.title,
+            message: adminTemplate.message,
+            actionUrl: adminTemplate.getActionUrl(),
+          });
+        }
+      } catch (notificationError) {
+        console.error('Error creating admin submission notification:', notificationError);
+        // Don't fail the submission if notification fails
+      }
 
       return submission;
     } catch (error) {

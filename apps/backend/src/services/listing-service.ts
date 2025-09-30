@@ -4,6 +4,11 @@ import { PrismaClient, Prisma, User } from '@prisma/client';
 import { AssetType, SubmissionStatus } from '../lib/prisma-enums';
 import { ProductStorageService } from '../lib/product-storage-utils';
 import { errors } from '../lib/errors';
+import {
+  NotificationService,
+  NotificationType,
+  NotificationTemplates,
+} from './notification-service';
 
 // Type for listings with relations - using simpler type due to TypeScript language server caching
 type ListingWithRelations = {
@@ -78,7 +83,14 @@ export interface UpdateListingRequest {
 }
 
 export class ListingService {
-  constructor(private prisma: PrismaClient) {}
+  private notificationService: NotificationService;
+
+  constructor(
+    private prisma: PrismaClient,
+    notificationService?: NotificationService,
+  ) {
+    this.notificationService = notificationService || new NotificationService(prisma);
+  }
 
   /**
    * Create a listing from an approved submission
@@ -136,6 +148,22 @@ export class ListingService {
           approvedByUser: true,
         },
       });
+
+      // Create notification for user about listing approval
+      try {
+        const template = NotificationTemplates[NotificationType.LISTING_APPROVED];
+        await this.notificationService.createNotification({
+          userId: submission.ownerId,
+          listingId: listing.id,
+          type: NotificationType.LISTING_APPROVED,
+          title: template.title,
+          message: template.message,
+          actionUrl: template.getActionUrl(listing.id),
+        });
+      } catch (notificationError) {
+        console.error('Error creating listing approved notification:', notificationError);
+        // Don't fail the listing creation if notification fails
+      }
 
       return listing;
     } catch (error) {

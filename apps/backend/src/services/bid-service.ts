@@ -1,6 +1,11 @@
 import { PrismaClient, Prisma, User, Listing, Bid } from '@prisma/client';
 import { BidStatus } from '../lib/prisma-enums';
 import { errors } from '../lib/errors';
+import {
+  NotificationService,
+  NotificationType,
+  NotificationTemplates,
+} from './notification-service';
 
 // Type for bids with relations
 type BidWithRelations = Prisma.BidGetPayload<{
@@ -39,7 +44,14 @@ export interface RespondToBidRequest {
 }
 
 export class BidService {
-  constructor(private prisma: PrismaClient) {}
+  private notificationService: NotificationService;
+
+  constructor(
+    private prisma: PrismaClient,
+    notificationService?: NotificationService,
+  ) {
+    this.notificationService = notificationService || new NotificationService(prisma);
+  }
 
   /**
    * Check if user is verified and can place bids
@@ -232,6 +244,54 @@ export class BidService {
             },
           },
         });
+      }
+
+      // Create notification for listing owner about new bid
+      try {
+        const template = NotificationTemplates[NotificationType.NEW_BID_RECEIVED];
+        await this.notificationService.createNotification({
+          userId: listing.ownerId,
+          listingId: data.listingId,
+          type: NotificationType.NEW_BID_RECEIVED,
+          title: template.title,
+          message: template.message,
+          actionUrl: template.getActionUrl(),
+        });
+      } catch (notificationError) {
+        console.error('Error creating bid notification:', notificationError);
+        // Don't fail the bid creation if notification fails
+      }
+
+      // If this is a higher bid, notify other bidders they've been outbid
+      try {
+        const newBidAmount = parseFloat(data.amount);
+        const outbidUsers = await this.prisma.bid.findMany({
+          where: {
+            listingId: data.listingId,
+            bidderId: { not: userId }, // Exclude current bidder
+            status: BidStatus.PENDING,
+            isActive: true,
+            amount: { lt: data.amount }, // Bids lower than the new bid
+          },
+          select: {
+            bidderId: true,
+          },
+        });
+
+        const outbidTemplate = NotificationTemplates[NotificationType.BID_OUTBID];
+        for (const outbidUser of outbidUsers) {
+          await this.notificationService.createNotification({
+            userId: outbidUser.bidderId,
+            listingId: data.listingId,
+            type: NotificationType.BID_OUTBID,
+            title: outbidTemplate.title,
+            message: outbidTemplate.message,
+            actionUrl: outbidTemplate.getActionUrl(),
+          });
+        }
+      } catch (notificationError) {
+        console.error('Error creating outbid notifications:', notificationError);
+        // Don't fail the bid creation if notification fails
       }
 
       return newBid;
@@ -481,6 +541,27 @@ export class BidService {
           },
         },
       });
+
+      // Create notification for bidder about bid response
+      try {
+        const notificationType =
+          data.status === 'ACCEPTED'
+            ? NotificationType.BID_ACCEPTED
+            : NotificationType.BID_REJECTED;
+
+        const template = NotificationTemplates[notificationType];
+        await this.notificationService.createNotification({
+          userId: updatedBid.bidderId,
+          listingId: updatedBid.listingId,
+          type: notificationType,
+          title: template.title,
+          message: template.message,
+          actionUrl: template.getActionUrl(),
+        });
+      } catch (notificationError) {
+        console.error('Error creating bid response notification:', notificationError);
+        // Don't fail the bid response if notification fails
+      }
 
       return updatedBid;
     } catch (error) {

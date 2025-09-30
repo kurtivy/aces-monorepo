@@ -5,6 +5,11 @@ import { errors } from '../lib/errors';
 import { MultipartFile } from '@fastify/multipart';
 import { SecureStorageService } from '../lib/secure-storage-utils';
 import { VisionService } from '../lib/vision-service';
+import {
+  NotificationService,
+  NotificationType,
+  NotificationTemplates,
+} from './notification-service';
 
 export interface DocumentAnalysisResults {
   faceComparison: {
@@ -50,7 +55,14 @@ export interface VerificationWithUser extends AccountVerification {
 }
 
 export class AccountVerificationService {
-  constructor(private prisma: PrismaClient) {}
+  private notificationService: NotificationService;
+
+  constructor(
+    private prisma: PrismaClient,
+    notificationService?: NotificationService,
+  ) {
+    this.notificationService = notificationService || new NotificationService(prisma);
+  }
 
   /**
    * Submit a new verification request
@@ -174,6 +186,43 @@ export class AccountVerificationService {
 
         return verificationRecord;
       });
+
+      // Create notification for user about pending verification
+      try {
+        const template = NotificationTemplates[NotificationType.VERIFICATION_PENDING];
+        await this.notificationService.createNotification({
+          userId,
+          type: NotificationType.VERIFICATION_PENDING,
+          title: template.title,
+          message: template.message,
+          actionUrl: template.getActionUrl(),
+        });
+      } catch (notificationError) {
+        console.error('Error creating verification pending notification:', notificationError);
+        // Don't fail the verification submission if notification fails
+      }
+
+      // Create notification for admins about new verification request
+      try {
+        const adminUsers = await this.prisma.user.findMany({
+          where: { role: 'ADMIN' },
+          select: { id: true },
+        });
+
+        const adminTemplate = NotificationTemplates[NotificationType.ADMIN_NEW_VERIFICATION];
+        for (const admin of adminUsers) {
+          await this.notificationService.createNotification({
+            userId: admin.id,
+            type: NotificationType.ADMIN_NEW_VERIFICATION,
+            title: adminTemplate.title,
+            message: adminTemplate.message,
+            actionUrl: adminTemplate.getActionUrl(),
+          });
+        }
+      } catch (notificationError) {
+        console.error('Error creating admin verification notification:', notificationError);
+        // Don't fail the verification submission if notification fails
+      }
 
       return verification;
     } catch (error) {
@@ -321,6 +370,26 @@ export class AccountVerificationService {
 
         return updatedVerification;
       });
+
+      // Create notification for user about verification result
+      try {
+        const notificationType =
+          decision === VerificationStatus.APPROVED
+            ? NotificationType.VERIFICATION_APPROVED
+            : NotificationType.VERIFICATION_REJECTED;
+
+        const template = NotificationTemplates[notificationType];
+        await this.notificationService.createNotification({
+          userId: result.userId,
+          type: notificationType,
+          title: template.title,
+          message: template.message,
+          actionUrl: template.getActionUrl(),
+        });
+      } catch (notificationError) {
+        console.error('Error creating verification result notification:', notificationError);
+        // Don't fail the verification review if notification fails
+      }
 
       return result;
     } catch (error) {

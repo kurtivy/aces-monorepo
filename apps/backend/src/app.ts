@@ -29,6 +29,7 @@ import { cronRoutes } from './routes/v1/cron/trigger';
 import { notificationRoutes } from './routes/v1/notifications';
 import { tokenCreationRoutes } from './routes/v1/token-creation';
 import productImagesRoutes from './routes/v1/product-images';
+import { testNotificationRoutes } from './routes/v1/test-notifications';
 
 export const buildApp = async (): Promise<FastifyInstance> => {
   const fastify = Fastify({
@@ -157,6 +158,9 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   // fastify.register(portfolioTestRoutes, { prefix: '/api/v1/debug/portfolio-test' });
   // Register cron routes for manual testing
   fastify.register(cronRoutes);
+
+  // Register test notification routes (for development/testing)
+  fastify.register(testNotificationRoutes, { prefix: '/api/v1/notifications' });
 
   // Register hooks
   fastify.addHook('onRequest', async (request) => {

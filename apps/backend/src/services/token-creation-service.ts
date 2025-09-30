@@ -121,8 +121,28 @@ export class TokenCreationService {
         },
       });
 
-      // TODO: Create notification for admins about pending review
-      // For now, we'll skip this to keep Phase 1 simple
+      // Create notification for admins about token review needed
+      try {
+        const adminUsers = await this.prisma.user.findMany({
+          where: { role: 'ADMIN' },
+          select: { id: true },
+        });
+
+        const adminTemplate = NotificationTemplates[NotificationType.ADMIN_TOKEN_REVIEW_NEEDED];
+        for (const admin of adminUsers) {
+          await this.notificationService.createNotification({
+            userId: admin.id,
+            listingId: listingId,
+            type: NotificationType.ADMIN_TOKEN_REVIEW_NEEDED,
+            title: adminTemplate.title,
+            message: adminTemplate.message,
+            actionUrl: adminTemplate.getActionUrl(),
+          });
+        }
+      } catch (notificationError) {
+        console.error('Error creating admin token review notification:', notificationError);
+        // Don't fail the submission if notification fails
+      }
 
       return updatedListing as ListingWithTokenStatus;
     } catch (error) {
