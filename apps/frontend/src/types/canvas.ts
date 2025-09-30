@@ -6,6 +6,7 @@ export interface ImageInfo {
   metadata: {
     id?: string;
     title: string;
+    symbol?: string; // RWA page route symbol (e.g., 'APKAWS')
     description: string;
     date?: string;
     countdownDate?: string; // ISO date string for countdown timer

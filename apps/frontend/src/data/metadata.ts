@@ -94,6 +94,7 @@ The artist's signature makes this piece exceptionally valuable, as signed Warhol
   {
     id: '7',
     title: 'Audemars Piguet Royal Oak Concept KAWS',
+    symbol: 'APKAWS', // RWA page route symbol
     description: `A groundbreaking collaboration between haute horology and contemporary art, this Audemars Piguet Royal Oak Concept is a limited edition masterpiece designed with the artist KAWS. The watch features KAWS's signature 'XX' motif on the tourbillon cage, housed within a futuristic titanium case.
 
 This timepiece is not just a watch; it's a wearable sculpture that pushes the boundaries of watchmaking design. With an extremely limited production run, it's a grail piece for collectors of both high-end watches and modern art.`,
