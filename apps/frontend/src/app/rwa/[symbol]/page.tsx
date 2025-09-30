@@ -14,6 +14,7 @@ import RWAHeader from '@/components/rwa/rwa-header';
 import DashedGridBackground from '@/components/ui/custom/dashed-grid-background';
 import { useDeviceCapabilities } from '@/contexts/device-provider';
 import MobileRWAItemPage from './mobile-page';
+import PageLoader from '@/components/loading/page-loader';
 
 export default function RWAItemPage() {
   const params = useParams();
@@ -62,8 +63,8 @@ export default function RWAItemPage() {
   // Loading state
   if (loading) {
     return (
-      <div className="h-screen bg-[#151c16] text-white flex items-center justify-center">
-        <div className="text-[#D0B284] text-lg">Loading {symbol}...</div>
+      <div className="h-screen bg-[#151c16]">
+        <PageLoader />
       </div>
     );
   }

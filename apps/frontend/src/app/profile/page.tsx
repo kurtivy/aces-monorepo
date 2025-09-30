@@ -10,11 +10,11 @@ import Footer from '@/components/ui/custom/footer';
 import { useState, useLayoutEffect } from 'react';
 import { AdminDashboardOverlay } from '@/components/profile/admin-dashboard-overlay';
 import { SubmissionStatusNotifications } from '@/components/profile/submission-status-notifications';
-import { TokenCreationNotifications } from '@/components/profile/token-creation-notifications';
 import LuxuryAssetsBackground from '@/components/ui/custom/luxury-assets-background';
 import AcesHeader from '@/components/ui/custom/aces-header';
 import PageBandTitle from '@/components/ui/custom/page-band-title';
 import PageBandSubtitle from '@/components/ui/custom/page-band-subtitle';
+import PageLoader from '@/components/loading/page-loader';
 
 export default function ProfilePage() {
   const { user, isLoading, error, updateProfile, connectWallet } = useAuth();
@@ -49,47 +49,8 @@ export default function ProfilePage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen relative bg-[#151c16]">
-        <div className="relative z-50">
-          <AcesHeader />
-        </div>
-        <LuxuryAssetsBackground
-          className="absolute inset-0 z-0"
-          opacity={0.9}
-          showOnMobile={false}
-          contentWidth={1200}
-          bandHeight={96}
-        />
-        <PageBandTitle
-          title="Portfolio"
-          contentWidth={1200}
-          bandHeight={96}
-          contentLineOffset={8}
-        />
-        <PageBandSubtitle
-          text="Your tokenized RWA portfolio and bids"
-          contentWidth={1200}
-          bandHeight={96}
-          contentLineOffset={8}
-          offsetY={12}
-        />
-        <div className="relative z-20 h-[1000px]">
-          <div className="absolute top-[200px] left-1/2 -translate-x-1/2 w-full max-w-[1200px] px-4 sm:px-6 z-10 h-[760px] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-            <div className="relative bg-[#151c16]/80 border border-dashed border-[#E6E3D3]/20 rounded-2xl p-8 shadow-[0_10px_40px_rgba(215,191,117,0.06)]">
-              <div className="animate-pulse space-y-6">
-                <div className="h-24 bg-[#0f1511] rounded-xl border border-[#D0B284]/10" />
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="h-64 bg-[#0f1511] rounded-xl border border-[#D0B284]/10" />
-                  <div className="md:col-span-2 h-64 bg-[#0f1511] rounded-xl border border-[#D0B284]/10" />
-                </div>
-              </div>
-            </div>
-            <div className="h-24" />
-          </div>
-        </div>
-        <div className="relative z-50">
-          <Footer />
-        </div>
+      <div className="min-h-screen bg-[#151c16]">
+        <PageLoader />
       </div>
     );
   }
@@ -176,7 +137,6 @@ export default function ProfilePage() {
             <div className="-mt-8 -mx-8 mb-8">
               <div className="p-8 pb-0">
                 <SubmissionStatusNotifications />
-                <TokenCreationNotifications />
               </div>
             </div>
 
