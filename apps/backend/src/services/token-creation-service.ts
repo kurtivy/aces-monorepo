@@ -121,6 +121,22 @@ export class TokenCreationService {
         },
       });
 
+      // Create notification for user about submission received
+      try {
+        const userTemplate = NotificationTemplates[NotificationType.TOKEN_PARAMETERS_SUBMITTED];
+        await this.notificationService.createNotification({
+          userId: userId,
+          listingId: listingId,
+          type: NotificationType.TOKEN_PARAMETERS_SUBMITTED,
+          title: userTemplate.title,
+          message: userTemplate.message,
+          actionUrl: userTemplate.getActionUrl(),
+        });
+      } catch (notificationError) {
+        console.error('Error creating user token submission notification:', notificationError);
+        // Don't fail the submission if notification fails
+      }
+
       // Create notification for admins about token review needed
       try {
         const adminUsers = await this.prisma.user.findMany({

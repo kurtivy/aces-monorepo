@@ -38,6 +38,9 @@ export enum NotificationType {
   VERIFICATION_APPROVED = 'VERIFICATION_APPROVED',
   VERIFICATION_REJECTED = 'VERIFICATION_REJECTED',
 
+  // Token creation notifications
+  TOKEN_PARAMETERS_SUBMITTED = 'TOKEN_PARAMETERS_SUBMITTED',
+
   // Bidding notifications
   NEW_BID_RECEIVED = 'NEW_BID_RECEIVED',
   BID_ACCEPTED = 'BID_ACCEPTED',
@@ -309,6 +312,12 @@ export const NotificationTemplates = {
     message:
       'Congratulations! Your token has been successfully minted and is now live for trading.',
     getActionUrl: (symbol: string) => `/rwa/${symbol}`,
+  },
+  [NotificationType.TOKEN_PARAMETERS_SUBMITTED]: {
+    title: 'Token Parameters Under Review',
+    message:
+      "Your token creation request has been submitted and is being reviewed by our team. You'll be notified once the parameters are approved.",
+    getActionUrl: () => '/profile',
   },
   [NotificationType.ADMIN_MESSAGE]: {
     title: 'Message from Admin',
