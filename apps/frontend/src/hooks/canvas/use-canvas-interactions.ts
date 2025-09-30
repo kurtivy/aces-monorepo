@@ -368,7 +368,13 @@ export const useCanvasInteractions = ({
           featuredAreaHeight,
         )
       ) {
-        onFeaturedImageClick?.(featuredImage);
+        // Navigate to RWA page if symbol exists, otherwise fall back to modal
+        const symbol = featuredImage.metadata.symbol;
+        if (symbol) {
+          window.location.href = `/rwa/${symbol}`;
+        } else {
+          onFeaturedImageClick?.(featuredImage);
+        }
         return;
       }
 
