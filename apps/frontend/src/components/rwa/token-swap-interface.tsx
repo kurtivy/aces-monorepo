@@ -71,7 +71,8 @@ export default function TokenSwapInterface({
 
   // Get contract addresses for current chain
   const getCurrentContractAddresses = () => {
-    return getContractAddresses(currentChainId || 8453); // Default to mainnet
+    // Default to Base Sepolia (84532) for development
+    return getContractAddresses(currentChainId || 84532);
   };
 
   // Update chain ID when wallet connects or changes
@@ -124,6 +125,7 @@ export default function TokenSwapInterface({
   const [showSlippageDropdown, setShowSlippageDropdown] = useState(false);
   const [loading, setLoading] = useState<string>('');
   const [networkError, setNetworkError] = useState<string | null>(null);
+  const [unsupportedNetwork, setUnsupportedNetwork] = useState<boolean>(false);
 
   const [copied, setCopied] = useState(false);
 
@@ -307,6 +309,28 @@ export default function TokenSwapInterface({
             return;
           }
 
+          // Get the current chain ID first
+          const chainId = await getCurrentChainId();
+          console.log('Current chain ID:', chainId);
+
+          // Validate addresses for this network
+          const addresses = getContractAddresses(chainId || 84532);
+
+          // Check if factory and ACES token are configured
+          if (!addresses.FACTORY_PROXY || !addresses.ACES_TOKEN) {
+            console.error(`❌ Contract addresses not configured for chain ID ${chainId}`);
+            setUnsupportedNetwork(true);
+
+            const errorMessage =
+              chainId === 8453
+                ? 'Base Mainnet factory contracts not deployed yet. Currently only available on Base Sepolia testnet.'
+                : 'Network not supported. Please switch to Base Sepolia (testnet) or Base Mainnet.';
+
+            setNetworkError(errorMessage);
+            return;
+          }
+
+          setUnsupportedNetwork(false);
           console.log('Auto-initializing provider from auth...');
           const newProvider = new ethers.providers.Web3Provider(window.ethereum);
           const newSigner = newProvider.getSigner();
@@ -314,17 +338,22 @@ export default function TokenSwapInterface({
           setProvider(newProvider);
           setSigner(newSigner);
 
-          const addresses = getCurrentContractAddresses();
           const factory = new ethers.Contract(addresses.FACTORY_PROXY, ACES_FACTORY_ABI, newSigner);
           setFactoryContract(factory);
 
-          const acesAddress = addresses.ACES_TOKEN;
-          const aces = new ethers.Contract(acesAddress, ERC20_ABI, newSigner);
+          const aces = new ethers.Contract(addresses.ACES_TOKEN, ERC20_ABI, newSigner);
           setAcesContract(aces);
 
-          console.log('Auto-initialization complete');
+          console.log('Auto-initialization complete', {
+            chainId,
+            factoryProxy: addresses.FACTORY_PROXY,
+            acesToken: addresses.ACES_TOKEN,
+          });
         } catch (error) {
           console.error('Failed to initialize from auth:', error);
+          setNetworkError(
+            'Failed to initialize wallet connection. Please try refreshing the page.',
+          );
         }
       } else if (!isAuthenticated || !walletAddress) {
         // Clean up when disconnected
@@ -337,6 +366,7 @@ export default function TokenSwapInterface({
         setTokenBalance('0');
         setPriceQuote('0');
         setSellPriceQuote('0');
+        setUnsupportedNetwork(false);
       }
     };
 
@@ -647,15 +677,37 @@ export default function TokenSwapInterface({
 
         {/* Network Error Banner */}
         {networkError && (
-          <div className="mb-4 p-3 bg-orange-900/50 border border-orange-600/50 rounded-lg">
+          <div
+            className={`mb-4 p-3 border rounded-lg ${
+              unsupportedNetwork
+                ? 'bg-red-900/50 border-red-600/50'
+                : 'bg-orange-900/50 border-orange-600/50'
+            }`}
+          >
             <div className="flex items-center justify-between">
-              <div className="flex items-center text-orange-200 text-sm">
-                <span className="mr-2">⚠️</span>
-                {networkError}
+              <div
+                className={`flex items-center text-sm ${
+                  unsupportedNetwork ? 'text-red-200' : 'text-orange-200'
+                }`}
+              >
+                <span className="mr-2">{unsupportedNetwork ? '🚫' : '⚠️'}</span>
+                <div>
+                  <div className="font-semibold mb-1">
+                    {unsupportedNetwork ? 'Unsupported Network' : 'Network Issue'}
+                  </div>
+                  <div className="text-xs">{networkError}</div>
+                </div>
               </div>
               <button
-                onClick={() => setNetworkError(null)}
-                className="text-orange-200 hover:text-orange-100 text-sm underline"
+                onClick={() => {
+                  setNetworkError(null);
+                  setUnsupportedNetwork(false);
+                }}
+                className={`text-sm underline ${
+                  unsupportedNetwork
+                    ? 'text-red-200 hover:text-red-100'
+                    : 'text-orange-200 hover:text-orange-100'
+                }`}
               >
                 Dismiss
               </button>
