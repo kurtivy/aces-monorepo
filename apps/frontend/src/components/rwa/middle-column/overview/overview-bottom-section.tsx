@@ -25,7 +25,7 @@ export default function OverviewBottomSection({
   const [isBonded, setIsBonded] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const { contractState, fetchTokenInfo, isReady } = useAcesFactoryContract(84532);
+  const { contractState, fetchTokenInfo, isReady } = useAcesFactoryContract();
 
   // Fetch bonding progress when tokenAddress is provided
   useEffect(() => {

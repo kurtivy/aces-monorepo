@@ -109,7 +109,7 @@ export function LaunchTab() {
     isWalletConnected,
     factoryContract: hookFactoryContract,
     signer: hookSigner,
-  } = useAcesFactoryContract(currentChainId);
+  } = useAcesFactoryContract();
 
   // Token creation state with new tokensBondedAt field
   const [createForm, setCreateForm] = useState({
@@ -1008,9 +1008,10 @@ export function LaunchTab() {
             <p>• tokenImplementation: {tokenImplementation ? '✅ Loaded' : '❌ Not loaded'}</p>
             <p>• ACES Balance: {acesBalance} ACES</p>
             <p>• ACES Token Address: {contractAddresses.ACES_TOKEN}</p>
-            {currentChainId !== 11155111 && (
+            {currentChainId !== 84532 && currentChainId !== 8453 && (
               <p className="text-yellow-400">
-                ⚠️ Warning: Expected Sepolia (11155111), got {currentChainId}
+                ⚠️ Warning: Expected Base Mainnet (8453) or Base Sepolia (84532), got{' '}
+                {currentChainId}
               </p>
             )}
             <p>

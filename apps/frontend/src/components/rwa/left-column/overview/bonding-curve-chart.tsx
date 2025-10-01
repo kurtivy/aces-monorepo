@@ -110,7 +110,7 @@ export default function BondingCurveChart({
     fetchTokenInfo,
     isReady,
     isReadOnly,
-  } = useAcesFactoryContract(84532); // Base Sepolia
+  } = useAcesFactoryContract();
 
   // Get current supply and bonding threshold
   const currentTokensSold = contractState.tokenInfo
