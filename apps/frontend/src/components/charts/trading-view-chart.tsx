@@ -76,6 +76,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({
           'use_localstorage_for_settings',
           'volume_force_overlay',
           'create_volume_indicator_by_default_once',
+          'header_saveload',
         ],
         enabled_features: [
           'study_templates',
@@ -97,7 +98,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({
         fullscreen: false,
         autosize: true,
         symbol: tokenSymbol,
-        interval: '60', // Default to 1 hour
+        interval: '15', // Default to 15 minutes
         datafeed: datafeed,
         theme: 'dark',
         style: '1', // Candlestick style
@@ -156,9 +157,6 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({
 
       widgetRef.current.onChartReady(() => {
         console.log('TradingView chart ready for', tokenAddress);
-
-        // Add volume indicator by default
-        widgetRef.current.chart().createStudy('Volume', false, false, [5]);
 
         // Add popular technical indicators
         // Uncomment these if you want default indicators

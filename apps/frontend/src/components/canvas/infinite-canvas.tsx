@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { useRouter } from 'next/navigation';
+// import { useRouter } from 'next/navigation';
 import type { ImageInfo } from '../../types/canvas';
 import { useImageLoader } from '../../hooks/canvas/use-image-loader';
 import { useViewState } from '../../hooks/canvas/use-view-state';
@@ -10,7 +10,7 @@ import { useCanvasRenderer } from '../../hooks/canvas/use-canvas-renderer';
 import { useCanvasInteractions } from '../../hooks/canvas/use-canvas-interactions';
 import { useCoordinatedResize } from '../../hooks/use-coordinated-resize';
 import ConnectWalletNav from '../ui/custom/connect-wallet-nav';
-import NavMenu from '../ui/custom/nav-menu';
+// import NavMenu from '../ui/custom/nav-menu';
 import HomeButton from '../ui/custom/home-button';
 import ContactButton from '../ui/custom/contact-button';
 import UnifiedInfoPill from '../ui/custom/unified-info-pill';
@@ -26,7 +26,7 @@ import {
   setScrollRestoration,
   getScrollRestoration,
 } from '../../lib/utils/browser-utils';
-import { useDeviceCapabilities, useInfiniteCanvasSettings } from '../../contexts/device-provider';
+import { useDeviceCapabilities } from '../../contexts/device-provider';
 import {
   addEventListenerSafe,
   removeEventListenerSafe,
@@ -47,7 +47,7 @@ const InfiniteCanvas = ({
   featuredImageId = '7', // Default to KAWS watch (Audemars Piguet Royal Oak Concept KAWS)
   onFeaturedImageClick,
 }: InfiniteCanvasProps = {}) => {
-  const router = useRouter();
+  // const router = useRouter();
   const [selectedImage, setSelectedImage] = useState<ImageInfo | null>(null);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   // Calendar icon modal state
@@ -71,7 +71,7 @@ const InfiniteCanvas = ({
 
   // Week 3: Use enhanced capability system
   const { configuration, isReady: capabilitiesReady } = useDeviceCapabilities();
-  const canvasSettings = useInfiniteCanvasSettings();
+  // const canvasSettings = useInfiniteCanvasSettings();
 
   const imagePlacementMapRef = useRef(
     new Map<string, { image: ImageInfo; x: number; y: number; width: number; height: number }>(),
@@ -111,7 +111,7 @@ const InfiniteCanvas = ({
     canvasReady,
     repeatedPlacements,
     repeatedTokens,
-    handleMomentumUpdate,
+    // handleMomentumUpdate,
     featuredImage, // FEATURED SECTION: Add featured image return value
   } = useCanvasRenderer({
     images,
