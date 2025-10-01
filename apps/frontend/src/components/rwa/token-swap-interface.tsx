@@ -308,18 +308,18 @@ export default function TokenSwapInterface({
           }
 
           console.log('Auto-initializing provider from auth...');
-          const provider = new ethers.providers.Web3Provider(window.ethereum);
-          const signer = provider.getSigner();
+          const newProvider = new ethers.providers.Web3Provider(window.ethereum);
+          const newSigner = newProvider.getSigner();
 
-          setProvider(provider);
-          setSigner(signer);
+          setProvider(newProvider);
+          setSigner(newSigner);
 
           const addresses = getCurrentContractAddresses();
-          const factory = new ethers.Contract(addresses.FACTORY_PROXY, ACES_FACTORY_ABI, signer);
+          const factory = new ethers.Contract(addresses.FACTORY_PROXY, ACES_FACTORY_ABI, newSigner);
           setFactoryContract(factory);
 
           const acesAddress = addresses.ACES_TOKEN;
-          const aces = new ethers.Contract(acesAddress, ERC20_ABI, signer);
+          const aces = new ethers.Contract(acesAddress, ERC20_ABI, newSigner);
           setAcesContract(aces);
 
           console.log('Auto-initialization complete');
@@ -341,7 +341,8 @@ export default function TokenSwapInterface({
     };
 
     initializeFromAuth();
-  }, [isAuthenticated, walletAddress, provider, currentChainId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, walletAddress, currentChainId]); // ✅ Removed provider from deps to prevent loop
 
   // Refresh balances only when properly connected
   useEffect(() => {
