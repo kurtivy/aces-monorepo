@@ -102,7 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         privyDid: privyUser?.id || '',
         walletAddress: privyUser?.wallet?.address || undefined,
         email: privyUser?.email?.address || undefined,
-        displayName: privyUser?.email?.address?.split('@')[0] || 'User',
+        username: privyUser?.email?.address?.split('@')[0] || undefined,
       };
 
       const result = await ProfileApi.verifyOrCreateUser(userVerificationRequest, token);
@@ -137,7 +137,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isActive: true,
         firstName: null,
         lastName: null,
-        displayName: privyUser?.email?.address?.split('@')[0] || 'User',
+        username:
+          privyUser?.email?.address?.split('@')[0] ||
+          privyUser?.wallet?.address?.slice(2, 9).toUpperCase() ||
+          null,
         avatar: null,
         bio: null,
         website: null,

@@ -5,6 +5,7 @@ export interface NotificationData {
   id: string;
   userId: string;
   listingId?: string;
+  submissionId?: string;
   type: string;
   title: string;
   message: string;
@@ -21,6 +22,14 @@ export interface NotificationData {
     id: string;
     title: string;
     symbol: string;
+  } | null;
+  submission?: {
+    id: string;
+    title: string;
+    symbol: string;
+    status: string;
+    rejectionReason: string | null;
+    imageGallery: string[];
   } | null;
 }
 

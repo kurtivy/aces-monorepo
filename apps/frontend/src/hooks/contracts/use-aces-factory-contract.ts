@@ -43,10 +43,6 @@ export function useAcesFactoryContract(chainId: number = 84532) {
     error: null,
   });
 
-  // Rate limiting state
-  const [lastRequestTime, setLastRequestTime] = useState(0);
-  const REQUEST_COOLDOWN = 5000; // 5 seconds between requests during circuit breaker
-
   const [provider, setProvider] = useState<ethers.providers.Web3Provider | null>(null);
   const [readOnlyProvider, setReadOnlyProvider] = useState<ethers.providers.JsonRpcProvider | null>(
     null,
@@ -208,18 +204,6 @@ export function useAcesFactoryContract(chainId: number = 84532) {
         return null;
       }
 
-      // Rate limiting to prevent overwhelming RPC during circuit breaker
-      const now = Date.now();
-      if (
-        !bypassRateLimit &&
-        now - lastRequestTime < REQUEST_COOLDOWN &&
-        contractState.error?.includes('circuit breaker')
-      ) {
-        console.log('Rate limiting active - skipping request');
-        return null;
-      }
-
-      setLastRequestTime(now);
       setContractState((prev) => ({ ...prev, loading: true, error: null }));
 
       try {
@@ -270,15 +254,7 @@ export function useAcesFactoryContract(chainId: number = 84532) {
         return null;
       }
     },
-    [
-      factoryContract,
-      readOnlyFactoryContract,
-      provider,
-      readOnlyProvider,
-      lastRequestTime,
-      contractState.error,
-      REQUEST_COOLDOWN,
-    ],
+    [factoryContract, readOnlyFactoryContract, provider, readOnlyProvider],
   );
 
   // Replace calculatePriceAtSupply - uses read-only contract if wallet not connected
@@ -306,6 +282,11 @@ export function useAcesFactoryContract(chainId: number = 84532) {
         // supplyPoint is in wei, convert to whole tokens
         const supplyInWholeTokens = Math.floor(supplyPoint / 1e18);
         const amount = 1;
+
+        // Special case: when supply is 0, return the floor price
+        if (supplyInWholeTokens === 0) {
+          return parseFloat(ethers.utils.formatEther(floor));
+        }
 
         let priceWei: ethers.BigNumber;
 

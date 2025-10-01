@@ -161,8 +161,10 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       }
 
       try {
+        // Request last 5 minutes of data to ensure we get the current candle
+        const fiveMinutesAgo = Math.floor((Date.now() - 5 * 60 * 1000) / 1000);
         const response = await fetch(
-          `/api/v1/tokens/${subscription.tokenAddress}/live?timeframe=${subscription.timeframe}&since=${Math.floor((Date.now() - 60000) / 1000)}`,
+          `/api/v1/tokens/${subscription.tokenAddress}/live?timeframe=${subscription.timeframe}&since=${fiveMinutesAgo}`,
         );
 
         if (!response.ok) {
@@ -172,8 +174,9 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
         const data = await response.json();
 
         if (data.success && data.data.candles.length > 0) {
-          const latestCandle = data.data.candles[data.data.candles.length - 1];
-          const volumeEntry = data.data.volume?.find((v: any) => v.time === latestCandle.time);
+          const latestIndex = data.data.candles.length - 1;
+          const latestCandle = data.data.candles[latestIndex];
+          const volumeEntry = data.data.volume?.[latestIndex];
 
           const bar: Bar = {
             time: latestCandle.time * 1000, // TradingView expects milliseconds
@@ -183,6 +186,12 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
             close: latestCandle.close,
             volume: volumeEntry?.value || 0,
           };
+
+          console.log(`[TradingView] Real-time update:`, {
+            time: new Date(bar.time).toISOString(),
+            price: bar.close,
+            volume: bar.volume,
+          });
 
           subscription.onRealtimeCallback(bar);
         }
@@ -242,41 +251,146 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     const timeframe = this.resolutionToTimeframe(resolution);
 
     console.log(
-      `[TradingView] Fetching historical data: ${this.tokenAddress} ${timeframe} from ${from} to ${to}`,
+      `[TradingView] Fetching historical data: ${this.tokenAddress} ${timeframe}`,
+      `from: ${new Date(from * 1000).toISOString()}, to: ${new Date(to * 1000).toISOString()}`,
     );
 
+    // Use 'live' mode to force fresh data generation with actual trades
+    // This ensures we get real OHLC variations instead of empty candles
     const response = await fetch(
-      `/api/v1/tokens/${this.tokenAddress}/chart?timeframe=${timeframe}&mode=hybrid&limit=1000`,
+      `/api/v1/tokens/${this.tokenAddress}/chart?timeframe=${timeframe}&mode=live&limit=5000`,
     );
 
     if (!response.ok) {
-      throw new Error(`API request failed: ${response.status}`);
+      // Try to get error details from response
+      let errorDetails = `API request failed: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        console.error('[TradingView] Backend Error:', errorData);
+        errorDetails = errorData.message || errorData.error || errorDetails;
+      } catch (e) {
+        // Response wasn't JSON, use status text
+        console.error('[TradingView] Non-JSON error response');
+      }
+      throw new Error(errorDetails);
     }
 
     const data = await response.json();
 
     if (!data.success) {
-      throw new Error(data.error || 'API returned error');
+      console.error('[TradingView] API Error Response:', data);
+      throw new Error(data.error || data.message || 'API returned error');
     }
 
-    // Filter data by time range and convert to TradingView format
-    const bars = data.data.candles
-      .filter((candle: any) => candle.time >= from && candle.time <= to)
-      .map((candle: any, index: number) => {
-        const volumeEntry = data.data.volume?.[index];
+    // Convert to TradingView format with proper volume mapping
+    const allBars: Bar[] = [];
 
-        return {
+    console.log(
+      `[TradingView] Backend returned ${data.data.candles.length} candles for ${timeframe}`,
+    );
+
+    for (let i = 0; i < data.data.candles.length; i++) {
+      const candle = data.data.candles[i];
+      const volumeEntry = data.data.volume?.[i];
+
+      // Filter by time range (TradingView sends timestamps in seconds, our data is also in seconds)
+      if (candle.time >= from && candle.time <= to) {
+        // Validate OHLC data
+        const bar: Bar = {
           time: candle.time * 1000, // TradingView expects milliseconds
-          open: candle.open,
-          high: candle.high,
-          low: candle.low,
-          close: candle.close,
-          volume: volumeEntry?.value || 0,
+          open: Number(candle.open) || 0,
+          high: Number(candle.high) || 0,
+          low: Number(candle.low) || 0,
+          close: Number(candle.close) || 0,
+          volume: volumeEntry?.value ? Number(volumeEntry.value) : 0,
         };
-      });
 
-    console.log(`[TradingView] Fetched ${bars.length} bars for ${timeframe}`);
-    return bars;
+        // Skip invalid bars (all zeros or invalid values)
+        if (bar.open > 0 || bar.high > 0 || bar.low > 0 || bar.close > 0) {
+          allBars.push(bar);
+        }
+      }
+    }
+
+    console.log(
+      `[TradingView] After filtering: ${allBars.length} bars match time range [${from} - ${to}]`,
+    );
+
+    // Sort bars in ascending time order (TradingView requirement)
+    allBars.sort((a, b) => a.time - b.time);
+
+    // DEBUG: Show sample of bars being returned
+    if (allBars.length > 0) {
+      console.log('[TradingView] First bar:', allBars[0]);
+      console.log('[TradingView] Last bar:', allBars[allBars.length - 1]);
+      console.log('[TradingView] Sample bars:', allBars.slice(0, 3));
+
+      // Check for empty candles (where open=high=low=close)
+      const emptyCandles = allBars.filter(
+        (b) => b.open === b.high && b.high === b.low && b.low === b.close,
+      );
+      const candlesWithTrades = allBars.length - emptyCandles.length;
+
+      console.log(
+        `[TradingView] Candle analysis: ${candlesWithTrades} with trades, ${emptyCandles.length} empty (${Math.round((emptyCandles.length / allBars.length) * 100)}% empty)`,
+      );
+
+      if (emptyCandles.length === allBars.length) {
+        console.error(
+          '[TradingView] ⚠️  ALL CANDLES ARE EMPTY - No trades found! This will display as flat lines, not candlesticks.',
+        );
+      }
+
+      // Check for duplicate times
+      const times = allBars.map((b) => b.time);
+      const uniqueTimes = new Set(times);
+      if (times.length !== uniqueTimes.size) {
+        console.warn('[TradingView] WARNING: Duplicate timestamps detected!');
+      }
+    }
+
+    // If no data found, try forcing generation from subgraph
+    if (allBars.length === 0) {
+      console.warn(`[TradingView] No cached data for ${timeframe}, attempting fresh generation`);
+
+      try {
+        // This will trigger backend to generate and store fresh candles
+        await fetch(
+          `/api/v1/tokens/${this.tokenAddress}/live?timeframe=${timeframe}&since=${from}`,
+        );
+
+        // Brief delay to allow backend to store data
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+
+        // Retry the request
+        const retryResponse = await fetch(
+          `/api/v1/tokens/${this.tokenAddress}/chart?timeframe=${timeframe}&mode=hybrid&limit=5000`,
+        );
+
+        if (retryResponse.ok) {
+          const retryData = await retryResponse.json();
+
+          if (retryData.success && retryData.data.candles.length > 0) {
+            console.log(`[TradingView] Retry successful: ${retryData.data.candles.length} candles`);
+
+            return retryData.data.candles
+              .filter((candle: any) => candle.time >= from && candle.time <= to)
+              .map((candle: any, index: number) => ({
+                time: candle.time * 1000,
+                open: candle.open,
+                high: candle.high,
+                low: candle.low,
+                close: candle.close,
+                volume: retryData.data.volume?.[index]?.value || 0,
+              }));
+          }
+        }
+      } catch (retryError) {
+        console.error('[TradingView] Retry failed:', retryError);
+      }
+    }
+
+    return allBars;
   }
 
   private resolutionToTimeframe(resolution: ResolutionString): string {

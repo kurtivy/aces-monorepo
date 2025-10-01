@@ -7,7 +7,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ||
 
 export interface SellerData {
   id: string;
-  displayName: string | null;
+  username: string | null;
   email: string | null;
   walletAddress: string | null;
   sellerStatus: 'PENDING' | 'APPROVED' | 'REJECTED';

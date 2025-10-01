@@ -23,7 +23,7 @@ export interface ListingData {
   ownerId: string;
   owner?: {
     id: string;
-    displayName: string | null;
+    username: string | null;
     avatar: string | null;
     walletAddress: string | null;
     accountVerification?: {
@@ -45,7 +45,7 @@ export interface ListingData {
     createdAt: string;
     bidder: {
       id: string;
-      displayName: string | null;
+      username: string | null;
       avatar: string | null;
     };
   }>;

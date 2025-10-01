@@ -15,13 +15,13 @@ export const CONTRACT_ADDRESSES = {
   baseSepolia: {
     ACES_TOKEN:
       process.env.NEXT_PUBLIC_ACES_TOKEN_ADDRESS_BASE_SEPOLIA ||
-      '0xD1F6A3FfaED369406A1E85e2231EcBC406B1A1fF', // Base Sepolia ACES token
+      '0xF6b0c828ee8098120AFa90CEb11f80e6Fd4e2F1e', // Base Sepolia ACES token (UPDATED)
     FACTORY_IMPLEMENTATION:
       process.env.NEXT_PUBLIC_FACTORY_ADDRESS_BASE_SEPOLIA ||
-      '0xF0Dd3D1430A86Ebbb08d7587bA0a4AC184383e25', // Base Sepolia factory implementation
+      '0xEC8556468B88A4422c786c4acBA61f556Eb592A4', // Base Sepolia factory implementation (UPDATED)
     FACTORY_PROXY:
       process.env.NEXT_PUBLIC_PROXY_ADDRESS_BASE_SEPOLIA ||
-      '0xF19683a6772aB7EeE79d25Fca83ea662c8c5FEA0', // Base Sepolia factory proxy
+      '0x7e224ae4e6235bF18BBcb79cc2B5d04a7a6F8d1D', // Base Sepolia factory proxy (UPDATED)
   },
   // Add mainnet addresses when ready
   mainnet: {

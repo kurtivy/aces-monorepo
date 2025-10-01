@@ -17,7 +17,7 @@ export interface UserProfile {
   isActive: boolean;
   firstName: string | null;
   lastName: string | null;
-  displayName: string | null;
+  username: string | null;
   avatar: string | null;
   bio: string | null;
   website: string | null;
@@ -33,7 +33,8 @@ export interface UserProfile {
 }
 
 export interface ProfileUpdateRequest {
-  displayName?: string | null;
+  email?: string | null;
+  username?: string | null;
   bio?: string | null;
   website?: string | null;
   twitterHandle?: string | null;
@@ -46,7 +47,7 @@ export interface UserVerificationRequest {
   privyDid: string;
   walletAddress?: string;
   email?: string;
-  displayName?: string;
+  username?: string;
 }
 
 export interface UserVerificationResponse {
