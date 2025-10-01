@@ -255,6 +255,19 @@ export async function tokensRoutes(fastify: FastifyInstance) {
           sinceTimestamp,
         );
 
+        // NEW: Persist live candles immediately so they're available for future requests
+        if (liveCandles && liveCandles.length > 0) {
+          try {
+            await ohlcvService.storeCandlesPublic(address, timeframe, liveCandles);
+            console.log(
+              `[API /live] Persisted ${liveCandles.length} live candles for ${address} ${timeframe}`,
+            );
+          } catch (storeError) {
+            console.warn('[API /live] Failed to persist live candles:', storeError);
+            // Continue anyway - live data is still returned to client
+          }
+        }
+
         if (!liveCandles || liveCandles.length === 0) {
           return reply.send({
             success: true,
@@ -358,9 +371,10 @@ export async function tokensRoutes(fastify: FastifyInstance) {
         let dataSource = 'unknown';
 
         if (mode === 'live') {
-          // Force live data only
+          // Force live data only - skip storage for speed
           const liveCandles = await ohlcvService.generateOHLCVCandles(address, timeframe, {
             forceRefresh: true,
+            skipStorage: true, // Don't block response with slow database writes
           });
 
           chartData = liveCandles.slice(-limit).map((candle) => ({

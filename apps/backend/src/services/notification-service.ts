@@ -6,6 +6,7 @@ type UserNotification = {
   id: string;
   userId: string;
   listingId: string | null;
+  submissionId: string | null;
   type: string;
   title: string;
   message: string;
@@ -18,6 +19,7 @@ type UserNotification = {
 export interface CreateNotificationData {
   userId: string;
   listingId?: string;
+  submissionId?: string;
   type: NotificationType;
   title: string;
   message: string;
@@ -38,6 +40,10 @@ export enum NotificationType {
   VERIFICATION_APPROVED = 'VERIFICATION_APPROVED',
   VERIFICATION_REJECTED = 'VERIFICATION_REJECTED',
 
+  // Submission notifications
+  SUBMISSION_APPROVED = 'SUBMISSION_APPROVED',
+  SUBMISSION_REJECTED = 'SUBMISSION_REJECTED',
+
   // Token creation notifications
   TOKEN_PARAMETERS_SUBMITTED = 'TOKEN_PARAMETERS_SUBMITTED',
 
@@ -57,6 +63,7 @@ export interface NotificationWithRelations {
   id: string;
   userId: string;
   listingId: string | null;
+  submissionId: string | null;
   type: string;
   title: string;
   message: string;
@@ -73,6 +80,14 @@ export interface NotificationWithRelations {
     id: string;
     title: string;
     symbol: string;
+  } | null;
+  submission?: {
+    id: string;
+    title: string;
+    symbol: string;
+    status: string;
+    rejectionReason: string | null;
+    imageGallery: string[];
   } | null;
 }
 
@@ -107,10 +122,22 @@ export class NotificationService {
         }
       }
 
+      // Validate submission exists if provided
+      if (data.submissionId) {
+        const submission = await this.prisma.submission.findUnique({
+          where: { id: data.submissionId },
+        });
+
+        if (!submission) {
+          throw errors.notFound('Submission not found');
+        }
+      }
+
       const notification = await (this.prisma as any).userNotification.create({
         data: {
           userId: data.userId,
           listingId: data.listingId,
+          submissionId: data.submissionId,
           type: data.type,
           title: data.title,
           message: data.message,
@@ -162,6 +189,16 @@ export class NotificationService {
               id: true,
               title: true,
               symbol: true,
+            },
+          },
+          submission: {
+            select: {
+              id: true,
+              title: true,
+              symbol: true,
+              status: true,
+              rejectionReason: true,
+              imageGallery: true,
             },
           },
         },
@@ -347,6 +384,18 @@ export const NotificationTemplates = {
     title: 'Verification Rejected',
     message:
       'Your verification was rejected. Please review the requirements and resubmit with correct information.',
+    getActionUrl: () => '/profile',
+  },
+
+  // Submission notifications
+  [NotificationType.SUBMISSION_APPROVED]: {
+    title: 'Submission Approved!',
+    message: 'Great news! Your asset submission has been approved.',
+    getActionUrl: () => '/profile',
+  },
+  [NotificationType.SUBMISSION_REJECTED]: {
+    title: 'Submission Rejected',
+    message: 'Your asset submission has been reviewed and rejected.',
     getActionUrl: () => '/profile',
   },
 

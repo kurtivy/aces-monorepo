@@ -7,9 +7,10 @@ import { UsersService } from '../../services/users-service';
 import { requireAuth } from '../../lib/auth-middleware';
 import { errors } from '../../lib/errors';
 
-// Step 1: Simple validation schema (only email updates allowed)
+// Validation schema for profile updates (email and username)
 const UserProfileUpdateSchema = z.object({
   email: z.string().email().optional(),
+  username: z.string().min(1).max(50).optional(),
 });
 
 export async function usersRoutes(fastify: FastifyInstance) {
@@ -28,15 +29,17 @@ export async function usersRoutes(fastify: FastifyInstance) {
             privyDid: z.string().min(1),
             walletAddress: z.string().optional(),
             email: z.string().email().optional(),
+            username: z.string().optional(),
           }),
         ),
       },
     },
     async (request, reply) => {
-      const { privyDid, walletAddress, email } = request.body as {
+      const { privyDid, walletAddress, email, username } = request.body as {
         privyDid: string;
         walletAddress?: string;
         email?: string;
+        username?: string;
       };
       const correlationId = request.id;
 
@@ -73,6 +76,7 @@ export async function usersRoutes(fastify: FastifyInstance) {
               privyDid,
               walletAddress: walletAddress || null,
               email: email || null,
+              username: username || null,
               role: 'TRADER',
               isActive: true,
             },
@@ -88,6 +92,9 @@ export async function usersRoutes(fastify: FastifyInstance) {
           }
           if (email && user.email !== email) {
             updates.email = email;
+          }
+          if (username && user.username !== username) {
+            updates.username = username;
           }
 
           if (Object.keys(updates).length > 0) {
@@ -148,7 +155,7 @@ export async function usersRoutes(fastify: FastifyInstance) {
   );
 
   /**
-   * Update current user's profile (email only for Step 1)
+   * Update current user's profile (email and username)
    */
   fastify.put(
     '/me',

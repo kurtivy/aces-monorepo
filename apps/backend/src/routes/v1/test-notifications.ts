@@ -84,7 +84,9 @@ export async function testNotificationRoutes(fastify: FastifyInstance) {
             switch (type) {
               case NotificationType.LISTING_APPROVED:
               case NotificationType.READY_TO_MINT:
-                actionUrl = (template.getActionUrl as (listingId: string) => string)(body.listingId || 'test-listing-id');
+                actionUrl = (template.getActionUrl as (listingId: string) => string)(
+                  body.listingId || 'test-listing-id',
+                );
                 break;
               case NotificationType.TOKEN_MINTED:
                 actionUrl = (template.getActionUrl as (symbol: string) => string)('TEST');
@@ -153,14 +155,15 @@ export async function testNotificationRoutes(fastify: FastifyInstance) {
         for (const type of userNotificationTypes) {
           try {
             const template = NotificationTemplates[type];
-            
             // Generate action URL based on notification type
             let actionUrl;
             try {
               switch (type) {
                 case NotificationType.LISTING_APPROVED:
                 case NotificationType.READY_TO_MINT:
-                  actionUrl = (template.getActionUrl as (listingId: string) => string)('test-listing-id');
+                  actionUrl = (template.getActionUrl as (listingId: string) => string)(
+                    'test-listing-id',
+                  );
                   break;
                 case NotificationType.TOKEN_MINTED:
                   actionUrl = (template.getActionUrl as (symbol: string) => string)('TEST');
@@ -172,7 +175,6 @@ export async function testNotificationRoutes(fastify: FastifyInstance) {
             } catch (error) {
               actionUrl = '/profile';
             }
-            
             const notification = await notificationService.createNotification({
               userId,
               type,
@@ -224,10 +226,8 @@ export async function testNotificationRoutes(fastify: FastifyInstance) {
         for (const type of adminNotificationTypes) {
           try {
             const template = NotificationTemplates[type];
-            
             // Admin notifications don't need parameters for getActionUrl
             const actionUrl = (template.getActionUrl as () => string)();
-            
             const notification = await notificationService.createNotification({
               userId,
               type,
