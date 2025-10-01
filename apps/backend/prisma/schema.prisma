@@ -13,7 +13,7 @@ model User {
   privyDid              String                @unique
   walletAddress         String?               @unique
   email                 String?               @unique
-  username              String?               @unique  // NEW: Optional username (defaults to walletAddress)
+  username              String?               @unique // NEW: Optional username (defaults to walletAddress)
   role                  UserRole              @default(TRADER)
   isActive              Boolean               @default(true)
   sellerStatus          SellerStatus          @default(NOT_APPLIED)
@@ -29,16 +29,16 @@ model User {
   submissions           Submission[]
   listings              Listing[]
   approvedListings      Listing[]             @relation("ApprovedBy")
-  
+
   // NEW: Comments system relations
-  comments              ListingComment[]      @relation("CommentAuthor")
-  commentLikes          ListingCommentLike[]
+  comments     ListingComment[]     @relation("CommentAuthor")
+  commentLikes ListingCommentLike[]
 
   // NEW: Bidding system relations
-  bids                  Bid[]                 @relation("UserBids")
+  bids Bid[] @relation("UserBids")
 
   // NEW: Notifications system relations
-  notifications         UserNotification[]
+  notifications UserNotification[]
 
   @@map("users")
 }
@@ -77,28 +77,29 @@ model AccountVerification {
 }
 
 model Submission {
-  id                       String           @id @default(cuid())
+  id                       String             @id @default(cuid())
   title                    String
   symbol                   String
   description              String
   assetType                AssetType
-  imageGallery             String[]         @default([])
+  imageGallery             String[]           @default([])
   location                 String?
   email                    String?
   proofOfOwnership         String
   proofOfOwnershipImageUrl String?
   typeOfOwnership          String
-  status                   SubmissionStatus @default(PENDING)
+  status                   SubmissionStatus   @default(PENDING)
   rejectionType            RejectionType?
   rejectionReason          String?
   ownerId                  String
   approvedBy               String?
-  createdAt                DateTime         @default(now())
-  updatedAt                DateTime         @updatedAt
+  createdAt                DateTime           @default(now())
+  updatedAt                DateTime           @updatedAt
   approvedAt               DateTime?
-  approvedByUser           User?            @relation("ApprovedBy", fields: [approvedBy], references: [id])
-  owner                    User             @relation(fields: [ownerId], references: [id])
+  approvedByUser           User?              @relation("ApprovedBy", fields: [approvedBy], references: [id])
+  owner                    User               @relation(fields: [ownerId], references: [id])
   listing                  Listing?
+  notifications            UserNotification[]
 
   @@index([status, createdAt])
   @@index([ownerId, createdAt])
@@ -106,51 +107,51 @@ model Submission {
 }
 
 model Listing {
-  id                String     @id @default(cuid())
+  id String @id @default(cuid())
 
-  title             String
-  symbol            String
-  description       String
-  assetDetails      Json?      // Array of {key: string, value: string} objects
-  assetType         AssetType
-  imageGallery      String[]   @default([])
-  location          String?
-  email             String?
+  title        String
+  symbol       String
+  description  String
+  assetDetails Json? // Array of {key: string, value: string} objects
+  assetType    AssetType
+  imageGallery String[]  @default([])
+  location     String?
+  email        String?
 
-  isLive            Boolean    @default(false)
-  launchDate        DateTime?  // When the asset will go live for sale
+  isLive     Boolean   @default(false)
+  launchDate DateTime? // When the asset will go live for sale
 
   // NEW: Bidding fields
-  startingBidPrice  String?    // Minimum bid amount (USD)
-  reservePrice      String?    // Hidden reserve price (USD)
+  startingBidPrice String? // Minimum bid amount (USD)
+  reservePrice     String? // Hidden reserve price (USD)
 
   // NEW: Token creation workflow fields
-  tokenCreationStatus    String?  @default("AWAITING_USER_DETAILS")
-  userProvidedDetails    Json?    // Additional details provided by user for token creation
-  tokenParameters        Json?    // Admin-approved token parameters (steepness, floor, etc)
+  tokenCreationStatus String? @default("AWAITING_USER_DETAILS")
+  userProvidedDetails Json? // Additional details provided by user for token creation
+  tokenParameters     Json? // Admin-approved token parameters (steepness, floor, etc)
 
-  submissionId      String     @unique
-  ownerId           String
-  approvedBy        String?
+  submissionId String  @unique
+  ownerId      String
+  approvedBy   String?
 
-  createdAt         DateTime   @default(now())
-  updatedAt         DateTime   @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  submission        Submission @relation(fields: [submissionId], references: [id])
-  owner             User       @relation(fields: [ownerId], references: [id])
-  approvedByUser    User?      @relation("ApprovedBy", fields: [approvedBy], references: [id])
+  submission     Submission @relation(fields: [submissionId], references: [id])
+  owner          User       @relation(fields: [ownerId], references: [id])
+  approvedByUser User?      @relation("ApprovedBy", fields: [approvedBy], references: [id])
 
   // NEW: Optional token link (won't break existing functionality)
-  token             Token?     @relation("ListingToken")
-  
+  token Token? @relation("ListingToken")
+
   // NEW: Comments relation
-  comments          ListingComment[]
+  comments ListingComment[]
 
   // NEW: Bids relation
-  bids              Bid[]
+  bids Bid[]
 
   // NEW: Notifications relation
-  notifications     UserNotification[]
+  notifications UserNotification[]
 
   @@index([isLive, createdAt])
   @@index([ownerId])
@@ -214,48 +215,48 @@ enum BidStatus {
 // ========== TRADING SYSTEM EXTENSION ==========
 
 model Token {
-  id                String          @id @default(cuid())
-  contractAddress   String          @unique
-  symbol            String
-  name              String
-  decimals          Int             @default(18)
-  
+  id              String @id @default(cuid())
+  contractAddress String @unique
+  symbol          String
+  name            String
+  decimals        Int    @default(18)
+
   // Financial precision - strings only
-  currentPrice      String          @default("0")
-  currentPriceACES  String          @default("0") 
-  volume24h         String          @default("0")
-  
+  currentPrice     String @default("0")
+  currentPriceACES String @default("0")
+  volume24h        String @default("0")
+
   // Basic metadata
-  phase             TokenPhase      @default(BONDING_CURVE)
-  isActive          Boolean         @default(true)
-  
+  phase    TokenPhase @default(BONDING_CURVE)
+  isActive Boolean    @default(true)
+
   // Optional link to existing listings (non-breaking)
-  listingId         String?         @unique
-  listing           Listing?        @relation("ListingToken", fields: [listingId], references: [id])
-  
+  listingId String?  @unique
+  listing   Listing? @relation("ListingToken", fields: [listingId], references: [id])
+
   // Timestamps
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([contractAddress])
   @@index([isActive])
   @@map("tokens")
 }
 
 model TokenTrade {
-  id                String    @id @default(cuid())
-  contractAddress   String    // Direct reference, no foreign key initially
-  txHash            String    @unique
-  trader            String
-  tradeType         TradeType
-  tokenAmount       String
-  acesAmount        String
-  pricePerToken     String
-  timestamp         DateTime
-  source            String    @default("SUBGRAPH")
-  
-  createdAt         DateTime  @default(now())
-  
+  id              String    @id @default(cuid())
+  contractAddress String // Direct reference, no foreign key initially
+  txHash          String    @unique
+  trader          String
+  tradeType       TradeType
+  tokenAmount     String
+  acesAmount      String
+  pricePerToken   String
+  timestamp       DateTime
+  source          String    @default("SUBGRAPH")
+
+  createdAt DateTime @default(now())
+
   @@index([contractAddress, timestamp])
   @@index([contractAddress, timestamp, tradeType])
   @@index([timestamp])
@@ -263,30 +264,30 @@ model TokenTrade {
 }
 
 model TokenPriceSnapshot {
-  id              String      @id @default(cuid())
+  id              String   @id @default(cuid())
   contractAddress String
   price           String
   volume          String?
-  timestamp       DateTime    @default(now())
-  
+  timestamp       DateTime @default(now())
+
   @@index([contractAddress, timestamp])
   @@map("token_price_snapshots")
 }
 
 model TokenOHLCV {
-  id            String    @id @default(cuid())
+  id              String   @id @default(cuid())
   contractAddress String
-  timeframe     String    // '1m', '5m', '15m', '1h', '1d'
-  timestamp     DateTime  // Start of the candle period
-  open          String    // Opening price in ACES
-  high          String    // Highest price in ACES
-  low           String    // Lowest price in ACES
-  close         String    // Closing price in ACES
-  volume        String    // Volume in ACES tokens
-  trades        Int       // Number of trades in this period
-  
-  createdAt     DateTime  @default(now())
-  
+  timeframe       String // '1m', '5m', '15m', '1h', '1d'
+  timestamp       DateTime // Start of the candle period
+  open            String // Opening price in ACES
+  high            String // Highest price in ACES
+  low             String // Lowest price in ACES
+  close           String // Closing price in ACES
+  volume          String // Volume in ACES tokens
+  trades          Int // Number of trades in this period
+
+  createdAt DateTime @default(now())
+
   @@unique([contractAddress, timeframe, timestamp])
   @@index([contractAddress, timeframe, timestamp])
   @@map("token_ohlcv")
@@ -306,27 +307,27 @@ enum TradeType {
 // ========== COMMENTS SYSTEM ==========
 
 model ListingComment {
-  id          String    @id @default(cuid())
-  content     String    // The actual comment text
-  listingId   String    // Which listing this comment belongs to
-  authorId    String    // Who wrote the comment
-  parentId    String?   // NULL for top-level comments, ID of parent for replies
-  
+  id        String  @id @default(cuid())
+  content   String // The actual comment text
+  listingId String // Which listing this comment belongs to
+  authorId  String // Who wrote the comment
+  parentId  String? // NULL for top-level comments, ID of parent for replies
+
   // Moderation fields
-  isHidden    Boolean   @default(false)
-  isFlagged   Boolean   @default(false)
+  isHidden      Boolean @default(false)
+  isFlagged     Boolean @default(false)
   reportedCount Int     @default(0)
-  
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relations
-  listing     Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
-  author      User      @relation("CommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
-  parent      ListingComment? @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
-  replies     ListingComment[] @relation("CommentReplies")
-  likes       ListingCommentLike[]
-  
+  listing Listing              @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  author  User                 @relation("CommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  parent  ListingComment?      @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies ListingComment[]     @relation("CommentReplies")
+  likes   ListingCommentLike[]
+
   @@index([listingId, createdAt])
   @@index([parentId])
   @@index([authorId])
@@ -335,16 +336,16 @@ model ListingComment {
 }
 
 model ListingCommentLike {
-  id        String   @id @default(cuid())
-  commentId String   // Which comment was liked
-  userId    String   // Who liked it
-  
+  id        String @id @default(cuid())
+  commentId String // Which comment was liked
+  userId    String // Who liked it
+
   createdAt DateTime @default(now())
-  
+
   // Relations
-  comment   ListingComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
-  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+  comment ListingComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   // Prevent duplicate likes from same user on same comment
   @@unique([commentId, userId])
   @@index([commentId])
@@ -355,32 +356,32 @@ model ListingCommentLike {
 // ========== BIDDING SYSTEM ==========
 
 model Bid {
-  id              String    @id @default(cuid())
-  amount          String    // Bid amount in USD (using string for precision)
-  message         String?   // Optional message from bidder
+  id      String  @id @default(cuid())
+  amount  String // Bid amount in USD (using string for precision)
+  message String? // Optional message from bidder
 
-  listingId       String    // Which listing this bid is for
-  bidderId        String    // Who placed the bid
+  listingId String // Which listing this bid is for
+  bidderId  String // Who placed the bid
 
-  status          BidStatus @default(PENDING)
-  expiresAt       DateTime  // Auto-set to 30 days from creation
+  status    BidStatus @default(PENDING)
+  expiresAt DateTime // Auto-set to 30 days from creation
 
   // Response from listing owner
   respondedAt     DateTime?
   responseMessage String?
 
   // Audit trail for bid updates
-  previousBidId   String?   // Reference to the bid this replaces
-  isActive        Boolean   @default(true) // Only one active bid per user per listing
+  previousBidId String? // Reference to the bid this replaces
+  isActive      Boolean @default(true) // Only one active bid per user per listing
 
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  listing         Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
-  bidder          User      @relation("UserBids", fields: [bidderId], references: [id], onDelete: Cascade)
-  previousBid     Bid?      @relation("BidHistory", fields: [previousBidId], references: [id])
-  updatedBids     Bid[]     @relation("BidHistory")
+  listing     Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  bidder      User    @relation("UserBids", fields: [bidderId], references: [id], onDelete: Cascade)
+  previousBid Bid?    @relation("BidHistory", fields: [previousBidId], references: [id])
+  updatedBids Bid[]   @relation("BidHistory")
 
   @@index([listingId, status, createdAt])
   @@index([bidderId, status, createdAt])
@@ -391,20 +392,22 @@ model Bid {
 // ========== NOTIFICATIONS SYSTEM ==========
 
 model UserNotification {
-  id          String    @id @default(cuid())
-  userId      String    // Reference to users.id
-  listingId   String?   // Optional reference to listings.id
-  type        String    // Notification type (LISTING_APPROVED, READY_TO_MINT, etc)
-  title       String    // Display title
-  message     String    // Notification message
-  isRead      Boolean   @default(false)
-  actionUrl   String?   // Optional URL for notification action
-  createdAt   DateTime  @default(now())
-  expiresAt   DateTime? // Optional expiration
+  id           String    @id @default(cuid())
+  userId       String // Reference to users.id
+  listingId    String? // Optional reference to listings.id
+  submissionId String? // Optional reference to submissions.id
+  type         String // Notification type (LISTING_APPROVED, READY_TO_MINT, etc)
+  title        String // Display title
+  message      String // Notification message
+  isRead       Boolean   @default(false)
+  actionUrl    String? // Optional URL for notification action
+  createdAt    DateTime  @default(now())
+  expiresAt    DateTime? // Optional expiration
 
   // Relations
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  listing     Listing?  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing    Listing?    @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  submission Submission? @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 
   @@index([userId, isRead])
   @@index([userId, createdAt])

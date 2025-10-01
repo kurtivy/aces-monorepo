@@ -216,11 +216,12 @@ async function syncTokenData(
       // 1. Fetch and update basic token data
       await txTokenService.fetchAndUpdateTokenData(contractAddress);
 
-      // 2. Generate and store OHLCV data for all timeframes
-      const timeframes = ['1h', '4h', '1d'];
+      // 2. Generate cached data for ALL active timeframes
+      const allTimeframes = ['1m', '5m', '15m', '1h', '4h']; // Added minute timeframes
 
-      for (const timeframe of timeframes) {
+      for (const timeframe of allTimeframes) {
         await txOhlcvService.generateOHLCVCandles(contractAddress, timeframe);
+        console.log(`[CRON] Generated ${timeframe} candles for ${tokenData.symbol}`);
       }
 
       // 3. Update the token's lastSyncedAt timestamp
@@ -230,7 +231,7 @@ async function syncTokenData(
       });
     },
     {
-      timeout: 30000, // 30 seconds timeout instead of default 5 seconds
+      timeout: 90000, // 90 seconds timeout to handle all 5 timeframes
     },
   );
 }

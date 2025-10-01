@@ -239,28 +239,34 @@ async function syncTokenData(
   }
 
   // Use database transaction for atomicity
-  await prisma.$transaction(async (tx) => {
-    // Update the services to use the transaction client
-    const txTokenService = new TokenService(tx as any);
-    const txOhlcvService = new OHLCVService(tx as any, txTokenService);
+  await prisma.$transaction(
+    async (tx) => {
+      // Update the services to use the transaction client
+      const txTokenService = new TokenService(tx as any);
+      const txOhlcvService = new OHLCVService(tx as any, txTokenService);
 
-    // 1. Update basic token data
-    await txTokenService.fetchAndUpdateTokenData(contractAddress);
+      // 1. Update basic token data
+      await txTokenService.fetchAndUpdateTokenData(contractAddress);
 
-    // 2. Generate cached data for popular timeframes only (REDUCED from 3 to 2 timeframes)
-    const popularTimeframes = ['1h', '4h']; // Reduced from ['1h', '4h', '1d']
+      // 2. Generate cached data for ALL active timeframes
+      const allTimeframes = ['1m', '5m', '15m', '1h', '4h']; // Added minute timeframes
 
-    for (const timeframe of popularTimeframes) {
-      // Use enhanced service with smart caching - will only generate if cache is stale
-      await txOhlcvService.generateOHLCVCandles(contractAddress, timeframe);
-    }
+      for (const timeframe of allTimeframes) {
+        // Use enhanced service with smart caching - will only generate if cache is stale
+        await txOhlcvService.generateOHLCVCandles(contractAddress, timeframe);
+        console.log(`[CRON] Generated ${timeframe} candles for ${tokenData.symbol}`);
+      }
 
-    // 3. Update timestamp
-    await tx.token.update({
-      where: { contractAddress: contractAddress.toLowerCase() },
-      data: { updatedAt: new Date() },
-    });
-  });
+      // 3. Update timestamp
+      await tx.token.update({
+        where: { contractAddress: contractAddress.toLowerCase() },
+        data: { updatedAt: new Date() },
+      });
+    },
+    {
+      timeout: 90000, // 90 seconds timeout to handle all 5 timeframes
+    },
+  );
 
   // Return success with reason
   const reason = hasRecentActivity ? 'active' : 'recently_viewed';
