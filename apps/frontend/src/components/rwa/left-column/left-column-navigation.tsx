@@ -60,7 +60,7 @@ export function LeftColumnNavigation({
   };
 
   return (
-    <div className="relative flex h-full flex-col overflow-hidden bg-[#151c16] w-80">
+    <div className="relative flex h-full flex-col overflow-hidden bg-[#151c16]">
       <div className="relative flex-1 overflow-hidden">
         {contentSections.map(({ section, originalIndex }, index) => {
           const isActive = originalIndex === activeSection;
@@ -128,8 +128,8 @@ export function LeftColumnNavigation({
                 <motion.div
                   className="bg-[#151c16] overflow-y-auto relative"
                   style={{
-                    height: `${CONTENT_HEIGHT}px`, // Now 320px instead of 400px
-                    width: '320px', // Fixed width to match container
+                    height: `${CONTENT_HEIGHT}px`,
+                    width: '100%',
                   }}
                   initial={false}
                   animate={{ opacity: isActive || isAnimatingOut ? 1 : 0.7 }}

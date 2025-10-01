@@ -96,7 +96,7 @@ export default function RWAItemPage() {
             {/* Main 3-Column Layout */}
             <div className="flex flex-1 relative z-10 min-h-0">
               {/* Left Column - Navigation System */}
-              <div className="w-80 bg-[#151c16] overflow-hidden flex-shrink-0">
+              <div className="w-72 bg-[#151c16] overflow-hidden flex-shrink-0">
                 <LeftColumnNavigation
                   sections={sections}
                   activeSection={navigation.activeSection}
@@ -181,7 +181,7 @@ export default function RWAItemPage() {
               </svg>
 
               {/* Right Column - Token Swap Interface with Progression */}
-              <div className="w-96 bg-[#151c16] flex-shrink-0 overflow-hidden backdrop-blur-sm">
+              <div className="w-72 bg-[#151c16] flex-shrink-0 overflow-hidden backdrop-blur-sm">
                 <div
                   style={{
                     height: 'calc(100vh - 120px)',
