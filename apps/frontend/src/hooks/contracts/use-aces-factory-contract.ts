@@ -35,7 +35,7 @@ interface CreateTokenParams {
   useVanityMining?: boolean;
 }
 
-export function useAcesFactoryContract(chainId: number = 84532) {
+export function useAcesFactoryContract(chainId?: number) {
   const [contractState, setContractState] = useState<ContractState>({
     tokenInfo: null,
     currentSupply: '0',
@@ -54,8 +54,51 @@ export function useAcesFactoryContract(chainId: number = 84532) {
   const [signer, setSigner] = useState<ethers.Signer | null>(null);
   const [tokenImplementation, setTokenImplementation] = useState<string | null>(null);
   const [isWalletConnected, setIsWalletConnected] = useState(false);
+  const [currentChainId, setCurrentChainId] = useState<number | undefined>(chainId);
 
-  const contractAddresses = getContractAddresses(chainId);
+  const contractAddresses = getContractAddresses(currentChainId || 8453); // Default to mainnet
+
+  // Update chain ID when it changes
+  useEffect(() => {
+    const updateChainId = async () => {
+      const detectedChainId = await getCurrentChainId();
+      if (detectedChainId && detectedChainId !== currentChainId) {
+        console.log(`Chain ID changed from ${currentChainId} to ${detectedChainId}`);
+        setCurrentChainId(detectedChainId);
+      }
+    };
+
+    if (typeof window !== 'undefined' && window.ethereum) {
+      updateChainId();
+
+      // Listen for chain changes
+      const handleChainChanged = () => {
+        console.log('Chain changed, updating...');
+        updateChainId();
+      };
+
+      window.ethereum.on('chainChanged', handleChainChanged);
+
+      return () => {
+        window.ethereum?.removeListener('chainChanged', handleChainChanged);
+      };
+    }
+  }, [currentChainId]);
+
+  // Get current chain ID from wallet
+  const getCurrentChainId = async (): Promise<number | null> => {
+    if (typeof window === 'undefined' || !window.ethereum) {
+      return null;
+    }
+
+    try {
+      const chainIdHex = (await window.ethereum.request({ method: 'eth_chainId' })) as string;
+      return parseInt(chainIdHex, 16);
+    } catch (error) {
+      console.error('Failed to get chain ID:', error);
+      return null;
+    }
+  };
 
   // Check if wallet is actually connected
   const checkWalletConnection = async (): Promise<boolean> => {
@@ -74,10 +117,21 @@ export function useAcesFactoryContract(chainId: number = 84532) {
 
   // Initialize read-only provider first (always available)
   useEffect(() => {
-    const initializeReadOnlyProvider = () => {
+    const initializeReadOnlyProvider = async () => {
       try {
-        // Set up read-only provider for Base Sepolia
-        const rpcUrl = 'https://sepolia.base.org';
+        let rpcUrl: string;
+
+        if (chainId === 8453) {
+          // Base Mainnet
+          rpcUrl = 'https://mainnet.base.org';
+        } else if (chainId === 84532) {
+          // Base Sepolia
+          rpcUrl = 'https://sepolia.base.org';
+        } else {
+          // Default to mainnet if no specific chain provided
+          rpcUrl = 'https://mainnet.base.org';
+        }
+
         const readOnlyProv = new ethers.providers.JsonRpcProvider(rpcUrl);
         setReadOnlyProvider(readOnlyProv);
 
@@ -89,14 +143,18 @@ export function useAcesFactoryContract(chainId: number = 84532) {
         );
         setReadOnlyFactoryContract(readOnlyFactory);
 
-        console.log('✅ Read-only provider initialized for Base Sepolia');
+        console.log(
+          `✅ Read-only provider initialized for Base ${chainId === 8453 ? 'Mainnet' : 'Sepolia'}`,
+        );
       } catch (error) {
         console.error('Failed to initialize read-only provider:', error);
       }
     };
 
-    initializeReadOnlyProvider();
-  }, [contractAddresses.FACTORY_PROXY]);
+    if (chainId) {
+      initializeReadOnlyProvider();
+    }
+  }, [contractAddresses.FACTORY_PROXY, currentChainId]);
 
   // Initialize provider and contracts only when wallet is connected
   useEffect(() => {
@@ -191,7 +249,7 @@ export function useAcesFactoryContract(chainId: number = 84532) {
         window.ethereum?.removeListener('chainChanged', handleChainChanged);
       };
     }
-  }, [chainId, contractAddresses.FACTORY_PROXY]);
+  }, [currentChainId, contractAddresses.FACTORY_PROXY]);
 
   // Fetch token information with rate limiting - uses read-only contract if wallet not connected
   const fetchTokenInfo = useCallback(
@@ -288,6 +346,12 @@ export function useAcesFactoryContract(chainId: number = 84532) {
           return parseFloat(ethers.utils.formatEther(floor));
         }
 
+        // Guard against calling contract with 0 supply which causes "Amount must be at least 1 token" error
+        if (supplyInWholeTokens < 1) {
+          console.warn('Supply point too low for contract calculation:', supplyInWholeTokens);
+          return parseFloat(ethers.utils.formatEther(floor));
+        }
+
         let priceWei: ethers.BigNumber;
 
         if (curve === 0) {
@@ -333,9 +397,19 @@ export function useAcesFactoryContract(chainId: number = 84532) {
       const dataPoints = [];
       const numPoints = 8;
 
-      // Start from i=0 to include the starting point
+      // Start from i=0 to include the starting point, but skip 0 supply point
       for (let i = 0; i <= numPoints; i++) {
         const supplyPoint = Math.floor((tokensBondedAt / numPoints) * i);
+
+        // Skip calculating price for 0 tokens as it causes contract errors
+        if (supplyPoint === 0) {
+          dataPoints.push({
+            tokensSold: 0,
+            priceACES: 0,
+            phase: 'completed',
+          });
+          continue;
+        }
 
         try {
           const priceInAces = await calculatePriceAtSupply(tokenAddress, supplyPoint);
