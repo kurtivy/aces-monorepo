@@ -112,19 +112,28 @@ export function MiddleContentArea({
     ...(isDynamicMode && actuallyLaunched && isLive
       ? [
           <div key="token-details-main" className="space-y-0">
-            <TradingChart
-              tokenAddress={
-                listing?.token?.contractAddress || '0xa19763cfd3dcd1f47447954f5576e660f8b6e261'
-              }
-              tokenSymbol={listing?.token?.symbol || listing?.symbol || 'TLT'}
-              title={listing?.token?.name || listing?.title || 'NewTest Launchpad Token'}
-            />
-            <TradeHistory
-              tokenAddress={
-                listing?.token?.contractAddress || '0xa19763cfd3dcd1f47447954f5576e660f8b6e261'
-              }
-              tokenSymbol={listing?.token?.symbol || listing?.symbol || 'TLT'}
-            />
+            {listing?.token?.contractAddress ? (
+              <>
+                <TradingChart
+                  tokenAddress={listing.token.contractAddress}
+                  tokenSymbol={listing?.token?.symbol || listing?.symbol || 'TLT'}
+                  title={listing?.token?.name || listing?.title || 'Trading Chart'}
+                />
+                <TradeHistory
+                  tokenAddress={listing.token.contractAddress}
+                  tokenSymbol={listing?.token?.symbol || listing?.symbol || 'TLT'}
+                />
+              </>
+            ) : (
+              <div className="p-8 bg-[#151c16] rounded-lg border border-[#D0B284]/20 text-center">
+                <div className="text-[#D0B284] text-lg font-semibold mb-2">
+                  Trading Chart Unavailable
+                </div>
+                <div className="text-gray-400 text-sm">
+                  No contract address available for this token.
+                </div>
+              </div>
+            )}
           </div>,
         ]
       : isDynamicMode && actuallyPreLaunch

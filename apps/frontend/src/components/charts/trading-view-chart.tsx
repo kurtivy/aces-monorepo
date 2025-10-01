@@ -63,7 +63,23 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({
 
   // Initialize chart when library is loaded
   useEffect(() => {
-    if (!isLibraryLoaded || !chartContainerRef.current || !tokenAddress) return;
+    if (!isLibraryLoaded || !chartContainerRef.current || !tokenAddress) {
+      console.log('[TradingView] Initialization check:', {
+        isLibraryLoaded,
+        hasContainer: !!chartContainerRef.current,
+        tokenAddress,
+      });
+      return;
+    }
+
+    // Validate token address format
+    if (!tokenAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
+      console.error('[TradingView] Invalid token address format:', tokenAddress);
+      setError('Invalid token address format');
+      return;
+    }
+
+    console.log('[TradingView] Initializing chart for token:', tokenAddress);
 
     try {
       const datafeed = new BondingCurveDatafeed(tokenAddress);

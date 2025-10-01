@@ -36,6 +36,32 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     this.tokenAddress = tokenAddress.toLowerCase();
   }
 
+  /**
+   * Get the correct API URL based on environment
+   * In production/Vercel, use NEXT_PUBLIC_API_URL
+   * In development, use relative URL (proxied by next.config.ts)
+   */
+  private getApiUrl(path: string): string {
+    // Check if we're in browser environment
+    if (typeof window === 'undefined') {
+      return path;
+    }
+
+    // In production/Vercel, use the environment variable
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
+    if (apiBaseUrl) {
+      // Remove leading slash from path since apiBaseUrl should include it
+      const cleanPath = path.startsWith('/') ? path.slice(1) : path;
+      const fullUrl = `${apiBaseUrl}/${cleanPath}`;
+      console.log('[TradingView] Using API URL:', fullUrl);
+      return fullUrl;
+    }
+
+    // In development, use relative URL (will be proxied)
+    console.log('[TradingView] Using relative URL (development):', path);
+    return path;
+  }
+
   onReady(callback: OnReadyCallback) {
     setTimeout(() => {
       callback({
@@ -163,9 +189,10 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       try {
         // Request last 5 minutes of data to ensure we get the current candle
         const fiveMinutesAgo = Math.floor((Date.now() - 5 * 60 * 1000) / 1000);
-        const response = await fetch(
-          `/api/v1/tokens/${subscription.tokenAddress}/live?timeframe=${subscription.timeframe}&since=${fiveMinutesAgo}`,
+        const apiUrl = this.getApiUrl(
+          `/api/v1/tokens/${subscription.tokenAddress}/live?timeframe=${subscription.timeframe}&since=${fiveMinutesAgo}`
         );
+        const response = await fetch(apiUrl);
 
         if (!response.ok) {
           throw new Error(`API request failed: ${response.status}`);
@@ -215,7 +242,8 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
 
   private async fetchTokenMetadata(): Promise<void> {
     try {
-      const response = await fetch(`/api/v1/tokens/${this.tokenAddress}`);
+      const apiUrl = this.getApiUrl(`/api/v1/tokens/${this.tokenAddress}`);
+      const response = await fetch(apiUrl);
 
       if (!response.ok) {
         throw new Error(`Failed to fetch token metadata: ${response.status}`);
@@ -255,27 +283,41 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       `from: ${new Date(from * 1000).toISOString()}, to: ${new Date(to * 1000).toISOString()}`,
     );
 
+    // Validate token address before making request
+    if (!this.tokenAddress || !this.tokenAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
+      console.error('[TradingView] Invalid token address:', this.tokenAddress);
+      throw new Error('Invalid token address format');
+    }
+
     // Use 'live' mode to force fresh data generation with actual trades
     // This ensures we get real OHLC variations instead of empty candles
-    const response = await fetch(
-      `/api/v1/tokens/${this.tokenAddress}/chart?timeframe=${timeframe}&mode=live&limit=5000`,
-    );
+    const apiPath = `/api/v1/tokens/${this.tokenAddress}/chart?timeframe=${timeframe}&mode=live&limit=5000`;
+    const apiUrl = this.getApiUrl(apiPath);
+    console.log('[TradingView] Full API URL:', apiUrl);
+
+    const response = await fetch(apiUrl);
 
     if (!response.ok) {
       // Try to get error details from response
       let errorDetails = `API request failed: ${response.status}`;
       try {
         const errorData = await response.json();
-        console.error('[TradingView] Backend Error:', errorData);
+        console.error('[TradingView] Backend Error Response:', errorData);
         errorDetails = errorData.message || errorData.error || errorDetails;
       } catch (e) {
         // Response wasn't JSON, use status text
-        console.error('[TradingView] Non-JSON error response');
+        const text = await response.text();
+        console.error('[TradingView] Non-JSON error response:', text.substring(0, 200));
       }
       throw new Error(errorDetails);
     }
 
     const data = await response.json();
+    console.log('[TradingView] API Response:', {
+      success: data.success,
+      candleCount: data.data?.candles?.length || 0,
+      dataSource: data.data?.dataSource,
+    });
 
     if (!data.success) {
       console.error('[TradingView] API Error Response:', data);
@@ -356,7 +398,7 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       try {
         // This will trigger backend to generate and store fresh candles
         await fetch(
-          `/api/v1/tokens/${this.tokenAddress}/live?timeframe=${timeframe}&since=${from}`,
+          this.getApiUrl(`/api/v1/tokens/${this.tokenAddress}/live?timeframe=${timeframe}&since=${from}`)
         );
 
         // Brief delay to allow backend to store data
@@ -364,7 +406,7 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
 
         // Retry the request
         const retryResponse = await fetch(
-          `/api/v1/tokens/${this.tokenAddress}/chart?timeframe=${timeframe}&mode=hybrid&limit=5000`,
+          this.getApiUrl(`/api/v1/tokens/${this.tokenAddress}/chart?timeframe=${timeframe}&mode=hybrid&limit=5000`)
         );
 
         if (retryResponse.ok) {
