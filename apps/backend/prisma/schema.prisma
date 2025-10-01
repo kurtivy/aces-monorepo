@@ -290,6 +290,7 @@ model TokenOHLCV {
 
   @@unique([contractAddress, timeframe, timestamp])
   @@index([contractAddress, timeframe, timestamp])
+  @@index([contractAddress, timeframe]) // Performance index for getCachedCandles queries
   @@map("token_ohlcv")
 }
 

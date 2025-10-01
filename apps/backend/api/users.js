@@ -266,18 +266,37 @@ var errors = {
 // src/plugins/auth.ts
 var import_fastify_plugin = __toESM(require("fastify-plugin"));
 var import_jsonwebtoken = __toESM(require("jsonwebtoken"));
+
+// src/lib/auth-middleware.ts
+async function requireAuth(request, _reply) {
+  if (!request.auth) {
+    console.error("request.auth is null/undefined");
+    throw errors.unauthorized("Authentication not initialized");
+  }
+  if (!request.auth.isAuthenticated || !request.user) {
+    console.error("User not authenticated");
+    throw errors.unauthorized("Authentication required");
+  }
+}
+__name(requireAuth, "requireAuth");
+
+// src/plugins/auth.ts
 var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
   console.log("\u{1F527} Registering simplified auth plugin...");
   fastify.decorateRequest("user", null);
   fastify.decorateRequest("auth", null);
+  fastify.decorate("authenticate", requireAuth);
   fastify.addHook("preHandler", async (request, reply) => {
     const startTime = Date.now();
     try {
-      console.log("\u{1F50D} Auth hook triggered for:", {
-        url: request.url,
-        method: request.method,
-        hasAuthHeader: !!request.headers.authorization
-      });
+      const isLikelyPublic = request.url.startsWith("/api/v1/tokens") || request.url.startsWith("/health") || request.url.startsWith("/api/health");
+      if (!isLikelyPublic) {
+        console.log("\u{1F50D} Auth hook triggered for:", {
+          url: request.url,
+          method: request.method,
+          hasAuthHeader: !!request.headers.authorization
+        });
+      }
       const authHeader = request.headers.authorization;
       const publicPaths = [
         "/health",
@@ -290,6 +309,8 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         "/upload-image",
         "/api/v1/tokens",
         // Token data and chart data endpoints
+        "/api/v1/twitch",
+        // Twitch stream endpoints
         "/api/v1/cron/trigger",
         // Cron trigger endpoint for manual testing
         "/api/v1/cron/status",
@@ -302,10 +323,13 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
       const isPublicPath = publicPaths.some((path) => {
         if (request.url === path) return true;
         if (path === "/health" && request.url.startsWith("/health")) return true;
+        if (path === "/api/v1/tokens" && request.url.startsWith("/api/v1/tokens")) return true;
         return false;
       }) || request.method === "GET" && ["/live", "/search", "/stats", "/"].includes(request.url);
       if (isPublicPath) {
-        console.log("\u2705 Public path, skipping auth:", request.url);
+        if (!request.url.startsWith("/api/v1/tokens")) {
+          console.log("\u2705 Public path, skipping auth:", request.url);
+        }
         request.user = null;
         request.auth = {
           user: null,
@@ -501,6 +525,7 @@ var UsersService = class {
           privyDid: true,
           walletAddress: true,
           email: true,
+          username: true,
           role: true,
           isActive: true,
           createdAt: true,
@@ -517,7 +542,7 @@ var UsersService = class {
     }
   }
   /**
-   * Update user profile - Step 1 version (email only)
+   * Update user profile - supports email and username updates
    */
   async updateUserProfile(userId, updates) {
     try {
@@ -532,6 +557,7 @@ var UsersService = class {
           privyDid: true,
           walletAddress: true,
           email: true,
+          username: true,
           role: true,
           isActive: true,
           createdAt: true,
@@ -546,22 +572,10 @@ var UsersService = class {
   }
 };
 
-// src/lib/auth-middleware.ts
-async function requireAuth(request, _reply) {
-  if (!request.auth) {
-    console.error("request.auth is null/undefined");
-    throw errors.unauthorized("Authentication not initialized");
-  }
-  if (!request.auth.isAuthenticated || !request.user) {
-    console.error("User not authenticated");
-    throw errors.unauthorized("Authentication required");
-  }
-}
-__name(requireAuth, "requireAuth");
-
 // src/routes/v1/users.ts
 var UserProfileUpdateSchema = import_zod.z.object({
-  email: import_zod.z.string().email().optional()
+  email: import_zod.z.string().email().optional(),
+  username: import_zod.z.string().min(1).max(50).optional()
 });
 async function usersRoutes(fastify) {
   const usersService = new UsersService(fastify.prisma);
@@ -573,13 +587,14 @@ async function usersRoutes(fastify) {
           import_zod.z.object({
             privyDid: import_zod.z.string().min(1),
             walletAddress: import_zod.z.string().optional(),
-            email: import_zod.z.string().email().optional()
+            email: import_zod.z.string().email().optional(),
+            username: import_zod.z.string().optional()
           })
         )
       }
     },
     async (request, reply) => {
-      const { privyDid, walletAddress, email } = request.body;
+      const { privyDid, walletAddress, email, username } = request.body;
       const correlationId = request.id;
       try {
         const authHeader = request.headers.authorization;
@@ -601,6 +616,7 @@ async function usersRoutes(fastify) {
               privyDid,
               walletAddress: walletAddress || null,
               email: email || null,
+              username: username || null,
               role: "TRADER",
               isActive: true
             }
@@ -614,6 +630,9 @@ async function usersRoutes(fastify) {
           }
           if (email && user.email !== email) {
             updates.email = email;
+          }
+          if (username && user.username !== username) {
+            updates.username = username;
           }
           if (Object.keys(updates).length > 0) {
             user = await fastify.prisma.user.update({

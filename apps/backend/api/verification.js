@@ -267,18 +267,46 @@ var errors = {
 // src/plugins/auth.ts
 var import_fastify_plugin = __toESM(require("fastify-plugin"));
 var import_jsonwebtoken = __toESM(require("jsonwebtoken"));
+
+// src/lib/auth-middleware.ts
+async function requireAuth(request, _reply) {
+  if (!request.auth) {
+    console.error("request.auth is null/undefined");
+    throw errors.unauthorized("Authentication not initialized");
+  }
+  if (!request.auth.isAuthenticated || !request.user) {
+    console.error("User not authenticated");
+    throw errors.unauthorized("Authentication required");
+  }
+}
+__name(requireAuth, "requireAuth");
+async function requireAdmin(request, _reply) {
+  if (!request.auth?.isAuthenticated || !request.user) {
+    throw errors.unauthorized("Authentication required");
+  }
+  if (!request.auth.hasRole("ADMIN")) {
+    throw errors.forbidden("Admin access required");
+  }
+}
+__name(requireAdmin, "requireAdmin");
+
+// src/plugins/auth.ts
 var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
   console.log("\u{1F527} Registering simplified auth plugin...");
   fastify.decorateRequest("user", null);
   fastify.decorateRequest("auth", null);
+  fastify.decorate("authenticate", requireAuth);
   fastify.addHook("preHandler", async (request, reply) => {
     const startTime = Date.now();
     try {
-      console.log("\u{1F50D} Auth hook triggered for:", {
-        url: request.url,
-        method: request.method,
-        hasAuthHeader: !!request.headers.authorization
-      });
+      const isLikelyPublic = request.url.startsWith("/api/v1/tokens") || request.url.startsWith("/health") || request.url.startsWith("/api/health");
+      if (!isLikelyPublic) {
+        console.log("\u{1F50D} Auth hook triggered for:", {
+          url: request.url,
+          method: request.method,
+          hasAuthHeader: !!request.headers.authorization
+        });
+      }
       const authHeader = request.headers.authorization;
       const publicPaths = [
         "/health",
@@ -291,6 +319,8 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         "/upload-image",
         "/api/v1/tokens",
         // Token data and chart data endpoints
+        "/api/v1/twitch",
+        // Twitch stream endpoints
         "/api/v1/cron/trigger",
         // Cron trigger endpoint for manual testing
         "/api/v1/cron/status",
@@ -303,10 +333,13 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
       const isPublicPath = publicPaths.some((path) => {
         if (request.url === path) return true;
         if (path === "/health" && request.url.startsWith("/health")) return true;
+        if (path === "/api/v1/tokens" && request.url.startsWith("/api/v1/tokens")) return true;
         return false;
       }) || request.method === "GET" && ["/live", "/search", "/stats", "/"].includes(request.url);
       if (isPublicPath) {
-        console.log("\u2705 Public path, skipping auth:", request.url);
+        if (!request.url.startsWith("/api/v1/tokens")) {
+          console.log("\u2705 Public path, skipping auth:", request.url);
+        }
         request.user = null;
         request.auth = {
           user: null,
@@ -1142,14 +1175,316 @@ var VisionService = class {
   }
 };
 
-// src/services/verification-service.ts
-var AccountVerificationService = class {
+// src/services/notification-service.ts
+var NotificationService = class {
   constructor(prisma2) {
     this.prisma = prisma2;
   }
   static {
+    __name(this, "NotificationService");
+  }
+  /**
+   * Create a new notification for a user
+   */
+  async createNotification(data) {
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: data.userId }
+      });
+      if (!user) {
+        throw errors.notFound("User not found");
+      }
+      if (data.listingId) {
+        const listing = await this.prisma.listing.findUnique({
+          where: { id: data.listingId }
+        });
+        if (!listing) {
+          throw errors.notFound("Listing not found");
+        }
+      }
+      if (data.submissionId) {
+        const submission = await this.prisma.submission.findUnique({
+          where: { id: data.submissionId }
+        });
+        if (!submission) {
+          throw errors.notFound("Submission not found");
+        }
+      }
+      const notification = await this.prisma.userNotification.create({
+        data: {
+          userId: data.userId,
+          listingId: data.listingId,
+          submissionId: data.submissionId,
+          type: data.type,
+          title: data.title,
+          message: data.message,
+          actionUrl: data.actionUrl,
+          expiresAt: data.expiresAt
+        }
+      });
+      return notification;
+    } catch (error) {
+      console.error("Error creating notification:", error);
+      throw error;
+    }
+  }
+  /**
+   * Get all notifications for a user
+   */
+  async getUserNotifications(userId, options = {}) {
+    try {
+      const { includeRead = true, limit = 50, offset = 0 } = options;
+      const whereClause = {
+        userId,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: /* @__PURE__ */ new Date() } }]
+      };
+      const finalWhereClause = !includeRead ? { ...whereClause, isRead: false } : whereClause;
+      const notifications = await this.prisma.userNotification.findMany({
+        where: finalWhereClause,
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              walletAddress: true
+            }
+          },
+          listing: {
+            select: {
+              id: true,
+              title: true,
+              symbol: true
+            }
+          },
+          submission: {
+            select: {
+              id: true,
+              title: true,
+              symbol: true,
+              status: true,
+              rejectionReason: true,
+              imageGallery: true
+            }
+          }
+        },
+        orderBy: { createdAt: "desc" },
+        take: limit,
+        skip: offset
+      });
+      return notifications;
+    } catch (error) {
+      console.error("Error fetching user notifications:", error);
+      throw error;
+    }
+  }
+  /**
+   * Mark a notification as read
+   */
+  async markAsRead(notificationId, userId) {
+    try {
+      const notification = await this.prisma.userNotification.findFirst({
+        where: {
+          id: notificationId,
+          userId
+        }
+      });
+      if (!notification) {
+        throw errors.notFound("Notification not found");
+      }
+      const updatedNotification = await this.prisma.userNotification.update({
+        where: { id: notificationId },
+        data: { isRead: true }
+      });
+      return updatedNotification;
+    } catch (error) {
+      console.error("Error marking notification as read:", error);
+      throw error;
+    }
+  }
+  /**
+   * Mark all notifications as read for a user
+   */
+  async markAllAsRead(userId) {
+    try {
+      const result = await this.prisma.userNotification.updateMany({
+        where: {
+          userId,
+          isRead: false
+        },
+        data: { isRead: true }
+      });
+      return { count: result.count };
+    } catch (error) {
+      console.error("Error marking all notifications as read:", error);
+      throw error;
+    }
+  }
+  /**
+   * Get unread notification count for a user
+   */
+  async getUnreadCount(userId) {
+    try {
+      const count = await this.prisma.userNotification.count({
+        where: {
+          userId,
+          isRead: false,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: /* @__PURE__ */ new Date() } }]
+        }
+      });
+      return count;
+    } catch (error) {
+      console.error("Error getting unread notification count:", error);
+      throw error;
+    }
+  }
+  /**
+   * Delete a notification
+   */
+  async deleteNotification(notificationId, userId) {
+    try {
+      const notification = await this.prisma.userNotification.findFirst({
+        where: {
+          id: notificationId,
+          userId
+        }
+      });
+      if (!notification) {
+        throw errors.notFound("Notification not found");
+      }
+      await this.prisma.userNotification.delete({
+        where: { id: notificationId }
+      });
+    } catch (error) {
+      console.error("Error deleting notification:", error);
+      throw error;
+    }
+  }
+  /**
+   * Clean up expired notifications
+   */
+  async cleanupExpiredNotifications() {
+    try {
+      const result = await this.prisma.userNotification.deleteMany({
+        where: {
+          expiresAt: {
+            lt: /* @__PURE__ */ new Date()
+          }
+        }
+      });
+      return { count: result.count };
+    } catch (error) {
+      console.error("Error cleaning up expired notifications:", error);
+      throw error;
+    }
+  }
+};
+var NotificationTemplates = {
+  ["LISTING_APPROVED" /* LISTING_APPROVED */]: {
+    title: "Listing Approved!",
+    message: "Your submission has been approved and converted to a listing. Complete your listing details to proceed with token creation.",
+    getActionUrl: /* @__PURE__ */ __name((listingId) => `/profile?tab=listings&listing=${listingId}`, "getActionUrl")
+  },
+  ["READY_TO_MINT" /* READY_TO_MINT */]: {
+    title: "Ready to Launch!",
+    message: "Your token parameters have been approved by our team. You can now mint your token and launch it for trading!",
+    getActionUrl: /* @__PURE__ */ __name((listingId) => `/listings/${listingId}/mint`, "getActionUrl")
+  },
+  ["TOKEN_MINTED" /* TOKEN_MINTED */]: {
+    title: "Token Live!",
+    message: "Congratulations! Your token has been successfully minted and is now live for trading.",
+    getActionUrl: /* @__PURE__ */ __name((symbol) => `/rwa/${symbol}`, "getActionUrl")
+  },
+  ["TOKEN_PARAMETERS_SUBMITTED" /* TOKEN_PARAMETERS_SUBMITTED */]: {
+    title: "Token Parameters Under Review",
+    message: "Your token creation request has been submitted and is being reviewed by our team. You'll be notified once the parameters are approved.",
+    getActionUrl: /* @__PURE__ */ __name(() => "/profile", "getActionUrl")
+  },
+  ["ADMIN_MESSAGE" /* ADMIN_MESSAGE */]: {
+    title: "Message from Admin",
+    message: "You have received a message from the administration team.",
+    getActionUrl: /* @__PURE__ */ __name(() => "/profile", "getActionUrl")
+  },
+  ["SYSTEM_ALERT" /* SYSTEM_ALERT */]: {
+    title: "System Alert",
+    message: "Important system information.",
+    getActionUrl: /* @__PURE__ */ __name(() => "/profile", "getActionUrl")
+  },
+  // Verification notifications
+  ["VERIFICATION_PENDING" /* VERIFICATION_PENDING */]: {
+    title: "Verification Submitted",
+    message: "Your identity verification has been submitted and is under review. You will be notified of the results.",
+    getActionUrl: /* @__PURE__ */ __name(() => "/profile", "getActionUrl")
+  },
+  ["VERIFICATION_APPROVED" /* VERIFICATION_APPROVED */]: {
+    title: "Verification Approved!",
+    message: "Your identity has been successfully verified! You can now submit assets for tokenization and place bids.",
+    getActionUrl: /* @__PURE__ */ __name(() => "/launch", "getActionUrl")
+  },
+  ["VERIFICATION_REJECTED" /* VERIFICATION_REJECTED */]: {
+    title: "Verification Rejected",
+    message: "Your verification was rejected. Please review the requirements and resubmit with correct information.",
+    getActionUrl: /* @__PURE__ */ __name(() => "/profile", "getActionUrl")
+  },
+  // Submission notifications
+  ["SUBMISSION_APPROVED" /* SUBMISSION_APPROVED */]: {
+    title: "Submission Approved!",
+    message: "Great news! Your asset submission has been approved.",
+    getActionUrl: /* @__PURE__ */ __name(() => "/profile", "getActionUrl")
+  },
+  ["SUBMISSION_REJECTED" /* SUBMISSION_REJECTED */]: {
+    title: "Submission Rejected",
+    message: "Your asset submission has been reviewed and rejected.",
+    getActionUrl: /* @__PURE__ */ __name(() => "/profile", "getActionUrl")
+  },
+  // Bidding notifications
+  ["NEW_BID_RECEIVED" /* NEW_BID_RECEIVED */]: {
+    title: "New Bid Received!",
+    message: "Someone has placed a bid on your listing. Check your bids to review and respond.",
+    getActionUrl: /* @__PURE__ */ __name(() => "/profile?tab=bids", "getActionUrl")
+  },
+  ["BID_ACCEPTED" /* BID_ACCEPTED */]: {
+    title: "Bid Accepted!",
+    message: "Great news! Your bid has been accepted by the listing owner.",
+    getActionUrl: /* @__PURE__ */ __name(() => "/profile?tab=bids", "getActionUrl")
+  },
+  ["BID_REJECTED" /* BID_REJECTED */]: {
+    title: "Bid Not Accepted",
+    message: "Your bid was not accepted by the listing owner. You can place a new bid if the listing is still available.",
+    getActionUrl: /* @__PURE__ */ __name(() => "/profile?tab=bids", "getActionUrl")
+  },
+  ["BID_OUTBID" /* BID_OUTBID */]: {
+    title: "You Have Been Outbid",
+    message: "Another bidder has placed a higher bid on this listing. Consider placing a new bid if you're still interested.",
+    getActionUrl: /* @__PURE__ */ __name(() => "/profile?tab=bids", "getActionUrl")
+  },
+  // Admin notifications
+  ["ADMIN_NEW_SUBMISSION" /* ADMIN_NEW_SUBMISSION */]: {
+    title: "New Asset Submission",
+    message: "A new asset has been submitted for review and approval.",
+    getActionUrl: /* @__PURE__ */ __name(() => "/admin/submissions", "getActionUrl")
+  },
+  ["ADMIN_NEW_VERIFICATION" /* ADMIN_NEW_VERIFICATION */]: {
+    title: "New Verification Request",
+    message: "A user has submitted identity verification documents for review.",
+    getActionUrl: /* @__PURE__ */ __name(() => "/admin/verifications", "getActionUrl")
+  },
+  ["ADMIN_TOKEN_REVIEW_NEEDED" /* ADMIN_TOKEN_REVIEW_NEEDED */]: {
+    title: "Token Parameters Need Review",
+    message: "A user has completed token creation details and requires admin approval.",
+    getActionUrl: /* @__PURE__ */ __name(() => "/admin/listings", "getActionUrl")
+  }
+};
+
+// src/services/verification-service.ts
+var AccountVerificationService = class {
+  constructor(prisma2, notificationService) {
+    this.prisma = prisma2;
+    this.notificationService = notificationService || new NotificationService(prisma2);
+  }
+  static {
     __name(this, "AccountVerificationService");
   }
+  notificationService;
   /**
    * Submit a new verification request
    */
@@ -1247,6 +1582,36 @@ var AccountVerificationService = class {
         });
         return verificationRecord;
       });
+      try {
+        const template = NotificationTemplates["VERIFICATION_PENDING" /* VERIFICATION_PENDING */];
+        await this.notificationService.createNotification({
+          userId,
+          type: "VERIFICATION_PENDING" /* VERIFICATION_PENDING */,
+          title: template.title,
+          message: template.message,
+          actionUrl: template.getActionUrl()
+        });
+      } catch (notificationError) {
+        console.error("Error creating verification pending notification:", notificationError);
+      }
+      try {
+        const adminUsers = await this.prisma.user.findMany({
+          where: { role: "ADMIN" },
+          select: { id: true }
+        });
+        const adminTemplate = NotificationTemplates["ADMIN_NEW_VERIFICATION" /* ADMIN_NEW_VERIFICATION */];
+        for (const admin of adminUsers) {
+          await this.notificationService.createNotification({
+            userId: admin.id,
+            type: "ADMIN_NEW_VERIFICATION" /* ADMIN_NEW_VERIFICATION */,
+            title: adminTemplate.title,
+            message: adminTemplate.message,
+            actionUrl: adminTemplate.getActionUrl()
+          });
+        }
+      } catch (notificationError) {
+        console.error("Error creating admin verification notification:", notificationError);
+      }
       return verification;
     } catch (error) {
       console.error("Error submitting verification:", error);
@@ -1369,6 +1734,19 @@ var AccountVerificationService = class {
         });
         return updatedVerification;
       });
+      try {
+        const notificationType = decision === VerificationStatus.APPROVED ? "VERIFICATION_APPROVED" /* VERIFICATION_APPROVED */ : "VERIFICATION_REJECTED" /* VERIFICATION_REJECTED */;
+        const template = NotificationTemplates[notificationType];
+        await this.notificationService.createNotification({
+          userId: result.userId,
+          type: notificationType,
+          title: template.title,
+          message: template.message,
+          actionUrl: template.getActionUrl()
+        });
+      } catch (notificationError) {
+        console.error("Error creating verification result notification:", notificationError);
+      }
       return result;
     } catch (error) {
       console.error("Error reviewing verification:", error);
@@ -1630,28 +2008,6 @@ var AccountVerificationService = class {
     }
   }
 };
-
-// src/lib/auth-middleware.ts
-async function requireAuth(request, _reply) {
-  if (!request.auth) {
-    console.error("request.auth is null/undefined");
-    throw errors.unauthorized("Authentication not initialized");
-  }
-  if (!request.auth.isAuthenticated || !request.user) {
-    console.error("User not authenticated");
-    throw errors.unauthorized("Authentication required");
-  }
-}
-__name(requireAuth, "requireAuth");
-async function requireAdmin(request, _reply) {
-  if (!request.auth?.isAuthenticated || !request.user) {
-    throw errors.unauthorized("Authentication required");
-  }
-  if (!request.auth.hasRole("ADMIN")) {
-    throw errors.forbidden("Admin access required");
-  }
-}
-__name(requireAdmin, "requireAdmin");
 
 // src/routes/v1/verification.ts
 var SubmitVerificationSchema = import_zod.z.object({

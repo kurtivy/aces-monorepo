@@ -32,6 +32,10 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
   private tokenMetadata: TokenMetadata | null = null;
   private realtimeHook: any = null;
 
+  // Client-side caching for instant timeframe changes
+  private candleCache = new Map<string, { bars: Bar[]; timestamp: number }>();
+  private readonly CACHE_TTL = 30000; // 30 seconds cache
+
   constructor(tokenAddress: string) {
     this.tokenAddress = tokenAddress.toLowerCase();
   }
@@ -127,7 +131,23 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     onHistoryCallback: HistoryCallback,
     onErrorCallback: (error: string) => void,
   ) {
-    this.fetchHistoricalData(resolution, periodParams.from, periodParams.to)
+    const timeframe = this.resolutionToTimeframe(resolution);
+    const cacheKey = `${this.tokenAddress}-${timeframe}`;
+
+    // Check cache first for instant response
+    const cached = this.candleCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+      console.log(`[TradingView] Using cached data for ${timeframe} (instant response)`);
+      const filteredBars = cached.bars.filter(
+        (bar) => bar.time >= periodParams.from * 1000 && bar.time <= periodParams.to * 1000,
+      );
+      // TradingView docs: Always call with {noData: true} if no bars available
+      onHistoryCallback(filteredBars, { noData: filteredBars.length === 0 });
+      return;
+    }
+
+    // Fetch fresh data
+    this.fetchHistoricalData(resolution, periodParams.from, periodParams.to, cacheKey)
       .then((bars) => {
         onHistoryCallback(bars, { noData: bars.length === 0 });
       })
@@ -157,6 +177,7 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       onRealtimeCallback,
       onResetCacheNeededCallback,
       isActive: true,
+      lastBar: null as Bar | null, // Track last bar to prevent duplicate updates
     };
 
     // Store subscription for management
@@ -190,7 +211,7 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
         // Request last 5 minutes of data to ensure we get the current candle
         const fiveMinutesAgo = Math.floor((Date.now() - 5 * 60 * 1000) / 1000);
         const apiUrl = this.getApiUrl(
-          `/api/v1/tokens/${subscription.tokenAddress}/live?timeframe=${subscription.timeframe}&since=${fiveMinutesAgo}`
+          `/api/v1/tokens/${subscription.tokenAddress}/live?timeframe=${subscription.timeframe}&since=${fiveMinutesAgo}`,
         );
         const response = await fetch(apiUrl);
 
@@ -214,13 +235,22 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
             volume: volumeEntry?.value || 0,
           };
 
-          console.log(`[TradingView] Real-time update:`, {
-            time: new Date(bar.time).toISOString(),
-            price: bar.close,
-            volume: bar.volume,
-          });
+          // Only send update if bar has changed (prevents duplicate updates)
+          if (
+            !subscription.lastBar ||
+            subscription.lastBar.time !== bar.time ||
+            subscription.lastBar.close !== bar.close ||
+            subscription.lastBar.volume !== bar.volume
+          ) {
+            subscription.lastBar = bar;
+            subscription.onRealtimeCallback(bar);
 
-          subscription.onRealtimeCallback(bar);
+            console.log(`[TradingView] Real-time update:`, {
+              time: new Date(bar.time).toISOString(),
+              price: bar.close,
+              volume: bar.volume,
+            });
+          }
         }
       } catch (error) {
         console.error(`[TradingView] Centralized polling error for ${subscriberUID}:`, error);
@@ -275,6 +305,7 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     resolution: ResolutionString,
     from: number,
     to: number,
+    cacheKey: string,
   ): Promise<Bar[]> {
     const timeframe = this.resolutionToTimeframe(resolution);
 
@@ -289,9 +320,9 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       throw new Error('Invalid token address format');
     }
 
-    // Use 'live' mode to force fresh data generation with actual trades
-    // This ensures we get real OHLC variations instead of empty candles
-    const apiPath = `/api/v1/tokens/${this.tokenAddress}/chart?timeframe=${timeframe}&mode=live&limit=5000`;
+    // Use 'hybrid' mode for optimal performance
+    // Combines cached historical data with fresh live data
+    const apiPath = `/api/v1/tokens/${this.tokenAddress}/chart?timeframe=${timeframe}&mode=hybrid&limit=5000`;
     const apiUrl = this.getApiUrl(apiPath);
     console.log('[TradingView] Full API URL:', apiUrl);
 
@@ -361,6 +392,14 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     // Sort bars in ascending time order (TradingView requirement)
     allBars.sort((a, b) => a.time - b.time);
 
+    // Cache the results for instant subsequent requests
+    this.candleCache.set(cacheKey, {
+      bars: allBars,
+      timestamp: Date.now(),
+    });
+
+    console.log(`[TradingView] Cached ${allBars.length} bars for ${timeframe}`);
+
     // DEBUG: Show sample of bars being returned
     if (allBars.length > 0) {
       console.log('[TradingView] First bar:', allBars[0]);
@@ -398,7 +437,9 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       try {
         // This will trigger backend to generate and store fresh candles
         await fetch(
-          this.getApiUrl(`/api/v1/tokens/${this.tokenAddress}/live?timeframe=${timeframe}&since=${from}`)
+          this.getApiUrl(
+            `/api/v1/tokens/${this.tokenAddress}/live?timeframe=${timeframe}&since=${from}`,
+          ),
         );
 
         // Brief delay to allow backend to store data
@@ -406,7 +447,9 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
 
         // Retry the request
         const retryResponse = await fetch(
-          this.getApiUrl(`/api/v1/tokens/${this.tokenAddress}/chart?timeframe=${timeframe}&mode=hybrid&limit=5000`)
+          this.getApiUrl(
+            `/api/v1/tokens/${this.tokenAddress}/chart?timeframe=${timeframe}&mode=hybrid&limit=5000`,
+          ),
         );
 
         if (retryResponse.ok) {
