@@ -11,6 +11,7 @@ interface OverviewSectionProps {
   setSelectedImageIndex: (index: number) => void;
   mockImages: ImageData[];
   launchDate?: string | null;
+  tokenAddress?: string;
 }
 
 interface ImageOverlayProps {
@@ -59,6 +60,7 @@ export default function OverviewSection({
   setSelectedImageIndex,
   mockImages,
   launchDate,
+  tokenAddress,
 }: OverviewSectionProps) {
   const [overlayImage, setOverlayImage] = useState<ImageData | null>(null);
 
@@ -85,7 +87,11 @@ export default function OverviewSection({
 
         {/* Bottom Section - Countdown Timer */}
         <div className="w-full flex-shrink-0">
-          <OverviewBottomSection launchDate={launchDate} showProgression={false} />
+          <OverviewBottomSection
+            launchDate={launchDate}
+            showProgression={false}
+            tokenAddress={tokenAddress}
+          />
         </div>
       </div>
 

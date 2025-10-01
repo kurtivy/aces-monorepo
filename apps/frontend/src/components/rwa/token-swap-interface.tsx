@@ -54,6 +54,10 @@ export default function TokenSwapInterface({
 
   const contractAddresses = getContractAddresses();
 
+  // Bonding state
+  const [tokenBonded, setTokenBonded] = useState<boolean>(false);
+  const [bondingPercentage, setBondingPercentage] = useState<number>(0);
+
   // Balance state
   const [acesBalance, setAcesBalance] = useState<string>('0');
   const [tokenBalance, setTokenBalance] = useState<string>('0');
@@ -90,7 +94,7 @@ export default function TokenSwapInterface({
     }
   };
 
-  // Refresh balances with circuit breaker error handling
+  // Refresh balances and bonding status with circuit breaker error handling
   const refreshBalances = useCallback(async () => {
     if (!acesContract || !tokenAddress || !signer) {
       return;
@@ -108,6 +112,25 @@ export default function TokenSwapInterface({
       const tokenBalance = await tokenContract.balanceOf(address);
       const formattedTokenBalance = ethers.utils.formatEther(tokenBalance);
       setTokenBalance(formattedTokenBalance);
+
+      // Fetch bonding status from factory
+      if (factoryContract) {
+        try {
+          const tokenInfo = await factoryContract.tokens(tokenAddress);
+          const totalSupply = await tokenContract.totalSupply();
+          const tokensBondedAt = tokenInfo.tokensBondedAt;
+
+          // Calculate bonding percentage
+          const currentSupply = parseFloat(ethers.utils.formatEther(totalSupply));
+          const maxSupply = parseFloat(ethers.utils.formatEther(tokensBondedAt));
+          const percentage = maxSupply > 0 ? (currentSupply / maxSupply) * 100 : 0;
+
+          setTokenBonded(tokenInfo.tokenBonded);
+          setBondingPercentage(Math.min(percentage, 100));
+        } catch (bondingError) {
+          console.error('Failed to fetch bonding status:', bondingError);
+        }
+      }
     } catch (error: unknown) {
       console.error('Failed to refresh balances:', error);
 
@@ -138,9 +161,11 @@ export default function TokenSwapInterface({
         setAcesContract(null);
         setAcesBalance('0');
         setTokenBalance('0');
+        setTokenBonded(false);
+        setBondingPercentage(0);
       }
     }
-  }, [acesContract, tokenAddress, signer]);
+  }, [acesContract, tokenAddress, signer, factoryContract]);
 
   // Get buy price quote with circuit breaker handling
   const getBuyPriceQuote = useCallback(async () => {
@@ -535,12 +560,19 @@ export default function TokenSwapInterface({
           <>
             <div className="mb-6">
               <ProgressionBar
+                tokenAddress={tokenAddress}
                 currentAmount={currentAmount}
                 targetAmount={targetAmount}
                 percentage={percentage}
               />
-              <div className="mt-2 text-xs font-semibold uppercase tracking-[0.3em] text-center text-[#D7BF75]/80">
-                Bonded {Math.min(percentage, 100).toFixed(1)}% / 100%
+              <div
+                className={`mt-2 text-xs font-semibold uppercase tracking-[0.3em] text-center ${
+                  tokenBonded ? 'text-green-400' : 'text-[#D7BF75]/80'
+                }`}
+              >
+                {tokenBonded
+                  ? '✅ BONDED - 100%'
+                  : `Bonded ${Math.min(bondingPercentage, 100).toFixed(1)}% / 100%`}
               </div>
             </div>
 
@@ -584,6 +616,38 @@ export default function TokenSwapInterface({
               >
                 Dismiss
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Bonding Complete Banner */}
+        {tokenBonded && (
+          <div className="mb-4 p-3 bg-green-900/50 border border-green-600/50 rounded-lg">
+            <div className="flex items-center text-green-200 text-sm">
+              <span className="mr-2">✅</span>
+              <div>
+                <div className="font-semibold">Bonding Complete!</div>
+                <div className="text-xs mt-1 text-green-300">
+                  This token has reached 100% bonding and is now trading on Aerodrome. Trading on
+                  the bonding curve is disabled.
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Bonding Progress Warning (when close to 100%) */}
+        {!tokenBonded && bondingPercentage >= 90 && (
+          <div className="mb-4 p-3 bg-yellow-900/50 border border-yellow-600/50 rounded-lg">
+            <div className="flex items-center text-yellow-200 text-sm">
+              <span className="mr-2">⚡</span>
+              <div>
+                <div className="font-semibold">Bonding Almost Complete</div>
+                <div className="text-xs mt-1 text-yellow-300">
+                  {bondingPercentage.toFixed(1)}% bonded. Once 100% is reached, this token will
+                  migrate to Aerodrome LP.
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -681,14 +745,16 @@ export default function TokenSwapInterface({
           ) : (
             <Button
               onClick={activeTab === 'buy' ? buyTokens : sellTokens}
-              disabled={!amount || Number.parseFloat(amount) <= 0 || !!loading}
+              disabled={!amount || Number.parseFloat(amount) <= 0 || !!loading || tokenBonded}
               className={`w-full h-14 font-proxima-nova font-bold text-lg rounded-lg transition-all duration-200 ${
                 activeTab === 'buy'
                   ? 'bg-[#D0B284]/10 hover:bg-[#D0B284]/20 border border-[#D0B284] text-[#D0B284]'
                   : 'bg-[#8B4513] hover:bg-[#8B4513]/90 text-white'
               } disabled:opacity-50 disabled:cursor-not-allowed`}
             >
-              {loading || (activeTab === 'buy' ? `Buy ${tokenSymbol}` : `Sell ${tokenSymbol}`)}
+              {tokenBonded
+                ? 'Bonding Complete - Trading Disabled'
+                : loading || (activeTab === 'buy' ? `Buy ${tokenSymbol}` : `Sell ${tokenSymbol}`)}
             </Button>
           )}
         </div>

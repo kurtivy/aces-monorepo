@@ -103,6 +103,9 @@ export function MiddleContentArea({
       setSelectedImageIndex={setSelectedImageIndex}
       mockImages={displayImages}
       launchDate={launchDate}
+      tokenAddress={
+        isDynamicMode && listing?.token?.contractAddress ? listing.token.contractAddress : undefined
+      }
     />,
 
     // Token Details Content - Conditional for dynamic mode

@@ -118,8 +118,8 @@ export default function BondingCurveChart({
     : propTokensSold || 0;
 
   const tokensBondedAt = contractState.tokenInfo
-    ? parseFloat(contractState.tokenInfo.tokensBondedAt)
-    : 800000000; // Default fallback
+    ? parseFloat(ethers.utils.formatEther(contractState.tokenInfo.tokensBondedAt))
+    : 800000000; // Default fallback (in token units)
 
   // Debug logging to understand what data we have
   console.log('Contract state:', {
