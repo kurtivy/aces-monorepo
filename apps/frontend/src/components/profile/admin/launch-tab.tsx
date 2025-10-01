@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { AdminApi } from '@/lib/api/admin';
 import {
   Wallet,
   Coins,
@@ -27,14 +28,38 @@ import {
   AlertCircle,
   Network,
   DollarSign,
+  Link2,
+  Unlink,
 } from 'lucide-react';
 
 export function LaunchTab() {
   // Use Privy authentication system for wallet connection (required for contract deployment)
-  const { isAuthenticated, user, walletAddress } = useAuth();
+  const { isAuthenticated, user, walletAddress, getAccessToken, refreshUserProfile } = useAuth();
 
   // Chain switching hook to detect current network
   const { currentChainId, currentChain, isOnSupportedChain } = useChainSwitching();
+
+  // Add token to database state
+  const [addTokenAddress, setAddTokenAddress] = useState<string>('');
+  const [addTokenLoading, setAddTokenLoading] = useState<boolean>(false);
+  const [addTokenResult, setAddTokenResult] = useState<string | null>(null);
+
+  // Listing linking state
+  const [availableListings, setAvailableListings] = useState<
+    Array<{
+      id: string;
+      title: string;
+      symbol: string;
+      assetType: string;
+      isLive: boolean;
+      owner: { walletAddress: string | null; email: string | null };
+      token: { contractAddress: string; symbol: string; name: string } | null;
+    }>
+  >([]);
+  const [selectedListingId, setSelectedListingId] = useState<string>('');
+  const [linkTokenAddress, setLinkTokenAddress] = useState<string>('');
+  const [linkingLoading, setLinkingLoading] = useState<boolean>(false);
+  const [linkingResult, setLinkingResult] = useState<string | null>(null);
 
   // Get Privy wallets and signer
   const { wallets } = useWallets();
@@ -673,6 +698,158 @@ export function LaunchTab() {
     setSellPriceQuote('0');
   };
 
+  // Fetch available listings
+  const fetchAvailableListings = async () => {
+    try {
+      const token = await getAccessToken();
+      if (!token) return;
+
+      const result = await AdminApi.getAvailableListings(token);
+      if (result.success) {
+        setAvailableListings(result.data);
+        console.log('✅ Loaded', result.count, 'available listings');
+      }
+    } catch (error) {
+      console.error('Error fetching available listings:', error);
+    }
+  };
+
+  // Load listings on mount
+  useEffect(() => {
+    if (isAuthenticated && user?.role === 'ADMIN') {
+      fetchAvailableListings();
+    }
+  }, [isAuthenticated, user?.role]);
+
+  // Add token to database
+  const handleAddTokenToDatabase = async () => {
+    if (!addTokenAddress || !ethers.utils.isAddress(addTokenAddress)) {
+      alert('Please enter a valid contract address');
+      return;
+    }
+
+    try {
+      setAddTokenLoading(true);
+      setAddTokenResult(null);
+
+      // Get access token for authentication
+      const token = await getAccessToken();
+      if (!token) {
+        setAddTokenResult('❌ Error: Not authenticated. Please sign in again.');
+        setAddTokenLoading(false);
+        return;
+      }
+
+      const result = await AdminApi.addTokenToDatabase(addTokenAddress, token);
+
+      if (result.success) {
+        setAddTokenResult(`✅ ${result.message}`);
+
+        // Automatically populate the linking form with the newly added token
+        setLinkTokenAddress(addTokenAddress);
+        setAddTokenAddress('');
+
+        // Refresh token balances to include new token
+        await refreshBalances();
+
+        // Refresh available listings in case any were updated
+        await fetchAvailableListings();
+      } else {
+        setAddTokenResult(`❌ Error: ${result.message || 'Failed to add token'}`);
+      }
+    } catch (error) {
+      console.error('Error adding token to database:', error);
+      setAddTokenResult(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setAddTokenLoading(false);
+    }
+  };
+
+  // Link token to listing
+  const handleLinkTokenToListing = async () => {
+    if (!linkTokenAddress || !ethers.utils.isAddress(linkTokenAddress)) {
+      alert('Please enter a valid token contract address');
+      return;
+    }
+
+    if (!selectedListingId) {
+      alert('Please select a listing to link');
+      return;
+    }
+
+    try {
+      setLinkingLoading(true);
+      setLinkingResult(null);
+
+      const token = await getAccessToken();
+      if (!token) {
+        setLinkingResult('❌ Error: Not authenticated. Please sign in again.');
+        setLinkingLoading(false);
+        return;
+      }
+
+      const result = await AdminApi.linkTokenToListing(linkTokenAddress, selectedListingId, token);
+
+      if (result.success) {
+        setLinkingResult(`✅ ${result.message}`);
+
+        // Clear form
+        setLinkTokenAddress('');
+        setSelectedListingId('');
+
+        // Refresh listings to show updated associations
+        await fetchAvailableListings();
+      } else {
+        setLinkingResult(`❌ Error: ${result.message || 'Failed to link token'}`);
+      }
+    } catch (error) {
+      console.error('Error linking token to listing:', error);
+      setLinkingResult(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setLinkingLoading(false);
+    }
+  };
+
+  // Unlink token from listing
+  const handleUnlinkToken = async () => {
+    if (!linkTokenAddress || !ethers.utils.isAddress(linkTokenAddress)) {
+      alert('Please enter a valid token contract address');
+      return;
+    }
+
+    try {
+      setLinkingLoading(true);
+      setLinkingResult(null);
+
+      const token = await getAccessToken();
+      if (!token) {
+        setLinkingResult('❌ Error: Not authenticated. Please sign in again.');
+        setLinkingLoading(false);
+        return;
+      }
+
+      const result = await AdminApi.unlinkTokenFromListing(linkTokenAddress, token);
+
+      if (result.success) {
+        setLinkingResult(`✅ ${result.message}`);
+
+        // Clear form
+        setLinkTokenAddress('');
+        setSelectedListingId('');
+
+        // Refresh listings
+        await fetchAvailableListings();
+      } else {
+        setLinkingResult(`❌ Error: ${result.message || 'Failed to unlink token'}`);
+      }
+    } catch (error) {
+      console.error('Error unlinking token:', error);
+      setLinkingResult(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setLinkingLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -720,12 +897,38 @@ export function LaunchTab() {
               </div>
               {user?.role !== 'ADMIN' && (
                 <div className="p-3 bg-red-500/10 border border-red-400/20 rounded">
-                  <div className="flex items-center space-x-2">
-                    <AlertCircle className="w-4 h-4 text-red-400" />
-                    <p className="text-red-400 text-sm">
-                      This wallet is not registered as an admin. Contract deployment will be
-                      restricted. Please contact an administrator to upgrade your account.
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2 flex-1">
+                      <AlertCircle className="w-4 h-4 text-red-400" />
+                      <p className="text-red-400 text-sm">
+                        This wallet is not registered as an admin. Contract deployment will be
+                        restricted. Please contact an administrator to upgrade your account.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between">
+                    <p className="text-xs text-red-400/70">
+                      Already upgraded in database? Try refreshing your profile:
                     </p>
+                    <Button
+                      onClick={async () => {
+                        try {
+                          setLoading('Refreshing profile...');
+                          await refreshUserProfile();
+                          setLoading('');
+                        } catch (error) {
+                          console.error('Failed to refresh profile:', error);
+                          setLoading('');
+                          alert('Failed to refresh profile. Please try again or contact support.');
+                        }
+                      }}
+                      variant="outline"
+                      size="sm"
+                      className="text-red-400 border-red-400/20 hover:bg-red-400/10"
+                    >
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      Refresh Profile
+                    </Button>
                   </div>
                 </div>
               )}
@@ -1221,6 +1424,234 @@ export function LaunchTab() {
                   </div>
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Add Token to Database Card */}
+          <Card className="bg-black border-cyan-400/20">
+            <CardHeader>
+              <CardTitle className="text-white font-libre-caslon flex items-center">
+                <DollarSign className="w-5 h-5 mr-2 text-cyan-400" />
+                Add Token to Database
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="p-4 bg-cyan-500/10 border border-cyan-400/20 rounded-lg">
+                <p className="text-sm text-cyan-300 mb-2">
+                  <strong>⚠️ Important:</strong> After creating a token on-chain, you must manually
+                  add it to the database using this form.
+                </p>
+                <p className="text-xs text-cyan-200/70">
+                  The cron job only syncs tokens with trading activity. New tokens with 0 trades
+                  must be added manually first.
+                </p>
+              </div>
+
+              <div>
+                <Label className="text-[#DCDDCC]">Token Contract Address</Label>
+                <Input
+                  type="text"
+                  value={addTokenAddress}
+                  onChange={(e) => setAddTokenAddress(e.target.value)}
+                  placeholder="0x..."
+                  className="bg-black border-cyan-400/20 text-white font-mono"
+                  disabled={addTokenLoading}
+                />
+                <p className="text-xs text-[#DCDDCC] mt-1">
+                  Enter the contract address of the token you just created
+                </p>
+              </div>
+
+              <Button
+                onClick={handleAddTokenToDatabase}
+                disabled={
+                  addTokenLoading || !addTokenAddress || !ethers.utils.isAddress(addTokenAddress)
+                }
+                className="w-full bg-cyan-600 hover:bg-cyan-700 text-white"
+              >
+                {addTokenLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Adding to Database...
+                  </>
+                ) : (
+                  <>
+                    <DollarSign className="w-4 h-4 mr-2" />
+                    Add Token to Database
+                  </>
+                )}
+              </Button>
+
+              {addTokenResult && (
+                <div
+                  className={`p-3 rounded-lg border ${
+                    addTokenResult.startsWith('✅')
+                      ? 'bg-green-500/10 border-green-400/20 text-green-300'
+                      : 'bg-red-500/10 border-red-400/20 text-red-300'
+                  }`}
+                >
+                  {addTokenResult}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Link Token to Listing Card */}
+          <Card className="bg-black border-emerald-400/20">
+            <CardHeader>
+              <CardTitle className="text-white font-libre-caslon flex items-center">
+                <Link2 className="w-5 h-5 mr-2 text-emerald-400" />
+                Link Token to Listing
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="p-4 bg-emerald-500/10 border border-emerald-400/20 rounded-lg">
+                <p className="text-sm text-emerald-300 mb-2">
+                  <strong>📎 Step 3:</strong> Associate your token with an approved listing
+                </p>
+                <p className="text-xs text-emerald-200/70">
+                  Each listing can be linked to one token. This connects the blockchain asset with
+                  the real-world asset listing.
+                </p>
+              </div>
+
+              <div>
+                <Label className="text-[#DCDDCC]">Token Contract Address</Label>
+                <Input
+                  type="text"
+                  value={linkTokenAddress}
+                  onChange={(e) => setLinkTokenAddress(e.target.value)}
+                  placeholder="0x..."
+                  className="bg-black border-emerald-400/20 text-white font-mono"
+                  disabled={linkingLoading}
+                />
+                <p className="text-xs text-[#DCDDCC] mt-1">
+                  Enter the token address (auto-populated after adding to database)
+                </p>
+              </div>
+
+              <div>
+                <Label className="text-[#DCDDCC]">Select Listing</Label>
+                <select
+                  value={selectedListingId}
+                  onChange={(e) => setSelectedListingId(e.target.value)}
+                  className="w-full bg-black border border-emerald-400/20 text-white rounded-md px-3 py-2"
+                  disabled={linkingLoading}
+                >
+                  <option value="">-- Choose a listing --</option>
+                  {availableListings.map((listing) => (
+                    <option key={listing.id} value={listing.id}>
+                      {listing.title} ({listing.symbol})
+                      {listing.token
+                        ? ` - Already linked to ${listing.token.symbol}`
+                        : ' - Available'}
+                      {!listing.isLive ? ' - Not Live' : ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-[#DCDDCC] mt-1">
+                  Showing {availableListings.length} approved listings
+                </p>
+              </div>
+
+              {/* Show selected listing details */}
+              {selectedListingId && (
+                <div className="p-3 bg-emerald-500/5 border border-emerald-400/10 rounded">
+                  {(() => {
+                    const selected = availableListings.find((l) => l.id === selectedListingId);
+                    if (!selected) return null;
+                    return (
+                      <div className="space-y-1 text-sm">
+                        <p className="text-emerald-300">
+                          <strong>Listing:</strong> {selected.title}
+                        </p>
+                        <p className="text-emerald-300/80">
+                          <strong>Type:</strong> {selected.assetType}
+                        </p>
+                        <p className="text-emerald-300/80">
+                          <strong>Owner:</strong>{' '}
+                          {selected.owner.email || selected.owner.walletAddress}
+                        </p>
+                        {selected.token && (
+                          <p className="text-yellow-400 text-xs">
+                            ⚠️ Currently linked to: {selected.token.name} (
+                            {selected.token.contractAddress})
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <Button
+                  onClick={handleLinkTokenToListing}
+                  disabled={
+                    linkingLoading ||
+                    !linkTokenAddress ||
+                    !ethers.utils.isAddress(linkTokenAddress) ||
+                    !selectedListingId
+                  }
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  {linkingLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Linking...
+                    </>
+                  ) : (
+                    <>
+                      <Link2 className="w-4 h-4 mr-2" />
+                      Link Token to Listing
+                    </>
+                  )}
+                </Button>
+
+                <Button
+                  onClick={handleUnlinkToken}
+                  disabled={
+                    linkingLoading || !linkTokenAddress || !ethers.utils.isAddress(linkTokenAddress)
+                  }
+                  variant="outline"
+                  className="text-red-400 border-red-400/20 hover:bg-red-400/10"
+                >
+                  {linkingLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Unlink className="w-4 h-4 mr-2" />
+                      Unlink
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {linkingResult && (
+                <div
+                  className={`p-3 rounded-lg border ${
+                    linkingResult.startsWith('✅')
+                      ? 'bg-green-500/10 border-green-400/20 text-green-300'
+                      : 'bg-red-500/10 border-red-400/20 text-red-300'
+                  }`}
+                >
+                  {linkingResult}
+                </div>
+              )}
+
+              {/* Quick Stats */}
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-emerald-400/10">
+                <div className="text-center p-2 bg-emerald-500/5 rounded">
+                  <p className="text-xs text-emerald-300/60">Total Listings</p>
+                  <p className="text-lg font-bold text-emerald-300">{availableListings.length}</p>
+                </div>
+                <div className="text-center p-2 bg-emerald-500/5 rounded">
+                  <p className="text-xs text-emerald-300/60">Already Linked</p>
+                  <p className="text-lg font-bold text-emerald-300">
+                    {availableListings.filter((l) => l.token !== null).length}
+                  </p>
+                </div>
+              </div>
             </CardContent>
           </Card>
 

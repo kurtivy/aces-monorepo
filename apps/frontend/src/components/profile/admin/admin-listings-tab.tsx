@@ -50,8 +50,8 @@ const formatListingForAdminDisplay = (listing: ListingData): AdminListingData =>
     listing.owner?.accountVerification?.lastName
   ) {
     sellerName = `${listing.owner.accountVerification.firstName} ${listing.owner.accountVerification.lastName}`;
-  } else if (listing.owner?.displayName) {
-    sellerName = listing.owner.displayName;
+  } else if (listing.owner?.username) {
+    sellerName = listing.owner.username;
   }
 
   const sellerAddress = listing.owner?.walletAddress || '0x0000...0000';
@@ -550,9 +550,9 @@ export function AdminListingsTab() {
                   <h3 className="text-lg font-semibold text-[#D0B284] mb-4">Seller Information</h3>
                   <div className="space-y-4">
                     <div className="flex justify-between">
-                      <span className="text-[#DCDDCC]">Display Name:</span>
+                      <span className="text-[#DCDDCC]">Username:</span>
                       <span className="text-white">
-                        {selectedListing.owner?.displayName || 'N/A'}
+                        {selectedListing.owner?.username || 'N/A'}
                       </span>
                     </div>
                     <div className="flex justify-between">
@@ -650,12 +650,12 @@ export function AdminListingsTab() {
                           <div className="flex items-center space-x-3">
                             <div className="w-8 h-8 rounded-full bg-[#D0B284]/20 flex items-center justify-center">
                               <span className="text-[#D0B284] text-sm font-bold">
-                                {bid.bidder.displayName?.charAt(0) || '?'}
+                                {bid.bidder.username?.charAt(0) || '?'}
                               </span>
                             </div>
                             <div>
                               <p className="text-white font-medium">
-                                {bid.bidder.displayName || 'Unknown'}
+                                {bid.bidder.username || 'Unknown'}
                               </p>
                               <p className="text-[#DCDDCC] text-sm">
                                 {new Date(bid.createdAt).toLocaleString()}

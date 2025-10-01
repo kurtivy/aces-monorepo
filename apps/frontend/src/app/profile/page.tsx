@@ -4,16 +4,13 @@ import { useAuth } from '@/lib/auth/auth-context';
 import { HorizontalProfileHeader } from '@/components/profile/horizontal-profile-header';
 import { TokenListTab } from '@/components/profile/token-list-tab';
 import { BidsTab } from '@/components/profile/bids-tab';
-import PortfolioOverview from '@/components/portfolio/portfolio-overview';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Footer from '@/components/ui/custom/footer';
 import { useState, useLayoutEffect } from 'react';
 import { AdminDashboardOverlay } from '@/components/profile/admin-dashboard-overlay';
-import { SubmissionStatusNotifications } from '@/components/profile/submission-status-notifications';
 import LuxuryAssetsBackground from '@/components/ui/custom/luxury-assets-background';
 import AcesHeader from '@/components/ui/custom/aces-header';
 import PageBandTitle from '@/components/ui/custom/page-band-title';
-import PageBandSubtitle from '@/components/ui/custom/page-band-subtitle';
 import PageLoader from '@/components/loading/page-loader';
 
 export default function ProfilePage() {
@@ -74,11 +71,14 @@ export default function ProfilePage() {
     );
   }
 
-  const handleUpdateEmail = async (email: string) => {
+  const handleUpdateAccount = async ({ email, username }: { email: string; username: string }) => {
     if (!updateProfile) return;
-    const result = await updateProfile({ email });
+    const result = await updateProfile({
+      email: email || null,
+      username: username || null,
+    });
     if (!result.success) {
-      throw new Error(result.error || 'Failed to update email');
+      throw new Error(result.error || 'Failed to update account');
     }
   };
 
@@ -94,6 +94,7 @@ export default function ProfilePage() {
     email: user?.email || undefined,
     walletAddress: user?.walletAddress || undefined, // Using database wallet address directly
     role: user?.role || undefined,
+    username: user?.username || undefined,
     sellerStatus: user?.sellerStatus || undefined,
   };
 
@@ -127,24 +128,12 @@ export default function ProfilePage() {
           {/* Profile header bar - outside the panel, full content width */}
           <HorizontalProfileHeader
             user={profileData}
-            onUpdateEmail={handleUpdateEmail}
+            onUpdateAccount={handleUpdateAccount}
             onConnectWallet={connectWallet}
           />
 
           {/* Main panel below header - no gap */}
           <div className="relative bg-[#151c16]/80 border border-dashed border-[#E6E3D3]/20 rounded-2xl p-8 shadow-[0_10px_40px_rgba(215,191,117,0.06)] space-y-8">
-            {/* Notifications - flush at top */}
-            <div className="-mt-8 -mx-8 mb-8">
-              <div className="p-8 pb-0">
-                <SubmissionStatusNotifications />
-              </div>
-            </div>
-
-            {/* Portfolio Overview - Phase 3 Enhancement */}
-            {profileData.walletAddress && (
-              <PortfolioOverview walletAddress={profileData.walletAddress} className="mb-8" />
-            )}
-
             {/* Tabs */}
             <div className="w-full">
               <Tabs defaultValue="tokens" className="w-full">

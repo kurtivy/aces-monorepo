@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Search, Eye, User, Store, TrendingUp, Calendar, X } from 'lucide-react';
 import { useAuth } from '@/lib/auth/auth-context';
 import { SellersApi, SellerData } from '@/lib/api/sellers';
-import Image from 'next/image';
+// import Image from 'next/image';
 
 export function SellersTab() {
   const { getAccessToken } = useAuth();
@@ -60,7 +60,7 @@ export function SellersTab() {
     if (seller.accountVerification?.firstName && seller.accountVerification?.lastName) {
       return `${seller.accountVerification.firstName} ${seller.accountVerification.lastName}`;
     }
-    return seller.displayName || 'Unknown Seller';
+    return seller.username || 'Unknown Seller';
   };
 
   // Handler for viewing seller details
@@ -409,8 +409,8 @@ export function SellersTab() {
                       </div>
                       <div className="space-y-2">
                         <div className="flex justify-between">
-                          <span className="text-[#DCDDCC]">Display Name:</span>
-                          <span className="text-white">{selectedSeller.displayName || 'N/A'}</span>
+                          <span className="text-[#DCDDCC]">Username:</span>
+                          <span className="text-white">{selectedSeller.username || 'N/A'}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-[#DCDDCC]">Wallet Address:</span>

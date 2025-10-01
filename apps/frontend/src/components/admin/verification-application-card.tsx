@@ -58,7 +58,7 @@ export function VerificationApplicationCard({
             <div className="flex items-center gap-4 text-sm text-[#DCDDCC]">
               <div className="flex items-center gap-1">
                 <User className="w-4 h-4" />
-                {application.user.displayName || 'No display name'}
+                {application.user.username || 'No username'}
               </div>
               <div className="flex items-center gap-1">
                 <Calendar className="w-4 h-4" />
