@@ -31,6 +31,8 @@ export default function OverviewBottomSection({
   useEffect(() => {
     const loadBondingProgress = async () => {
       if (!tokenAddress || !ethers.utils.isAddress(tokenAddress)) {
+        setPercentage(propPercentage);
+        setIsBonded(false);
         setLoading(false);
         return;
       }
@@ -49,7 +51,11 @@ export default function OverviewBottomSection({
     };
 
     loadBondingProgress();
-  }, [tokenAddress, isReady, fetchTokenInfo]);
+  }, [tokenAddress, isReady, fetchTokenInfo, propPercentage]);
+
+  useEffect(() => {
+    setPercentage(propPercentage);
+  }, [propPercentage]);
 
   // Update percentage when contract state changes
   useEffect(() => {
@@ -63,6 +69,9 @@ export default function OverviewBottomSection({
         const calculatedPercentage = (currentSupply / tokensBondedAt) * 100;
         setPercentage(Math.min(calculatedPercentage, 100));
         setIsBonded(contractState.tokenInfo.tokenBonded);
+      } else {
+        setPercentage(0);
+        setIsBonded(false);
       }
 
       setLoading(false);
@@ -78,7 +87,7 @@ export default function OverviewBottomSection({
       {showProgression && (
         <div className="space-y-3">
           <div className={showProgressionDesktopOnly ? 'hidden lg:block' : ''}>
-            <ProgressionBar tokenAddress={tokenAddress} percentage={propPercentage} />
+            <ProgressionBar tokenAddress={tokenAddress} percentage={percentage} />
             {loading ? (
               <div className="text-xs font-semibold uppercase tracking-[0.3em] text-center text-[#D7BF75]/40">
                 Loading...

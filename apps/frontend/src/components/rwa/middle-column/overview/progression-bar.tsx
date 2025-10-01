@@ -21,6 +21,12 @@ export default function ProgressionBar({
 
   const { contractState, fetchTokenInfo, isReady } = useAcesFactoryContract();
 
+  useEffect(() => {
+    if (typeof propPercentage === 'number') {
+      setPercentage(propPercentage);
+    }
+  }, [propPercentage]);
+
   // Fetch bonding progress when tokenAddress changes
   useEffect(() => {
     const loadBondingProgress = async () => {
