@@ -63,7 +63,6 @@ export default function MobileTradeDrawer({ isOpen, onClose, listing }: MobileTr
                 targetAmount={1000000}
                 percentage={26.9}
                 showFrame={false}
-                showHeader={false}
                 showProgression={false}
               />
             </div>

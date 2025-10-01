@@ -15,7 +15,6 @@ import MobileTradeDrawer from '../../../components/rwa/mobile/trade/mobile-trade
 import { useMobileScrollManager } from '../../../lib/utils/rwa/mobile-scroll-manager';
 import type { DatabaseListing } from '@/types/rwa/section.types';
 import { ShareModal } from '@/components/rwa/modals';
-import MobileStreamToggle from '../../../components/twitch/mobile-stream-toggle';
 
 interface MobileRWAItemPageProps {
   listing: DatabaseListing | null;
@@ -117,29 +116,6 @@ export default function MobileRWAItemPage({
             loading={loading}
             launchDate={launchDate}
           />
-
-          {/* Mobile Stream Toggle */}
-          <div className="px-4 py-6">
-            <MobileStreamToggle
-              channelName={process.env.NEXT_PUBLIC_TWITCH_CHANNEL_NAME || 'testchannel'}
-              imageGallery={listing?.imageGallery || []}
-              onModeChange={(mode) => {
-                // Optional: track analytics
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
-                fetch(`${apiUrl}/api/v1/twitch/analytics`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    action: 'mobile_mode_change',
-                    mode,
-                    timestamp: new Date().toISOString(),
-                  }),
-                }).catch((error) => {
-                  console.error('Failed to track mobile mode change analytics:', error);
-                });
-              }}
-            />
-          </div>
 
           <MobileTradingChartSection
             ref={chartRef}

@@ -4,6 +4,7 @@ import { forwardRef, useState, type ReactNode } from 'react';
 import { MessageSquare, BarChart3, ChevronDown } from 'lucide-react';
 import RWAForumReal from '@/components/rwa/middle-column/chat/rwa-forum-real';
 import TradeHistory from '@/components/rwa/middle-column/token-details/trade-history';
+import TokenHealthPanel from '@/components/rwa/left-column/token-details/token-health-panel';
 import type { DatabaseListing } from '@/types/rwa/section.types';
 
 interface MobileCommentsHistorySectionProps {
@@ -13,7 +14,7 @@ interface MobileCommentsHistorySectionProps {
 
 const MobileCommentsHistorySection = forwardRef<HTMLDivElement, MobileCommentsHistorySectionProps>(
   ({ listing, isLive }, ref) => {
-    const [activeTab, setActiveTab] = useState<'comments' | 'trades'>('trades');
+    const [activeTab, setActiveTab] = useState<'comments' | 'trades' | 'stats'>('trades');
     const [tradesExpanded, setTradesExpanded] = useState(true);
     const [commentsExpanded, setCommentsExpanded] = useState(true);
 
@@ -74,6 +75,20 @@ const MobileCommentsHistorySection = forwardRef<HTMLDivElement, MobileCommentsHi
                 }`}
               />
             </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('stats')}
+              className={`flex-1 pb-3 text-sm font-semibold tracking-wide text-center relative transition-colors ${
+                activeTab === 'stats' ? 'text-white' : 'text-[#8F9B8F]'
+              }`}
+            >
+              Stats
+              <span
+                className={`absolute left-0 right-0 -bottom-[1px] h-0.5 transition-colors ${
+                  activeTab === 'stats' ? 'bg-[#D0B284]' : 'bg-transparent'
+                }`}
+              />
+            </button>
           </div>
         </div>
 
@@ -93,7 +108,7 @@ const MobileCommentsHistorySection = forwardRef<HTMLDivElement, MobileCommentsHi
                 />
               )}
             </div>
-          ) : (
+          ) : activeTab === 'comments' ? (
             <div className="space-y-3">
               {renderAccordionHeader(
                 'Community Comments',
@@ -109,6 +124,10 @@ const MobileCommentsHistorySection = forwardRef<HTMLDivElement, MobileCommentsHi
                   variant="mobile"
                 />
               )}
+            </div>
+          ) : (
+            <div className="px-4">
+              <TokenHealthPanel />
             </div>
           )}
         </div>
