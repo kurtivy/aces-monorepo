@@ -52,7 +52,54 @@ export default function TokenSwapInterface({
   const [factoryContract, setFactoryContract] = useState<ethers.Contract | null>(null);
   const [acesContract, setAcesContract] = useState<ethers.Contract | null>(null);
 
-  const contractAddresses = getContractAddresses();
+  const [currentChainId, setCurrentChainId] = useState<number | null>(null);
+
+  // Get current chain ID from wallet
+  const getCurrentChainId = async (): Promise<number | null> => {
+    if (typeof window === 'undefined' || !window.ethereum) {
+      return null;
+    }
+
+    try {
+      const chainIdHex = (await window.ethereum.request({ method: 'eth_chainId' })) as string;
+      return parseInt(chainIdHex, 16);
+    } catch (error) {
+      console.error('Failed to get chain ID:', error);
+      return null;
+    }
+  };
+
+  // Get contract addresses for current chain
+  const getCurrentContractAddresses = () => {
+    return getContractAddresses(currentChainId || 8453); // Default to mainnet
+  };
+
+  // Update chain ID when wallet connects or changes
+  useEffect(() => {
+    const updateChainId = async () => {
+      const chainId = await getCurrentChainId();
+      if (chainId && chainId !== currentChainId) {
+        console.log(`Chain ID changed from ${currentChainId} to ${chainId}`);
+        setCurrentChainId(chainId);
+      }
+    };
+
+    if (typeof window !== 'undefined' && window.ethereum) {
+      updateChainId();
+
+      // Listen for chain changes
+      const handleChainChanged = () => {
+        console.log('Chain changed, updating...');
+        updateChainId();
+      };
+
+      window.ethereum.on('chainChanged', handleChainChanged);
+
+      return () => {
+        window.ethereum?.removeListener('chainChanged', handleChainChanged);
+      };
+    }
+  }, [currentChainId]);
 
   // Bonding state
   const [tokenBonded, setTokenBonded] = useState<boolean>(false);
@@ -267,14 +314,11 @@ export default function TokenSwapInterface({
           setProvider(provider);
           setSigner(signer);
 
-          const factory = new ethers.Contract(
-            contractAddresses.FACTORY_PROXY,
-            ACES_FACTORY_ABI,
-            signer,
-          );
+          const addresses = getCurrentContractAddresses();
+          const factory = new ethers.Contract(addresses.FACTORY_PROXY, ACES_FACTORY_ABI, signer);
           setFactoryContract(factory);
 
-          const acesAddress = contractAddresses.ACES_TOKEN;
+          const acesAddress = addresses.ACES_TOKEN;
           const aces = new ethers.Contract(acesAddress, ERC20_ABI, signer);
           setAcesContract(aces);
 
@@ -297,7 +341,7 @@ export default function TokenSwapInterface({
     };
 
     initializeFromAuth();
-  }, [isAuthenticated, walletAddress, provider, contractAddresses]);
+  }, [isAuthenticated, walletAddress, provider, currentChainId]);
 
   // Refresh balances only when properly connected
   useEffect(() => {
@@ -323,14 +367,11 @@ export default function TokenSwapInterface({
         setProvider(provider);
         setSigner(signer);
 
-        const factory = new ethers.Contract(
-          contractAddresses.FACTORY_PROXY,
-          ACES_FACTORY_ABI,
-          signer,
-        );
+        const addresses = getCurrentContractAddresses();
+        const factory = new ethers.Contract(addresses.FACTORY_PROXY, ACES_FACTORY_ABI, signer);
         setFactoryContract(factory);
 
-        const acesAddress = contractAddresses.ACES_TOKEN;
+        const acesAddress = addresses.ACES_TOKEN;
         const aces = new ethers.Contract(acesAddress, ERC20_ABI, signer);
         setAcesContract(aces);
 
@@ -358,9 +399,10 @@ export default function TokenSwapInterface({
       console.log('Price (ACES):', priceQuote);
 
       const address = await signer.getAddress();
+      const currentAddresses = getCurrentContractAddresses();
       const currentAllowance = await acesContract.allowance(
         address,
-        contractAddresses.FACTORY_PROXY,
+        currentAddresses.FACTORY_PROXY,
       );
       const currentAcesBalance = await acesContract.balanceOf(address);
 
@@ -370,7 +412,7 @@ export default function TokenSwapInterface({
 
       // Step 1: Approve ACES tokens
       setLoading('Approving ACES tokens...');
-      const approveTx = await acesContract.approve(contractAddresses.FACTORY_PROXY, priceWei);
+      const approveTx = await acesContract.approve(currentAddresses.FACTORY_PROXY, priceWei);
       await approveTx.wait();
 
       // Step 2: Buy tokens
