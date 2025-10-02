@@ -122,14 +122,16 @@ export default function TokenSwapInterface({
     activeTab === 'buy' ? priceQuote : sellPriceQuote,
   );
   const [amount, setAmount] = useState('');
-  const [slippage, setSlippage] = useState('0.5');
-  const [showSlippageDropdown, setShowSlippageDropdown] = useState(false);
+  /* TODO(Aerodrome API): Re-enable slippage controls when hooked into swap routing */
+  // const [slippage, setSlippage] = useState('0.5');
+  // const [showSlippageDropdown, setShowSlippageDropdown] = useState(false);
   const [loading, setLoading] = useState<string>('');
   const [networkError, setNetworkError] = useState<string | null>(null);
   const [unsupportedNetwork, setUnsupportedNetwork] = useState<boolean>(false);
-  const [transactionStatus, setTransactionStatus] = useState<
-    { type: 'success' | 'error'; message: string } | null
-  >(null);
+  const [transactionStatus, setTransactionStatus] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
 
   const [copied, setCopied] = useState(false);
 
@@ -139,9 +141,7 @@ export default function TokenSwapInterface({
     loading: readOnlyBondingLoading,
   } = useTokenBondingData(tokenAddress, chainId);
 
-  const normalizedWalletPercentage = Number.isFinite(bondingPercentage)
-    ? bondingPercentage
-    : 0;
+  const normalizedWalletPercentage = Number.isFinite(bondingPercentage) ? bondingPercentage : 0;
   const normalizedReadOnlyPercentage = Number.isFinite(readOnlyBondingPercentage)
     ? readOnlyBondingPercentage
     : 0;
@@ -152,7 +152,7 @@ export default function TokenSwapInterface({
   const combinedIsBonded = tokenBonded || readOnlyIsBonded || combinedBondingPercentage >= 100;
   const showBondingLoading = readOnlyBondingLoading && !combinedIsBonded;
 
-  const slippageOptions = ['0.5', '1.0', '2.0'];
+  // const slippageOptions = ['0.5', '1.0', '2.0'];
 
   const priceCalculationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -785,9 +785,8 @@ export default function TokenSwapInterface({
               <div>
                 <div className="font-semibold">Bonding Almost Complete</div>
                 <div className="text-xs mt-1 text-yellow-300">
-                  {combinedBondingPercentage.toFixed(1)}% bonded. Once 100% is reached, this
-                  token will
-                  migrate to Aerodrome LP.
+                  {combinedBondingPercentage.toFixed(1)}% bonded. Once 100% is reached, this token
+                  will migrate to Aerodrome LP.
                 </div>
               </div>
             </div>
@@ -818,7 +817,8 @@ export default function TokenSwapInterface({
           </button>
         </div>
 
-        {/* Slippage Dropdown */}
+        {/* Slippage dropdown temporarily disabled until Aerodrome API integration */}
+        {/*
         <div className="flex justify-end mb-4">
           <div className="relative">
             <Button
@@ -854,6 +854,7 @@ export default function TokenSwapInterface({
             )}
           </div>
         </div>
+        */}
 
         {/* Input Field */}
         <div className="mb-6">
@@ -866,10 +867,7 @@ export default function TokenSwapInterface({
               className="h-16 text-2xl font-bold bg-[#1a2318] border-[#D0B284]/20 text-[#D0B284] placeholder:text-[#D0B284]/50 pr-20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
             <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
-              <div className="w-8 h-8 bg-[#D0B284] rounded-full flex items-center justify-center">
-                <span className="text-[#151c16] text-xs font-bold">{tokenSymbol}</span>
-              </div>
-              <span className="text-[#D0B284] font-semibold">{tokenSymbol}</span>
+              <span className="text-[#D0B284] font-semibold">$ {tokenSymbol}</span>
             </div>
           </div>
         </div>
