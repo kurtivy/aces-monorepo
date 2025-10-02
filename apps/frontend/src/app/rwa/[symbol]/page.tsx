@@ -15,6 +15,7 @@ import DashedGridBackground from '@/components/ui/custom/dashed-grid-background'
 import { useDeviceCapabilities } from '@/contexts/device-provider';
 import MobileRWAItemPage from './mobile-page';
 import PageLoader from '@/components/loading/page-loader';
+// import SubgraphHealthBanner from '@/components/rwa/subgraph-health-banner';
 
 export default function RWAItemPage() {
   const params = useParams();
@@ -91,6 +92,7 @@ export default function RWAItemPage() {
             {/* Header */}
             <div className="relative z-50">
               <RWAHeader title={listing?.title} />
+              {/* <SubgraphHealthBanner /> */}
             </div>
 
             {/* Main 3-Column Layout */}
@@ -201,10 +203,8 @@ export default function RWAItemPage() {
                     // Image props - pass the first image from the gallery
                     primaryImage={listing.imageGallery?.[0]}
                     imageGallery={listing.imageGallery}
-                    // Progression bar props - these would be connected to bonding curve data
-                    currentAmount={0} // TODO: Connect to actual bonding curve data
-                    targetAmount={1000000} // Example target - this would come from bonding curve config
-                    percentage={26.9} // TODO: Calculate from actual bonding curve progress
+                    // Progression bar props - now fetched from contract
+                    chainId={84532} // Base Sepolia testnet
                   />
                 </div>
               </div>
