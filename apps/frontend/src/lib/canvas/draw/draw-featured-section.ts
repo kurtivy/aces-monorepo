@@ -173,7 +173,7 @@ export const getAuctionIconBounds = (
 // Days left utility function
 const calculateDaysLeft = (): { days: number; isExpired: boolean } => {
   // Target date: September 24, 2025, 9:00 AM EDT (New York time)
-  const targetDate = new Date('2025-10-02T09:00:00-04:00'); // EDT is UTC-4
+  const targetDate = new Date('2025-10-02T11:11:00-04:00'); // EDT is UTC-4
   const now = new Date();
   const timeDiff = targetDate.getTime() - now.getTime();
 
@@ -211,7 +211,7 @@ const drawDaysLeft = (
     ctx.textBaseline = 'bottom';
     const textX = x + width - (isMobile ? 15 : 20) * responsiveMetrics.paddingScale;
     const textY = y + height - (isMobile ? 15 : 20) * responsiveMetrics.paddingScale;
-    ctx.fillText('LIVE NOW', textX, textY);
+    ctx.fillText('LIVE', textX, textY);
     ctx.restore();
     return;
   }
