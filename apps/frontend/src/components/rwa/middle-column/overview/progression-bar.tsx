@@ -6,7 +6,7 @@ import { useAcesFactoryContract } from '@/hooks/contracts/use-aces-factory-contr
 
 interface ProgressionBarProps {
   tokenAddress?: string;
-  chainId?: number; // Base Sepolia = 84532, Base Mainnet = 8453
+  chainId?: number; // Optional: Base Sepolia = 84532, Base Mainnet = 8453. Uses NEXT_PUBLIC_DEFAULT_CHAIN_ID if not provided
   currentAmount?: number; // Deprecated - will be fetched from contract
   targetAmount?: number; // Deprecated - will be fetched from contract
   percentage?: number; // Deprecated - will be calculated
@@ -14,12 +14,13 @@ interface ProgressionBarProps {
 
 export default function ProgressionBar({
   tokenAddress,
-  chainId = 84532, // Default to Base Sepolia
+  chainId, // Optional - uses environment default (NEXT_PUBLIC_DEFAULT_CHAIN_ID) if not provided
 }: ProgressionBarProps) {
   const [percentage, setPercentage] = useState(0);
   const [isBonded, setIsBonded] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // Uses read-only provider if wallet not connected - works without wallet!
   const { calculateBondingProgress, isReady } = useAcesFactoryContract(chainId);
 
   // Fetch bonding progress when tokenAddress changes (pump.fun style - ACES based)

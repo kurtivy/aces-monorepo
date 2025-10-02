@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { ethers } from 'ethers';
-import { getContractAddresses } from '@/lib/contracts/addresses';
+import { getContractAddresses, NETWORK_CONFIG } from '@/lib/contracts/addresses';
 import { ACES_FACTORY_ABI, LAUNCHPAD_TOKEN_ABI } from '@/lib/contracts/abi';
 import { mineVanitySaltWithTimeout, type SaltMiningResult } from '@/lib/utils/salt-mining';
 
@@ -36,6 +36,9 @@ interface CreateTokenParams {
 }
 
 export function useAcesFactoryContract(chainId?: number) {
+  // Use environment-based default chain ID if none provided
+  const effectiveChainId = chainId ?? NETWORK_CONFIG.DEFAULT_CHAIN_ID;
+
   const [contractState, setContractState] = useState<ContractState>({
     tokenInfo: null,
     currentSupply: '0',
@@ -54,9 +57,9 @@ export function useAcesFactoryContract(chainId?: number) {
   const [signer, setSigner] = useState<ethers.Signer | null>(null);
   const [tokenImplementation, setTokenImplementation] = useState<string | null>(null);
   const [isWalletConnected, setIsWalletConnected] = useState(false);
-  const [currentChainId, setCurrentChainId] = useState<number | undefined>(chainId);
+  const [currentChainId, setCurrentChainId] = useState<number>(effectiveChainId);
 
-  const contractAddresses = getContractAddresses(currentChainId || 8453); // Default to mainnet
+  const contractAddresses = getContractAddresses(currentChainId);
 
   // Update chain ID when it changes
   useEffect(() => {
@@ -121,14 +124,14 @@ export function useAcesFactoryContract(chainId?: number) {
       try {
         let rpcUrl: string;
 
-        if (chainId === 8453) {
+        if (currentChainId === 8453) {
           // Base Mainnet
           rpcUrl = 'https://mainnet.base.org';
-        } else if (chainId === 84532) {
+        } else if (currentChainId === 84532) {
           // Base Sepolia
           rpcUrl = 'https://sepolia.base.org';
         } else {
-          // Default to mainnet if no specific chain provided
+          // Fallback to Base Mainnet
           rpcUrl = 'https://mainnet.base.org';
         }
 
@@ -144,16 +147,15 @@ export function useAcesFactoryContract(chainId?: number) {
         setReadOnlyFactoryContract(readOnlyFactory);
 
         console.log(
-          `✅ Read-only provider initialized for Base ${chainId === 8453 ? 'Mainnet' : 'Sepolia'}`,
+          `✅ Read-only provider initialized for Base ${currentChainId === 8453 ? 'Mainnet' : 'Sepolia'} (Chain ID: ${currentChainId})`,
         );
       } catch (error) {
         console.error('Failed to initialize read-only provider:', error);
       }
     };
 
-    if (chainId) {
-      initializeReadOnlyProvider();
-    }
+    // Always initialize read-only provider (uses environment default if no chainId provided)
+    initializeReadOnlyProvider();
   }, [contractAddresses.FACTORY_PROXY, currentChainId]);
 
   // Initialize provider and contracts only when wallet is connected

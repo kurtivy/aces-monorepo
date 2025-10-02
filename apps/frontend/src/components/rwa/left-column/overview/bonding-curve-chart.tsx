@@ -103,7 +103,8 @@ export default function BondingCurveChart({
   //   }
   // }, []);
 
-  // Use new contract hook with correct chain ID
+  // Use contract hook - will use environment default chain ID (NEXT_PUBLIC_DEFAULT_CHAIN_ID)
+  // This enables read-only mode without wallet connection
   const {
     contractState,
     generateBondingCurveData: generateData,
