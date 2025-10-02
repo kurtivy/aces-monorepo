@@ -7,6 +7,8 @@ import { getContractAddresses } from '@/lib/contracts/addresses';
 const BASE_SEPOLIA_CHAIN_ID = 84532;
 const BASE_MAINNET_CHAIN_ID = 8453;
 
+const DEFAULT_CHAIN_PRIORITY = [BASE_MAINNET_CHAIN_ID, BASE_SEPOLIA_CHAIN_ID];
+
 const CHAIN_NAMES: Record<number, string> = {
   [BASE_SEPOLIA_CHAIN_ID]: 'Base Sepolia',
   [BASE_MAINNET_CHAIN_ID]: 'Base Mainnet',
@@ -76,8 +78,6 @@ export function useTokenBondingData(
   });
 
   const fetchBondingData = useCallback(async () => {
-    const activeChainId = chainId ?? BASE_SEPOLIA_CHAIN_ID;
-
     if (!tokenAddress || !ethers.utils.isAddress(tokenAddress)) {
       setData((prev) => ({
         ...prev,
@@ -87,35 +87,37 @@ export function useTokenBondingData(
       return;
     }
 
-    const rpcUrls = RPC_ENDPOINTS[activeChainId] ?? RPC_ENDPOINTS[BASE_SEPOLIA_CHAIN_ID];
-    const chainName = CHAIN_NAMES[activeChainId] || `chain ${activeChainId}`;
-    const { FACTORY_PROXY } = getContractAddresses(activeChainId);
+    const candidateChainIds = chainId ? [chainId] : DEFAULT_CHAIN_PRIORITY;
 
-    if (!FACTORY_PROXY) {
-      console.error(`❌ Factory proxy not configured for ${chainName}.`);
-      setData((prev) => ({
-        ...prev,
-        loading: false,
-        error: `Factory proxy not configured for ${chainName}.`,
-      }));
-      return;
-    }
+    console.log(
+      `🔄 Fetching bonding data for ${tokenAddress} with chain priority ${candidateChainIds.join(', ')}`,
+    );
 
-    console.log(`🔄 Fetching bonding data for ${tokenAddress} on ${chainName}`);
+    let lastError: unknown = null;
 
-    try {
-      let lastError: unknown = null;
+    for (const candidateChainId of candidateChainIds) {
+      const rpcUrls = RPC_ENDPOINTS[candidateChainId];
+      if (!rpcUrls || rpcUrls.length === 0) {
+        console.warn(`⚠️ No RPC endpoints configured for chain ${candidateChainId}`);
+        continue;
+      }
+
+      const chainName = CHAIN_NAMES[candidateChainId] || `chain ${candidateChainId}`;
+      const { FACTORY_PROXY } = getContractAddresses(candidateChainId);
+
+      if (!FACTORY_PROXY) {
+        console.warn(`⚠️ Factory proxy not configured for ${chainName}. Skipping.`);
+        continue;
+      }
+
+      console.log(`🔄 Attempting fetch for ${tokenAddress} on ${chainName}`);
 
       for (const rpcUrl of rpcUrls) {
         try {
-          // StaticJsonRpcProvider caches network metadata and avoids redundant requests
-          const provider = new ethers.providers.StaticJsonRpcProvider(rpcUrl, activeChainId);
-
-          // Create contract instances
+          const provider = new ethers.providers.StaticJsonRpcProvider(rpcUrl, candidateChainId);
           const factoryContract = new ethers.Contract(FACTORY_PROXY, FACTORY_ABI, provider);
           const tokenContract = new ethers.Contract(tokenAddress, TOKEN_ABI, provider);
 
-          // Fetch data in parallel
           const [tokenData, totalSupply] = await Promise.all([
             factoryContract.tokens(tokenAddress),
             tokenContract.totalSupply(),
@@ -125,9 +127,9 @@ export function useTokenBondingData(
             tokenData,
             totalSupply: totalSupply.toString(),
             rpcUrl,
+            chainId: candidateChainId,
           });
 
-          // Parse data
           const curve = tokenData.curve;
           const currentSupply = ethers.utils.formatEther(totalSupply);
           const tokensBondedAt = ethers.utils.formatEther(tokenData.tokensBondedAt);
@@ -137,8 +139,6 @@ export function useTokenBondingData(
           const steepness = tokenData.steepness.toString();
           const isBonded = tokenData.tokenBonded;
 
-          // Calculate bonding percentage
-          // This is based on current supply vs tokensBondedAt threshold
           const currentSupplyNum = parseFloat(currentSupply);
           const tokensBondedAtNum = parseFloat(tokensBondedAt);
           const bondingPercentage = isBonded
@@ -155,6 +155,7 @@ export function useTokenBondingData(
             isBonded,
             bondingPercentage: bondingPercentage.toFixed(2) + '%',
             rpcUrl,
+            chainId: candidateChainId,
           });
 
           setData({
@@ -174,24 +175,20 @@ export function useTokenBondingData(
           return;
         } catch (rpcError) {
           lastError = rpcError;
-          console.warn(`⚠️ RPC fetch failed for ${rpcUrl}:`, rpcError);
+          console.warn(`⚠️ RPC fetch failed for ${rpcUrl} (${chainName}):`, rpcError);
         }
       }
-
-      throw lastError instanceof Error
-        ? lastError
-        : new Error(`Failed to fetch bonding data for ${tokenAddress}`);
-    } catch (error) {
-      console.error('❌ Failed to fetch bonding data:', error);
-      setData((prev) => ({
-        ...prev,
-        loading: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : `Failed to fetch data for ${tokenAddress} on ${chainName}`,
-      }));
     }
+
+    console.error('❌ Failed to fetch bonding data:', lastError);
+    setData((prev) => ({
+      ...prev,
+      loading: false,
+      error:
+        lastError instanceof Error
+          ? lastError.message
+          : `Failed to fetch data for ${tokenAddress}`,
+    }));
   }, [tokenAddress, chainId]);
 
   useEffect(() => {

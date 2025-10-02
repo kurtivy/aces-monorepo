@@ -1,7 +1,16 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
+import { Info } from 'lucide-react';
+import { useTokenBondingData } from '@/hooks/contracts/use-token-bonding-data';
+import { usePriceConversion } from '@/hooks/use-price-conversion';
+import { useAuth } from '@/lib/auth/auth-context';
+import { ethers } from 'ethers';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+
+// ERC20 ABI for balance checking
+const ERC20_ABI = ['function balanceOf(address) view returns (uint256)'];
 
 // Value Equilibrium Calculator (embedded)
 interface TokenMetrics {
@@ -15,6 +24,7 @@ interface TokenMetrics {
   marketCap: number;
   signal: MarketSignal;
   equilibriumPrice: number;
+  acesRatio: number;
 }
 
 interface MarketSignal {
@@ -73,13 +83,19 @@ class ValueEquilibriumCalculator {
     return this.calculateRewardPerToken(communityReward, circulatingSupply);
   }
 
-  getMetrics(lpPoolTokens: number, tokenPrice: number, communityReward: number): TokenMetrics {
+  getMetrics(
+    lpPoolTokens: number,
+    tokenPrice: number,
+    communityReward: number,
+    assetSalePrice: number,
+  ): TokenMetrics {
     const circulatingSupply = this.calculateCirculatingSupply(lpPoolTokens);
     const rewardPerToken = this.calculateRewardPerToken(communityReward, circulatingSupply);
     const valueEquilibriumRatio = this.calculateVER(tokenPrice, rewardPerToken);
     const marketCap = tokenPrice * circulatingSupply;
     const signal = this.generateMarketSignal(valueEquilibriumRatio);
     const equilibriumPrice = this.findEquilibriumPrice(communityReward, lpPoolTokens);
+    const acesRatio = assetSalePrice > 0 ? marketCap / assetSalePrice : 0;
 
     return {
       totalSupply: this.TOTAL_SUPPLY,
@@ -92,6 +108,7 @@ class ValueEquilibriumCalculator {
       marketCap,
       signal,
       equilibriumPrice,
+      acesRatio,
     };
   }
 }
@@ -126,22 +143,132 @@ const getSignalColor = (action: string) => {
       return '#6b7280';
   }
 };
+
+// Helper component for labels with tooltips
+const LabelWithTooltip = ({ label, tooltip }: { label: string; tooltip: string }) => (
+  <div className="flex items-center gap-1.5">
+    <span className="text-xs tracking-[0.28em] uppercase font-spray-letters text-[#D0B284]">
+      {label}
+    </span>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button className="inline-flex items-center justify-center text-[#D0B284]/60 hover:text-[#D0B284] transition-colors">
+          <Info className="w-3.5 h-3.5" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent
+        side="right"
+        className="max-w-[280px] bg-[#1a2318] border border-[#D0B284]/30 text-[#DCDDCC] text-xs leading-relaxed"
+      >
+        {tooltip}
+      </TooltipContent>
+    </Tooltip>
+  </div>
+);
+
 interface TokenHealthPanelProps {
-  ratioText?: string;
+  tokenAddress?: string;
+  reservePrice?: string | null; // USD value of physical asset
+  chainId?: number;
 }
 
-export default function TokenHealthPanel({ ratioText }: TokenHealthPanelProps) {
-  // Hardcoded values to produce HOLD signal (VER between 0.8-1.2)
-  const lpPoolTokens = 150_000_000; // Less LP = more circulating = lower reward per token
-  const tokenPrice = 0.001; // Lower price
-  const communityReward = 850_000; // Higher reward pool
-  const userTokenHoldings = 1_000_000; // User's token holdings for trading credits
+export default function TokenHealthPanel({
+  tokenAddress,
+  reservePrice,
+  chainId,
+}: TokenHealthPanelProps) {
+  const { walletAddress } = useAuth();
+  const [userTokenBalance, setUserTokenBalance] = useState<string>('0');
+
+  // Fetch bonding data
+  const {
+    currentSupply,
+    acesBalance,
+    loading: bondingLoading,
+  } = useTokenBondingData(tokenAddress, chainId);
+
+  // Parse asset sale price (reserve price)
+  const assetSalePrice = useMemo(() => {
+    if (!reservePrice) return 0;
+    const parsed = parseFloat(reservePrice);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }, [reservePrice]);
+
+  // Calculate community reward (10% of asset sale price)
+  const communityReward = useMemo(() => {
+    return assetSalePrice * 0.1;
+  }, [assetSalePrice]);
+
+  // Parse current supply - this is the CIRCULATING supply (tokens already sold)
+  const circulatingSupply = useMemo(() => {
+    const parsed = parseFloat(currentSupply || '0');
+    return Number.isFinite(parsed) ? parsed : 0;
+  }, [currentSupply]);
+
+  // Calculate LP pool tokens (tokens still in bonding curve)
+  const TOTAL_SUPPLY = 1_000_000_000;
+  const lpPoolTokens = useMemo(() => {
+    return TOTAL_SUPPLY - circulatingSupply;
+  }, [circulatingSupply]);
+
+  // Get market cap in USD (ACES balance converted to USD)
+  const acesDepositedFloat = useMemo(() => {
+    const parsed = parseFloat(acesBalance || '0');
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  }, [acesBalance]);
+
+  const { data: marketCapConversion } = usePriceConversion(
+    acesDepositedFloat > 0 ? acesDepositedFloat.toString() : '0',
+  );
+
+  const marketCapUSD = useMemo(() => {
+    if (!marketCapConversion?.usdValue) return 0;
+    const usd = Number(marketCapConversion.usdValue);
+    return Number.isFinite(usd) ? usd : 0;
+  }, [marketCapConversion]);
+
+  // Calculate token price in USD
+  const tokenPrice = useMemo(() => {
+    if (circulatingSupply <= 0 || marketCapUSD <= 0) return 0;
+    return marketCapUSD / circulatingSupply;
+  }, [marketCapUSD, circulatingSupply]);
+
+  // Fetch user's token balance
+  const fetchUserBalance = useCallback(async () => {
+    if (!tokenAddress || !walletAddress || !window.ethereum) {
+      setUserTokenBalance('0');
+      return;
+    }
+
+    try {
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
+      const balance = await tokenContract.balanceOf(walletAddress);
+      setUserTokenBalance(ethers.utils.formatEther(balance));
+    } catch (error) {
+      console.error('Failed to fetch user token balance:', error);
+      setUserTokenBalance('0');
+    }
+  }, [tokenAddress, walletAddress]);
+
+  useEffect(() => {
+    fetchUserBalance();
+    // Refresh balance every 30 seconds
+    const interval = setInterval(fetchUserBalance, 30000);
+    return () => clearInterval(interval);
+  }, [fetchUserBalance]);
+
+  const userTokenHoldings = useMemo(() => {
+    const parsed = parseFloat(userTokenBalance);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }, [userTokenBalance]);
 
   const calculator = useMemo(() => new ValueEquilibriumCalculator(), []);
 
   const metrics = useMemo(() => {
-    return calculator.getMetrics(lpPoolTokens, tokenPrice, communityReward);
-  }, [calculator, lpPoolTokens, tokenPrice, communityReward]);
+    // Pass lpPoolTokens - calculator will derive circulating supply from it
+    return calculator.getMetrics(lpPoolTokens, tokenPrice, communityReward, assetSalePrice);
+  }, [calculator, lpPoolTokens, tokenPrice, communityReward, assetSalePrice]);
 
   // Get signal color
   const tradingCredits = useMemo(() => {
@@ -149,7 +276,7 @@ export default function TokenHealthPanel({ ratioText }: TokenHealthPanelProps) {
   }, [userTokenHoldings, metrics.rewardPerToken]);
 
   const ratioDisplay = useMemo(() => {
-    const raw = ratioText ?? `${metrics.valueEquilibriumRatio.toFixed(2)}x`;
+    const raw = `${metrics.acesRatio.toFixed(2)}x`;
     const match = raw.match(/^([0-9.,]+)/);
 
     if (!match) {
@@ -157,7 +284,7 @@ export default function TokenHealthPanel({ ratioText }: TokenHealthPanelProps) {
     }
 
     return { numeric: match[1], suffix: raw.slice(match[1].length) };
-  }, [ratioText, metrics.valueEquilibriumRatio]);
+  }, [metrics.acesRatio]);
 
   const tradingCreditsDisplay = useMemo(() => {
     const formatted = formatNumber(tradingCredits);
@@ -169,13 +296,14 @@ export default function TokenHealthPanel({ ratioText }: TokenHealthPanelProps) {
 
   const rowClass =
     'flex items-center justify-between gap-4 px-5 py-4 border-b border-[#D0B284]/15 last:border-b-0';
-  const labelClass =
-    'text-xs tracking-[0.28em] uppercase font-spray-letters text-[#D0B284]';
   const valueClass = 'text-xl font-semibold font-proxima-nova leading-none text-white';
+
+  const isLoading = bondingLoading || !tokenAddress;
+  const hasData = circulatingSupply > 0 && tokenPrice > 0;
 
   return (
     <motion.div
-      className="h-full flex flex-col rounded-xl border border-[#D0B284]/20 bg-[#111712]/90"
+      className="h-full flex flex-col rounded-xl border border-[#D0B284]/20 bg-transparent"
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.8, ease: 'easeInOut' }}
@@ -186,7 +314,10 @@ export default function TokenHealthPanel({ ratioText }: TokenHealthPanelProps) {
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.6, ease: 'easeOut', delay: 0.05 }}
       >
-        <span className={`${labelClass} whitespace-nowrap`}>ACES RATIO</span>
+        <LabelWithTooltip
+          label="ACES RATIO"
+          tooltip="Market Cap divided by the asset's reserve price. Shows how much the token market values the asset compared to its physical value."
+        />
         <div className="flex items-end gap-2 text-white">
           {ratioDisplay.numeric ? (
             <>
@@ -213,8 +344,13 @@ export default function TokenHealthPanel({ ratioText }: TokenHealthPanelProps) {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5, delay: 0.1 }}
       >
-        <span className={labelClass}>VER</span>
-        <span className={valueClass}>{metrics.valueEquilibriumRatio.toFixed(2)}</span>
+        <LabelWithTooltip
+          label="VER"
+          tooltip="Value Equilibrium Ratio = Token Price ÷ Reward Per Token. Below 0.8 = undervalued (buy), 0.8-1.2 = fair value (hold), above 1.2 = overvalued (sell)."
+        />
+        <span className={valueClass}>
+          {isLoading ? '...' : hasData ? metrics.valueEquilibriumRatio.toFixed(2) : '--'}
+        </span>
       </motion.div>
       <motion.div
         className={rowClass}
@@ -222,19 +358,26 @@ export default function TokenHealthPanel({ ratioText }: TokenHealthPanelProps) {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5, delay: 0.12 }}
       >
-        <span className={labelClass}>SIGNAL</span>
-        <div className="flex items-center gap-2">
-          <div
-            className="w-3 h-3 rounded-full"
-            style={{ backgroundColor: getSignalColor(metrics.signal.action) }}
-          />
-          <span
-            className="text-xl font-bold font-spray-letters tracking-[0.3em]"
-            style={{ color: getSignalColor(metrics.signal.action) }}
-          >
-            {metrics.signal.action}
-          </span>
-        </div>
+        <LabelWithTooltip
+          label="SIGNAL"
+          tooltip="Trading signal based on VER analysis. Indicates whether the token is undervalued (buy), fairly valued (hold), or overvalued (sell)."
+        />
+        {isLoading || !hasData ? (
+          <span className={valueClass}>...</span>
+        ) : (
+          <div className="flex items-center gap-2">
+            <div
+              className="w-3 h-3 rounded-full"
+              style={{ backgroundColor: getSignalColor(metrics.signal.action) }}
+            />
+            <span
+              className="text-xl font-bold font-spray-letters tracking-[0.3em]"
+              style={{ color: getSignalColor(metrics.signal.action) }}
+            >
+              {metrics.signal.action}
+            </span>
+          </div>
+        )}
       </motion.div>
       <motion.div
         className={rowClass}
@@ -242,15 +385,22 @@ export default function TokenHealthPanel({ ratioText }: TokenHealthPanelProps) {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5, delay: 0.2 }}
       >
-        <span className={`${labelClass} whitespace-nowrap`}>TRADING CREDITS</span>
-        <div className="flex items-end gap-1 text-white">
-          <span className="text-base font-proxima-nova leading-none text-white">
-            {tradingCreditsDisplay.prefix}
-          </span>
-          <span className="text-2xl font-semibold font-proxima-nova leading-none text-white">
-            {tradingCreditsDisplay.numeric}
-          </span>
-        </div>
+        <LabelWithTooltip
+          label="TRADING CREDITS"
+          tooltip="Your share of the community reward pool = Your Token Balance × Reward Per Token. These credits can be used for future trading."
+        />
+        {isLoading || !hasData ? (
+          <span className={valueClass}>...</span>
+        ) : (
+          <div className="flex items-end gap-1 text-white">
+            <span className="text-base font-proxima-nova leading-none text-white">
+              {tradingCreditsDisplay.prefix}
+            </span>
+            <span className="text-2xl font-semibold font-proxima-nova leading-none text-white">
+              {tradingCreditsDisplay.numeric}
+            </span>
+          </div>
+        )}
       </motion.div>
       <motion.div
         className={rowClass}
@@ -258,11 +408,18 @@ export default function TokenHealthPanel({ ratioText }: TokenHealthPanelProps) {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5, delay: 0.15 }}
       >
-        <span className={labelClass}>REWARD PER TOKEN</span>
-        <div className="flex items-end gap-1 text-white">
-          <span className="text-sm font-proxima-nova leading-none">$</span>
-          <span className={valueClass}>{formatPrice(metrics.rewardPerToken)}</span>
-        </div>
+        <LabelWithTooltip
+          label="REWARD PER TOKEN"
+          tooltip="Community Reward ÷ Circulating Supply. Community reward is 10% of the asset's sale price, distributed among all token holders."
+        />
+        {isLoading || !hasData ? (
+          <span className={valueClass}>...</span>
+        ) : (
+          <div className="flex items-end gap-1 text-white">
+            <span className="text-sm font-proxima-nova leading-none">$</span>
+            <span className={valueClass}>{formatPrice(metrics.rewardPerToken)}</span>
+          </div>
+        )}
       </motion.div>
     </motion.div>
   );

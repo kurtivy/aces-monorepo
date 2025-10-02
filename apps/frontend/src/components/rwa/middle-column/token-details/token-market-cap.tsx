@@ -1,5 +1,4 @@
 'use client';
-"use client";
 
 import React, { useMemo } from 'react';
 import { useTokenBondingData } from '@/hooks/contracts/use-token-bonding-data';
@@ -51,7 +50,7 @@ const TokenMarketCap: React.FC<TokenMarketCapProps> = ({
 
   const formattedMarketCapACES = useMemo(() => {
     if (depositedAces <= 0) {
-      return null;
+      return `0 ${tokenSymbol}`;
     }
 
     return `${formatNumber(depositedAces, {
@@ -62,16 +61,18 @@ const TokenMarketCap: React.FC<TokenMarketCapProps> = ({
 
   const isLoading = bondingLoading;
 
+  const usdDisplay = isLoading
+    ? 'Calculating…'
+    : formattedMarketCapUSD ?? (depositedAces > 0 ? '$0.00' : '$0');
+
   return (
     <div className="mb-4 rounded-xl border border-[#D0B284]/15 bg-transparent px-4 py-3">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
         <div className="text-xs uppercase tracking-wide text-[#DCDDCC]/60">Market Cap</div>
-        {/* {formattedMarketCapACES && (
-          <div className="text-xs text-[#DCDDCC]/50">{formattedMarketCapACES}</div>
-        )} */}
+        <div className="text-xs text-[#DCDDCC]/50">{formattedMarketCapACES}</div>
       </div>
       <div className="mt-1 text-xl font-semibold text-[#D0B284]">
-        {isLoading ? 'Calculating…' : (formattedMarketCapUSD ?? '--')}
+        {usdDisplay}
       </div>
     </div>
   );
