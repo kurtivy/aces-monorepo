@@ -5,7 +5,12 @@ import * as d3 from 'd3';
 import { ethers } from 'ethers';
 import { useTokenBondingData } from '@/hooks/contracts/use-token-bonding-data';
 
-const ONE_ETHER = 10n ** 18n;
+const ONE_ETHER = BigInt('1000000000000000000');
+const ZERO = BigInt(0);
+const ONE = BigInt(1);
+const TWO = BigInt(2);
+const SIX = BigInt(6);
+const FIFTY = BigInt(50);
 
 interface BondingCurveChartProps {
   tokenAddress?: string;
@@ -70,7 +75,7 @@ export default function BondingCurveChart({ tokenAddress }: BondingCurveChartPro
       const steepness = BigInt(steepnessRaw);
       const floorWei = BigInt(floorWeiRaw);
 
-      if (steepness === 0n) {
+      if (steepness === ZERO) {
         return floorPriceACES;
       }
 
@@ -79,29 +84,27 @@ export default function BondingCurveChart({ tokenAddress }: BondingCurveChartPro
       }
 
       const supplyInt = BigInt(Math.max(1, Math.floor(supplyPoint)));
-      const amountInt = 1n;
+      const amountInt = ONE;
 
       const calculateQuadratic = () => {
-        const supplyMinusOne = supplyInt - 1n;
-        const sum1 =
-          (supplyMinusOne * supplyInt * (2n * supplyMinusOne + 1n)) /
-          6n;
+        const supplyMinusOne = supplyInt - ONE;
+        const sum1 = (supplyMinusOne * supplyInt * (TWO * supplyMinusOne + ONE)) / SIX;
         const supplyMinusOnePlusAmount = supplyMinusOne + amountInt;
         const supplyPlusAmount = supplyInt + amountInt;
         const sum2 =
-          (supplyMinusOnePlusAmount * supplyPlusAmount * (2n * supplyMinusOnePlusAmount + 1n)) /
-          6n;
+          (supplyMinusOnePlusAmount * supplyPlusAmount * (TWO * supplyMinusOnePlusAmount + ONE)) /
+          SIX;
         const summation = sum2 - sum1;
         return (summation * ONE_ETHER) / steepness + floorWei * amountInt;
       };
 
       const calculateLinear = () => {
-        const sum1 = (supplyInt - 1n) * supplyInt;
-        const sum2 = (supplyInt - 1n + amountInt) * (supplyInt + amountInt);
+        const sum1 = (supplyInt - ONE) * supplyInt;
+        const sum2 = (supplyInt - ONE + amountInt) * (supplyInt + amountInt);
         const summation = sum2 - sum1;
         const steepnessDivisor = (() => {
-          const divisor = steepness / 50n;
-          return divisor > 0n ? divisor : 1n;
+          const divisor = steepness / FIFTY;
+          return divisor > ZERO ? divisor : ONE;
         })();
         return (summation * ONE_ETHER) / steepnessDivisor + floorWei * amountInt;
       };
