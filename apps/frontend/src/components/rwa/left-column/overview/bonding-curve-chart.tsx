@@ -3,7 +3,9 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import * as d3 from 'd3';
 import { ethers } from 'ethers';
-import { useAcesFactoryContract } from '@/hooks/contracts/use-aces-factory-contract';
+import { useTokenBondingData } from '@/hooks/contracts/use-token-bonding-data';
+
+const ONE_ETHER = 10n ** 18n;
 
 interface BondingCurveChartProps {
   tokenAddress?: string;
@@ -18,31 +20,7 @@ interface TooltipData {
   y: number;
 }
 
-interface ChartState {
-  loading: boolean;
-  error: string | null;
-  retryCount: number;
-  lastRetry: number;
-  lastSuccessfulFetch: number;
-  useCache: boolean;
-}
-
-interface CachedData {
-  data: Array<{
-    tokensSold: number;
-    priceACES: number;
-    phase: string;
-  }>;
-  timestamp: number;
-  tokenAddress: string;
-}
-
-export default function BondingCurveChart({
-  tokenAddress,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  currentPrice: _propCurrentPrice,
-  tokensSold: propTokensSold,
-}: BondingCurveChartProps) {
+export default function BondingCurveChart({ tokenAddress }: BondingCurveChartProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [tooltipData, setTooltipData] = useState<TooltipData | null>(null);
   const [bondingCurveData, setBondingCurveData] = useState<
@@ -52,125 +30,113 @@ export default function BondingCurveChart({
       phase: string;
     }>
   >([]);
-  const [chartState, setChartState] = useState<ChartState>({
-    loading: false,
-    error: null,
-    retryCount: 0,
-    lastRetry: 0,
-    lastSuccessfulFetch: 0,
-    useCache: false,
-  });
 
-  // Cache management
-  const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
-  const MAX_RETRY_COUNT = 2; // Reduced from 3
-  const MIN_RETRY_INTERVAL = 60000; // 1 minute minimum between retries
+  // Simple hook - gets all data we need
+  const bondingData = useTokenBondingData(tokenAddress);
 
-  // Cache utility functions
-  const getCacheKey = (address: string) => `bonding-curve-${address}`;
+  const currentTokensSold = parseFloat(bondingData.currentSupply) || 0;
+  const tokensBondedAt = parseFloat(bondingData.tokensBondedAt) || 30000000;
+  const clampedCurrentTokensSold = Math.min(currentTokensSold, tokensBondedAt || currentTokensSold);
+  const isBonded = bondingData.isBonded;
+  const curve = bondingData.curve; // 0 = quadratic, 1 = linear
+  const floorPriceACES = parseFloat(bondingData.floorPriceACES) || 0;
 
-  const saveToCache = useCallback((data: CachedData) => {
-    try {
-      sessionStorage.setItem(getCacheKey(data.tokenAddress), JSON.stringify(data));
-    } catch (error) {
-      console.warn('Failed to save to cache:', error);
-    }
+  const formatTokenAmount = useCallback((value: number) => {
+    if (!Number.isFinite(value)) return '0';
+    if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B`;
+    if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+    if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
+    if (value >= 1) return value.toFixed(0);
+    return value.toFixed(4);
   }, []);
 
-  const loadFromCache = useCallback(
-    (address: string): CachedData | null => {
-      try {
-        const cached = sessionStorage.getItem(getCacheKey(address));
-        if (cached) {
-          const parsedData = JSON.parse(cached) as CachedData;
-          const isValid = Date.now() - parsedData.timestamp < CACHE_DURATION;
-          return isValid ? parsedData : null;
-        }
-      } catch (error) {
-        console.warn('Failed to load from cache:', error);
+  const formatPriceACES = useCallback((value: number) => {
+    if (!Number.isFinite(value)) return '0 ACES';
+    if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M ACES`;
+    if (value >= 1_000) return `${(value / 1_000).toFixed(2)}K ACES`;
+    if (value >= 1) return `${value.toFixed(2)} ACES`;
+    return `${value.toFixed(4)} ACES`;
+  }, []);
+
+  const calculatePriceAtSupply = useCallback(
+    (supplyPoint: number) => {
+      const steepnessRaw = bondingData.steepness;
+      const floorWeiRaw = bondingData.floorWei;
+
+      if (!steepnessRaw || !floorWeiRaw) {
+        return floorPriceACES;
       }
-      return null;
+
+      const steepness = BigInt(steepnessRaw);
+      const floorWei = BigInt(floorWeiRaw);
+
+      if (steepness === 0n) {
+        return floorPriceACES;
+      }
+
+      if (supplyPoint <= 0) {
+        return floorPriceACES;
+      }
+
+      const supplyInt = BigInt(Math.max(1, Math.floor(supplyPoint)));
+      const amountInt = 1n;
+
+      const calculateQuadratic = () => {
+        const supplyMinusOne = supplyInt - 1n;
+        const sum1 =
+          (supplyMinusOne * supplyInt * (2n * supplyMinusOne + 1n)) /
+          6n;
+        const supplyMinusOnePlusAmount = supplyMinusOne + amountInt;
+        const supplyPlusAmount = supplyInt + amountInt;
+        const sum2 =
+          (supplyMinusOnePlusAmount * supplyPlusAmount * (2n * supplyMinusOnePlusAmount + 1n)) /
+          6n;
+        const summation = sum2 - sum1;
+        return (summation * ONE_ETHER) / steepness + floorWei * amountInt;
+      };
+
+      const calculateLinear = () => {
+        const sum1 = (supplyInt - 1n) * supplyInt;
+        const sum2 = (supplyInt - 1n + amountInt) * (supplyInt + amountInt);
+        const summation = sum2 - sum1;
+        const steepnessDivisor = (() => {
+          const divisor = steepness / 50n;
+          return divisor > 0n ? divisor : 1n;
+        })();
+        return (summation * ONE_ETHER) / steepnessDivisor + floorWei * amountInt;
+      };
+
+      const priceWei = curve === 0 ? calculateQuadratic() : calculateLinear();
+
+      try {
+        const formatted = ethers.utils.formatEther(priceWei.toString());
+        return parseFloat(formatted);
+      } catch (error) {
+        console.error('Failed to format bonding curve price:', error);
+        return floorPriceACES;
+      }
     },
-    [CACHE_DURATION],
+    [bondingData.floorWei, bondingData.steepness, curve, floorPriceACES],
   );
 
-  // Cache clearing function (available for future use)
-  // const clearCache = useCallback((address: string) => {
-  //   try {
-  //     sessionStorage.removeItem(getCacheKey(address));
-  //   } catch (error) {
-  //     console.warn('Failed to clear cache:', error);
-  //   }
-  // }, []);
-
-  // Use contract hook - will use environment default chain ID (NEXT_PUBLIC_DEFAULT_CHAIN_ID)
-  // This enables read-only mode without wallet connection
-  const {
-    contractState,
-    generateBondingCurveData: generateData,
-    fetchTokenInfo,
-    isReady,
-    isReadOnly,
-  } = useAcesFactoryContract();
-
-  // Get current supply and bonding threshold
-  const currentTokensSold = contractState.tokenInfo
-    ? parseFloat(contractState.currentSupply)
-    : propTokensSold || 0;
-
-  const tokensBondedAt = contractState.tokenInfo
-    ? parseFloat(ethers.utils.formatEther(contractState.tokenInfo.tokensBondedAt))
-    : 800000000; // Default fallback (in token units)
-
-  const isBonded = contractState.tokenInfo?.tokenBonded || false;
-
-  // Debug logging to understand what data we have
-  console.log('Contract state:', {
-    loading: contractState.loading,
-    error: contractState.error,
-    hasTokenInfo: !!contractState.tokenInfo,
-    tokensBondedAt: contractState.tokenInfo?.tokensBondedAt,
-    currentSupply: contractState.currentSupply,
-    tokenAddress,
-  });
-
-  // Generate fallback data when contract calls fail (mimics bonding curve behavior)
-  const generateFallbackData = useCallback(() => {
+  // Generate curve data based on actual curve type
+  const generateCurveData = useCallback(() => {
     const dataPoints = [];
     const numPoints = 8;
-    const totalSupply = tokensBondedAt;
 
-    // Generate a realistic bonding curve shape
     for (let i = 0; i <= numPoints; i++) {
-      const supplyPoint = Math.floor((totalSupply / numPoints) * i);
-
-      if (supplyPoint === 0) {
-        // Start with floor price
-        dataPoints.push({
-          tokensSold: 0,
-          priceACES: 0.000001, // Minimal floor price
-          phase: 'completed',
-        });
-        continue;
-      }
-
-      // Linear curve approximation: price increases steadily
-      // Price per token = floor + (steepness * supply)
-      const normalizedSupply = supplyPoint / totalSupply;
-      const basePrice = 0.000001; // Floor
-      const maxPrice = basePrice * 100; // Reasonable max for visualization
-      const priceACES = basePrice + (maxPrice - basePrice) * normalizedSupply;
-
+      const supplyPoint = Math.floor((tokensBondedAt / numPoints) * i);
+      const priceACES = calculatePriceAtSupply(supplyPoint);
       dataPoints.push({
         tokensSold: supplyPoint,
         priceACES,
-        phase: supplyPoint <= currentTokensSold ? 'completed' : 'upcoming',
+        phase: supplyPoint <= clampedCurrentTokensSold ? 'completed' : 'upcoming',
       });
     }
     return dataPoints;
-  }, [tokensBondedAt, currentTokensSold]);
+  }, [tokensBondedAt, clampedCurrentTokensSold, calculatePriceAtSupply]);
 
-  // Interpolate price from chart data points (no contract calls needed)
+  // Interpolate price from chart data
   const interpolatePriceFromChartData = useCallback(
     (
       targetSupply: number,
@@ -178,33 +144,27 @@ export default function BondingCurveChart({
     ) => {
       if (chartData.length === 0) return 0;
 
-      // Sort data by tokensSold to ensure proper interpolation
       const sortedData = [...chartData].sort((a, b) => a.tokensSold - b.tokensSold);
 
-      // If target is before first point, return first price
       if (targetSupply <= sortedData[0].tokensSold) {
         return sortedData[0].priceACES;
       }
 
-      // If target is after last point, return last price
       if (targetSupply >= sortedData[sortedData.length - 1].tokensSold) {
         return sortedData[sortedData.length - 1].priceACES;
       }
 
-      // Find the two points to interpolate between
       for (let i = 0; i < sortedData.length - 1; i++) {
         const point1 = sortedData[i];
         const point2 = sortedData[i + 1];
 
         if (targetSupply >= point1.tokensSold && targetSupply <= point2.tokensSold) {
-          // Linear interpolation
           const ratio =
             (targetSupply - point1.tokensSold) / (point2.tokensSold - point1.tokensSold);
           return point1.priceACES + (point2.priceACES - point1.priceACES) * ratio;
         }
       }
 
-      // Fallback to nearest point
       const nearestPoint = sortedData.reduce((prev, curr) =>
         Math.abs(curr.tokensSold - targetSupply) < Math.abs(prev.tokensSold - targetSupply)
           ? curr
@@ -215,233 +175,19 @@ export default function BondingCurveChart({
     [],
   );
 
-  // Retry logic with exponential backoff
-  const retryWithBackoff = useCallback(async (fn: () => Promise<unknown>, maxRetries = 3) => {
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      try {
-        return await fn();
-      } catch (error) {
-        if (attempt === maxRetries - 1) throw error;
-
-        const delay = Math.min(1000 * Math.pow(2, attempt), 10000); // Max 10s delay
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
-    }
-  }, []);
-
-  // Smart data loading with caching and intelligent retry
-  const loadBondingCurveData = useCallback(
-    async (forceRefresh = false) => {
-      if (!tokenAddress || !ethers.utils.isAddress(tokenAddress)) {
-        console.warn('Invalid or missing token address:', tokenAddress);
-        return;
-      }
-
-      if (!isReady) {
-        console.log('Contract not ready yet, skipping bonding curve data load');
-        return;
-      }
-
-      // Check if we should skip this request
-      const now = Date.now();
-      const timeSinceLastRetry = now - chartState.lastRetry;
-
-      // Skip if we recently failed and haven't waited long enough
-      if (!forceRefresh && chartState.error && timeSinceLastRetry < MIN_RETRY_INTERVAL) {
-        console.log('Skipping request - too soon after last failure');
-        return;
-      }
-
-      // Skip if we've hit max retries and it's not a manual refresh
-      if (!forceRefresh && chartState.retryCount >= MAX_RETRY_COUNT) {
-        console.log('Skipping request - max retries exceeded');
-        return;
-      }
-
-      // Try to load from cache first
-      if (!forceRefresh) {
-        const cachedData = loadFromCache(tokenAddress);
-        if (cachedData) {
-          console.log('Using cached bonding curve data');
-          setBondingCurveData(cachedData.data);
-          setChartState((prev) => ({
-            ...prev,
-            loading: false,
-            error: null,
-            useCache: true,
-            lastSuccessfulFetch: cachedData.timestamp,
-          }));
-          return;
-        }
-      }
-
-      // Prevent multiple simultaneous requests
-      if (chartState.loading && !forceRefresh) {
-        console.log('Request already in progress');
-        return;
-      }
-
-      setChartState((prev) => ({
-        ...prev,
-        loading: true,
-        error: forceRefresh ? null : prev.error,
-        useCache: false,
-      }));
-
-      try {
-        console.log('Attempting to fetch live bonding curve data...');
-        const data = (await retryWithBackoff(() => generateData(tokenAddress))) as Array<{
-          tokensSold: number;
-          priceACES: number;
-          phase: string;
-        }>;
-
-        if (data && data.length > 0) {
-          console.log('Successfully fetched live data');
-          setBondingCurveData(data);
-
-          // Save to cache
-          const cacheData: CachedData = {
-            data,
-            timestamp: now,
-            tokenAddress,
-          };
-          saveToCache(cacheData);
-
-          setChartState({
-            loading: false,
-            error: null,
-            retryCount: 0,
-            lastRetry: 0,
-            lastSuccessfulFetch: now,
-            useCache: false,
-          });
-        } else {
-          throw new Error('No data returned from contract');
-        }
-      } catch (error) {
-        console.log('Failed to fetch live data, using fallback');
-
-        // Generate fallback data
-        const fallbackData = generateFallbackData();
-        setBondingCurveData(fallbackData);
-
-        const errorMessage =
-          error instanceof Error
-            ? error.message.includes('circuit breaker')
-              ? 'Network congestion - showing estimated data'
-              : 'Network error - showing estimated data'
-            : 'Unable to load live data';
-
-        setChartState((prev) => ({
-          loading: false,
-          error: errorMessage,
-          retryCount: forceRefresh ? 0 : prev.retryCount + 1,
-          lastRetry: now,
-          lastSuccessfulFetch: prev.lastSuccessfulFetch,
-          useCache: false,
-        }));
-      }
-    },
-    [
-      tokenAddress,
-      isReady,
-      chartState.loading,
-      chartState.error,
-      chartState.lastRetry,
-      chartState.retryCount,
-      generateData,
-      retryWithBackoff,
-      generateFallbackData,
-      loadFromCache,
-      saveToCache,
-      MIN_RETRY_INTERVAL,
-      MAX_RETRY_COUNT,
-    ],
-  );
-
-  // Automatically fetch token info when tokenAddress changes (before loading bonding curve data)
+  // Generate curve data when bonding data is available
   useEffect(() => {
-    if (tokenAddress && isReady && ethers.utils.isAddress(tokenAddress)) {
-      console.log('🔍 Fetching token info for:', tokenAddress, {
-        isReady,
-        isReadOnly,
-        hasTokenInfo: !!contractState.tokenInfo,
-      });
-      fetchTokenInfo(tokenAddress, true).catch((error) => {
-        console.error('❌ Failed to fetch token info:', error);
-        // If token info fetch fails, immediately use fallback data
-        console.log('⚠️ Using fallback bonding curve data due to token info fetch failure');
-        const fallbackData = generateFallbackData();
-        setBondingCurveData(fallbackData);
-        setChartState((prev) => ({
-          ...prev,
-          loading: false,
-          error: 'Using estimated data',
-        }));
+    if (!bondingData.loading && tokenAddress) {
+      const curveData = generateCurveData();
+      setBondingCurveData(curveData);
+      console.log('📊 Curve data generated:', {
+        curve: curve === 0 ? 'quadratic' : 'linear',
+        dataPoints: curveData.length,
       });
     }
-  }, [
-    tokenAddress,
-    isReady,
-    fetchTokenInfo,
-    isReadOnly,
-    contractState.tokenInfo,
-    generateFallbackData,
-  ]);
+  }, [bondingData.loading, tokenAddress, generateCurveData, curve]);
 
-  // Load bonding curve data when token info is available
-  useEffect(() => {
-    if (tokenAddress && contractState.tokenInfo) {
-      console.log('📊 Loading bonding curve data with token info available');
-      loadBondingCurveData();
-    }
-  }, [tokenAddress, contractState.tokenInfo, loadBondingCurveData]);
-
-  // Failsafe: If isReady but no token info after 5 seconds, use fallback
-  useEffect(() => {
-    if (!tokenAddress || !isReady) return;
-
-    const failsafeTimer = setTimeout(() => {
-      if (!contractState.tokenInfo && bondingCurveData.length === 0) {
-        console.log('⏰ Failsafe triggered: No token info received after 5s, using fallback data');
-        const fallbackData = generateFallbackData();
-        setBondingCurveData(fallbackData);
-        setChartState((prev) => ({
-          ...prev,
-          loading: false,
-          error: 'Using estimated data',
-        }));
-      }
-    }, 5000); // 5 second failsafe
-
-    return () => clearTimeout(failsafeTimer);
-  }, [
-    tokenAddress,
-    isReady,
-    contractState.tokenInfo,
-    bondingCurveData.length,
-    generateFallbackData,
-  ]);
-
-  // Safety timeout to prevent infinite loading
-  useEffect(() => {
-    if (chartState.loading) {
-      const timeout = setTimeout(() => {
-        console.log('Loading timeout - forcing fallback data');
-        const fallbackData = generateFallbackData();
-        setBondingCurveData(fallbackData);
-        setChartState((prev) => ({
-          ...prev,
-          loading: false,
-          error: 'Network timeout - showing estimated data',
-        }));
-      }, 10000); // 10 second timeout
-
-      return () => clearTimeout(timeout);
-    }
-  }, [chartState.loading, generateFallbackData]);
-
+  // D3 rendering
   useEffect(() => {
     if (!svgRef.current || bondingCurveData.length === 0) return;
 
@@ -458,15 +204,11 @@ export default function BondingCurveChart({
 
     const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
-    // Use dynamic scale based on tokensBondedAt
-    const xScale = d3
-      .scaleLinear()
-      .domain([0, tokensBondedAt]) // Dynamic domain
-      .range([0, width]);
-    const maxACESPrice = d3.max(bondingCurveData, (d) => d.priceACES) || 0.0004;
+    const xScale = d3.scaleLinear().domain([0, tokensBondedAt]).range([0, width]);
+    const maxACESPrice = d3.max(bondingCurveData, (d) => d.priceACES) || floorPriceACES || 1;
     const yScale = d3
       .scaleLinear()
-      .domain([0, maxACESPrice * 1.1])
+      .domain([0, (maxACESPrice || 1) * 1.1])
       .range([height, 0]);
 
     const line = d3
@@ -475,7 +217,7 @@ export default function BondingCurveChart({
       .y((d) => yScale(d.priceACES))
       .curve(d3.curveMonotoneX);
 
-    // Add horizontal grid lines only - no vertical lines
+    // Grid lines
     g.append('g')
       .attr('class', 'grid')
       .call(
@@ -491,7 +233,7 @@ export default function BondingCurveChart({
       .style('stroke-opacity', 0.3)
       .style('stroke-dasharray', '2,2');
 
-    // Add X-axis with 0%, 50%, and 100% marks
+    // X-axis
     const xAxis = g
       .append('g')
       .attr('transform', `translate(0,${height})`)
@@ -510,29 +252,26 @@ export default function BondingCurveChart({
     xAxis.selectAll('text').style('fill', '#D0B284').style('font-size', '12px');
     xAxis.selectAll('line, path').style('stroke', '#9CA3AF');
 
-    // Add Y-axis with formatted ACES prices
+    // Y-axis
     const yAxis = g.append('g').call(
       d3
         .axisLeft(yScale)
-        .tickValues([0, maxACESPrice as number])
+        .ticks(4)
         .tickFormat((d) => {
           const value = Number(d);
           if (value === 0) return '0';
-          // Format large numbers readably
-          if (value >= 1000000) {
-            return `${(value / 1000000).toFixed(1)}M`;
-          } else if (value >= 1000) {
-            return `${(value / 1000).toFixed(1)}K`;
-          }
-          return `${value.toFixed(4)}`;
+          if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+          if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
+          if (value >= 1) return value.toFixed(2);
+          return value.toFixed(4);
         }),
     );
 
     yAxis.selectAll('text').style('fill', '#9CA3AF').style('font-size', '8px');
     yAxis.selectAll('line').style('stroke', '#9CA3AF');
-    yAxis.selectAll('path').style('stroke', 'none'); // Remove the Y-axis path/line
+    yAxis.selectAll('path').style('stroke', 'none');
 
-    // Create gradient
+    // Gradient
     const gradient = svg
       .append('defs')
       .append('linearGradient')
@@ -548,14 +287,13 @@ export default function BondingCurveChart({
       .attr('offset', '0%')
       .attr('stop-color', '#D0B284')
       .attr('stop-opacity', 0.4);
-
     gradient
       .append('stop')
       .attr('offset', '100%')
       .attr('stop-color', '#D0B284')
       .attr('stop-opacity', 0.1);
 
-    // Add area
+    // Area
     const area = d3
       .area<(typeof bondingCurveData)[0]>()
       .x((d) => xScale(d.tokensSold))
@@ -565,7 +303,7 @@ export default function BondingCurveChart({
 
     g.append('path').datum(bondingCurveData).attr('fill', 'url(#areaGradient)').attr('d', area);
 
-    // Add line
+    // Line
     g.append('path')
       .datum(bondingCurveData)
       .attr('fill', 'none')
@@ -573,9 +311,9 @@ export default function BondingCurveChart({
       .attr('stroke-width', 2)
       .attr('d', line);
 
-    // Add current position line (no dot)
+    // Current position line
     if (currentTokensSold > 0 && !isBonded) {
-      const currentX = xScale(currentTokensSold);
+      const currentX = xScale(Math.min(currentTokensSold, tokensBondedAt));
 
       g.append('line')
         .attr('x1', currentX)
@@ -587,7 +325,6 @@ export default function BondingCurveChart({
         .attr('stroke-dasharray', '3,3')
         .attr('opacity', 0.8);
 
-      // Add "Current" label
       g.append('text')
         .attr('x', currentX)
         .attr('y', -5)
@@ -595,10 +332,10 @@ export default function BondingCurveChart({
         .attr('fill', '#D0B284')
         .attr('font-size', '10px')
         .attr('font-weight', 'bold')
-        .text('Current');
+        .text(`${formatTokenAmount(currentTokensSold)} tokens`);
     }
 
-    // Add bonding threshold line (where token will bond)
+    // Bonding threshold line
     if (!isBonded) {
       const bondingX = xScale(tokensBondedAt);
 
@@ -607,12 +344,11 @@ export default function BondingCurveChart({
         .attr('y1', 0)
         .attr('x2', bondingX)
         .attr('y2', height)
-        .attr('stroke', '#10b981') // Green for bonding threshold
+        .attr('stroke', '#10b981')
         .attr('stroke-width', 2)
         .attr('stroke-dasharray', '5,5')
         .attr('opacity', 0.6);
 
-      // Add "Bonding" label
       g.append('text')
         .attr('x', bondingX)
         .attr('y', -5)
@@ -620,10 +356,10 @@ export default function BondingCurveChart({
         .attr('fill', '#10b981')
         .attr('font-size', '10px')
         .attr('font-weight', 'bold')
-        .text('Bonds');
+        .text(`Bonded @ ${formatTokenAmount(tokensBondedAt)} tokens`);
     }
 
-    // Add bonded indicator if token is already bonded
+    // Bonded indicator
     if (isBonded) {
       g.append('text')
         .attr('x', width / 2)
@@ -635,6 +371,15 @@ export default function BondingCurveChart({
         .attr('opacity', 0.3)
         .text('🎉 BONDED');
     }
+
+    g.append('text')
+      .attr('transform', 'rotate(-90)')
+      .attr('x', -height / 2)
+      .attr('y', -margin.left + 12)
+      .attr('text-anchor', 'middle')
+      .attr('fill', '#9CA3AF')
+      .attr('font-size', '10px')
+      .text('Price (ACES)');
 
     // Interactive overlay
     const crosshairGroup = g.append('g').attr('class', 'crosshairs').style('display', 'none');
@@ -668,7 +413,7 @@ export default function BondingCurveChart({
       .style('cursor', 'crosshair');
 
     mouseOverlay
-      .on('mousemove', async function (event) {
+      .on('mousemove', function (event) {
         const [mouseX] = d3.pointer(event, this);
 
         if (mouseX < 0 || mouseX > width) {
@@ -677,7 +422,7 @@ export default function BondingCurveChart({
           return;
         }
 
-        const tokensAtX = xScale.invert(mouseX);
+        const tokensAtX = Math.max(0, Math.min(tokensBondedAt, xScale.invert(mouseX)));
 
         if (tokensAtX < 0 || tokensAtX > tokensBondedAt) {
           crosshairGroup.style('display', 'none');
@@ -685,9 +430,7 @@ export default function BondingCurveChart({
           return;
         }
 
-        // Calculate price using interpolation from chart data (safer than contract calls)
         const priceACES = interpolatePriceFromChartData(tokensAtX, bondingCurveData);
-
         const chartX = xScale(tokensAtX);
         const chartY = yScale(priceACES);
 
@@ -701,15 +444,9 @@ export default function BondingCurveChart({
         if (containerRect) {
           const relativeX = event.clientX - containerRect.left;
           const relativeY = event.clientY - containerRect.top;
-
-          // Adjust tooltip position to avoid clipping
-          // If too close to top (within 80px), show below cursor
-          // If too close to bottom, show above cursor
-          const tooltipHeight = 60; // Approximate tooltip height
+          const tooltipHeight = 60;
           const adjustedY =
-            relativeY < tooltipHeight + 10
-              ? relativeY + 20 // Show below cursor if near top
-              : relativeY - tooltipHeight; // Show above cursor otherwise
+            relativeY < tooltipHeight + 10 ? relativeY + 20 : relativeY - tooltipHeight;
 
           setTooltipData({
             tokensSold: tokensAtX,
@@ -727,14 +464,16 @@ export default function BondingCurveChart({
     bondingCurveData,
     currentTokensSold,
     tokensBondedAt,
-    tokenAddress,
     interpolatePriceFromChartData,
     isBonded,
+    formatTokenAmount,
+    formatPriceACES,
+    floorPriceACES,
   ]);
 
   return (
     <div className="w-full h-full bg-transparent flex flex-col items-center justify-center relative pb-4">
-      {(chartState.loading || !isReady || bondingCurveData.length === 0) && !chartState.error ? (
+      {bondingData.loading || bondingCurveData.length === 0 ? (
         <div className="flex items-center justify-center h-full">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#D0B284]"></div>
         </div>
@@ -743,21 +482,10 @@ export default function BondingCurveChart({
           <div className="text-sm mb-2">🎯</div>
           <div className="text-xs mb-3">No token selected</div>
         </div>
-      ) : chartState.error && bondingCurveData.length === 0 ? (
+      ) : bondingData.error ? (
         <div className="flex flex-col items-center justify-center h-full text-[#9CA3AF] text-center px-4">
           <div className="text-sm mb-2">📊</div>
-          <div className="text-xs mb-3">
-            {chartState.error || 'No bonding curve data available'}
-          </div>
-          <div className="text-xs mb-3 opacity-60">
-            Token: {tokenAddress?.slice(0, 6)}...{tokenAddress?.slice(-4)}
-          </div>
-          <button
-            onClick={() => loadBondingCurveData(true)}
-            className="px-3 py-1 text-xs bg-[#D0B284] text-[#231F20] rounded hover:bg-[#E5C490] transition-colors"
-          >
-            Retry
-          </button>
+          <div className="text-xs mb-3">{bondingData.error}</div>
         </div>
       ) : (
         <>
@@ -778,17 +506,9 @@ export default function BondingCurveChart({
               <div className="bg-[#231F20] border border-[#D0B284] rounded-lg p-2 shadow-xl">
                 <div className="text-xs space-y-1">
                   <div className="text-[#FFFFFF] font-semibold">
-                    {/* Convert to millions - try without wei conversion first */}
-                    {(tooltipData.tokensSold / 1e6).toFixed(2)}M tokens
+                    {formatTokenAmount(tooltipData.tokensSold)} tokens
                   </div>
-                  <div className="text-[#D0B284]">
-                    {/* Format ACES price */}
-                    {tooltipData.priceACES >= 1000000
-                      ? `${(tooltipData.priceACES / 1000000).toFixed(2)}M ACES`
-                      : tooltipData.priceACES >= 1000
-                        ? `${(tooltipData.priceACES / 1000).toFixed(2)}K ACES`
-                        : `${tooltipData.priceACES.toFixed(4)} ACES`}
-                  </div>
+                  <div className="text-[#D0B284]">{formatPriceACES(tooltipData.priceACES)}</div>
                 </div>
               </div>
             </div>

@@ -1,103 +1,20 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { ethers } from 'ethers';
-import { useAcesFactoryContract } from '@/hooks/contracts/use-aces-factory-contract';
+import { useTokenBondingData } from '@/hooks/contracts/use-token-bonding-data';
 
 interface ProgressionBarProps {
   tokenAddress?: string;
-  chainId?: number; // Optional: Base Sepolia = 84532, Base Mainnet = 8453. Uses NEXT_PUBLIC_DEFAULT_CHAIN_ID if not provided
+  chainId?: number; // Optional override when rendering on Base Mainnet
   currentAmount?: number; // Deprecated - will be fetched from contract
   targetAmount?: number; // Deprecated - will be fetched from contract
   percentage?: number; // Deprecated - will be calculated
 }
 
-export default function ProgressionBar({
-  tokenAddress,
-  chainId, // Optional - uses environment default (NEXT_PUBLIC_DEFAULT_CHAIN_ID) if not provided
-}: ProgressionBarProps) {
-  const [percentage, setPercentage] = useState(0);
-  const [isBonded, setIsBonded] = useState(false);
-  const [loading, setLoading] = useState(true);
+export default function ProgressionBar({ tokenAddress, chainId }: ProgressionBarProps) {
+  // Simple hook - works without wallet, no complex state management
+  const { bondingPercentage, isBonded, loading } = useTokenBondingData(tokenAddress, chainId);
 
-  // Uses read-only provider if wallet not connected - works without wallet!
-  const { calculateBondingProgress, isReady } = useAcesFactoryContract(chainId);
-
-  // Fetch bonding progress when tokenAddress changes (pump.fun style - ACES based)
-  useEffect(() => {
-    let mounted = true;
-    let isLoadingRef = false; // Prevent duplicate calls
-
-    const loadBondingProgress = async () => {
-      if (!tokenAddress || !ethers.utils.isAddress(tokenAddress)) {
-        if (mounted) {
-          setLoading(false);
-        }
-        return;
-      }
-
-      if (!isReady) {
-        console.log('⏳ Progression bar waiting for contract to be ready...');
-        return;
-      }
-
-      // Prevent duplicate concurrent calls
-      if (isLoadingRef) {
-        console.log('⚠️ Progression bar: Already loading, skipping duplicate call');
-        return;
-      }
-
-      try {
-        isLoadingRef = true;
-        setLoading(true);
-        console.log('📊 Fetching bonding progress for:', tokenAddress);
-
-        const result = await calculateBondingProgress(tokenAddress);
-
-        console.log('📊 Bonding progress result:', result);
-
-        if (mounted) {
-          if (result) {
-            setPercentage(result.percentage);
-            setIsBonded(result.isBonded);
-            console.log('✅ Progression bar updated:', {
-              percentage: result.percentage.toFixed(2) + '%',
-              isBonded: result.isBonded,
-            });
-          } else {
-            console.warn('⚠️ No bonding progress result returned');
-            // Set to 0% if no result
-            setPercentage(0);
-            setIsBonded(false);
-          }
-        }
-      } catch (error) {
-        console.error('❌ Failed to fetch bonding progress:', error);
-        if (mounted) {
-          // Set to 0% on error
-          setPercentage(0);
-          setIsBonded(false);
-        }
-      } finally {
-        if (mounted) {
-          setLoading(false);
-        }
-        isLoadingRef = false;
-      }
-    };
-
-    loadBondingProgress();
-
-    // Poll every 10 seconds for updates
-    const interval = setInterval(loadBondingProgress, 10000);
-
-    return () => {
-      mounted = false;
-      clearInterval(interval);
-    };
-  }, [tokenAddress, isReady, calculateBondingProgress]);
-
-  const clampedPercentage = Math.min(Math.max(percentage, 0), 100);
+  const clampedPercentage = Math.min(Math.max(bondingPercentage, 0), 100);
 
   // Determine bar color based on bonding status
   const barGradient = isBonded

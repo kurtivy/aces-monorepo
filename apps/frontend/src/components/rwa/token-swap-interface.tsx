@@ -11,6 +11,7 @@ import Image from 'next/image';
 import { createImageErrorHandler, getValidImageSrc } from '@/lib/utils/image-error-handler';
 import ProgressionBar from './middle-column/overview/progression-bar';
 import { usePriceConversion } from '@/hooks/use-price-conversion';
+import { useTokenBondingData } from '@/hooks/contracts/use-token-bonding-data';
 
 import { getContractAddresses } from '@/lib/contracts/addresses';
 import { ACES_FACTORY_ABI, ERC20_ABI, LAUNCHPAD_TOKEN_ABI } from '@/lib/contracts/abi';
@@ -128,6 +129,25 @@ export default function TokenSwapInterface({
   const [unsupportedNetwork, setUnsupportedNetwork] = useState<boolean>(false);
 
   const [copied, setCopied] = useState(false);
+
+  const {
+    bondingPercentage: readOnlyBondingPercentage,
+    isBonded: readOnlyIsBonded,
+    loading: readOnlyBondingLoading,
+  } = useTokenBondingData(tokenAddress, chainId);
+
+  const normalizedWalletPercentage = Number.isFinite(bondingPercentage)
+    ? bondingPercentage
+    : 0;
+  const normalizedReadOnlyPercentage = Number.isFinite(readOnlyBondingPercentage)
+    ? readOnlyBondingPercentage
+    : 0;
+  const combinedBondingPercentage = Math.min(
+    100,
+    Math.max(normalizedWalletPercentage, normalizedReadOnlyPercentage),
+  );
+  const combinedIsBonded = tokenBonded || readOnlyIsBonded || combinedBondingPercentage >= 100;
+  const showBondingLoading = readOnlyBondingLoading && !combinedIsBonded;
 
   const slippageOptions = ['0.5', '1.0', '2.0'];
 
@@ -635,12 +655,14 @@ export default function TokenSwapInterface({
               <ProgressionBar tokenAddress={tokenAddress} chainId={chainId} />
               <div
                 className={`mt-2 text-xs font-semibold uppercase tracking-[0.3em] text-center ${
-                  tokenBonded ? 'text-green-400' : 'text-[#D7BF75]/80'
+                  combinedIsBonded ? 'text-green-400' : 'text-[#D7BF75]/80'
                 }`}
               >
-                {tokenBonded
-                  ? '✅ BONDED - 100%'
-                  : `Bonded ${Math.min(bondingPercentage, 100).toFixed(1)}% / 100%`}
+                {showBondingLoading
+                  ? 'Loading bonding data...'
+                  : combinedIsBonded
+                    ? '✅ BONDED - 100%'
+                    : `Bonded ${combinedBondingPercentage.toFixed(1)}% / 100%`}
               </div>
             </div>
 
@@ -711,7 +733,7 @@ export default function TokenSwapInterface({
         )}
 
         {/* Bonding Complete Banner */}
-        {tokenBonded && (
+        {combinedIsBonded && (
           <div className="mb-4 p-3 bg-green-900/50 border border-green-600/50 rounded-lg">
             <div className="flex items-center text-green-200 text-sm">
               <span className="mr-2">✅</span>
@@ -727,14 +749,15 @@ export default function TokenSwapInterface({
         )}
 
         {/* Bonding Progress Warning (when close to 100%) */}
-        {!tokenBonded && bondingPercentage >= 90 && (
+        {!combinedIsBonded && combinedBondingPercentage >= 90 && (
           <div className="mb-4 p-3 bg-yellow-900/50 border border-yellow-600/50 rounded-lg">
             <div className="flex items-center text-yellow-200 text-sm">
               <span className="mr-2">⚡</span>
               <div>
                 <div className="font-semibold">Bonding Almost Complete</div>
                 <div className="text-xs mt-1 text-yellow-300">
-                  {bondingPercentage.toFixed(1)}% bonded. Once 100% is reached, this token will
+                  {combinedBondingPercentage.toFixed(1)}% bonded. Once 100% is reached, this
+                  token will
                   migrate to Aerodrome LP.
                 </div>
               </div>
@@ -835,14 +858,14 @@ export default function TokenSwapInterface({
           ) : (
             <Button
               onClick={activeTab === 'buy' ? buyTokens : sellTokens}
-              disabled={!amount || Number.parseFloat(amount) <= 0 || !!loading || tokenBonded}
+              disabled={!amount || Number.parseFloat(amount) <= 0 || !!loading || combinedIsBonded}
               className={`w-full h-14 font-proxima-nova font-bold text-lg rounded-lg transition-all duration-200 ${
                 activeTab === 'buy'
                   ? 'bg-[#D0B284]/10 hover:bg-[#D0B284]/20 border border-[#D0B284] text-[#D0B284]'
                   : 'bg-[#8B4513] hover:bg-[#8B4513]/90 text-white'
               } disabled:opacity-50 disabled:cursor-not-allowed`}
             >
-              {tokenBonded
+              {combinedIsBonded
                 ? 'Bonding Complete - Trading Disabled'
                 : loading || (activeTab === 'buy' ? `Buy ${tokenSymbol}` : `Sell ${tokenSymbol}`)}
             </Button>
