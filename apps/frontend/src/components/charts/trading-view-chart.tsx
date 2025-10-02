@@ -149,11 +149,17 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({
 
           // Force price scale to never go below 0
           'scalesProperties.autoScale': true,
+          'scalesProperties.scaleMode': 1, // 0 = linear, 1 = logarithmic (better for bonding curves!)
+          'scalesProperties.alignLabels': true,
           'paneProperties.topMargin': 10,
           'paneProperties.bottomMargin': 10,
 
-          // Set minimum visible value to 0 (or slightly above)
+          // Set minimum visible value (support very small prices)
           'mainSeriesProperties.minTick': '0.000001',
+
+          // Percentage scale mode for better price movement visualization
+          'mainSeriesProperties.priceAxisProperties.percentage': false,
+          'mainSeriesProperties.priceAxisProperties.autoScale': true,
         },
         studies_overrides: {
           // Volume colors

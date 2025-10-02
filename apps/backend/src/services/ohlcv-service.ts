@@ -545,6 +545,26 @@ export class OHLCVService {
     await this.storeCandles(contractAddress, timeframe, candles);
   }
 
+  /**
+   * Store candles in background without blocking the response
+   * Used by API endpoints to backup data after serving from subgraph
+   *
+   * This is a fire-and-forget operation - errors are logged but don't throw
+   */
+  async storeCandlesInBackground(
+    contractAddress: string,
+    timeframe: string,
+    candles: CandleData[],
+  ): Promise<void> {
+    // Fire and forget - don't block API response
+    this.storeCandles(contractAddress, timeframe, candles).catch((err) => {
+      console.warn(
+        `[OHLCV] Background DB storage failed for ${contractAddress} ${timeframe}:`,
+        err instanceof Error ? err.message : err,
+      );
+    });
+  }
+
   private async fetchTradesForTimeRange(
     contractAddress: string,
     startTime: number,

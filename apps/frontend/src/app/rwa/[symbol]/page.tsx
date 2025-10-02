@@ -181,7 +181,7 @@ export default function RWAItemPage() {
               </svg>
 
               {/* Right Column - Token Swap Interface with Progression */}
-              <div className="w-72 bg-[#151c16] flex-shrink-0 overflow-hidden backdrop-blur-sm">
+              <div className="w-96 bg-[#151c16] flex-shrink-0 overflow-hidden backdrop-blur-sm">
                 <div
                   style={{
                     height: 'calc(100vh - 120px)',

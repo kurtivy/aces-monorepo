@@ -30,11 +30,6 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
   private tokenAddress: string;
   private realtimeSubscriptions = new Map<string, any>();
   private tokenMetadata: TokenMetadata | null = null;
-  private realtimeHook: any = null;
-
-  // Client-side caching for instant timeframe changes
-  private candleCache = new Map<string, { bars: Bar[]; timestamp: number }>();
-  private readonly CACHE_TTL = 30000; // 30 seconds cache
 
   constructor(tokenAddress: string) {
     this.tokenAddress = tokenAddress.toLowerCase();
@@ -69,7 +64,7 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
   onReady(callback: OnReadyCallback) {
     setTimeout(() => {
       callback({
-        supported_resolutions: ['1', '5', '15', '60', '240', '1D'] as ResolutionString[],
+        supported_resolutions: ['5', '15', '60', '240', '1D'] as ResolutionString[],
         supports_marks: false,
         supports_timescale_marks: false,
         supports_time: true,
@@ -106,7 +101,7 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
         pricescale: 1000000, // 6 decimal places
         has_intraday: true,
         has_daily: true,
-        supported_resolutions: ['1', '5', '15', '60', '240', '1D'] as ResolutionString[],
+        supported_resolutions: ['5', '15', '60', '240', '1D'] as ResolutionString[],
         volume_precision: 2,
         data_status: 'streaming',
         listed_exchange: 'BondingCurve',
@@ -132,28 +127,20 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     onErrorCallback: (error: string) => void,
   ) {
     const timeframe = this.resolutionToTimeframe(resolution);
-    const cacheKey = `${this.tokenAddress}-${timeframe}`;
 
-    // Check cache first for instant response
-    const cached = this.candleCache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
-      console.log(`[TradingView] Using cached data for ${timeframe} (instant response)`);
-      const filteredBars = cached.bars.filter(
-        (bar) => bar.time >= periodParams.from * 1000 && bar.time <= periodParams.to * 1000,
-      );
-      // TradingView docs: Always call with {noData: true} if no bars available
-      onHistoryCallback(filteredBars, { noData: filteredBars.length === 0 });
-      return;
-    }
+    console.log(
+      `[TradingView] Fetching bars: ${this.tokenAddress} ${timeframe}`,
+      `from: ${new Date(periodParams.from * 1000).toISOString()}, to: ${new Date(periodParams.to * 1000).toISOString()}`,
+    );
 
-    // Fetch fresh data
-    this.fetchHistoricalData(resolution, periodParams.from, periodParams.to, cacheKey)
+    // Fetch data from backend (has 10-second cache)
+    this.fetchHistoricalData(resolution, periodParams.from, periodParams.to)
       .then((bars) => {
         onHistoryCallback(bars, { noData: bars.length === 0 });
       })
       .catch((error) => {
-        console.error('Error fetching historical data:', error);
-        onErrorCallback(error.message);
+        console.error('[TradingView] Error fetching bars:', error);
+        onErrorCallback(error instanceof Error ? error.message : 'Failed to fetch chart data');
       });
   }
 
@@ -167,40 +154,33 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     const timeframe = this.resolutionToTimeframe(resolution);
 
     console.log(
-      `[TradingView] Starting centralized real-time subscription for ${this.tokenAddress} ${timeframe}`,
+      `[TradingView] Starting real-time subscription for ${this.tokenAddress} ${timeframe}`,
     );
 
-    // Create a subscription object that will integrate with useRealtimeChart hook
     const subscription = {
       tokenAddress: this.tokenAddress,
       timeframe,
       onRealtimeCallback,
       onResetCacheNeededCallback,
       isActive: true,
-      lastBar: null as Bar | null, // Track last bar to prevent duplicate updates
+      lastBar: null as Bar | null,
     };
 
-    // Store subscription for management
     this.realtimeSubscriptions.set(subscriberUID, subscription);
-
-    // Start polling through centralized system
-    this.startCentralizedPolling(subscription, subscriberUID);
+    this.startRealtimePolling(subscription, subscriberUID);
   }
 
   unsubscribeBars(subscriberUID: string) {
     const subscription = this.realtimeSubscriptions.get(subscriberUID);
     if (subscription) {
       subscription.isActive = false;
-      this.stopCentralizedPolling(subscriberUID);
+      this.stopRealtimePolling(subscriberUID);
       this.realtimeSubscriptions.delete(subscriberUID);
-      console.log(
-        `[TradingView] Unsubscribed from centralized real-time updates: ${subscriberUID}`,
-      );
+      console.log(`[TradingView] Unsubscribed from real-time updates: ${subscriberUID}`);
     }
   }
 
-  private startCentralizedPolling(subscription: any, subscriberUID: string) {
-    // Use the same polling approach as useRealtimeChart hook for consistency
+  private startRealtimePolling(subscription: any, subscriberUID: string) {
     const interval = setInterval(async () => {
       if (!subscription.isActive) {
         clearInterval(interval);
@@ -208,10 +188,9 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       }
 
       try {
-        // Request last 5 minutes of data to ensure we get the current candle
-        const fiveMinutesAgo = Math.floor((Date.now() - 5 * 60 * 1000) / 1000);
+        // Fetch only the current candle
         const apiUrl = this.getApiUrl(
-          `/api/v1/tokens/${subscription.tokenAddress}/live?timeframe=${subscription.timeframe}&since=${fiveMinutesAgo}`,
+          `/api/v1/tokens/${subscription.tokenAddress}/live?timeframe=${subscription.timeframe}`,
         );
         const response = await fetch(apiUrl);
 
@@ -222,20 +201,19 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
         const data = await response.json();
 
         if (data.success && data.data.candles.length > 0) {
-          const latestIndex = data.data.candles.length - 1;
-          const latestCandle = data.data.candles[latestIndex];
-          const volumeEntry = data.data.volume?.[latestIndex];
+          const latestCandle = data.data.candles[0];
+          const volumeEntry = data.data.volume?.[0];
 
           const bar: Bar = {
             time: latestCandle.time * 1000, // TradingView expects milliseconds
-            open: latestCandle.open,
-            high: latestCandle.high,
-            low: latestCandle.low,
-            close: latestCandle.close,
-            volume: volumeEntry?.value || 0,
+            open: Number(latestCandle.open) || 0,
+            high: Number(latestCandle.high) || 0,
+            low: Number(latestCandle.low) || 0,
+            close: Number(latestCandle.close) || 0,
+            volume: volumeEntry?.value ? Number(volumeEntry.value) : 0,
           };
 
-          // Only send update if bar has changed (prevents duplicate updates)
+          // Only send update if bar has changed
           if (
             !subscription.lastBar ||
             subscription.lastBar.time !== bar.time ||
@@ -253,16 +231,15 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
           }
         }
       } catch (error) {
-        console.error(`[TradingView] Centralized polling error for ${subscriberUID}:`, error);
+        console.error(`[TradingView] Polling error for ${subscriberUID}:`, error);
         // Continue polling despite errors
       }
-    }, 5000); // 5-second updates as per plan
+    }, 5000); // Poll every 5 seconds
 
-    // Store interval for cleanup
     subscription.interval = interval;
   }
 
-  private stopCentralizedPolling(subscriberUID: string) {
+  private stopRealtimePolling(subscriberUID: string) {
     const subscription = this.realtimeSubscriptions.get(subscriberUID);
     if (subscription && subscription.interval) {
       clearInterval(subscription.interval);
@@ -305,70 +282,43 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     resolution: ResolutionString,
     from: number,
     to: number,
-    cacheKey: string,
   ): Promise<Bar[]> {
     const timeframe = this.resolutionToTimeframe(resolution);
 
-    console.log(
-      `[TradingView] Fetching historical data: ${this.tokenAddress} ${timeframe}`,
-      `from: ${new Date(from * 1000).toISOString()}, to: ${new Date(to * 1000).toISOString()}`,
-    );
-
-    // Validate token address before making request
+    // Validate token address
     if (!this.tokenAddress || !this.tokenAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
       console.error('[TradingView] Invalid token address:', this.tokenAddress);
       throw new Error('Invalid token address format');
     }
 
-    // Use 'hybrid' mode for optimal performance
-    // Combines cached historical data with fresh live data
-    const apiPath = `/api/v1/tokens/${this.tokenAddress}/chart?timeframe=${timeframe}&mode=hybrid&limit=5000`;
+    const apiPath = `/api/v1/tokens/${this.tokenAddress}/chart?timeframe=${timeframe}&limit=5000`;
     const apiUrl = this.getApiUrl(apiPath);
-    console.log('[TradingView] Full API URL:', apiUrl);
 
     const response = await fetch(apiUrl);
 
     if (!response.ok) {
-      // Try to get error details from response
-      let errorDetails = `API request failed: ${response.status}`;
-      try {
-        const errorData = await response.json();
-        console.error('[TradingView] Backend Error Response:', errorData);
-        errorDetails = errorData.message || errorData.error || errorDetails;
-      } catch (e) {
-        // Response wasn't JSON, use status text
-        const text = await response.text();
-        console.error('[TradingView] Non-JSON error response:', text.substring(0, 200));
-      }
-      throw new Error(errorDetails);
+      throw new Error(`API request failed: ${response.status}`);
     }
 
     const data = await response.json();
-    console.log('[TradingView] API Response:', {
-      success: data.success,
-      candleCount: data.data?.candles?.length || 0,
-      dataSource: data.data?.dataSource,
-    });
 
     if (!data.success) {
-      console.error('[TradingView] API Error Response:', data);
       throw new Error(data.error || data.message || 'API returned error');
     }
 
-    // Convert to TradingView format with proper volume mapping
+    // Convert to TradingView format
     const allBars: Bar[] = [];
 
     console.log(
-      `[TradingView] Backend returned ${data.data.candles.length} candles for ${timeframe}`,
+      `[TradingView] Received ${data.data.candles.length} bars, filtering to range [${from} - ${to}]`,
     );
 
     for (let i = 0; i < data.data.candles.length; i++) {
       const candle = data.data.candles[i];
       const volumeEntry = data.data.volume?.[i];
 
-      // Filter by time range (TradingView sends timestamps in seconds, our data is also in seconds)
+      // Filter by time range (TradingView sends timestamps in seconds)
       if (candle.time >= from && candle.time <= to) {
-        // Validate OHLC data
         const bar: Bar = {
           time: candle.time * 1000, // TradingView expects milliseconds
           open: Number(candle.open) || 0,
@@ -378,109 +328,23 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
           volume: volumeEntry?.value ? Number(volumeEntry.value) : 0,
         };
 
-        // Skip invalid bars (all zeros or invalid values)
+        // Skip invalid bars
         if (bar.open > 0 || bar.high > 0 || bar.low > 0 || bar.close > 0) {
           allBars.push(bar);
         }
       }
     }
 
-    console.log(
-      `[TradingView] After filtering: ${allBars.length} bars match time range [${from} - ${to}]`,
-    );
-
     // Sort bars in ascending time order (TradingView requirement)
     allBars.sort((a, b) => a.time - b.time);
 
-    // Cache the results for instant subsequent requests
-    this.candleCache.set(cacheKey, {
-      bars: allBars,
-      timestamp: Date.now(),
-    });
-
-    console.log(`[TradingView] Cached ${allBars.length} bars for ${timeframe}`);
-
-    // DEBUG: Show sample of bars being returned
-    if (allBars.length > 0) {
-      console.log('[TradingView] First bar:', allBars[0]);
-      console.log('[TradingView] Last bar:', allBars[allBars.length - 1]);
-      console.log('[TradingView] Sample bars:', allBars.slice(0, 3));
-
-      // Check for empty candles (where open=high=low=close)
-      const emptyCandles = allBars.filter(
-        (b) => b.open === b.high && b.high === b.low && b.low === b.close,
-      );
-      const candlesWithTrades = allBars.length - emptyCandles.length;
-
-      console.log(
-        `[TradingView] Candle analysis: ${candlesWithTrades} with trades, ${emptyCandles.length} empty (${Math.round((emptyCandles.length / allBars.length) * 100)}% empty)`,
-      );
-
-      if (emptyCandles.length === allBars.length) {
-        console.error(
-          '[TradingView] ⚠️  ALL CANDLES ARE EMPTY - No trades found! This will display as flat lines, not candlesticks.',
-        );
-      }
-
-      // Check for duplicate times
-      const times = allBars.map((b) => b.time);
-      const uniqueTimes = new Set(times);
-      if (times.length !== uniqueTimes.size) {
-        console.warn('[TradingView] WARNING: Duplicate timestamps detected!');
-      }
-    }
-
-    // If no data found, try forcing generation from subgraph
-    if (allBars.length === 0) {
-      console.warn(`[TradingView] No cached data for ${timeframe}, attempting fresh generation`);
-
-      try {
-        // This will trigger backend to generate and store fresh candles
-        await fetch(
-          this.getApiUrl(
-            `/api/v1/tokens/${this.tokenAddress}/live?timeframe=${timeframe}&since=${from}`,
-          ),
-        );
-
-        // Brief delay to allow backend to store data
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-
-        // Retry the request
-        const retryResponse = await fetch(
-          this.getApiUrl(
-            `/api/v1/tokens/${this.tokenAddress}/chart?timeframe=${timeframe}&mode=hybrid&limit=5000`,
-          ),
-        );
-
-        if (retryResponse.ok) {
-          const retryData = await retryResponse.json();
-
-          if (retryData.success && retryData.data.candles.length > 0) {
-            console.log(`[TradingView] Retry successful: ${retryData.data.candles.length} candles`);
-
-            return retryData.data.candles
-              .filter((candle: any) => candle.time >= from && candle.time <= to)
-              .map((candle: any, index: number) => ({
-                time: candle.time * 1000,
-                open: candle.open,
-                high: candle.high,
-                low: candle.low,
-                close: candle.close,
-                volume: retryData.data.volume?.[index]?.value || 0,
-              }));
-          }
-        }
-      } catch (retryError) {
-        console.error('[TradingView] Retry failed:', retryError);
-      }
-    }
+    console.log(`[TradingView] Returning ${allBars.length} bars matching time range`);
 
     return allBars;
   }
 
   private resolutionToTimeframe(resolution: ResolutionString): string {
     const mapping: Record<string, string> = {
-      '1': '1m',
       '5': '5m',
       '15': '15m',
       '60': '1h',
