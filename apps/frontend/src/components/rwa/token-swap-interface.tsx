@@ -127,6 +127,9 @@ export default function TokenSwapInterface({
   const [loading, setLoading] = useState<string>('');
   const [networkError, setNetworkError] = useState<string | null>(null);
   const [unsupportedNetwork, setUnsupportedNetwork] = useState<boolean>(false);
+  const [transactionStatus, setTransactionStatus] = useState<
+    { type: 'success' | 'error'; message: string } | null
+  >(null);
 
   const [copied, setCopied] = useState(false);
 
@@ -162,6 +165,15 @@ export default function TokenSwapInterface({
       console.error('Failed to copy text: ', err);
     }
   };
+
+  useEffect(() => {
+    if (!transactionStatus) {
+      return;
+    }
+
+    const timeout = setTimeout(() => setTransactionStatus(null), 5000);
+    return () => clearTimeout(timeout);
+  }, [transactionStatus]);
 
   // Refresh balances and bonding status with circuit breaker error handling
   const refreshBalances = useCallback(async () => {
@@ -440,6 +452,8 @@ export default function TokenSwapInterface({
   const buyTokens = async () => {
     if (!factoryContract || !acesContract || !tokenAddress || !amount || !signer) return;
 
+    setTransactionStatus(null);
+
     try {
       const amountWei = ethers.utils.parseEther(amount);
       const priceWei = ethers.utils.parseEther(priceQuote);
@@ -464,7 +478,7 @@ export default function TokenSwapInterface({
       // Step 1: Approve ACES tokens
       setLoading('Approving ACES tokens...');
       const approveTx = await acesContract.approve(currentAddresses.FACTORY_PROXY, priceWei);
-      await approveTx.wait();
+      await approveTx.wait(2); // wait for 2 confirmations to avoid short-lived reorg issues
 
       // Step 2: Buy tokens
       setLoading('Buying tokens...');
@@ -478,6 +492,7 @@ export default function TokenSwapInterface({
       setLoading('');
       setAmount('');
       setNetworkError(null); // Clear any previous network errors on success
+      setTransactionStatus({ type: 'success', message: 'Transaction successful.' });
     } catch (error) {
       console.error('Failed to buy tokens:', error);
       setLoading('');
@@ -485,9 +500,12 @@ export default function TokenSwapInterface({
       // Handle circuit breaker errors specifically
       if (error instanceof Error && error.message.includes('circuit breaker')) {
         setNetworkError('Network congestion detected. Please try again in a few minutes.');
-        alert('Transaction failed due to network congestion. Please try again later.');
+        setTransactionStatus({
+          type: 'error',
+          message: 'Transaction failed due to network congestion. Please try again later.',
+        });
       } else {
-        alert(`Buy failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        setTransactionStatus({ type: 'error', message: 'Transaction failed.' });
       }
     }
   };
@@ -495,6 +513,8 @@ export default function TokenSwapInterface({
   // Sell tokens
   const sellTokens = async () => {
     if (!factoryContract || !tokenAddress || !amount || !signer) return;
+
+    setTransactionStatus(null);
 
     try {
       const amountWei = ethers.utils.parseEther(amount);
@@ -526,6 +546,7 @@ export default function TokenSwapInterface({
       setLoading('');
       setAmount('');
       setNetworkError(null); // Clear any previous network errors on success
+      setTransactionStatus({ type: 'success', message: 'Transaction successful.' });
     } catch (error) {
       console.error('Failed to sell tokens:', error);
       setLoading('');
@@ -533,9 +554,17 @@ export default function TokenSwapInterface({
       // Handle circuit breaker errors specifically
       if (error instanceof Error && error.message.includes('circuit breaker')) {
         setNetworkError('Network congestion detected. Please try again in a few minutes.');
-        alert('Transaction failed due to network congestion. Please try again later.');
+        setTransactionStatus({
+          type: 'error',
+          message: 'Transaction failed due to network congestion. Please try again later.',
+        });
+      } else if (error instanceof Error && error.message.includes('Insufficient token balance')) {
+        setTransactionStatus({
+          type: 'error',
+          message: 'Transaction failed: insufficient token balance.',
+        });
       } else {
-        alert(`Sell failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        setTransactionStatus({ type: 'error', message: 'Transaction failed.' });
       }
     }
   };
@@ -846,7 +875,7 @@ export default function TokenSwapInterface({
         </div>
 
         {/* Buy/Sell Button */}
-        <div className="mb-6">
+        <div className="mb-6 space-y-3">
           {!isAuthenticated || !provider ? (
             <Button
               onClick={connectWallet}
@@ -869,6 +898,27 @@ export default function TokenSwapInterface({
                 ? 'Bonding Complete - Trading Disabled'
                 : loading || (activeTab === 'buy' ? `Buy ${tokenSymbol}` : `Sell ${tokenSymbol}`)}
             </Button>
+          )}
+
+          {transactionStatus && (
+            <div
+              role={transactionStatus.type === 'success' ? 'status' : 'alert'}
+              aria-live={transactionStatus.type === 'success' ? 'polite' : 'assertive'}
+              className={cn(
+                'w-full px-4 py-3 rounded-lg border text-sm flex items-start justify-between gap-3 shadow-lg',
+                transactionStatus.type === 'success'
+                  ? 'bg-green-900/60 border-green-500/30 text-green-100'
+                  : 'bg-red-900/60 border-red-600/40 text-red-100',
+              )}
+            >
+              <span className="leading-snug">{transactionStatus.message}</span>
+              <button
+                onClick={() => setTransactionStatus(null)}
+                className="text-xs font-semibold uppercase tracking-wide opacity-80 hover:opacity-100 transition-opacity"
+              >
+                Dismiss
+              </button>
+            </div>
           )}
         </div>
 
