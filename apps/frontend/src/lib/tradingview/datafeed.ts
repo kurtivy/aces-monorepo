@@ -17,6 +17,8 @@ interface TokenMetadata {
 }
 
 export class BondingCurveDatafeed implements IBasicDataFeed {
+  private static readonly MAX_GAP_FILL_DURATION_MS = 48 * 60 * 60 * 1000; // cap synthetic bars to ~2 days
+  private static readonly MAX_CACHED_BARS = 5000;
   // Required by IDatafeedChartApi but not used in basic implementation
   searchSymbols(
     userInput: string,
@@ -30,6 +32,8 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
   private tokenAddress: string;
   private realtimeSubscriptions = new Map<string, any>();
   private tokenMetadata: TokenMetadata | null = null;
+  private lastHistoricalBarByTimeframe = new Map<string, Bar>();
+  private historyCache = new Map<string, Bar[]>();
 
   constructor(tokenAddress: string) {
     this.tokenAddress = tokenAddress.toLowerCase();
@@ -127,6 +131,47 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     onErrorCallback: (error: string) => void,
   ) {
     const timeframe = this.resolutionToTimeframe(resolution);
+    const cachedBars = this.historyCache.get(timeframe);
+    const fromMs = periodParams.from * 1000;
+    const toMs = periodParams.to * 1000;
+
+    const deliverBars = (sourceBars: Bar[], cacheSource: boolean) => {
+      const filtered = sourceBars.filter((bar) => bar.time >= fromMs && bar.time <= toMs);
+
+      if (cacheSource) {
+        const cachedCopy = this.cloneBars(sourceBars);
+        if (cachedCopy.length > 0) {
+          this.lastHistoricalBarByTimeframe.set(timeframe, cachedCopy[cachedCopy.length - 1]);
+        }
+        if (cachedCopy.length > BondingCurveDatafeed.MAX_CACHED_BARS) {
+          cachedCopy.splice(0, cachedCopy.length - BondingCurveDatafeed.MAX_CACHED_BARS);
+        }
+        this.historyCache.set(timeframe, cachedCopy);
+      }
+
+      if (filtered.length === 0) {
+        onHistoryCallback([], { noData: true });
+        return;
+      }
+
+      const filteredCopy = this.cloneBars(filtered);
+      this.lastHistoricalBarByTimeframe.set(timeframe, filteredCopy[filteredCopy.length - 1]);
+      onHistoryCallback(filteredCopy, { noData: false });
+    };
+
+    if (!periodParams.firstDataRequest && cachedBars) {
+      console.log(
+        `[TradingView] Serving ${cachedBars.length} cached bars for ${this.tokenAddress} ${timeframe}`,
+      );
+      deliverBars(cachedBars, false);
+      return;
+    }
+
+    if (!periodParams.firstDataRequest) {
+      console.log(
+        '[TradingView] Subsequent history request with empty cache – fetching fresh data.',
+      );
+    }
 
     console.log(
       `[TradingView] Fetching bars: ${this.tokenAddress} ${timeframe}`,
@@ -135,8 +180,14 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
 
     // Fetch data from backend (has 10-second cache)
     this.fetchHistoricalData(resolution, periodParams.from, periodParams.to)
-      .then((bars) => {
-        onHistoryCallback(bars, { noData: bars.length === 0 });
+      .then(({ bars, nextTime }) => {
+        if (bars.length === 0 && typeof nextTime === 'number') {
+          onHistoryCallback([], { noData: true, nextTime });
+          this.historyCache.set(timeframe, []);
+          return;
+        }
+
+        deliverBars(bars, true);
       })
       .catch((error) => {
         console.error('[TradingView] Error fetching bars:', error);
@@ -160,10 +211,11 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     const subscription = {
       tokenAddress: this.tokenAddress,
       timeframe,
+      timeframeMs: this.timeframeToMs(timeframe),
       onRealtimeCallback,
       onResetCacheNeededCallback,
       isActive: true,
-      lastBar: null as Bar | null,
+      lastBar: this.cloneBar(this.lastHistoricalBarByTimeframe.get(timeframe) || null),
     };
 
     this.realtimeSubscriptions.set(subscriberUID, subscription);
@@ -181,6 +233,8 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
   }
 
   private startRealtimePolling(subscription: any, subscriberUID: string) {
+    const timeframeMs = subscription.timeframeMs || this.timeframeToMs(subscription.timeframe);
+
     const interval = setInterval(async () => {
       if (!subscription.isActive) {
         clearInterval(interval);
@@ -204,8 +258,11 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
           const latestCandle = data.data.candles[0];
           const volumeEntry = data.data.volume?.[0];
 
+          const rawTime = latestCandle.time * 1000;
+          const alignedTime = this.alignTimeToTimeframe(rawTime, timeframeMs);
+
           const bar: Bar = {
-            time: latestCandle.time * 1000, // TradingView expects milliseconds
+            time: alignedTime,
             open: Number(latestCandle.open) || 0,
             high: Number(latestCandle.high) || 0,
             low: Number(latestCandle.low) || 0,
@@ -213,20 +270,29 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
             volume: volumeEntry?.value ? Number(volumeEntry.value) : 0,
           };
 
-          // Only send update if bar has changed
-          if (
-            !subscription.lastBar ||
-            subscription.lastBar.time !== bar.time ||
-            subscription.lastBar.close !== bar.close ||
-            subscription.lastBar.volume !== bar.volume
-          ) {
-            subscription.lastBar = bar;
-            subscription.onRealtimeCallback(bar);
+          const lastBar = subscription.lastBar as Bar | null;
+          const barChanged =
+            !lastBar ||
+            lastBar.time !== bar.time ||
+            lastBar.close !== bar.close ||
+            lastBar.volume !== bar.volume;
+
+          if (barChanged) {
+            if (lastBar && bar.time - lastBar.time > timeframeMs) {
+              this.emitSyntheticGapBars(subscription, lastBar, bar.time, timeframeMs);
+            }
+
+            const referenceBar = subscription.lastBar as Bar | null;
+            const bridgedBar = this.bridgeBar(referenceBar, bar);
+
+            subscription.lastBar = bridgedBar;
+            subscription.onRealtimeCallback(bridgedBar);
+            this.updateHistoryCache(subscription.timeframe, bridgedBar);
 
             console.log(`[TradingView] Real-time update:`, {
-              time: new Date(bar.time).toISOString(),
-              price: bar.close,
-              volume: bar.volume,
+              time: new Date(bridgedBar.time).toISOString(),
+              price: bridgedBar.close,
+              volume: bridgedBar.volume,
             });
           }
         }
@@ -282,7 +348,7 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     resolution: ResolutionString,
     from: number,
     to: number,
-  ): Promise<Bar[]> {
+  ): Promise<{ bars: Bar[]; nextTime?: number }> {
     const timeframe = this.resolutionToTimeframe(resolution);
 
     // Validate token address
@@ -309,38 +375,65 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     // Convert to TradingView format
     const allBars: Bar[] = [];
 
-    console.log(
-      `[TradingView] Received ${data.data.candles.length} bars, filtering to range [${from} - ${to}]`,
-    );
+    const timeframeMs = this.timeframeToMs(timeframe);
+
+    console.log(`[TradingView] Received ${data.data.candles.length} bars from API`);
 
     for (let i = 0; i < data.data.candles.length; i++) {
       const candle = data.data.candles[i];
       const volumeEntry = data.data.volume?.[i];
 
-      // Filter by time range (TradingView sends timestamps in seconds)
-      if (candle.time >= from && candle.time <= to) {
-        const bar: Bar = {
-          time: candle.time * 1000, // TradingView expects milliseconds
-          open: Number(candle.open) || 0,
-          high: Number(candle.high) || 0,
-          low: Number(candle.low) || 0,
-          close: Number(candle.close) || 0,
-          volume: volumeEntry?.value ? Number(volumeEntry.value) : 0,
-        };
+      const bar: Bar = {
+        time: this.alignTimeToTimeframe(candle.time * 1000, timeframeMs),
+        open: Number(candle.open) || 0,
+        high: Number(candle.high) || 0,
+        low: Number(candle.low) || 0,
+        close: Number(candle.close) || 0,
+        volume: volumeEntry?.value ? Number(volumeEntry.value) : 0,
+      };
 
-        // Skip invalid bars
-        if (bar.open > 0 || bar.high > 0 || bar.low > 0 || bar.close > 0) {
-          allBars.push(bar);
-        }
+      // Skip invalid bars
+      if (bar.open > 0 || bar.high > 0 || bar.low > 0 || bar.close > 0) {
+        allBars.push(bar);
       }
     }
 
     // Sort bars in ascending time order (TradingView requirement)
     allBars.sort((a, b) => a.time - b.time);
 
-    console.log(`[TradingView] Returning ${allBars.length} bars matching time range`);
+    if (allBars.length === 0) {
+      return { bars: [] };
+    }
 
-    return allBars;
+    const fromMs = from * 1000;
+    const toMs = to * 1000;
+    const bufferMs = Math.max(timeframeMs, 60 * 1000);
+
+    const rangeBars = allBars.filter((bar) => {
+      return bar.time <= toMs + bufferMs;
+    });
+
+    if (rangeBars.length === 0) {
+      const earliest = allBars[0];
+
+      console.log(
+        `[TradingView] No bars within requested range [${new Date(fromMs).toISOString()} - ${new Date(
+          toMs,
+        ).toISOString()}], earliest available is ${new Date(earliest.time).toISOString()}`,
+      );
+
+      return { bars: [], nextTime: Math.floor(earliest.time / 1000) };
+    }
+
+    const windowedBars = rangeBars.filter((bar) => bar.time >= fromMs - bufferMs);
+    const barsToUse = windowedBars.length > 0 ? windowedBars : rangeBars;
+    const barsWithGapsFilled = this.fillMissingBars(barsToUse, timeframeMs);
+
+    console.log(
+      `[TradingView] Returning ${barsWithGapsFilled.length} bars after gap fill (source=${rangeBars.length})`,
+    );
+
+    return { bars: barsWithGapsFilled };
   }
 
   private resolutionToTimeframe(resolution: ResolutionString): string {
@@ -352,5 +445,200 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       '1D': '1d',
     };
     return mapping[resolution] || '1h';
+  }
+
+  private timeframeToMs(timeframe: string): number {
+    const mapping: Record<string, number> = {
+      '5m': 5 * 60 * 1000,
+      '15m': 15 * 60 * 1000,
+      '1h': 60 * 60 * 1000,
+      '4h': 4 * 60 * 60 * 1000,
+      '1d': 24 * 60 * 60 * 1000,
+    };
+
+    return mapping[timeframe] ?? 60 * 60 * 1000;
+  }
+
+  private alignTimeToTimeframe(timeMs: number, timeframeMs: number): number {
+    if (!Number.isFinite(timeMs) || timeframeMs <= 0) {
+      return timeMs;
+    }
+
+    return Math.floor(timeMs / timeframeMs) * timeframeMs;
+  }
+
+  private fillMissingBars(bars: Bar[], timeframeMs: number): Bar[] {
+    if (bars.length === 0 || timeframeMs <= 0) {
+      return bars;
+    }
+
+    const filled: Bar[] = [];
+    const sorted = [...bars].sort((a, b) => a.time - b.time);
+
+    filled.push(this.bridgeBar(null, sorted[0]));
+
+    const maxFillBars = Math.max(
+      1,
+      Math.floor(BondingCurveDatafeed.MAX_GAP_FILL_DURATION_MS / timeframeMs),
+    );
+
+    for (let i = 1; i < sorted.length; i++) {
+      const previousBar = filled[filled.length - 1];
+      const currentBar = sorted[i];
+
+      const gapMs = currentBar.time - previousBar.time;
+
+      if (gapMs > timeframeMs) {
+        const missingBars = Math.floor(gapMs / timeframeMs) - 1;
+
+        if (missingBars > 0) {
+          const barsToInsert = Math.min(missingBars, maxFillBars);
+
+          for (let j = 1; j <= barsToInsert; j++) {
+            const syntheticTime = previousBar.time + timeframeMs * j;
+
+            if (syntheticTime >= currentBar.time) {
+              break;
+            }
+
+            const fillerBar: Bar = {
+              time: syntheticTime,
+              open: previousBar.close,
+              high: previousBar.close,
+              low: previousBar.close,
+              close: previousBar.close,
+              volume: 0,
+            };
+
+            filled.push(fillerBar);
+          }
+        }
+      }
+
+      const latestReference = filled[filled.length - 1];
+      const bridgedBar = this.bridgeBar(latestReference, currentBar);
+      filled.push(bridgedBar);
+    }
+
+    return filled;
+  }
+
+  private bridgeBar(previousBar: Bar | null, bar: Bar): Bar {
+    if (!bar) {
+      return bar;
+    }
+
+    const bridged: Bar = { ...bar };
+
+    if (!previousBar || previousBar.time === bridged.time) {
+      return bridged;
+    }
+
+    const prevClose = previousBar.close;
+
+    if (!Number.isFinite(prevClose)) {
+      return bridged;
+    }
+
+    bridged.open = prevClose;
+    bridged.high = Math.max(bridged.high, prevClose);
+    bridged.low = Math.min(bridged.low, prevClose);
+
+    return bridged;
+  }
+
+  private emitSyntheticGapBars(
+    subscription: any,
+    previousBar: Bar,
+    targetTime: number,
+    timeframeMs: number,
+  ) {
+    if (timeframeMs <= 0) {
+      return;
+    }
+
+    const maxFillBars = Math.max(
+      1,
+      Math.floor(BondingCurveDatafeed.MAX_GAP_FILL_DURATION_MS / timeframeMs),
+    );
+
+    const gapMs = targetTime - previousBar.time;
+    const missingBars = Math.floor(gapMs / timeframeMs) - 1;
+
+    if (missingBars <= 0) {
+      return;
+    }
+
+    const barsToInsert = Math.min(missingBars, maxFillBars);
+
+    for (let i = 1; i <= barsToInsert; i++) {
+      const syntheticTime = previousBar.time + timeframeMs * i;
+
+      if (syntheticTime >= targetTime) {
+        break;
+      }
+
+      const fillerBar: Bar = {
+        time: syntheticTime,
+        open: previousBar.close,
+        high: previousBar.close,
+        low: previousBar.close,
+        close: previousBar.close,
+        volume: 0,
+      };
+
+      subscription.lastBar = fillerBar;
+      subscription.onRealtimeCallback(fillerBar);
+      this.updateHistoryCache(subscription.timeframe, fillerBar);
+    }
+  }
+
+  private cloneBar(bar: Bar | null): Bar | null {
+    if (!bar) {
+      return null;
+    }
+
+    return { ...bar };
+  }
+
+  private cloneBars(bars: Bar[]): Bar[] {
+    return bars.map((bar) => ({ ...bar }));
+  }
+
+  private updateHistoryCache(timeframe: string, bar: Bar) {
+    const clonedBar = { ...bar };
+    const existing = this.historyCache.get(timeframe);
+
+    if (!existing || existing.length === 0) {
+      this.historyCache.set(timeframe, [clonedBar]);
+      this.lastHistoricalBarByTimeframe.set(timeframe, clonedBar);
+      return;
+    }
+
+    const updated = [...existing];
+    const lastIndex = updated.length - 1;
+
+    if (updated[lastIndex].time === clonedBar.time) {
+      updated[lastIndex] = clonedBar;
+    } else if (clonedBar.time > updated[lastIndex].time) {
+      updated.push(clonedBar);
+    } else {
+      const insertIndex = updated.findIndex((cachedBar) => cachedBar.time > clonedBar.time);
+
+      if (insertIndex === -1) {
+        updated.push(clonedBar);
+      } else if (updated[insertIndex].time === clonedBar.time) {
+        updated[insertIndex] = clonedBar;
+      } else {
+        updated.splice(insertIndex, 0, clonedBar);
+      }
+    }
+
+    if (updated.length > BondingCurveDatafeed.MAX_CACHED_BARS) {
+      updated.splice(0, updated.length - BondingCurveDatafeed.MAX_CACHED_BARS);
+    }
+
+    this.historyCache.set(timeframe, updated);
+    this.lastHistoricalBarByTimeframe.set(timeframe, updated[updated.length - 1]);
   }
 }
