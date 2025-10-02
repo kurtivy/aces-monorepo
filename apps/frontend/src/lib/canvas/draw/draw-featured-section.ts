@@ -173,7 +173,8 @@ export const getAuctionIconBounds = (
 // Days left utility function
 const calculateDaysLeft = (): { days: number; isExpired: boolean } => {
   // Target date: September 24, 2025, 9:00 AM EDT (New York time)
-  const targetDate = new Date('2025-10-02T17:11:00-04:00'); // EDT is UTC-4
+  // 2025-10-02 at 11:30 PM New York time (EDT, UTC-4)
+  const targetDate = new Date('2025-10-02T23:30:00-04:00');
   const now = new Date();
   const timeDiff = targetDate.getTime() - now.getTime();
 

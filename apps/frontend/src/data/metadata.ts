@@ -98,7 +98,7 @@ The artist's signature makes this piece exceptionally valuable, as signed Warhol
 
 This timepiece is not just a watch; it's a wearable sculpture that pushes the boundaries of watchmaking design. With an extremely limited production run, it's a grail piece for collectors of both high-end watches and modern art.`,
     date: '2024-02-04',
-    countdownDate: '2025-10-02T21:11:00.000Z', // October 2, 2025 at 9AM EDT
+    countdownDate: '2025-10-03T03:30:00.000Z', // October 2, 2025 at 11:30 PM EDT (NY time)
     ticker: '$APKAWS',
     image:
       '/canvas-images/Audemars-Piguet-Royal-Oak-Concept-KAWS-Tourbillon-Companion-Dial-Limited-Edition.webp',
