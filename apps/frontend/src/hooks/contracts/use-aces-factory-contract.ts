@@ -437,7 +437,7 @@ export function useAcesFactoryContract(chainId?: number) {
         } catch (error) {
           console.error(`Failed to calculate price at ${supplyPoint}:`, error);
           // Use previous point's price or floor as fallback
-          const fallbackPrice =
+          const fallbackPrice: number =
             dataPoints.length > 0
               ? dataPoints[dataPoints.length - 1].priceACES
               : parseFloat(ethers.utils.formatEther(tokenInfo.tokenInfo.floor));
