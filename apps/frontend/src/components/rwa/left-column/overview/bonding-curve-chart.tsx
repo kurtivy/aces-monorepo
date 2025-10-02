@@ -734,22 +734,16 @@ export default function BondingCurveChart({
 
   return (
     <div className="w-full h-full bg-transparent flex flex-col items-center justify-center relative pb-4">
-      {chartState.loading ? (
-        <div className="flex flex-col items-center justify-center h-full text-[#9CA3AF]">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#D0B284] mb-2"></div>
-          <div className="text-xs">Loading curve data...</div>
-          {isReadOnly && <div className="text-xs mt-1 opacity-60">(Read-only mode)</div>}
-        </div>
-      ) : !isReady ? (
-        <div className="flex flex-col items-center justify-center h-full text-[#9CA3AF] text-center px-4">
-          <div className="text-xs mb-3">Initializing contracts...</div>
+      {(chartState.loading || !isReady || bondingCurveData.length === 0) && !chartState.error ? (
+        <div className="flex items-center justify-center h-full">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#D0B284]"></div>
         </div>
       ) : !tokenAddress ? (
         <div className="flex flex-col items-center justify-center h-full text-[#9CA3AF] text-center px-4">
           <div className="text-sm mb-2">🎯</div>
           <div className="text-xs mb-3">No token selected</div>
         </div>
-      ) : bondingCurveData.length === 0 ? (
+      ) : chartState.error && bondingCurveData.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-full text-[#9CA3AF] text-center px-4">
           <div className="text-sm mb-2">📊</div>
           <div className="text-xs mb-3">

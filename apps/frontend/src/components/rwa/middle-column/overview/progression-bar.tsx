@@ -26,6 +26,7 @@ export default function ProgressionBar({
   // Fetch bonding progress when tokenAddress changes (pump.fun style - ACES based)
   useEffect(() => {
     let mounted = true;
+    let isLoadingRef = false; // Prevent duplicate calls
 
     const loadBondingProgress = async () => {
       if (!tokenAddress || !ethers.utils.isAddress(tokenAddress)) {
@@ -36,24 +37,52 @@ export default function ProgressionBar({
       }
 
       if (!isReady) {
+        console.log('⏳ Progression bar waiting for contract to be ready...');
+        return;
+      }
+
+      // Prevent duplicate concurrent calls
+      if (isLoadingRef) {
+        console.log('⚠️ Progression bar: Already loading, skipping duplicate call');
         return;
       }
 
       try {
+        isLoadingRef = true;
         setLoading(true);
+        console.log('📊 Fetching bonding progress for:', tokenAddress);
+
         const result = await calculateBondingProgress(tokenAddress);
 
-        if (mounted && result) {
-          setPercentage(result.percentage);
-          setIsBonded(result.isBonded);
-          // currentACES and targetACES available in result but not displayed in this simplified view
+        console.log('📊 Bonding progress result:', result);
+
+        if (mounted) {
+          if (result) {
+            setPercentage(result.percentage);
+            setIsBonded(result.isBonded);
+            console.log('✅ Progression bar updated:', {
+              percentage: result.percentage.toFixed(2) + '%',
+              isBonded: result.isBonded,
+            });
+          } else {
+            console.warn('⚠️ No bonding progress result returned');
+            // Set to 0% if no result
+            setPercentage(0);
+            setIsBonded(false);
+          }
         }
       } catch (error) {
-        console.error('Failed to fetch bonding progress:', error);
+        console.error('❌ Failed to fetch bonding progress:', error);
+        if (mounted) {
+          // Set to 0% on error
+          setPercentage(0);
+          setIsBonded(false);
+        }
       } finally {
         if (mounted) {
           setLoading(false);
         }
+        isLoadingRef = false;
       }
     };
 

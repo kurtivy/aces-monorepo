@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { ethers } from 'ethers';
 import { getContractAddresses, NETWORK_CONFIG } from '@/lib/contracts/addresses';
 import { ACES_FACTORY_ABI, LAUNCHPAD_TOKEN_ABI } from '@/lib/contracts/abi';
@@ -58,6 +58,9 @@ export function useAcesFactoryContract(chainId?: number) {
   const [tokenImplementation, setTokenImplementation] = useState<string | null>(null);
   const [isWalletConnected, setIsWalletConnected] = useState(false);
   const [currentChainId, setCurrentChainId] = useState<number>(effectiveChainId);
+
+  // Request deduplication: track pending requests
+  const pendingRequestsRef = useRef<Map<string, Promise<unknown>>>(new Map());
 
   const contractAddresses = getContractAddresses(currentChainId);
 
@@ -273,6 +276,16 @@ export function useAcesFactoryContract(chainId?: number) {
       const activeProvider = provider || readOnlyProvider;
       const isUsingReadOnly = !factoryContract && !!readOnlyFactoryContract;
 
+      // Check for pending request for this token
+      const requestKey = `fetchTokenInfo-${tokenAddress}`;
+      if (pendingRequestsRef.current.has(requestKey)) {
+        console.log('⚠️ Deduplicating fetchTokenInfo request for:', tokenAddress);
+        return pendingRequestsRef.current.get(requestKey) as Promise<{
+          tokenInfo: TokenInfo;
+          currentSupply: string;
+        } | null>;
+      }
+
       console.log('🔄 fetchTokenInfo called:', {
         tokenAddress,
         hasActiveContract: !!activeContract,
@@ -292,68 +305,79 @@ export function useAcesFactoryContract(chainId?: number) {
 
       setContractState((prev) => ({ ...prev, loading: true, error: null }));
 
-      try {
-        // Get token info from factory with timeout
-        console.log('📞 Calling contract.tokens()...');
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const tokenData = (await withTimeout(activeContract.tokens(tokenAddress), 8000)) as any;
-        console.log('✅ Token data received:', tokenData);
+      // Create promise and store it
+      const requestPromise = (async () => {
+        try {
+          // Get token info from factory with timeout
+          console.log('📞 Calling contract.tokens()...');
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const tokenData = (await withTimeout(activeContract.tokens(tokenAddress), 8000)) as any;
+          console.log('✅ Token data received:', tokenData);
 
-        const tokenInfo: TokenInfo = {
-          curve: tokenData.curve,
-          tokenAddress: tokenData.tokenAddress,
-          floor: tokenData.floor.toString(),
-          steepness: tokenData.steepness.toString(),
-          acesTokenBalance: tokenData.acesTokenBalance.toString(),
-          subjectFeeDestination: tokenData.subjectFeeDestination,
-          tokensBondedAt: tokenData.tokensBondedAt.toString(),
-          tokenBonded: tokenData.tokenBonded,
-        };
+          const tokenInfo: TokenInfo = {
+            curve: tokenData.curve,
+            tokenAddress: tokenData.tokenAddress,
+            floor: tokenData.floor.toString(),
+            steepness: tokenData.steepness.toString(),
+            acesTokenBalance: tokenData.acesTokenBalance.toString(),
+            subjectFeeDestination: tokenData.subjectFeeDestination,
+            tokensBondedAt: tokenData.tokensBondedAt.toString(),
+            tokenBonded: tokenData.tokenBonded,
+          };
 
-        // Get current token supply with timeout
-        console.log('📞 Calling token.totalSupply()...');
-        const tokenContract = new ethers.Contract(
-          tokenAddress,
-          LAUNCHPAD_TOKEN_ABI,
-          activeProvider,
-        );
-        const totalSupply = (await withTimeout(
-          tokenContract.totalSupply(),
-          8000,
-        )) as ethers.BigNumber;
-        const currentSupply = ethers.utils.formatEther(totalSupply);
-        console.log('✅ Total supply received:', currentSupply);
+          // Get current token supply with timeout
+          console.log('📞 Calling token.totalSupply()...');
+          const tokenContract = new ethers.Contract(
+            tokenAddress,
+            LAUNCHPAD_TOKEN_ABI,
+            activeProvider,
+          );
+          const totalSupply = (await withTimeout(
+            tokenContract.totalSupply(),
+            8000,
+          )) as ethers.BigNumber;
+          const currentSupply = ethers.utils.formatEther(totalSupply);
+          console.log('✅ Total supply received:', currentSupply);
 
-        setContractState({
-          tokenInfo,
-          currentSupply,
-          loading: false,
-          error: null,
-        });
+          setContractState({
+            tokenInfo,
+            currentSupply,
+            loading: false,
+            error: null,
+          });
 
-        return { tokenInfo, currentSupply };
-      } catch (error) {
-        console.error('❌ Failed to fetch token info:', error);
+          return { tokenInfo, currentSupply };
+        } catch (error) {
+          console.error('❌ Failed to fetch token info:', error);
 
-        // Handle different error types
-        let errorMessage = 'Failed to fetch token information';
-        if (error instanceof Error) {
-          if (error.message.includes('timeout')) {
-            errorMessage = 'Network timeout - please retry';
-          } else if (error.message.includes('circuit breaker')) {
-            errorMessage = 'Network congestion - please retry';
-          } else if (error.message.includes('CALL_EXCEPTION')) {
-            errorMessage = 'Token not found or invalid contract';
+          // Handle different error types
+          let errorMessage = 'Failed to fetch token information';
+          if (error instanceof Error) {
+            if (error.message.includes('timeout')) {
+              errorMessage = 'Network timeout - please retry';
+            } else if (error.message.includes('circuit breaker')) {
+              errorMessage = 'Network congestion - please retry';
+            } else if (error.message.includes('CALL_EXCEPTION')) {
+              errorMessage = 'Token not found or invalid contract';
+            }
           }
-        }
 
-        setContractState((prev) => ({
-          ...prev,
-          loading: false,
-          error: errorMessage,
-        }));
-        return null;
-      }
+          setContractState((prev) => ({
+            ...prev,
+            loading: false,
+            error: errorMessage,
+          }));
+          return null;
+        } finally {
+          // Clean up pending request
+          pendingRequestsRef.current.delete(requestKey);
+        }
+      })();
+
+      // Store the pending request
+      pendingRequestsRef.current.set(requestKey, requestPromise);
+
+      return requestPromise;
     },
     [factoryContract, readOnlyFactoryContract, provider, readOnlyProvider, withTimeout],
   );
