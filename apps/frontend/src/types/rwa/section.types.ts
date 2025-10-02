@@ -1,3 +1,5 @@
+import type { Comment } from '@/types/comments';
+
 export interface Section {
   id: string;
   label: string;
@@ -85,6 +87,8 @@ export interface DatabaseListing {
   approvedBy: string | null;
   createdAt: string;
   updatedAt: string;
+  comments?: Comment[];
+  commentCount?: number;
   // Relations
   owner?: {
     id: string;
@@ -104,6 +108,9 @@ export interface DatabaseListing {
     volume24h: string;
     phase: 'BONDING_CURVE' | 'DEX_TRADING';
     isActive: boolean;
+    chainId?: number;
+    holderCount?: number;
+    holdersCount?: number;
   };
 }
 

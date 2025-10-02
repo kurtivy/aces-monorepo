@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { ethers } from 'ethers';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,6 +15,13 @@ import { useTokenBondingData } from '@/hooks/contracts/use-token-bonding-data';
 
 import { getContractAddresses } from '@/lib/contracts/addresses';
 import { ACES_FACTORY_ABI, ERC20_ABI, LAUNCHPAD_TOKEN_ABI } from '@/lib/contracts/abi';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface TokenSwapInterfaceProps {
   tokenSymbol?: string;
@@ -34,6 +41,8 @@ interface TokenSwapInterfaceProps {
   targetAmount?: number;
   percentage?: number;
 }
+
+const DEFAULT_ETH_PRICE = 3000; // TODO: replace with live oracle feed for ETH/USD pricing
 
 export default function TokenSwapInterface({
   tokenSymbol = 'RWA',
@@ -117,6 +126,7 @@ export default function TokenSwapInterface({
 
   // UI state
   const [activeTab, setActiveTab] = useState<'buy' | 'sell'>('buy');
+  const [paymentAsset, setPaymentAsset] = useState<'ACES' | 'USDC' | 'USDT' | 'ETH'>('ACES');
 
   const { data: usdConversion, loading: priceLoading } = usePriceConversion(
     activeTab === 'buy' ? priceQuote : sellPriceQuote,
@@ -151,10 +161,94 @@ export default function TokenSwapInterface({
   );
   const combinedIsBonded = tokenBonded || readOnlyIsBonded || combinedBondingPercentage >= 100;
   const showBondingLoading = readOnlyBondingLoading && !combinedIsBonded;
+  const isAcesPayment = paymentAsset === 'ACES';
+  const hasValidAmount = useMemo(() => {
+    const parsed = Number.parseFloat(amount || '0');
+    return Number.isFinite(parsed) && parsed > 0;
+  }, [amount]);
+
+  const acesIconSrc = '/aces-logo.png';
+
+  const paymentAssetOptions = useMemo(
+    () => [
+      { value: 'ACES', label: 'ACES', icon: acesIconSrc },
+      { value: 'USDC', label: 'USDC', icon: '/svg/usdc.svg' },
+      { value: 'USDT', label: 'USDT', icon: '/svg/tether.svg' },
+      { value: 'ETH', label: 'ETH', icon: '/svg/eth.svg' },
+    ],
+    [acesIconSrc],
+  );
+
+  const selectedPaymentOption = paymentAssetOptions.find((option) => option.value === paymentAsset);
+
+  const acesQuote = useMemo(() => {
+    const rawQuote = activeTab === 'buy' ? priceQuote : sellPriceQuote;
+    const parsed = Number.parseFloat(rawQuote || '0');
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  }, [activeTab, priceQuote, sellPriceQuote]);
+
+  const usdEquivalent = useMemo(() => {
+    if (!usdConversion?.usdValue) {
+      return null;
+    }
+    const parsed = Number.parseFloat(usdConversion.usdValue);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }, [usdConversion]);
+
+  const paymentAssetQuote = useMemo(() => {
+    if (!hasValidAmount || !usdEquivalent || activeTab !== 'buy' || isAcesPayment) {
+      return null;
+    }
+
+    if (paymentAsset === 'USDC' || paymentAsset === 'USDT') {
+      return {
+        label: paymentAsset,
+        value: `${usdEquivalent.toFixed(2)} ${paymentAsset}`,
+      };
+    }
+
+    if (paymentAsset === 'ETH') {
+      const ethAmount = usdEquivalent / DEFAULT_ETH_PRICE;
+      return {
+        label: 'ETH',
+        value: `${ethAmount.toFixed(6)} ETH`,
+      };
+    }
+
+    return null;
+  }, [hasValidAmount, usdEquivalent, activeTab, isAcesPayment, paymentAsset]);
+
+  const disableBuyAction = !hasValidAmount || !!loading || combinedIsBonded;
+  const disableSellAction = !hasValidAmount || !!loading || combinedIsBonded;
+  const buyButtonLabel = isAcesPayment
+    ? `Buy ${tokenSymbol}`
+    : `Buy ${tokenSymbol} with ${paymentAsset}`;
+
+  const handleBuyClick = async () => {
+    if (disableBuyAction) {
+      return;
+    }
+
+    if (isAcesPayment) {
+      await buyTokens();
+      return;
+    }
+
+    setTransactionStatus({
+      type: 'error',
+      message: `${paymentAsset} purchases will execute here once the new swap contract is deployed.`,
+    });
+  };
 
   // const slippageOptions = ['0.5', '1.0', '2.0'];
 
   const priceCalculationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (activeTab === 'sell' && paymentAsset !== 'ACES') {
+      setPaymentAsset('ACES');
+    }
+  }, [activeTab, paymentAsset]);
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -353,12 +447,7 @@ export default function TokenSwapInterface({
             console.error(`❌ Contract addresses not configured for chain ID ${chainId}`);
             setUnsupportedNetwork(true);
 
-            const errorMessage =
-              chainId === 8453
-                ? 'Base Mainnet factory contracts not deployed yet. Currently only available on Base Sepolia testnet.'
-                : 'Network not supported. Please switch to Base Sepolia (testnet) or Base Mainnet.';
-
-            setNetworkError(errorMessage);
+            setNetworkError('');
             return;
           }
 
@@ -817,6 +906,57 @@ export default function TokenSwapInterface({
           </button>
         </div>
 
+        {activeTab === 'buy' && (
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <span className="text-xs font-semibold uppercase tracking-[0.3em] text-[#D0B284]/60">
+              Pay with
+            </span>
+            <div className="flex items-center gap-2">
+              <Select
+                value={paymentAsset}
+                onValueChange={(value) => setPaymentAsset(value as typeof paymentAsset)}
+              >
+                <SelectTrigger className="h-10 w-36 bg-[#111910] border border-[#D0B284]/30 text-[#D0B284] focus:ring-0 focus:border-[#D0B284]/60">
+                  <div className="flex items-center gap-2">
+                    {/* {selectedPaymentOption && (
+                      <Image
+                        src={selectedPaymentOption.icon}
+                        alt={`${selectedPaymentOption.label} icon`}
+                        width={18}
+                        height={18}
+                        className="h-4.5 w-4.5 rounded-full object-cover"
+                        unoptimized={true}
+                      />
+                    )} */}
+                    <SelectValue placeholder="Select" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent className="bg-[#101711] border border-[#D0B284]/30 text-[#D0B284]">
+                  {paymentAssetOptions.map((option) => (
+                    <SelectItem
+                      key={option.value}
+                      value={option.value}
+                      className="focus:bg-[#1e3022] focus:text-[#F3E9C9]"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Image
+                          src={option.icon}
+                          alt={`${option.label} icon`}
+                          width={18}
+                          height={18}
+                          className="h-4.5 w-4.5 rounded-full object-cover"
+                          unoptimized={true}
+                        />
+                        <span>{option.label}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        )}
+
         {/* Slippage dropdown temporarily disabled until Aerodrome API integration */}
         {/*
         <div className="flex justify-end mb-4">
@@ -882,19 +1022,23 @@ export default function TokenSwapInterface({
             >
               {loading || 'Connect Wallet'}
             </Button>
+          ) : activeTab === 'buy' ? (
+            <Button
+              onClick={handleBuyClick}
+              disabled={disableBuyAction}
+              className="w-full h-14 bg-[#D0B284]/10 hover:bg-[#D0B284]/20 border border-[#D0B284] text-[#D0B284] font-proxima-nova font-bold text-lg rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {combinedIsBonded ? 'Bonding Complete - Trading Disabled' : loading || buyButtonLabel}
+            </Button>
           ) : (
             <Button
-              onClick={activeTab === 'buy' ? buyTokens : sellTokens}
-              disabled={!amount || Number.parseFloat(amount) <= 0 || !!loading || combinedIsBonded}
-              className={`w-full h-14 font-proxima-nova font-bold text-lg rounded-lg transition-all duration-200 ${
-                activeTab === 'buy'
-                  ? 'bg-[#D0B284]/10 hover:bg-[#D0B284]/20 border border-[#D0B284] text-[#D0B284]'
-                  : 'bg-[#8B4513] hover:bg-[#8B4513]/90 text-white'
-              } disabled:opacity-50 disabled:cursor-not-allowed`}
+              onClick={sellTokens}
+              disabled={disableSellAction}
+              className="w-full h-14 bg-[#8B4513] hover:bg-[#8B4513]/90 text-white font-proxima-nova font-bold text-lg rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {combinedIsBonded
                 ? 'Bonding Complete - Trading Disabled'
-                : loading || (activeTab === 'buy' ? `Buy ${tokenSymbol}` : `Sell ${tokenSymbol}`)}
+                : loading || `Sell ${tokenSymbol}`}
             </Button>
           )}
 
@@ -922,13 +1066,13 @@ export default function TokenSwapInterface({
 
         {/* Quote Section */}
         <div className="min-h-[140px]">
-          {amount && Number.parseFloat(amount) > 0 && (
+          {hasValidAmount && (
             <div className="p-3 bg-[#1a2318]/50 rounded-lg border border-[#D0B284]/20 space-y-3">
               <div className="text-center border-b border-[#D0B284]/20 pb-2">
                 <div className="text-sm font-bold text-[#D0B284]">
                   {activeTab === 'buy'
-                    ? `Quote = ${priceQuote} $ACES`
-                    : `Receive = ${sellPriceQuote} $ACES`}
+                    ? `Quote ≈ ${acesQuote.toFixed(4)} $ACES`
+                    : `Receive ≈ ${sellPriceQuote} $ACES`}
                 </div>
 
                 {usdConversion && (
@@ -946,6 +1090,21 @@ export default function TokenSwapInterface({
                   <div className="text-xs text-[#D0B284]/50 mt-1">Loading USD price...</div>
                 )}
               </div>
+
+              {activeTab === 'buy' && paymentAssetQuote && (
+                <div className="text-center text-xs text-[#D0B284]/70">
+                  <span className="font-semibold text-[#D0B284]">
+                    Pay with {paymentAssetQuote.label}:
+                  </span>{' '}
+                  ≈ {paymentAssetQuote.value}
+                  {paymentAsset === 'ETH' && (
+                    <span className="mt-1 block text-[11px] text-[#D0B284]/50">
+                      Using placeholder ETH price (${DEFAULT_ETH_PRICE}). Update once live routing
+                      is wired.
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>

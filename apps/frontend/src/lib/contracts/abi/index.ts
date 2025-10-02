@@ -24,4 +24,5 @@ export const LAUNCHPAD_TOKEN_ABI = [
   'function mint(address to, uint256 amount)',
   'function burn(uint256 amount)',
   'function burnFrom(address from, uint256 amount)',
+  'event Transfer(address indexed from, address indexed to, uint256 value)',
 ] as const;

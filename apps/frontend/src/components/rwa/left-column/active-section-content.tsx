@@ -1,17 +1,38 @@
 'use client';
 
+import { useMemo } from 'react';
 import TokenHealthPanel from '@/components/rwa/left-column/token-details/token-health-panel';
 import ProductHeroLocation from '@/components/rwa/left-column/product/product-hero-location';
 import DynamicImageGallery from './overview/dynamic-image-gallery';
 import { HighestBidDisplay } from './bidding/highest-bid-display';
 import type { ActiveSectionContentProps, DatabaseListing } from '../../../types/rwa/section.types';
+import type { Comment } from '@/types/comments';
 import { mockImages } from '../../../constants/rwa';
 import BondingCurveChart from './overview/bonding-curve-chart';
+import { useTokenHolderCount } from '@/hooks/rwa/use-token-holder-count';
 
 interface DynamicActiveSectionContentProps extends ActiveSectionContentProps {
   listing?: DatabaseListing | null;
   loading?: boolean;
 }
+
+const parseCount = (value: unknown): number | null => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.replace(/[^0-9]/g, '');
+    if (!normalized) {
+      return null;
+    }
+
+    const parsed = Number.parseInt(normalized, 10);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+
+  return null;
+};
 
 export function ActiveSectionContent({
   sectionIndex,
@@ -20,6 +41,49 @@ export function ActiveSectionContent({
   listing,
   loading = false,
 }: DynamicActiveSectionContentProps) {
+  const listingTokenAddress = listing?.token?.contractAddress;
+  const listingTokenChainId = listing?.token?.chainId;
+
+  const { holderCount: fetchedHolderCount, loading: holderCountLoading } = useTokenHolderCount(
+    listingTokenAddress,
+    listingTokenChainId,
+  );
+
+  const totalComments = useMemo(() => {
+    const explicitCount = parseCount(listing?.commentCount);
+    if (explicitCount !== null) {
+      return explicitCount;
+    }
+
+    const countComments = (comments?: Comment[]): number => {
+      if (!comments || comments.length === 0) {
+        return 0;
+      }
+
+      return comments.reduce((total, comment) => {
+        return total + 1 + countComments(comment.replies);
+      }, 0);
+    };
+
+    return listing?.comments ? countComments(listing.comments) : null;
+  }, [listing]);
+
+  const totalHolders = useMemo(() => {
+    const directCountRaw = listing?.token?.holderCount ?? listing?.token?.holdersCount;
+    const directCount = parseCount(directCountRaw);
+
+    return directCount ?? fetchedHolderCount ?? null;
+  }, [listing, fetchedHolderCount]);
+
+  const formattedCommentCount =
+    typeof totalComments === 'number' ? totalComments.toLocaleString() : '--';
+
+  const formattedHolderCount =
+    typeof totalHolders === 'number'
+      ? totalHolders.toLocaleString()
+      : holderCountLoading
+        ? 'Loading...'
+        : '--';
   // Determine if we're in dynamic mode (listing prop provided) or static mode
   const isDynamicMode = listing !== undefined;
 
@@ -92,15 +156,15 @@ export function ActiveSectionContent({
 
         <div className="bg-[#151c16] border border-[#D0B284]/20 rounded-lg overflow-hidden">
           <div className="flex items-center justify-between p-3">
-            <span className="text-[#DCDDCC] text-xs font-medium">Active Members:</span>
-            <span className="text-white text-xs font-semibold">1,247</span>
+            <span className="text-[#DCDDCC] text-xs font-medium">Token Holders:</span>
+            <span className="text-white text-xs font-semibold">{formattedHolderCount}</span>
           </div>
         </div>
 
         <div className="bg-[#231F20]/30 border border-[#D0B284]/20 rounded-lg overflow-hidden">
           <div className="flex items-center justify-between p-3">
             <span className="text-[#DCDDCC] text-xs font-medium">Total Comments:</span>
-            <span className="text-white text-xs font-semibold">3,891</span>
+            <span className="text-white text-xs font-semibold">{formattedCommentCount}</span>
           </div>
         </div>
       </div>
