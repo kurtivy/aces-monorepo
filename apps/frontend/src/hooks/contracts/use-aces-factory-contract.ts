@@ -253,22 +253,52 @@ export function useAcesFactoryContract(chainId?: number) {
     }
   }, [currentChainId, contractAddresses.FACTORY_PROXY]);
 
+  // Timeout wrapper for contract calls
+  const withTimeout = useCallback(
+    <T>(promise: Promise<T>, timeoutMs: number = 10000): Promise<T> => {
+      return Promise.race([
+        promise,
+        new Promise<T>((_, reject) =>
+          setTimeout(() => reject(new Error('Contract call timeout')), timeoutMs),
+        ),
+      ]);
+    },
+    [],
+  );
+
   // Fetch token information with rate limiting - uses read-only contract if wallet not connected
   const fetchTokenInfo = useCallback(
     async (tokenAddress: string, bypassRateLimit = false) => {
       const activeContract = factoryContract || readOnlyFactoryContract;
       const activeProvider = provider || readOnlyProvider;
+      const isUsingReadOnly = !factoryContract && !!readOnlyFactoryContract;
+
+      console.log('🔄 fetchTokenInfo called:', {
+        tokenAddress,
+        hasActiveContract: !!activeContract,
+        hasActiveProvider: !!activeProvider,
+        isUsingReadOnly,
+      });
 
       if (!activeContract || !activeProvider) {
-        console.warn('No contract available for token info fetch');
+        console.warn('❌ No contract available for token info fetch');
+        setContractState((prev) => ({
+          ...prev,
+          loading: false,
+          error: 'Contract not initialized',
+        }));
         return null;
       }
 
       setContractState((prev) => ({ ...prev, loading: true, error: null }));
 
       try {
-        // Get token info from factory
-        const tokenData = await activeContract.tokens(tokenAddress);
+        // Get token info from factory with timeout
+        console.log('📞 Calling contract.tokens()...');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const tokenData = (await withTimeout(activeContract.tokens(tokenAddress), 8000)) as any;
+        console.log('✅ Token data received:', tokenData);
+
         const tokenInfo: TokenInfo = {
           curve: tokenData.curve,
           tokenAddress: tokenData.tokenAddress,
@@ -280,14 +310,19 @@ export function useAcesFactoryContract(chainId?: number) {
           tokenBonded: tokenData.tokenBonded,
         };
 
-        // Get current token supply
+        // Get current token supply with timeout
+        console.log('📞 Calling token.totalSupply()...');
         const tokenContract = new ethers.Contract(
           tokenAddress,
           LAUNCHPAD_TOKEN_ABI,
           activeProvider,
         );
-        const totalSupply = await tokenContract.totalSupply();
+        const totalSupply = (await withTimeout(
+          tokenContract.totalSupply(),
+          8000,
+        )) as ethers.BigNumber;
         const currentSupply = ethers.utils.formatEther(totalSupply);
+        console.log('✅ Total supply received:', currentSupply);
 
         setContractState({
           tokenInfo,
@@ -298,13 +333,19 @@ export function useAcesFactoryContract(chainId?: number) {
 
         return { tokenInfo, currentSupply };
       } catch (error) {
-        console.error('Failed to fetch token info:', error);
+        console.error('❌ Failed to fetch token info:', error);
 
-        // Handle circuit breaker errors differently
-        const errorMessage =
-          error instanceof Error && error.message.includes('circuit breaker')
-            ? 'Network congestion - token data temporarily unavailable'
-            : 'Failed to fetch token information';
+        // Handle different error types
+        let errorMessage = 'Failed to fetch token information';
+        if (error instanceof Error) {
+          if (error.message.includes('timeout')) {
+            errorMessage = 'Network timeout - please retry';
+          } else if (error.message.includes('circuit breaker')) {
+            errorMessage = 'Network congestion - please retry';
+          } else if (error.message.includes('CALL_EXCEPTION')) {
+            errorMessage = 'Token not found or invalid contract';
+          }
+        }
 
         setContractState((prev) => ({
           ...prev,
@@ -314,7 +355,7 @@ export function useAcesFactoryContract(chainId?: number) {
         return null;
       }
     },
-    [factoryContract, readOnlyFactoryContract, provider, readOnlyProvider],
+    [factoryContract, readOnlyFactoryContract, provider, readOnlyProvider, withTimeout],
   );
 
   // Replace calculatePriceAtSupply - uses read-only contract if wallet not connected
@@ -469,18 +510,28 @@ export function useAcesFactoryContract(chainId?: number) {
       isBonded: boolean;
     } | null> => {
       const activeContract = factoryContract || readOnlyFactoryContract;
+      const isUsingReadOnly = !factoryContract && !!readOnlyFactoryContract;
+
+      console.log('🔄 calculateBondingProgress called:', {
+        tokenAddress,
+        hasActiveContract: !!activeContract,
+        isUsingReadOnly,
+      });
+
       if (!activeContract) {
-        console.warn('No contract available for bonding progress calculation');
+        console.warn('❌ No contract available for bonding progress calculation');
         return null;
       }
 
       try {
-        // Get token info from factory
-        const tokenData = await activeContract.tokens(tokenAddress);
+        // Get token info from factory with timeout
+        console.log('📞 Calling contract.tokens() for bonding progress...');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const tokenData = (await withTimeout(activeContract.tokens(tokenAddress), 8000)) as any;
 
         // If token doesn't exist, return null
         if (tokenData.tokenAddress === ethers.constants.AddressZero) {
-          console.warn('Token not found:', tokenAddress);
+          console.warn('⚠️ Token not found:', tokenAddress);
           return null;
         }
 
@@ -498,21 +549,18 @@ export function useAcesFactoryContract(chainId?: number) {
 
         let totalACESTarget: ethers.BigNumber;
 
+        console.log('📞 Calculating price curve...');
         if (curve === 0) {
           // Quadratic curve
-          totalACESTarget = await activeContract.getPriceQuadratic(
-            startSupply,
-            amountToBuy,
-            steepness,
-            floor,
+          totalACESTarget = await withTimeout(
+            activeContract.getPriceQuadratic(startSupply, amountToBuy, steepness, floor),
+            8000,
           );
         } else {
           // Linear curve
-          totalACESTarget = await activeContract.getPriceLinear(
-            startSupply,
-            amountToBuy,
-            steepness,
-            floor,
+          totalACESTarget = await withTimeout(
+            activeContract.getPriceLinear(startSupply, amountToBuy, steepness, floor),
+            8000,
           );
         }
 
@@ -526,6 +574,11 @@ export function useAcesFactoryContract(chainId?: number) {
                 100,
             );
 
+        console.log('✅ Bonding progress calculated:', {
+          percentage: percentage.toFixed(2) + '%',
+          isBonded,
+        });
+
         return {
           percentage,
           currentACES: ethers.utils.formatEther(currentACESBalance),
@@ -533,11 +586,11 @@ export function useAcesFactoryContract(chainId?: number) {
           isBonded,
         };
       } catch (error) {
-        console.error('Failed to calculate bonding progress:', error);
+        console.error('❌ Failed to calculate bonding progress:', error);
         return null;
       }
     },
-    [factoryContract, readOnlyFactoryContract],
+    [factoryContract, readOnlyFactoryContract, withTimeout],
   );
   // Create new token with improved salt mining
   const createToken = useCallback(

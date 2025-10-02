@@ -363,12 +363,32 @@ export default function BondingCurveChart({
   // Automatically fetch token info when tokenAddress changes (before loading bonding curve data)
   useEffect(() => {
     if (tokenAddress && isReady && ethers.utils.isAddress(tokenAddress)) {
-      console.log('🔍 Fetching token info for:', tokenAddress);
+      console.log('🔍 Fetching token info for:', tokenAddress, {
+        isReady,
+        isReadOnly,
+        hasTokenInfo: !!contractState.tokenInfo,
+      });
       fetchTokenInfo(tokenAddress, true).catch((error) => {
-        console.error('Failed to fetch token info:', error);
+        console.error('❌ Failed to fetch token info:', error);
+        // If token info fetch fails, immediately use fallback data
+        console.log('⚠️ Using fallback bonding curve data due to token info fetch failure');
+        const fallbackData = generateFallbackData();
+        setBondingCurveData(fallbackData);
+        setChartState((prev) => ({
+          ...prev,
+          loading: false,
+          error: 'Using estimated data',
+        }));
       });
     }
-  }, [tokenAddress, isReady, fetchTokenInfo]);
+  }, [
+    tokenAddress,
+    isReady,
+    fetchTokenInfo,
+    isReadOnly,
+    contractState.tokenInfo,
+    generateFallbackData,
+  ]);
 
   // Load bonding curve data when token info is available
   useEffect(() => {
@@ -377,6 +397,32 @@ export default function BondingCurveChart({
       loadBondingCurveData();
     }
   }, [tokenAddress, contractState.tokenInfo, loadBondingCurveData]);
+
+  // Failsafe: If isReady but no token info after 5 seconds, use fallback
+  useEffect(() => {
+    if (!tokenAddress || !isReady) return;
+
+    const failsafeTimer = setTimeout(() => {
+      if (!contractState.tokenInfo && bondingCurveData.length === 0) {
+        console.log('⏰ Failsafe triggered: No token info received after 5s, using fallback data');
+        const fallbackData = generateFallbackData();
+        setBondingCurveData(fallbackData);
+        setChartState((prev) => ({
+          ...prev,
+          loading: false,
+          error: 'Using estimated data',
+        }));
+      }
+    }, 5000); // 5 second failsafe
+
+    return () => clearTimeout(failsafeTimer);
+  }, [
+    tokenAddress,
+    isReady,
+    contractState.tokenInfo,
+    bondingCurveData.length,
+    generateFallbackData,
+  ]);
 
   // Safety timeout to prevent infinite loading
   useEffect(() => {
@@ -696,7 +742,6 @@ export default function BondingCurveChart({
         </div>
       ) : !isReady ? (
         <div className="flex flex-col items-center justify-center h-full text-[#9CA3AF] text-center px-4">
-          <div className="text-sm mb-2">⚡</div>
           <div className="text-xs mb-3">Initializing contracts...</div>
         </div>
       ) : !tokenAddress ? (
