@@ -121,6 +121,8 @@ export default function BondingCurveChart({
     ? parseFloat(ethers.utils.formatEther(contractState.tokenInfo.tokensBondedAt))
     : 800000000; // Default fallback (in token units)
 
+  const isBonded = contractState.tokenInfo?.tokenBonded || false;
+
   // Debug logging to understand what data we have
   console.log('Contract state:', {
     loading: contractState.loading,
@@ -131,20 +133,32 @@ export default function BondingCurveChart({
     tokenAddress,
   });
 
-  // Generate fallback data when contract calls fail
+  // Generate fallback data when contract calls fail (mimics bonding curve behavior)
   const generateFallbackData = useCallback(() => {
     const dataPoints = [];
     const numPoints = 8;
     const totalSupply = tokensBondedAt;
 
-    // Generate a typical bonding curve shape
+    // Generate a realistic bonding curve shape
     for (let i = 0; i <= numPoints; i++) {
       const supplyPoint = Math.floor((totalSupply / numPoints) * i);
-      // Use a quadratic formula for realistic price progression
+
+      if (supplyPoint === 0) {
+        // Start with floor price
+        dataPoints.push({
+          tokensSold: 0,
+          priceACES: 0.000001, // Minimal floor price
+          phase: 'completed',
+        });
+        continue;
+      }
+
+      // Linear curve approximation: price increases steadily
+      // Price per token = floor + (steepness * supply)
       const normalizedSupply = supplyPoint / totalSupply;
-      const basePrice = 0.0001;
-      const priceMultiplier = 1 + Math.pow(normalizedSupply, 1.5) * 39; // Creates curve from 0.0001 to ~0.004
-      const priceACES = basePrice * priceMultiplier;
+      const basePrice = 0.000001; // Floor
+      const maxPrice = basePrice * 100; // Reasonable max for visualization
+      const priceACES = basePrice + (maxPrice - basePrice) * normalizedSupply;
 
       dataPoints.push({
         tokensSold: supplyPoint,
@@ -513,7 +527,7 @@ export default function BondingCurveChart({
       .attr('d', line);
 
     // Add current position line (no dot)
-    if (currentTokensSold > 0) {
+    if (currentTokensSold > 0 && !isBonded) {
       const currentX = xScale(currentTokensSold);
 
       g.append('line')
@@ -522,8 +536,57 @@ export default function BondingCurveChart({
         .attr('x2', currentX)
         .attr('y2', height)
         .attr('stroke', '#D0B284')
-        .attr('stroke-width', 1)
-        .attr('stroke-dasharray', '3,3');
+        .attr('stroke-width', 1.5)
+        .attr('stroke-dasharray', '3,3')
+        .attr('opacity', 0.8);
+
+      // Add "Current" label
+      g.append('text')
+        .attr('x', currentX)
+        .attr('y', -5)
+        .attr('text-anchor', 'middle')
+        .attr('fill', '#D0B284')
+        .attr('font-size', '10px')
+        .attr('font-weight', 'bold')
+        .text('Current');
+    }
+
+    // Add bonding threshold line (where token will bond)
+    if (!isBonded) {
+      const bondingX = xScale(tokensBondedAt);
+
+      g.append('line')
+        .attr('x1', bondingX)
+        .attr('y1', 0)
+        .attr('x2', bondingX)
+        .attr('y2', height)
+        .attr('stroke', '#10b981') // Green for bonding threshold
+        .attr('stroke-width', 2)
+        .attr('stroke-dasharray', '5,5')
+        .attr('opacity', 0.6);
+
+      // Add "Bonding" label
+      g.append('text')
+        .attr('x', bondingX)
+        .attr('y', -5)
+        .attr('text-anchor', 'middle')
+        .attr('fill', '#10b981')
+        .attr('font-size', '10px')
+        .attr('font-weight', 'bold')
+        .text('Bonds');
+    }
+
+    // Add bonded indicator if token is already bonded
+    if (isBonded) {
+      g.append('text')
+        .attr('x', width / 2)
+        .attr('y', height / 2)
+        .attr('text-anchor', 'middle')
+        .attr('fill', '#10b981')
+        .attr('font-size', '14px')
+        .attr('font-weight', 'bold')
+        .attr('opacity', 0.3)
+        .text('🎉 BONDED');
     }
 
     // Interactive overlay
@@ -619,10 +682,11 @@ export default function BondingCurveChart({
     tokensBondedAt,
     tokenAddress,
     interpolatePriceFromChartData,
+    isBonded,
   ]);
 
   return (
-    <div className="w-full h-full bg-transparent flex items-center justify-center relative pb-4">
+    <div className="w-full h-full bg-transparent flex flex-col items-center justify-center relative pb-4">
       {chartState.loading ? (
         <div className="flex flex-col items-center justify-center h-full text-[#9CA3AF]">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#D0B284] mb-2"></div>
