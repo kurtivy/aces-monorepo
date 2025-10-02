@@ -27,6 +27,8 @@ interface TokenSwapInterfaceProps {
   showProgression?: boolean;
   imageGallery?: string[];
   primaryImage?: string;
+  chainId?: number; // Base Sepolia = 84532, Base Mainnet = 8453
+  // Deprecated props (kept for backward compatibility)
   currentAmount?: number;
   targetAmount?: number;
   percentage?: number;
@@ -40,9 +42,7 @@ export default function TokenSwapInterface({
   showProgression = true,
   imageGallery,
   primaryImage,
-  currentAmount,
-  targetAmount,
-  percentage = 26.9,
+  chainId = 84532, // Default to Base Sepolia
 }: TokenSwapInterfaceProps) {
   const { walletAddress, isAuthenticated } = useAuth();
 
@@ -632,12 +632,7 @@ export default function TokenSwapInterface({
         {showProgression && (
           <>
             <div className="mb-6">
-              <ProgressionBar
-                tokenAddress={tokenAddress}
-                currentAmount={currentAmount}
-                targetAmount={targetAmount}
-                percentage={percentage}
-              />
+              <ProgressionBar tokenAddress={tokenAddress} chainId={chainId} />
               <div
                 className={`mt-2 text-xs font-semibold uppercase tracking-[0.3em] text-center ${
                   tokenBonded ? 'text-green-400' : 'text-[#D7BF75]/80'

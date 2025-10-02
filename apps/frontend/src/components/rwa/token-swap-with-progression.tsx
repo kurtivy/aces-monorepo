@@ -13,7 +13,9 @@ interface TokenSwapWithProgressionProps {
   // Image props
   primaryImage?: string;
   imageGallery?: string[];
-  // Progression bar props
+  // Chain ID for contract interaction
+  chainId?: number;
+  // Deprecated props (kept for backward compatibility)
   currentAmount?: number;
   targetAmount?: number;
   percentage?: number;
@@ -28,9 +30,7 @@ export default function TokenSwapWithProgression({
   tokenOwner,
   primaryImage,
   imageGallery,
-  currentAmount,
-  targetAmount,
-  percentage = 26.9,
+  chainId = 84532, // Default to Base Sepolia
 }: TokenSwapWithProgressionProps) {
   return (
     <div className="h-full relative">
@@ -44,9 +44,7 @@ export default function TokenSwapWithProgression({
         primaryImage={primaryImage}
         imageGallery={imageGallery}
         showFrame={false}
-        currentAmount={currentAmount}
-        targetAmount={targetAmount}
-        percentage={percentage}
+        chainId={chainId}
       />
 
       {/* Floating Stream Button positioned at bottom of screen */}
