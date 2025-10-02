@@ -6,6 +6,7 @@ import { useAcesFactoryContract } from '@/hooks/contracts/use-aces-factory-contr
 
 interface ProgressionBarProps {
   tokenAddress?: string;
+  chainId?: number; // Base Sepolia = 84532, Base Mainnet = 8453
   currentAmount?: number; // Deprecated - will be fetched from contract
   targetAmount?: number; // Deprecated - will be fetched from contract
   percentage?: number; // Deprecated - will be calculated
@@ -13,25 +14,23 @@ interface ProgressionBarProps {
 
 export default function ProgressionBar({
   tokenAddress,
-  percentage: propPercentage,
+  chainId = 84532, // Default to Base Sepolia
 }: ProgressionBarProps) {
-  const [percentage, setPercentage] = useState(propPercentage || 0);
+  const [percentage, setPercentage] = useState(0);
   const [isBonded, setIsBonded] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const { contractState, fetchTokenInfo, isReady } = useAcesFactoryContract();
+  const { calculateBondingProgress, isReady } = useAcesFactoryContract(chainId);
 
+  // Fetch bonding progress when tokenAddress changes (pump.fun style - ACES based)
   useEffect(() => {
-    if (typeof propPercentage === 'number') {
-      setPercentage(propPercentage);
-    }
-  }, [propPercentage]);
+    let mounted = true;
 
-  // Fetch bonding progress when tokenAddress changes
-  useEffect(() => {
     const loadBondingProgress = async () => {
       if (!tokenAddress || !ethers.utils.isAddress(tokenAddress)) {
-        setLoading(false);
+        if (mounted) {
+          setLoading(false);
+        }
         return;
       }
 
@@ -41,33 +40,32 @@ export default function ProgressionBar({
 
       try {
         setLoading(true);
-        await fetchTokenInfo(tokenAddress);
+        const result = await calculateBondingProgress(tokenAddress);
+
+        if (mounted && result) {
+          setPercentage(result.percentage);
+          setIsBonded(result.isBonded);
+          // currentACES and targetACES available in result but not displayed in this simplified view
+        }
       } catch (error) {
         console.error('Failed to fetch bonding progress:', error);
-        setLoading(false);
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
       }
     };
 
     loadBondingProgress();
-  }, [tokenAddress, isReady, fetchTokenInfo]);
 
-  // Update percentage when contract state changes
-  useEffect(() => {
-    if (contractState.tokenInfo && contractState.currentSupply) {
-      const currentSupply = parseFloat(contractState.currentSupply);
-      const tokensBondedAt = parseFloat(
-        ethers.utils.formatEther(contractState.tokenInfo.tokensBondedAt),
-      );
+    // Poll every 10 seconds for updates
+    const interval = setInterval(loadBondingProgress, 10000);
 
-      if (tokensBondedAt > 0) {
-        const calculatedPercentage = (currentSupply / tokensBondedAt) * 100;
-        setPercentage(Math.min(calculatedPercentage, 100));
-        setIsBonded(contractState.tokenInfo.tokenBonded);
-      }
-
-      setLoading(false);
-    }
-  }, [contractState.tokenInfo, contractState.currentSupply]);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [tokenAddress, isReady, calculateBondingProgress]);
 
   const clampedPercentage = Math.min(Math.max(percentage, 0), 100);
 
@@ -90,7 +88,7 @@ export default function ProgressionBar({
 
   return (
     <div className="relative w-full overflow-hidden px-4 py-4">
-      <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-transparent via-[#D0B284]/10 to-transparent opacity-40" />
+      <div className="absolute inset-0 rounded-xl opacity-40" />
 
       <div className="relative z-10 flex flex-col gap-3">
         <div className="relative h-4 w-full group">
@@ -108,7 +106,7 @@ export default function ProgressionBar({
 
               {loading ? (
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="text-xs text-[#D0B284]/60">Loading...</div>
+                  <div className="text-xs text-[#D0B284]/60">...</div>
                 </div>
               ) : (
                 <>
@@ -119,7 +117,7 @@ export default function ProgressionBar({
                       background: barGradient,
                     }}
                   >
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/25 to-transparent opacity-60" />
+                    <div className="absolute inset-0 opacity-60" />
                     <div
                       className={`absolute right-0 top-0 h-full w-3 bg-gradient-to-l ${
                         isBonded ? 'from-green-300/80' : 'from-[#D7BF75]/80'
