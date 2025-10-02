@@ -337,9 +337,9 @@ export function useAcesFactoryContract(chainId?: number) {
         const steepness = tokenInfo.steepness;
         const floor = tokenInfo.floor;
 
-        // supplyPoint is in wei, convert to whole tokens
-        const supplyInWholeTokens = Math.floor(supplyPoint / 1e18);
-        const amount = 1;
+        // supplyPoint is already in whole tokens (not wei)
+        const supplyInWholeTokens = Math.floor(supplyPoint);
+        const amount = 1; // Price for buying 1 token
 
         // Special case: when supply is 0, return the floor price
         if (supplyInWholeTokens === 0) {
@@ -352,24 +352,21 @@ export function useAcesFactoryContract(chainId?: number) {
           return parseFloat(ethers.utils.formatEther(floor));
         }
 
+        // Convert to wei for contract call (contract expects wei values)
+        const supplyWei = ethers.utils.parseEther(supplyInWholeTokens.toString());
+        const amountWei = ethers.utils.parseEther(amount.toString());
+
         let priceWei: ethers.BigNumber;
 
         if (curve === 0) {
-          priceWei = await activeContract.getPriceQuadratic(
-            supplyInWholeTokens,
-            amount,
-            steepness,
-            floor,
-          );
+          // Quadratic curve
+          priceWei = await activeContract.getPriceQuadratic(supplyWei, amountWei, steepness, floor);
         } else {
-          priceWei = await activeContract.getPriceLinear(
-            supplyInWholeTokens,
-            amount,
-            steepness,
-            floor,
-          );
+          // Linear curve
+          priceWei = await activeContract.getPriceLinear(supplyWei, amountWei, steepness, floor);
         }
 
+        // Return price in ACES (formatted from wei)
         return parseFloat(ethers.utils.formatEther(priceWei));
       } catch (error) {
         console.error('Failed to calculate price at supply:', error);
@@ -385,34 +382,50 @@ export function useAcesFactoryContract(chainId?: number) {
     [factoryContract, readOnlyFactoryContract],
   );
 
-  // Replace generateBondingCurveData
+  // Generate bonding curve data using actual contract price calculations
   const generateBondingCurveData = useCallback(
     async (tokenAddress: string) => {
       const tokenInfo = await fetchTokenInfo(tokenAddress);
       if (!tokenInfo) return [];
 
-      const tokensBondedAt = parseFloat(tokenInfo.tokenInfo.tokensBondedAt);
+      // tokensBondedAt is already formatted to ether (whole tokens)
+      const tokensBondedAt = parseFloat(
+        ethers.utils.formatEther(tokenInfo.tokenInfo.tokensBondedAt),
+      );
       const currentSupply = parseFloat(tokenInfo.currentSupply);
 
       const dataPoints = [];
-      const numPoints = 8;
+      const numIntervals = 8; // Create 8 intervals as requested
 
-      // Start from i=0 to include the starting point, but skip 0 supply point
-      for (let i = 0; i <= numPoints; i++) {
-        const supplyPoint = Math.floor((tokensBondedAt / numPoints) * i);
+      console.log('🎯 Generating bonding curve with:', {
+        tokensBondedAt,
+        currentSupply,
+        intervals: numIntervals,
+      });
 
-        // Skip calculating price for 0 tokens as it causes contract errors
-        if (supplyPoint === 0) {
+      // Generate points at 0%, 12.5%, 25%, 37.5%, 50%, 62.5%, 75%, 87.5%, 100%
+      for (let i = 0; i <= numIntervals; i++) {
+        const supplyPoint = Math.floor((tokensBondedAt / numIntervals) * i);
+
+        // For 0 tokens, use floor price
+        if (supplyPoint === 0 || supplyPoint < 1) {
+          const floorPrice = parseFloat(ethers.utils.formatEther(tokenInfo.tokenInfo.floor));
           dataPoints.push({
             tokensSold: 0,
-            priceACES: 0,
+            priceACES: floorPrice,
             phase: 'completed',
           });
           continue;
         }
 
         try {
+          // Calculate price for buying 1 token at this supply level
           const priceInAces = await calculatePriceAtSupply(tokenAddress, supplyPoint);
+
+          console.log(
+            `📊 Supply: ${supplyPoint.toLocaleString()} tokens → Price: ${priceInAces.toFixed(6)} ACES`,
+          );
+
           dataPoints.push({
             tokensSold: supplyPoint,
             priceACES: priceInAces,
@@ -423,17 +436,106 @@ export function useAcesFactoryContract(chainId?: number) {
           await new Promise((resolve) => setTimeout(resolve, 100));
         } catch (error) {
           console.error(`Failed to calculate price at ${supplyPoint}:`, error);
+          // Use previous point's price or floor as fallback
+          const fallbackPrice =
+            dataPoints.length > 0
+              ? dataPoints[dataPoints.length - 1].priceACES
+              : parseFloat(ethers.utils.formatEther(tokenInfo.tokenInfo.floor));
+
           dataPoints.push({
             tokensSold: supplyPoint,
-            priceACES: 0,
+            priceACES: fallbackPrice,
             phase: 'upcoming',
           });
         }
       }
 
+      console.log('✅ Generated curve data points:', dataPoints.length);
       return dataPoints;
     },
     [fetchTokenInfo, calculatePriceAtSupply],
+  );
+
+  // Calculate bonding curve progress (pump.fun style)
+  const calculateBondingProgress = useCallback(
+    async (
+      tokenAddress: string,
+    ): Promise<{
+      percentage: number;
+      currentACES: string;
+      targetACES: string;
+      isBonded: boolean;
+    } | null> => {
+      const activeContract = factoryContract || readOnlyFactoryContract;
+      if (!activeContract) {
+        console.warn('No contract available for bonding progress calculation');
+        return null;
+      }
+
+      try {
+        // Get token info from factory
+        const tokenData = await activeContract.tokens(tokenAddress);
+
+        // If token doesn't exist, return null
+        if (tokenData.tokenAddress === ethers.constants.AddressZero) {
+          console.warn('Token not found:', tokenAddress);
+          return null;
+        }
+
+        const currentACESBalance = tokenData.acesTokenBalance; // BigNumber
+        const tokensBondedAt = tokenData.tokensBondedAt; // BigNumber
+        const isBonded = tokenData.tokenBonded;
+        const curve = tokenData.curve;
+        const steepness = tokenData.steepness;
+        const floor = tokenData.floor;
+
+        // Calculate total ACES needed to reach bonding threshold
+        // This is the cumulative price from 1 token to tokensBondedAt
+        const startSupply = ethers.utils.parseEther('1'); // Start from 1 token (minimum)
+        const amountToBuy = tokensBondedAt.sub(startSupply); // Amount needed to reach bonding
+
+        let totalACESTarget: ethers.BigNumber;
+
+        if (curve === 0) {
+          // Quadratic curve
+          totalACESTarget = await activeContract.getPriceQuadratic(
+            startSupply,
+            amountToBuy,
+            steepness,
+            floor,
+          );
+        } else {
+          // Linear curve
+          totalACESTarget = await activeContract.getPriceLinear(
+            startSupply,
+            amountToBuy,
+            steepness,
+            floor,
+          );
+        }
+
+        // Calculate percentage
+        const percentage = isBonded
+          ? 100
+          : Math.min(
+              100,
+              (parseFloat(ethers.utils.formatEther(currentACESBalance)) /
+                parseFloat(ethers.utils.formatEther(totalACESTarget))) *
+                100,
+            );
+
+        return {
+          percentage,
+          currentACES: ethers.utils.formatEther(currentACESBalance),
+          targetACES: ethers.utils.formatEther(totalACESTarget),
+          isBonded,
+        };
+      } catch (error) {
+        console.error('Failed to calculate bonding progress:', error);
+        return null;
+      }
+    },
+    [factoryContract, readOnlyFactoryContract],
   );
   // Create new token with improved salt mining
   const createToken = useCallback(
@@ -598,6 +700,7 @@ export function useAcesFactoryContract(chainId?: number) {
     fetchTokenInfo,
     generateBondingCurveData,
     calculatePriceAtSupply,
+    calculateBondingProgress,
     createToken,
     buyTokens,
     sellTokens,
