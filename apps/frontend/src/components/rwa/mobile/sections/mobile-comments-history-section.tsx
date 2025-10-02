@@ -7,6 +7,8 @@ import TradeHistory from '@/components/rwa/middle-column/token-details/trade-his
 import TokenHealthPanel from '@/components/rwa/left-column/token-details/token-health-panel';
 import type { DatabaseListing } from '@/types/rwa/section.types';
 
+const DEFAULT_CHAIN_ID = 84532;
+
 interface MobileCommentsHistorySectionProps {
   listing: DatabaseListing;
   isLive: boolean;
@@ -127,7 +129,11 @@ const MobileCommentsHistorySection = forwardRef<HTMLDivElement, MobileCommentsHi
             </div>
           ) : (
             <div className="px-4">
-              <TokenHealthPanel />
+              <TokenHealthPanel
+                tokenAddress={listing.token?.contractAddress}
+                reservePrice={listing.reservePrice}
+                chainId={DEFAULT_CHAIN_ID}
+              />
             </div>
           )}
         </div>

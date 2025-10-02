@@ -6,6 +6,8 @@ import OverviewBottomSection from '@/components/rwa/middle-column/overview/overv
 import { mockImages } from '@/constants/rwa';
 import type { DatabaseListing } from '@/types/rwa/section.types';
 
+const DEFAULT_CHAIN_ID = 84532;
+
 interface MobileOverviewSectionProps {
   listing: DatabaseListing;
   loading: boolean;
@@ -50,6 +52,7 @@ const MobileOverviewSection = forwardRef<HTMLDivElement, MobileOverviewSectionPr
             showProgression={Boolean(listing.token?.contractAddress)}
             progressionPercentage={26.9}
             tokenAddress={listing.token?.contractAddress}
+            chainId={DEFAULT_CHAIN_ID}
           />
         </div>
       </section>

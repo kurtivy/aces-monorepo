@@ -12,6 +12,7 @@ interface OverviewBottomSectionProps {
   progressionPercentage?: number; // Deprecated - will be calculated from contract
   showProgressionDesktopOnly?: boolean;
   tokenAddress?: string; // New prop for dynamic bonding data
+  chainId?: number;
 }
 
 export default function OverviewBottomSection({
@@ -20,6 +21,7 @@ export default function OverviewBottomSection({
   progressionPercentage: propPercentage = 26.9,
   showProgressionDesktopOnly = false,
   tokenAddress,
+  chainId,
 }: OverviewBottomSectionProps) {
   const [percentage, setPercentage] = useState(propPercentage);
   const [isBonded, setIsBonded] = useState(false);
@@ -87,7 +89,7 @@ export default function OverviewBottomSection({
       {showProgression && (
         <div className="space-y-3">
           <div className={showProgressionDesktopOnly ? 'hidden lg:block' : ''}>
-            <ProgressionBar tokenAddress={tokenAddress} percentage={percentage} />
+            <ProgressionBar tokenAddress={tokenAddress} chainId={chainId} percentage={percentage} />
             {loading ? (
               <div className="text-xs font-semibold uppercase tracking-[0.3em] text-center text-[#D7BF75]/40">
                 Loading...
