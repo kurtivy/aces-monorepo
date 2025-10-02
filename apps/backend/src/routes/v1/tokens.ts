@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { TokenService } from '../../services/token-service';
 import { OHLCVService } from '../../services/ohlcv-service';
+import { SupplyBasedOHLCVService } from '../../services/supply-based-ohlcv-service';
+import { SupportedTimeframe } from '../../types/subgraph.types';
 
 interface TokenParams {
   address: string;
@@ -28,6 +30,7 @@ interface ChartQuery {
 export async function tokensRoutes(fastify: FastifyInstance) {
   const tokenService = new TokenService(fastify.prisma);
   const ohlcvService = new OHLCVService(fastify.prisma, tokenService);
+  const supplyBasedOHLCVService = new SupplyBasedOHLCVService();
 
   // Get token data (fetches fresh from subgraph)
   fastify.get(
@@ -214,8 +217,8 @@ export async function tokensRoutes(fastify: FastifyInstance) {
     },
   );
 
-  // NEW: Get live data directly from subgraph (last N minutes)
-  // Used for real-time updates
+  // Live candle with bonding curve marginal prices
+  // Used for real-time chart updates (polls every 5 seconds)
   fastify.get(
     '/:address/live',
     {
@@ -227,9 +230,8 @@ export async function tokensRoutes(fastify: FastifyInstance) {
         ),
         querystring: zodToJsonSchema(
           z.object({
-            timeframe: z.enum(['1m', '5m', '15m', '30m', '1h', '4h', '1d']).default('1h'),
-            since: z.string().optional(), // Unix timestamp
-            limit: z.string().transform(Number).default('100'),
+            timeframe: z.enum(['5m', '15m', '1h', '4h', '1d']).default('1h'),
+            since: z.string().optional(), // Unix timestamp (deprecated, kept for compatibility)
           }),
         ),
       },
@@ -243,32 +245,16 @@ export async function tokensRoutes(fastify: FastifyInstance) {
     ) => {
       try {
         const { address } = request.params;
-        const { timeframe = '1h', since, limit = 100 } = request.query;
+        const { timeframe = '1h' } = request.query;
 
-        // Convert since timestamp to number
-        const sinceTimestamp = since ? parseInt(since) * 1000 : Date.now() - 10 * 60 * 1000; // Default: last 10 minutes
-
-        // Generate live candles from subgraph
-        const liveCandles = await ohlcvService.generateLiveCandles(
+        // Fetch candles using SupplyBasedOHLCVService for marginal prices
+        const allCandles = await supplyBasedOHLCVService.getCandles(
           address,
-          timeframe,
-          sinceTimestamp,
+          timeframe as SupportedTimeframe,
+          100, // Get last 100 trades for live updates
         );
 
-        // NEW: Persist live candles immediately so they're available for future requests
-        if (liveCandles && liveCandles.length > 0) {
-          try {
-            await ohlcvService.storeCandlesPublic(address, timeframe, liveCandles);
-            console.log(
-              `[API /live] Persisted ${liveCandles.length} live candles for ${address} ${timeframe}`,
-            );
-          } catch (storeError) {
-            console.warn('[API /live] Failed to persist live candles:', storeError);
-            // Continue anyway - live data is still returned to client
-          }
-        }
-
-        if (!liveCandles || liveCandles.length === 0) {
+        if (!allCandles || allCandles.length === 0) {
           return reply.send({
             success: true,
             data: {
@@ -278,28 +264,34 @@ export async function tokensRoutes(fastify: FastifyInstance) {
               count: 0,
               isLive: true,
               lastUpdate: Date.now(),
-              message: 'No new trading data available',
+              message: 'No current candle available',
             },
           });
         }
 
-        // Convert to chart format
-        const chartData = liveCandles.slice(-limit).map((candle) => ({
-          time: Math.floor(candle.timestamp.getTime() / 1000),
-          open: parseFloat(candle.open),
-          high: parseFloat(candle.high),
-          low: parseFloat(candle.low),
-          close: parseFloat(candle.close),
-        }));
+        // Get the most recent candle
+        const currentCandle = allCandles[allCandles.length - 1];
 
-        const volumeData = liveCandles.slice(-limit).map((candle) => ({
-          time: Math.floor(candle.timestamp.getTime() / 1000),
-          value: parseFloat(candle.volume),
-          color:
-            parseFloat(candle.close) >= parseFloat(candle.open)
-              ? 'rgba(0, 200, 150, 0.6)'
-              : 'rgba(255, 91, 91, 0.6)',
-        }));
+        const chartData = [
+          {
+            time: Math.floor(currentCandle.timestamp.getTime() / 1000),
+            open: parseFloat(currentCandle.open),
+            high: parseFloat(currentCandle.high),
+            low: parseFloat(currentCandle.low),
+            close: parseFloat(currentCandle.close),
+          },
+        ];
+
+        const volumeData = [
+          {
+            time: Math.floor(currentCandle.timestamp.getTime() / 1000),
+            value: parseFloat(currentCandle.volume),
+            color:
+              parseFloat(currentCandle.close) >= parseFloat(currentCandle.open)
+                ? 'rgba(0, 200, 150, 0.6)'
+                : 'rgba(255, 91, 91, 0.6)',
+          },
+        ];
 
         return reply.send({
           success: true,
@@ -307,10 +299,9 @@ export async function tokensRoutes(fastify: FastifyInstance) {
             timeframe,
             candles: chartData,
             volume: volumeData,
-            count: chartData.length,
+            count: 1,
             isLive: true,
             lastUpdate: Date.now(),
-            since: sinceTimestamp,
           },
         });
       } catch (error) {
@@ -324,8 +315,8 @@ export async function tokensRoutes(fastify: FastifyInstance) {
     },
   );
 
-  // NEW: Smart hybrid chart data endpoint
-  // Combines cached historical data with live recent data
+  // Chart data with bonding curve marginal prices
+  // Calculates correct instantaneous prices that match buy/sell quotes
   fastify.get(
     '/:address/chart',
     {
@@ -337,9 +328,9 @@ export async function tokensRoutes(fastify: FastifyInstance) {
         ),
         querystring: zodToJsonSchema(
           z.object({
-            timeframe: z.enum(['1m', '5m', '15m', '30m', '1h', '4h', '1d']).default('1h'),
-            limit: z.string().transform(Number).default('100'),
-            mode: z.enum(['live', 'cached', 'hybrid']).default('hybrid'),
+            timeframe: z.enum(['5m', '15m', '1h', '4h', '1d']).default('1h'),
+            limit: z.string().transform(Number).default('5000'),
+            mode: z.enum(['live', 'cached', 'hybrid']).optional().default('hybrid'),
           }),
         ),
       },
@@ -353,97 +344,16 @@ export async function tokensRoutes(fastify: FastifyInstance) {
     ) => {
       try {
         const { address } = request.params;
-        const { timeframe = '1h', limit = 100, mode = 'hybrid' } = request.query;
+        const { timeframe = '1h', limit = 5000 } = request.query;
 
-        let chartData: Array<{
-          time: number;
-          open: number;
-          high: number;
-          low: number;
-          close: number;
-        }> = [];
-        let volumeData: Array<{
-          time: number;
-          value: number;
-          color: string;
-        }> = [];
-        let isLive = false;
-        let dataSource = 'unknown';
+        // Use SupplyBasedOHLCVService to calculate marginal prices from bonding curve
+        // This shows the instantaneous price at each supply level (matches the quote)
+        const candles = await supplyBasedOHLCVService.getCandles(
+          address,
+          timeframe as SupportedTimeframe,
+        );
 
-        if (mode === 'live') {
-          // Force live data only - skip storage for speed
-          const liveCandles = await ohlcvService.generateOHLCVCandles(address, timeframe, {
-            forceRefresh: true,
-            skipStorage: true, // Don't block response with slow database writes
-          });
-
-          chartData = liveCandles.slice(-limit).map((candle) => ({
-            time: Math.floor(candle.timestamp.getTime() / 1000),
-            open: parseFloat(candle.open),
-            high: parseFloat(candle.high),
-            low: parseFloat(candle.low),
-            close: parseFloat(candle.close),
-          }));
-
-          volumeData = liveCandles.slice(-limit).map((candle) => ({
-            time: Math.floor(candle.timestamp.getTime() / 1000),
-            value: parseFloat(candle.volume),
-            color:
-              parseFloat(candle.close) >= parseFloat(candle.open)
-                ? 'rgba(0, 200, 150, 0.6)'
-                : 'rgba(255, 91, 91, 0.6)',
-          }));
-
-          isLive = true;
-          dataSource = 'live';
-        } else if (mode === 'cached') {
-          // Use cached data only
-          const cachedCandles = await ohlcvService.getStoredOHLCVData(address, timeframe, limit);
-
-          chartData = cachedCandles.reverse().map((candle) => ({
-            time: Math.floor(candle.timestamp.getTime() / 1000),
-            open: parseFloat(candle.open),
-            high: parseFloat(candle.high),
-            low: parseFloat(candle.low),
-            close: parseFloat(candle.close),
-          }));
-
-          volumeData = cachedCandles.map((candle) => ({
-            time: Math.floor(candle.timestamp.getTime() / 1000),
-            value: parseFloat(candle.volume),
-            color:
-              parseFloat(candle.close) >= parseFloat(candle.open)
-                ? 'rgba(0, 200, 150, 0.6)'
-                : 'rgba(255, 91, 91, 0.6)',
-          }));
-
-          dataSource = 'cached';
-        } else {
-          // Hybrid mode: Use enhanced service with smart caching
-          const hybridCandles = await ohlcvService.generateOHLCVCandles(address, timeframe);
-
-          chartData = hybridCandles.slice(-limit).map((candle) => ({
-            time: Math.floor(candle.timestamp.getTime() / 1000),
-            open: parseFloat(candle.open),
-            high: parseFloat(candle.high),
-            low: parseFloat(candle.low),
-            close: parseFloat(candle.close),
-          }));
-
-          volumeData = hybridCandles.slice(-limit).map((candle) => ({
-            time: Math.floor(candle.timestamp.getTime() / 1000),
-            value: parseFloat(candle.volume),
-            color:
-              parseFloat(candle.close) >= parseFloat(candle.open)
-                ? 'rgba(0, 200, 150, 0.6)'
-                : 'rgba(255, 91, 91, 0.6)',
-          }));
-
-          isLive = hybridCandles.length > 0;
-          dataSource = 'hybrid';
-        }
-
-        if (chartData.length === 0) {
+        if (!candles || candles.length === 0) {
           return reply.send({
             success: true,
             data: {
@@ -451,10 +361,34 @@ export async function tokensRoutes(fastify: FastifyInstance) {
               candles: [],
               volume: [],
               count: 0,
-              isLive: false,
-              dataSource,
+              dataSource: 'subgraph',
               message: 'No trading data available for this timeframe',
             },
+          });
+        }
+
+        // Convert to TradingView format
+        const chartData = candles.slice(-limit).map((candle) => ({
+          time: Math.floor(candle.timestamp.getTime() / 1000),
+          open: parseFloat(candle.open),
+          high: parseFloat(candle.high),
+          low: parseFloat(candle.low),
+          close: parseFloat(candle.close),
+        }));
+
+        const volumeData = candles.slice(-limit).map((candle) => ({
+          time: Math.floor(candle.timestamp.getTime() / 1000),
+          value: parseFloat(candle.volume),
+          color:
+            parseFloat(candle.close) >= parseFloat(candle.open)
+              ? 'rgba(0, 200, 150, 0.6)'
+              : 'rgba(255, 91, 91, 0.6)',
+        }));
+
+        // Optional: Store to DB in background (non-blocking)
+        if (candles.length > 0) {
+          ohlcvService.storeCandlesInBackground(address, timeframe, candles).catch((err) => {
+            console.warn('[API /chart] Background DB storage failed:', err);
           });
         }
 
@@ -465,13 +399,55 @@ export async function tokensRoutes(fastify: FastifyInstance) {
             candles: chartData,
             volume: volumeData,
             count: chartData.length,
-            isLive,
-            dataSource,
+            dataSource: 'subgraph',
             lastUpdate: Date.now(),
           },
         });
       } catch (error) {
         fastify.log.error({ error }, 'Chart data fetch error');
+
+        // Fallback to database if subgraph fails
+        try {
+          const { address } = request.params;
+          const { timeframe = '1h', limit = 5000 } = request.query;
+
+          const dbCandles = await ohlcvService.getStoredOHLCVData(address, timeframe, limit);
+
+          if (dbCandles.length > 0) {
+            const chartData = dbCandles.map((candle) => ({
+              time: Math.floor(candle.timestamp.getTime() / 1000),
+              open: parseFloat(candle.open),
+              high: parseFloat(candle.high),
+              low: parseFloat(candle.low),
+              close: parseFloat(candle.close),
+            }));
+
+            const volumeData = dbCandles.map((candle) => ({
+              time: Math.floor(candle.timestamp.getTime() / 1000),
+              value: parseFloat(candle.volume),
+              color:
+                parseFloat(candle.close) >= parseFloat(candle.open)
+                  ? 'rgba(0, 200, 150, 0.6)'
+                  : 'rgba(255, 91, 91, 0.6)',
+            }));
+
+            return reply.send({
+              success: true,
+              data: {
+                timeframe,
+                candles: chartData,
+                volume: volumeData,
+                count: chartData.length,
+                dataSource: 'database_fallback',
+                warning: 'Using cached data - live data temporarily unavailable',
+                lastUpdate: Date.now(),
+              },
+            });
+          }
+        } catch (fallbackError) {
+          console.error('[API /chart] Database fallback also failed:', fallbackError);
+        }
+
         return reply.code(500).send({
           success: false,
           error: 'Failed to fetch chart data',
