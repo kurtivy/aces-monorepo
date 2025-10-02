@@ -210,7 +210,11 @@ export default function RWAItemPage() {
 
             {/* Modals */}
             {navigation.showShareModal && (
-              <ShareModal onClose={() => navigation.setShowShareModal(false)} />
+              <ShareModal
+                onClose={() => navigation.setShowShareModal(false)}
+                title={listing.title}
+                symbol={listing.symbol}
+              />
             )}
             {navigation.showDeliveryModal && (
               <DeliveryModal onClose={() => navigation.setShowDeliveryModal(false)} />

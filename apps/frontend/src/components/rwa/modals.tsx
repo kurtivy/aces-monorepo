@@ -2,30 +2,45 @@
 
 import type { ModalProps } from '../../types/rwa/section.types';
 
+interface ShareModalProps extends ModalProps {
+  title: string;
+  symbol: string;
+}
+
+const SHARE_DOMAIN = 'https://aces.fun';
+
 // Share Modal Component
-export function ShareModal({ onClose }: ModalProps) {
-  const shareUrl = typeof window !== 'undefined' ? window.location.href : '';
+export function ShareModal({ onClose, title, symbol }: ShareModalProps) {
+  const sharePath =
+    typeof window !== 'undefined'
+      ? `${window.location.pathname}${window.location.search}`
+      : `/rwa/${symbol}`;
+  const shareUrl = `${SHARE_DOMAIN}${sharePath}`;
+  const shareMessage = `Check out ${title} on ACES!`;
+
+  const encodedUrl = encodeURIComponent(shareUrl);
+  const encodedMessage = encodeURIComponent(shareMessage);
 
   const shareOptions = [
-    { name: 'Copy Link', action: () => navigator.clipboard.writeText(shareUrl) },
+    {
+      name: 'Copy Link',
+      action: () => navigator?.clipboard?.writeText(shareUrl),
+    },
     {
       name: 'Twitter',
       action: () =>
         window.open(
-          `https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=Check out King Solomon's Baby - Real World Asset!`,
+          `https://twitter.com/intent/tweet?url=${encodedUrl}&text=${encodedMessage}`,
         ),
     },
     {
       name: 'Facebook',
-      action: () =>
-        window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`),
+      action: () => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`),
     },
     {
       name: 'LinkedIn',
       action: () =>
-        window.open(
-          `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`,
-        ),
+        window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}`),
     },
   ];
 

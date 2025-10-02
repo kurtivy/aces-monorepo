@@ -148,7 +148,13 @@ export default function MobileRWAItemPage({
         listing={listing}
       />
 
-      {isShareModalOpen && <ShareModal onClose={() => setIsShareModalOpen(false)} />}
+      {isShareModalOpen && (
+        <ShareModal
+          onClose={() => setIsShareModalOpen(false)}
+          title={listing.title}
+          symbol={listing.symbol}
+        />
+      )}
     </div>
   );
 }
