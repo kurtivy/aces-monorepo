@@ -15,7 +15,6 @@ import DashedGridBackground from '@/components/ui/custom/dashed-grid-background'
 import { useDeviceCapabilities } from '@/contexts/device-provider';
 import MobileRWAItemPage from './mobile-page';
 import PageLoader from '@/components/loading/page-loader';
-// import SubgraphHealthBanner from '@/components/rwa/subgraph-health-banner';
 
 export default function RWAItemPage() {
   const params = useParams();
@@ -92,7 +91,6 @@ export default function RWAItemPage() {
             {/* Header */}
             <div className="relative z-50">
               <RWAHeader title={listing?.title} />
-              {/* <SubgraphHealthBanner /> */}
             </div>
 
             {/* Main 3-Column Layout */}
