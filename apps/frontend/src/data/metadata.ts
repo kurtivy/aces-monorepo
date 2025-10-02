@@ -8,7 +8,7 @@ export const SAMPLE_METADATA: ImageInfo['metadata'][] = [
 
 This set represents a significant and easily transferable store of value, prized by both collectors and investors for its history and 22-karat gold purity.`,
     date: '2024-03-15',
-    countdownDate: '2025-10-06T16:00:00.000Z', // September 26, 2025 at 12PM EST
+    countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
     ticker: '$KRUGER',
     image: '/canvas-images/10xSouth-African-Gold-Krugerrands.webp',
     rrp: 19680,
@@ -23,7 +23,7 @@ This set represents a significant and easily transferable store of value, prized
 
 Powered by a 3.3L turbocharged flat-six engine, the 964 Turbo offers a raw, analog driving experience that is increasingly sought-after. This particular car is not just a high-performance machine but a piece of automotive art.`,
     date: '2024-02-28',
-    countdownDate: '2025-10-06T16:00:00.000Z', // September 26, 2025 at 12PM EST
+    countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
     ticker: '$P964',
     image: '/canvas-images/1991-Porsche-964-Turbo-Rubystone-Red-1-of-5-Limited-Edition-Paint.webp',
     rrp: 451000,
@@ -38,7 +38,7 @@ Powered by a 3.3L turbocharged flat-six engine, the 964 Turbo offers a raw, anal
 
 A masterpiece of aerodynamic engineering, owning this vehicle is to own a significant piece of motorsport history. It represents the cutting-edge of technology from its era and a tangible connection to a legendary driver.`,
     date: '2023-09-12',
-    countdownDate: '2025-10-06T16:00:00.000Z', // September 26, 2025 at 12PM EST
+    countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
     ticker: '$MP424',
     image: '/canvas-images/2009-F1-McLaren-MP4-24.webp',
     rrp: 5166000,
@@ -53,7 +53,7 @@ A masterpiece of aerodynamic engineering, owning this vehicle is to own a signif
 
 With a production run of only 186 units worldwide, this SV is a rare and visceral supercar. It represents the pinnacle of the pre-VW era Lamborghini, a true collector's item destined to appreciate in value.`,
     date: '2024-01-15',
-    countdownDate: '2025-10-06T16:00:00.000Z', // September 26, 2025 at 12PM EST
+    countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
     ticker: '$LAMBOSV',
     image: '/canvas-images/2010-Lamborghini-Murcielago-SV.webp',
     rrp: 984000,
@@ -68,7 +68,7 @@ With a production run of only 186 units worldwide, this SV is a rare and viscera
 
 Powered by twin Volvo IPS engines, the Atlantis 45 delivers thrilling performance and effortless maneuverability. It's the perfect vessel for weekend getaways and entertaining guests in absolute style and comfort, representing a premier asset in the world of luxury marine craft.`,
     date: '2023-12-05',
-    countdownDate: '2025-10-06T16:00:00.000Z', // September 26, 2025 at 12PM EST
+    countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
     ticker: '$AZIMUT',
     image: '/canvas-images/2022-Azimut-Atlantis-45.webp',
     rrp: 803600,
@@ -83,7 +83,7 @@ Powered by twin Volvo IPS engines, the Atlantis 45 delivers thrilling performanc
 
 The artist's signature makes this piece exceptionally valuable, as signed Warhol works are increasingly rare. This is a museum-quality piece that captures the essence of 1960s pop culture and American iconography.`,
     date: '2023-10-25',
-    countdownDate: '2025-10-06T16:00:00.000Z', // September 26, 2025 at 12PM EST
+    countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
     ticker: '$WARHOL',
     image: '/canvas-images/Andy-Warhol-Signed-Marilyn-Monroe.webp',
     rrp: 3280000,
@@ -94,12 +94,11 @@ The artist's signature makes this piece exceptionally valuable, as signed Warhol
   {
     id: '7',
     title: 'Audemars Piguet Royal Oak Concept KAWS',
-    symbol: 'APKAWS', // RWA page route symbol
     description: `A groundbreaking collaboration between haute horology and contemporary art, this Audemars Piguet Royal Oak Concept is a limited edition masterpiece designed with the artist KAWS. The watch features KAWS's signature 'XX' motif on the tourbillon cage, housed within a futuristic titanium case.
 
 This timepiece is not just a watch; it's a wearable sculpture that pushes the boundaries of watchmaking design. With an extremely limited production run, it's a grail piece for collectors of both high-end watches and modern art.`,
     date: '2024-02-04',
-    countdownDate: '2025-09-29T14:00:00.000Z', // September 19, 2025 at 9AM EST
+    countdownDate: '2025-10-02T21:11:00.000Z', // October 2, 2025 at 9AM EDT
     ticker: '$APKAWS',
     image:
       '/canvas-images/Audemars-Piguet-Royal-Oak-Concept-KAWS-Tourbillon-Companion-Dial-Limited-Edition.webp',
@@ -115,7 +114,7 @@ This timepiece is not just a watch; it's a wearable sculpture that pushes the bo
 
 This authentic jersey represents not just a piece of sports memorabilia, but an investment in one of hockey's brightest stars. Barzal's signature and continued excellence make this a valuable asset for any sports collector.`,
     date: '2024-01-30',
-    countdownDate: '2025-10-06T16:00:00.000Z', // September 26, 2025 at 12PM EST
+    countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
     ticker: '$BARZAL',
     image: '/canvas-images/Autographed-Jersey-Mathew-Barzal-New-York-Islanders.webp',
     rrp: 1476,
@@ -130,7 +129,7 @@ This authentic jersey represents not just a piece of sports memorabilia, but an 
 
 This bag represents the pinnacle of Hermès craftsmanship and exclusivity. With waiting lists measured in years and prices that consistently appreciate, the Himalaya Kelly is considered one of the most desirable and investment-worthy luxury handbags in the world.`,
     date: '2024-02-14',
-    countdownDate: '2025-10-06T16:00:00.000Z', // September 26, 2025 at 12PM EST
+    countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
     ticker: '$HIMALY',
     image: '/canvas-images/Hermes-Matte-Niloticus-Crocodile-Himalaya-Kelly-Retourne-32-White.webp',
     rrp: 328000,
@@ -145,7 +144,7 @@ This bag represents the pinnacle of Hermès craftsmanship and exclusivity. With 
 
 This particular example, in the compact 25cm size, is prized for its rarity and exotic material. It is not just a handbag but an investment-grade asset that has consistently outperformed traditional investments.`,
     date: '2023-07-15',
-    countdownDate: '2025-10-06T16:00:00.000Z', // September 26, 2025 at 12PM EST
+    countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
     ticker: '$BIRKIN',
     image: '/canvas-images/Hermes-Ostrich-Birkin-25.webp',
     rrp: 26240,
@@ -160,7 +159,7 @@ This particular example, in the compact 25cm size, is prized for its rarity and 
 
 A signed copy of this iconic album is an incredibly rare and valuable piece of music memorabilia. It's a tangible piece of history from one of the most influential artists of his generation.`,
     date: '2023-06-01',
-    countdownDate: '2025-10-06T16:00:00.000Z', // September 26, 2025 at 12PM EST
+    countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
     ticker: '$YEEZYCD',
     image: '/canvas-images/Kanye-West-College-Dropout-Signed.webp',
     rrp: 20500,
@@ -175,7 +174,7 @@ A signed copy of this iconic album is an incredibly rare and valuable piece of m
 
 This piece captures the artist's iconic motifs and social commentary. As a unique work from a pivotal year in his career, it is a significant asset for any collector of urban and contemporary art.`,
     date: '2023-05-18',
-    countdownDate: '2025-10-06T16:00:00.000Z', // September 26, 2025 at 12PM EST
+    countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
     ticker: '$HARING',
     image: '/canvas-images/Keith-Haring-1989.webp',
     rrp: 656000,
@@ -190,7 +189,7 @@ This piece captures the artist's iconic motifs and social commentary. As a uniqu
 
 To own a trilogy of vintages from this mythical vineyard is to possess a piece of winemaking history. It's an ultimate prize for any serious wine connoisseur or investor, representing the absolute pinnacle of luxury champagne.`,
     date: '2024-03-01',
-    countdownDate: '2025-10-06T16:00:00.000Z', // September 26, 2025 at 12PM EST
+    countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
     ticker: '$KRUG',
     image: '/canvas-images/Krug-Clos-dAmbonnay-Trilogy-Prestige-Champagne-Collection.webp',
     rrp: 73800,
@@ -205,7 +204,7 @@ To own a trilogy of vintages from this mythical vineyard is to possess a piece o
 
 With fewer than 700 bottles ever released globally, this is a true legacy piece for both luxury aficionados and alternative asset investors.`,
     date: '2023-11-10',
-    countdownDate: '2025-10-06T16:00:00.000Z', // September 26, 2025 at 12PM EST
+    countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
     ticker: '$LOUIS13',
     image: '/canvas-images/Louis-XIII-Rare-Cask-Cognac.webp',
     rrp: 41000,
@@ -220,7 +219,7 @@ With fewer than 700 bottles ever released globally, this is a true legacy piece 
 
 Hand-made by skilled artisans, the Alzer trunk is one of the most iconic pieces from the house. This set is not just luggage, but a beautiful piece of furniture and a testament to a legacy of unparalleled craftsmanship.`,
     date: '2024-01-20',
-    countdownDate: '2025-10-06T16:00:00.000Z', // September 26, 2025 at 12PM EST
+    countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
     ticker: '$LVTRUNK',
     image: '/canvas-images/Louis-Vuitton-Monogram-Alzer-11-Hard-Case-Trunk-Set-Brown.webp',
     rrp: 49200,
@@ -235,7 +234,7 @@ Hand-made by skilled artisans, the Alzer trunk is one of the most iconic pieces 
 
 Featuring the iconic red and green colorway with a distinctive striped pattern, these sneakers are considered one of the holy grails of sneaker collecting. Their rarity and cult status make them a significant investment piece in the streetwear and sneaker market.`,
     date: '2024-01-08',
-    countdownDate: '2025-10-06T16:00:00.000Z', // September 26, 2025 at 12PM EST
+    countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
     ticker: '$FDUNK',
     image: '/canvas-images/Nike-SB-Dunks-Freddy-Krueger.webp',
     rrp: 28600,
@@ -250,7 +249,7 @@ Featuring the iconic red and green colorway with a distinctive striped pattern, 
 
 With their distinctive red colorway, textured materials, and exclusive release through Concepts in Boston, these Dunks are among the most sought-after SB releases of all time. They represent a pinnacle moment in sneaker collaboration history and continue to appreciate in value.`,
     date: '2024-01-12',
-    countdownDate: '2025-10-06T16:00:00.000Z', // September 26, 2025 at 12PM EST
+    countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
     ticker: '$LOBSTER',
     image: '/canvas-images/Nike-SB-Dunks-Lobster.webp',
     rrp: 1476,
@@ -265,7 +264,7 @@ With their distinctive red colorway, textured materials, and exclusive release t
 
 As a piece of tech history, sealed original iPhones have become incredibly valuable collector's items. This device marked the beginning of the smartphone era and represents a pivotal moment in Apple's history and modern technology.`,
     date: '2024-02-20',
-    countdownDate: '2025-10-06T16:00:00.000Z', // September 26, 2025 at 12PM EST
+    countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
     ticker: '$ORIGIPH',
     image: '/canvas-images/Original-iPhone-Apple.webp',
     rrp: 49200,
@@ -280,7 +279,7 @@ As a piece of tech history, sealed original iPhones have become incredibly valua
 
 The RM-88 showcases the brand's signature tonneau case, skeletonized movement, and exceptional attention to detail. Its limited production and the cultural significance of the Smiley design make it a standout piece for collectors of contemporary haute horlogerie.`,
     date: '2024-02-10',
-    countdownDate: '2025-10-06T16:00:00.000Z', // September 26, 2025 at 12PM EST
+    countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
     ticker: '$RM88',
     image: '/canvas-images/Richard-Mille-RM-88-Automatic-Tourbillon-Smiley.webp',
     rrp: 819200,
@@ -295,7 +294,7 @@ The RM-88 showcases the brand's signature tonneau case, skeletonized movement, a
 
 As a limited edition numbered 1 of only 5, this is one of the rarest and most desirable pieces of modern sports memorabilia. It's an investment-grade asset celebrating a once-in-a-generation talent.`,
     date: '2024-02-18',
-    countdownDate: '2025-10-06T16:00:00.000Z', // September 26, 2025 at 12PM EST
+    countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
     ticker: '$OHTANI',
     image:
       '/canvas-images/Shohei-Ohtani-Los-Angeles-Angels-Autographed-Fanatics-Authentic-Game-Used-MLB-Baseball-from-2018-Rookie-Season-Limited-Edition-Number-1-of-5.webp',
@@ -311,7 +310,7 @@ As a limited edition numbered 1 of only 5, this is one of the rarest and most de
 
 Presented in a handmade oak trunk, this collection is a tribute to the rich heritage and craftsmanship of The Macallan. It is a true treasure for any serious whisky collector and a landmark acquisition in the world of fine spirits.`,
     date: '2024-03-10',
-    countdownDate: '2025-10-06T16:00:00.000Z', // September 26, 2025 at 12PM EST
+    countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
     ticker: '$MACLN',
     image: '/canvas-images/The-Macallan-Red-Collection-Trunk-40yo-50yo-60yo-Limited-Edition.webp',
     rrp: 212800,
@@ -326,7 +325,7 @@ Presented in a handmade oak trunk, this collection is a tribute to the rich heri
 
 This is a highly coveted travel accessory and a statement piece for discerning collectors of both brands. It blends German engineering with American luxury, creating a unique and desirable asset.`,
     date: '2023-08-20',
-    countdownDate: '2025-10-06T16:00:00.000Z', // September 26, 2025 at 12PM EST
+    countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
     ticker: '$TIFRIMO',
     image: '/canvas-images/Tiffany-and-Co-Rimowa.webp',
     rrp: 4100,
@@ -341,7 +340,7 @@ This is a highly coveted travel accessory and a statement piece for discerning c
 
 Brady's signature on this throwback design creates a perfect bridge between Patriots history and their modern championship era. As one of the most recognizable athletes of all time, Brady-signed memorabilia continues to be a premier investment in sports collectibles.`,
     date: '2024-01-25',
-    countdownDate: '2025-10-06T16:00:00.000Z', // September 26, 2025 at 12PM EST
+    countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
     ticker: '$TB12HT',
     image:
       '/canvas-images/Tom-Brady-New-England-Patriots-Autographed-Riddell-1982-1989-Throwback-Speed-Flex-Authentic-Helmet.webp',
@@ -357,7 +356,7 @@ Brady's signature on this throwback design creates a perfect bridge between Patr
 
 More than just a refrigerator, this piece represents the epitome of luxury entertaining and French savoir-vivre. It's a statement piece that combines functionality with the heritage and elegance of one of Champagne's most prestigious houses.`,
     date: '2024-03-05',
-    countdownDate: '2025-10-06T16:00:00.000Z', // September 26, 2025 at 12PM EST
+    countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
     ticker: '$CLICFRG',
     image: '/canvas-images/Veuve-Clicquot-Champagne-Vertical-Limit-Fridge.webp',
     rrp: 90000,
@@ -372,7 +371,7 @@ More than just a refrigerator, this piece represents the epitome of luxury enter
 
 As one of the pioneering NFT projects that defined the digital art and collectibles space, BAYC has become a cultural phenomenon. This particular ape, with its rare trait combination, represents not just digital ownership but membership in an exclusive community of collectors and enthusiasts.`,
     date: '2024-03-20',
-    countdownDate: '2025-10-06T16:00:00.000Z', // September 26, 2025 at 12PM EST
+    countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
     ticker: '$BAYC4T',
     image: '/canvas-images/Bored-Ape-Yacht-Club-Very-Rare-4T.webp',
     rrp: 147600,
@@ -387,7 +386,7 @@ As one of the pioneering NFT projects that defined the digital art and collectib
     description:
       'Submit your luxury asset for tokenization on the ACES platform. Transform your high-value collectibles, art, vehicles, and other assets into tradeable digital tokens.',
     date: '2024-03-15',
-    countdownDate: '2025-10-06T16:00:00.000Z', // September 26, 2025 at 12PM EST
+    countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
     ticker: '$SUBMIT',
     image: '/canvas-images/outline/submit-your-asset.webp',
     rrp: 0, // Special asset, no price
