@@ -88,7 +88,7 @@ export default function TradeHistory({ tokenAddress, tokenSymbol = 'TOKEN' }: Tr
 
   const getTxUrl = (hash: string) => `https://sepolia.basescan.org/tx/${hash}`;
 
-  if (isLoading) {
+  if (isLoading && safeTrades.length === 0) {
     return (
       <div className="bg-[#151c16] rounded-xl overflow-hidden">
         <div className="p-4">
@@ -175,7 +175,6 @@ export default function TradeHistory({ tokenAddress, tokenSymbol = 'TOKEN' }: Tr
   return (
     <div className="bg-[#151c16] rounded-xl overflow-hidden mt-0">
       <div className="p-4">
-
         {/* Desktop Table */}
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full">
@@ -184,7 +183,9 @@ export default function TradeHistory({ tokenAddress, tokenSymbol = 'TOKEN' }: Tr
                 <th className="py-2 px-3 text-xs text-[#DCDDCC] font-medium text-left">Account</th>
                 <th className="py-2 px-3 text-xs text-[#DCDDCC] font-medium text-center">Trade</th>
                 <th className="py-2 px-3 text-xs text-[#DCDDCC] font-medium text-right">$ ACES</th>
-                <th className="py-2 px-3 text-xs text-[#DCDDCC] font-medium text-right">$ {tokenSymbol}</th>
+                <th className="py-2 px-3 text-xs text-[#DCDDCC] font-medium text-right">
+                  $ {tokenSymbol}
+                </th>
                 <th className="py-2 px-3 text-xs text-[#DCDDCC] font-medium text-center">Time</th>
                 <th className="py-2 px-3 text-xs text-[#DCDDCC] font-medium text-center">Txn</th>
               </tr>
@@ -278,26 +279,34 @@ export default function TradeHistory({ tokenAddress, tokenSymbol = 'TOKEN' }: Tr
                   rel="noopener noreferrer"
                   className="flex flex-col items-start justify-center gap-1 text-sm text-white hover:text-[#D0B284] transition-colors w-full"
                 >
-                  <span className="font-mono text-[13px]">{formatWalletAddress(trade.trader.id)}</span>
+                  <span className="font-mono text-[13px]">
+                    {formatWalletAddress(trade.trader.id)}
+                  </span>
                   <span className="text-[#8F9B8F] text-[11px]">
                     {trade.trader.id.slice(-4)} · {formatRelativeTime(trade.createdAt)}
                   </span>
                 </a>
 
                 <div className="flex flex-col items-center text-[12px] text-center">
-                  <span className={`font-semibold ${trade.isBuy ? 'text-[#37d488]' : 'text-[#f87171]'}`}>
+                  <span
+                    className={`font-semibold ${trade.isBuy ? 'text-[#37d488]' : 'text-[#f87171]'}`}
+                  >
                     {trade.isBuy ? 'Buy' : 'Sell'}
                   </span>
                 </div>
 
                 <div className="text-center">
-                  <span className={`font-mono text-[13px] ${trade.isBuy ? 'text-[#37d488]' : 'text-[#f87171]'}`}>
+                  <span
+                    className={`font-mono text-[13px] ${trade.isBuy ? 'text-[#37d488]' : 'text-[#f87171]'}`}
+                  >
                     {formatAcesAmount(trade.acesTokenAmount)}
                   </span>
                 </div>
 
                 <div className="text-center">
-                  <span className={`font-mono text-[13px] ${trade.isBuy ? 'text-[#37d488]' : 'text-[#f87171]'}`}>
+                  <span
+                    className={`font-mono text-[13px] ${trade.isBuy ? 'text-[#37d488]' : 'text-[#f87171]'}`}
+                  >
                     {formatTokenAmount(trade.tokenAmount)}
                   </span>
                 </div>
