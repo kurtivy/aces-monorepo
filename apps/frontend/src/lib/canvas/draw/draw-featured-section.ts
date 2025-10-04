@@ -4,7 +4,6 @@ import { getCanvasFontStack } from '../../utils/font-loader';
 import { getAuctionIcon, initializeAuctionIcon } from '../utils/lucide-auction-icon';
 import { getResponsiveMetrics, type ResponsiveMetrics } from '../../utils/responsive-canvas-utils';
 
-// Responsive PIN configuration
 const createPinConfig = (responsiveMetrics: ResponsiveMetrics) => ({
   radius: 1.8 * responsiveMetrics.iconScale,
   insetDesktop: 8 * responsiveMetrics.paddingScale,
@@ -205,9 +204,8 @@ const drawDaysLeft = (
   // No card background - just text floating on the image
 
   if (isExpired) {
-    // Show "LIVE NOW" when expired
     ctx.fillStyle = '#D0B284';
-    const fontSize = (isMobile ? 32 : 48) * responsiveMetrics.fontScale;
+    const fontSize = (isMobile ? 24 : 32) * responsiveMetrics.fontScale;
     ctx.font = `bold ${fontSize}px ${getCanvasFontStack('NeueWorld')}`;
     ctx.textAlign = 'right';
     ctx.textBaseline = 'bottom';
