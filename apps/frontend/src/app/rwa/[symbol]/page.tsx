@@ -19,7 +19,12 @@ import { NETWORK_CONFIG } from '@/lib/contracts/addresses';
 
 export default function RWAItemPage() {
   // TEMPORARY: Page disabled - return 404
-  notFound();
+  const TEMPORARILY_DISABLED = true;
+  
+  if (TEMPORARILY_DISABLED) {
+    notFound();
+    return null; // TypeScript doesn't know notFound() throws, so we add this
+  }
 
   const params = useParams();
   const symbol = (params.symbol as string)?.trim() || '';
