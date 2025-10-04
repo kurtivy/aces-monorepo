@@ -382,9 +382,9 @@ export default function TokenSwapInterface({
   const paymentAssetOptions = useMemo(() => {
     const baseOptions = [
       { value: 'ACES', label: 'ACES', icon: acesIconSrc },
-      { value: 'USDC', label: 'USDC', icon: '/svg/usdc.svg' },
-      { value: 'USDT', label: 'USDT', icon: '/svg/tether.svg' },
-      { value: 'ETH', label: 'wETH', icon: '/svg/eth.svg' },
+      // { value: 'USDC', label: 'USDC', icon: '/svg/usdc.svg' },
+      // { value: 'USDT', label: 'USDT', icon: '/svg/tether.svg' },
+      // { value: 'ETH', label: 'wETH', icon: '/svg/eth.svg' },
     ];
 
     if (!isDexMode) {
