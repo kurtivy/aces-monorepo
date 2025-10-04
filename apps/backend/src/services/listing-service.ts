@@ -9,6 +9,11 @@ import {
   NotificationType,
   NotificationTemplates,
 } from './notification-service';
+import {
+  AerodromeDataService,
+  AerodromePoolState,
+} from './aerodrome-data-service';
+import { createProvider, getNetworkConfig } from '../config/network.config';
 
 // Type for listings with relations - using simpler type due to TypeScript language server caching
 type ListingWithRelations = {
@@ -30,6 +35,22 @@ type ListingWithRelations = {
   owner: User;
   submission: any; // Will be properly typed when language server updates
   approvedByUser?: User | null;
+  token?: {
+    id: string;
+    contractAddress: string;
+    symbol: string;
+    name: string;
+    decimals: number;
+    currentPrice: string;
+    currentPriceACES: string;
+    volume24h: string;
+    phase: string;
+    isActive: boolean;
+    holderCount?: number | null;
+    holdersCount?: number | null;
+    chainId?: number | null;
+  } | null;
+  commentCount?: number | null;
 };
 
 // Type for listings with minimal submission data
@@ -64,6 +85,8 @@ type ListingWithMinimalSubmission = {
     id: string;
     privyDid: string;
   } | null;
+  token?: ListingWithRelations['token'];
+  commentCount?: number | null;
 };
 
 export interface CreateListingFromSubmissionRequest {
@@ -84,12 +107,37 @@ export interface UpdateListingRequest {
 
 export class ListingService {
   private notificationService: NotificationService;
+  private aerodromeDataService?: AerodromeDataService;
 
   constructor(
     private prisma: PrismaClient,
     notificationService?: NotificationService,
   ) {
     this.notificationService = notificationService || new NotificationService(prisma);
+
+    const mainnetConfig = getNetworkConfig(8453);
+    const provider = createProvider(8453);
+    const shouldMock =
+      process.env.USE_DEX_MOCKS === 'true' ||
+      !mainnetConfig.rpcUrl ||
+      !mainnetConfig.aerodromeFactory ||
+      !mainnetConfig.aerodromeRouter;
+
+    try {
+      this.aerodromeDataService = new AerodromeDataService({
+        provider: provider ?? undefined,
+        rpcUrl: provider ? undefined : mainnetConfig.rpcUrl,
+        factoryAddress: mainnetConfig.aerodromeFactory,
+        acesTokenAddress: mainnetConfig.acesToken,
+        apiBaseUrl: process.env.AERODROME_API_BASE_URL,
+        apiKey: process.env.AERODROME_API_KEY,
+        defaultStable: process.env.AERODROME_DEFAULT_STABLE === 'true',
+        mockEnabled: shouldMock,
+      });
+    } catch (error) {
+      console.error('[ListingService] Failed to initialize AerodromeDataService:', error);
+      this.aerodromeDataService = undefined;
+    }
   }
 
   /**
@@ -312,6 +360,11 @@ export class ListingService {
               isActive: true,
             },
           },
+          _count: {
+            select: {
+              comments: true,
+            },
+          },
         },
         orderBy: { createdAt: 'desc' },
         take: limit + 1, // Take one extra to check for more
@@ -321,15 +374,11 @@ export class ListingService {
       const data = hasMore ? listings.slice(0, -1) : listings;
       const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
 
-      // Convert image URLs to signed URLs for secure access
-      const dataWithSignedUrls = await Promise.all(
-        data.map(async (listing: any) => ({
-          ...listing,
-          imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery),
-        })),
+      const enriched = await Promise.all(
+        data.map((listing: any) => this.prepareListingForResponse(listing, true)),
       );
 
-      return { data: dataWithSignedUrls, nextCursor, hasMore };
+      return { data: enriched, nextCursor, hasMore };
     } catch (error) {
       console.error('Error fetching live listings:', error);
       throw error;
@@ -365,15 +414,11 @@ export class ListingService {
       const data = hasMore ? listings.slice(0, -1) : listings;
       const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
 
-      // Convert image URLs to signed URLs for secure access
-      const dataWithSignedUrls = await Promise.all(
-        data.map(async (listing: any) => ({
-          ...listing,
-          imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery),
-        })),
+      const enriched = await Promise.all(
+        data.map((listing: any) => this.prepareListingForResponse(listing)),
       );
 
-      return { data: dataWithSignedUrls, nextCursor, hasMore };
+      return { data: enriched, nextCursor, hasMore };
     } catch (error) {
       console.error('Error fetching all listings:', error);
       throw error;
@@ -409,15 +454,11 @@ export class ListingService {
       const data = hasMore ? listings.slice(0, -1) : listings;
       const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
 
-      // Convert image URLs to signed URLs for secure access
-      const dataWithSignedUrls = await Promise.all(
-        data.map(async (listing: any) => ({
-          ...listing,
-          imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery),
-        })),
+      const enriched = await Promise.all(
+        data.map((listing: any) => this.prepareListingForResponse(listing)),
       );
 
-      return { data: dataWithSignedUrls, nextCursor, hasMore };
+      return { data: enriched, nextCursor, hasMore };
     } catch (error) {
       console.error('Error fetching pending listings:', error);
       throw error;
@@ -435,6 +476,11 @@ export class ListingService {
           owner: true,
           submission: true,
           approvedByUser: true,
+          _count: {
+            select: {
+              comments: true,
+            },
+          },
         },
       });
 
@@ -442,15 +488,45 @@ export class ListingService {
         return null;
       }
 
-      // Convert image URLs to signed URLs for secure access
-      const listingWithSignedUrls = {
-        ...listing,
-        imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery),
-      };
-
-      return listingWithSignedUrls;
+      return this.prepareListingForResponse(listing, true);
     } catch (error) {
       console.error('Error fetching listing by ID:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get listing by symbol (case-insensitive)
+   */
+  async getListingBySymbol(symbol: string): Promise<ListingWithRelations | null> {
+    try {
+      const listing = await (this.prisma as any).listing.findFirst({
+        where: {
+          symbol: {
+            equals: symbol,
+            mode: 'insensitive',
+          },
+        },
+        include: {
+          owner: true,
+          submission: true,
+          approvedByUser: true,
+          token: true,
+          _count: {
+            select: {
+              comments: true,
+            },
+          },
+        },
+      });
+
+      if (!listing) {
+        return null;
+      }
+
+      return this.prepareListingForResponse(listing, true);
+    } catch (error) {
+      console.error('Error fetching listing by symbol:', error);
       throw error;
     }
   }
@@ -491,15 +567,11 @@ export class ListingService {
       const data = hasMore ? listings.slice(0, -1) : listings;
       const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
 
-      // Convert image URLs to signed URLs for secure access
-      const dataWithSignedUrls = await Promise.all(
-        data.map(async (listing: any) => ({
-          ...listing,
-          imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery),
-        })),
+      const enriched = await Promise.all(
+        data.map((listing: any) => this.prepareListingForResponse(listing)),
       );
 
-      return { data: dataWithSignedUrls, nextCursor, hasMore };
+      return { data: enriched, nextCursor, hasMore };
     } catch (error) {
       console.error('Error fetching listings by owner:', error);
       throw error;
@@ -538,18 +610,81 @@ export class ListingService {
         orderBy: { createdAt: 'desc' },
       });
 
-      // Convert image URLs to signed URLs for secure access
-      const dataWithSignedUrls = await Promise.all(
-        listings.map(async (listing: any) => ({
-          ...listing,
-          imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery),
-        })),
+      const enriched = await Promise.all(
+        listings.map((listing: any) => this.prepareListingForResponse(listing)),
       );
 
-      return dataWithSignedUrls;
+      return enriched;
     } catch (error) {
       console.error('Error fetching all listings for admin:', error);
       throw error;
     }
+  }
+
+  private async prepareListingForResponse(listing: any, includeDex = false): Promise<any> {
+    const commentCount = listing?._count?.comments ?? listing?.commentCount ?? null;
+
+    const safeListing = {
+      ...listing,
+      commentCount,
+      imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery),
+    };
+
+    if ('_count' in safeListing) {
+      delete (safeListing as { _count?: unknown })._count;
+    }
+
+    if (!includeDex) {
+      return safeListing;
+    }
+
+    return this.attachDexState(safeListing);
+  }
+
+  private async attachDexState(listing: any): Promise<any> {
+    const token = listing.token ? { ...listing.token } : undefined;
+
+    let poolState: AerodromePoolState | null = null;
+    if (token?.contractAddress && this.aerodromeDataService) {
+      try {
+        poolState = await this.aerodromeDataService.getPoolState(token.contractAddress);
+      } catch (error) {
+        console.warn(
+          `[ListingService] Failed to fetch pool state for ${token.contractAddress}:`,
+          error,
+        );
+      }
+    }
+
+    const initialPoolAddress = token?.poolAddress ?? null;
+    const hasStoredDexPhase = (token?.phase ?? 'BONDING_CURVE') === 'DEX_TRADING';
+
+    const resolvedPoolAddress = poolState?.poolAddress ?? initialPoolAddress ?? null;
+    const isDexLive = !!poolState || hasStoredDexPhase || !!resolvedPoolAddress;
+    const lastUpdated = poolState ? new Date(poolState.lastUpdated).toISOString() : null;
+    const dexLiveAt = poolState ? lastUpdated : token?.dexLiveAt ?? null;
+    const priceSource = isDexLive ? 'DEX' : 'BONDING_CURVE';
+
+    if (token) {
+      token.phase = isDexLive ? 'DEX_TRADING' : token.phase ?? 'BONDING_CURVE';
+      (token as any).priceSource = priceSource;
+      (token as any).poolAddress = resolvedPoolAddress;
+      (token as any).dexLiveAt = dexLiveAt;
+    }
+
+    const dexMeta = {
+      isDexLive,
+      poolAddress: resolvedPoolAddress,
+      dexLiveAt,
+      priceSource,
+      lastUpdated,
+      bondingCutoff: dexLiveAt,
+    };
+
+    return {
+      ...listing,
+      token,
+      dex: dexMeta,
+    };
   }
 }

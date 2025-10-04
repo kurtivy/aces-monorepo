@@ -316,13 +316,15 @@ export class TokenCreationService {
         // Create token record
         await tx.token.create({
           data: {
-            contractAddress: tokenAddress,
+            contractAddress: tokenAddress.toLowerCase(),
             symbol: listing.symbol,
             name: listing.title,
             listingId: listingId,
             currentPrice: '0',
             currentPriceACES: '0',
             volume24h: '0',
+            chainId: 8453,
+            priceSource: 'BONDING_CURVE',
           },
         });
 

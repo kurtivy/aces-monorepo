@@ -69,6 +69,8 @@ export class TokenService {
           currentPrice: '0',
           currentPriceACES: '0',
           volume24h: '0',
+          chainId: 8453,
+          priceSource: 'BONDING_CURVE',
         },
       });
     }
