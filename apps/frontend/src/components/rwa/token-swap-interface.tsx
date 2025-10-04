@@ -1557,27 +1557,10 @@ export default function TokenSwapInterface({
           ) : activeTab === 'buy' ? (
             <Button
               onClick={handleBuyClick}
-              disabled={disableBuyAction}
+              disabled={true}
               className="w-full h-14 bg-[#D0B284]/10 hover:bg-[#D0B284]/20 border border-[#D0B284] text-[#D0B284] font-proxima-nova font-bold text-lg rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isDexMode ? (
-                dexSwapPending || loading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" /> {loading || 'Swapping...'}
-                  </span>
-                ) : (
-                  <div className="flex flex-col items-center gap-0.5">
-                    <span className="text-lg font-bold">{buyButtonLabel}</span>
-                    <span className="text-[10px] opacity-60 uppercase tracking-wider">
-                      Powered by Aerodrome
-                    </span>
-                  </div>
-                )
-              ) : combinedIsBonded ? (
-                'Bonding Complete - Trading Disabled'
-              ) : (
-                loading || buyButtonLabel
-              )}
+              Buy Temporarily Disabled
             </Button>
           ) : (
             <Button
@@ -1678,8 +1661,10 @@ export default function TokenSwapInterface({
                     {dexQuote.intermediate && dexQuote.intermediate.length > 0 && (
                       <div className="text-xs text-[#D0B284]/70 text-center border-t border-[#D0B284]/10 pt-2">
                         Route: {getDisplaySymbol(dexQuote.inputAsset)}
-                        {dexQuote.intermediate.map((step) => ` → ${getDisplaySymbol(step.symbol)}`)} →{' '}
-                        {activeTab === 'sell' ? paymentAssetDisplay : tokenSymbol}
+                        {dexQuote.intermediate.map(
+                          (step) => ` → ${getDisplaySymbol(step.symbol)}`,
+                        )}{' '}
+                        → {activeTab === 'sell' ? paymentAssetDisplay : tokenSymbol}
                       </div>
                     )}
                   </>
@@ -1722,12 +1707,12 @@ export default function TokenSwapInterface({
                         Pay with {paymentAssetQuote.label}:
                       </span>{' '}
                       ≈ {paymentAssetQuote.value}
-              {paymentAsset === 'ETH' && (
-                <span className="mt-1 block text-[11px] text-[#D0B284]/50">
-                  Using placeholder wETH price (${DEFAULT_ETH_PRICE}). Update once live
-                  routing is wired.
-                </span>
-              )}
+                      {paymentAsset === 'ETH' && (
+                        <span className="mt-1 block text-[11px] text-[#D0B284]/50">
+                          Using placeholder wETH price (${DEFAULT_ETH_PRICE}). Update once live
+                          routing is wired.
+                        </span>
+                      )}
                     </div>
                   )}
                 </>
