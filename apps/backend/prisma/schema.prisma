@@ -227,8 +227,12 @@ model Token {
   volume24h        String @default("0")
 
   // Basic metadata
-  phase    TokenPhase @default(BONDING_CURVE)
-  isActive Boolean    @default(true)
+  chainId     Int               @default(8453)
+  phase       TokenPhase        @default(BONDING_CURVE)
+  priceSource TokenPriceSource  @default(BONDING_CURVE)
+  dexLiveAt   DateTime?
+  poolAddress String?           @unique
+  isActive    Boolean           @default(true)
 
   // Optional link to existing listings (non-breaking)
   listingId String?  @unique
@@ -239,6 +243,7 @@ model Token {
   updatedAt DateTime @updatedAt
 
   @@index([contractAddress])
+  @@index([chainId])
   @@index([isActive])
   @@map("tokens")
 }
@@ -298,6 +303,11 @@ model TokenOHLCV {
 enum TokenPhase {
   BONDING_CURVE
   DEX_TRADING
+}
+
+enum TokenPriceSource {
+  BONDING_CURVE
+  DEX
 }
 
 enum TradeType {
