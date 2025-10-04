@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams, notFound } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import TokenSwapWithProgression from '@/components/rwa/token-swap-with-progression';
 import { LeftColumnNavigation } from '../../../components/rwa/left-column/left-column-navigation';
 import { MiddleContentArea } from '../../../components/rwa/middle-column/middle-content-area';
@@ -18,14 +18,6 @@ import PageLoader from '@/components/loading/page-loader';
 import { NETWORK_CONFIG } from '@/lib/contracts/addresses';
 
 export default function RWAItemPage() {
-  // TEMPORARY: Page disabled - return 404
-  const TEMPORARILY_DISABLED = true;
-  
-  if (TEMPORARILY_DISABLED) {
-    notFound();
-    return null; // TypeScript doesn't know notFound() throws, so we add this
-  }
-
   const params = useParams();
   const symbol = (params.symbol as string)?.trim() || '';
 
