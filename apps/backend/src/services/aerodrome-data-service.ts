@@ -74,6 +74,16 @@ export interface AerodromeCandle {
   resolution: Resolution;
 }
 
+interface AerodromeGenericPoolState {
+  poolAddress: string;
+  token0: string;
+  token1: string;
+  reserve0: string;
+  reserve1: string;
+  stable: boolean;
+  lastUpdated: number;
+}
+
 interface CacheEntry<T> {
   data: T;
   expiresAt: number;
@@ -97,6 +107,7 @@ export class AerodromeDataService {
   private readonly tradesCache = new Map<string, CacheEntry<AerodromeSwap[]>>();
   private readonly candleCache = new Map<string, CacheEntry<AerodromeCandle[]>>();
   private readonly decimalsCache = new Map<string, number>();
+  private readonly genericPoolCache = new Map<string, CacheEntry<AerodromeGenericPoolState>>();
 
   constructor(options: AerodromeDataServiceOptions) {
     this.acesTokenAddress = options.acesTokenAddress.toLowerCase();
@@ -111,19 +122,26 @@ export class AerodromeDataService {
 
     if (!this.mockEnabled) {
       if (!options.provider && !options.rpcUrl) {
-        throw new Error('AerodromeDataService: rpcUrl or provider is required when mock mode is disabled');
+        throw new Error(
+          'AerodromeDataService: rpcUrl or provider is required when mock mode is disabled',
+        );
       }
 
       this.provider = options.provider ?? new ethers.JsonRpcProvider(options.rpcUrl);
       if (!this.factoryAddress) {
-        throw new Error('AerodromeDataService: factoryAddress is required when mock mode is disabled');
+        throw new Error(
+          'AerodromeDataService: factoryAddress is required when mock mode is disabled',
+        );
       }
     } else {
       this.provider = null;
     }
   }
 
-  async getPoolState(tokenAddress: string): Promise<AerodromePoolState | null> {
+  async getPoolState(
+    tokenAddress: string,
+    knownPoolAddress?: string,
+  ): Promise<AerodromePoolState | null> {
     const normalizedToken = tokenAddress.toLowerCase();
 
     if (this.mockEnabled) {
@@ -147,48 +165,70 @@ export class AerodromeDataService {
       return cached;
     }
 
-    const poolAddress = await this.resolvePoolAddress(normalizedToken);
+    // Use known pool address if provided, otherwise resolve from factory
+    let poolAddress: string | null;
+    if (knownPoolAddress) {
+      console.log(`🔍 Using known pool address: ${knownPoolAddress}`);
+      poolAddress = knownPoolAddress.toLowerCase();
+    } else {
+      console.log(`🔍 Resolving pool address from factory for token: ${normalizedToken}`);
+      poolAddress = await this.resolvePoolAddress(normalizedToken);
+    }
+
+    console.log(`📍 Pool address resolved to: ${poolAddress}`);
+
     if (!poolAddress || poolAddress === ethers.ZeroAddress) {
+      console.log(`❌ Invalid pool address: ${poolAddress}`);
       return null;
     }
 
+    console.log(`🔄 Creating contract for pool: ${poolAddress}`);
     const pairContract = new ethers.Contract(poolAddress, PAIR_ABI, this.provider);
-    const [reserve0, reserve1] = await pairContract.getReserves();
-    const token0 = ((await pairContract.token0()) as string).toLowerCase();
-    const token1 = ((await pairContract.token1()) as string).toLowerCase();
-    const totalSupply = await pairContract.totalSupply();
 
-    const tokenDecimals = await this.getTokenDecimals(normalizedToken);
-    const counterDecimals = await this.getTokenDecimals(this.acesTokenAddress);
+    console.log(`📞 Calling getReserves() on pool contract...`);
+    try {
+      const [reserve0, reserve1] = await pairContract.getReserves();
+      console.log(`✅ Got reserves - reserve0: ${reserve0}, reserve1: ${reserve1}`);
 
-    const tokenIsToken0 = token0 === normalizedToken;
-    const tokenReserveRaw = tokenIsToken0 ? reserve0 : reserve1;
-    const counterReserveRaw = tokenIsToken0 ? reserve1 : reserve0;
+      const token0 = ((await pairContract.token0()) as string).toLowerCase();
+      const token1 = ((await pairContract.token1()) as string).toLowerCase();
+      const totalSupply = await pairContract.totalSupply();
 
-    const tokenReserve = parseFloat(ethers.formatUnits(tokenReserveRaw, tokenDecimals));
-    const counterReserve = parseFloat(ethers.formatUnits(counterReserveRaw, counterDecimals));
+      const tokenDecimals = await this.getTokenDecimals(normalizedToken);
+      const counterDecimals = await this.getTokenDecimals(this.acesTokenAddress);
 
-    const priceInCounter = tokenReserve === 0 ? 0 : counterReserve / tokenReserve;
+      const tokenIsToken0 = token0 === normalizedToken;
+      const tokenReserveRaw = tokenIsToken0 ? reserve0 : reserve1;
+      const counterReserveRaw = tokenIsToken0 ? reserve1 : reserve0;
 
-    const poolState: AerodromePoolState = {
-      poolAddress,
-      tokenAddress: normalizedToken,
-      counterToken: this.acesTokenAddress,
-      reserves: {
-        token: tokenReserve.toString(),
-        counter: counterReserve.toString(),
-      },
-      reserveRaw: {
-        token: tokenReserveRaw.toString(),
-        counter: counterReserveRaw.toString(),
-      },
-      priceInCounter,
-      lastUpdated: Date.now(),
-      totalSupply: totalSupply.toString(),
-    };
+      const tokenReserve = parseFloat(ethers.formatUnits(tokenReserveRaw, tokenDecimals));
+      const counterReserve = parseFloat(ethers.formatUnits(counterReserveRaw, counterDecimals));
 
-    this.setCached(this.poolCache, cacheKey, poolState);
-    return poolState;
+      const priceInCounter = tokenReserve === 0 ? 0 : counterReserve / tokenReserve;
+
+      const poolState: AerodromePoolState = {
+        poolAddress,
+        tokenAddress: normalizedToken,
+        counterToken: this.acesTokenAddress,
+        reserves: {
+          token: tokenReserve.toString(),
+          counter: counterReserve.toString(),
+        },
+        reserveRaw: {
+          token: tokenReserveRaw.toString(),
+          counter: counterReserveRaw.toString(),
+        },
+        priceInCounter,
+        lastUpdated: Date.now(),
+        totalSupply: totalSupply.toString(),
+      };
+
+      this.setCached(this.poolCache, cacheKey, poolState);
+      return poolState;
+    } catch (error) {
+      console.error(`❌ ERROR calling pool contract at ${poolAddress}:`, error);
+      return null;
+    }
   }
 
   async getRecentTrades(tokenAddress: string, limit = 100): Promise<AerodromeSwap[]> {
@@ -254,6 +294,52 @@ export class AerodromeDataService {
     this.poolCache.clear();
     this.tradesCache.clear();
     this.candleCache.clear();
+    this.genericPoolCache.clear();
+  }
+
+  async getPairReserves(
+    tokenIn: string,
+    tokenOut: string,
+  ): Promise<{
+    poolAddress: string;
+    reserveIn: bigint;
+    reserveOut: bigint;
+    decimalsIn: number;
+    decimalsOut: number;
+    stable: boolean;
+  } | null> {
+    const state = await this.getGenericPoolState(tokenIn, tokenOut);
+    if (!state) {
+      return null;
+    }
+
+    const normalizedIn = tokenIn.toLowerCase();
+    const normalizedOut = tokenOut.toLowerCase();
+
+    let reserveIn: bigint;
+    let reserveOut: bigint;
+
+    if (state.token0 === normalizedIn && state.token1 === normalizedOut) {
+      reserveIn = BigInt(state.reserve0);
+      reserveOut = BigInt(state.reserve1);
+    } else if (state.token0 === normalizedOut && state.token1 === normalizedIn) {
+      reserveIn = BigInt(state.reserve1);
+      reserveOut = BigInt(state.reserve0);
+    } else {
+      return null;
+    }
+
+    const decimalsIn = await this.getTokenDecimals(normalizedIn);
+    const decimalsOut = await this.getTokenDecimals(normalizedOut);
+
+    return {
+      poolAddress: state.poolAddress,
+      reserveIn,
+      reserveOut,
+      decimalsIn,
+      decimalsOut,
+      stable: state.stable,
+    };
   }
 
   private async resolvePoolAddress(tokenAddress: string): Promise<string | null> {
@@ -267,8 +353,98 @@ export class AerodromeDataService {
     }
 
     const factory = new ethers.Contract(this.factoryAddress, FACTORY_ABI, this.provider);
-    const poolAddress = await factory.getPair(tokenAddress, this.acesTokenAddress, this.defaultStable);
+    const poolAddress = await factory.getPair(
+      tokenAddress,
+      this.acesTokenAddress,
+      this.defaultStable,
+    );
     return (poolAddress as string).toLowerCase();
+  }
+
+  private async resolvePairAddress(
+    tokenA: string,
+    tokenB: string,
+  ): Promise<{ address: string; stable: boolean } | null> {
+    if (this.mockEnabled) {
+      return null;
+    }
+
+    if (!this.provider || !this.factoryAddress) {
+      return null;
+    }
+
+    const normalizedA = tokenA.toLowerCase();
+    const normalizedB = tokenB.toLowerCase();
+    const factory = new ethers.Contract(this.factoryAddress, FACTORY_ABI, this.provider);
+
+    const attempts = this.defaultStable
+      ? [true, false]
+      : [false, true];
+
+    for (const stable of attempts) {
+      try {
+        const pairAddress = await factory.getPair(normalizedA, normalizedB, stable);
+        if (pairAddress && pairAddress !== ethers.ZeroAddress) {
+          return { address: (pairAddress as string).toLowerCase(), stable };
+        }
+      } catch (error) {
+        console.error('❌ Failed to resolve pair address:', error);
+      }
+    }
+
+    return null;
+  }
+
+  private async getGenericPoolState(
+    tokenA: string,
+    tokenB: string,
+  ): Promise<AerodromeGenericPoolState | null> {
+    const normalizedA = tokenA.toLowerCase();
+    const normalizedB = tokenB.toLowerCase();
+    const cacheKey = normalizedA < normalizedB
+      ? `${normalizedA}-${normalizedB}`
+      : `${normalizedB}-${normalizedA}`;
+
+    const cached = this.getCached(this.genericPoolCache, cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    if (this.mockEnabled) {
+      return null;
+    }
+
+    if (!this.provider) {
+      return null;
+    }
+
+    const pair = await this.resolvePairAddress(normalizedA, normalizedB);
+    if (!pair) {
+      return null;
+    }
+
+    try {
+      const pairContract = new ethers.Contract(pair.address, PAIR_ABI, this.provider);
+      const [reserve0, reserve1] = await pairContract.getReserves();
+      const token0 = ((await pairContract.token0()) as string).toLowerCase();
+      const token1 = ((await pairContract.token1()) as string).toLowerCase();
+
+      const state: AerodromeGenericPoolState = {
+        poolAddress: pair.address,
+        token0,
+        token1,
+        reserve0: reserve0.toString(),
+        reserve1: reserve1.toString(),
+        stable: pair.stable,
+        lastUpdated: Date.now(),
+      };
+
+      this.setCached(this.genericPoolCache, cacheKey, state);
+      return state;
+    } catch (error) {
+      console.error('❌ ERROR reading generic pool state:', error);
+      return null;
+    }
   }
 
   private async getTokenDecimals(address: string): Promise<number> {
@@ -293,7 +469,10 @@ export class AerodromeDataService {
     return Number(decimals);
   }
 
-  private async fetchTradesFromAerodromeApi(poolAddress: string, limit: number): Promise<AerodromeSwap[]> {
+  private async fetchTradesFromAerodromeApi(
+    poolAddress: string,
+    limit: number,
+  ): Promise<AerodromeSwap[]> {
     if (!this.apiBaseUrl) {
       return [];
     }
@@ -326,14 +505,17 @@ export class AerodromeDataService {
       return [];
     }
 
-    return tradesArray.map((item: any) => this.mapApiTrade(item)).filter(Boolean) as AerodromeSwap[];
+    return tradesArray
+      .map((item: any) => this.mapApiTrade(item))
+      .filter(Boolean) as AerodromeSwap[];
   }
 
   private mapApiTrade(trade: any): AerodromeSwap | null {
     if (!trade) return null;
 
     const timestampMs = typeof trade.timestamp === 'number' ? trade.timestamp * 1000 : Date.now();
-    const direction = trade.direction === 'buy' ? 'buy' : trade.direction === 'sell' ? 'sell' : 'buy';
+    const direction =
+      trade.direction === 'buy' ? 'buy' : trade.direction === 'sell' ? 'sell' : 'buy';
 
     return {
       txHash: trade.txHash || trade.transactionHash || '',
@@ -429,5 +611,4 @@ export class AerodromeDataService {
       expiresAt: Date.now() + this.cacheTtlMs,
     });
   }
-
 }

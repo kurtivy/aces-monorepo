@@ -1,9 +1,11 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { config } from 'dotenv';
+import { join } from 'path';
 import { buildApp } from '../app';
 
-// Load environment variables from .env file
-config();
+// Load environment variables from root .env file (for local development)
+const envPath = join(process.cwd(), '.env');
+config({ path: envPath });
 
 let appPromise: Promise<any> | undefined;
 

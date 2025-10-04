@@ -1,8 +1,10 @@
 import { Storage } from '@google-cloud/storage';
 import { config } from 'dotenv';
+import { join } from 'path';
 
-// Load environment variables
-config();
+// Load environment variables from root .env file (for local development)
+const envPath = join(process.cwd(), '.env');
+config({ path: envPath });
 
 // Check if Google Cloud credentials are available
 const hasGoogleCloudCredentials = !!(
@@ -89,7 +91,7 @@ export class ProductStorageService {
         process.env.GOOGLE_CLOUD_CLIENT_EMAIL &&
         process.env.GOOGLE_CLOUD_PRIVATE_KEY
       );
-      
+
       if (!hasCredentials) {
         console.error(`[ProductStorage] Missing credentials for: ${fileName}`);
         throw new Error('Google Cloud Storage credentials not configured');
@@ -99,7 +101,7 @@ export class ProductStorageService {
       if (!productStorage) {
         console.log(`[ProductStorage] Initializing storage for: ${fileName}`);
         let privateKey = process.env.GOOGLE_CLOUD_PRIVATE_KEY || '';
-        
+
         // Clean up private key format
         if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
           privateKey = privateKey.slice(1, -1);
@@ -119,7 +121,7 @@ export class ProductStorageService {
             private_key: privateKey,
           },
         });
-        
+
         console.log(`[ProductStorage] Storage initialized successfully for: ${fileName}`);
       }
 
@@ -136,28 +138,33 @@ export class ProductStorageService {
         expires: Date.now() + expiresInMinutes * 60 * 1000,
       };
 
-      console.log(`[ProductStorage] Generating signed URL for: ${fileName} with ${expiresInMinutes}min expiry`);
+      console.log(
+        `[ProductStorage] Generating signed URL for: ${fileName} with ${expiresInMinutes}min expiry`,
+      );
       const [url] = await productBucket.file(fileName).getSignedUrl(options);
-      
+
       // Validate that we got a proper signed URL
       if (!url || !url.includes('X-Goog-Signature')) {
         console.error(`[ProductStorage] Generated URL is not a valid signed URL for: ${fileName}`);
         console.error(`[ProductStorage] URL: ${url}`);
         throw new Error('Failed to generate valid signed URL');
       }
-      
-      console.log(`[ProductStorage] ✅ Generated valid signed URL for: ${fileName} (length: ${url.length})`);
+
+      console.log(
+        `[ProductStorage] ✅ Generated valid signed URL for: ${fileName} (length: ${url.length})`,
+      );
       return url;
-      
     } catch (error) {
       console.error(`[ProductStorage] ❌ Error generating signed URL for ${fileName}:`, error);
       console.error(`[ProductStorage] Error details:`, {
         message: error instanceof Error ? error.message : 'Unknown error',
         stack: error instanceof Error ? error.stack : 'No stack trace',
       });
-      
+
       // Instead of fallback, throw the error so we know what's wrong
-      throw new Error(`Failed to generate signed URL for ${fileName}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `Failed to generate signed URL for ${fileName}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
     }
   }
 
@@ -186,7 +193,9 @@ export class ProductStorageService {
     expiresInMinutes: number = 60,
   ): Promise<string[]> {
     console.log(`[ProductStorage] Converting ${imageUrls.length} URLs to signed URLs...`);
-    console.log(`[ProductStorage] Current bucket name: ${productBucketName || 'aces-product-images'}`);
+    console.log(
+      `[ProductStorage] Current bucket name: ${productBucketName || 'aces-product-images'}`,
+    );
 
     const signedUrls = await Promise.all(
       imageUrls.map(async (url, index) => {
@@ -197,16 +206,17 @@ export class ProductStorageService {
           if (url.includes('storage.googleapis.com') && url.includes('aces-product-images')) {
             const fileName = this.extractFileName(url);
             console.log(`[ProductStorage] Extracted filename: ${fileName}`);
-            
+
             const signedUrl = await this.getSignedProductUrl(fileName, expiresInMinutes);
-            console.log(`[ProductStorage] ✅ Converted to signed URL (length: ${signedUrl.length})`);
+            console.log(
+              `[ProductStorage] ✅ Converted to signed URL (length: ${signedUrl.length})`,
+            );
             return signedUrl;
           }
-          
+
           // Return original URL if it's not a GCS product image URL
           console.log(`[ProductStorage] ℹ️  Keeping original URL (not GCS product image): ${url}`);
           return url;
-          
         } catch (error) {
           console.error(`[ProductStorage] ❌ Failed to convert URL ${url}:`, error);
           console.error(`[ProductStorage] Error details:`, {
@@ -214,7 +224,7 @@ export class ProductStorageService {
             index: index + 1,
             originalUrl: url,
           });
-          
+
           // Re-throw the error so we can see what's failing
           throw error;
         }
