@@ -5,8 +5,7 @@ import ImageCarousel from '@/components/rwa/middle-column/overview/image-carouse
 import OverviewBottomSection from '@/components/rwa/middle-column/overview/overview-bottom-section';
 import { mockImages } from '@/constants/rwa';
 import type { DatabaseListing } from '@/types/rwa/section.types';
-
-const DEFAULT_CHAIN_ID = 84532;
+import { NETWORK_CONFIG } from '@/lib/contracts/addresses';
 
 interface MobileOverviewSectionProps {
   listing: DatabaseListing;
@@ -30,6 +29,7 @@ const MobileOverviewSection = forwardRef<HTMLDivElement, MobileOverviewSectionPr
     );
 
     const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+    const tokenChainId = listing.token?.chainId ?? NETWORK_CONFIG.DEFAULT_CHAIN_ID;
 
     useEffect(() => {
       setSelectedImageIndex(0);
@@ -52,7 +52,7 @@ const MobileOverviewSection = forwardRef<HTMLDivElement, MobileOverviewSectionPr
             showProgression={Boolean(listing.token?.contractAddress)}
             progressionPercentage={26.9}
             tokenAddress={listing.token?.contractAddress}
-            chainId={DEFAULT_CHAIN_ID}
+            chainId={tokenChainId}
           />
         </div>
       </section>

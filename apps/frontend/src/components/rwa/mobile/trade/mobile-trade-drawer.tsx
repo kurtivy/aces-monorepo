@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { X } from 'lucide-react';
 import TokenSwapInterface from '@/components/rwa/token-swap-interface';
 import type { DatabaseListing } from '@/types/rwa/section.types';
+import { NETWORK_CONFIG } from '@/lib/contracts/addresses';
 
 interface MobileTradeDrawerProps {
   isOpen: boolean;
@@ -14,6 +15,7 @@ interface MobileTradeDrawerProps {
 export default function MobileTradeDrawer({ isOpen, onClose, listing }: MobileTradeDrawerProps) {
   const NAV_OFFSET_PX = 88;
   const bottomOffset = `calc(${NAV_OFFSET_PX}px + env(safe-area-inset-bottom, 0px))`;
+  const tokenChainId = listing.token?.chainId ?? NETWORK_CONFIG.DEFAULT_CHAIN_ID;
 
   return (
     <AnimatePresence>
@@ -59,11 +61,10 @@ export default function MobileTradeDrawer({ isOpen, onClose, listing }: MobileTr
                 tokenName={listing.token?.name ?? listing.title}
                 primaryImage={listing.imageGallery?.[0]}
                 imageGallery={listing.imageGallery}
-                currentAmount={0}
-                targetAmount={1000000}
-                percentage={26.9}
                 showFrame={false}
                 showProgression={false}
+                chainId={tokenChainId}
+                dexMeta={listing.dex ?? null}
               />
             </div>
           </motion.div>

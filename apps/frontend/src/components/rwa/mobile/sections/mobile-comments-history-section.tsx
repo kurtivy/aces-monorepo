@@ -6,8 +6,7 @@ import RWAForumReal from '@/components/rwa/middle-column/chat/rwa-forum-real';
 import TradeHistory from '@/components/rwa/middle-column/token-details/trade-history';
 import TokenHealthPanel from '@/components/rwa/left-column/token-details/token-health-panel';
 import type { DatabaseListing } from '@/types/rwa/section.types';
-
-const DEFAULT_CHAIN_ID = 84532;
+import { NETWORK_CONFIG } from '@/lib/contracts/addresses';
 
 interface MobileCommentsHistorySectionProps {
   listing: DatabaseListing;
@@ -19,6 +18,7 @@ const MobileCommentsHistorySection = forwardRef<HTMLDivElement, MobileCommentsHi
     const [activeTab, setActiveTab] = useState<'comments' | 'trades' | 'stats'>('trades');
     const [tradesExpanded, setTradesExpanded] = useState(true);
     const [commentsExpanded, setCommentsExpanded] = useState(true);
+    const tokenChainId = listing.token?.chainId ?? NETWORK_CONFIG.DEFAULT_CHAIN_ID;
 
     const renderAccordionHeader = (
       label: string,
@@ -132,7 +132,7 @@ const MobileCommentsHistorySection = forwardRef<HTMLDivElement, MobileCommentsHi
               <TokenHealthPanel
                 tokenAddress={listing.token?.contractAddress}
                 reservePrice={listing.reservePrice}
-                chainId={DEFAULT_CHAIN_ID}
+                chainId={tokenChainId}
               />
             </div>
           )}

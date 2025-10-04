@@ -41,6 +41,7 @@ const MobileTradingChartSection = forwardRef<HTMLDivElement, MobileTradingChartS
           tokenSymbol={listing.token?.symbol ?? listing.symbol}
           title={listing.token?.name ?? listing.title}
           heightClass="h-[400px]"
+          dexMeta={listing.dex ?? null}
         />
       </section>
     );
