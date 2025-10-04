@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { TokenService } from '../../services/token-service';
+import { TokenHolderService } from '../../services/token-holder-service';
 import { OHLCVService } from '../../services/ohlcv-service';
 import { SupplyBasedOHLCVService } from '../../services/supply-based-ohlcv-service';
 import { SupportedTimeframe } from '../../types/subgraph.types';
@@ -27,8 +28,13 @@ interface ChartQuery {
   mode?: 'live' | 'cached' | 'hybrid';
 }
 
+interface HolderQuery {
+  chainId?: number;
+}
+
 export async function tokensRoutes(fastify: FastifyInstance) {
   const tokenService = new TokenService(fastify.prisma);
+  const tokenHolderService = new TokenHolderService();
   const ohlcvService = new OHLCVService(fastify.prisma, tokenService);
   const supplyBasedOHLCVService = new SupplyBasedOHLCVService();
 
@@ -212,6 +218,54 @@ export async function tokensRoutes(fastify: FastifyInstance) {
         return reply.code(500).send({
           success: false,
           error: 'Failed to fetch chart data',
+        });
+      }
+    },
+  );
+
+  // Get holder count for a token (server-side computation)
+  fastify.get(
+    '/:address/holders',
+    {
+      schema: {
+        params: zodToJsonSchema(
+          z.object({
+            address: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+          }),
+        ),
+        querystring: zodToJsonSchema(
+          z.object({
+            chainId: z
+              .string()
+              .regex(/^[0-9]+$/)
+              .transform((value) => Number(value))
+              .optional(),
+          }),
+        ),
+      },
+    },
+    async (
+      request: FastifyRequest<{
+        Params: TokenParams;
+        Querystring: HolderQuery;
+      }>,
+      reply,
+    ) => {
+      try {
+        const { address } = request.params;
+        const { chainId } = request.query;
+        const holderCount = await tokenHolderService.getHolderCount(address, chainId);
+
+        return reply.send({
+          success: true,
+          data: { holderCount },
+        });
+      } catch (error) {
+        fastify.log.warn({ error }, 'Token holder count fetch error');
+        return reply.code(502).send({
+          success: false,
+          error:
+            error instanceof Error ? error.message : 'Failed to fetch token holder count',
         });
       }
     },
