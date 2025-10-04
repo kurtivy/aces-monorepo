@@ -2320,10 +2320,16 @@ async function listingRoutes(fastify) {
         const tokenAddress = listing.token?.contractAddress;
         if (tokenAddress) {
           try {
-            holderCount = await tokenHolderService.getHolderCount(
+            const holderCountPromise = tokenHolderService.getHolderCount(
               tokenAddress,
               listing.token?.chainId ?? void 0
             );
+            holderCount = await Promise.race([
+              holderCountPromise,
+              new Promise(
+                (_, reject) => setTimeout(() => reject(new Error("Holder count timeout")), 5e3)
+              )
+            ]);
           } catch (error) {
             fastify.log.warn(
               { error, tokenAddress },
