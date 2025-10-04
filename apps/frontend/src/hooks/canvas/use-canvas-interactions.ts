@@ -14,8 +14,7 @@ export interface AuctionIconClickPayload {
   title?: string;
 }
 
-const normalizeSymbolForRoute = (value?: string) =>
-  value ? value.trim().replace(/^\$/u, '') : '';
+const normalizeSymbolForRoute = (value?: string) => (value ? value.replace(/^\$/u, '').trim() : '');
 
 const getFeaturedSymbol = (image?: ImageInfo | null) => {
   if (!image) return '';
