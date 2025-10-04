@@ -1,4 +1,10 @@
 import { Storage } from '@google-cloud/storage';
+import { config } from 'dotenv';
+import { join } from 'path';
+
+// Load environment variables from root .env file (for local development)
+const envPath = join(process.cwd(), '.env');
+config({ path: envPath });
 
 // Check if Google Cloud credentials are available
 const hasGoogleCloudCredentials = !!(
@@ -24,13 +30,6 @@ if (hasGoogleCloudCredentials) {
   // Replace escaped newlines with actual newlines
   privateKey = privateKey.replace(/\\n/g, '\n');
 
-  console.log('[DEBUG] Private key processing:');
-  console.log(`[DEBUG] - Original length: ${process.env.GOOGLE_CLOUD_PRIVATE_KEY?.length}`);
-  console.log(`[DEBUG] - Processed length: ${privateKey.length}`);
-  console.log(`[DEBUG] - Starts with BEGIN: ${privateKey.startsWith('-----BEGIN')}`);
-  console.log(`[DEBUG] - Ends with END: ${privateKey.endsWith('-----')}`);
-  console.log(`[DEBUG] - Contains newlines: ${privateKey.includes('\n')}`);
-
   productStorage = new Storage({
     projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
     credentials: {
@@ -39,11 +38,11 @@ if (hasGoogleCloudCredentials) {
     },
   });
 
-  productBucketName = process.env.GOOGLE_CLOUD_PRODUCT_BUCKET_NAME || 'aces-product-images';
+  productBucketName = process.env.GOOGLE_CLOUD_BUCKET_NAME || 'aces-product-images';
   productBucket = productStorage.bucket(productBucketName);
 } else {
   console.warn(
-    'Google Cloud Storage credentials not configured. Product image access will be disabled for testing.',
+    '[ProductStorage] ⚠️  Google Cloud Storage credentials not configured. Product image access will be disabled.',
   );
 }
 
@@ -75,18 +74,78 @@ export class ProductStorageService {
     fileName: string,
     expiresInMinutes: number = 60,
   ): Promise<string> {
-    if (!hasGoogleCloudCredentials || !productBucket) {
-      return `mock-signed://${fileName}?expires=${Date.now() + expiresInMinutes * 60 * 1000}`;
+    try {
+      // Check credentials dynamically
+      const hasCredentials = !!(
+        process.env.GOOGLE_CLOUD_PROJECT_ID &&
+        process.env.GOOGLE_CLOUD_CLIENT_EMAIL &&
+        process.env.GOOGLE_CLOUD_PRIVATE_KEY
+      );
+
+      if (!hasCredentials) {
+        console.error(`[ProductStorage] Missing credentials for: ${fileName}`);
+        throw new Error('Google Cloud Storage credentials not configured');
+      }
+
+      // Initialize storage dynamically if not already done
+      if (!productStorage) {
+        let privateKey = process.env.GOOGLE_CLOUD_PRIVATE_KEY || '';
+
+        // Clean up private key format
+        if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
+          privateKey = privateKey.slice(1, -1);
+        }
+        privateKey = privateKey.replace(/\\n/g, '\n');
+
+        // Validate private key format
+        if (!privateKey.startsWith('-----BEGIN PRIVATE KEY-----')) {
+          console.error(`[ProductStorage] Invalid private key format for: ${fileName}`);
+          throw new Error('Invalid private key format');
+        }
+
+        productStorage = new Storage({
+          projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
+          credentials: {
+            client_email: process.env.GOOGLE_CLOUD_CLIENT_EMAIL,
+            private_key: privateKey,
+          },
+        });
+      }
+
+      if (!productBucket) {
+        productBucketName = process.env.GOOGLE_CLOUD_BUCKET_NAME || 'aces-product-images';
+        productBucket = productStorage.bucket(productBucketName);
+      }
+
+      // Generate signed URL
+      const options = {
+        version: 'v4' as const,
+        action: 'read' as const,
+        expires: Date.now() + expiresInMinutes * 60 * 1000,
+      };
+
+      const [url] = await productBucket.file(fileName).getSignedUrl(options);
+
+      // Validate that we got a proper signed URL
+      if (!url || !url.includes('X-Goog-Signature')) {
+        console.error(`[ProductStorage] Generated URL is not a valid signed URL for: ${fileName}`);
+        console.error(`[ProductStorage] URL: ${url}`);
+        throw new Error('Failed to generate valid signed URL');
+      }
+
+      return url;
+    } catch (error) {
+      console.error(`[ProductStorage] ❌ Error generating signed URL for ${fileName}:`, error);
+      console.error(`[ProductStorage] Error details:`, {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : 'No stack trace',
+      });
+
+      // Instead of fallback, throw the error so we know what's wrong
+      throw new Error(
+        `Failed to generate signed URL for ${fileName}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
     }
-
-    const options = {
-      version: 'v4' as const,
-      action: 'read' as const,
-      expires: Date.now() + expiresInMinutes * 60 * 1000,
-    };
-
-    const [url] = await productBucket.file(fileName).getSignedUrl(options);
-    return url;
   }
 
   /**
@@ -114,21 +173,36 @@ export class ProductStorageService {
     expiresInMinutes: number = 60,
   ): Promise<string[]> {
     const signedUrls = await Promise.all(
-      imageUrls.map(async (url) => {
+      imageUrls.map(async (url, index) => {
         try {
-          if (url.includes('storage.googleapis.com') && url.includes(productBucketName)) {
+          // Check if this is a GCS URL that needs conversion
+          if (url.includes('storage.googleapis.com') && url.includes('aces-product-images')) {
             const fileName = this.extractFileName(url);
-            return await this.getSignedProductUrl(fileName, expiresInMinutes);
+
+            const signedUrl = await this.getSignedProductUrl(fileName, expiresInMinutes);
+            return signedUrl;
           }
+
           // Return original URL if it's not a GCS product image URL
           return url;
         } catch (error) {
-          console.error(`Failed to generate signed URL for ${url}:`, error);
-          // Return original URL as fallback
-          return url;
+          console.error(`[ProductStorage] ❌ Failed to convert URL ${url}:`, error);
+          console.error(`[ProductStorage] Error details:`, {
+            message: error instanceof Error ? error.message : 'Unknown error',
+            index: index + 1,
+            originalUrl: url,
+          });
+
+          // Re-throw the error so we can see what's failing
+          throw error;
         }
       }),
     );
+
+    signedUrls.forEach((url, index) => {
+      const isSignedUrl = url.includes('X-Goog-Signature');
+    });
+
     return signedUrls;
   }
 
@@ -144,7 +218,7 @@ export class ProductStorageService {
       const [exists] = await productBucket.file(fileName).exists();
       return exists;
     } catch (error) {
-      console.error(`Error checking if file exists: ${fileName}`, error);
+      console.error(`[ProductStorage] Error checking if file exists: ${fileName}`, error);
       return false;
     }
   }

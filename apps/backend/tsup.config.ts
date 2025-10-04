@@ -2,12 +2,14 @@ import { defineConfig } from 'tsup';
 
 export default defineConfig({
   entryPoints: {
+    index: 'src/api/index.ts',
     verification: 'src/api/verification.ts',
     users: 'src/api/users.ts',
     contact: 'src/api/contact.ts',
     health: 'src/api/health.ts',
     submissions: 'src/api/submissions.ts',
     listings: 'src/api/listings.ts',
+    'cron/sync-tokens': 'src/api/cron/sync-tokens.ts',
   },
   outDir: 'api',
   format: ['cjs'],

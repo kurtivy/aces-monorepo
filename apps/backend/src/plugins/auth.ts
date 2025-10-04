@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 import jwt from 'jsonwebtoken';
 import { getPrismaClient } from '../lib/database';
+import { requireAuth } from '../lib/auth-middleware';
 
 const registerAuthPlugin = async (fastify: FastifyInstance) => {
   console.log('🔧 Registering simplified auth plugin...');
@@ -10,16 +11,27 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
   fastify.decorateRequest('user', null);
   fastify.decorateRequest('auth', null);
 
+  // Add authenticate decorator for route-level authentication
+  fastify.decorate('authenticate', requireAuth);
+
   // Auth verification hook
   fastify.addHook('preHandler', async (request, reply) => {
     const startTime = Date.now();
 
     try {
-      console.log('🔍 Auth hook triggered for:', {
-        url: request.url,
-        method: request.method,
-        hasAuthHeader: !!request.headers.authorization,
-      });
+      // Only log auth checks for non-public paths to reduce noise
+      const isLikelyPublic =
+        request.url.startsWith('/api/v1/tokens') ||
+        request.url.startsWith('/health') ||
+        request.url.startsWith('/api/health');
+
+      if (!isLikelyPublic) {
+        console.log('🔍 Auth hook triggered for:', {
+          url: request.url,
+          method: request.method,
+          hasAuthHeader: !!request.headers.authorization,
+        });
+      }
 
       const authHeader = request.headers.authorization;
 
@@ -33,6 +45,13 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
         '/test',
         '/get-upload-url',
         '/upload-image',
+        '/api/v1/tokens', // Token data and chart data endpoints
+        '/api/v1/dex', // DEX quote/pool endpoints
+        '/api/v1/twitch', // Twitch stream endpoints
+        '/api/v1/cron/trigger', // Cron trigger endpoint for manual testing
+        '/api/v1/cron/status', // Cron status endpoint
+        '/api/cron/sync-tokens', // Vercel cron endpoint
+        '/api/cron/sync-liquidity',
         '/', // Root path for listings, contact, etc.
       ];
 
@@ -41,12 +60,18 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
         publicPaths.some((path) => {
           if (request.url === path) return true;
           if (path === '/health' && request.url.startsWith('/health')) return true;
+          // Allow all token-related endpoints
+          if (path === '/api/v1/tokens' && request.url.startsWith('/api/v1/tokens')) return true;
+          if (path === '/api/v1/dex' && request.url.startsWith('/api/v1/dex')) return true;
           return false;
         }) ||
         (request.method === 'GET' && ['/live', '/search', '/stats', '/'].includes(request.url));
 
       if (isPublicPath) {
-        console.log('✅ Public path, skipping auth:', request.url);
+        // Only log public path skips for non-token endpoints to reduce noise
+        if (!request.url.startsWith('/api/v1/tokens')) {
+          console.log('✅ Public path, skipping auth:', request.url);
+        }
         request.user = null;
         request.auth = {
           user: null,

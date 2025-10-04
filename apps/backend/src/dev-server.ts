@@ -1,4 +1,17 @@
+import { config } from 'dotenv';
+import { join } from 'path';
 import { buildApp } from './app';
+
+// Load environment variables from root .env file
+const envPath = join(process.cwd(), '.env');
+const result = config({ path: envPath });
+if (result.error) {
+  console.error('❌ Failed to load .env file from:', envPath);
+  console.error('Error:', result.error);
+} else {
+  console.log('✅ Loaded .env file from:', envPath);
+  console.log(`✅ Loaded ${Object.keys(result.parsed || {}).length} environment variables`);
+}
 
 async function start() {
   try {

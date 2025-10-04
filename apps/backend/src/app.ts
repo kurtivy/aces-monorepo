@@ -1,4 +1,3 @@
-/// <reference path="./types/fastify.d.ts" />
 import Fastify, { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
 import helmet from '@fastify/helmet';
@@ -10,13 +9,29 @@ import { handleError } from './lib/errors';
 import { registerAuth } from './plugins/auth';
 import { submissionRoutes } from './routes/v1/submissions';
 import { adminRoutes } from './routes/v1/admin'; // Step 2: Enabled
-// import { bidsRoutes } from './routes/v1/bids';
+import { bidsRoutes } from './routes/v1/bids';
 import { accountVerificationRoutes } from './routes/v1/verification'; // Step 2: Enabled
 import { usersRoutes } from './routes/v1/users';
 // import { webhooksRoutes } from './routes/v1/webhooks';
 import { listingRoutes } from './routes/v1/listings'; // Step 5: Enabled
-// import { tokensRoutes } from './routes/v1/tokens';
 import { contactRoutes } from './routes/v1/contact';
+import { purchaseRoutes } from './routes/v1/purchase';
+import { commentsRoutes } from './routes/v1/comments';
+import { tokensRoutes } from './routes/v1/tokens';
+import { portfolioRoutes } from './routes/v1/portfolio';
+import { twitchRoutes } from './routes/v1/twitch';
+import { priceRoutes } from './routes/v1/price';
+import { dexRoutes } from './routes/v1/dex';
+import gcsTestRoutes from './routes/v1/debug/gcs-test';
+
+import { cronRoutes } from './routes/v1/cron/trigger';
+
+// NEW: Phase 1 - Token creation and notifications
+import { notificationRoutes } from './routes/v1/notifications';
+import { tokenCreationRoutes } from './routes/v1/token-creation';
+import productImagesRoutes from './routes/v1/product-images';
+import { testNotificationRoutes } from './routes/v1/test-notifications';
+import { adminTokenRoutes } from './routes/v1/admin/tokens';
 
 export const buildApp = async (): Promise<FastifyInstance> => {
   const fastify = Fastify({
@@ -62,6 +77,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
       'https://aces-monorepo-git-dev-dan-aces-fun.vercel.app',
       'https://aces-monorepo-git-main-dan-aces-fun.vercel.app',
       'https://aces-monorepo-git-feat-ui-updates-dan-aces-fun.vercel.app',
+      'https://aces-monorepo-git-feat-rwa-page-upgrade-dan-aces-fun.vercel.app',
     );
 
     return origins;
@@ -86,7 +102,15 @@ export const buildApp = async (): Promise<FastifyInstance> => {
     const origin = request.headers.origin;
 
     if (isOriginAllowed(origin)) {
-      reply.header('Access-Control-Allow-Origin', origin);
+      reply
+        .header('Access-Control-Allow-Origin', origin)
+        .header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+        .header(
+          'Access-Control-Allow-Headers',
+          'Content-Type, Authorization, Accept, Origin, X-Requested-With',
+        )
+        .header('Access-Control-Allow-Credentials', 'true')
+        .header('Vary', 'Origin');
     }
   });
 
@@ -113,13 +137,34 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   // Register v1 routes with proper API prefixes
   fastify.register(submissionRoutes, { prefix: '/api/v1/submissions' }); // Step 4: Enabled
   fastify.register(adminRoutes, { prefix: '/api/v1/admin' }); // Step 2: Enabled
-  // import { bidsRoutes } from './routes/v1/bids';
+  fastify.register(bidsRoutes, { prefix: '/api/v1/bids' }); // NEW: Bidding system
   fastify.register(accountVerificationRoutes, { prefix: '/api/v1/verification' }); // Step 2: Enabled
   fastify.register(usersRoutes, { prefix: '/api/v1/users' });
   // import { webhooksRoutes } from './routes/v1/webhooks';
   fastify.register(listingRoutes, { prefix: '/api/v1/listings' }); // Step 5: Enabled
-  // import { tokensRoutes } from './routes/v1/tokens';
+  fastify.register(tokensRoutes, { prefix: '/api/v1/tokens' });
+  fastify.register(portfolioRoutes, { prefix: '/api/v1/portfolio' });
   fastify.register(contactRoutes, { prefix: '/api/v1/contact' });
+  fastify.register(purchaseRoutes, { prefix: '/api/v1/purchase' });
+  fastify.register(commentsRoutes, { prefix: '/api/v1/comments' });
+  fastify.register(twitchRoutes, { prefix: '/api/v1/twitch' });
+  fastify.register(priceRoutes, { prefix: '/api/v1/price' });
+  fastify.register(dexRoutes, { prefix: '/api/v1/dex' });
+
+  // NEW: Phase 1 - Token creation and notifications
+  fastify.register(notificationRoutes, { prefix: '/api/v1/notifications' });
+  fastify.register(tokenCreationRoutes, { prefix: '/api/v1/token-creation' });
+  fastify.register(productImagesRoutes, { prefix: '/api/v1/product-images' });
+  fastify.register(adminTokenRoutes); // No prefix, routes define their own paths
+
+  // Register debug routes
+  fastify.register(gcsTestRoutes, { prefix: '/api/v1' });
+  // fastify.register(portfolioTestRoutes, { prefix: '/api/v1/debug/portfolio-test' });
+  // Register cron routes for manual testing
+  fastify.register(cronRoutes);
+
+  // Register test notification routes (for development/testing)
+  fastify.register(testNotificationRoutes, { prefix: '/api/v1/notifications' });
 
   // Register hooks
   fastify.addHook('onRequest', async (request) => {

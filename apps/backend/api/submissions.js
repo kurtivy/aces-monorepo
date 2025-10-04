@@ -195,7 +195,7 @@ var getPrismaClient = /* @__PURE__ */ __name(() => {
     return prisma;
   } catch (error) {
     console.error("\u274C Failed to create Prisma client:", error);
-    logger.error("Failed to create Prisma client", error);
+    logger.error({ error }, "Failed to create Prisma client");
     throw error;
   }
 }, "getPrismaClient");
@@ -213,7 +213,7 @@ var disconnectDatabase = /* @__PURE__ */ __name(async (timeoutMs = 5e3) => {
       logger.info("Database connection closed");
     } catch (error) {
       console.error("\u274C Error disconnecting from database:", error);
-      logger.error("Error disconnecting from database", error);
+      logger.error({ error }, "Error disconnecting from database");
       prisma = null;
     }
   }
@@ -267,18 +267,46 @@ var errors = {
 // src/plugins/auth.ts
 var import_fastify_plugin = __toESM(require("fastify-plugin"));
 var import_jsonwebtoken = __toESM(require("jsonwebtoken"));
+
+// src/lib/auth-middleware.ts
+async function requireAuth(request, _reply) {
+  if (!request.auth) {
+    console.error("request.auth is null/undefined");
+    throw errors.unauthorized("Authentication not initialized");
+  }
+  if (!request.auth.isAuthenticated || !request.user) {
+    console.error("User not authenticated");
+    throw errors.unauthorized("Authentication required");
+  }
+}
+__name(requireAuth, "requireAuth");
+async function requireAdmin(request, _reply) {
+  if (!request.auth?.isAuthenticated || !request.user) {
+    throw errors.unauthorized("Authentication required");
+  }
+  if (!request.auth.hasRole("ADMIN")) {
+    throw errors.forbidden("Admin access required");
+  }
+}
+__name(requireAdmin, "requireAdmin");
+
+// src/plugins/auth.ts
 var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
   console.log("\u{1F527} Registering simplified auth plugin...");
   fastify.decorateRequest("user", null);
   fastify.decorateRequest("auth", null);
+  fastify.decorate("authenticate", requireAuth);
   fastify.addHook("preHandler", async (request, reply) => {
     const startTime = Date.now();
     try {
-      console.log("\u{1F50D} Auth hook triggered for:", {
-        url: request.url,
-        method: request.method,
-        hasAuthHeader: !!request.headers.authorization
-      });
+      const isLikelyPublic = request.url.startsWith("/api/v1/tokens") || request.url.startsWith("/health") || request.url.startsWith("/api/health");
+      if (!isLikelyPublic) {
+        console.log("\u{1F50D} Auth hook triggered for:", {
+          url: request.url,
+          method: request.method,
+          hasAuthHeader: !!request.headers.authorization
+        });
+      }
       const authHeader = request.headers.authorization;
       const publicPaths = [
         "/health",
@@ -289,16 +317,33 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         "/test",
         "/get-upload-url",
         "/upload-image",
+        "/api/v1/tokens",
+        // Token data and chart data endpoints
+        "/api/v1/dex",
+        // DEX quote/pool endpoints
+        "/api/v1/twitch",
+        // Twitch stream endpoints
+        "/api/v1/cron/trigger",
+        // Cron trigger endpoint for manual testing
+        "/api/v1/cron/status",
+        // Cron status endpoint
+        "/api/cron/sync-tokens",
+        // Vercel cron endpoint
+        "/api/cron/sync-liquidity",
         "/"
         // Root path for listings, contact, etc.
       ];
       const isPublicPath = publicPaths.some((path) => {
         if (request.url === path) return true;
         if (path === "/health" && request.url.startsWith("/health")) return true;
+        if (path === "/api/v1/tokens" && request.url.startsWith("/api/v1/tokens")) return true;
+        if (path === "/api/v1/dex" && request.url.startsWith("/api/v1/dex")) return true;
         return false;
       }) || request.method === "GET" && ["/live", "/search", "/stats", "/"].includes(request.url);
       if (isPublicPath) {
-        console.log("\u2705 Public path, skipping auth:", request.url);
+        if (!request.url.startsWith("/api/v1/tokens")) {
+          console.log("\u2705 Public path, skipping auth:", request.url);
+        }
         request.user = null;
         request.auth = {
           user: null,
@@ -486,23 +531,32 @@ var RejectionType = {
 
 // src/lib/product-storage-utils.ts
 var import_storage = require("@google-cloud/storage");
+var import_dotenv = require("dotenv");
+var import_path = require("path");
+var envPath = (0, import_path.join)(process.cwd(), ".env");
+(0, import_dotenv.config)({ path: envPath });
 var hasGoogleCloudCredentials = !!(process.env.GOOGLE_CLOUD_PROJECT_ID && process.env.GOOGLE_CLOUD_CLIENT_EMAIL && process.env.GOOGLE_CLOUD_PRIVATE_KEY);
 var productStorage = null;
 var productBucket = null;
 var productBucketName = "";
 if (hasGoogleCloudCredentials) {
+  let privateKey = process.env.GOOGLE_CLOUD_PRIVATE_KEY || "";
+  if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
+    privateKey = privateKey.slice(1, -1);
+  }
+  privateKey = privateKey.replace(/\\n/g, "\n");
   productStorage = new import_storage.Storage({
     projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
     credentials: {
       client_email: process.env.GOOGLE_CLOUD_CLIENT_EMAIL,
-      private_key: process.env.GOOGLE_CLOUD_PRIVATE_KEY?.replace(/\\n/g, "\n")
+      private_key: privateKey
     }
   });
-  productBucketName = process.env.GOOGLE_CLOUD_PRODUCT_BUCKET_NAME || "aces-product-images";
+  productBucketName = process.env.GOOGLE_CLOUD_BUCKET_NAME || "aces-product-images";
   productBucket = productStorage.bucket(productBucketName);
 } else {
   console.warn(
-    "Google Cloud Storage credentials not configured. Product image access will be disabled for testing."
+    "[ProductStorage] \u26A0\uFE0F  Google Cloud Storage credentials not configured. Product image access will be disabled."
   );
 }
 var ProductStorageService = class {
@@ -531,24 +585,68 @@ var ProductStorageService = class {
    * Generate a signed URL for product image access (temporary access)
    */
   static async getSignedProductUrl(fileName, expiresInMinutes = 60) {
-    if (!hasGoogleCloudCredentials || !productBucket) {
-      return `mock-signed://${fileName}?expires=${Date.now() + expiresInMinutes * 60 * 1e3}`;
+    try {
+      const hasCredentials = !!(process.env.GOOGLE_CLOUD_PROJECT_ID && process.env.GOOGLE_CLOUD_CLIENT_EMAIL && process.env.GOOGLE_CLOUD_PRIVATE_KEY);
+      if (!hasCredentials) {
+        console.error(`[ProductStorage] Missing credentials for: ${fileName}`);
+        throw new Error("Google Cloud Storage credentials not configured");
+      }
+      if (!productStorage) {
+        let privateKey = process.env.GOOGLE_CLOUD_PRIVATE_KEY || "";
+        if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
+          privateKey = privateKey.slice(1, -1);
+        }
+        privateKey = privateKey.replace(/\\n/g, "\n");
+        if (!privateKey.startsWith("-----BEGIN PRIVATE KEY-----")) {
+          console.error(`[ProductStorage] Invalid private key format for: ${fileName}`);
+          throw new Error("Invalid private key format");
+        }
+        productStorage = new import_storage.Storage({
+          projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
+          credentials: {
+            client_email: process.env.GOOGLE_CLOUD_CLIENT_EMAIL,
+            private_key: privateKey
+          }
+        });
+      }
+      if (!productBucket) {
+        productBucketName = process.env.GOOGLE_CLOUD_BUCKET_NAME || "aces-product-images";
+        productBucket = productStorage.bucket(productBucketName);
+      }
+      const options = {
+        version: "v4",
+        action: "read",
+        expires: Date.now() + expiresInMinutes * 60 * 1e3
+      };
+      const [url] = await productBucket.file(fileName).getSignedUrl(options);
+      if (!url || !url.includes("X-Goog-Signature")) {
+        console.error(`[ProductStorage] Generated URL is not a valid signed URL for: ${fileName}`);
+        console.error(`[ProductStorage] URL: ${url}`);
+        throw new Error("Failed to generate valid signed URL");
+      }
+      return url;
+    } catch (error) {
+      console.error(`[ProductStorage] \u274C Error generating signed URL for ${fileName}:`, error);
+      console.error(`[ProductStorage] Error details:`, {
+        message: error instanceof Error ? error.message : "Unknown error",
+        stack: error instanceof Error ? error.stack : "No stack trace"
+      });
+      throw new Error(
+        `Failed to generate signed URL for ${fileName}: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
     }
-    const options = {
-      version: "v4",
-      action: "read",
-      expires: Date.now() + expiresInMinutes * 60 * 1e3
-    };
-    const [url] = await productBucket.file(fileName).getSignedUrl(options);
-    return url;
   }
   /**
    * Extract filename from a product image URL
    */
   static extractFileName(imageUrl) {
+    if (!productBucketName) {
+      console.warn("Product bucket name not configured, cannot extract filename");
+      throw new Error("Product storage not configured");
+    }
     const bucketPrefix = `https://storage.googleapis.com/${productBucketName}/`;
     if (!imageUrl.startsWith(bucketPrefix)) {
-      throw new Error("Invalid product storage URL format");
+      throw new Error(`Invalid product storage URL format. Expected prefix: ${bucketPrefix}`);
     }
     return imageUrl.replace(bucketPrefix, "");
   }
@@ -557,19 +655,28 @@ var ProductStorageService = class {
    */
   static async convertToSignedUrls(imageUrls, expiresInMinutes = 60) {
     const signedUrls = await Promise.all(
-      imageUrls.map(async (url) => {
+      imageUrls.map(async (url, index) => {
         try {
-          if (url.includes("storage.googleapis.com") && url.includes(productBucketName)) {
+          if (url.includes("storage.googleapis.com") && url.includes("aces-product-images")) {
             const fileName = this.extractFileName(url);
-            return await this.getSignedProductUrl(fileName, expiresInMinutes);
+            const signedUrl = await this.getSignedProductUrl(fileName, expiresInMinutes);
+            return signedUrl;
           }
           return url;
         } catch (error) {
-          console.error(`Failed to generate signed URL for ${url}:`, error);
-          return url;
+          console.error(`[ProductStorage] \u274C Failed to convert URL ${url}:`, error);
+          console.error(`[ProductStorage] Error details:`, {
+            message: error instanceof Error ? error.message : "Unknown error",
+            index: index + 1,
+            originalUrl: url
+          });
+          throw error;
         }
       })
     );
+    signedUrls.forEach((url, index) => {
+      const isSignedUrl = url.includes("X-Goog-Signature");
+    });
     return signedUrls;
   }
   /**
@@ -583,20 +690,322 @@ var ProductStorageService = class {
       const [exists] = await productBucket.file(fileName).exists();
       return exists;
     } catch (error) {
-      console.error(`Error checking if file exists: ${fileName}`, error);
+      console.error(`[ProductStorage] Error checking if file exists: ${fileName}`, error);
       return false;
     }
   }
 };
 
-// src/services/submission-service.ts
-var SubmissionService = class {
+// src/services/notification-service.ts
+var NotificationService = class {
   constructor(prisma2) {
     this.prisma = prisma2;
   }
   static {
+    __name(this, "NotificationService");
+  }
+  /**
+   * Create a new notification for a user
+   */
+  async createNotification(data) {
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: data.userId }
+      });
+      if (!user) {
+        throw errors.notFound("User not found");
+      }
+      if (data.listingId) {
+        const listing = await this.prisma.listing.findUnique({
+          where: { id: data.listingId }
+        });
+        if (!listing) {
+          throw errors.notFound("Listing not found");
+        }
+      }
+      if (data.submissionId) {
+        const submission = await this.prisma.submission.findUnique({
+          where: { id: data.submissionId }
+        });
+        if (!submission) {
+          throw errors.notFound("Submission not found");
+        }
+      }
+      const notification = await this.prisma.userNotification.create({
+        data: {
+          userId: data.userId,
+          listingId: data.listingId,
+          submissionId: data.submissionId,
+          type: data.type,
+          title: data.title,
+          message: data.message,
+          actionUrl: data.actionUrl,
+          expiresAt: data.expiresAt
+        }
+      });
+      return notification;
+    } catch (error) {
+      console.error("Error creating notification:", error);
+      throw error;
+    }
+  }
+  /**
+   * Get all notifications for a user
+   */
+  async getUserNotifications(userId, options = {}) {
+    try {
+      const { includeRead = true, limit = 50, offset = 0 } = options;
+      const whereClause = {
+        userId,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: /* @__PURE__ */ new Date() } }]
+      };
+      const finalWhereClause = !includeRead ? { ...whereClause, isRead: false } : whereClause;
+      const notifications = await this.prisma.userNotification.findMany({
+        where: finalWhereClause,
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              walletAddress: true
+            }
+          },
+          listing: {
+            select: {
+              id: true,
+              title: true,
+              symbol: true
+            }
+          },
+          submission: {
+            select: {
+              id: true,
+              title: true,
+              symbol: true,
+              status: true,
+              rejectionReason: true,
+              imageGallery: true
+            }
+          }
+        },
+        orderBy: { createdAt: "desc" },
+        take: limit,
+        skip: offset
+      });
+      return notifications;
+    } catch (error) {
+      console.error("Error fetching user notifications:", error);
+      throw error;
+    }
+  }
+  /**
+   * Mark a notification as read
+   */
+  async markAsRead(notificationId, userId) {
+    try {
+      const notification = await this.prisma.userNotification.findFirst({
+        where: {
+          id: notificationId,
+          userId
+        }
+      });
+      if (!notification) {
+        throw errors.notFound("Notification not found");
+      }
+      const updatedNotification = await this.prisma.userNotification.update({
+        where: { id: notificationId },
+        data: { isRead: true }
+      });
+      return updatedNotification;
+    } catch (error) {
+      console.error("Error marking notification as read:", error);
+      throw error;
+    }
+  }
+  /**
+   * Mark all notifications as read for a user
+   */
+  async markAllAsRead(userId) {
+    try {
+      const result = await this.prisma.userNotification.updateMany({
+        where: {
+          userId,
+          isRead: false
+        },
+        data: { isRead: true }
+      });
+      return { count: result.count };
+    } catch (error) {
+      console.error("Error marking all notifications as read:", error);
+      throw error;
+    }
+  }
+  /**
+   * Get unread notification count for a user
+   */
+  async getUnreadCount(userId) {
+    try {
+      const count = await this.prisma.userNotification.count({
+        where: {
+          userId,
+          isRead: false,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: /* @__PURE__ */ new Date() } }]
+        }
+      });
+      return count;
+    } catch (error) {
+      console.error("Error getting unread notification count:", error);
+      throw error;
+    }
+  }
+  /**
+   * Delete a notification
+   */
+  async deleteNotification(notificationId, userId) {
+    try {
+      const notification = await this.prisma.userNotification.findFirst({
+        where: {
+          id: notificationId,
+          userId
+        }
+      });
+      if (!notification) {
+        throw errors.notFound("Notification not found");
+      }
+      await this.prisma.userNotification.delete({
+        where: { id: notificationId }
+      });
+    } catch (error) {
+      console.error("Error deleting notification:", error);
+      throw error;
+    }
+  }
+  /**
+   * Clean up expired notifications
+   */
+  async cleanupExpiredNotifications() {
+    try {
+      const result = await this.prisma.userNotification.deleteMany({
+        where: {
+          expiresAt: {
+            lt: /* @__PURE__ */ new Date()
+          }
+        }
+      });
+      return { count: result.count };
+    } catch (error) {
+      console.error("Error cleaning up expired notifications:", error);
+      throw error;
+    }
+  }
+};
+var NotificationTemplates = {
+  ["LISTING_APPROVED" /* LISTING_APPROVED */]: {
+    title: "Listing Approved!",
+    message: "Your submission has been approved and converted to a listing. Complete your listing details to proceed with token creation.",
+    getActionUrl: /* @__PURE__ */ __name((listingId) => `/profile?tab=listings&listing=${listingId}`, "getActionUrl")
+  },
+  ["READY_TO_MINT" /* READY_TO_MINT */]: {
+    title: "Ready to Launch!",
+    message: "Your token parameters have been approved by our team. You can now mint your token and launch it for trading!",
+    getActionUrl: /* @__PURE__ */ __name((listingId) => `/listings/${listingId}/mint`, "getActionUrl")
+  },
+  ["TOKEN_MINTED" /* TOKEN_MINTED */]: {
+    title: "Token Live!",
+    message: "Congratulations! Your token has been successfully minted and is now live for trading.",
+    getActionUrl: /* @__PURE__ */ __name((symbol) => `/rwa/${symbol}`, "getActionUrl")
+  },
+  ["TOKEN_PARAMETERS_SUBMITTED" /* TOKEN_PARAMETERS_SUBMITTED */]: {
+    title: "Token Parameters Under Review",
+    message: "Your token creation request has been submitted and is being reviewed by our team. You'll be notified once the parameters are approved.",
+    getActionUrl: /* @__PURE__ */ __name(() => "/profile", "getActionUrl")
+  },
+  ["ADMIN_MESSAGE" /* ADMIN_MESSAGE */]: {
+    title: "Message from Admin",
+    message: "You have received a message from the administration team.",
+    getActionUrl: /* @__PURE__ */ __name(() => "/profile", "getActionUrl")
+  },
+  ["SYSTEM_ALERT" /* SYSTEM_ALERT */]: {
+    title: "System Alert",
+    message: "Important system information.",
+    getActionUrl: /* @__PURE__ */ __name(() => "/profile", "getActionUrl")
+  },
+  // Verification notifications
+  ["VERIFICATION_PENDING" /* VERIFICATION_PENDING */]: {
+    title: "Verification Submitted",
+    message: "Your identity verification has been submitted and is under review. You will be notified of the results.",
+    getActionUrl: /* @__PURE__ */ __name(() => "/profile", "getActionUrl")
+  },
+  ["VERIFICATION_APPROVED" /* VERIFICATION_APPROVED */]: {
+    title: "Verification Approved!",
+    message: "Your identity has been successfully verified! You can now submit assets for tokenization and place bids.",
+    getActionUrl: /* @__PURE__ */ __name(() => "/launch", "getActionUrl")
+  },
+  ["VERIFICATION_REJECTED" /* VERIFICATION_REJECTED */]: {
+    title: "Verification Rejected",
+    message: "Your verification was rejected. Please review the requirements and resubmit with correct information.",
+    getActionUrl: /* @__PURE__ */ __name(() => "/profile", "getActionUrl")
+  },
+  // Submission notifications
+  ["SUBMISSION_APPROVED" /* SUBMISSION_APPROVED */]: {
+    title: "Submission Approved!",
+    message: "Great news! Your asset submission has been approved.",
+    getActionUrl: /* @__PURE__ */ __name(() => "/profile", "getActionUrl")
+  },
+  ["SUBMISSION_REJECTED" /* SUBMISSION_REJECTED */]: {
+    title: "Submission Rejected",
+    message: "Your asset submission has been reviewed and rejected.",
+    getActionUrl: /* @__PURE__ */ __name(() => "/profile", "getActionUrl")
+  },
+  // Bidding notifications
+  ["NEW_BID_RECEIVED" /* NEW_BID_RECEIVED */]: {
+    title: "New Bid Received!",
+    message: "Someone has placed a bid on your listing. Check your bids to review and respond.",
+    getActionUrl: /* @__PURE__ */ __name(() => "/profile?tab=bids", "getActionUrl")
+  },
+  ["BID_ACCEPTED" /* BID_ACCEPTED */]: {
+    title: "Bid Accepted!",
+    message: "Great news! Your bid has been accepted by the listing owner.",
+    getActionUrl: /* @__PURE__ */ __name(() => "/profile?tab=bids", "getActionUrl")
+  },
+  ["BID_REJECTED" /* BID_REJECTED */]: {
+    title: "Bid Not Accepted",
+    message: "Your bid was not accepted by the listing owner. You can place a new bid if the listing is still available.",
+    getActionUrl: /* @__PURE__ */ __name(() => "/profile?tab=bids", "getActionUrl")
+  },
+  ["BID_OUTBID" /* BID_OUTBID */]: {
+    title: "You Have Been Outbid",
+    message: "Another bidder has placed a higher bid on this listing. Consider placing a new bid if you're still interested.",
+    getActionUrl: /* @__PURE__ */ __name(() => "/profile?tab=bids", "getActionUrl")
+  },
+  // Admin notifications
+  ["ADMIN_NEW_SUBMISSION" /* ADMIN_NEW_SUBMISSION */]: {
+    title: "New Asset Submission",
+    message: "A new asset has been submitted for review and approval.",
+    getActionUrl: /* @__PURE__ */ __name(() => "/admin/submissions", "getActionUrl")
+  },
+  ["ADMIN_NEW_VERIFICATION" /* ADMIN_NEW_VERIFICATION */]: {
+    title: "New Verification Request",
+    message: "A user has submitted identity verification documents for review.",
+    getActionUrl: /* @__PURE__ */ __name(() => "/admin/verifications", "getActionUrl")
+  },
+  ["ADMIN_TOKEN_REVIEW_NEEDED" /* ADMIN_TOKEN_REVIEW_NEEDED */]: {
+    title: "Token Parameters Need Review",
+    message: "A user has completed token creation details and requires admin approval.",
+    getActionUrl: /* @__PURE__ */ __name(() => "/admin/listings", "getActionUrl")
+  }
+};
+
+// src/services/submission-service.ts
+var SubmissionService = class {
+  constructor(prisma2, notificationService) {
+    this.prisma = prisma2;
+    this.notificationService = notificationService || new NotificationService(prisma2);
+  }
+  static {
     __name(this, "SubmissionService");
   }
+  notificationService;
   /**
    * Check if user is verified before allowing submission
    */
@@ -640,6 +1049,24 @@ var SubmissionService = class {
           owner: true
         }
       });
+      try {
+        const adminUsers = await this.prisma.user.findMany({
+          where: { role: "ADMIN" },
+          select: { id: true }
+        });
+        const adminTemplate = NotificationTemplates["ADMIN_NEW_SUBMISSION" /* ADMIN_NEW_SUBMISSION */];
+        for (const admin of adminUsers) {
+          await this.notificationService.createNotification({
+            userId: admin.id,
+            type: "ADMIN_NEW_SUBMISSION" /* ADMIN_NEW_SUBMISSION */,
+            title: adminTemplate.title,
+            message: adminTemplate.message,
+            actionUrl: adminTemplate.getActionUrl()
+          });
+        }
+      } catch (notificationError) {
+        console.error("Error creating admin submission notification:", notificationError);
+      }
       return submission;
     } catch (error) {
       console.error("Error in createSubmission:", error);
@@ -794,6 +1221,19 @@ var SubmissionService = class {
           owner: true
         }
       });
+      try {
+        const template = NotificationTemplates["SUBMISSION_APPROVED" /* SUBMISSION_APPROVED */];
+        await this.notificationService.createNotification({
+          userId: submission.ownerId,
+          submissionId: submission.id,
+          type: "SUBMISSION_APPROVED" /* SUBMISSION_APPROVED */,
+          title: template.title,
+          message: template.message,
+          actionUrl: template.getActionUrl()
+        });
+      } catch (notificationError) {
+        console.error("Error creating submission approved notification:", notificationError);
+      }
       return submission;
     } catch (error) {
       console.error("Error in approveSubmission:", error);
@@ -817,6 +1257,19 @@ var SubmissionService = class {
           owner: true
         }
       });
+      try {
+        const template = NotificationTemplates["SUBMISSION_REJECTED" /* SUBMISSION_REJECTED */];
+        await this.notificationService.createNotification({
+          userId: submission.ownerId,
+          submissionId: submission.id,
+          type: "SUBMISSION_REJECTED" /* SUBMISSION_REJECTED */,
+          title: template.title,
+          message: `${template.message} Reason: ${rejectionReason}`,
+          actionUrl: template.getActionUrl()
+        });
+      } catch (notificationError) {
+        console.error("Error creating submission rejected notification:", notificationError);
+      }
       return submission;
     } catch (error) {
       console.error("Error in rejectSubmission:", error);
@@ -853,28 +1306,6 @@ var SubmissionService = class {
     }
   }
 };
-
-// src/lib/auth-middleware.ts
-async function requireAuth(request, _reply) {
-  if (!request.auth) {
-    console.error("request.auth is null/undefined");
-    throw errors.unauthorized("Authentication not initialized");
-  }
-  if (!request.auth.isAuthenticated || !request.user) {
-    console.error("User not authenticated");
-    throw errors.unauthorized("Authentication required");
-  }
-}
-__name(requireAuth, "requireAuth");
-async function requireAdmin(request, _reply) {
-  if (!request.auth?.isAuthenticated || !request.user) {
-    throw errors.unauthorized("Authentication required");
-  }
-  if (!request.auth.hasRole("ADMIN")) {
-    throw errors.forbidden("Admin access required");
-  }
-}
-__name(requireAdmin, "requireAdmin");
 
 // src/routes/v1/submissions.ts
 var CreateSubmissionSchema = import_zod.z.object({

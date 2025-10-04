@@ -10,6 +10,7 @@ export interface SimpleUserProfile {
   privyDid: string;
   walletAddress: string | null;
   email: string | null;
+  username: string | null;
   role: keyof typeof UserRole;
   isActive: boolean;
   createdAt: Date;
@@ -31,6 +32,7 @@ export class UsersService {
           privyDid: true,
           walletAddress: true,
           email: true,
+          username: true,
           role: true,
           isActive: true,
           createdAt: true,
@@ -50,12 +52,13 @@ export class UsersService {
   }
 
   /**
-   * Update user profile - Step 1 version (email only)
+   * Update user profile - supports email and username updates
    */
   async updateUserProfile(
     userId: string,
     updates: {
       email?: string;
+      username?: string;
     },
   ): Promise<SimpleUserProfile> {
     try {
@@ -70,6 +73,7 @@ export class UsersService {
           privyDid: true,
           walletAddress: true,
           email: true,
+          username: true,
           role: true,
           isActive: true,
           createdAt: true,

@@ -5,54 +5,52 @@ const nextConfig: NextConfig = {
   transpilePackages: ['three'],
 
   // Security headers - CSP commented out for development
-  // TODO: Re-enable CSP for production deployment
-  /*
   async headers() {
     return [
       {
         source: '/(.*)',
         headers: [
-          // CSP with all required domains for Privy, WalletConnect, and production
           {
             key: 'Content-Security-Policy',
             value: [
+              // sensible baseline
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://www.clarity.ms https://vercel.live",
+              "base-uri 'self'",
+              "object-src 'none'",
+
+              // scripts you load (added *.clarity.ms + va.vercel-scripts.com + Twitch + TradingView)
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://challenges.cloudflare.com https://*.clarity.ms https://www.googletagmanager.com https://va.vercel-scripts.com https://vercel.live https://auth.privy.io https://embed.twitch.tv https://charting-library.tradingview-widget.com https://*.tradingview.com",
+
+              // mirror for script elements (prevents fallback confusion)
+              "script-src-elem 'self' 'unsafe-inline' blob: https://*.clarity.ms https://www.googletagmanager.com https://va.vercel-scripts.com https://vercel.live https://auth.privy.io https://embed.twitch.tv https://charting-library.tradingview-widget.com https://*.tradingview.com",
+
+              // styles/fonts/images
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' data: https://fonts.gstatic.com",
               "img-src 'self' data: blob: https:",
-              "object-src 'none'",
-              "base-uri 'self'",
+
+              // form + embedding rules (unchanged + allow clarity iframes if any)
               "form-action 'self'",
-              "frame-ancestors 'self' https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app https://aces-monorepo-git-dev-dan-aces-fun.vercel.app https://aces.fun https://auth.privy.io",
-              'child-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org',
-              'frame-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org https://challenges.cloudflare.com',
-              "connect-src 'self' http://localhost:3000 https://auth.privy.io wss://relay.walletconnect.com wss://relay.walletconnect.org wss://www.walletlink.org https://*.rpc.privy.systems https://explorer-api.walletconnect.com https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app https://pulse.walletconnect.org https://api.web3modal.org https://sepolia.base.org https://base-sepolia-rpc.publicnode.com https://base-sepolia.blockpi.network https://base-sepolia.gateway.tenderly.co https://1rpc.io https://min-api.cryptocompare.com https://api.thegraph.com https://api.coingecko.com https://api.coinbase.com https://api.binance.com",
-              "worker-src 'self'",
+              "frame-ancestors 'self' https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app https://aces-monorepo-git-dev-dan-aces-fun.vercel.app https://aces-monorepo-backend-git-feat-rwa-page-upgrade-dan-aces-fun.vercel.app https://aces-monorepo-git-feat-rwa-page-upgrade-dan-aces-fun.vercel.app https://aces.fun https://auth.privy.io",
+              'child-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org blob: data: https://*.tradingview.com',
+              'frame-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org https://challenges.cloudflare.com https://*.clarity.ms https://www.twitch.tv https://player.twitch.tv https://embed.twitch.tv blob: data: https://*.tradingview.com https://charting-library.tradingview-widget.com',
+
+              // where your app may connect (added Supabase URL + backend localhost:8787 + WebSocket support for Next.js HMR)
+              "connect-src 'self' http://localhost:3000 http://localhost:3002 ws://localhost:3000 wss://localhost:3000 https://auth.privy.io wss://relay.walletconnect.com wss://relay.walletconnect.org wss://www.walletlink.org https://*.rpc.privy.systems https://explorer-api.walletconnect.com https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app https://aces-monorepo-backend-git-feat-rwa-page-upgrade-dan-aces-fun.vercel.app https://pulse.walletconnect.org https://api.web3modal.org https://sepolia.base.org https://base-sepolia-rpc.publicnode.com https://base-sepolia.blockpi.network/v1/rpc/public https://base-sepolia.gateway.tenderly.co https://mainnet.base.org https://base-rpc.publicnode.com https://base.blockpi.network/v1/rpc/public https://base.gateway.tenderly.co https://1rpc.io https://min-api.cryptocompare.com https://api.thegraph.com https://api.coingecko.com https://api.coinbase.com https://api.binance.com https://www.google-analytics.com https://analytics.google.com https://vitals.vercel-insights.com https://*.clarity.ms https://api.twitch.tv https://id.twitch.tv https://fdglhdxswemqcaslsdwt.supabase.co https://saveload.tradingview.com https://dataservices.tradingview.com https://prodata.tradingview.com https://pronews.tradingview.com",
+
+              // workers, manifest
+              "worker-src 'self' blob:",
               "manifest-src 'self'",
             ].join('; '),
           },
-          {
-            key: 'X-Frame-Options',
-            value: 'SAMEORIGIN',
-          },
-          {
-            key: 'X-Content-Type-Options',
-            value: 'nosniff',
-          },
-          {
-            key: 'Referrer-Policy',
-            value: 'strict-origin-when-cross-origin',
-          },
-          {
-            key: 'Permissions-Policy',
-            value: 'camera=(), microphone=(), geolocation=()',
-          },
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
         ],
       },
     ];
   },
-  */
 
   // Multi-tenant and API proxy configuration
   async rewrites() {
@@ -154,18 +152,6 @@ const nextConfig: NextConfig = {
           ],
           destination: '/aceofbase/$1',
         },
-        // Handle localhost:3001 and local.aceofbase.fun for development
-        {
-          source:
-            '/((?!_next/static|_next/image|favicon.ico|aceofbase-favicon.ico|aceofbase.svg|api|canvas-images|fonts|svg).*)',
-          has: [
-            {
-              type: 'host',
-              value: 'localhost:3001',
-            },
-          ],
-          destination: '/aceofbase/$1',
-        },
         {
           source:
             '/((?!_next/static|_next/image|favicon.ico|aceofbase-favicon.ico|aceofbase.svg|api|canvas-images|fonts|svg).*)',
@@ -192,6 +178,10 @@ const nextConfig: NextConfig = {
       ],
       // API proxy rewrites come after (afterFiles)
       afterFiles: [
+        {
+          source: '/api/v1/:path*',
+          destination: 'http://localhost:3002/api/v1/:path*',
+        },
         {
           source: '/submissions/:path*',
           destination: 'http://localhost:3002/submissions/:path*',

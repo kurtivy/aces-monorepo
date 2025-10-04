@@ -3,7 +3,7 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { ListingService, UpdateListingRequest } from '../../services/listing-service';
-import { ProductStorageService } from '../../lib/product-storage-utils';
+import { TokenHolderService } from '../../services/token-holder-service';
 
 import { requireAuth, requireAdmin } from '../../lib/auth-middleware';
 import { errors } from '../../lib/errors';
@@ -29,8 +29,13 @@ const SetListingLiveSchema = z.object({
   isLive: z.boolean(),
 });
 
+const SetListingLaunchDateSchema = z.object({
+  launchDate: z.string().datetime().nullable(),
+});
+
 export async function listingRoutes(fastify: FastifyInstance) {
   const listingService = new ListingService(fastify.prisma);
+  const tokenHolderService = new TokenHolderService();
 
   /**
    * Get live listings (public endpoint)
@@ -66,6 +71,80 @@ export async function listingRoutes(fastify: FastifyInstance) {
         });
       } catch (error) {
         console.error('Error getting live listings:', error);
+        throw error;
+      }
+    },
+  );
+
+  /**
+   * Get listing by symbol (public endpoint)
+   */
+  fastify.get(
+    '/symbol/:symbol',
+    {
+      schema: {
+        params: zodToJsonSchema(
+          z.object({
+            symbol: z.string().min(1).max(50),
+          }),
+        ),
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { symbol } = request.params as { symbol: string };
+
+        const listing = await listingService.getListingBySymbol(symbol);
+
+        if (!listing) {
+          throw errors.notFound('Listing not found');
+        }
+
+        const commentCount =
+          typeof listing.commentCount === 'number' ? listing.commentCount : undefined;
+
+        let holderCount: number | null = null;
+        const tokenAddress = listing.token?.contractAddress;
+
+        if (tokenAddress) {
+          try {
+            // Add a 5-second timeout to prevent the entire request from timing out
+            const holderCountPromise = tokenHolderService.getHolderCount(
+              tokenAddress,
+              listing.token?.chainId ?? undefined,
+            );
+            holderCount = await Promise.race([
+              holderCountPromise,
+              new Promise<number>((_, reject) =>
+                setTimeout(() => reject(new Error('Holder count timeout')), 5000),
+              ),
+            ]);
+          } catch (error) {
+            fastify.log.warn(
+              { error, tokenAddress },
+              '[Listings] Failed to compute holder count for listing symbol route',
+            );
+          }
+        }
+
+        const responseListing = {
+          ...listing,
+          commentCount: commentCount ?? 0,
+          token: listing.token
+            ? {
+                ...listing.token,
+                holderCount: holderCount ?? listing.token.holderCount ?? null,
+                holdersCount: holderCount ?? listing.token.holdersCount ?? null,
+              }
+            : undefined,
+        };
+
+        return reply.send({
+          success: true,
+          data: responseListing,
+        });
+      } catch (error) {
+        console.error('Error getting listing by symbol:', error);
         throw error;
       }
     },
@@ -325,6 +404,46 @@ export async function listingRoutes(fastify: FastifyInstance) {
         });
       } catch (error) {
         console.error('Error setting listing live status:', error);
+        throw error;
+      }
+    },
+  );
+
+  /**
+   * Set listing launch date (admin only)
+   */
+  fastify.put(
+    '/admin/:id/launch-date',
+    {
+      preHandler: [requireAdmin],
+      schema: {
+        params: zodToJsonSchema(
+          z.object({
+            id: z.string(),
+          }),
+        ),
+        body: zodToJsonSchema(SetListingLaunchDateSchema),
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        const { launchDate } = request.body as { launchDate: string | null };
+
+        const parsedLaunchDate = launchDate ? new Date(launchDate) : null;
+        const listing = await listingService.setListingLaunchDate(
+          id,
+          parsedLaunchDate,
+          request.user!.id,
+        );
+
+        return reply.send({
+          success: true,
+          data: listing,
+          message: `Listing launch date ${parsedLaunchDate ? 'set to ' + parsedLaunchDate.toISOString() : 'cleared'} successfully`,
+        });
+      } catch (error) {
+        console.error('Error setting listing launch date:', error);
         throw error;
       }
     },
