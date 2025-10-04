@@ -8,12 +8,20 @@ import {
   Bar,
   ResolutionString,
 } from '../../../public/charting_library/charting_library';
+import { DexApi } from '@/lib/api/dex';
+import type { DatabaseListing } from '@/types/rwa/section.types';
 
 interface TokenMetadata {
   symbol: string;
   name: string;
   currentPriceACES: string;
   volume24h: string;
+}
+
+type DexMeta = DatabaseListing['dex'] | null | undefined;
+
+interface DatafeedOptions {
+  dex?: DexMeta;
 }
 
 export class BondingCurveDatafeed implements IBasicDataFeed {
@@ -30,13 +38,17 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     onResultReadyCallback([]);
   }
   private tokenAddress: string;
+  private dexMeta: DexMeta;
+  private useDex: boolean;
   private realtimeSubscriptions = new Map<string, any>();
   private tokenMetadata: TokenMetadata | null = null;
   private lastHistoricalBarByTimeframe = new Map<string, Bar>();
   private historyCache = new Map<string, Bar[]>();
 
-  constructor(tokenAddress: string) {
+  constructor(tokenAddress: string, options: DatafeedOptions = {}) {
     this.tokenAddress = tokenAddress.toLowerCase();
+    this.dexMeta = options.dex ?? null;
+    this.useDex = Boolean(this.dexMeta?.isDexLive);
   }
 
   /**
@@ -242,65 +254,46 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       }
 
       try {
-        // Fetch only the current candle
-        const apiUrl = this.getApiUrl(
-          `/api/v1/tokens/${subscription.tokenAddress}/live?timeframe=${subscription.timeframe}`,
-        );
-        const response = await fetch(apiUrl);
+        const bar = this.useDex
+          ? await this.fetchLatestDexBar(subscription.timeframe, timeframeMs)
+          : await this.fetchLatestBondingBar(subscription.timeframe, timeframeMs);
 
-        if (!response.ok) {
-          throw new Error(`API request failed: ${response.status}`);
+        if (!bar) {
+          return;
         }
 
-        const data = await response.json();
+        const lastBar = subscription.lastBar as Bar | null;
+        const barChanged =
+          !lastBar ||
+          lastBar.time !== bar.time ||
+          lastBar.close !== bar.close ||
+          lastBar.volume !== bar.volume;
 
-        if (data.success && data.data.candles.length > 0) {
-          const latestCandle = data.data.candles[0];
-          const volumeEntry = data.data.volume?.[0];
-
-          const rawTime = latestCandle.time * 1000;
-          const alignedTime = this.alignTimeToTimeframe(rawTime, timeframeMs);
-
-          const bar: Bar = {
-            time: alignedTime,
-            open: Number(latestCandle.open) || 0,
-            high: Number(latestCandle.high) || 0,
-            low: Number(latestCandle.low) || 0,
-            close: Number(latestCandle.close) || 0,
-            volume: volumeEntry?.value ? Number(volumeEntry.value) : 0,
-          };
-
-          const lastBar = subscription.lastBar as Bar | null;
-          const barChanged =
-            !lastBar ||
-            lastBar.time !== bar.time ||
-            lastBar.close !== bar.close ||
-            lastBar.volume !== bar.volume;
-
-          if (barChanged) {
-            if (lastBar && bar.time - lastBar.time > timeframeMs) {
-              this.emitSyntheticGapBars(subscription, lastBar, bar.time, timeframeMs);
-            }
-
-            const referenceBar = subscription.lastBar as Bar | null;
-            const bridgedBar = this.bridgeBar(referenceBar, bar);
-
-            subscription.lastBar = bridgedBar;
-            subscription.onRealtimeCallback(bridgedBar);
-            this.updateHistoryCache(subscription.timeframe, bridgedBar);
-
-            console.log(`[TradingView] Real-time update:`, {
-              time: new Date(bridgedBar.time).toISOString(),
-              price: bridgedBar.close,
-              volume: bridgedBar.volume,
-            });
-          }
+        if (!barChanged) {
+          return;
         }
+
+        if (lastBar && bar.time - lastBar.time > timeframeMs) {
+          this.emitSyntheticGapBars(subscription, lastBar, bar.time, timeframeMs);
+        }
+
+        const referenceBar = subscription.lastBar as Bar | null;
+        const bridgedBar = this.bridgeBar(referenceBar, bar);
+
+        subscription.lastBar = bridgedBar;
+        subscription.onRealtimeCallback(bridgedBar);
+        this.updateHistoryCache(subscription.timeframe, bridgedBar);
+
+        console.log(`[TradingView] Real-time update:`, {
+          time: new Date(bridgedBar.time).toISOString(),
+          price: bridgedBar.close,
+          volume: bridgedBar.volume,
+          source: this.useDex ? 'dex' : 'bonding',
+        });
       } catch (error) {
         console.error(`[TradingView] Polling error for ${subscriberUID}:`, error);
-        // Continue polling despite errors
       }
-    }, 5000); // Poll every 5 seconds
+    }, 5000);
 
     subscription.interval = interval;
   }
@@ -373,7 +366,7 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     }
 
     // Convert to TradingView format
-    const allBars: Bar[] = [];
+    const bondingBars: Bar[] = [];
 
     const timeframeMs = this.timeframeToMs(timeframe);
 
@@ -394,14 +387,32 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
 
       // Skip invalid bars
       if (bar.open > 0 || bar.high > 0 || bar.low > 0 || bar.close > 0) {
-        allBars.push(bar);
+        bondingBars.push(bar);
       }
     }
 
     // Sort bars in ascending time order (TradingView requirement)
-    allBars.sort((a, b) => a.time - b.time);
+    bondingBars.sort((a, b) => a.time - b.time);
 
-    if (allBars.length === 0) {
+    let combinedBars = bondingBars;
+
+    if (this.useDex) {
+      const dexBars = await this.fetchDexHistoricalBars(resolution, timeframe);
+
+      const cutoff = this.dexMeta?.bondingCutoff ? Date.parse(this.dexMeta.bondingCutoff) : null;
+      const bondingFiltered = cutoff
+        ? bondingBars.filter((bar) => bar.time < cutoff)
+        : bondingBars;
+
+      const merged = [...bondingFiltered, ...dexBars].sort((a, b) => a.time - b.time);
+      const deduped = new Map<number, Bar>();
+      for (const bar of merged) {
+        deduped.set(bar.time, bar);
+      }
+      combinedBars = Array.from(deduped.values()).sort((a, b) => a.time - b.time);
+    }
+
+    if (combinedBars.length === 0) {
       return { bars: [] };
     }
 
@@ -409,12 +420,12 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     const toMs = to * 1000;
     const bufferMs = Math.max(timeframeMs, 60 * 1000);
 
-    const rangeBars = allBars.filter((bar) => {
+    const rangeBars = combinedBars.filter((bar) => {
       return bar.time <= toMs + bufferMs;
     });
 
     if (rangeBars.length === 0) {
-      const earliest = allBars[0];
+      const earliest = combinedBars[0];
 
       console.log(
         `[TradingView] No bars within requested range [${new Date(fromMs).toISOString()} - ${new Date(
@@ -434,6 +445,121 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     );
 
     return { bars: barsWithGapsFilled };
+  }
+
+  private async fetchLatestBondingBar(
+    timeframe: string,
+    timeframeMs: number,
+  ): Promise<Bar | null> {
+    const apiUrl = this.getApiUrl(`/api/v1/tokens/${this.tokenAddress}/live?timeframe=${timeframe}`);
+    const response = await fetch(apiUrl);
+
+    if (!response.ok) {
+      throw new Error(`API request failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const candles = data?.data?.candles;
+
+    if (!data.success || !Array.isArray(candles) || candles.length === 0) {
+      return null;
+    }
+
+    const latestCandle = candles[0];
+    const volumeEntry = data.data.volume?.[0];
+
+    const rawTime = Number(latestCandle.time) * 1000;
+    const alignedTime = this.alignTimeToTimeframe(rawTime, timeframeMs);
+
+    return {
+      time: alignedTime,
+      open: Number(latestCandle.open) || 0,
+      high: Number(latestCandle.high) || 0,
+      low: Number(latestCandle.low) || 0,
+      close: Number(latestCandle.close) || 0,
+      volume: volumeEntry?.value ? Number(volumeEntry.value) : 0,
+    };
+  }
+
+  private async fetchLatestDexBar(
+    timeframe: string,
+    timeframeMs: number,
+  ): Promise<Bar | null> {
+    const lookback = Math.max(5, this.getDexLookbackMinutes(timeframe));
+    const result = await DexApi.getCandles(this.tokenAddress, timeframe, lookback);
+
+    if (!result.success) {
+      return null;
+    }
+
+    const payload = result.data as any;
+    const candles = Array.isArray(payload?.candles)
+      ? payload.candles
+      : Array.isArray(payload?.data?.candles)
+        ? payload.data.candles
+        : [];
+
+    if (candles.length === 0) {
+      return null;
+    }
+
+    const latest = candles[candles.length - 1];
+    const startTime = Number(latest.startTime ?? latest.time ?? Date.now());
+    const alignedTime = this.alignTimeToTimeframe(startTime, timeframeMs);
+
+    return {
+      time: alignedTime,
+      open: Number(latest.open) || 0,
+      high: Number(latest.high) || 0,
+      low: Number(latest.low) || 0,
+      close: Number(latest.close) || 0,
+      volume: Number(latest.volumeToken ?? latest.volumeCounter ?? 0) || 0,
+    };
+  }
+
+  private async fetchDexHistoricalBars(
+    resolution: ResolutionString,
+    timeframe: string,
+  ): Promise<Bar[]> {
+    const lookback = this.getDexLookbackMinutes(timeframe);
+    const result = await DexApi.getCandles(this.tokenAddress, timeframe, lookback);
+
+    if (!result.success) {
+      return [];
+    }
+
+    const payload = result.data as any;
+    const candles = Array.isArray(payload?.candles)
+      ? payload.candles
+      : Array.isArray(payload?.data?.candles)
+        ? payload.data.candles
+        : [];
+
+    const timeframeMs = this.timeframeToMs(this.resolutionToTimeframe(resolution));
+
+    return candles
+      .map((candle: any) => ({
+        time: this.alignTimeToTimeframe(Number(candle.startTime ?? candle.time ?? 0), timeframeMs),
+        open: Number(candle.open) || 0,
+        high: Number(candle.high) || 0,
+        low: Number(candle.low) || 0,
+        close: Number(candle.close) || 0,
+        volume: Number(candle.volumeToken ?? candle.volumeCounter ?? 0) || 0,
+      }))
+      .filter((bar: Bar) => bar.time > 0 && (bar.open || bar.high || bar.low || bar.close))
+      .sort((a: Bar, b: Bar) => a.time - b.time);
+  }
+
+  private getDexLookbackMinutes(timeframe: string): number {
+    const mapping: Record<string, number> = {
+      '5m': 60,
+      '15m': 6 * 60,
+      '1h': 24 * 60,
+      '4h': 4 * 24 * 60,
+      '1d': 14 * 24 * 60,
+    };
+
+    return mapping[timeframe] ?? 24 * 60;
   }
 
   private resolutionToTimeframe(resolution: ResolutionString): string {

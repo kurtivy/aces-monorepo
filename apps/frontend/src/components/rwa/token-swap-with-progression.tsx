@@ -2,6 +2,8 @@
 
 import TokenSwapInterface from './token-swap-interface';
 import FloatingStreamButton from '@/components/twitch/floating-stream-button';
+import type { DatabaseListing } from '@/types/rwa/section.types';
+import { NETWORK_CONFIG } from '@/lib/contracts/addresses';
 
 interface TokenSwapWithProgressionProps {
   tokenSymbol?: string;
@@ -15,6 +17,7 @@ interface TokenSwapWithProgressionProps {
   imageGallery?: string[];
   // Chain ID for contract interaction
   chainId?: number;
+  dexMeta?: DatabaseListing['dex'] | null;
   // Deprecated props (kept for backward compatibility)
   currentAmount?: number;
   targetAmount?: number;
@@ -30,7 +33,8 @@ export default function TokenSwapWithProgression({
   tokenOwner,
   primaryImage,
   imageGallery,
-  chainId = 84532, // Default to Base Sepolia
+  chainId = NETWORK_CONFIG.DEFAULT_CHAIN_ID, // Default to configured network (Base Sepolia in dev)
+  dexMeta = null,
 }: TokenSwapWithProgressionProps) {
   return (
     <div className="h-full relative">
@@ -45,6 +49,7 @@ export default function TokenSwapWithProgression({
         imageGallery={imageGallery}
         showFrame={false}
         chainId={chainId}
+        dexMeta={dexMeta}
       />
 
       {/* Floating Stream Button positioned at bottom of screen */}

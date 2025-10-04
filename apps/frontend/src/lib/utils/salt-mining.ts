@@ -42,6 +42,8 @@ export async function mineVanitySalt(
       userAddress,
       factoryAddress,
       tokenImplementation,
+      tokenName,
+      tokenSymbol,
     );
 
     // Check if the lowercase address ends with the target suffix (in lowercase)
@@ -79,18 +81,23 @@ export async function mineVanitySalt(
 
 /**
  * Predict cloneDeterministic address - must match factory implementation exactly
- * Factory uses: Clones.cloneDeterministic(tokenImplementation, keccak256(abi.encodePacked(salt, msg.sender)))
+ * Mainnet Factory uses: Clones.cloneDeterministic(tokenImplementation, keccak256(abi.encodePacked(name, symbol, salt, msg.sender)))
  */
 export function predictCloneDeterministicAddress(
   salt: string,
   userAddress: string,
   factoryAddress: string,
   tokenImplementation: string,
+  tokenName: string,
+  tokenSymbol: string,
 ): string {
-  // Step 1: Pack salt with user address exactly like factory does
-  // Factory: bytes32 saltPacked = keccak256(abi.encodePacked(salt, msg.sender));
+  // Step 1: Pack salt with name, symbol, and user address exactly like mainnet factory does
+  // Mainnet Factory: bytes32 saltPacked = keccak256(abi.encodePacked(name, symbol, salt, msg.sender));
   const saltPacked = ethers.utils.keccak256(
-    ethers.utils.solidityPack(['string', 'address'], [salt, userAddress]),
+    ethers.utils.solidityPack(
+      ['string', 'string', 'string', 'address'],
+      [tokenName, tokenSymbol, salt, userAddress],
+    ),
   );
 
   // Step 2: Use OpenZeppelin Clones.cloneDeterministic prediction

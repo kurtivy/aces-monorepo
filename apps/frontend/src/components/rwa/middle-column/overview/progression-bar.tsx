@@ -7,17 +7,32 @@ interface ProgressionBarProps {
   chainId?: number; // Optional override when rendering on Base Mainnet
   currentAmount?: number; // Deprecated - will be fetched from contract
   targetAmount?: number; // Deprecated - will be fetched from contract
-  percentage?: number; // Deprecated - will be calculated
+  percentage?: number; // Optional override when caller already fetched contract data
+  isBondedOverride?: boolean;
 }
 
-export default function ProgressionBar({ tokenAddress, chainId }: ProgressionBarProps) {
+export default function ProgressionBar({
+  tokenAddress,
+  chainId,
+  percentage,
+  isBondedOverride,
+}: ProgressionBarProps) {
   // Simple hook - works without wallet, no complex state management
   const { bondingPercentage, isBonded, loading } = useTokenBondingData(tokenAddress, chainId);
 
-  const clampedPercentage = Math.min(Math.max(bondingPercentage, 0), 100);
+  const hasPercentageOverride = typeof percentage === 'number' && Number.isFinite(percentage);
+  const effectivePercentage = hasPercentageOverride ? percentage : bondingPercentage;
+  const clampedPercentage = Math.min(Math.max(effectivePercentage, 0), 100);
+  const effectiveIsBonded =
+    typeof isBondedOverride === 'boolean'
+      ? isBondedOverride
+      : hasPercentageOverride
+        ? clampedPercentage >= 100 || isBonded
+        : isBonded;
+  const showLoading = !hasPercentageOverride && loading;
 
   // Determine bar color based on bonding status
-  const barGradient = isBonded
+  const barGradient = effectiveIsBonded
     ? `linear-gradient(90deg,
         #10b981 0%,
         #34d399 25%,
@@ -51,7 +66,7 @@ export default function ProgressionBar({ tokenAddress, chainId }: ProgressionBar
                 ))}
               </div>
 
-              {loading ? (
+              {showLoading ? (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="text-xs text-[#D0B284]/60">...</div>
                 </div>
@@ -67,7 +82,7 @@ export default function ProgressionBar({ tokenAddress, chainId }: ProgressionBar
                     <div className="absolute inset-0 opacity-60" />
                     <div
                       className={`absolute right-0 top-0 h-full w-3 bg-gradient-to-l ${
-                        isBonded ? 'from-green-300/80' : 'from-[#D7BF75]/80'
+                        effectiveIsBonded ? 'from-green-300/80' : 'from-[#D7BF75]/80'
                       } to-transparent`}
                     />
                     <div className="absolute left-0 right-0 top-0 h-0.5 rounded-full bg-gradient-to-r from-white/20 to-transparent" />
@@ -75,7 +90,7 @@ export default function ProgressionBar({ tokenAddress, chainId }: ProgressionBar
 
                   <div
                     className={`absolute top-1/2 h-4 w-4 -translate-y-1/2 -translate-x-1/2 rounded-full border-2 border-white/30 shadow-lg transition-all duration-1000 ease-out ${
-                      isBonded
+                      effectiveIsBonded
                         ? 'bg-gradient-to-br from-green-400 to-green-600'
                         : 'bg-gradient-to-br from-[#D7BF75] to-[#D0B284]'
                     }`}
@@ -83,7 +98,7 @@ export default function ProgressionBar({ tokenAddress, chainId }: ProgressionBar
                   >
                     <div
                       className={`absolute inset-[2px] rounded-full ${
-                        isBonded
+                        effectiveIsBonded
                           ? 'bg-gradient-to-br from-green-400 to-green-600'
                           : 'bg-gradient-to-br from-[#D7BF75] to-[#D0B284]'
                       }`}

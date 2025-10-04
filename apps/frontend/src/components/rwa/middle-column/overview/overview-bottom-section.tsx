@@ -89,7 +89,12 @@ export default function OverviewBottomSection({
       {showProgression && (
         <div className="space-y-3">
           <div className={showProgressionDesktopOnly ? 'hidden lg:block' : ''}>
-            <ProgressionBar tokenAddress={tokenAddress} chainId={chainId} percentage={percentage} />
+            <ProgressionBar
+              tokenAddress={tokenAddress}
+              chainId={chainId}
+              percentage={percentage}
+              isBondedOverride={isBonded}
+            />
             {loading ? (
               <div className="text-xs font-semibold uppercase tracking-[0.3em] text-center text-[#D7BF75]/40">
                 Loading...

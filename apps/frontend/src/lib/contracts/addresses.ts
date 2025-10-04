@@ -11,14 +11,20 @@ export const CONTRACT_ADDRESSES = {
     FACTORY_PROXY:
       process.env.NEXT_PUBLIC_PROXY_ADDRESS_BASE_SEPOLIA ||
       '0x7e224ae4e6235bF18BBcb79cc2B5d04a7a6F8d1D', // Base Sepolia factory proxy (main interaction point)
+    AERODROME_ROUTER: process.env.NEXT_PUBLIC_AERODROME_ROUTER_BASE_SEPOLIA || '', // Optional: only if a testnet router exists
   },
   // Base Mainnet (Chain ID: 8453) - PRODUCTION
   baseMainnet: {
     ACES_TOKEN:
       process.env.NEXT_PUBLIC_ACES_TOKEN_ADDRESS_BASE_MAINNET ||
       '0x55337650856299363c496065C836B9C6E9dE0367', // Base Mainnet ACES token
-    FACTORY_IMPLEMENTATION: process.env.NEXT_PUBLIC_FACTORY_ADDRESS_BASE_MAINNET || '', // ⚠️ REQUIRED before mainnet launch
-    FACTORY_PROXY: process.env.NEXT_PUBLIC_PROXY_ADDRESS_BASE_MAINNET || '', // ⚠️ REQUIRED before mainnet launch
+    FACTORY_IMPLEMENTATION:
+      process.env.NEXT_PUBLIC_FACTORY_ADDRESS_BASE_MAINNET ||
+      '0x4678ff6Abcec33080364D17858458bDe4D1fEFf5', // Base Mainnet factory implementation
+    FACTORY_PROXY:
+      process.env.NEXT_PUBLIC_PROXY_ADDRESS_BASE_MAINNET ||
+      '0xFAa139E3Fb1fb11271F743324405cB24f9bbD81e', // Base Mainnet factory proxy (main interaction point)
+    AERODROME_ROUTER: process.env.NEXT_PUBLIC_AERODROME_ROUTER_BASE_MAINNET || '', // ⚠️ REQUIRED for DEX trades
   },
 } as const;
 
@@ -29,6 +35,16 @@ export function getContractAddresses(chainId: number = 84532) {
     case 84532: // Base Sepolia (Testnet)
       return CONTRACT_ADDRESSES.baseSepolia;
     case 8453: // Base Mainnet (Production)
+      console.log('🌐 Loading Base Mainnet addresses:', {
+        FACTORY_PROXY: CONTRACT_ADDRESSES.baseMainnet.FACTORY_PROXY,
+        FACTORY_IMPLEMENTATION: CONTRACT_ADDRESSES.baseMainnet.FACTORY_IMPLEMENTATION,
+        ACES_TOKEN: CONTRACT_ADDRESSES.baseMainnet.ACES_TOKEN,
+        envVars: {
+          FACTORY_PROXY: process.env.NEXT_PUBLIC_PROXY_ADDRESS_BASE_MAINNET,
+          FACTORY_IMPL: process.env.NEXT_PUBLIC_FACTORY_ADDRESS_BASE_MAINNET,
+          ACES: process.env.NEXT_PUBLIC_ACES_TOKEN_ADDRESS_BASE_MAINNET,
+        },
+      });
       return CONTRACT_ADDRESSES.baseMainnet;
     default:
       console.warn(
@@ -43,13 +59,16 @@ export function validateContractAddresses(chainId: number): boolean {
   const addresses = getContractAddresses(chainId);
 
   // All networks need ACES_TOKEN and FACTORY_PROXY for trading to work
-  const hasRequiredContracts = Boolean(addresses.ACES_TOKEN && addresses.FACTORY_PROXY);
+  const hasRequiredContracts = Boolean(
+    addresses.ACES_TOKEN && addresses.FACTORY_PROXY && addresses.AERODROME_ROUTER,
+  );
 
   if (!hasRequiredContracts && chainId === 8453) {
     console.error(
-      '❌ Base Mainnet factory contracts not configured! Deploy factory contracts and set:\n' +
+      '❌ Base Mainnet contracts not fully configured! Set:\n' +
         '  - NEXT_PUBLIC_FACTORY_ADDRESS_BASE_MAINNET\n' +
-        '  - NEXT_PUBLIC_PROXY_ADDRESS_BASE_MAINNET',
+        '  - NEXT_PUBLIC_PROXY_ADDRESS_BASE_MAINNET\n' +
+        '  - NEXT_PUBLIC_AERODROME_ROUTER_BASE_MAINNET',
     );
   }
 

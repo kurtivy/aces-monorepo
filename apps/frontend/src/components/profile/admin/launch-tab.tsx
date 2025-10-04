@@ -30,6 +30,8 @@ import {
   DollarSign,
   Link2,
   Unlink,
+  Globe2,
+  ArrowRightLeft,
 } from 'lucide-react';
 
 export function LaunchTab() {
@@ -37,7 +39,14 @@ export function LaunchTab() {
   const { isAuthenticated, user, walletAddress, getAccessToken, refreshUserProfile } = useAuth();
 
   // Chain switching hook to detect current network
-  const { currentChainId, currentChain, isOnSupportedChain } = useChainSwitching();
+  const {
+    currentChainId,
+    currentChain,
+    isOnSupportedChain,
+    switchToChain,
+    isSwitching: isChainSwitchPending,
+    SUPPORTED_CHAINS,
+  } = useChainSwitching();
 
   // Add token to database state
   const [addTokenAddress, setAddTokenAddress] = useState<string>('');
@@ -60,6 +69,13 @@ export function LaunchTab() {
   const [linkTokenAddress, setLinkTokenAddress] = useState<string>('');
   const [linkingLoading, setLinkingLoading] = useState<boolean>(false);
   const [linkingResult, setLinkingResult] = useState<string | null>(null);
+  const [isManualChainSwitching, setIsManualChainSwitching] = useState(false);
+  const [chainSwitchFeedback, setChainSwitchFeedback] = useState<
+    { type: 'success' | 'error' | 'info'; message: string } | null
+  >(null);
+  const isSwitchingChains = isManualChainSwitching || isChainSwitchPending;
+  const isOnBaseMainnet = currentChainId === SUPPORTED_CHAINS.BASE_MAINNET.id;
+  const isOnBaseSepolia = currentChainId === SUPPORTED_CHAINS.BASE_SEPOLIA.id;
 
   // Get Privy wallets and signer
   const { wallets } = useWallets();
@@ -459,6 +475,42 @@ export function LaunchTab() {
       // Better error handling
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       alert(`Token creation failed: ${errorMessage}`);
+    }
+  };
+
+  const handleManualChainSwitch = async (
+    targetChain: (typeof SUPPORTED_CHAINS)[keyof typeof SUPPORTED_CHAINS],
+  ) => {
+    if (!targetChain) return;
+
+    if (currentChainId === targetChain.id) {
+      setChainSwitchFeedback({
+        type: 'info',
+        message: `Already connected to ${targetChain.name}.`,
+      });
+      return;
+    }
+
+    setChainSwitchFeedback(null);
+    setIsManualChainSwitching(true);
+
+    try {
+      await switchToChain(targetChain);
+      setChainSwitchFeedback({
+        type: 'success',
+        message: `Switched to ${targetChain.name}.`,
+      });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message.replace('CHAIN_SWITCH_REQUIRED:', '').trim()
+          : 'Unknown error occurred while switching networks.';
+      setChainSwitchFeedback({
+        type: 'error',
+        message: `Failed to switch: ${errorMessage || 'Please try again.'}`,
+      });
+    } finally {
+      setIsManualChainSwitching(false);
     }
   };
 
@@ -1113,9 +1165,82 @@ export function LaunchTab() {
         </CardContent>
       </Card>
 
-      {/* ACES Balance and Controls */}
       {isAuthenticated && walletAddress && (
         <Card className="bg-black border-purple-400/20">
+          <CardHeader>
+            <CardTitle className="text-white font-libre-caslon flex items-center">
+              <Globe2 className="w-5 h-5 mr-2 text-purple-400" />
+              Network Selector
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+              <div>
+                <p className="text-sm text-[#DCDDCC]">Current chain</p>
+                <p className="text-white font-mono text-sm bg-purple-400/10 p-2 rounded border border-purple-400/20 inline-flex items-center gap-2">
+                  <ArrowRightLeft className="w-4 h-4 text-purple-300" />
+                  {currentChain?.name || 'Unknown network'} ({currentChainId ?? '—'})
+                </p>
+              </div>
+              {!isOnSupportedChain && (
+                <p className="text-sm text-yellow-400">
+                  ⚠️ Unsupported chain detected. Switch to Base Mainnet or Base Sepolia.
+                </p>
+              )}
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <Button
+                onClick={() => handleManualChainSwitch(SUPPORTED_CHAINS.BASE_SEPOLIA)}
+                disabled={isSwitchingChains}
+                variant="outline"
+                className={`justify-center border border-purple-400/30 text-sm font-medium transition-colors ${
+                  isOnBaseSepolia
+                    ? 'bg-purple-500/20 text-purple-200 border-purple-400'
+                    : 'text-[#DCDDCC] hover:bg-purple-500/10'
+                }`}
+              >
+                Base Sepolia (84532)
+              </Button>
+              <Button
+                onClick={() => handleManualChainSwitch(SUPPORTED_CHAINS.BASE_MAINNET)}
+                disabled={isSwitchingChains}
+                variant="outline"
+                className={`justify-center border border-purple-400/30 text-sm font-medium transition-colors ${
+                  isOnBaseMainnet
+                    ? 'bg-purple-500/20 text-purple-200 border-purple-400'
+                    : 'text-[#DCDDCC] hover:bg-purple-500/10'
+                }`}
+              >
+                Base Mainnet (8453)
+              </Button>
+            </div>
+            {(isSwitchingChains || chainSwitchFeedback) && (
+              <div className="rounded border border-purple-400/20 bg-purple-500/5 px-3 py-2 text-sm">
+                {isSwitchingChains && (
+                  <p className="text-[#DCDDCC]">Prompting wallet to confirm chain switch…</p>
+                )}
+                {chainSwitchFeedback && !isSwitchingChains && (
+                  <p
+                    className={
+                      chainSwitchFeedback.type === 'error'
+                        ? 'text-red-400'
+                        : chainSwitchFeedback.type === 'success'
+                          ? 'text-green-400'
+                          : 'text-purple-300'
+                    }
+                  >
+                    {chainSwitchFeedback.message}
+                  </p>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+    {/* ACES Balance and Controls */}
+    {isAuthenticated && walletAddress && (
+      <Card className="bg-black border-purple-400/20">
           <CardHeader>
             <CardTitle className="text-white font-libre-caslon flex items-center">
               <Coins className="w-5 h-5 mr-2 text-purple-400" />

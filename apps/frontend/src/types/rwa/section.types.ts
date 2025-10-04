@@ -111,6 +111,17 @@ export interface DatabaseListing {
     chainId?: number;
     holderCount?: number;
     holdersCount?: number;
+    priceSource?: 'BONDING_CURVE' | 'DEX';
+    poolAddress?: string | null;
+    dexLiveAt?: string | null;
+  };
+  dex?: {
+    poolAddress: string | null;
+    isDexLive: boolean;
+    dexLiveAt: string | null;
+    priceSource: 'BONDING_CURVE' | 'DEX';
+    lastUpdated: string | null;
+    bondingCutoff: string | null;
   };
 }
 

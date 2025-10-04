@@ -5,13 +5,15 @@ import { ethers } from 'ethers';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/lib/auth/auth-context';
-import { Copy, Check } from 'lucide-react';
+import { Copy, Check, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import { createImageErrorHandler, getValidImageSrc } from '@/lib/utils/image-error-handler';
 import ProgressionBar from './middle-column/overview/progression-bar';
 import { usePriceConversion } from '@/hooks/use-price-conversion';
 import { useTokenBondingData } from '@/hooks/contracts/use-token-bonding-data';
+import { DexApi, type DexQuoteResponse } from '@/lib/api/dex';
+import type { DatabaseListing } from '@/types/rwa/section.types';
 
 import { getContractAddresses } from '@/lib/contracts/addresses';
 import { ACES_FACTORY_ABI, ERC20_ABI, LAUNCHPAD_TOKEN_ABI } from '@/lib/contracts/abi';
@@ -22,6 +24,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+
+const DEFAULT_SLIPPAGE_BPS = 100;
+const SUPPORTED_DEX_ASSETS = ['ACES', 'USDC', 'ETH'] as const;
+const DEX_FALLBACK_ADDRESSES = {
+  USDC:
+    process.env.NEXT_PUBLIC_AERODROME_USDC_ADDRESS || '0x833589fCD6eDb6E08f4c7C0b43d5Ee1fCD46a7B3',
+  ETH:
+    process.env.NEXT_PUBLIC_AERODROME_WETH_ADDRESS || '0x4200000000000000000000000000000000000006',
+} as const;
+const AERODROME_ROUTER_ABI = [
+  'function swapExactTokensForTokens(uint256 amountIn, uint256 amountOutMin, address[] calldata path, address to, uint256 deadline) returns (uint256[] memory amounts)',
+  'function swapExactETHForTokens(uint256 amountOutMin, address[] calldata path, address to, uint256 deadline) payable returns (uint256[] memory amounts)',
+];
+const SWAP_DEADLINE_BUFFER_SECONDS = 60 * 10;
 
 interface TokenSwapInterfaceProps {
   tokenSymbol?: string;
@@ -36,6 +52,7 @@ interface TokenSwapInterfaceProps {
   imageGallery?: string[];
   primaryImage?: string;
   chainId?: number; // Base Sepolia = 84532, Base Mainnet = 8453
+  dexMeta?: DatabaseListing['dex'] | null;
   // Deprecated props (kept for backward compatibility)
   currentAmount?: number;
   targetAmount?: number;
@@ -53,8 +70,9 @@ export default function TokenSwapInterface({
   imageGallery,
   primaryImage,
   chainId = 84532, // Default to Base Sepolia
+  dexMeta = null,
 }: TokenSwapInterfaceProps) {
-  const { walletAddress, isAuthenticated } = useAuth();
+  const { walletAddress, isAuthenticated, connectWallet: authConnectWallet } = useAuth();
 
   // Contract state
   const [provider, setProvider] = useState<ethers.providers.Web3Provider | null>(null);
@@ -84,6 +102,21 @@ export default function TokenSwapInterface({
     // Default to Base Sepolia (84532) for development
     return getContractAddresses(currentChainId || 84532);
   };
+
+  const contractAddresses = useMemo(getCurrentContractAddresses, [currentChainId]);
+  const routerAddress = useMemo(
+    () => (contractAddresses as Record<string, string> | undefined)?.AERODROME_ROUTER || '',
+    [contractAddresses],
+  );
+
+  const dexAssetAddresses = useMemo(
+    () => ({
+      ACES: (contractAddresses.ACES_TOKEN || '').toLowerCase(),
+      USDC: (DEX_FALLBACK_ADDRESSES.USDC || '').toLowerCase(),
+      ETH: (DEX_FALLBACK_ADDRESSES.ETH || '').toLowerCase(),
+    }),
+    [contractAddresses],
+  );
 
   // Update chain ID when wallet connects or changes
   useEffect(() => {
@@ -123,6 +156,10 @@ export default function TokenSwapInterface({
   // Price quote state
   const [priceQuote, setPriceQuote] = useState<string>('0');
   const [sellPriceQuote, setSellPriceQuote] = useState<string>('0');
+  const [dexQuote, setDexQuote] = useState<DexQuoteResponse | null>(null);
+  const [dexQuoteLoading, setDexQuoteLoading] = useState(false);
+  const [dexQuoteError, setDexQuoteError] = useState<string | null>(null);
+  const [dexSwapPending, setDexSwapPending] = useState(false);
 
   // UI state
   const [activeTab, setActiveTab] = useState<'buy' | 'sell'>('buy');
@@ -160,6 +197,22 @@ export default function TokenSwapInterface({
     Math.max(normalizedWalletPercentage, normalizedReadOnlyPercentage),
   );
   const combinedIsBonded = tokenBonded || readOnlyIsBonded || combinedBondingPercentage >= 100;
+  const isDexMode =
+    combinedIsBonded &&
+    Boolean(dexMeta?.isDexLive && dexMeta.poolAddress && tokenAddress && routerAddress);
+  const dexTradeUrl = useMemo(() => {
+    if (!isDexMode || !tokenAddress) {
+      return null;
+    }
+
+    const paymentKey = paymentAsset as keyof typeof dexAssetAddresses;
+    const inputAddress = (dexAssetAddresses[paymentKey] || dexAssetAddresses.ACES)?.toLowerCase();
+    if (!inputAddress) {
+      return null;
+    }
+
+    return `https://app.aerodrome.finance/swap?chain=base&inputCurrency=${inputAddress}&outputCurrency=${tokenAddress.toLowerCase()}`;
+  }, [isDexMode, tokenAddress, paymentAsset, dexAssetAddresses]);
   const showBondingLoading = readOnlyBondingLoading && !combinedIsBonded;
   const isAcesPayment = paymentAsset === 'ACES';
   const hasValidAmount = useMemo(() => {
@@ -169,15 +222,22 @@ export default function TokenSwapInterface({
 
   const acesIconSrc = '/aces-logo.png';
 
-  const paymentAssetOptions = useMemo(
-    () => [
+  const paymentAssetOptions = useMemo(() => {
+    const baseOptions = [
       { value: 'ACES', label: 'ACES', icon: acesIconSrc },
       { value: 'USDC', label: 'USDC', icon: '/svg/usdc.svg' },
       { value: 'USDT', label: 'USDT', icon: '/svg/tether.svg' },
       { value: 'ETH', label: 'ETH', icon: '/svg/eth.svg' },
-    ],
-    [acesIconSrc],
-  );
+    ];
+
+    if (!isDexMode) {
+      return baseOptions;
+    }
+
+    return baseOptions.filter((option) =>
+      SUPPORTED_DEX_ASSETS.includes(option.value as (typeof SUPPORTED_DEX_ASSETS)[number]),
+    );
+  }, [acesIconSrc, isDexMode]);
 
   const selectedPaymentOption = paymentAssetOptions.find((option) => option.value === paymentAsset);
 
@@ -218,13 +278,205 @@ export default function TokenSwapInterface({
     return null;
   }, [hasValidAmount, usdEquivalent, activeTab, isAcesPayment, paymentAsset]);
 
-  const disableBuyAction = !hasValidAmount || !!loading || combinedIsBonded;
+  const disableBuyAction = isDexMode
+    ? !hasValidAmount || !dexQuote || dexQuoteLoading || !dexTradeUrl || dexSwapPending
+    : !hasValidAmount || !!loading || combinedIsBonded;
   const disableSellAction = !hasValidAmount || !!loading || combinedIsBonded;
-  const buyButtonLabel = isAcesPayment
-    ? `Buy ${tokenSymbol}`
-    : `Buy ${tokenSymbol} with ${paymentAsset}`;
+  const buyButtonLabel = isDexMode
+    ? dexSwapPending
+      ? 'Swapping...'
+      : 'Swap on Aerodrome'
+    : isAcesPayment
+      ? `Buy ${tokenSymbol}`
+      : `Buy ${tokenSymbol} with ${paymentAsset}`;
+
+  const refreshBalances = useCallback(async () => {
+    if (!acesContract || !tokenAddress || !signer) {
+      return;
+    }
+
+    try {
+      const address = await signer.getAddress();
+
+      const acesBalanceValue = await acesContract.balanceOf(address);
+      const formattedAcesBalance = ethers.utils.formatEther(acesBalanceValue);
+      setAcesBalance(formattedAcesBalance);
+
+      const tokenContract = new ethers.Contract(tokenAddress, LAUNCHPAD_TOKEN_ABI, signer);
+      const tokenBalanceValue = await tokenContract.balanceOf(address);
+      const formattedTokenBalance = ethers.utils.formatEther(tokenBalanceValue);
+      setTokenBalance(formattedTokenBalance);
+
+      if (factoryContract) {
+        try {
+          const tokenInfo = await factoryContract.tokens(tokenAddress);
+          const totalSupply = await tokenContract.totalSupply();
+          const tokensBondedAt = tokenInfo.tokensBondedAt;
+
+          const currentSupply = parseFloat(ethers.utils.formatEther(totalSupply));
+          const maxSupply = parseFloat(ethers.utils.formatEther(tokensBondedAt));
+          const percentage = maxSupply > 0 ? (currentSupply / maxSupply) * 100 : 0;
+
+          setTokenBonded(tokenInfo.tokenBonded);
+          setBondingPercentage(Math.min(percentage, 100));
+        } catch (bondingError) {
+          console.error('Failed to fetch bonding status:', bondingError);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to refresh balances:', error);
+
+      if (
+        error &&
+        typeof error === 'object' &&
+        'message' in error &&
+        typeof error.message === 'string' &&
+        error.message.includes('circuit breaker')
+      ) {
+        console.log('Circuit breaker active - keeping existing balances, will retry later');
+        return;
+      }
+
+      if (
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        (error.code === 'UNSUPPORTED_OPERATION' || error.code === 'CALL_EXCEPTION')
+      ) {
+        console.log('Signer no longer valid, cleaning up...');
+        setProvider(null);
+        setSigner(null);
+        setFactoryContract(null);
+        setAcesContract(null);
+        setAcesBalance('0');
+        setTokenBalance('0');
+        setTokenBonded(false);
+        setBondingPercentage(0);
+      }
+    }
+  }, [acesContract, tokenAddress, signer, factoryContract]);
+
+  const ensureDexAllowance = useCallback(
+    async (tokenAddr: string, amountRaw: string) => {
+      if (!signer || !walletAddress || !routerAddress) {
+        throw new Error('Wallet or router unavailable for approval');
+      }
+
+      const erc20Contract = new ethers.Contract(tokenAddr, ERC20_ABI, signer);
+      const allowance: ethers.BigNumber = await erc20Contract.allowance(
+        walletAddress,
+        routerAddress,
+      );
+      const requiredAmount = ethers.BigNumber.from(amountRaw);
+
+      if (allowance.gte(requiredAmount)) {
+        return;
+      }
+
+      const approveTx = await erc20Contract.approve(routerAddress, requiredAmount);
+      await approveTx.wait();
+    },
+    [signer, walletAddress, routerAddress],
+  );
+
+  const executeDexSwap = useCallback(async () => {
+    if (!isDexMode) {
+      return;
+    }
+
+    if (!signer || !walletAddress) {
+      setTransactionStatus({ type: 'error', message: 'Connect wallet to trade on Aerodrome.' });
+      return;
+    }
+
+    if (!dexQuote) {
+      setTransactionStatus({ type: 'error', message: 'No quote available. Enter an amount.' });
+      return;
+    }
+
+    if (!routerAddress) {
+      setTransactionStatus({
+        type: 'error',
+        message: 'Aerodrome router address not configured. Contact support.',
+      });
+      return;
+    }
+
+    try {
+      setDexSwapPending(true);
+      setTransactionStatus(null);
+
+      const routerContract = new ethers.Contract(routerAddress, AERODROME_ROUTER_ABI, signer);
+      const path = dexQuote.path.map((addr) => ethers.utils.getAddress(addr));
+      const amountIn = ethers.BigNumber.from(dexQuote.inputAmountRaw);
+      const amountOutMin = ethers.BigNumber.from(dexQuote.minOutputRaw);
+      const deadline = Math.floor(Date.now() / 1000) + SWAP_DEADLINE_BUFFER_SECONDS;
+
+      let tx;
+
+      if (paymentAsset === 'ETH') {
+        tx = await routerContract.swapExactETHForTokens(
+          amountOutMin,
+          path,
+          walletAddress,
+          deadline,
+          {
+            value: amountIn,
+          },
+        );
+      } else {
+        const inputTokenAddress = path[0];
+        await ensureDexAllowance(inputTokenAddress, dexQuote.inputAmountRaw);
+
+        tx = await routerContract.swapExactTokensForTokens(
+          amountIn,
+          amountOutMin,
+          path,
+          walletAddress,
+          deadline,
+        );
+      }
+
+      await tx.wait();
+
+      setTransactionStatus({
+        type: 'success',
+        message: 'Swap confirmed on Aerodrome.',
+      });
+
+      setAmount('');
+      setDexQuote(null);
+      await refreshBalances();
+    } catch (error) {
+      console.error('Dex swap failed:', error);
+      let message =
+        error instanceof Error ? error.message : typeof error === 'string' ? error : 'Swap failed.';
+
+      if (typeof message === 'string' && message.toLowerCase().includes('insufficient_output')) {
+        message = 'Swap failed: received amount below minimum (check slippage or liquidity).';
+      }
+
+      setTransactionStatus({ type: 'error', message });
+    } finally {
+      setDexSwapPending(false);
+    }
+  }, [
+    isDexMode,
+    signer,
+    walletAddress,
+    dexQuote,
+    routerAddress,
+    paymentAsset,
+    ensureDexAllowance,
+    refreshBalances,
+  ]);
 
   const handleBuyClick = async () => {
+    if (isDexMode) {
+      await executeDexSwap();
+      return;
+    }
+
     if (disableBuyAction) {
       return;
     }
@@ -268,79 +520,6 @@ export default function TokenSwapInterface({
     const timeout = setTimeout(() => setTransactionStatus(null), 5000);
     return () => clearTimeout(timeout);
   }, [transactionStatus]);
-
-  // Refresh balances and bonding status with circuit breaker error handling
-  const refreshBalances = useCallback(async () => {
-    if (!acesContract || !tokenAddress || !signer) {
-      return;
-    }
-
-    try {
-      // Verify signer is still valid before calling
-      const address = await signer.getAddress();
-
-      const acesBalance = await acesContract.balanceOf(address);
-      const formattedAcesBalance = ethers.utils.formatEther(acesBalance);
-      setAcesBalance(formattedAcesBalance);
-
-      const tokenContract = new ethers.Contract(tokenAddress, LAUNCHPAD_TOKEN_ABI, signer);
-      const tokenBalance = await tokenContract.balanceOf(address);
-      const formattedTokenBalance = ethers.utils.formatEther(tokenBalance);
-      setTokenBalance(formattedTokenBalance);
-
-      // Fetch bonding status from factory
-      if (factoryContract) {
-        try {
-          const tokenInfo = await factoryContract.tokens(tokenAddress);
-          const totalSupply = await tokenContract.totalSupply();
-          const tokensBondedAt = tokenInfo.tokensBondedAt;
-
-          // Calculate bonding percentage
-          const currentSupply = parseFloat(ethers.utils.formatEther(totalSupply));
-          const maxSupply = parseFloat(ethers.utils.formatEther(tokensBondedAt));
-          const percentage = maxSupply > 0 ? (currentSupply / maxSupply) * 100 : 0;
-
-          setTokenBonded(tokenInfo.tokenBonded);
-          setBondingPercentage(Math.min(percentage, 100));
-        } catch (bondingError) {
-          console.error('Failed to fetch bonding status:', bondingError);
-        }
-      }
-    } catch (error: unknown) {
-      console.error('Failed to refresh balances:', error);
-
-      // Check for circuit breaker errors specifically
-      if (
-        error &&
-        typeof error === 'object' &&
-        'message' in error &&
-        typeof error.message === 'string' &&
-        error.message.includes('circuit breaker')
-      ) {
-        console.log('Circuit breaker active - keeping existing balances, will retry later');
-        // Don't clear balances for circuit breaker errors, just log and continue
-        return;
-      }
-
-      // If signer is invalid, clean up state
-      if (
-        error &&
-        typeof error === 'object' &&
-        'code' in error &&
-        (error.code === 'UNSUPPORTED_OPERATION' || error.code === 'CALL_EXCEPTION')
-      ) {
-        console.log('Signer no longer valid, cleaning up...');
-        setProvider(null);
-        setSigner(null);
-        setFactoryContract(null);
-        setAcesContract(null);
-        setAcesBalance('0');
-        setTokenBalance('0');
-        setTokenBonded(false);
-        setBondingPercentage(0);
-      }
-    }
-  }, [acesContract, tokenAddress, signer, factoryContract]);
 
   // Get buy price quote with circuit breaker handling
   const getBuyPriceQuote = useCallback(async () => {
@@ -504,38 +683,77 @@ export default function TokenSwapInterface({
 
   // Update price quotes when amount or active tab changes
   useEffect(() => {
-    calculatePriceQuote();
-  }, [calculatePriceQuote]);
-
-  // Connect wallet using direct MetaMask interaction
-  const connectWallet = async () => {
-    if (typeof window !== 'undefined' && window.ethereum) {
-      try {
-        setLoading('Connecting wallet...');
-        const provider = new ethers.providers.Web3Provider(window.ethereum);
-        await provider.send('eth_requestAccounts', []);
-        const signer = provider.getSigner();
-
-        setProvider(provider);
-        setSigner(signer);
-
-        const addresses = getCurrentContractAddresses();
-        const factory = new ethers.Contract(addresses.FACTORY_PROXY, ACES_FACTORY_ABI, signer);
-        setFactoryContract(factory);
-
-        const acesAddress = addresses.ACES_TOKEN;
-        const aces = new ethers.Contract(acesAddress, ERC20_ABI, signer);
-        setAcesContract(aces);
-
-        setLoading('');
-      } catch (error) {
-        console.error('Failed to connect wallet:', error);
-        setLoading('');
-      }
-    } else {
-      alert('Please install MetaMask!');
+    if (isDexMode) {
+      return;
     }
-  };
+    calculatePriceQuote();
+  }, [calculatePriceQuote, isDexMode]);
+
+  useEffect(() => {
+    if (!isDexMode) {
+      setDexQuote(null);
+      setDexQuoteError(null);
+      return;
+    }
+
+    if (!SUPPORTED_DEX_ASSETS.includes(paymentAsset as (typeof SUPPORTED_DEX_ASSETS)[number])) {
+      setPaymentAsset('ACES');
+      return;
+    }
+
+    if (!tokenAddress || !hasValidAmount) {
+      setDexQuote(null);
+      setDexQuoteError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setDexQuoteLoading(true);
+
+    DexApi.getQuote(tokenAddress, {
+      inputAsset: paymentAsset,
+      amount,
+      slippageBps: DEFAULT_SLIPPAGE_BPS,
+    })
+      .then((result) => {
+        if (cancelled) return;
+        if (result.success && result.data) {
+          setDexQuote(result.data);
+          setDexQuoteError(null);
+        } else {
+          setDexQuote(null);
+          setDexQuoteError(
+            result.error instanceof Error ? result.error.message : 'Failed to fetch quote',
+          );
+        }
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error('Failed to fetch DEX quote:', error);
+        setDexQuote(null);
+        setDexQuoteError(error instanceof Error ? error.message : 'Failed to fetch quote');
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setDexQuoteLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isDexMode, tokenAddress, paymentAsset, amount, hasValidAmount, dexMeta]);
+
+  const handleConnectWallet = useCallback(async () => {
+    try {
+      setLoading('Connecting wallet...');
+      await authConnectWallet();
+    } catch (error) {
+      console.error('Failed to connect wallet via auth context:', error);
+    } finally {
+      setLoading('');
+    }
+  }, [authConnectWallet]);
 
   // Buy tokens
   const buyTokens = async () => {
@@ -770,7 +988,12 @@ export default function TokenSwapInterface({
         {showProgression && (
           <>
             <div className="mb-6">
-              <ProgressionBar tokenAddress={tokenAddress} chainId={chainId} />
+              <ProgressionBar
+                tokenAddress={tokenAddress}
+                chainId={chainId}
+                percentage={combinedBondingPercentage}
+                isBondedOverride={combinedIsBonded}
+              />
               <div
                 className={`mt-2 text-xs font-semibold uppercase tracking-[0.3em] text-center ${
                   combinedIsBonded ? 'text-green-400' : 'text-[#D7BF75]/80'
@@ -858,8 +1081,16 @@ export default function TokenSwapInterface({
               <div>
                 <div className="font-semibold">Bonding Complete!</div>
                 <div className="text-xs mt-1 text-green-300">
-                  This token has reached 100% bonding and is now trading on Aerodrome. Trading on
-                  the bonding curve is disabled.
+                  This token has reached 100% bonding. Trading now routes through Aerodrome
+                  liquidity.
+                  {isDexMode && dexTradeUrl && (
+                    <button
+                      onClick={() => window.open(dexTradeUrl, '_blank', 'noopener,noreferrer')}
+                      className="ml-1 underline text-green-200 hover:text-green-100"
+                    >
+                      Open Aerodrome
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -1012,11 +1243,56 @@ export default function TokenSwapInterface({
           </div>
         </div>
 
+        {isDexMode && (
+          <div className="mb-6 rounded-lg border border-[#D0B284]/20 bg-black/20 px-4 py-3 text-sm text-[#DCDDCC]">
+            {dexQuoteLoading ? (
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin text-[#D0B284]" />
+                <span>Fetching Aerodrome quote…</span>
+              </div>
+            ) : dexQuote ? (
+              <div className="space-y-2">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-xs uppercase tracking-[0.3em] text-[#D0B284]/60">
+                    Expected output
+                  </span>
+                  <span className="font-mono text-lg text-[#D0B284]">
+                    {Number.parseFloat(dexQuote.expectedOutput).toFixed(6)} {tokenSymbol}
+                  </span>
+                </div>
+                <div className="flex items-baseline justify-between text-xs text-[#D0B284]/80">
+                  <span>Minimum received ({dexQuote.slippageBps / 100}% slippage)</span>
+                  <span className="font-mono text-[#DCDDCC]">
+                    {Number.parseFloat(dexQuote.minOutput).toFixed(6)} {tokenSymbol}
+                  </span>
+                </div>
+                {dexQuote.intermediate && dexQuote.intermediate.length > 0 && (
+                  <div className="text-xs text-[#D0B284]/70">
+                    Route: {dexQuote.inputAsset}
+                    {dexQuote.intermediate.map((step) => ` → ${step.symbol}`)} → {tokenSymbol}
+                  </div>
+                )}
+                {dexTradeUrl && (
+                  <div className="text-xs text-[#D0B284]/70">
+                    Route preview opens Aerodrome swap in a new tab.
+                  </div>
+                )}
+              </div>
+            ) : dexQuoteError ? (
+              <div className="text-xs text-red-300">{dexQuoteError}</div>
+            ) : (
+              <div className="text-xs text-[#D0B284]/70">
+                Enter an amount to preview Aerodrome routing.
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Buy/Sell Button */}
         <div className="mb-6 space-y-3">
           {!isAuthenticated || !provider ? (
             <Button
-              onClick={connectWallet}
+              onClick={handleConnectWallet}
               disabled={!!loading}
               className="w-full h-14 bg-[#D0B284]/10 hover:bg-[#D0B284]/20 border border-[#D0B284] text-[#D0B284] font-proxima-nova font-bold text-lg rounded-lg disabled:opacity-50"
             >
@@ -1028,7 +1304,19 @@ export default function TokenSwapInterface({
               disabled={disableBuyAction}
               className="w-full h-14 bg-[#D0B284]/10 hover:bg-[#D0B284]/20 border border-[#D0B284] text-[#D0B284] font-proxima-nova font-bold text-lg rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {combinedIsBonded ? 'Bonding Complete - Trading Disabled' : loading || buyButtonLabel}
+              {isDexMode ? (
+                dexSwapPending ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Swapping...
+                  </span>
+                ) : (
+                  buyButtonLabel
+                )
+              ) : combinedIsBonded ? (
+                'Bonding Complete - Trading Disabled'
+              ) : (
+                loading || buyButtonLabel
+              )}
             </Button>
           ) : (
             <Button
