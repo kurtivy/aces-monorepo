@@ -30,14 +30,6 @@ if (hasGoogleCloudCredentials) {
   // Replace escaped newlines with actual newlines
   privateKey = privateKey.replace(/\\n/g, '\n');
 
-  console.log('[ProductStorage] Initializing Google Cloud Storage for product images...');
-  console.log(`[ProductStorage] - Project ID: ${process.env.GOOGLE_CLOUD_PROJECT_ID}`);
-  console.log(`[ProductStorage] - Client Email: ${process.env.GOOGLE_CLOUD_CLIENT_EMAIL}`);
-  console.log(`[ProductStorage] - Private key length: ${privateKey.length}`);
-  console.log(
-    `[ProductStorage] - Private key format valid: ${privateKey.startsWith('-----BEGIN') && privateKey.endsWith('-----')}`,
-  );
-
   productStorage = new Storage({
     projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
     credentials: {
@@ -48,8 +40,6 @@ if (hasGoogleCloudCredentials) {
 
   productBucketName = process.env.GOOGLE_CLOUD_BUCKET_NAME || 'aces-product-images';
   productBucket = productStorage.bucket(productBucketName);
-
-  console.log(`[ProductStorage] ✅ Initialized successfully for bucket: ${productBucketName}`);
 } else {
   console.warn(
     '[ProductStorage] ⚠️  Google Cloud Storage credentials not configured. Product image access will be disabled.',
@@ -99,7 +89,6 @@ export class ProductStorageService {
 
       // Initialize storage dynamically if not already done
       if (!productStorage) {
-        console.log(`[ProductStorage] Initializing storage for: ${fileName}`);
         let privateKey = process.env.GOOGLE_CLOUD_PRIVATE_KEY || '';
 
         // Clean up private key format
@@ -121,14 +110,11 @@ export class ProductStorageService {
             private_key: privateKey,
           },
         });
-
-        console.log(`[ProductStorage] Storage initialized successfully for: ${fileName}`);
       }
 
       if (!productBucket) {
         productBucketName = process.env.GOOGLE_CLOUD_BUCKET_NAME || 'aces-product-images';
         productBucket = productStorage.bucket(productBucketName);
-        console.log(`[ProductStorage] Bucket initialized: ${productBucketName} for: ${fileName}`);
       }
 
       // Generate signed URL
@@ -138,9 +124,6 @@ export class ProductStorageService {
         expires: Date.now() + expiresInMinutes * 60 * 1000,
       };
 
-      console.log(
-        `[ProductStorage] Generating signed URL for: ${fileName} with ${expiresInMinutes}min expiry`,
-      );
       const [url] = await productBucket.file(fileName).getSignedUrl(options);
 
       // Validate that we got a proper signed URL
@@ -150,9 +133,6 @@ export class ProductStorageService {
         throw new Error('Failed to generate valid signed URL');
       }
 
-      console.log(
-        `[ProductStorage] ✅ Generated valid signed URL for: ${fileName} (length: ${url.length})`,
-      );
       return url;
     } catch (error) {
       console.error(`[ProductStorage] ❌ Error generating signed URL for ${fileName}:`, error);
@@ -192,30 +172,18 @@ export class ProductStorageService {
     imageUrls: string[],
     expiresInMinutes: number = 60,
   ): Promise<string[]> {
-    console.log(`[ProductStorage] Converting ${imageUrls.length} URLs to signed URLs...`);
-    console.log(
-      `[ProductStorage] Current bucket name: ${productBucketName || 'aces-product-images'}`,
-    );
-
     const signedUrls = await Promise.all(
       imageUrls.map(async (url, index) => {
         try {
-          console.log(`[ProductStorage] Processing URL ${index + 1}/${imageUrls.length}: ${url}`);
-
           // Check if this is a GCS URL that needs conversion
           if (url.includes('storage.googleapis.com') && url.includes('aces-product-images')) {
             const fileName = this.extractFileName(url);
-            console.log(`[ProductStorage] Extracted filename: ${fileName}`);
 
             const signedUrl = await this.getSignedProductUrl(fileName, expiresInMinutes);
-            console.log(
-              `[ProductStorage] ✅ Converted to signed URL (length: ${signedUrl.length})`,
-            );
             return signedUrl;
           }
 
           // Return original URL if it's not a GCS product image URL
-          console.log(`[ProductStorage] ℹ️  Keeping original URL (not GCS product image): ${url}`);
           return url;
         } catch (error) {
           console.error(`[ProductStorage] ❌ Failed to convert URL ${url}:`, error);
@@ -231,12 +199,8 @@ export class ProductStorageService {
       }),
     );
 
-    console.log(`[ProductStorage] ✅ Successfully converted ${signedUrls.length} URLs`);
     signedUrls.forEach((url, index) => {
       const isSignedUrl = url.includes('X-Goog-Signature');
-      console.log(
-        `[ProductStorage]   ${index + 1}: ${isSignedUrl ? 'SIGNED' : 'DIRECT'} - ${url.substring(0, 100)}${url.length > 100 ? '...' : ''}`,
-      );
     });
 
     return signedUrls;
@@ -254,7 +218,7 @@ export class ProductStorageService {
       const [exists] = await productBucket.file(fileName).exists();
       return exists;
     } catch (error) {
-      console.error(`Error checking if file exists: ${fileName}`, error);
+      console.error(`[ProductStorage] Error checking if file exists: ${fileName}`, error);
       return false;
     }
   }

@@ -35,16 +35,6 @@ export function getContractAddresses(chainId: number = 84532) {
     case 84532: // Base Sepolia (Testnet)
       return CONTRACT_ADDRESSES.baseSepolia;
     case 8453: // Base Mainnet (Production)
-      console.log('🌐 Loading Base Mainnet addresses:', {
-        FACTORY_PROXY: CONTRACT_ADDRESSES.baseMainnet.FACTORY_PROXY,
-        FACTORY_IMPLEMENTATION: CONTRACT_ADDRESSES.baseMainnet.FACTORY_IMPLEMENTATION,
-        ACES_TOKEN: CONTRACT_ADDRESSES.baseMainnet.ACES_TOKEN,
-        envVars: {
-          FACTORY_PROXY: process.env.NEXT_PUBLIC_PROXY_ADDRESS_BASE_MAINNET,
-          FACTORY_IMPL: process.env.NEXT_PUBLIC_FACTORY_ADDRESS_BASE_MAINNET,
-          ACES: process.env.NEXT_PUBLIC_ACES_TOKEN_ADDRESS_BASE_MAINNET,
-        },
-      });
       return CONTRACT_ADDRESSES.baseMainnet;
     default:
       console.warn(

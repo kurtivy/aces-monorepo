@@ -68,7 +68,6 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       // Remove leading slash from path since apiBaseUrl should include it
       const cleanPath = path.startsWith('/') ? path.slice(1) : path;
       const fullUrl = `${apiBaseUrl}/${cleanPath}`;
-      console.log('[TradingView] Using API URL:', fullUrl);
       return fullUrl;
     }
 
@@ -400,9 +399,7 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       const dexBars = await this.fetchDexHistoricalBars(resolution, timeframe);
 
       const cutoff = this.dexMeta?.bondingCutoff ? Date.parse(this.dexMeta.bondingCutoff) : null;
-      const bondingFiltered = cutoff
-        ? bondingBars.filter((bar) => bar.time < cutoff)
-        : bondingBars;
+      const bondingFiltered = cutoff ? bondingBars.filter((bar) => bar.time < cutoff) : bondingBars;
 
       const merged = [...bondingFiltered, ...dexBars].sort((a, b) => a.time - b.time);
       const deduped = new Map<number, Bar>();
@@ -447,11 +444,10 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     return { bars: barsWithGapsFilled };
   }
 
-  private async fetchLatestBondingBar(
-    timeframe: string,
-    timeframeMs: number,
-  ): Promise<Bar | null> {
-    const apiUrl = this.getApiUrl(`/api/v1/tokens/${this.tokenAddress}/live?timeframe=${timeframe}`);
+  private async fetchLatestBondingBar(timeframe: string, timeframeMs: number): Promise<Bar | null> {
+    const apiUrl = this.getApiUrl(
+      `/api/v1/tokens/${this.tokenAddress}/live?timeframe=${timeframe}`,
+    );
     const response = await fetch(apiUrl);
 
     if (!response.ok) {
@@ -481,10 +477,7 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     };
   }
 
-  private async fetchLatestDexBar(
-    timeframe: string,
-    timeframeMs: number,
-  ): Promise<Bar | null> {
+  private async fetchLatestDexBar(timeframe: string, timeframeMs: number): Promise<Bar | null> {
     const lookback = Math.max(5, this.getDexLookbackMinutes(timeframe));
     const result = await DexApi.getCandles(this.tokenAddress, timeframe, lookback);
 

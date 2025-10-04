@@ -82,8 +82,6 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({
       return;
     }
 
-    console.log('[TradingView] Initializing chart for token:', tokenAddress);
-
     try {
       const datafeed = new BondingCurveDatafeed(tokenAddress, {
         dex: dexMeta ?? undefined,

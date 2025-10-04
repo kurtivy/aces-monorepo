@@ -1287,7 +1287,7 @@ export default function TokenSwapInterface({
                     ? 'BONDED - 100%'
                     : `Bonded ${combinedBondingPercentage.toFixed(1)}% / 100%`}
               </div>
-              {enforceCurveLimit && remainingCurveTokensDisplay !== null && (
+              {enforceCurveLimit && remainingCurveTokensDisplay !== null && !showBondingLoading && (
                 <div className="mt-2 text-xs text-[#D0B284]/80 text-center">
                   {remainingCurveTokensDisplay} {tokenSymbol} left in the bonding curve
                 </div>

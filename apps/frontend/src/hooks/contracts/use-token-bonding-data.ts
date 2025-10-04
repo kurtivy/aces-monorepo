@@ -99,10 +99,6 @@ export function useTokenBondingData(
     try {
       const candidateChainIds = chainId ? [chainId] : DEFAULT_CHAIN_PRIORITY;
 
-      console.log(
-        `🔄 Fetching bonding data for ${tokenAddress} with chain priority ${candidateChainIds.join(', ')}`,
-      );
-
       let lastError: unknown = null;
 
       for (const candidateChainId of candidateChainIds) {
@@ -120,8 +116,6 @@ export function useTokenBondingData(
           continue;
         }
 
-        console.log(`🔄 Attempting fetch for ${tokenAddress} on ${chainName}`);
-
         for (const rpcUrl of rpcUrls) {
           try {
             const provider = new ethers.providers.StaticJsonRpcProvider(rpcUrl, candidateChainId);
@@ -132,13 +126,6 @@ export function useTokenBondingData(
               factoryContract.tokens(tokenAddress),
               tokenContract.totalSupply(),
             ]);
-
-            console.log('✅ Raw contract data:', {
-              tokenData,
-              totalSupply: totalSupply.toString(),
-              rpcUrl,
-              chainId: candidateChainId,
-            });
 
             const curve = tokenData.curve;
             const currentSupply = ethers.utils.formatEther(totalSupply);
@@ -156,17 +143,6 @@ export function useTokenBondingData(
               : tokensBondedAtNum > 0
                 ? Math.min(100, (currentSupplyNum / tokensBondedAtNum) * 100)
                 : 0;
-
-            console.log('✅ Parsed bonding data:', {
-              curve,
-              currentSupply,
-              tokensBondedAt,
-              acesBalance,
-              isBonded,
-              bondingPercentage: bondingPercentage.toFixed(2) + '%',
-              rpcUrl,
-              chainId: candidateChainId,
-            });
 
             setData({
               curve,
@@ -195,7 +171,9 @@ export function useTokenBondingData(
         ...prev,
         loading: false,
         error:
-          lastError instanceof Error ? lastError.message : `Failed to fetch data for ${tokenAddress}`,
+          lastError instanceof Error
+            ? lastError.message
+            : `Failed to fetch data for ${tokenAddress}`,
       }));
     } finally {
       isFetchingRef.current = false;
