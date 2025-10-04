@@ -489,7 +489,6 @@ export const useCanvasInteractions = ({
       repeatedTokens,
       unitSize,
       setSelectedImage,
-      router,
       onAboutClick,
       onTermsClick,
       viewState, // Add viewState for coordinate conversion
