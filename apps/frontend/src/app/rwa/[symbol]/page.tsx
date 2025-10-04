@@ -21,7 +21,12 @@ export default function RWAItemPage() {
   const params = useParams();
   const symbol = params.symbol as string;
 
-  const navigation = useSectionNavigation(sections);
+  const tokenDetailsSectionIndex = sections.findIndex(
+    (section) => section.id === 'token-details' && !section.isModal,
+  );
+  const initialSectionIndex = tokenDetailsSectionIndex >= 0 ? tokenDetailsSectionIndex : 0;
+
+  const navigation = useSectionNavigation(sections, initialSectionIndex);
   const { listing, loading, error, isLive, launchDate, isLaunched } = useListingBySymbol(symbol);
   const { capabilities } = useDeviceCapabilities();
 

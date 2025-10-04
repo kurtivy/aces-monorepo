@@ -29,9 +29,7 @@ export function ShareModal({ onClose, title, symbol }: ShareModalProps) {
     {
       name: 'Twitter',
       action: () =>
-        window.open(
-          `https://twitter.com/intent/tweet?url=${encodedUrl}&text=${encodedMessage}`,
-        ),
+        window.open(`https://twitter.com/intent/tweet?url=${encodedUrl}&text=${encodedMessage}`),
     },
     {
       name: 'Facebook',
@@ -58,7 +56,7 @@ export function ShareModal({ onClose, title, symbol }: ShareModalProps) {
             className="text-[#D0B284] text-xl font-bold font-spray-letters"
             style={{ fontFamily: "'Spray Letters', cursive" }}
           >
-            SHARE WITH YOUR RICH BUDDY
+            TRADE WITH FRIENDS
           </h3>
           <button onClick={onClose} className="text-[#D0B284] hover:text-white transition-colors">
             ✕
@@ -106,36 +104,28 @@ export function DeliveryModal({ onClose }: ModalProps) {
 
         <div className="space-y-4 text-[#DCDDCC]">
           <div>
-            <h4 className="text-[#D0B284] font-bold mb-2">Digital Asset Delivery</h4>
+            <h4 className="text-[#D0B284] font-bold mb-2">Payment & Delivery Process</h4>
             <p className="text-sm leading-relaxed">
-              Upon successful purchase, your RWA tokens will be instantly delivered to your
-              connected wallet. The tokens represent fractional ownership of King Solomon&apos;s
-              Baby sculpture.
+              Funds are held at the payment processor until the buyer confirms receipt of the asset.
             </p>
           </div>
 
           <div>
-            <h4 className="text-[#D0B284] font-bold mb-2">Physical Rights</h4>
+            <h4 className="text-[#D0B284] font-bold mb-2">Seller Responsibilities</h4>
             <p className="text-sm leading-relaxed">
-              Token holders will receive voting rights on the sculpture&apos;s future, including
-              decisions about exhibitions, sales, and potential physical division based on the
-              original MSCHF concept.
+              The seller retains primary responsibility for arranging delivery and completing any
+              required paperwork, but can also access additional services from the Aces.fun team
+              and/or AI Agent for a smoother transaction.
             </p>
           </div>
 
           <div>
-            <h4 className="text-[#D0B284] font-bold mb-2">Timeline</h4>
-            <ul className="text-sm space-y-1">
-              <li>• Token delivery: Immediate upon purchase</li>
-              <li>• Voting period: 30 days after sale completion</li>
-              <li>• Physical delivery: If voted, 60-90 days processing</li>
-            </ul>
-          </div>
-
-          <div className="bg-[#D0B284]/10 border border-[#D0B284]/20 rounded-lg p-4">
-            <p className="text-xs text-[#D0B284]">
-              <strong>Note:</strong> This is a conceptual RWA implementation. Actual delivery terms
-              would be subject to legal agreements and regulatory compliance.
+            <h4 className="text-[#D0B284] font-bold mb-2">Transaction Verification Process</h4>
+            <p className="text-sm leading-relaxed">
+              Both seller and buyer must complete the transaction verification process: seller
+              confirms shipment details with tracking, buyer inspects the asset upon receipt, both
+              parties verify the asset&apos;s condition matches the listing, buyer signs off on
+              successful delivery, and seller confirms the completion.
             </p>
           </div>
         </div>

@@ -2,6 +2,7 @@
 
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 import ConnectWalletNav from '../ui/custom/connect-wallet-nav';
 
 interface RWAHeaderProps {
@@ -12,9 +13,22 @@ interface RWAHeaderProps {
 
 export default function RWAHeader({ className = '', title, onProfileClick }: RWAHeaderProps) {
   const router = useRouter();
+  const [logoLoaded, setLogoLoaded] = useState(false);
+  const [logoError, setLogoError] = useState(false);
 
   const handleLogoClick = () => {
     router.push('/');
+  };
+
+  const handleLogoLoad = () => {
+    setLogoLoaded(true);
+    setLogoError(false);
+  };
+
+  const handleLogoError = () => {
+    setLogoError(true);
+    setLogoLoaded(false);
+    console.error('Failed to load ACES logo');
   };
 
   return (
@@ -28,16 +42,30 @@ export default function RWAHeader({ className = '', title, onProfileClick }: RWA
             {/* Clickable Logo Only */}
             <button
               onClick={handleLogoClick}
-              className="w-8 h-8 sm:w-14 sm:h-14 flex items-center justify-center overflow-hidden hover:opacity-80 transition-opacity duration-200 focus:outline-none flex-shrink-0 cursor-pointer"
+              className="w-8 h-8 sm:w-14 sm:h-14 flex items-center justify-center overflow-hidden hover:opacity-80 transition-opacity duration-200 focus:outline-none flex-shrink-0 cursor-pointer relative"
               aria-label="Navigate to home page"
             >
-              <Image
-                src="/aces-logo.png"
-                alt="ACES Logo"
-                width={56}
-                height={56}
-                className="w-6 h-6 sm:w-12 sm:h-12 object-contain"
-              />
+              {!logoError ? (
+                <Image
+                  src="/aces-logo.png"
+                  alt="ACES Logo"
+                  width={56}
+                  height={56}
+                  className={`w-6 h-6 sm:w-12 sm:h-12 object-contain transition-opacity duration-200 ${
+                    logoLoaded ? 'opacity-100' : 'opacity-0'
+                  }`}
+                  priority
+                  onLoad={handleLogoLoad}
+                  onError={handleLogoError}
+                />
+              ) : (
+                <div className="w-6 h-6 sm:w-12 sm:h-12 bg-[#D0B284]/20 rounded-full"></div>
+              )}
+              {!logoLoaded && !logoError && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-4 h-4 sm:w-6 sm:h-6 border border-[#D0B284]/30 border-t-[#D0B284] rounded-full animate-spin"></div>
+                </div>
+              )}
             </button>
             {/* Non-clickable Text - Hidden on mobile, visible on desktop */}
             <div className="hidden sm:flex items-center min-w-0">

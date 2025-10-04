@@ -331,11 +331,11 @@ export default function BondingCurveChart({ tokenAddress }: BondingCurveChartPro
       g.append('text')
         .attr('x', currentX)
         .attr('y', -5)
-        .attr('text-anchor', 'middle')
+        .attr('text-anchor', 'end')
         .attr('fill', '#D0B284')
         .attr('font-size', '10px')
         .attr('font-weight', 'bold')
-        .text(`${formatTokenAmount(currentTokensSold)} tokens`);
+        .text(`Current ${formatTokenAmount(currentTokensSold)}`);
     }
 
     // Bonding threshold line
@@ -354,12 +354,12 @@ export default function BondingCurveChart({ tokenAddress }: BondingCurveChartPro
 
       g.append('text')
         .attr('x', bondingX)
-        .attr('y', -5)
-        .attr('text-anchor', 'middle')
+        .attr('y', -12)
+        .attr('text-anchor', 'end')
         .attr('fill', '#10b981')
         .attr('font-size', '10px')
         .attr('font-weight', 'bold')
-        .text(`Bonded @ ${formatTokenAmount(tokensBondedAt)} tokens`);
+        .text(`${formatTokenAmount(tokensBondedAt)}`);
     }
 
     // Bonded indicator
@@ -371,8 +371,8 @@ export default function BondingCurveChart({ tokenAddress }: BondingCurveChartPro
         .attr('fill', '#10b981')
         .attr('font-size', '14px')
         .attr('font-weight', 'bold')
-        .attr('opacity', 0.3)
-        .text('🎉 BONDED');
+        .attr('opacity', 0.7)
+        .text('BONDED');
     }
 
     g.append('text')

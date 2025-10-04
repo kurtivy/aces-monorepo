@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useMemo } from 'react';
 import TokenHealthPanel from '@/components/rwa/left-column/token-details/token-health-panel';
 import ProductHeroLocation from '@/components/rwa/left-column/product/product-hero-location';
@@ -11,6 +12,10 @@ import { mockImages } from '../../../constants/rwa';
 import BondingCurveChart from './overview/bonding-curve-chart';
 import { useTokenHolderCount } from '@/hooks/rwa/use-token-holder-count';
 import { NETWORK_CONFIG } from '@/lib/contracts/addresses';
+import {
+  createImageErrorHandler,
+  getValidImageSrc,
+} from '@/lib/utils/image-error-handler';
 
 interface DynamicActiveSectionContentProps extends ActiveSectionContentProps {
   listing?: DatabaseListing | null;
@@ -104,6 +109,33 @@ export function ActiveSectionContent({
 
   const tokenChainId = listing?.token?.chainId ?? NETWORK_CONFIG.DEFAULT_CHAIN_ID;
 
+  const defaultFallbackImage =
+    'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/1-XLO1yYFWUAiJQZnkumrWt6GLOfTUV0.jpeg';
+
+  const primaryFallbackImage = displayImages[0]?.src ?? defaultFallbackImage;
+
+  const buildGalleryImage = (index: number, placeholderText: string) => {
+    const imageData = displayImages[index];
+
+    const alt =
+      imageData?.alt ||
+      (listing?.title
+        ? `${listing.title} - Gallery Image ${index + 1}`
+        : `Asset Gallery Image ${index + 1}`);
+
+    return {
+      src: getValidImageSrc(imageData?.src, primaryFallbackImage, {
+        width: 500,
+        height: 300,
+        text: placeholderText,
+      }),
+      alt,
+    };
+  };
+
+  const biddingGalleryImage = buildGalleryImage(1, 'Bidding Image');
+  const chatGalleryImage = buildGalleryImage(2, 'Community Image');
+
   const content = [
     // Overview
     <div key="overview" className="h-full flex flex-col space-y-2 overflow-hidden">
@@ -146,6 +178,28 @@ export function ActiveSectionContent({
       key="place-bids"
       className="h-full flex flex-col space-y-3 p-4 overflow-hidden bg-[#151c16]"
     >
+      <div className="flex-shrink-0">
+        <div className="relative bg-[#151c16] rounded-lg border border-[#D0B284]/20 overflow-hidden shadow-lg">
+          <Image
+            src={biddingGalleryImage.src}
+            alt={biddingGalleryImage.alt}
+            className="w-full h-auto object-cover"
+            style={{ aspectRatio: '4/3' }}
+            width={500}
+            height={300}
+            onError={createImageErrorHandler({
+              fallbackText: 'Bidding Image',
+              width: 500,
+              height: 300,
+              onError: (src) => {
+                console.error('Bidding image failed to load:', src);
+              },
+              maxRetries: 2,
+            })}
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
+        </div>
+      </div>
       {/* Bidding Details */}
       <div className="flex-1 space-y-2 min-h-0 overflow-y-auto">
         <h4 className="text-[#D0B284] text-xs font-bold mb-2 tracking-wider">BIDDING</h4>
@@ -156,6 +210,28 @@ export function ActiveSectionContent({
 
     // Chats - Compact version
     <div key="chats" className="h-full flex flex-col space-y-3 p-4 overflow-hidden bg-[#151c16]">
+      <div className="flex-shrink-0">
+        <div className="relative bg-[#151c16] rounded-lg border border-[#D0B284]/20 overflow-hidden shadow-lg">
+          <Image
+            src={chatGalleryImage.src}
+            alt={chatGalleryImage.alt}
+            className="w-full h-auto object-cover"
+            style={{ aspectRatio: '4/3' }}
+            width={500}
+            height={300}
+            onError={createImageErrorHandler({
+              fallbackText: 'Community Image',
+              width: 500,
+              height: 300,
+              onError: (src) => {
+                console.error('Community image failed to load:', src);
+              },
+              maxRetries: 2,
+            })}
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
+        </div>
+      </div>
       {/* Community Stats */}
       <div className="flex-1 space-y-2 min-h-0 overflow-y-auto">
         <h4 className="text-[#D0B284] text-xs font-bold mb-2 tracking-wider">COMMUNITY</h4>
