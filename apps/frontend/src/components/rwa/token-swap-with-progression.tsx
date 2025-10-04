@@ -1,7 +1,7 @@
 'use client';
 
 import TokenSwapInterface from './token-swap-interface';
-import FloatingStreamButton from '@/components/twitch/floating-stream-button';
+// import FloatingStreamButton from '@/components/twitch/floating-stream-button';
 import type { DatabaseListing } from '@/types/rwa/section.types';
 import { NETWORK_CONFIG } from '@/lib/contracts/addresses';
 
@@ -27,7 +27,7 @@ interface TokenSwapWithProgressionProps {
 export default function TokenSwapWithProgression({
   tokenSymbol = 'RWA',
   tokenPrice = 0.000268,
-  userBalance = 0.5,
+  userBalance = 0,
   tokenAddress,
   tokenName,
   tokenOwner,
@@ -36,12 +36,14 @@ export default function TokenSwapWithProgression({
   chainId = NETWORK_CONFIG.DEFAULT_CHAIN_ID, // Default to configured network (Base Sepolia in dev)
   dexMeta = null,
 }: TokenSwapWithProgressionProps) {
+  const normalizedUserBalance = Number.isFinite(userBalance) && userBalance > 0 ? userBalance : 0;
+
   return (
     <div className="h-full relative">
       <TokenSwapInterface
         tokenSymbol={tokenSymbol}
         tokenPrice={tokenPrice}
-        userBalance={userBalance}
+        userBalance={normalizedUserBalance}
         tokenAddress={tokenAddress}
         tokenName={tokenName}
         tokenOwner={tokenOwner}
@@ -54,10 +56,10 @@ export default function TokenSwapWithProgression({
 
       {/* Floating Stream Button positioned at bottom of screen */}
       <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50">
-        <FloatingStreamButton
+        {/* <FloatingStreamButton
           channelName={process.env.NEXT_PUBLIC_TWITCH_CHANNEL_NAME || 'testchannel'}
           className="relative"
-        />
+        /> */}
       </div>
     </div>
   );

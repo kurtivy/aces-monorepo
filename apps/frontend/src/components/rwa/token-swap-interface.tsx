@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import type { KeyboardEvent } from 'react';
 import { ethers } from 'ethers';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,13 +26,15 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-const DEFAULT_SLIPPAGE_BPS = 100;
-const SUPPORTED_DEX_ASSETS = ['ACES', 'USDC', 'ETH'] as const;
+const DEFAULT_SLIPPAGE_BPS = 100; // 1% slippage
+const SUPPORTED_DEX_ASSETS = ['ACES', 'USDC', 'USDT', 'ETH'] as const;
 const DEX_FALLBACK_ADDRESSES = {
   USDC:
     process.env.NEXT_PUBLIC_AERODROME_USDC_ADDRESS || '0x833589fCD6eDb6E08f4c7C0b43d5Ee1fCD46a7B3',
   ETH:
     process.env.NEXT_PUBLIC_AERODROME_WETH_ADDRESS || '0x4200000000000000000000000000000000000006',
+  USDT:
+    process.env.NEXT_PUBLIC_AERODROME_USDT_ADDRESS || '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2',
 } as const;
 const AERODROME_ROUTER_ABI = [
   'function swapExactTokensForTokens(uint256 amountIn, uint256 amountOutMin, address[] calldata path, address to, uint256 deadline) returns (uint256[] memory amounts)',
@@ -114,6 +117,7 @@ export default function TokenSwapInterface({
       ACES: (contractAddresses.ACES_TOKEN || '').toLowerCase(),
       USDC: (DEX_FALLBACK_ADDRESSES.USDC || '').toLowerCase(),
       ETH: (DEX_FALLBACK_ADDRESSES.ETH || '').toLowerCase(),
+      USDT: (DEX_FALLBACK_ADDRESSES.USDT || '').toLowerCase(),
     }),
     [contractAddresses],
   );
@@ -152,6 +156,9 @@ export default function TokenSwapInterface({
   // Balance state
   const [acesBalance, setAcesBalance] = useState<string>('0');
   const [tokenBalance, setTokenBalance] = useState<string>('0');
+  const [remainingCurveTokensWei, setRemainingCurveTokensWei] = useState<ethers.BigNumber | null>(
+    null,
+  );
 
   // Price quote state
   const [priceQuote, setPriceQuote] = useState<string>('0');
@@ -186,7 +193,27 @@ export default function TokenSwapInterface({
     bondingPercentage: readOnlyBondingPercentage,
     isBonded: readOnlyIsBonded,
     loading: readOnlyBondingLoading,
+    currentSupply: readOnlyCurrentSupply,
+    tokensBondedAt: readOnlyTokensBondedAt,
   } = useTokenBondingData(tokenAddress, chainId);
+
+  const readOnlyRemainingTokensWei = useMemo(() => {
+    if (!readOnlyTokensBondedAt || !readOnlyCurrentSupply) {
+      return null;
+    }
+
+    try {
+      const maxWei = ethers.utils.parseEther(readOnlyTokensBondedAt);
+      const currentWei = ethers.utils.parseEther(readOnlyCurrentSupply);
+      if (maxWei.lte(currentWei)) {
+        return ethers.constants.Zero;
+      }
+      return maxWei.sub(currentWei);
+    } catch (error) {
+      console.warn('Failed to parse read-only bonding supply values:', error);
+      return null;
+    }
+  }, [readOnlyTokensBondedAt, readOnlyCurrentSupply]);
 
   const normalizedWalletPercentage = Number.isFinite(bondingPercentage) ? bondingPercentage : 0;
   const normalizedReadOnlyPercentage = Number.isFinite(readOnlyBondingPercentage)
@@ -211,23 +238,153 @@ export default function TokenSwapInterface({
       return null;
     }
 
-    return `https://app.aerodrome.finance/swap?chain=base&inputCurrency=${inputAddress}&outputCurrency=${tokenAddress.toLowerCase()}`;
-  }, [isDexMode, tokenAddress, paymentAsset, dexAssetAddresses]);
+    // Get the input amount to pre-fill on Aerodrome
+    const amountParam =
+      amount && parseFloat(amount) > 0 ? `&exactAmount=${amount}&exactField=input` : '';
+
+    // On Sell tab, swap the direction: sell token for ACES
+    // On Buy tab, keep normal: buy token with ACES
+    if (activeTab === 'sell') {
+      return `https://app.aerodrome.finance/swap?chain=base&inputCurrency=${tokenAddress.toLowerCase()}&outputCurrency=${inputAddress}${amountParam}`;
+    }
+
+    return `https://app.aerodrome.finance/swap?chain=base&inputCurrency=${inputAddress}&outputCurrency=${tokenAddress.toLowerCase()}${amountParam}`;
+  }, [isDexMode, tokenAddress, paymentAsset, dexAssetAddresses, activeTab, amount]);
+  const enforceCurveLimit = activeTab === 'buy' && !combinedIsBonded;
+
+  const effectiveRemainingTokensWei = useMemo(() => {
+    if (!enforceCurveLimit) {
+      return null;
+    }
+
+    if (remainingCurveTokensWei) {
+      return remainingCurveTokensWei;
+    }
+    if (readOnlyRemainingTokensWei) {
+      return readOnlyRemainingTokensWei;
+    }
+    return null;
+  }, [enforceCurveLimit, remainingCurveTokensWei, readOnlyRemainingTokensWei]);
+
+  const remainingCurveTokens = useMemo(() => {
+    if (!effectiveRemainingTokensWei) {
+      return null;
+    }
+    return Number.parseFloat(ethers.utils.formatEther(effectiveRemainingTokensWei));
+  }, [effectiveRemainingTokensWei]);
+
   const showBondingLoading = readOnlyBondingLoading && !combinedIsBonded;
   const isAcesPayment = paymentAsset === 'ACES';
-  const hasValidAmount = useMemo(() => {
-    const parsed = Number.parseFloat(amount || '0');
-    return Number.isFinite(parsed) && parsed > 0;
+
+  const handleAmountChange = useCallback(
+    (rawValue: string) => {
+      if (enforceCurveLimit) {
+        const integerPortion = rawValue.split('.')[0] ?? '';
+        const digitsOnly = integerPortion.replace(/\D/g, '');
+
+        if (!digitsOnly) {
+          setAmount('');
+          return;
+        }
+
+        const normalized = digitsOnly.replace(/^0+(?!$)/, '');
+        setAmount(normalized);
+        return;
+      }
+
+      setAmount(rawValue);
+    },
+    [enforceCurveLimit],
+  );
+
+  const handleAmountKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (!enforceCurveLimit) {
+        return;
+      }
+
+      if (
+        event.key === '.' ||
+        event.key === ',' ||
+        event.key === 'Decimal' ||
+        event.key === 'e' ||
+        event.key === 'E' ||
+        event.key === '+' ||
+        event.key === '-'
+      ) {
+        event.preventDefault();
+      }
+    },
+    [enforceCurveLimit],
+  );
+
+  const amountValueWei = useMemo(() => {
+    const trimmed = (amount || '').trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    try {
+      const parsed = ethers.utils.parseEther(trimmed);
+      return parsed.gt(ethers.constants.Zero) ? parsed : null;
+    } catch (error) {
+      return null;
+    }
   }, [amount]);
 
+  const amountExceedsRemaining = useMemo(() => {
+    if (!enforceCurveLimit || !amountValueWei || !effectiveRemainingTokensWei) {
+      return false;
+    }
+    return amountValueWei.gt(effectiveRemainingTokensWei);
+  }, [amountValueWei, effectiveRemainingTokensWei, enforceCurveLimit]);
+
+  const hasValidAmount = Boolean(amountValueWei) && !amountExceedsRemaining;
+
   const acesIconSrc = '/aces-logo.png';
+
+  const remainingCurveTokensDisplay = useMemo(() => {
+    if (remainingCurveTokens === null) {
+      return null;
+    }
+
+    const maximumFractionDigits = remainingCurveTokens >= 1 ? 2 : 6;
+    return remainingCurveTokens.toLocaleString(undefined, { maximumFractionDigits });
+  }, [remainingCurveTokens]);
+
+  const amountError = useMemo(() => {
+    if (!amount) {
+      return null;
+    }
+
+    if (!amountValueWei) {
+      return 'Enter an amount greater than zero.';
+    }
+
+    if (enforceCurveLimit && amountExceedsRemaining) {
+      if (remainingCurveTokensDisplay !== null) {
+        return `Only ${remainingCurveTokensDisplay} ${tokenSymbol} remain in this bonding stage.`;
+      }
+
+      return 'Amount exceeds remaining supply on the bonding curve.';
+    }
+
+    return null;
+  }, [
+    amount,
+    amountValueWei,
+    amountExceedsRemaining,
+    remainingCurveTokensDisplay,
+    enforceCurveLimit,
+    tokenSymbol,
+  ]);
 
   const paymentAssetOptions = useMemo(() => {
     const baseOptions = [
       { value: 'ACES', label: 'ACES', icon: acesIconSrc },
       { value: 'USDC', label: 'USDC', icon: '/svg/usdc.svg' },
       { value: 'USDT', label: 'USDT', icon: '/svg/tether.svg' },
-      { value: 'ETH', label: 'ETH', icon: '/svg/eth.svg' },
+      { value: 'ETH', label: 'wETH', icon: '/svg/eth.svg' },
     ];
 
     if (!isDexMode) {
@@ -239,7 +396,24 @@ export default function TokenSwapInterface({
     );
   }, [acesIconSrc, isDexMode]);
 
-  const selectedPaymentOption = paymentAssetOptions.find((option) => option.value === paymentAsset);
+  const getDisplaySymbol = useCallback((symbol: string) => {
+    if (!symbol) {
+      return symbol;
+    }
+    return symbol.toUpperCase() === 'ETH' ? 'wETH' : symbol;
+  }, []);
+
+  const formatDexAmount = useCallback((rawAmount: string) => {
+    const parsed = Number.parseFloat(rawAmount || '0');
+    if (!Number.isFinite(parsed)) {
+      return '0.00';
+    }
+    return parsed.toFixed(2);
+  }, []);
+
+  const paymentAssetDisplay = useMemo(() => {
+    return getDisplaySymbol(paymentAsset);
+  }, [paymentAsset, getDisplaySymbol]);
 
   const acesQuote = useMemo(() => {
     const rawQuote = activeTab === 'buy' ? priceQuote : sellPriceQuote;
@@ -270,25 +444,32 @@ export default function TokenSwapInterface({
     if (paymentAsset === 'ETH') {
       const ethAmount = usdEquivalent / DEFAULT_ETH_PRICE;
       return {
-        label: 'ETH',
-        value: `${ethAmount.toFixed(6)} ETH`,
+        label: 'wETH',
+        value: `${ethAmount.toFixed(6)} wETH`,
       };
     }
 
     return null;
   }, [hasValidAmount, usdEquivalent, activeTab, isAcesPayment, paymentAsset]);
 
+  const inputUnitLabel = useMemo(() => {
+    const unit = isDexMode && activeTab === 'buy' ? paymentAssetDisplay : tokenSymbol;
+    return `$ ${unit}`;
+  }, [isDexMode, activeTab, paymentAssetDisplay, tokenSymbol]);
+
   const disableBuyAction = isDexMode
     ? !hasValidAmount || !dexQuote || dexQuoteLoading || !dexTradeUrl || dexSwapPending
     : !hasValidAmount || !!loading || combinedIsBonded;
-  const disableSellAction = !hasValidAmount || !!loading || combinedIsBonded;
+  const disableSellAction = isDexMode
+    ? !hasValidAmount || !dexQuote || dexQuoteLoading || !dexTradeUrl || dexSwapPending
+    : !hasValidAmount || !!loading || combinedIsBonded;
   const buyButtonLabel = isDexMode
     ? dexSwapPending
       ? 'Swapping...'
-      : 'Swap on Aerodrome'
+      : 'Swap'
     : isAcesPayment
       ? `Buy ${tokenSymbol}`
-      : `Buy ${tokenSymbol} with ${paymentAsset}`;
+      : `Buy ${tokenSymbol} with ${paymentAssetDisplay}`;
 
   const refreshBalances = useCallback(async () => {
     if (!acesContract || !tokenAddress || !signer) {
@@ -312,6 +493,11 @@ export default function TokenSwapInterface({
           const tokenInfo = await factoryContract.tokens(tokenAddress);
           const totalSupply = await tokenContract.totalSupply();
           const tokensBondedAt = tokenInfo.tokensBondedAt;
+
+          const remainingWei = tokensBondedAt.gt(totalSupply)
+            ? tokensBondedAt.sub(totalSupply)
+            : ethers.constants.Zero;
+          setRemainingCurveTokensWei(remainingWei);
 
           const currentSupply = parseFloat(ethers.utils.formatEther(totalSupply));
           const maxSupply = parseFloat(ethers.utils.formatEther(tokensBondedAt));
@@ -352,6 +538,7 @@ export default function TokenSwapInterface({
         setTokenBalance('0');
         setTokenBonded(false);
         setBondingPercentage(0);
+        setRemainingCurveTokensWei(null);
       }
     }
   }, [acesContract, tokenAddress, signer, factoryContract]);
@@ -369,12 +556,31 @@ export default function TokenSwapInterface({
       );
       const requiredAmount = ethers.BigNumber.from(amountRaw);
 
+      console.log('Checking allowance:', {
+        token: tokenAddr,
+        router: routerAddress,
+        currentAllowance: ethers.utils.formatEther(allowance),
+        requiredAmount: ethers.utils.formatEther(requiredAmount),
+      });
+
       if (allowance.gte(requiredAmount)) {
-        return;
+        console.log('Sufficient allowance already exists');
+        return false; // No approval needed
       }
 
-      const approveTx = await erc20Contract.approve(routerAddress, requiredAmount);
-      await approveTx.wait();
+      console.log('Requesting approval from user...');
+      setLoading('Awaiting approval...');
+
+      try {
+        const approveTx = await erc20Contract.approve(routerAddress, requiredAmount);
+        setLoading('Confirming approval...');
+        await approveTx.wait();
+        console.log('Approval confirmed');
+        return true; // Approval was granted
+      } catch (error) {
+        console.error('Approval failed:', error);
+        throw new Error('Token approval was rejected or failed');
+      }
     },
     [signer, walletAddress, routerAddress],
   );
@@ -405,6 +611,12 @@ export default function TokenSwapInterface({
     try {
       setDexSwapPending(true);
       setTransactionStatus(null);
+      setLoading('');
+
+      console.log('=== DEX SWAP DEBUG ===');
+      console.log('Active tab:', activeTab);
+      console.log('Payment asset:', paymentAsset);
+      console.log('Quote:', dexQuote);
 
       const routerContract = new ethers.Contract(routerAddress, AERODROME_ROUTER_ABI, signer);
       const path = dexQuote.path.map((addr) => ethers.utils.getAddress(addr));
@@ -412,9 +624,37 @@ export default function TokenSwapInterface({
       const amountOutMin = ethers.BigNumber.from(dexQuote.minOutputRaw);
       const deadline = Math.floor(Date.now() / 1000) + SWAP_DEADLINE_BUFFER_SECONDS;
 
+      // Verify user has sufficient balance
+      if (paymentAsset !== 'ETH' || activeTab === 'sell') {
+        const inputTokenAddress = path[0];
+        const erc20Contract = new ethers.Contract(inputTokenAddress, ERC20_ABI, signer);
+        const userBalance = await erc20Contract.balanceOf(walletAddress);
+
+        console.log('Balance check:', {
+          token: inputTokenAddress,
+          userBalance: ethers.utils.formatEther(userBalance),
+          required: ethers.utils.formatEther(amountIn),
+        });
+
+        if (userBalance.lt(amountIn)) {
+          throw new Error(
+            `Insufficient balance. You need ${ethers.utils.formatEther(amountIn)} but only have ${ethers.utils.formatEther(userBalance)}`,
+          );
+        }
+      }
+
+      console.log('Swap parameters:', {
+        path,
+        amountIn: ethers.utils.formatEther(amountIn),
+        amountOutMin: ethers.utils.formatEther(amountOutMin),
+        deadline: new Date(deadline * 1000).toISOString(),
+      });
+
       let tx;
 
-      if (paymentAsset === 'ETH') {
+      if (paymentAsset === 'ETH' && activeTab === 'buy') {
+        console.log('Executing ETH -> Token swap');
+        setLoading('Confirming swap...');
         tx = await routerContract.swapExactETHForTokens(
           amountOutMin,
           path,
@@ -425,9 +665,21 @@ export default function TokenSwapInterface({
           },
         );
       } else {
+        // For token swaps, need approval first
         const inputTokenAddress = path[0];
-        await ensureDexAllowance(inputTokenAddress, dexQuote.inputAmountRaw);
+        console.log('Checking/requesting approval for token:', inputTokenAddress);
 
+        const approvalGranted = await ensureDexAllowance(
+          inputTokenAddress,
+          dexQuote.inputAmountRaw,
+        );
+
+        if (approvalGranted) {
+          console.log('Approval granted, proceeding with swap');
+        }
+
+        setLoading('Confirming swap...');
+        console.log('Executing Token -> Token swap');
         tx = await routerContract.swapExactTokensForTokens(
           amountIn,
           amountOutMin,
@@ -437,7 +689,10 @@ export default function TokenSwapInterface({
         );
       }
 
+      console.log('Swap transaction sent:', tx.hash);
+      setLoading('Waiting for confirmation...');
       await tx.wait();
+      console.log('Swap confirmed');
 
       setTransactionStatus({
         type: 'success',
@@ -446,17 +701,33 @@ export default function TokenSwapInterface({
 
       setAmount('');
       setDexQuote(null);
+      setLoading('Refreshing balances...');
       await refreshBalances();
+      setLoading('');
     } catch (error) {
       console.error('Dex swap failed:', error);
       let message =
         error instanceof Error ? error.message : typeof error === 'string' ? error : 'Swap failed.';
 
-      if (typeof message === 'string' && message.toLowerCase().includes('insufficient_output')) {
-        message = 'Swap failed: received amount below minimum (check slippage or liquidity).';
+      // Better error messages for common failures
+      if (typeof message === 'string') {
+        if (message.toLowerCase().includes('insufficient_output')) {
+          message = 'Swap failed: received amount below minimum (check slippage or liquidity).';
+        } else if (
+          message.toLowerCase().includes('user rejected') ||
+          message.toLowerCase().includes('user denied')
+        ) {
+          message = 'Transaction was rejected by user.';
+        } else if (message.toLowerCase().includes('insufficient funds')) {
+          message = 'Insufficient balance to complete this swap.';
+        } else if (message.toLowerCase().includes('execution reverted')) {
+          message =
+            'Swap transaction failed. This may be due to insufficient allowance, low liquidity, or price impact. Try refreshing and swapping again.';
+        }
       }
 
       setTransactionStatus({ type: 'error', message });
+      setLoading('');
     } finally {
       setDexSwapPending(false);
     }
@@ -467,6 +738,7 @@ export default function TokenSwapInterface({
     dexQuote,
     routerAddress,
     paymentAsset,
+    activeTab,
     ensureDexAllowance,
     refreshBalances,
   ]);
@@ -523,14 +795,13 @@ export default function TokenSwapInterface({
 
   // Get buy price quote with circuit breaker handling
   const getBuyPriceQuote = useCallback(async () => {
-    if (!factoryContract || !tokenAddress || !amount) {
+    if (!factoryContract || !tokenAddress || !amountValueWei) {
       setPriceQuote('0');
       return;
     }
 
     try {
-      const amountWei = ethers.utils.parseEther(amount);
-      const buyPrice = await factoryContract.getBuyPriceAfterFee(tokenAddress, amountWei);
+      const buyPrice = await factoryContract.getBuyPriceAfterFee(tokenAddress, amountValueWei);
       setPriceQuote(ethers.utils.formatEther(buyPrice));
     } catch (error) {
       console.error('Failed to get buy price quote:', error);
@@ -549,18 +820,17 @@ export default function TokenSwapInterface({
 
       setPriceQuote('0');
     }
-  }, [factoryContract, tokenAddress, amount]);
+  }, [factoryContract, tokenAddress, amountValueWei]);
 
   // Get sell price quote with circuit breaker handling
   const getSellPriceQuote = useCallback(async () => {
-    if (!factoryContract || !tokenAddress || !amount) {
+    if (!factoryContract || !tokenAddress || !amountValueWei) {
       setSellPriceQuote('0');
       return;
     }
 
     try {
-      const amountWei = ethers.utils.parseEther(amount);
-      const sellPrice = await factoryContract.getSellPriceAfterFee(tokenAddress, amountWei);
+      const sellPrice = await factoryContract.getSellPriceAfterFee(tokenAddress, amountValueWei);
       setSellPriceQuote(ethers.utils.formatEther(sellPrice));
     } catch (error) {
       console.error('Failed to get sell price quote:', error);
@@ -579,7 +849,7 @@ export default function TokenSwapInterface({
 
       setSellPriceQuote('0');
     }
-  }, [factoryContract, tokenAddress, amount]);
+  }, [factoryContract, tokenAddress, amountValueWei]);
 
   // Debounced price calculation
   const calculatePriceQuote = useCallback(() => {
@@ -710,8 +980,12 @@ export default function TokenSwapInterface({
     let cancelled = false;
     setDexQuoteLoading(true);
 
+    // On Sell tab, we're selling the token for ACES
+    // On Buy tab, we're buying the token with ACES
+    const inputAsset = activeTab === 'sell' ? 'TOKEN' : paymentAsset;
+
     DexApi.getQuote(tokenAddress, {
-      inputAsset: paymentAsset,
+      inputAsset,
       amount,
       slippageBps: DEFAULT_SLIPPAGE_BPS,
     })
@@ -742,7 +1016,7 @@ export default function TokenSwapInterface({
     return () => {
       cancelled = true;
     };
-  }, [isDexMode, tokenAddress, paymentAsset, amount, hasValidAmount, dexMeta]);
+  }, [isDexMode, tokenAddress, paymentAsset, amount, hasValidAmount, dexMeta, activeTab]);
 
   const handleConnectWallet = useCallback(async () => {
     try {
@@ -757,13 +1031,21 @@ export default function TokenSwapInterface({
 
   // Buy tokens
   const buyTokens = async () => {
-    if (!factoryContract || !acesContract || !tokenAddress || !amount || !signer) return;
+    if (!factoryContract || !acesContract || !tokenAddress || !amountValueWei || !signer) return;
 
     setTransactionStatus(null);
 
     try {
-      const amountWei = ethers.utils.parseEther(amount);
+      const amountWei = amountValueWei;
       const priceWei = ethers.utils.parseEther(priceQuote);
+
+      if (effectiveRemainingTokensWei && amountWei.gt(effectiveRemainingTokensWei)) {
+        setTransactionStatus({
+          type: 'error',
+          message: 'Amount exceeds remaining supply on the bonding curve.',
+        });
+        return;
+      }
 
       console.log('=== BUY TOKENS DEBUG ===');
       console.log('Token to buy:', tokenAddress);
@@ -819,12 +1101,12 @@ export default function TokenSwapInterface({
 
   // Sell tokens
   const sellTokens = async () => {
-    if (!factoryContract || !tokenAddress || !amount || !signer) return;
+    if (!factoryContract || !tokenAddress || !amountValueWei || !signer) return;
 
     setTransactionStatus(null);
 
     try {
-      const amountWei = ethers.utils.parseEther(amount);
+      const amountWei = amountValueWei;
 
       console.log('=== SELL TOKENS DEBUG ===');
       console.log('Token to sell:', tokenAddress);
@@ -996,15 +1278,20 @@ export default function TokenSwapInterface({
               />
               <div
                 className={`mt-2 text-xs font-semibold uppercase tracking-[0.3em] text-center ${
-                  combinedIsBonded ? 'text-green-400' : 'text-[#D7BF75]/80'
+                  combinedIsBonded ? 'text-[#D7BF75]/80' : 'text-[#D7BF75]/80'
                 }`}
               >
                 {showBondingLoading
                   ? 'Loading bonding data...'
                   : combinedIsBonded
-                    ? '✅ BONDED - 100%'
+                    ? 'BONDED - 100%'
                     : `Bonded ${combinedBondingPercentage.toFixed(1)}% / 100%`}
               </div>
+              {enforceCurveLimit && remainingCurveTokensDisplay !== null && (
+                <div className="mt-2 text-xs text-[#D0B284]/80 text-center">
+                  {remainingCurveTokensDisplay} {tokenSymbol} left in the bonding curve
+                </div>
+              )}
             </div>
 
             <div className="relative -mx-6 mb-6">
@@ -1074,7 +1361,7 @@ export default function TokenSwapInterface({
         )}
 
         {/* Bonding Complete Banner */}
-        {combinedIsBonded && (
+        {/* {combinedIsBonded && (
           <div className="mb-4 p-3 bg-green-900/50 border border-green-600/50 rounded-lg">
             <div className="flex items-center text-green-200 text-sm">
               <span className="mr-2">✅</span>
@@ -1095,18 +1382,16 @@ export default function TokenSwapInterface({
               </div>
             </div>
           </div>
-        )}
+        )} */}
 
         {/* Bonding Progress Warning (when close to 100%) */}
         {!combinedIsBonded && combinedBondingPercentage >= 90 && (
           <div className="mb-4 p-3 bg-yellow-900/50 border border-yellow-600/50 rounded-lg">
             <div className="flex items-center text-yellow-200 text-sm">
-              <span className="mr-2">⚡</span>
               <div>
                 <div className="font-semibold">Bonding Almost Complete</div>
                 <div className="text-xs mt-1 text-yellow-300">
-                  {combinedBondingPercentage.toFixed(1)}% bonded. Once 100% is reached, this token
-                  will migrate to Aerodrome LP.
+                  Once 100% is reached, this token will migrate to LP.
                 </div>
               </div>
             </div>
@@ -1234,59 +1519,30 @@ export default function TokenSwapInterface({
               type="number"
               placeholder="0"
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="h-16 text-2xl font-bold bg-[#1a2318] border-[#D0B284]/20 text-[#D0B284] placeholder:text-[#D0B284]/50 pr-20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              onChange={(e) => handleAmountChange(e.target.value)}
+              onKeyDown={handleAmountKeyDown}
+              step={enforceCurveLimit ? 1 : 'any'}
+              inputMode={enforceCurveLimit ? 'numeric' : 'decimal'}
+              aria-invalid={Boolean(amountError)}
+              className={cn(
+                'h-16 border text-2xl font-bold bg-[#1a2318] text-[#D0B284] placeholder:text-[#D0B284]/50 pr-20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
+                amountError
+                  ? 'border-red-500/60 focus-visible:ring-red-500/40'
+                  : 'border-[#D0B284]/20 focus-visible:ring-[#D0B284]/40',
+              )}
             />
             <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
-              <span className="text-[#D0B284] font-semibold">$ {tokenSymbol}</span>
+              <span className="text-[#D0B284] font-semibold">{inputUnitLabel}</span>
             </div>
           </div>
+          {amountError ? (
+            <p className="mt-2 text-xs text-red-300">{amountError}</p>
+          ) : enforceCurveLimit ? (
+            <p className="mt-2 text-xs text-[#D0B284]/70">
+              Bonding curve purchases require whole-token amounts.
+            </p>
+          ) : null}
         </div>
-
-        {isDexMode && (
-          <div className="mb-6 rounded-lg border border-[#D0B284]/20 bg-black/20 px-4 py-3 text-sm text-[#DCDDCC]">
-            {dexQuoteLoading ? (
-              <div className="flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin text-[#D0B284]" />
-                <span>Fetching Aerodrome quote…</span>
-              </div>
-            ) : dexQuote ? (
-              <div className="space-y-2">
-                <div className="flex items-baseline justify-between">
-                  <span className="text-xs uppercase tracking-[0.3em] text-[#D0B284]/60">
-                    Expected output
-                  </span>
-                  <span className="font-mono text-lg text-[#D0B284]">
-                    {Number.parseFloat(dexQuote.expectedOutput).toFixed(6)} {tokenSymbol}
-                  </span>
-                </div>
-                <div className="flex items-baseline justify-between text-xs text-[#D0B284]/80">
-                  <span>Minimum received ({dexQuote.slippageBps / 100}% slippage)</span>
-                  <span className="font-mono text-[#DCDDCC]">
-                    {Number.parseFloat(dexQuote.minOutput).toFixed(6)} {tokenSymbol}
-                  </span>
-                </div>
-                {dexQuote.intermediate && dexQuote.intermediate.length > 0 && (
-                  <div className="text-xs text-[#D0B284]/70">
-                    Route: {dexQuote.inputAsset}
-                    {dexQuote.intermediate.map((step) => ` → ${step.symbol}`)} → {tokenSymbol}
-                  </div>
-                )}
-                {dexTradeUrl && (
-                  <div className="text-xs text-[#D0B284]/70">
-                    Route preview opens Aerodrome swap in a new tab.
-                  </div>
-                )}
-              </div>
-            ) : dexQuoteError ? (
-              <div className="text-xs text-red-300">{dexQuoteError}</div>
-            ) : (
-              <div className="text-xs text-[#D0B284]/70">
-                Enter an amount to preview Aerodrome routing.
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Buy/Sell Button */}
         <div className="mb-6 space-y-3">
@@ -1305,12 +1561,17 @@ export default function TokenSwapInterface({
               className="w-full h-14 bg-[#D0B284]/10 hover:bg-[#D0B284]/20 border border-[#D0B284] text-[#D0B284] font-proxima-nova font-bold text-lg rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isDexMode ? (
-                dexSwapPending ? (
+                dexSwapPending || loading ? (
                   <span className="flex items-center justify-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" /> Swapping...
+                    <Loader2 className="h-4 w-4 animate-spin" /> {loading || 'Swapping...'}
                   </span>
                 ) : (
-                  buyButtonLabel
+                  <div className="flex flex-col items-center gap-0.5">
+                    <span className="text-lg font-bold">{buyButtonLabel}</span>
+                    <span className="text-[10px] opacity-60 uppercase tracking-wider">
+                      Powered by Aerodrome
+                    </span>
+                  </div>
                 )
               ) : combinedIsBonded ? (
                 'Bonding Complete - Trading Disabled'
@@ -1320,13 +1581,28 @@ export default function TokenSwapInterface({
             </Button>
           ) : (
             <Button
-              onClick={sellTokens}
+              onClick={isDexMode ? handleBuyClick : sellTokens}
               disabled={disableSellAction}
               className="w-full h-14 bg-[#8B4513] hover:bg-[#8B4513]/90 text-white font-proxima-nova font-bold text-lg rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {combinedIsBonded
-                ? 'Bonding Complete - Trading Disabled'
-                : loading || `Sell ${tokenSymbol}`}
+              {isDexMode ? (
+                dexSwapPending || loading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" /> {loading || 'Swapping...'}
+                  </span>
+                ) : (
+                  <div className="flex flex-col items-center gap-0.5">
+                    <span className="text-lg font-bold">Swap</span>
+                    <span className="text-[10px] opacity-60 uppercase tracking-wider">
+                      Powered by Aerodrome
+                    </span>
+                  </div>
+                )
+              ) : combinedIsBonded ? (
+                'Bonding Complete - Trading Disabled'
+              ) : (
+                loading || `Sell ${tokenSymbol}`
+              )}
             </Button>
           )}
 
@@ -1356,42 +1632,105 @@ export default function TokenSwapInterface({
         <div className="min-h-[140px]">
           {hasValidAmount && (
             <div className="p-3 bg-[#1a2318]/50 rounded-lg border border-[#D0B284]/20 space-y-3">
-              <div className="text-center border-b border-[#D0B284]/20 pb-2">
-                <div className="text-sm font-bold text-[#D0B284]">
-                  {activeTab === 'buy'
-                    ? `Quote ≈ ${acesQuote.toFixed(4)} $ACES`
-                    : `Receive ≈ ${sellPriceQuote} $ACES`}
-                </div>
+              {isDexMode ? (
+                // DEX Mode Quote
+                dexQuoteLoading ? (
+                  <div className="flex items-center justify-center gap-2 py-2">
+                    <Loader2 className="h-4 w-4 animate-spin text-[#D0B284]" />
+                    <span className="text-sm text-[#D0B284]">Fetching quote…</span>
+                  </div>
+                ) : dexQuote ? (
+                  <>
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-xs uppercase tracking-[0.3em] text-[#D0B284]/60">
+                        Expected output
+                      </span>
+                      <div className="text-right">
+                        <div className="font-mono text-lg font-bold text-[#D0B284]">
+                          {formatDexAmount(dexQuote.expectedOutput)}
+                        </div>
+                        <div className="text-xs font-semibold tracking-widest text-[#D0B284]/80">
+                          {activeTab === 'sell' ? paymentAssetDisplay : tokenSymbol}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-xs border-t border-[#D0B284]/10 pt-2">
+                      <div className="text-[#D0B284]/70">
+                        Minimum received ({dexQuote.slippageBps / 100}% slippage)
+                      </div>
+                      <div className="font-mono text-[#D0B284] mt-1">
+                        {formatDexAmount(dexQuote.minOutput)}{' '}
+                        <span className="text-[11px] font-semibold tracking-widest text-[#D0B284]/80">
+                          {activeTab === 'sell' ? paymentAssetDisplay : tokenSymbol}
+                        </span>
+                      </div>
+                    </div>
+                    {usdConversion && (
+                      <div className="text-center text-xs text-[#D0B284]/70 border-t border-[#D0B284]/10 pt-2">
+                        {Number.parseFloat(usdConversion.usdValue) < 0.01
+                          ? '≈ <$0.01 USD'
+                          : `≈ $${usdConversion.usdValue} USD`}
+                        {usdConversion.isStale && (
+                          <span className="ml-1 text-[#D0B284]/50">(cached)</span>
+                        )}
+                      </div>
+                    )}
+                    {dexQuote.intermediate && dexQuote.intermediate.length > 0 && (
+                      <div className="text-xs text-[#D0B284]/70 text-center border-t border-[#D0B284]/10 pt-2">
+                        Route: {getDisplaySymbol(dexQuote.inputAsset)}
+                        {dexQuote.intermediate.map((step) => ` → ${getDisplaySymbol(step.symbol)}`)} →{' '}
+                        {activeTab === 'sell' ? paymentAssetDisplay : tokenSymbol}
+                      </div>
+                    )}
+                  </>
+                ) : dexQuoteError ? (
+                  <div className="text-center text-xs text-red-300 py-2">{dexQuoteError}</div>
+                ) : (
+                  <div className="text-center text-xs text-[#D0B284]/70 py-2">
+                    Enter an amount to preview routing.
+                  </div>
+                )
+              ) : (
+                // Bonding Curve Mode Quote
+                <>
+                  <div className="text-center border-b border-[#D0B284]/20 pb-2">
+                    <div className="text-sm font-bold text-[#D0B284]">
+                      {activeTab === 'buy'
+                        ? `Quote ≈ ${acesQuote.toFixed(4)} $ACES`
+                        : `Receive ≈ ${sellPriceQuote} $ACES`}
+                    </div>
 
-                {usdConversion && (
-                  <div className="text-xs text-[#D0B284]/70 mt-1">
-                    {Number.parseFloat(usdConversion.usdValue) < 0.01
-                      ? '≈ <$0.01 USD'
-                      : `≈ $${usdConversion.usdValue} USD`}
-                    {usdConversion.isStale && (
-                      <span className="ml-1 text-[#D0B284]/50">(cached)</span>
+                    {usdConversion && (
+                      <div className="text-xs text-[#D0B284]/70 mt-1">
+                        {Number.parseFloat(usdConversion.usdValue) < 0.01
+                          ? '≈ <$0.01 USD'
+                          : `≈ $${usdConversion.usdValue} USD`}
+                        {usdConversion.isStale && (
+                          <span className="ml-1 text-[#D0B284]/50">(cached)</span>
+                        )}
+                      </div>
+                    )}
+
+                    {priceLoading && (
+                      <div className="text-xs text-[#D0B284]/50 mt-1">Loading USD price...</div>
                     )}
                   </div>
-                )}
 
-                {priceLoading && (
-                  <div className="text-xs text-[#D0B284]/50 mt-1">Loading USD price...</div>
-                )}
-              </div>
-
-              {activeTab === 'buy' && paymentAssetQuote && (
-                <div className="text-center text-xs text-[#D0B284]/70">
-                  <span className="font-semibold text-[#D0B284]">
-                    Pay with {paymentAssetQuote.label}:
-                  </span>{' '}
-                  ≈ {paymentAssetQuote.value}
-                  {paymentAsset === 'ETH' && (
-                    <span className="mt-1 block text-[11px] text-[#D0B284]/50">
-                      Using placeholder ETH price (${DEFAULT_ETH_PRICE}). Update once live routing
-                      is wired.
-                    </span>
+                  {activeTab === 'buy' && paymentAssetQuote && (
+                    <div className="text-center text-xs text-[#D0B284]/70">
+                      <span className="font-semibold text-[#D0B284]">
+                        Pay with {paymentAssetQuote.label}:
+                      </span>{' '}
+                      ≈ {paymentAssetQuote.value}
+              {paymentAsset === 'ETH' && (
+                <span className="mt-1 block text-[11px] text-[#D0B284]/50">
+                  Using placeholder wETH price (${DEFAULT_ETH_PRICE}). Update once live
+                  routing is wired.
+                </span>
+              )}
+                    </div>
                   )}
-                </div>
+                </>
               )}
             </div>
           )}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { ethers } from 'ethers';
 import { getContractAddresses } from '@/lib/contracts/addresses';
 
@@ -8,6 +8,8 @@ const BASE_SEPOLIA_CHAIN_ID = 84532;
 const BASE_MAINNET_CHAIN_ID = 8453;
 
 const DEFAULT_CHAIN_PRIORITY = [BASE_MAINNET_CHAIN_ID, BASE_SEPOLIA_CHAIN_ID];
+
+const POLL_INTERVAL_MS = 60000;
 
 const CHAIN_NAMES: Record<number, string> = {
   [BASE_SEPOLIA_CHAIN_ID]: 'Base Sepolia',
@@ -63,6 +65,7 @@ export function useTokenBondingData(
   tokenAddress: string | undefined,
   chainId?: number,
 ): BondingData {
+  const isFetchingRef = useRef(false);
   const [data, setData] = useState<BondingData>({
     curve: 0,
     currentSupply: '0',
@@ -87,115 +90,123 @@ export function useTokenBondingData(
       return;
     }
 
-    const candidateChainIds = chainId ? [chainId] : DEFAULT_CHAIN_PRIORITY;
-
-    console.log(
-      `🔄 Fetching bonding data for ${tokenAddress} with chain priority ${candidateChainIds.join(', ')}`,
-    );
-
-    let lastError: unknown = null;
-
-    for (const candidateChainId of candidateChainIds) {
-      const rpcUrls = RPC_ENDPOINTS[candidateChainId];
-      if (!rpcUrls || rpcUrls.length === 0) {
-        console.warn(`⚠️ No RPC endpoints configured for chain ${candidateChainId}`);
-        continue;
-      }
-
-      const chainName = CHAIN_NAMES[candidateChainId] || `chain ${candidateChainId}`;
-      const { FACTORY_PROXY } = getContractAddresses(candidateChainId);
-
-      if (!FACTORY_PROXY) {
-        console.warn(`⚠️ Factory proxy not configured for ${chainName}. Skipping.`);
-        continue;
-      }
-
-      console.log(`🔄 Attempting fetch for ${tokenAddress} on ${chainName}`);
-
-      for (const rpcUrl of rpcUrls) {
-        try {
-          const provider = new ethers.providers.StaticJsonRpcProvider(rpcUrl, candidateChainId);
-          const factoryContract = new ethers.Contract(FACTORY_PROXY, FACTORY_ABI, provider);
-          const tokenContract = new ethers.Contract(tokenAddress, TOKEN_ABI, provider);
-
-          const [tokenData, totalSupply] = await Promise.all([
-            factoryContract.tokens(tokenAddress),
-            tokenContract.totalSupply(),
-          ]);
-
-          console.log('✅ Raw contract data:', {
-            tokenData,
-            totalSupply: totalSupply.toString(),
-            rpcUrl,
-            chainId: candidateChainId,
-          });
-
-          const curve = tokenData.curve;
-          const currentSupply = ethers.utils.formatEther(totalSupply);
-          const tokensBondedAt = ethers.utils.formatEther(tokenData.tokensBondedAt);
-          const acesBalance = ethers.utils.formatEther(tokenData.acesTokenBalance);
-          const floorWei = tokenData.floor.toString();
-          const floorPriceACES = ethers.utils.formatEther(tokenData.floor);
-          const steepness = tokenData.steepness.toString();
-          const isBonded = tokenData.tokenBonded;
-
-          const currentSupplyNum = parseFloat(currentSupply);
-          const tokensBondedAtNum = parseFloat(tokensBondedAt);
-          const bondingPercentage = isBonded
-            ? 100
-            : tokensBondedAtNum > 0
-              ? Math.min(100, (currentSupplyNum / tokensBondedAtNum) * 100)
-              : 0;
-
-          console.log('✅ Parsed bonding data:', {
-            curve,
-            currentSupply,
-            tokensBondedAt,
-            acesBalance,
-            isBonded,
-            bondingPercentage: bondingPercentage.toFixed(2) + '%',
-            rpcUrl,
-            chainId: candidateChainId,
-          });
-
-          setData({
-            curve,
-            currentSupply,
-            tokensBondedAt,
-            acesBalance,
-            floorWei,
-            floorPriceACES,
-            steepness,
-            isBonded,
-            bondingPercentage,
-            loading: false,
-            error: null,
-          });
-
-          return;
-        } catch (rpcError) {
-          lastError = rpcError;
-          console.warn(`⚠️ RPC fetch failed for ${rpcUrl} (${chainName}):`, rpcError);
-        }
-      }
+    if (isFetchingRef.current) {
+      return;
     }
 
-    console.error('❌ Failed to fetch bonding data:', lastError);
-    setData((prev) => ({
-      ...prev,
-      loading: false,
-      error:
-        lastError instanceof Error
-          ? lastError.message
-          : `Failed to fetch data for ${tokenAddress}`,
-    }));
+    isFetchingRef.current = true;
+
+    try {
+      const candidateChainIds = chainId ? [chainId] : DEFAULT_CHAIN_PRIORITY;
+
+      console.log(
+        `🔄 Fetching bonding data for ${tokenAddress} with chain priority ${candidateChainIds.join(', ')}`,
+      );
+
+      let lastError: unknown = null;
+
+      for (const candidateChainId of candidateChainIds) {
+        const rpcUrls = RPC_ENDPOINTS[candidateChainId];
+        if (!rpcUrls || rpcUrls.length === 0) {
+          console.warn(`⚠️ No RPC endpoints configured for chain ${candidateChainId}`);
+          continue;
+        }
+
+        const chainName = CHAIN_NAMES[candidateChainId] || `chain ${candidateChainId}`;
+        const { FACTORY_PROXY } = getContractAddresses(candidateChainId);
+
+        if (!FACTORY_PROXY) {
+          console.warn(`⚠️ Factory proxy not configured for ${chainName}. Skipping.`);
+          continue;
+        }
+
+        console.log(`🔄 Attempting fetch for ${tokenAddress} on ${chainName}`);
+
+        for (const rpcUrl of rpcUrls) {
+          try {
+            const provider = new ethers.providers.StaticJsonRpcProvider(rpcUrl, candidateChainId);
+            const factoryContract = new ethers.Contract(FACTORY_PROXY, FACTORY_ABI, provider);
+            const tokenContract = new ethers.Contract(tokenAddress, TOKEN_ABI, provider);
+
+            const [tokenData, totalSupply] = await Promise.all([
+              factoryContract.tokens(tokenAddress),
+              tokenContract.totalSupply(),
+            ]);
+
+            console.log('✅ Raw contract data:', {
+              tokenData,
+              totalSupply: totalSupply.toString(),
+              rpcUrl,
+              chainId: candidateChainId,
+            });
+
+            const curve = tokenData.curve;
+            const currentSupply = ethers.utils.formatEther(totalSupply);
+            const tokensBondedAt = ethers.utils.formatEther(tokenData.tokensBondedAt);
+            const acesBalance = ethers.utils.formatEther(tokenData.acesTokenBalance);
+            const floorWei = tokenData.floor.toString();
+            const floorPriceACES = ethers.utils.formatEther(tokenData.floor);
+            const steepness = tokenData.steepness.toString();
+            const isBonded = tokenData.tokenBonded;
+
+            const currentSupplyNum = parseFloat(currentSupply);
+            const tokensBondedAtNum = parseFloat(tokensBondedAt);
+            const bondingPercentage = isBonded
+              ? 100
+              : tokensBondedAtNum > 0
+                ? Math.min(100, (currentSupplyNum / tokensBondedAtNum) * 100)
+                : 0;
+
+            console.log('✅ Parsed bonding data:', {
+              curve,
+              currentSupply,
+              tokensBondedAt,
+              acesBalance,
+              isBonded,
+              bondingPercentage: bondingPercentage.toFixed(2) + '%',
+              rpcUrl,
+              chainId: candidateChainId,
+            });
+
+            setData({
+              curve,
+              currentSupply,
+              tokensBondedAt,
+              acesBalance,
+              floorWei,
+              floorPriceACES,
+              steepness,
+              isBonded,
+              bondingPercentage,
+              loading: false,
+              error: null,
+            });
+
+            return;
+          } catch (rpcError) {
+            lastError = rpcError;
+            console.warn(`⚠️ RPC fetch failed for ${rpcUrl} (${chainName}):`, rpcError);
+          }
+        }
+      }
+
+      console.error('❌ Failed to fetch bonding data:', lastError);
+      setData((prev) => ({
+        ...prev,
+        loading: false,
+        error:
+          lastError instanceof Error ? lastError.message : `Failed to fetch data for ${tokenAddress}`,
+      }));
+    } finally {
+      isFetchingRef.current = false;
+    }
   }, [tokenAddress, chainId]);
 
   useEffect(() => {
     fetchBondingData();
 
-    // Refresh every 10 seconds
-    const interval = setInterval(fetchBondingData, 10000);
+    // Refresh at a slower cadence so we do not hammer public RPCs
+    const interval = setInterval(fetchBondingData, POLL_INTERVAL_MS);
 
     return () => clearInterval(interval);
   }, [fetchBondingData]);
