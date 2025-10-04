@@ -1,12 +1,44 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { TokensApi, type TradeData } from '@/lib/api/tokens';
+import { DexApi, type DexTradeResponse } from '@/lib/api/dex';
+import type { DatabaseListing } from '@/types/rwa/section.types';
 
-export const useTradeHistory = (tokenAddress: string, intervalMs = 30000) => {
-  const [trades, setTrades] = useState<TradeData[]>([]);
+export type TradeSource = 'BONDING' | 'DEX';
+
+export interface TradeHistoryEntry {
+  id: string;
+  source: TradeSource;
+  direction: 'buy' | 'sell';
+  tokenAmount: string;
+  counterAmount: string;
+  timestamp: number;
+  txHash?: string;
+  trader?: string;
+}
+
+interface TradeHistoryOptions {
+  intervalMs?: number;
+  dexMeta?: DatabaseListing['dex'] | null;
+}
+
+export const useTradeHistory = (
+  tokenAddress: string,
+  options: TradeHistoryOptions = {},
+) => {
+  const { intervalMs = 30000, dexMeta } = options;
+
+  const shouldUseDex = Boolean(dexMeta?.isDexLive);
+
+  const [trades, setTrades] = useState<TradeHistoryEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
-  const [lastUpdateTime, setLastUpdateTime] = useState<number>(0);
+
+  const bondingCutoffMs = useMemo(() => {
+    if (!dexMeta?.bondingCutoff) return null;
+    const parsed = Date.parse(dexMeta.bondingCutoff);
+    return Number.isNaN(parsed) ? null : parsed;
+  }, [dexMeta?.bondingCutoff]);
 
   const fetchTrades = async () => {
     if (!tokenAddress) {
@@ -21,48 +53,84 @@ export const useTradeHistory = (tokenAddress: string, intervalMs = 30000) => {
       }
       setError(null);
 
-      const result = await TokensApi.getTrades(tokenAddress, 50);
+      const bondingResult = await TokensApi.getTrades(tokenAddress, 100);
+      let bondingTrades: TradeHistoryEntry[] = [];
 
-      if (result.success && result.data) {
-        // The API wrapper returns { success: true, data: { success: true, data: trades } }
-        // So we need to access result.data.data for the actual trades array
-        const apiResponse = result.data as any;
-        if (apiResponse.success && apiResponse.data) {
-          const tradesData = Array.isArray(apiResponse.data) ? apiResponse.data : [];
-          console.log('Trades loaded:', tradesData.length, 'trades');
+      if (bondingResult.success) {
+        const payload = bondingResult.data as any;
+        const tradePayload: TradeData[] = Array.isArray(payload?.data)
+          ? payload.data
+          : Array.isArray(payload)
+            ? (payload as TradeData[])
+            : [];
 
-          // Smart update: only update if there are new trades or it's the first load
-          setTrades((prevTrades) => {
-            if (prevTrades.length === 0) {
-              // First load - set all trades
-              return tradesData;
-            }
-
-            // Find new trades by comparing with existing ones
-            const existingIds = new Set(prevTrades.map((trade) => trade.id));
-            const newTrades = tradesData.filter((trade: TradeData) => !existingIds.has(trade.id));
-
-            if (newTrades.length > 0) {
-              console.log(`[TradeHistory] ${newTrades.length} new trades detected`);
-              // Add new trades to the top, keep existing ones, limit to 50
-              return [...newTrades, ...prevTrades].slice(0, 50);
-            }
-
-            // No new trades - keep existing list to prevent flicker
-            return prevTrades;
-          });
-
-          setIsConnected(true);
-        } else {
-          setError(
-            typeof apiResponse.error === 'string' ? apiResponse.error : 'Failed to fetch trades',
-          );
-          setIsConnected(false);
-        }
-      } else {
-        setError(typeof result.error === 'string' ? result.error : 'Failed to fetch trades');
-        setIsConnected(false);
+        bondingTrades = tradePayload.map((trade) => ({
+          id: `bonding-${trade.id}`,
+          source: 'BONDING' as TradeSource,
+          direction: trade.isBuy ? 'buy' : 'sell',
+          tokenAmount: trade.tokenAmount,
+          counterAmount: trade.acesTokenAmount,
+          timestamp: Number(trade.createdAt) * 1000,
+          txHash: trade.id,
+          trader: trade.trader?.id,
+        }));
+      } else if (bondingResult.error) {
+        setError(bondingResult.error);
       }
+
+      let dexTrades: TradeHistoryEntry[] = [];
+
+      if (shouldUseDex) {
+        const dexResult = await DexApi.getTrades(tokenAddress, 100);
+
+        if (dexResult.success) {
+          const payload = dexResult.data as any;
+          const dexArray: DexTradeResponse[] = Array.isArray(payload?.data)
+            ? payload.data
+            : Array.isArray(payload)
+              ? (payload as DexTradeResponse[])
+              : [];
+
+          dexTrades = dexArray.map((trade) => ({
+            id: `dex-${trade.txHash ?? trade.timestamp}`,
+            source: 'DEX' as TradeSource,
+            direction: trade.direction,
+            tokenAmount: trade.amountToken,
+            counterAmount: trade.amountCounter,
+            timestamp: Number(trade.timestamp),
+            txHash: trade.txHash,
+          }));
+        } else if (dexResult.error) {
+          console.warn('[TradeHistory] Failed to fetch Dex trades:', dexResult.error);
+        }
+      }
+
+      if (bondingCutoffMs) {
+        bondingTrades = bondingTrades.filter((trade) => trade.timestamp < bondingCutoffMs);
+      }
+
+      const combinedTrades = [...dexTrades, ...bondingTrades]
+        .sort((a, b) => b.timestamp - a.timestamp)
+        .slice(0, 100);
+
+      setTrades((prevTrades) => {
+        if (prevTrades.length === 0) {
+          return combinedTrades;
+        }
+
+        const prevIds = new Set(prevTrades.map((trade) => trade.id));
+        const newEntries = combinedTrades.filter((trade) => !prevIds.has(trade.id));
+
+        if (newEntries.length === 0) {
+          return prevTrades;
+        }
+
+        const merged = [...newEntries, ...prevTrades].sort((a, b) => b.timestamp - a.timestamp);
+        return merged.slice(0, 100);
+      });
+
+      setIsConnected(true);
+      setError(null);
     } catch (error) {
       console.error('Trade history fetch error:', error);
       setError('Network error while fetching trades');
@@ -95,7 +163,7 @@ export const useTradeHistory = (tokenAddress: string, intervalMs = 30000) => {
       }
       setIsConnected(false);
     };
-  }, [tokenAddress, intervalMs]);
+  }, [tokenAddress, intervalMs, shouldUseDex, bondingCutoffMs]);
 
   return {
     trades,

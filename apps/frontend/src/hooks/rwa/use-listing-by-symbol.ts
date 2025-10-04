@@ -2,7 +2,20 @@
 import { useState, useEffect } from 'react';
 import type { DatabaseListing } from '@/types/rwa/section.types';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+const resolveApiBaseUrl = () => {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
+  }
+
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin;
+  }
+
+  // Fallback for SSR – stick to relative requests and rely on Next.js proxy config
+  return '';
+};
+
+const API_BASE_URL = resolveApiBaseUrl();
 
 export function useListingBySymbol(symbol: string) {
   const [listing, setListing] = useState<DatabaseListing | null>(null);
@@ -20,29 +33,22 @@ export function useListingBySymbol(symbol: string) {
         setLoading(true);
         setError(null);
 
-        // Since backend doesn't have a direct "get by symbol" endpoint,
-        // we'll fetch live listings and filter by symbol
-        // For now, we'll only check live listings. If you need to show non-live listings too,
-        // you'd need to add an admin endpoint or modify the backend
-        const response = await fetch(`${API_BASE_URL}/api/v1/listings/live`);
+        const response = await fetch(
+          `${API_BASE_URL}/api/v1/listings/symbol/${encodeURIComponent(symbol)}`,
+        );
 
         if (!response.ok) {
+          if (response.status === 404) {
+            setListing(null);
+            return;
+          }
           throw new Error(`Failed to fetch listings: ${response.status} ${response.statusText}`);
         }
 
         const result = await response.json();
 
         if (result.success && result.data) {
-          // Find the listing with matching symbol
-          const foundListing = result.data.find(
-            (l: DatabaseListing) => l.symbol.toUpperCase() === symbol.toUpperCase(),
-          );
-
-          if (foundListing) {
-            setListing(foundListing);
-          } else {
-            setListing(null);
-          }
+          setListing(result.data as DatabaseListing);
         } else {
           setListing(null);
         }
@@ -64,24 +70,22 @@ export function useListingBySymbol(symbol: string) {
       setLoading(true);
       setError(null);
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/listings/live`);
+      const response = await fetch(
+        `${API_BASE_URL}/api/v1/listings/symbol/${encodeURIComponent(symbol)}`,
+      );
 
       if (!response.ok) {
+        if (response.status === 404) {
+          setListing(null);
+          return;
+        }
         throw new Error(`Failed to fetch listings: ${response.status} ${response.statusText}`);
       }
 
       const result = await response.json();
 
       if (result.success && result.data) {
-        const foundListing = result.data.find(
-          (l: DatabaseListing) => l.symbol.toUpperCase() === symbol.toUpperCase(),
-        );
-
-        if (foundListing) {
-          setListing(foundListing);
-        } else {
-          setListing(null);
-        }
+        setListing(result.data as DatabaseListing);
       } else {
         setListing(null);
       }
@@ -101,6 +105,8 @@ export function useListingBySymbol(symbol: string) {
     // Convenience properties
     isLive: listing?.isLive ?? false,
     isPreLaunch: listing ? !listing.isLive : false,
+    isDexLive: listing?.dex?.isDexLive ?? listing?.token?.phase === 'DEX_TRADING',
+    dex: listing?.dex ?? null,
     // Launch date information
     launchDate: listing?.launchDate,
     isLaunched: listing?.launchDate ? new Date(listing.launchDate) <= new Date() : true,
