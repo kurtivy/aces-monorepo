@@ -15,6 +15,7 @@ import DashedGridBackground from '@/components/ui/custom/dashed-grid-background'
 import { useDeviceCapabilities } from '@/contexts/device-provider';
 import MobileRWAItemPage from './mobile-page';
 import PageLoader from '@/components/loading/page-loader';
+import { NETWORK_CONFIG } from '@/lib/contracts/addresses';
 
 export default function RWAItemPage() {
   const params = useParams();
@@ -80,6 +81,8 @@ export default function RWAItemPage() {
       </div>
     );
   }
+
+  const tokenChainId = listing.token?.chainId ?? NETWORK_CONFIG.DEFAULT_CHAIN_ID;
 
   return (
     <>
@@ -202,7 +205,8 @@ export default function RWAItemPage() {
                     primaryImage={listing.imageGallery?.[0]}
                     imageGallery={listing.imageGallery}
                     // Progression bar props - now fetched from contract
-                    chainId={84532} // Base Sepolia testnet
+                    chainId={tokenChainId}
+                    dexMeta={listing.dex ?? null}
                   />
                 </div>
               </div>

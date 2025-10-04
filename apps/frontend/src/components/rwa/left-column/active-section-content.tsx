@@ -10,6 +10,7 @@ import type { Comment } from '@/types/comments';
 import { mockImages } from '../../../constants/rwa';
 import BondingCurveChart from './overview/bonding-curve-chart';
 import { useTokenHolderCount } from '@/hooks/rwa/use-token-holder-count';
+import { NETWORK_CONFIG } from '@/lib/contracts/addresses';
 
 interface DynamicActiveSectionContentProps extends ActiveSectionContentProps {
   listing?: DatabaseListing | null;
@@ -44,9 +45,15 @@ export function ActiveSectionContent({
   const listingTokenAddress = listing?.token?.contractAddress;
   const listingTokenChainId = listing?.token?.chainId;
 
+  const directHolderCount = useMemo(() => {
+    const directCountRaw = listing?.token?.holderCount ?? listing?.token?.holdersCount;
+    return parseCount(directCountRaw);
+  }, [listing]);
+
   const { holderCount: fetchedHolderCount, loading: holderCountLoading } = useTokenHolderCount(
     listingTokenAddress,
     listingTokenChainId,
+    directHolderCount,
   );
 
   const totalComments = useMemo(() => {
@@ -69,11 +76,8 @@ export function ActiveSectionContent({
   }, [listing]);
 
   const totalHolders = useMemo(() => {
-    const directCountRaw = listing?.token?.holderCount ?? listing?.token?.holdersCount;
-    const directCount = parseCount(directCountRaw);
-
-    return directCount ?? fetchedHolderCount ?? null;
-  }, [listing, fetchedHolderCount]);
+    return directHolderCount ?? fetchedHolderCount ?? null;
+  }, [directHolderCount, fetchedHolderCount]);
 
   const formattedCommentCount =
     typeof totalComments === 'number' ? totalComments.toLocaleString() : '--';
@@ -97,6 +101,8 @@ export function ActiveSectionContent({
           alt: `${listing.title} - Image ${index + 1}`,
         }))
       : mockImages;
+
+  const tokenChainId = listing?.token?.chainId ?? NETWORK_CONFIG.DEFAULT_CHAIN_ID;
 
   const content = [
     // Overview
@@ -125,7 +131,7 @@ export function ActiveSectionContent({
         <TokenHealthPanel
           tokenAddress={listing?.token?.contractAddress}
           reservePrice={listing?.reservePrice}
-          chainId={84532}
+          chainId={tokenChainId}
         />
       </div>
     </div>,

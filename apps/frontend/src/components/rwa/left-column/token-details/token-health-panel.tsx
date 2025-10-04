@@ -276,7 +276,9 @@ export default function TokenHealthPanel({
   }, [userTokenHoldings, metrics.rewardPerToken]);
 
   const ratioDisplay = useMemo(() => {
-    const raw = `${metrics.acesRatio.toFixed(2)}x`;
+    const safeRatio = Number.isFinite(metrics.acesRatio) ? metrics.acesRatio : 0;
+    const displayRatio = Math.max(safeRatio, 0.1);
+    const raw = `${displayRatio.toFixed(2)}x`;
     const match = raw.match(/^([0-9.,]+)/);
 
     if (!match) {
@@ -371,7 +373,7 @@ export default function TokenHealthPanel({
               style={{ backgroundColor: getSignalColor(metrics.signal.action) }}
             />
             <span
-              className="text-xl font-bold font-spray-letters tracking-[0.3em]"
+              className="text-lg font-bold font-spray-letters tracking-[0.3em]"
               style={{ color: getSignalColor(metrics.signal.action) }}
             >
               {metrics.signal.action}
@@ -392,7 +394,7 @@ export default function TokenHealthPanel({
         {isLoading || !hasData ? (
           <span className={valueClass}>...</span>
         ) : (
-          <div className="flex items-end gap-1 text-white">
+          <div className="flex items-baseline gap-1 text-white">
             <span className="text-base font-proxima-nova leading-none text-white">
               {tradingCreditsDisplay.prefix}
             </span>
@@ -415,7 +417,7 @@ export default function TokenHealthPanel({
         {isLoading || !hasData ? (
           <span className={valueClass}>...</span>
         ) : (
-          <div className="flex items-end gap-1 text-white">
+          <div className="flex items-baseline gap-1 text-white">
             <span className="text-sm font-proxima-nova leading-none">$</span>
             <span className={valueClass}>{formatPrice(metrics.rewardPerToken)}</span>
           </div>

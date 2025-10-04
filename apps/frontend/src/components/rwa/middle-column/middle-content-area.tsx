@@ -118,10 +118,12 @@ export function MiddleContentArea({
                   tokenAddress={listing.token.contractAddress}
                   tokenSymbol={listing?.token?.symbol || listing?.symbol || 'TLT'}
                   title={listing?.token?.name || listing?.title || 'Trading Chart'}
+                  dexMeta={listing?.dex ?? null}
                 />
                 <TradeHistory
                   tokenAddress={listing.token.contractAddress}
                   tokenSymbol={listing?.token?.symbol || listing?.symbol || 'TLT'}
+                  dexMeta={listing?.dex ?? null}
                 />
               </>
             ) : (
