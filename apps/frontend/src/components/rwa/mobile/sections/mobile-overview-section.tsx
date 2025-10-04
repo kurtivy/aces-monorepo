@@ -36,7 +36,11 @@ const MobileOverviewSection = forwardRef<HTMLDivElement, MobileOverviewSectionPr
     }, [displayImages]);
 
     return (
-      <section ref={ref} data-section-id="overview" className="w-full bg-[#151c16] px-4 py-6 space-y-6">
+      <section
+        ref={ref}
+        data-section-id="overview"
+        className="w-full bg-[#151c16] px-4 py-6 space-y-6"
+      >
         <div className="h-64 w-full rounded-lg overflow-hidden border border-[#D0B284]/15">
           <ImageCarousel
             selectedImageIndex={selectedImageIndex}
@@ -50,7 +54,6 @@ const MobileOverviewSection = forwardRef<HTMLDivElement, MobileOverviewSectionPr
           <OverviewBottomSection
             launchDate={launchDate}
             showProgression={Boolean(listing.token?.contractAddress)}
-            progressionPercentage={26.9}
             tokenAddress={listing.token?.contractAddress}
             chainId={tokenChainId}
           />
