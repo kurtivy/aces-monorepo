@@ -119,6 +119,9 @@ export function MiddleContentArea({
                   tokenSymbol={listing?.token?.symbol || listing?.symbol || 'TLT'}
                   title={listing?.token?.name || listing?.title || 'Trading Chart'}
                   dexMeta={listing?.dex ?? null}
+                  images={displayImages}
+                  selectedImageIndex={selectedImageIndex}
+                  onImageSelect={setSelectedImageIndex}
                 />
                 <TradeHistory
                   tokenAddress={listing.token.contractAddress}

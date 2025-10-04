@@ -32,15 +32,7 @@ export default function ProgressionBar({
   const showLoading = !hasPercentageOverride && loading;
 
   // Determine bar color based on bonding status
-  const barGradient = effectiveIsBonded
-    ? `linear-gradient(90deg,
-        #10b981 0%,
-        #34d399 25%,
-        #6ee7b7 50%,
-        #34d399 75%,
-        #10b981 100%
-      )` // Green gradient when bonded
-    : `linear-gradient(90deg,
+  const barGradient = `linear-gradient(90deg,
         #184D37 0%,
         #928357 25%,
         #D0B284 50%,
@@ -89,19 +81,15 @@ export default function ProgressionBar({
                   </div>
 
                   <div
-                    className={`absolute top-1/2 h-4 w-4 -translate-y-1/2 -translate-x-1/2 rounded-full border-2 border-white/30 shadow-lg transition-all duration-1000 ease-out ${
-                      effectiveIsBonded
-                        ? 'bg-gradient-to-br from-green-400 to-green-600'
-                        : 'bg-gradient-to-br from-[#D7BF75] to-[#D0B284]'
-                    }`}
+                    className={
+                      'absolute top-1/2 h-4 w-4 -translate-y-1/2 -translate-x-1/2 rounded-full border-2 border-white/30 shadow-lg transition-all duration-1000 ease-out  bg-gradient-to-br from-[#D7BF75] to-[#D0B284]'
+                    }
                     style={{ left: `${clampedPercentage}%` }}
                   >
                     <div
-                      className={`absolute inset-[2px] rounded-full ${
-                        effectiveIsBonded
-                          ? 'bg-gradient-to-br from-green-400 to-green-600'
-                          : 'bg-gradient-to-br from-[#D7BF75] to-[#D0B284]'
-                      }`}
+                      className={
+                        'absolute inset-[2px] rounded-full bg-gradient-to-br from-[#D7BF75] to-[#D0B284]'
+                      }
                     />
                   </div>
                 </>

@@ -1,10 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { ethers } from 'ethers';
 import ProgressionBar from './progression-bar';
 import ScoreboardSplitFlap from './scorebaord-split-flap';
-import { useAcesFactoryContract } from '@/hooks/contracts/use-aces-factory-contract';
+import { useTokenBondingData } from '@/hooks/contracts/use-token-bonding-data';
 
 interface OverviewBottomSectionProps {
   launchDate?: string | null;
@@ -23,62 +21,17 @@ export default function OverviewBottomSection({
   tokenAddress,
   chainId,
 }: OverviewBottomSectionProps) {
-  const [percentage, setPercentage] = useState(propPercentage);
-  const [isBonded, setIsBonded] = useState(false);
-  const [loading, setLoading] = useState(false);
+  // Use the same hook as TokenSwapInterface for consistent behavior
+  const {
+    bondingPercentage,
+    isBonded: contractIsBonded,
+    loading: contractLoading,
+  } = useTokenBondingData(tokenAddress, chainId);
 
-  const { contractState, fetchTokenInfo, isReady } = useAcesFactoryContract();
-
-  // Fetch bonding progress when tokenAddress is provided
-  useEffect(() => {
-    const loadBondingProgress = async () => {
-      if (!tokenAddress || !ethers.utils.isAddress(tokenAddress)) {
-        setPercentage(propPercentage);
-        setIsBonded(false);
-        setLoading(false);
-        return;
-      }
-
-      if (!isReady) {
-        return;
-      }
-
-      try {
-        setLoading(true);
-        await fetchTokenInfo(tokenAddress);
-      } catch (error) {
-        console.error('Failed to fetch bonding progress in overview:', error);
-        setLoading(false);
-      }
-    };
-
-    loadBondingProgress();
-  }, [tokenAddress, isReady, fetchTokenInfo, propPercentage]);
-
-  useEffect(() => {
-    setPercentage(propPercentage);
-  }, [propPercentage]);
-
-  // Update percentage when contract state changes
-  useEffect(() => {
-    if (contractState.tokenInfo && contractState.currentSupply) {
-      const currentSupply = parseFloat(contractState.currentSupply);
-      const tokensBondedAt = parseFloat(
-        ethers.utils.formatEther(contractState.tokenInfo.tokensBondedAt),
-      );
-
-      if (tokensBondedAt > 0) {
-        const calculatedPercentage = (currentSupply / tokensBondedAt) * 100;
-        setPercentage(Math.min(calculatedPercentage, 100));
-        setIsBonded(contractState.tokenInfo.tokenBonded);
-      } else {
-        setPercentage(0);
-        setIsBonded(false);
-      }
-
-      setLoading(false);
-    }
-  }, [contractState.tokenInfo, contractState.currentSupply]);
+  // Use contract data if available, otherwise fall back to prop
+  const percentage = bondingPercentage > 0 ? bondingPercentage : propPercentage;
+  const isBonded = contractIsBonded;
+  const loading = contractLoading;
 
   return (
     <div className="w-full space-y-6">
@@ -101,11 +54,11 @@ export default function OverviewBottomSection({
               </div>
             ) : (
               <div
-                className={`text-xs font-semibold uppercase tracking-[0.3em] text-center ${
-                  isBonded ? 'text-green-400' : 'text-[#D7BF75]/80'
-                }`}
+                className={
+                  'text-xs font-semibold uppercase tracking-[0.3em] text-center text-[#D7BF75]/80'
+                }
               >
-                {isBonded ? '✅ BONDED - 100%' : `Bonded ${percentage.toFixed(1)}% / 100%`}
+                {isBonded ? 'BONDED - 100%' : `Bonded ${percentage.toFixed(1)}% / 100%`}
               </div>
             )}
           </div>
