@@ -35,9 +35,20 @@ interface CreateTokenParams {
   useVanityMining?: boolean;
 }
 
-export function useAcesFactoryContract(chainId?: number) {
-  // Use environment-based default chain ID if none provided
-  const effectiveChainId = chainId ?? NETWORK_CONFIG.DEFAULT_CHAIN_ID;
+interface UseAcesFactoryContractOptions {
+  chainId?: number;
+  externalSigner?: ethers.Signer | null;
+  externalProvider?: ethers.providers.Web3Provider | null;
+}
+
+export function useAcesFactoryContract(
+  options?: UseAcesFactoryContractOptions | number, // Support legacy number param
+) {
+  // Support both legacy (number) and new (options object) API
+  const effectiveChainId =
+    typeof options === 'number' ? options : (options?.chainId ?? NETWORK_CONFIG.DEFAULT_CHAIN_ID);
+  const externalSigner = typeof options === 'object' ? options?.externalSigner : undefined;
+  const externalProvider = typeof options === 'object' ? options?.externalProvider : undefined;
 
   const [contractState, setContractState] = useState<ContractState>({
     tokenInfo: null,
@@ -161,9 +172,68 @@ export function useAcesFactoryContract(chainId?: number) {
     initializeReadOnlyProvider();
   }, [contractAddresses.FACTORY_PROXY, currentChainId]);
 
-  // Initialize provider and contracts only when wallet is connected
+  // Fetch token implementation using whichever factory contract is available (read-only or signer)
+  useEffect(() => {
+    const loadTokenImplementation = async () => {
+      try {
+        const contract = factoryContract ?? readOnlyFactoryContract;
+        if (!contract) {
+          return;
+        }
+
+        const implAddress = await contract.tokenImplementation();
+        setTokenImplementation(implAddress);
+        console.log('✅ Token implementation address (fallback loader):', implAddress);
+      } catch (error) {
+        console.error('Failed to load token implementation via fallback contract:', error);
+      }
+    };
+
+    if (!tokenImplementation && (factoryContract || readOnlyFactoryContract)) {
+      void loadTokenImplementation();
+    }
+  }, [factoryContract, readOnlyFactoryContract, tokenImplementation]);
+
+  // Initialize provider and contracts - supports both external (Privy) and window.ethereum
   useEffect(() => {
     const initializeContract = async () => {
+      // Priority 1: Use external signer (from Privy)
+      if (externalSigner) {
+        try {
+          console.log('🔗 Using external signer (Privy)');
+
+          // Test if signer is accessible
+          const address = await externalSigner.getAddress();
+          console.log('✅ External signer address:', address);
+
+          const factory = new ethers.Contract(
+            contractAddresses.FACTORY_PROXY,
+            ACES_FACTORY_ABI,
+            externalSigner,
+          );
+
+          setProvider(externalProvider || null);
+          setSigner(externalSigner);
+          setFactoryContract(factory);
+          setIsWalletConnected(true);
+
+          // Get the tokenImplementation address for vanity mining
+          try {
+            const implAddress = await factory.tokenImplementation();
+            setTokenImplementation(implAddress);
+            console.log('✅ Token implementation address (external):', implAddress);
+          } catch (error) {
+            console.error('Failed to get token implementation address:', error);
+            setTokenImplementation(null);
+          }
+          return;
+        } catch (error) {
+          console.error('❌ Failed to use external signer:', error);
+          // Fall through to window.ethereum check
+        }
+      }
+
+      // Priority 2: Try window.ethereum (MetaMask, etc.)
       const walletConnected = await checkWalletConnection();
       setIsWalletConnected(walletConnected);
 
@@ -183,6 +253,7 @@ export function useAcesFactoryContract(chainId?: number) {
 
       if (typeof window !== 'undefined' && window.ethereum) {
         try {
+          console.log('🔗 Using window.ethereum provider');
           const provider = new ethers.providers.Web3Provider(window.ethereum);
 
           // Check if we can get a signer (wallet is unlocked)
@@ -232,8 +303,8 @@ export function useAcesFactoryContract(chainId?: number) {
 
     initializeContract();
 
-    // Listen for account changes
-    if (typeof window !== 'undefined' && window.ethereum) {
+    // Listen for account changes (only for window.ethereum)
+    if (typeof window !== 'undefined' && window.ethereum && !externalSigner) {
       const handleAccountsChanged = (accounts: unknown) => {
         console.log('Accounts changed:', accounts);
         // Re-initialize when accounts change
@@ -254,7 +325,7 @@ export function useAcesFactoryContract(chainId?: number) {
         window.ethereum?.removeListener('chainChanged', handleChainChanged);
       };
     }
-  }, [currentChainId, contractAddresses.FACTORY_PROXY]);
+  }, [currentChainId, contractAddresses.FACTORY_PROXY, externalSigner, externalProvider]);
 
   // Timeout wrapper for contract calls
   const withTimeout = useCallback(
@@ -271,7 +342,7 @@ export function useAcesFactoryContract(chainId?: number) {
 
   // Fetch token information with rate limiting - uses read-only contract if wallet not connected
   const fetchTokenInfo = useCallback(
-    async (tokenAddress: string, bypassRateLimit = false) => {
+    async (tokenAddress: string) => {
       const activeContract = factoryContract || readOnlyFactoryContract;
       const activeProvider = provider || readOnlyProvider;
       const isUsingReadOnly = !factoryContract && !!readOnlyFactoryContract;
@@ -788,7 +859,7 @@ export function useAcesFactoryContract(chainId?: number) {
     // Utility - ready if either wallet contracts OR read-only contracts are available
     isReady:
       (isWalletConnected && !!factoryContract && !!signer && !!tokenImplementation) ||
-      !!readOnlyFactoryContract,
+      (!!readOnlyFactoryContract && !!tokenImplementation),
     // Read-only state
     isReadOnly: !isWalletConnected && !!readOnlyFactoryContract,
     tokenImplementation,

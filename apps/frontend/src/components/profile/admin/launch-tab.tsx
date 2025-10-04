@@ -7,7 +7,7 @@ import { ACES_FACTORY_ABI, ERC20_ABI, LAUNCHPAD_TOKEN_ABI } from '@/lib/contract
 import { useAcesFactoryContract } from '@/hooks/contracts/use-aces-factory-contract';
 import { type SaltMiningResult, mineVanitySaltWithTimeout } from '@/lib/utils/salt-mining';
 import { useAuth } from '@/lib/auth/auth-context';
-import { useWallets } from '@privy-io/react-auth';
+import { useWalletClient } from 'wagmi';
 import { useChainSwitching } from '@/hooks/contracts/use-chain-switching';
 import ConnectWalletProfile from '@/components/ui/custom/connect-wallet-profile';
 import { Button } from '@/components/ui/button';
@@ -33,6 +33,70 @@ import {
   Globe2,
   ArrowRightLeft,
 } from 'lucide-react';
+
+// Wagmi-to-Ethers signer hook (Solution 2: Better Privy Smart Wallet support)
+function useWagmiEthersSigner() {
+  const { data: walletClient } = useWalletClient();
+  const [signer, setSigner] = useState<ethers.Signer | null>(null);
+  const [provider, setProvider] = useState<ethers.providers.Web3Provider | null>(null);
+
+  useEffect(() => {
+    async function getSignerFromWagmi() {
+      if (!walletClient) {
+        console.log('⏸️ No Wagmi wallet client available');
+        setSigner(null);
+        setProvider(null);
+        return;
+      }
+
+      try {
+        console.log('🔗 Getting signer from Wagmi wallet client');
+        console.log('Wallet client details:', {
+          address: walletClient.account.address,
+          chainId: walletClient.chain.id,
+          chainName: walletClient.chain.name,
+        });
+
+        // Convert Viem wallet client to ethers signer
+        const { account, chain } = walletClient;
+
+        // Create a provider from the transport
+        const network = {
+          chainId: chain.id,
+          name: chain.name,
+        };
+
+        // Create ethers provider from wallet client transport
+        const ethersProvider = new ethers.providers.Web3Provider(
+          // @ts-expect-error - Viem transport is compatible with ethers
+          walletClient.transport,
+          network,
+        );
+
+        // Get signer from provider
+        const ethersSigner = ethersProvider.getSigner(account.address);
+
+        // Verify signer works
+        const signerAddress = await ethersSigner.getAddress();
+        console.log('✅ Wagmi signer obtained and verified:', signerAddress);
+
+        setSigner(ethersSigner);
+        setProvider(ethersProvider);
+      } catch (error) {
+        console.error('❌ Failed to get Wagmi signer:', error);
+        if (error instanceof Error) {
+          console.error('Error details:', error.message);
+        }
+        setSigner(null);
+        setProvider(null);
+      }
+    }
+
+    getSignerFromWagmi();
+  }, [walletClient]);
+
+  return { signer, provider };
+}
 
 export function LaunchTab() {
   // Use Privy authentication system for wallet connection (required for contract deployment)
@@ -70,43 +134,16 @@ export function LaunchTab() {
   const [linkingLoading, setLinkingLoading] = useState<boolean>(false);
   const [linkingResult, setLinkingResult] = useState<string | null>(null);
   const [isManualChainSwitching, setIsManualChainSwitching] = useState(false);
-  const [chainSwitchFeedback, setChainSwitchFeedback] = useState<
-    { type: 'success' | 'error' | 'info'; message: string } | null
-  >(null);
+  const [chainSwitchFeedback, setChainSwitchFeedback] = useState<{
+    type: 'success' | 'error' | 'info';
+    message: string;
+  } | null>(null);
   const isSwitchingChains = isManualChainSwitching || isChainSwitchPending;
   const isOnBaseMainnet = currentChainId === SUPPORTED_CHAINS.BASE_MAINNET.id;
   const isOnBaseSepolia = currentChainId === SUPPORTED_CHAINS.BASE_SEPOLIA.id;
 
-  // Get Privy wallets and signer
-  const { wallets } = useWallets();
-  const [signer, setSigner] = useState<ethers.Signer | null>(null);
-
-  // Get signer from Privy wallet
-  useEffect(() => {
-    const getSigner = async () => {
-      if (!walletAddress || !wallets.length) {
-        setSigner(null);
-        return;
-      }
-
-      try {
-        const wallet = wallets.find((w) => w.address.toLowerCase() === walletAddress.toLowerCase());
-        if (wallet && 'getEthersProvider' in wallet) {
-          // Type assertion for Privy wallet with ethers provider
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const provider = await (wallet as any).getEthersProvider();
-          const walletSigner = provider.getSigner();
-          setSigner(walletSigner);
-          console.log('✅ Privy signer initialized');
-        }
-      } catch (error) {
-        console.error('❌ Failed to get Privy signer:', error);
-        setSigner(null);
-      }
-    };
-
-    getSigner();
-  }, [walletAddress, wallets]);
+  // Get signer from Wagmi (Solution 2: Better support for Privy Smart Wallets)
+  const { signer: wagmiSigner, provider: wagmiProvider } = useWagmiEthersSigner();
 
   const [acesBalance, setAcesBalance] = useState<string>('0');
 
@@ -117,7 +154,7 @@ export function LaunchTab() {
   // Get contract addresses for current chain
   const contractAddresses = getContractAddresses(currentChainId);
 
-  // Use new contract hook with current chain ID
+  // Use new contract hook with current chain ID and pass Wagmi signer
   const {
     createToken,
     isReady,
@@ -125,7 +162,11 @@ export function LaunchTab() {
     isWalletConnected,
     factoryContract: hookFactoryContract,
     signer: hookSigner,
-  } = useAcesFactoryContract();
+  } = useAcesFactoryContract({
+    chainId: currentChainId,
+    externalSigner: wagmiSigner,
+    externalProvider: wagmiProvider,
+  });
 
   // Token creation state with new tokensBondedAt field
   const [createForm, setCreateForm] = useState({
@@ -188,7 +229,7 @@ export function LaunchTab() {
       setFactoryContract(null);
       setAcesContract(null);
       setAcesBalance('0');
-      setSigner(null);
+      // Note: wagmiSigner is managed by the hook, no need to clear manually
 
       // Clear mining state
       setIsMining(false);
@@ -215,24 +256,15 @@ export function LaunchTab() {
       }
 
       try {
-        // Use factory contract from hook if available, otherwise create with Privy signer
+        // Use factory contract from hook (hook now uses the Privy signer we passed in)
         if (hookFactoryContract) {
           setFactoryContract(hookFactoryContract);
           console.log('✅ Using factory contract from hook');
-        } else if (signer) {
-          const factory = new ethers.Contract(
-            contractAddresses.FACTORY_PROXY,
-            ACES_FACTORY_ABI,
-            signer,
-          );
-          setFactoryContract(factory);
-          console.log('✅ Created factory contract with Privy signer');
         }
 
-        // Initialize ACES contract - try with hook signer first, then Privy signer
-        const signerToUse = hookSigner || signer;
-        if (signerToUse) {
-          const aces = new ethers.Contract(contractAddresses.ACES_TOKEN, ERC20_ABI, signerToUse);
+        // Initialize ACES contract - use hook signer (which is now using Privy)
+        if (hookSigner) {
+          const aces = new ethers.Contract(contractAddresses.ACES_TOKEN, ERC20_ABI, hookSigner);
           setAcesContract(aces);
 
           // Get ACES balance
@@ -257,7 +289,6 @@ export function LaunchTab() {
 
     initializeContracts();
   }, [
-    signer,
     hookSigner,
     hookFactoryContract,
     walletAddress,
@@ -271,7 +302,7 @@ export function LaunchTab() {
     console.log('🎯 Beginning salt mining...');
     console.log('Debug values:', {
       isReady,
-      signer: !!signer,
+      wagmiSigner: !!wagmiSigner,
       hookSigner: !!hookSigner,
       walletAddress: !!walletAddress,
       isAuthenticated,
@@ -293,9 +324,8 @@ export function LaunchTab() {
       return;
     }
 
-    // Use hook signer if available, fallback to Privy signer
-    const signerToUse = hookSigner || signer;
-    if (!signerToUse) {
+    // Use hook signer (which now includes Privy signer)
+    if (!hookSigner) {
       alert('Wallet signer not available. Please make sure your wallet is connected and unlocked.');
       return;
     }
@@ -574,7 +604,7 @@ export function LaunchTab() {
 
   // Buy tokens
   const buyTokens = async () => {
-    if (!factoryContract || !acesContract || !selectedToken || !tradeAmount || !signer) return;
+    if (!factoryContract || !acesContract || !selectedToken || !tradeAmount || !hookSigner) return;
 
     try {
       const amountWei = ethers.utils.parseEther(tradeAmount);
@@ -696,9 +726,13 @@ export function LaunchTab() {
         const updatedTokens = await Promise.all(
           createdTokens.map(async (token) => {
             try {
-              if (!signer) return token;
+              if (!hookSigner) return token;
               console.log('Getting balance for token:', token.address);
-              const tokenContract = new ethers.Contract(token.address, LAUNCHPAD_TOKEN_ABI, signer);
+              const tokenContract = new ethers.Contract(
+                token.address,
+                LAUNCHPAD_TOKEN_ABI,
+                hookSigner,
+              );
               const balance = await tokenContract.balanceOf(walletAddress);
               const totalSupply = await tokenContract.totalSupply();
               console.log(
@@ -1052,7 +1086,7 @@ export function LaunchTab() {
             <p>• walletAddress: {walletAddress ? '✅ Connected' : '❌ Not connected'}</p>
             <p>• isWalletConnected (Hook): {isWalletConnected ? '✅ True' : '❌ False'}</p>
             <p>• isReady: {isReady ? '✅ True' : '❌ False'}</p>
-            <p>• Privy signer: {signer ? '✅ Available' : '❌ Not available'}</p>
+            <p>• Wagmi signer (Solution 2): {wagmiSigner ? '✅ Available' : '❌ Not available'}</p>
             <p>• Hook signer: {hookSigner ? '✅ Available' : '❌ Not available'}</p>
             <p>• Hook factory: {hookFactoryContract ? '✅ Available' : '❌ Not available'}</p>
             <p>• Local factory: {factoryContract ? '✅ Available' : '❌ Not available'}</p>
@@ -1068,35 +1102,27 @@ export function LaunchTab() {
             )}
             <p>
               <strong>Salt Mining Disabled:</strong>{' '}
-              {isMining ||
-              !isReady ||
-              !walletAddress ||
-              !isAuthenticated ||
-              (!hookSigner && !signer)
+              {isMining || !isReady || !walletAddress || !isAuthenticated || !hookSigner
                 ? '❌ YES'
                 : '✅ NO'}
             </p>
-            {(isMining ||
-              !isReady ||
-              !walletAddress ||
-              !isAuthenticated ||
-              (!hookSigner && !signer)) && (
+            {(isMining || !isReady || !walletAddress || !isAuthenticated || !hookSigner) && (
               <p className="text-red-400 text-xs">
                 <strong>Disabled because:</strong>
                 {isMining && ' Currently mining'}
                 {!isReady && ' Contract hook not ready'}
                 {!walletAddress && ' No wallet address'}
                 {!isAuthenticated && ' Not authenticated'}
-                {!hookSigner && !signer && ' No signer available'}
+                {!hookSigner && ' No signer available'}
               </p>
             )}
           </div>
           <div className="flex gap-2">
-            {signer && (
+            {hookSigner && (
               <Button
                 onClick={async () => {
                   try {
-                    const provider = signer.provider;
+                    const provider = hookSigner.provider;
                     const blockNumber = await provider?.getBlockNumber();
                     const network = await provider?.getNetwork();
                     console.log('=== Network Status ===');
@@ -1117,7 +1143,7 @@ export function LaunchTab() {
                 Test Network
               </Button>
             )}
-            {walletAddress && (
+            {walletAddress && hookSigner && (
               <Button
                 onClick={async () => {
                   try {
@@ -1125,27 +1151,21 @@ export function LaunchTab() {
                     console.log('Wallet Address:', walletAddress);
                     console.log('ACES Token Address:', contractAddresses.ACES_TOKEN);
 
-                    // Try with different signers
-                    const signerToUse = hookSigner || signer;
-                    if (signerToUse) {
-                      const testAces = new ethers.Contract(
-                        contractAddresses.ACES_TOKEN,
-                        ERC20_ABI,
-                        signerToUse,
-                      );
-                      console.log('Contract created with signer');
+                    const testAces = new ethers.Contract(
+                      contractAddresses.ACES_TOKEN,
+                      ERC20_ABI,
+                      hookSigner,
+                    );
+                    console.log('Contract created with signer');
 
-                      const balance = await testAces.balanceOf(walletAddress);
-                      const formattedBalance = ethers.utils.formatEther(balance);
-                      console.log('Raw Balance (wei):', balance.toString());
-                      console.log('Formatted Balance:', formattedBalance);
+                    const balance = await testAces.balanceOf(walletAddress);
+                    const formattedBalance = ethers.utils.formatEther(balance);
+                    console.log('Raw Balance (wei):', balance.toString());
+                    console.log('Formatted Balance:', formattedBalance);
 
-                      alert(
-                        `ACES Balance Test:\nRaw: ${balance.toString()}\nFormatted: ${formattedBalance} ACES`,
-                      );
-                    } else {
-                      alert('No signer available for testing');
-                    }
+                    alert(
+                      `ACES Balance Test:\nRaw: ${balance.toString()}\nFormatted: ${formattedBalance} ACES`,
+                    );
                   } catch (error) {
                     console.error('ACES contract test failed:', error);
                     alert(
@@ -1238,9 +1258,9 @@ export function LaunchTab() {
         </Card>
       )}
 
-    {/* ACES Balance and Controls */}
-    {isAuthenticated && walletAddress && (
-      <Card className="bg-black border-purple-400/20">
+      {/* ACES Balance and Controls */}
+      {isAuthenticated && walletAddress && (
+        <Card className="bg-black border-purple-400/20">
           <CardHeader>
             <CardTitle className="text-white font-libre-caslon flex items-center">
               <Coins className="w-5 h-5 mr-2 text-purple-400" />
@@ -1314,11 +1334,7 @@ export function LaunchTab() {
                   <Button
                     onClick={handleBeginSaltMine}
                     disabled={
-                      isMining ||
-                      !isReady ||
-                      !walletAddress ||
-                      !isAuthenticated ||
-                      (!hookSigner && !signer)
+                      isMining || !isReady || !walletAddress || !isAuthenticated || !hookSigner
                     }
                     className="bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-700 hover:to-cyan-700 text-white"
                   >
