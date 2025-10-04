@@ -211,7 +211,7 @@ const drawDaysLeft = (
     ctx.textBaseline = 'bottom';
     const textX = x + width - (isMobile ? 15 : 20) * responsiveMetrics.paddingScale;
     const textY = y + height - (isMobile ? 15 : 20) * responsiveMetrics.paddingScale;
-    ctx.fillText('LIVE', textX, textY);
+    ctx.fillText('TRADE', textX, textY);
     ctx.restore();
     return;
   }
