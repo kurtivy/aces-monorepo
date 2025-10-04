@@ -42,9 +42,9 @@ const BuiltOnBaseOverlayComponent: React.FC = () => {
         }}
         onClick={() => setIsModalOpen(true)}
       >
-        <span className="text-[10px] sm:text-xs font-medium text-[#D0B264] whitespace-nowrap font-proxima-nova">
+        {/* <span className="text-[10px] sm:text-xs font-medium text-[#D0B264] whitespace-nowrap font-proxima-nova">
           BUILT ON
-        </span>
+        </span> */}
         <div className="h-2.5 w-px bg-[#D0B264]"></div>
         <svg
           className="h-2.5 sm:h-3 w-auto flex-shrink-0"

@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/lib/auth/auth-context';
 import { useAdminAuth } from '@/lib/auth/admin-auth-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,7 +11,6 @@ import { Shield, Loader2, AlertCircle, Home } from 'lucide-react';
 import Link from 'next/link';
 
 export default function AdminLoginPage() {
-  const { isAuthenticated, isAdmin, connectWallet } = useAuth();
   const {
     isAuthenticated: isAdminAuthenticated,
     isLoading: isAdminLoading,
@@ -27,17 +25,16 @@ export default function AdminLoginPage() {
 
   // Check authentication status and redirect accordingly
   useEffect(() => {
-    if (!isAdminLoading) {
-      // If both auths are complete, redirect to dashboard
-      if (isAdminAuthenticated && isAuthenticated && isAdmin) {
-        router.push('/admin/dashboard');
-      }
-      // If not Privy admin, redirect to unauthorized
-      else if (isAuthenticated && !isAdmin) {
-        router.push('/admin/unauthorized');
-      }
+    console.log('📋 Login page auth check:', {
+      isAdminLoading,
+      isAdminAuthenticated,
+    });
+
+    if (!isAdminLoading && isAdminAuthenticated) {
+      console.log('✅ Login: Admin auth complete, redirecting to dashboard');
+      router.push('/admin/dashboard');
     }
-  }, [isAdminAuthenticated, isAuthenticated, isAdmin, isAdminLoading, router]);
+  }, [isAdminAuthenticated, isAdminLoading, router]);
 
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,8 +42,14 @@ export default function AdminLoginPage() {
     setError(null);
 
     try {
-      // Step 1: Authenticate with Supabase admin credentials
+      console.log('🔐 Starting admin login process...', {
+        email: adminCredentials.email,
+      });
+
+      // Authenticate with Supabase admin credentials
       const result = await adminLogin(adminCredentials.email, adminCredentials.password);
+
+      console.log('🔑 Admin auth result:', result);
 
       if (!result.success) {
         setError(result.error || 'Invalid admin credentials. Please try again.');
@@ -54,24 +57,12 @@ export default function AdminLoginPage() {
         return;
       }
 
-      // Step 2: Check if user is also authenticated with Privy and has admin role
-      if (!isAuthenticated) {
-        setError('Please connect your admin wallet to complete verification.');
-        // Trigger wallet connection
-        await connectWallet();
-        return;
-      }
-
-      if (!isAdmin) {
-        setError('Your wallet account does not have admin privileges.');
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Both authentications successful - show loading and redirect to dashboard
+      // Redirect to dashboard
+      console.log('🎉 Admin auth successful, redirecting to dashboard...');
       setIsRedirecting(true);
       router.push('/admin/dashboard');
     } catch (err) {
+      console.error('❌ Login error:', err);
       setError('Login failed. Please try again.');
       setIsSubmitting(false);
     }
@@ -107,8 +98,7 @@ export default function AdminLoginPage() {
           <CardContent className="space-y-6">
             <form onSubmit={handleAdminLogin} className="space-y-4">
               <p className="text-[#DCDDCC] text-sm font-jetbrains">
-                Enter your admin credentials. You&apos;ll also need to connect your admin wallet for
-                verification.
+                Enter your admin credentials to access the dashboard.
               </p>
 
               <div className="space-y-2">

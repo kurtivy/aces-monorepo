@@ -167,6 +167,30 @@
   }
 }
 
+@layer utilities {
+  .safe-area-pb {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobile-optimized {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  .touch-manipulation {
+    touch-action: manipulation;
+  }
+}
+
 /* Individual font utility classes */
 @layer utilities {
   .font-neue-world {

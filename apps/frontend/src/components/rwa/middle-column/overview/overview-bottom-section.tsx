@@ -1,25 +1,69 @@
 'use client';
 
-import CountdownTimer from './countdown-timer';
 import ProgressionBar from './progression-bar';
+import ScoreboardSplitFlap from './scorebaord-split-flap';
+import { useTokenBondingData } from '@/hooks/contracts/use-token-bonding-data';
 
-export default function OverviewBottomSection() {
+interface OverviewBottomSectionProps {
+  launchDate?: string | null;
+  showProgression?: boolean;
+  progressionPercentage?: number; // Deprecated - will be calculated from contract
+  showProgressionDesktopOnly?: boolean;
+  tokenAddress?: string; // New prop for dynamic bonding data
+  chainId?: number;
+}
+
+export default function OverviewBottomSection({
+  launchDate,
+  showProgression = true,
+  progressionPercentage: propPercentage = 26.9,
+  showProgressionDesktopOnly = false,
+  tokenAddress,
+  chainId,
+}: OverviewBottomSectionProps) {
+  // Use the same hook as TokenSwapInterface for consistent behavior
+  const {
+    bondingPercentage,
+    isBonded: contractIsBonded,
+    loading: contractLoading,
+  } = useTokenBondingData(tokenAddress, chainId);
+
+  // Use contract data if available, otherwise fall back to prop
+  const percentage = bondingPercentage > 0 ? bondingPercentage : propPercentage;
+  const isBonded = contractIsBonded;
+  const loading = contractLoading;
+
   return (
-    <div className="flex-shrink-0 mt-2 space-y-2">
-      {/* Countdown Timer */}
-      <div className="h-32">
-        <CountdownTimer />
+    <div className="w-full space-y-6">
+      <div className="w-full">
+        <ScoreboardSplitFlap launchDate={launchDate} />
       </div>
 
-      {/* Progress Bar */}
-      <div className="h-20">
-        <ProgressionBar />
-      </div>
-
-      {/* Buy Presale Button */}
-      <button className="w-full bg-gradient-to-r from-[#D0B284] to-[#D7BF75] hover:from-[#D7BF75] hover:to-[#D0B284] text-black font-bold py-4 px-8 rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-[1.02]">
-        <span className="text-xl tracking-wider font-spray-letters">BUY PRESALE</span>
-      </button>
+      {showProgression && (
+        <div className="space-y-3">
+          <div className={showProgressionDesktopOnly ? 'hidden lg:block' : ''}>
+            <ProgressionBar
+              tokenAddress={tokenAddress}
+              chainId={chainId}
+              percentage={percentage}
+              isBondedOverride={isBonded}
+            />
+            {loading ? (
+              <div className="text-xs font-semibold uppercase tracking-[0.3em] text-center text-[#D7BF75]/40">
+                Loading...
+              </div>
+            ) : (
+              <div
+                className={
+                  'text-xs font-semibold uppercase tracking-[0.3em] text-center text-[#D7BF75]/80'
+                }
+              >
+                {isBonded ? 'BONDED - 100%' : `Bonded ${percentage.toFixed(1)}% / 100%`}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

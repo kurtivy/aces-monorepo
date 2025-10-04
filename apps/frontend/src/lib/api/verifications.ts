@@ -29,13 +29,13 @@ export interface VerificationData {
   lastAttemptAt?: string;
   user?: {
     id: string;
-    displayName: string | null;
+    username: string | null;
     email: string | null;
     createdAt: string;
   } | null;
   reviewer?: {
     id: string;
-    displayName: string | null;
+    username: string | null;
     email: string | null;
   } | null;
 }

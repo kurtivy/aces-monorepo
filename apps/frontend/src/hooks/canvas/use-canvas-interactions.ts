@@ -9,6 +9,21 @@ import { mobileUtils } from '../../lib/utils/browser-utils';
 import { getResponsiveMetrics } from '../../lib/utils/responsive-canvas-utils';
 import { useDeviceCapabilities } from '../../contexts/device-provider';
 
+export interface AuctionIconClickPayload {
+  symbol?: string;
+  title?: string;
+}
+
+const normalizeSymbolForRoute = (value?: string) =>
+  value ? value.trim().replace(/^\$/u, '') : '';
+
+const getFeaturedSymbol = (image?: ImageInfo | null) => {
+  if (!image) return '';
+  const metadata = image.metadata;
+  const rawSymbol = metadata?.symbol ?? metadata?.ticker;
+  return normalizeSymbolForRoute(rawSymbol);
+};
+
 interface UseCanvasInteractionsProps {
   viewState: ViewState;
   setSelectedImage: (image: ImageInfo | null) => void;
@@ -45,7 +60,7 @@ interface UseCanvasInteractionsProps {
   featuredImage?: ImageInfo | null;
   onFeaturedImageClick?: (imageInfo: ImageInfo) => void;
   // Auction icon click handler
-  onAuctionIconClick?: (productTitle: string) => void;
+  onAuctionIconClick?: (details: AuctionIconClickPayload) => void;
   // HOVER ENHANCEMENT: Add hover state callbacks for regular product images
   onProductImageHover?: (
     imageInfo: ImageInfo | null,
@@ -144,6 +159,18 @@ export const useCanvasInteractions = ({
   const touchPhysicsRef = useRef<TouchPhysics>(createTouchPhysics());
   const dragStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const boundsRef = useRef<DOMRect | null>(null);
+
+  const navigateToRwa = useCallback(
+    (symbol: string) => {
+      if (!symbol) return;
+      try {
+        router.push(`/rwa/${symbol}`);
+      } catch (error) {
+        window.location.href = `/rwa/${symbol}`;
+      }
+    },
+    [router],
+  );
 
   // FEATURED SECTION: Updated area coordinates
   const homeAreaWidth = unitSize * 2;
@@ -318,7 +345,7 @@ export const useCanvasInteractions = ({
       const { worldX, worldY } = coords;
 
       // AUCTION ICON: Check auction icon click first (highest priority)
-      if (featuredImage && onAuctionIconClick) {
+      if (featuredImage) {
         // Convert world coordinates to screen coordinates for auction icon bounds check
         const canvas = canvasRef.current;
         if (canvas) {
@@ -350,7 +377,18 @@ export const useCanvasInteractions = ({
             screenY >= iconBounds.y &&
             screenY <= iconBounds.y + iconBounds.height
           ) {
-            onAuctionIconClick(featuredImage.metadata.title);
+            const symbolForRoute = getFeaturedSymbol(featuredImage);
+            if (symbolForRoute) {
+              if (onAuctionIconClick) {
+                onAuctionIconClick({ symbol: symbolForRoute, title: featuredImage.metadata.title });
+              } else {
+                navigateToRwa(symbolForRoute);
+              }
+            } else if (onAuctionIconClick) {
+              onAuctionIconClick({ title: featuredImage.metadata.title });
+            } else {
+              onFeaturedImageClick?.(featuredImage);
+            }
             return;
           }
         }
@@ -368,7 +406,13 @@ export const useCanvasInteractions = ({
           featuredAreaHeight,
         )
       ) {
-        onFeaturedImageClick?.(featuredImage);
+        // Navigate to RWA page if symbol exists, otherwise fall back to modal
+        const symbolForRoute = getFeaturedSymbol(featuredImage);
+        if (symbolForRoute) {
+          navigateToRwa(symbolForRoute);
+        } else {
+          onFeaturedImageClick?.(featuredImage);
+        }
         return;
       }
 
@@ -464,7 +508,7 @@ export const useCanvasInteractions = ({
 
       if (clickedImage) {
         if (clickedImage.type === 'submit-asset') {
-          window.location.href = '/tokenize';
+          window.location.href = '/launch';
         } else {
           setSelectedImage(clickedImage);
         }
@@ -483,6 +527,7 @@ export const useCanvasInteractions = ({
       featuredImage, // FEATURED SECTION: Add featured image
       onFeaturedImageClick, // FEATURED SECTION: Add featured image click handler
       onAuctionIconClick, // Auction icon click handler
+      navigateToRwa,
       imagePlacementMap,
       repeatedPlacements,
       repeatedTokens,

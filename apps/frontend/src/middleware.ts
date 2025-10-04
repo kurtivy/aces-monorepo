@@ -12,11 +12,6 @@ export function middleware(request: NextRequest) {
     host.includes('localhost:3003') ||
     host.includes('local.admin.aces.fun');
 
-  // Block access to profile page - redirect to home
-  if (pathname === '/profile') {
-    return NextResponse.redirect(new URL('/', request.url));
-  }
-
   // If it's an admin domain but not the login page, redirect to login
   if (isAdminDomain && pathname !== '/login' && pathname !== '/unauthorized' && pathname !== '/') {
     // For now, just continue - we'll handle auth checks in the components

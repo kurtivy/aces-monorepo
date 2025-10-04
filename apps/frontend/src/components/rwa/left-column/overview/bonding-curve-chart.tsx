@@ -1,316 +1,523 @@
-"use client"
+'use client';
 
-import { useRef, useEffect, useMemo, useState } from "react"
-import * as d3 from "d3"
+import { useRef, useEffect, useState, useCallback } from 'react';
+import * as d3 from 'd3';
+import { ethers } from 'ethers';
+import { useTokenBondingData } from '@/hooks/contracts/use-token-bonding-data';
+
+const ONE_ETHER = BigInt('1000000000000000000');
+const ZERO = BigInt(0);
+const ONE = BigInt(1);
+const TWO = BigInt(2);
+const SIX = BigInt(6);
+const FIFTY = BigInt(50);
 
 interface BondingCurveChartProps {
-  currentPrice?: number
-  tokensSold?: number
+  tokenAddress?: string;
+  currentPrice?: number;
+  tokensSold?: number;
 }
 
 interface TooltipData {
-  tokensSold: number
-  priceETH: number
-  priceUSD: number
-  x: number
-  y: number
+  tokensSold: number;
+  priceACES: number;
+  x: number;
+  y: number;
 }
 
-// Generate bonding curve data based on a simplified formula
-const generateBondingCurveData = (
-  currentTokensSold: number,
-  currentPriceETH: number,
-  bondingCurveSupply: number,
-  basePrice: number,
-) => {
-  const data = []
-  const steps = 100
-  const maxRange = bondingCurveSupply
-  const stepSize = maxRange / steps
+export default function BondingCurveChart({ tokenAddress }: BondingCurveChartProps) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [tooltipData, setTooltipData] = useState<TooltipData | null>(null);
+  const [bondingCurveData, setBondingCurveData] = useState<
+    Array<{
+      tokensSold: number;
+      priceACES: number;
+      phase: string;
+    }>
+  >([]);
 
-  for (let i = 0; i <= steps; i++) {
-    const tokensSold = i * stepSize
+  // Simple hook - gets all data we need
+  const bondingData = useTokenBondingData(tokenAddress);
 
-    let priceETH: number
+  const currentTokensSold = parseFloat(bondingData.currentSupply) || 0;
+  const tokensBondedAt = parseFloat(bondingData.tokensBondedAt) || 30000000;
+  const clampedCurrentTokensSold = Math.min(currentTokensSold, tokensBondedAt || currentTokensSold);
+  const isBonded = bondingData.isBonded;
+  const curve = bondingData.curve; // 0 = quadratic, 1 = linear
+  const floorPriceACES = parseFloat(bondingData.floorPriceACES) || 0;
 
-    if (tokensSold >= bondingCurveSupply) {
-      priceETH = basePrice * 2
-    } else {
-      const progress = tokensSold / bondingCurveSupply
-      const multiplier = 1 + progress
-      priceETH = basePrice * multiplier * multiplier
+  const formatTokenAmount = useCallback((value: number) => {
+    if (!Number.isFinite(value)) return '0';
+    if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B`;
+    if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+    if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
+    if (value >= 1) return value.toFixed(0);
+    return value.toFixed(4);
+  }, []);
+
+  const formatPriceACES = useCallback((value: number) => {
+    if (!Number.isFinite(value)) return '0 ACES';
+    if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M ACES`;
+    if (value >= 1_000) return `${(value / 1_000).toFixed(2)}K ACES`;
+    if (value >= 1) return `${value.toFixed(2)} ACES`;
+    return `${value.toFixed(4)} ACES`;
+  }, []);
+
+  const calculatePriceAtSupply = useCallback(
+    (supplyPoint: number) => {
+      const steepnessRaw = bondingData.steepness;
+      const floorWeiRaw = bondingData.floorWei;
+
+      if (!steepnessRaw || !floorWeiRaw) {
+        return floorPriceACES;
+      }
+
+      const steepness = BigInt(steepnessRaw);
+      const floorWei = BigInt(floorWeiRaw);
+
+      if (steepness === ZERO) {
+        return floorPriceACES;
+      }
+
+      if (supplyPoint <= 0) {
+        return floorPriceACES;
+      }
+
+      const supplyInt = BigInt(Math.max(1, Math.floor(supplyPoint)));
+      const amountInt = ONE;
+
+      const calculateQuadratic = () => {
+        const supplyMinusOne = supplyInt - ONE;
+        const sum1 = (supplyMinusOne * supplyInt * (TWO * supplyMinusOne + ONE)) / SIX;
+        const supplyMinusOnePlusAmount = supplyMinusOne + amountInt;
+        const supplyPlusAmount = supplyInt + amountInt;
+        const sum2 =
+          (supplyMinusOnePlusAmount * supplyPlusAmount * (TWO * supplyMinusOnePlusAmount + ONE)) /
+          SIX;
+        const summation = sum2 - sum1;
+        return (summation * ONE_ETHER) / steepness + floorWei * amountInt;
+      };
+
+      const calculateLinear = () => {
+        const sum1 = (supplyInt - ONE) * supplyInt;
+        const sum2 = (supplyInt - ONE + amountInt) * (supplyInt + amountInt);
+        const summation = sum2 - sum1;
+        const steepnessDivisor = (() => {
+          const divisor = steepness / FIFTY;
+          return divisor > ZERO ? divisor : ONE;
+        })();
+        return (summation * ONE_ETHER) / steepnessDivisor + floorWei * amountInt;
+      };
+
+      const priceWei = curve === 0 ? calculateQuadratic() : calculateLinear();
+
+      try {
+        const formatted = ethers.utils.formatEther(priceWei.toString());
+        return parseFloat(formatted);
+      } catch (error) {
+        console.error('Failed to format bonding curve price:', error);
+        return floorPriceACES;
+      }
+    },
+    [bondingData.floorWei, bondingData.steepness, curve, floorPriceACES],
+  );
+
+  // Generate curve data based on actual curve type
+  const generateCurveData = useCallback(() => {
+    const dataPoints = [];
+    const numPoints = 8;
+
+    for (let i = 0; i <= numPoints; i++) {
+      const supplyPoint = Math.floor((tokensBondedAt / numPoints) * i);
+      const priceACES = calculatePriceAtSupply(supplyPoint);
+      dataPoints.push({
+        tokensSold: supplyPoint,
+        priceACES,
+        phase: supplyPoint <= clampedCurrentTokensSold ? 'completed' : 'upcoming',
+      });
     }
+    return dataPoints;
+  }, [tokensBondedAt, clampedCurrentTokensSold, calculatePriceAtSupply]);
 
-    data.push({
-      tokensSold: Math.round(tokensSold),
-      priceETH: priceETH,
-      phase: tokensSold <= currentTokensSold ? "completed" : "upcoming",
-      isFixedPrice: tokensSold >= bondingCurveSupply,
-    })
-  }
+  // Interpolate price from chart data
+  const interpolatePriceFromChartData = useCallback(
+    (
+      targetSupply: number,
+      chartData: Array<{ tokensSold: number; priceACES: number; phase: string }>,
+    ) => {
+      if (chartData.length === 0) return 0;
 
-  return data
-}
+      const sortedData = [...chartData].sort((a, b) => a.tokensSold - b.tokensSold);
 
-const calculatePriceAtTokens = (tokensSold: number, bondingCurveSupply: number, basePrice: number): number => {
-  if (tokensSold >= bondingCurveSupply) {
-    return basePrice * 2
-  }
+      if (targetSupply <= sortedData[0].tokensSold) {
+        return sortedData[0].priceACES;
+      }
 
-  const progress = tokensSold / bondingCurveSupply
-  const multiplier = 1 + progress
-  return basePrice * multiplier * multiplier
-}
+      if (targetSupply >= sortedData[sortedData.length - 1].tokensSold) {
+        return sortedData[sortedData.length - 1].priceACES;
+      }
 
-export default function BondingCurveChart({
-  currentPrice: propCurrentPrice,
-  tokensSold: propTokensSold,
-}: BondingCurveChartProps) {
-  const svgRef = useRef<SVGSVGElement>(null)
-  const [tooltipData, setTooltipData] = useState<TooltipData | null>(null)
+      for (let i = 0; i < sortedData.length - 1; i++) {
+        const point1 = sortedData[i];
+        const point2 = sortedData[i + 1];
 
-  // Mock data for demonstration
-  const currentTokensSold = propTokensSold || 372000
-  const currentPriceETH = propCurrentPrice || 0.000268
-  const bondingCurveSupply = 1000000
-  const basePrice = 0.0001
-  const ethPrice = 3000 // Mock ETH price
+        if (targetSupply >= point1.tokensSold && targetSupply <= point2.tokensSold) {
+          const ratio =
+            (targetSupply - point1.tokensSold) / (point2.tokensSold - point1.tokensSold);
+          return point1.priceACES + (point2.priceACES - point1.priceACES) * ratio;
+        }
+      }
 
-  const bondingCurveData = useMemo(() => {
-    return generateBondingCurveData(currentTokensSold, currentPriceETH, bondingCurveSupply, basePrice)
-  }, [currentTokensSold, currentPriceETH, bondingCurveSupply, basePrice])
+      const nearestPoint = sortedData.reduce((prev, curr) =>
+        Math.abs(curr.tokensSold - targetSupply) < Math.abs(prev.tokensSold - targetSupply)
+          ? curr
+          : prev,
+      );
+      return nearestPoint.priceACES;
+    },
+    [],
+  );
 
+  // Generate curve data when bonding data is available
   useEffect(() => {
-    if (!svgRef.current || bondingCurveData.length === 0) return
+    if (!bondingData.loading && tokenAddress) {
+      const curveData = generateCurveData();
+      setBondingCurveData(curveData);
+      console.log('📊 Curve data generated:', {
+        curve: curve === 0 ? 'quadratic' : 'linear',
+        dataPoints: curveData.length,
+      });
+    }
+  }, [bondingData.loading, tokenAddress, generateCurveData, curve]);
 
-    d3.select(svgRef.current).selectAll("*").remove()
+  // D3 rendering
+  useEffect(() => {
+    if (!svgRef.current || bondingCurveData.length === 0) return;
 
-    const margin = { top: 20, right: 20, bottom: 40, left: 50 }
-    const width = 280 - margin.left - margin.right
-    const height = 200 - margin.top - margin.bottom
+    d3.select(svgRef.current).selectAll('*').remove();
+
+    const margin = { top: 20, right: 20, bottom: 70, left: 50 };
+    const width = 280 - margin.left - margin.right;
+    const height = 200 - margin.top - margin.bottom;
 
     const svg = d3
       .select(svgRef.current)
-      .attr("width", width + margin.left + margin.right)
-      .attr("height", height + margin.top + margin.bottom)
+      .attr('width', width + margin.left + margin.right)
+      .attr('height', height + margin.top + margin.bottom);
 
-    const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`)
+    const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
-    const xScale = d3.scaleLinear().domain([0, bondingCurveSupply]).range([0, width])
-    const maxETHPrice = d3.max(bondingCurveData, (d) => d.priceETH) || 0.0004
-    const yScale = d3.scaleLinear().domain([0, maxETHPrice]).range([height, 0])
+    const xScale = d3.scaleLinear().domain([0, tokensBondedAt]).range([0, width]);
+    const maxACESPrice = d3.max(bondingCurveData, (d) => d.priceACES) || floorPriceACES || 1;
+    const yScale = d3
+      .scaleLinear()
+      .domain([0, (maxACESPrice || 1) * 1.1])
+      .range([height, 0]);
 
     const line = d3
       .line<(typeof bondingCurveData)[0]>()
       .x((d) => xScale(d.tokensSold))
-      .y((d) => yScale(d.priceETH))
-      .curve(d3.curveMonotoneX)
+      .y((d) => yScale(d.priceACES))
+      .curve(d3.curveMonotoneX);
 
-    // Add grid
-    g.append("g")
-      .attr("class", "grid")
-      .attr("transform", `translate(0,${height})`)
+    // Grid lines
+    g.append('g')
+      .attr('class', 'grid')
       .call(
         d3
-          .axisBottom(xScale)
-          .tickSize(-height)
-          .tickFormat(() => "")
-          .tickValues([0, 250000, 500000, 750000, 1000000]),
-      )
+          .axisLeft(yScale)
+          .tickSize(-width)
+          .tickFormat(() => '')
+          .tickValues([0, maxACESPrice as number]),
+      );
 
-    g.selectAll(".grid line").style("stroke", "#374151").style("stroke-opacity", 0.3).style("stroke-dasharray", "2,2")
+    g.selectAll('.grid line')
+      .style('stroke', '#374151')
+      .style('stroke-opacity', 0.3)
+      .style('stroke-dasharray', '2,2');
 
-    // Add axes
+    // X-axis
     const xAxis = g
-      .append("g")
-      .attr("transform", `translate(0,${height})`)
+      .append('g')
+      .attr('transform', `translate(0,${height})`)
       .call(
         d3
           .axisBottom(xScale)
-          .tickValues([0, 250000, 500000, 750000, 1000000])
-          .tickFormat((d: d3.NumberValue) => {
-            const value = d.valueOf()
-            if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`
-            if (value >= 1000) return `${(value / 1000).toFixed(0)}K`
-            return value.toString()
+          .tickValues([0, tokensBondedAt * 0.5, tokensBondedAt] as number[])
+          .tickFormat((d) => {
+            const value = Number(d);
+            if (value === 0) return '0%';
+            const percentage = (value / tokensBondedAt) * 100;
+            return `${percentage.toFixed(0)}%`;
           }),
-      )
+      );
 
-    xAxis.selectAll("text").style("fill", "#9CA3AF").style("font-size", "8px")
-    xAxis.selectAll("line, path").style("stroke", "#9CA3AF")
+    xAxis.selectAll('text').style('fill', '#D0B284').style('font-size', '12px');
+    xAxis.selectAll('line, path').style('stroke', '#9CA3AF');
 
-    const yAxis = g.append("g").call(
+    // Y-axis
+    const yAxis = g.append('g').call(
       d3
         .axisLeft(yScale)
-        .tickValues([0, maxETHPrice])
-        .tickFormat((d: d3.NumberValue) => {
-          const value = d.valueOf()
-          if (value === 0) return "0"
-          return `${value.toFixed(6)}`
+        .ticks(4)
+        .tickFormat((d) => {
+          const value = Number(d);
+          if (value === 0) return '0';
+          if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+          if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
+          if (value >= 1) return value.toFixed(2);
+          return value.toFixed(4);
         }),
-    )
+    );
 
-    yAxis.selectAll("text").style("fill", "#9CA3AF").style("font-size", "8px")
-    yAxis.selectAll("line, path").style("stroke", "#9CA3AF")
+    yAxis.selectAll('text').style('fill', '#9CA3AF').style('font-size', '8px');
+    yAxis.selectAll('line').style('stroke', '#9CA3AF');
+    yAxis.selectAll('path').style('stroke', 'none');
 
-    // Create gradient
+    // Gradient
     const gradient = svg
-      .append("defs")
-      .append("linearGradient")
-      .attr("id", "areaGradient")
-      .attr("gradientUnits", "userSpaceOnUse")
-      .attr("x1", 0)
-      .attr("y1", 0)
-      .attr("x2", 0)
-      .attr("y2", height)
+      .append('defs')
+      .append('linearGradient')
+      .attr('id', 'areaGradient')
+      .attr('gradientUnits', 'userSpaceOnUse')
+      .attr('x1', 0)
+      .attr('y1', 0)
+      .attr('x2', 0)
+      .attr('y2', height);
 
-    gradient.append("stop").attr("offset", "0%").attr("stop-color", "#D0B284").attr("stop-opacity", 0.4)
+    gradient
+      .append('stop')
+      .attr('offset', '0%')
+      .attr('stop-color', '#D0B284')
+      .attr('stop-opacity', 0.4);
+    gradient
+      .append('stop')
+      .attr('offset', '100%')
+      .attr('stop-color', '#D0B284')
+      .attr('stop-opacity', 0.1);
 
-    gradient.append("stop").attr("offset", "100%").attr("stop-color", "#D0B284").attr("stop-opacity", 0.1)
-
-    // Add area
+    // Area
     const area = d3
       .area<(typeof bondingCurveData)[0]>()
       .x((d) => xScale(d.tokensSold))
       .y0(height)
-      .y1((d) => yScale(d.priceETH))
-      .curve(d3.curveMonotoneX)
+      .y1((d) => yScale(d.priceACES))
+      .curve(d3.curveMonotoneX);
 
-    g.append("path").datum(bondingCurveData).attr("fill", "url(#areaGradient)").attr("d", area)
+    g.append('path').datum(bondingCurveData).attr('fill', 'url(#areaGradient)').attr('d', area);
 
-    // Add line
-    g.append("path")
+    // Line
+    g.append('path')
       .datum(bondingCurveData)
-      .attr("fill", "none")
-      .attr("stroke", "#D0B284")
-      .attr("stroke-width", 2)
-      .attr("d", line)
+      .attr('fill', 'none')
+      .attr('stroke', '#D0B284')
+      .attr('stroke-width', 2)
+      .attr('d', line);
 
-    // Add current position
-    if (currentTokensSold > 0) {
-      const currentX = xScale(currentTokensSold)
-      const currentY = yScale(currentPriceETH)
+    // Current position line
+    if (currentTokensSold > 0 && !isBonded) {
+      const currentX = xScale(Math.min(currentTokensSold, tokensBondedAt));
 
-      g.append("line")
-        .attr("x1", currentX)
-        .attr("y1", 0)
-        .attr("x2", currentX)
-        .attr("y2", height)
-        .attr("stroke", "#D0B284")
-        .attr("stroke-width", 1)
-        .attr("stroke-dasharray", "3,3")
+      g.append('line')
+        .attr('x1', currentX)
+        .attr('y1', 0)
+        .attr('x2', currentX)
+        .attr('y2', height)
+        .attr('stroke', '#D0B284')
+        .attr('stroke-width', 1.5)
+        .attr('stroke-dasharray', '3,3')
+        .attr('opacity', 0.8);
 
-      g.append("circle")
-        .attr("cx", currentX)
-        .attr("cy", currentY)
-        .attr("r", 4)
-        .attr("fill", "#D0B284")
-        .attr("stroke", "#fff")
-        .attr("stroke-width", 1)
+      g.append('text')
+        .attr('x', currentX)
+        .attr('y', -5)
+        .attr('text-anchor', 'end')
+        .attr('fill', '#D0B284')
+        .attr('font-size', '10px')
+        .attr('font-weight', 'bold')
+        .text(`Current ${formatTokenAmount(currentTokensSold)}`);
     }
 
+    // Bonding threshold line
+    if (!isBonded) {
+      const bondingX = xScale(tokensBondedAt);
+
+      g.append('line')
+        .attr('x1', bondingX)
+        .attr('y1', 0)
+        .attr('x2', bondingX)
+        .attr('y2', height)
+        .attr('stroke', '#10b981')
+        .attr('stroke-width', 2)
+        .attr('stroke-dasharray', '5,5')
+        .attr('opacity', 0.6);
+
+      g.append('text')
+        .attr('x', bondingX)
+        .attr('y', -12)
+        .attr('text-anchor', 'end')
+        .attr('fill', '#10b981')
+        .attr('font-size', '10px')
+        .attr('font-weight', 'bold')
+        .text(`${formatTokenAmount(tokensBondedAt)}`);
+    }
+
+    // Bonded indicator
+    if (isBonded) {
+      g.append('text')
+        .attr('x', width / 2)
+        .attr('y', height / 2)
+        .attr('text-anchor', 'middle')
+        .attr('fill', '#10b981')
+        .attr('font-size', '14px')
+        .attr('font-weight', 'bold')
+        .attr('opacity', 0.7)
+        .text('BONDED');
+    }
+
+    g.append('text')
+      .attr('transform', 'rotate(-90)')
+      .attr('x', -height / 2)
+      .attr('y', -margin.left + 12)
+      .attr('text-anchor', 'middle')
+      .attr('fill', '#9CA3AF')
+      .attr('font-size', '10px')
+      .text('Price (ACES)');
+
     // Interactive overlay
-    const crosshairGroup = g.append("g").attr("class", "crosshairs").style("display", "none")
+    const crosshairGroup = g.append('g').attr('class', 'crosshairs').style('display', 'none');
 
     const verticalLine = crosshairGroup
-      .append("line")
-      .attr("stroke", "#FFFFFF")
-      .attr("stroke-width", 1)
-      .attr("stroke-dasharray", "2,2")
-      .attr("opacity", 0.8)
+      .append('line')
+      .attr('stroke', '#FFFFFF')
+      .attr('stroke-width', 1)
+      .attr('stroke-dasharray', '2,2')
+      .attr('opacity', 0.8);
 
     const horizontalLine = crosshairGroup
-      .append("line")
-      .attr("stroke", "#FFFFFF")
-      .attr("stroke-width", 1)
-      .attr("stroke-dasharray", "2,2")
-      .attr("opacity", 0.8)
+      .append('line')
+      .attr('stroke', '#FFFFFF')
+      .attr('stroke-width', 1)
+      .attr('stroke-dasharray', '2,2')
+      .attr('opacity', 0.8);
 
     const intersectionDot = crosshairGroup
-      .append("circle")
-      .attr("r", 3)
-      .attr("fill", "#FFFFFF")
-      .attr("stroke", "#D0B284")
-      .attr("stroke-width", 1)
+      .append('circle')
+      .attr('r', 3)
+      .attr('fill', '#FFFFFF')
+      .attr('stroke', '#D0B284')
+      .attr('stroke-width', 1);
 
     const mouseOverlay = g
-      .append("rect")
-      .attr("width", width)
-      .attr("height", height)
-      .attr("fill", "transparent")
-      .style("cursor", "crosshair")
+      .append('rect')
+      .attr('width', width)
+      .attr('height', height)
+      .attr('fill', 'transparent')
+      .style('cursor', 'crosshair');
 
     mouseOverlay
-      .on("mousemove", function (event) {
-        const [mouseX] = d3.pointer(event, this)
+      .on('mousemove', function (event) {
+        const [mouseX] = d3.pointer(event, this);
 
         if (mouseX < 0 || mouseX > width) {
-          crosshairGroup.style("display", "none")
-          setTooltipData(null)
-          return
+          crosshairGroup.style('display', 'none');
+          setTooltipData(null);
+          return;
         }
 
-        const tokensAtX = xScale.invert(mouseX)
+        const tokensAtX = Math.max(0, Math.min(tokensBondedAt, xScale.invert(mouseX)));
 
-        if (tokensAtX < 0 || tokensAtX > bondingCurveSupply) {
-          crosshairGroup.style("display", "none")
-          setTooltipData(null)
-          return
+        if (tokensAtX < 0 || tokensAtX > tokensBondedAt) {
+          crosshairGroup.style('display', 'none');
+          setTooltipData(null);
+          return;
         }
 
-        const priceETH = calculatePriceAtTokens(tokensAtX, bondingCurveSupply, basePrice)
-        const priceUSD = priceETH * ethPrice
+        const priceACES = interpolatePriceFromChartData(tokensAtX, bondingCurveData);
+        const chartX = xScale(tokensAtX);
+        const chartY = yScale(priceACES);
 
-        const chartX = xScale(tokensAtX)
-        const chartY = yScale(priceETH)
+        verticalLine.attr('x1', chartX).attr('x2', chartX).attr('y1', 0).attr('y2', height);
+        horizontalLine.attr('x1', 0).attr('x2', width).attr('y1', chartY).attr('y2', chartY);
+        intersectionDot.attr('cx', chartX).attr('cy', chartY);
 
-        verticalLine.attr("x1", chartX).attr("x2", chartX).attr("y1", 0).attr("y2", height)
-        horizontalLine.attr("x1", 0).attr("x2", width).attr("y1", chartY).attr("y2", chartY)
-        intersectionDot.attr("cx", chartX).attr("cy", chartY)
+        crosshairGroup.style('display', null);
 
-        crosshairGroup.style("display", null)
-
-        const containerRect = svgRef.current?.getBoundingClientRect()
+        const containerRect = svgRef.current?.getBoundingClientRect();
         if (containerRect) {
+          const relativeX = event.clientX - containerRect.left;
+          const relativeY = event.clientY - containerRect.top;
+          const tooltipHeight = 60;
+          const adjustedY =
+            relativeY < tooltipHeight + 10 ? relativeY + 20 : relativeY - tooltipHeight;
+
           setTooltipData({
             tokensSold: tokensAtX,
-            priceETH,
-            priceUSD,
-            x: event.clientX - containerRect.left,
-            y: event.clientY - containerRect.top,
-          })
+            priceACES,
+            x: relativeX,
+            y: adjustedY,
+          });
         }
       })
-      .on("mouseleave", () => {
-        crosshairGroup.style("display", "none")
-        setTooltipData(null)
-      })
-  }, [bondingCurveData, currentTokensSold, currentPriceETH, bondingCurveSupply, basePrice])
+      .on('mouseleave', () => {
+        crosshairGroup.style('display', 'none');
+        setTooltipData(null);
+      });
+  }, [
+    bondingCurveData,
+    currentTokensSold,
+    tokensBondedAt,
+    interpolatePriceFromChartData,
+    isBonded,
+    formatTokenAmount,
+    formatPriceACES,
+    floorPriceACES,
+  ]);
 
   return (
-    <div className="w-full h-full bg-transparent flex items-center justify-center relative">
-      <svg ref={svgRef} style={{ width: "100%", height: "100%", maxWidth: "280px", maxHeight: "200px" }}></svg>
-
-      {tooltipData && (
-        <div
-          className="absolute pointer-events-none z-10"
-          style={{
-            left: tooltipData.x + 10,
-            top: tooltipData.y - 60,
-            transform: tooltipData.x > 200 ? "translateX(-100%)" : "none",
-          }}
-        >
-          <div className="bg-[#231F20] border border-[#D0B284] rounded-lg p-2 shadow-xl">
-            <div className="text-xs space-y-1">
-              <div className="text-[#FFFFFF] font-semibold">
-                {tooltipData.tokensSold.toLocaleString(undefined, { maximumFractionDigits: 0 })} tokens
-              </div>
-              <div className="text-[#DCDDCC]">ETH: {tooltipData.priceETH.toFixed(8)}</div>
-              <div className="text-[#D7BF75]">USD: ${tooltipData.priceUSD.toFixed(4)}</div>
-            </div>
-          </div>
+    <div className="w-full h-full bg-transparent flex flex-col items-center justify-center relative pb-4">
+      {bondingData.loading || bondingCurveData.length === 0 ? (
+        <div className="flex items-center justify-center h-full">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#D0B284]"></div>
         </div>
+      ) : !tokenAddress ? (
+        <div className="flex flex-col items-center justify-center h-full text-[#9CA3AF] text-center px-4">
+          <div className="text-sm mb-2">🎯</div>
+          <div className="text-xs mb-3">No token selected</div>
+        </div>
+      ) : bondingData.error ? (
+        <div className="flex flex-col items-center justify-center h-full text-[#9CA3AF] text-center px-4">
+          <div className="text-sm mb-2">📊</div>
+          <div className="text-xs mb-3">{bondingData.error}</div>
+        </div>
+      ) : (
+        <>
+          <svg
+            ref={svgRef}
+            style={{ width: '100%', height: '100%', maxWidth: '280px', maxHeight: '240px' }}
+          ></svg>
+
+          {tooltipData && (
+            <div
+              className="absolute pointer-events-none z-10"
+              style={{
+                left: tooltipData.x + 10,
+                top: tooltipData.y,
+                transform: tooltipData.x > 200 ? 'translateX(-100%)' : 'none',
+              }}
+            >
+              <div className="bg-[#231F20] border border-[#D0B284] rounded-lg p-2 shadow-xl">
+                <div className="text-xs space-y-1">
+                  <div className="text-[#FFFFFF] font-semibold">
+                    {formatTokenAmount(tooltipData.tokensSold)} tokens
+                  </div>
+                  <div className="text-[#D0B284]">{formatPriceACES(tooltipData.priceACES)}</div>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
-  )
+  );
 }

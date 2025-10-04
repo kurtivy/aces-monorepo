@@ -1,8 +1,11 @@
 import type { ApiResponse } from '@aces/utils';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 
-  (typeof window !== 'undefined' && window.location.hostname.includes('feat-ui-updates') 
-    ? 'https://aces-monorepo-backend-git-feat-ui-updates-dan-aces-fun.vercel.app'
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== 'undefined' &&
+  (window.location.hostname.includes('feat-ui-updates') ||
+    window.location.hostname.includes('feat-rwa-page-upgrade'))
+    ? 'https://aces-monorepo-backend-git-feat-rwa-page-upgrade-dan-aces-fun.vercel.app'
     : 'http://localhost:3002');
 
 export interface ListingData {
@@ -20,7 +23,7 @@ export interface ListingData {
   ownerId: string;
   owner?: {
     id: string;
-    displayName: string | null;
+    username: string | null;
     avatar: string | null;
     walletAddress: string | null;
     accountVerification?: {
@@ -42,7 +45,7 @@ export interface ListingData {
     createdAt: string;
     bidder: {
       id: string;
-      displayName: string | null;
+      username: string | null;
       avatar: string | null;
     };
   }>;
@@ -114,7 +117,7 @@ export class ListingsApi {
   }
 
   static async getLiveListings(): Promise<ApiResult<ListingData[]>> {
-    return this.request('', {
+    return this.request('/live', {
       method: 'GET',
     });
   }

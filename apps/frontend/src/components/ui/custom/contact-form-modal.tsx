@@ -174,8 +174,8 @@ export default function ContactFormModal({ isOpen, onClose }: ContactFormModalPr
     setSubmitError('');
 
     try {
-      // API call to backend
-      const response = await fetch('/api/v1/contact', {
+      // API call to backend (using local backend for testing)
+      const response = await fetch('http://localhost:3002/api/v1/contact', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -331,11 +331,11 @@ export default function ContactFormModal({ isOpen, onClose }: ContactFormModalPr
                 <div className="pt-2">
                   <Button
                     type="submit"
-                    disabled={true}
+                    disabled={isSubmitting}
                     className="w-full bg-gradient-to-r from-[#D0B264] to-[#D0B264]/80 hover:from-[#D0B264]/90 hover:to-[#D0B264]/70 text-black font-semibold py-3 px-6 rounded-lg transition-all duration-150 transform active:scale-[0.98] shadow-goldGlow text-sm md:hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                   >
                     <Send className="w-4 h-4 mr-2" />
-                    Send Message (Coming Soon)
+                    {isSubmitting ? 'Sending...' : 'Send Message'}
                   </Button>
                 </div>
               </form>

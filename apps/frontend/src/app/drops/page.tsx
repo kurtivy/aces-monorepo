@@ -1,14 +1,34 @@
 'use client';
 
 import type React from 'react';
+import { useState, useEffect } from 'react';
 import Footer from '@/components/ui/custom/footer';
 import LuxuryAssetsBackground from '@/components/ui/custom/luxury-assets-background';
 import PageBandTitle from '@/components/ui/custom/page-band-title';
 import PageBandSubtitle from '@/components/ui/custom/page-band-subtitle';
 import AcesHeader from '@/components/ui/custom/aces-header';
 import UpcomingGrid from '@/components/upcoming/upcoming-grid';
+import PageLoader from '@/components/loading/page-loader';
 
 export default function UpcomingPage() {
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    // Simulate initial page load
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[#151c16]">
+        <PageLoader />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen relative bg-[#151c16]">
       {/* Header Component */}

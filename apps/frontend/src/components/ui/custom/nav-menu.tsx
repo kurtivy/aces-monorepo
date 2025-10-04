@@ -174,7 +174,7 @@ const NavMenu: React.FC<NavMenuProps> = ({
       <AnimatePresence mode="wait">
         {isOpen && (
           <motion.div
-            className="absolute top-0 right-16 bg-black/95 border border-[#D0B264]/40 text-[#D0B264] rounded-lg overflow-hidden shadow-lg min-w-[180px] z-50"
+            className="absolute top-0 right-16 bg-black border border-[#D0B264]/40 text-[#D0B264] rounded-lg overflow-hidden shadow-lg min-w-[180px] z-50"
             variants={compactMenuVariants}
             initial="closed"
             animate="open"

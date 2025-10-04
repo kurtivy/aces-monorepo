@@ -6,11 +6,11 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Search, Eye, TrendingUp, Calendar, User } from 'lucide-react';
 import { useAuth } from '@/lib/auth/auth-context';
-import { BidsApi, BidData } from '@/lib/api/bids';
+import { BidsApi, Bid } from '@/lib/api/bids';
 
 export function BidsTab() {
   const { getAccessToken } = useAuth();
-  const [bids, setBids] = useState<BidData[]>([]);
+  const [bids, setBids] = useState<Bid[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -29,12 +29,12 @@ export function BidsTab() {
           return;
         }
 
-        const result = await BidsApi.getAllBids(token);
+        const result = await BidsApi.getReceivedBids(token);
 
-        if (result.success) {
-          setBids(result.data);
+        if (result.success && result.data) {
+          setBids(result.data.data);
         } else {
-          setError(result.error || 'Failed to fetch bids');
+          setError(typeof result.error === 'string' ? result.error : 'Failed to fetch bids');
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An error occurred while fetching bids');
@@ -48,7 +48,7 @@ export function BidsTab() {
 
   const filteredAndSortedBids = bids
     .filter((bid) => {
-      const bidderName = bid.bidder?.displayName || 'Unknown Bidder';
+      const bidderName = bid.bidder?.username || bid.bidder?.walletAddress || 'Unknown Bidder';
       const listingTitle = bid.listing?.title || 'Unknown Listing';
 
       const matchesSearch =
@@ -76,24 +76,19 @@ export function BidsTab() {
         case 'amount':
           return parseFloat(b.amount) - parseFloat(a.amount);
         case 'bidder':
-          const bidderA = a.bidder?.displayName || 'Unknown';
-          const bidderB = b.bidder?.displayName || 'Unknown';
+          const bidderA = a.bidder?.username || a.bidder?.walletAddress || 'Unknown';
+          const bidderB = b.bidder?.username || b.bidder?.walletAddress || 'Unknown';
           return bidderA.localeCompare(bidderB);
         default:
           return 0;
       }
     });
 
-  const formatAmount = (amount: string, currency: string) => {
-    const value = parseFloat(amount);
-    return `${value.toLocaleString()} ${currency}`;
-  };
-
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString();
   };
 
-  const getBidStatus = (bid: BidData) => {
+  const getBidStatus = (bid: Bid) => {
     if (!bid.expiresAt) return { status: 'Active', color: 'text-[#184D37] bg-[#184D37]/10' };
 
     const now = new Date();
@@ -224,7 +219,9 @@ export function BidsTab() {
                           <User className="w-8 h-8 text-[#D0B284] bg-[#D0B284]/10 rounded-full p-1" />
                           <div>
                             <h3 className="text-white font-medium text-sm">
-                              {bid.bidder?.displayName || 'Unknown Bidder'}
+                              {bid.bidder?.username ||
+                                bid.bidder?.walletAddress ||
+                                'Unknown Bidder'}
                               {!bid.bidder && <span className="text-red-400 ml-2">(Orphaned)</span>}
                             </h3>
                             <span className="text-[#DCDDCC] font-jetbrains text-xs">
@@ -250,7 +247,7 @@ export function BidsTab() {
                         <div className="flex items-center justify-center space-x-2">
                           <TrendingUp className="w-4 h-4 text-[#D0B284]" />
                           <span className="text-white font-medium text-sm">
-                            {formatAmount(bid.amount, bid.currency)}
+                            ${parseFloat(bid.amount).toLocaleString()}
                           </span>
                         </div>
                       </td>

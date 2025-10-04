@@ -7,10 +7,13 @@ import type { ImageInfo } from '../../types/canvas';
 import { useImageLoader } from '../../hooks/canvas/use-image-loader';
 import { useViewState } from '../../hooks/canvas/use-view-state';
 import { useCanvasRenderer } from '../../hooks/canvas/use-canvas-renderer';
-import { useCanvasInteractions } from '../../hooks/canvas/use-canvas-interactions';
+import {
+  useCanvasInteractions,
+  type AuctionIconClickPayload,
+} from '../../hooks/canvas/use-canvas-interactions';
 import { useCoordinatedResize } from '../../hooks/use-coordinated-resize';
 import ConnectWalletNav from '../ui/custom/connect-wallet-nav';
-import NavMenu from '../ui/custom/nav-menu';
+// import NavMenu from '../ui/custom/nav-menu';
 import HomeButton from '../ui/custom/home-button';
 import ContactButton from '../ui/custom/contact-button';
 import UnifiedInfoPill from '../ui/custom/unified-info-pill';
@@ -26,7 +29,7 @@ import {
   setScrollRestoration,
   getScrollRestoration,
 } from '../../lib/utils/browser-utils';
-import { useDeviceCapabilities, useInfiniteCanvasSettings } from '../../contexts/device-provider';
+import { useDeviceCapabilities } from '../../contexts/device-provider';
 import {
   addEventListenerSafe,
   removeEventListenerSafe,
@@ -71,7 +74,7 @@ const InfiniteCanvas = ({
 
   // Week 3: Use enhanced capability system
   const { configuration, isReady: capabilitiesReady } = useDeviceCapabilities();
-  const canvasSettings = useInfiniteCanvasSettings();
+  // const canvasSettings = useInfiniteCanvasSettings();
 
   const imagePlacementMapRef = useRef(
     new Map<string, { image: ImageInfo; x: number; y: number; width: number; height: number }>(),
@@ -111,7 +114,7 @@ const InfiniteCanvas = ({
     canvasReady,
     repeatedPlacements,
     repeatedTokens,
-    handleMomentumUpdate,
+    // handleMomentumUpdate,
     featuredImage, // FEATURED SECTION: Add featured image return value
   } = useCanvasRenderer({
     images,
@@ -135,10 +138,18 @@ const InfiniteCanvas = ({
   imagesRef.current = images;
 
   // Auction icon click handler - define before useCanvasInteractions
-  const handleAuctionIconClick = useCallback((productTitle: string) => {
-    setSelectedProductTitle(productTitle);
-    setIsEmailSignupModalOpen(true);
-  }, []);
+  const handleAuctionIconClick = useCallback(
+    ({ symbol, title }: AuctionIconClickPayload) => {
+      if (symbol) {
+        router.push(`/rwa/${symbol}`);
+        return;
+      }
+
+      setSelectedProductTitle(title ?? '');
+      setIsEmailSignupModalOpen(true);
+    },
+    [router],
+  );
 
   const handleEmailSignupModalClose = () => {
     setIsEmailSignupModalOpen(false);

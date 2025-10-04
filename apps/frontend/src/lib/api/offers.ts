@@ -1,7 +1,8 @@
 import type { ApiResponse } from '@aces/utils';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 
-  (typeof window !== 'undefined' && window.location.hostname.includes('feat-ui-updates') 
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== 'undefined' && window.location.hostname.includes('feat-ui-updates')
     ? 'https://aces-monorepo-backend-git-feat-ui-updates-dan-aces-fun.vercel.app'
     : 'http://localhost:3002');
 
@@ -72,23 +73,35 @@ export class OffersApi {
       {
         id: string;
         amount: string;
-        currency: string;
+        message?: string;
+        listingId: string;
+        bidderId: string;
+        status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED' | 'WITHDRAWN';
+        expiresAt: string;
+        respondedAt?: string;
+        responseMessage?: string;
         createdAt: string;
-        expiresAt?: string;
-        listing: {
-          title: string;
-          symbol: string;
-          imageGallery?: string[];
-        };
+        updatedAt: string;
         bidder: {
           id: string;
-          displayName?: string;
+          username?: string;
           walletAddress?: string;
+          email?: string;
+        };
+        listing: {
+          id: string;
+          title: string;
+          symbol: string;
+          ownerId: string;
+          isLive: boolean;
+          startingBidPrice?: string;
+          reservePrice?: string;
+          imageGallery?: string[];
         };
       }[]
     >
   > {
-    return this.request('/my-listings-offers', {
+    return this.request('/received', {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${authToken}`,

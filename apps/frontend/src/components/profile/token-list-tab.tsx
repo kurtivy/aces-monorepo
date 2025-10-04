@@ -1,7 +1,6 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
-import { TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SellerDashboardOverlay } from './seller-dashboard-overlay';
 import Image from 'next/image';
 import { useState } from 'react';
@@ -55,26 +54,8 @@ export function TokenListTab() {
 
           {/* Table Content */}
           <div className="p-6">
-            {/* Tab selectors and Seller Dashboard button - aligned on same line */}
-            <div className="flex justify-between items-center mb-6">
-              <div className="flex-1">
-                <TabsList className="bg-transparent border-none p-0 h-auto space-x-8">
-                  <TabsTrigger
-                    value="tokens"
-                    className="bg-transparent text-[#DCDDCC] text-lg font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-[#D0B284]"
-                  >
-                    TOKENS
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="bids"
-                    className="bg-transparent text-[#DCDDCC] text-lg font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-[#D0B284]"
-                  >
-                    BIDS
-                  </TabsTrigger>
-                </TabsList>
-              </div>
-
-              {/* Seller Dashboard Button - aligned with tabs */}
+            {/* Seller Dashboard button - right aligned */}
+            <div className="flex justify-end items-center mb-6">
               <Button
                 onClick={() => setIsSellerDashboardOpen(true)}
                 className="bg-[#C9AE6A] hover:bg-[#C9AE6A]/80 text-black font-medium text-sm px-4 py-2"
@@ -105,8 +86,15 @@ export function TokenListTab() {
             {error && !isLoading && (
               <div className="flex items-center justify-center py-12">
                 <div className="text-center">
-                  <div className="text-red-400 text-sm mb-2">Error loading token data</div>
-                  <div className="text-[#E6E3D3]/60 text-xs">{error.message}</div>
+                  <div className="text-[#E6E3D3] text-sm mb-2">No ACES tokens detected</div>
+                  <div className="text-[#E6E3D3]/60 text-xs">
+                    This wallet doesn't currently hold any ACES tokens.
+                    {error.message.includes('balanceOf') && (
+                      <div className="mt-1">
+                        The token balance query returned empty - this is normal for new wallets.
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}

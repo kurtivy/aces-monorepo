@@ -2,7 +2,7 @@
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ListingsTab } from './listings-tab';
+import { SimpleListingsTab } from './simple-listings-tab';
 import { OffersTab } from './offers-tab';
 import { useLayoutEffect, useState } from 'react';
 
@@ -91,7 +91,7 @@ export function SellerDashboardOverlay({ isOpen, onClose }: SellerDashboardOverl
               </div>
 
               <TabsContent value="listings" className="mt-0 w-full h-full">
-                <ListingsTab />
+                <SimpleListingsTab />
               </TabsContent>
               <TabsContent value="offers" className="mt-0 w-full h-full">
                 <OffersTab />

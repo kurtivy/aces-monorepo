@@ -102,9 +102,6 @@ const UnifiedInfoPillComponent: React.FC = () => {
           onClick={handleBaseClick}
           title="Learn about ACES of Base"
         >
-          <span className="text-xs font-medium text-[#D0B264] whitespace-nowrap font-proxima-nova">
-            BUILT ON
-          </span>
           <svg
             className="h-2.5 sm:h-3 w-auto flex-shrink-0 self-start sm:mb-0.5 mt-0.5 sm:mt-0"
             viewBox="0 0 1280 323.84"

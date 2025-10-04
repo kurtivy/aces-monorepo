@@ -23,10 +23,10 @@ export default function SeesawAnimation() {
   };
 
   return (
-    <div className="h-full flex flex-col items-center justify-center space-y-8 bg-black">
+    <div className="h-full flex flex-col items-center justify-center space-y-8 bg-[#151c16]">
       {/* Seesaw Container */}
       <div
-        className="relative w-full max-w-xs h-48 cursor-pointer bg-[#231F20]/30"
+        className="relative w-full max-w-xs h-48 cursor-pointer bg-[#151c16]"
         onClick={handleClick}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}

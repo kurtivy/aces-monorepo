@@ -23,7 +23,11 @@
     "convert:png-to-webp:outline": "node scripts/convert-png-to-webp.js",
     "convert:png-to-webp:smart": "node scripts/convert-png-to-webp-smart.js",
     "move:png-to-old": "node scripts/move-png-to-old-outline.js",
-    "convert:and-clean": "node scripts/convert-and-clean-png.js"
+    "convert:and-clean": "node scripts/convert-and-clean-png.js",
+    "test:verification": "node scripts/test-verification-process.js",
+    "verify:wallet": "node scripts/verify-wallet-account.js",
+    "admin:approve": "node scripts/admin-approve-verification.js",
+    "admin:list": "node scripts/admin-approve-verification.js list"
   },
   "pnpm": {
     "overrides": {

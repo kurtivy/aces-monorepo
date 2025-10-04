@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { FEATURED_TARGET_DATE, type TimeLeft, calculateTimeLeft } from '@/lib/constants/dates';
 
 export interface UpcomingAsset {
@@ -22,6 +23,15 @@ interface UpcomingCardProps {
 export default function UpcomingCard({ asset }: UpcomingCardProps) {
   // Use asset prop if provided, otherwise calculate time left from featured date
   const targetDate = asset?.startDate || FEATURED_TARGET_DATE;
+  const router = useRouter();
+
+  const normalizedSymbol = asset?.symbol ? asset.symbol.trim().replace(/^\$/u, '') : '';
+  const hasSymbol = normalizedSymbol.length > 0;
+  const displaySymbol = asset?.symbol
+    ? asset.symbol.startsWith('$')
+      ? asset.symbol
+      : `$${asset.symbol}`
+    : '$TBD';
 
   const [timeLeft, setTimeLeft] = useState<TimeLeft>({ days: 0, hours: 0, minutes: 0, seconds: 0 });
 
@@ -49,6 +59,11 @@ export default function UpcomingCard({ asset }: UpcomingCardProps) {
     const lastSpace = truncated.lastIndexOf(' ');
     const cutPoint = lastSpace > 0 ? lastSpace : maxLength;
     return text.substring(0, cutPoint).trim() + '...';
+  };
+
+  const handleViewAssetClick = () => {
+    if (!hasSymbol) return;
+    router.push(`/rwa/${normalizedSymbol}`);
   };
 
   return (
@@ -87,7 +102,7 @@ export default function UpcomingCard({ asset }: UpcomingCardProps) {
             </h3>
             <div className="flex items-center justify-between">
               <span className="text-[#C9AE6A] font-mono text-sm font-medium">
-                ${asset?.symbol || '$TBD'}
+                {displaySymbol}
               </span>
               {asset?.category && (
                 <span className="text-[#E6E3D3]/60 text-xs uppercase tracking-wide">JEWELRY</span>
@@ -139,7 +154,12 @@ export default function UpcomingCard({ asset }: UpcomingCardProps) {
 
           {/* View Asset Button */}
           <div className="mt-4">
-            <button className="w-full flex items-center justify-center text-[#D0B264] hover:text-[#D0B264] transition-colors duration-150 px-4 py-2 rounded-md bg-black/80 hover:bg-black/70 border border-[#D0B264]/30 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed font-mono text-sm font-medium uppercase tracking-wide">
+            <button
+              type="button"
+              onClick={handleViewAssetClick}
+              disabled={!hasSymbol}
+              className="w-full flex items-center justify-center text-[#D0B264] hover:text-[#D0B264] transition-colors duration-150 px-4 py-2 rounded-md bg-black/80 hover:bg-black/70 border border-[#D0B264]/30 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed font-mono text-sm font-medium uppercase tracking-wide"
+            >
               View Asset
             </button>
           </div>

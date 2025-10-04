@@ -99,7 +99,7 @@ const formatListingForDisplay = (listing: ListingData): DisplayListingData => {
         id: bid.id,
         offerAmount: `${bid.amount} ${bid.currency}`,
         fromAddress: bid.bidder?.id || 'Unknown',
-        fromDisplayName: bid.bidder?.displayName || undefined,
+        fromDisplayName: bid.bidder?.username || undefined,
         timestamp: new Date(bid.createdAt).toLocaleDateString(),
         status: 'active' as const, // For now, all bids are considered active
       };

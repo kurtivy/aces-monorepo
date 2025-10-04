@@ -1,7 +1,8 @@
 import type { RwaSubmissionWithRelations } from '@aces/utils';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 
-  (typeof window !== 'undefined' && window.location.hostname.includes('feat-ui-updates') 
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== 'undefined' && window.location.hostname.includes('feat-ui-updates')
     ? 'https://aces-monorepo-backend-git-feat-ui-updates-dan-aces-fun.vercel.app'
     : 'http://localhost:3002');
 
@@ -37,7 +38,7 @@ export interface VerificationApplication {
   lastAttemptAt?: string;
   user: {
     id: string;
-    displayName?: string;
+    username?: string;
     email?: string;
     walletAddress?: string;
     createdAt: string;
@@ -260,5 +261,124 @@ export class AdminApi {
       },
       token,
     );
+  }
+
+  // Token management methods
+  static async addTokenToDatabase(
+    contractAddress: string,
+    token: string,
+  ): Promise<{
+    success: boolean;
+    message: string;
+    data?: {
+      contractAddress: string;
+      symbol: string;
+      name: string;
+      currentPrice: string;
+      currentPriceACES: string;
+    };
+  }> {
+    return this.adminRequest(
+      '/tokens/add',
+      {
+        method: 'POST',
+        body: JSON.stringify({ contractAddress }),
+      },
+      token,
+    );
+  }
+
+  static async linkTokenToListing(
+    contractAddress: string,
+    listingId: string,
+    token: string,
+  ): Promise<{
+    success: boolean;
+    message: string;
+    data: {
+      contractAddress: string;
+      listingId: string;
+      listingTitle: string;
+    };
+  }> {
+    return this.adminRequest(
+      '/tokens/link-listing',
+      {
+        method: 'POST',
+        body: JSON.stringify({ contractAddress, listingId }),
+      },
+      token,
+    );
+  }
+
+  static async unlinkTokenFromListing(
+    contractAddress: string,
+    token: string,
+  ): Promise<{
+    success: boolean;
+    message: string;
+    data: {
+      contractAddress: string;
+    };
+  }> {
+    return this.adminRequest(
+      '/tokens/unlink-listing',
+      {
+        method: 'DELETE',
+        body: JSON.stringify({ contractAddress }),
+      },
+      token,
+    );
+  }
+
+  static async getAvailableListings(token: string): Promise<{
+    success: boolean;
+    count: number;
+    data: Array<{
+      id: string;
+      title: string;
+      symbol: string;
+      description: string;
+      assetType: string;
+      isLive: boolean;
+      launchDate: string | null;
+      createdAt: string;
+      owner: {
+        walletAddress: string | null;
+        email: string | null;
+      };
+      token: {
+        contractAddress: string;
+        symbol: string;
+        name: string;
+      } | null;
+    }>;
+  }> {
+    return this.adminRequest('/listings/available', { method: 'GET' }, token);
+  }
+
+  static async getAllTokens(token: string): Promise<{
+    success: boolean;
+    count: number;
+    data: Array<{
+      contractAddress: string;
+      symbol: string;
+      name: string;
+      currentPrice: string;
+      currentPriceACES: string;
+      volume24h: string;
+      isActive: boolean;
+      createdAt: string;
+      updatedAt: string;
+      listingId: string | null;
+      listing: {
+        id: string;
+        title: string;
+        symbol: string;
+        isLive: boolean;
+      } | null;
+    }>;
+  }> {
+    return this.adminRequest('/tokens', { method: 'GET' }, token);
   }
 }

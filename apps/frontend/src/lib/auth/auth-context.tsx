@@ -1,6 +1,13 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+  ReactNode,
+} from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import {
   ProfileApi,
@@ -10,78 +17,9 @@ import {
 } from '@/lib/api/profile';
 import { VerificationApi, VerificationStatus } from '@/lib/api/verification';
 
-// Utility to check if external wallets are actually connected
-const checkExternalWalletConnection = async (): Promise<boolean> => {
-  if (typeof window === 'undefined') return false;
-
-  try {
-    // Check MetaMask/Ethereum wallets
-    if (window.ethereum) {
-      const accounts = (await window.ethereum.request({ method: 'eth_accounts' })) as string[];
-      if (accounts && accounts.length > 0) {
-        return true;
-      }
-    }
-
-    // Check Phantom (Solana wallet)
-    if ((window as any).solana && (window as any).solana.isPhantom) {
-      const response = await (window as any).solana.connect({ onlyIfTrusted: true });
-      if (response && response.publicKey) {
-        return true;
-      }
-    }
-
-    return false;
-  } catch (error) {
-    return false;
-  }
-};
-
-// Track ongoing connection requests to prevent duplicates
-let connectionInProgress = false;
-
-// Utility to request external wallet connection with proper permissions
-const requestExternalWalletConnection = async (): Promise<boolean> => {
-  if (typeof window === 'undefined') return false;
-  if (connectionInProgress) {
-    return false;
-  }
-
-  try {
-    connectionInProgress = true;
-
-    // Request MetaMask/Ethereum wallet connection
-    if (window.ethereum) {
-      const accounts = (await window.ethereum.request({
-        method: 'eth_requestAccounts',
-      })) as string[];
-      if (accounts && accounts.length > 0) {
-        return true;
-      }
-    }
-
-    // Request Phantom (Solana wallet) connection
-    if ((window as any).solana && (window as any).solana.isPhantom) {
-      const response = await (window as any).solana.connect();
-      if (response && response.publicKey) {
-        return true;
-      }
-    }
-
-    return false;
-  } catch (error) {
-    return false;
-  } finally {
-    connectionInProgress = false;
-  }
-};
-
-// Re-export types for convenience
 export type { UserProfile, ProfileUpdateRequest };
 
-// Main auth context interface
 interface AuthContextType {
-  // Authentication state
   isAuthenticated: boolean;
   isLoading: boolean;
   user: UserProfile | null;
@@ -91,7 +29,6 @@ interface AuthContextType {
   isAdmin: boolean;
   hasExternalWallet: boolean;
 
-  // Actions
   connectWallet: () => Promise<void>;
   disconnectWallet: () => void;
   refreshUserProfile: () => Promise<void>;
@@ -100,7 +37,6 @@ interface AuthContextType {
   getVerificationStatus: () => Promise<VerificationStatus | null>;
   getAccessToken: () => Promise<string | null>;
 
-  // Utility functions
   hasRole: (role: string | string[]) => boolean;
   isOwnerOf: (resourceOwnerId: string) => boolean;
   requiresExternalWallet: () => { required: boolean; message?: string };
@@ -108,13 +44,12 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-// API Configuration - Fixed environment variable name
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 
-  (typeof window !== 'undefined' && window.location.hostname.includes('feat-ui-updates') 
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== 'undefined' && window.location.hostname.includes('feat-ui-updates')
     ? 'https://aces-monorepo-backend-git-feat-ui-updates-dan-aces-fun.vercel.app'
     : 'http://localhost:3002');
 
-// Internal state interface (simpler, just what we actually use)
 interface AuthState {
   user: UserProfile | null;
   isLoading: boolean;
@@ -122,7 +57,6 @@ interface AuthState {
   hasExternalWallet: boolean;
 }
 
-// Custom hook to use auth context
 export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
   if (!context) {
@@ -149,38 +83,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isAdmin = state.user?.role === 'ADMIN';
 
-  // Initialize auth state when Privy is ready (external wallet optional)
-  useEffect(() => {
-    if (privyAuthenticated && privyUser) {
-      initializeAuth();
-    } else {
-      setState((prev) => ({
-        ...prev,
-        user: null,
-        isLoading: false,
-      }));
-    }
-  }, [privyAuthenticated, privyUser]);
-
-  const initializeAuth = async () => {
+  const initializeAuth = useCallback(async () => {
     try {
       setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
-      // Get Privy access token
       const token = await privyGetAccessToken();
       if (!token) {
         throw new Error('No access token available');
       }
 
-      // Prepare user verification request
       const userVerificationRequest: UserVerificationRequest = {
         privyDid: privyUser?.id || '',
         walletAddress: privyUser?.wallet?.address || undefined,
         email: privyUser?.email?.address || undefined,
-        displayName: privyUser?.email?.address?.split('@')[0] || 'User',
+        username: privyUser?.email?.address?.split('@')[0] || undefined,
       };
 
-      // Call backend to verify or create user
       const result = await ProfileApi.verifyOrCreateUser(userVerificationRequest, token);
 
       if (!result.success) {
@@ -192,9 +110,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user: result.data.profile,
       }));
     } catch (error) {
-      console.error('❌ Auth initialization error:', error);
+      console.error('Auth initialization error:', error);
 
-      // Fallback: create local user profile if backend fails
       const fallbackProfile: UserProfile = {
         id: privyUser?.id || '',
         privyDid: privyUser?.id || '',
@@ -206,7 +123,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isActive: true,
         firstName: null,
         lastName: null,
-        displayName: privyUser?.email?.address?.split('@')[0] || 'User',
+        username:
+          privyUser?.email?.address?.split('@')[0] ||
+          privyUser?.wallet?.address?.slice(2, 9).toUpperCase() ||
+          null,
         avatar: null,
         bio: null,
         website: null,
@@ -229,36 +149,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setState((prev) => ({ ...prev, isLoading: false }));
     }
-  };
+  }, [privyUser, privyGetAccessToken]);
 
-  // Optional: Load full user profile from backend (only when needed)
-  const loadFullUserProfile = async () => {
-    try {
-      const token = await privyGetAccessToken();
-      if (!token) throw new Error('No auth token available');
-      const result = await ProfileApi.getCurrentProfile(token);
-
-      if (result.success) {
-        setState((prev) => ({
-          ...prev,
-          user: result.data,
-        }));
-        return result.data;
-      } else {
-        throw new Error(result.error);
-      }
-    } catch (error) {
-      console.error('❌ Error loading full user profile:', error);
-      throw error instanceof Error ? error : new Error('Failed to load user profile');
+  useEffect(() => {
+    if (privyAuthenticated && privyUser) {
+      initializeAuth();
+    } else {
+      setState((prev) => ({
+        ...prev,
+        user: null,
+        isLoading: false,
+      }));
     }
-  };
+  }, [privyAuthenticated, privyUser, initializeAuth]);
 
-  // Track connection attempts to prevent duplicates
   const [connectionAttempting, setConnectionAttempting] = useState(false);
 
-  // Wallet Actions - Simplified to prioritize Privy
   const connectWallet = async () => {
-    // Prevent multiple simultaneous connection attempts
     if (connectionAttempting) {
       return;
     }
@@ -267,17 +174,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setConnectionAttempting(true);
       setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
-      // If user is already authenticated with Privy, they're good to go
       if (privyAuthenticated && privyUser) {
         return;
       }
 
-      // For new users, start with Privy login (which will show embedded wallet option first)
       await privyLogin();
     } catch (error) {
-      console.error('❌ Connect wallet error:', error);
+      console.error('Connect wallet error:', error);
 
-      // Handle embedded wallet HTTPS error specifically
       let errorMessage = 'Failed to connect wallet';
       if (error instanceof Error) {
         if (error.message.includes('Embedded wallet is only available over HTTPS')) {
@@ -300,33 +204,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const disconnectWallet = async () => {
     try {
       setState((prev) => ({ ...prev, isLoading: true }));
-      await privyLogout();
-      localStorage.removeItem('sellerCredentials');
 
-      setState((prev) => ({
-        ...prev,
+      await privyLogout();
+
+      localStorage.removeItem('sellerCredentials');
+      localStorage.removeItem('privy:token');
+      localStorage.removeItem('privy:refresh_token');
+
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (
+          key &&
+          (key.startsWith('privy:') || key.startsWith('auth:') || key.startsWith('wallet:'))
+        ) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach((key) => localStorage.removeItem(key));
+
+      setState({
         user: null,
         isLoading: false,
         hasExternalWallet: false,
-      }));
+        error: null,
+      });
+
+      console.log('Cleared all authentication and cached data');
     } catch (error) {
+      console.error('Disconnect error:', error);
       setState((prev) => ({
         ...prev,
         error: error instanceof Error ? error.message : 'Failed to disconnect wallet',
+        isLoading: false,
       }));
-    } finally {
-      setState((prev) => ({ ...prev, isLoading: false }));
     }
   };
 
-  const refreshUserProfile = async () => {
+  const refreshUserProfile = useCallback(async () => {
     if (privyAuthenticated && privyUser) {
-      // Re-initialize auth with current Privy data
       await initializeAuth();
     }
-  };
+  }, [privyAuthenticated, privyUser, initializeAuth]);
 
-  // Helper function to check if external wallet is required for transactions
   const requiresExternalWallet = (): { required: boolean; message?: string } => {
     if (!state.hasExternalWallet) {
       return {
@@ -338,7 +258,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { required: false };
   };
 
-  // Profile Actions
   const updateProfile = async (data: Partial<UserProfile>) => {
     try {
       setState((prev) => ({ ...prev, isLoading: true, error: null }));
@@ -365,7 +284,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Verification Actions
   const applyForSeller = async (applicationData: FormData): Promise<boolean> => {
     if (!privyAuthenticated || !privyUser) {
       throw new Error('User not authenticated');
@@ -435,7 +353,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Utility Functions
   const hasRole = (role: string | string[]): boolean => {
     if (!state.user) return false;
     const userRole = state.user.role;
@@ -446,10 +363,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return state.user?.id === resourceOwnerId;
   };
 
-  // Context Value
   const contextValue: AuthContextType = {
-    // Authentication state
-    isAuthenticated: privyAuthenticated, // Show as authenticated immediately when Privy succeeds
+    isAuthenticated: privyAuthenticated,
     isAdmin,
     error: state.error,
     isLoading: state.isLoading,
@@ -458,7 +373,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isVerifiedSeller: state.user?.sellerStatus === 'APPROVED',
     hasExternalWallet: state.hasExternalWallet,
 
-    // Actions
     connectWallet,
     disconnectWallet,
     refreshUserProfile,
@@ -467,7 +381,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     getVerificationStatus,
     getAccessToken,
 
-    // Utility functions
     hasRole,
     isOwnerOf,
     requiresExternalWallet,

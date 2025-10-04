@@ -6,7 +6,7 @@ export const sections: Section[] = [
   { id: 'manifesto', label: 'PRODUCT MANIFESTO' },
   { id: 'place-bids', label: 'PLACE BIDS' },
   { id: 'chats', label: 'CHATS' },
-  { id: 'share', label: 'LINK TO YOUR RICH BUDDY', isModal: true },
+  { id: 'share', label: 'TRADE WITH FRIENDS', isModal: true },
   { id: 'delivery', label: 'DELIVERY', isModal: true },
 ];
 

@@ -2,12 +2,12 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/lib/auth/auth-context';
 import { useAdminAuth } from '@/lib/auth/admin-auth-context';
 import { LogOut, Shield, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AnalyticsTab } from '@/components/profile/admin/analytics-tab';
+import { LaunchTab } from '@/components/profile/admin/launch-tab';
 import { SubmissionsTab } from '@/components/profile/admin/submissions-tab';
 import { VerificationsTab } from '@/components/profile/admin/verifications-tab';
 import { AdminListingsTab } from '@/components/profile/admin/admin-listings-tab';
@@ -15,7 +15,6 @@ import { BidsTab } from '@/components/profile/admin/bids-tab';
 import { SellersTab } from '@/components/profile/admin/sellers-tab';
 
 export default function AdminDashboardPage() {
-  const { isAuthenticated, isAdmin, isLoading } = useAuth();
   const {
     isAuthenticated: isAdminAuthenticated,
     isLoading: isAdminLoading,
@@ -25,19 +24,21 @@ export default function AdminDashboardPage() {
 
   // Check authentication and redirect if necessary
   useEffect(() => {
-    if (!isLoading && !isAdminLoading) {
-      // Require both Supabase admin auth AND Privy admin auth
+    console.log('🛡️ Dashboard auth check:', {
+      isAdminLoading,
+      isAdminAuthenticated,
+    });
+
+    if (!isAdminLoading) {
       if (!isAdminAuthenticated) {
+        console.log('❌ Dashboard: No admin auth, redirecting to login');
         router.push('/admin/login');
         return;
       }
 
-      if (!isAuthenticated || !isAdmin) {
-        router.push('/admin/unauthorized');
-        return;
-      }
+      console.log('✅ Dashboard: Admin auth verified');
     }
-  }, [isAuthenticated, isAdmin, isAdminAuthenticated, isLoading, isAdminLoading, router]);
+  }, [isAdminAuthenticated, isAdminLoading, router]);
 
   const handleLogout = async () => {
     await adminLogout();
@@ -45,7 +46,7 @@ export default function AdminDashboardPage() {
   };
 
   // Show loading while checking authentication
-  if (isLoading || isAdminLoading) {
+  if (isAdminLoading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center">
@@ -56,8 +57,8 @@ export default function AdminDashboardPage() {
     );
   }
 
-  // Don't render dashboard if not fully authenticated
-  if (!isAdminAuthenticated || !isAuthenticated || !isAdmin) {
+  // Don't render dashboard if not authenticated
+  if (!isAdminAuthenticated) {
     return null;
   }
 
@@ -92,6 +93,12 @@ export default function AdminDashboardPage() {
                 className="bg-transparent text-[#DCDDCC] text-lg font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-purple-400"
               >
                 Analytics
+              </TabsTrigger>
+              <TabsTrigger
+                value="launch"
+                className="bg-transparent text-[#DCDDCC] text-lg font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-purple-400"
+              >
+                Launch
               </TabsTrigger>
               <TabsTrigger
                 value="sellers"
@@ -132,6 +139,9 @@ export default function AdminDashboardPage() {
             </TabsList>
             <TabsContent value="analytics" className="mt-6 w-full">
               <AnalyticsTab />
+            </TabsContent>
+            <TabsContent value="launch" className="mt-6 w-full">
+              <LaunchTab />
             </TabsContent>
             <TabsContent value="sellers" className="mt-6 w-full">
               <SellersTab />

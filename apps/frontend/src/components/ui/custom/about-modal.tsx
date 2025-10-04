@@ -30,7 +30,7 @@ export default function AboutModal({ isOpen, onClose }: AboutModalProps) {
             exit={{ opacity: 0, scale: 0.9 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
           >
-            <div className="max-w-4xl w-full max-h-[90vh] bg-[#231F20] rounded-lg shadow-lg border border-[#D0B264]/40 overflow-hidden">
+            <div className="max-w-4xl w-full max-h-[90vh] bg-black rounded-lg shadow-lg border border-[#D0B264]/40 overflow-hidden">
               {/* Header */}
               <div className="flex items-center justify-between p-6 border-b border-[#D0B264]/20">
                 <h1 className="text-3xl font-neue-world font-bold text-[#D0B264]">How It Works</h1>

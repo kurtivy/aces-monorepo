@@ -3,27 +3,30 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, Zap, X } from 'lucide-react';
-import { useAuth } from '@/lib/auth/auth-context';
 import { useChainSwitching, SUPPORTED_CHAINS } from '@/hooks/contracts/use-chain-switching';
+import { useAccount } from 'wagmi';
 
 export default function NetworkBanner() {
-  const { walletAddress } = useAuth();
-  const { isOnBaseMainnet, isSwitching, switchToChain } = useChainSwitching();
+  const { isConnected, chainId } = useAccount();
+  const { isSwitching, switchToChain } = useChainSwitching();
   const [isDismissed, setIsDismissed] = useState(false);
 
   // Debug logging (remove in production)
   // useEffect(() => {
   //   console.log('NetworkBanner debug:', {
-  //     user: !!user,
-  //     walletAddress: !!walletAddress,
+  //     isConnected,
+  //     chainId,
   //     isOnBaseMainnet,
   //     isDismissed,
-  //     shouldShow: walletAddress && !isOnBaseMainnet && !isDismissed,
+  //     shouldShow,
   //   });
-  // }, [user, walletAddress, isOnBaseMainnet, isDismissed]);
+  // }, [isConnected, chainId, isOnBaseMainnet, isDismissed, shouldShow]);
 
-  // Only show if wallet is connected, is NOT on Base mainnet, and hasn't dismissed
-  const shouldShow = walletAddress && !isOnBaseMainnet && !isDismissed;
+  const hasResolvedChain = typeof chainId === 'number';
+  const isOnBaseMainnet = chainId === SUPPORTED_CHAINS.BASE_MAINNET.id;
+
+  // Only show once wagmi knows the active chain, the wallet is connected, user isn't on Base, and they haven't dismissed
+  const shouldShow = isConnected && hasResolvedChain && !isOnBaseMainnet && !isDismissed;
 
   const handleSwitchNetwork = async () => {
     try {

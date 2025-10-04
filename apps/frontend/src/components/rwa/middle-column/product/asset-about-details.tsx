@@ -2,107 +2,134 @@
 
 import { useState } from 'react';
 
-const assetDetails = [
-  { label: 'Year:', value: '1991' },
-  { label: 'Condition:', value: 'Mint' },
-  { label: 'Mileage:', value: '59,000 km (~37,000 miles)' },
-  { label: 'Engine:', value: '3.3L Turbocharged Flat-Six' },
-  { label: 'Transmission:', value: '5-Speed G50 Manual' },
-  { label: 'Color:', value: 'Rubystone Red (G4)' },
-];
+interface AssetAboutDetailsProps {
+  description?: string;
+  assetDetails?: Array<{ key: string; value: string }> | null;
+}
 
-export default function AssetAboutDetails() {
+type DetailItem = { key: string; value: string } | { label: string; value: string };
+
+export default function AssetAboutDetails({ description, assetDetails }: AssetAboutDetailsProps) {
   const [activeTab, setActiveTab] = useState<'about' | 'details'>('about');
 
+  // Parse details from description
+  const parseDetailsFromDescription = (desc: string): DetailItem[] => {
+    if (!desc) return [];
+
+    const details: DetailItem[] = [];
+
+    // Common patterns to look for
+    const patterns = [
+      { key: 'Year:', regex: /Year:\s*([^\n\r,]+)/i },
+      { key: 'Condition:', regex: /Condition:\s*([^\n\r,]+)/i },
+      { key: 'Mileage:', regex: /Mileage:\s*([^\n\r,]+)/i },
+      { key: 'Engine:', regex: /Engine:\s*([^\n\r,]+)/i },
+      { key: 'Transmission:', regex: /Transmission:\s*([^\n\r,]+)/i },
+      { key: 'Color:', regex: /Color:\s*([^\n\r,]+)/i },
+      { key: 'Material:', regex: /Material:\s*([^\n\r,]+)/i },
+      { key: 'Size:', regex: /Size:\s*([^\n\r,]+)/i },
+      { key: 'Weight:', regex: /Weight:\s*([^\n\r,]+)/i },
+      { key: 'Dimensions:', regex: /Dimensions:\s*([^\n\r,]+)/i },
+      { key: 'Brand:', regex: /Brand:\s*([^\n\r,]+)/i },
+      { key: 'Model:', regex: /Model:\s*([^\n\r,]+)/i },
+    ];
+
+    patterns.forEach(({ key, regex }) => {
+      const match = desc.match(regex);
+      if (match && match[1]) {
+        details.push({
+          label: key,
+          value: match[1].trim(),
+        });
+      }
+    });
+
+    return details;
+  };
+
+  // Use database assetDetails first, then fall back to parsing from description
+  const dbAssetDetails: DetailItem[] = assetDetails || [];
+  const parsedDetails = parseDetailsFromDescription(description || '');
+  const finalAssetDetails: DetailItem[] =
+    dbAssetDetails.length > 0 ? dbAssetDetails : parsedDetails;
+
+  const hasDescription = description && description.trim().length > 0;
+
   return (
-    <div className="min-h-screen w-full flex flex-col ">
+    <div className="w-full flex flex-col rounded-lg border border-[#D0B284]/15 bg-[#151c16]">
       {/* Tab Navigation */}
-      <div className="flex bg-[#231F20] rounded-t-lg border border-[#D0B284]/20 border-b-0">
+      <div className="flex rounded-t-lg overflow-hidden">
         <button
+          type="button"
           onClick={() => setActiveTab('about')}
-          className={`flex-1 p-4 text-left transition-all duration-300 rounded-tl-lg ${
+          aria-selected={activeTab === 'about'}
+          className={`flex-1 px-4 py-3 md:py-4 text-center transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#D0B284] ${
             activeTab === 'about'
               ? 'bg-[#D0B284]/10 text-white border-b-2 border-[#D0B284]'
               : 'text-[#D0B284]/60 hover:bg-[#D0B284]/5 hover:text-white'
-          }`}
+          } min-h-[48px]`}
         >
-          <div className="flex items-center justify-center">
-            <h2 className="text-xl font-bold">About This Asset</h2>
-            {activeTab === 'about' && (
-              <div className="w-2 h-2 bg-[#D0B284] rounded-full ml-2"></div>
-            )}
-          </div>
+          <span className="flex items-center justify-center gap-2 text-sm md:text-base font-semibold">
+            About This Asset
+            {activeTab === 'about' && <span className="h-2 w-2 rounded-full bg-[#D0B284]" />}
+          </span>
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab('details')}
-          className={`flex-1 p-4 text-left transition-all duration-300 rounded-tr-lg ${
+          aria-selected={activeTab === 'details'}
+          className={`flex-1 px-4 py-3 md:py-4 text-center transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#D0B284] ${
             activeTab === 'details'
               ? 'bg-[#D0B284]/10 text-white border-b-2 border-[#D0B284]'
               : 'text-[#D0B284]/60 hover:bg-[#D0B284]/5 hover:text-white'
-          }`}
+          } min-h-[48px]`}
         >
-          <div className="flex items-center justify-center">
-            <h2 className="text-xl font-bold">Asset Details</h2>
-            {activeTab === 'details' && (
-              <div className="w-2 h-2 bg-[#D0B284] rounded-full ml-2"></div>
-            )}
-          </div>
+          <span className="flex items-center justify-center gap-2 text-sm md:text-base font-semibold">
+            Asset Details
+            {activeTab === 'details' && <span className="h-2 w-2 rounded-full bg-[#D0B284]" />}
+          </span>
         </button>
       </div>
 
       {/* Content Area */}
-      <div className="flex-1 bg-[#231F20] rounded-b-lg border border-[#D0B284]/20 border-t-0 overflow-hidden">
-        <div className="p-4 h-full overflow-y-auto">
+      <div className="rounded-b-lg">
+        <div className="p-4 md:p-6 space-y-4 text-sm md:text-base leading-relaxed">
           {activeTab === 'about' ? (
-            /* About This Asset Content */
-            <div className="space-y-4">
-              <p className="text-white leading-relaxed mb-4 text-base">
-                Presenting an exceptionally rare and highly sought-after{' '}
-                <strong className="text-white">1991 Porsche 911 (964) Turbo</strong> finished in{' '}
-                <strong className="text-white">Rubystone Red (G4)</strong> — one of only{' '}
-                <strong className="text-white">five factory paint-to-sample examples</strong> ever
-                produced in this striking color worldwide. This collector-grade 964 Turbo is a
-                European-spec (RoW) car that represents the pinnacle of early 1990s Porsche
-                engineering, wrapped in a color that is as bold as it is iconic.
-              </p>
-              <p className="mb-4 text-base leading-relaxed text-white">
-                Under the rear decklid lies Porsche&apos;s legendary{' '}
-                <strong className="text-white">3.3-liter turbocharged flat-six</strong>, producing{' '}
-                <strong className="text-white">320 horsepower and 332 lb-ft of torque</strong>,
-                mated to a 5-speed G50 manual transmission and rear-wheel drive. Originally derived
-                from the 930 Turbo engine, the powertrain in the 964 Turbo delivers improved
-                reliability, smoother power delivery, and modernized electronics, including Bosch
-                Motronic management and ABS.
-              </p>
-              <p className="mb-4 text-base leading-relaxed text-white">
-                The exterior showcases the classic widebody Turbo silhouette with its muscular
-                arches, integrated fog lights, and the instantly recognizable &quot;whale tail&quot;
-                rear spoiler. Factory <strong className="text-white">17&quot; Cup wheels</strong>{' '}
-                complement the aggressive stance, while the{' '}
-                <strong className="text-white">Rubystone Red paintwork</strong> elevates this
-                example into a league of its own—instantly recognizable and beloved by enthusiasts
-                for its daring originality.
-              </p>
-              <p className="mb-4 text-base leading-relaxed text-white">
-                The interior features the classic 964 Turbo cabin with sport seats, a
-                leather-wrapped steering wheel, and the distinctive Turbo gauge cluster. Every
-                detail has been meticulously maintained, from the original radio to the pristine
-                door panels and carpeting.
-              </p>
-            </div>
-          ) : (
-            /* Asset Details Content */
+            hasDescription ? (
+              <div className="text-white whitespace-pre-wrap font-proxima-nova">
+                {description}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <div className="text-gray-400 text-base md:text-lg">No description found</div>
+                <div className="text-gray-500 text-xs md:text-sm mt-2">
+                  Description will be available once the asset details are finalized.
+                </div>
+              </div>
+            )
+          ) : finalAssetDetails.length > 0 ? (
             <div className="grid grid-cols-1 gap-4">
-              {assetDetails.map((detail, index) => (
+              {finalAssetDetails.map((detail, index) => (
                 <div
                   key={index}
-                  className="flex flex-col py-2 border-b border-[#D0B284]/10 last:border-b-0"
+                  className="flex flex-col border-b border-[#D0B284]/10 pb-3 last:border-b-0"
                 >
-                  <span className="text-[#DCDDCC] text-sm font-medium mb-1">{detail.label}</span>
-                  <span className="text-white text-base font-medium">{detail.value}</span>
+                  <span className="text-[#DCDDCC] text-xs md:text-sm font-medium mb-1 uppercase tracking-wide">
+                    {'key' in detail ? detail.key : detail.label}
+                  </span>
+                  <span className="text-white text-sm md:text-base font-medium">
+                    {detail.value}
+                  </span>
                 </div>
               ))}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <div className="text-gray-400 text-base md:text-lg">No details available</div>
+              <div className="text-gray-500 text-xs md:text-sm mt-2">
+                Asset details will be available once the listing is finalized.
+              </div>
             </div>
           )}
         </div>

@@ -20,6 +20,7 @@ import {
   Globe,
   MapPinned,
 } from 'lucide-react';
+import Image from 'next/image';
 
 interface VerificationDetailsModalProps {
   application: VerificationApplication;
@@ -88,7 +89,7 @@ export function VerificationDetailsModal({
                   <div className="flex items-center gap-4 text-sm text-[#DCDDCC]">
                     <div className="flex items-center gap-1">
                       <User className="w-4 h-4" />
-                      {application.user.displayName || 'No display name'}
+                      {application.user.username || 'No username'}
                     </div>
                     <div className="flex items-center gap-1">
                       <Calendar className="w-4 h-4" />
@@ -187,10 +188,12 @@ export function VerificationDetailsModal({
                     Uploaded Document
                   </label>
                   <div className="border border-[#D0B284]/20 rounded-lg p-4 bg-black/20">
-                    <img
+                    <Image
                       src={application.documentImageUrl}
                       alt="Verification document"
                       className="max-w-full h-auto max-h-96 mx-auto rounded-lg"
+                      width={400}
+                      height={300}
                     />
                   </div>
                 </div>

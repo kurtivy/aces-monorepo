@@ -57,7 +57,7 @@ export function VerificationsTab() {
 
   const filteredVerifications = verifications.filter((verification) => {
     const fullName = `${verification.firstName} ${verification.lastName}`;
-    const userName = verification.user?.displayName || 'Unknown User';
+    const userName = verification.user?.username || 'Unknown User';
     const userEmail = verification.user?.email || verification.emailAddress || '';
 
     const matchesSearch =
