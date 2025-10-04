@@ -319,6 +319,8 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         "/upload-image",
         "/api/v1/tokens",
         // Token data and chart data endpoints
+        "/api/v1/dex",
+        // DEX quote/pool endpoints
         "/api/v1/twitch",
         // Twitch stream endpoints
         "/api/v1/cron/trigger",
@@ -327,6 +329,7 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         // Cron status endpoint
         "/api/cron/sync-tokens",
         // Vercel cron endpoint
+        "/api/cron/sync-liquidity",
         "/"
         // Root path for listings, contact, etc.
       ];
@@ -334,6 +337,7 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         if (request.url === path) return true;
         if (path === "/health" && request.url.startsWith("/health")) return true;
         if (path === "/api/v1/tokens" && request.url.startsWith("/api/v1/tokens")) return true;
+        if (path === "/api/v1/dex" && request.url.startsWith("/api/v1/dex")) return true;
         return false;
       }) || request.method === "GET" && ["/live", "/search", "/stats", "/"].includes(request.url);
       if (isPublicPath) {
@@ -524,7 +528,9 @@ var SubmissionStatus = {
 // src/lib/product-storage-utils.ts
 var import_storage = require("@google-cloud/storage");
 var import_dotenv = require("dotenv");
-(0, import_dotenv.config)();
+var import_path = require("path");
+var envPath = (0, import_path.join)(process.cwd(), ".env");
+(0, import_dotenv.config)({ path: envPath });
 var hasGoogleCloudCredentials = !!(process.env.GOOGLE_CLOUD_PROJECT_ID && process.env.GOOGLE_CLOUD_CLIENT_EMAIL && process.env.GOOGLE_CLOUD_PRIVATE_KEY);
 var productStorage = null;
 var productBucket = null;
@@ -619,14 +625,18 @@ var ProductStorageService = class {
         action: "read",
         expires: Date.now() + expiresInMinutes * 60 * 1e3
       };
-      console.log(`[ProductStorage] Generating signed URL for: ${fileName} with ${expiresInMinutes}min expiry`);
+      console.log(
+        `[ProductStorage] Generating signed URL for: ${fileName} with ${expiresInMinutes}min expiry`
+      );
       const [url] = await productBucket.file(fileName).getSignedUrl(options);
       if (!url || !url.includes("X-Goog-Signature")) {
         console.error(`[ProductStorage] Generated URL is not a valid signed URL for: ${fileName}`);
         console.error(`[ProductStorage] URL: ${url}`);
         throw new Error("Failed to generate valid signed URL");
       }
-      console.log(`[ProductStorage] \u2705 Generated valid signed URL for: ${fileName} (length: ${url.length})`);
+      console.log(
+        `[ProductStorage] \u2705 Generated valid signed URL for: ${fileName} (length: ${url.length})`
+      );
       return url;
     } catch (error) {
       console.error(`[ProductStorage] \u274C Error generating signed URL for ${fileName}:`, error);
@@ -634,7 +644,9 @@ var ProductStorageService = class {
         message: error instanceof Error ? error.message : "Unknown error",
         stack: error instanceof Error ? error.stack : "No stack trace"
       });
-      throw new Error(`Failed to generate signed URL for ${fileName}: ${error instanceof Error ? error.message : "Unknown error"}`);
+      throw new Error(
+        `Failed to generate signed URL for ${fileName}: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
     }
   }
   /**
@@ -656,7 +668,9 @@ var ProductStorageService = class {
    */
   static async convertToSignedUrls(imageUrls, expiresInMinutes = 60) {
     console.log(`[ProductStorage] Converting ${imageUrls.length} URLs to signed URLs...`);
-    console.log(`[ProductStorage] Current bucket name: ${productBucketName || "aces-product-images"}`);
+    console.log(
+      `[ProductStorage] Current bucket name: ${productBucketName || "aces-product-images"}`
+    );
     const signedUrls = await Promise.all(
       imageUrls.map(async (url, index) => {
         try {
@@ -665,7 +679,9 @@ var ProductStorageService = class {
             const fileName = this.extractFileName(url);
             console.log(`[ProductStorage] Extracted filename: ${fileName}`);
             const signedUrl = await this.getSignedProductUrl(fileName, expiresInMinutes);
-            console.log(`[ProductStorage] \u2705 Converted to signed URL (length: ${signedUrl.length})`);
+            console.log(
+              `[ProductStorage] \u2705 Converted to signed URL (length: ${signedUrl.length})`
+            );
             return signedUrl;
           }
           console.log(`[ProductStorage] \u2139\uFE0F  Keeping original URL (not GCS product image): ${url}`);
@@ -1007,16 +1023,477 @@ var NotificationTemplates = {
   }
 };
 
+// src/services/aerodrome-data-service.ts
+var import_ethers = require("ethers");
+var PAIR_ABI = [
+  "function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)",
+  "function token0() view returns (address)",
+  "function token1() view returns (address)",
+  "function totalSupply() view returns (uint256)"
+];
+var FACTORY_ABI = [
+  "function getPair(address tokenA, address tokenB, bool stable) view returns (address)"
+];
+var ERC20_ABI = ["function decimals() view returns (uint8)"];
+var FIVE_SECONDS_IN_MS = 5e3;
+var DEFAULT_RESOLUTION = "5m";
+var AerodromeDataService = class {
+  static {
+    __name(this, "AerodromeDataService");
+  }
+  provider;
+  factoryAddress;
+  acesTokenAddress;
+  apiBaseUrl;
+  apiKey;
+  defaultStable;
+  cacheTtlMs;
+  mockEnabled;
+  mockData;
+  fetchFn;
+  poolCache = /* @__PURE__ */ new Map();
+  tradesCache = /* @__PURE__ */ new Map();
+  candleCache = /* @__PURE__ */ new Map();
+  decimalsCache = /* @__PURE__ */ new Map();
+  genericPoolCache = /* @__PURE__ */ new Map();
+  constructor(options) {
+    this.acesTokenAddress = options.acesTokenAddress.toLowerCase();
+    this.factoryAddress = options.factoryAddress;
+    this.apiBaseUrl = options.apiBaseUrl;
+    this.apiKey = options.apiKey;
+    this.defaultStable = options.defaultStable ?? false;
+    this.cacheTtlMs = options.cacheTtlMs ?? FIVE_SECONDS_IN_MS;
+    this.mockEnabled = options.mockEnabled ?? process.env.USE_DEX_MOCKS === "true";
+    this.mockData = options.mockData || { pools: {}, trades: {} };
+    this.fetchFn = options.fetchFn ?? fetch;
+    if (!this.mockEnabled) {
+      if (!options.provider && !options.rpcUrl) {
+        throw new Error(
+          "AerodromeDataService: rpcUrl or provider is required when mock mode is disabled"
+        );
+      }
+      this.provider = options.provider ?? new import_ethers.ethers.JsonRpcProvider(options.rpcUrl);
+      if (!this.factoryAddress) {
+        throw new Error(
+          "AerodromeDataService: factoryAddress is required when mock mode is disabled"
+        );
+      }
+    } else {
+      this.provider = null;
+    }
+  }
+  async getPoolState(tokenAddress, knownPoolAddress) {
+    const normalizedToken = tokenAddress.toLowerCase();
+    if (this.mockEnabled) {
+      const mockPool = this.mockData.pools?.[normalizedToken];
+      if (!mockPool) {
+        return null;
+      }
+      return {
+        ...mockPool,
+        lastUpdated: Date.now()
+      };
+    }
+    if (!this.provider || !this.factoryAddress) {
+      return null;
+    }
+    const cacheKey = normalizedToken;
+    const cached = this.getCached(this.poolCache, cacheKey);
+    if (cached) {
+      return cached;
+    }
+    let poolAddress;
+    if (knownPoolAddress) {
+      console.log(`\u{1F50D} Using known pool address: ${knownPoolAddress}`);
+      poolAddress = knownPoolAddress.toLowerCase();
+    } else {
+      console.log(`\u{1F50D} Resolving pool address from factory for token: ${normalizedToken}`);
+      poolAddress = await this.resolvePoolAddress(normalizedToken);
+    }
+    console.log(`\u{1F4CD} Pool address resolved to: ${poolAddress}`);
+    if (!poolAddress || poolAddress === import_ethers.ethers.ZeroAddress) {
+      console.log(`\u274C Invalid pool address: ${poolAddress}`);
+      return null;
+    }
+    console.log(`\u{1F504} Creating contract for pool: ${poolAddress}`);
+    const pairContract = new import_ethers.ethers.Contract(poolAddress, PAIR_ABI, this.provider);
+    console.log(`\u{1F4DE} Calling getReserves() on pool contract...`);
+    try {
+      const [reserve0, reserve1] = await pairContract.getReserves();
+      console.log(`\u2705 Got reserves - reserve0: ${reserve0}, reserve1: ${reserve1}`);
+      const token0 = (await pairContract.token0()).toLowerCase();
+      const token1 = (await pairContract.token1()).toLowerCase();
+      const totalSupply = await pairContract.totalSupply();
+      const tokenDecimals = await this.getTokenDecimals(normalizedToken);
+      const counterDecimals = await this.getTokenDecimals(this.acesTokenAddress);
+      const tokenIsToken0 = token0 === normalizedToken;
+      const tokenReserveRaw = tokenIsToken0 ? reserve0 : reserve1;
+      const counterReserveRaw = tokenIsToken0 ? reserve1 : reserve0;
+      const tokenReserve = parseFloat(import_ethers.ethers.formatUnits(tokenReserveRaw, tokenDecimals));
+      const counterReserve = parseFloat(import_ethers.ethers.formatUnits(counterReserveRaw, counterDecimals));
+      const priceInCounter = tokenReserve === 0 ? 0 : counterReserve / tokenReserve;
+      const poolState = {
+        poolAddress,
+        tokenAddress: normalizedToken,
+        counterToken: this.acesTokenAddress,
+        reserves: {
+          token: tokenReserve.toString(),
+          counter: counterReserve.toString()
+        },
+        reserveRaw: {
+          token: tokenReserveRaw.toString(),
+          counter: counterReserveRaw.toString()
+        },
+        priceInCounter,
+        lastUpdated: Date.now(),
+        totalSupply: totalSupply.toString()
+      };
+      this.setCached(this.poolCache, cacheKey, poolState);
+      return poolState;
+    } catch (error) {
+      console.error(`\u274C ERROR calling pool contract at ${poolAddress}:`, error);
+      return null;
+    }
+  }
+  async getRecentTrades(tokenAddress, limit = 100) {
+    const normalizedToken = tokenAddress.toLowerCase();
+    if (this.mockEnabled) {
+      const trades = this.mockData.trades?.[normalizedToken] ?? [];
+      return trades.slice(-limit);
+    }
+    if (!this.provider) {
+      return [];
+    }
+    const poolAddress = await this.resolvePoolAddress(normalizedToken);
+    if (!poolAddress || poolAddress === import_ethers.ethers.ZeroAddress) {
+      return [];
+    }
+    const cacheKey = `${poolAddress}-${limit}`;
+    const cached = this.getCached(this.tradesCache, cacheKey);
+    if (cached) {
+      return cached.slice(-limit);
+    }
+    const swaps = await this.fetchTradesFromAerodromeApi(poolAddress, limit);
+    if (swaps.length > 0) {
+      this.setCached(this.tradesCache, cacheKey, swaps);
+    }
+    return swaps.slice(-limit);
+  }
+  async getCandles(tokenAddress, resolution = DEFAULT_RESOLUTION, lookbackMinutes = 60) {
+    const normalizedToken = tokenAddress.toLowerCase();
+    const cacheKey = `${normalizedToken}-${resolution}-${lookbackMinutes}`;
+    const cached = this.getCached(this.candleCache, cacheKey);
+    if (cached) {
+      return cached;
+    }
+    const trades = await this.getRecentTrades(normalizedToken);
+    if (trades.length === 0) {
+      return [];
+    }
+    const resolutionMs = this.resolutionToMs(resolution);
+    const cutoff = Date.now() - lookbackMinutes * 60 * 1e3;
+    const filtered = trades.filter((trade) => trade.timestamp >= cutoff);
+    const candles = this.buildCandles(filtered, resolutionMs, resolution);
+    this.setCached(this.candleCache, cacheKey, candles);
+    return candles;
+  }
+  clearCaches() {
+    this.poolCache.clear();
+    this.tradesCache.clear();
+    this.candleCache.clear();
+    this.genericPoolCache.clear();
+  }
+  async getPairReserves(tokenIn, tokenOut) {
+    const state = await this.getGenericPoolState(tokenIn, tokenOut);
+    if (!state) {
+      return null;
+    }
+    const normalizedIn = tokenIn.toLowerCase();
+    const normalizedOut = tokenOut.toLowerCase();
+    let reserveIn;
+    let reserveOut;
+    if (state.token0 === normalizedIn && state.token1 === normalizedOut) {
+      reserveIn = BigInt(state.reserve0);
+      reserveOut = BigInt(state.reserve1);
+    } else if (state.token0 === normalizedOut && state.token1 === normalizedIn) {
+      reserveIn = BigInt(state.reserve1);
+      reserveOut = BigInt(state.reserve0);
+    } else {
+      return null;
+    }
+    const decimalsIn = await this.getTokenDecimals(normalizedIn);
+    const decimalsOut = await this.getTokenDecimals(normalizedOut);
+    return {
+      poolAddress: state.poolAddress,
+      reserveIn,
+      reserveOut,
+      decimalsIn,
+      decimalsOut,
+      stable: state.stable
+    };
+  }
+  async resolvePoolAddress(tokenAddress) {
+    if (this.mockEnabled) {
+      const mockPool = this.mockData.pools?.[tokenAddress];
+      return mockPool?.poolAddress ?? null;
+    }
+    if (!this.provider || !this.factoryAddress) {
+      return null;
+    }
+    const factory = new import_ethers.ethers.Contract(this.factoryAddress, FACTORY_ABI, this.provider);
+    const poolAddress = await factory.getPair(
+      tokenAddress,
+      this.acesTokenAddress,
+      this.defaultStable
+    );
+    return poolAddress.toLowerCase();
+  }
+  async resolvePairAddress(tokenA, tokenB) {
+    if (this.mockEnabled) {
+      return null;
+    }
+    if (!this.provider || !this.factoryAddress) {
+      return null;
+    }
+    const normalizedA = tokenA.toLowerCase();
+    const normalizedB = tokenB.toLowerCase();
+    const factory = new import_ethers.ethers.Contract(this.factoryAddress, FACTORY_ABI, this.provider);
+    const attempts = this.defaultStable ? [true, false] : [false, true];
+    for (const stable of attempts) {
+      try {
+        const pairAddress = await factory.getPair(normalizedA, normalizedB, stable);
+        if (pairAddress && pairAddress !== import_ethers.ethers.ZeroAddress) {
+          return { address: pairAddress.toLowerCase(), stable };
+        }
+      } catch (error) {
+        console.error("\u274C Failed to resolve pair address:", error);
+      }
+    }
+    return null;
+  }
+  async getGenericPoolState(tokenA, tokenB) {
+    const normalizedA = tokenA.toLowerCase();
+    const normalizedB = tokenB.toLowerCase();
+    const cacheKey = normalizedA < normalizedB ? `${normalizedA}-${normalizedB}` : `${normalizedB}-${normalizedA}`;
+    const cached = this.getCached(this.genericPoolCache, cacheKey);
+    if (cached) {
+      return cached;
+    }
+    if (this.mockEnabled) {
+      return null;
+    }
+    if (!this.provider) {
+      return null;
+    }
+    const pair = await this.resolvePairAddress(normalizedA, normalizedB);
+    if (!pair) {
+      return null;
+    }
+    try {
+      const pairContract = new import_ethers.ethers.Contract(pair.address, PAIR_ABI, this.provider);
+      const [reserve0, reserve1] = await pairContract.getReserves();
+      const token0 = (await pairContract.token0()).toLowerCase();
+      const token1 = (await pairContract.token1()).toLowerCase();
+      const state = {
+        poolAddress: pair.address,
+        token0,
+        token1,
+        reserve0: reserve0.toString(),
+        reserve1: reserve1.toString(),
+        stable: pair.stable,
+        lastUpdated: Date.now()
+      };
+      this.setCached(this.genericPoolCache, cacheKey, state);
+      return state;
+    } catch (error) {
+      console.error("\u274C ERROR reading generic pool state:", error);
+      return null;
+    }
+  }
+  async getTokenDecimals(address) {
+    const normalized = address.toLowerCase();
+    if (this.decimalsCache.has(normalized)) {
+      return this.decimalsCache.get(normalized);
+    }
+    if (this.mockEnabled) {
+      const decimals2 = normalized === this.acesTokenAddress ? 18 : 18;
+      this.decimalsCache.set(normalized, decimals2);
+      return decimals2;
+    }
+    if (!this.provider) {
+      throw new Error("Provider unavailable for decimals lookup");
+    }
+    const erc20 = new import_ethers.ethers.Contract(normalized, ERC20_ABI, this.provider);
+    const decimals = await erc20.decimals();
+    this.decimalsCache.set(normalized, Number(decimals));
+    return Number(decimals);
+  }
+  async fetchTradesFromAerodromeApi(poolAddress, limit) {
+    if (!this.apiBaseUrl) {
+      return [];
+    }
+    const url = new URL(this.apiBaseUrl.replace(/\/$/, ""));
+    url.pathname = `${url.pathname.replace(/\/$/, "")}/trades`;
+    url.searchParams.set("poolAddress", poolAddress);
+    url.searchParams.set("limit", String(limit));
+    const response = await this.fetchFn(url.toString(), {
+      headers: this.apiKey ? {
+        Authorization: `Bearer ${this.apiKey}`
+      } : void 0
+    });
+    if (!response.ok) {
+      return [];
+    }
+    const payload = await response.json();
+    const tradesArray = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
+    if (!Array.isArray(tradesArray)) {
+      return [];
+    }
+    return tradesArray.map((item) => this.mapApiTrade(item)).filter(Boolean);
+  }
+  mapApiTrade(trade) {
+    if (!trade) return null;
+    const timestampMs = typeof trade.timestamp === "number" ? trade.timestamp * 1e3 : Date.now();
+    const direction = trade.direction === "buy" ? "buy" : trade.direction === "sell" ? "sell" : "buy";
+    return {
+      txHash: trade.txHash || trade.transactionHash || "",
+      timestamp: timestampMs,
+      blockNumber: trade.blockNumber || 0,
+      direction,
+      amountToken: trade.amountToken?.toString?.() ?? trade.amountIn?.toString?.() ?? "0",
+      amountCounter: trade.amountCounter?.toString?.() ?? trade.amountOut?.toString?.() ?? "0",
+      priceInCounter: Number(trade.priceInCounter ?? trade.price ?? 0)
+    };
+  }
+  buildCandles(trades, resolutionMs, resolution) {
+    if (trades.length === 0) {
+      return [];
+    }
+    const buckets = /* @__PURE__ */ new Map();
+    const sortedTrades = [...trades].sort((a, b) => a.timestamp - b.timestamp);
+    for (const trade of sortedTrades) {
+      const bucketStart = Math.floor(trade.timestamp / resolutionMs) * resolutionMs;
+      let candle = buckets.get(bucketStart);
+      if (!candle) {
+        candle = {
+          open: trade.priceInCounter,
+          high: trade.priceInCounter,
+          low: trade.priceInCounter,
+          close: trade.priceInCounter,
+          volumeToken: 0,
+          volumeCounter: 0,
+          startTime: bucketStart,
+          resolution
+        };
+        buckets.set(bucketStart, candle);
+      }
+      candle.high = Math.max(candle.high, trade.priceInCounter);
+      candle.low = Math.min(candle.low, trade.priceInCounter);
+      candle.close = trade.priceInCounter;
+      const tokenVolume = Number(trade.amountToken ?? 0);
+      const counterVolume = Number(trade.amountCounter ?? 0);
+      candle.volumeToken += Number.isFinite(tokenVolume) ? tokenVolume : 0;
+      candle.volumeCounter += Number.isFinite(counterVolume) ? counterVolume : 0;
+    }
+    return Array.from(buckets.entries()).sort((a, b) => a[0] - b[0]).map(([, candle]) => candle);
+  }
+  resolutionToMs(resolution) {
+    switch (resolution) {
+      case "5m":
+        return 5 * 60 * 1e3;
+      case "15m":
+        return 15 * 60 * 1e3;
+      case "1h":
+        return 60 * 60 * 1e3;
+      case "4h":
+        return 4 * 60 * 60 * 1e3;
+      case "1d":
+        return 24 * 60 * 60 * 1e3;
+      default:
+        return 5 * 60 * 1e3;
+    }
+  }
+  getCached(cache, key) {
+    const entry = cache.get(key);
+    if (!entry) {
+      return null;
+    }
+    if (Date.now() > entry.expiresAt) {
+      cache.delete(key);
+      return null;
+    }
+    return entry.data;
+  }
+  setCached(cache, key, data) {
+    cache.set(key, {
+      data,
+      expiresAt: Date.now() + this.cacheTtlMs
+    });
+  }
+};
+
+// src/config/network.config.ts
+var import_ethers2 = require("ethers");
+var baseMainnet = {
+  chainId: 8453,
+  rpcUrl: process.env.QUICKNODE_BASE_URL || "",
+  aerodromeFactory: process.env.AERODROME_FACTORY_ADDRESS || "",
+  aerodromeRouter: process.env.AERODROME_ROUTER_ADDRESS || "",
+  acesToken: process.env.ACES_TOKEN_ADDRESS || "0x55337650856299363c496065C836B9C6E9dE0367"
+};
+var baseSepolia = {
+  chainId: 84532,
+  rpcUrl: process.env.QUICKNODE_BASE_SEPOLIA_RPC || "",
+  aerodromeFactory: process.env.AERODROME_FACTORY_ADDRESS_BASE_SEPOLIA || "",
+  aerodromeRouter: process.env.AERODROME_ROUTER_ADDRESS_BASE_SEPOLIA || "",
+  acesToken: process.env.ACES_TOKEN_ADDRESS_BASE_SEPOLIA || "0xF6b0c828ee8098120AFa90CEb11f80e6Fd4e2F1e"
+};
+var NETWORKS = {
+  8453: baseMainnet,
+  84532: baseSepolia
+};
+function getNetworkConfig(chainId) {
+  return NETWORKS[chainId];
+}
+__name(getNetworkConfig, "getNetworkConfig");
+function createProvider(chainId) {
+  const config2 = getNetworkConfig(chainId);
+  if (!config2.rpcUrl) {
+    return null;
+  }
+  return new import_ethers2.ethers.JsonRpcProvider(config2.rpcUrl);
+}
+__name(createProvider, "createProvider");
+
 // src/services/listing-service.ts
 var ListingService = class {
   constructor(prisma2, notificationService) {
     this.prisma = prisma2;
     this.notificationService = notificationService || new NotificationService(prisma2);
+    const mainnetConfig = getNetworkConfig(8453);
+    const provider = createProvider(8453);
+    const shouldMock = process.env.USE_DEX_MOCKS === "true" || !mainnetConfig.rpcUrl || !mainnetConfig.aerodromeFactory || !mainnetConfig.aerodromeRouter;
+    try {
+      this.aerodromeDataService = new AerodromeDataService({
+        provider: provider ?? void 0,
+        rpcUrl: provider ? void 0 : mainnetConfig.rpcUrl,
+        factoryAddress: mainnetConfig.aerodromeFactory,
+        acesTokenAddress: mainnetConfig.acesToken,
+        apiBaseUrl: process.env.AERODROME_API_BASE_URL,
+        apiKey: process.env.AERODROME_API_KEY,
+        defaultStable: process.env.AERODROME_DEFAULT_STABLE === "true",
+        mockEnabled: shouldMock
+      });
+    } catch (error) {
+      console.error("[ListingService] Failed to initialize AerodromeDataService:", error);
+      this.aerodromeDataService = void 0;
+    }
   }
   static {
     __name(this, "ListingService");
   }
   notificationService;
+  aerodromeDataService;
   /**
    * Create a listing from an approved submission
    */
@@ -1199,6 +1676,11 @@ var ListingService = class {
               phase: true,
               isActive: true
             }
+          },
+          _count: {
+            select: {
+              comments: true
+            }
           }
         },
         orderBy: { createdAt: "desc" },
@@ -1208,13 +1690,10 @@ var ListingService = class {
       const hasMore = listings.length > limit;
       const data = hasMore ? listings.slice(0, -1) : listings;
       const nextCursor = hasMore ? data[data.length - 1]?.id : void 0;
-      const dataWithSignedUrls = await Promise.all(
-        data.map(async (listing) => ({
-          ...listing,
-          imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery)
-        }))
+      const enriched = await Promise.all(
+        data.map((listing) => this.prepareListingForResponse(listing, true))
       );
-      return { data: dataWithSignedUrls, nextCursor, hasMore };
+      return { data: enriched, nextCursor, hasMore };
     } catch (error) {
       console.error("Error fetching live listings:", error);
       throw error;
@@ -1243,13 +1722,10 @@ var ListingService = class {
       const hasMore = listings.length > limit;
       const data = hasMore ? listings.slice(0, -1) : listings;
       const nextCursor = hasMore ? data[data.length - 1]?.id : void 0;
-      const dataWithSignedUrls = await Promise.all(
-        data.map(async (listing) => ({
-          ...listing,
-          imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery)
-        }))
+      const enriched = await Promise.all(
+        data.map((listing) => this.prepareListingForResponse(listing))
       );
-      return { data: dataWithSignedUrls, nextCursor, hasMore };
+      return { data: enriched, nextCursor, hasMore };
     } catch (error) {
       console.error("Error fetching all listings:", error);
       throw error;
@@ -1278,13 +1754,10 @@ var ListingService = class {
       const hasMore = listings.length > limit;
       const data = hasMore ? listings.slice(0, -1) : listings;
       const nextCursor = hasMore ? data[data.length - 1]?.id : void 0;
-      const dataWithSignedUrls = await Promise.all(
-        data.map(async (listing) => ({
-          ...listing,
-          imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery)
-        }))
+      const enriched = await Promise.all(
+        data.map((listing) => this.prepareListingForResponse(listing))
       );
-      return { data: dataWithSignedUrls, nextCursor, hasMore };
+      return { data: enriched, nextCursor, hasMore };
     } catch (error) {
       console.error("Error fetching pending listings:", error);
       throw error;
@@ -1300,19 +1773,53 @@ var ListingService = class {
         include: {
           owner: true,
           submission: true,
-          approvedByUser: true
+          approvedByUser: true,
+          _count: {
+            select: {
+              comments: true
+            }
+          }
         }
       });
       if (!listing) {
         return null;
       }
-      const listingWithSignedUrls = {
-        ...listing,
-        imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery)
-      };
-      return listingWithSignedUrls;
+      return this.prepareListingForResponse(listing, true);
     } catch (error) {
       console.error("Error fetching listing by ID:", error);
+      throw error;
+    }
+  }
+  /**
+   * Get listing by symbol (case-insensitive)
+   */
+  async getListingBySymbol(symbol) {
+    try {
+      const listing = await this.prisma.listing.findFirst({
+        where: {
+          symbol: {
+            equals: symbol,
+            mode: "insensitive"
+          }
+        },
+        include: {
+          owner: true,
+          submission: true,
+          approvedByUser: true,
+          token: true,
+          _count: {
+            select: {
+              comments: true
+            }
+          }
+        }
+      });
+      if (!listing) {
+        return null;
+      }
+      return this.prepareListingForResponse(listing, true);
+    } catch (error) {
+      console.error("Error fetching listing by symbol:", error);
       throw error;
     }
   }
@@ -1345,13 +1852,10 @@ var ListingService = class {
       const hasMore = listings.length > limit;
       const data = hasMore ? listings.slice(0, -1) : listings;
       const nextCursor = hasMore ? data[data.length - 1]?.id : void 0;
-      const dataWithSignedUrls = await Promise.all(
-        data.map(async (listing) => ({
-          ...listing,
-          imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery)
-        }))
+      const enriched = await Promise.all(
+        data.map((listing) => this.prepareListingForResponse(listing))
       );
-      return { data: dataWithSignedUrls, nextCursor, hasMore };
+      return { data: enriched, nextCursor, hasMore };
     } catch (error) {
       console.error("Error fetching listings by owner:", error);
       throw error;
@@ -1387,17 +1891,357 @@ var ListingService = class {
         },
         orderBy: { createdAt: "desc" }
       });
-      const dataWithSignedUrls = await Promise.all(
-        listings.map(async (listing) => ({
-          ...listing,
-          imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery)
-        }))
+      const enriched = await Promise.all(
+        listings.map((listing) => this.prepareListingForResponse(listing))
       );
-      return dataWithSignedUrls;
+      return enriched;
     } catch (error) {
       console.error("Error fetching all listings for admin:", error);
       throw error;
     }
+  }
+  async prepareListingForResponse(listing, includeDex = false) {
+    const commentCount = listing?._count?.comments ?? listing?.commentCount ?? null;
+    const safeListing = {
+      ...listing,
+      commentCount,
+      imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery)
+    };
+    if ("_count" in safeListing) {
+      delete safeListing._count;
+    }
+    if (!includeDex) {
+      return safeListing;
+    }
+    return this.attachDexState(safeListing);
+  }
+  async attachDexState(listing) {
+    const token = listing.token ? { ...listing.token } : void 0;
+    let poolState = null;
+    if (token?.contractAddress && this.aerodromeDataService) {
+      try {
+        poolState = await this.aerodromeDataService.getPoolState(token.contractAddress);
+      } catch (error) {
+        console.warn(
+          `[ListingService] Failed to fetch pool state for ${token.contractAddress}:`,
+          error
+        );
+      }
+    }
+    const initialPoolAddress = token?.poolAddress ?? null;
+    const hasStoredDexPhase = (token?.phase ?? "BONDING_CURVE") === "DEX_TRADING";
+    const resolvedPoolAddress = poolState?.poolAddress ?? initialPoolAddress ?? null;
+    const isDexLive = !!poolState || hasStoredDexPhase || !!resolvedPoolAddress;
+    const lastUpdated = poolState ? new Date(poolState.lastUpdated).toISOString() : null;
+    const dexLiveAt = poolState ? lastUpdated : token?.dexLiveAt ?? null;
+    const priceSource = isDexLive ? "DEX" : "BONDING_CURVE";
+    if (token) {
+      token.phase = isDexLive ? "DEX_TRADING" : token.phase ?? "BONDING_CURVE";
+      token.priceSource = priceSource;
+      token.poolAddress = resolvedPoolAddress;
+      token.dexLiveAt = dexLiveAt;
+    }
+    const dexMeta = {
+      isDexLive,
+      poolAddress: resolvedPoolAddress,
+      dexLiveAt,
+      priceSource,
+      lastUpdated,
+      bondingCutoff: dexLiveAt
+    };
+    return {
+      ...listing,
+      token,
+      dex: dexMeta
+    };
+  }
+};
+
+// src/services/token-holder-service.ts
+var import_ethers3 = require("ethers");
+var BASE_SEPOLIA_CHAIN_ID = 84532;
+var BASE_MAINNET_CHAIN_ID = 8453;
+var DEFAULT_CHAIN_PRIORITY = [BASE_SEPOLIA_CHAIN_ID, BASE_MAINNET_CHAIN_ID];
+var CACHE_TTL_MS = 5 * 60 * 1e3;
+var ZERO_ADDRESS = import_ethers3.ethers.ZeroAddress;
+var LAUNCHPAD_TOKEN_ABI = [
+  "event Transfer(address indexed from, address indexed to, uint256 value)"
+];
+var ACES_FACTORY_EVENT_ABI = [
+  "event CreatedToken(address tokenAddress, uint8 curve, uint256 steepness, uint256 floor)"
+];
+function normalizeAddress(value) {
+  if (!value) {
+    return void 0;
+  }
+  try {
+    return import_ethers3.ethers.getAddress(value);
+  } catch (error) {
+    return void 0;
+  }
+}
+__name(normalizeAddress, "normalizeAddress");
+function uniqueTruthy(values) {
+  return Array.from(
+    new Set(values.filter((value) => Boolean(value && value.trim())))
+  );
+}
+__name(uniqueTruthy, "uniqueTruthy");
+function resolveChainConfig(chainId) {
+  switch (chainId) {
+    case BASE_SEPOLIA_CHAIN_ID: {
+      const rpcUrls = uniqueTruthy([
+        process.env.QUICKNODE_BASE_SEPOLIA_RPC,
+        process.env.BASE_SEPOLIA_RPC_URL,
+        process.env.BASE_SEPOLIA_RPC,
+        process.env.BASE_SEPOLIA_PROVIDER_URL,
+        process.env.QUICKNODE_BASE_RPC,
+        "https://sepolia.base.org",
+        "https://base-sepolia-rpc.publicnode.com",
+        "https://base-sepolia.blockpi.network/v1/rpc/public",
+        "https://base-sepolia.gateway.tenderly.co"
+      ]);
+      const factoryAddress = normalizeAddress(process.env.FACTORY_PROXY_ADDRESS_BASE_SEPOLIA) || normalizeAddress(process.env.FACTORY_PROXY_ADDRESS_TESTNET) || normalizeAddress(process.env.FACTORY_PROXY_ADDRESS) || // Fallback to known default testnet deployment
+      normalizeAddress("0x7e224ae4e6235bF18BBcb79cc2B5d04a7a6F8d1D");
+      return { chainId, factoryAddress, rpcUrls };
+    }
+    case BASE_MAINNET_CHAIN_ID: {
+      const rpcUrls = uniqueTruthy([
+        process.env.QUICKNODE_BASE_URL,
+        process.env.BASE_MAINNET_RPC_URL,
+        process.env.BASE_MAINNET_RPC,
+        process.env.QUICKNODE_BASE_RPC,
+        "https://mainnet.base.org",
+        "https://base-rpc.publicnode.com",
+        "https://base.blockpi.network/v1/rpc/public",
+        "https://base.gateway.tenderly.co"
+      ]);
+      const factoryAddress = normalizeAddress(process.env.FACTORY_PROXY_ADDRESS_BASE_MAINNET) || normalizeAddress(process.env.FACTORY_PROXY_ADDRESS_MAINNET) || normalizeAddress(process.env.FACTORY_PROXY_ADDRESS);
+      return { chainId, factoryAddress, rpcUrls };
+    }
+    default:
+      return void 0;
+  }
+}
+__name(resolveChainConfig, "resolveChainConfig");
+function normalizeBigInt(value) {
+  if (typeof value === "bigint") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return BigInt(value);
+  }
+  if (typeof value === "string") {
+    if (value.trim().startsWith("0x")) {
+      return BigInt(value);
+    }
+    return BigInt(value.trim());
+  }
+  if (value && typeof value === "object" && "toString" in value) {
+    return BigInt(value.toString());
+  }
+  throw new Error(`Unable to convert value to bigint: ${value}`);
+}
+__name(normalizeBigInt, "normalizeBigInt");
+function updateBalanceMap(balances, address, delta, isAddition) {
+  const key = address.toLowerCase();
+  const current = balances.get(key) ?? 0n;
+  if (isAddition) {
+    const next2 = current + delta;
+    if (next2 === 0n) {
+      balances.delete(key);
+    } else {
+      balances.set(key, next2);
+    }
+    return;
+  }
+  const next = current - delta;
+  if (next <= 0n) {
+    balances.delete(key);
+  } else {
+    balances.set(key, next);
+  }
+}
+__name(updateBalanceMap, "updateBalanceMap");
+function shouldChunkQuery(error) {
+  const message = typeof error === "object" && error && "message" in error ? String(error.message).toLowerCase() : "";
+  const code = typeof error === "object" && error && "code" in error ? error.code : void 0;
+  if (code === -32011) {
+    return true;
+  }
+  return message.includes("query returned more than") || message.includes("response size exceeded") || message.includes("log result size exceeded") || message.includes("block range too wide") || message.includes("no backend is currently healthy") || message.includes("limit");
+}
+__name(shouldChunkQuery, "shouldChunkQuery");
+var TokenHolderService = class {
+  constructor(cacheTtlMs = CACHE_TTL_MS) {
+    this.cacheTtlMs = cacheTtlMs;
+  }
+  static {
+    __name(this, "TokenHolderService");
+  }
+  cache = /* @__PURE__ */ new Map();
+  async getHolderCount(tokenAddress, chainId) {
+    if (!tokenAddress) {
+      throw new Error("Token address is required");
+    }
+    let normalizedAddress;
+    try {
+      normalizedAddress = import_ethers3.ethers.getAddress(tokenAddress);
+    } catch (error) {
+      throw new Error("Invalid token address");
+    }
+    const cacheKey = this.buildCacheKey(normalizedAddress, chainId);
+    const cached = this.cache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.count;
+    }
+    const candidateChainIds = this.getCandidateChainIds(chainId);
+    let lastError;
+    for (const candidateChainId of candidateChainIds) {
+      const chainConfig = resolveChainConfig(candidateChainId);
+      if (!chainConfig || chainConfig.rpcUrls.length === 0) {
+        continue;
+      }
+      for (const rpcUrl of chainConfig.rpcUrls) {
+        try {
+          const result = await this.fetchHolderCountFromRpc(normalizedAddress, chainConfig, rpcUrl);
+          this.cache.set(cacheKey, { count: result, expiresAt: Date.now() + this.cacheTtlMs });
+          return result;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+    }
+    if (lastError instanceof Error) {
+      throw lastError;
+    }
+    throw new Error("Failed to resolve holder count");
+  }
+  buildCacheKey(tokenAddress, chainId) {
+    return `${tokenAddress.toLowerCase()}::${chainId ?? "auto"}`;
+  }
+  getCandidateChainIds(chainId) {
+    if (chainId) {
+      return [chainId];
+    }
+    return DEFAULT_CHAIN_PRIORITY;
+  }
+  async fetchHolderCountFromRpc(tokenAddress, chainConfig, rpcUrl) {
+    const provider = new import_ethers3.ethers.JsonRpcProvider(rpcUrl, chainConfig.chainId);
+    const tokenContract = new import_ethers3.ethers.Contract(tokenAddress, LAUNCHPAD_TOKEN_ABI, provider);
+    let startBlock = 0;
+    if (chainConfig.factoryAddress) {
+      const factoryContract = new import_ethers3.ethers.Contract(
+        chainConfig.factoryAddress,
+        ACES_FACTORY_EVENT_ABI,
+        provider
+      );
+      const creationBlock = await this.resolveCreationBlock(factoryContract, tokenAddress);
+      if (creationBlock) {
+        startBlock = creationBlock;
+      }
+    }
+    const latestBlock = await provider.getBlockNumber();
+    const events = await this.collectTransferEvents(tokenContract, startBlock, latestBlock);
+    const balances = /* @__PURE__ */ new Map();
+    for (const event of events) {
+      const eventArgs = event.args;
+      if (!eventArgs) {
+        continue;
+      }
+      const from = typeof eventArgs.from === "string" ? eventArgs.from : eventArgs[0];
+      const to = typeof eventArgs.to === "string" ? eventArgs.to : eventArgs[1];
+      const valueRaw = eventArgs.value ?? eventArgs[2];
+      if (!from || !to || valueRaw == null) {
+        continue;
+      }
+      let value;
+      try {
+        value = normalizeBigInt(valueRaw);
+      } catch (error) {
+        continue;
+      }
+      if (from !== ZERO_ADDRESS) {
+        updateBalanceMap(balances, from, value, false);
+      }
+      if (to !== ZERO_ADDRESS) {
+        updateBalanceMap(balances, to, value, true);
+      }
+    }
+    let holderCount = 0;
+    for (const balance of balances.values()) {
+      if (balance > 0n) {
+        holderCount += 1;
+      }
+    }
+    return holderCount;
+  }
+  async resolveCreationBlock(factoryContract, tokenAddress) {
+    try {
+      const normalizedTarget = tokenAddress.toLowerCase();
+      const events = await factoryContract.queryFilter(
+        factoryContract.filters.CreatedToken(),
+        0,
+        "latest"
+      );
+      for (const rawEvent of events) {
+        let args;
+        if ("args" in rawEvent) {
+          args = rawEvent.args;
+        } else {
+          try {
+            const parsed = factoryContract.interface.parseLog(rawEvent);
+            args = parsed?.args;
+          } catch (parseError) {
+            continue;
+          }
+        }
+        if (!args) {
+          continue;
+        }
+        const createdAddress = args.tokenAddress ?? args[0];
+        if (!createdAddress || typeof createdAddress !== "string") {
+          continue;
+        }
+        if (createdAddress.toLowerCase() === normalizedTarget) {
+          return rawEvent.blockNumber ?? null;
+        }
+      }
+      return null;
+    } catch (error) {
+      return null;
+    }
+  }
+  async collectTransferEvents(tokenContract, fromBlock, toBlock) {
+    const transferFilter = tokenContract.filters.Transfer();
+    try {
+      const events = await tokenContract.queryFilter(transferFilter, fromBlock, toBlock);
+      return events.map((event) => this.normalizeEvent(tokenContract, event));
+    } catch (error) {
+      if (!shouldChunkQuery(error)) {
+        throw error instanceof Error ? error : new Error("Failed to fetch transfer events");
+      }
+      const chunkSize = 5e4;
+      const events = [];
+      let currentFrom = fromBlock;
+      while (currentFrom <= toBlock) {
+        const currentTo = Math.min(currentFrom + chunkSize, toBlock);
+        const chunk = await tokenContract.queryFilter(transferFilter, currentFrom, currentTo);
+        events.push(...chunk.map((log) => this.normalizeEvent(tokenContract, log)));
+        currentFrom = currentTo + 1;
+      }
+      return events;
+    }
+  }
+  normalizeEvent(tokenContract, event) {
+    if ("args" in event) {
+      return { args: event.args };
+    }
+    const parsed = tokenContract.interface.parseLog(event);
+    if (!parsed) {
+      return { args: [] };
+    }
+    return { args: parsed.args };
   }
 };
 
@@ -1422,6 +2266,7 @@ var SetListingLaunchDateSchema = import_zod.z.object({
 });
 async function listingRoutes(fastify) {
   const listingService = new ListingService(fastify.prisma);
+  const tokenHolderService = new TokenHolderService();
   fastify.get(
     "/live",
     {
@@ -1448,6 +2293,59 @@ async function listingRoutes(fastify) {
         });
       } catch (error) {
         console.error("Error getting live listings:", error);
+        throw error;
+      }
+    }
+  );
+  fastify.get(
+    "/symbol/:symbol",
+    {
+      schema: {
+        params: (0, import_zod_to_json_schema.zodToJsonSchema)(
+          import_zod.z.object({
+            symbol: import_zod.z.string().min(1).max(50)
+          })
+        )
+      }
+    },
+    async (request, reply) => {
+      try {
+        const { symbol } = request.params;
+        const listing = await listingService.getListingBySymbol(symbol);
+        if (!listing) {
+          throw errors.notFound("Listing not found");
+        }
+        const commentCount = typeof listing.commentCount === "number" ? listing.commentCount : void 0;
+        let holderCount = null;
+        const tokenAddress = listing.token?.contractAddress;
+        if (tokenAddress) {
+          try {
+            holderCount = await tokenHolderService.getHolderCount(
+              tokenAddress,
+              listing.token?.chainId ?? void 0
+            );
+          } catch (error) {
+            fastify.log.warn(
+              { error, tokenAddress },
+              "[Listings] Failed to compute holder count for listing symbol route"
+            );
+          }
+        }
+        const responseListing = {
+          ...listing,
+          commentCount: commentCount ?? 0,
+          token: listing.token ? {
+            ...listing.token,
+            holderCount: holderCount ?? listing.token.holderCount ?? null,
+            holdersCount: holderCount ?? listing.token.holdersCount ?? null
+          } : void 0
+        };
+        return reply.send({
+          success: true,
+          data: responseListing
+        });
+      } catch (error) {
+        console.error("Error getting listing by symbol:", error);
         throw error;
       }
     }
@@ -1773,7 +2671,8 @@ var handler = /* @__PURE__ */ __name(async (req, res) => {
         "https://www.aces.fun",
         "https://aces.fun",
         "https://aces-monorepo-git-feat-ui-updates-dan-aces-fun.vercel.app",
-        "https://aces-monorepo-git-dev-dan-aces-fun.vercel.app"
+        "https://aces-monorepo-git-dev-dan-aces-fun.vercel.app",
+        "https://aces-monorepo-git-feat-rwa-page-upgrade-dan-aces-fun.vercel.app"
       ].includes(origin2);
     }, "isOriginAllowed");
     if (req.method === "OPTIONS") {

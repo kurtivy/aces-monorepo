@@ -93,6 +93,7 @@ const handler = async (req: VercelRequest, res: VercelResponse) => {
         'https://aces.fun',
         'https://aces-monorepo-git-feat-ui-updates-dan-aces-fun.vercel.app',
         'https://aces-monorepo-git-dev-dan-aces-fun.vercel.app',
+        'https://aces-monorepo-git-feat-rwa-page-upgrade-dan-aces-fun.vercel.app',
       ].includes(origin);
     };
 

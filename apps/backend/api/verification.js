@@ -319,6 +319,8 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         "/upload-image",
         "/api/v1/tokens",
         // Token data and chart data endpoints
+        "/api/v1/dex",
+        // DEX quote/pool endpoints
         "/api/v1/twitch",
         // Twitch stream endpoints
         "/api/v1/cron/trigger",
@@ -327,6 +329,7 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         // Cron status endpoint
         "/api/cron/sync-tokens",
         // Vercel cron endpoint
+        "/api/cron/sync-liquidity",
         "/"
         // Root path for listings, contact, etc.
       ];
@@ -334,6 +337,7 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         if (request.url === path) return true;
         if (path === "/health" && request.url.startsWith("/health")) return true;
         if (path === "/api/v1/tokens" && request.url.startsWith("/api/v1/tokens")) return true;
+        if (path === "/api/v1/dex" && request.url.startsWith("/api/v1/dex")) return true;
         return false;
       }) || request.method === "GET" && ["/live", "/search", "/stats", "/"].includes(request.url);
       if (isPublicPath) {

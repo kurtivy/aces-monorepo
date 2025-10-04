@@ -39,6 +39,7 @@ __export(api_exports, {
 });
 module.exports = __toCommonJS(api_exports);
 var import_dotenv2 = require("dotenv");
+var import_path2 = require("path");
 
 // src/app.ts
 var import_fastify = __toESM(require("fastify"));
@@ -337,6 +338,8 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         "/upload-image",
         "/api/v1/tokens",
         // Token data and chart data endpoints
+        "/api/v1/dex",
+        // DEX quote/pool endpoints
         "/api/v1/twitch",
         // Twitch stream endpoints
         "/api/v1/cron/trigger",
@@ -345,6 +348,7 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         // Cron status endpoint
         "/api/cron/sync-tokens",
         // Vercel cron endpoint
+        "/api/cron/sync-liquidity",
         "/"
         // Root path for listings, contact, etc.
       ];
@@ -352,6 +356,7 @@ var registerAuthPlugin = /* @__PURE__ */ __name(async (fastify) => {
         if (request.url === path) return true;
         if (path === "/health" && request.url.startsWith("/health")) return true;
         if (path === "/api/v1/tokens" && request.url.startsWith("/api/v1/tokens")) return true;
+        if (path === "/api/v1/dex" && request.url.startsWith("/api/v1/dex")) return true;
         return false;
       }) || request.method === "GET" && ["/live", "/search", "/stats", "/"].includes(request.url);
       if (isPublicPath) {
@@ -558,7 +563,9 @@ var BidStatus = {
 // src/lib/product-storage-utils.ts
 var import_storage = require("@google-cloud/storage");
 var import_dotenv = require("dotenv");
-(0, import_dotenv.config)();
+var import_path = require("path");
+var envPath = (0, import_path.join)(process.cwd(), ".env");
+(0, import_dotenv.config)({ path: envPath });
 var hasGoogleCloudCredentials = !!(process.env.GOOGLE_CLOUD_PROJECT_ID && process.env.GOOGLE_CLOUD_CLIENT_EMAIL && process.env.GOOGLE_CLOUD_PRIVATE_KEY);
 var productStorage = null;
 var productBucket = null;
@@ -653,14 +660,18 @@ var ProductStorageService = class {
         action: "read",
         expires: Date.now() + expiresInMinutes * 60 * 1e3
       };
-      console.log(`[ProductStorage] Generating signed URL for: ${fileName} with ${expiresInMinutes}min expiry`);
+      console.log(
+        `[ProductStorage] Generating signed URL for: ${fileName} with ${expiresInMinutes}min expiry`
+      );
       const [url] = await productBucket.file(fileName).getSignedUrl(options);
       if (!url || !url.includes("X-Goog-Signature")) {
         console.error(`[ProductStorage] Generated URL is not a valid signed URL for: ${fileName}`);
         console.error(`[ProductStorage] URL: ${url}`);
         throw new Error("Failed to generate valid signed URL");
       }
-      console.log(`[ProductStorage] \u2705 Generated valid signed URL for: ${fileName} (length: ${url.length})`);
+      console.log(
+        `[ProductStorage] \u2705 Generated valid signed URL for: ${fileName} (length: ${url.length})`
+      );
       return url;
     } catch (error) {
       console.error(`[ProductStorage] \u274C Error generating signed URL for ${fileName}:`, error);
@@ -668,7 +679,9 @@ var ProductStorageService = class {
         message: error instanceof Error ? error.message : "Unknown error",
         stack: error instanceof Error ? error.stack : "No stack trace"
       });
-      throw new Error(`Failed to generate signed URL for ${fileName}: ${error instanceof Error ? error.message : "Unknown error"}`);
+      throw new Error(
+        `Failed to generate signed URL for ${fileName}: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
     }
   }
   /**
@@ -690,7 +703,9 @@ var ProductStorageService = class {
    */
   static async convertToSignedUrls(imageUrls, expiresInMinutes = 60) {
     console.log(`[ProductStorage] Converting ${imageUrls.length} URLs to signed URLs...`);
-    console.log(`[ProductStorage] Current bucket name: ${productBucketName || "aces-product-images"}`);
+    console.log(
+      `[ProductStorage] Current bucket name: ${productBucketName || "aces-product-images"}`
+    );
     const signedUrls = await Promise.all(
       imageUrls.map(async (url, index) => {
         try {
@@ -699,7 +714,9 @@ var ProductStorageService = class {
             const fileName = this.extractFileName(url);
             console.log(`[ProductStorage] Extracted filename: ${fileName}`);
             const signedUrl = await this.getSignedProductUrl(fileName, expiresInMinutes);
-            console.log(`[ProductStorage] \u2705 Converted to signed URL (length: ${signedUrl.length})`);
+            console.log(
+              `[ProductStorage] \u2705 Converted to signed URL (length: ${signedUrl.length})`
+            );
             return signedUrl;
           }
           console.log(`[ProductStorage] \u2139\uFE0F  Keeping original URL (not GCS product image): ${url}`);
@@ -2848,16 +2865,477 @@ var AccountVerificationService = class {
   }
 };
 
+// src/services/aerodrome-data-service.ts
+var import_ethers = require("ethers");
+var PAIR_ABI = [
+  "function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)",
+  "function token0() view returns (address)",
+  "function token1() view returns (address)",
+  "function totalSupply() view returns (uint256)"
+];
+var FACTORY_ABI = [
+  "function getPair(address tokenA, address tokenB, bool stable) view returns (address)"
+];
+var ERC20_ABI = ["function decimals() view returns (uint8)"];
+var FIVE_SECONDS_IN_MS = 5e3;
+var DEFAULT_RESOLUTION = "5m";
+var AerodromeDataService = class {
+  static {
+    __name(this, "AerodromeDataService");
+  }
+  provider;
+  factoryAddress;
+  acesTokenAddress;
+  apiBaseUrl;
+  apiKey;
+  defaultStable;
+  cacheTtlMs;
+  mockEnabled;
+  mockData;
+  fetchFn;
+  poolCache = /* @__PURE__ */ new Map();
+  tradesCache = /* @__PURE__ */ new Map();
+  candleCache = /* @__PURE__ */ new Map();
+  decimalsCache = /* @__PURE__ */ new Map();
+  genericPoolCache = /* @__PURE__ */ new Map();
+  constructor(options) {
+    this.acesTokenAddress = options.acesTokenAddress.toLowerCase();
+    this.factoryAddress = options.factoryAddress;
+    this.apiBaseUrl = options.apiBaseUrl;
+    this.apiKey = options.apiKey;
+    this.defaultStable = options.defaultStable ?? false;
+    this.cacheTtlMs = options.cacheTtlMs ?? FIVE_SECONDS_IN_MS;
+    this.mockEnabled = options.mockEnabled ?? process.env.USE_DEX_MOCKS === "true";
+    this.mockData = options.mockData || { pools: {}, trades: {} };
+    this.fetchFn = options.fetchFn ?? fetch;
+    if (!this.mockEnabled) {
+      if (!options.provider && !options.rpcUrl) {
+        throw new Error(
+          "AerodromeDataService: rpcUrl or provider is required when mock mode is disabled"
+        );
+      }
+      this.provider = options.provider ?? new import_ethers.ethers.JsonRpcProvider(options.rpcUrl);
+      if (!this.factoryAddress) {
+        throw new Error(
+          "AerodromeDataService: factoryAddress is required when mock mode is disabled"
+        );
+      }
+    } else {
+      this.provider = null;
+    }
+  }
+  async getPoolState(tokenAddress, knownPoolAddress) {
+    const normalizedToken = tokenAddress.toLowerCase();
+    if (this.mockEnabled) {
+      const mockPool = this.mockData.pools?.[normalizedToken];
+      if (!mockPool) {
+        return null;
+      }
+      return {
+        ...mockPool,
+        lastUpdated: Date.now()
+      };
+    }
+    if (!this.provider || !this.factoryAddress) {
+      return null;
+    }
+    const cacheKey = normalizedToken;
+    const cached = this.getCached(this.poolCache, cacheKey);
+    if (cached) {
+      return cached;
+    }
+    let poolAddress;
+    if (knownPoolAddress) {
+      console.log(`\u{1F50D} Using known pool address: ${knownPoolAddress}`);
+      poolAddress = knownPoolAddress.toLowerCase();
+    } else {
+      console.log(`\u{1F50D} Resolving pool address from factory for token: ${normalizedToken}`);
+      poolAddress = await this.resolvePoolAddress(normalizedToken);
+    }
+    console.log(`\u{1F4CD} Pool address resolved to: ${poolAddress}`);
+    if (!poolAddress || poolAddress === import_ethers.ethers.ZeroAddress) {
+      console.log(`\u274C Invalid pool address: ${poolAddress}`);
+      return null;
+    }
+    console.log(`\u{1F504} Creating contract for pool: ${poolAddress}`);
+    const pairContract = new import_ethers.ethers.Contract(poolAddress, PAIR_ABI, this.provider);
+    console.log(`\u{1F4DE} Calling getReserves() on pool contract...`);
+    try {
+      const [reserve0, reserve1] = await pairContract.getReserves();
+      console.log(`\u2705 Got reserves - reserve0: ${reserve0}, reserve1: ${reserve1}`);
+      const token0 = (await pairContract.token0()).toLowerCase();
+      const token1 = (await pairContract.token1()).toLowerCase();
+      const totalSupply = await pairContract.totalSupply();
+      const tokenDecimals = await this.getTokenDecimals(normalizedToken);
+      const counterDecimals = await this.getTokenDecimals(this.acesTokenAddress);
+      const tokenIsToken0 = token0 === normalizedToken;
+      const tokenReserveRaw = tokenIsToken0 ? reserve0 : reserve1;
+      const counterReserveRaw = tokenIsToken0 ? reserve1 : reserve0;
+      const tokenReserve = parseFloat(import_ethers.ethers.formatUnits(tokenReserveRaw, tokenDecimals));
+      const counterReserve = parseFloat(import_ethers.ethers.formatUnits(counterReserveRaw, counterDecimals));
+      const priceInCounter = tokenReserve === 0 ? 0 : counterReserve / tokenReserve;
+      const poolState = {
+        poolAddress,
+        tokenAddress: normalizedToken,
+        counterToken: this.acesTokenAddress,
+        reserves: {
+          token: tokenReserve.toString(),
+          counter: counterReserve.toString()
+        },
+        reserveRaw: {
+          token: tokenReserveRaw.toString(),
+          counter: counterReserveRaw.toString()
+        },
+        priceInCounter,
+        lastUpdated: Date.now(),
+        totalSupply: totalSupply.toString()
+      };
+      this.setCached(this.poolCache, cacheKey, poolState);
+      return poolState;
+    } catch (error) {
+      console.error(`\u274C ERROR calling pool contract at ${poolAddress}:`, error);
+      return null;
+    }
+  }
+  async getRecentTrades(tokenAddress, limit = 100) {
+    const normalizedToken = tokenAddress.toLowerCase();
+    if (this.mockEnabled) {
+      const trades = this.mockData.trades?.[normalizedToken] ?? [];
+      return trades.slice(-limit);
+    }
+    if (!this.provider) {
+      return [];
+    }
+    const poolAddress = await this.resolvePoolAddress(normalizedToken);
+    if (!poolAddress || poolAddress === import_ethers.ethers.ZeroAddress) {
+      return [];
+    }
+    const cacheKey = `${poolAddress}-${limit}`;
+    const cached = this.getCached(this.tradesCache, cacheKey);
+    if (cached) {
+      return cached.slice(-limit);
+    }
+    const swaps = await this.fetchTradesFromAerodromeApi(poolAddress, limit);
+    if (swaps.length > 0) {
+      this.setCached(this.tradesCache, cacheKey, swaps);
+    }
+    return swaps.slice(-limit);
+  }
+  async getCandles(tokenAddress, resolution = DEFAULT_RESOLUTION, lookbackMinutes = 60) {
+    const normalizedToken = tokenAddress.toLowerCase();
+    const cacheKey = `${normalizedToken}-${resolution}-${lookbackMinutes}`;
+    const cached = this.getCached(this.candleCache, cacheKey);
+    if (cached) {
+      return cached;
+    }
+    const trades = await this.getRecentTrades(normalizedToken);
+    if (trades.length === 0) {
+      return [];
+    }
+    const resolutionMs = this.resolutionToMs(resolution);
+    const cutoff = Date.now() - lookbackMinutes * 60 * 1e3;
+    const filtered = trades.filter((trade) => trade.timestamp >= cutoff);
+    const candles = this.buildCandles(filtered, resolutionMs, resolution);
+    this.setCached(this.candleCache, cacheKey, candles);
+    return candles;
+  }
+  clearCaches() {
+    this.poolCache.clear();
+    this.tradesCache.clear();
+    this.candleCache.clear();
+    this.genericPoolCache.clear();
+  }
+  async getPairReserves(tokenIn, tokenOut) {
+    const state = await this.getGenericPoolState(tokenIn, tokenOut);
+    if (!state) {
+      return null;
+    }
+    const normalizedIn = tokenIn.toLowerCase();
+    const normalizedOut = tokenOut.toLowerCase();
+    let reserveIn;
+    let reserveOut;
+    if (state.token0 === normalizedIn && state.token1 === normalizedOut) {
+      reserveIn = BigInt(state.reserve0);
+      reserveOut = BigInt(state.reserve1);
+    } else if (state.token0 === normalizedOut && state.token1 === normalizedIn) {
+      reserveIn = BigInt(state.reserve1);
+      reserveOut = BigInt(state.reserve0);
+    } else {
+      return null;
+    }
+    const decimalsIn = await this.getTokenDecimals(normalizedIn);
+    const decimalsOut = await this.getTokenDecimals(normalizedOut);
+    return {
+      poolAddress: state.poolAddress,
+      reserveIn,
+      reserveOut,
+      decimalsIn,
+      decimalsOut,
+      stable: state.stable
+    };
+  }
+  async resolvePoolAddress(tokenAddress) {
+    if (this.mockEnabled) {
+      const mockPool = this.mockData.pools?.[tokenAddress];
+      return mockPool?.poolAddress ?? null;
+    }
+    if (!this.provider || !this.factoryAddress) {
+      return null;
+    }
+    const factory = new import_ethers.ethers.Contract(this.factoryAddress, FACTORY_ABI, this.provider);
+    const poolAddress = await factory.getPair(
+      tokenAddress,
+      this.acesTokenAddress,
+      this.defaultStable
+    );
+    return poolAddress.toLowerCase();
+  }
+  async resolvePairAddress(tokenA, tokenB) {
+    if (this.mockEnabled) {
+      return null;
+    }
+    if (!this.provider || !this.factoryAddress) {
+      return null;
+    }
+    const normalizedA = tokenA.toLowerCase();
+    const normalizedB = tokenB.toLowerCase();
+    const factory = new import_ethers.ethers.Contract(this.factoryAddress, FACTORY_ABI, this.provider);
+    const attempts = this.defaultStable ? [true, false] : [false, true];
+    for (const stable of attempts) {
+      try {
+        const pairAddress = await factory.getPair(normalizedA, normalizedB, stable);
+        if (pairAddress && pairAddress !== import_ethers.ethers.ZeroAddress) {
+          return { address: pairAddress.toLowerCase(), stable };
+        }
+      } catch (error) {
+        console.error("\u274C Failed to resolve pair address:", error);
+      }
+    }
+    return null;
+  }
+  async getGenericPoolState(tokenA, tokenB) {
+    const normalizedA = tokenA.toLowerCase();
+    const normalizedB = tokenB.toLowerCase();
+    const cacheKey = normalizedA < normalizedB ? `${normalizedA}-${normalizedB}` : `${normalizedB}-${normalizedA}`;
+    const cached = this.getCached(this.genericPoolCache, cacheKey);
+    if (cached) {
+      return cached;
+    }
+    if (this.mockEnabled) {
+      return null;
+    }
+    if (!this.provider) {
+      return null;
+    }
+    const pair = await this.resolvePairAddress(normalizedA, normalizedB);
+    if (!pair) {
+      return null;
+    }
+    try {
+      const pairContract = new import_ethers.ethers.Contract(pair.address, PAIR_ABI, this.provider);
+      const [reserve0, reserve1] = await pairContract.getReserves();
+      const token0 = (await pairContract.token0()).toLowerCase();
+      const token1 = (await pairContract.token1()).toLowerCase();
+      const state = {
+        poolAddress: pair.address,
+        token0,
+        token1,
+        reserve0: reserve0.toString(),
+        reserve1: reserve1.toString(),
+        stable: pair.stable,
+        lastUpdated: Date.now()
+      };
+      this.setCached(this.genericPoolCache, cacheKey, state);
+      return state;
+    } catch (error) {
+      console.error("\u274C ERROR reading generic pool state:", error);
+      return null;
+    }
+  }
+  async getTokenDecimals(address) {
+    const normalized = address.toLowerCase();
+    if (this.decimalsCache.has(normalized)) {
+      return this.decimalsCache.get(normalized);
+    }
+    if (this.mockEnabled) {
+      const decimals2 = normalized === this.acesTokenAddress ? 18 : 18;
+      this.decimalsCache.set(normalized, decimals2);
+      return decimals2;
+    }
+    if (!this.provider) {
+      throw new Error("Provider unavailable for decimals lookup");
+    }
+    const erc20 = new import_ethers.ethers.Contract(normalized, ERC20_ABI, this.provider);
+    const decimals = await erc20.decimals();
+    this.decimalsCache.set(normalized, Number(decimals));
+    return Number(decimals);
+  }
+  async fetchTradesFromAerodromeApi(poolAddress, limit) {
+    if (!this.apiBaseUrl) {
+      return [];
+    }
+    const url = new URL(this.apiBaseUrl.replace(/\/$/, ""));
+    url.pathname = `${url.pathname.replace(/\/$/, "")}/trades`;
+    url.searchParams.set("poolAddress", poolAddress);
+    url.searchParams.set("limit", String(limit));
+    const response = await this.fetchFn(url.toString(), {
+      headers: this.apiKey ? {
+        Authorization: `Bearer ${this.apiKey}`
+      } : void 0
+    });
+    if (!response.ok) {
+      return [];
+    }
+    const payload = await response.json();
+    const tradesArray = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
+    if (!Array.isArray(tradesArray)) {
+      return [];
+    }
+    return tradesArray.map((item) => this.mapApiTrade(item)).filter(Boolean);
+  }
+  mapApiTrade(trade) {
+    if (!trade) return null;
+    const timestampMs = typeof trade.timestamp === "number" ? trade.timestamp * 1e3 : Date.now();
+    const direction = trade.direction === "buy" ? "buy" : trade.direction === "sell" ? "sell" : "buy";
+    return {
+      txHash: trade.txHash || trade.transactionHash || "",
+      timestamp: timestampMs,
+      blockNumber: trade.blockNumber || 0,
+      direction,
+      amountToken: trade.amountToken?.toString?.() ?? trade.amountIn?.toString?.() ?? "0",
+      amountCounter: trade.amountCounter?.toString?.() ?? trade.amountOut?.toString?.() ?? "0",
+      priceInCounter: Number(trade.priceInCounter ?? trade.price ?? 0)
+    };
+  }
+  buildCandles(trades, resolutionMs, resolution) {
+    if (trades.length === 0) {
+      return [];
+    }
+    const buckets = /* @__PURE__ */ new Map();
+    const sortedTrades = [...trades].sort((a, b) => a.timestamp - b.timestamp);
+    for (const trade of sortedTrades) {
+      const bucketStart = Math.floor(trade.timestamp / resolutionMs) * resolutionMs;
+      let candle = buckets.get(bucketStart);
+      if (!candle) {
+        candle = {
+          open: trade.priceInCounter,
+          high: trade.priceInCounter,
+          low: trade.priceInCounter,
+          close: trade.priceInCounter,
+          volumeToken: 0,
+          volumeCounter: 0,
+          startTime: bucketStart,
+          resolution
+        };
+        buckets.set(bucketStart, candle);
+      }
+      candle.high = Math.max(candle.high, trade.priceInCounter);
+      candle.low = Math.min(candle.low, trade.priceInCounter);
+      candle.close = trade.priceInCounter;
+      const tokenVolume = Number(trade.amountToken ?? 0);
+      const counterVolume = Number(trade.amountCounter ?? 0);
+      candle.volumeToken += Number.isFinite(tokenVolume) ? tokenVolume : 0;
+      candle.volumeCounter += Number.isFinite(counterVolume) ? counterVolume : 0;
+    }
+    return Array.from(buckets.entries()).sort((a, b) => a[0] - b[0]).map(([, candle]) => candle);
+  }
+  resolutionToMs(resolution) {
+    switch (resolution) {
+      case "5m":
+        return 5 * 60 * 1e3;
+      case "15m":
+        return 15 * 60 * 1e3;
+      case "1h":
+        return 60 * 60 * 1e3;
+      case "4h":
+        return 4 * 60 * 60 * 1e3;
+      case "1d":
+        return 24 * 60 * 60 * 1e3;
+      default:
+        return 5 * 60 * 1e3;
+    }
+  }
+  getCached(cache, key) {
+    const entry = cache.get(key);
+    if (!entry) {
+      return null;
+    }
+    if (Date.now() > entry.expiresAt) {
+      cache.delete(key);
+      return null;
+    }
+    return entry.data;
+  }
+  setCached(cache, key, data) {
+    cache.set(key, {
+      data,
+      expiresAt: Date.now() + this.cacheTtlMs
+    });
+  }
+};
+
+// src/config/network.config.ts
+var import_ethers2 = require("ethers");
+var baseMainnet = {
+  chainId: 8453,
+  rpcUrl: process.env.QUICKNODE_BASE_URL || "",
+  aerodromeFactory: process.env.AERODROME_FACTORY_ADDRESS || "",
+  aerodromeRouter: process.env.AERODROME_ROUTER_ADDRESS || "",
+  acesToken: process.env.ACES_TOKEN_ADDRESS || "0x55337650856299363c496065C836B9C6E9dE0367"
+};
+var baseSepolia = {
+  chainId: 84532,
+  rpcUrl: process.env.QUICKNODE_BASE_SEPOLIA_RPC || "",
+  aerodromeFactory: process.env.AERODROME_FACTORY_ADDRESS_BASE_SEPOLIA || "",
+  aerodromeRouter: process.env.AERODROME_ROUTER_ADDRESS_BASE_SEPOLIA || "",
+  acesToken: process.env.ACES_TOKEN_ADDRESS_BASE_SEPOLIA || "0xF6b0c828ee8098120AFa90CEb11f80e6Fd4e2F1e"
+};
+var NETWORKS = {
+  8453: baseMainnet,
+  84532: baseSepolia
+};
+function getNetworkConfig(chainId) {
+  return NETWORKS[chainId];
+}
+__name(getNetworkConfig, "getNetworkConfig");
+function createProvider(chainId) {
+  const config3 = getNetworkConfig(chainId);
+  if (!config3.rpcUrl) {
+    return null;
+  }
+  return new import_ethers2.ethers.JsonRpcProvider(config3.rpcUrl);
+}
+__name(createProvider, "createProvider");
+
 // src/services/listing-service.ts
 var ListingService = class {
   constructor(prisma2, notificationService) {
     this.prisma = prisma2;
     this.notificationService = notificationService || new NotificationService(prisma2);
+    const mainnetConfig = getNetworkConfig(8453);
+    const provider = createProvider(8453);
+    const shouldMock = process.env.USE_DEX_MOCKS === "true" || !mainnetConfig.rpcUrl || !mainnetConfig.aerodromeFactory || !mainnetConfig.aerodromeRouter;
+    try {
+      this.aerodromeDataService = new AerodromeDataService({
+        provider: provider ?? void 0,
+        rpcUrl: provider ? void 0 : mainnetConfig.rpcUrl,
+        factoryAddress: mainnetConfig.aerodromeFactory,
+        acesTokenAddress: mainnetConfig.acesToken,
+        apiBaseUrl: process.env.AERODROME_API_BASE_URL,
+        apiKey: process.env.AERODROME_API_KEY,
+        defaultStable: process.env.AERODROME_DEFAULT_STABLE === "true",
+        mockEnabled: shouldMock
+      });
+    } catch (error) {
+      console.error("[ListingService] Failed to initialize AerodromeDataService:", error);
+      this.aerodromeDataService = void 0;
+    }
   }
   static {
     __name(this, "ListingService");
   }
   notificationService;
+  aerodromeDataService;
   /**
    * Create a listing from an approved submission
    */
@@ -3040,6 +3518,11 @@ var ListingService = class {
               phase: true,
               isActive: true
             }
+          },
+          _count: {
+            select: {
+              comments: true
+            }
           }
         },
         orderBy: { createdAt: "desc" },
@@ -3049,13 +3532,10 @@ var ListingService = class {
       const hasMore = listings.length > limit;
       const data = hasMore ? listings.slice(0, -1) : listings;
       const nextCursor = hasMore ? data[data.length - 1]?.id : void 0;
-      const dataWithSignedUrls = await Promise.all(
-        data.map(async (listing) => ({
-          ...listing,
-          imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery)
-        }))
+      const enriched = await Promise.all(
+        data.map((listing) => this.prepareListingForResponse(listing, true))
       );
-      return { data: dataWithSignedUrls, nextCursor, hasMore };
+      return { data: enriched, nextCursor, hasMore };
     } catch (error) {
       console.error("Error fetching live listings:", error);
       throw error;
@@ -3084,13 +3564,10 @@ var ListingService = class {
       const hasMore = listings.length > limit;
       const data = hasMore ? listings.slice(0, -1) : listings;
       const nextCursor = hasMore ? data[data.length - 1]?.id : void 0;
-      const dataWithSignedUrls = await Promise.all(
-        data.map(async (listing) => ({
-          ...listing,
-          imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery)
-        }))
+      const enriched = await Promise.all(
+        data.map((listing) => this.prepareListingForResponse(listing))
       );
-      return { data: dataWithSignedUrls, nextCursor, hasMore };
+      return { data: enriched, nextCursor, hasMore };
     } catch (error) {
       console.error("Error fetching all listings:", error);
       throw error;
@@ -3119,13 +3596,10 @@ var ListingService = class {
       const hasMore = listings.length > limit;
       const data = hasMore ? listings.slice(0, -1) : listings;
       const nextCursor = hasMore ? data[data.length - 1]?.id : void 0;
-      const dataWithSignedUrls = await Promise.all(
-        data.map(async (listing) => ({
-          ...listing,
-          imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery)
-        }))
+      const enriched = await Promise.all(
+        data.map((listing) => this.prepareListingForResponse(listing))
       );
-      return { data: dataWithSignedUrls, nextCursor, hasMore };
+      return { data: enriched, nextCursor, hasMore };
     } catch (error) {
       console.error("Error fetching pending listings:", error);
       throw error;
@@ -3141,19 +3615,53 @@ var ListingService = class {
         include: {
           owner: true,
           submission: true,
-          approvedByUser: true
+          approvedByUser: true,
+          _count: {
+            select: {
+              comments: true
+            }
+          }
         }
       });
       if (!listing) {
         return null;
       }
-      const listingWithSignedUrls = {
-        ...listing,
-        imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery)
-      };
-      return listingWithSignedUrls;
+      return this.prepareListingForResponse(listing, true);
     } catch (error) {
       console.error("Error fetching listing by ID:", error);
+      throw error;
+    }
+  }
+  /**
+   * Get listing by symbol (case-insensitive)
+   */
+  async getListingBySymbol(symbol) {
+    try {
+      const listing = await this.prisma.listing.findFirst({
+        where: {
+          symbol: {
+            equals: symbol,
+            mode: "insensitive"
+          }
+        },
+        include: {
+          owner: true,
+          submission: true,
+          approvedByUser: true,
+          token: true,
+          _count: {
+            select: {
+              comments: true
+            }
+          }
+        }
+      });
+      if (!listing) {
+        return null;
+      }
+      return this.prepareListingForResponse(listing, true);
+    } catch (error) {
+      console.error("Error fetching listing by symbol:", error);
       throw error;
     }
   }
@@ -3186,13 +3694,10 @@ var ListingService = class {
       const hasMore = listings.length > limit;
       const data = hasMore ? listings.slice(0, -1) : listings;
       const nextCursor = hasMore ? data[data.length - 1]?.id : void 0;
-      const dataWithSignedUrls = await Promise.all(
-        data.map(async (listing) => ({
-          ...listing,
-          imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery)
-        }))
+      const enriched = await Promise.all(
+        data.map((listing) => this.prepareListingForResponse(listing))
       );
-      return { data: dataWithSignedUrls, nextCursor, hasMore };
+      return { data: enriched, nextCursor, hasMore };
     } catch (error) {
       console.error("Error fetching listings by owner:", error);
       throw error;
@@ -3228,17 +3733,69 @@ var ListingService = class {
         },
         orderBy: { createdAt: "desc" }
       });
-      const dataWithSignedUrls = await Promise.all(
-        listings.map(async (listing) => ({
-          ...listing,
-          imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery)
-        }))
+      const enriched = await Promise.all(
+        listings.map((listing) => this.prepareListingForResponse(listing))
       );
-      return dataWithSignedUrls;
+      return enriched;
     } catch (error) {
       console.error("Error fetching all listings for admin:", error);
       throw error;
     }
+  }
+  async prepareListingForResponse(listing, includeDex = false) {
+    const commentCount = listing?._count?.comments ?? listing?.commentCount ?? null;
+    const safeListing = {
+      ...listing,
+      commentCount,
+      imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery)
+    };
+    if ("_count" in safeListing) {
+      delete safeListing._count;
+    }
+    if (!includeDex) {
+      return safeListing;
+    }
+    return this.attachDexState(safeListing);
+  }
+  async attachDexState(listing) {
+    const token = listing.token ? { ...listing.token } : void 0;
+    let poolState = null;
+    if (token?.contractAddress && this.aerodromeDataService) {
+      try {
+        poolState = await this.aerodromeDataService.getPoolState(token.contractAddress);
+      } catch (error) {
+        console.warn(
+          `[ListingService] Failed to fetch pool state for ${token.contractAddress}:`,
+          error
+        );
+      }
+    }
+    const initialPoolAddress = token?.poolAddress ?? null;
+    const hasStoredDexPhase = (token?.phase ?? "BONDING_CURVE") === "DEX_TRADING";
+    const resolvedPoolAddress = poolState?.poolAddress ?? initialPoolAddress ?? null;
+    const isDexLive = !!poolState || hasStoredDexPhase || !!resolvedPoolAddress;
+    const lastUpdated = poolState ? new Date(poolState.lastUpdated).toISOString() : null;
+    const dexLiveAt = poolState ? lastUpdated : token?.dexLiveAt ?? null;
+    const priceSource = isDexLive ? "DEX" : "BONDING_CURVE";
+    if (token) {
+      token.phase = isDexLive ? "DEX_TRADING" : token.phase ?? "BONDING_CURVE";
+      token.priceSource = priceSource;
+      token.poolAddress = resolvedPoolAddress;
+      token.dexLiveAt = dexLiveAt;
+    }
+    const dexMeta = {
+      isDexLive,
+      poolAddress: resolvedPoolAddress,
+      dexLiveAt,
+      priceSource,
+      lastUpdated,
+      bondingCutoff: dexLiveAt
+    };
+    return {
+      ...listing,
+      token,
+      dex: dexMeta
+    };
   }
 };
 
@@ -4911,6 +5468,296 @@ __name(usersRoutes, "usersRoutes");
 // src/routes/v1/listings.ts
 var import_zod5 = require("zod");
 var import_zod_to_json_schema5 = require("zod-to-json-schema");
+
+// src/services/token-holder-service.ts
+var import_ethers3 = require("ethers");
+var BASE_SEPOLIA_CHAIN_ID = 84532;
+var BASE_MAINNET_CHAIN_ID = 8453;
+var DEFAULT_CHAIN_PRIORITY = [BASE_SEPOLIA_CHAIN_ID, BASE_MAINNET_CHAIN_ID];
+var CACHE_TTL_MS = 5 * 60 * 1e3;
+var ZERO_ADDRESS = import_ethers3.ethers.ZeroAddress;
+var LAUNCHPAD_TOKEN_ABI = [
+  "event Transfer(address indexed from, address indexed to, uint256 value)"
+];
+var ACES_FACTORY_EVENT_ABI = [
+  "event CreatedToken(address tokenAddress, uint8 curve, uint256 steepness, uint256 floor)"
+];
+function normalizeAddress(value) {
+  if (!value) {
+    return void 0;
+  }
+  try {
+    return import_ethers3.ethers.getAddress(value);
+  } catch (error) {
+    return void 0;
+  }
+}
+__name(normalizeAddress, "normalizeAddress");
+function uniqueTruthy(values) {
+  return Array.from(
+    new Set(values.filter((value) => Boolean(value && value.trim())))
+  );
+}
+__name(uniqueTruthy, "uniqueTruthy");
+function resolveChainConfig(chainId) {
+  switch (chainId) {
+    case BASE_SEPOLIA_CHAIN_ID: {
+      const rpcUrls = uniqueTruthy([
+        process.env.QUICKNODE_BASE_SEPOLIA_RPC,
+        process.env.BASE_SEPOLIA_RPC_URL,
+        process.env.BASE_SEPOLIA_RPC,
+        process.env.BASE_SEPOLIA_PROVIDER_URL,
+        process.env.QUICKNODE_BASE_RPC,
+        "https://sepolia.base.org",
+        "https://base-sepolia-rpc.publicnode.com",
+        "https://base-sepolia.blockpi.network/v1/rpc/public",
+        "https://base-sepolia.gateway.tenderly.co"
+      ]);
+      const factoryAddress = normalizeAddress(process.env.FACTORY_PROXY_ADDRESS_BASE_SEPOLIA) || normalizeAddress(process.env.FACTORY_PROXY_ADDRESS_TESTNET) || normalizeAddress(process.env.FACTORY_PROXY_ADDRESS) || // Fallback to known default testnet deployment
+      normalizeAddress("0x7e224ae4e6235bF18BBcb79cc2B5d04a7a6F8d1D");
+      return { chainId, factoryAddress, rpcUrls };
+    }
+    case BASE_MAINNET_CHAIN_ID: {
+      const rpcUrls = uniqueTruthy([
+        process.env.QUICKNODE_BASE_URL,
+        process.env.BASE_MAINNET_RPC_URL,
+        process.env.BASE_MAINNET_RPC,
+        process.env.QUICKNODE_BASE_RPC,
+        "https://mainnet.base.org",
+        "https://base-rpc.publicnode.com",
+        "https://base.blockpi.network/v1/rpc/public",
+        "https://base.gateway.tenderly.co"
+      ]);
+      const factoryAddress = normalizeAddress(process.env.FACTORY_PROXY_ADDRESS_BASE_MAINNET) || normalizeAddress(process.env.FACTORY_PROXY_ADDRESS_MAINNET) || normalizeAddress(process.env.FACTORY_PROXY_ADDRESS);
+      return { chainId, factoryAddress, rpcUrls };
+    }
+    default:
+      return void 0;
+  }
+}
+__name(resolveChainConfig, "resolveChainConfig");
+function normalizeBigInt(value) {
+  if (typeof value === "bigint") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return BigInt(value);
+  }
+  if (typeof value === "string") {
+    if (value.trim().startsWith("0x")) {
+      return BigInt(value);
+    }
+    return BigInt(value.trim());
+  }
+  if (value && typeof value === "object" && "toString" in value) {
+    return BigInt(value.toString());
+  }
+  throw new Error(`Unable to convert value to bigint: ${value}`);
+}
+__name(normalizeBigInt, "normalizeBigInt");
+function updateBalanceMap(balances, address, delta, isAddition) {
+  const key = address.toLowerCase();
+  const current = balances.get(key) ?? 0n;
+  if (isAddition) {
+    const next2 = current + delta;
+    if (next2 === 0n) {
+      balances.delete(key);
+    } else {
+      balances.set(key, next2);
+    }
+    return;
+  }
+  const next = current - delta;
+  if (next <= 0n) {
+    balances.delete(key);
+  } else {
+    balances.set(key, next);
+  }
+}
+__name(updateBalanceMap, "updateBalanceMap");
+function shouldChunkQuery(error) {
+  const message = typeof error === "object" && error && "message" in error ? String(error.message).toLowerCase() : "";
+  const code = typeof error === "object" && error && "code" in error ? error.code : void 0;
+  if (code === -32011) {
+    return true;
+  }
+  return message.includes("query returned more than") || message.includes("response size exceeded") || message.includes("log result size exceeded") || message.includes("block range too wide") || message.includes("no backend is currently healthy") || message.includes("limit");
+}
+__name(shouldChunkQuery, "shouldChunkQuery");
+var TokenHolderService = class {
+  constructor(cacheTtlMs = CACHE_TTL_MS) {
+    this.cacheTtlMs = cacheTtlMs;
+  }
+  static {
+    __name(this, "TokenHolderService");
+  }
+  cache = /* @__PURE__ */ new Map();
+  async getHolderCount(tokenAddress, chainId) {
+    if (!tokenAddress) {
+      throw new Error("Token address is required");
+    }
+    let normalizedAddress;
+    try {
+      normalizedAddress = import_ethers3.ethers.getAddress(tokenAddress);
+    } catch (error) {
+      throw new Error("Invalid token address");
+    }
+    const cacheKey = this.buildCacheKey(normalizedAddress, chainId);
+    const cached = this.cache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.count;
+    }
+    const candidateChainIds = this.getCandidateChainIds(chainId);
+    let lastError;
+    for (const candidateChainId of candidateChainIds) {
+      const chainConfig = resolveChainConfig(candidateChainId);
+      if (!chainConfig || chainConfig.rpcUrls.length === 0) {
+        continue;
+      }
+      for (const rpcUrl of chainConfig.rpcUrls) {
+        try {
+          const result = await this.fetchHolderCountFromRpc(normalizedAddress, chainConfig, rpcUrl);
+          this.cache.set(cacheKey, { count: result, expiresAt: Date.now() + this.cacheTtlMs });
+          return result;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+    }
+    if (lastError instanceof Error) {
+      throw lastError;
+    }
+    throw new Error("Failed to resolve holder count");
+  }
+  buildCacheKey(tokenAddress, chainId) {
+    return `${tokenAddress.toLowerCase()}::${chainId ?? "auto"}`;
+  }
+  getCandidateChainIds(chainId) {
+    if (chainId) {
+      return [chainId];
+    }
+    return DEFAULT_CHAIN_PRIORITY;
+  }
+  async fetchHolderCountFromRpc(tokenAddress, chainConfig, rpcUrl) {
+    const provider = new import_ethers3.ethers.JsonRpcProvider(rpcUrl, chainConfig.chainId);
+    const tokenContract = new import_ethers3.ethers.Contract(tokenAddress, LAUNCHPAD_TOKEN_ABI, provider);
+    let startBlock = 0;
+    if (chainConfig.factoryAddress) {
+      const factoryContract = new import_ethers3.ethers.Contract(
+        chainConfig.factoryAddress,
+        ACES_FACTORY_EVENT_ABI,
+        provider
+      );
+      const creationBlock = await this.resolveCreationBlock(factoryContract, tokenAddress);
+      if (creationBlock) {
+        startBlock = creationBlock;
+      }
+    }
+    const latestBlock = await provider.getBlockNumber();
+    const events = await this.collectTransferEvents(tokenContract, startBlock, latestBlock);
+    const balances = /* @__PURE__ */ new Map();
+    for (const event of events) {
+      const eventArgs = event.args;
+      if (!eventArgs) {
+        continue;
+      }
+      const from = typeof eventArgs.from === "string" ? eventArgs.from : eventArgs[0];
+      const to = typeof eventArgs.to === "string" ? eventArgs.to : eventArgs[1];
+      const valueRaw = eventArgs.value ?? eventArgs[2];
+      if (!from || !to || valueRaw == null) {
+        continue;
+      }
+      let value;
+      try {
+        value = normalizeBigInt(valueRaw);
+      } catch (error) {
+        continue;
+      }
+      if (from !== ZERO_ADDRESS) {
+        updateBalanceMap(balances, from, value, false);
+      }
+      if (to !== ZERO_ADDRESS) {
+        updateBalanceMap(balances, to, value, true);
+      }
+    }
+    let holderCount = 0;
+    for (const balance of balances.values()) {
+      if (balance > 0n) {
+        holderCount += 1;
+      }
+    }
+    return holderCount;
+  }
+  async resolveCreationBlock(factoryContract, tokenAddress) {
+    try {
+      const normalizedTarget = tokenAddress.toLowerCase();
+      const events = await factoryContract.queryFilter(
+        factoryContract.filters.CreatedToken(),
+        0,
+        "latest"
+      );
+      for (const rawEvent of events) {
+        let args;
+        if ("args" in rawEvent) {
+          args = rawEvent.args;
+        } else {
+          try {
+            const parsed = factoryContract.interface.parseLog(rawEvent);
+            args = parsed?.args;
+          } catch (parseError) {
+            continue;
+          }
+        }
+        if (!args) {
+          continue;
+        }
+        const createdAddress = args.tokenAddress ?? args[0];
+        if (!createdAddress || typeof createdAddress !== "string") {
+          continue;
+        }
+        if (createdAddress.toLowerCase() === normalizedTarget) {
+          return rawEvent.blockNumber ?? null;
+        }
+      }
+      return null;
+    } catch (error) {
+      return null;
+    }
+  }
+  async collectTransferEvents(tokenContract, fromBlock, toBlock) {
+    const transferFilter = tokenContract.filters.Transfer();
+    try {
+      const events = await tokenContract.queryFilter(transferFilter, fromBlock, toBlock);
+      return events.map((event) => this.normalizeEvent(tokenContract, event));
+    } catch (error) {
+      if (!shouldChunkQuery(error)) {
+        throw error instanceof Error ? error : new Error("Failed to fetch transfer events");
+      }
+      const chunkSize = 5e4;
+      const events = [];
+      let currentFrom = fromBlock;
+      while (currentFrom <= toBlock) {
+        const currentTo = Math.min(currentFrom + chunkSize, toBlock);
+        const chunk = await tokenContract.queryFilter(transferFilter, currentFrom, currentTo);
+        events.push(...chunk.map((log) => this.normalizeEvent(tokenContract, log)));
+        currentFrom = currentTo + 1;
+      }
+      return events;
+    }
+  }
+  normalizeEvent(tokenContract, event) {
+    if ("args" in event) {
+      return { args: event.args };
+    }
+    const parsed = tokenContract.interface.parseLog(event);
+    if (!parsed) {
+      return { args: [] };
+    }
+    return { args: parsed.args };
+  }
+};
+
+// src/routes/v1/listings.ts
 var CreateListingFromSubmissionSchema = import_zod5.z.object({
   submissionId: import_zod5.z.string()
 });
@@ -4931,6 +5778,7 @@ var SetListingLaunchDateSchema = import_zod5.z.object({
 });
 async function listingRoutes(fastify) {
   const listingService = new ListingService(fastify.prisma);
+  const tokenHolderService = new TokenHolderService();
   fastify.get(
     "/live",
     {
@@ -4957,6 +5805,59 @@ async function listingRoutes(fastify) {
         });
       } catch (error) {
         console.error("Error getting live listings:", error);
+        throw error;
+      }
+    }
+  );
+  fastify.get(
+    "/symbol/:symbol",
+    {
+      schema: {
+        params: (0, import_zod_to_json_schema5.zodToJsonSchema)(
+          import_zod5.z.object({
+            symbol: import_zod5.z.string().min(1).max(50)
+          })
+        )
+      }
+    },
+    async (request, reply) => {
+      try {
+        const { symbol } = request.params;
+        const listing = await listingService.getListingBySymbol(symbol);
+        if (!listing) {
+          throw errors.notFound("Listing not found");
+        }
+        const commentCount = typeof listing.commentCount === "number" ? listing.commentCount : void 0;
+        let holderCount = null;
+        const tokenAddress = listing.token?.contractAddress;
+        if (tokenAddress) {
+          try {
+            holderCount = await tokenHolderService.getHolderCount(
+              tokenAddress,
+              listing.token?.chainId ?? void 0
+            );
+          } catch (error) {
+            fastify.log.warn(
+              { error, tokenAddress },
+              "[Listings] Failed to compute holder count for listing symbol route"
+            );
+          }
+        }
+        const responseListing = {
+          ...listing,
+          commentCount: commentCount ?? 0,
+          token: listing.token ? {
+            ...listing.token,
+            holderCount: holderCount ?? listing.token.holderCount ?? null,
+            holdersCount: holderCount ?? listing.token.holdersCount ?? null
+          } : void 0
+        };
+        return reply.send({
+          success: true,
+          data: responseListing
+        });
+      } catch (error) {
+        console.error("Error getting listing by symbol:", error);
         throw error;
       }
     }
@@ -6113,7 +7014,9 @@ var TokenService = class {
           name: "Loading...",
           currentPrice: "0",
           currentPriceACES: "0",
-          volume24h: "0"
+          volume24h: "0",
+          chainId: 8453,
+          priceSource: "BONDING_CURVE"
         }
       });
     }
@@ -6457,10 +7360,6 @@ var OHLCVService = class {
       return [];
     }
   }
-  /**
-   * NEW: Generate live candles for real-time updates
-   * This is used by the new /live endpoint
-   */
   async generateLiveCandles(contractAddress, timeframe, since) {
     const options = {
       startTime: since,
@@ -6469,10 +7368,6 @@ var OHLCVService = class {
     };
     return await this.generateFreshCandles(contractAddress, timeframe, options);
   }
-  /**
-   * Generate fresh candles from subgraph data
-   * This uses your existing logic but with enhanced time range support
-   */
   async generateFreshCandles(contractAddress, timeframe, options = {}) {
     try {
       if (timeframe === "1d") {
@@ -6487,31 +7382,43 @@ var OHLCVService = class {
   }
   async generateDailyCandles(contractAddress) {
     try {
-      const tokenDayData = await this.tokenService.fetchTokenDayData(contractAddress);
-      if (tokenDayData.length === 0) return [];
+      console.log(`[OHLCV] Generating daily candles for ${contractAddress}`);
+      const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1e3;
+      const trades = await this.fetchTradesForTimeRange(contractAddress, thirtyDaysAgo, Date.now());
+      console.log(`[OHLCV] Fetched ${trades.length} trades for daily candle generation`);
+      if (trades.length === 0) {
+        console.log(`[OHLCV] No trades found for daily candles`);
+        return [];
+      }
+      const oneDayMs = 24 * 60 * 60 * 1e3;
+      const candleGroups = this.groupTradesByInterval(trades, oneDayMs, "1d");
+      console.log(`[OHLCV] Created ${candleGroups.length} daily candle groups`);
       const candles = [];
-      for (const dayData of tokenDayData) {
-        const netVolume = new import_decimal2.Decimal(dayData.tokensBought).minus(new import_decimal2.Decimal(dayData.tokensSold));
-        const totalVolume = new import_decimal2.Decimal(dayData.tokensBought).plus(new import_decimal2.Decimal(dayData.tokensSold));
-        const basePrice = new import_decimal2.Decimal(1);
-        const priceVariation = netVolume.div(totalVolume.plus(1)).mul(0.1);
-        const open = basePrice.toString();
-        const close = basePrice.plus(priceVariation).toString();
-        const high = import_decimal2.Decimal.max(new import_decimal2.Decimal(open), new import_decimal2.Decimal(close)).mul(1.05).toString();
-        const low = import_decimal2.Decimal.min(new import_decimal2.Decimal(open), new import_decimal2.Decimal(close)).mul(0.95).toString();
-        candles.push({
-          timestamp: new Date(dayData.date * 1e3),
-          open,
-          high,
-          low,
-          close,
-          volume: totalVolume.toString(),
-          trades: dayData.tradesCount
+      for (const group of candleGroups) {
+        if (group.trades.length > 0) {
+          try {
+            const candle = this.calculateOHLCV(group);
+            candles.push(candle);
+          } catch (error) {
+            console.error(`[OHLCV] Error calculating daily candle at ${group.timestamp}:`, error);
+          }
+        }
+      }
+      console.log(`[OHLCV] Generated ${candles.length} daily candles with actual trade data`);
+      if (candles.length > 0) {
+        console.log("[OHLCV] Sample daily candle:", {
+          date: candles[0].timestamp.toISOString().split("T")[0],
+          open: candles[0].open,
+          high: candles[0].high,
+          low: candles[0].low,
+          close: candles[0].close,
+          trades: candles[0].trades,
+          volume: candles[0].volume
         });
       }
-      return candles.reverse();
+      return candles;
     } catch (error) {
-      console.error("Error generating daily candles:", error);
+      console.error("[OHLCV] Error generating daily candles:", error);
       return [];
     }
   }
@@ -6522,12 +7429,20 @@ var OHLCVService = class {
       const endTime = options.endTime || Date.now();
       const startTime = options.startTime || endTime - this.getHoursBack(timeframe) * 60 * 60 * 1e3;
       const trades = options.startTime ? await this.fetchTradesForTimeRange(contractAddress, startTime, endTime) : await this.tokenService.fetchTradesForChart(contractAddress, timeframe);
+      if (timeframe === "15m" && trades.length > 0) {
+        console.log("[OHLCV DEBUG] First 3 trades for 15m:");
+        trades.slice(0, 3).forEach((t) => {
+          const tradeTime = parseInt(t.createdAt) * 1e3;
+          const tradeDate = new Date(tradeTime);
+          console.log(`  Trade at ${tradeDate.toISOString()} (${t.createdAt} seconds)`);
+        });
+      }
       console.log(`[OHLCV] Fetched ${trades.length} trades for ${contractAddress}`);
       if (trades.length === 0) {
         console.log(`[OHLCV] No trades found for ${contractAddress} ${timeframe}`);
         return [];
       }
-      const candleGroups = this.groupTradesByInterval(trades, intervalMs);
+      const candleGroups = this.groupTradesByInterval(trades, intervalMs, timeframe);
       console.log(`[OHLCV] Created ${candleGroups.length} candle groups with trades`);
       const candles = [];
       for (const group of candleGroups) {
@@ -6588,10 +7503,6 @@ var OHLCVService = class {
       throw error;
     }
   }
-  /**
-   * Merge live candles with cached historical data
-   * This provides seamless hybrid mode: old cached data + new live data
-   */
   async mergeWithCachedCandles(contractAddress, timeframe, liveCandles) {
     try {
       const cachedCandles = await this.getCachedCandles(contractAddress, timeframe, 1e3);
@@ -6611,14 +7522,34 @@ var OHLCVService = class {
       return liveCandles;
     }
   }
-  groupTradesByInterval(trades, intervalMs) {
+  groupTradesByInterval(trades, intervalMs, timeframe = "unknown") {
     const groups = {};
+    const intervalMinutes = intervalMs / 6e4;
     console.log(
-      `[OHLCV] Grouping ${trades.length} trades with interval ${intervalMs}ms (${intervalMs / 6e4}min)`
+      `[OHLCV] Grouping ${trades.length} trades into ${intervalMinutes}-minute intervals`
     );
-    trades.forEach((trade) => {
+    trades.forEach((trade, index) => {
       const tradeTime = parseInt(trade.createdAt) * 1e3;
       const intervalStart = Math.floor(tradeTime / intervalMs) * intervalMs;
+      if (intervalMs === 9e5 && index < 5) {
+        const tradeDate = new Date(tradeTime);
+        const bucketDate = new Date(intervalStart);
+        const bucketMinutes = bucketDate.getMinutes();
+        console.log(`[OHLCV] Trade ${index + 1}:`);
+        console.log(`  Time: ${tradeDate.toISOString()}`);
+        console.log(`  Bucketed to: ${bucketDate.toISOString()} (minute: ${bucketMinutes})`);
+        if (![0, 15, 30, 45].includes(bucketMinutes)) {
+          console.error(`  \u274C ERROR: 15m candle at wrong minute: ${bucketMinutes}`);
+          console.error(`  Trade timestamp: ${trade.createdAt} seconds`);
+          console.error(`  Trade time in ms: ${tradeTime}`);
+          console.error(`  Interval ms: ${intervalMs}`);
+          console.error(`  Division: ${tradeTime} / ${intervalMs} = ${tradeTime / intervalMs}`);
+          console.error(`  Floor result: ${Math.floor(tradeTime / intervalMs)}`);
+          console.error(`  Final timestamp: ${intervalStart}`);
+        } else {
+          console.log(`  \u2705 Correctly aligned to ${bucketMinutes} minutes`);
+        }
+      }
       if (!groups[intervalStart]) {
         groups[intervalStart] = [];
       }
@@ -6628,14 +7559,46 @@ var OHLCVService = class {
       timestamp: new Date(parseInt(timestamp)),
       trades: trades2
     })).sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+    if (intervalMs === 9e5 && groupedResults.length > 0) {
+      console.log(`[OHLCV] Validating ${groupedResults.length} candle timestamps for 15m:`);
+      let misalignedCount = 0;
+      groupedResults.forEach((group, i) => {
+        const minutes = group.timestamp.getMinutes();
+        if (![0, 15, 30, 45].includes(minutes)) {
+          console.error(
+            `  Candle ${i + 1}: ${group.timestamp.toISOString()} - minute ${minutes} \u274C MISALIGNED`
+          );
+          misalignedCount++;
+        }
+      });
+      if (misalignedCount === 0) {
+        console.log(`  \u2705 All ${groupedResults.length} candles properly aligned`);
+      } else {
+        console.error(`  \u274C Found ${misalignedCount} misaligned candles!`);
+      }
+    }
     console.log(`[OHLCV] Created ${groupedResults.length} candle groups`);
-    console.log(
-      `[OHLCV] Groups with trades: ${groupedResults.filter((g) => g.trades.length > 0).length}`
-    );
-    console.log(
-      `[OHLCV] First group: ${groupedResults[0]?.timestamp.toISOString()} with ${groupedResults[0]?.trades.length} trades`
-    );
     return groupedResults;
+  }
+  validateCandleAlignment(timestamp, timeframe) {
+    const minutes = timestamp.getMinutes();
+    const hours = timestamp.getHours();
+    switch (timeframe) {
+      case "1m":
+        return true;
+      case "5m":
+        return minutes % 5 === 0;
+      case "15m":
+        return [0, 15, 30, 45].includes(minutes);
+      case "1h":
+        return minutes === 0;
+      case "4h":
+        return minutes === 0 && hours % 4 === 0;
+      case "1d":
+        return minutes === 0 && hours === 0;
+      default:
+        return true;
+    }
   }
   calculateOHLCV(candleGroup) {
     const { timestamp, trades } = candleGroup;
@@ -6654,7 +7617,7 @@ var OHLCVService = class {
     }).sort((a, b) => a.timestamp - b.timestamp);
     const prices = tradesWithPrice.map((t) => t.price);
     const volumes = tradesWithPrice.map((t) => t.volume);
-    const candle = {
+    return {
       timestamp,
       open: prices[0].toString(),
       high: import_decimal2.Decimal.max(...prices).toString(),
@@ -6663,12 +7626,6 @@ var OHLCVService = class {
       volume: volumes.reduce((sum, vol) => sum.add(vol), new import_decimal2.Decimal(0)).toString(),
       trades: trades.length
     };
-    if (Math.random() < 0.1) {
-      console.log(
-        `[OHLCV] Candle at ${timestamp.toISOString()}: O=${candle.open} H=${candle.high} L=${candle.low} C=${candle.close} trades=${trades.length}`
-      );
-    }
-    return candle;
   }
   getIntervalMs(timeframe) {
     const intervals = {
@@ -6680,44 +7637,13 @@ var OHLCVService = class {
     };
     return intervals[timeframe] || intervals["1h"];
   }
-  generateTimeSlots(startTime, endTime, intervalMs) {
-    const slots = [];
-    const alignedStart = Math.floor(startTime / intervalMs) * intervalMs;
-    for (let time = alignedStart; time < endTime; time += intervalMs) {
-      slots.push(new Date(time));
-    }
-    return slots;
-  }
-  async getLastKnownPrice(contractAddress) {
-    try {
-      const lastCandle = await this.prisma.tokenOHLCV.findFirst({
-        where: { contractAddress: contractAddress.toLowerCase() },
-        orderBy: { timestamp: "desc" }
-      });
-      if (lastCandle) {
-        return parseFloat(lastCandle.close);
-      }
-      const token = await this.prisma.token.findUnique({
-        where: { contractAddress: contractAddress.toLowerCase() }
-      });
-      return token ? parseFloat(token.currentPriceACES) : 1;
-    } catch (error) {
-      console.warn("Could not get last known price, defaulting to 1.0:", error);
-      return 1;
-    }
-  }
   getHoursBack(timeframe) {
     const timeframeHours = {
-      "1m": 2,
-      // 2 hours for minute data
+      "1m": 6,
       "5m": 12,
-      // 12 hours for 5-minute data
       "15m": 48,
-      // 48 hours for 15-minute data
       "1h": 168,
-      // 1 week for hourly data
       "1d": 720
-      // 30 days for daily data
     };
     return timeframeHours[timeframe] || 168;
   }
@@ -6739,7 +7665,6 @@ var OHLCVService = class {
               }
             },
             update: {
-              // Update existing candle data
               open: candle.open,
               high: candle.high,
               low: candle.low,
@@ -6748,7 +7673,6 @@ var OHLCVService = class {
               trades: candle.trades
             },
             create: {
-              // Create new candle if it doesn't exist
               contractAddress: lowerAddress,
               timeframe,
               timestamp: candle.timestamp,
@@ -6783,17 +7707,23 @@ var OHLCVService = class {
       take: typeof limit === "string" ? parseInt(limit) : limit
     });
   }
-  /**
-   * Public method to allow external callers to store candles
-   * Used by /live endpoint to persist real-time data
-   */
   async storeCandlesPublic(contractAddress, timeframe, candles) {
     await this.storeCandles(contractAddress, timeframe, candles);
   }
   /**
-   * NEW: Fetch trades for a specific time range from subgraph
-   * This is optimized for live data requests
+   * Store candles in background without blocking the response
+   * Used by API endpoints to backup data after serving from subgraph
+   *
+   * This is a fire-and-forget operation - errors are logged but don't throw
    */
+  async storeCandlesInBackground(contractAddress, timeframe, candles) {
+    this.storeCandles(contractAddress, timeframe, candles).catch((err) => {
+      console.warn(
+        `[OHLCV] Background DB storage failed for ${contractAddress} ${timeframe}:`,
+        err instanceof Error ? err.message : err
+      );
+    });
+  }
   async fetchTradesForTimeRange(contractAddress, startTime, endTime) {
     try {
       const startTimeSeconds = Math.floor(startTime / 1e3);
@@ -6823,7 +7753,6 @@ var OHLCVService = class {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query }),
         signal: AbortSignal.timeout(1e4)
-        // 10 second timeout for live queries
       });
       if (!response.ok) {
         throw new Error(`Subgraph request failed: ${response.status}`);
@@ -6838,9 +7767,6 @@ var OHLCVService = class {
       return [];
     }
   }
-  /**
-   * NEW: Check if cached data is still valid
-   */
   isCacheValid(candles, timeframe) {
     if (candles.length === 0) return false;
     const latestCandle = candles[candles.length - 1];
@@ -6849,9 +7775,6 @@ var OHLCVService = class {
     const maxAge = this.getIntervalMs(timeframe) * 2;
     return candleAge < maxAge;
   }
-  /**
-   * NEW: Get cached candles from database
-   */
   async getCachedCandles(contractAddress, timeframe, limit = 200) {
     try {
       const stored = await this.prisma.tokenOHLCV.findMany({
@@ -6878,10 +7801,239 @@ var OHLCVService = class {
   }
 };
 
+// src/services/supply-based-ohlcv-service.ts
+var import_decimal3 = require("decimal.js");
+var SupplyBasedOHLCVService = class {
+  static {
+    __name(this, "SupplyBasedOHLCVService");
+  }
+  subgraphUrl;
+  rpcUrl;
+  factoryAddress;
+  constructor() {
+    this.subgraphUrl = process.env.GOLDSKY_SUBGRAPH_URL || "";
+    this.rpcUrl = "https://mainnet.base.org";
+    this.factoryAddress = "0x7e224ae4e6235bF18BBcb79cc2B5d04a7a6F8d1D";
+    import_decimal3.Decimal.set({ precision: 78 });
+  }
+  /**
+   * Fetch trades with supply information and calculate marginal prices
+   */
+  async getCandles(tokenAddress, timeframe, limit = 1e3) {
+    try {
+      const trades = await this.fetchTradesWithSupply(tokenAddress, limit);
+      if (trades.length === 0) {
+        return [];
+      }
+      const tokenParams = await this.fetchTokenParameters(tokenAddress);
+      if (!tokenParams) {
+        throw new Error("Could not fetch token parameters");
+      }
+      const tradesWithPrices = await this.calculateMarginalPrices(trades, tokenParams);
+      return this.aggregateTradesToCandles(tradesWithPrices, timeframe);
+    } catch (error) {
+      console.error("[SupplyBasedOHLCV] Error getting candles:", error);
+      throw error;
+    }
+  }
+  /**
+   * Fetch trades with supply information from subgraph
+   */
+  async fetchTradesWithSupply(tokenAddress, limit) {
+    const query = `{
+      trades(
+        where: {token_: {address: "${tokenAddress.toLowerCase()}"}}
+        orderBy: createdAt
+        orderDirection: desc
+        first: ${limit}
+      ) {
+        id
+        isBuy
+        tokenAmount
+        acesTokenAmount
+        supply
+        createdAt
+      }
+    }`;
+    const response = await fetch(this.subgraphUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query }),
+      signal: AbortSignal.timeout(15e3)
+    });
+    if (!response.ok) {
+      throw new Error(`Subgraph request failed: ${response.status}`);
+    }
+    const result = await response.json();
+    if (result.errors) {
+      throw new Error(`Subgraph errors: ${JSON.stringify(result.errors)}`);
+    }
+    return result.data.trades || [];
+  }
+  /**
+   * Fetch token parameters from subgraph
+   * Query through TokenFive to get the nested token fields
+   */
+  async fetchTokenParameters(tokenAddress) {
+    const query = `{
+      tokens(where: {address: "${tokenAddress.toLowerCase()}"}) {
+        address
+        curve
+        steepness
+        floor
+      }
+    }`;
+    const response = await fetch(this.subgraphUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query })
+    });
+    if (!response.ok) {
+      console.error("[SupplyBasedOHLCV] Subgraph request failed:", response.status);
+      return null;
+    }
+    const result = await response.json();
+    if (result.errors) {
+      console.error("[SupplyBasedOHLCV] Subgraph query errors:", result.errors);
+      return null;
+    }
+    if (!result.data.tokens || result.data.tokens.length === 0) {
+      console.log("[SupplyBasedOHLCV] No token found, trying alternative query with TokenFive");
+      const altQuery = `{
+        tokenFives(where: {token_: {address: "${tokenAddress.toLowerCase()}"}}, first: 1) {
+          token {
+            address
+            curve
+            steepness
+            floor
+          }
+        }
+      }`;
+      const altResponse = await fetch(this.subgraphUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: altQuery })
+      });
+      if (!altResponse.ok) {
+        return null;
+      }
+      const altResult = await altResponse.json();
+      if (altResult.data.tokenFives && altResult.data.tokenFives.length > 0) {
+        const tokenData2 = altResult.data.tokenFives[0].token;
+        console.log("[SupplyBasedOHLCV] Found token params via TokenFive:", {
+          curve: tokenData2.curve,
+          steepness: tokenData2.steepness,
+          floor: tokenData2.floor
+        });
+        return tokenData2;
+      }
+    }
+    const tokenData = result.data.tokens[0] || null;
+    if (tokenData) {
+      console.log("[SupplyBasedOHLCV] Found token params directly:", {
+        curve: tokenData.curve,
+        steepness: tokenData.steepness,
+        floor: tokenData.floor
+      });
+    }
+    return tokenData;
+  }
+  /**
+   * Calculate marginal price using bonding curve formula
+   * This returns the price to buy 1 token at a specific supply level
+   */
+  calculateQuadraticPrice(supply, amount, steepness, floor) {
+    const supplyMinus1 = supply.sub(1);
+    const sum1 = supplyMinus1.mul(supply).mul(supplyMinus1.mul(2).add(1)).div(6);
+    const supplyMinus1PlusAmount = supplyMinus1.add(amount);
+    const supplyPlusAmount = supply.add(amount);
+    const sum2 = supplyMinus1PlusAmount.mul(supplyPlusAmount).mul(supplyMinus1PlusAmount.mul(2).add(1)).div(6);
+    const summation = sum2.sub(sum1);
+    const ONE_ETHER = new import_decimal3.Decimal(10).pow(18);
+    const price = summation.mul(ONE_ETHER).div(steepness).add(floor.mul(amount));
+    return price;
+  }
+  /**
+   * Calculate marginal prices for all trades
+   */
+  async calculateMarginalPrices(trades, tokenParams) {
+    const steepness = new import_decimal3.Decimal(tokenParams.steepness);
+    const floor = new import_decimal3.Decimal(tokenParams.floor);
+    return trades.map((trade) => {
+      const supplyWei = new import_decimal3.Decimal(trade.supply);
+      const supply = supplyWei.div(new import_decimal3.Decimal(10).pow(18));
+      const amount = new import_decimal3.Decimal(1);
+      let marginalPrice;
+      if (tokenParams.curve === 0) {
+        const priceWei = this.calculateQuadraticPrice(supply, amount, steepness, floor);
+        marginalPrice = priceWei.div(new import_decimal3.Decimal(10).pow(18));
+      } else {
+        marginalPrice = new import_decimal3.Decimal(0);
+      }
+      return {
+        ...trade,
+        marginalPrice
+      };
+    });
+  }
+  /**
+   * Aggregate trades into OHLCV candles based on marginal prices
+   */
+  aggregateTradesToCandles(trades, timeframe) {
+    const intervalMs = this.getIntervalMs(timeframe);
+    const candleMap = /* @__PURE__ */ new Map();
+    for (const trade of trades) {
+      const timestamp = parseInt(trade.createdAt) * 1e3;
+      const candleTimestamp = Math.floor(timestamp / intervalMs) * intervalMs;
+      const tokens = new import_decimal3.Decimal(trade.tokenAmount).div(new import_decimal3.Decimal(10).pow(18));
+      if (!candleMap.has(candleTimestamp)) {
+        candleMap.set(candleTimestamp, { prices: [], volumes: [], timestamps: [] });
+      }
+      const candle = candleMap.get(candleTimestamp);
+      candle.prices.push(trade.marginalPrice);
+      candle.volumes.push(tokens);
+      candle.timestamps.push(timestamp);
+    }
+    const candles = [];
+    for (const [timestamp, data] of candleMap.entries()) {
+      if (data.prices.length === 0) continue;
+      const sorted = data.prices.map((price, i) => ({ price, volume: data.volumes[i], timestamp: data.timestamps[i] })).sort((a, b) => a.timestamp - b.timestamp);
+      const prices = sorted.map((s) => s.price);
+      const open = prices[0].toString();
+      const close = prices[prices.length - 1].toString();
+      const high = import_decimal3.Decimal.max(...prices).toString();
+      const low = import_decimal3.Decimal.min(...prices).toString();
+      const volume = data.volumes.reduce((sum, v) => sum.add(v), new import_decimal3.Decimal(0)).toString();
+      candles.push({
+        timestamp: new Date(timestamp),
+        open,
+        high,
+        low,
+        close,
+        volume,
+        trades: data.prices.length
+      });
+    }
+    return candles.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+  }
+  getIntervalMs(timeframe) {
+    const intervals = {
+      "5m": 5 * 60 * 1e3,
+      "15m": 15 * 60 * 1e3,
+      "1h": 60 * 60 * 1e3,
+      "4h": 4 * 60 * 60 * 1e3,
+      "1d": 24 * 60 * 60 * 1e3
+    };
+    return intervals[timeframe] || intervals["1h"];
+  }
+};
+
 // src/routes/v1/tokens.ts
 async function tokensRoutes(fastify) {
   const tokenService = new TokenService(fastify.prisma);
+  const tokenHolderService = new TokenHolderService();
   const ohlcvService = new OHLCVService(fastify.prisma, tokenService);
+  const supplyBasedOHLCVService = new SupplyBasedOHLCVService();
   fastify.get(
     "/:address",
     {
@@ -7038,6 +8190,40 @@ async function tokensRoutes(fastify) {
     }
   );
   fastify.get(
+    "/:address/holders",
+    {
+      schema: {
+        params: (0, import_zod_to_json_schema8.zodToJsonSchema)(
+          import_zod9.z.object({
+            address: import_zod9.z.string().regex(/^0x[a-fA-F0-9]{40}$/)
+          })
+        ),
+        querystring: (0, import_zod_to_json_schema8.zodToJsonSchema)(
+          import_zod9.z.object({
+            chainId: import_zod9.z.string().regex(/^[0-9]+$/).transform((value) => Number(value)).optional()
+          })
+        )
+      }
+    },
+    async (request, reply) => {
+      try {
+        const { address } = request.params;
+        const { chainId } = request.query;
+        const holderCount = await tokenHolderService.getHolderCount(address, chainId);
+        return reply.send({
+          success: true,
+          data: { holderCount }
+        });
+      } catch (error) {
+        fastify.log.warn({ error }, "Token holder count fetch error");
+        return reply.code(502).send({
+          success: false,
+          error: error instanceof Error ? error.message : "Failed to fetch token holder count"
+        });
+      }
+    }
+  );
+  fastify.get(
     "/:address/live",
     {
       schema: {
@@ -7048,10 +8234,9 @@ async function tokensRoutes(fastify) {
         ),
         querystring: (0, import_zod_to_json_schema8.zodToJsonSchema)(
           import_zod9.z.object({
-            timeframe: import_zod9.z.enum(["1m", "5m", "15m", "30m", "1h", "4h", "1d"]).default("1h"),
-            since: import_zod9.z.string().optional(),
-            // Unix timestamp
-            limit: import_zod9.z.string().transform(Number).default("100")
+            timeframe: import_zod9.z.enum(["5m", "15m", "1h", "4h", "1d"]).default("1h"),
+            since: import_zod9.z.string().optional()
+            // Unix timestamp (deprecated, kept for compatibility)
           })
         )
       }
@@ -7059,24 +8244,14 @@ async function tokensRoutes(fastify) {
     async (request, reply) => {
       try {
         const { address } = request.params;
-        const { timeframe = "1h", since, limit = 100 } = request.query;
-        const sinceTimestamp = since ? parseInt(since) * 1e3 : Date.now() - 10 * 60 * 1e3;
-        const liveCandles = await ohlcvService.generateLiveCandles(
+        const { timeframe = "1h" } = request.query;
+        const allCandles = await supplyBasedOHLCVService.getCandles(
           address,
           timeframe,
-          sinceTimestamp
+          100
+          // Get last 100 trades for live updates
         );
-        if (liveCandles && liveCandles.length > 0) {
-          try {
-            await ohlcvService.storeCandlesPublic(address, timeframe, liveCandles);
-            console.log(
-              `[API /live] Persisted ${liveCandles.length} live candles for ${address} ${timeframe}`
-            );
-          } catch (storeError) {
-            console.warn("[API /live] Failed to persist live candles:", storeError);
-          }
-        }
-        if (!liveCandles || liveCandles.length === 0) {
+        if (!allCandles || allCandles.length === 0) {
           return reply.send({
             success: true,
             data: {
@@ -7086,32 +8261,36 @@ async function tokensRoutes(fastify) {
               count: 0,
               isLive: true,
               lastUpdate: Date.now(),
-              message: "No new trading data available"
+              message: "No current candle available"
             }
           });
         }
-        const chartData = liveCandles.slice(-limit).map((candle) => ({
-          time: Math.floor(candle.timestamp.getTime() / 1e3),
-          open: parseFloat(candle.open),
-          high: parseFloat(candle.high),
-          low: parseFloat(candle.low),
-          close: parseFloat(candle.close)
-        }));
-        const volumeData = liveCandles.slice(-limit).map((candle) => ({
-          time: Math.floor(candle.timestamp.getTime() / 1e3),
-          value: parseFloat(candle.volume),
-          color: parseFloat(candle.close) >= parseFloat(candle.open) ? "rgba(0, 200, 150, 0.6)" : "rgba(255, 91, 91, 0.6)"
-        }));
+        const currentCandle = allCandles[allCandles.length - 1];
+        const chartData = [
+          {
+            time: Math.floor(currentCandle.timestamp.getTime() / 1e3),
+            open: parseFloat(currentCandle.open),
+            high: parseFloat(currentCandle.high),
+            low: parseFloat(currentCandle.low),
+            close: parseFloat(currentCandle.close)
+          }
+        ];
+        const volumeData = [
+          {
+            time: Math.floor(currentCandle.timestamp.getTime() / 1e3),
+            value: parseFloat(currentCandle.volume),
+            color: parseFloat(currentCandle.close) >= parseFloat(currentCandle.open) ? "rgba(0, 200, 150, 0.6)" : "rgba(255, 91, 91, 0.6)"
+          }
+        ];
         return reply.send({
           success: true,
           data: {
             timeframe,
             candles: chartData,
             volume: volumeData,
-            count: chartData.length,
+            count: 1,
             isLive: true,
-            lastUpdate: Date.now(),
-            since: sinceTimestamp
+            lastUpdate: Date.now()
           }
         });
       } catch (error) {
@@ -7135,9 +8314,9 @@ async function tokensRoutes(fastify) {
         ),
         querystring: (0, import_zod_to_json_schema8.zodToJsonSchema)(
           import_zod9.z.object({
-            timeframe: import_zod9.z.enum(["1m", "5m", "15m", "30m", "1h", "4h", "1d"]).default("1h"),
-            limit: import_zod9.z.string().transform(Number).default("100"),
-            mode: import_zod9.z.enum(["live", "cached", "hybrid"]).default("hybrid")
+            timeframe: import_zod9.z.enum(["5m", "15m", "1h", "4h", "1d"]).default("1h"),
+            limit: import_zod9.z.string().transform(Number).default("5000"),
+            mode: import_zod9.z.enum(["live", "cached", "hybrid"]).optional().default("hybrid")
           })
         )
       }
@@ -7145,64 +8324,12 @@ async function tokensRoutes(fastify) {
     async (request, reply) => {
       try {
         const { address } = request.params;
-        const { timeframe = "1h", limit = 100, mode = "hybrid" } = request.query;
-        let chartData = [];
-        let volumeData = [];
-        let isLive = false;
-        let dataSource = "unknown";
-        if (mode === "live") {
-          const liveCandles = await ohlcvService.generateOHLCVCandles(address, timeframe, {
-            forceRefresh: true,
-            skipStorage: true
-            // Don't block response with slow database writes
-          });
-          chartData = liveCandles.slice(-limit).map((candle) => ({
-            time: Math.floor(candle.timestamp.getTime() / 1e3),
-            open: parseFloat(candle.open),
-            high: parseFloat(candle.high),
-            low: parseFloat(candle.low),
-            close: parseFloat(candle.close)
-          }));
-          volumeData = liveCandles.slice(-limit).map((candle) => ({
-            time: Math.floor(candle.timestamp.getTime() / 1e3),
-            value: parseFloat(candle.volume),
-            color: parseFloat(candle.close) >= parseFloat(candle.open) ? "rgba(0, 200, 150, 0.6)" : "rgba(255, 91, 91, 0.6)"
-          }));
-          isLive = true;
-          dataSource = "live";
-        } else if (mode === "cached") {
-          const cachedCandles = await ohlcvService.getStoredOHLCVData(address, timeframe, limit);
-          chartData = cachedCandles.reverse().map((candle) => ({
-            time: Math.floor(candle.timestamp.getTime() / 1e3),
-            open: parseFloat(candle.open),
-            high: parseFloat(candle.high),
-            low: parseFloat(candle.low),
-            close: parseFloat(candle.close)
-          }));
-          volumeData = cachedCandles.map((candle) => ({
-            time: Math.floor(candle.timestamp.getTime() / 1e3),
-            value: parseFloat(candle.volume),
-            color: parseFloat(candle.close) >= parseFloat(candle.open) ? "rgba(0, 200, 150, 0.6)" : "rgba(255, 91, 91, 0.6)"
-          }));
-          dataSource = "cached";
-        } else {
-          const hybridCandles = await ohlcvService.generateOHLCVCandles(address, timeframe);
-          chartData = hybridCandles.slice(-limit).map((candle) => ({
-            time: Math.floor(candle.timestamp.getTime() / 1e3),
-            open: parseFloat(candle.open),
-            high: parseFloat(candle.high),
-            low: parseFloat(candle.low),
-            close: parseFloat(candle.close)
-          }));
-          volumeData = hybridCandles.slice(-limit).map((candle) => ({
-            time: Math.floor(candle.timestamp.getTime() / 1e3),
-            value: parseFloat(candle.volume),
-            color: parseFloat(candle.close) >= parseFloat(candle.open) ? "rgba(0, 200, 150, 0.6)" : "rgba(255, 91, 91, 0.6)"
-          }));
-          isLive = hybridCandles.length > 0;
-          dataSource = "hybrid";
-        }
-        if (chartData.length === 0) {
+        const { timeframe = "1h", limit = 5e3 } = request.query;
+        const candles = await supplyBasedOHLCVService.getCandles(
+          address,
+          timeframe
+        );
+        if (!candles || candles.length === 0) {
           return reply.send({
             success: true,
             data: {
@@ -7210,10 +8337,26 @@ async function tokensRoutes(fastify) {
               candles: [],
               volume: [],
               count: 0,
-              isLive: false,
-              dataSource,
+              dataSource: "subgraph",
               message: "No trading data available for this timeframe"
             }
+          });
+        }
+        const chartData = candles.slice(-limit).map((candle) => ({
+          time: Math.floor(candle.timestamp.getTime() / 1e3),
+          open: parseFloat(candle.open),
+          high: parseFloat(candle.high),
+          low: parseFloat(candle.low),
+          close: parseFloat(candle.close)
+        }));
+        const volumeData = candles.slice(-limit).map((candle) => ({
+          time: Math.floor(candle.timestamp.getTime() / 1e3),
+          value: parseFloat(candle.volume),
+          color: parseFloat(candle.close) >= parseFloat(candle.open) ? "rgba(0, 200, 150, 0.6)" : "rgba(255, 91, 91, 0.6)"
+        }));
+        if (candles.length > 0) {
+          ohlcvService.storeCandlesInBackground(address, timeframe, candles).catch((err) => {
+            console.warn("[API /chart] Background DB storage failed:", err);
           });
         }
         return reply.send({
@@ -7223,13 +8366,45 @@ async function tokensRoutes(fastify) {
             candles: chartData,
             volume: volumeData,
             count: chartData.length,
-            isLive,
-            dataSource,
+            dataSource: "subgraph",
             lastUpdate: Date.now()
           }
         });
       } catch (error) {
         fastify.log.error({ error }, "Chart data fetch error");
+        try {
+          const { address } = request.params;
+          const { timeframe = "1h", limit = 5e3 } = request.query;
+          const dbCandles = await ohlcvService.getStoredOHLCVData(address, timeframe, limit);
+          if (dbCandles.length > 0) {
+            const chartData = dbCandles.map((candle) => ({
+              time: Math.floor(candle.timestamp.getTime() / 1e3),
+              open: parseFloat(candle.open),
+              high: parseFloat(candle.high),
+              low: parseFloat(candle.low),
+              close: parseFloat(candle.close)
+            }));
+            const volumeData = dbCandles.map((candle) => ({
+              time: Math.floor(candle.timestamp.getTime() / 1e3),
+              value: parseFloat(candle.volume),
+              color: parseFloat(candle.close) >= parseFloat(candle.open) ? "rgba(0, 200, 150, 0.6)" : "rgba(255, 91, 91, 0.6)"
+            }));
+            return reply.send({
+              success: true,
+              data: {
+                timeframe,
+                candles: chartData,
+                volume: volumeData,
+                count: chartData.length,
+                dataSource: "database_fallback",
+                warning: "Using cached data - live data temporarily unavailable",
+                lastUpdate: Date.now()
+              }
+            });
+          }
+        } catch (fallbackError) {
+          console.error("[API /chart] Database fallback also failed:", fallbackError);
+        }
         return reply.code(500).send({
           success: false,
           error: "Failed to fetch chart data",
@@ -7777,8 +8952,8 @@ async function twitchRoutes(fastify) {
 __name(twitchRoutes, "twitchRoutes");
 
 // src/services/price-service.ts
-var import_ethers = require("ethers");
-var ERC20_ABI = ["function decimals() view returns (uint8)"];
+var import_ethers4 = require("ethers");
+var ERC20_ABI2 = ["function decimals() view returns (uint8)"];
 var UNISWAP_V3_POOL_ABI = [
   "function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)",
   "function token0() view returns (address)",
@@ -7809,7 +8984,7 @@ var SimpleThrottler = class {
 var PriceService = class {
   constructor(prisma2) {
     this.prisma = prisma2;
-    this.provider = new import_ethers.ethers.JsonRpcProvider(process.env.QUICKNODE_BASE_URL);
+    this.provider = new import_ethers4.ethers.JsonRpcProvider(process.env.QUICKNODE_BASE_URL);
     this.cacheTTL = parseInt(process.env.PRICE_CACHE_TTL_SECONDS || "60") * 1e3;
     this.throttler = new SimpleThrottler();
   }
@@ -7887,13 +9062,13 @@ var PriceService = class {
   async getAcesPerWeth() {
     const poolAddress = process.env.AERODROME_ACES_WETH_POOL;
     const acesAddress = process.env.ACES_TOKEN_ADDRESS;
-    const pool = new import_ethers.ethers.Contract(poolAddress, AERODROME_POOL_ABI, this.provider);
+    const pool = new import_ethers4.ethers.Contract(poolAddress, AERODROME_POOL_ABI, this.provider);
     const [reserve0, reserve1] = await pool.getReserves();
     const token0 = await pool.token0();
     const isToken0Aces = token0.toLowerCase() === acesAddress.toLowerCase();
     const acesReserve = isToken0Aces ? reserve0 : reserve1;
     const wethReserve = isToken0Aces ? reserve1 : reserve0;
-    return parseFloat(import_ethers.ethers.formatEther(wethReserve)) / parseFloat(import_ethers.ethers.formatEther(acesReserve));
+    return parseFloat(import_ethers4.ethers.formatEther(wethReserve)) / parseFloat(import_ethers4.ethers.formatEther(acesReserve));
   }
   /**
    * Get WETH price in USD from Uniswap V3 pool
@@ -7902,20 +9077,20 @@ var PriceService = class {
     const poolAddress = process.env.WETH_USDC_POOL;
     const wethAddress = process.env.WETH_ADDRESS;
     const usdcAddress = process.env.USDC_ADDRESS;
-    const pool = new import_ethers.ethers.Contract(poolAddress, UNISWAP_V3_POOL_ABI, this.provider);
+    const pool = new import_ethers4.ethers.Contract(poolAddress, UNISWAP_V3_POOL_ABI, this.provider);
     const slot0 = await pool.slot0();
     const sqrtPriceX96 = slot0.sqrtPriceX96;
     const token0 = await pool.token0();
-    const wethContract = new import_ethers.ethers.Contract(wethAddress, ERC20_ABI, this.provider);
-    const usdcContract = new import_ethers.ethers.Contract(usdcAddress, ERC20_ABI, this.provider);
+    const wethContract = new import_ethers4.ethers.Contract(wethAddress, ERC20_ABI2, this.provider);
+    const usdcContract = new import_ethers4.ethers.Contract(usdcAddress, ERC20_ABI2, this.provider);
     const wethDecimals = await wethContract.decimals();
     const usdcDecimals = await usdcContract.decimals();
     const price = BigInt(sqrtPriceX96.toString()) ** 2n * 10n ** BigInt(wethDecimals) / 2n ** 192n / 10n ** BigInt(usdcDecimals);
     const isToken0Weth = token0.toLowerCase() === wethAddress.toLowerCase();
     if (isToken0Weth) {
-      return 1 / parseFloat(import_ethers.ethers.formatUnits(price, usdcDecimals));
+      return 1 / parseFloat(import_ethers4.ethers.formatUnits(price, usdcDecimals));
     } else {
-      return parseFloat(import_ethers.ethers.formatUnits(price, usdcDecimals));
+      return parseFloat(import_ethers4.ethers.formatUnits(price, usdcDecimals));
     }
   }
   /**
@@ -8012,6 +9187,382 @@ var priceRoutes = /* @__PURE__ */ __name(async (fastify) => {
     }
   });
 }, "priceRoutes");
+
+// src/routes/v1/dex.ts
+var import_zod12 = require("zod");
+var import_zod_to_json_schema11 = require("zod-to-json-schema");
+var import_ethers5 = require("ethers");
+var addressSchema = import_zod12.z.string().regex(/^0x[a-fA-F0-9]{40}$/);
+async function dexRoutes(fastify) {
+  const mainnetConfig = getNetworkConfig(8453);
+  const provider = createProvider(8453);
+  const mockEnabled = process.env.USE_DEX_MOCKS === "true" || !mainnetConfig.rpcUrl || !mainnetConfig.aerodromeFactory || !mainnetConfig.aerodromeRouter;
+  console.log("\u{1F527} DEX Routes Initialization:");
+  console.log(`   RPC URL: ${mainnetConfig.rpcUrl ? "SET" : "MISSING"}`);
+  console.log(`   Factory: ${mainnetConfig.aerodromeFactory || "MISSING"}`);
+  console.log(`   Router: ${mainnetConfig.aerodromeRouter || "MISSING"}`);
+  console.log(`   ACES Token: ${mainnetConfig.acesToken}`);
+  console.log(`   Provider created: ${provider ? "YES" : "NO"}`);
+  console.log(`   Mock enabled: ${mockEnabled}`);
+  let aerodromeService = null;
+  try {
+    aerodromeService = new AerodromeDataService({
+      provider: provider ?? void 0,
+      rpcUrl: provider ? void 0 : mainnetConfig.rpcUrl,
+      factoryAddress: mainnetConfig.aerodromeFactory,
+      acesTokenAddress: mainnetConfig.acesToken,
+      apiBaseUrl: process.env.AERODROME_API_BASE_URL,
+      apiKey: process.env.AERODROME_API_KEY,
+      defaultStable: process.env.AERODROME_DEFAULT_STABLE === "true",
+      mockEnabled
+    });
+    console.log("\u2705 AerodromeDataService initialized successfully");
+  } catch (error) {
+    console.error("\u274C Failed to initialize AerodromeDataService:", error);
+    fastify.log.error({ err: error }, "Failed to initialize AerodromeDataService");
+  }
+  const ensureService = /* @__PURE__ */ __name(() => {
+    if (!aerodromeService) {
+      throw new Error("Aerodrome data service unavailable");
+    }
+    return aerodromeService;
+  }, "ensureService");
+  const assetMetadata = {
+    ACES: {
+      symbol: "ACES",
+      address: mainnetConfig.acesToken.toLowerCase(),
+      decimals: 18
+    },
+    USDC: {
+      symbol: "USDC",
+      address: (process.env.USDC_ADDRESS || "0x833589fCD6eDb6E08f4c7C0b43d5Ee1fCD46a7B3").toLowerCase(),
+      decimals: Number(process.env.AERODROME_USDC_DECIMALS || 6)
+    },
+    USDT: {
+      symbol: "USDT",
+      address: (process.env.USDT_ADDRESS || "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2").toLowerCase(),
+      decimals: Number(process.env.AERODROME_USDT_DECIMALS || 6)
+    },
+    ETH: {
+      symbol: "ETH",
+      address: (process.env.WETH_ADDRESS || "0x4200000000000000000000000000000000000006").toLowerCase(),
+      decimals: Number(process.env.AERODROME_WETH_DECIMALS || 18)
+    }
+  };
+  const decimalsCache = /* @__PURE__ */ new Map();
+  const getTokenDecimals = /* @__PURE__ */ __name(async (tokenAddress) => {
+    const normalized = tokenAddress.toLowerCase();
+    const cached = decimalsCache.get(normalized);
+    if (cached !== void 0) {
+      return cached;
+    }
+    if (!provider) {
+      throw new Error("Provider unavailable for decimals lookup");
+    }
+    const contract = new import_ethers5.ethers.Contract(
+      normalized,
+      ["function decimals() view returns (uint8)"],
+      provider
+    );
+    const value = Number(await contract.decimals());
+    decimalsCache.set(normalized, value);
+    return value;
+  }, "getTokenDecimals");
+  const computeSwap = /* @__PURE__ */ __name((amountIn, reserveIn, reserveOut) => {
+    if (reserveIn === 0n || reserveOut === 0n) {
+      return 0n;
+    }
+    const feeNumerator = 997n;
+    const feeDenominator = 1000n;
+    const amountInWithFee = amountIn * feeNumerator / feeDenominator;
+    const numerator = amountInWithFee * reserveOut;
+    const denominator = reserveIn + amountInWithFee;
+    return denominator === 0n ? 0n : numerator / denominator;
+  }, "computeSwap");
+  fastify.get(
+    "/:address/pool",
+    {
+      schema: {
+        params: (0, import_zod_to_json_schema11.zodToJsonSchema)(import_zod12.z.object({ address: addressSchema }))
+      }
+    },
+    async (request, reply) => {
+      try {
+        const service = ensureService();
+        const poolState = await service.getPoolState(
+          request.params.address
+        );
+        if (!poolState) {
+          return reply.code(404).send({ success: false, error: "Pool not found" });
+        }
+        return reply.send({ success: true, data: poolState });
+      } catch (error) {
+        fastify.log.error({ err: error }, "Failed to fetch pool state");
+        return reply.code(503).send({ success: false, error: "Dex service unavailable" });
+      }
+    }
+  );
+  fastify.get(
+    "/:address/quote",
+    {
+      schema: {
+        params: (0, import_zod_to_json_schema11.zodToJsonSchema)(import_zod12.z.object({ address: addressSchema })),
+        querystring: (0, import_zod_to_json_schema11.zodToJsonSchema)(
+          import_zod12.z.object({
+            inputAsset: import_zod12.z.string().optional(),
+            amount: import_zod12.z.string().optional(),
+            slippageBps: import_zod12.z.string().optional()
+          })
+        )
+      }
+    },
+    async (request, reply) => {
+      try {
+        console.log("\u{1F50D} DEX QUOTE HANDLER CALLED - NEW CODE RUNNING");
+        const service = ensureService();
+        const inputAssetCode = (request.query.inputAsset || "ACES").toUpperCase();
+        const amountStr = request.query.amount ?? "0";
+        const slippageBps = Number(request.query.slippageBps ?? "100");
+        const amount = Number(amountStr);
+        if (!Number.isFinite(amount) || amount <= 0) {
+          return reply.code(400).send({ success: false, error: "Invalid amount" });
+        }
+        const normalizedToken = request.params.address.toLowerCase();
+        const tokenDecimals = await getTokenDecimals(normalizedToken);
+        const isSellMode = inputAssetCode === "TOKEN";
+        let assetConfig;
+        let amountInRaw;
+        if (isSellMode) {
+          console.log("\u{1F4B0} SELL MODE: Selling launchpad token for ACES");
+          amountInRaw = import_ethers5.ethers.parseUnits(amountStr, tokenDecimals);
+          assetConfig = null;
+        } else {
+          assetConfig = assetMetadata[inputAssetCode];
+          if (!assetConfig) {
+            return reply.code(400).send({
+              success: false,
+              error: `Unsupported input asset: ${inputAssetCode}. Use 'TOKEN' to sell the launchpad token.`
+            });
+          }
+          amountInRaw = import_ethers5.ethers.parseUnits(amountStr, assetConfig.decimals);
+        }
+        const prisma2 = getPrismaClient();
+        console.log(`\u{1F50D} Looking up token in DB: ${normalizedToken}`);
+        const token = await prisma2.token.findUnique({
+          where: { contractAddress: normalizedToken },
+          select: { poolAddress: true }
+        });
+        console.log(`\u{1F4CA} DEX Quote request for ${normalizedToken}`);
+        console.log(`\u{1F3CA} Pool address from DB: ${token?.poolAddress || "null"}`);
+        const tokenPool = await service.getPoolState(
+          normalizedToken,
+          token?.poolAddress ?? void 0
+        );
+        console.log(`\u2705 Pool state result: ${tokenPool ? "FOUND" : "NULL"}`);
+        if (tokenPool) {
+          console.log(
+            `\u{1F4C8} Pool reserves - Token: ${tokenPool.reserveRaw?.token}, Counter: ${tokenPool.reserveRaw?.counter}`
+          );
+        }
+        if (!tokenPool) {
+          console.log(
+            `\u274C POOL NOT FOUND for token ${normalizedToken}, DB pool: ${token?.poolAddress}`
+          );
+          return reply.code(404).send({ success: false, error: "Launchpad pool not found" });
+        }
+        let expectedOutputRaw = 0n;
+        const intermediateSteps = [];
+        let outputDecimals = tokenDecimals;
+        let outputSymbol = "TOKEN";
+        let routePath = [];
+        if (isSellMode) {
+          console.log("\u{1F4B8} Computing sell: TOKEN -> ACES");
+          const reserveIn = BigInt(tokenPool.reserveRaw.token);
+          const reserveOut = BigInt(tokenPool.reserveRaw.counter);
+          expectedOutputRaw = computeSwap(amountInRaw, reserveIn, reserveOut);
+          outputDecimals = 18;
+          outputSymbol = "ACES";
+          routePath = [normalizedToken, mainnetConfig.acesToken.toLowerCase()];
+        } else if (assetConfig.symbol === "ACES") {
+          console.log("\u{1F4B8} Computing buy: ACES -> TOKEN");
+          const reserveIn = BigInt(tokenPool.reserveRaw.counter);
+          const reserveOut = BigInt(tokenPool.reserveRaw.token);
+          expectedOutputRaw = computeSwap(amountInRaw, reserveIn, reserveOut);
+          outputDecimals = tokenDecimals;
+          outputSymbol = "TOKEN";
+          routePath = [assetConfig.address, normalizedToken];
+        } else if (assetConfig.symbol === "ETH") {
+          console.log("\u{1F4B8} Computing buy: wETH -> ACES -> TOKEN");
+          const ethToAces = await service.getPairReserves(
+            assetMetadata.ETH.address,
+            assetMetadata.ACES.address
+          );
+          if (!ethToAces) {
+            return reply.code(404).send({ success: false, error: "Route pool not found" });
+          }
+          const acesAmountRaw = computeSwap(amountInRaw, ethToAces.reserveIn, ethToAces.reserveOut);
+          intermediateSteps.push({
+            symbol: "ACES",
+            amount: import_ethers5.ethers.formatUnits(acesAmountRaw, assetMetadata.ACES.decimals)
+          });
+          const reserveIn = BigInt(tokenPool.reserveRaw.counter);
+          const reserveOut = BigInt(tokenPool.reserveRaw.token);
+          expectedOutputRaw = computeSwap(acesAmountRaw, reserveIn, reserveOut);
+          outputDecimals = tokenDecimals;
+          outputSymbol = "TOKEN";
+          routePath = [assetMetadata.ETH.address, assetMetadata.ACES.address, normalizedToken];
+        } else if (assetConfig.symbol === "USDC" || assetConfig.symbol === "USDT") {
+          console.log(`\u{1F4B8} Computing buy: ${assetConfig.symbol} -> wETH -> ACES -> TOKEN`);
+          const stableToWeth = await service.getPairReserves(
+            assetConfig.address,
+            assetMetadata.ETH.address
+          );
+          if (!stableToWeth) {
+            return reply.code(404).send({ success: false, error: "Route pool not found" });
+          }
+          const wethAmountRaw = computeSwap(
+            amountInRaw,
+            stableToWeth.reserveIn,
+            stableToWeth.reserveOut
+          );
+          intermediateSteps.push({
+            symbol: "wETH",
+            amount: import_ethers5.ethers.formatUnits(wethAmountRaw, assetMetadata.ETH.decimals)
+          });
+          const wethToAces = await service.getPairReserves(
+            assetMetadata.ETH.address,
+            assetMetadata.ACES.address
+          );
+          if (!wethToAces) {
+            return reply.code(404).send({ success: false, error: "Route pool not found" });
+          }
+          const acesAmountRaw = computeSwap(
+            wethAmountRaw,
+            wethToAces.reserveIn,
+            wethToAces.reserveOut
+          );
+          intermediateSteps.push({
+            symbol: "ACES",
+            amount: import_ethers5.ethers.formatUnits(acesAmountRaw, assetMetadata.ACES.decimals)
+          });
+          const reserveIn = BigInt(tokenPool.reserveRaw.counter);
+          const reserveOut = BigInt(tokenPool.reserveRaw.token);
+          expectedOutputRaw = computeSwap(acesAmountRaw, reserveIn, reserveOut);
+          outputDecimals = tokenDecimals;
+          outputSymbol = "TOKEN";
+          routePath = [
+            assetConfig.address,
+            assetMetadata.ETH.address,
+            assetMetadata.ACES.address,
+            normalizedToken
+          ];
+        } else {
+          const counterPool = await service.getPoolState(assetConfig.address);
+          if (!counterPool) {
+            return reply.code(404).send({ success: false, error: "Route pool not found" });
+          }
+          const firstLegOut = computeSwap(
+            amountInRaw,
+            BigInt(counterPool.reserveRaw.token),
+            BigInt(counterPool.reserveRaw.counter)
+          );
+          intermediateSteps.push({
+            symbol: "ACES",
+            amount: import_ethers5.ethers.formatUnits(firstLegOut, assetMetadata.ACES.decimals)
+          });
+          const reserveIn = BigInt(tokenPool.reserveRaw.counter);
+          const reserveOut = BigInt(tokenPool.reserveRaw.token);
+          expectedOutputRaw = computeSwap(firstLegOut, reserveIn, reserveOut);
+          outputDecimals = tokenDecimals;
+          outputSymbol = "TOKEN";
+          routePath = [assetConfig.address, assetMetadata.ACES.address, normalizedToken];
+        }
+        if (expectedOutputRaw === 0n) {
+          return reply.code(400).send({
+            success: false,
+            error: "Insufficient liquidity for this trade size"
+          });
+        }
+        const minOutputRaw = expectedOutputRaw * BigInt(1e4 - slippageBps) / 10000n;
+        const quote = {
+          inputAsset: isSellMode ? "TOKEN" : assetConfig.symbol,
+          inputAmount: amountStr,
+          inputAmountRaw: amountInRaw.toString(),
+          expectedOutput: import_ethers5.ethers.formatUnits(expectedOutputRaw, outputDecimals),
+          expectedOutputRaw: expectedOutputRaw.toString(),
+          minOutput: import_ethers5.ethers.formatUnits(minOutputRaw, outputDecimals),
+          minOutputRaw: minOutputRaw.toString(),
+          slippageBps,
+          path: routePath,
+          intermediate: intermediateSteps.length ? intermediateSteps : void 0
+        };
+        return reply.send({ success: true, data: quote });
+      } catch (error) {
+        console.error("\u274C ERROR in DEX quote handler:", error);
+        fastify.log.error({ err: error }, "Failed to compute quote");
+        return reply.code(503).send({ success: false, error: "Dex service unavailable" });
+      }
+    }
+  );
+  fastify.get(
+    "/:address/candles",
+    {
+      schema: {
+        params: (0, import_zod_to_json_schema11.zodToJsonSchema)(import_zod12.z.object({ address: addressSchema })),
+        querystring: (0, import_zod_to_json_schema11.zodToJsonSchema)(
+          import_zod12.z.object({
+            resolution: import_zod12.z.enum(["5m", "15m", "1h", "4h", "1d"]).default("5m"),
+            lookbackMinutes: import_zod12.z.string().transform((value) => Number(value)).or(import_zod12.z.number()).optional()
+          }).partial()
+        )
+      }
+    },
+    async (request, reply) => {
+      try {
+        const service = ensureService();
+        const { address } = request.params;
+        const { resolution = "5m", lookbackMinutes = 60 } = request.query;
+        const candles = await service.getCandles(address, resolution, lookbackMinutes);
+        return reply.send({
+          success: true,
+          data: {
+            resolution,
+            candles
+          }
+        });
+      } catch (error) {
+        fastify.log.error({ err: error }, "Failed to fetch candles");
+        return reply.code(503).send({ success: false, error: "Dex service unavailable" });
+      }
+    }
+  );
+  fastify.get(
+    "/:address/trades",
+    {
+      schema: {
+        params: (0, import_zod_to_json_schema11.zodToJsonSchema)(import_zod12.z.object({ address: addressSchema })),
+        querystring: (0, import_zod_to_json_schema11.zodToJsonSchema)(
+          import_zod12.z.object({
+            limit: import_zod12.z.string().transform((value) => Number(value)).or(import_zod12.z.number()).default("100")
+          })
+        )
+      }
+    },
+    async (request, reply) => {
+      try {
+        const service = ensureService();
+        const { address } = request.params;
+        const { limit = 100 } = request.query;
+        const trades = await service.getRecentTrades(address, limit);
+        return reply.send({ success: true, data: trades });
+      } catch (error) {
+        fastify.log.error({ err: error }, "Failed to fetch trades");
+        return reply.code(503).send({ success: false, error: "Dex service unavailable" });
+      }
+    }
+  );
+}
+__name(dexRoutes, "dexRoutes");
 
 // src/routes/v1/debug/gcs-test.ts
 var gcsTestRoutes = /* @__PURE__ */ __name(async (fastify) => {
@@ -8273,19 +9824,19 @@ async function syncTokenData(tokenData, tokenService, ohlcvService, prisma2) {
 __name(syncTokenData, "syncTokenData");
 
 // src/routes/v1/notifications.ts
-var import_zod12 = require("zod");
-var import_zod_to_json_schema11 = require("zod-to-json-schema");
-var GetNotificationsQuerySchema = import_zod12.z.object({
-  includeRead: import_zod12.z.string().transform((val) => val === "true").optional(),
-  limit: import_zod12.z.string().transform((val) => parseInt(val)).optional(),
-  offset: import_zod12.z.string().transform((val) => parseInt(val)).optional()
+var import_zod13 = require("zod");
+var import_zod_to_json_schema12 = require("zod-to-json-schema");
+var GetNotificationsQuerySchema = import_zod13.z.object({
+  includeRead: import_zod13.z.string().transform((val) => val === "true").optional(),
+  limit: import_zod13.z.string().transform((val) => parseInt(val)).optional(),
+  offset: import_zod13.z.string().transform((val) => parseInt(val)).optional()
 });
-var AdminMessageSchema = import_zod12.z.object({
-  userId: import_zod12.z.string().min(1, "User ID is required"),
-  title: import_zod12.z.string().min(1, "Title is required").max(100, "Title must be 100 characters or less"),
-  message: import_zod12.z.string().min(1, "Message is required").max(500, "Message must be 500 characters or less"),
-  actionUrl: import_zod12.z.string().url().optional(),
-  expiresAt: import_zod12.z.string().datetime().optional()
+var AdminMessageSchema = import_zod13.z.object({
+  userId: import_zod13.z.string().min(1, "User ID is required"),
+  title: import_zod13.z.string().min(1, "Title is required").max(100, "Title must be 100 characters or less"),
+  message: import_zod13.z.string().min(1, "Message is required").max(500, "Message must be 500 characters or less"),
+  actionUrl: import_zod13.z.string().url().optional(),
+  expiresAt: import_zod13.z.string().datetime().optional()
 });
 async function notificationRoutes(fastify) {
   const notificationService = new NotificationService(fastify.prisma);
@@ -8294,7 +9845,7 @@ async function notificationRoutes(fastify) {
     {
       preHandler: [requireAuth],
       schema: {
-        querystring: (0, import_zod_to_json_schema11.zodToJsonSchema)(GetNotificationsQuerySchema)
+        querystring: (0, import_zod_to_json_schema12.zodToJsonSchema)(GetNotificationsQuerySchema)
       }
     },
     async (request, reply) => {
@@ -8340,9 +9891,9 @@ async function notificationRoutes(fastify) {
     {
       preHandler: [requireAuth],
       schema: {
-        params: (0, import_zod_to_json_schema11.zodToJsonSchema)(
-          import_zod12.z.object({
-            id: import_zod12.z.string()
+        params: (0, import_zod_to_json_schema12.zodToJsonSchema)(
+          import_zod13.z.object({
+            id: import_zod13.z.string()
           })
         )
       }
@@ -8388,9 +9939,9 @@ async function notificationRoutes(fastify) {
     {
       preHandler: [requireAuth],
       schema: {
-        params: (0, import_zod_to_json_schema11.zodToJsonSchema)(
-          import_zod12.z.object({
-            id: import_zod12.z.string()
+        params: (0, import_zod_to_json_schema12.zodToJsonSchema)(
+          import_zod13.z.object({
+            id: import_zod13.z.string()
           })
         )
       }
@@ -8415,7 +9966,7 @@ async function notificationRoutes(fastify) {
     {
       preHandler: [requireAdmin],
       schema: {
-        body: (0, import_zod_to_json_schema11.zodToJsonSchema)(AdminMessageSchema)
+        body: (0, import_zod_to_json_schema12.zodToJsonSchema)(AdminMessageSchema)
       }
     },
     async (request, reply) => {
@@ -8444,8 +9995,8 @@ async function notificationRoutes(fastify) {
 __name(notificationRoutes, "notificationRoutes");
 
 // src/routes/v1/token-creation.ts
-var import_zod13 = require("zod");
-var import_zod_to_json_schema12 = require("zod-to-json-schema");
+var import_zod14 = require("zod");
+var import_zod_to_json_schema13 = require("zod-to-json-schema");
 
 // src/services/token-creation-service.ts
 var TokenCreationService = class {
@@ -8639,13 +10190,15 @@ var TokenCreationService = class {
         });
         await tx.token.create({
           data: {
-            contractAddress: tokenAddress,
+            contractAddress: tokenAddress.toLowerCase(),
             symbol: listing.symbol,
             name: listing.title,
             listingId,
             currentPrice: "0",
             currentPriceACES: "0",
-            volume24h: "0"
+            volume24h: "0",
+            chainId: 8453,
+            priceSource: "BONDING_CURVE"
           }
         });
         return updatedListing;
@@ -8748,24 +10301,24 @@ var TokenCreationService = class {
 };
 
 // src/routes/v1/token-creation.ts
-var SubmitUserDetailsSchema = import_zod13.z.object({
-  additionalImages: import_zod13.z.array(import_zod13.z.string()).optional(),
-  technicalSpecifications: import_zod13.z.string().optional(),
-  additionalDescription: import_zod13.z.string().optional(),
-  proofDocuments: import_zod13.z.array(import_zod13.z.string()).optional()
+var SubmitUserDetailsSchema = import_zod14.z.object({
+  additionalImages: import_zod14.z.array(import_zod14.z.string()).optional(),
+  technicalSpecifications: import_zod14.z.string().optional(),
+  additionalDescription: import_zod14.z.string().optional(),
+  proofDocuments: import_zod14.z.array(import_zod14.z.string()).optional()
 });
-var TokenParametersSchema = import_zod13.z.object({
-  steepness: import_zod13.z.string(),
-  floor: import_zod13.z.string(),
-  tokensBondedAt: import_zod13.z.string(),
-  curve: import_zod13.z.number().int().min(0).max(1),
-  salt: import_zod13.z.string().optional(),
-  useVanityMining: import_zod13.z.boolean().optional(),
-  vanityTarget: import_zod13.z.string().optional()
+var TokenParametersSchema = import_zod14.z.object({
+  steepness: import_zod14.z.string(),
+  floor: import_zod14.z.string(),
+  tokensBondedAt: import_zod14.z.string(),
+  curve: import_zod14.z.number().int().min(0).max(1),
+  salt: import_zod14.z.string().optional(),
+  useVanityMining: import_zod14.z.boolean().optional(),
+  vanityTarget: import_zod14.z.string().optional()
 });
-var ConfirmMintSchema = import_zod13.z.object({
-  txHash: import_zod13.z.string().min(1),
-  tokenAddress: import_zod13.z.string().min(1)
+var ConfirmMintSchema = import_zod14.z.object({
+  txHash: import_zod14.z.string().min(1),
+  tokenAddress: import_zod14.z.string().min(1)
 });
 async function tokenCreationRoutes(fastify) {
   const notificationService = new NotificationService(fastify.prisma);
@@ -8775,12 +10328,12 @@ async function tokenCreationRoutes(fastify) {
     {
       preHandler: [requireAuth],
       schema: {
-        params: (0, import_zod_to_json_schema12.zodToJsonSchema)(
-          import_zod13.z.object({
-            id: import_zod13.z.string()
+        params: (0, import_zod_to_json_schema13.zodToJsonSchema)(
+          import_zod14.z.object({
+            id: import_zod14.z.string()
           })
         ),
-        body: (0, import_zod_to_json_schema12.zodToJsonSchema)(SubmitUserDetailsSchema)
+        body: (0, import_zod_to_json_schema13.zodToJsonSchema)(SubmitUserDetailsSchema)
       }
     },
     async (request, reply) => {
@@ -8805,9 +10358,9 @@ async function tokenCreationRoutes(fastify) {
     {
       preHandler: [requireAuth],
       schema: {
-        params: (0, import_zod_to_json_schema12.zodToJsonSchema)(
-          import_zod13.z.object({
-            id: import_zod13.z.string()
+        params: (0, import_zod_to_json_schema13.zodToJsonSchema)(
+          import_zod14.z.object({
+            id: import_zod14.z.string()
           })
         )
       }
@@ -8832,12 +10385,12 @@ async function tokenCreationRoutes(fastify) {
     {
       preHandler: [requireAuth],
       schema: {
-        params: (0, import_zod_to_json_schema12.zodToJsonSchema)(
-          import_zod13.z.object({
-            id: import_zod13.z.string()
+        params: (0, import_zod_to_json_schema13.zodToJsonSchema)(
+          import_zod14.z.object({
+            id: import_zod14.z.string()
           })
         ),
-        body: (0, import_zod_to_json_schema12.zodToJsonSchema)(ConfirmMintSchema)
+        body: (0, import_zod_to_json_schema13.zodToJsonSchema)(ConfirmMintSchema)
       }
     },
     async (request, reply) => {
@@ -8904,12 +10457,12 @@ async function tokenCreationRoutes(fastify) {
     {
       preHandler: [requireAdmin],
       schema: {
-        params: (0, import_zod_to_json_schema12.zodToJsonSchema)(
-          import_zod13.z.object({
-            id: import_zod13.z.string()
+        params: (0, import_zod_to_json_schema13.zodToJsonSchema)(
+          import_zod14.z.object({
+            id: import_zod14.z.string()
           })
         ),
-        body: (0, import_zod_to_json_schema12.zodToJsonSchema)(TokenParametersSchema)
+        body: (0, import_zod_to_json_schema13.zodToJsonSchema)(TokenParametersSchema)
       }
     },
     async (request, reply) => {
@@ -9119,10 +10672,10 @@ async function productImagesRoutes(fastify) {
 __name(productImagesRoutes, "productImagesRoutes");
 
 // src/routes/v1/test-notifications.ts
-var import_zod14 = require("zod");
-var import_zod_to_json_schema13 = require("zod-to-json-schema");
-var TestNotificationSchema = import_zod14.z.object({
-  type: import_zod14.z.enum([
+var import_zod15 = require("zod");
+var import_zod_to_json_schema14 = require("zod-to-json-schema");
+var TestNotificationSchema = import_zod15.z.object({
+  type: import_zod15.z.enum([
     "VERIFICATION_PENDING",
     "VERIFICATION_APPROVED",
     "VERIFICATION_REJECTED",
@@ -9139,12 +10692,12 @@ var TestNotificationSchema = import_zod14.z.object({
     "ADMIN_NEW_VERIFICATION",
     "ADMIN_TOKEN_REVIEW_NEEDED"
   ]),
-  targetUserId: import_zod14.z.string().optional(),
+  targetUserId: import_zod15.z.string().optional(),
   // If not provided, uses current user
-  listingId: import_zod14.z.string().optional(),
-  customTitle: import_zod14.z.string().optional(),
-  customMessage: import_zod14.z.string().optional(),
-  customActionUrl: import_zod14.z.string().optional()
+  listingId: import_zod15.z.string().optional(),
+  customTitle: import_zod15.z.string().optional(),
+  customMessage: import_zod15.z.string().optional(),
+  customActionUrl: import_zod15.z.string().optional()
 });
 async function testNotificationRoutes(fastify) {
   const notificationService = new NotificationService(fastify.prisma);
@@ -9153,12 +10706,12 @@ async function testNotificationRoutes(fastify) {
     {
       preHandler: [requireAuth],
       schema: {
-        params: (0, import_zod_to_json_schema13.zodToJsonSchema)(
-          import_zod14.z.object({
-            notificationType: import_zod14.z.string()
+        params: (0, import_zod_to_json_schema14.zodToJsonSchema)(
+          import_zod15.z.object({
+            notificationType: import_zod15.z.string()
           })
         ),
-        body: (0, import_zod_to_json_schema13.zodToJsonSchema)(TestNotificationSchema.partial())
+        body: (0, import_zod_to_json_schema14.zodToJsonSchema)(TestNotificationSchema.partial())
       }
     },
     async (request, reply) => {
@@ -9401,14 +10954,14 @@ async function testNotificationRoutes(fastify) {
 __name(testNotificationRoutes, "testNotificationRoutes");
 
 // src/routes/v1/admin/tokens.ts
-var import_zod15 = require("zod");
-var import_zod_to_json_schema14 = require("zod-to-json-schema");
-var AddTokenSchema = import_zod15.z.object({
-  contractAddress: import_zod15.z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Invalid Ethereum address")
+var import_zod16 = require("zod");
+var import_zod_to_json_schema15 = require("zod-to-json-schema");
+var AddTokenSchema = import_zod16.z.object({
+  contractAddress: import_zod16.z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Invalid Ethereum address")
 });
-var LinkTokenToListingSchema = import_zod15.z.object({
-  contractAddress: import_zod15.z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Invalid Ethereum address"),
-  listingId: import_zod15.z.string().min(1, "Listing ID is required")
+var LinkTokenToListingSchema = import_zod16.z.object({
+  contractAddress: import_zod16.z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Invalid Ethereum address"),
+  listingId: import_zod16.z.string().min(1, "Listing ID is required")
 });
 async function adminTokenRoutes(fastify) {
   fastify.post(
@@ -9416,18 +10969,18 @@ async function adminTokenRoutes(fastify) {
     {
       preHandler: [requireAdmin],
       schema: {
-        body: (0, import_zod_to_json_schema14.zodToJsonSchema)(AddTokenSchema),
+        body: (0, import_zod_to_json_schema15.zodToJsonSchema)(AddTokenSchema),
         response: {
-          200: (0, import_zod_to_json_schema14.zodToJsonSchema)(
-            import_zod15.z.object({
-              success: import_zod15.z.boolean(),
-              message: import_zod15.z.string(),
-              data: import_zod15.z.object({
-                contractAddress: import_zod15.z.string(),
-                symbol: import_zod15.z.string(),
-                name: import_zod15.z.string(),
-                currentPrice: import_zod15.z.string(),
-                currentPriceACES: import_zod15.z.string()
+          200: (0, import_zod_to_json_schema15.zodToJsonSchema)(
+            import_zod16.z.object({
+              success: import_zod16.z.boolean(),
+              message: import_zod16.z.string(),
+              data: import_zod16.z.object({
+                contractAddress: import_zod16.z.string(),
+                symbol: import_zod16.z.string(),
+                name: import_zod16.z.string(),
+                currentPrice: import_zod16.z.string(),
+                currentPriceACES: import_zod16.z.string()
               })
             })
           )
@@ -9491,7 +11044,7 @@ async function adminTokenRoutes(fastify) {
     {
       preHandler: [requireAdmin],
       schema: {
-        body: (0, import_zod_to_json_schema14.zodToJsonSchema)(AddTokenSchema)
+        body: (0, import_zod_to_json_schema15.zodToJsonSchema)(AddTokenSchema)
       }
     },
     async (request, reply) => {
@@ -9570,16 +11123,16 @@ async function adminTokenRoutes(fastify) {
     {
       preHandler: [requireAdmin],
       schema: {
-        body: (0, import_zod_to_json_schema14.zodToJsonSchema)(LinkTokenToListingSchema),
+        body: (0, import_zod_to_json_schema15.zodToJsonSchema)(LinkTokenToListingSchema),
         response: {
-          200: (0, import_zod_to_json_schema14.zodToJsonSchema)(
-            import_zod15.z.object({
-              success: import_zod15.z.boolean(),
-              message: import_zod15.z.string(),
-              data: import_zod15.z.object({
-                contractAddress: import_zod15.z.string(),
-                listingId: import_zod15.z.string(),
-                listingTitle: import_zod15.z.string()
+          200: (0, import_zod_to_json_schema15.zodToJsonSchema)(
+            import_zod16.z.object({
+              success: import_zod16.z.boolean(),
+              message: import_zod16.z.string(),
+              data: import_zod16.z.object({
+                contractAddress: import_zod16.z.string(),
+                listingId: import_zod16.z.string(),
+                listingTitle: import_zod16.z.string()
               })
             })
           )
@@ -9651,7 +11204,7 @@ async function adminTokenRoutes(fastify) {
     {
       preHandler: [requireAdmin],
       schema: {
-        body: (0, import_zod_to_json_schema14.zodToJsonSchema)(AddTokenSchema)
+        body: (0, import_zod_to_json_schema15.zodToJsonSchema)(AddTokenSchema)
       }
     },
     async (request, reply) => {
@@ -9830,6 +11383,7 @@ var buildApp = /* @__PURE__ */ __name(async () => {
   fastify.register(commentsRoutes, { prefix: "/api/v1/comments" });
   fastify.register(twitchRoutes, { prefix: "/api/v1/twitch" });
   fastify.register(priceRoutes, { prefix: "/api/v1/price" });
+  fastify.register(dexRoutes, { prefix: "/api/v1/dex" });
   fastify.register(notificationRoutes, { prefix: "/api/v1/notifications" });
   fastify.register(tokenCreationRoutes, { prefix: "/api/v1/token-creation" });
   fastify.register(productImagesRoutes, { prefix: "/api/v1/product-images" });
@@ -9885,7 +11439,8 @@ var buildApp = /* @__PURE__ */ __name(async () => {
 }, "buildApp");
 
 // src/api/index.ts
-(0, import_dotenv2.config)();
+var envPath2 = (0, import_path2.join)(process.cwd(), ".env");
+(0, import_dotenv2.config)({ path: envPath2 });
 var appPromise;
 var handler = /* @__PURE__ */ __name(async (req, res) => {
   try {

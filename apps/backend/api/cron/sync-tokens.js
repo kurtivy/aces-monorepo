@@ -52,7 +52,9 @@ var TokenService = class {
           name: "Loading...",
           currentPrice: "0",
           currentPriceACES: "0",
-          volume24h: "0"
+          volume24h: "0",
+          chainId: 8453,
+          priceSource: "BONDING_CURVE"
         }
       });
     }
@@ -396,10 +398,6 @@ var OHLCVService = class {
       return [];
     }
   }
-  /**
-   * NEW: Generate live candles for real-time updates
-   * This is used by the new /live endpoint
-   */
   async generateLiveCandles(contractAddress, timeframe, since) {
     const options = {
       startTime: since,
@@ -408,10 +406,6 @@ var OHLCVService = class {
     };
     return await this.generateFreshCandles(contractAddress, timeframe, options);
   }
-  /**
-   * Generate fresh candles from subgraph data
-   * This uses your existing logic but with enhanced time range support
-   */
   async generateFreshCandles(contractAddress, timeframe, options = {}) {
     try {
       if (timeframe === "1d") {
@@ -426,31 +420,43 @@ var OHLCVService = class {
   }
   async generateDailyCandles(contractAddress) {
     try {
-      const tokenDayData = await this.tokenService.fetchTokenDayData(contractAddress);
-      if (tokenDayData.length === 0) return [];
+      console.log(`[OHLCV] Generating daily candles for ${contractAddress}`);
+      const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1e3;
+      const trades = await this.fetchTradesForTimeRange(contractAddress, thirtyDaysAgo, Date.now());
+      console.log(`[OHLCV] Fetched ${trades.length} trades for daily candle generation`);
+      if (trades.length === 0) {
+        console.log(`[OHLCV] No trades found for daily candles`);
+        return [];
+      }
+      const oneDayMs = 24 * 60 * 60 * 1e3;
+      const candleGroups = this.groupTradesByInterval(trades, oneDayMs, "1d");
+      console.log(`[OHLCV] Created ${candleGroups.length} daily candle groups`);
       const candles = [];
-      for (const dayData of tokenDayData) {
-        const netVolume = new import_decimal2.Decimal(dayData.tokensBought).minus(new import_decimal2.Decimal(dayData.tokensSold));
-        const totalVolume = new import_decimal2.Decimal(dayData.tokensBought).plus(new import_decimal2.Decimal(dayData.tokensSold));
-        const basePrice = new import_decimal2.Decimal(1);
-        const priceVariation = netVolume.div(totalVolume.plus(1)).mul(0.1);
-        const open = basePrice.toString();
-        const close = basePrice.plus(priceVariation).toString();
-        const high = import_decimal2.Decimal.max(new import_decimal2.Decimal(open), new import_decimal2.Decimal(close)).mul(1.05).toString();
-        const low = import_decimal2.Decimal.min(new import_decimal2.Decimal(open), new import_decimal2.Decimal(close)).mul(0.95).toString();
-        candles.push({
-          timestamp: new Date(dayData.date * 1e3),
-          open,
-          high,
-          low,
-          close,
-          volume: totalVolume.toString(),
-          trades: dayData.tradesCount
+      for (const group of candleGroups) {
+        if (group.trades.length > 0) {
+          try {
+            const candle = this.calculateOHLCV(group);
+            candles.push(candle);
+          } catch (error) {
+            console.error(`[OHLCV] Error calculating daily candle at ${group.timestamp}:`, error);
+          }
+        }
+      }
+      console.log(`[OHLCV] Generated ${candles.length} daily candles with actual trade data`);
+      if (candles.length > 0) {
+        console.log("[OHLCV] Sample daily candle:", {
+          date: candles[0].timestamp.toISOString().split("T")[0],
+          open: candles[0].open,
+          high: candles[0].high,
+          low: candles[0].low,
+          close: candles[0].close,
+          trades: candles[0].trades,
+          volume: candles[0].volume
         });
       }
-      return candles.reverse();
+      return candles;
     } catch (error) {
-      console.error("Error generating daily candles:", error);
+      console.error("[OHLCV] Error generating daily candles:", error);
       return [];
     }
   }
@@ -461,12 +467,20 @@ var OHLCVService = class {
       const endTime = options.endTime || Date.now();
       const startTime = options.startTime || endTime - this.getHoursBack(timeframe) * 60 * 60 * 1e3;
       const trades = options.startTime ? await this.fetchTradesForTimeRange(contractAddress, startTime, endTime) : await this.tokenService.fetchTradesForChart(contractAddress, timeframe);
+      if (timeframe === "15m" && trades.length > 0) {
+        console.log("[OHLCV DEBUG] First 3 trades for 15m:");
+        trades.slice(0, 3).forEach((t) => {
+          const tradeTime = parseInt(t.createdAt) * 1e3;
+          const tradeDate = new Date(tradeTime);
+          console.log(`  Trade at ${tradeDate.toISOString()} (${t.createdAt} seconds)`);
+        });
+      }
       console.log(`[OHLCV] Fetched ${trades.length} trades for ${contractAddress}`);
       if (trades.length === 0) {
         console.log(`[OHLCV] No trades found for ${contractAddress} ${timeframe}`);
         return [];
       }
-      const candleGroups = this.groupTradesByInterval(trades, intervalMs);
+      const candleGroups = this.groupTradesByInterval(trades, intervalMs, timeframe);
       console.log(`[OHLCV] Created ${candleGroups.length} candle groups with trades`);
       const candles = [];
       for (const group of candleGroups) {
@@ -527,10 +541,6 @@ var OHLCVService = class {
       throw error;
     }
   }
-  /**
-   * Merge live candles with cached historical data
-   * This provides seamless hybrid mode: old cached data + new live data
-   */
   async mergeWithCachedCandles(contractAddress, timeframe, liveCandles) {
     try {
       const cachedCandles = await this.getCachedCandles(contractAddress, timeframe, 1e3);
@@ -550,14 +560,34 @@ var OHLCVService = class {
       return liveCandles;
     }
   }
-  groupTradesByInterval(trades, intervalMs) {
+  groupTradesByInterval(trades, intervalMs, timeframe = "unknown") {
     const groups = {};
+    const intervalMinutes = intervalMs / 6e4;
     console.log(
-      `[OHLCV] Grouping ${trades.length} trades with interval ${intervalMs}ms (${intervalMs / 6e4}min)`
+      `[OHLCV] Grouping ${trades.length} trades into ${intervalMinutes}-minute intervals`
     );
-    trades.forEach((trade) => {
+    trades.forEach((trade, index) => {
       const tradeTime = parseInt(trade.createdAt) * 1e3;
       const intervalStart = Math.floor(tradeTime / intervalMs) * intervalMs;
+      if (intervalMs === 9e5 && index < 5) {
+        const tradeDate = new Date(tradeTime);
+        const bucketDate = new Date(intervalStart);
+        const bucketMinutes = bucketDate.getMinutes();
+        console.log(`[OHLCV] Trade ${index + 1}:`);
+        console.log(`  Time: ${tradeDate.toISOString()}`);
+        console.log(`  Bucketed to: ${bucketDate.toISOString()} (minute: ${bucketMinutes})`);
+        if (![0, 15, 30, 45].includes(bucketMinutes)) {
+          console.error(`  \u274C ERROR: 15m candle at wrong minute: ${bucketMinutes}`);
+          console.error(`  Trade timestamp: ${trade.createdAt} seconds`);
+          console.error(`  Trade time in ms: ${tradeTime}`);
+          console.error(`  Interval ms: ${intervalMs}`);
+          console.error(`  Division: ${tradeTime} / ${intervalMs} = ${tradeTime / intervalMs}`);
+          console.error(`  Floor result: ${Math.floor(tradeTime / intervalMs)}`);
+          console.error(`  Final timestamp: ${intervalStart}`);
+        } else {
+          console.log(`  \u2705 Correctly aligned to ${bucketMinutes} minutes`);
+        }
+      }
       if (!groups[intervalStart]) {
         groups[intervalStart] = [];
       }
@@ -567,14 +597,46 @@ var OHLCVService = class {
       timestamp: new Date(parseInt(timestamp)),
       trades: trades2
     })).sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+    if (intervalMs === 9e5 && groupedResults.length > 0) {
+      console.log(`[OHLCV] Validating ${groupedResults.length} candle timestamps for 15m:`);
+      let misalignedCount = 0;
+      groupedResults.forEach((group, i) => {
+        const minutes = group.timestamp.getMinutes();
+        if (![0, 15, 30, 45].includes(minutes)) {
+          console.error(
+            `  Candle ${i + 1}: ${group.timestamp.toISOString()} - minute ${minutes} \u274C MISALIGNED`
+          );
+          misalignedCount++;
+        }
+      });
+      if (misalignedCount === 0) {
+        console.log(`  \u2705 All ${groupedResults.length} candles properly aligned`);
+      } else {
+        console.error(`  \u274C Found ${misalignedCount} misaligned candles!`);
+      }
+    }
     console.log(`[OHLCV] Created ${groupedResults.length} candle groups`);
-    console.log(
-      `[OHLCV] Groups with trades: ${groupedResults.filter((g) => g.trades.length > 0).length}`
-    );
-    console.log(
-      `[OHLCV] First group: ${groupedResults[0]?.timestamp.toISOString()} with ${groupedResults[0]?.trades.length} trades`
-    );
     return groupedResults;
+  }
+  validateCandleAlignment(timestamp, timeframe) {
+    const minutes = timestamp.getMinutes();
+    const hours = timestamp.getHours();
+    switch (timeframe) {
+      case "1m":
+        return true;
+      case "5m":
+        return minutes % 5 === 0;
+      case "15m":
+        return [0, 15, 30, 45].includes(minutes);
+      case "1h":
+        return minutes === 0;
+      case "4h":
+        return minutes === 0 && hours % 4 === 0;
+      case "1d":
+        return minutes === 0 && hours === 0;
+      default:
+        return true;
+    }
   }
   calculateOHLCV(candleGroup) {
     const { timestamp, trades } = candleGroup;
@@ -593,7 +655,7 @@ var OHLCVService = class {
     }).sort((a, b) => a.timestamp - b.timestamp);
     const prices = tradesWithPrice.map((t) => t.price);
     const volumes = tradesWithPrice.map((t) => t.volume);
-    const candle = {
+    return {
       timestamp,
       open: prices[0].toString(),
       high: import_decimal2.Decimal.max(...prices).toString(),
@@ -602,12 +664,6 @@ var OHLCVService = class {
       volume: volumes.reduce((sum, vol) => sum.add(vol), new import_decimal2.Decimal(0)).toString(),
       trades: trades.length
     };
-    if (Math.random() < 0.1) {
-      console.log(
-        `[OHLCV] Candle at ${timestamp.toISOString()}: O=${candle.open} H=${candle.high} L=${candle.low} C=${candle.close} trades=${trades.length}`
-      );
-    }
-    return candle;
   }
   getIntervalMs(timeframe) {
     const intervals = {
@@ -619,44 +675,13 @@ var OHLCVService = class {
     };
     return intervals[timeframe] || intervals["1h"];
   }
-  generateTimeSlots(startTime, endTime, intervalMs) {
-    const slots = [];
-    const alignedStart = Math.floor(startTime / intervalMs) * intervalMs;
-    for (let time = alignedStart; time < endTime; time += intervalMs) {
-      slots.push(new Date(time));
-    }
-    return slots;
-  }
-  async getLastKnownPrice(contractAddress) {
-    try {
-      const lastCandle = await this.prisma.tokenOHLCV.findFirst({
-        where: { contractAddress: contractAddress.toLowerCase() },
-        orderBy: { timestamp: "desc" }
-      });
-      if (lastCandle) {
-        return parseFloat(lastCandle.close);
-      }
-      const token = await this.prisma.token.findUnique({
-        where: { contractAddress: contractAddress.toLowerCase() }
-      });
-      return token ? parseFloat(token.currentPriceACES) : 1;
-    } catch (error) {
-      console.warn("Could not get last known price, defaulting to 1.0:", error);
-      return 1;
-    }
-  }
   getHoursBack(timeframe) {
     const timeframeHours = {
-      "1m": 2,
-      // 2 hours for minute data
+      "1m": 6,
       "5m": 12,
-      // 12 hours for 5-minute data
       "15m": 48,
-      // 48 hours for 15-minute data
       "1h": 168,
-      // 1 week for hourly data
       "1d": 720
-      // 30 days for daily data
     };
     return timeframeHours[timeframe] || 168;
   }
@@ -678,7 +703,6 @@ var OHLCVService = class {
               }
             },
             update: {
-              // Update existing candle data
               open: candle.open,
               high: candle.high,
               low: candle.low,
@@ -687,7 +711,6 @@ var OHLCVService = class {
               trades: candle.trades
             },
             create: {
-              // Create new candle if it doesn't exist
               contractAddress: lowerAddress,
               timeframe,
               timestamp: candle.timestamp,
@@ -722,17 +745,23 @@ var OHLCVService = class {
       take: typeof limit === "string" ? parseInt(limit) : limit
     });
   }
-  /**
-   * Public method to allow external callers to store candles
-   * Used by /live endpoint to persist real-time data
-   */
   async storeCandlesPublic(contractAddress, timeframe, candles) {
     await this.storeCandles(contractAddress, timeframe, candles);
   }
   /**
-   * NEW: Fetch trades for a specific time range from subgraph
-   * This is optimized for live data requests
+   * Store candles in background without blocking the response
+   * Used by API endpoints to backup data after serving from subgraph
+   *
+   * This is a fire-and-forget operation - errors are logged but don't throw
    */
+  async storeCandlesInBackground(contractAddress, timeframe, candles) {
+    this.storeCandles(contractAddress, timeframe, candles).catch((err) => {
+      console.warn(
+        `[OHLCV] Background DB storage failed for ${contractAddress} ${timeframe}:`,
+        err instanceof Error ? err.message : err
+      );
+    });
+  }
   async fetchTradesForTimeRange(contractAddress, startTime, endTime) {
     try {
       const startTimeSeconds = Math.floor(startTime / 1e3);
@@ -762,7 +791,6 @@ var OHLCVService = class {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query }),
         signal: AbortSignal.timeout(1e4)
-        // 10 second timeout for live queries
       });
       if (!response.ok) {
         throw new Error(`Subgraph request failed: ${response.status}`);
@@ -777,9 +805,6 @@ var OHLCVService = class {
       return [];
     }
   }
-  /**
-   * NEW: Check if cached data is still valid
-   */
   isCacheValid(candles, timeframe) {
     if (candles.length === 0) return false;
     const latestCandle = candles[candles.length - 1];
@@ -788,9 +813,6 @@ var OHLCVService = class {
     const maxAge = this.getIntervalMs(timeframe) * 2;
     return candleAge < maxAge;
   }
-  /**
-   * NEW: Get cached candles from database
-   */
   async getCachedCandles(contractAddress, timeframe, limit = 200) {
     try {
       const stored = await this.prisma.tokenOHLCV.findMany({
