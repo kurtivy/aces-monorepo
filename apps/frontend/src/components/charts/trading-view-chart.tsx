@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { BondingCurveDatafeed } from '@/lib/tradingview/datafeed';
+import type { DatabaseListing } from '@/types/rwa/section.types';
 
 interface TradingViewChartProps {
   tokenAddress: string;
@@ -9,6 +10,7 @@ interface TradingViewChartProps {
   tokenName?: string;
   imageSrc?: string;
   heightClass?: string;
+  dexMeta?: DatabaseListing['dex'] | null;
 }
 
 declare global {
@@ -23,6 +25,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({
   tokenName = 'Trading Chart',
   imageSrc = '/canvas-images/1991-Porsche-964-Turbo-Rubystone-Red-1-of-5-Limited-Edition-Paint.webp',
   heightClass = 'h-[600px] min-h-[400px]',
+  dexMeta,
 }) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const widgetRef = useRef<any>(null);
@@ -82,7 +85,9 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({
     console.log('[TradingView] Initializing chart for token:', tokenAddress);
 
     try {
-      const datafeed = new BondingCurveDatafeed(tokenAddress);
+      const datafeed = new BondingCurveDatafeed(tokenAddress, {
+        dex: dexMeta ?? undefined,
+      });
 
       widgetRef.current = new window.TradingView.widget({
         container: chartContainerRef.current,

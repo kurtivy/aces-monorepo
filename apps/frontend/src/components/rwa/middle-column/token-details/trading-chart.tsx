@@ -1,6 +1,7 @@
 import React from 'react';
 import TradingViewChart from '@/components/charts/trading-view-chart';
 import TokenMarketCap from './token-market-cap';
+import type { DatabaseListing } from '@/types/rwa/section.types';
 
 interface TradingChartProps {
   tokenAddress: string;
@@ -9,6 +10,7 @@ interface TradingChartProps {
   imageSrc?: string;
   heightClass?: string;
   chainId?: number;
+  dexMeta?: DatabaseListing['dex'] | null;
 }
 
 const TradingChart: React.FC<TradingChartProps> = ({
@@ -18,6 +20,7 @@ const TradingChart: React.FC<TradingChartProps> = ({
   imageSrc = '/canvas-images/1991-Porsche-964-Turbo-Rubystone-Red-1-of-5-Limited-Edition-Paint.webp',
   heightClass = 'h-[600px] min-h-[400px]',
   chainId,
+  dexMeta,
 }) => {
   return (
     <div className="space-y-4">
@@ -32,6 +35,7 @@ const TradingChart: React.FC<TradingChartProps> = ({
         tokenName={title}
         imageSrc={imageSrc}
         heightClass={heightClass}
+        dexMeta={dexMeta}
       />
     </div>
   );

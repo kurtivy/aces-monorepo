@@ -50,7 +50,7 @@ const TokenMarketCap: React.FC<TokenMarketCapProps> = ({
 
   const formattedMarketCapACES = useMemo(() => {
     if (depositedAces <= 0) {
-      return `0 ${tokenSymbol}`;
+      return `0 ACES`;
     }
 
     return `${formatNumber(depositedAces, {
@@ -63,7 +63,7 @@ const TokenMarketCap: React.FC<TokenMarketCapProps> = ({
 
   const usdDisplay = isLoading
     ? 'Calculating…'
-    : formattedMarketCapUSD ?? (depositedAces > 0 ? '$0.00' : '$0');
+    : (formattedMarketCapUSD ?? (depositedAces > 0 ? '$0.00' : '$0'));
 
   return (
     <div className="mb-4 rounded-xl border border-[#D0B284]/15 bg-transparent px-4 py-3">
@@ -71,9 +71,7 @@ const TokenMarketCap: React.FC<TokenMarketCapProps> = ({
         <div className="text-xs uppercase tracking-wide text-[#DCDDCC]/60">Market Cap</div>
         <div className="text-xs text-[#DCDDCC]/50">{formattedMarketCapACES}</div>
       </div>
-      <div className="mt-1 text-xl font-semibold text-[#D0B284]">
-        {usdDisplay}
-      </div>
+      <div className="mt-1 text-xl font-semibold text-[#D0B284]">{usdDisplay}</div>
     </div>
   );
 };
