@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useRef, useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import type { ViewState, ImageInfo } from '../../types/canvas';
 import { isHomeArea, isFeaturedArea } from '../../lib/canvas/grid-placement'; // FEATURED SECTION: Added isFeaturedArea import
 import { getAuctionIconBounds } from '../../lib/canvas/draw/draw-featured-section'; // Auction icon import
@@ -13,15 +12,6 @@ export interface AuctionIconClickPayload {
   symbol?: string;
   title?: string;
 }
-
-const normalizeSymbolForRoute = (value?: string) => (value ? value.replace(/^\$/u, '').trim() : '');
-
-const getFeaturedSymbol = (image?: ImageInfo | null) => {
-  if (!image) return '';
-  const metadata = image.metadata;
-  const rawSymbol = metadata?.symbol ?? metadata?.ticker;
-  return normalizeSymbolForRoute(rawSymbol);
-};
 
 interface UseCanvasInteractionsProps {
   viewState: ViewState;
@@ -135,11 +125,10 @@ export const useCanvasInteractions = ({
   onTermsClick,
   onMomentumUpdate,
   featuredImage, // FEATURED SECTION: Add featured image
-  onFeaturedImageClick, // FEATURED SECTION: Add featured image click handler
-  onAuctionIconClick, // Auction icon click handler
+  onFeaturedImageClick: _onFeaturedImageClick, // FEATURED SECTION: Click-through disabled
+  onAuctionIconClick: _onAuctionIconClick, // Auction icon click handler disabled
   onProductImageHover, // HOVER ENHANCEMENT: Add product image hover callback
 }: UseCanvasInteractionsProps) => {
-  const router = useRouter();
   const { capabilities } = useDeviceCapabilities();
   const [isPanning, setIsPanning] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -158,18 +147,6 @@ export const useCanvasInteractions = ({
   const touchPhysicsRef = useRef<TouchPhysics>(createTouchPhysics());
   const dragStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const boundsRef = useRef<DOMRect | null>(null);
-
-  const navigateToRwa = useCallback(
-    (symbol: string) => {
-      if (!symbol) return;
-      try {
-        router.push(`/rwa/${symbol}`);
-      } catch (error) {
-        window.location.href = `/rwa/${symbol}`;
-      }
-    },
-    [router],
-  );
 
   // FEATURED SECTION: Updated area coordinates
   const homeAreaWidth = unitSize * 2;
@@ -376,18 +353,6 @@ export const useCanvasInteractions = ({
             screenY >= iconBounds.y &&
             screenY <= iconBounds.y + iconBounds.height
           ) {
-            const symbolForRoute = getFeaturedSymbol(featuredImage);
-            if (symbolForRoute) {
-              if (onAuctionIconClick) {
-                onAuctionIconClick({ symbol: symbolForRoute, title: featuredImage.metadata.title });
-              } else {
-                navigateToRwa(symbolForRoute);
-              }
-            } else if (onAuctionIconClick) {
-              onAuctionIconClick({ title: featuredImage.metadata.title });
-            } else {
-              onFeaturedImageClick?.(featuredImage);
-            }
             return;
           }
         }
@@ -405,13 +370,6 @@ export const useCanvasInteractions = ({
           featuredAreaHeight,
         )
       ) {
-        // Navigate to RWA page if symbol exists, otherwise fall back to modal
-        const symbolForRoute = getFeaturedSymbol(featuredImage);
-        if (symbolForRoute) {
-          navigateToRwa(symbolForRoute);
-        } else {
-          onFeaturedImageClick?.(featuredImage);
-        }
         return;
       }
 
@@ -524,9 +482,8 @@ export const useCanvasInteractions = ({
       featuredAreaWidth,
       featuredAreaHeight,
       featuredImage, // FEATURED SECTION: Add featured image
-      onFeaturedImageClick, // FEATURED SECTION: Add featured image click handler
-      onAuctionIconClick, // Auction icon click handler
-      navigateToRwa,
+      _onFeaturedImageClick,
+      _onAuctionIconClick,
       imagePlacementMap,
       repeatedPlacements,
       repeatedTokens,

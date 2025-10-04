@@ -101,9 +101,7 @@ export default function UpcomingCard({ asset }: UpcomingCardProps) {
               {asset?.title || 'Featured Asset'}
             </h3>
             <div className="flex items-center justify-between">
-              <span className="text-[#C9AE6A] font-mono text-sm font-medium">
-                {displaySymbol}
-              </span>
+              <span className="text-[#C9AE6A] font-mono text-sm font-medium">{displaySymbol}</span>
               {asset?.category && (
                 <span className="text-[#E6E3D3]/60 text-xs uppercase tracking-wide">JEWELRY</span>
               )}
@@ -120,7 +118,7 @@ export default function UpcomingCard({ asset }: UpcomingCardProps) {
           </div>
 
           {/* Countdown Timer */}
-          <div className="bg-[#0f1511] border border-dashed border-[#E6E3D3]/15 rounded-xl p-4">
+          {/* <div className="bg-[#0f1511] border border-dashed border-[#E6E3D3]/15 rounded-xl p-4">
             <p className="text-[#C9AE6A] text-xs uppercase tracking-wide mb-2 text-center">
               Starts in
             </p>
@@ -150,7 +148,7 @@ export default function UpcomingCard({ asset }: UpcomingCardProps) {
                 <div className="text-[#E6E3D3]/60 text-xs uppercase">S</div>
               </div>
             </div>
-          </div>
+          </div> */}
 
           {/* View Asset Button */}
           <div className="mt-4">
@@ -160,7 +158,7 @@ export default function UpcomingCard({ asset }: UpcomingCardProps) {
               disabled={!hasSymbol}
               className="w-full flex items-center justify-center text-[#D0B264] hover:text-[#D0B264] transition-colors duration-150 px-4 py-2 rounded-md bg-black/80 hover:bg-black/70 border border-[#D0B264]/30 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed font-mono text-sm font-medium uppercase tracking-wide"
             >
-              View Asset
+              Coming Soon
             </button>
           </div>
         </div>
