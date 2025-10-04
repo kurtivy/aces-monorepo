@@ -21,6 +21,7 @@ import { tokensRoutes } from './routes/v1/tokens';
 import { portfolioRoutes } from './routes/v1/portfolio';
 import { twitchRoutes } from './routes/v1/twitch';
 import { priceRoutes } from './routes/v1/price';
+import { dexRoutes } from './routes/v1/dex';
 import gcsTestRoutes from './routes/v1/debug/gcs-test';
 
 import { cronRoutes } from './routes/v1/cron/trigger';
@@ -148,6 +149,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   fastify.register(commentsRoutes, { prefix: '/api/v1/comments' });
   fastify.register(twitchRoutes, { prefix: '/api/v1/twitch' });
   fastify.register(priceRoutes, { prefix: '/api/v1/price' });
+  fastify.register(dexRoutes, { prefix: '/api/v1/dex' });
 
   // NEW: Phase 1 - Token creation and notifications
   fastify.register(notificationRoutes, { prefix: '/api/v1/notifications' });

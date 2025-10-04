@@ -46,10 +46,12 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
         '/get-upload-url',
         '/upload-image',
         '/api/v1/tokens', // Token data and chart data endpoints
+        '/api/v1/dex', // DEX quote/pool endpoints
         '/api/v1/twitch', // Twitch stream endpoints
         '/api/v1/cron/trigger', // Cron trigger endpoint for manual testing
         '/api/v1/cron/status', // Cron status endpoint
         '/api/cron/sync-tokens', // Vercel cron endpoint
+        '/api/cron/sync-liquidity',
         '/', // Root path for listings, contact, etc.
       ];
 
@@ -60,6 +62,7 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
           if (path === '/health' && request.url.startsWith('/health')) return true;
           // Allow all token-related endpoints
           if (path === '/api/v1/tokens' && request.url.startsWith('/api/v1/tokens')) return true;
+          if (path === '/api/v1/dex' && request.url.startsWith('/api/v1/dex')) return true;
           return false;
         }) ||
         (request.method === 'GET' && ['/live', '/search', '/stats', '/'].includes(request.url));
