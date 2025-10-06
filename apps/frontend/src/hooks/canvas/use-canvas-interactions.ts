@@ -1,13 +1,17 @@
 'use client';
 
 import { useCallback, useRef, useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import type { ViewState, ImageInfo } from '../../types/canvas';
 import { isHomeArea, isFeaturedArea } from '../../lib/canvas/grid-placement'; // FEATURED SECTION: Added isFeaturedArea import
 import { getAuctionIconBounds } from '../../lib/canvas/draw/draw-featured-section'; // Auction icon import
 import { mobileUtils } from '../../lib/utils/browser-utils';
 import { getResponsiveMetrics } from '../../lib/utils/responsive-canvas-utils';
 import { useDeviceCapabilities } from '../../contexts/device-provider';
+
+export interface AuctionIconClickPayload {
+  symbol?: string;
+  title?: string;
+}
 
 interface UseCanvasInteractionsProps {
   viewState: ViewState;
@@ -45,7 +49,7 @@ interface UseCanvasInteractionsProps {
   featuredImage?: ImageInfo | null;
   onFeaturedImageClick?: (imageInfo: ImageInfo) => void;
   // Auction icon click handler
-  onAuctionIconClick?: (productTitle: string) => void;
+  onAuctionIconClick?: (details: AuctionIconClickPayload) => void;
   // HOVER ENHANCEMENT: Add hover state callbacks for regular product images
   onProductImageHover?: (
     imageInfo: ImageInfo | null,
@@ -117,15 +121,15 @@ export const useCanvasInteractions = ({
   canvasRef,
   repeatedPlacements,
   repeatedTokens,
-  onAboutClick,
-  onTermsClick,
+  onAboutClick: _onAboutClick, // eslint-disable-line @typescript-eslint/no-unused-vars
+  onTermsClick: _onTermsClick, // eslint-disable-line @typescript-eslint/no-unused-vars
   onMomentumUpdate,
   featuredImage, // FEATURED SECTION: Add featured image
-  onFeaturedImageClick, // FEATURED SECTION: Add featured image click handler
-  onAuctionIconClick, // Auction icon click handler
+  onFeaturedImageClick: _onFeaturedImageClick, // FEATURED SECTION: Click-through disabled
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  onAuctionIconClick: _onAuctionIconClick, // Auction icon click handler disabled
   onProductImageHover, // HOVER ENHANCEMENT: Add product image hover callback
 }: UseCanvasInteractionsProps) => {
-  const router = useRouter();
   const { capabilities } = useDeviceCapabilities();
   const [isPanning, setIsPanning] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -318,7 +322,7 @@ export const useCanvasInteractions = ({
       const { worldX, worldY } = coords;
 
       // AUCTION ICON: Check auction icon click first (highest priority)
-      if (featuredImage && onAuctionIconClick) {
+      if (featuredImage) {
         // Convert world coordinates to screen coordinates for auction icon bounds check
         const canvas = canvasRef.current;
         if (canvas) {
@@ -334,7 +338,16 @@ export const useCanvasInteractions = ({
 
           const responsiveMetrics = capabilities
             ? getResponsiveMetrics(unitSize, capabilities)
-            : ({ isMobile: isMobileDevice, iconScale: 1, paddingScale: 1 } as any);
+            : {
+                isMobile: isMobileDevice,
+                iconScale: 1,
+                paddingScale: 1,
+                fontScale: 1,
+                borderScale: 1,
+                spacingScale: 1,
+                unitSize,
+                baseScale: 1,
+              };
 
           const iconBounds = getAuctionIconBounds(
             screenFeaturedX,
@@ -350,7 +363,6 @@ export const useCanvasInteractions = ({
             screenY >= iconBounds.y &&
             screenY <= iconBounds.y + iconBounds.height
           ) {
-            onAuctionIconClick(featuredImage.metadata.title);
             return;
           }
         }
@@ -373,8 +385,9 @@ export const useCanvasInteractions = ({
         if (symbol) {
           window.location.href = `/rwa/${symbol}`;
         } else {
-          onFeaturedImageClick?.(featuredImage);
+          _onFeaturedImageClick?.(featuredImage);
         }
+
         return;
       }
 
@@ -382,26 +395,6 @@ export const useCanvasInteractions = ({
       if (
         isHomeArea(worldX, worldY, homeAreaWorldX, homeAreaWorldY, homeAreaWidth, homeAreaHeight)
       ) {
-        const quadWidth = homeAreaWidth / 2;
-        const quadHeight = homeAreaHeight / 2;
-
-        // Quadrant coordinates based on draw-home-area.ts layout:
-        // Quadrant 0 (top-left): ABOUT
-        const aboutQuadX = homeAreaWorldX;
-        const aboutQuadY = homeAreaWorldY;
-
-        // Quadrant 1 (top-right): CREATE
-        const createQuadX = homeAreaWorldX + quadWidth;
-        const createQuadY = homeAreaWorldY;
-
-        // Quadrant 2 (bottom-left): DOCS
-        const docsQuadX = homeAreaWorldX;
-        const docsQuadY = homeAreaWorldY + quadHeight;
-
-        // Quadrant 3 (bottom-right): GRAILS
-        const grailsQuadX = homeAreaWorldX + quadWidth;
-        const grailsQuadY = homeAreaWorldY + quadHeight;
-
         // Home area button handling (simplified to 2 buttons)
         const buttonWidth = homeAreaWidth / 2;
 
@@ -478,28 +471,27 @@ export const useCanvasInteractions = ({
     },
     [
       getWorldCoordinates,
+      featuredImage,
+      featuredAreaWorldX,
+      featuredAreaWorldY,
+      featuredAreaWidth,
+      featuredAreaHeight,
       homeAreaWorldX,
       homeAreaWorldY,
       homeAreaWidth,
       homeAreaHeight,
-      featuredAreaWorldX, // FEATURED SECTION: Add featured area coordinates
-      featuredAreaWorldY,
-      featuredAreaWidth,
-      featuredAreaHeight,
-      featuredImage, // FEATURED SECTION: Add featured image
-      onFeaturedImageClick, // FEATURED SECTION: Add featured image click handler
-      onAuctionIconClick, // Auction icon click handler
-      imagePlacementMap,
       repeatedPlacements,
       repeatedTokens,
+      canvasRef,
+      viewState.scale,
+      viewState.x,
+      viewState.y,
+      capabilities,
       unitSize,
+      isMobileDevice,
+      _onFeaturedImageClick,
+      imagePlacementMap,
       setSelectedImage,
-      router,
-      onAboutClick,
-      onTermsClick,
-      viewState, // Add viewState for coordinate conversion
-      canvasRef, // Add canvasRef for screen coordinate calculation
-      isMobileDevice, // Add mobile device detection
     ],
   );
 

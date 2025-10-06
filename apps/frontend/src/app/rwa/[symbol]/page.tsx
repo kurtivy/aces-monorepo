@@ -19,7 +19,7 @@ import { NETWORK_CONFIG } from '@/lib/contracts/addresses';
 
 export default function RWAItemPage() {
   const params = useParams();
-  const symbol = params.symbol as string;
+  const symbol = (params.symbol as string)?.trim() || '';
 
   const tokenDetailsSectionIndex = sections.findIndex(
     (section) => section.id === 'token-details' && !section.isModal,

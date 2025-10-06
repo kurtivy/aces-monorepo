@@ -2,12 +2,15 @@
 
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { motion } from 'framer-motion';
-// import { useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import type { ImageInfo } from '../../types/canvas';
 import { useImageLoader } from '../../hooks/canvas/use-image-loader';
 import { useViewState } from '../../hooks/canvas/use-view-state';
 import { useCanvasRenderer } from '../../hooks/canvas/use-canvas-renderer';
-import { useCanvasInteractions } from '../../hooks/canvas/use-canvas-interactions';
+import {
+  useCanvasInteractions,
+  type AuctionIconClickPayload,
+} from '../../hooks/canvas/use-canvas-interactions';
 import { useCoordinatedResize } from '../../hooks/use-coordinated-resize';
 import ConnectWalletNav from '../ui/custom/connect-wallet-nav';
 // import NavMenu from '../ui/custom/nav-menu';
@@ -47,7 +50,7 @@ const InfiniteCanvas = ({
   featuredImageId = '7', // Default to KAWS watch (Audemars Piguet Royal Oak Concept KAWS)
   onFeaturedImageClick,
 }: InfiniteCanvasProps = {}) => {
-  // const router = useRouter();
+  const router = useRouter();
   const [selectedImage, setSelectedImage] = useState<ImageInfo | null>(null);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   // Calendar icon modal state
@@ -135,10 +138,18 @@ const InfiniteCanvas = ({
   imagesRef.current = images;
 
   // Auction icon click handler - define before useCanvasInteractions
-  const handleAuctionIconClick = useCallback((productTitle: string) => {
-    setSelectedProductTitle(productTitle);
-    setIsEmailSignupModalOpen(true);
-  }, []);
+  const handleAuctionIconClick = useCallback(
+    ({ symbol, title }: AuctionIconClickPayload) => {
+      if (symbol) {
+        router.push(`/rwa/${symbol}`);
+        return;
+      }
+
+      setSelectedProductTitle(title ?? '');
+      setIsEmailSignupModalOpen(true);
+    },
+    [router],
+  );
 
   const handleEmailSignupModalClose = () => {
     setIsEmailSignupModalOpen(false);

@@ -401,11 +401,11 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                 </div>
 
                 {/* Add Countdown Timer */}
-                <div className="mb-2">
+                {/* <div className="mb-2">
                   <CountdownTimer
                     targetDate={new Date(safeMetadata.countdownDate || '2025-09-26T16:00:00.000Z')} // Use metadata countdown date or fallback
                   />
-                </div>
+                </div> */}
 
                 <div className="mb-4 sm:mb-6">
                   {/* Enhanced Description with Read More/Less functionality - More space allocated */}

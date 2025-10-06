@@ -1678,8 +1678,10 @@ export default function TokenSwapInterface({
                     {dexQuote.intermediate && dexQuote.intermediate.length > 0 && (
                       <div className="text-xs text-[#D0B284]/70 text-center border-t border-[#D0B284]/10 pt-2">
                         Route: {getDisplaySymbol(dexQuote.inputAsset)}
-                        {dexQuote.intermediate.map((step) => ` → ${getDisplaySymbol(step.symbol)}`)} →{' '}
-                        {activeTab === 'sell' ? paymentAssetDisplay : tokenSymbol}
+                        {dexQuote.intermediate.map(
+                          (step) => ` → ${getDisplaySymbol(step.symbol)}`,
+                        )}{' '}
+                        → {activeTab === 'sell' ? paymentAssetDisplay : tokenSymbol}
                       </div>
                     )}
                   </>
@@ -1722,12 +1724,12 @@ export default function TokenSwapInterface({
                         Pay with {paymentAssetQuote.label}:
                       </span>{' '}
                       ≈ {paymentAssetQuote.value}
-              {paymentAsset === 'ETH' && (
-                <span className="mt-1 block text-[11px] text-[#D0B284]/50">
-                  Using placeholder wETH price (${DEFAULT_ETH_PRICE}). Update once live
-                  routing is wired.
-                </span>
-              )}
+                      {paymentAsset === 'ETH' && (
+                        <span className="mt-1 block text-[11px] text-[#D0B284]/50">
+                          Using placeholder wETH price (${DEFAULT_ETH_PRICE}). Update once live
+                          routing is wired.
+                        </span>
+                      )}
                     </div>
                   )}
                 </>

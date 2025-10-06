@@ -2,7 +2,7 @@
 
 import React from 'react';
 import UpcomingCard, { type UpcomingAsset } from './upcoming-card';
-import { FEATURED_TARGET_DATE } from '@/lib/constants/dates';
+import { SAMPLE_METADATA } from '@/data/metadata';
 
 // Function to truncate description to consistent length for uniform card heights
 const truncateDescription = (description: string, maxLength: number = 150): string => {
@@ -14,21 +14,21 @@ const truncateDescription = (description: string, maxLength: number = 150): stri
   return description.substring(0, cutPoint).trim() + '...';
 };
 
-// Single upcoming asset from metadata - Audemars Piguet Royal Oak Concept KAWS
-const upcomingAsset: UpcomingAsset = {
-  id: '7',
-  title: 'Audemars Piguet Royal Oak Concept KAWS',
-  description: truncateDescription(
-    `A groundbreaking collaboration between haute horology and contemporary art, this Audemars Piguet Royal Oak Concept is a limited edition masterpiece designed with the artist KAWS. The watch features KAWS's signature 'XX' motif on the tourbillon cage, housed within a futuristic titanium case.
+// Convert metadata to UpcomingAsset format
+const convertMetadataToUpcomingAsset = (metadata: any): UpcomingAsset => ({
+  id: metadata.id,
+  title: metadata.title,
+  description: truncateDescription(metadata.description),
+  imageUrl: metadata.image,
+  symbol: metadata.ticker,
+  startDate: metadata.countdownDate, // Use the actual countdown date from metadata
+  category: 'WATCH', // Default category, could be enhanced to map from metadata
+});
 
-This timepiece is not just a watch; it's a wearable sculpture that pushes the boundaries of watchmaking design. With an extremely limited production run, it's a grail piece for collectors of both high-end watches and modern art.`,
-  ),
-  imageUrl:
-    '/canvas-images/Audemars-Piguet-Royal-Oak-Concept-KAWS-Tourbillon-Companion-Dial-Limited-Edition.webp',
-  symbol: 'APKAWS',
-  startDate: FEATURED_TARGET_DATE, // Use same date as featured section
-  category: 'WATCH',
-};
+// Get the Audemars Piguet asset from metadata (id: '7')
+const upcomingAsset: UpcomingAsset = convertMetadataToUpcomingAsset(
+  SAMPLE_METADATA.find((item) => item.id === '7')!,
+);
 
 interface UpcomingGridProps {
   assets?: UpcomingAsset[];

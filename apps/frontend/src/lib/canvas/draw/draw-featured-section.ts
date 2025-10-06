@@ -4,7 +4,6 @@ import { getCanvasFontStack } from '../../utils/font-loader';
 import { getAuctionIcon, initializeAuctionIcon } from '../utils/lucide-auction-icon';
 import { getResponsiveMetrics, type ResponsiveMetrics } from '../../utils/responsive-canvas-utils';
 
-// Responsive PIN configuration
 const createPinConfig = (responsiveMetrics: ResponsiveMetrics) => ({
   radius: 1.8 * responsiveMetrics.iconScale,
   insetDesktop: 8 * responsiveMetrics.paddingScale,
@@ -172,8 +171,10 @@ export const getAuctionIconBounds = (
 
 // Days left utility function
 const calculateDaysLeft = (): { days: number; isExpired: boolean } => {
-  // Target date: September 19, 2025, 9:00 AM EST
-  const targetDate = new Date('2025-09-29T17:00:00-04:00'); // EST is UTC-5
+  // Target date: September 24, 2025, 9:00 AM EDT (New York time)
+  // 2025-10-02 at 11:30 PM New York time (EDT, UTC-4)
+  // Saturday, October 4, 2025, 11:11 AM New York time (EDT, UTC-4)
+  const targetDate = new Date('2025-10-04T11:11:00-04:00');
   const now = new Date();
   const timeDiff = targetDate.getTime() - now.getTime();
 
@@ -203,15 +204,14 @@ const drawDaysLeft = (
   // No card background - just text floating on the image
 
   if (isExpired) {
-    // Show "LIVE NOW" when expired
     ctx.fillStyle = '#D0B284';
-    const fontSize = (isMobile ? 32 : 48) * responsiveMetrics.fontScale;
+    const fontSize = (isMobile ? 24 : 32) * responsiveMetrics.fontScale;
     ctx.font = `bold ${fontSize}px ${getCanvasFontStack('NeueWorld')}`;
     ctx.textAlign = 'right';
     ctx.textBaseline = 'bottom';
     const textX = x + width - (isMobile ? 15 : 20) * responsiveMetrics.paddingScale;
     const textY = y + height - (isMobile ? 15 : 20) * responsiveMetrics.paddingScale;
-    ctx.fillText('TRADE', textX, textY);
+    ctx.fillText('LIVE SOON', textX, textY);
     ctx.restore();
     return;
   }

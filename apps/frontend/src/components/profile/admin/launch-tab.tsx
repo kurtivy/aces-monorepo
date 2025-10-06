@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { ethers } from 'ethers';
 import { getContractAddresses } from '@/lib/contracts/addresses';
-import { ACES_FACTORY_ABI, ERC20_ABI, LAUNCHPAD_TOKEN_ABI } from '@/lib/contracts/abi';
+import { ERC20_ABI, LAUNCHPAD_TOKEN_ABI } from '@/lib/contracts/abi';
 import { useAcesFactoryContract } from '@/hooks/contracts/use-aces-factory-contract';
 import { type SaltMiningResult, mineVanitySaltWithTimeout } from '@/lib/utils/salt-mining';
 import { useAuth } from '@/lib/auth/auth-context';
@@ -68,8 +68,7 @@ function useWagmiEthersSigner() {
 
         // Create ethers provider from wallet client transport
         const ethersProvider = new ethers.providers.Web3Provider(
-          // @ts-expect-error - Viem transport is compatible with ethers
-          walletClient.transport,
+          walletClient.transport as unknown as ethers.providers.ExternalProvider,
           network,
         );
 
@@ -134,6 +133,7 @@ export function LaunchTab() {
   const [linkingLoading, setLinkingLoading] = useState<boolean>(false);
   const [linkingResult, setLinkingResult] = useState<string | null>(null);
   const [isManualChainSwitching, setIsManualChainSwitching] = useState(false);
+
   const [chainSwitchFeedback, setChainSwitchFeedback] = useState<{
     type: 'success' | 'error' | 'info';
     message: string;
@@ -785,7 +785,7 @@ export function LaunchTab() {
   };
 
   // Fetch available listings
-  const fetchAvailableListings = async () => {
+  const fetchAvailableListings = useCallback(async () => {
     try {
       const token = await getAccessToken();
       if (!token) return;
@@ -798,14 +798,14 @@ export function LaunchTab() {
     } catch (error) {
       console.error('Error fetching available listings:', error);
     }
-  };
+  }, [getAccessToken]);
 
   // Load listings on mount
   useEffect(() => {
     if (isAuthenticated && user?.role === 'ADMIN') {
       fetchAvailableListings();
     }
-  }, [isAuthenticated, user?.role]);
+  }, [isAuthenticated, user?.role, fetchAvailableListings]);
 
   // Add token to database
   const handleAddTokenToDatabase = async () => {

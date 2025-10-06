@@ -342,7 +342,8 @@ export function useAcesFactoryContract(
 
   // Fetch token information with rate limiting - uses read-only contract if wallet not connected
   const fetchTokenInfo = useCallback(
-    async (tokenAddress: string) => {
+    async (tokenAddress: string, _bypassRateLimit = false) => {
+      // eslint-disable-line @typescript-eslint/no-unused-vars
       const activeContract = factoryContract || readOnlyFactoryContract;
       const activeProvider = provider || readOnlyProvider;
       const isUsingReadOnly = !factoryContract && !!readOnlyFactoryContract;
