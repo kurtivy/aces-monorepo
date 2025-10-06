@@ -20,8 +20,8 @@ import { useAuth } from '@/lib/auth/auth-context';
 import {
   useBondingCurveContracts,
   type BondingCurveState,
-} from '@/hooks/contracts/use-bonding-curve-contract';
-import { useAcesSwapContract } from '@/hooks/contracts/use-aces-swap-contract';
+} from '@/hooks/contracts/ico/use-bonding-curve-contract';
+import { useAcesSwapContract } from '@/hooks/contracts/ico/use-aces-swap-contract';
 import { parseEther, formatEther, parseUnits, formatUnits } from 'viem';
 import { useWaitForTransactionReceipt, useWriteContract } from 'wagmi';
 import { Currency, SUPPORTED_CURRENCIES } from '@/types/contracts';

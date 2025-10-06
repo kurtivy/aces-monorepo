@@ -3,7 +3,7 @@
 import React, { useRef, useEffect, useMemo, useState } from 'react';
 import * as d3 from 'd3';
 import { formatEther } from 'viem';
-import { useBondingCurveContracts } from '@/hooks/contracts/use-bonding-curve-contract';
+import { useBondingCurveContracts } from '@/hooks/contracts/ico/use-bonding-curve-contract';
 
 interface BondingCurveChartProps {
   // Props are now optional since we get data from the hook
@@ -133,12 +133,12 @@ export default function BondingCurveChart({
     const containerWidth = svgRef.current?.parentElement?.clientWidth || 520;
     const containerHeight = svgRef.current?.parentElement?.clientHeight || 440;
     const isMobile = containerWidth < 600;
-    
+
     // Mobile-optimized margins
-    const margin = isMobile 
+    const margin = isMobile
       ? { top: 20, right: 15, bottom: 35, left: 45 }
       : { top: 30, right: 30, bottom: 50, left: 70 };
-    
+
     const width = Math.max(isMobile ? 250 : 300, containerWidth - margin.left - margin.right);
     const height = Math.max(isMobile ? 200 : 250, containerHeight - margin.top - margin.bottom);
 
@@ -220,7 +220,10 @@ export default function BondingCurveChart({
           }),
       );
 
-    xAxis.selectAll('text').style('fill', '#9CA3AF').style('font-size', isMobile ? '9px' : '10px');
+    xAxis
+      .selectAll('text')
+      .style('fill', '#9CA3AF')
+      .style('font-size', isMobile ? '9px' : '10px');
     xAxis.selectAll('line, path').style('stroke', '#9CA3AF');
 
     // Add Y axis with proper formatting for very small ETH values
@@ -238,7 +241,10 @@ export default function BondingCurveChart({
         .tickFormat(() => ''), // Remove all Y-axis labels
     );
 
-    yAxis.selectAll('text').style('fill', '#9CA3AF').style('font-size', isMobile ? '9px' : '10px');
+    yAxis
+      .selectAll('text')
+      .style('fill', '#9CA3AF')
+      .style('font-size', isMobile ? '9px' : '10px');
     yAxis.selectAll('line, path').style('stroke', '#9CA3AF');
 
     // Add axis labels with responsive font sizes
@@ -460,28 +466,33 @@ export default function BondingCurveChart({
               const containerWidth = svgRef.current?.parentElement?.clientWidth || 520;
               const isMobile = containerWidth < 600;
               const tooltipWidth = isMobile ? 140 : 160;
-              
+
               // Mobile: center tooltip above/below point
               if (isMobile) {
-                return Math.max(10, Math.min(containerWidth - tooltipWidth - 10, tooltipData.x - tooltipWidth / 2));
+                return Math.max(
+                  10,
+                  Math.min(containerWidth - tooltipWidth - 10, tooltipData.x - tooltipWidth / 2),
+                );
               }
-              
+
               // Desktop: offset to the right, flip if near edge
-              return tooltipData.x > containerWidth - 200 ? tooltipData.x - 170 : tooltipData.x + 10;
+              return tooltipData.x > containerWidth - 200
+                ? tooltipData.x - 170
+                : tooltipData.x + 10;
             })(),
             top: (() => {
               const containerWidth = svgRef.current?.parentElement?.clientWidth || 520;
               const containerHeight = svgRef.current?.parentElement?.clientHeight || 440;
               const isMobile = containerWidth < 600;
               const tooltipHeight = isMobile ? 60 : 80;
-              
+
               if (isMobile) {
                 // Mobile: position above or below the point
-                return tooltipData.y < containerHeight / 2 
-                  ? tooltipData.y + 20  // Position below if in upper half
-                  : tooltipData.y - tooltipHeight - 20;  // Position above if in lower half
+                return tooltipData.y < containerHeight / 2
+                  ? tooltipData.y + 20 // Position below if in upper half
+                  : tooltipData.y - tooltipHeight - 20; // Position above if in lower half
               }
-              
+
               // Desktop behavior (existing logic)
               const isNearTop = tooltipData.y < tooltipHeight + 20;
               const isNearBottom = tooltipData.y > containerHeight - tooltipHeight - 20;
@@ -502,9 +513,7 @@ export default function BondingCurveChart({
                 {tooltipData.tokensSold.toLocaleString(undefined, { maximumFractionDigits: 0 })}{' '}
                 tokens
               </div>
-              <div className="text-[#D0B284] text-xs">
-                {tooltipData.priceETH.toFixed(6)} ETH
-              </div>
+              <div className="text-[#D0B284] text-xs">{tooltipData.priceETH.toFixed(6)} ETH</div>
             </div>
           </div>
         </div>

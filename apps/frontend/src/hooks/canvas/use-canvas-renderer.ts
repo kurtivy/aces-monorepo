@@ -421,22 +421,6 @@ export const useCanvasRenderer = ({
     [updateViewState],
   );
 
-  /*
-   * SAFARI PERFORMANCE OPTIMIZATIONS
-   * ================================
-   * Safari requires specific performance optimizations for smooth hover animations:
-   * 1. Frame throttling (30fps vs 60fps) - Prevents laggy hover animations
-   * 2. Faster animation duration (200ms vs 300ms) - Reduces computation time
-   * 3. Linear easing (vs easeInOutCubic) - Reduces mathematical computation
-   * 4. Space animation disabled (see draw-create-token-square.ts)
-   * 5. Shine effects disabled (see draw-create-token-square.ts)
-   *
-   * These are contained to minimize browser-specific code.
-   * TODO Phase 2: Explore feature detection vs user-agent detection
-   */
-
-  // State for hover animation
-
   const hoverAnimationDuration = browserPerf.animationDuration; // Centralized animation duration
 
   const [hoveredRepeatedToken, setHoveredRepeatedToken] = useState<{

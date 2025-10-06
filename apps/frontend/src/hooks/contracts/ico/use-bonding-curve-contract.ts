@@ -6,7 +6,7 @@ import { useReadContract, useWriteContract, useBalance } from 'wagmi';
 import { readContract } from 'wagmi/actions';
 import { formatEther, parseEther } from 'viem';
 import { ACES_VAULT_ABI, getBondingCurveContracts } from '@aces/utils';
-import { useReliableETHPrice } from './use-reliable-eth-price';
+import { useReliableETHPrice } from '../use-reliable-eth-price';
 import { wagmiConfig } from '@/components/providers/app-providers';
 import { base } from 'wagmi/chains';
 
