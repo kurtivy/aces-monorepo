@@ -1,12 +1,32 @@
 import type { ApiResponse } from '@aces/utils';
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  (typeof window !== 'undefined' &&
-  (window.location.hostname.includes('feat-ui-updates') ||
-    window.location.hostname.includes('feat-rwa-page-upgrade'))
-    ? 'https://aces-monorepo-backend-git-feat-rwa-page-upgrade-dan-aces-fun.vercel.app'
-    : 'http://localhost:3002');
+function getBaseUrl(): string {
+  // Use environment variable if available
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+
+  // For localhost development
+  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+    return 'http://localhost:3002';
+  }
+
+  // Dynamic URL based on current deployment
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    const href = window.location.href;
+
+    // Check for dev/git-dev branch
+    if (href.includes('git-dev') || hostname.includes('git-dev')) {
+      return 'https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app';
+    }
+  }
+
+  // Production fallback (main branch and aces.fun)
+  return 'https://aces-monorepo-backend.vercel.app';
+}
+
+const API_BASE_URL = getBaseUrl();
 
 export interface ListingData {
   id: string;

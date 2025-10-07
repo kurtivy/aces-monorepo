@@ -51,24 +51,29 @@ export interface BidsListResponse {
 
 export class BidsApi {
   private static getBaseUrl(): string {
-    // For development
+    // Use environment variable if available
+    if (process.env.NEXT_PUBLIC_API_URL) {
+      return process.env.NEXT_PUBLIC_API_URL;
+    }
+
+    // For localhost development
     if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
       return 'http://localhost:3002';
     }
 
-    // For production/staging
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-    if (apiUrl) {
-      return apiUrl;
+    // Dynamic URL based on current deployment
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname;
+      const href = window.location.href;
+
+      // Check for dev/git-dev branch
+      if (href.includes('git-dev') || hostname.includes('git-dev')) {
+        return 'https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app';
+      }
     }
 
-    // Fallback for Vercel deployments
-    const fallbackUrl =
-      typeof window !== 'undefined' && window.location.hostname.includes('feat-ui-updates')
-        ? 'https://aces-monorepo-backend-git-feat-ui-updates-dan-aces-fun.vercel.app'
-        : 'https://aces-monorepo-backend-git-main-dan-aces-fun.vercel.app';
-
-    return fallbackUrl;
+    // Production fallback (main branch and aces.fun)
+    return 'https://aces-monorepo-backend.vercel.app';
   }
 
   private static async makeRequest<T>(

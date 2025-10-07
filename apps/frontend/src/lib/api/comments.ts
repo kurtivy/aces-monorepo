@@ -1,7 +1,33 @@
 // lib/api/comments.ts
 import { Comment, CreateCommentData, CommentResponse, LikeResponse } from '@/types/comments';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+function getCommentsApiBaseUrl(): string {
+  // Use environment variable if available
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+
+  // For localhost development
+  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+    return 'http://localhost:3002';
+  }
+
+  // Dynamic URL based on current deployment
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    const href = window.location.href;
+
+    // Check for dev/git-dev branch
+    if (href.includes('git-dev') || hostname.includes('git-dev')) {
+      return 'https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app';
+    }
+  }
+
+  // Production fallback (main branch and aces.fun)
+  return 'https://aces-monorepo-backend.vercel.app';
+}
+
+const API_BASE_URL = getCommentsApiBaseUrl();
 
 export class CommentsApi {
   private static async getAuthHeaders(token?: string): Promise<HeadersInit> {
