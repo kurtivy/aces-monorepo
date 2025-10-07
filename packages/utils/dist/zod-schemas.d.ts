@@ -39,13 +39,13 @@ export declare const CreateBidSchema: z.ZodObject<{
     currency: z.ZodEnum<["ETH", "ACES"]>;
     expiresAt: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    listingId: string;
     amount: string;
+    listingId: string;
     currency: "ETH" | "ACES";
     expiresAt?: string | undefined;
 }, {
-    listingId: string;
     amount: string;
+    listingId: string;
     currency: "ETH" | "ACES";
     expiresAt?: string | undefined;
 }>;
