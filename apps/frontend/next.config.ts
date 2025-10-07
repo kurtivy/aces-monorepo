@@ -194,12 +194,6 @@ const nextConfig: NextConfig = {
   // Redirects for blocked routes on main domain
   async redirects() {
     return [
-      // TEMPORARY: Block all /rwa routes
-      {
-        source: '/rwa/:path*',
-        destination: '/404',
-        permanent: false,
-      },
       // Block /admin routes on main domain (aces.fun)
       {
         source: '/admin/:path*',
