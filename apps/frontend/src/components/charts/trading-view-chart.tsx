@@ -205,6 +205,78 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({
     };
   }, [isLibraryLoaded, tokenAddress, tokenSymbol]);
 
+  // Sync TradingView header height for external layout usage
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return;
+    }
+
+    if (!isLibraryLoaded || !widgetRef.current) {
+      return;
+    }
+
+    let isActive = true;
+    let headerElement: HTMLElement | null = null;
+    let resizeObserver: ResizeObserver | null = null;
+
+    const setHeaderHeightVar = () => {
+      if (!isActive || !headerElement) {
+        return;
+      }
+
+      const height = headerElement.getBoundingClientRect().height;
+      if (height > 0) {
+        document.documentElement.style.setProperty(
+          '--tradingview-header-height',
+          `${Math.round(height)}px`,
+        );
+      }
+    };
+
+    const attachHeaderTracking = () => {
+      if (!chartContainerRef.current) {
+        return;
+      }
+
+      headerElement = chartContainerRef.current.querySelector(
+        '.chart-controls-bar',
+      ) as HTMLElement | null;
+      if (!headerElement) {
+        return;
+      }
+
+      setHeaderHeightVar();
+
+      if (typeof ResizeObserver !== 'undefined') {
+        resizeObserver = new ResizeObserver(() => setHeaderHeightVar());
+        resizeObserver.observe(headerElement);
+      }
+    };
+
+    const widget = widgetRef.current;
+    if (widget?.headerReady) {
+      widget.headerReady().then(() => {
+        if (!isActive) return;
+        attachHeaderTracking();
+      });
+    } else {
+      attachHeaderTracking();
+    }
+
+    const handleWindowResize = () => {
+      setHeaderHeightVar();
+    };
+
+    window.addEventListener('resize', handleWindowResize);
+
+    return () => {
+      isActive = false;
+      window.removeEventListener('resize', handleWindowResize);
+      resizeObserver?.disconnect();
+      document.documentElement.style.removeProperty('--tradingview-header-height');
+    };
+  }, [isLibraryLoaded, tokenAddress]);
+
   if (error) {
     return (
       <div className={`flex flex-col ${heightClass} w-full bg-[#231f20]/50 overflow-hidden`}>
