@@ -124,6 +124,11 @@ model Listing {
   // NEW: Bidding fields
   startingBidPrice String? // Minimum bid amount (USD)
   reservePrice     String? // Hidden reserve price (USD)
+  
+  // NEW: Asset story/info fields for V2 dashboard
+  rrp         String?   // Retail Recommended Price (same as VALUE in UI)
+  brand       String?   // Brand name
+  hypePoints  String[]  @default([]) // Array of bullet points for hype section
 
   // NEW: Token creation workflow fields
   tokenCreationStatus String? @default("AWAITING_USER_DETAILS")
