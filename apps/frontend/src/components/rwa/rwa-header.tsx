@@ -7,11 +7,10 @@ import ConnectWalletNav from '../ui/custom/connect-wallet-nav';
 
 interface RWAHeaderProps {
   className?: string;
-  title?: string;
   onProfileClick?: () => void;
 }
 
-export default function RWAHeader({ className = '', title, onProfileClick }: RWAHeaderProps) {
+export default function RWAHeader({ className = '', onProfileClick }: RWAHeaderProps) {
   const router = useRouter();
   const [logoLoaded, setLogoLoaded] = useState(false);
   const [logoError, setLogoError] = useState(false);
@@ -32,11 +31,9 @@ export default function RWAHeader({ className = '', title, onProfileClick }: RWA
   };
 
   return (
-    <header data-rwa-header className={`w-full relative bg-black ${className}`}>
+    <header data-rwa-header className={`w-full relative bg-[#151C16] ${className}`}>
       <div className="max-w-[1920px] mx-auto px-3 sm:px-6 py-2 sm:py-4">
-        <div
-          className={`grid items-center w-full ${title ? 'grid-cols-[1fr_auto_1fr] sm:grid-cols-[250px_1fr_250px]' : 'grid-cols-[1fr_auto] sm:grid-cols-[250px_1fr]'}`}
-        >
+        <div className="grid items-center w-full grid-cols-[1fr_auto] sm:grid-cols-[250px_1fr]">
           {/* Left side - ACES.FUN Logo and Text */}
           <div className="flex items-center gap-2 sm:gap-4 min-w-0 sm:min-w-[250px]">
             {/* Clickable Logo Only */}
@@ -77,15 +74,6 @@ export default function RWAHeader({ className = '', title, onProfileClick }: RWA
               </span>
             </div>
           </div>
-
-          {/* Center - Dynamic Title (conditionally rendered) */}
-          {title && (
-            <div className="flex justify-center px-4 sm:px-8 min-w-0">
-              <h1 className="text-sm sm:text-xl lg:text-2xl xl:text-3xl text-center text-[#D0B284] text-shadow-lg/30 text-shadow-[#231F20] font-spray-letters tracking-wider sm:tracking-widest">
-                {title}
-              </h1>
-            </div>
-          )}
 
           {/* Right side - Connect Wallet and Nav Menu */}
           <div className="flex items-center justify-end min-w-[120px] sm:min-w-[250px]">

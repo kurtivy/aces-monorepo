@@ -17,9 +17,52 @@ import PageLoader from '@/components/loading/page-loader';
 import { NETWORK_CONFIG } from '@/lib/contracts/addresses';
 import RightPanel from '@/components/rwa/right-panel'; // Import the new RightPanel component
 
+// V2 Components
+import { LeftColumnNavigationV2 } from '@/components/rwa/left-column-v2/left-column-navigation-v2';
+import { MiddleContentAreaV2 } from '@/components/rwa/middle-column-v2/middle-content-area-v2';
+
+const columnDividerSize = {
+  height: 'calc(100vh - 120px)',
+  minHeight: '750px',
+} as const;
+
+function ColumnDivider() {
+  return (
+    <div
+      className="relative flex-shrink-0 pointer-events-none"
+      style={{ ...columnDividerSize, width: 0 }}
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="8"
+        viewBox="0 0 2 100"
+        preserveAspectRatio="none"
+        className="absolute"
+        style={{ ...columnDividerSize, left: '-4px', top: 0 }}
+      >
+        <line
+          x1="1"
+          y1="0"
+          x2="1"
+          y2="100"
+          stroke="#D0B284"
+          strokeOpacity={0.5}
+          strokeWidth={1}
+          strokeDasharray="12 12"
+          vectorEffect="non-scaling-stroke"
+          shapeRendering="crispEdges"
+        />
+      </svg>
+    </div>
+  );
+}
+
 export default function RWAItemPage() {
   const params = useParams();
   const symbol = (params.symbol as string)?.trim() || '';
+
+  // Feature flag for V2 layout
+  const USE_NEW_LAYOUT = process.env.NEXT_PUBLIC_USE_NEW_RWA_LAYOUT === 'true' || true; // Default to true for testing
 
   const tokenDetailsSectionIndex = sections.findIndex(
     (section) => section.id === 'token-details' && !section.isModal,
@@ -98,95 +141,86 @@ export default function RWAItemPage() {
 
             {/* Header */}
             <div className="relative z-50">
-              <RWAHeader title={listing?.title} />
+              <RWAHeader />
             </div>
 
             {/* Main 3-Column Layout */}
             <div className="flex flex-1 relative z-10 min-h-0">
-              {/* Left Column - Navigation System */}
-              <div className="w-72 bg-black overflow-hidden flex-shrink-0">
-                <LeftColumnNavigation
-                  sections={sections}
-                  activeSection={navigation.activeSection}
-                  onSectionChange={navigation.handleSectionChange}
-                  isAnimating={navigation.isAnimating}
-                  selectedImageIndex={navigation.selectedImageIndex}
-                  setSelectedImageIndex={navigation.setSelectedImageIndex}
-                  previousActiveSection={navigation.previousActiveSection}
-                  listing={listing}
-                  loading={loading}
-                />
-              </div>
+              {USE_NEW_LAYOUT ? (
+                <>
+                  {/* V2 Layout */}
+                  {/* Left Column V2 - New Dashboard */}
+                  <LeftColumnNavigationV2 listing={listing} loading={loading} />
 
-              {/* SVG Dashed Border - Between Left and Middle columns */}
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="8"
-                height="100%"
-                viewBox="0 0 2 100"
-                preserveAspectRatio="none"
-                className="pointer-events-none flex-shrink-0 bg-black"
-                style={{ height: 'calc(100vh - 120px)', minHeight: '750px' }}
-              >
-                <line
-                  x1="1"
-                  y1="0"
-                  x2="1"
-                  y2="100"
-                  stroke="#D0B284"
-                  strokeOpacity={0.5}
-                  strokeWidth={1}
-                  strokeDasharray="12 12"
-                  vectorEffect="non-scaling-stroke"
-                  shapeRendering="crispEdges"
-                />
-              </svg>
+                  {/* SVG Dashed Border - Between Left and Middle columns */}
+                  <ColumnDivider />
 
-              {/* Middle Column - Main Content with Internal Scrolling */}
-              <div className="flex-1 relative backdrop-blur-sm bg-black">
-                <div
-                  className="h-full overflow-y-auto"
-                  style={{
-                    height: 'calc(100vh - 120px)',
-                    minHeight: '750px',
-                  }}
-                >
-                  <MiddleContentArea
-                    activeSection={navigation.activeSection}
-                    selectedImageIndex={navigation.selectedImageIndex}
-                    setSelectedImageIndex={navigation.setSelectedImageIndex}
-                    navigationDirection={navigation.navigationDirection}
-                    listing={listing}
-                    isLive={forceShowTokenDetails ? true : isLive}
-                    launchDate={launchDate}
-                    isLaunched={forceShowTokenDetails ? true : isLaunched}
-                  />
-                </div>
-              </div>
+                  {/* Middle Column V2 - Chart + Learn More */}
+                  <div className="flex-1 relative backdrop-blur-sm bg-black">
+                    <div
+                      className="h-full"
+                      style={{
+                        height: 'calc(100vh - 120px)',
+                        minHeight: '750px',
+                      }}
+                    >
+                      <MiddleContentAreaV2
+                        listing={listing}
+                        isLive={forceShowTokenDetails ? true : isLive}
+                        isLaunched={forceShowTokenDetails ? true : isLaunched}
+                        selectedImageIndex={navigation.selectedImageIndex}
+                        onImageSelect={navigation.setSelectedImageIndex}
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Old Layout (V1) */}
+                  {/* Left Column - Navigation System */}
+                  <div className="w-72 bg-black overflow-hidden flex-shrink-0">
+                    <LeftColumnNavigation
+                      sections={sections}
+                      activeSection={navigation.activeSection}
+                      onSectionChange={navigation.handleSectionChange}
+                      isAnimating={navigation.isAnimating}
+                      selectedImageIndex={navigation.selectedImageIndex}
+                      setSelectedImageIndex={navigation.setSelectedImageIndex}
+                      previousActiveSection={navigation.previousActiveSection}
+                      listing={listing}
+                      loading={loading}
+                    />
+                  </div>
+
+                  {/* SVG Dashed Border - Between Left and Middle columns */}
+                  <ColumnDivider />
+
+                  {/* Middle Column - Main Content with Internal Scrolling */}
+                  <div className="flex-1 relative backdrop-blur-sm bg-black">
+                    <div
+                      className="h-full overflow-y-auto"
+                      style={{
+                        height: 'calc(100vh - 120px)',
+                        minHeight: '750px',
+                      }}
+                    >
+                      <MiddleContentArea
+                        activeSection={navigation.activeSection}
+                        selectedImageIndex={navigation.selectedImageIndex}
+                        setSelectedImageIndex={navigation.setSelectedImageIndex}
+                        navigationDirection={navigation.navigationDirection}
+                        listing={listing}
+                        isLive={forceShowTokenDetails ? true : isLive}
+                        launchDate={launchDate}
+                        isLaunched={forceShowTokenDetails ? true : isLaunched}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
 
               {/* SVG Dashed Border - Between Middle and Right columns */}
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="8"
-                height="100%"
-                viewBox="0 0 2 100"
-                preserveAspectRatio="none"
-                className="pointer-events-none flex-shrink-0 bg-black"
-                style={{ height: 'calc(100vh - 120px)', minHeight: '750px' }}
-              >
-                <line
-                  x1="1"
-                  y1="0"
-                  x2="1"
-                  y2="100"
-                  stroke="#D0B284"
-                  strokeOpacity={0.5}
-                  strokeWidth={1}
-                  strokeDasharray="12 12"
-                  vectorEffect="non-scaling-stroke"
-                  shapeRendering="crispEdges"
-                />
-              </svg>
+              <ColumnDivider />
 
               {/* Right Column - Token Swap Interface with Progression */}
               <div className="w-96 bg-black flex-shrink-0 overflow-hidden backdrop-blur-sm">
