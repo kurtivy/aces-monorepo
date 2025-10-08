@@ -4,13 +4,12 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { KeyboardEvent } from 'react';
 import { ethers } from 'ethers';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { useAuth } from '@/lib/auth/auth-context';
 import { Copy, Check, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import { createImageErrorHandler, getValidImageSrc } from '@/lib/utils/image-error-handler';
-import ProgressionBar from './middle-column/overview/progression-bar';
+import ProgressionBar from '@/components/rwa/middle-column/overview/progression-bar';
 import { usePriceConversion } from '@/hooks/use-price-conversion';
 import { useTokenBondingData } from '@/hooks/contracts/use-token-bonding-data';
 import { DexApi, type DexQuoteResponse } from '@/lib/api/dex';
@@ -18,13 +17,7 @@ import type { DatabaseListing } from '@/types/rwa/section.types';
 
 import { getContractAddresses } from '@/lib/contracts/addresses';
 import { ACES_FACTORY_ABI, ERC20_ABI, LAUNCHPAD_TOKEN_ABI } from '@/lib/contracts/abi';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SwapCard } from './swap-card';
 
 const DEFAULT_SLIPPAGE_BPS = 100; // 1% slippage
 const SUPPORTED_DEX_ASSETS = ['ACES', 'USDC', 'USDT', 'ETH'] as const;
@@ -41,6 +34,16 @@ const AERODROME_ROUTER_ABI = [
   'function swapExactETHForTokens(uint256 amountOutMin, address[] calldata path, address to, uint256 deadline) payable returns (uint256[] memory amounts)',
 ];
 const SWAP_DEADLINE_BUFFER_SECONDS = 60 * 10;
+// const PERCENTAGE_PRESETS = [10, 25, 50, 75, 100] as const
+// const SLIPPAGE_PRESETS = [50, 100, 200] as const // 0.5%, 1%, 2%
+type TokenOption = {
+  symbol: string;
+  label: string;
+  address: string;
+  decimals: number;
+  icon: string;
+  isBase?: boolean;
+};
 
 interface TokenSwapInterfaceProps {
   tokenSymbol?: string;
@@ -56,17 +59,17 @@ interface TokenSwapInterfaceProps {
   primaryImage?: string;
   chainId?: number; // Base Sepolia = 84532, Base Mainnet = 8453
   dexMeta?: DatabaseListing['dex'] | null;
+  tokenDecimals?: number;
   // Deprecated props (kept for backward compatibility)
   currentAmount?: number;
   targetAmount?: number;
   percentage?: number;
 }
 
-const DEFAULT_ETH_PRICE = 3000; // TODO: replace with live oracle feed for ETH/USD pricing
-
 export default function TokenSwapInterface({
   tokenSymbol = 'RWA',
   tokenAddress,
+  tokenName = tokenSymbol,
   showFrame = true,
   showHeader = true,
   showProgression = true,
@@ -74,7 +77,11 @@ export default function TokenSwapInterface({
   primaryImage,
   chainId = 84532, // Default to Base Sepolia
   dexMeta = null,
+  tokenDecimals = 18,
 }: TokenSwapInterfaceProps) {
+  // If we just need a simple swap card, render it directly (without early return to respect hooks rules)
+  const useSimpleCard = !showHeader && !showProgression;
+
   const { walletAddress, isAuthenticated, connectWallet: authConnectWallet } = useAuth();
 
   // Contract state
@@ -93,7 +100,7 @@ export default function TokenSwapInterface({
 
     try {
       const chainIdHex = (await window.ethereum.request({ method: 'eth_chainId' })) as string;
-      return parseInt(chainIdHex, 16);
+      return Number.parseInt(chainIdHex, 16);
     } catch (error) {
       console.error('Failed to get chain ID:', error);
       return null;
@@ -176,6 +183,19 @@ export default function TokenSwapInterface({
     activeTab === 'buy' ? priceQuote : sellPriceQuote,
   );
   const [amount, setAmount] = useState('');
+  const [outputAmount, setOutputAmount] = useState('');
+  const [slippageBps, setSlippageBps] = useState(DEFAULT_SLIPPAGE_BPS);
+  const [fromToken, setFromToken] = useState<string>('ACES');
+  const [toToken, setToToken] = useState<string>(tokenSymbol);
+  const [stableBalances, setStableBalances] = useState<{ USDC: string; USDT: string; ETH: string }>(
+    {
+      USDC: '0',
+      USDT: '0',
+      ETH: '0',
+    },
+  );
+  const [percentageSelection, setPercentageSelection] = useState<number | null>(null);
+  const [slippageMenuOpen, setSlippageMenuOpen] = useState(false);
   /* TODO(Aerodrome API): Re-enable slippage controls when hooked into swap routing */
   // const [slippage, setSlippage] = useState('0.5');
   // const [showSlippageDropdown, setShowSlippageDropdown] = useState(false);
@@ -240,7 +260,7 @@ export default function TokenSwapInterface({
 
     // Get the input amount to pre-fill on Aerodrome
     const amountParam =
-      amount && parseFloat(amount) > 0 ? `&exactAmount=${amount}&exactField=input` : '';
+      amount && Number.parseFloat(amount) > 0 ? `&exactAmount=${amount}&exactField=input` : '';
 
     // On Sell tab, swap the direction: sell token for ACES
     // On Buy tab, keep normal: buy token with ACES
@@ -278,7 +298,7 @@ export default function TokenSwapInterface({
 
   const handleAmountChange = useCallback(
     (rawValue: string) => {
-      if (enforceCurveLimit) {
+      if (!isDexMode && enforceCurveLimit) {
         const integerPortion = rawValue.split('.')[0] ?? '';
         const digitsOnly = integerPortion.replace(/\D/g, '');
 
@@ -292,14 +312,15 @@ export default function TokenSwapInterface({
         return;
       }
 
+      setPercentageSelection(null);
       setAmount(rawValue);
     },
-    [enforceCurveLimit],
+    [enforceCurveLimit, isDexMode],
   );
 
   const handleAmountKeyDown = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
-      if (!enforceCurveLimit) {
+      if (!enforceCurveLimit || isDexMode) {
         return;
       }
 
@@ -315,22 +336,26 @@ export default function TokenSwapInterface({
         event.preventDefault();
       }
     },
-    [enforceCurveLimit],
+    [enforceCurveLimit, isDexMode],
   );
 
   const amountValueWei = useMemo(() => {
+    if (isDexMode) {
+      return null;
+    }
+
     const trimmed = (amount || '').trim();
     if (!trimmed) {
       return null;
     }
 
     try {
-      const parsed = ethers.utils.parseEther(trimmed);
+      const parsed = ethers.utils.parseUnits(trimmed, tokenDecimals);
       return parsed.gt(ethers.constants.Zero) ? parsed : null;
     } catch (error) {
       return null;
     }
-  }, [amount]);
+  }, [amount, isDexMode, tokenDecimals]);
 
   const amountExceedsRemaining = useMemo(() => {
     if (!enforceCurveLimit || !amountValueWei || !effectiveRemainingTokensWei) {
@@ -339,9 +364,184 @@ export default function TokenSwapInterface({
     return amountValueWei.gt(effectiveRemainingTokensWei);
   }, [amountValueWei, effectiveRemainingTokensWei, enforceCurveLimit]);
 
-  const hasValidAmount = Boolean(amountValueWei) && !amountExceedsRemaining;
+  const dexInputAmount = useMemo(() => {
+    if (!isDexMode) {
+      return null;
+    }
+    const value = Number.parseFloat((amount || '').trim());
+    if (!Number.isFinite(value) || value <= 0) {
+      return null;
+    }
+    return value;
+  }, [amount, isDexMode]);
 
-  const acesIconSrc = '/aces-logo.png';
+  const hasValidAmount = useMemo(() => {
+    if (isDexMode) {
+      return dexInputAmount !== null;
+    }
+    return Boolean(amountValueWei) && !amountExceedsRemaining;
+  }, [isDexMode, dexInputAmount, amountValueWei, amountExceedsRemaining]);
+
+  const listingTokenIcon = useMemo(
+    () =>
+      getValidImageSrc(primaryImage || imageGallery?.[0], undefined, {
+        width: 32,
+        height: 32,
+        text: tokenSymbol,
+      }) || '/aces-logo.png',
+    [primaryImage, imageGallery, tokenSymbol],
+  );
+
+  const baseTokenOptions = useMemo<TokenOption[]>(() => {
+    const base: TokenOption[] = [
+      {
+        symbol: 'ACES',
+        label: 'ACES',
+        address: dexAssetAddresses.ACES ?? '',
+        decimals: 18,
+        icon: '/aces-logo.png',
+        isBase: true,
+      },
+      {
+        symbol: 'USDC',
+        label: 'USDC',
+        address: dexAssetAddresses.USDC ?? '',
+        decimals: 6,
+        icon: '/svg/usdc.svg',
+        isBase: true,
+      },
+      {
+        symbol: 'USDT',
+        label: 'USDT',
+        address: dexAssetAddresses.USDT ?? '',
+        decimals: 6,
+        icon: '/svg/tether.svg',
+        isBase: true,
+      },
+      {
+        symbol: 'ETH',
+        label: 'wETH',
+        address: dexAssetAddresses.ETH ?? '',
+        decimals: 18,
+        icon: '/svg/eth.svg',
+        isBase: true,
+      },
+    ];
+
+    return base.filter((token) => Boolean(token.address));
+  }, [dexAssetAddresses]);
+
+  const tokenOptions = useMemo<Record<string, TokenOption>>(() => {
+    const entries: Record<string, TokenOption> = {};
+
+    baseTokenOptions.forEach((option) => {
+      entries[option.symbol] = option;
+    });
+
+    entries[tokenSymbol] = {
+      symbol: tokenSymbol,
+      label: tokenName ?? tokenSymbol,
+      address: (tokenAddress ?? '').toLowerCase(),
+      decimals: tokenDecimals,
+      icon: listingTokenIcon,
+      isBase: false,
+    };
+
+    return entries;
+  }, [baseTokenOptions, tokenSymbol, tokenName, tokenAddress, tokenDecimals, listingTokenIcon]);
+
+  const fromTokenOptions = useMemo(() => {
+    const options: TokenOption[] = [...baseTokenOptions];
+    if (tokenOptions[tokenSymbol]) {
+      options.push(tokenOptions[tokenSymbol]);
+    }
+    return options;
+  }, [baseTokenOptions, tokenOptions, tokenSymbol]);
+
+  const isSellingListing = useMemo(() => fromToken === tokenSymbol, [fromToken, tokenSymbol]);
+
+  const toTokenOptions = useMemo(() => {
+    if (isSellingListing) {
+      return tokenOptions.ACES
+        ? [tokenOptions.ACES]
+        : baseTokenOptions.filter((opt) => opt.symbol === 'ACES');
+    }
+
+    return tokenOptions[tokenSymbol] ? [tokenOptions[tokenSymbol]] : [];
+  }, [isSellingListing, tokenOptions, tokenSymbol, baseTokenOptions]);
+
+  useEffect(() => {
+    if (!isDexMode) {
+      return;
+    }
+
+    if (fromToken === tokenSymbol) {
+      return;
+    }
+
+    const supported = SUPPORTED_DEX_ASSETS.includes(
+      fromToken as (typeof SUPPORTED_DEX_ASSETS)[number],
+    );
+
+    if (!supported) {
+      setFromToken('ACES');
+    }
+  }, [isDexMode, fromToken, tokenSymbol]);
+
+  useEffect(() => {
+    if (!isDexMode) {
+      return;
+    }
+
+    const sellingListing = fromToken === tokenSymbol;
+
+    if (sellingListing) {
+      if (toToken !== 'ACES') {
+        setToToken('ACES');
+      }
+      if (activeTab !== 'sell') {
+        setActiveTab('sell');
+      }
+      if (paymentAsset !== 'ACES') {
+        setPaymentAsset('ACES');
+      }
+    } else {
+      if (toToken !== tokenSymbol) {
+        setToToken(tokenSymbol);
+      }
+      if (activeTab !== 'buy') {
+        setActiveTab('buy');
+      }
+
+      if (
+        SUPPORTED_DEX_ASSETS.includes(fromToken as (typeof SUPPORTED_DEX_ASSETS)[number]) &&
+        paymentAsset !== (fromToken as typeof paymentAsset)
+      ) {
+        setPaymentAsset(fromToken as typeof paymentAsset);
+      }
+    }
+  }, [
+    isDexMode,
+    fromToken,
+    tokenSymbol,
+    toToken,
+    activeTab,
+    paymentAsset,
+    setActiveTab,
+    setPaymentAsset,
+  ]);
+
+  useEffect(() => {
+    if (!isDexMode) {
+      return;
+    }
+
+    setAmount('');
+    setOutputAmount('');
+    setDexQuote(null);
+    setDexQuoteError(null);
+    setPercentageSelection(null);
+  }, [fromToken, toToken, isDexMode]);
 
   const remainingCurveTokensDisplay = useMemo(() => {
     if (remainingCurveTokens === null) {
@@ -354,6 +554,16 @@ export default function TokenSwapInterface({
 
   const amountError = useMemo(() => {
     if (!amount) {
+      return null;
+    }
+
+    if (isDexMode) {
+      if (!dexInputAmount) {
+        return 'Enter an amount greater than zero.';
+      }
+      if (dexQuoteError) {
+        return dexQuoteError;
+      }
       return null;
     }
 
@@ -377,24 +587,195 @@ export default function TokenSwapInterface({
     remainingCurveTokensDisplay,
     enforceCurveLimit,
     tokenSymbol,
+    isDexMode,
+    dexInputAmount,
+    dexQuoteError,
   ]);
 
   const paymentAssetOptions = useMemo(() => {
-    const baseOptions = [
-      { value: 'ACES', label: 'ACES', icon: acesIconSrc },
-      // { value: 'USDC', label: 'USDC', icon: '/svg/usdc.svg' },
-      // { value: 'USDT', label: 'USDT', icon: '/svg/tether.svg' },
-      // { value: 'ETH', label: 'wETH', icon: '/svg/eth.svg' },
-    ];
+    const baseOptions = baseTokenOptions.map((option) => ({
+      value: option.symbol,
+      label: option.label,
+      icon: option.icon,
+    }));
 
     if (!isDexMode) {
-      return baseOptions;
+      return baseOptions.filter((option) => option.value === 'ACES');
     }
 
     return baseOptions.filter((option) =>
       SUPPORTED_DEX_ASSETS.includes(option.value as (typeof SUPPORTED_DEX_ASSETS)[number]),
     );
-  }, [acesIconSrc, isDexMode]);
+  }, [baseTokenOptions, isDexMode]);
+
+  const getTokenBalance = useCallback(
+    (symbol: string) => {
+      if (symbol === tokenSymbol) {
+        return tokenBalance;
+      }
+      if (symbol === 'ACES') {
+        return acesBalance;
+      }
+      if (symbol === 'USDC' || symbol === 'USDT' || symbol === 'ETH') {
+        return stableBalances[symbol as keyof typeof stableBalances] ?? '0';
+      }
+      return '0';
+    },
+    [tokenSymbol, tokenBalance, acesBalance, stableBalances],
+  );
+
+  const getTokenDecimals = useCallback(
+    (symbol: string) => {
+      if (symbol === tokenSymbol) {
+        return tokenDecimals;
+      }
+      return tokenOptions[symbol]?.decimals ?? 18;
+    },
+    [tokenSymbol, tokenDecimals, tokenOptions],
+  );
+
+  const getTokenLabel = useCallback(
+    (symbol: string) => tokenOptions[symbol]?.label ?? symbol,
+    [tokenOptions],
+  );
+
+  const getTokenIcon = useCallback(
+    (symbol: string) => tokenOptions[symbol]?.icon ?? '/aces-logo.png',
+    [tokenOptions],
+  );
+
+  const formatAmountForDisplay = useCallback(
+    (value: string, symbol: string) => {
+      const parsed = Number.parseFloat(value || '0');
+      if (!Number.isFinite(parsed) || parsed === 0) {
+        return '0';
+      }
+
+      if (parsed < 0.0001) {
+        return '<0.0001';
+      }
+
+      const decimals = Math.min(getTokenDecimals(symbol), 6);
+      return parsed.toLocaleString(undefined, { maximumFractionDigits: decimals });
+    },
+    [getTokenDecimals],
+  );
+
+  const trimTrailingZeros = useCallback((value: string) => {
+    if (!value.includes('.')) {
+      return value;
+    }
+    return value.replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1');
+  }, []);
+
+  const handlePercentageSelection = useCallback(
+    (percentageValue: number) => {
+      if (!isDexMode) {
+        return;
+      }
+
+      const balanceRaw = getTokenBalance(fromToken) || '0';
+      const decimals = getTokenDecimals(fromToken);
+
+      try {
+        setDexQuote(null);
+        setDexQuoteError(null);
+        setOutputAmount('');
+        const balanceUnits = ethers.utils.parseUnits(balanceRaw || '0', decimals);
+        if (balanceUnits.isZero()) {
+          setAmount('');
+          setPercentageSelection(percentageValue);
+          return;
+        }
+
+        const amountUnits = balanceUnits.mul(percentageValue).div(100);
+        const formatted = ethers.utils.formatUnits(amountUnits, decimals);
+        const normalized = amountUnits.isZero() ? '0' : trimTrailingZeros(formatted);
+        setPercentageSelection(percentageValue);
+        setAmount(normalized);
+      } catch (error) {
+        console.error('Failed to apply percentage selection:', error);
+      }
+    },
+    [
+      isDexMode,
+      getTokenBalance,
+      fromToken,
+      getTokenDecimals,
+      trimTrailingZeros,
+      setAmount,
+      setDexQuote,
+      setDexQuoteError,
+      setOutputAmount,
+    ],
+  );
+
+  const midPrice = useMemo(() => {
+    if (!isDexMode || !dexQuote || !dexInputAmount) {
+      return null;
+    }
+
+    const inputAmount = Number.parseFloat(dexQuote.inputAmount || amount || '0');
+    const outputAmountValue = Number.parseFloat(dexQuote.expectedOutput || '0');
+
+    if (!Number.isFinite(inputAmount) || inputAmount <= 0 || !Number.isFinite(outputAmountValue)) {
+      return null;
+    }
+
+    if (outputAmountValue <= 0) {
+      return null;
+    }
+
+    const price = outputAmountValue / inputAmount;
+    if (!Number.isFinite(price) || price <= 0) {
+      return null;
+    }
+
+    const inverse = inputAmount / outputAmountValue;
+
+    return {
+      price,
+      inverse,
+      from: getTokenLabel(fromToken),
+      to: getTokenLabel(toToken),
+    };
+  }, [isDexMode, dexQuote, dexInputAmount, amount, fromToken, toToken, getTokenLabel]);
+
+  const handleFlipTokens = useCallback(() => {
+    if (!isDexMode) {
+      return;
+    }
+
+    if (fromToken === tokenSymbol) {
+      setFromToken('ACES');
+      setToToken(tokenSymbol);
+    } else {
+      setFromToken(tokenSymbol);
+      setToToken('ACES');
+    }
+    setPercentageSelection(null);
+    setAmount('');
+    setOutputAmount('');
+    setDexQuote(null);
+    setDexQuoteError(null);
+  }, [isDexMode, fromToken, tokenSymbol, setDexQuote, setDexQuoteError, setOutputAmount]);
+
+  const formattedOutputAmount = useMemo(() => {
+    if (!outputAmount) {
+      return '';
+    }
+    return formatAmountForDisplay(outputAmount, toToken);
+  }, [outputAmount, formatAmountForDisplay, toToken]);
+
+  const fromTokenBalanceDisplay = useMemo(
+    () => formatAmountForDisplay(getTokenBalance(fromToken), fromToken),
+    [formatAmountForDisplay, getTokenBalance, fromToken],
+  );
+
+  const toTokenBalanceDisplay = useMemo(
+    () => formatAmountForDisplay(getTokenBalance(toToken), toToken),
+    [formatAmountForDisplay, getTokenBalance, toToken],
+  );
 
   const getDisplaySymbol = useCallback((symbol: string) => {
     if (!symbol) {
@@ -411,16 +792,6 @@ export default function TokenSwapInterface({
     return parsed.toFixed(2);
   }, []);
 
-  const paymentAssetDisplay = useMemo(() => {
-    return getDisplaySymbol(paymentAsset);
-  }, [paymentAsset, getDisplaySymbol]);
-
-  const acesQuote = useMemo(() => {
-    const rawQuote = activeTab === 'buy' ? priceQuote : sellPriceQuote;
-    const parsed = Number.parseFloat(rawQuote || '0');
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-  }, [activeTab, priceQuote, sellPriceQuote]);
-
   const usdEquivalent = useMemo(() => {
     if (!usdConversion?.usdValue) {
       return null;
@@ -429,47 +800,19 @@ export default function TokenSwapInterface({
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
   }, [usdConversion]);
 
-  const paymentAssetQuote = useMemo(() => {
-    if (!hasValidAmount || !usdEquivalent || activeTab !== 'buy' || isAcesPayment) {
-      return null;
+  const disableDexSwap = useMemo(() => {
+    if (!isDexMode) {
+      return false;
     }
+    return !hasValidAmount || !dexQuote || dexQuoteLoading || dexSwapPending;
+  }, [isDexMode, hasValidAmount, dexQuote, dexQuoteLoading, dexSwapPending]);
 
-    if (paymentAsset === 'USDC' || paymentAsset === 'USDT') {
-      return {
-        label: paymentAsset,
-        value: `${usdEquivalent.toFixed(2)} ${paymentAsset}`,
-      };
-    }
-
-    if (paymentAsset === 'ETH') {
-      const ethAmount = usdEquivalent / DEFAULT_ETH_PRICE;
-      return {
-        label: 'wETH',
-        value: `${ethAmount.toFixed(6)} wETH`,
-      };
-    }
-
-    return null;
-  }, [hasValidAmount, usdEquivalent, activeTab, isAcesPayment, paymentAsset]);
-
-  const inputUnitLabel = useMemo(() => {
-    const unit = isDexMode && activeTab === 'buy' ? paymentAssetDisplay : tokenSymbol;
-    return `$ ${unit}`;
-  }, [isDexMode, activeTab, paymentAssetDisplay, tokenSymbol]);
-
-  const disableBuyAction = isDexMode
-    ? !hasValidAmount || !dexQuote || dexQuoteLoading || !dexTradeUrl || dexSwapPending
-    : !hasValidAmount || !!loading || combinedIsBonded;
-  const disableSellAction = isDexMode
-    ? !hasValidAmount || !dexQuote || dexQuoteLoading || !dexTradeUrl || dexSwapPending
-    : !hasValidAmount || !!loading || combinedIsBonded;
-  const buyButtonLabel = isDexMode
-    ? dexSwapPending
-      ? 'Swapping...'
-      : 'Swap'
-    : isAcesPayment
-      ? `Buy ${tokenSymbol}`
-      : `Buy ${tokenSymbol} with ${paymentAssetDisplay}`;
+  const disableBuyAction = !isDexMode
+    ? !hasValidAmount || !!loading || combinedIsBonded
+    : disableDexSwap;
+  const disableSellAction = !isDexMode
+    ? !hasValidAmount || !!loading || combinedIsBonded
+    : disableDexSwap;
 
   const refreshBalances = useCallback(async () => {
     if (!acesContract || !tokenAddress || !signer) {
@@ -488,6 +831,40 @@ export default function TokenSwapInterface({
       const formattedTokenBalance = ethers.utils.formatEther(tokenBalanceValue);
       setTokenBalance(formattedTokenBalance);
 
+      try {
+        const baseTokenConfigs = [
+          { symbol: 'USDC', address: dexAssetAddresses.USDC, decimals: 6 },
+          { symbol: 'USDT', address: dexAssetAddresses.USDT, decimals: 6 },
+          { symbol: 'ETH', address: dexAssetAddresses.ETH, decimals: 18 },
+        ].filter((config) => config.address);
+
+        if (baseTokenConfigs.length > 0) {
+          const erc20Instances = baseTokenConfigs.map(
+            (config) => new ethers.Contract(config.address, ERC20_ABI, signer),
+          );
+
+          const balances = await Promise.all(
+            erc20Instances.map((contract) => contract.balanceOf(address)),
+          );
+
+          const formatted = baseTokenConfigs.reduce(
+            (acc, config, index) => {
+              const balanceValue = balances[index];
+              acc[config.symbol as 'USDC' | 'USDT' | 'ETH'] = ethers.utils.formatUnits(
+                balanceValue,
+                config.decimals,
+              );
+              return acc;
+            },
+            { USDC: stableBalances.USDC, USDT: stableBalances.USDT, ETH: stableBalances.ETH },
+          );
+
+          setStableBalances(formatted);
+        }
+      } catch (stableBalanceError) {
+        console.error('Failed to refresh stable balances:', stableBalanceError);
+      }
+
       if (factoryContract) {
         try {
           const tokenInfo = await factoryContract.tokens(tokenAddress);
@@ -499,8 +876,8 @@ export default function TokenSwapInterface({
             : ethers.constants.Zero;
           setRemainingCurveTokensWei(remainingWei);
 
-          const currentSupply = parseFloat(ethers.utils.formatEther(totalSupply));
-          const maxSupply = parseFloat(ethers.utils.formatEther(tokensBondedAt));
+          const currentSupply = Number.parseFloat(ethers.utils.formatEther(totalSupply));
+          const maxSupply = Number.parseFloat(ethers.utils.formatEther(tokensBondedAt));
           const percentage = maxSupply > 0 ? (currentSupply / maxSupply) * 100 : 0;
 
           setTokenBonded(tokenInfo.tokenBonded);
@@ -541,7 +918,7 @@ export default function TokenSwapInterface({
         setRemainingCurveTokensWei(null);
       }
     }
-  }, [acesContract, tokenAddress, signer, factoryContract]);
+  }, [acesContract, tokenAddress, signer, factoryContract, dexAssetAddresses, stableBalances]);
 
   const ensureDexAllowance = useCallback(
     async (tokenAddr: string, amountRaw: string) => {
@@ -746,10 +1123,6 @@ export default function TokenSwapInterface({
   const handleBuyClick = async () => {
     if (isDexMode) {
       await executeDexSwap();
-      return;
-    }
-
-    if (disableBuyAction) {
       return;
     }
 
@@ -963,6 +1336,7 @@ export default function TokenSwapInterface({
     if (!isDexMode) {
       setDexQuote(null);
       setDexQuoteError(null);
+      setOutputAmount('');
       return;
     }
 
@@ -974,6 +1348,7 @@ export default function TokenSwapInterface({
     if (!tokenAddress || !hasValidAmount) {
       setDexQuote(null);
       setDexQuoteError(null);
+      setOutputAmount('');
       return;
     }
 
@@ -981,21 +1356,23 @@ export default function TokenSwapInterface({
     setDexQuoteLoading(true);
 
     // On Sell tab, we're selling the token for ACES
-    // On Buy tab, we're buying the token with ACES
+    // On Buy tab, we're buying the token with ACES/USDC/USDT/wETH
     const inputAsset = activeTab === 'sell' ? 'TOKEN' : paymentAsset;
 
     DexApi.getQuote(tokenAddress, {
       inputAsset,
       amount,
-      slippageBps: DEFAULT_SLIPPAGE_BPS,
+      slippageBps,
     })
       .then((result) => {
         if (cancelled) return;
         if (result.success && result.data) {
           setDexQuote(result.data);
           setDexQuoteError(null);
+          setOutputAmount(result.data.expectedOutput);
         } else {
           setDexQuote(null);
+          setOutputAmount('');
           setDexQuoteError(
             result.error instanceof Error ? result.error.message : 'Failed to fetch quote',
           );
@@ -1005,6 +1382,7 @@ export default function TokenSwapInterface({
         if (cancelled) return;
         console.error('Failed to fetch DEX quote:', error);
         setDexQuote(null);
+        setOutputAmount('');
         setDexQuoteError(error instanceof Error ? error.message : 'Failed to fetch quote');
       })
       .finally(() => {
@@ -1016,7 +1394,16 @@ export default function TokenSwapInterface({
     return () => {
       cancelled = true;
     };
-  }, [isDexMode, tokenAddress, paymentAsset, amount, hasValidAmount, dexMeta, activeTab]);
+  }, [
+    isDexMode,
+    tokenAddress,
+    paymentAsset,
+    amount,
+    hasValidAmount,
+    dexMeta,
+    activeTab,
+    slippageBps,
+  ]);
 
   const handleConnectWallet = useCallback(async () => {
     try {
@@ -1133,7 +1520,6 @@ export default function TokenSwapInterface({
       await refreshBalances();
 
       setLoading('');
-      setAmount('');
       setNetworkError(null); // Clear any previous network errors on success
       setTransactionStatus({ type: 'success', message: 'Transaction successful.' });
     } catch (error) {
@@ -1158,19 +1544,80 @@ export default function TokenSwapInterface({
     }
   };
 
+  // Swap logic for DEX
+  const handleSwapClick = async () => {
+    if (isDexMode) {
+      await executeDexSwap();
+    } else {
+      // Fallback to bonding curve logic if not in DEX mode
+      if (activeTab === 'buy') {
+        await handleBuyClick();
+      } else {
+        await sellTokens();
+      }
+    }
+  };
+
+  const handleLegacyTokenSelectorChange = useCallback(
+    (type: 'from' | 'to', value: string) => {
+      setDexQuote(null);
+      setDexQuoteError(null);
+      setOutputAmount('');
+      setAmount('');
+
+      if (type === 'from') {
+        if (value === 'RWA') {
+          setActiveTab('sell');
+          setPaymentAsset('ACES');
+        } else {
+          setActiveTab('buy');
+          setPaymentAsset(value as typeof paymentAsset);
+        }
+      } else {
+        if (value === 'ACES') {
+          setActiveTab('sell');
+          setPaymentAsset('ACES');
+        } else {
+          setActiveTab('buy');
+        }
+      }
+    },
+    [
+      setDexQuote,
+      setDexQuoteError,
+      setOutputAmount,
+      setAmount,
+      setActiveTab,
+      setPaymentAsset,
+      paymentAsset,
+    ],
+  );
+
+  // Render simple SwapCard when no header/progression needed
+  if (useSimpleCard) {
+    return (
+      <SwapCard
+        tokenSymbol={tokenSymbol}
+        tokenAddress={tokenAddress}
+        chainId={chainId}
+        dexMeta={dexMeta}
+      />
+    );
+  }
+
   return (
     <div className="h-full">
       <div
         className={cn(
-          'bg-black  h-full flex flex-col relative',
+          'bg-black h-full flex flex-col relative',
           showFrame
-            ? 'rounded-lg border border-[#D0B284]/20 p-4 sm:p-6'
+            ? 'rounded-lg border border-[#D0B284]/20'
             : cn('px-4 sm:px-6 pb-6', showHeader ? 'pt-4' : 'pt-2'),
         )}
       >
         {showHeader && (
           <>
-            <div className={cn('mb-4 sm:mb-6', !showFrame && 'px-0')}>
+            <div className={cn('mb-4 sm:mb-6', showFrame ? 'px-6 pt-6' : '')}>
               <div className="flex flex-col sm:flex-row items-start gap-4 mb-4">
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
@@ -1331,9 +1778,7 @@ export default function TokenSwapInterface({
           >
             <div className="flex items-center justify-between">
               <div
-                className={`flex items-center text-sm ${
-                  unsupportedNetwork ? 'text-red-200' : 'text-orange-200'
-                }`}
+                className={`flex items-center text-sm ${unsupportedNetwork ? 'text-red-200' : 'text-orange-200'}`}
               >
                 <span className="mr-2">{unsupportedNetwork ? '🚫' : '⚠️'}</span>
                 <div>
@@ -1398,212 +1843,161 @@ export default function TokenSwapInterface({
           </div>
         )}
 
-        {/* Buy/Sell Tabs */}
-        <div className="flex mb-6 bg- rounded-lg p-1 border border-[#D0B284]/20">
-          <button
-            onClick={() => setActiveTab('buy')}
-            className={`flex-1 py-3 px-4 rounded-md font-semibold transition-all duration-200 ${
-              activeTab === 'buy'
-                ? 'bg-[#184D37] text-white shadow-lg'
-                : 'text-[#D0B284] hover:text-white hover:bg-[#D0B284]/10'
-            }`}
-          >
-            Buy
-          </button>
-          <button
-            onClick={() => setActiveTab('sell')}
-            className={`flex-1 py-3 px-4 rounded-md font-semibold transition-all duration-200 ${
-              activeTab === 'sell'
-                ? 'bg-[#8B4513] text-white shadow-lg'
-                : 'text-[#D0B284] hover:text-white hover:bg-[#D0B284]/10'
-            }`}
-          >
-            Sell
-          </button>
-        </div>
-
-        {activeTab === 'buy' && (
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <span className="text-xs font-semibold uppercase tracking-[0.3em] text-[#D0B284]/60">
-              Pay with
-            </span>
-            <div className="flex items-center gap-2">
-              <Select
-                value={paymentAsset}
-                onValueChange={(value) => setPaymentAsset(value as typeof paymentAsset)}
-              >
-                <SelectTrigger className="h-10 w-36 bg-black border border-[#D0B284]/30 text-[#D0B284] focus:ring-0 focus:border-[#D0B284]/60">
-                  <div className="flex items-center gap-2">
-                    {/* {selectedPaymentOption && (
-                      <Image
-                        src={selectedPaymentOption.icon}
-                        alt={`${selectedPaymentOption.label} icon`}
-                        width={18}
-                        height={18}
-                        className="h-4.5 w-4.5 rounded-full object-cover"
-                        unoptimized={true}
-                      />
-                    )} */}
-                    <SelectValue placeholder="Select" />
-                  </div>
-                </SelectTrigger>
-                <SelectContent className="bg-[#101711] border border-[#D0B284]/30 text-[#D0B284]">
-                  {paymentAssetOptions.map((option) => (
-                    <SelectItem
-                      key={option.value}
-                      value={option.value}
-                      className="focus:bg-[#1e3022] focus:text-[#F3E9C9]"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Image
-                          src={option.icon}
-                          alt={`${option.label} icon`}
-                          width={18}
-                          height={18}
-                          className="h-4.5 w-4.5 rounded-full object-cover"
-                          unoptimized={true}
-                        />
-                        <span>{option.label}</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        )}
-
-        {/* Slippage dropdown temporarily disabled until Aerodrome API integration */}
-        {/*
-        <div className="flex justify-end mb-4">
-          <div className="relative">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowSlippageDropdown(!showSlippageDropdown)}
-              className="text-[#D0B284] hover:text-white border border-[#D0B284]/20 hover:border-[#D0B284]/40"
-            >
-              Slippage: {slippage}%
-            </Button>
-
-            {showSlippageDropdown && (
-              <div className="absolute top-full right-0 mt-1 bg-[#151c16] border border-[#D0B284]/30 rounded-lg shadow-lg z-50 min-w-[80px]">
-                {slippageOptions.map((option) => (
-                  <button
-                    key={option}
-                    onClick={() => {
-                      setSlippage(option);
-                      setShowSlippageDropdown(false);
-                    }}
-                    className={`w-full px-3 py-2 text-sm text-left hover:bg-[#D0B284]/10 transition-colors ${
-                      slippage === option
-                        ? 'text-[#D0B284] bg-[#D0B284]/10'
-                        : 'text-[#D0B284]/70 hover:text-[#D0B284]'
-                    } ${option === slippageOptions[0] ? 'rounded-t-lg' : ''} ${
-                      option === slippageOptions[slippageOptions.length - 1] ? 'rounded-b-lg' : ''
-                    }`}
-                  >
-                    {option}%
-                  </button>
-                ))}
+        {/* Swap interface */}
+        <div className={cn('flex-1 space-y-6', showFrame ? 'px-6 pb-6' : '')}>
+          {isDexMode ? (
+            <>
+              {/* Use SwapCard for DEX mode */}
+              <div className="mx-auto w-full max-w-[560px]">
+                <SwapCard
+                  tokenSymbol={tokenSymbol}
+                  tokenAddress={tokenAddress}
+                  chainId={chainId}
+                  dexMeta={dexMeta}
+                  onSwapComplete={refreshBalances}
+                />
               </div>
-            )}
-          </div>
-        </div>
-        */}
-
-        {/* Input Field */}
-        <div className="mb-6">
-          <div className="relative">
-            <Input
-              type="number"
-              placeholder="0"
-              value={amount}
-              onChange={(e) => handleAmountChange(e.target.value)}
-              onKeyDown={handleAmountKeyDown}
-              step={enforceCurveLimit ? 1 : 'any'}
-              inputMode={enforceCurveLimit ? 'numeric' : 'decimal'}
-              aria-invalid={Boolean(amountError)}
-              className={cn(
-                'h-16 border text-2xl font-bold bg-[#1a2318] text-[#D0B284] placeholder:text-[#D0B284]/50 pr-20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
-                amountError
-                  ? 'border-red-500/60 focus-visible:ring-red-500/40'
-                  : 'border-[#D0B284]/20 focus-visible:ring-[#D0B284]/40',
-              )}
-            />
-            <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
-              <span className="text-[#D0B284] font-semibold">{inputUnitLabel}</span>
-            </div>
-          </div>
-          {amountError ? (
-            <p className="mt-2 text-xs text-red-300">{amountError}</p>
-          ) : enforceCurveLimit ? (
-            <p className="mt-2 text-xs text-[#D0B284]/70">
-              Bonding curve purchases require whole-token amounts.
-            </p>
-          ) : null}
-        </div>
-
-        {/* Buy/Sell Button */}
-        <div className="mb-6 space-y-3">
-          {!isAuthenticated || !provider ? (
-            <Button
-              onClick={handleConnectWallet}
-              disabled={!!loading}
-              className="w-full h-14 bg-[#D0B284]/10 hover:bg-[#D0B284]/20 border border-[#D0B284] text-[#D0B284] font-proxima-nova font-bold text-lg rounded-lg disabled:opacity-50"
-            >
-              {loading || 'Connect Wallet'}
-            </Button>
-          ) : activeTab === 'buy' ? (
-            <Button
-              onClick={handleBuyClick}
-              disabled={disableBuyAction}
-              className="w-full h-14 bg-[#D0B284]/10 hover:bg-[#D0B284]/20 border border-[#D0B284] text-[#D0B284] font-proxima-nova font-bold text-lg rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isDexMode ? (
-                dexSwapPending || loading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" /> {loading || 'Swapping...'}
-                  </span>
-                ) : (
-                  <div className="flex flex-col items-center gap-0.5">
-                    <span className="text-lg font-bold">{buyButtonLabel}</span>
-                    <span className="text-[10px] opacity-60 uppercase tracking-wider">
-                      Powered by Aerodrome
-                    </span>
-                  </div>
-                )
-              ) : combinedIsBonded ? (
-                'Bonding Complete - Trading Disabled'
-              ) : (
-                loading || buyButtonLabel
-              )}
-            </Button>
+            </>
           ) : (
-            <Button
-              onClick={isDexMode ? handleBuyClick : sellTokens}
-              disabled={disableSellAction}
-              className="w-full h-14 bg-[#8B4513] hover:bg-[#8B4513]/90 text-white font-proxima-nova font-bold text-lg rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isDexMode ? (
-                dexSwapPending || loading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" /> {loading || 'Swapping...'}
+            <>
+              <div className="rounded-xl border border-[#D0B284]/20 bg-[#0F1511] p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold uppercase tracking-[0.3em] text-[#D0B284]/60">
+                    Sell
                   </span>
-                ) : (
-                  <div className="flex flex-col items-center gap-0.5">
-                    <span className="text-lg font-bold">Swap</span>
-                    <span className="text-[10px] opacity-60 uppercase tracking-wider">
-                      Powered by Aerodrome
-                    </span>
+                  <span className="text-[11px] text-[#D0B284]/70">
+                    Balance {Number.parseFloat(acesBalance).toFixed(4)} ACES
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-[130px]">
+                    <select
+                      className="w-full h-10 rounded-lg border border-[#D0B284]/30 bg-black text-[#D0B284] px-3"
+                      value={activeTab === 'sell' ? 'RWA' : paymentAsset}
+                      onChange={(e) => {
+                        handleLegacyTokenSelectorChange('from', e.target.value);
+                        setDexQuote(null);
+                      }}
+                    >
+                      {activeTab === 'sell' ? (
+                        <option value="RWA">{tokenSymbol}</option>
+                      ) : (
+                        paymentAssetOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))
+                      )}
+                    </select>
                   </div>
-                )
-              ) : combinedIsBonded ? (
-                'Bonding Complete - Trading Disabled'
-              ) : (
-                loading || `Sell ${tokenSymbol}`
+                  <input
+                    value={amount}
+                    onChange={(e) => handleAmountChange(e.target.value)}
+                    onKeyDown={handleAmountKeyDown}
+                    placeholder="0"
+                    inputMode={enforceCurveLimit ? 'numeric' : 'decimal'}
+                    aria-invalid={Boolean(amountError)}
+                    className={cn(
+                      'flex-1 h-14 rounded-lg border bg-[#1a2318] text-[#D0B284] text-xl font-bold px-3 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
+                      amountError
+                        ? 'border-red-500/60 focus-visible:ring-red-500/40'
+                        : 'border-[#D0B284]/20 focus-visible:ring-[#D0B284]/40',
+                    )}
+                  />
+                </div>
+                {amountError ? (
+                  <p className="mt-2 text-xs text-red-300">{amountError}</p>
+                ) : enforceCurveLimit ? (
+                  <p className="mt-2 text-xs text-[#D0B284]/70">
+                    Bonding curve purchases require whole-token amounts.
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="flex items-center justify-center">
+                <button
+                  type="button"
+                  disabled
+                  className="h-8 w-8 rounded-full border border-[#D0B284]/30 text-[#D0B284]/50"
+                >
+                  ↕
+                </button>
+              </div>
+
+              <div className="rounded-xl border border-[#D0B284]/20 bg-[#0F1511] p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold uppercase tracking-[0.3em] text-[#D0B284]/60">
+                    Buy
+                  </span>
+                  <span className="text-[11px] text-[#D0B284]/70">
+                    Balance {Number.parseFloat(tokenBalance).toFixed(4)} {tokenSymbol}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-[130px]">
+                    <select
+                      className="w-full h-10 rounded-lg border border-[#D0B284]/30 bg-black text-[#D0B284] px-3"
+                      value={activeTab === 'sell' ? 'ACES' : 'RWA'}
+                      onChange={(e) => {
+                        handleLegacyTokenSelectorChange('to', e.target.value);
+                        setDexQuote(null);
+                      }}
+                    >
+                      <option value="RWA">{tokenSymbol}</option>
+                      <option value="ACES">ACES</option>
+                    </select>
+                  </div>
+                  <input
+                    value={amount}
+                    readOnly
+                    className="flex-1 h-14 rounded-lg border border-[#D0B284]/10 bg-[#121a13] text-[#D0B284]/70 text-xl font-bold px-3"
+                  />
+                </div>
+              </div>
+
+              <div>
+                {!isAuthenticated || !provider ? (
+                  <Button
+                    onClick={handleConnectWallet}
+                    disabled={!!loading}
+                    className="w-full h-14 bg-[#D0B284]/10 hover:bg-[#D0B284]/20 border border-[#D0B284] text-[#D0B284] font-proxima-nova font-bold text-lg rounded-lg disabled:opacity-50"
+                  >
+                    {loading || 'Connect Wallet'}
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={handleSwapClick}
+                    disabled={activeTab === 'sell' ? disableSellAction : disableBuyAction}
+                    className="w-full h-14 bg-[#D0B284]/10 hover:bg-[#D0B284]/20 border border-[#D0B284] text-[#D0B284] font-proxima-nova font-bold text-lg rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {loading ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" /> {loading}
+                      </span>
+                    ) : activeTab === 'buy' ? (
+                      combinedIsBonded ? (
+                        'Bonding Complete'
+                      ) : (
+                        'Buy'
+                      )
+                    ) : (
+                      'Sell'
+                    )}
+                  </Button>
+                )}
+              </div>
+
+              {hasValidAmount && usdConversion?.usdValue && (
+                <div className="text-center text-xs text-[#D0B284]/80">
+                  {Number.parseFloat(usdConversion.usdValue) < 0.01
+                    ? '≈ <$0.01 USD'
+                    : `≈ $${usdConversion.usdValue} USD`}
+                  {usdConversion.isStale && (
+                    <span className="ml-1 text-[#D0B284]/50">(cached)</span>
+                  )}
+                </div>
               )}
-            </Button>
+            </>
           )}
 
           {transactionStatus && (
@@ -1624,116 +2018,6 @@ export default function TokenSwapInterface({
               >
                 Dismiss
               </button>
-            </div>
-          )}
-        </div>
-
-        {/* Quote Section */}
-        <div className="min-h-[140px]">
-          {hasValidAmount && (
-            <div className="p-3 bg-[#1a2318]/50 rounded-lg border border-[#D0B284]/20 space-y-3">
-              {isDexMode ? (
-                // DEX Mode Quote
-                dexQuoteLoading ? (
-                  <div className="flex items-center justify-center gap-2 py-2">
-                    <Loader2 className="h-4 w-4 animate-spin text-[#D0B284]" />
-                    <span className="text-sm text-[#D0B284]">Fetching quote…</span>
-                  </div>
-                ) : dexQuote ? (
-                  <>
-                    <div className="flex items-baseline justify-between">
-                      <span className="text-xs uppercase tracking-[0.3em] text-[#D0B284]/60">
-                        Expected output
-                      </span>
-                      <div className="text-right">
-                        <div className="font-mono text-lg font-bold text-[#D0B284]">
-                          {formatDexAmount(dexQuote.expectedOutput)}
-                        </div>
-                        <div className="text-xs font-semibold tracking-widest text-[#D0B284]/80">
-                          {activeTab === 'sell' ? paymentAssetDisplay : tokenSymbol}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-xs border-t border-[#D0B284]/10 pt-2">
-                      <div className="text-[#D0B284]/70">
-                        Minimum received ({dexQuote.slippageBps / 100}% slippage)
-                      </div>
-                      <div className="font-mono text-[#D0B284] mt-1">
-                        {formatDexAmount(dexQuote.minOutput)}{' '}
-                        <span className="text-[11px] font-semibold tracking-widest text-[#D0B284]/80">
-                          {activeTab === 'sell' ? paymentAssetDisplay : tokenSymbol}
-                        </span>
-                      </div>
-                    </div>
-                    {usdConversion && (
-                      <div className="text-center text-xs text-[#D0B284]/70 border-t border-[#D0B284]/10 pt-2">
-                        {Number.parseFloat(usdConversion.usdValue) < 0.01
-                          ? '≈ <$0.01 USD'
-                          : `≈ $${usdConversion.usdValue} USD`}
-                        {usdConversion.isStale && (
-                          <span className="ml-1 text-[#D0B284]/50">(cached)</span>
-                        )}
-                      </div>
-                    )}
-                    {dexQuote.intermediate && dexQuote.intermediate.length > 0 && (
-                      <div className="text-xs text-[#D0B284]/70 text-center border-t border-[#D0B284]/10 pt-2">
-                        Route: {getDisplaySymbol(dexQuote.inputAsset)}
-                        {dexQuote.intermediate.map(
-                          (step) => ` → ${getDisplaySymbol(step.symbol)}`,
-                        )}{' '}
-                        → {activeTab === 'sell' ? paymentAssetDisplay : tokenSymbol}
-                      </div>
-                    )}
-                  </>
-                ) : dexQuoteError ? (
-                  <div className="text-center text-xs text-red-300 py-2">{dexQuoteError}</div>
-                ) : (
-                  <div className="text-center text-xs text-[#D0B284]/70 py-2">
-                    Enter an amount to preview routing.
-                  </div>
-                )
-              ) : (
-                // Bonding Curve Mode Quote
-                <>
-                  <div className="text-center border-b border-[#D0B284]/20 pb-2">
-                    <div className="text-sm font-bold text-[#D0B284]">
-                      {activeTab === 'buy'
-                        ? `Quote ≈ ${acesQuote.toFixed(4)} $ACES`
-                        : `Receive ≈ ${sellPriceQuote} $ACES`}
-                    </div>
-
-                    {usdConversion && (
-                      <div className="text-xs text-[#D0B284]/70 mt-1">
-                        {Number.parseFloat(usdConversion.usdValue) < 0.01
-                          ? '≈ <$0.01 USD'
-                          : `≈ $${usdConversion.usdValue} USD`}
-                        {usdConversion.isStale && (
-                          <span className="ml-1 text-[#D0B284]/50">(cached)</span>
-                        )}
-                      </div>
-                    )}
-
-                    {priceLoading && (
-                      <div className="text-xs text-[#D0B284]/50 mt-1">Loading USD price...</div>
-                    )}
-                  </div>
-
-                  {activeTab === 'buy' && paymentAssetQuote && (
-                    <div className="text-center text-xs text-[#D0B284]/70">
-                      <span className="font-semibold text-[#D0B284]">
-                        Pay with {paymentAssetQuote.label}:
-                      </span>{' '}
-                      ≈ {paymentAssetQuote.value}
-                      {paymentAsset === 'ETH' && (
-                        <span className="mt-1 block text-[11px] text-[#D0B284]/50">
-                          Using placeholder wETH price (${DEFAULT_ETH_PRICE}). Update once live
-                          routing is wired.
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </>
-              )}
             </div>
           )}
         </div>

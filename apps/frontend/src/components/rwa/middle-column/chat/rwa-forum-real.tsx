@@ -374,7 +374,6 @@ export default function RWAForumReal({
                 Reply
               </Button>
             )}
-
           </div>
 
           {/* Reply Input */}
@@ -471,7 +470,7 @@ export default function RWAForumReal({
           value={newComment}
           onChange={(e) => setNewComment(e.target.value)}
           disabled={loading || !!rateLimitError}
-          className="flex-1 bg-[#151c16] border-[#D0B284]/20 text-white placeholder:text-[#DCDDCC] resize-none min-h-[72px] max-h-[220px] overflow-y-auto rounded-lg text-sm md:text-base"
+          className="flex-1 bg-black border-[#D0B284]/20 text-white placeholder:text-[#DCDDCC] resize-none min-h-[72px] max-h-[220px] overflow-y-auto rounded-lg text-sm md:text-base"
           style={{
             height: 'auto',
             minHeight: '72px',
@@ -498,14 +497,14 @@ export default function RWAForumReal({
   if (fetching && comments.length === 0) {
     if (isMobileVariant) {
       return (
-        <div className="bg-[#151c16] rounded-lg border border-[#D0B284]/20 p-6 text-center text-[#D0B284] text-sm">
+        <div className="bg-black rounded-lg border border-[#D0B284]/20 p-6 text-center text-[#D0B284] text-sm">
           Loading comments...
         </div>
       );
     }
 
     return (
-      <div className="h-full bg-[#151c16] relative flex flex-col">
+      <div className="h-full bg-black relative flex flex-col">
         <div className="px-4 py-3 border-b border-[#D0B284]/20 flex-shrink-0">
           <h3 className="text-white text-lg font-semibold font-spray-letters">Discussion</h3>
         </div>
@@ -547,7 +546,7 @@ export default function RWAForumReal({
   }
 
   return (
-    <div className="h-full bg-[#151c16] relative flex flex-col">
+    <div className="h-full bg-black relative flex flex-col">
       {/* Header */}
       <div className="px-4 py-3 border-b border-[#D0B284]/20 flex-shrink-0">
         <h3 className="text-[#D0B284] text-lg font-semibold font-spray-letters">
@@ -569,7 +568,7 @@ export default function RWAForumReal({
       )}
 
       {/* Comments Feed - Scrollable with bottom padding for comment input section */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#D0B284] scrollbar-track-[#151c16]/60 pb-32">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#D0B284] scrollbar-track-black/60 pb-32">
         <div className="px-4 py-4 space-y-4">
           {comments.length === 0 ? (
             <div className="text-center py-8 text-[#DCDDCC]">
@@ -582,7 +581,7 @@ export default function RWAForumReal({
       </div>
 
       {/* New Comment Section - Positioned at bottom of this container */}
-      <div className="absolute bottom-0 left-0 right-0 border-t border-[#D0B284]/20 bg-[#151c16] z-10 p-4">
+      <div className="absolute bottom-0 left-0 right-0 border-t border-[#D0B284]/20 bg-black z-10 p-4">
         {renderCommentComposer(false)}
       </div>
     </div>

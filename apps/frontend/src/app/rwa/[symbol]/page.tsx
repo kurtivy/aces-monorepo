@@ -3,7 +3,6 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import TokenSwapWithProgression from '@/components/rwa/token-swap-with-progression';
 import { LeftColumnNavigation } from '../../../components/rwa/left-column/left-column-navigation';
 import { MiddleContentArea } from '../../../components/rwa/middle-column/middle-content-area';
 import { ShareModal, DeliveryModal } from '../../../components/rwa/modals';
@@ -16,6 +15,7 @@ import { useDeviceCapabilities } from '@/contexts/device-provider';
 import MobileRWAItemPage from './mobile-page';
 import PageLoader from '@/components/loading/page-loader';
 import { NETWORK_CONFIG } from '@/lib/contracts/addresses';
+import RightPanel from '@/components/rwa/right-panel'; // Import the new RightPanel component
 
 export default function RWAItemPage() {
   const params = useParams();
@@ -57,7 +57,7 @@ export default function RWAItemPage() {
   // Error state
   if (error) {
     return (
-      <div className="h-screen bg-[#151c16] text-white flex items-center justify-center">
+      <div className="h-screen bg-black text-white flex items-center justify-center">
         <div className="text-center">
           <div className="text-red-400 text-xl mb-2">Error Loading Listing</div>
           <div className="text-gray-400">{error}</div>
@@ -69,7 +69,7 @@ export default function RWAItemPage() {
   // Loading state
   if (loading) {
     return (
-      <div className="h-screen bg-[#151c16]">
+      <div className="h-screen bg-black">
         <PageLoader />
       </div>
     );
@@ -78,7 +78,7 @@ export default function RWAItemPage() {
   // Not found state
   if (!listing) {
     return (
-      <div className="h-screen bg-[#151c16] text-white flex items-center justify-center">
+      <div className="h-screen bg-black text-white flex items-center justify-center">
         <div className="text-center">
           <div className="text-red-400 text-xl mb-2">Listing Not Found</div>
           <div className="text-gray-400">The asset &quot;{symbol}&quot; could not be found.</div>
@@ -94,7 +94,7 @@ export default function RWAItemPage() {
       {!isMobile && (
         <div className="hidden md:block">
           <div className="relative min-h-screen text-white overflow-hidden flex flex-col">
-            <DashedGridBackground className="absolute inset-0 -z-10" bg="#151c16" opacity={0.8} />
+            <DashedGridBackground className="absolute inset-0 -z-10" bg="#000000" opacity={0.8} />
 
             {/* Header */}
             <div className="relative z-50">
@@ -104,7 +104,7 @@ export default function RWAItemPage() {
             {/* Main 3-Column Layout */}
             <div className="flex flex-1 relative z-10 min-h-0">
               {/* Left Column - Navigation System */}
-              <div className="w-72 bg-[#151c16] overflow-hidden flex-shrink-0">
+              <div className="w-72 bg-black overflow-hidden flex-shrink-0">
                 <LeftColumnNavigation
                   sections={sections}
                   activeSection={navigation.activeSection}
@@ -125,7 +125,7 @@ export default function RWAItemPage() {
                 height="100%"
                 viewBox="0 0 2 100"
                 preserveAspectRatio="none"
-                className="pointer-events-none flex-shrink-0 bg-[#151c16]"
+                className="pointer-events-none flex-shrink-0 bg-black"
                 style={{ height: 'calc(100vh - 120px)', minHeight: '750px' }}
               >
                 <line
@@ -143,7 +143,7 @@ export default function RWAItemPage() {
               </svg>
 
               {/* Middle Column - Main Content with Internal Scrolling */}
-              <div className="flex-1 relative backdrop-blur-sm bg-[#151c16]">
+              <div className="flex-1 relative backdrop-blur-sm bg-black">
                 <div
                   className="h-full overflow-y-auto"
                   style={{
@@ -171,7 +171,7 @@ export default function RWAItemPage() {
                 height="100%"
                 viewBox="0 0 2 100"
                 preserveAspectRatio="none"
-                className="pointer-events-none flex-shrink-0 bg-[#151c16]"
+                className="pointer-events-none flex-shrink-0 bg-black"
                 style={{ height: 'calc(100vh - 120px)', minHeight: '750px' }}
               >
                 <line
@@ -189,30 +189,22 @@ export default function RWAItemPage() {
               </svg>
 
               {/* Right Column - Token Swap Interface with Progression */}
-              <div className="w-96 bg-[#151c16] flex-shrink-0 overflow-hidden backdrop-blur-sm">
+              <div className="w-96 bg-black flex-shrink-0 overflow-hidden backdrop-blur-sm">
                 <div
                   style={{
                     height: 'calc(100vh - 120px)',
                     minHeight: '750px',
                   }}
                 >
-                  <TokenSwapWithProgression
-                    tokenSymbol={listing.token?.symbol || listing.symbol}
-                    tokenPrice={
-                      listing.token?.currentPriceACES
-                        ? parseFloat(listing.token.currentPriceACES)
-                        : 0.000268
-                    }
-                    userBalance={1.2547} // TODO: Make dynamic later - this would come from wallet connection
-                    tokenAddress={listing.token?.contractAddress}
-                    tokenName={listing.token?.name || listing.title}
-                    // Image props - pass the first image from the gallery
-                    primaryImage={listing.imageGallery?.[0]}
-                    imageGallery={listing.imageGallery}
-                    // Progression bar props - now fetched from contract
-                    chainId={tokenChainId}
-                    dexMeta={listing.dex ?? null}
+                  {/* New composition */}
+                  <RightPanel
+                    listing={listing}
+                    selectedImageIndex={navigation.selectedImageIndex}
+                    onSelectImage={navigation.setSelectedImageIndex}
                   />
+                  {/* Legacy component kept for reference/rollback:
+                  <TokenSwapWithProgression ... />
+                  */}
                 </div>
               </div>
             </div>

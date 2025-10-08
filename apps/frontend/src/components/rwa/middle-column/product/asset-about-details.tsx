@@ -56,7 +56,7 @@ export default function AssetAboutDetails({ description, assetDetails }: AssetAb
   const hasDescription = description && description.trim().length > 0;
 
   return (
-    <div className="w-full flex flex-col rounded-lg border border-[#D0B284]/15 bg-[#151c16]">
+    <div className="w-full flex flex-col rounded-lg border border-[#D0B284]/15 bg-black">
       {/* Tab Navigation */}
       <div className="flex rounded-t-lg overflow-hidden">
         <button
@@ -97,9 +97,7 @@ export default function AssetAboutDetails({ description, assetDetails }: AssetAb
         <div className="p-4 md:p-6 space-y-4 text-sm md:text-base leading-relaxed">
           {activeTab === 'about' ? (
             hasDescription ? (
-              <div className="text-white whitespace-pre-wrap font-proxima-nova">
-                {description}
-              </div>
+              <div className="text-white whitespace-pre-wrap font-proxima-nova">{description}</div>
             ) : (
               <div className="text-center py-8">
                 <div className="text-gray-400 text-base md:text-lg">No description found</div>

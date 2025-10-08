@@ -130,7 +130,7 @@ export function MiddleContentArea({
                 />
               </>
             ) : (
-              <div className="p-8 bg-[#151c16] rounded-lg border border-[#D0B284]/20 text-center">
+              <div className="p-8 bg-black rounded-lg border border-[#D0B284]/20 text-center">
                 <div className="text-[#D0B284] text-lg font-semibold mb-2">
                   Trading Chart Unavailable
                 </div>

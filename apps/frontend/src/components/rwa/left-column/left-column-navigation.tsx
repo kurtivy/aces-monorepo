@@ -60,7 +60,7 @@ export function LeftColumnNavigation({
   };
 
   return (
-    <div className="relative flex h-full flex-col overflow-hidden bg-[#151c16]">
+    <div className="relative flex h-full flex-col overflow-hidden bg-black">
       <div className="relative flex-1 overflow-hidden">
         {contentSections.map(({ section, originalIndex }, index) => {
           const isActive = originalIndex === activeSection;
@@ -88,7 +88,7 @@ export function LeftColumnNavigation({
                 className={cn(
                   'h-14 cursor-pointer relative', // h-14 = 56px
                   'flex items-center justify-center overflow-hidden',
-                  'bg-[#151c16] text-[#D0B284]',
+                  'bg-black text-[#D0B284]',
                 )}
                 onClick={() => onSectionChange(originalIndex)}
               >
@@ -126,7 +126,7 @@ export function LeftColumnNavigation({
               {/* Card Content - Show for active content sections OR animating out card */}
               {shouldShowContent && (
                 <motion.div
-                  className="bg-[#151c16] overflow-y-auto relative"
+                  className="bg-black overflow-y-auto relative"
                   style={{
                     height: `${CONTENT_HEIGHT}px`,
                     width: '100%',
@@ -173,7 +173,7 @@ export function LeftColumnNavigation({
 
         {/* Overlay mask to keep incoming content hidden below the stack */}
         <div
-          className="pointer-events-none absolute left-0 right-0 bg-[#151c16]"
+          className="pointer-events-none absolute left-0 right-0 bg-black"
           style={{
             top: `${totalStackHeight}px`,
             bottom: 0,
@@ -213,7 +213,7 @@ export function LeftColumnNavigation({
               key={section.id}
               className={cn(
                 'h-14 cursor-pointer relative',
-                'flex items-center justify-center overflow-hidden bg-[#151c16] text-[#D0B284]',
+                'flex items-center justify-center overflow-hidden bg-black text-[#D0B284]',
               )}
               onClick={() => onSectionChange(originalIndex)}
             >

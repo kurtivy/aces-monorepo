@@ -23,6 +23,9 @@ export default function DynamicImageGallery({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
+  const clampedSelectedIndex =
+    images.length > 0 ? Math.min(Math.max(selectedImageIndex, 0), images.length - 1) : 0;
+  const selectedImage = images[clampedSelectedIndex];
 
   // Check scroll capabilities
   const checkScrollCapabilities = () => {
@@ -35,9 +38,9 @@ export default function DynamicImageGallery({
 
   // Auto-scroll to selected image when it changes
   useEffect(() => {
-    if (scrollContainerRef.current && images.length > 4) {
+    if (scrollContainerRef.current && images.length > 4 && images[clampedSelectedIndex]) {
       const container = scrollContainerRef.current;
-      const selectedElement = container.children[selectedImageIndex] as HTMLElement;
+      const selectedElement = container.children[clampedSelectedIndex] as HTMLElement;
 
       if (selectedElement) {
         const containerRect = container.getBoundingClientRect();
@@ -53,7 +56,7 @@ export default function DynamicImageGallery({
         }
       }
     }
-  }, [selectedImageIndex, images.length]);
+  }, [selectedImageIndex, clampedSelectedIndex, images.length]);
 
   // Check scroll capabilities on mount and when images change
   useEffect(() => {
@@ -85,7 +88,6 @@ export default function DynamicImageGallery({
   if (loading) {
     return (
       <div className="flex-shrink-0 p-3">
-        <h4 className="text-[#D0B284] text-xs font-bold mb-2 tracking-wider">GALLERY</h4>
         <div className="grid grid-cols-4 gap-1.5">
           {Array.from({ length: 4 }).map((_, index) => (
             <div
@@ -102,7 +104,6 @@ export default function DynamicImageGallery({
   if (!images || images.length === 0) {
     return (
       <div className="flex-shrink-0 p-3">
-        <h4 className="text-[#D0B284] text-xs font-bold mb-2 tracking-wider">GALLERY</h4>
         <div className="text-center py-8">
           <div className="text-gray-400 text-sm">No images available</div>
         </div>
@@ -112,7 +113,32 @@ export default function DynamicImageGallery({
 
   return (
     <div className="flex-shrink-0 p-3 bg-transparent">
-      <h4 className="text-[#D0B284] text-xs font-bold mb-2 tracking-wider">GALLERY</h4>
+      {/* Selected image preview */}
+      <div className="relative w-full h-40 sm:h-48 bg-black/30 rounded-xl overflow-hidden mb-3">
+        {selectedImage && (
+          <Image
+            src={getValidImageSrc(selectedImage.src, undefined, {
+              width: 640,
+              height: 480,
+              text: 'Preview Error',
+            })}
+            alt={selectedImage.alt}
+            fill
+            className="object-contain"
+            sizes="(max-width: 768px) 100vw, 33vw"
+            unoptimized={selectedImage.src?.includes('storage.googleapis.com')}
+            onError={createImageErrorHandler({
+              fallbackText: 'Preview Error',
+              width: 640,
+              height: 480,
+              onError: (src) => {
+                console.error('Gallery preview failed to load:', src);
+              },
+              maxRetries: 2,
+            })}
+          />
+        )}
+      </div>
 
       {/* Scrollable container */}
       <div className="relative">
@@ -154,18 +180,18 @@ export default function DynamicImageGallery({
               className={cn(
                 'aspect-square rounded border transition-all duration-200 overflow-hidden cursor-pointer flex-shrink-0',
                 images.length > 4 ? 'w-16' : '',
-                selectedImageIndex === index
+                clampedSelectedIndex === index
                   ? 'border-[#D0B284] ring-2 ring-[#D0B284]/50'
                   : 'border-[#D0B284]/20 hover:border-[#D0B284]',
               )}
               onClick={() => onImageSelect(index)}
             >
               <Image
-                src={getValidImageSrc(
-                  image.thumbnail || image.src,
-                  undefined,
-                  { width: 100, height: 100, text: 'Error' }
-                )}
+                src={getValidImageSrc(image.thumbnail || image.src, undefined, {
+                  width: 100,
+                  height: 100,
+                  text: 'Error',
+                })}
                 alt={image.alt}
                 width={100}
                 height={100}

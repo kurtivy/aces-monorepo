@@ -12,10 +12,7 @@ import { mockImages } from '../../../constants/rwa';
 import BondingCurveChart from './overview/bonding-curve-chart';
 import { useTokenHolderCount } from '@/hooks/rwa/use-token-holder-count';
 import { NETWORK_CONFIG } from '@/lib/contracts/addresses';
-import {
-  createImageErrorHandler,
-  getValidImageSrc,
-} from '@/lib/utils/image-error-handler';
+import { createImageErrorHandler, getValidImageSrc } from '@/lib/utils/image-error-handler';
 
 interface DynamicActiveSectionContentProps extends ActiveSectionContentProps {
   listing?: DatabaseListing | null;
@@ -174,12 +171,9 @@ export function ActiveSectionContent({
     </div>,
 
     // Place Bids - Compact version
-    <div
-      key="place-bids"
-      className="h-full flex flex-col space-y-3 p-4 overflow-hidden bg-[#151c16]"
-    >
+    <div key="place-bids" className="h-full flex flex-col space-y-3 p-4 overflow-hidden bg-black">
       <div className="flex-shrink-0">
-        <div className="relative bg-[#151c16] rounded-lg border border-[#D0B284]/20 overflow-hidden shadow-lg">
+        <div className="relative bg-black rounded-lg border border-[#D0B284]/20 overflow-hidden shadow-lg">
           <Image
             src={biddingGalleryImage.src}
             alt={biddingGalleryImage.alt}
@@ -209,9 +203,9 @@ export function ActiveSectionContent({
     </div>,
 
     // Chats - Compact version
-    <div key="chats" className="h-full flex flex-col space-y-3 p-4 overflow-hidden bg-[#151c16]">
+    <div key="chats" className="h-full flex flex-col space-y-3 p-4 overflow-hidden bg-black">
       <div className="flex-shrink-0">
-        <div className="relative bg-[#151c16] rounded-lg border border-[#D0B284]/20 overflow-hidden shadow-lg">
+        <div className="relative bg-black rounded-lg border border-[#D0B284]/20 overflow-hidden shadow-lg">
           <Image
             src={chatGalleryImage.src}
             alt={chatGalleryImage.alt}
@@ -236,7 +230,7 @@ export function ActiveSectionContent({
       <div className="flex-1 space-y-2 min-h-0 overflow-y-auto">
         <h4 className="text-[#D0B284] text-xs font-bold mb-2 tracking-wider">COMMUNITY</h4>
 
-        <div className="bg-[#151c16] border border-[#D0B284]/20 rounded-lg overflow-hidden">
+        <div className="bg-black border border-[#D0B284]/20 rounded-lg overflow-hidden">
           <div className="flex items-center justify-between p-3">
             <span className="text-[#DCDDCC] text-xs font-medium">Token Holders:</span>
             <span className="text-white text-xs font-semibold">{formattedHolderCount}</span>

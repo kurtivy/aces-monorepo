@@ -32,7 +32,7 @@ export default function RWAHeader({ className = '', title, onProfileClick }: RWA
   };
 
   return (
-    <header data-rwa-header className={`w-full relative bg-[#151c16] ${className}`}>
+    <header data-rwa-header className={`w-full relative bg-black ${className}`}>
       <div className="max-w-[1920px] mx-auto px-3 sm:px-6 py-2 sm:py-4">
         <div
           className={`grid items-center w-full ${title ? 'grid-cols-[1fr_auto_1fr] sm:grid-cols-[250px_1fr_250px]' : 'grid-cols-[1fr_auto] sm:grid-cols-[250px_1fr]'}`}

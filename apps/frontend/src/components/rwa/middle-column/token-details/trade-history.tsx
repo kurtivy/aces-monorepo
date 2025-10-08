@@ -114,7 +114,7 @@ export default function TradeHistory({
 
   if (isLoading && safeTrades.length === 0) {
     return (
-      <div className="bg-[#151c16] rounded-xl overflow-hidden">
+      <div className="bg-black rounded-xl overflow-hidden">
         <div className="p-4">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-[#D0B284] text-lg font-bold">Recent Trades</h3>
@@ -127,7 +127,7 @@ export default function TradeHistory({
             {[...Array(5)].map((_, i) => (
               <div
                 key={i}
-                className="flex items-center justify-between p-3 bg-[#151c16]/50 rounded-lg animate-pulse"
+                className="flex items-center justify-between p-3 bg-black/50 rounded-lg animate-pulse"
               >
                 <div className="flex items-center gap-3">
                   <div className="w-6 h-6 bg-gray-600 rounded-full" />
@@ -147,7 +147,7 @@ export default function TradeHistory({
 
   if (error) {
     return (
-      <div className="bg-[#151c16] rounded-xl overflow-hidden">
+      <div className="bg-black rounded-xl overflow-hidden">
         <div className="p-4">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-[#D0B284] text-lg font-bold">Recent Trades</h3>
@@ -176,7 +176,7 @@ export default function TradeHistory({
 
   if (safeTrades.length === 0) {
     return (
-      <div className="bg-[#151c16] rounded-xl overflow-hidden">
+      <div className="bg-black rounded-xl overflow-hidden">
         <div className="p-4">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-[#D0B284] text-lg font-bold">Recent Trades</h3>
@@ -197,7 +197,7 @@ export default function TradeHistory({
   }
 
   return (
-    <div className="bg-[#151c16] rounded-xl overflow-hidden mt-0">
+    <div className="bg-black rounded-xl overflow-hidden mt-0">
       <div className="p-4">
         {/* Desktop Table */}
         <div className="hidden md:block overflow-x-auto">
@@ -218,7 +218,9 @@ export default function TradeHistory({
               {safeTrades.map((trade, index) => {
                 const isBuy = trade.direction === 'buy';
                 const accent = isBuy ? 'text-[#184D37]' : 'text-red-400';
-                const actorLabel = trade.trader ? formatWalletAddress(trade.trader) : 'Aerodrome LP';
+                const actorLabel = trade.trader
+                  ? formatWalletAddress(trade.trader)
+                  : 'Aerodrome LP';
                 const actorLink = trade.trader ? getAddressUrl(trade.trader, trade.source) : null;
                 const txHash = trade.txHash ?? trade.id;
                 const txLink = getTxUrl(txHash, trade.source);
