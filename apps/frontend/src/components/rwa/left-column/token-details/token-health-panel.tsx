@@ -147,7 +147,7 @@ const getSignalColor = (action: string) => {
 // Helper component for labels with tooltips
 const LabelWithTooltip = ({ label, tooltip }: { label: string; tooltip: string }) => (
   <div className="flex items-center gap-1.5">
-    <span className="text-xs tracking-[0.28em] uppercase font-spray-letters text-[#D0B284]">
+    <span className="text-[10px] tracking-[0.28em] uppercase font-spray-letters text-[#D0B284]">
       {label}
     </span>
     <Tooltip>
@@ -297,15 +297,15 @@ export default function TokenHealthPanel({
   }, [tradingCredits]);
 
   const rowClass =
-    'flex items-center justify-between gap-4 px-5 py-4 border-b border-[#D0B284]/15 last:border-b-0';
-  const valueClass = 'text-xl font-semibold font-proxima-nova leading-none text-white';
+    'flex items-center justify-between gap-4 px-5 py-3 border-b border-[#D0B284]/15 last:border-b-0';
+  const valueClass = 'text-sm font-semibold font-proxima-nova leading-none text-white';
 
   const isLoading = bondingLoading || !tokenAddress;
   const hasData = circulatingSupply > 0 && tokenPrice > 0;
 
   return (
     <motion.div
-      className="h-full flex flex-col rounded-xl border border-[#D0B284]/20 bg-transparent"
+      className="h-full flex flex-col bg-transparent"
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.8, ease: 'easeInOut' }}
@@ -320,20 +320,20 @@ export default function TokenHealthPanel({
           label="ACES RATIO"
           tooltip="Market Cap divided by the asset's reserve price. Shows how much the token market values the asset compared to its physical value."
         />
-        <div className="flex items-end gap-2 text-white">
+        <div className="flex items-end gap-1 text-white">
           {ratioDisplay.numeric ? (
             <>
-              <span className="text-2xl font-semibold font-proxima-nova leading-none text-white">
+              <span className="text-base font-semibold font-proxima-nova leading-none text-white">
                 {ratioDisplay.numeric}
               </span>
               {ratioDisplay.suffix ? (
-                <span className="text-xl font-semibold font-proxima-nova leading-tight text-white">
+                <span className="text-base font-semibold font-proxima-nova leading-tight text-white">
                   {ratioDisplay.suffix}
                 </span>
               ) : null}
             </>
           ) : (
-            <span className="text-2xl font-semibold font-proxima-nova leading-none text-white">
+            <span className="text-base font-semibold font-proxima-nova leading-none text-white">
               {ratioDisplay.suffix}
             </span>
           )}
@@ -373,7 +373,7 @@ export default function TokenHealthPanel({
               style={{ backgroundColor: getSignalColor(metrics.signal.action) }}
             />
             <span
-              className="text-lg font-bold font-spray-letters tracking-[0.3em]"
+              className="text-sm font-bold font-spray-letters tracking-[0.3em]"
               style={{ color: getSignalColor(metrics.signal.action) }}
             >
               {metrics.signal.action}
@@ -394,11 +394,11 @@ export default function TokenHealthPanel({
         {isLoading || !hasData ? (
           <span className={valueClass}>...</span>
         ) : (
-          <div className="flex items-baseline gap-1 text-white">
-            <span className="text-base font-proxima-nova leading-none text-white">
+          <div className="flex items-baseline gap-0.5 text-white">
+            <span className="text-xs font-proxima-nova leading-none text-white">
               {tradingCreditsDisplay.prefix}
             </span>
-            <span className="text-2xl font-semibold font-proxima-nova leading-none text-white">
+            <span className="text-base font-semibold font-proxima-nova leading-none text-white">
               {tradingCreditsDisplay.numeric}
             </span>
           </div>
@@ -417,9 +417,11 @@ export default function TokenHealthPanel({
         {isLoading || !hasData ? (
           <span className={valueClass}>...</span>
         ) : (
-          <div className="flex items-baseline gap-1 text-white">
-            <span className="text-sm font-proxima-nova leading-none">$</span>
-            <span className={valueClass}>{formatPrice(metrics.rewardPerToken)}</span>
+          <div className="flex items-baseline gap-0.5 text-white">
+            <span className="text-xs font-proxima-nova leading-none">$</span>
+            <span className="text-base font-semibold font-proxima-nova leading-none text-white">
+              {formatPrice(metrics.rewardPerToken)}
+            </span>
           </div>
         )}
       </motion.div>

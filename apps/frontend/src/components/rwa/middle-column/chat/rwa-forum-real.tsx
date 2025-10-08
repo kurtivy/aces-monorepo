@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Heart, MessageCircle } from 'lucide-react';
+import { ArrowUpRight, Heart, Loader2, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 // import Image from 'next/image';
 import { Comment } from '@/types/comments';
@@ -14,7 +15,7 @@ interface RWAForumProps {
   listingId?: string;
   listingTitle?: string;
   isLive?: boolean;
-  variant?: 'default' | 'mobile';
+  variant?: 'default' | 'mobile' | 'compact';
 }
 
 export default function RWAForumReal({
@@ -35,6 +36,48 @@ export default function RWAForumReal({
   const [retryAfter, setRetryAfter] = useState<number | null>(null);
 
   const isMobileVariant = variant === 'mobile';
+  const isCompactVariant = variant === 'compact';
+
+  const usernameColorPalette = [
+    '#A7F3D0',
+    '#BFDBFE',
+    '#FDE68A',
+    '#FBCFE8',
+    '#C4B5FD',
+    '#FCA5A5',
+    '#99F6E4',
+    '#F9A8D4',
+  ];
+
+  const getUsernameColor = (name: string) => {
+    if (!name) return '#D0B284';
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const index = Math.abs(hash) % usernameColorPalette.length;
+    return usernameColorPalette[index];
+  };
+
+  const formatCompactTimestamp = (isoDate: string) => {
+    const now = Date.now();
+    const created = new Date(isoDate).getTime();
+    const diffSeconds = Math.max(1, Math.floor((now - created) / 1000));
+
+    if (diffSeconds < 60) return `${diffSeconds}s`;
+    const diffMinutes = Math.floor(diffSeconds / 60);
+    if (diffMinutes < 60) return `${diffMinutes}m`;
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) return `${diffHours}h`;
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 7) return `${diffDays}d`;
+    const diffWeeks = Math.floor(diffDays / 7);
+    if (diffWeeks < 4) return `${diffWeeks}w`;
+    const diffMonths = Math.floor(diffDays / 30);
+    if (diffMonths < 12) return `${diffMonths}mo`;
+    const diffYears = Math.floor(diffDays / 365);
+    return `${diffYears}y`;
+  };
 
   // Fetch comments from API
   const fetchComments = useCallback(async () => {
@@ -233,7 +276,7 @@ export default function RWAForumReal({
       return (
         <div
           key={comment.id}
-          className={`${depth > 0 ? 'ml-8 border-l border-[#2a3b2a]/60 pl-4' : ''}`}
+          className={`${depth > 0 ? 'ml-8 border-l border-[#151c16]/90 pl-4' : ''}`}
         >
           <div className="py-4 px-2 border-b border-[#202c20]/80 last:border-b-0">
             <div className="flex items-start gap-3">
@@ -310,6 +353,47 @@ export default function RWAForumReal({
                     </div>
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+
+          {comment.replies?.map((reply) =>
+            renderComment(reply, depth + 1, [
+              ...path,
+              comments.findIndex((c) => c.id === comment.id),
+            ]),
+          )}
+        </div>
+      );
+    }
+
+    if (isCompactVariant) {
+      const initial = displayName.charAt(0).toUpperCase() || 'A';
+      const usernameColor = getUsernameColor(displayName);
+      const timestamp = comment.createdAt ? formatCompactTimestamp(comment.createdAt) : '';
+
+      return (
+        <div
+          key={comment.id}
+          className={`${depth > 0 ? 'ml-3 border-l border-[#1C2B1C]/60 pl-2.5' : ''}`}
+        >
+          <div className="py-1.5 border-b border-[#141E14]/80 last:border-b-0">
+            <div className="flex items-start gap-2">
+              <div className="mt-0.5 h-5 w-5 flex-shrink-0 rounded-full bg-[#151D15] text-[10px] font-semibold text-[#D0B284] flex items-center justify-center">
+                {initial}
+              </div>
+              <div className="flex-1 space-y-0.5">
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                  <span className="text-[11px] font-semibold" style={{ color: usernameColor }}>
+                    {displayName}
+                  </span>
+                  {timestamp && (
+                    <span className="text-[10px] uppercase tracking-wide text-[#5A685A]">
+                      {timestamp}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs leading-snug text-[#E8E6DD] break-words">{comment.content}</p>
               </div>
             </div>
           </div>
@@ -421,6 +505,46 @@ export default function RWAForumReal({
   };
 
   const renderCommentComposer = (stackedLayout: boolean) => {
+    if (isCompactVariant) {
+      if (!isAuthenticated) {
+        return (
+          <div className="text-[11px] text-[#8FA28F]">
+            Please connect your wallet to join the chat.
+          </div>
+        );
+      }
+
+      return (
+        <div className="flex items-center gap-2">
+          <Input
+            placeholder={`Share your thoughts about ${listingTitle}...`}
+            value={newComment}
+            onChange={(e) => setNewComment(e.target.value)}
+            disabled={loading || !!rateLimitError}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSubmitComment();
+              }
+            }}
+            className="h-9 border-[#2a3b2a] bg-[#101910] text-sm text-white placeholder:text-[#8FA28F] focus-visible:text-white"
+          />
+          <Button
+            onClick={handleSubmitComment}
+            disabled={!newComment.trim() || loading || !!rateLimitError}
+            className="w-9 h-9 rounded-full bg-[#D0B284] hover:bg-[#D0B284]/90 text-[#231F20] p-0"
+            aria-label="Post comment"
+          >
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <ArrowUpRight className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
+      );
+    }
+
     if (!isAuthenticated) {
       if (stackedLayout) {
         return (
@@ -503,11 +627,16 @@ export default function RWAForumReal({
       );
     }
 
+    if (isCompactVariant) {
+      return (
+        <div className="h-full bg-black flex items-center justify-center text-[#D0B284] text-xs">
+          Loading chat...
+        </div>
+      );
+    }
+
     return (
       <div className="h-full bg-black relative flex flex-col">
-        <div className="px-4 py-3 border-b border-[#D0B284]/20 flex-shrink-0">
-          <h3 className="text-white text-lg font-semibold font-spray-letters">Discussion</h3>
-        </div>
         <div className="flex-1 flex items-center justify-center">
           <div className="text-[#D0B284] text-lg">Loading comments...</div>
         </div>
@@ -540,6 +669,38 @@ export default function RWAForumReal({
           ) : (
             comments.map((comment, index) => renderComment(comment, 0, [index]))
           )}
+        </div>
+      </div>
+    );
+  }
+
+  if (isCompactVariant) {
+    return (
+      <div className="flex h-full flex-col bg-[#151c16]/80">
+        {(error || rateLimitError) && (
+          <div className="px-3 py-2 space-y-1 border-b border-[#2a3b2a]/60">
+            {error && <div className="text-[11px] text-red-300">{error}</div>}
+            {rateLimitError && (
+              <div className="text-[11px] text-yellow-300">
+                {rateLimitError}
+                {retryAfter && ` Please wait ${retryAfter} seconds.`}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1.5 scrollbar-thin scrollbar-thumb-[#D0B284]/60 scrollbar-track-transparent">
+          {comments.length === 0 ? (
+            <div className="text-center text-[11px] text-[#8FA28F] py-4">
+              No comments yet. Be the first to comment!
+            </div>
+          ) : (
+            comments.map((comment, index) => renderComment(comment, 0, [index]))
+          )}
+        </div>
+
+        <div className="border-t border-[#2a3b2a]/60 bg-[#0C120C] px-3 py-2">
+          {renderCommentComposer(false)}
         </div>
       </div>
     );

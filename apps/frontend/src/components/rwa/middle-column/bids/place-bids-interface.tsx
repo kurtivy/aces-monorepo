@@ -283,8 +283,6 @@ export default function PlaceBidsInterface({
         <div className="flex flex-col gap-6">
           {/* Item Details Section */}
           <div className="space-y-4">
-            <h2 className="text-lg font-semibold font-neue-world text-white">ITEM DETAILS</h2>
-
             {/* Item Details with Price on Same Line */}
             <div className="flex items-center justify-between p-3 rounded-lg border border-[#D0B284]/20 bg-[#151c16]/60">
               <div className="flex items-center gap-3">

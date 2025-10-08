@@ -32,7 +32,7 @@ export default function TradeHistory({
   // Don't render until client-side hydration is complete
   if (!isClient) {
     return (
-      <div className="bg-black rounded-xl overflow-hidden">
+      <div className="bg-[#151c16] rounded-xl overflow-hidden">
         <div className="p-4">
           <div className="text-[#D0B284] text-lg font-bold mb-4">Recent Trades</div>
           <div className="text-gray-400">Loading...</div>
@@ -114,7 +114,7 @@ export default function TradeHistory({
 
   if (isLoading && safeTrades.length === 0) {
     return (
-      <div className="bg-black rounded-xl overflow-hidden">
+      <div className="bg-[#151c16] rounded-xl overflow-hidden">
         <div className="p-4">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-[#D0B284] text-lg font-bold">Recent Trades</h3>
@@ -197,7 +197,7 @@ export default function TradeHistory({
   }
 
   return (
-    <div className="bg-black rounded-xl overflow-hidden mt-0">
+    <div className="bg-[#151c16] rounded-xl overflow-hidden mt-0">
       <div className="p-4">
         {/* Desktop Table */}
         <div className="hidden md:block overflow-x-auto">
