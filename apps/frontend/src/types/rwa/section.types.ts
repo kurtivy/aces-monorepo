@@ -82,6 +82,11 @@ export interface DatabaseListing {
   startingBidPrice: string | null; // Minimum bid amount (USD)
   reservePrice: string | null; // Hidden reserve price (USD)
 
+  // NEW: Asset story/info fields for V2 dashboard
+  rrp: string | null; // Retail Recommended Price (same as VALUE in UI)
+  brand: string | null; // Brand name
+  hypePoints: string[]; // Array of bullet points for hype section
+
   submissionId: string;
   ownerId: string;
   approvedBy: string | null;
