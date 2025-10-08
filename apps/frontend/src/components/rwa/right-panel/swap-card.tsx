@@ -12,6 +12,7 @@ import { getContractAddresses } from '@/lib/contracts/addresses';
 import { ACES_FACTORY_ABI, ERC20_ABI, LAUNCHPAD_TOKEN_ABI } from '@/lib/contracts/abi';
 import { DexApi, type DexQuoteResponse } from '@/lib/api/dex';
 import type { DatabaseListing } from '@/types/rwa/section.types';
+import { useWallets } from '@privy-io/react-auth';
 
 const DEFAULT_SLIPPAGE_BPS = 100;
 const SWAP_DEADLINE_BUFFER_SECONDS = 60 * 10;
@@ -35,12 +36,8 @@ export function SwapCard({
   dexMeta = null,
   onSwapComplete,
 }: SwapCardProps) {
-  const {
-    walletAddress,
-    isAuthenticated,
-    connectWallet: authConnectWallet,
-    isLoading: authLoading,
-  } = useAuth();
+  const { walletAddress, isAuthenticated, connectWallet, isLoading: isAuthLoading } = useAuth();
+  const { wallets } = useWallets();
 
   // Contract state
   const [provider, setProvider] = useState<ethers.providers.Web3Provider | null>(null);
@@ -110,6 +107,15 @@ export function SwapCard({
   }, [amount]);
 
   const hasValidAmount = Boolean(amountValueWei);
+  const isWalletConnected = isAuthenticated && !!walletAddress;
+  const bottomBalanceLabel = useMemo(() => {
+    const isReceivingToken = activeTab === 'buy' || isDexMode;
+    const rawBalance = isReceivingToken ? tokenBalance : acesBalance;
+    const numeric = Number.parseFloat(rawBalance || '0');
+    const formatted = Number.isFinite(numeric) ? numeric.toFixed(4) : '0.0000';
+    const symbol = isReceivingToken ? tokenSymbol : 'ACES';
+    return `${formatted} ${symbol}`;
+  }, [activeTab, isDexMode, tokenBalance, acesBalance, tokenSymbol]);
 
   const refreshBalances = useCallback(async () => {
     if (!acesContract || !tokenAddress || !signer) return;
@@ -297,18 +303,122 @@ export function SwapCard({
     }
   }, [factoryContract, tokenAddress, amountValueWei, signer, refreshBalances, onSwapComplete]);
 
+  const initializeProvider = useCallback(async (): Promise<boolean> => {
+    if (!isAuthenticated || !walletAddress) {
+      setProvider(null);
+      setSigner(null);
+      setFactoryContract(null);
+      setAcesContract(null);
+      setAcesBalance('0');
+      setTokenBalance('0');
+      return false;
+    }
+
+    const normalizeAddress = (value: string) => {
+      try {
+        return ethers.utils.getAddress(value);
+      } catch {
+        return value;
+      }
+    };
+
+    if (provider) {
+      try {
+        const signerAddress = await provider.getSigner().getAddress();
+        if (normalizeAddress(signerAddress) === normalizeAddress(walletAddress)) {
+          return true;
+        }
+      } catch (error) {
+        console.error('Existing provider signer fetch failed:', error);
+      }
+
+      // Clear stale provider to re-initialize
+      setProvider(null);
+      setSigner(null);
+    }
+
+    if (typeof window === 'undefined') {
+      return false;
+    }
+
+    try {
+      let ethProvider: any = window.ethereum || (window as any).ethereum;
+
+      if (!ethProvider && wallets?.length) {
+        for (const wallet of wallets) {
+          if (typeof wallet.getEthereumProvider === 'function') {
+            try {
+              const privyProvider = await wallet.getEthereumProvider();
+              if (privyProvider) {
+                ethProvider = privyProvider;
+                break;
+              }
+            } catch (providerError) {
+              console.error('Privy provider retrieval failed:', providerError);
+            }
+          }
+        }
+      }
+
+      if (!ethProvider) {
+        if (wallets?.length) {
+          setTimeout(() => {
+            initializeProvider().catch((retryError) =>
+              console.error('Deferred provider initialization failed:', retryError),
+            );
+          }, 500);
+        }
+        return false;
+      }
+
+      const addresses = getContractAddresses(currentChainId || 84532);
+      if (!addresses.FACTORY_PROXY || !addresses.ACES_TOKEN) {
+        return false;
+      }
+
+      const newProvider = new ethers.providers.Web3Provider(ethProvider);
+      const newSigner = newProvider.getSigner(walletAddress);
+
+      setProvider(newProvider);
+      setSigner(newSigner);
+
+      const factory = new ethers.Contract(addresses.FACTORY_PROXY, ACES_FACTORY_ABI, newSigner);
+      setFactoryContract(factory);
+
+      const aces = new ethers.Contract(addresses.ACES_TOKEN, ERC20_ABI, newSigner);
+      setAcesContract(aces);
+
+      return true;
+    } catch (error) {
+      console.error('Failed to initialize provider:', error);
+      return false;
+    }
+  }, [isAuthenticated, walletAddress, provider, wallets, currentChainId]);
+
+  useEffect(() => {
+    initializeProvider();
+  }, [initializeProvider]);
+
   const handleConnectWallet = async () => {
     try {
-      await authConnectWallet();
+      await connectWallet();
     } catch (error) {
       console.error('Failed to connect wallet:', error);
     }
   };
 
   const handleSwap = async () => {
-    if (!isAuthenticated || !provider) {
+    if (!isWalletConnected) {
       await handleConnectWallet();
       return;
+    }
+
+    if (!provider) {
+      const ready = await initializeProvider();
+      if (!ready) {
+        await handleConnectWallet();
+        return;
+      }
     }
 
     if (isDexMode) {
@@ -338,47 +448,6 @@ export function SwapCard({
       return () => window.ethereum?.removeListener('chainChanged', updateChainId);
     }
   }, [currentChainId]);
-
-  // Initialize provider
-  useEffect(() => {
-    const initializeProvider = async () => {
-      if (
-        isAuthenticated &&
-        walletAddress &&
-        !provider &&
-        typeof window !== 'undefined' &&
-        window.ethereum
-      ) {
-        try {
-          const addresses = getContractAddresses(currentChainId || 84532);
-          if (!addresses.FACTORY_PROXY || !addresses.ACES_TOKEN) return;
-
-          const newProvider = new ethers.providers.Web3Provider(window.ethereum);
-          const newSigner = newProvider.getSigner();
-
-          setProvider(newProvider);
-          setSigner(newSigner);
-
-          const factory = new ethers.Contract(addresses.FACTORY_PROXY, ACES_FACTORY_ABI, newSigner);
-          setFactoryContract(factory);
-
-          const aces = new ethers.Contract(addresses.ACES_TOKEN, ERC20_ABI, newSigner);
-          setAcesContract(aces);
-        } catch (error) {
-          console.error('Failed to initialize provider:', error);
-        }
-      } else if (!isAuthenticated || !walletAddress) {
-        setProvider(null);
-        setSigner(null);
-        setFactoryContract(null);
-        setAcesContract(null);
-        setAcesBalance('0');
-        setTokenBalance('0');
-      }
-    };
-
-    initializeProvider();
-  }, [isAuthenticated, walletAddress, currentChainId, provider]);
 
   // Refresh balances
   useEffect(() => {
@@ -487,212 +556,189 @@ export function SwapCard({
   return (
     <div role="region" aria-label="Swap interface">
       {/* Percentage Buttons */}
-      <div className="mb-2 flex items-center justify-between gap-1">
+      <div className="flex items-center justify-between">
         {[10, 25, 50, 75, 100].map((percentage) => (
           <button
             key={percentage}
             type="button"
             onClick={() => handlePercentageClick(percentage)}
             className="
-              flex-1 rounded-lg border border-[var(--border-weak)]
-              bg-[var(--surface-1)] px-2 py-1.5
-              text-[13px] font-semibold text-foreground/70
-              hover:bg-[var(--surface-2)] hover:text-foreground/90
-              transition-colors
+              flex-1 rounded-lg border-[0.5px] border-[#D0B264]
+              bg-black/40 px-2 py-1.5
+              text-[13px] font-semibold text-[#D0B264]
+              hover:bg-black/55 hover:text-[#D0B264]
+              transition-colors duration-150
             "
           >
             {percentage === 100 ? 'MAX' : `${percentage}%`}
           </button>
         ))}
       </div>
-
-      {/* Top (Input) */}
-      <div
-        className="
-          relative rounded-[22px]
-          border border-[var(--border-weak)]
-          bg-[var(--surface-1)]
-          px-4 py-2 md:px-6
-        "
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex-1">
-            <div className="text-[14px] font-medium text-foreground/60 mb-1">
-              {activeTab === 'buy' ? 'Sell' : 'You sell'}
+      {/* Swap Panels */}
+      <div className="rounded-[22px] border-[0.5px] border-[#D0B264] bg-[var(--surface-1)] overflow-hidden">
+        <div className="px-4 py-3 md:px-6">
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <div className="mb-1 text-[14px] font-medium text-[#D0B264]/80">
+                {activeTab === 'buy' ? 'Sell' : 'You sell'}
+              </div>
+              <input
+                type="number"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0"
+                className="
+                  w-full h-12 bg-transparent border-none outline-none
+                  text-[28px] font-semibold tracking-tight text-foreground/95
+                  [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none
+                "
+              />
+              <div className="mt-1 text-[12px] text-[#D0B264]/70">
+                Balance:{' '}
+                {activeTab === 'buy' && !isDexMode
+                  ? Number.parseFloat(acesBalance).toFixed(4)
+                  : Number.parseFloat(tokenBalance).toFixed(4)}
+              </div>
             </div>
-            <input
-              type="number"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="0"
+
+            {/* Token pill */}
+            <button
+              type="button"
               className="
-                w-full h-12 bg-transparent border-none outline-none
-                text-[28px] font-semibold tracking-tight text-foreground/95
-                [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none
+                inline-flex items-center gap-2 rounded-full
+                border-[0.5px] border-[#D0B264]/60 bg-black/40
+                px-3 py-2 transition-colors duration-150
+                hover:bg-black/55 focus:outline-none
               "
-            />
-            <div className="text-[12px] text-foreground/50 mt-1">
-              Balance:{' '}
-              {activeTab === 'buy' && !isDexMode
-                ? Number.parseFloat(acesBalance).toFixed(4)
-                : Number.parseFloat(tokenBalance).toFixed(4)}
-            </div>
-          </div>
-
-          {/* Token pill */}
-          <button
-            type="button"
-            className="
-              inline-flex items-center gap-2
-              rounded-full border border-[color-mix(in_oklab,var(--surface-3)_70%,white_30%)]
-              bg-[var(--surface-2)]
-              px-3 py-2
-              shadow-[0_2px_0_0_rgba(255,255,255,0.06)_inset,0_8px_20px_rgba(0,0,0,0.5)]
-              transition-colors
-              hover:bg-[var(--surface-2-hover)]
-              focus:outline-none
-            "
-          >
-            <span className="relative inline-flex h-6 w-6 items-center justify-center rounded-full bg-[var(--surface-0)] ring-1 ring-[var(--border-weak)]">
-              <Image
-                src={activeTab === 'buy' && !isDexMode ? '/aces-logo.png' : '/svg/eth.svg'}
-                alt={activeTab === 'buy' && !isDexMode ? 'ACES' : tokenSymbol}
-                width={20}
-                height={20}
-                className="rounded-full"
-              />
-            </span>
-            <span className="text-[16px] font-semibold text-foreground">
-              {activeTab === 'buy' && !isDexMode ? 'ACES' : tokenSymbol}
-            </span>
-          </button>
-        </div>
-      </div>
-
-      {/* Bottom (Output) */}
-      <div
-        className="
-          mt-2 rounded-[22px]
-          border border-[var(--border-weak)]
-          bg-[var(--surface-1)]
-          px-4 py-2 md:px-6
-        "
-      >
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex-1">
-            <div className="text-[14px] font-medium text-foreground/60 mb-1">
-              {activeTab === 'buy' ? 'Buy' : 'You receive'}
-            </div>
-            <div className="h-12 flex items-center text-[28px] font-semibold text-foreground/90">
-              {dexQuoteLoading ? (
-                <Loader2 className="h-6 w-6 animate-spin" />
-              ) : (
-                parseFloat(displayQuote).toFixed(4)
-              )}
-            </div>
-          </div>
-
-          {/* Token pill */}
-          <button
-            type="button"
-            className="
-              inline-flex items-center gap-2 rounded-full
-              bg-[var(--brand)] px-4 py-2
-              text-[16px] font-extrabold text-[var(--on-brand)]
-              shadow-[0_6px_24px_color-mix(in_oklab,var(--brand)_60%,black_40%)]
-              ring-1 ring-[color-mix(in_oklab,var(--brand)_30%,white_10%)]
-            "
-          >
-            <span className="relative inline-flex h-6 w-6 items-center justify-center rounded-full bg-[var(--surface-0)] ring-1 ring-[var(--border-weak)]">
-              <Image
-                src={activeTab === 'buy' || isDexMode ? '/svg/eth.svg' : '/aces-logo.png'}
-                alt={activeTab === 'buy' || isDexMode ? tokenSymbol : 'ACES'}
-                width={20}
-                height={20}
-                className="rounded-full"
-              />
-            </span>
-            {activeTab === 'buy' || isDexMode ? tokenSymbol : 'ACES'}
-          </button>
-        </div>
-      </div>
-
-      {/* Transaction Status */}
-      {transactionStatus && (
-        <div
-          className={cn(
-            'mt-2 p-3 rounded-lg text-sm',
-            transactionStatus.type === 'success'
-              ? 'bg-green-900/60 border border-green-500/30 text-green-100'
-              : 'bg-red-900/60 border border-red-600/40 text-red-100',
-          )}
-        >
-          {transactionStatus.message}
-        </div>
-      )}
-
-      {/* Action Button */}
-      <div
-        className="
-          mt-2 rounded-[22px]
-          bg-[var(--surface-2)]
-          p-3 md:p-4
-          border border-[var(--border-weak)]
-        "
-      >
-        {!isAuthenticated || !provider ? (
-          <motion.button
-            className="
-              h-14 w-full rounded-[16px]
-              flex items-center justify-center text-[#D0B264] hover:text-[#D0B264]
-              transition-colors duration-150 bg-black/80 hover:bg-black/70
-              border border-[#D0B264]/30 cursor-pointer
-              disabled:opacity-50 disabled:cursor-not-allowed font-mono whitespace-nowrap
-              text-[18px] font-semibold
-            "
-            disabled={authLoading}
-            onClick={handleConnectWallet}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-          >
-            <Wallet className="w-5 h-5 mr-2" />
-            {authLoading ? (
-              <div className="flex items-center font-mono">
-                <span className="mr-2">Connecting</span>
-                <span className="animate-pulse">...</span>
-              </div>
-            ) : (
-              'Connect Wallet'
-            )}
-          </motion.button>
-        ) : (
-          <Button
-            onClick={handleSwap}
-            disabled={isDisabled}
-            className="
-              h-14 w-full rounded-[16px]
-              bg-[var(--surface-3)] hover:bg-[var(--surface-3)]
-              text-[22px] font-extrabold text-[var(--brand)]
-              shadow-none
-              disabled:opacity-50
-            "
-          >
-            {loading ? (
-              <span className="flex items-center gap-2">
-                <Loader2 className="h-5 w-5 animate-spin" />
-                {loading}
+            >
+              <span className="relative inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/60 ring-[0.5px] ring-[#D0B264]/50">
+                <Image
+                  src={activeTab === 'buy' && !isDexMode ? '/aces-logo.png' : '/svg/eth.svg'}
+                  alt={activeTab === 'buy' && !isDexMode ? 'ACES' : tokenSymbol}
+                  width={20}
+                  height={20}
+                  className="rounded-full"
+                />
               </span>
-            ) : isDexMode ? (
-              <div className="flex flex-col gap-0.5">
-                <span>Swap on Aerodrome</span>
-                <span className="text-[10px] opacity-60">Powered by Aerodrome</span>
+              <span className="text-[16px] font-semibold text-[#D0B264]">
+                {activeTab === 'buy' && !isDexMode ? 'ACES' : tokenSymbol}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <div className="border-t border-[#D0B264] px-4 py-3 md:px-6">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex-1">
+              <div className="mb-1 text-[14px] font-medium text-[#D0B264]/80">
+                {activeTab === 'buy' ? 'Buy' : 'You receive'}
               </div>
-            ) : (
-              `${activeTab === 'buy' ? 'Buy' : 'Sell'} ${tokenSymbol}`
+              <div className="flex h-12 items-center text-[28px] font-semibold text-foreground/90">
+                {dexQuoteLoading ? (
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                ) : (
+                  parseFloat(displayQuote).toFixed(4)
+                )}
+              </div>
+            </div>
+
+            {/* Token pill */}
+            <button
+              type="button"
+              className="
+                inline-flex items-center gap-2 rounded-full
+                border-[0.5px] border-[#D0B264]/60 bg-black/40
+                px-4 py-2 text-[16px] font-extrabold text-[#D0B264]
+                transition-colors duration-150 hover:bg-black/55
+              "
+            >
+              <span className="relative inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/60 ring-[0.5px] ring-[#D0B264]/50">
+                <Image
+                  src={activeTab === 'buy' || isDexMode ? '/svg/eth.svg' : '/aces-logo.png'}
+                  alt={activeTab === 'buy' || isDexMode ? tokenSymbol : 'ACES'}
+                  width={20}
+                  height={20}
+                  className="rounded-full"
+                />
+              </span>
+              {activeTab === 'buy' || isDexMode ? tokenSymbol : 'ACES'}
+            </button>
+          </div>
+
+          <div className="mt-3 flex items-center justify-between text-[12px] text-[#D0B264]/70">
+            <span>Balance</span>
+            <span className="font-mono text-[#D0B264]">{bottomBalanceLabel}</span>
+          </div>
+        </div>
+
+        {transactionStatus && (
+          <div
+            className={cn(
+              'border-t border-[#D0B264] px-4 py-3 text-sm md:px-6',
+              transactionStatus.type === 'success'
+                ? 'bg-green-900/60 text-green-100'
+                : 'bg-red-900/60 text-red-100',
             )}
-          </Button>
+          >
+            {transactionStatus.message}
+          </div>
         )}
+
+        <div className="border-t border-[#D0B264] bg-black/70 px-3 py-3 md:px-6 md:py-4">
+          {!isWalletConnected ? (
+            <motion.button
+              className="
+                h-11 w-full rounded-[16px]
+                flex items-center justify-center gap-2 text-[#D0B264]
+                transition-colors duration-150 bg-black hover:bg-black/80
+                cursor-pointer
+                disabled:opacity-50 disabled:cursor-not-allowed font-spray-letters uppercase tracking-widest
+                text-[18px]
+              "
+              disabled={isAuthLoading}
+              onClick={handleConnectWallet}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+            >
+              <Wallet className="h-5 w-5" />
+              {isAuthLoading ? (
+                <div className="flex items-center font-spray-letters uppercase tracking-widest">
+                  <span className="mr-2">Connecting</span>
+                  <span className="animate-pulse">...</span>
+                </div>
+              ) : (
+                'Connect Wallet'
+              )}
+            </motion.button>
+          ) : (
+            <Button
+              onClick={handleSwap}
+              disabled={isDisabled}
+              className="
+                h-12 w-full rounded-[16px]
+                bg-[var(--surface-3)] hover:bg-[var(--surface-3)]
+                text-[34px] font-extrabold text-[#D0B264]
+                shadow-none
+                disabled:opacity-50
+                font-spray-letters tracking-[0.75em] uppercase
+              "
+            >
+              {loading ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  {loading}
+                </span>
+              ) : isDexMode ? (
+                <div className="flex flex-col gap-0.5">
+                  <span className="font-spray-letters tracking-widest">SWAP</span>
+                </div>
+              ) : (
+                'SWAP'
+              )}
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
-import DynamicImageGallery from './dynamic-image-gallery';
+import DynamicImageGallery from '../left-column/overview/dynamic-image-gallery';
 import type { ImageData } from '@/types/rwa/section.types';
 import { createImageErrorHandler, getValidImageSrc } from '@/lib/utils/image-error-handler';
 

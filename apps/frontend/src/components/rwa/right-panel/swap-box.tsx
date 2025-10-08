@@ -5,7 +5,7 @@ import type { KeyboardEvent } from 'react';
 import { ethers } from 'ethers';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth/auth-context';
-import { Copy, Check, Loader2 } from 'lucide-react';
+import { Copy, Check, Loader2, ChevronDown, ArrowDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import { createImageErrorHandler, getValidImageSrc } from '@/lib/utils/image-error-handler';
@@ -182,6 +182,25 @@ export default function TokenSwapInterface({
   const { data: usdConversion, loading: priceLoading } = usePriceConversion(
     activeTab === 'buy' ? priceQuote : sellPriceQuote,
   );
+  const usdDisplay = useMemo(() => {
+    if (!usdConversion?.usdValue) {
+      return null;
+    }
+
+    const numericValue = Number.parseFloat(usdConversion.usdValue);
+    if (!Number.isFinite(numericValue)) {
+      return null;
+    }
+
+    if (numericValue < 0.01) {
+      return '<$0.01 USD';
+    }
+
+    return `$${numericValue.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })} USD`;
+  }, [usdConversion]);
   const [amount, setAmount] = useState('');
   const [outputAmount, setOutputAmount] = useState('');
   const [slippageBps, setSlippageBps] = useState(DEFAULT_SLIPPAGE_BPS);
@@ -194,6 +213,33 @@ export default function TokenSwapInterface({
       ETH: '0',
     },
   );
+  const { USDC: usdcBalance, USDT: usdtBalance, ETH: ethBalance } = stableBalances;
+  const paymentAssetBalance = useMemo(() => {
+    switch (paymentAsset) {
+      case 'ACES':
+        return acesBalance;
+      case 'ETH':
+        return ethBalance;
+      case 'USDC':
+        return usdcBalance;
+      case 'USDT':
+        return usdtBalance;
+      default:
+        return '0';
+    }
+  }, [paymentAsset, acesBalance, ethBalance, usdcBalance, usdtBalance]);
+  const topBalanceLabel = useMemo(() => {
+    const rawValue = activeTab === 'sell' ? tokenBalance : paymentAssetBalance;
+    const numeric = Number.parseFloat(rawValue || '0');
+    const formatted = Number.isFinite(numeric) ? numeric.toFixed(4) : '0.0000';
+    const suffix = activeTab === 'sell' ? tokenSymbol : paymentAsset;
+    return `${formatted} ${suffix}`;
+  }, [activeTab, tokenBalance, tokenSymbol, paymentAssetBalance, paymentAsset]);
+  const bottomBalanceLabel = useMemo(() => {
+    const numeric = Number.parseFloat(tokenBalance || '0');
+    const formatted = Number.isFinite(numeric) ? numeric.toFixed(4) : '0.0000';
+    return `${formatted} ${tokenSymbol}`;
+  }, [tokenBalance, tokenSymbol]);
   const [percentageSelection, setPercentageSelection] = useState<number | null>(null);
   const [slippageMenuOpen, setSlippageMenuOpen] = useState(false);
   /* TODO(Aerodrome API): Re-enable slippage controls when hooked into swap routing */
@@ -1242,41 +1288,53 @@ export default function TokenSwapInterface({
   // Auto-initialize provider when user is authenticated
   useEffect(() => {
     const initializeFromAuth = async () => {
-      if (
-        isAuthenticated &&
-        walletAddress &&
-        !provider &&
-        typeof window !== 'undefined' &&
-        window.ethereum
-      ) {
+      console.log('🔍 SwapBox initialization check:', {
+        isAuthenticated,
+        walletAddress,
+        hasProvider: !!provider,
+        hasWindow: typeof window !== 'undefined',
+        hasEthereum: typeof window !== 'undefined' && !!window.ethereum,
+      });
+
+      if (isAuthenticated && walletAddress && !provider && typeof window !== 'undefined') {
         try {
-          // Check if wallet is actually connected
-          const accounts = await window.ethereum.request({ method: 'eth_accounts' });
-          if (!accounts || (Array.isArray(accounts) && accounts.length === 0)) {
-            console.log('No accounts connected, skipping initialization');
+          // Wait for Privy to inject the provider (it may take a moment)
+          let ethProvider = window.ethereum || (window as any).ethereum;
+
+          if (!ethProvider) {
+            console.log('⏳ Waiting for Privy to inject provider...');
+            // Retry after a short delay
+            setTimeout(() => {
+              console.log('🔄 Retrying provider initialization...');
+              initializeFromAuth();
+            }, 500);
             return;
           }
 
           // Get the current chain ID first
           const chainId = await getCurrentChainId();
-          console.log('Current chain ID:', chainId);
+          console.log('⛓️ Current chain ID:', chainId);
 
           // Validate addresses for this network
           const addresses = getContractAddresses(chainId || 84532);
+          console.log('📍 Contract addresses:', addresses);
 
           // Check if factory and ACES token are configured
           if (!addresses.FACTORY_PROXY || !addresses.ACES_TOKEN) {
             console.error(`❌ Contract addresses not configured for chain ID ${chainId}`);
             setUnsupportedNetwork(true);
-
             setNetworkError('');
             return;
           }
 
           setUnsupportedNetwork(false);
-          console.log('Auto-initializing provider from auth...');
-          const newProvider = new ethers.providers.Web3Provider(window.ethereum);
-          const newSigner = newProvider.getSigner();
+          console.log('✅ Auto-initializing provider from auth...');
+
+          // Initialize provider - works with both Privy embedded wallets and external wallets
+          const newProvider = new ethers.providers.Web3Provider(ethProvider);
+          console.log('📱 Using ethereum provider');
+
+          const newSigner = newProvider.getSigner(walletAddress);
 
           setProvider(newProvider);
           setSigner(newSigner);
@@ -1287,20 +1345,20 @@ export default function TokenSwapInterface({
           const aces = new ethers.Contract(addresses.ACES_TOKEN, ERC20_ABI, newSigner);
           setAcesContract(aces);
 
-          console.log('Auto-initialization complete', {
+          console.log('🎉 Auto-initialization complete', {
             chainId,
             factoryProxy: addresses.FACTORY_PROXY,
             acesToken: addresses.ACES_TOKEN,
           });
         } catch (error) {
-          console.error('Failed to initialize from auth:', error);
+          console.error('❌ Failed to initialize from auth:', error);
           setNetworkError(
             'Failed to initialize wallet connection. Please try refreshing the page.',
           );
         }
       } else if (!isAuthenticated || !walletAddress) {
         // Clean up when disconnected
-        console.log('User disconnected, cleaning up state...');
+        console.log('🧹 User disconnected, cleaning up state...');
         setProvider(null);
         setSigner(null);
         setFactoryContract(null);
@@ -1310,6 +1368,10 @@ export default function TokenSwapInterface({
         setPriceQuote('0');
         setSellPriceQuote('0');
         setUnsupportedNetwork(false);
+      } else {
+        console.log('⏭️ Skipping initialization:', {
+          reason: provider ? 'Provider already exists' : 'Conditions not met',
+        });
       }
     };
 
@@ -1860,107 +1922,121 @@ export default function TokenSwapInterface({
             </>
           ) : (
             <>
-              <div className="rounded-xl border border-[#D0B284]/20 bg-[#0F1511] p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-semibold uppercase tracking-[0.3em] text-[#D0B284]/60">
-                    Sell
-                  </span>
-                  <span className="text-[11px] text-[#D0B284]/70">
-                    Balance {Number.parseFloat(acesBalance).toFixed(4)} ACES
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-[130px]">
-                    <select
-                      className="w-full h-10 rounded-lg border border-[#D0B284]/30 bg-black text-[#D0B284] px-3"
-                      value={activeTab === 'sell' ? 'RWA' : paymentAsset}
-                      onChange={(e) => {
-                        handleLegacyTokenSelectorChange('from', e.target.value);
-                        setDexQuote(null);
-                      }}
-                    >
-                      {activeTab === 'sell' ? (
-                        <option value="RWA">{tokenSymbol}</option>
-                      ) : (
-                        paymentAssetOptions.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))
+              <div className="relative flex flex-col gap-5">
+                <div className="rounded-3xl border border-[#D0B284]/25 bg-[#0B0F0B] p-4 shadow-[0_20px_45px_rgba(0,0,0,0.35)]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.35em] text-[#D0B284]/70">
+                      Sell
+                    </span>
+                    <div className="relative inline-flex min-w-[140px] justify-end">
+                      <select
+                        className="appearance-none rounded-full border border-[#D0B284]/25 bg-black/70 px-4 pr-9 py-2 text-sm font-semibold text-[#D0B284] focus:outline-none focus:ring-2 focus:ring-[#D0B284]/40"
+                        value={activeTab === 'sell' ? 'RWA' : paymentAsset}
+                        onChange={(e) => {
+                          handleLegacyTokenSelectorChange('from', e.target.value);
+                          setDexQuote(null);
+                        }}
+                      >
+                        {activeTab === 'sell' ? (
+                          <option value="RWA">{tokenSymbol}</option>
+                        ) : (
+                          paymentAssetOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#D0B284]/60" />
+                    </div>
+                  </div>
+
+                  <div className="mt-4">
+                    <input
+                      value={amount}
+                      onChange={(e) => handleAmountChange(e.target.value)}
+                      onKeyDown={handleAmountKeyDown}
+                      placeholder="0"
+                      inputMode={enforceCurveLimit ? 'numeric' : 'decimal'}
+                      aria-invalid={Boolean(amountError)}
+                      className={cn(
+                        'w-full border-none bg-transparent text-4xl font-semibold text-white outline-none focus:ring-0 placeholder:text-[#D0B284]/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
+                        enforceCurveLimit ? 'tracking-tight' : '',
                       )}
-                    </select>
+                    />
                   </div>
-                  <input
-                    value={amount}
-                    onChange={(e) => handleAmountChange(e.target.value)}
-                    onKeyDown={handleAmountKeyDown}
-                    placeholder="0"
-                    inputMode={enforceCurveLimit ? 'numeric' : 'decimal'}
-                    aria-invalid={Boolean(amountError)}
-                    className={cn(
-                      'flex-1 h-14 rounded-lg border bg-[#1a2318] text-[#D0B284] text-xl font-bold px-3 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
-                      amountError
-                        ? 'border-red-500/60 focus-visible:ring-red-500/40'
-                        : 'border-[#D0B284]/20 focus-visible:ring-[#D0B284]/40',
-                    )}
-                  />
-                </div>
-                {amountError ? (
-                  <p className="mt-2 text-xs text-red-300">{amountError}</p>
-                ) : enforceCurveLimit ? (
-                  <p className="mt-2 text-xs text-[#D0B284]/70">
-                    Bonding curve purchases require whole-token amounts.
-                  </p>
-                ) : null}
-              </div>
 
-              <div className="flex items-center justify-center">
-                <button
-                  type="button"
-                  disabled
-                  className="h-8 w-8 rounded-full border border-[#D0B284]/30 text-[#D0B284]/50"
-                >
-                  ↕
-                </button>
-              </div>
+                  {hasValidAmount && usdDisplay && (
+                    <div className="mt-2 text-sm text-[#D0B284]/70">
+                      ≈ {usdDisplay}
+                      {usdConversion?.isStale && (
+                        <span className="ml-1 text-[#D0B284]/40">(cached)</span>
+                      )}
+                    </div>
+                  )}
 
-              <div className="rounded-xl border border-[#D0B284]/20 bg-[#0F1511] p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-semibold uppercase tracking-[0.3em] text-[#D0B284]/60">
-                    Buy
-                  </span>
-                  <span className="text-[11px] text-[#D0B284]/70">
-                    Balance {Number.parseFloat(tokenBalance).toFixed(4)} {tokenSymbol}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-[130px]">
-                    <select
-                      className="w-full h-10 rounded-lg border border-[#D0B284]/30 bg-black text-[#D0B284] px-3"
-                      value={activeTab === 'sell' ? 'ACES' : 'RWA'}
-                      onChange={(e) => {
-                        handleLegacyTokenSelectorChange('to', e.target.value);
-                        setDexQuote(null);
-                      }}
-                    >
-                      <option value="RWA">{tokenSymbol}</option>
-                      <option value="ACES">ACES</option>
-                    </select>
+                  {amountError ? (
+                    <p className="mt-3 text-xs text-red-300">{amountError}</p>
+                  ) : enforceCurveLimit ? (
+                    <p className="mt-3 text-xs text-[#D0B284]/60">
+                      Bonding curve purchases require whole-token amounts.
+                    </p>
+                  ) : null}
+
+                  <div className="mt-3 flex items-center justify-between text-xs text-[#D0B284]/60">
+                    <span>Balance</span>
+                    <span className="font-mono text-[#D0B284]">{topBalanceLabel}</span>
                   </div>
-                  <input
-                    value={amount}
-                    readOnly
-                    className="flex-1 h-14 rounded-lg border border-[#D0B284]/10 bg-[#121a13] text-[#D0B284]/70 text-xl font-bold px-3"
-                  />
+                </div>
+
+                <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-[#D0B284]/30 bg-black/80 shadow-[0_10px_30px_rgba(0,0,0,0.45)]">
+                    <ArrowDown className="h-4 w-4 text-[#D0B284]" />
+                  </div>
+                </div>
+
+                <div className="rounded-3xl border border-[#D0B284]/25 bg-[#0B0F0B] p-4 pt-5 shadow-[0_20px_45px_rgba(0,0,0,0.35)]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.35em] text-[#D0B284]/70">
+                      Buy
+                    </span>
+                    <div className="relative inline-flex min-w-[140px] justify-end">
+                      <select
+                        className="appearance-none rounded-full border border-[#D0B284]/25 bg-black/70 px-4 pr-9 py-2 text-sm font-semibold text-[#D0B284] focus:outline-none focus:ring-2 focus:ring-[#D0B284]/40"
+                        value={activeTab === 'sell' ? 'ACES' : 'RWA'}
+                        onChange={(e) => {
+                          handleLegacyTokenSelectorChange('to', e.target.value);
+                          setDexQuote(null);
+                        }}
+                      >
+                        <option value="RWA">{tokenSymbol}</option>
+                        <option value="ACES">ACES</option>
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#D0B284]/60" />
+                    </div>
+                  </div>
+
+                  <div className="mt-4">
+                    <input
+                      value={outputAmount || amount}
+                      readOnly
+                      className="w-full border-none bg-transparent text-4xl font-semibold text-white/90 outline-none"
+                    />
+                  </div>
+
+                  <div className="mt-4 flex items-center justify-between text-xs text-[#D0B284]/60">
+                    <span>Balance</span>
+                    <span className="font-mono text-[#D0B284]">{bottomBalanceLabel}</span>
+                  </div>
                 </div>
               </div>
 
-              <div>
+              <div className="mt-6">
                 {!isAuthenticated || !provider ? (
                   <Button
                     onClick={handleConnectWallet}
                     disabled={!!loading}
-                    className="w-full h-14 bg-[#D0B284]/10 hover:bg-[#D0B284]/20 border border-[#D0B284] text-[#D0B284] font-proxima-nova font-bold text-lg rounded-lg disabled:opacity-50"
+                    className="w-full h-14 rounded-2xl border border-[#D0B284]/30 bg-[#101610] text-[#D0B284] font-proxima-nova font-bold text-lg transition-colors hover:bg-[#151d14] disabled:opacity-50"
                   >
                     {loading || 'Connect Wallet'}
                   </Button>
@@ -1968,56 +2044,44 @@ export default function TokenSwapInterface({
                   <Button
                     onClick={handleSwapClick}
                     disabled={activeTab === 'sell' ? disableSellAction : disableBuyAction}
-                    className="w-full h-14 bg-[#D0B284]/10 hover:bg-[#D0B284]/20 border border-[#D0B284] text-[#D0B284] font-proxima-nova font-bold text-lg rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full h-14 rounded-2xl border border-[#D0B284]/30 bg-[#101610] text-[#D0B284] font-spray-letters font-bold text-2xl tracking-widest uppercase transition-colors hover:bg-[#151d14] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {loading ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" /> {loading}
+                      <span className="flex items-center justify-center">
+                        <Loader2 className="h-6 w-6 animate-spin" aria-hidden="true" />
+                        <span className="sr-only">{loading}</span>
                       </span>
-                    ) : activeTab === 'buy' ? (
-                      combinedIsBonded ? (
-                        'Bonding Complete'
-                      ) : (
-                        'Buy'
-                      )
                     ) : (
-                      'Sell'
+                      'SWAP'
                     )}
                   </Button>
                 )}
               </div>
-
-              {hasValidAmount && usdConversion?.usdValue && (
-                <div className="text-center text-xs text-[#D0B284]/80">
-                  {Number.parseFloat(usdConversion.usdValue) < 0.01
-                    ? '≈ <$0.01 USD'
-                    : `≈ $${usdConversion.usdValue} USD`}
-                  {usdConversion.isStale && (
-                    <span className="ml-1 text-[#D0B284]/50">(cached)</span>
-                  )}
-                </div>
-              )}
             </>
           )}
 
           {transactionStatus && (
-            <div
-              role={transactionStatus.type === 'success' ? 'status' : 'alert'}
-              aria-live={transactionStatus.type === 'success' ? 'polite' : 'assertive'}
-              className={cn(
-                'w-full px-4 py-3 rounded-lg border text-sm flex items-start justify-between gap-3 shadow-lg',
-                transactionStatus.type === 'success'
-                  ? 'bg-green-900/60 border-green-500/30 text-green-100'
-                  : 'bg-red-900/60 border-red-600/40 text-red-100',
-              )}
-            >
-              <span className="leading-snug">{transactionStatus.message}</span>
-              <button
-                onClick={() => setTransactionStatus(null)}
-                className="text-xs font-semibold uppercase tracking-wide opacity-80 hover:opacity-100 transition-opacity"
+            <div className="fixed bottom-6 left-1/2 z-50 flex w-full max-w-sm -translate-x-1/2 px-4">
+              <div
+                role={transactionStatus.type === 'success' ? 'status' : 'alert'}
+                aria-live={transactionStatus.type === 'success' ? 'polite' : 'assertive'}
+                className={cn(
+                  'flex-1 rounded-xl border px-4 py-3 text-sm shadow-[0_12px_30px_rgba(0,0,0,0.45)] backdrop-blur-md',
+                  transactionStatus.type === 'success'
+                    ? 'bg-green-900/80 border-green-500/30 text-green-100'
+                    : 'bg-red-900/80 border-red-600/40 text-red-100',
+                )}
               >
-                Dismiss
-              </button>
+                <div className="flex items-start justify-between gap-3">
+                  <span className="leading-snug">{transactionStatus.message}</span>
+                  <button
+                    onClick={() => setTransactionStatus(null)}
+                    className="text-xs font-semibold uppercase tracking-wide opacity-80 transition-opacity hover:opacity-100"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>
