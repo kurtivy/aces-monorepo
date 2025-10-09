@@ -29,6 +29,7 @@ import type { PaymentAsset } from '@/lib/swap/types';
 
 // Import the newer SwapCard component
 import { SwapCard } from './swap-card';
+import { PercentageSelector } from './percentage-selector';
 
 interface TokenSwapInterfaceProps {
   tokenSymbol?: string;
@@ -158,6 +159,16 @@ export default function TokenSwapInterface({
   const handleAmountChange = useCallback((rawValue: string) => {
     setAmount(rawValue);
   }, []);
+
+  // Handle percentage calculation
+  const handlePercentageCalculated = useCallback((calculatedAmount: string) => {
+    setAmount(calculatedAmount);
+  }, []);
+
+  // Calculate the appropriate balance for the percentage selector
+  const percentageSelectorBalance = useMemo(() => {
+    return activeTab === 'buy' ? acesBalance : tokenBalance;
+  }, [activeTab, acesBalance, tokenBalance]);
 
   // Copy to clipboard
   const copyToClipboard = async (text: string) => {
@@ -522,6 +533,13 @@ export default function TokenSwapInterface({
             <>
               {/* Bonding curve interface */}
               <div className="relative flex flex-col gap-5">
+                {/* Percentage Selector */}
+                <PercentageSelector
+                  balance={percentageSelectorBalance}
+                  onAmountCalculated={handlePercentageCalculated}
+                  currentAmount={amount}
+                />
+
                 <div className="rounded-3xl border border-[#D0B284]/25 bg-[#0B0F0B] p-4 shadow-[0_20px_45px_rgba(0,0,0,0.35)]">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-semibold uppercase tracking-[0.35em] text-[#D0B284]/70">

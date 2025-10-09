@@ -12,6 +12,7 @@ import { ACES_FACTORY_ABI, ERC20_ABI, LAUNCHPAD_TOKEN_ABI } from '@/lib/contract
 import { DexApi, type DexQuoteResponse } from '@/lib/api/dex';
 import type { DatabaseListing } from '@/types/rwa/section.types';
 import { useWallets } from '@privy-io/react-auth';
+import { PercentageSelector } from './percentage-selector';
 
 const DEFAULT_SLIPPAGE_BPS = 100;
 const SWAP_DEADLINE_BUFFER_SECONDS = 60 * 10;
@@ -713,29 +714,26 @@ export function SwapCard({
     }
   }, [sellTokenDropdownOpen, buyTokenDropdownOpen]);
 
-  const handlePercentageClick = (percentage: number) => {
-    let balance = '0';
+  const handlePercentageCalculated = (calculatedAmount: string) => {
+    setAmount(calculatedAmount);
+  };
 
+  // Calculate the appropriate balance for the percentage selector
+  const percentageSelectorBalance = useMemo(() => {
     if (isDexMode) {
       // In DEX mode, use the selected sell token balance
       if (paymentAsset === 'ACES') {
-        balance = acesBalance;
+        return acesBalance;
       } else if (paymentAsset === tokenSymbol) {
-        balance = tokenBalance;
+        return tokenBalance;
       }
       // For other tokens (WETH, USDC, USDT), we'd need additional balance fetching
+      return '0';
     } else {
       // In non-DEX mode, use ACES balance for buying, token balance for selling
-      balance = activeTab === 'buy' ? acesBalance : tokenBalance;
+      return activeTab === 'buy' ? acesBalance : tokenBalance;
     }
-
-    const balanceNum = Number.parseFloat(balance);
-
-    if (balanceNum > 0) {
-      const calculatedAmount = (balanceNum * percentage) / 100;
-      setAmount(calculatedAmount.toString());
-    }
-  };
+  }, [isDexMode, paymentAsset, tokenSymbol, acesBalance, tokenBalance, activeTab]);
 
   // Sell-side balance helpers for display above token selector
   const sellSideBalanceFormatted = Number.isFinite(
@@ -750,48 +748,11 @@ export function SwapCard({
 
   return (
     <div role="region" aria-label="Swap interface">
-      <div className="flex items-center justify-end">
-        <label className="flex items-center gap-2 text-[12px] text-[#D0B264]/80">
-          <span className="sr-only">Slippage tolerance</span>
-          <span aria-hidden>Slippage</span>
-          <select
-            aria-label="Slippage tolerance"
-            value={slippageBps}
-            onChange={(e) => setSlippageBps(Number(e.target.value))}
-            className="
-              rounded-lg border-[0.5px] border-[#D0B264]
-              bg-black/40 px-2 py-1.5
-              text-[12px] font-semibold text-[#D0B264]
-              hover:bg-black/55 transition-colors duration-150
-              focus:outline-none
-            "
-          >
-            <option value={50}>0.5%</option>
-            <option value={100}>1%</option>
-            <option value={200}>2%</option>
-            <option value={300}>3%</option>
-          </select>
-        </label>
-      </div>
-
-      <div className="mt-2 grid grid-cols-4 gap-2">
-        {[25, 50, 75, 100].map((percentage) => (
-          <button
-            key={percentage}
-            type="button"
-            onClick={() => handlePercentageClick(percentage)}
-            className="
-              rounded-lg border-[0.5px] border-[#D0B264]
-              bg-black/40 px-2 py-1.5
-              text-[13px] font-semibold text-[#D0B264]
-              hover:bg-black/55 hover:text-[#D0B264]
-              transition-colors duration-150
-            "
-          >
-            {percentage === 100 ? 'MAX' : `${percentage}%`}
-          </button>
-        ))}
-      </div>
+      <PercentageSelector
+        balance={percentageSelectorBalance}
+        onAmountCalculated={handlePercentageCalculated}
+        currentAmount={amount}
+      />
 
       {/* Swap Panels */}
       <div className="mt-3 flex flex-col gap-0">
@@ -802,24 +763,29 @@ export function SwapCard({
               <div className="mb-1 text-[14px] font-medium text-[#D0B264]/80">
                 {activeTab === 'buy' ? 'Sell' : 'You sell'}
               </div>
-              <input
-                type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0"
-                className="
-                  w-full h-12 bg-transparent border-none outline-none
-                  text-[28px] font-semibold tracking-tight text-foreground/95
-                  [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none
-                "
-              />
-              <div className="mt-1 text-[12px] text-[#D0B264]/70">$0</div>
+              <div className="flex flex-col">
+                <div className="h-8 flex items-center">
+                  <input
+                    type="number"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    placeholder="0"
+                    className="
+                      w-full bg-transparent border-none outline-none
+                      text-[28px] font-semibold tracking-tight text-foreground/95
+                      [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none
+                    "
+                  />
+                </div>
+                <div className="h-4 flex items-center">
+                  <span className="text-[12px] text-[#D0B264]/70">$0</span>
+                </div>
+              </div>
             </div>
 
-            <div className="flex flex-col items-center justify-center gap-1">
-              <div className="text-center text-[12px] text-[#D0B264]/70">
-                Balance:{' '}
-                <span className="font-mono text-[#D0B264]">{sellSideBalanceFormatted}</span>
+            <div className="flex flex-col items-start justify-start gap-2">
+              <div className="text-[10px] text-[#D0B264]/60 leading-none pl-4">
+                Bal: <span className="font-mono text-[#D0B264]">{sellSideBalanceFormatted}</span>
               </div>
               {/* Token dropdown */}
               <div className="relative token-dropdown-container">
@@ -829,7 +795,7 @@ export function SwapCard({
                   className="
                     inline-flex items-center gap-2 rounded-full
                     border-[0.5px] border-[#D0B264]/60 bg-black/40
-                    px-3 py-2 transition-colors duration-150
+                    px-4 py-2 transition-colors duration-150
                     hover:bg-black/55 focus:outline-none
                   "
                 >
@@ -976,6 +942,31 @@ export function SwapCard({
 
           {/* (deleted the previous 'Balance ...' footer) */}
         </div>
+      </div>
+
+      {/* Slippage Control */}
+      <div className="mt-3 flex items-center justify-end">
+        <label className="flex items-center gap-3 text-[14px] text-[#D0B264]/80">
+          <span className="sr-only">Slippage tolerance</span>
+          <span aria-hidden>Slippage</span>
+          <select
+            aria-label="Slippage tolerance"
+            value={slippageBps}
+            onChange={(e) => setSlippageBps(Number(e.target.value))}
+            className="
+              rounded-lg border-[0.5px] border-[#D0B264]
+              bg-black/40 px-3 py-2
+              text-[14px] font-semibold text-[#D0B264]
+              hover:bg-black/55 transition-colors duration-150
+              focus:outline-none
+            "
+          >
+            <option value={50}>0.5%</option>
+            <option value={100}>1%</option>
+            <option value={200}>2%</option>
+            <option value={300}>3%</option>
+          </select>
+        </label>
       </div>
 
       {/* Toast notification positioned at bottom */}
