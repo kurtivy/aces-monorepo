@@ -7,7 +7,6 @@ import { useTokenBondingData } from '@/hooks/contracts/use-token-bonding-data';
 interface BondingProgressSectionProps {
   tokenAddress?: string;
   chainId?: number;
-  // Optional overrides (keep compatibility with your existing data flow)
   percentageOverride?: number;
   isBondedOverride?: boolean;
   tokenSymbol?: string;
