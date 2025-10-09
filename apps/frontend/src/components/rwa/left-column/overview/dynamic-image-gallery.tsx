@@ -114,12 +114,12 @@ export default function DynamicImageGallery({
   return (
     <div className="flex-shrink-0 p-3 bg-transparent">
       {/* Selected image preview */}
-      <div className="relative w-full h-40 sm:h-48 bg-black/30 rounded-xl overflow-hidden mb-3">
+      <div className="relative w-full h-32 sm:h-40 bg-black/30 rounded-xl overflow-hidden mb-3">
         {selectedImage && (
           <Image
             src={getValidImageSrc(selectedImage.src, undefined, {
-              width: 640,
-              height: 480,
+              width: 512,
+              height: 384,
               text: 'Preview Error',
             })}
             alt={selectedImage.alt}
@@ -129,8 +129,8 @@ export default function DynamicImageGallery({
             unoptimized={selectedImage.src?.includes('storage.googleapis.com')}
             onError={createImageErrorHandler({
               fallbackText: 'Preview Error',
-              width: 640,
-              height: 480,
+              width: 512,
+              height: 384,
               onError: (src) => {
                 console.error('Gallery preview failed to load:', src);
               },
@@ -188,13 +188,13 @@ export default function DynamicImageGallery({
             >
               <Image
                 src={getValidImageSrc(image.thumbnail || image.src, undefined, {
-                  width: 100,
-                  height: 100,
+                  width: 80,
+                  height: 80,
                   text: 'Error',
                 })}
                 alt={image.alt}
-                width={100}
-                height={100}
+                width={80}
+                height={80}
                 className="w-full h-full object-cover"
                 unoptimized={image.src?.includes('storage.googleapis.com')}
                 onError={createImageErrorHandler({
