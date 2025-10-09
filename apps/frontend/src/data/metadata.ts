@@ -382,13 +382,13 @@ As one of the pioneering NFT projects that defined the digital art and collectib
   // Special submit asset image to replace create token squares
   {
     id: 'submit-asset',
-    title: 'Submit Your Asset',
+    title: 'Click to Trade',
     description:
-      'Submit your luxury asset for tokenization on the ACES platform. Transform your high-value collectibles, art, vehicles, and other assets into tradeable digital tokens.',
+      'Click to trade luxury assets on the ACES platform. Transform your high-value collectibles, art, vehicles, and other assets into tradeable digital tokens.',
     date: '2024-03-15',
     countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
     ticker: '$SUBMIT',
-    image: '/canvas-images/outline/submit-your-asset.webp',
+    image: '/webp/collect-prediction-market.webp',
     rrp: 0, // Special asset, no price
     tokenPrice: 0,
     marketCap: 0,

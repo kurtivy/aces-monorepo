@@ -22,7 +22,7 @@ import { LeftColumnNavigationV2 } from '@/components/rwa/left-column-v2/left-col
 import { MiddleContentAreaV2 } from '@/components/rwa/middle-column-v2/middle-content-area-v2';
 
 const columnDividerSize = {
-  height: 'calc(100vh - 120px)',
+  height: '100%',
   minHeight: '750px',
 } as const;
 
@@ -136,7 +136,7 @@ export default function RWAItemPage() {
     <>
       {!isMobile && (
         <div className="hidden md:block">
-          <div className="relative min-h-screen text-white overflow-hidden flex flex-col">
+          <div className="relative h-screen text-white overflow-hidden flex flex-col">
             <DashedGridBackground className="absolute inset-0 -z-10" bg="#000000" opacity={0.8} />
 
             {/* Header */}
@@ -145,7 +145,7 @@ export default function RWAItemPage() {
             </div>
 
             {/* Main 3-Column Layout */}
-            <div className="flex flex-1 relative z-10 min-h-0">
+            <div className="flex flex-1 relative z-10 h-full">
               {USE_NEW_LAYOUT ? (
                 <>
                   {/* V2 Layout */}
@@ -156,14 +156,8 @@ export default function RWAItemPage() {
                   <ColumnDivider />
 
                   {/* Middle Column V2 - Chart + Learn More */}
-                  <div className="flex-1 relative backdrop-blur-sm bg-black">
-                    <div
-                      className="h-full"
-                      style={{
-                        height: 'calc(100vh - 120px)',
-                        minHeight: '750px',
-                      }}
-                    >
+                  <div className="flex-1 relative backdrop-blur-sm bg-[#151c16] h-full">
+                    <div className="h-full min-h-[750px]">
                       <MiddleContentAreaV2
                         listing={listing}
                         isLive={forceShowTokenDetails ? true : isLive}
@@ -178,7 +172,7 @@ export default function RWAItemPage() {
                 <>
                   {/* Old Layout (V1) */}
                   {/* Left Column - Navigation System */}
-                  <div className="w-72 bg-black overflow-hidden flex-shrink-0">
+                  <div className="w-72 bg-[#151c16] overflow-hidden flex-shrink-0">
                     <LeftColumnNavigation
                       sections={sections}
                       activeSection={navigation.activeSection}
@@ -196,7 +190,7 @@ export default function RWAItemPage() {
                   <ColumnDivider />
 
                   {/* Middle Column - Main Content with Internal Scrolling */}
-                  <div className="flex-1 relative backdrop-blur-sm bg-black">
+                  <div className="flex-1 relative backdrop-blur-sm bg-[#151c16]">
                     <div
                       className="h-full overflow-y-auto"
                       style={{
@@ -223,8 +217,9 @@ export default function RWAItemPage() {
               <ColumnDivider />
 
               {/* Right Column - Token Swap Interface with Progression */}
-              <div className="w-96 bg-black flex-shrink-0 overflow-hidden backdrop-blur-sm">
+              <div className="w-96 bg-[#151c16] flex-shrink-0 overflow-hidden backdrop-blur-sm">
                 <div
+                  className="h-full"
                   style={{
                     height: 'calc(100vh - 120px)',
                     minHeight: '750px',

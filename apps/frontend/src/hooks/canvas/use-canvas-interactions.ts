@@ -462,11 +462,11 @@ export const useCanvasInteractions = ({
       }
 
       if (clickedImage) {
+        // Skip submit-asset images - they are non-interactive
         if (clickedImage.type === 'submit-asset') {
-          window.location.href = '/launch';
-        } else {
-          setSelectedImage(clickedImage);
+          return;
         }
+        setSelectedImage(clickedImage);
       }
     },
     [
