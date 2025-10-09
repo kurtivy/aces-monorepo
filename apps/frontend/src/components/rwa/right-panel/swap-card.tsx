@@ -1037,7 +1037,6 @@ export function SwapCard({
                   </div>
                 </div>
 
-                {/* Preset Buttons */}
                 <div className="grid grid-cols-3 gap-1.5">
                   <button
                     type="button"
