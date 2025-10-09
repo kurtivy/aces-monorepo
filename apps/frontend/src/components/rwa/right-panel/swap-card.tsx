@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Loader2, Wallet, ChevronDown } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Loader2, Wallet, ChevronDown, Settings } from 'lucide-react';
 import Image from 'next/image';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ethers } from 'ethers';
 import { useAuth } from '@/lib/auth/auth-context';
 import { cn } from '@/lib/utils';
@@ -94,12 +94,12 @@ function ActionButton({
           onClick={onSwap}
           disabled={isDisabled}
           className="
-            h-12 w-full rounded-[16px]
+            h-16 w-full rounded-[16px]
             flex items-center justify-center gap-2 text-[#D0B264]
             transition-colors duration-150 bg-black hover:bg-black/80
             cursor-pointer
             disabled:opacity-50 disabled:cursor-not-allowed font-spray-letters uppercase tracking-widest
-            text-[20px]
+            text-[32px]
           "
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
@@ -146,6 +146,9 @@ export function SwapCard({
   const [loading, setLoading] = useState('');
   const [tokenBonded, setTokenBonded] = useState(false);
   const [slippageBps, setSlippageBps] = useState(DEFAULT_SLIPPAGE_BPS);
+  const [slippagePopoverOpen, setSlippagePopoverOpen] = useState(false);
+  const [customSlippageInput, setCustomSlippageInput] = useState('');
+  const slippagePopoverRef = useRef<HTMLDivElement>(null);
   const [sellTokenDropdownOpen, setSellTokenDropdownOpen] = useState(false);
   const [buyTokenDropdownOpen, setBuyTokenDropdownOpen] = useState(false);
   const [receivingToken, setReceivingToken] = useState<'ACES' | string>('ACES');
@@ -706,16 +709,39 @@ export function SwapCard({
       ) {
         setBuyTokenDropdownOpen(false);
       }
+      if (
+        slippagePopoverOpen &&
+        slippagePopoverRef.current &&
+        !slippagePopoverRef.current.contains(event.target as Node)
+      ) {
+        setSlippagePopoverOpen(false);
+      }
     };
 
-    if (sellTokenDropdownOpen || buyTokenDropdownOpen) {
+    if (sellTokenDropdownOpen || buyTokenDropdownOpen || slippagePopoverOpen) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [sellTokenDropdownOpen, buyTokenDropdownOpen]);
+  }, [sellTokenDropdownOpen, buyTokenDropdownOpen, slippagePopoverOpen]);
 
   const handlePercentageCalculated = (calculatedAmount: string) => {
     setAmount(calculatedAmount);
+  };
+
+  // Handle slippage preset button clicks
+  const handleSlippagePreset = (bps: number) => {
+    setSlippageBps(bps);
+    setCustomSlippageInput('');
+  };
+
+  // Handle custom slippage input
+  const handleCustomSlippageChange = (value: string) => {
+    setCustomSlippageInput(value);
+    const numValue = parseFloat(value);
+    if (!isNaN(numValue) && numValue >= 0 && numValue <= 50) {
+      // Convert percentage to basis points (multiply by 100)
+      setSlippageBps(Math.round(numValue * 100));
+    }
   };
 
   // Calculate the appropriate balance for the percentage selector
@@ -758,11 +784,16 @@ export function SwapCard({
       <div className="mt-3 flex flex-col gap-0">
         {/* Sell/You sell pill */}
         <div className="rounded-2xl border-[0.5px] border-[#D0B264] bg-[var(--surface-1)] px-4 py-3 md:px-6">
+          <div className="flex items-start justify-between">
+            <div className="text-[14px] font-medium text-[#D0B264]/80">
+              {activeTab === 'buy' ? 'Sell' : 'You sell'}
+            </div>
+            <div className="text-[10px] text-[#D0B264]/60 leading-none">
+              Bal: <span className="font-mono text-[#D0B264]">{sellSideBalanceFormatted}</span>
+            </div>
+          </div>
           <div className="flex items-center justify-between">
             <div className="flex-1">
-              <div className="mb-1 text-[14px] font-medium text-[#D0B264]/80">
-                {activeTab === 'buy' ? 'Sell' : 'You sell'}
-              </div>
               <div className="flex flex-col">
                 <div className="h-8 flex items-center">
                   <input
@@ -783,85 +814,80 @@ export function SwapCard({
               </div>
             </div>
 
-            <div className="flex flex-col items-start justify-start gap-2">
-              <div className="text-[10px] text-[#D0B264]/60 leading-none pl-4">
-                Bal: <span className="font-mono text-[#D0B264]">{sellSideBalanceFormatted}</span>
-              </div>
-              {/* Token dropdown */}
-              <div className="relative token-dropdown-container">
-                <button
-                  type="button"
-                  onClick={() => setSellTokenDropdownOpen(!sellTokenDropdownOpen)}
-                  className="
+            {/* Token dropdown - vertically centered */}
+            <div className="relative token-dropdown-container">
+              <button
+                type="button"
+                onClick={() => setSellTokenDropdownOpen(!sellTokenDropdownOpen)}
+                className="
                     inline-flex items-center gap-2 rounded-full
                     border-[0.5px] border-[#D0B264]/60 bg-black/40
                     px-4 py-2 transition-colors duration-150
                     hover:bg-black/55 focus:outline-none
                   "
-                >
-                  <span className="relative inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/60 ring-[0.5px] ring-[#D0B264]/50">
-                    <Image
-                      src={selectedSellToken?.icon || '/svg/eth.svg'}
-                      alt={selectedSellToken?.symbol || 'Token'}
-                      width={20}
-                      height={20}
-                      className="rounded-full"
-                    />
-                  </span>
-                  <span className="text-[16px] font-semibold text-[#D0B264]">
-                    {selectedSellToken?.symbol || 'ACES'}
-                  </span>
-                  <ChevronDown className="h-4 w-4 text-[#D0B264]/70" />
-                </button>
+              >
+                <span className="relative inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/60 ring-[0.5px] ring-[#D0B264]/50">
+                  <Image
+                    src={selectedSellToken?.icon || '/svg/eth.svg'}
+                    alt={selectedSellToken?.symbol || 'Token'}
+                    width={20}
+                    height={20}
+                    className="rounded-full"
+                  />
+                </span>
+                <span className="text-[16px] font-semibold text-[#D0B264]">
+                  {selectedSellToken?.symbol || 'ACES'}
+                </span>
+                <ChevronDown className="h-4 w-4 text-[#D0B264]/70" />
+              </button>
 
-                {/* Dropdown menu */}
-                {sellTokenDropdownOpen && (
-                  <div className="absolute top-full mt-2 w-full min-w-[200px] bg-black/90 backdrop-blur-sm border border-[#D0B264]/30 rounded-lg shadow-lg z-50">
-                    {availableTokenOptions.map((token) => (
-                      <button
-                        key={token.symbol}
-                        type="button"
-                        onClick={() => {
-                          setPaymentAsset(token.symbol as typeof paymentAsset);
-                          setSellTokenDropdownOpen(false);
-                        }}
-                        className="
+              {/* Dropdown menu */}
+              {sellTokenDropdownOpen && (
+                <div className="absolute top-full  w-full min-w-[200px] bg-black/90 backdrop-blur-sm border border-[#D0B264]/30 rounded-lg shadow-lg z-50">
+                  {availableTokenOptions.map((token) => (
+                    <button
+                      key={token.symbol}
+                      type="button"
+                      onClick={() => {
+                        setPaymentAsset(token.symbol as typeof paymentAsset);
+                        setSellTokenDropdownOpen(false);
+                      }}
+                      className="
                           w-full px-4 py-2 text-left hover:bg-[#D0B264]/10
                           transition-colors duration-150 flex items-center gap-2
                           first:rounded-t-lg last:rounded-b-lg
                         "
-                      >
-                        <span className="relative inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/60 ring-[0.5px] ring-[#D0B264]/50">
-                          <Image
-                            src={token.icon}
-                            alt={token.symbol}
-                            width={16}
-                            height={16}
-                            className="rounded-full"
-                          />
+                    >
+                      <span className="relative inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/60 ring-[0.5px] ring-[#D0B264]/50">
+                        <Image
+                          src={token.icon}
+                          alt={token.symbol}
+                          width={16}
+                          height={16}
+                          className="rounded-full"
+                        />
+                      </span>
+                      <div className="flex flex-col">
+                        <span className="text-[14px] font-semibold text-[#D0B264]">
+                          {token.symbol}
                         </span>
-                        <div className="flex flex-col">
-                          <span className="text-[14px] font-semibold text-[#D0B264]">
-                            {token.symbol}
-                          </span>
-                          <span className="text-[10px] text-[#D0B264]/60">{token.name}</span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+                        <span className="text-[10px] text-[#D0B264]/60">{token.name}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
 
         {/* Buy/You receive pill */}
-        <div className="rounded-2xl border-[0.5px] border-[#D0B264] bg-[var(--surface-1)] px-4 py-3 md:px-6">
+        <div className="rounded-2xl  px-4 py-3 md:px-6 bg-[#090a0976]">
+          <div className="mb-1 text-[14px] font-medium text-[#D0B264]/80">
+            {activeTab === 'buy' ? 'Buy' : 'You receive'}
+          </div>
           <div className="flex items-center justify-between gap-3">
             <div className="flex-1">
-              <div className="mb-1 text-[14px] font-medium text-[#D0B264]/80">
-                {activeTab === 'buy' ? 'Buy' : 'You receive'}
-              </div>
               <div className="flex flex-col">
                 <div className="h-8 flex items-center">
                   <span className="text-[28px] font-semibold text-foreground/95">
@@ -946,27 +972,114 @@ export function SwapCard({
 
       {/* Slippage Control */}
       <div className="mt-3 flex items-center justify-end">
-        <label className="flex items-center gap-3 text-[14px] text-[#D0B264]/80">
-          <span className="sr-only">Slippage tolerance</span>
-          <span aria-hidden>Slippage</span>
-          <select
-            aria-label="Slippage tolerance"
-            value={slippageBps}
-            onChange={(e) => setSlippageBps(Number(e.target.value))}
+        <div className="relative" ref={slippagePopoverRef}>
+          <button
+            type="button"
+            onClick={() => setSlippagePopoverOpen(!slippagePopoverOpen)}
             className="
-              rounded-lg border-[0.5px] border-[#D0B264]
-              bg-black/40 px-3 py-2
-              text-[14px] font-semibold text-[#D0B264]
-              hover:bg-black/55 transition-colors duration-150
-              focus:outline-none
+              flex items-center gap-2 rounded-lg border-[0.5px] border-[#D0B264]/60
+              bg-black/40 px-3 py-2 transition-colors duration-150
+              hover:bg-black/55 focus:outline-none
             "
+            aria-label="Slippage settings"
           >
-            <option value={50}>0.5%</option>
-            <option value={100}>1%</option>
-            <option value={200}>2%</option>
-            <option value={300}>3%</option>
-          </select>
-        </label>
+            <Settings className="h-4 w-4 text-[#D0B264]" />
+            <span className="text-[14px] font-semibold text-[#D0B264]">{slippageBps / 100}%</span>
+          </button>
+
+          {/* Slippage Popover */}
+          <AnimatePresence>
+            {slippagePopoverOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                transition={{ duration: 0.15 }}
+                className="
+                  absolute right-0 bottom-full mb-2 z-50
+                  w-[180px] rounded-lg border border-[#D0B264]/30
+                  bg-black/95 backdrop-blur-sm shadow-xl
+                  p-2.5
+                "
+              >
+                {/* Input with Label */}
+                <div className="mb-2 flex items-center gap-2">
+                  <div className="text-[11px] font-medium text-[#D0B264]/70 whitespace-nowrap">
+                    Slippage
+                  </div>
+                  <div className="relative flex-1">
+                    <input
+                      type="number"
+                      value={customSlippageInput || slippageBps / 100}
+                      onChange={(e) => handleCustomSlippageChange(e.target.value)}
+                      onFocus={(e) => {
+                        if (!customSlippageInput) {
+                          setCustomSlippageInput((slippageBps / 100).toString());
+                        }
+                        e.target.select();
+                      }}
+                      placeholder="Custom"
+                      className="
+                        w-full rounded-lg border-[0.5px] border-[#D0B264]/40
+                        bg-black/40 px-2.5 py-1.5 pr-7
+                        text-[13px] font-semibold text-[#D0B264]
+                        focus:border-[#D0B264] focus:outline-none
+                        transition-colors duration-150
+                        [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none
+                      "
+                      min="0"
+                      max="50"
+                      step="0.1"
+                    />
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[12px] text-[#D0B264]/60">
+                      %
+                    </span>
+                  </div>
+                </div>
+
+                {/* Preset Buttons */}
+                <div className="grid grid-cols-3 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleSlippagePreset(50)}
+                    className={cn(
+                      'rounded-lg px-2 py-1.5 text-[12px] font-semibold transition-all duration-150',
+                      slippageBps === 50 && !customSlippageInput
+                        ? 'bg-[#D0B264]/20 text-[#D0B264] border-[0.5px] border-[#D0B264]'
+                        : 'bg-black/40 text-[#D0B264]/70 border-[0.5px] border-[#D0B264]/30 hover:bg-black/60',
+                    )}
+                  >
+                    0.5%
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSlippagePreset(100)}
+                    className={cn(
+                      'rounded-lg px-2 py-1.5 text-[12px] font-semibold transition-all duration-150',
+                      slippageBps === 100 && !customSlippageInput
+                        ? 'bg-[#D0B264]/20 text-[#D0B264] border-[0.5px] border-[#D0B264]'
+                        : 'bg-black/40 text-[#D0B264]/70 border-[0.5px] border-[#D0B264]/30 hover:bg-black/60',
+                    )}
+                  >
+                    1%
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSlippagePreset(200)}
+                    className={cn(
+                      'rounded-lg px-2 py-1.5 text-[12px] font-semibold transition-all duration-150',
+                      slippageBps === 200 && !customSlippageInput
+                        ? 'bg-[#D0B264]/20 text-[#D0B264] border-[0.5px] border-[#D0B264]'
+                        : 'bg-black/40 text-[#D0B264]/70 border-[0.5px] border-[#D0B264]/30 hover:bg-black/60',
+                    )}
+                  >
+                    2%
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
 
       {/* Toast notification positioned at bottom */}
