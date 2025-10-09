@@ -62,17 +62,17 @@ function ActionButton({
   isDexMode: boolean;
 }) {
   return (
-    <div className="mt-3">
+    <div className="mt-3 flex justify-center">
       {!isWalletConnected ? (
         <motion.button
           className="
-            h-11 w-full rounded-[16px]
-            flex items-center justify-center gap-2 text-[#D0B264]
-            transition-colors duration-150 bg-black hover:bg-black/80
-            cursor-pointer
-            disabled:opacity-50 disabled:cursor-not-allowed font-spray-letters uppercase tracking-widest
-            text-[18px]
-          "
+              h-11 w-3/4 rounded-[16px] border-2 border-[#D0B264]/60
+              flex items-center justify-center gap-2 text-[#D0B264]
+              transition-colors duration-150 bg-black hover:bg-black/80
+              cursor-pointer
+              disabled:opacity-50 disabled:cursor-not-allowed font-spray-letters uppercase tracking-widest
+              text-[18px]
+            "
           disabled={isAuthLoading}
           onClick={onConnect}
           whileHover={{ scale: 1.02 }}
@@ -94,13 +94,13 @@ function ActionButton({
           onClick={onSwap}
           disabled={isDisabled}
           className="
-            h-16 w-full rounded-[16px]
-            flex items-center justify-center gap-2 text-[#D0B264]
-            transition-colors duration-150 bg-black hover:bg-black/80
-            cursor-pointer
-            disabled:opacity-50 disabled:cursor-not-allowed font-spray-letters uppercase tracking-widest
-            text-[32px]
-          "
+              h-16 w-3/4 rounded-[16px] border-2 border-[#D0B264]/60
+              flex items-center justify-center gap-2 text-[#D0B264]
+              transition-colors duration-150 bg-black hover:bg-black/80
+              cursor-pointer
+              disabled:opacity-50 disabled:cursor-not-allowed font-spray-letters uppercase tracking-widest
+              text-[32px]
+            "
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           transition={{ type: 'spring', stiffness: 300, damping: 20 }}
@@ -783,7 +783,7 @@ export function SwapCard({
       {/* Swap Panels */}
       <div className="mt-3 flex flex-col gap-0">
         {/* Sell/You sell pill */}
-        <div className="rounded-2xl border-[0.5px] border-[#D0B264] bg-[var(--surface-1)] px-4 py-3 md:px-6">
+        <div className="rounded-2xl bg-[#1b251dbe] px-4 py-3 md:px-6">
           <div className="flex items-start justify-between">
             <div className="text-[14px] font-medium text-[#D0B264]/80">
               {activeTab === 'buy' ? 'Sell' : 'You sell'}
@@ -802,10 +802,10 @@ export function SwapCard({
                     onChange={(e) => setAmount(e.target.value)}
                     placeholder="0"
                     className="
-                      w-full bg-transparent border-none outline-none
-                      text-[28px] font-semibold tracking-tight text-foreground/95
-                      [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none
-                    "
+                        w-full bg-transparent border-none outline-none
+                        text-[28px] font-semibold tracking-tight text-foreground/95
+                        [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none
+                      "
                   />
                 </div>
                 <div className="h-4 flex items-center">
@@ -820,11 +820,11 @@ export function SwapCard({
                 type="button"
                 onClick={() => setSellTokenDropdownOpen(!sellTokenDropdownOpen)}
                 className="
-                    inline-flex items-center gap-2 rounded-full
-                    border-[0.5px] border-[#D0B264]/60 bg-black/40
-                    px-4 py-2 transition-colors duration-150
-                    hover:bg-black/55 focus:outline-none
-                  "
+                      inline-flex items-center gap-2 rounded-full
+                      border-[0.5px] border-[#D0B264]/60 bg-black/40
+                      px-4 py-2 transition-colors duration-150
+                      hover:bg-black/55 focus:outline-none
+                    "
               >
                 <span className="relative inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/60 ring-[0.5px] ring-[#D0B264]/50">
                   <Image
@@ -853,10 +853,10 @@ export function SwapCard({
                         setSellTokenDropdownOpen(false);
                       }}
                       className="
-                          w-full px-4 py-2 text-left hover:bg-[#D0B264]/10
-                          transition-colors duration-150 flex items-center gap-2
-                          first:rounded-t-lg last:rounded-b-lg
-                        "
+                            w-full px-4 py-2 text-left hover:bg-[#D0B264]/10
+                            transition-colors duration-150 flex items-center gap-2
+                            first:rounded-t-lg last:rounded-b-lg
+                          "
                     >
                       <span className="relative inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/60 ring-[0.5px] ring-[#D0B264]/50">
                         <Image
@@ -908,11 +908,11 @@ export function SwapCard({
                 type="button"
                 onClick={() => setBuyTokenDropdownOpen(!buyTokenDropdownOpen)}
                 className="
-                  inline-flex items-center gap-2 rounded-full
-                  border-[0.5px] border-[#D0B264]/60 bg-black/40
-                  px-4 py-2 text-[16px] font-extrabold text-[#D0B264]
-                  transition-colors duration-150 hover:bg-black/55
-                "
+                    inline-flex items-center gap-2 rounded-full
+                    border-[0.5px] border-[#D0B264]/60 bg-black/40
+                    px-4 py-2 text-[16px] font-extrabold text-[#D0B264]
+                    transition-colors duration-150 hover:bg-black/55
+                  "
               >
                 <span className="relative inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/60 ring-[0.5px] ring-[#D0B264]/50">
                   <Image
@@ -939,10 +939,10 @@ export function SwapCard({
                         setBuyTokenDropdownOpen(false);
                       }}
                       className="
-                        w-full px-4 py-2 text-left hover:bg-[#D0B264]/10
-                        transition-colors duration-150 flex items-center gap-2
-                        first:rounded-t-lg last:rounded-b-lg
-                      "
+                          w-full px-4 py-2 text-left hover:bg-[#D0B264]/10
+                          transition-colors duration-150 flex items-center gap-2
+                          first:rounded-t-lg last:rounded-b-lg
+                        "
                     >
                       <span className="relative inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/60 ring-[0.5px] ring-[#D0B264]/50">
                         <Image
@@ -971,20 +971,20 @@ export function SwapCard({
       </div>
 
       {/* Slippage Control */}
-      <div className="mt-3 flex items-center justify-end">
+      <div className="mt-3 flex items-center justify-end pr-2">
         <div className="relative" ref={slippagePopoverRef}>
           <button
             type="button"
             onClick={() => setSlippagePopoverOpen(!slippagePopoverOpen)}
             className="
-              flex items-center gap-2 rounded-lg border-[0.5px] border-[#D0B264]/60
-              bg-black/40 px-3 py-2 transition-colors duration-150
-              hover:bg-black/55 focus:outline-none
-            "
+                flex items-center gap-1.5 rounded-lg
+                bg-black/40 px-2.5 py-1.5 transition-colors duration-150
+                hover:bg-black/55 focus:outline-none
+              "
             aria-label="Slippage settings"
           >
-            <Settings className="h-4 w-4 text-[#D0B264]" />
-            <span className="text-[14px] font-semibold text-[#D0B264]">{slippageBps / 100}%</span>
+            <Settings className="h-3 w-3 text-[#D0B264]" />
+            <span className="text-[11px] font-semibold text-[#D0B264]">{slippageBps / 100}%</span>
           </button>
 
           {/* Slippage Popover */}
@@ -996,11 +996,11 @@ export function SwapCard({
                 exit={{ opacity: 0, y: 10, scale: 0.95 }}
                 transition={{ duration: 0.15 }}
                 className="
-                  absolute right-0 bottom-full mb-2 z-50
-                  w-[180px] rounded-lg border border-[#D0B264]/30
-                  bg-black/95 backdrop-blur-sm shadow-xl
-                  p-2.5
-                "
+                    absolute right-0 bottom-full mb-2 z-50
+                    w-[180px] rounded-lg border border-[#D0B264]/30
+                    bg-black/95 backdrop-blur-sm shadow-xl
+                    p-2.5
+                  "
               >
                 {/* Input with Label */}
                 <div className="mb-2 flex items-center gap-2">
@@ -1020,13 +1020,13 @@ export function SwapCard({
                       }}
                       placeholder="Custom"
                       className="
-                        w-full rounded-lg border-[0.5px] border-[#D0B264]/40
-                        bg-black/40 px-2.5 py-1.5 pr-7
-                        text-[13px] font-semibold text-[#D0B264]
-                        focus:border-[#D0B264] focus:outline-none
-                        transition-colors duration-150
-                        [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none
-                      "
+                          w-full rounded-lg border-[0.5px] border-[#D0B264]/40
+                          bg-black/40 px-2.5 py-1.5 pr-7
+                          text-[13px] font-semibold text-[#D0B264]
+                          focus:border-[#D0B264] focus:outline-none
+                          transition-colors duration-150
+                          [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none
+                        "
                       min="0"
                       max="50"
                       step="0.1"
