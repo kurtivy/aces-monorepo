@@ -35,7 +35,7 @@ export default function RightPanel({
     })) ?? [];
 
   return (
-    <div className="h-full w-full bg-[#151c16] p-4 flex flex-col gap-2 overflow-hidden">
+    <div className="h-full w-full bg-[#151c16] p-2 flex flex-col gap-1 overflow-hidden">
       {/* Top: Progress */}
       <BondingProgressSection
         tokenAddress={tokenAddress}

@@ -32,7 +32,7 @@ export default function RWAHeader({ className = '', onProfileClick }: RWAHeaderP
 
   return (
     <header data-rwa-header className={`w-full relative bg-[#151C16] ${className}`}>
-      <div className="max-w-[1920px] mx-auto px-3 sm:px-6 py-2 sm:py-4">
+      <div className="max-w-[1920px] mx-auto px-3 sm:px-6 py-1.5 sm:py-2.5">
         <div className="grid items-center w-full grid-cols-[1fr_auto] sm:grid-cols-[250px_1fr]">
           {/* Left side - ACES.FUN Logo and Text */}
           <div className="flex items-center gap-2 sm:gap-4 min-w-0 sm:min-w-[250px]">
