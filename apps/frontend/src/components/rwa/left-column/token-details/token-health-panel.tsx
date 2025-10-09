@@ -147,7 +147,7 @@ const getSignalColor = (action: string) => {
 // Helper component for labels with tooltips
 const LabelWithTooltip = ({ label, tooltip }: { label: string; tooltip: string }) => (
   <div className="flex items-center gap-1.5">
-    <span className="text-[10px] tracking-[0.28em] uppercase font-spray-letters text-[#D0B284]">
+    <span className="text-xs tracking-[0.2em] uppercase font-proxima-nova font-semibold text-[#D0B284]">
       {label}
     </span>
     <Tooltip>
@@ -164,6 +164,12 @@ const LabelWithTooltip = ({ label, tooltip }: { label: string; tooltip: string }
       </TooltipContent>
     </Tooltip>
   </div>
+);
+
+const SectionLabel = ({ label }: { label: string }) => (
+  <span className="text-xs tracking-[0.2em] uppercase font-proxima-nova font-semibold text-[#D0B284]">
+    {label}
+  </span>
 );
 
 interface TokenHealthPanelProps {
@@ -298,7 +304,7 @@ export default function TokenHealthPanel({
 
   const rowClass =
     'flex items-center justify-between gap-4 px-5 py-3 border-b border-[#D0B284]/15 last:border-b-0';
-  const valueClass = 'text-sm font-semibold font-proxima-nova leading-none text-white';
+  const valueClass = 'text-base font-semibold font-proxima-nova leading-none text-white';
 
   const isLoading = bondingLoading || !tokenAddress;
   const hasData = circulatingSupply > 0 && tokenPrice > 0;
@@ -323,17 +329,17 @@ export default function TokenHealthPanel({
         <div className="flex items-end gap-1 text-white">
           {ratioDisplay.numeric ? (
             <>
-              <span className="text-base font-semibold font-proxima-nova leading-none text-white">
+              <span className="text-lg font-semibold font-proxima-nova leading-none text-white">
                 {ratioDisplay.numeric}
               </span>
               {ratioDisplay.suffix ? (
-                <span className="text-base font-semibold font-proxima-nova leading-tight text-white">
+                <span className="text-lg font-semibold font-proxima-nova leading-tight text-white">
                   {ratioDisplay.suffix}
                 </span>
               ) : null}
             </>
           ) : (
-            <span className="text-base font-semibold font-proxima-nova leading-none text-white">
+            <span className="text-lg font-semibold font-proxima-nova leading-none text-white">
               {ratioDisplay.suffix}
             </span>
           )}
@@ -346,10 +352,7 @@ export default function TokenHealthPanel({
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5, delay: 0.1 }}
       >
-        <LabelWithTooltip
-          label="VER"
-          tooltip="Value Equilibrium Ratio = Token Price ÷ Reward Per Token. Below 0.8 = undervalued (buy), 0.8-1.2 = fair value (hold), above 1.2 = overvalued (sell)."
-        />
+        <SectionLabel label="VER" />
         <span className={valueClass}>
           {isLoading ? '...' : hasData ? metrics.valueEquilibriumRatio.toFixed(2) : '--'}
         </span>
@@ -360,10 +363,7 @@ export default function TokenHealthPanel({
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5, delay: 0.12 }}
       >
-        <LabelWithTooltip
-          label="SIGNAL"
-          tooltip="Trading signal based on VER analysis. Indicates whether the token is undervalued (buy), fairly valued (hold), or overvalued (sell)."
-        />
+        <SectionLabel label="SIGNAL" />
         {isLoading || !hasData ? (
           <span className={valueClass}>...</span>
         ) : (
@@ -395,10 +395,10 @@ export default function TokenHealthPanel({
           <span className={valueClass}>...</span>
         ) : (
           <div className="flex items-baseline gap-0.5 text-white">
-            <span className="text-xs font-proxima-nova leading-none text-white">
+            <span className="text-sm font-proxima-nova leading-none text-white">
               {tradingCreditsDisplay.prefix}
             </span>
-            <span className="text-base font-semibold font-proxima-nova leading-none text-white">
+            <span className="text-lg font-semibold font-proxima-nova leading-none text-white">
               {tradingCreditsDisplay.numeric}
             </span>
           </div>
@@ -418,8 +418,8 @@ export default function TokenHealthPanel({
           <span className={valueClass}>...</span>
         ) : (
           <div className="flex items-baseline gap-0.5 text-white">
-            <span className="text-xs font-proxima-nova leading-none">$</span>
-            <span className="text-base font-semibold font-proxima-nova leading-none text-white">
+            <span className="text-sm font-proxima-nova leading-none">$</span>
+            <span className="text-lg font-semibold font-proxima-nova leading-none text-white">
               {formatPrice(metrics.rewardPerToken)}
             </span>
           </div>

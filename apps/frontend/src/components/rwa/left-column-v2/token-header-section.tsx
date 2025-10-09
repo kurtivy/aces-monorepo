@@ -21,7 +21,7 @@ const formatMarketCap = (value: number): string => {
 
 const shortenAddress = (address: string): string => {
   if (!address) return '';
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  return `${address.slice(0, 5)}...${address.slice(-3)}`;
 };
 
 export function TokenHeaderSection({
@@ -126,18 +126,9 @@ export function TokenHeaderSection({
           )}
           <h2 className="text-xl font-semibold text-[#D0B284] font-proxima-nova">${tokenSymbol}</h2>
         </div>
-        <div className="text-base font-proxima-nova font-bold uppercase tracking-wide text-[#D0B284]">
-          MARKET CAP
-        </div>
-      </div>
-
-      <div
-        className="flex items-center justify-between transition-colors px-6 lg:h-[54px]"
-        style={bottomRowStyles}
-      >
         {tokenAddress ? (
           <div
-            className={`inline-flex items-center px-3 rounded-xl  border shadow-sm w-fit space-x-2 ${
+            className={`inline-flex items-center px-2 rounded-lg border shadow-sm w-fit space-x-2 ${
               isLgUp ? 'border-[#D0B284]/30 bg-[#D0B284]/10' : 'border-[#D0B284]/30 bg-[#0F0F0F]'
             }`}
           >
@@ -161,6 +152,15 @@ export function TokenHeaderSection({
         ) : (
           <span />
         )}
+      </div>
+
+      <div
+        className="flex items-center justify-between transition-colors px-6 lg:h-[54px]"
+        style={bottomRowStyles}
+      >
+        <div className="text-base font-proxima-nova font-bold uppercase tracking-wide text-[#D0B284]">
+          MARKET CAP
+        </div>
         <div className="text-xl font-semibold text-white font-proxima-nova">
           {formatMarketCap(marketCap)}
         </div>
