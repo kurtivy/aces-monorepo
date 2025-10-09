@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { ArrowUpRight, Heart, Loader2, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,6 +16,7 @@ interface RWAForumProps {
   listingTitle?: string;
   isLive?: boolean;
   variant?: 'default' | 'mobile' | 'compact';
+  onInitialCommentsLoaded?: () => void;
 }
 
 export default function RWAForumReal({
@@ -23,6 +24,7 @@ export default function RWAForumReal({
   listingTitle = "King Solomon's Baby",
   // isLive = true,
   variant = 'default',
+  onInitialCommentsLoaded,
 }: RWAForumProps) {
   const { isAuthenticated, getAccessToken } = useAuth();
   const [comments, setComments] = useState<Comment[]>([]);
@@ -34,6 +36,7 @@ export default function RWAForumReal({
   const [error, setError] = useState<string | null>(null);
   const [rateLimitError, setRateLimitError] = useState<string | null>(null);
   const [retryAfter, setRetryAfter] = useState<number | null>(null);
+  const hasAnnouncedInitialLoad = useRef(false);
 
   const isMobileVariant = variant === 'mobile';
   const isCompactVariant = variant === 'compact';
@@ -109,6 +112,17 @@ export default function RWAForumReal({
 
     return () => clearInterval(interval);
   }, [listingId, fetchComments]);
+
+  useEffect(() => {
+    hasAnnouncedInitialLoad.current = false;
+  }, [listingId]);
+
+  useEffect(() => {
+    if (fetching) return;
+    if (hasAnnouncedInitialLoad.current) return;
+    hasAnnouncedInitialLoad.current = true;
+    onInitialCommentsLoaded?.();
+  }, [fetching, onInitialCommentsLoaded]);
 
   // Rate limiting countdown
   useEffect(() => {
@@ -382,18 +396,20 @@ export default function RWAForumReal({
               <div className="mt-0.5 h-5 w-5 flex-shrink-0 rounded-full bg-[#151D15] text-[10px] font-semibold text-[#D0B284] flex items-center justify-center">
                 {initial}
               </div>
-              <div className="flex-1 space-y-0.5">
-                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              <div className="flex-1 space-y-0.5 min-w-0">
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs leading-snug">
                   <span className="text-[11px] font-semibold" style={{ color: usernameColor }}>
                     {displayName}
                   </span>
-                  {timestamp && (
-                    <span className="text-[10px] uppercase tracking-wide text-[#5A685A]">
-                      {timestamp}
-                    </span>
-                  )}
+                  <span className="flex-1 text-[#E8E6DD] break-words min-w-0">
+                    {comment.content ? `: ${comment.content}` : ''}
+                  </span>
                 </div>
-                <p className="text-xs leading-snug text-[#E8E6DD] break-words">{comment.content}</p>
+                {timestamp && (
+                  <span className="text-[10px] uppercase tracking-wide text-[#5A685A]">
+                    {timestamp}
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -508,14 +524,14 @@ export default function RWAForumReal({
     if (isCompactVariant) {
       if (!isAuthenticated) {
         return (
-          <div className="text-[11px] text-[#8FA28F]">
+          <div className="text-[11px] text-[#8FA28F] pr-6">
             Please connect your wallet to join the chat.
           </div>
         );
       }
 
       return (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 pr-6">
           <Input
             placeholder={`Share your thoughts about ${listingTitle}...`}
             value={newComment}
@@ -532,13 +548,13 @@ export default function RWAForumReal({
           <Button
             onClick={handleSubmitComment}
             disabled={!newComment.trim() || loading || !!rateLimitError}
-            className="w-9 h-9 rounded-full bg-[#D0B284] hover:bg-[#D0B284]/90 text-[#231F20] p-0"
+            className="w-8 h-8 rounded-full bg-[#D0B284] hover:bg-[#D0B284]/90 text-[#231F20] p-0"
             aria-label="Post comment"
           >
             {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
-              <ArrowUpRight className="h-4 w-4" />
+              <ArrowUpRight className="h-3.5 w-3.5" />
             )}
           </Button>
         </div>

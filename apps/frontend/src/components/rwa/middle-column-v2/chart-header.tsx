@@ -26,7 +26,7 @@ export function ChartHeader({ title, onLearnMoreClick }: ChartHeaderProps) {
       {/* Learn More Button */}
       <button
         onClick={onLearnMoreClick}
-        className="bg-[#D0B284]/10 hover:bg-[#D0B284]/20 border border-[#D0B284] text-[#D0B284] px-6 py-3 font-semibold uppercase tracking-wider transition-all duration-200 font-proxima-nova text-sm rounded"
+        className=" hover:bg-[#D0B284]/10 border-[0.5px] border-[#D0B284] text-[#D0B284] px-2 py-1 font-semibold uppercase tracking-wider transition-all duration-200 font-proxima-nova text-xs rounded"
       >
         Learn More
       </button>

@@ -147,7 +147,7 @@ export default function TradeHistory({
 
   if (error) {
     return (
-      <div className="bg-black rounded-xl overflow-hidden">
+      <div className="bg-[#151c16] rounded-xl overflow-hidden">
         <div className="p-4">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-[#D0B284] text-lg font-bold">Recent Trades</h3>
@@ -176,7 +176,7 @@ export default function TradeHistory({
 
   if (safeTrades.length === 0) {
     return (
-      <div className="bg-black rounded-xl overflow-hidden">
+      <div className="bg-[#151c16] rounded-xl overflow-hidden">
         <div className="p-4">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-[#D0B284] text-lg font-bold">Recent Trades</h3>
