@@ -139,11 +139,11 @@ export default function TokenSwapInterface({
 
   // Format USD display
   const usdDisplay = useMemo(() => {
-    if (!isDexMode && bondingQuote.usdConversion?.usdValue) {
-      return formatUsdValue(bondingQuote.usdConversion.usdValue);
+    if (!isDexMode && bondingQuote.totalUsdValue) {
+      return formatUsdValue(bondingQuote.totalUsdValue);
     }
     return null;
-  }, [isDexMode, bondingQuote.usdConversion]);
+  }, [isDexMode, bondingQuote.totalUsdValue]);
 
   // Determine if we have a valid amount
   const hasValidAmount = useMemo(() => {
@@ -208,7 +208,6 @@ export default function TokenSwapInterface({
 
     try {
       const amountWei = ethers.utils.parseUnits(amount, tokenDecimals);
-      const priceWei = ethers.utils.parseEther(bondingQuote.buyQuote);
 
       const service = new BondingCurveSwapService(
         factoryContract,
@@ -219,7 +218,7 @@ export default function TokenSwapInterface({
       const result = await service.buyTokens({
         tokenAddress,
         amount: amountWei,
-        maxPrice: priceWei,
+        slippageBps: bondingQuote.slippageBps,
         onStatus: setLoading,
       });
 
@@ -244,7 +243,7 @@ export default function TokenSwapInterface({
     contractAddresses,
     amount,
     tokenDecimals,
-    bondingQuote.buyQuote,
+    bondingQuote.slippageBps,
     refreshBalances,
   ]);
 

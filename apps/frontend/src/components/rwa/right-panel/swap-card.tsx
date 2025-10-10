@@ -13,9 +13,11 @@ import { DexApi, type DexQuoteResponse } from '@/lib/api/dex';
 import type { DatabaseListing } from '@/types/rwa/section.types';
 import { useWallets } from '@privy-io/react-auth';
 import { PercentageSelector } from './percentage-selector';
-
-const DEFAULT_SLIPPAGE_BPS = 100;
-const SWAP_DEADLINE_BUFFER_SECONDS = 60 * 10;
+import { useApprovalStatus } from '@/hooks/use-approval-status';
+import { useBondingCurveQuote } from '@/hooks/swap/use-bonding-curve-quote';
+import { TransactionSuccessModal } from './transaction-success-modal';
+import { BondingCurveSwapService } from '@/lib/swap/services/bonding-curve-swap-service';
+import { DEFAULT_SLIPPAGE_BPS, SWAP_DEADLINE_BUFFER_SECONDS } from '@/lib/swap/constants';
 
 const AERODROME_ROUTER_ABI = [
   'function swapExactTokensForTokens(uint256 amountIn, uint256 amountOutMin, address[] calldata path, address to, uint256 deadline) returns (uint256[] memory amounts)',
@@ -47,6 +49,7 @@ interface SwapCardProps {
 function ActionButton({
   isWalletConnected,
   isAuthLoading,
+  hasApproval,
   onConnect,
   onSwap,
   isDisabled,
@@ -55,6 +58,7 @@ function ActionButton({
 }: {
   isWalletConnected: boolean;
   isAuthLoading: boolean;
+  hasApproval: boolean;
   onConnect: () => void | Promise<void>;
   onSwap: () => void | Promise<void>;
   isDisabled: boolean;
@@ -110,8 +114,8 @@ function ActionButton({
               <Loader2 className="h-4 w-4 animate-spin mr-2" />
               {loading}
             </span>
-          ) : isDexMode ? (
-            <span className="font-spray-letters tracking-widest">SWAP</span>
+          ) : !isDexMode && !hasApproval ? (
+            'APPROVE ACES'
           ) : (
             'SWAP'
           )}
@@ -156,10 +160,6 @@ export function SwapCard({
   // Balance state
   const [acesBalance, setAcesBalance] = useState('0');
   const [tokenBalance, setTokenBalance] = useState('0');
-
-  // Price state
-  const [priceQuote, setPriceQuote] = useState('0');
-  const [sellPriceQuote, setSellPriceQuote] = useState('0');
   const [dexQuote, setDexQuote] = useState<DexQuoteResponse | null>(null);
   const [dexQuoteLoading, setDexQuoteLoading] = useState(false);
   const [dexSwapPending, setDexSwapPending] = useState(false);
@@ -167,6 +167,16 @@ export function SwapCard({
   const [transactionStatus, setTransactionStatus] = useState<{
     type: 'success' | 'error';
     message: string;
+  } | null>(null);
+
+  // Success modal state
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successModalData, setSuccessModalData] = useState<{
+    transactionHash: string;
+    tokenAmount: string;
+    acesSpent: string;
+    usdValue?: string;
+    newBalance?: string;
   } | null>(null);
 
   // Get current chain ID
@@ -208,6 +218,26 @@ export function SwapCard({
 
   const hasValidAmount = Boolean(amountValueWei);
   const isWalletConnected = isAuthenticated && !!walletAddress;
+
+  // Approval status hook (must be declared early as it's used in callbacks)
+  const approvalStatus = useApprovalStatus({
+    acesContract,
+    spenderAddress: contractAddresses.FACTORY_PROXY,
+    ownerAddress: walletAddress || null,
+    enabled: isWalletConnected && !isDexMode,
+  });
+
+  // Bonding curve quote hook with slippage (must be declared early as it's used in callbacks)
+  const bondingQuote = useBondingCurveQuote({
+    factoryContract,
+    tokenAddress,
+    amount,
+    tokenDecimals: 18,
+    isDexMode,
+    activeTab,
+    slippageBps,
+    autoRefreshEnabled: !isDexMode && isWalletConnected,
+  });
 
   const refreshBalances = useCallback(async () => {
     if (!acesContract || !tokenAddress || !signer) return;
@@ -331,31 +361,92 @@ export function SwapCard({
     onSwapComplete,
   ]);
 
-  const buyTokens = useCallback(async () => {
-    if (!factoryContract || !acesContract || !tokenAddress || !amountValueWei || !signer) return;
-
-    setTransactionStatus(null);
+  // Handle approval
+  const handleApproval = useCallback(async () => {
+    if (!acesContract || !signer || !factoryContract) {
+      setTransactionStatus({ type: 'error', message: 'Wallet not connected' });
+      return;
+    }
 
     try {
-      const priceWei = ethers.utils.parseEther(priceQuote);
+      setLoading('Requesting approval...');
 
-      setLoading('Approving ACES tokens...');
-      const approveTx = await acesContract.approve(contractAddresses.FACTORY_PROXY, priceWei);
-      await approveTx.wait(2);
+      const service = new BondingCurveSwapService(
+        factoryContract,
+        acesContract,
+        contractAddresses.FACTORY_PROXY,
+      );
 
-      setLoading('Buying tokens...');
-      const buyTx = await factoryContract.buyTokens(tokenAddress, amountValueWei, priceWei);
-      await buyTx.wait();
+      const result = await service.approveUnlimited({
+        onStatus: setLoading,
+      });
 
-      setLoading('Refreshing balances...');
-      await refreshBalances();
-
-      setTransactionStatus({ type: 'success', message: 'Purchase successful!' });
-      setAmount('');
-      onSwapComplete?.();
+      if (result.success) {
+        setTransactionStatus({ type: 'success', message: 'Approval successful!' });
+        // Refresh approval status
+        await approvalStatus.checkApproval();
+      } else {
+        setTransactionStatus({ type: 'error', message: result.error || 'Approval failed' });
+      }
     } catch (error) {
-      console.error('Failed to buy tokens:', error);
-      setTransactionStatus({ type: 'error', message: 'Transaction failed.' });
+      console.error('Approval failed:', error);
+      setTransactionStatus({ type: 'error', message: 'Approval failed' });
+    } finally {
+      setLoading('');
+    }
+  }, [acesContract, signer, factoryContract, contractAddresses, approvalStatus]);
+
+  // Handle bonding curve buy
+  const handleBondingBuy = useCallback(async () => {
+    if (!factoryContract || !acesContract || !tokenAddress || !amountValueWei || !signer) {
+      setTransactionStatus({ type: 'error', message: 'Missing required data' });
+      return;
+    }
+
+    try {
+      setTransactionStatus(null);
+
+      const service = new BondingCurveSwapService(
+        factoryContract,
+        acesContract,
+        contractAddresses.FACTORY_PROXY,
+      );
+
+      const result = await service.buyTokens({
+        tokenAddress,
+        amount: amountValueWei,
+        slippageBps,
+        onStatus: setLoading,
+      });
+
+      if (result.success) {
+        // Show success modal with transaction details
+        setSuccessModalData({
+          transactionHash: result.hash || '',
+          tokenAmount: amount,
+          acesSpent: bondingQuote.buyQuoteWithSlippage,
+          usdValue: bondingQuote.totalUsdValue || undefined,
+        });
+        setShowSuccessModal(true);
+
+        setAmount('');
+        await refreshBalances();
+
+        // Update new balance in modal after refresh
+        const tokenContract = new ethers.Contract(tokenAddress, LAUNCHPAD_TOKEN_ABI, signer);
+        const address = await signer.getAddress();
+        const newTokenBalance = await tokenContract.balanceOf(address);
+        const formattedBalance = ethers.utils.formatEther(newTokenBalance);
+
+        setSuccessModalData((prev) => (prev ? { ...prev, newBalance: formattedBalance } : null));
+
+        onSwapComplete?.();
+      } else {
+        setTransactionStatus({ type: 'error', message: result.error || 'Transaction failed' });
+      }
+    } catch (error) {
+      console.error('Buy failed:', error);
+      setTransactionStatus({ type: 'error', message: 'Transaction failed' });
     } finally {
       setLoading('');
     }
@@ -365,7 +456,9 @@ export function SwapCard({
     tokenAddress,
     amountValueWei,
     signer,
-    priceQuote,
+    slippageBps,
+    amount,
+    bondingQuote,
     contractAddresses,
     refreshBalances,
     onSwapComplete,
@@ -518,8 +611,15 @@ export function SwapCard({
       return;
     }
 
+    // Bonding curve mode - check approval first
+    if (!approvalStatus.hasApproval) {
+      await handleApproval();
+      return;
+    }
+
+    // Execute swap
     if (activeTab === 'buy') {
-      await buyTokens();
+      await handleBondingBuy();
     } else {
       await sellTokens();
     }
@@ -547,37 +647,6 @@ export function SwapCard({
       refreshBalances();
     }
   }, [acesContract, tokenAddress, signer, isAuthenticated, refreshBalances]);
-
-  // Get price quotes
-  useEffect(() => {
-    if (isDexMode || !factoryContract || !tokenAddress || !amountValueWei) {
-      if (!isDexMode) {
-        setPriceQuote('0');
-        setSellPriceQuote('0');
-      }
-      return;
-    }
-
-    const getQuotes = async () => {
-      try {
-        if (activeTab === 'buy') {
-          const buyPrice = await factoryContract.getBuyPriceAfterFee(tokenAddress, amountValueWei);
-          setPriceQuote(ethers.utils.formatEther(buyPrice));
-        } else {
-          const sellPrice = await factoryContract.getSellPriceAfterFee(
-            tokenAddress,
-            amountValueWei,
-          );
-          setSellPriceQuote(ethers.utils.formatEther(sellPrice));
-        }
-      } catch (error) {
-        console.error('Failed to get price quote:', error);
-      }
-    };
-
-    const timeout = setTimeout(getQuotes, 500);
-    return () => clearTimeout(timeout);
-  }, [isDexMode, factoryContract, tokenAddress, amountValueWei, activeTab]);
 
   // Get DEX quotes
   useEffect(() => {
@@ -629,29 +698,28 @@ export function SwapCard({
   const displayQuote = isDexMode
     ? dexQuote?.expectedOutput || '0'
     : activeTab === 'buy'
-      ? priceQuote
-      : sellPriceQuote;
+      ? bondingQuote.buyQuote
+      : bondingQuote.sellQuote;
 
-  // USD price calculation (simplified - in production would use price oracle/API)
+  // USD price display
   const usdPrice = useMemo(() => {
-    if (!displayQuote || displayQuote === '0') return '0.00';
-
-    // This is a simplified calculation - in production you'd fetch real USD prices
-    // For demonstration, using a rough estimate based on token type
-    const quoteValue = Number(displayQuote);
-    let usdRate = 1; // Default for ACES
-
-    if (paymentAsset === 'ETH' || paymentAsset === 'WETH') {
-      usdRate = 2000; // Example ETH price
-    } else if (paymentAsset === 'USDC' || paymentAsset === 'USDT') {
-      usdRate = 1; // Stablecoins
-    } else if (paymentAsset === tokenSymbol) {
-      usdRate = 0.5; // Example RWA token price
+    if (isDexMode) {
+      // Keep existing DEX USD logic (simplified for now)
+      if (!displayQuote || displayQuote === '0') return '0.00';
+      const quoteValue = Number(displayQuote);
+      let usdRate = 1;
+      if (paymentAsset === 'ETH' || paymentAsset === 'WETH') {
+        usdRate = 2000;
+      } else if (paymentAsset === 'USDC' || paymentAsset === 'USDT') {
+        usdRate = 1;
+      }
+      const usdValue = quoteValue * usdRate;
+      return usdValue.toFixed(2);
     }
 
-    const usdValue = quoteValue * usdRate;
-    return usdValue.toFixed(2);
-  }, [displayQuote, paymentAsset, tokenSymbol]);
+    // Bonding curve mode - use real USD conversion
+    return bondingQuote.totalUsdValue || '0.00';
+  }, [isDexMode, displayQuote, paymentAsset, bondingQuote.totalUsdValue]);
 
   // Available token options including the dynamic RWA token
   const availableTokenOptions = useMemo(() => {
@@ -1124,12 +1192,28 @@ export function SwapCard({
       <ActionButton
         isWalletConnected={isWalletConnected}
         isAuthLoading={isAuthLoading}
+        hasApproval={approvalStatus.hasApproval}
         onConnect={handleConnectWallet}
         onSwap={handleSwap}
         isDisabled={isDisabled}
         loading={loading}
         isDexMode={isDexMode}
       />
+
+      {/* Success Modal */}
+      {showSuccessModal && successModalData && (
+        <TransactionSuccessModal
+          isOpen={showSuccessModal}
+          onClose={() => setShowSuccessModal(false)}
+          transactionHash={successModalData.transactionHash}
+          tokenSymbol={tokenSymbol}
+          tokenAmount={successModalData.tokenAmount}
+          acesSpent={successModalData.acesSpent}
+          usdValue={successModalData.usdValue}
+          newBalance={successModalData.newBalance}
+          chainId={currentChainId || 84532}
+        />
+      )}
     </div>
   );
 }
