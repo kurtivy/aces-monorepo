@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { ethers } from 'ethers';
-import { usePriceConversion } from '@/hooks/use-price-conversion';
-import { PRICE_QUOTE_DEBOUNCE_MS } from '@/lib/swap/constants';
+import { useTokenUsdPrice } from '@/hooks/use-token-usd-price';
+import { useQuoteAutoRefresh } from '@/hooks/use-quote-auto-refresh';
+import { PRICE_QUOTE_DEBOUNCE_MS, DEFAULT_SLIPPAGE_BPS } from '@/lib/swap/constants';
 
 interface UseBondingCurveQuoteProps {
   factoryContract: ethers.Contract | null;
@@ -10,6 +11,8 @@ interface UseBondingCurveQuoteProps {
   tokenDecimals: number;
   isDexMode: boolean;
   activeTab: 'buy' | 'sell';
+  slippageBps?: number; // NEW: Slippage in basis points
+  autoRefreshEnabled?: boolean; // NEW: Enable 10s auto-refresh
 }
 
 /**
@@ -25,12 +28,17 @@ export function useBondingCurveQuote({
   tokenDecimals,
   isDexMode,
   activeTab,
+  slippageBps = DEFAULT_SLIPPAGE_BPS,
+  autoRefreshEnabled = true,
 }: UseBondingCurveQuoteProps) {
   // Quote state
   const [buyQuote, setBuyQuote] = useState<string>('0');
   const [sellQuote, setSellQuote] = useState<string>('0');
+  const [buyQuoteWithSlippage, setBuyQuoteWithSlippage] = useState<string>('0'); // NEW
+  const [sellQuoteWithSlippage, setSellQuoteWithSlippage] = useState<string>('0'); // NEW
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastRefreshTime, setLastRefreshTime] = useState<number>(Date.now()); // NEW
 
   // Debounce timer
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -53,11 +61,26 @@ export function useBondingCurveQuote({
   }, [amount, tokenDecimals]);
 
   /**
+   * Calculate quote with slippage buffer
+   */
+  const calculateWithSlippage = useCallback(
+    (quoteWei: ethers.BigNumber, slippage: number): string => {
+      // Formula: quote * (1 + slippage/10000)
+      // Example: 100 ACES with 1% (100 bps) = 100 * 1.01 = 101 ACES
+      const multiplier = ethers.BigNumber.from(10000 + slippage);
+      const withSlippage = quoteWei.mul(multiplier).div(10000);
+      return ethers.utils.formatEther(withSlippage);
+    },
+    [],
+  );
+
+  /**
    * Get buy price quote from bonding curve
    */
   const getBuyPriceQuote = useCallback(async (): Promise<void> => {
     if (!factoryContract || !tokenAddress || !amountWei.current) {
       setBuyQuote('0');
+      setBuyQuoteWithSlippage('0');
       return;
     }
 
@@ -65,11 +88,23 @@ export function useBondingCurveQuote({
       setLoading(true);
       setError(null);
 
-      const buyPrice = await factoryContract.getBuyPriceAfterFee(tokenAddress, amountWei.current);
-      const formatted = ethers.utils.formatEther(buyPrice);
-      setBuyQuote(formatted);
+      const buyPriceWei: ethers.BigNumber = await factoryContract.getBuyPriceAfterFee(
+        tokenAddress,
+        amountWei.current,
+      );
 
-      console.log('[useBondingCurveQuote] Buy quote fetched:', formatted);
+      const formatted = ethers.utils.formatEther(buyPriceWei);
+      const withSlippage = calculateWithSlippage(buyPriceWei, slippageBps);
+
+      setBuyQuote(formatted);
+      setBuyQuoteWithSlippage(withSlippage);
+      setLastRefreshTime(Date.now());
+
+      console.log('[useBondingCurveQuote] Buy quote fetched:', {
+        base: formatted,
+        withSlippage,
+        slippageBps,
+      });
     } catch (error) {
       console.error('[useBondingCurveQuote] Failed to get buy price quote:', error);
 
@@ -81,11 +116,12 @@ export function useBondingCurveQuote({
 
       // For other errors, reset and set error state
       setBuyQuote('0');
+      setBuyQuoteWithSlippage('0');
       setError('Failed to fetch buy price');
     } finally {
       setLoading(false);
     }
-  }, [factoryContract, tokenAddress]);
+  }, [factoryContract, tokenAddress, slippageBps, calculateWithSlippage]);
 
   /**
    * Get sell price quote from bonding curve
@@ -93,6 +129,7 @@ export function useBondingCurveQuote({
   const getSellPriceQuote = useCallback(async (): Promise<void> => {
     if (!factoryContract || !tokenAddress || !amountWei.current) {
       setSellQuote('0');
+      setSellQuoteWithSlippage('0');
       return;
     }
 
@@ -100,11 +137,23 @@ export function useBondingCurveQuote({
       setLoading(true);
       setError(null);
 
-      const sellPrice = await factoryContract.getSellPriceAfterFee(tokenAddress, amountWei.current);
-      const formatted = ethers.utils.formatEther(sellPrice);
-      setSellQuote(formatted);
+      const sellPriceWei: ethers.BigNumber = await factoryContract.getSellPriceAfterFee(
+        tokenAddress,
+        amountWei.current,
+      );
 
-      console.log('[useBondingCurveQuote] Sell quote fetched:', formatted);
+      const formatted = ethers.utils.formatEther(sellPriceWei);
+      const withSlippage = calculateWithSlippage(sellPriceWei, slippageBps);
+
+      setSellQuote(formatted);
+      setSellQuoteWithSlippage(withSlippage);
+      setLastRefreshTime(Date.now());
+
+      console.log('[useBondingCurveQuote] Sell quote fetched:', {
+        base: formatted,
+        withSlippage,
+        slippageBps,
+      });
     } catch (error) {
       console.error('[useBondingCurveQuote] Failed to get sell price quote:', error);
 
@@ -116,11 +165,12 @@ export function useBondingCurveQuote({
 
       // For other errors, reset and set error state
       setSellQuote('0');
+      setSellQuoteWithSlippage('0');
       setError('Failed to fetch sell price');
     } finally {
       setLoading(false);
     }
-  }, [factoryContract, tokenAddress]);
+  }, [factoryContract, tokenAddress, slippageBps, calculateWithSlippage]);
 
   /**
    * Debounced price calculation
@@ -147,6 +197,17 @@ export function useBondingCurveQuote({
   }, [isDexMode, activeTab, getBuyPriceQuote, getSellPriceQuote]);
 
   /**
+   * Manual refresh function for auto-refresh hook
+   */
+  const refreshQuote = useCallback(() => {
+    if (activeTab === 'buy') {
+      getBuyPriceQuote();
+    } else {
+      getSellPriceQuote();
+    }
+  }, [activeTab, getBuyPriceQuote, getSellPriceQuote]);
+
+  /**
    * Trigger quote calculation when dependencies change
    */
   useEffect(() => {
@@ -154,6 +215,8 @@ export function useBondingCurveQuote({
       // Reset quotes in DEX mode
       setBuyQuote('0');
       setSellQuote('0');
+      setBuyQuoteWithSlippage('0');
+      setSellQuoteWithSlippage('0');
       setError(null);
       return;
     }
@@ -168,33 +231,50 @@ export function useBondingCurveQuote({
     };
   }, [calculatePriceQuote, isDexMode]);
 
-  // Get USD conversion for current quote
-  const currentQuote = activeTab === 'buy' ? buyQuote : sellQuote;
-  const { data: usdConversion, loading: usdLoading } = usePriceConversion(currentQuote);
+  /**
+   * Auto-refresh every 10 seconds
+   */
+  useQuoteAutoRefresh({
+    enabled: autoRefreshEnabled && !isDexMode && !!amountWei.current,
+    onRefresh: refreshQuote,
+  });
 
-  // Format USD display
-  const usdDisplay =
-    usdConversion?.usdValue && Number.isFinite(Number.parseFloat(usdConversion.usdValue))
-      ? usdConversion.usdValue
-      : null;
+  // Get USD conversion for current quote (base quote, not with slippage)
+  const currentQuote = activeTab === 'buy' ? buyQuote : sellQuote;
+  const {
+    totalUsdValue,
+    acesUsdPrice,
+    loading: usdLoading,
+  } = useTokenUsdPrice({
+    tokenPriceInAces: currentQuote,
+    tokenAmount: amount,
+    enabled: !isDexMode && parseFloat(currentQuote) > 0,
+  });
 
   return {
-    // Quotes (ACES)
+    // Base quotes (ACES) - what the price actually is
     buyQuote,
     sellQuote,
 
+    // Quotes with slippage buffer - what user will approve/spend
+    buyQuoteWithSlippage,
+    sellQuoteWithSlippage,
+
     // USD Values
-    buyQuoteUSD: activeTab === 'buy' ? usdDisplay : null,
-    sellQuoteUSD: activeTab === 'sell' ? usdDisplay : null,
+    totalUsdValue,
+    acesUsdPrice,
     usdLoading,
-    usdConversion,
 
     // State
     loading,
     error,
+    lastRefreshTime,
 
-    // Future: Phase 4 - Slippage tolerance placeholder
-    slippageTolerance: 0, // Not implemented yet
+    // Actions
+    refreshQuote,
+
+    // Slippage
+    slippageBps,
   };
 }
 

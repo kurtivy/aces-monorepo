@@ -54,3 +54,19 @@ export const APPROVAL_CONFIRMATIONS = 2;
  * Price quote debounce delay in milliseconds
  */
 export const PRICE_QUOTE_DEBOUNCE_MS = 1000;
+
+/**
+ * Slippage tolerance constants
+ */
+export const MAX_SLIPPAGE_BPS = 5000; // 50%
+export const MIN_SLIPPAGE_BPS = 10; // 0.1%
+
+/**
+ * Preset slippage options (in basis points)
+ */
+export const SLIPPAGE_PRESETS = [50, 100, 200]; // 0.5%, 1%, 2%
+
+/**
+ * Quote auto-refresh interval in milliseconds
+ */
+export const QUOTE_AUTO_REFRESH_MS = 10000; // 10 seconds
