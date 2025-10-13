@@ -289,19 +289,57 @@ model TokenOHLCV {
   contractAddress String
   timeframe       String // '1m', '5m', '15m', '1h', '1d'
   timestamp       DateTime // Start of the candle period
+  
+  // Prices in ACES (existing)
   open            String // Opening price in ACES
   high            String // Highest price in ACES
   low             String // Lowest price in ACES
   close           String // Closing price in ACES
   volume          String // Volume in ACES tokens
+  
+  // USD prices
+  volumeUsd       String?  // Volume in USD
+  openUsd         String?  // Opening price in USD
+  highUsd         String?  // Highest price in USD
+  lowUsd          String?  // Lowest price in USD
+  closeUsd        String?  // Closing price in USD
+  
+  // NEW: Supply & Market Cap data
+  circulatingSupply String? // Current supply at this timestamp
+  totalSupply       String? // Total supply (bonding target or max supply)
+  marketCapAces     String? // Market cap in ACES
+  marketCapUsd      String? // Market cap in USD
+  
+  dataSource      String   @default("bonding_curve") // 'bonding_curve' or 'dex'
+  
   trades          Int // Number of trades in this period
+  createdAt       DateTime @default(now())
 
-  createdAt DateTime @default(now())
-
-  @@unique([contractAddress, timeframe, timestamp])
+  @@unique([contractAddress, timeframe, timestamp, dataSource])
   @@index([contractAddress, timeframe, timestamp])
-  @@index([contractAddress, timeframe]) // Performance index for getCachedCandles queries
+  @@index([contractAddress, timeframe])
+  @@index([contractAddress, dataSource]) // NEW: Filter by source
   @@map("token_ohlcv")
+}
+
+// NEW: Token supply snapshots (for historical tracking)
+model TokenSupplySnapshot {
+  id              String   @id @default(cuid())
+  contractAddress String
+  timestamp       DateTime
+  
+  circulatingSupply String // Current supply
+  totalSupply       String // Max supply / bonding target
+  
+  // Context (optional but helpful)
+  tradeId         String?  // Associated trade that caused this supply change
+  blockNumber     Int?
+  
+  createdAt       DateTime @default(now())
+
+  @@unique([contractAddress, timestamp])
+  @@index([contractAddress, timestamp])
+  @@map("token_supply_snapshots")
 }
 
 // NEW: Enums
