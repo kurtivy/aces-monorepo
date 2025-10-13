@@ -2,6 +2,7 @@ import Fastify, { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
 import helmet from '@fastify/helmet';
 import multipart from '@fastify/multipart';
+import fastifyWebSocket from '@fastify/websocket';
 
 import { getPrismaClient, checkDatabaseHealth, disconnectDatabase } from './lib/database';
 import { loggers } from './lib/logger';
@@ -32,6 +33,22 @@ import { tokenCreationRoutes } from './routes/v1/token-creation';
 import productImagesRoutes from './routes/v1/product-images';
 import { testNotificationRoutes } from './routes/v1/test-notifications';
 import { adminTokenRoutes } from './routes/v1/admin/tokens';
+import { bondingRoutes } from './routes/v1/bonding';
+import { pricesRoutes } from './routes/v1/prices';
+import { chartRoutes } from './routes/v1/chart';
+
+// WebSocket services
+import { UnifiedChartDataService } from './services/unified-chart-data-service';
+import { ChartDataWebSocket } from './websockets/chart-data-socket';
+import { BitQueryService } from './services/bitquery-service';
+import { OHLCVService } from './services/ohlcv-service';
+import { SupplyBasedOHLCVService } from './services/supply-based-ohlcv-service';
+import { TokenService } from './services/token-service';
+import { PoolDetectionService } from './services/pool-detection-service';
+import { AcesUsdPriceService } from './services/aces-usd-price-service';
+import { AerodromeDataService } from './services/aerodrome-data-service';
+import { ethers } from 'ethers';
+import { debugRoutes } from './api/debug';
 
 export const buildApp = async (): Promise<FastifyInstance> => {
   const fastify = Fastify({
@@ -42,6 +59,52 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   const prisma = getPrismaClient();
   fastify.decorate('prisma', prisma);
 
+  // Initialize provider FIRST (needed by multiple services)
+  const provider = new ethers.JsonRpcProvider(
+    process.env.BASE_MAINNET_RPC_URL || 'https://mainnet.base.org',
+  );
+
+  // Initialize services
+  const bitQueryService = new BitQueryService();
+  const tokenService = new TokenService(prisma);
+  const ohlcvService = new OHLCVService(prisma, tokenService);
+  const supplyBasedOHLCVService = new SupplyBasedOHLCVService();
+
+  // Initialize AerodromeDataService for AcesUsdPriceService
+  const aerodromeService = new AerodromeDataService({
+    acesTokenAddress:
+      process.env.ACES_TOKEN_ADDRESS || '0x55337650856299363c496065C836B9C6E9dE0367',
+    factoryAddress: '0x7e224ae4e6235bF18BBcb79cc2B5d04a7a6F8d1D',
+    apiBaseUrl: process.env.AERODROME_API_URL || 'https://base.api.aerodrome.finance/v1',
+    apiKey: process.env.AERODROME_API_KEY || '',
+    provider: provider, // Add the provider here
+  });
+
+  const acesUsdPriceService = new AcesUsdPriceService(
+    aerodromeService,
+    process.env.ACES_TOKEN_ADDRESS || '0x55337650856299363c496065C836B9C6E9dE0367',
+  );
+  const poolDetectionService = new PoolDetectionService(
+    provider,
+    '0x7e224ae4e6235bF18BBcb79cc2B5d04a7a6F8d1D', // Factory address
+    process.env.ACES_TOKEN_ADDRESS || '0x55337650856299363c496065C836B9C6E9dE0367',
+  );
+
+  const unifiedService = new UnifiedChartDataService(
+    prisma,
+    bitQueryService,
+    ohlcvService,
+    supplyBasedOHLCVService,
+    tokenService,
+    poolDetectionService,
+    acesUsdPriceService,
+    provider, // Pass provider for supply tracking
+  );
+
+  // Register services with Fastify instance
+  fastify.decorate('unifiedChartService', unifiedService);
+  fastify.decorate('acesUsdPriceService', acesUsdPriceService);
+
   // Register plugins
   fastify.register(helmet);
   fastify.register(multipart, {
@@ -49,6 +112,11 @@ export const buildApp = async (): Promise<FastifyInstance> => {
       fileSize: 5 * 1024 * 1024, // 5MB
     },
   });
+
+  // Register WebSocket plugin and initialize WebSocket routes
+  await fastify.register(fastifyWebSocket);
+  const chartWebSocket = new ChartDataWebSocket(fastify, unifiedService);
+  await chartWebSocket.initialize();
 
   // Register custom plugins
   fastify.register(registerAuth);
@@ -166,6 +234,13 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   // Register test notification routes (for development/testing)
   fastify.register(testNotificationRoutes, { prefix: '/api/v1/notifications' });
 
+  fastify.register(bondingRoutes, { prefix: '/api/v1/bonding' });
+
+  fastify.register(pricesRoutes, { prefix: '/api/v1/prices' });
+
+  fastify.register(chartRoutes);
+  fastify.register(debugRoutes);
+
   // Register hooks
   fastify.addHook('onRequest', async (request) => {
     request.startTime = Date.now();
@@ -185,6 +260,11 @@ export const buildApp = async (): Promise<FastifyInstance> => {
       throw new Error('Database not ready');
     }
     return { status: 'ready' };
+  });
+
+  // WebSocket stats endpoint
+  fastify.get('/api/v1/ws/stats', async (request, reply) => {
+    return chartWebSocket.getStats();
   });
 
   // Global error handler

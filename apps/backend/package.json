@@ -61,6 +61,7 @@
     "@fastify/multipart": "^7.7.3",
     "@fastify/rate-limit": "^8.1.1",
     "@fastify/under-pressure": "^8.4.0",
+    "@fastify/websocket": "^8.3.1",
     "@google-cloud/storage": "^7.16.0",
     "@google-cloud/vision": "^5.3.2",
     "@hapi/boom": "^10.0.1",
@@ -90,6 +91,7 @@
     "zod-to-json-schema": "^3.23.1"
   },
   "devDependencies": {
+    "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^6.11.0",
     "@typescript-eslint/parser": "^6.11.0",
     "@vitest/coverage-v8": "^0.34.6",
@@ -97,7 +99,8 @@
     "nodemon": "^3.0.1",
     "prettier": "^3.1.0",
     "ts-node": "^10.9.1",
-    "vitest": "^0.34.6"
+    "vitest": "^0.34.6",
+    "ws": "^8.18.3"
   },
   "overrides": {
     "@hpke/core": "1.7.4",

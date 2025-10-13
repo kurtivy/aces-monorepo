@@ -53,6 +53,7 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
         '/api/cron/sync-tokens', // Vercel cron endpoint
         '/api/cron/sync-liquidity',
         '/', // Root path for listings, contact, etc.
+        '/api/v1/bonding', // Bonding curve endpoints
       ];
 
       // Check if this is a public path
@@ -63,6 +64,7 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
           // Allow all token-related endpoints
           if (path === '/api/v1/tokens' && request.url.startsWith('/api/v1/tokens')) return true;
           if (path === '/api/v1/dex' && request.url.startsWith('/api/v1/dex')) return true;
+          if (path === '/api/v1/bonding' && request.url.startsWith('/api/v1/bonding')) return true;
           return false;
         }) ||
         (request.method === 'GET' && ['/live', '/search', '/stats', '/'].includes(request.url));
