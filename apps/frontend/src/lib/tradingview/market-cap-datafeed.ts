@@ -96,7 +96,6 @@ export class MarketCapDatafeed implements IBasicDataFeed {
     );
     this.displayCurrency = currency;
     this.historyCache.clear();
-    this.lastHistoricalBarByTimeframe.clear();
   }
 
   /**
