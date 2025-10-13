@@ -14,6 +14,10 @@ export interface TradeHistoryEntry {
   timestamp: number;
   txHash?: string;
   trader?: string;
+  priceInCounter?: number;
+  priceUsd?: string | number | null;
+  totalUsd?: string | number | null;
+  acesUsdAtExecution?: string | number | null;
 }
 
 interface TradeHistoryOptions {
@@ -99,6 +103,7 @@ export const useTradeHistory = (
             counterAmount: trade.amountCounter,
             timestamp: Number(trade.timestamp),
             txHash: trade.txHash,
+            priceInCounter: trade.priceInCounter,
           }));
         } else if (dexResult.error) {
           console.warn('[TradeHistory] Failed to fetch Dex trades:', dexResult.error);

@@ -26,7 +26,7 @@ const columnDividerSize = {
   minHeight: '750px',
 } as const;
 
-function ColumnDivider() {
+function ColumnDivider({ variant = 'dashed' }: { variant?: 'solid' | 'dashed' }) {
   return (
     <div
       className="relative flex-shrink-0 pointer-events-none"
@@ -46,9 +46,9 @@ function ColumnDivider() {
           x2="1"
           y2="100"
           stroke="#D0B284"
-          strokeOpacity={0.5}
+          strokeOpacity={0.3}
           strokeWidth={1}
-          strokeDasharray="12 12"
+          strokeDasharray={variant === 'solid' ? '0' : '12 12'}
           vectorEffect="non-scaling-stroke"
           shapeRendering="crispEdges"
         />
@@ -72,6 +72,9 @@ export default function RWAItemPage() {
   const navigation = useSectionNavigation(sections, initialSectionIndex);
   const { listing, loading, error, isLive, launchDate, isLaunched } = useListingBySymbol(symbol);
   const { capabilities } = useDeviceCapabilities();
+
+  // Chat state for V2 layout
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
   const MOBILE_BREAKPOINT = 768;
 
@@ -150,10 +153,15 @@ export default function RWAItemPage() {
                 <>
                   {/* V2 Layout */}
                   {/* Left Column V2 - New Dashboard */}
-                  <LeftColumnNavigationV2 listing={listing} loading={loading} />
+                  <LeftColumnNavigationV2
+                    listing={listing}
+                    loading={loading}
+                    isChatOpen={isChatOpen}
+                    onChatToggle={() => setIsChatOpen((prev) => !prev)}
+                  />
 
-                  {/* SVG Dashed Border - Between Left and Middle columns */}
-                  <ColumnDivider />
+                  {/* SVG Solid Border - Between Left and Middle columns */}
+                  <ColumnDivider variant="solid" />
 
                   {/* Middle Column V2 - Chart + Learn More */}
                   <div className="flex-1 relative backdrop-blur-sm bg-[#151c16] h-full">
@@ -164,6 +172,7 @@ export default function RWAItemPage() {
                         isLaunched={forceShowTokenDetails ? true : isLaunched}
                         selectedImageIndex={navigation.selectedImageIndex}
                         onImageSelect={navigation.setSelectedImageIndex}
+                        onChatClick={() => setIsChatOpen((prev) => !prev)}
                       />
                     </div>
                   </div>
@@ -214,7 +223,7 @@ export default function RWAItemPage() {
               )}
 
               {/* SVG Dashed Border - Between Middle and Right columns */}
-              <ColumnDivider />
+              <ColumnDivider variant="solid" />
 
               {/* Right Column - Token Swap Interface with Progression */}
               <div className="w-96 bg-[#151c16] flex-shrink-0 overflow-hidden backdrop-blur-sm">

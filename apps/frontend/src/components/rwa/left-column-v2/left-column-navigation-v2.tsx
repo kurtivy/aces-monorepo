@@ -4,20 +4,25 @@ import { TokenHeaderSection } from './token-header-section';
 import { TokenMetricsSection } from './token-metrics-section';
 import { ChatSection } from './chat-section';
 import { DatabaseListing } from '@/types/rwa/section.types';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePriceConversion } from '@/hooks/use-price-conversion';
 import { AnimatePresence, motion } from 'framer-motion';
 import { createPortal } from 'react-dom';
-import FloatingStreamButton from '@/components/twitch/floating-stream-button';
-import { cn } from '@/lib/utils';
-import { MessageCircle } from 'lucide-react';
+import { BondingProgressSection } from '@/components/rwa/right-panel/bonding-progression-section';
 
 interface LeftColumnNavigationV2Props {
   listing?: DatabaseListing | null;
   loading?: boolean;
+  isChatOpen?: boolean;
+  onChatToggle?: () => void;
 }
 
-export function LeftColumnNavigationV2({ listing, loading }: LeftColumnNavigationV2Props) {
+export function LeftColumnNavigationV2({
+  listing,
+  loading,
+  isChatOpen: externalChatOpen,
+  onChatToggle,
+}: LeftColumnNavigationV2Props) {
   // Calculate market cap from ACES balance
   const acesBalance = listing?.token?.currentPriceACES || '0';
   const acesDepositedFloat = useMemo(() => {
@@ -35,45 +40,20 @@ export function LeftColumnNavigationV2({ listing, loading }: LeftColumnNavigatio
     return isFinite(usd) ? usd : 0;
   }, [marketCapConversion]);
 
-  const [isChatOpen, setIsChatOpen] = useState(false);
+  // Use external chat state if provided, otherwise use internal state
+  const [internalChatOpen, setInternalChatOpen] = useState(false);
+  const isChatOpen = externalChatOpen !== undefined ? externalChatOpen : internalChatOpen;
+  const setIsChatOpen =
+    onChatToggle ||
+    ((value: boolean | ((prev: boolean) => boolean)) => {
+      if (typeof value === 'function') {
+        setInternalChatOpen(value);
+      } else {
+        setInternalChatOpen(value);
+      }
+    });
   const [isPortalReady, setIsPortalReady] = useState(false);
   const constraintsRef = useRef<HTMLDivElement>(null);
-  const chatButtonRef = useRef<HTMLButtonElement>(null);
-  const [chatAnchorRect, setChatAnchorRect] = useState<{
-    top: number;
-    left: number;
-    right: number;
-    height: number;
-  } | null>(null);
-  const twitchChannelName = (
-    (listing as { twitchChannelName?: string } | null)?.twitchChannelName ??
-    process.env.NEXT_PUBLIC_TWITCH_CHANNEL_NAME ??
-    ''
-  ).trim();
-
-  const updateChatAnchor = useCallback(() => {
-    const buttonEl = chatButtonRef.current;
-    if (!buttonEl) return;
-    const rect = buttonEl.getBoundingClientRect();
-    setChatAnchorRect((prev) => {
-      const next = {
-        top: rect.top,
-        left: rect.left,
-        right: rect.right,
-        height: rect.height,
-      };
-      if (
-        prev &&
-        prev.top === next.top &&
-        prev.left === next.left &&
-        prev.right === next.right &&
-        prev.height === next.height
-      ) {
-        return prev;
-      }
-      return next;
-    });
-  }, []);
 
   useEffect(() => {
     setIsPortalReady(true);
@@ -84,39 +64,25 @@ export function LeftColumnNavigationV2({ listing, loading }: LeftColumnNavigatio
     if (!isChatOpen) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setIsChatOpen(false);
+        if (onChatToggle) {
+          onChatToggle();
+        } else {
+          setIsChatOpen(false);
+        }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isChatOpen]);
+  }, [isChatOpen, onChatToggle]);
 
   useEffect(() => {
-    setIsChatOpen(false);
-    setChatAnchorRect(null);
+    if (onChatToggle) {
+      onChatToggle();
+    } else {
+      setIsChatOpen(false);
+    }
   }, [listing?.id]);
-
-  useEffect(() => {
-    if (!isChatOpen) return;
-
-    updateChatAnchor();
-    const handleRecalc = () => updateChatAnchor();
-
-    window.addEventListener('resize', handleRecalc);
-    window.addEventListener('scroll', handleRecalc, true);
-    return () => {
-      window.removeEventListener('resize', handleRecalc);
-      window.removeEventListener('scroll', handleRecalc, true);
-    };
-  }, [isChatOpen, updateChatAnchor]);
-
-  const floatingChatPosition = chatAnchorRect
-    ? {
-        top: Math.max(24, chatAnchorRect.top),
-        left: chatAnchorRect.right + 16,
-      }
-    : undefined;
 
   if (loading || !listing) {
     return (
@@ -153,67 +119,18 @@ export function LeftColumnNavigationV2({ listing, loading }: LeftColumnNavigatio
           />
         </div>
 
-        {/* Chat pop-out trigger */}
-        <div className="flex-shrink-0 border-t border-[#1E2B1E]/80 bg-[#151c16] pb-6">
-          <div className="w-full">
-            <button
-              ref={chatButtonRef}
-              type="button"
-              onClick={() =>
-                setIsChatOpen((prev) => {
-                  if (!prev) {
-                    updateChatAnchor();
-                  }
-                  return !prev;
-                })
-              }
-              aria-pressed={isChatOpen}
-              aria-expanded={isChatOpen}
-              className={cn(
-                'relative flex h-16 w-full items-center justify-center overflow-hidden rounded-t-md rounded-b-none',
-                'bg-[#151c16] text-[#D0B284] transition-colors font-spray-letters text-[13px] tracking-[0.25em]',
-                isChatOpen ? 'bg-[#162016] text-white' : 'hover:bg-[#0E150E]/70 hover:text-white',
-              )}
-            >
-              <MessageCircle
-                size={16}
-                className={cn(
-                  'pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#C9B48A]',
-                  isChatOpen ? 'text-[#FFEFC7]' : '',
-                )}
-              />
-              <span className="pointer-events-none">{isChatOpen ? 'HIDE CHAT' : 'VIEW CHAT'}</span>
-
-              <span
-                className={cn(
-                  'pointer-events-none absolute right-4 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full border border-[#D0B284]/50 transition',
-                  isChatOpen
-                    ? 'bg-[#4FFFB0] shadow-[0_0_12px_rgba(79,255,176,0.6)]'
-                    : 'bg-transparent',
-                )}
-              />
-
-              <div className="pointer-events-none absolute left-5 right-5 top-3 border-t border-dashed border-[#D0B284]/40" />
-              <div className="pointer-events-none absolute left-5 right-5 bottom-3 border-t border-dashed border-[#D0B284]/40" />
-            </button>
+        {/* Bonding Curve Progress */}
+        <div className="flex-shrink-0 border-t border-[#1E2B1E]/80 bg-[#151c16] px-6 py-4">
+          <div className="mb-3">
+            <h3 className="font-spray-letters text-sm font-bold uppercase tracking-[0.3em] text-[#D0B284] text-center">
+              Bonding Progress
+            </h3>
           </div>
-
-          <div className="w-full">
-            {twitchChannelName ? (
-              <FloatingStreamButton
-                channelName={twitchChannelName}
-                variant="selector"
-                className="mt-[-1px]"
-                buttonClassName="w-full rounded-none rounded-b-md"
-              />
-            ) : (
-              <div className="mt-[-1px] relative flex h-16 w-full items-center justify-center overflow-hidden rounded-none rounded-b-md bg-[#101710]/90 text-[#5A685A] font-spray-letters text-[13px] tracking-[0.25em]">
-                STREAM UNAVAILABLE
-                <div className="pointer-events-none absolute left-5 right-5 top-3 border-t border-dashed border-[#5A685A]/40" />
-                <div className="pointer-events-none absolute left-5 right-5 bottom-3 border-t border-dashed border-[#5A685A]/40" />
-              </div>
-            )}
-          </div>
+          <BondingProgressSection
+            tokenAddress={listing?.token?.contractAddress}
+            chainId={listing?.token?.chainId}
+            tokenSymbol={listing?.symbol || 'RWA'}
+          />
         </div>
       </div>
 
@@ -234,9 +151,14 @@ export function LeftColumnNavigationV2({ listing, loading }: LeftColumnNavigatio
                   listingTitle={listing.title}
                   isLive={listing.isLive}
                   floating
-                  onClose={() => setIsChatOpen(false)}
+                  onClose={() => {
+                    if (onChatToggle) {
+                      onChatToggle();
+                    } else {
+                      setIsChatOpen(false);
+                    }
+                  }}
                   dragConstraintsRef={constraintsRef}
-                  floatingPosition={floatingChatPosition}
                 />
               </motion.div>
             )}

@@ -9,10 +9,13 @@ import PageBandTitle from '@/components/ui/custom/page-band-title';
 import PageBandSubtitle from '@/components/ui/custom/page-band-subtitle';
 import AcesHeader from '@/components/ui/custom/aces-header';
 import PageLoader from '@/components/loading/page-loader';
-// import ListTokenForm from '@/components/forms/list-token-form';
+import ListTokenForm from '@/components/forms/list-token-form';
+import { Dialog, DialogTitle, DialogContent, DialogHeader } from '@/components/ui/dialog';
+import { VerificationForm } from '@/components/forms/verification-form';
 
 export default function CreateTokenForm() {
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
 
   if (!imageLoaded) {
     return (
@@ -115,12 +118,11 @@ export default function CreateTokenForm() {
           </div>
         </div>
         {/* Commented out form for future use */}
-        {/* 
+
         <div className="absolute top-[200px] left-1/2 -translate-x-1/2 w-full max-w-[1200px] px-4 sm:px-6 z-10 h-[1200px] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
           <ListTokenForm />
           <div className="h-24" />
         </div>
-        */}
       </div>
 
       {/* Footer - Fixed at bottom */}
@@ -130,7 +132,7 @@ export default function CreateTokenForm() {
 
       {/* Verification Modal - Commented out for Coming Soon page */}
       {/* TODO: Re-enable verification system when form is restored */}
-      {/*
+      {/*       
       <Dialog open={showVerificationModal} onOpenChange={setShowVerificationModal}>
         <DialogContent className="sm:max-w-[800px] bg-black border-[#D0B284]">
           <DialogHeader>
@@ -141,8 +143,7 @@ export default function CreateTokenForm() {
             onCancel={() => setShowVerificationModal(false)}
           />
         </DialogContent>
-      </Dialog>
-      */}
+      </Dialog> */}
     </div>
   );
 }

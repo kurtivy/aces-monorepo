@@ -1151,6 +1151,21 @@ export function LaunchTab() {
                     console.log('Wallet Address:', walletAddress);
                     console.log('ACES Token Address:', contractAddresses.ACES_TOKEN);
 
+                    // First, verify the signer's network
+                    const signerNetwork = await hookSigner.provider?.getNetwork();
+                    console.log('Signer Network:', signerNetwork?.chainId, signerNetwork?.name);
+
+                    // Check if contract has code
+                    const code = await hookSigner.provider?.getCode(contractAddresses.ACES_TOKEN);
+                    console.log('Contract code length:', code?.length);
+
+                    if (!code || code === '0x') {
+                      alert(
+                        `❌ ACES contract not deployed!\n\nAddress: ${contractAddresses.ACES_TOKEN}\nNetwork: ${signerNetwork?.name} (${signerNetwork?.chainId})\n\nThe contract has no code at this address on this network.`,
+                      );
+                      return;
+                    }
+
                     const testAces = new ethers.Contract(
                       contractAddresses.ACES_TOKEN,
                       ERC20_ABI,
@@ -1168,8 +1183,9 @@ export function LaunchTab() {
                     );
                   } catch (error) {
                     console.error('ACES contract test failed:', error);
+                    const signerNetwork = await hookSigner.provider?.getNetwork();
                     alert(
-                      `ACES test failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                      `ACES test failed!\n\nNetwork: ${signerNetwork?.name} (${signerNetwork?.chainId})\nAddress: ${contractAddresses.ACES_TOKEN}\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
                     );
                   }
                 }}

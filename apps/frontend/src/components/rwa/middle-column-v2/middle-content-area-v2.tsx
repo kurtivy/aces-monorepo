@@ -20,6 +20,7 @@ interface MiddleContentAreaV2Props {
   isLaunched: boolean;
   selectedImageIndex?: number;
   onImageSelect?: (index: number) => void;
+  onChatClick?: () => void;
 }
 
 export function MiddleContentAreaV2({
@@ -28,6 +29,7 @@ export function MiddleContentAreaV2({
   isLaunched,
   selectedImageIndex,
   onImageSelect,
+  onChatClick,
 }: MiddleContentAreaV2Props) {
   const { user } = useAuth();
   const [showDetailsOverlay, setShowDetailsOverlay] = useState(false);
@@ -57,12 +59,14 @@ export function MiddleContentAreaV2({
 
   return (
     <div className="relative h-full">
-      {/* Main Trading View - Scrollable */}
-      <div className="h-full overflow-y-auto">
-        {/* Chart Header - Now scrolls with content */}
-        <ChartHeader title={listing.title} onLearnMoreClick={handleLearnMoreClick} />
+      {/* Main Trading View */}
+      <div className="h-full">
+        <ChartHeader
+          title={listing.title}
+          onLearnMoreClick={handleLearnMoreClick}
+          onChatClick={onChatClick}
+        />
 
-        {/* Trading Section */}
         <TradingSection
           tokenAddress={listing.token?.contractAddress || ''}
           tokenSymbol={listing.symbol}
