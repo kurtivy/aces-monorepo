@@ -24,7 +24,9 @@ const baseSepolia: NetworkConfig = {
   aerodromeFactory: process.env.AERODROME_FACTORY_ADDRESS_BASE_SEPOLIA || '',
   aerodromeRouter: process.env.AERODROME_ROUTER_ADDRESS_BASE_SEPOLIA || '',
   acesToken:
-    process.env.ACES_TOKEN_ADDRESS_BASE_SEPOLIA || '0xF6b0c828ee8098120AFa90CEb11f80e6Fd4e2F1e',
+    process.env.ACES_TOKEN_ADDRESS_SEPOLIA ||
+    process.env.ACES_TOKEN_ADDRESS_BASE_SEPOLIA ||
+    '0xF6b0c828ee8098120AFa90CEb11f80e6Fd4e2F1e',
 };
 
 const NETWORKS: Record<SupportedChainId, NetworkConfig> = {

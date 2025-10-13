@@ -479,12 +479,14 @@ export class OHLCVService {
 
       for (const candle of candles) {
         try {
+          // FIX: Use new unique constraint with dataSource
           await this.prisma.tokenOHLCV.upsert({
             where: {
-              contractAddress_timeframe_timestamp: {
+              contractAddress_timeframe_timestamp_dataSource: {
                 contractAddress: lowerAddress,
                 timeframe,
                 timestamp: candle.timestamp,
+                dataSource: 'bonding_curve', // Required field in new schema
               },
             },
             update: {
@@ -505,6 +507,7 @@ export class OHLCVService {
               close: candle.close,
               volume: candle.volume,
               trades: candle.trades,
+              dataSource: 'bonding_curve', // Required field in new schema
             },
           });
           upsertedCount++;

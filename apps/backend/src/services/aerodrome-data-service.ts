@@ -477,37 +477,45 @@ export class AerodromeDataService {
       return [];
     }
 
-    const url = new URL(this.apiBaseUrl.replace(/\/$/, ''));
-    url.pathname = `${url.pathname.replace(/\/$/, '')}/trades`;
-    url.searchParams.set('poolAddress', poolAddress);
-    url.searchParams.set('limit', String(limit));
+    try {
+      const url = new URL(this.apiBaseUrl.replace(/\/$/, ''));
+      url.pathname = `${url.pathname.replace(/\/$/, '')}/trades`;
+      url.searchParams.set('poolAddress', poolAddress);
+      url.searchParams.set('limit', String(limit));
 
-    const response = await this.fetchFn(url.toString(), {
-      headers: this.apiKey
-        ? {
-            Authorization: `Bearer ${this.apiKey}`,
-          }
-        : undefined,
-    });
+      const response = await this.fetchFn(url.toString(), {
+        headers: this.apiKey
+          ? {
+              Authorization: `Bearer ${this.apiKey}`,
+            }
+          : undefined,
+      });
 
-    if (!response.ok) {
+      if (!response.ok) {
+        console.warn(
+          `[AerodromeDataService] Trades API responded with ${response.status} for ${poolAddress}`,
+        );
+        return [];
+      }
+
+      const payload = (await response.json()) as unknown;
+      const tradesArray = Array.isArray((payload as any)?.data)
+        ? (payload as any).data
+        : Array.isArray(payload)
+          ? payload
+          : [];
+
+      if (!Array.isArray(tradesArray)) {
+        return [];
+      }
+
+      return tradesArray
+        .map((item: any) => this.mapApiTrade(item))
+        .filter(Boolean) as AerodromeSwap[];
+    } catch (error) {
+      console.warn('[AerodromeDataService] Trades API request failed:', error);
       return [];
     }
-
-    const payload = (await response.json()) as unknown;
-    const tradesArray = Array.isArray((payload as any)?.data)
-      ? (payload as any).data
-      : Array.isArray(payload)
-        ? payload
-        : [];
-
-    if (!Array.isArray(tradesArray)) {
-      return [];
-    }
-
-    return tradesArray
-      .map((item: any) => this.mapApiTrade(item))
-      .filter(Boolean) as AerodromeSwap[];
   }
 
   private mapApiTrade(trade: any): AerodromeSwap | null {
