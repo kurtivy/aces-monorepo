@@ -11,10 +11,42 @@ export const SWAP_DEADLINE_BUFFER_SECONDS = 60 * 10;
 /**
  * Supported assets for DEX swaps
  */
-export const SUPPORTED_DEX_ASSETS = ['ACES', 'USDC', 'USDT', 'ETH'] as const;
+export const SUPPORTED_DEX_ASSETS = ['ACES', 'USDC', 'USDT', 'ETH', 'WETH'] as const;
 
 /**
- * Fallback addresses for DEX tokens on Base
+ * Network-specific DEX token addresses
+ */
+export const DEX_TOKEN_ADDRESSES = {
+  // Base Mainnet (8453)
+  8453: {
+    USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // Base Mainnet USDC
+    WETH: '0x4200000000000000000000000000000000000006', // Base Mainnet WETH
+    USDT: '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2', // Base Mainnet USDT
+  },
+  // Base Sepolia (84532)
+  84532: {
+    USDC:
+      process.env.NEXT_PUBLIC_AERODROME_USDC_ADDRESS_SEPOLIA ||
+      '0x036CbD53842c5426634e7929541eC2318f3dCF7e', // Base Sepolia USDC (example)
+    WETH:
+      process.env.NEXT_PUBLIC_AERODROME_WETH_ADDRESS_SEPOLIA ||
+      '0x4200000000000000000000000000000000000006', // Base Sepolia WETH
+    USDT: process.env.NEXT_PUBLIC_AERODROME_USDT_ADDRESS_SEPOLIA || '0', // Base Sepolia USDT (if available)
+  },
+} as const;
+
+/**
+ * Get DEX token addresses for a specific chain
+ */
+export function getDexTokenAddresses(chainId: number = 84532) {
+  return (
+    DEX_TOKEN_ADDRESSES[chainId as keyof typeof DEX_TOKEN_ADDRESSES] || DEX_TOKEN_ADDRESSES[84532]
+  );
+}
+
+/**
+ * Fallback addresses for DEX tokens (uses mainnet by default for backward compatibility)
+ * @deprecated Use getDexTokenAddresses(chainId) instead for network-specific addresses
  */
 export const DEX_FALLBACK_ADDRESSES = {
   USDC:
@@ -33,6 +65,7 @@ export const TOKEN_DECIMALS = {
   USDC: 6,
   USDT: 6,
   ETH: 18,
+  WETH: 18,
   LAUNCHPAD: 18,
 } as const;
 

@@ -76,7 +76,7 @@ export class BondingCurveSwapService {
         UNLIMITED_APPROVAL,
       );
 
-      onStatus?.('Waiting for approval confirmation...');
+      onStatus?.('...');
       console.log('[BondingCurveSwapService] Approval tx sent:', approveTx.hash);
 
       const approvalReceipt = await approveTx.wait(APPROVAL_CONFIRMATIONS);

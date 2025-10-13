@@ -113,12 +113,8 @@ export function formatBalanceFixed(balance: string | number, decimals: number = 
 export function formatUsdValue(usdValue: string | number): string | null {
   const numericValue = typeof usdValue === 'string' ? Number.parseFloat(usdValue) : usdValue;
 
-  if (!Number.isFinite(numericValue) || numericValue === 0) {
+  if (!Number.isFinite(numericValue)) {
     return null;
-  }
-
-  if (numericValue < 0.01) {
-    return '<$0.01 USD';
   }
 
   return `$${numericValue.toLocaleString(undefined, {

@@ -16,7 +16,7 @@ export interface TransactionResult {
 export interface SwapParams {
   tokenAddress: string;
   amount: string;
-  paymentAsset: 'ACES' | 'USDC' | 'USDT' | 'ETH';
+  paymentAsset: 'ACES' | 'USDC' | 'USDT' | 'ETH' | 'WETH';
 }
 
 /**
@@ -41,7 +41,7 @@ export interface TokenMetadata {
 /**
  * Supported payment assets for swaps
  */
-export type PaymentAsset = 'ACES' | 'USDC' | 'USDT' | 'ETH';
+export type PaymentAsset = 'ACES' | 'USDC' | 'USDT' | 'ETH' | 'WETH';
 
 /**
  * Swap mode: bonding curve or DEX

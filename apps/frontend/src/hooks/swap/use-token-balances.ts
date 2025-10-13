@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { ethers } from 'ethers';
 import { ERC20_ABI } from '@/lib/contracts/abi';
-import { DEX_FALLBACK_ADDRESSES } from '@/lib/swap/constants';
+import { getDexTokenAddresses } from '@/lib/swap/constants';
 
 type BalanceAsset = 'ACES' | 'TOKEN' | 'USDC' | 'USDT' | 'ETH';
 
@@ -11,6 +11,7 @@ interface UseTokenBalancesProps {
   signer: ethers.Signer | null;
   factoryContract?: ethers.Contract | null;
   tokenAddress?: string;
+  chainId?: number; // Add chainId to support network-specific token addresses
 }
 
 /**
@@ -24,6 +25,7 @@ export function useTokenBalances({
   signer,
   factoryContract,
   tokenAddress,
+  chainId = 84532, // Default to Base Sepolia
 }: UseTokenBalancesProps) {
   // Balance state
   const [acesBalance, setAcesBalance] = useState<string>('0');
@@ -45,6 +47,9 @@ export function useTokenBalances({
 
   // Track in-flight requests to prevent duplicates
   const refreshingRef = useRef(false);
+
+  // Get network-specific DEX token addresses
+  const dexAddresses = getDexTokenAddresses(chainId);
 
   /**
    * Refresh a specific asset balance
@@ -78,8 +83,8 @@ export function useTokenBalances({
           }
 
           case 'USDC': {
-            const usdcAddress = DEX_FALLBACK_ADDRESSES.USDC;
-            if (!usdcAddress) return;
+            const usdcAddress = dexAddresses.USDC;
+            if (!usdcAddress || usdcAddress === '0') return;
             const contract = new ethers.Contract(usdcAddress, ERC20_ABI, signer);
             const balance = await contract.balanceOf(address);
             const formatted = ethers.utils.formatUnits(balance, 6);
@@ -88,8 +93,8 @@ export function useTokenBalances({
           }
 
           case 'USDT': {
-            const usdtAddress = DEX_FALLBACK_ADDRESSES.USDT;
-            if (!usdtAddress) return;
+            const usdtAddress = dexAddresses.USDT;
+            if (!usdtAddress || usdtAddress === '0') return;
             const contract = new ethers.Contract(usdtAddress, ERC20_ABI, signer);
             const balance = await contract.balanceOf(address);
             const formatted = ethers.utils.formatUnits(balance, 6);
@@ -98,8 +103,8 @@ export function useTokenBalances({
           }
 
           case 'ETH': {
-            const ethAddress = DEX_FALLBACK_ADDRESSES.ETH;
-            if (!ethAddress) return;
+            const ethAddress = dexAddresses.WETH;
+            if (!ethAddress || ethAddress === '0') return;
             const contract = new ethers.Contract(ethAddress, ERC20_ABI, signer);
             const balance = await contract.balanceOf(address);
             const formatted = ethers.utils.formatEther(balance);
@@ -126,7 +131,7 @@ export function useTokenBalances({
         setError(`Failed to fetch ${asset} balance`);
       }
     },
-    [signer, acesContract, tokenContract],
+    [signer, acesContract, tokenContract, dexAddresses],
   );
 
   /**
@@ -183,10 +188,10 @@ export function useTokenBalances({
       // Refresh stable balances
       try {
         const baseTokenConfigs = [
-          { symbol: 'USDC', address: DEX_FALLBACK_ADDRESSES.USDC, decimals: 6 },
-          { symbol: 'USDT', address: DEX_FALLBACK_ADDRESSES.USDT, decimals: 6 },
-          { symbol: 'ETH', address: DEX_FALLBACK_ADDRESSES.ETH, decimals: 18 },
-        ].filter((config) => config.address);
+          { symbol: 'USDC', address: dexAddresses.USDC, decimals: 6 },
+          { symbol: 'USDT', address: dexAddresses.USDT, decimals: 6 },
+          { symbol: 'ETH', address: dexAddresses.WETH, decimals: 18 },
+        ].filter((config) => config.address && config.address !== '0');
 
         if (baseTokenConfigs.length > 0) {
           const erc20Instances = baseTokenConfigs.map(
@@ -262,7 +267,15 @@ export function useTokenBalances({
       setLoading(false);
       refreshingRef.current = false;
     }
-  }, [signer, acesContract, tokenContract, factoryContract, tokenAddress, stableBalances]);
+  }, [
+    signer,
+    acesContract,
+    tokenContract,
+    factoryContract,
+    tokenAddress,
+    stableBalances,
+    dexAddresses,
+  ]);
 
   /**
    * Auto-refresh balances when contracts become available

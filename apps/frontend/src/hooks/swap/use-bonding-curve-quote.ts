@@ -241,6 +241,9 @@ export function useBondingCurveQuote({
 
   // Get USD conversion for current quote (base quote, not with slippage)
   const currentQuote = activeTab === 'buy' ? buyQuote : sellQuote;
+
+  // For BUY: currentQuote is ACES cost per token -> calculate total cost for amount
+  // For SELL: currentQuote is TOTAL ACES received for amount -> just convert to USD
   const {
     totalUsdValue,
     acesUsdPrice,
@@ -249,6 +252,7 @@ export function useBondingCurveQuote({
     tokenPriceInAces: currentQuote,
     tokenAmount: amount,
     enabled: !isDexMode && parseFloat(currentQuote) > 0,
+    isTotalAmount: activeTab === 'sell', // Sell quote is already total ACES
   });
 
   return {

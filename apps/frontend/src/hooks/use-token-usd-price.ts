@@ -10,9 +10,10 @@ interface TokenUsdPriceResult {
 }
 
 interface UseTokenUsdPriceProps {
-  tokenPriceInAces: string; // Price of 1 token in ACES (from bonding curve)
+  tokenPriceInAces: string; // Price of 1 token in ACES (from bonding curve) OR total ACES amount
   tokenAmount: string; // Amount of tokens user wants to buy
   enabled?: boolean; // Only fetch when needed
+  isTotalAmount?: boolean; // If true, tokenPriceInAces is already the total ACES (for sell quotes)
 }
 
 /**
@@ -31,6 +32,7 @@ export function useTokenUsdPrice({
   tokenPriceInAces,
   tokenAmount,
   enabled = true,
+  isTotalAmount = false,
 }: UseTokenUsdPriceProps): TokenUsdPriceResult {
   const [tokenUsdPrice, setTokenUsdPrice] = useState<string | null>(null);
   const [totalUsdValue, setTotalUsdValue] = useState<string | null>(null);
@@ -54,7 +56,7 @@ export function useTokenUsdPrice({
     try {
       // Parse values
       const acesPrice = parseFloat(acesUsdData.acesPrice); // ACES/USD rate
-      const priceInAces = parseFloat(tokenPriceInAces); // Token price in ACES
+      const priceInAces = parseFloat(tokenPriceInAces); // Token price in ACES OR total ACES amount
       const amount = parseFloat(tokenAmount);
 
       if (!isFinite(acesPrice) || !isFinite(priceInAces) || !isFinite(amount)) {
@@ -65,15 +67,26 @@ export function useTokenUsdPrice({
         throw new Error('Price values must be positive');
       }
 
-      // Calculate: Token/USD = (Token/ACES) * (ACES/USD)
-      const usdPricePerToken = priceInAces * acesPrice;
-      const totalUsd = usdPricePerToken * amount;
+      let totalUsd: number;
+      let usdPricePerToken: number;
+
+      if (isTotalAmount) {
+        // For sell quotes: priceInAces is the TOTAL ACES received
+        // Just convert ACES to USD directly
+        totalUsd = priceInAces * acesPrice;
+        usdPricePerToken = amount > 0 ? totalUsd / amount : 0;
+      } else {
+        // For buy quotes: Calculate Token/USD = (Token/ACES) * (ACES/USD)
+        usdPricePerToken = priceInAces * acesPrice;
+        totalUsd = usdPricePerToken * amount;
+      }
 
       setTokenUsdPrice(usdPricePerToken.toFixed(6));
       setTotalUsdValue(totalUsd.toFixed(2));
       setError(null);
 
       console.log('[useTokenUsdPrice] Calculated:', {
+        mode: isTotalAmount ? 'total' : 'per-token',
         acesUsdPrice: acesPrice,
         tokenPriceInAces: priceInAces,
         tokenUsdPrice: usdPricePerToken,
@@ -85,7 +98,7 @@ export function useTokenUsdPrice({
       setTokenUsdPrice(null);
       setTotalUsdValue(null);
     }
-  }, [acesUsdData, tokenPriceInAces, tokenAmount, enabled]);
+  }, [acesUsdData, tokenPriceInAces, tokenAmount, enabled, isTotalAmount]);
 
   return useMemo(
     () => ({
