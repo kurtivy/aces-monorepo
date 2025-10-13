@@ -9,8 +9,8 @@
   "scripts": {
     "postinstall": "npx prisma generate",
     "dev": "nodemon src/dev-server.ts",
-    "build": "npx prisma generate && tsc",
-    "start": "node dist/dev-server.js",
+    "build": "npx prisma generate && npx tsc",
+    "start": "npx prisma migrate deploy && node dist/dev-server.js",
     "vercel-build": "rm -rf node_modules/.prisma && NODE_ENV=production npx prisma generate && npm run build:serverless",
     "build:serverless": "npx tsup || (echo 'tsup failed, using tsc instead' && npx tsc)",
     "test": "vitest run --reporter=verbose --run",
