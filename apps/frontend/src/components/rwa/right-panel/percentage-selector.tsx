@@ -34,22 +34,24 @@ export function PercentageSelector({
       return;
     }
 
-    // Just update the UI state for now - balance calculation commented out for testing
-    setSelectedPercentage(percentage);
-    onAmountCalculated('', percentage);
-    lastCalculatedAmount.current = '';
-
-    /* BALANCE CALCULATION - COMMENTED OUT FOR UI TESTING
+    // Calculate amount based on balance
     const balanceNum = Number.parseFloat(balance);
 
-    if (balanceNum > 0) {
-      const calculatedAmount = (balanceNum * percentage) / 100;
-      const amountStr = calculatedAmount.toString();
-      lastCalculatedAmount.current = amountStr;
+    if (!isFinite(balanceNum) || balanceNum <= 0) {
+      // No balance available - just update UI state
       setSelectedPercentage(percentage);
-      onAmountCalculated(amountStr, percentage);
+      onAmountCalculated('', percentage);
+      lastCalculatedAmount.current = '';
+      return;
     }
-    */
+
+    // Calculate the amount based on percentage of balance
+    const calculatedAmount = (balanceNum * percentage) / 100;
+    const amountStr = calculatedAmount.toString();
+
+    lastCalculatedAmount.current = amountStr;
+    setSelectedPercentage(percentage);
+    onAmountCalculated(amountStr, percentage);
   };
 
   return (

@@ -1,11 +1,40 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { AlertCircle, CheckCircle, ChevronUp, Eye } from 'lucide-react';
+import Image from 'next/image';
+import Link from 'next/link';
+import { ChangeEvent, MouseEvent as ReactMouseEvent, useEffect, useState } from 'react';
+import { AlertCircle, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/lib/auth/auth-context';
 import { BidsApi, type Bid } from '@/lib/api/bids';
+import { createImageErrorHandler, getValidImageSrc } from '@/lib/utils/image-error-handler';
+
+const NUMERIC_INPUT_PATTERN = /^\d*\.?\d*$/;
+
+const formatOfferValue = (rawValue: string) => {
+  const [integerPart, decimalPart] = rawValue.split('.');
+  const formattedInteger = integerPart ? integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '';
+
+  if (decimalPart !== undefined) {
+    return `${formattedInteger}.${decimalPart}`;
+  }
+
+  return formattedInteger;
+};
+
+const parseOfferAmountValue = (value: string) => {
+  if (!value) {
+    return Number.NaN;
+  }
+
+  const normalized = value.replace(/,/g, '');
+  const parsed = Number.parseFloat(normalized);
+
+  return Number.isNaN(parsed) ? Number.NaN : parsed;
+};
 
 interface PlaceBidsInterfaceV2Props {
   listingId: string;
@@ -18,16 +47,20 @@ interface PlaceBidsInterfaceV2Props {
   isOwner: boolean;
   onBidPlaced?: (bid: Bid) => void;
   variant?: 'default' | 'mobile';
+  onOpenTerms?: () => void;
 }
 
 export function PlaceBidsInterfaceV2(props: PlaceBidsInterfaceV2Props) {
   const {
     listingId,
+    itemTitle,
+    itemImage,
     startingBidPrice,
     isLive,
     isOwner,
     onBidPlaced,
     variant = 'default',
+    onOpenTerms,
   } = props;
 
   const { user, getAccessToken } = useAuth();
@@ -40,9 +73,7 @@ export function PlaceBidsInterfaceV2(props: PlaceBidsInterfaceV2Props) {
   const [highestBid, setHighestBid] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [showAllBids, setShowAllBids] = useState(false);
-  const [allBids, setAllBids] = useState<Bid[]>([]);
-  const [bidsLoading, setBidsLoading] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
 
   useEffect(() => {
     const checkEligibility = async () => {
@@ -79,22 +110,13 @@ export function PlaceBidsInterfaceV2(props: PlaceBidsInterfaceV2Props) {
         if (highestResult.success && highestResult.data) {
           setHighestBid(parseFloat(highestResult.data.amount));
         }
-
-        if (showAllBids) {
-          const allBidsResult = await BidsApi.getListingBids(listingId, { limit: 50 });
-          if (allBidsResult.success && allBidsResult.data) {
-            setAllBids((allBidsResult.data as any) || []);
-          } else {
-            setAllBids([]);
-          }
-        }
       } catch (err) {
         console.error('Error loading bid data:', err);
       }
     };
 
     loadBidData();
-  }, [listingId, showAllBids]);
+  }, [listingId]);
 
   useEffect(() => {
     const interval = setInterval(async () => {
@@ -106,48 +128,44 @@ export function PlaceBidsInterfaceV2(props: PlaceBidsInterfaceV2Props) {
             setHighestBid(newHighestBid);
           }
         }
-
-        if (showAllBids) {
-          const allBidsResult = await BidsApi.getListingBids(listingId, { limit: 50 });
-          if (allBidsResult.success && allBidsResult.data) {
-            setAllBids((allBidsResult.data as any) || []);
-          } else {
-            setAllBids([]);
-          }
-        }
       } catch (err) {
         console.error('Auto-refresh error:', err);
       }
     }, 30000);
 
     return () => clearInterval(interval);
-  }, [listingId, showAllBids, highestBid]);
+  }, [listingId, highestBid]);
 
-  const loadAllBids = async () => {
-    setBidsLoading(true);
-    try {
-      const result = await BidsApi.getListingBids(listingId, { limit: 50 });
+  // Set default offer amount to highest bid + $1000
+  useEffect(() => {
+    const highestBidValue = typeof highestBid === 'number' ? highestBid : null;
+    const reservePrice = startingBidPrice ?? null;
+    const fallbackHighestBid =
+      highestBidValue == null && reservePrice != null
+        ? Math.round((reservePrice * 0.75) / 100) * 100
+        : null;
+    const displayHighestBid = highestBidValue ?? fallbackHighestBid;
 
-      if (result.success && result.data) {
-        setAllBids((result.data as any) || []);
-        setShowAllBids(true);
-      } else {
-        setAllBids([]);
-        setShowAllBids(true);
-      }
-    } catch (err) {
-      console.error('Error loading all bids:', err);
-      setAllBids([]);
-      setShowAllBids(true);
-    } finally {
-      setBidsLoading(false);
+    // Only set default if offer amount is empty and we have a highest bid
+    if (!offerAmount && displayHighestBid != null) {
+      const defaultOffer = displayHighestBid + 1000;
+      setOfferAmount(formatOfferValue(defaultOffer.toString()));
     }
-  };
+  }, [highestBid, startingBidPrice, offerAmount]);
 
-  const handleTopOfferClick = () => {
-    if (highestBid) {
-      setOfferAmount(highestBid.toString());
+  const handleOfferInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const inputValue = event.target.value.replace(/,/g, '');
+
+    if (inputValue === '') {
+      setOfferAmount('');
+      return;
     }
+
+    if (!NUMERIC_INPUT_PATTERN.test(inputValue)) {
+      return;
+    }
+
+    setOfferAmount(formatOfferValue(inputValue));
   };
 
   const handleSubmit = async () => {
@@ -161,13 +179,18 @@ export function PlaceBidsInterfaceV2(props: PlaceBidsInterfaceV2Props) {
       return;
     }
 
+    if (!termsAccepted) {
+      setError('You must accept the terms and conditions before placing a bid');
+      return;
+    }
+
     if (!isLive) {
       setError('This listing is not currently live for bidding');
       return;
     }
 
-    const amount = Number.parseFloat(offerAmount);
-    if (amount <= 0) {
+    const amount = parseOfferAmountValue(offerAmount);
+    if (Number.isNaN(amount) || amount <= 0) {
       setError('Please enter a valid bid amount');
       return;
     }
@@ -213,15 +236,6 @@ export function PlaceBidsInterfaceV2(props: PlaceBidsInterfaceV2Props) {
         setMessage('');
         setHighestBid(amount);
 
-        if (showAllBids) {
-          const allBidsResult = await BidsApi.getListingBids(listingId, { limit: 50 });
-          if (allBidsResult.success && allBidsResult.data) {
-            setAllBids((allBidsResult.data as any) || []);
-          } else {
-            setAllBids([]);
-          }
-        }
-
         if (onBidPlaced && result.data) {
           onBidPlaced(result.data);
         }
@@ -235,277 +249,219 @@ export function PlaceBidsInterfaceV2(props: PlaceBidsInterfaceV2Props) {
     }
   };
 
-  const calculateFloorDifference = () => {
-    const amount = Number.parseFloat(offerAmount) || 0;
-    const currentBid = highestBid || 0;
-    const difference = amount - currentBid;
-    return difference > 0
-      ? `+$${difference.toLocaleString()}`
-      : `-$${Math.abs(difference).toLocaleString()}`;
+  const isMobileVariant = variant === 'mobile';
+  const trimmedItemImage = itemImage?.trim();
+  const hasImage = Boolean(trimmedItemImage);
+  const imageAlt = itemTitle ? `${itemTitle} preview` : 'Asset preview';
+  const offerInputId = `offer-amount-${listingId}`;
+  const messageInputId = `offer-message-${listingId}`;
+  const isIneligible = eligibility?.isEligible === false;
+  const numericOfferAmount = parseOfferAmountValue(offerAmount);
+  const termsCheckboxId = `accept-terms-${listingId}`;
+  const reserveStatusMessage =
+    startingBidPrice != null
+      ? (highestBid ?? 0) >= startingBidPrice
+        ? 'Reserve price met'
+        : 'Reserve price not met'
+      : highestBid
+        ? 'Current Highest Bid'
+        : 'Be the first to bid';
+
+  const handleTermsLinkClick = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onOpenTerms?.();
   };
 
-  const isMobileVariant = variant === 'mobile';
+  const highestBidValue = typeof highestBid === 'number' ? highestBid : null;
+  const reservePrice = startingBidPrice ?? null;
+  const fallbackHighestBid =
+    highestBidValue == null && reservePrice != null
+      ? Math.round((reservePrice * 0.75) / 100) * 100
+      : null;
+  const displayHighestBid = highestBidValue ?? fallbackHighestBid;
+
+  const canSubmitBid =
+    Boolean(offerAmount) &&
+    !Number.isNaN(numericOfferAmount) &&
+    numericOfferAmount > 0 &&
+    Boolean(eligibility?.isEligible) &&
+    !isOwner &&
+    isLive &&
+    !loading &&
+    termsAccepted;
 
   return (
-    <div className="bg-[#151c16] rounded-lg">
-      <div className="p-6 space-y-6">
-        <div className="flex flex-col gap-4">
-          <div className="flex items-start justify-between">
+    <div className="h-full border-t border-[#D0B284]/15 bg-[#151c16] overflow-hidden">
+      <div className="relative h-56 sm:h-64 md:h-72 border-b border-[#D0B284]/20 bg-[#151c16]/60">
+        {hasImage ? (
+          <Image
+            src={getValidImageSrc(trimmedItemImage!, undefined, {
+              width: 800,
+              height: 600,
+              text: 'Image error',
+            })}
+            alt={imageAlt}
+            fill
+            className="object-cover"
+            sizes="(max-width: 1024px) 100vw, 40vw"
+            unoptimized={trimmedItemImage!.includes('storage.googleapis.com')}
+            onError={createImageErrorHandler({
+              fallbackText: 'Image',
+              width: 800,
+              height: 600,
+            })}
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-[#8F9B8F] text-sm font-proxima-nova">
+            No images available
+          </div>
+        )}
+      </div>
+      {isIneligible ? (
+        <div className="p-6">
+          <div className="flex flex-col items-start gap-3 rounded-xl border border-red-500/20 bg-red-500/10 p-4">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-red-400" />
+              <span className="text-sm text-red-400">
+                {eligibility?.message || 'Bidding is currently unavailable for your account.'}
+              </span>
+            </div>
+            <p className="text-sm text-[#DCDDCC] font-proxima-nova">
+              You need to register first before you can bid.{' '}
+              <Link href="/verify" className="text-[#D0B284] underline underline-offset-2">
+                Register
+              </Link>
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="p-4 space-y-6">
+          <div className="flex flex-col">
             <div>
               <h2 className="text-lg font-semibold text-white font-neue-world">MAKE OFFER</h2>
-              <p className="text-sm text-[#DCDDCC] font-proxima-nova">
-                Submit your offer to participate in the auction.
-              </p>
             </div>
-            <div className="text-right">
-              <div className="text-sm font-medium text-white font-proxima-nova">
-                {highestBid ? `$${highestBid.toLocaleString()}` : 'No bids yet'}
-              </div>
-              <div className="text-xs text-[#DCDDCC] font-proxima-nova">
-                {highestBid ? 'Current Highest Bid' : 'Be the first to bid'}
-              </div>
-            </div>
-          </div>
-
-          {eligibility && (
-            <div
-              className={`p-3 rounded-lg border ${
-                eligibility.isEligible
-                  ? 'border-green-500/20 bg-green-500/10'
-                  : 'border-red-500/20 bg-red-500/10'
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                {eligibility.isEligible ? (
-                  <CheckCircle className="h-4 w-4 text-green-400" />
-                ) : (
-                  <AlertCircle className="h-4 w-4 text-red-400" />
-                )}
-                <span
-                  className={`text-sm ${
-                    eligibility.isEligible ? 'text-green-400' : 'text-red-400'
-                  }`}
-                >
-                  {eligibility.message}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {error && (
-            <div className="p-3 rounded-lg border border-red-500/20 bg-red-500/10">
-              <div className="flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 text-red-400" />
-                <span className="text-sm text-red-400">{error}</span>
-              </div>
-            </div>
-          )}
-
-          {success && (
-            <div className="p-3 rounded-lg border border-green-500/20 bg-green-500/10">
-              <div className="flex items-center gap-2">
-                <CheckCircle className="h-4 w-4 text-green-400" />
-                <span className="text-sm text-green-400">{success}</span>
-              </div>
-            </div>
-          )}
-
-          <div className="space-y-4">
-            <div className="p-4 rounded-lg border border-[#D0B284]/20 bg-[#151c16]/60">
-              <div className={`gap-3 ${isMobileVariant ? 'flex flex-col' : 'flex items-center'}`}>
-                <div className="flex items-center gap-2 w-full">
-                  <span className="text-sm text-[#DCDDCC] whitespace-nowrap font-proxima-nova">
-                    Your Offer
-                  </span>
-                  <Input
-                    type="number"
-                    placeholder="0.00"
-                    value={offerAmount}
-                    onChange={(e) => setOfferAmount(e.target.value)}
-                    className="flex-1 h-10 text-sm bg-[#151c16] border-[#D0B284]/20 text-white placeholder:text-[#DCDDCC]"
-                  />
-                  <span className="text-sm text-[#DCDDCC] whitespace-nowrap font-proxima-nova">
-                    USD
-                  </span>
-                </div>
-                <Button
-                  variant={isMobileVariant ? 'outline' : 'ghost'}
-                  size="sm"
-                  onClick={handleTopOfferClick}
-                  disabled={!highestBid}
-                  className={`${
-                    isMobileVariant
-                      ? 'w-full border border-[#D0B284]/20 text-[#D0B284] hover:bg-[#D0B284]/10 disabled:opacity-50 disabled:cursor-not-allowed'
-                      : 'border border-[#D0B284]/80 text-[#D0B284] hover:text-[#D0B284] hover:bg-[#D0B284]/30 text-xs whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed'
-                  }`}
-                >
-                  {highestBid ? 'Match Top Offer' : 'No Bids Yet'}
-                </Button>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-lg border border-[#D0B284]/20 bg-[#151c16]/60">
-              <div className="space-y-2">
-                <span className="text-sm text-[#DCDDCC]">Message (Optional)</span>
-                <Input
-                  type="text"
-                  placeholder="Add a message with your bid..."
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  className="h-10 text-sm bg-[#151c16] border-[#D0B284]/20 text-white placeholder:text-[#DCDDCC]"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-3 border-t border-[#D0B284]/20 pt-4">
-              <div className="flex justify-between text-sm">
-                <span className="text-[#DCDDCC] font-proxima-nova">Total offer value:</span>
-                <span className="text-white">
-                  ${offerAmount ? Number.parseFloat(offerAmount).toLocaleString() : '0.00'}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-[#DCDDCC] font-proxima-nova">Bid difference:</span>
-                <span className="text-white">{offerAmount ? calculateFloorDifference() : '-'}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-[#DCDDCC] font-proxima-nova">Platform fees:</span>
-                <span className="text-white">$0.00</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-[#DCDDCC] font-proxima-nova">Total est. proceeds:</span>
-                <span className="text-white">
-                  ${offerAmount ? Number.parseFloat(offerAmount).toLocaleString() : '0.00'}
-                </span>
-              </div>
-            </div>
-
-            <div className="space-y-3 pt-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-[#DCDDCC] font-proxima-nova">Bid expires in:</span>
-                <span className="text-sm text-white">30 days</span>
-              </div>
-              <div
-                className={`py-6 ${isMobileVariant ? 'flex justify-center' : 'flex justify-end'}`}
-              >
-                <Button
-                  onClick={handleSubmit}
-                  disabled={
-                    !offerAmount ||
-                    Number.parseFloat(offerAmount) <= 0 ||
-                    !eligibility?.isEligible ||
-                    isOwner ||
-                    !isLive ||
-                    loading
-                  }
-                  className={`bg-[#D0B284] hover:bg-[#D0B284]/90 text-[#151c16] font-bold disabled:opacity-50 ${
-                    isMobileVariant ? 'w-full max-w-xs py-4 text-base rounded-xl' : 'w-32'
-                  }`}
-                >
-                  {loading ? 'Placing...' : 'Place Bid'}
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-4 pt-6 border-t border-[#D0B284]/20">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-white font-neue-world">All Bids</h3>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={showAllBids ? () => setShowAllBids(false) : loadAllBids}
-                disabled={bidsLoading}
-                className="border border-[#D0B284]/20 text-[#D0B284] hover:bg-[#D0B284]/10"
-              >
-                {bidsLoading ? (
-                  'Loading...'
-                ) : showAllBids ? (
+            <div className="text-left">
+              <div className="text-xs font-medium text-[#D0B284] font-proxima-nova">
+                {displayHighestBid != null ? (
                   <>
-                    <ChevronUp className="h-4 w-4 mr-1" />
-                    Hide Bids
-                  </>
-                ) : (
-                  <>
-                    <Eye className="h-4 w-4 mr-1" />
-                    View All Bids
-                  </>
-                )}
-              </Button>
-            </div>
-
-            {showAllBids && (
-              <div className="space-y-3">
-                {bidsLoading ? (
-                  <div className="flex items-center justify-center p-4">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#D0B284]" />
-                    <span className="ml-2 text-sm text-[#DCDDCC] font-proxima-nova">
-                      Loading bids...
+                    Highest Bid:{' '}
+                    <span className="text-white text-sm">
+                      ${displayHighestBid.toLocaleString()}
                     </span>
-                  </div>
-                ) : allBids && Array.isArray(allBids) && allBids.length > 0 ? (
-                  <div className="space-y-2">
-                    {allBids.map((bid) => {
-                      const wallet = bid.bidder?.walletAddress || '';
-                      const username = bid.bidder?.username || '';
-                      const isWalletLike = username.toLowerCase().startsWith('0x');
-                      const shortenedUsername = isWalletLike
-                        ? `${username.slice(0, 7)}…`
-                        : username;
-                      const condensedWallet = wallet ? `${wallet.slice(0, 7)}…` : null;
-                      const displayName = shortenedUsername || condensedWallet || 'Anonymous';
-                      const bidAmount = bid.amount ? Number.parseFloat(bid.amount) : 0;
-                      const status = (bid.status || 'Pending').toUpperCase();
-                      const statusStyles: Record<string, string> = {
-                        ACCEPTED: 'bg-[#184D37]/15 text-[#37d488] border-[#184D37]/30',
-                        REJECTED: 'bg-[#3b1d1d]/20 text-[#f87171] border-[#f87171]/30',
-                        PENDING: 'bg-[#373017]/20 text-[#facc15] border-[#facc15]/30',
-                      };
-                      const statusStyle =
-                        statusStyles[status as keyof typeof statusStyles] ||
-                        'bg-[#2a2a2a]/30 text-[#DCDDCC] border-[#404040]/40';
-
-                      return (
-                        <div
-                          key={bid.id}
-                          className="grid grid-cols-[1.5fr_auto] md:grid-cols-[1.5fr_auto_auto] gap-3 rounded-xl border border-[#2a3b2a] bg-[#101910] px-3 py-3"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-full bg-[#D0B284]/15 flex items-center justify-center text-sm font-semibold text-[#D0B284]">
-                              {displayName.charAt(0).toUpperCase()}
-                            </div>
-                            <div className="flex flex-col">
-                              <span className="text-sm font-medium text-white">{displayName}</span>
-                              <span className="text-[11px] uppercase tracking-wide text-[#8F9B8F]">
-                                {new Date(bid.createdAt).toLocaleDateString()}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="flex flex-col text-right">
-                            <span className="text-sm font-semibold text-white">
-                              ${bidAmount.toLocaleString()}
-                            </span>
-                            <span
-                              className={`mt-1 inline-flex items-center justify-center rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide ${statusStyle}`}
-                            >
-                              {status}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  </>
                 ) : (
-                  <div className="text-center py-8">
-                    <div className="text-[#DCDDCC] text-sm">No bids have been made yet</div>
-                  </div>
+                  '—'
                 )}
+              </div>
+              <div className="text-xs text-[#D0B284]/80 font-proxima-nova italic">
+                {reserveStatusMessage}
+              </div>
+            </div>
+
+            {error && (
+              <div className="mt-4 rounded-lg border border-red-500/20 bg-red-500/10 p-3">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 text-red-400" />
+                  <span className="text-sm text-red-400">{error}</span>
+                </div>
+              </div>
+            )}
+
+            {success && (
+              <div className="mt-4 rounded-lg border border-green-500/20 bg-green-500/10 p-3">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-400" />
+                  <span className="text-sm text-green-400">{success}</span>
+                </div>
               </div>
             )}
           </div>
+
+          <div className="space-y-4">
+            <div className={`gap-3 ${isMobileVariant ? 'flex flex-col' : 'flex items-center'}`}>
+              <div className="w-full">
+                <label htmlFor={offerInputId} className="sr-only">
+                  Your Offer
+                </label>
+                <div className="flex flex-col rounded-xl border border-[#D0B284]/40 bg-[#101910] px-4 py-3">
+                  <span className="text-xs uppercase tracking-wide text-[#D0B284] font-proxima-nova">
+                    Your Offer
+                  </span>
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="text-base text-[#DCDDCC] font-proxima-nova">$</span>
+                    <Input
+                      id={offerInputId}
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="0.00"
+                      value={offerAmount}
+                      onChange={handleOfferInputChange}
+                      className="flex-1 border-0 bg-transparent p-0 text-lg font-semibold text-white placeholder:text-[#727B72] h-auto leading-tight focus-visible:shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:outline-none focus-visible:border-transparent focus-visible:text-white"
+                    />
+                    <span className="text-xs text-[#DCDDCC] font-proxima-nova">USD</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="w-full">
+              <label htmlFor={messageInputId} className="sr-only">
+                Message (Optional)
+              </label>
+              <div className="flex flex-col rounded-xl border border-[#D0B284]/40 bg-[#101910] px-4 py-3">
+                <span className="text-xs uppercase tracking-wide text-[#D0B284] font-proxima-nova">
+                  Message (Optional)
+                </span>
+                <Textarea
+                  id={messageInputId}
+                  rows={3}
+                  placeholder="Add a message with your bid..."
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  className="mt-2 min-h-[72px] max-h-32 resize-none border-0 bg-transparent p-0 text-sm text-white placeholder:text-[#727B72] leading-tight overflow-y-auto focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:shadow-none focus-visible:outline-none focus-visible:border-transparent"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="py-2 flex w-full">
+              <Button
+                onClick={handleSubmit}
+                disabled={!canSubmitBid}
+                className={`bg-black text-2xl border border-[#D0B284]/80 hover:bg-[#D0B284]/10 text-[#D0B284] font-spray-letters disabled:opacity-50 disabled:pointer-events-none ${
+                  isMobileVariant ? 'w-full py-4 text-base rounded-xl' : 'w-full'
+                }`}
+              >
+                {loading ? 'Placing...' : 'Place Bid'}
+              </Button>
+            </div>
+          </div>
+          <div className="flex items-start gap-2">
+            <Checkbox
+              id={termsCheckboxId}
+              checked={termsAccepted}
+              onCheckedChange={(checked) => setTermsAccepted(checked === true)}
+              className="mt-1 border-[#D0B284]/40 data-[state=checked]:bg-[#D0B284] data-[state=checked]:text-[#151c16]"
+            />
+            <label
+              htmlFor={termsCheckboxId}
+              className="text-xs text-[#DCDDCC] font-proxima-nova leading-relaxed cursor-pointer"
+            >
+              I have read and agree to the{' '}
+              <button
+                type="button"
+                onClick={handleTermsLinkClick}
+                className="text-[#D0B284] underline underline-offset-2 hover:text-[#f3d8a5]"
+              >
+                Terms & Conditions
+              </button>
+              .
+            </label>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

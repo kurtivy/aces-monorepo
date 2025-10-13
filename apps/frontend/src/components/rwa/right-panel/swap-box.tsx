@@ -1,34 +1,28 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
-import { ethers } from 'ethers';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth/auth-context';
-import { Copy, Check, Loader2, ChevronDown, ArrowDown } from 'lucide-react';
+import { Copy, Check, Loader2, ChevronDown, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import { createImageErrorHandler, getValidImageSrc } from '@/lib/utils/image-error-handler';
 import ProgressionBar from '@/components/rwa/middle-column/overview/progression-bar';
 import type { DatabaseListing } from '@/types/rwa/section.types';
 import { getContractAddresses } from '@/lib/contracts/addresses';
+import { motion, AnimatePresence } from 'framer-motion';
 
-// Import new hooks
+// Import NEW unified hooks
 import { useSwapContracts } from '@/hooks/swap/use-swap-contracts';
 import { useSwapMode } from '@/hooks/swap/use-swap-mode';
 import { useTokenBalances } from '@/hooks/swap/use-token-balances';
-import { useBondingCurveQuote } from '@/hooks/swap/use-bonding-curve-quote';
-import { useDexQuote } from '@/hooks/swap/use-dex-quote';
-
-// Import services
-import { BondingCurveSwapService } from '@/lib/swap/services/bonding-curve-swap-service';
-import { DexSwapService } from '@/lib/swap/services/dex-swap-service';
+import { useUnifiedQuote } from '@/hooks/swap/use-unified-quote';
+import { useUnifiedSwap } from '@/hooks/swap/use-unified-swap';
 
 // Import utilities
 import { formatAmountForDisplay, formatUsdValue } from '@/lib/swap/formatters';
 import type { PaymentAsset } from '@/lib/swap/types';
 
-// Import the newer SwapCard component
-import { SwapCard } from './swap-card';
 import { PercentageSelector } from './percentage-selector';
 
 interface TokenSwapInterfaceProps {
@@ -43,10 +37,9 @@ interface TokenSwapInterfaceProps {
   showProgression?: boolean;
   imageGallery?: string[];
   primaryImage?: string;
-  chainId?: number; // Base Sepolia = 84532, Base Mainnet = 8453
+  chainId?: number;
   dexMeta?: DatabaseListing['dex'] | null;
   tokenDecimals?: number;
-  // Deprecated props (kept for backward compatibility)
   currentAmount?: number;
   targetAmount?: number;
   percentage?: number;
@@ -55,7 +48,6 @@ interface TokenSwapInterfaceProps {
 export default function TokenSwapInterface({
   tokenSymbol = 'RWA',
   tokenAddress,
-  tokenName = tokenSymbol,
   showFrame = true,
   showHeader = true,
   showProgression = true,
@@ -65,9 +57,6 @@ export default function TokenSwapInterface({
   dexMeta = null,
   tokenDecimals = 18,
 }: TokenSwapInterfaceProps) {
-  // If we just need a simple swap card, render it directly
-  const useSimpleCard = !showHeader && !showProgression;
-
   const { walletAddress, isAuthenticated, connectWallet: authConnectWallet } = useAuth();
 
   // Initialize contracts
@@ -83,6 +72,11 @@ export default function TokenSwapInterface({
 
   const routerAddress = useMemo(
     () => (contractAddresses as Record<string, string> | undefined)?.AERODROME_ROUTER || '',
+    [contractAddresses],
+  );
+
+  const factoryProxyAddress = useMemo(
+    () => (contractAddresses as Record<string, string> | undefined)?.FACTORY_PROXY || '',
     [contractAddresses],
   );
 
@@ -103,11 +97,14 @@ export default function TokenSwapInterface({
     signer,
     factoryContract,
     tokenAddress,
+    chainId: currentChainId || chainId,
   });
 
   const { acesBalance, tokenBalance, stableBalances, refreshBalances } = balances;
 
-  // UI state
+  // ========================================
+  // UI STATE (Keep for backward compatibility)
+  // ========================================
   const [activeTab, setActiveTab] = useState<'buy' | 'sell'>('buy');
   const [paymentAsset, setPaymentAsset] = useState<PaymentAsset>('ACES');
   const [amount, setAmount] = useState('');
@@ -117,60 +114,301 @@ export default function TokenSwapInterface({
     message: string;
   } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [slippageBps, setSlippageBps] = useState(300);
+  const [slippagePopoverOpen, setSlippagePopoverOpen] = useState(false);
+  const [customSlippageInput, setCustomSlippageInput] = useState('');
+  const slippagePopoverRef = useRef<HTMLDivElement | null>(null);
 
-  // Get bonding curve quotes
-  const bondingQuote = useBondingCurveQuote({
-    factoryContract,
-    tokenAddress,
-    amount,
-    tokenDecimals,
-    isDexMode,
-    activeTab,
-  });
+  useEffect(() => {
+    if (!slippagePopoverOpen) return;
 
-  // Get DEX quotes
-  const dexQuote = useDexQuote({
-    tokenAddress,
-    amount,
-    paymentAsset,
-    activeTab,
-    isDexMode,
-  });
+    const handleClickOutside = (event: globalThis.MouseEvent) => {
+      if (
+        slippagePopoverRef.current &&
+        !slippagePopoverRef.current.contains(event.target as HTMLElement)
+      ) {
+        setSlippagePopoverOpen(false);
+      }
+    };
 
-  // Format USD display
-  const usdDisplay = useMemo(() => {
-    if (!isDexMode && bondingQuote.totalUsdValue) {
-      return formatUsdValue(bondingQuote.totalUsdValue);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [slippagePopoverOpen]);
+
+  const sellOptions = useMemo(() => {
+    const orderedValues: Array<{ value: string; label: string }> = [
+      { value: 'ETH', label: 'ETH' },
+      { value: 'WETH', label: 'wETH' },
+      { value: 'USDT', label: 'USDT' },
+      { value: 'USDC', label: 'USDC' },
+      { value: 'ACES', label: 'ACES' },
+    ];
+
+    const uniqueOptions = orderedValues.reduce<Array<{ value: string; label: string }>>(
+      (acc, option) => {
+        if (!acc.some((existing) => existing.value === option.value)) {
+          acc.push(option);
+        }
+        return acc;
+      },
+      [],
+    );
+
+    if (tokenSymbol && !uniqueOptions.some((opt) => opt.value === tokenSymbol)) {
+      uniqueOptions.push({ value: tokenSymbol, label: tokenSymbol });
     }
-    return null;
-  }, [isDexMode, bondingQuote.totalUsdValue]);
 
-  // Determine if we have a valid amount
+    return uniqueOptions;
+  }, [tokenSymbol]);
+
+  const buyOptions = useMemo(() => {
+    const rawOptions = [tokenSymbol, 'ACES'].filter(
+      (option): option is string => typeof option === 'string' && option.length > 0,
+    );
+    return Array.from(new Set(rawOptions));
+  }, [tokenSymbol]);
+
+  const selectedSellAsset = activeTab === 'sell' ? tokenSymbol : paymentAsset;
+  const selectedBuyAsset = activeTab === 'sell' ? 'ACES' : tokenSymbol;
+
+  const handleSellAssetChange = useCallback(
+    (value: string) => {
+      if (value === tokenSymbol) {
+        setActiveTab('sell');
+        return;
+      }
+
+      setActiveTab('buy');
+      setPaymentAsset(value as PaymentAsset);
+    },
+    [tokenSymbol, setActiveTab, setPaymentAsset],
+  );
+
+  const handleBuyAssetChange = useCallback(
+    (value: string) => {
+      if (value === tokenSymbol) {
+        setActiveTab('buy');
+      } else {
+        setActiveTab('sell');
+      }
+    },
+    [tokenSymbol, setActiveTab],
+  );
+
+  const getAssetBalanceInfo = useCallback(
+    (asset: string | undefined) => {
+      const normalized = asset?.toUpperCase();
+      const symbolUpper = tokenSymbol?.toUpperCase();
+
+      if (normalized && symbolUpper && normalized === symbolUpper) {
+        return {
+          rawBalance: tokenBalance ?? '0',
+          decimals: tokenDecimals,
+        };
+      }
+
+      switch (normalized) {
+        case 'ACES':
+          return {
+            rawBalance: acesBalance ?? '0',
+            decimals: 18,
+          };
+        case 'USDC':
+          return {
+            rawBalance: stableBalances?.USDC ?? '0',
+            decimals: 6,
+          };
+        case 'USDT':
+          return {
+            rawBalance: stableBalances?.USDT ?? '0',
+            decimals: 6,
+          };
+        case 'ETH':
+        case 'WETH':
+          return {
+            rawBalance: stableBalances?.ETH ?? '0',
+            decimals: 18,
+          };
+        default:
+          return {
+            rawBalance: '0',
+            decimals: 18,
+          };
+      }
+    },
+    [tokenSymbol, tokenBalance, tokenDecimals, acesBalance, stableBalances],
+  );
+
+  const sellBalanceInfo = useMemo(
+    () => getAssetBalanceInfo(selectedSellAsset),
+    [selectedSellAsset, getAssetBalanceInfo],
+  );
+
+  const buyBalanceInfo = useMemo(
+    () => getAssetBalanceInfo(selectedBuyAsset),
+    [selectedBuyAsset, getAssetBalanceInfo],
+  );
+
+  const sellAssetLabel = useMemo(() => {
+    const match = sellOptions.find((option) => option.value === selectedSellAsset);
+    return match?.label ?? selectedSellAsset ?? '';
+  }, [sellOptions, selectedSellAsset]);
+
+  const buyAssetLabel = useMemo(() => {
+    const match = buyOptions.find((option) => option === selectedBuyAsset);
+    return match ?? selectedBuyAsset ?? '';
+  }, [buyOptions, selectedBuyAsset]);
+
   const hasValidAmount = useMemo(() => {
     if (!amount || amount.trim() === '') return false;
-
     const parsed = Number.parseFloat(amount);
     if (!Number.isFinite(parsed) || parsed <= 0) return false;
-
     return true;
   }, [amount]);
 
-  // Handle amount change
+  // ========================================
+  // UNIFIED LOGIC (Map UI state to sellToken/buyToken)
+  // ========================================
+  const { sellToken, buyToken } = useMemo(() => {
+    // Map activeTab + paymentAsset to sellToken/buyToken
+    if (activeTab === 'buy') {
+      // Buying TOKEN with ACES (or other assets)
+      return {
+        sellToken: paymentAsset, // ACES, WETH, USDC, USDT
+        buyToken: 'TOKEN' as const,
+      };
+    } else {
+      // Selling TOKEN for ACES
+      return {
+        sellToken: 'TOKEN' as const,
+        buyToken: 'ACES' as const,
+      };
+    }
+  }, [activeTab, paymentAsset]);
+
+  // ========================================
+  // UNIFIED QUOTE HOOK
+  // ========================================
+  const quote = useUnifiedQuote({
+    factoryContract,
+    tokenContract: contracts.tokenContract,
+    tokenAddress,
+    tokenDecimals,
+    sellToken,
+    buyToken,
+    amount,
+    isDexMode,
+    slippageBps,
+    enabled: isInitialized && !!tokenAddress,
+  });
+
+  // ========================================
+  // UNIFIED SWAP HOOK
+  // ========================================
+  const swap = useUnifiedSwap({
+    factoryContract,
+    acesContract,
+    signer,
+    walletAddress,
+    factoryProxyAddress,
+    tokenAddress: tokenAddress || '',
+    routerAddress,
+    isDexMode,
+  });
+
+  const isOutputToken =
+    (selectedBuyAsset || '').toUpperCase() === (tokenSymbol || '').toUpperCase();
+  const isTokenQuoteLoading = hasValidAmount && quote.loading;
+  const isUsdQuoteLoading = hasValidAmount && !isDexMode && quote.loading;
+
+  // ========================================
+  // USD DISPLAY (from unified quote)
+  // ========================================
+  const inputUsdDisplay = useMemo(() => {
+    if (isDexMode) return null;
+    return quote.inputUsdValue ? formatUsdValue(quote.inputUsdValue) : null;
+  }, [isDexMode, quote.inputUsdValue]);
+
+  const outputUsdDisplay = useMemo(() => {
+    if (isDexMode) return null;
+    return quote.outputUsdValue ? formatUsdValue(quote.outputUsdValue) : null;
+  }, [isDexMode, quote.outputUsdValue]);
+
+  // ========================================
+  // VALIDATION
+  // ========================================
+  // Check if swap is supported
+  const isSwapSupported = useMemo(() => {
+    if (quote.strategy === 'none') return false;
+    if (quote.strategy === 'bonding-multihop' && !swap.acesSwapDeployed) return false;
+    return true;
+  }, [quote.strategy, swap.acesSwapDeployed]);
+
+  // ========================================
+  // HANDLERS
+  // ========================================
   const handleAmountChange = useCallback((rawValue: string) => {
-    setAmount(rawValue);
+    const normalized = rawValue.replace(/,/g, '');
+    setAmount(normalized);
   }, []);
 
-  // Handle percentage calculation
-  const handlePercentageCalculated = useCallback((calculatedAmount: string) => {
-    setAmount(calculatedAmount);
+  const handlePercentageCalculated = useCallback(
+    (calculatedAmount: string, _percentage: number | null) => {
+      setAmount(calculatedAmount);
+    },
+    [],
+  );
+
+  const handleSlippagePreset = useCallback((bps: number) => {
+    setSlippageBps(bps);
+    setCustomSlippageInput('');
+    setSlippagePopoverOpen(false);
   }, []);
 
-  // Calculate the appropriate balance for the percentage selector
-  const percentageSelectorBalance = useMemo(() => {
-    return activeTab === 'buy' ? acesBalance : tokenBalance;
-  }, [activeTab, acesBalance, tokenBalance]);
+  const handleCustomSlippageChange = useCallback((value: string) => {
+    setCustomSlippageInput(value);
+    const parsed = Number.parseFloat(value);
+    if (Number.isFinite(parsed) && parsed >= 0 && parsed <= 50) {
+      setSlippageBps(Math.round(parsed * 100));
+    }
+  }, []);
 
-  // Copy to clipboard
+  const percentageSelectorBalance = sellBalanceInfo.rawBalance;
+
+  const amountDigitCount = useMemo(() => {
+    if (!amount) return 0;
+    const [integerPart] = amount.split('.');
+    return integerPart.replace(/^0+/, '').length || 1;
+  }, [amount]);
+
+  const formattedAmount = useMemo(() => {
+    if (!amount) return amount;
+    const [integerPart = '', decimalPart] = amount.split('.');
+    const normalizedInt = integerPart.replace(/^0+(?=\d)/, '');
+    const formattedInt =
+      normalizedInt.length > 3
+        ? normalizedInt.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+        : normalizedInt || (integerPart.startsWith('0') ? '0' : '');
+    if (decimalPart !== undefined) {
+      return `${formattedInt}.${decimalPart}`;
+    }
+    return formattedInt;
+  }, [amount]);
+
+  const outputAmountDisplay = useMemo(() => {
+    if (!hasValidAmount || !quote.outputAmount) {
+      return isOutputToken ? '0' : '0.00';
+    }
+
+    if (isOutputToken) {
+      return formatIntegerDisplay(quote.outputAmount);
+    }
+
+    return formatDecimalDisplay(quote.outputAmount, 4);
+  }, [hasValidAmount, quote.outputAmount, isOutputToken]);
+
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -181,7 +419,6 @@ export default function TokenSwapInterface({
     }
   };
 
-  // Connect wallet handler
   const handleConnectWallet = useCallback(async () => {
     try {
       setLoading('Connecting wallet...');
@@ -193,150 +430,52 @@ export default function TokenSwapInterface({
     }
   }, [authConnectWallet]);
 
-  // Buy tokens handler (bonding curve)
-  const handleBondingBuy = useCallback(async () => {
-    if (
-      !factoryContract ||
-      !acesContract ||
-      !tokenAddress ||
-      !signer ||
-      !contractAddresses.FACTORY_PROXY
-    ) {
-      setTransactionStatus({ type: 'error', message: 'Wallet not connected' });
-      return;
-    }
-
-    try {
-      const amountWei = ethers.utils.parseUnits(amount, tokenDecimals);
-
-      const service = new BondingCurveSwapService(
-        factoryContract,
-        acesContract,
-        contractAddresses.FACTORY_PROXY,
-      );
-
-      const result = await service.buyTokens({
-        tokenAddress,
-        amount: amountWei,
-        slippageBps: bondingQuote.slippageBps,
-        onStatus: setLoading,
-      });
-
-      if (result.success) {
-        setTransactionStatus({ type: 'success', message: 'Transaction successful!' });
-        setAmount('');
-        await refreshBalances();
-      } else {
-        setTransactionStatus({ type: 'error', message: result.error || 'Transaction failed' });
-      }
-    } catch (error) {
-      console.error('Buy failed:', error);
-      setTransactionStatus({ type: 'error', message: 'Transaction failed' });
-    } finally {
-      setLoading('');
-    }
-  }, [
-    factoryContract,
-    acesContract,
-    tokenAddress,
-    signer,
-    contractAddresses,
-    amount,
-    tokenDecimals,
-    bondingQuote.slippageBps,
-    refreshBalances,
-  ]);
-
-  // Sell tokens handler (bonding curve)
-  const handleBondingSell = useCallback(async () => {
-    if (!factoryContract || !tokenAddress || !signer) {
-      setTransactionStatus({ type: 'error', message: 'Wallet not connected' });
-      return;
-    }
-
-    try {
-      const amountWei = ethers.utils.parseUnits(amount, tokenDecimals);
-
-      const service = new BondingCurveSwapService(
-        factoryContract,
-        acesContract!,
-        contractAddresses.FACTORY_PROXY,
-      );
-
-      const result = await service.sellTokens({
-        tokenAddress,
-        amount: amountWei,
-        onStatus: setLoading,
-      });
-
-      if (result.success) {
-        setTransactionStatus({ type: 'success', message: 'Transaction successful!' });
-        setAmount('');
-        await refreshBalances();
-      } else {
-        setTransactionStatus({ type: 'error', message: result.error || 'Transaction failed' });
-      }
-    } catch (error) {
-      console.error('Sell failed:', error);
-      setTransactionStatus({ type: 'error', message: 'Transaction failed' });
-    } finally {
-      setLoading('');
-    }
-  }, [
-    factoryContract,
-    acesContract,
-    tokenAddress,
-    signer,
-    contractAddresses,
-    amount,
-    tokenDecimals,
-    refreshBalances,
-  ]);
-
-  // DEX swap handler
-  const handleDexSwap = useCallback(async () => {
-    if (!signer || !walletAddress || !dexQuote.quote || !routerAddress) {
-      setTransactionStatus({ type: 'error', message: 'Missing required data for swap' });
-      return;
-    }
-
-    try {
-      const service = new DexSwapService(routerAddress, signer, walletAddress);
-
-      const result = await service.executeSwap({
-        quote: dexQuote.quote,
-        paymentAsset,
-        signer,
-        onStatus: setLoading,
-      });
-
-      if (result.success) {
-        setTransactionStatus({ type: 'success', message: 'Swap confirmed on Aerodrome!' });
-        setAmount('');
-        await refreshBalances();
-      } else {
-        setTransactionStatus({ type: 'error', message: result.error || 'Swap failed' });
-      }
-    } catch (error) {
-      console.error('DEX swap failed:', error);
-      setTransactionStatus({ type: 'error', message: 'Swap failed' });
-    } finally {
-      setLoading('');
-    }
-  }, [signer, walletAddress, dexQuote.quote, routerAddress, paymentAsset, refreshBalances]);
-
-  // Main swap handler
+  // ========================================
+  // UNIFIED SWAP HANDLER
+  // ========================================
   const handleSwapClick = useCallback(async () => {
-    if (isDexMode) {
-      await handleDexSwap();
-    } else {
-      if (activeTab === 'buy') {
-        await handleBondingBuy();
-      } else {
-        await handleBondingSell();
-      }
+    if (!isSwapSupported) {
+      setTransactionStatus({
+        type: 'error',
+        message: 'This swap is not yet supported. Please use ACES or wait until 100% bonded.',
+      });
+      return;
     }
-  }, [isDexMode, activeTab, handleDexSwap, handleBondingBuy, handleBondingSell]);
+
+    try {
+      setLoading('Preparing swap...');
+
+      const result = await swap.executeSwap({
+        sellToken,
+        buyToken,
+        amount,
+        quote,
+        onStatus: setLoading,
+      });
+
+      if (result.success) {
+        setTransactionStatus({
+          type: 'success',
+          message: isDexMode ? 'Swap confirmed on Aerodrome!' : 'Transaction successful!',
+        });
+        setAmount('');
+        await refreshBalances();
+      } else {
+        setTransactionStatus({
+          type: 'error',
+          message: result.error || 'Transaction failed',
+        });
+      }
+    } catch (error) {
+      console.error('Swap failed:', error);
+      setTransactionStatus({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Transaction failed',
+      });
+    } finally {
+      setLoading('');
+    }
+  }, [isSwapSupported, swap, sellToken, buyToken, amount, quote, isDexMode, refreshBalances]);
 
   // Auto-dismiss transaction status
   useMemo(() => {
@@ -345,27 +484,15 @@ export default function TokenSwapInterface({
     return () => clearTimeout(timeout);
   }, [transactionStatus]);
 
-  // If using simple card, render SwapCard directly
-  if (useSimpleCard) {
-    return (
-      <SwapCard
-        tokenSymbol={tokenSymbol}
-        tokenAddress={tokenAddress}
-        chainId={chainId}
-        dexMeta={dexMeta}
-      />
-    );
-  }
-
-  // Render full interface with header and progression
+  // ========================================
+  // RENDER (UI UNCHANGED)
+  // ========================================
   return (
     <div className="h-full">
       <div
         className={cn(
           'bg-[#151c16] h-full flex flex-col relative',
-          showFrame
-            ? 'rounded-lg border border-[#D0B284]/20'
-            : cn('px-4 sm:px-6 pb-6', showHeader ? 'pt-4' : 'pt-2'),
+          showFrame ? '' : cn('px-4 sm:px-6 pb-6', showHeader ? 'pt-4' : 'pt-2'),
         )}
       >
         {showHeader && (
@@ -514,158 +641,253 @@ export default function TokenSwapInterface({
         )}
 
         {/* Swap interface */}
-        <div className={cn('flex-1 space-y-6', showFrame ? 'px-6 pb-6' : '')}>
-          {isDexMode ? (
-            <>
-              {/* Use SwapCard for DEX mode */}
-              <div className="mx-auto w-full max-w-[560px]">
-                <SwapCard
-                  tokenSymbol={tokenSymbol}
-                  tokenAddress={tokenAddress}
-                  chainId={chainId}
-                  dexMeta={dexMeta}
-                  onSwapComplete={refreshBalances}
-                />
-              </div>
-            </>
-          ) : (
-            <>
-              {/* Bonding curve interface */}
-              <div className="relative flex flex-col gap-5">
-                {/* Percentage Selector */}
-                <PercentageSelector
-                  balance={percentageSelectorBalance}
-                  onAmountCalculated={handlePercentageCalculated}
-                  currentAmount={amount}
-                />
+        <div className={cn('flex-1 min-h-0 space-y-6 overflow-y-auto px-0 pb-6')}>
+          {/* Unified interface - handles both bonding curve and DEX mode via unified hooks */}
+          <div className="flex flex-col gap-4">
+            {/* Percentage Selector */}
+            <PercentageSelector
+              balance={percentageSelectorBalance}
+              onAmountCalculated={handlePercentageCalculated}
+              currentAmount={amount}
+            />
 
-                <div className="rounded-3xl border border-[#D0B284]/25 bg-[#0B0F0B] p-4 shadow-[0_20px_45px_rgba(0,0,0,0.35)]">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.35em] text-[#D0B284]/70">
-                      {activeTab === 'buy' ? 'Sell' : 'Sell'}
-                    </span>
-                    <div className="relative inline-flex min-w-[140px] justify-end">
-                      <select
-                        className="appearance-none rounded-full border border-[#D0B284]/25 bg-black/70 px-4 pr-9 py-2 text-sm font-semibold text-[#D0B284] focus:outline-none focus:ring-2 focus:ring-[#D0B284]/40"
-                        value={activeTab === 'sell' ? tokenSymbol : paymentAsset}
-                        onChange={(e) => {
-                          if (e.target.value === tokenSymbol) {
-                            setActiveTab('sell');
-                          } else {
-                            setActiveTab('buy');
-                            setPaymentAsset(e.target.value as PaymentAsset);
-                          }
-                        }}
+            <div className="space-y-4">
+              {/* Sell Section */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between px-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-[#D0B284]">Sell</span>
+                    <div className="relative flex items-center" ref={slippagePopoverRef}>
+                      <button
+                        type="button"
+                        onClick={() => setSlippagePopoverOpen((prev) => !prev)}
+                        className="flex items-center gap-1 rounded-full px-2 py-1 text-[#D0B284]/70 transition-colors duration-150 hover:text-[#D0B284] focus:outline-none"
+                        aria-label="Slippage settings"
                       >
-                        {activeTab === 'sell' ? (
-                          <option value={tokenSymbol}>{tokenSymbol}</option>
-                        ) : (
-                          <option value="ACES">ACES</option>
+                        <Settings className="h-3 w-3" />
+                        <span className="pt-[1px] text-[11px] font-semibold">
+                          {slippageBps / 100}%
+                        </span>
+                      </button>
+
+                      <AnimatePresence>
+                        {slippagePopoverOpen && (
+                          <motion.div
+                            initial={{ opacity: 0, x: 10, scale: 0.95 }}
+                            animate={{ opacity: 1, x: 0, scale: 1 }}
+                            exit={{ opacity: 0, x: 10, scale: 0.95 }}
+                            transition={{ duration: 0.15 }}
+                            className="absolute left-full top-1/2 z-50 ml-3 w-[180px] -translate-y-1/2 rounded-lg border border-[#D0B264]/30 bg-black/95 p-2.5 shadow-xl backdrop-blur-sm"
+                          >
+                            <div className="mb-2 flex items-center gap-2">
+                              <div className="whitespace-nowrap text-[11px] font-medium text-[#D0B264]/70">
+                                Slippage
+                              </div>
+                              <div className="relative flex-1">
+                                <input
+                                  type="number"
+                                  value={customSlippageInput || slippageBps / 100}
+                                  onChange={(e) => handleCustomSlippageChange(e.target.value)}
+                                  onFocus={(e) => {
+                                    if (!customSlippageInput) {
+                                      setCustomSlippageInput((slippageBps / 100).toString());
+                                    }
+                                    e.target.select();
+                                  }}
+                                  placeholder="Custom"
+                                  className="w-full rounded-lg border-[0.5px] border-[#D0B264]/40 bg-black/40 px-2.5 py-1.5 pr-7 text-[13px] font-semibold text-[#D0B264] transition-colors duration-150 focus:border-[#D0B264] focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                  min="0"
+                                  max="50"
+                                  step="0.1"
+                                />
+                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[12px] text-[#D0B264]/60">
+                                  %
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleSlippagePreset(100)}
+                                className={cn(
+                                  'rounded-lg px-2 py-1.5 text-[12px] font-semibold transition-all duration-150',
+                                  slippageBps === 100 && !customSlippageInput
+                                    ? 'bg-[#D0B264]/20 text-[#D0B264] border-[0.5px] border-[#D0B264]'
+                                    : 'border-[0.5px] border-[#D0B264]/30 bg-black/40 text-[#D0B264]/70 hover:bg-black/60',
+                                )}
+                              >
+                                1%
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleSlippagePreset(300)}
+                                className={cn(
+                                  'rounded-lg px-2 py-1.5 text-[12px] font-semibold transition-all duration-150',
+                                  slippageBps === 300 && !customSlippageInput
+                                    ? 'bg-[#D0B264]/20 text-[#D0B264] border-[0.5px] border-[#D0B264]'
+                                    : 'border-[0.5px] border-[#D0B264]/30 bg-black/40 text-[#D0B264]/70 hover:bg-black/60',
+                                )}
+                              >
+                                3%
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleSlippagePreset(500)}
+                                className={cn(
+                                  'rounded-lg px-2 py-1.5 text-[12px] font-semibold transition-all duration-150',
+                                  slippageBps === 500 && !customSlippageInput
+                                    ? 'bg-[#D0B264]/20 text-[#D0B264] border-[0.5px] border-[#D0B264]'
+                                    : 'border-[0.5px] border-[#D0B264]/30 bg-black/40 text-[#D0B264]/70 hover:bg-black/60',
+                                )}
+                              >
+                                5%
+                              </button>
+                            </div>
+                          </motion.div>
                         )}
-                      </select>
-                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#D0B284]/60" />
+                      </AnimatePresence>
                     </div>
                   </div>
-
-                  <div className="mt-4">
-                    <input
-                      value={amount}
-                      onChange={(e) => handleAmountChange(e.target.value)}
-                      placeholder="0"
-                      inputMode="decimal"
-                      className="w-full border-none bg-transparent text-4xl font-semibold text-white outline-none focus:ring-0 placeholder:text-[#D0B284]/30"
-                    />
-                  </div>
-
-                  {hasValidAmount && usdDisplay && (
-                    <div className="mt-2 text-sm text-[#D0B284]/70">≈ {usdDisplay}</div>
-                  )}
-
-                  <div className="mt-3 flex items-center justify-between text-xs text-[#D0B284]/60">
-                    <span>Balance</span>
-                    <span className="font-mono text-[#D0B284]">
-                      {formatAmountForDisplay(
-                        activeTab === 'sell' ? tokenBalance : acesBalance,
-                        18,
-                      )}{' '}
-                      {activeTab === 'sell' ? tokenSymbol : 'ACES'}
-                    </span>
-                  </div>
+                  <span className="text-xs text-[#D0B284]/70">
+                    Balance{' '}
+                    {formatAmountForDisplay(sellBalanceInfo.rawBalance, sellBalanceInfo.decimals)}{' '}
+                    {sellAssetLabel}
+                  </span>
                 </div>
 
-                <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-[#D0B284]/30 bg-black/80 shadow-[0_10px_30px_rgba(0,0,0,0.45)]">
-                    <ArrowDown className="h-4 w-4 text-[#D0B284]" />
-                  </div>
-                </div>
-
-                <div className="rounded-3xl border border-[#D0B284]/25 bg-[#0B0F0B] p-4 pt-5 shadow-[0_20px_45px_rgba(0,0,0,0.35)]">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.35em] text-[#D0B284]/70">
-                      Buy
-                    </span>
-                    <div className="relative inline-flex min-w-[140px] justify-end">
+                <div className=" bg-[#0B0F0B] px-5 py-4 shadow-[0_20px_45px_rgba(0,0,0,0.35)]">
+                  <div className="flex w-full items-center gap-6">
+                    <div className="relative flex-shrink-0">
                       <select
-                        className="appearance-none rounded-full border border-[#D0B284]/25 bg-black/70 px-4 pr-9 py-2 text-sm font-semibold text-[#D0B284] focus:outline-none focus:ring-2 focus:ring-[#D0B284]/40"
-                        value={activeTab === 'sell' ? 'ACES' : tokenSymbol}
-                        disabled
+                        className="peer appearance-none rounded-full border border-[#D0B284]/25 bg-black/70 px-5 pr-10 py-3 text-sm font-semibold text-[#D0B284] focus:outline-none focus:ring-2 focus:ring-[#D0B284]/40"
+                        value={selectedSellAsset ?? ''}
+                        onChange={(e) => handleSellAssetChange(e.target.value)}
                       >
-                        <option value={activeTab === 'sell' ? 'ACES' : tokenSymbol}>
-                          {activeTab === 'sell' ? 'ACES' : tokenSymbol}
-                        </option>
+                        {sellOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
                       </select>
                       <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#D0B284]/60" />
                     </div>
-                  </div>
 
-                  <div className="mt-4">
-                    <input
-                      value={amount}
-                      readOnly
-                      className="w-full border-none bg-transparent text-4xl font-semibold text-white/90 outline-none"
-                    />
-                  </div>
-
-                  <div className="mt-4 flex items-center justify-between text-xs text-[#D0B284]/60">
-                    <span>Balance</span>
-                    <span className="font-mono text-[#D0B284]">
-                      {formatAmountForDisplay(
-                        activeTab === 'sell' ? acesBalance : tokenBalance,
-                        18,
-                      )}{' '}
-                      {activeTab === 'sell' ? 'ACES' : tokenSymbol}
-                    </span>
+                    <div className="flex flex-1 flex-col items-end gap-1">
+                      <input
+                        value={formattedAmount}
+                        onChange={(e) => handleAmountChange(e.target.value)}
+                        placeholder="0"
+                        inputMode="decimal"
+                        className={cn(
+                          'w-full border-none bg-transparent text-right font-semibold text-white outline-none focus:ring-0 placeholder:text-[#D0B284]/30',
+                          amountDigitCount > 10 ? 'text-2xl' : 'text-3xl',
+                        )}
+                      />
+                      <div className="flex items-center justify-end gap-2 text-sm text-[#D0B284]/60">
+                        {isUsdQuoteLoading ? (
+                          <Loader2 className="h-4 w-4 animate-spin text-[#D0B284]" />
+                        ) : hasValidAmount && inputUsdDisplay ? (
+                          <>≈ {inputUsdDisplay}</>
+                        ) : (
+                          '≈ $0.00 USD'
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-6">
-                {!isAuthenticated || !provider ? (
-                  <Button
-                    onClick={handleConnectWallet}
-                    disabled={!!loading}
-                    className="w-full h-14 rounded-2xl border border-[#D0B284]/30 bg-[#101610] text-[#D0B284] font-proxima-nova font-bold text-lg transition-colors hover:bg-[#151d14] disabled:opacity-50"
-                  >
-                    {loading || 'Connect Wallet'}
-                  </Button>
-                ) : (
-                  <Button
-                    onClick={handleSwapClick}
-                    disabled={!hasValidAmount || !!loading || !canSwap}
-                    className="w-full h-14 rounded-2xl border border-[#D0B284]/30 bg-[#101610] text-[#D0B284] font-spray-letters font-bold text-2xl tracking-widest uppercase transition-colors hover:bg-[#151d14] disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {loading ? (
-                      <span className="flex items-center justify-center">
-                        <Loader2 className="h-6 w-6 animate-spin" />
-                      </span>
-                    ) : (
-                      'SWAP'
-                    )}
-                  </Button>
-                )}
+              {/* Buy Section */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between px-1">
+                  <span className="text-sm font-semibold text-[#D0B284]">
+                    {activeTab === 'buy' ? 'Buy' : 'Receive'}
+                  </span>
+                  <span className="text-xs text-[#D0B284]/70">
+                    Balance{' '}
+                    {formatAmountForDisplay(buyBalanceInfo.rawBalance, buyBalanceInfo.decimals)}{' '}
+                    {buyAssetLabel}
+                  </span>
+                </div>
+
+                <div className="bg-[#0B0F0B] px-5 py-4 shadow-[0_20px_45px_rgba(0,0,0,0.35)]">
+                  <div className="flex w-full items-center gap-6">
+                    <div className="relative flex-shrink-0">
+                      <select
+                        className="peer appearance-none rounded-full border border-[#D0B284]/25 bg-black/70 px-5 pr-10 py-3 text-sm font-semibold text-[#D0B284] focus:outline-none focus:ring-2 focus:ring-[#D0B284]/40"
+                        value={selectedBuyAsset ?? ''}
+                        onChange={(e) => handleBuyAssetChange(e.target.value)}
+                      >
+                        {buyOptions.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#D0B284]/60" />
+                    </div>
+
+                    <div className="flex flex-1 flex-col items-end gap-1 text-right">
+                      <div className="min-h-[36px] flex items-center justify-end">
+                        {isTokenQuoteLoading ? (
+                          <Loader2 className="h-5 w-5 animate-spin text-[#D0B284]" />
+                        ) : (
+                          <span
+                            className={cn(
+                              'text-3xl font-semibold',
+                              hasValidAmount && quote.outputAmount
+                                ? 'text-white/90'
+                                : 'text-[#D0B284]/30',
+                            )}
+                          >
+                            {outputAmountDisplay}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-end gap-2 text-sm text-[#D0B284]/60">
+                        {isUsdQuoteLoading ? (
+                          <Loader2 className="h-4 w-4 animate-spin text-[#D0B284]" />
+                        ) : hasValidAmount && outputUsdDisplay ? (
+                          <>≈ {outputUsdDisplay}</>
+                        ) : (
+                          '≈ $0.00 USD'
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
-            </>
-          )}
+            </div>
+
+            <div className="mt-4">
+              {!isAuthenticated || !provider ? (
+                <Button
+                  onClick={handleConnectWallet}
+                  disabled={!!loading}
+                  className="w-full h-14 rounded-2xl border border-[#D0B284]/30 bg-[#101610] text-[#D0B284] font-proxima-nova font-bold text-lg transition-colors hover:bg-[#151d14] disabled:opacity-50"
+                >
+                  {loading || 'Connect Wallet'}
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleSwapClick}
+                  disabled={!hasValidAmount || !!loading || !canSwap || !isSwapSupported}
+                  className="w-full h-18 rounded-2xl border border-[#D0B284]/60 bg-black text-[#D0B284] font-spray-letters font-bold text-5xl tracking-widest uppercase transition-colors hover:bg-[#D] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {loading ? (
+                    <span className="flex items-center justify-center">
+                      <Loader2 className="h-6 w-6 animate-spin" />
+                    </span>
+                  ) : (
+                    <span className="bg-gradient-to-r from-[#d4af37] via-[#f4e5a6] to-[#d4af37] bg-clip-text text-transparent font-spray-letters">
+                      SWAP
+                    </span>
+                  )}
+                </Button>
+              )}
+            </div>
+          </div>
 
           {transactionStatus && (
             <div className="fixed bottom-6 left-1/2 z-50 flex w-full max-w-sm -translate-x-1/2 px-4">
@@ -693,4 +915,29 @@ export default function TokenSwapInterface({
       </div>
     </div>
   );
+}
+
+function formatIntegerDisplay(value: string | null | undefined): string {
+  if (!value) return '0';
+  const normalized = value.includes('.') ? value.split('.')[0] : value;
+  const trimmed = normalized.trim();
+  if (trimmed === '' || trimmed === '-') return '0';
+
+  try {
+    return BigInt(trimmed).toLocaleString();
+  } catch {
+    const parsed = Number.parseFloat(trimmed);
+    if (!Number.isFinite(parsed)) {
+      return '0';
+    }
+    return Math.floor(parsed).toLocaleString();
+  }
+}
+
+function formatDecimalDisplay(value: string | null | undefined, fractionDigits = 4): string {
+  const parsed = Number.parseFloat(value || '0');
+  if (!Number.isFinite(parsed)) {
+    return '0.00';
+  }
+  return parsed.toFixed(fractionDigits);
 }

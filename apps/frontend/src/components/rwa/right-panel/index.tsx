@@ -35,24 +35,26 @@ export default function RightPanel({
     })) ?? [];
 
   return (
-    <div className="h-full w-full bg-[#151c16] p-2 flex flex-col gap-1 overflow-hidden">
+    <div className="h-full w-full bg-[#151c16] flex flex-col gap-1">
       {/* Top: Progress */}
-      <BondingProgressSection
-        tokenAddress={tokenAddress}
-        chainId={chainId}
-        tokenSymbol={tokenSymbol}
-      />
+      <div className="px-2">
+        {/* <BondingProgressSection
+          tokenAddress={tokenAddress}
+          chainId={chainId}
+          tokenSymbol={tokenSymbol}
+        /> */}
 
-      {/* Image Gallery */}
-      <DynamicImageGallery
-        images={displayImages}
-        selectedImageIndex={selectedImageIndex}
-        onImageSelect={onSelectImage}
-        loading={loading}
-      />
+        {/* Image Gallery */}
+        <DynamicImageGallery
+          images={displayImages}
+          selectedImageIndex={selectedImageIndex}
+          onImageSelect={onSelectImage}
+          loading={loading}
+        />
+      </div>
 
       {/* Bottom: Swap */}
-      <div>
+      <div className="px-0.5">
         <SwapBox
           tokenSymbol={tokenSymbol}
           tokenAddress={tokenAddress}
