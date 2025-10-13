@@ -8,8 +8,11 @@ import {
   Bar,
   ResolutionString,
 } from '../../../public/charting_library/charting_library';
-import { DexApi } from '@/lib/api/dex';
-import type { DatabaseListing } from '@/types/rwa/section.types';
+import { useUnifiedChartData } from '@/hooks/chart/use-unified-chart-data';
+
+type UnifiedHookResult = ReturnType<typeof useUnifiedChartData>;
+type UnifiedCandle = UnifiedHookResult['candles'][number];
+type UnifiedGraduationState = UnifiedHookResult['graduationState'];
 
 interface TokenMetadata {
   symbol: string;
@@ -18,60 +21,152 @@ interface TokenMetadata {
   volume24h: string;
 }
 
-type DexMeta = DatabaseListing['dex'] | null | undefined;
+interface UnifiedDataSubscription {
+  subscriberUID: string;
+  tokenAddress: string;
+  timeframe: string;
+  onRealtimeCallback: SubscribeBarsCallback;
+  onResetCacheNeededCallback: () => void;
+  isActive: boolean;
+  lastBar: Bar | null;
+  ws: WebSocket | null;
+  reconnectTimeout: ReturnType<typeof setTimeout> | null;
+}
 
-interface DatafeedOptions {
-  dex?: DexMeta;
+interface SearchSymbol {
+  symbol: string;
+  full_name: string;
+  description: string;
+  exchange: string;
+  ticker: string;
+  type: string;
+}
+
+interface WebSocketMessage {
+  type?: string;
+  error?: string;
+  graduationState?: UnifiedGraduationState;
+  candles?: UnifiedCandle[];
+  candle?: UnifiedCandle;
 }
 
 export class BondingCurveDatafeed implements IBasicDataFeed {
-  private static readonly MAX_GAP_FILL_DURATION_MS = 48 * 60 * 60 * 1000; // cap synthetic bars to ~2 days
+  private static readonly MAX_GAP_FILL_DURATION_MS = 48 * 60 * 60 * 1000;
   private static readonly MAX_CACHED_BARS = 5000;
-  // Required by IDatafeedChartApi but not used in basic implementation
+
+  // Subscript digit map for zero-count notation (0.0₅487)
+  private static readonly SUBSCRIPT_MAP: Record<string, string> = {
+    '0': '₀',
+    '1': '₁',
+    '2': '₂',
+    '3': '₃',
+    '4': '₄',
+    '5': '₅',
+    '6': '₆',
+    '7': '₇',
+    '8': '₈',
+    '9': '₉',
+  };
+
+  /**
+   * Formats a price with compressed leading-zeros notation
+   * Examples:
+   *   0.00000487 → 0.0₅487 (5 leading zeros)
+   *   0.0000000123 → 0.0₈123 (8 leading zeros)
+   *   0.25 → 0.2500 (standard format)
+   * This prevents scientific notation (e-notation) for very small prices
+   */
+  public static formatPriceWithZeroCount(price: number, includeSymbol: boolean = true): string {
+    if (price === 0 || price === null || price === undefined || !Number.isFinite(price)) {
+      return includeSymbol ? '$0.00' : '0.00';
+    }
+
+    const absPrice = Math.abs(price);
+    const sign = price < 0 ? '-' : '';
+    const symbol = includeSymbol ? '$' : '';
+
+    // Handle very small decimals (less than 0.01)
+    if (absPrice < 0.01 && absPrice > 0) {
+      // Convert to string with high precision
+      const priceStr = absPrice.toFixed(20).replace(/\.?0+$/, '');
+
+      // Match pattern: 0.(multiple zeros)(significant digits)
+      const match = priceStr.match(/^0\.(0+)([1-9]\d*)$/);
+
+      if (match && match[1].length >= 3) {
+        // We have 3+ leading zeros - use compressed notation
+        const zeroCount = match[1].length;
+        const significantDigits = match[2].substring(0, 4); // Show first 4 significant digits
+
+        // Convert zero count to subscript
+        const subscriptCount = zeroCount
+          .toString()
+          .split('')
+          .map((d) => BondingCurveDatafeed.SUBSCRIPT_MAP[d] || d)
+          .join('');
+
+        return `${sign}${symbol}0.0${subscriptCount}${significantDigits}`;
+      }
+
+      // Less than 3 zeros - use standard decimal notation
+      return `${sign}${symbol}${absPrice.toFixed(8).replace(/\.?0+$/, '')}`;
+    }
+
+    // Standard formatting for larger prices
+    if (absPrice >= 1) {
+      return `${sign}${symbol}${absPrice.toFixed(2)}`;
+    } else if (absPrice >= 0.01) {
+      return `${sign}${symbol}${absPrice.toFixed(4)}`;
+    }
+
+    return `${sign}${symbol}${absPrice.toFixed(8)}`;
+  }
+
+  /**
+   * Creates a price formatter function for TradingView widget
+   * Use this when initializing your TradingView widget's custom_formatters
+   */
+  public static createPriceFormatter() {
+    return {
+      format: (price: number) => BondingCurveDatafeed.formatPriceWithZeroCount(price, true),
+    };
+  }
+
   searchSymbols(
     userInput: string,
     exchange: string,
     symbolType: string,
-    onResultReadyCallback: (symbols: any[]) => void,
+    onResultReadyCallback: (symbols: SearchSymbol[]) => void,
   ): void {
-    // Not implemented for basic datafeed
     onResultReadyCallback([]);
   }
+
   private tokenAddress: string;
-  private dexMeta: DexMeta;
+  private displayCurrency: 'usd' | 'aces';
   private useDex: boolean;
-  private realtimeSubscriptions = new Map<string, any>();
   private tokenMetadata: TokenMetadata | null = null;
   private lastHistoricalBarByTimeframe = new Map<string, Bar>();
   private historyCache = new Map<string, Bar[]>();
+  private unifiedDataSubscription: UnifiedDataSubscription | null = null;
 
-  constructor(tokenAddress: string, options: DatafeedOptions = {}) {
+  constructor(tokenAddress: string, displayCurrency: 'usd' | 'aces' = 'usd') {
     this.tokenAddress = tokenAddress.toLowerCase();
-    this.dexMeta = options.dex ?? null;
-    this.useDex = Boolean(this.dexMeta?.isDexLive);
+    this.displayCurrency = displayCurrency;
+    this.useDex = false;
   }
 
-  /**
-   * Get the correct API URL based on environment
-   * In production/Vercel, use NEXT_PUBLIC_API_URL
-   * In development, use relative URL (proxied by next.config.ts)
-   */
   private getApiUrl(path: string): string {
-    // Check if we're in browser environment
     if (typeof window === 'undefined') {
       return path;
     }
 
-    // In production/Vercel, use the environment variable
     const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
     if (apiBaseUrl) {
-      // Remove leading slash from path since apiBaseUrl should include it
       const cleanPath = path.startsWith('/') ? path.slice(1) : path;
       const fullUrl = `${apiBaseUrl}/${cleanPath}`;
       return fullUrl;
     }
 
-    // In development, use relative URL (will be proxied)
     console.log('[TradingView] Using relative URL (development):', path);
     return path;
   }
@@ -99,10 +194,16 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     onResolveErrorCallback: (reason: string) => void,
   ) {
     try {
-      // Fetch token metadata from backend
       if (!this.tokenMetadata) {
         await this.fetchTokenMetadata();
       }
+
+      // Ultra-high precision for micro-cap tokens to prevent scientific notation
+      // Supports up to 12 decimal places to handle extremely small prices
+      // This allows proper display of prices like 0.000000000123 as 0.0₁₀123
+      const precision = 12; // Up to 12 decimal places
+      const pricescale = Math.pow(10, precision); // 10^12 = 1,000,000,000,000
+      const minmov = 1; // Smallest possible price movement
 
       const symbolInfo: LibrarySymbolInfo = {
         ticker: this.tokenMetadata?.symbol || symbolName,
@@ -112,20 +213,29 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
         session: '24x7',
         timezone: 'Etc/UTC',
         exchange: 'BondingCurve',
-        minmov: 1,
-        pricescale: 1000000, // 6 decimal places
+        minmov: minmov,
+        pricescale: pricescale,
         has_intraday: true,
         has_daily: true,
         supported_resolutions: ['5', '15', '60', '240', '1D'] as ResolutionString[],
         volume_precision: 2,
         data_status: 'streaming',
         listed_exchange: 'BondingCurve',
+        // Use 'price' format which preserves decimal precision without scientific notation
         format: 'price',
       };
 
+      console.log('[TradingView] Symbol resolved with zero-count notation support:', {
+        precision,
+        pricescale,
+        minmov: symbolInfo.minmov,
+        currency: this.displayCurrency,
+        formatter: 'Zero-count notation enabled',
+      });
+
       setTimeout(() => onSymbolResolvedCallback(symbolInfo), 0);
     } catch (error) {
-      console.error('Error resolving symbol:', error);
+      console.error('[TradingView] Error resolving symbol:', error);
       onResolveErrorCallback(error instanceof Error ? error.message : 'Failed to resolve symbol');
     }
   }
@@ -167,6 +277,17 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
 
       const filteredCopy = this.cloneBars(filtered);
       this.lastHistoricalBarByTimeframe.set(timeframe, filteredCopy[filteredCopy.length - 1]);
+
+      // Log sample price with zero-count notation to verify formatting
+      if (filteredCopy.length > 0) {
+        const samplePrice = filteredCopy[0].close;
+        console.log('[TradingView] Sample bar price:', {
+          raw: samplePrice,
+          formatted: BondingCurveDatafeed.formatPriceWithZeroCount(samplePrice),
+          time: new Date(filteredCopy[0].time).toISOString(),
+        });
+      }
+
       onHistoryCallback(filteredCopy, { noData: false });
     };
 
@@ -178,22 +299,15 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       return;
     }
 
-    if (!periodParams.firstDataRequest) {
-      console.log(
-        '[TradingView] Subsequent history request with empty cache – fetching fresh data.',
-      );
-    }
-
     console.log(
       `[TradingView] Fetching bars: ${this.tokenAddress} ${timeframe}`,
       `from: ${new Date(periodParams.from * 1000).toISOString()}, to: ${new Date(periodParams.to * 1000).toISOString()}`,
     );
 
-    // Fetch data from backend (has 10-second cache)
-    this.fetchHistoricalData(resolution, periodParams.from, periodParams.to)
-      .then(({ bars, nextTime }) => {
-        if (bars.length === 0 && typeof nextTime === 'number') {
-          onHistoryCallback([], { noData: true, nextTime });
+    this.fetchHistoricalDataUnified(timeframe, periodParams.from, periodParams.to)
+      .then(({ bars }) => {
+        if (bars.length === 0) {
+          onHistoryCallback([], { noData: true });
           this.historyCache.set(timeframe, []);
           return;
         }
@@ -206,6 +320,23 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       });
   }
 
+  private resolutionToTimeframe(resolution: ResolutionString): string {
+    switch (resolution) {
+      case '5':
+        return '5m';
+      case '15':
+        return '15m';
+      case '60':
+        return '1h';
+      case '240':
+        return '4h';
+      case '1D':
+        return '1d';
+      default:
+        return '1h';
+    }
+  }
+
   subscribeBars(
     symbolInfo: LibrarySymbolInfo,
     resolution: ResolutionString,
@@ -216,99 +347,340 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     const timeframe = this.resolutionToTimeframe(resolution);
 
     console.log(
-      `[TradingView] Starting real-time subscription for ${this.tokenAddress} ${timeframe}`,
+      `[TradingView] Starting WebSocket subscription for ${this.tokenAddress} ${timeframe}`,
     );
 
-    const subscription = {
+    if (this.unifiedDataSubscription) {
+      this.unsubscribeBars(this.unifiedDataSubscription.subscriberUID);
+    }
+
+    const subscription: UnifiedDataSubscription = {
+      subscriberUID,
       tokenAddress: this.tokenAddress,
       timeframe,
-      timeframeMs: this.timeframeToMs(timeframe),
       onRealtimeCallback,
       onResetCacheNeededCallback,
       isActive: true,
       lastBar: this.cloneBar(this.lastHistoricalBarByTimeframe.get(timeframe) || null),
+      ws: null,
+      reconnectTimeout: null,
     };
 
-    this.realtimeSubscriptions.set(subscriberUID, subscription);
-    this.startRealtimePolling(subscription, subscriberUID);
+    this.unifiedDataSubscription = subscription;
+    this.startUnifiedWebSocket();
   }
 
   unsubscribeBars(subscriberUID: string) {
-    const subscription = this.realtimeSubscriptions.get(subscriberUID);
-    if (subscription) {
-      subscription.isActive = false;
-      this.stopRealtimePolling(subscriberUID);
-      this.realtimeSubscriptions.delete(subscriberUID);
-      console.log(`[TradingView] Unsubscribed from real-time updates: ${subscriberUID}`);
+    if (!this.unifiedDataSubscription) {
+      return;
+    }
+
+    const subscription = this.unifiedDataSubscription;
+    if (subscription.subscriberUID !== subscriberUID) {
+      return;
+    }
+
+    subscription.isActive = false;
+
+    if (subscription.reconnectTimeout) {
+      clearTimeout(subscription.reconnectTimeout);
+      subscription.reconnectTimeout = null;
+    }
+
+    if (subscription.ws) {
+      const ws = subscription.ws;
+
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(
+          JSON.stringify({
+            type: 'unsubscribe',
+            tokenAddress: this.tokenAddress,
+            timeframe: subscription.timeframe,
+          }),
+        );
+      }
+
+      ws.close();
+      subscription.ws = null;
+    }
+
+    this.unifiedDataSubscription = null;
+    console.log(`[TradingView] Unsubscribed from WebSocket: ${subscriberUID}`);
+  }
+
+  private startUnifiedWebSocket() {
+    if (typeof window === 'undefined') {
+      console.warn('[TradingView] WebSocket not started - window is undefined');
+      return;
+    }
+
+    const subscription = this.unifiedDataSubscription;
+
+    if (!subscription || !subscription.isActive) {
+      return;
+    }
+
+    if (subscription.reconnectTimeout) {
+      clearTimeout(subscription.reconnectTimeout);
+      subscription.reconnectTimeout = null;
+    }
+
+    if (subscription.ws) {
+      const state = subscription.ws.readyState;
+      if (state === WebSocket.OPEN || state === WebSocket.CONNECTING) {
+        console.log('[TradingView] WebSocket already connecting/connected');
+        return;
+      }
+    }
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = process.env.NEXT_PUBLIC_API_URL
+      ? `${protocol}//${new URL(process.env.NEXT_PUBLIC_API_URL).host}/ws/chart`
+      : `${protocol}//${window.location.host}/ws/chart`;
+
+    try {
+      const ws = new WebSocket(wsUrl);
+      subscription.ws = ws;
+
+      ws.onopen = () => {
+        console.log('[TradingView] WebSocket connected');
+        if (!subscription.isActive) {
+          return;
+        }
+
+        ws.send(
+          JSON.stringify({
+            type: 'subscribe',
+            tokenAddress: subscription.tokenAddress,
+            timeframe: subscription.timeframe,
+          }),
+        );
+      };
+
+      ws.onmessage = (event) => {
+        if (!subscription.isActive) {
+          return;
+        }
+
+        try {
+          const message = JSON.parse(event.data);
+          this.handleUnifiedWebSocketMessage(message, subscription);
+        } catch (error) {
+          console.error('[TradingView] WebSocket message error:', error);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('[TradingView] WebSocket error:', error);
+      };
+
+      ws.onclose = () => {
+        console.log('[TradingView] WebSocket closed');
+
+        if (!subscription.isActive) {
+          return;
+        }
+
+        subscription.ws = null;
+        subscription.reconnectTimeout = setTimeout(() => {
+          console.log('[TradingView] Attempting WebSocket reconnection...');
+          this.startUnifiedWebSocket();
+        }, 3000);
+      };
+    } catch (error) {
+      console.error('[TradingView] Failed to start WebSocket:', error);
     }
   }
 
-  private startRealtimePolling(subscription: any, subscriberUID: string) {
-    const timeframeMs = subscription.timeframeMs || this.timeframeToMs(subscription.timeframe);
+  private handleUnifiedWebSocketMessage(
+    message: WebSocketMessage,
+    subscription: UnifiedDataSubscription,
+  ) {
+    if (!message || typeof message !== 'object') {
+      return;
+    }
 
-    const interval = setInterval(async () => {
-      if (!subscription.isActive) {
-        clearInterval(interval);
-        return;
+    const timeframeMs = this.timeframeToMs(subscription.timeframe);
+
+    if (message.graduationState) {
+      const graduationState = message.graduationState as UnifiedGraduationState;
+      this.useDex = Boolean(graduationState?.poolReady);
+    }
+
+    switch (message.type) {
+      case 'initial_data': {
+        const candles = Array.isArray(message.candles) ? (message.candles as UnifiedCandle[]) : [];
+        const bars = candles
+          .map((candle) => this.candleToBar(candle, timeframeMs))
+          .filter((bar): bar is Bar => Boolean(bar));
+
+        if (bars.length === 0) {
+          return;
+        }
+
+        const filledBars = this.fillMissingBars(bars, timeframeMs);
+        this.historyCache.set(subscription.timeframe, this.cloneBars(filledBars));
+        this.lastHistoricalBarByTimeframe.set(
+          subscription.timeframe,
+          filledBars[filledBars.length - 1],
+        );
+        subscription.lastBar = this.cloneBar(filledBars[filledBars.length - 1]);
+        subscription.onResetCacheNeededCallback();
+        break;
       }
 
-      try {
-        const bar = this.useDex
-          ? await this.fetchLatestDexBar(subscription.timeframe, timeframeMs)
-          : await this.fetchLatestBondingBar(subscription.timeframe, timeframeMs);
+      case 'candle_update': {
+        const bar = this.candleToBar(message.candle as UnifiedCandle, timeframeMs);
 
         if (!bar) {
           return;
         }
 
-        const lastBar = subscription.lastBar as Bar | null;
-        const barChanged =
-          !lastBar ||
-          lastBar.time !== bar.time ||
-          lastBar.close !== bar.close ||
-          lastBar.volume !== bar.volume;
-
-        if (!barChanged) {
-          return;
-        }
-
-        if (lastBar && bar.time - lastBar.time > timeframeMs) {
-          this.emitSyntheticGapBars(subscription, lastBar, bar.time, timeframeMs);
-        }
-
-        const referenceBar = subscription.lastBar as Bar | null;
-        const bridgedBar = this.bridgeBar(referenceBar, bar);
-
+        const bridgedBar = this.bridgeBar(subscription.lastBar, bar);
         subscription.lastBar = bridgedBar;
         subscription.onRealtimeCallback(bridgedBar);
         this.updateHistoryCache(subscription.timeframe, bridgedBar);
-
-        console.log(`[TradingView] Real-time update:`, {
-          time: new Date(bridgedBar.time).toISOString(),
-          price: bridgedBar.close,
-          volume: bridgedBar.volume,
-          source: this.useDex ? 'dex' : 'bonding',
-        });
-      } catch (error) {
-        console.error(`[TradingView] Polling error for ${subscriberUID}:`, error);
+        break;
       }
-    }, 5000);
 
-    subscription.interval = interval;
+      case 'error': {
+        console.error('[TradingView] WebSocket server error:', message.error);
+        break;
+      }
+
+      default:
+        break;
+    }
   }
 
-  private stopRealtimePolling(subscriberUID: string) {
-    const subscription = this.realtimeSubscriptions.get(subscriberUID);
-    if (subscription && subscription.interval) {
-      clearInterval(subscription.interval);
-      subscription.interval = null;
+  private timeframeToMs(timeframe: string): number {
+    switch (timeframe) {
+      case '5m':
+        return 5 * 60 * 1000;
+      case '15m':
+        return 15 * 60 * 1000;
+      case '1h':
+        return 60 * 60 * 1000;
+      case '4h':
+        return 4 * 60 * 60 * 1000;
+      case '1d':
+        return 24 * 60 * 60 * 1000;
+      default:
+        return 60 * 60 * 1000;
     }
+  }
+
+  private alignTimeToTimeframe(timestampMs: number, timeframeMs: number): number {
+    if (timeframeMs <= 0) {
+      return timestampMs;
+    }
+    return Math.floor(timestampMs / timeframeMs) * timeframeMs;
+  }
+
+  private candleToBar(
+    candle: Partial<UnifiedCandle> | null | undefined,
+    timeframeMs: number,
+  ): Bar | null {
+    if (!candle) {
+      return null;
+    }
+
+    const rawTimestamp =
+      typeof (candle as any).timestamp === 'number'
+        ? (candle as any).timestamp
+        : typeof (candle as any).time === 'number'
+          ? (candle as any).time
+          : Number((candle as any).timestamp ?? (candle as any).time ?? 0);
+
+    if (!Number.isFinite(rawTimestamp)) {
+      return null;
+    }
+
+    const timestampMs = rawTimestamp < 1e12 ? rawTimestamp * 1000 : rawTimestamp;
+    const alignedTime = this.alignTimeToTimeframe(timestampMs, timeframeMs);
+
+    const priceFor = (key: 'open' | 'high' | 'low' | 'close'): number => {
+      const usdKey = `${key}Usd`;
+      const source =
+        this.displayCurrency === 'usd'
+          ? ((candle as any)[usdKey] ?? (candle as any)[key])
+          : (candle as any)[key];
+
+      const value = typeof source === 'string' ? parseFloat(source) : Number(source ?? 0);
+      return Number.isFinite(value) ? value : 0;
+    };
+
+    const open = priceFor('open');
+    const high = priceFor('high') || open;
+    const low = priceFor('low') || open;
+    const close = priceFor('close') || open;
+    const volume = Number((candle as any).volume ?? 0);
+
+    if (
+      !Number.isFinite(open) ||
+      !Number.isFinite(high) ||
+      !Number.isFinite(low) ||
+      !Number.isFinite(close)
+    ) {
+      return null;
+    }
+
+    if (open <= 0 && high <= 0 && low <= 0 && close <= 0) {
+      return null;
+    }
+
+    return {
+      time: alignedTime,
+      open,
+      high,
+      low,
+      close,
+      volume: Number.isFinite(volume) ? volume : 0,
+    };
+  }
+
+  private fillMissingBars(bars: Bar[], timeframeMs: number): Bar[] {
+    if (bars.length === 0) {
+      return [];
+    }
+
+    const filled: Bar[] = [];
+    const sortedBars = [...bars].sort((a, b) => a.time - b.time);
+
+    filled.push(sortedBars[0]);
+
+    for (let i = 1; i < sortedBars.length; i++) {
+      const prevBar = sortedBars[i - 1];
+      const currentBar = sortedBars[i];
+      const timeDiff = currentBar.time - prevBar.time;
+
+      if (timeDiff > timeframeMs && timeDiff <= BondingCurveDatafeed.MAX_GAP_FILL_DURATION_MS) {
+        const numMissingBars = Math.floor(timeDiff / timeframeMs) - 1;
+
+        for (let j = 1; j <= numMissingBars; j++) {
+          const syntheticTime = prevBar.time + j * timeframeMs;
+          const syntheticBar: Bar = {
+            time: syntheticTime,
+            open: prevBar.close,
+            high: prevBar.close,
+            low: prevBar.close,
+            close: prevBar.close,
+            volume: 0,
+          };
+          filled.push(syntheticBar);
+        }
+      }
+
+      filled.push(currentBar);
+    }
+
+    return filled;
   }
 
   private async fetchTokenMetadata(): Promise<void> {
     try {
       const apiUrl = this.getApiUrl(`/api/v1/tokens/${this.tokenAddress}`);
-      const response = await fetch(apiUrl);
+      const response = await window.fetch(apiUrl);
 
       if (!response.ok) {
         throw new Error(`Failed to fetch token metadata: ${response.status}`);
@@ -325,8 +697,7 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
         };
       }
     } catch (error) {
-      console.error('Error fetching token metadata:', error);
-      // Set fallback metadata
+      console.error('[TradingView] Error fetching token metadata:', error);
       this.tokenMetadata = {
         symbol: 'TOKEN',
         name: 'Unknown Token',
@@ -336,310 +707,96 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     }
   }
 
-  private async fetchHistoricalData(
-    resolution: ResolutionString,
-    from: number,
-    to: number,
-  ): Promise<{ bars: Bar[]; nextTime?: number }> {
-    const timeframe = this.resolutionToTimeframe(resolution);
-
-    // Validate token address
+  private async fetchHistoricalDataUnified(
+    timeframe: string,
+    _from: number,
+    _to: number,
+  ): Promise<{ bars: Bar[] }> {
     if (!this.tokenAddress || !this.tokenAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
       console.error('[TradingView] Invalid token address:', this.tokenAddress);
       throw new Error('Invalid token address format');
     }
 
-    const apiPath = `/api/v1/tokens/${this.tokenAddress}/chart?timeframe=${timeframe}&limit=5000`;
-    const apiUrl = this.getApiUrl(apiPath);
-
-    const response = await fetch(apiUrl);
-
-    if (!response.ok) {
-      throw new Error(`API request failed: ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    if (!data.success) {
-      throw new Error(data.error || data.message || 'API returned error');
-    }
-
-    // Convert to TradingView format
-    const bondingBars: Bar[] = [];
-
-    const timeframeMs = this.timeframeToMs(timeframe);
-
-    console.log(`[TradingView] Received ${data.data.candles.length} bars from API`);
-
-    for (let i = 0; i < data.data.candles.length; i++) {
-      const candle = data.data.candles[i];
-      const volumeEntry = data.data.volume?.[i];
-
-      const bar: Bar = {
-        time: this.alignTimeToTimeframe(candle.time * 1000, timeframeMs),
-        open: Number(candle.open) || 0,
-        high: Number(candle.high) || 0,
-        low: Number(candle.low) || 0,
-        close: Number(candle.close) || 0,
-        volume: volumeEntry?.value ? Number(volumeEntry.value) : 0,
-      };
-
-      // Skip invalid bars
-      if (bar.open > 0 || bar.high > 0 || bar.low > 0 || bar.close > 0) {
-        bondingBars.push(bar);
-      }
-    }
-
-    // Sort bars in ascending time order (TradingView requirement)
-    bondingBars.sort((a, b) => a.time - b.time);
-
-    let combinedBars = bondingBars;
-
-    if (this.useDex) {
-      const dexBars = await this.fetchDexHistoricalBars(resolution, timeframe);
-
-      const cutoff = this.dexMeta?.bondingCutoff ? Date.parse(this.dexMeta.bondingCutoff) : null;
-      const bondingFiltered = cutoff ? bondingBars.filter((bar) => bar.time < cutoff) : bondingBars;
-
-      const merged = [...bondingFiltered, ...dexBars].sort((a, b) => a.time - b.time);
-      const deduped = new Map<number, Bar>();
-      for (const bar of merged) {
-        deduped.set(bar.time, bar);
-      }
-      combinedBars = Array.from(deduped.values()).sort((a, b) => a.time - b.time);
-    }
-
-    if (combinedBars.length === 0) {
-      return { bars: [] };
-    }
-
-    const fromMs = from * 1000;
-    const toMs = to * 1000;
-    const bufferMs = Math.max(timeframeMs, 60 * 1000);
-
-    const rangeBars = combinedBars.filter((bar) => {
-      return bar.time <= toMs + bufferMs;
+    const apiUrl = this.getApiUrl(`/api/v1/chart/${this.tokenAddress}`);
+    const params = new URLSearchParams({
+      timeframe,
+      includeUsd: 'true',
     });
 
-    if (rangeBars.length === 0) {
-      const earliest = combinedBars[0];
+    console.log(`[TradingView] Fetching: ${apiUrl}?${params.toString()}`);
 
-      console.log(
-        `[TradingView] No bars within requested range [${new Date(fromMs).toISOString()} - ${new Date(
-          toMs,
-        ).toISOString()}], earliest available is ${new Date(earliest.time).toISOString()}`,
-      );
-
-      return { bars: [], nextTime: Math.floor(earliest.time / 1000) };
-    }
-
-    const windowedBars = rangeBars.filter((bar) => bar.time >= fromMs - bufferMs);
-    const barsToUse = windowedBars.length > 0 ? windowedBars : rangeBars;
-    const barsWithGapsFilled = this.fillMissingBars(barsToUse, timeframeMs);
-
-    console.log(
-      `[TradingView] Returning ${barsWithGapsFilled.length} bars after gap fill (source=${rangeBars.length})`,
-    );
-
-    return { bars: barsWithGapsFilled };
-  }
-
-  private async fetchLatestBondingBar(timeframe: string, timeframeMs: number): Promise<Bar | null> {
-    const apiUrl = this.getApiUrl(
-      `/api/v1/tokens/${this.tokenAddress}/live?timeframe=${timeframe}`,
-    );
-    const response = await fetch(apiUrl);
+    const response = await window.fetch(`${apiUrl}?${params.toString()}`);
 
     if (!response.ok) {
       throw new Error(`API request failed: ${response.status}`);
     }
 
     const data = await response.json();
-    const candles = data?.data?.candles;
 
-    if (!data.success || !Array.isArray(candles) || candles.length === 0) {
-      return null;
+    if (!data.success || !data.data?.candles) {
+      throw new Error('No chart data available');
     }
 
-    const latestCandle = candles[0];
-    const volumeEntry = data.data.volume?.[0];
+    const candles = data.data.candles;
+    const timeframeMs = this.timeframeToMs(timeframe);
 
-    const rawTime = Number(latestCandle.time) * 1000;
-    const alignedTime = this.alignTimeToTimeframe(rawTime, timeframeMs);
+    const bars: Bar[] = candles
+      .map((candle: any) => {
+        const timestamp = candle.timestamp * 1000;
 
-    return {
-      time: alignedTime,
-      open: Number(latestCandle.open) || 0,
-      high: Number(latestCandle.high) || 0,
-      low: Number(latestCandle.low) || 0,
-      close: Number(latestCandle.close) || 0,
-      volume: volumeEntry?.value ? Number(volumeEntry.value) : 0,
-    };
-  }
+        const open =
+          this.displayCurrency === 'usd'
+            ? parseFloat(candle.openUsd || candle.open)
+            : parseFloat(candle.open);
 
-  private async fetchLatestDexBar(timeframe: string, timeframeMs: number): Promise<Bar | null> {
-    const lookback = Math.max(5, this.getDexLookbackMinutes(timeframe));
-    const result = await DexApi.getCandles(this.tokenAddress, timeframe, lookback);
+        const high =
+          this.displayCurrency === 'usd'
+            ? parseFloat(candle.highUsd || candle.high)
+            : parseFloat(candle.high);
 
-    if (!result.success) {
-      return null;
-    }
+        const low =
+          this.displayCurrency === 'usd'
+            ? parseFloat(candle.lowUsd || candle.low)
+            : parseFloat(candle.low);
 
-    const payload = result.data as any;
-    const candles = Array.isArray(payload?.candles)
-      ? payload.candles
-      : Array.isArray(payload?.data?.candles)
-        ? payload.data.candles
-        : [];
+        const close =
+          this.displayCurrency === 'usd'
+            ? parseFloat(candle.closeUsd || candle.close)
+            : parseFloat(candle.close);
 
-    if (candles.length === 0) {
-      return null;
-    }
-
-    const latest = candles[candles.length - 1];
-    const startTime = Number(latest.startTime ?? latest.time ?? Date.now());
-    const alignedTime = this.alignTimeToTimeframe(startTime, timeframeMs);
-
-    return {
-      time: alignedTime,
-      open: Number(latest.open) || 0,
-      high: Number(latest.high) || 0,
-      low: Number(latest.low) || 0,
-      close: Number(latest.close) || 0,
-      volume: Number(latest.volumeToken ?? latest.volumeCounter ?? 0) || 0,
-    };
-  }
-
-  private async fetchDexHistoricalBars(
-    resolution: ResolutionString,
-    timeframe: string,
-  ): Promise<Bar[]> {
-    const lookback = this.getDexLookbackMinutes(timeframe);
-    const result = await DexApi.getCandles(this.tokenAddress, timeframe, lookback);
-
-    if (!result.success) {
-      return [];
-    }
-
-    const payload = result.data as any;
-    const candles = Array.isArray(payload?.candles)
-      ? payload.candles
-      : Array.isArray(payload?.data?.candles)
-        ? payload.data.candles
-        : [];
-
-    const timeframeMs = this.timeframeToMs(this.resolutionToTimeframe(resolution));
-
-    return candles
-      .map((candle: any) => ({
-        time: this.alignTimeToTimeframe(Number(candle.startTime ?? candle.time ?? 0), timeframeMs),
-        open: Number(candle.open) || 0,
-        high: Number(candle.high) || 0,
-        low: Number(candle.low) || 0,
-        close: Number(candle.close) || 0,
-        volume: Number(candle.volumeToken ?? candle.volumeCounter ?? 0) || 0,
-      }))
-      .filter((bar: Bar) => bar.time > 0 && (bar.open || bar.high || bar.low || bar.close))
+        return {
+          time: timestamp,
+          open,
+          high,
+          low,
+          close,
+          volume: parseFloat(candle.volume || '0'),
+        };
+      })
+      .filter((bar: Bar) => {
+        const hasValidPrices = bar.open > 0 || bar.high > 0 || bar.low > 0 || bar.close > 0;
+        return hasValidPrices;
+      })
       .sort((a: Bar, b: Bar) => a.time - b.time);
-  }
 
-  private getDexLookbackMinutes(timeframe: string): number {
-    const mapping: Record<string, number> = {
-      '5m': 60,
-      '15m': 6 * 60,
-      '1h': 24 * 60,
-      '4h': 4 * 24 * 60,
-      '1d': 14 * 24 * 60,
-    };
+    console.log(`[TradingView] Returning ${bars.length} bars`);
 
-    return mapping[timeframe] ?? 24 * 60;
-  }
-
-  private resolutionToTimeframe(resolution: ResolutionString): string {
-    const mapping: Record<string, string> = {
-      '5': '5m',
-      '15': '15m',
-      '60': '1h',
-      '240': '4h',
-      '1D': '1d',
-    };
-    return mapping[resolution] || '1h';
-  }
-
-  private timeframeToMs(timeframe: string): number {
-    const mapping: Record<string, number> = {
-      '5m': 5 * 60 * 1000,
-      '15m': 15 * 60 * 1000,
-      '1h': 60 * 60 * 1000,
-      '4h': 4 * 60 * 60 * 1000,
-      '1d': 24 * 60 * 60 * 1000,
-    };
-
-    return mapping[timeframe] ?? 60 * 60 * 1000;
-  }
-
-  private alignTimeToTimeframe(timeMs: number, timeframeMs: number): number {
-    if (!Number.isFinite(timeMs) || timeframeMs <= 0) {
-      return timeMs;
+    if (bars.length > 0) {
+      console.log('[TradingView] First bar:', {
+        time: new Date(bars[0].time).toISOString(),
+        raw: bars[0].close,
+        formatted: BondingCurveDatafeed.formatPriceWithZeroCount(bars[0].close),
+      });
+      console.log('[TradingView] Last bar:', {
+        time: new Date(bars[bars.length - 1].time).toISOString(),
+        raw: bars[bars.length - 1].close,
+        formatted: BondingCurveDatafeed.formatPriceWithZeroCount(bars[bars.length - 1].close),
+      });
     }
 
-    return Math.floor(timeMs / timeframeMs) * timeframeMs;
-  }
+    const filledBars = this.fillMissingBars(bars, timeframeMs);
 
-  private fillMissingBars(bars: Bar[], timeframeMs: number): Bar[] {
-    if (bars.length === 0 || timeframeMs <= 0) {
-      return bars;
-    }
-
-    const filled: Bar[] = [];
-    const sorted = [...bars].sort((a, b) => a.time - b.time);
-
-    filled.push(this.bridgeBar(null, sorted[0]));
-
-    const maxFillBars = Math.max(
-      1,
-      Math.floor(BondingCurveDatafeed.MAX_GAP_FILL_DURATION_MS / timeframeMs),
-    );
-
-    for (let i = 1; i < sorted.length; i++) {
-      const previousBar = filled[filled.length - 1];
-      const currentBar = sorted[i];
-
-      const gapMs = currentBar.time - previousBar.time;
-
-      if (gapMs > timeframeMs) {
-        const missingBars = Math.floor(gapMs / timeframeMs) - 1;
-
-        if (missingBars > 0) {
-          const barsToInsert = Math.min(missingBars, maxFillBars);
-
-          for (let j = 1; j <= barsToInsert; j++) {
-            const syntheticTime = previousBar.time + timeframeMs * j;
-
-            if (syntheticTime >= currentBar.time) {
-              break;
-            }
-
-            const fillerBar: Bar = {
-              time: syntheticTime,
-              open: previousBar.close,
-              high: previousBar.close,
-              low: previousBar.close,
-              close: previousBar.close,
-              volume: 0,
-            };
-
-            filled.push(fillerBar);
-          }
-        }
-      }
-
-      const latestReference = filled[filled.length - 1];
-      const bridgedBar = this.bridgeBar(latestReference, currentBar);
-      filled.push(bridgedBar);
-    }
-
-    return filled;
+    return { bars: filledBars };
   }
 
   private bridgeBar(previousBar: Bar | null, bar: Bar): Bar {
@@ -664,52 +821,6 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     bridged.low = Math.min(bridged.low, prevClose);
 
     return bridged;
-  }
-
-  private emitSyntheticGapBars(
-    subscription: any,
-    previousBar: Bar,
-    targetTime: number,
-    timeframeMs: number,
-  ) {
-    if (timeframeMs <= 0) {
-      return;
-    }
-
-    const maxFillBars = Math.max(
-      1,
-      Math.floor(BondingCurveDatafeed.MAX_GAP_FILL_DURATION_MS / timeframeMs),
-    );
-
-    const gapMs = targetTime - previousBar.time;
-    const missingBars = Math.floor(gapMs / timeframeMs) - 1;
-
-    if (missingBars <= 0) {
-      return;
-    }
-
-    const barsToInsert = Math.min(missingBars, maxFillBars);
-
-    for (let i = 1; i <= barsToInsert; i++) {
-      const syntheticTime = previousBar.time + timeframeMs * i;
-
-      if (syntheticTime >= targetTime) {
-        break;
-      }
-
-      const fillerBar: Bar = {
-        time: syntheticTime,
-        open: previousBar.close,
-        high: previousBar.close,
-        low: previousBar.close,
-        close: previousBar.close,
-        volume: 0,
-      };
-
-      subscription.lastBar = fillerBar;
-      subscription.onRealtimeCallback(fillerBar);
-      this.updateHistoryCache(subscription.timeframe, fillerBar);
-    }
   }
 
   private cloneBar(bar: Bar | null): Bar | null {
