@@ -107,14 +107,14 @@ export function useEnhancedBondingQuote({
   });
 
   // Debug: Watch amount prop changes
-  useEffect(() => {
-    console.log('[useEnhancedBondingQuote] Amount prop changed:', {
-      amount,
-      isDexMode,
-      activeTab,
-      inputAsset,
-    });
-  }, [amount, isDexMode, activeTab, inputAsset]);
+  // useEffect(() => {
+  //   console.log('[useEnhancedBondingQuote] Amount prop changed:', {
+  //     amount,
+  //     isDexMode,
+  //     activeTab,
+  //     inputAsset,
+  //   });
+  // }, [amount, isDexMode, activeTab, inputAsset]);
 
   // Get bonding curve state
   const { quoteState, loading: stateLoading } = useBondingCurveState({
@@ -128,16 +128,16 @@ export function useEnhancedBondingQuote({
    * Calculate quote based on input type
    */
   const calculateQuote = useCallback(async () => {
-    console.log('[useEnhancedBondingQuote] calculateQuote called:', {
-      isDexMode,
-      hasQuoteState: !!quoteState,
-      amount,
-      activeTab,
-      inputAsset,
-    });
+    // console.log('[useEnhancedBondingQuote] calculateQuote called:', {
+    //   isDexMode,
+    //   hasQuoteState: !!quoteState,
+    //   amount,
+    //   activeTab,
+    //   inputAsset,
+    // });
 
     if (isDexMode || !quoteState || !amount || amount.trim() === '') {
-      console.log('[useEnhancedBondingQuote] Early return - resetting to zeros');
+      // console.log('[useEnhancedBondingQuote] Early return - resetting to zeros');
       setOutputAmount('0');
       setOutputAmountWithSlippage('0');
       setAcesCost('0');
@@ -171,11 +171,11 @@ export function useEnhancedBondingQuote({
           const withSlippageWhole = withSlippage / W;
           setOutputAmountWithSlippage(withSlippageWhole.toString());
 
-          console.log('[useEnhancedBondingQuote] BUY with ACES input:', {
-            acesInput: amount,
-            tokenOutput: tokenAmountWhole.toString(),
-            tokenOutputWithSlippage: withSlippageWhole.toString(),
-          });
+          // console.log('[useEnhancedBondingQuote] BUY with ACES input:', {
+          //   acesInput: amount,
+          //   tokenOutput: tokenAmountWhole.toString(),
+          //   tokenOutputWithSlippage: withSlippageWhole.toString(),
+          // });
         } else {
           // User entered TOKEN amount → Calculate ACES cost (forward calculation)
           const acesCostWei = getBuyPriceAfterFee(
@@ -196,11 +196,11 @@ export function useEnhancedBondingQuote({
           const withSlippageFormatted = ethers.utils.formatUnits(withSlippage.toString(), 18);
           setOutputAmountWithSlippage(amount);
 
-          console.log('[useEnhancedBondingQuote] BUY with TOKEN input:', {
-            tokenInput: amount,
-            acesCost: acesCostFormatted,
-            acesCostWithSlippage: withSlippageFormatted,
-          });
+          // console.log('[useEnhancedBondingQuote] BUY with TOKEN input:', {
+          //   tokenInput: amount,
+          //   acesCost: acesCostFormatted,
+          //   acesCostWithSlippage: withSlippageFormatted,
+          // });
         }
       } else {
         // SELL: User enters TOKEN amount → Calculate ACES received
@@ -296,14 +296,14 @@ export function useEnhancedBondingQuote({
    * Calculate USD values
    */
   const inputUsdValue = useMemo(() => {
-    console.log('[useEnhancedBondingQuote] inputUsdValue calc:', {
-      acesUsdPrice,
-      activeTab,
-      inputAsset,
-      amount,
-      acesCost,
-      acesReceived,
-    });
+    // console.log('[useEnhancedBondingQuote] inputUsdValue calc:', {
+    //   acesUsdPrice,
+    //   activeTab,
+    //   inputAsset,
+    //   amount,
+    //   acesCost,
+    //   acesReceived,
+    // });
 
     if (!acesUsdPrice) {
       console.log('[useEnhancedBondingQuote] No ACES USD price, returning null');
@@ -321,11 +321,11 @@ export function useEnhancedBondingQuote({
         // Input is ACES
         const amountNum = parseFloat(amount || '0');
         const result = (amountNum * acesPrice).toFixed(2);
-        console.log('[useEnhancedBondingQuote] BUY with ACES input USD:', {
-          amountNum,
-          acesPrice,
-          result,
-        });
+        // console.log('[useEnhancedBondingQuote] BUY with ACES input USD:', {
+        //   amountNum,
+        //   acesPrice,
+        //   result,
+        // });
         return result;
       } else {
         // Input is TOKEN, show USD of ACES cost
@@ -366,15 +366,15 @@ export function useEnhancedBondingQuote({
     return (acesNum * acesPrice).toFixed(2);
   }, [acesUsdPrice, activeTab, inputUsdValue, buyFeeBps, outputAmount]);
 
-  console.log('[useEnhancedBondingQuote] Returning:', {
-    outputAmount,
-    acesCost,
-    acesReceived,
-    inputUsdValue,
-    outputUsdValue,
-    acesUsdPrice,
-    loading: loading || stateLoading || priceLoading,
-  });
+  // console.log('[useEnhancedBondingQuote] Returning:', {
+  //   outputAmount,
+  //   acesCost,
+  //   acesReceived,
+  //   inputUsdValue,
+  //   outputUsdValue,
+  //   acesUsdPrice,
+  //   loading: loading || stateLoading || priceLoading,
+  // });
 
   return {
     outputAmount,

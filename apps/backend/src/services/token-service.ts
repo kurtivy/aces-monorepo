@@ -240,10 +240,6 @@ export class TokenService {
             symbol
             supply
             tradesCount
-            owner {
-              id
-              address
-            }
             bonded
             tokensBought
             tokensSold

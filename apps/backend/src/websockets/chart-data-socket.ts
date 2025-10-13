@@ -172,19 +172,23 @@ export class ChartDataWebSocket {
     const subscriptionKey = `${tokenAddress}:${timeframe}`;
 
     if (this.pollingIntervals.has(subscriptionKey)) {
+      console.log(`⚠️ [WebSocket] Already polling ${subscriptionKey}`);
       return; // Already polling
     }
 
-    console.log(`[WebSocket] Starting polling for ${subscriptionKey}`);
+    console.log(`🚀 [WebSocket] Starting polling for ${subscriptionKey} (every 2.5s)`);
 
     // Poll every 2.5 seconds (backend) - users see updates every 5s due to cache
     const interval = setInterval(async () => {
+      console.log(`⏰ [WebSocket] Interval tick for ${subscriptionKey}`);
       await this.pollAndBroadcast(tokenAddress, timeframe);
     }, 2500);
 
     this.pollingIntervals.set(subscriptionKey, interval);
+    console.log(`✅ [WebSocket] Interval set, ID:`, interval);
 
     // Do initial poll immediately
+    console.log(`📍 [WebSocket] Doing initial poll for ${subscriptionKey}`);
     this.pollAndBroadcast(tokenAddress, timeframe);
   }
 
@@ -205,14 +209,27 @@ export class ChartDataWebSocket {
    */
   private async pollAndBroadcast(tokenAddress: string, timeframe: string) {
     try {
+      console.log(`🔄 [WebSocket] Polling ${tokenAddress} ${timeframe}...`);
       const candle = await this.unifiedService.getLatestCandle(tokenAddress, timeframe);
 
-      if (!candle) return;
+      if (!candle) {
+        console.warn(`⚠️ [WebSocket] No candle returned for ${tokenAddress} ${timeframe}`);
+        return;
+      }
+
+      console.log(`✅ [WebSocket] Got candle for ${tokenAddress} ${timeframe}:`, {
+        timestamp: candle.timestamp,
+        close: candle.close,
+        closeUsd: candle.closeUsd,
+      });
 
       const subscriptionKey = `${tokenAddress}:${timeframe}`;
       const subscribers = this.subscriptions.get(subscriptionKey);
 
-      if (!subscribers || subscribers.size === 0) return;
+      if (!subscribers || subscribers.size === 0) {
+        console.warn(`⚠️ [WebSocket] No subscribers for ${subscriptionKey}`);
+        return;
+      }
 
       const message = JSON.stringify({
         type: 'candle_update',
@@ -246,14 +263,22 @@ export class ChartDataWebSocket {
             client.socket.send(message);
             sentCount++;
           } catch (error) {
-            console.error(`[WebSocket] Failed to send to ${clientId}:`, error);
+            console.error(`❌ [WebSocket] Failed to send to ${clientId}:`, error);
           }
+        } else {
+          console.warn(
+            `⚠️ [WebSocket] Client ${clientId} not ready, readyState:`,
+            client?.socket.readyState,
+          );
         }
       }
 
-      console.log(`[WebSocket] Broadcast ${subscriptionKey} to ${sentCount} clients`);
+      console.log(
+        `📡 [WebSocket] Broadcast ${subscriptionKey} to ${sentCount}/${subscribers.size} clients`,
+      );
     } catch (error) {
-      console.error('[WebSocket] Poll error:', error);
+      console.error('❌ [WebSocket] Poll error:', error);
+      console.error('Stack trace:', error);
     }
   }
 

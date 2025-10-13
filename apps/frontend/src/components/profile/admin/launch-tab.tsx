@@ -34,6 +34,8 @@ import {
   ArrowRightLeft,
 } from 'lucide-react';
 
+const MAX_FLOOR_VALUE = ethers.BigNumber.from('1000000000');
+
 // Wagmi-to-Ethers signer hook (Solution 2: Better Privy Smart Wallet support)
 function useWagmiEthersSigner() {
   const { data: walletClient } = useWalletClient();
@@ -424,6 +426,25 @@ export function LaunchTab() {
       return;
     }
 
+    let floorValue: ethers.BigNumber;
+    try {
+      const floorInput = createForm.floor.trim() === '' ? '0' : createForm.floor.trim();
+      floorValue = ethers.BigNumber.from(floorInput);
+    } catch (error) {
+      alert('Invalid Floor Price value. Please enter a whole number between 0 and 1,000,000,000.');
+      return;
+    }
+
+    if (floorValue.lt(ethers.constants.Zero)) {
+      alert('Floor Price cannot be negative.');
+      return;
+    }
+
+    if (floorValue.gt(MAX_FLOOR_VALUE)) {
+      alert('Floor Price exceeds the maximum allowed value of 1,000,000,000 ACES.');
+      return;
+    }
+
     try {
       setLoading('Creating token...');
 
@@ -431,7 +452,7 @@ export function LaunchTab() {
         {
           curve: createForm.curve,
           steepness: createForm.steepness,
-          floor: createForm.floor,
+          floor: floorValue.toString(),
           name: createForm.name,
           symbol: createForm.symbol,
           salt: createForm.salt,

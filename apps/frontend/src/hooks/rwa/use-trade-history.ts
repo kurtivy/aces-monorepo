@@ -25,11 +25,8 @@ interface TradeHistoryOptions {
   dexMeta?: DatabaseListing['dex'] | null;
 }
 
-export const useTradeHistory = (
-  tokenAddress: string,
-  options: TradeHistoryOptions = {},
-) => {
-  const { intervalMs = 30000, dexMeta } = options;
+export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptions = {}) => {
+  const { intervalMs = 2500, dexMeta } = options; // 2.5 seconds for real-time updates (matches chart)
 
   const shouldUseDex = Boolean(dexMeta?.isDexLive);
 

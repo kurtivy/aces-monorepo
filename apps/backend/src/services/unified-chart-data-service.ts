@@ -21,6 +21,10 @@ interface UnifiedCandle {
   volumeUsd: string;
   trades: number;
   dataSource: 'bonding_curve' | 'dex';
+  circulatingSupply?: string;
+  totalSupply?: string;
+  marketCapAces?: string;
+  marketCapUsd?: string;
 }
 
 interface ChartDataOptions {
@@ -230,7 +234,15 @@ export class UnifiedChartDataService {
 
       if (dbCandles.length > 0) {
         console.log(`[UnifiedChartData] Using ${dbCandles.length} cached candles from database`);
-        return dbCandles.map((candle) => this.convertDbCandleToUnified(candle, acesUsdPrice));
+        const converted = dbCandles.map((candle) =>
+          this.convertDbCandleToUnified(candle, acesUsdPrice),
+        );
+        console.log('🔍 [UnifiedChartData] First cached candle USD:', {
+          hasUsd: !!converted[0]?.openUsd,
+          openUsd: converted[0]?.openUsd,
+          closeUsd: converted[0]?.closeUsd,
+        });
+        return converted;
       }
 
       // FALLBACK: Generate from supply-based service (real-time calculation)
@@ -241,8 +253,30 @@ export class UnifiedChartDataService {
       );
 
       // Convert to unified format with USD values
-      return candles.map((candle) => {
+      return candles.map((candle, index) => {
         const acesPrice = acesUsdPrice ? parseFloat(acesUsdPrice) : null;
+
+        const openAces = parseFloat(candle.open);
+        const closeAces = parseFloat(candle.close);
+        const volumeAces = parseFloat(candle.volume);
+
+        const openUsd = acesPrice ? (openAces * acesPrice).toFixed(18) : '0';
+        const closeUsd = acesPrice ? (closeAces * acesPrice).toFixed(18) : '0';
+
+        // DEBUG: Log first candle conversion
+        if (index === 0) {
+          console.log('🔍 [UnifiedChartData] Converting first candle from supply service:', {
+            acesUsdPrice,
+            acesPrice,
+            openRaw: candle.open,
+            openParsed: openAces,
+            openCalculated: openAces * (acesPrice || 0),
+            openUsdFinal: openUsd,
+            closeRaw: candle.close,
+            closeParsed: closeAces,
+            closeUsdFinal: closeUsd,
+          });
+        }
 
         return {
           timestamp: candle.timestamp,
@@ -250,12 +284,12 @@ export class UnifiedChartDataService {
           high: candle.high,
           low: candle.low,
           close: candle.close,
-          openUsd: acesPrice ? (parseFloat(candle.open) * acesPrice).toFixed(6) : '0',
-          highUsd: acesPrice ? (parseFloat(candle.high) * acesPrice).toFixed(6) : '0',
-          lowUsd: acesPrice ? (parseFloat(candle.low) * acesPrice).toFixed(6) : '0',
-          closeUsd: acesPrice ? (parseFloat(candle.close) * acesPrice).toFixed(6) : '0',
+          openUsd,
+          highUsd: acesPrice ? (parseFloat(candle.high) * acesPrice).toFixed(18) : '0',
+          lowUsd: acesPrice ? (parseFloat(candle.low) * acesPrice).toFixed(18) : '0',
+          closeUsd,
           volume: candle.volume,
-          volumeUsd: acesPrice ? (parseFloat(candle.volume) * acesPrice).toFixed(2) : '0',
+          volumeUsd: acesPrice ? (volumeAces * acesPrice).toFixed(2) : '0',
           trades: candle.trades,
           dataSource: 'bonding_curve' as const,
         };
@@ -296,6 +330,14 @@ export class UnifiedChartDataService {
   private convertDbCandleToUnified(dbCandle: any, acesUsdPrice: string | null): UnifiedCandle {
     const acesPrice = acesUsdPrice ? parseFloat(acesUsdPrice) : null;
 
+    // Calculate market cap if missing
+    const marketCapAces = dbCandle.marketCapAces || '0';
+    const marketCapUsd =
+      dbCandle.marketCapUsd ||
+      (acesPrice && marketCapAces !== '0'
+        ? (parseFloat(marketCapAces) * acesPrice).toFixed(2)
+        : '0');
+
     return {
       timestamp: new Date(dbCandle.timestamp),
       open: dbCandle.open,
@@ -303,20 +345,24 @@ export class UnifiedChartDataService {
       low: dbCandle.low,
       close: dbCandle.close,
       openUsd:
-        dbCandle.openUsd || (acesPrice ? (parseFloat(dbCandle.open) * acesPrice).toFixed(6) : '0'),
+        dbCandle.openUsd || (acesPrice ? (parseFloat(dbCandle.open) * acesPrice).toFixed(18) : '0'),
       highUsd:
-        dbCandle.highUsd || (acesPrice ? (parseFloat(dbCandle.high) * acesPrice).toFixed(6) : '0'),
+        dbCandle.highUsd || (acesPrice ? (parseFloat(dbCandle.high) * acesPrice).toFixed(18) : '0'),
       lowUsd:
-        dbCandle.lowUsd || (acesPrice ? (parseFloat(dbCandle.low) * acesPrice).toFixed(6) : '0'),
+        dbCandle.lowUsd || (acesPrice ? (parseFloat(dbCandle.low) * acesPrice).toFixed(18) : '0'),
       closeUsd:
         dbCandle.closeUsd ||
-        (acesPrice ? (parseFloat(dbCandle.close) * acesPrice).toFixed(6) : '0'),
+        (acesPrice ? (parseFloat(dbCandle.close) * acesPrice).toFixed(18) : '0'),
       volume: dbCandle.volume,
       volumeUsd:
         dbCandle.volumeUsd ||
         (acesPrice ? (parseFloat(dbCandle.volume) * acesPrice).toFixed(2) : '0'),
       trades: dbCandle.trades,
       dataSource: dbCandle.dataSource || 'bonding_curve',
+      circulatingSupply: dbCandle.circulatingSupply || '0',
+      totalSupply: dbCandle.totalSupply || '30000000',
+      marketCapAces,
+      marketCapUsd,
     };
   }
 
@@ -391,10 +437,10 @@ export class UnifiedChartDataService {
       high: latestCandle.high,
       low: latestCandle.low,
       close: latestCandle.close,
-      openUsd: acesPrice ? (parseFloat(latestCandle.open) * acesPrice).toFixed(6) : '0',
-      highUsd: acesPrice ? (parseFloat(latestCandle.high) * acesPrice).toFixed(6) : '0',
-      lowUsd: acesPrice ? (parseFloat(latestCandle.low) * acesPrice).toFixed(6) : '0',
-      closeUsd: acesPrice ? (parseFloat(latestCandle.close) * acesPrice).toFixed(6) : '0',
+      openUsd: acesPrice ? (parseFloat(latestCandle.open) * acesPrice).toFixed(18) : '0',
+      highUsd: acesPrice ? (parseFloat(latestCandle.high) * acesPrice).toFixed(18) : '0',
+      lowUsd: acesPrice ? (parseFloat(latestCandle.low) * acesPrice).toFixed(18) : '0',
+      closeUsd: acesPrice ? (parseFloat(latestCandle.close) * acesPrice).toFixed(18) : '0',
       volume: latestCandle.volume,
       volumeUsd: acesPrice ? (parseFloat(latestCandle.volume) * acesPrice).toFixed(2) : '0',
       trades: latestCandle.trades,

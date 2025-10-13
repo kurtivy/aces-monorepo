@@ -31,6 +31,39 @@ const parseMaybeNumber = (value: unknown): number | null => {
   return null;
 };
 
+const SUBSCRIPT_DIGITS = ['₀', '₁', '₂', '₃', '₄', '₅', '₆', '₇', '₈', '₉'] as const;
+
+const toSubscript = (value: number) =>
+  String(value)
+    .split('')
+    .map((char) => {
+      const digit = Number.parseInt(char, 10);
+      return Number.isNaN(digit) ? char : SUBSCRIPT_DIGITS[digit] ?? char;
+    })
+    .join('');
+
+const zeroCountFormat = (value: number, tailDigits = 2): string => {
+  if (!Number.isFinite(value)) return String(value);
+  const sign = value < 0 ? '-' : '';
+  const absValue = Math.abs(value);
+
+  if (absValue === 0) return '0';
+  if (absValue >= 1e-2) return sign + absValue.toString();
+
+  const exponent = Math.floor(Math.log10(absValue));
+  const zeroCount = Math.abs(exponent) - 1;
+  const scaled = absValue * Math.pow(10, zeroCount + 1);
+
+  const digits = scaled
+    .toPrecision(tailDigits + 1)
+    .replace(/\./g, '')
+    .replace(/^0+/, '');
+
+  const tail = digits.padEnd(tailDigits, '0').slice(0, tailDigits);
+
+  return `${sign}0.0${toSubscript(zeroCount)}${tail}`;
+};
+
 export default function TradeHistory({
   tokenAddress,
   tokenSymbol = 'TOKEN',
@@ -127,6 +160,10 @@ export default function TradeHistory({
 
   const formatUnitPrice = (value: number | null | undefined) => {
     if (value == null || !Number.isFinite(value)) return '--';
+    const absValue = Math.abs(value);
+    if (absValue < 1e-2) {
+      return `$${zeroCountFormat(value, 2)}`;
+    }
     return `$${value.toFixed(6)}`;
   };
 

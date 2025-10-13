@@ -87,6 +87,25 @@ export class MarketCapDatafeed implements IBasicDataFeed {
     this.displayCurrency = displayCurrency;
   }
 
+  /**
+   * Change display currency dynamically without recreating the datafeed
+   */
+  public setDisplayCurrency(currency: 'usd' | 'aces'): void {
+    console.log(
+      `[TradingView MCap] Switching display currency from ${this.displayCurrency} to ${currency}`,
+    );
+    this.displayCurrency = currency;
+    this.historyCache.clear();
+    this.lastHistoricalBarByTimeframe.clear();
+  }
+
+  /**
+   * Get current display currency
+   */
+  public getDisplayCurrency(): 'usd' | 'aces' {
+    return this.displayCurrency;
+  }
+
   searchSymbols() {
     // Not implemented
   }

@@ -47,49 +47,93 @@ export async function chartRoutes(fastify: FastifyInstance) {
         const { tokenAddress } = request.params;
         const { timeframe = '1h', from, to, limit, includeUsd = 'true' } = request.query;
 
-        // Get candles directly from database (since we populated them)
-        const candles = await fastify.prisma.tokenOHLCV.findMany({
-          where: {
-            contractAddress: tokenAddress.toLowerCase(),
-            timeframe,
-          },
-          orderBy: {
-            timestamp: 'asc',
-          },
-          take: limit ? parseInt(limit) : 1000,
+        // Get current ACES/USD price for conversion
+        const acesUsdPriceService = (fastify as any).acesUsdPriceService;
+        const priceResult = await acesUsdPriceService.getAcesUsdPrice();
+        const acesUsdPrice = parseFloat(priceResult.price);
+
+        // DEBUG: Log ACES price fetching
+        console.log('🔍 [Chart API] ACES/USD Price Service:', {
+          serviceExists: !!acesUsdPriceService,
+          rawPrice: priceResult.price,
+          parsedPrice: acesUsdPrice,
+          isValidPrice: !isNaN(acesUsdPrice) && acesUsdPrice > 0,
+          source: priceResult.source,
+          timestamp: priceResult.timestamp,
         });
 
-        console.log(`[Chart API] Found ${candles.length} candles for ${tokenAddress} ${timeframe}`);
+        if (!acesUsdPrice || isNaN(acesUsdPrice) || acesUsdPrice <= 0) {
+          console.error('❌ [Chart API] INVALID ACES/USD PRICE - USD conversion will fail!');
+        }
+
+        // Use unifiedChartService to get candles (generates from trades, not database)
+        const unifiedService = (fastify as any).unifiedChartService;
+        const chartData = await unifiedService.getChartData(tokenAddress, {
+          timeframe,
+          from: from ? new Date(parseInt(from) * 1000) : undefined,
+          to: to ? new Date(parseInt(to) * 1000) : undefined,
+          limit: limit ? parseInt(limit) : 1000,
+          includeUsd: includeUsd === 'true',
+        });
+
+        console.log(
+          `[Chart API] Generated ${chartData.candles.length} candles for ${tokenAddress} ${timeframe}, ACES/USD: ${acesUsdPrice}`,
+        );
+
+        // Convert UnifiedCandle format to API response format
+        const mappedCandles = chartData.candles.map((c: any, index: number) => {
+          const timestamp =
+            c.timestamp instanceof Date
+              ? Math.floor(c.timestamp.getTime() / 1000)
+              : Math.floor(c.timestamp / 1000);
+
+          // DEBUG: Log first candle
+          if (index === 0) {
+            console.log('🔍 [Chart API] First candle from UnifiedService:', {
+              timestamp: c.timestamp,
+              open: c.open,
+              close: c.close,
+              openUsd: c.openUsd,
+              closeUsd: c.closeUsd,
+              dataSource: c.dataSource,
+            });
+          }
+
+          return {
+            timestamp,
+            open: c.open,
+            high: c.high,
+            low: c.low,
+            close: c.close,
+            openUsd: c.openUsd,
+            highUsd: c.highUsd,
+            lowUsd: c.lowUsd,
+            closeUsd: c.closeUsd,
+            volume: c.volume,
+            volumeUsd: c.volumeUsd,
+            trades: c.trades,
+            circulatingSupply: c.circulatingSupply || '0',
+            totalSupply: c.totalSupply || '30000000',
+            marketCapAces: c.marketCapAces || '0',
+            marketCapUsd: c.marketCapUsd || '0',
+            dataSource: c.dataSource,
+          };
+        });
+
+        // DEBUG: Log response summary
+        console.log('🔍 [Chart API] Response summary:', {
+          candleCount: mappedCandles.length,
+          firstCandleHasUsd: !!mappedCandles[0]?.openUsd,
+          sampleOpenUsd: mappedCandles[0]?.openUsd,
+          acesUsdPriceInResponse: chartData.acesUsdPrice || acesUsdPrice.toFixed(6),
+        });
 
         return reply.send({
           success: true,
           data: {
-            candles: candles.map((c) => ({
-              timestamp: Math.floor(c.timestamp.getTime() / 1000),
-              open: c.open,
-              high: c.high,
-              low: c.low,
-              close: c.close,
-              openUsd: c.openUsd || '0',
-              highUsd: c.highUsd || '0',
-              lowUsd: c.lowUsd || '0',
-              closeUsd: c.closeUsd || '0',
-              volume: c.volume,
-              volumeUsd: c.volumeUsd || '0',
-              trades: c.trades,
-              circulatingSupply: c.circulatingSupply || '0',
-              totalSupply: c.totalSupply || '30000000',
-              marketCapAces: c.marketCapAces || '0',
-              marketCapUsd: c.marketCapUsd || '0',
-              dataSource: c.dataSource,
-            })),
-            graduationState: {
-              isBonded: false,
-              poolAddress: null,
-              poolReady: false,
-              dexLiveAt: null,
-            },
-            acesUsdPrice: '0.002570', // From your populate script
+            candles: mappedCandles,
+            graduationState: chartData.graduationState,
+            acesUsdPrice: chartData.acesUsdPrice || acesUsdPrice.toFixed(6),
           },
         });
       } catch (error) {

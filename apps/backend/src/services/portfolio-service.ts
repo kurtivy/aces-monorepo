@@ -125,10 +125,6 @@ export class PortfolioService {
           symbol
           supply
           tradesCount
-          owner {
-            id
-            address
-          }
           bonded
           tokensBought
           tokensSold

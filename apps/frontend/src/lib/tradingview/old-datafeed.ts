@@ -54,84 +54,6 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
   private static readonly MAX_GAP_FILL_DURATION_MS = 48 * 60 * 60 * 1000;
   private static readonly MAX_CACHED_BARS = 5000;
 
-  // Subscript digit map for zero-count notation (0.0₅487)
-  private static readonly SUBSCRIPT_MAP: Record<string, string> = {
-    '0': '₀',
-    '1': '₁',
-    '2': '₂',
-    '3': '₃',
-    '4': '₄',
-    '5': '₅',
-    '6': '₆',
-    '7': '₇',
-    '8': '₈',
-    '9': '₉',
-  };
-
-  /**
-   * Formats a price with compressed leading-zeros notation
-   * Examples:
-   *   0.00000487 → 0.0₅487 (5 leading zeros)
-   *   0.0000000123 → 0.0₈123 (8 leading zeros)
-   *   0.25 → 0.2500 (standard format)
-   * This prevents scientific notation (e-notation) for very small prices
-   */
-  public static formatPriceWithZeroCount(price: number, includeSymbol: boolean = true): string {
-    if (price === 0 || price === null || price === undefined || !Number.isFinite(price)) {
-      return includeSymbol ? '$0.00' : '0.00';
-    }
-
-    const absPrice = Math.abs(price);
-    const sign = price < 0 ? '-' : '';
-    const symbol = includeSymbol ? '$' : '';
-
-    // Handle very small decimals (less than 0.01)
-    if (absPrice < 0.01 && absPrice > 0) {
-      // Convert to string with high precision
-      const priceStr = absPrice.toFixed(20).replace(/\.?0+$/, '');
-
-      // Match pattern: 0.(multiple zeros)(significant digits)
-      const match = priceStr.match(/^0\.(0+)([1-9]\d*)$/);
-
-      if (match && match[1].length >= 3) {
-        // We have 3+ leading zeros - use compressed notation
-        const zeroCount = match[1].length;
-        const significantDigits = match[2].substring(0, 4); // Show first 4 significant digits
-
-        // Convert zero count to subscript
-        const subscriptCount = zeroCount
-          .toString()
-          .split('')
-          .map((d) => BondingCurveDatafeed.SUBSCRIPT_MAP[d] || d)
-          .join('');
-
-        return `${sign}${symbol}0.0${subscriptCount}${significantDigits}`;
-      }
-
-      // Less than 3 zeros - use standard decimal notation
-      return `${sign}${symbol}${absPrice.toFixed(8).replace(/\.?0+$/, '')}`;
-    }
-
-    // Standard formatting for larger prices
-    if (absPrice >= 1) {
-      return `${sign}${symbol}${absPrice.toFixed(2)}`;
-    } else if (absPrice >= 0.01) {
-      return `${sign}${symbol}${absPrice.toFixed(4)}`;
-    }
-
-    return `${sign}${symbol}${absPrice.toFixed(8)}`;
-  }
-
-  /**
-   * Creates a price formatter function for TradingView widget
-   * Use this when initializing your TradingView widget's custom_formatters
-   */
-  public static createPriceFormatter() {
-    return {
-      format: (price: number) => BondingCurveDatafeed.formatPriceWithZeroCount(price, true),
-    };
-  }
-
   searchSymbols(
     userInput: string,
     exchange: string,
@@ -153,27 +75,6 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     this.tokenAddress = tokenAddress.toLowerCase();
     this.displayCurrency = displayCurrency;
     this.useDex = false;
-  }
-
-  /**
-   * Change display currency dynamically without recreating the datafeed
-   * This allows switching between USD and ACES without breaking the WebSocket
-   */
-  public setDisplayCurrency(currency: 'usd' | 'aces'): void {
-    console.log(
-      `[TradingView] Switching display currency from ${this.displayCurrency} to ${currency}`,
-    );
-    this.displayCurrency = currency;
-    // Clear cache to force refetch with new currency
-    this.historyCache.clear();
-    this.lastHistoricalBarByTimeframe.clear();
-  }
-
-  /**
-   * Get current display currency
-   */
-  public getDisplayCurrency(): 'usd' | 'aces' {
-    return this.displayCurrency;
   }
 
   private getApiUrl(path: string): string {
@@ -219,11 +120,11 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
         await this.fetchTokenMetadata();
       }
 
-      // Ultra-high precision for micro-cap tokens to prevent scientific notation
-      // Supports up to 12 decimal places to handle extremely small prices
-      // This allows proper display of prices like 0.000000000123 as 0.0₁₀123
-      const precision = 12; // Up to 12 decimal places
-      const pricescale = Math.pow(10, precision); // 10^12 = 1,000,000,000,000
+      // CRITICAL FIX: High precision for very small prices (down to 0.00000001)
+      // TradingView will automatically use subscript notation (0.0₄15) for small decimals
+      // pricescale: 10^10 supports 10 decimal places for micro-cap tokens
+      const precision = 10; // Support up to 10 decimal places
+      const pricescale = 10000000000; // 10^10 for 10 decimals (handles 0.0000000001)
       const minmov = 1; // Smallest possible price movement
 
       const symbolInfo: LibrarySymbolInfo = {
@@ -242,16 +143,15 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
         volume_precision: 2,
         data_status: 'streaming',
         listed_exchange: 'BondingCurve',
-        // Use 'price' format which preserves decimal precision without scientific notation
+        // Use 'price' format which includes leading zero (e.g., 0.000008 or 0.0₅8)
         format: 'price',
       };
 
-      console.log('[TradingView] Symbol resolved with zero-count notation support:', {
+      console.log('[TradingView] Symbol resolved with precision:', {
         precision,
         pricescale,
         minmov: symbolInfo.minmov,
         currency: this.displayCurrency,
-        formatter: 'Zero-count notation enabled',
       });
 
       setTimeout(() => onSymbolResolvedCallback(symbolInfo), 0);
@@ -299,12 +199,11 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       const filteredCopy = this.cloneBars(filtered);
       this.lastHistoricalBarByTimeframe.set(timeframe, filteredCopy[filteredCopy.length - 1]);
 
-      // Log sample price with zero-count notation to verify formatting
+      // Log sample price to verify precision
       if (filteredCopy.length > 0) {
-        const samplePrice = filteredCopy[0].close;
         console.log('[TradingView] Sample bar price:', {
-          raw: samplePrice,
-          formatted: BondingCurveDatafeed.formatPriceWithZeroCount(samplePrice),
+          open: filteredCopy[0].open,
+          close: filteredCopy[0].close,
           time: new Date(filteredCopy[0].time).toISOString(),
         });
       }
@@ -371,24 +270,7 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       `[TradingView] Starting WebSocket subscription for ${this.tokenAddress} ${timeframe}`,
     );
 
-    // Check if we already have an active subscription for this exact setup
-    if (
-      this.unifiedDataSubscription &&
-      this.unifiedDataSubscription.tokenAddress === this.tokenAddress &&
-      this.unifiedDataSubscription.timeframe === timeframe &&
-      this.unifiedDataSubscription.isActive
-    ) {
-      console.log('[TradingView] ⚠️ Already subscribed, updating callbacks only');
-      // Update callbacks without recreating WebSocket
-      this.unifiedDataSubscription.onRealtimeCallback = onRealtimeCallback;
-      this.unifiedDataSubscription.onResetCacheNeededCallback = onResetCacheNeededCallback;
-      this.unifiedDataSubscription.subscriberUID = subscriberUID;
-      return;
-    }
-
-    // Close previous subscription only if it's for a different token/timeframe
     if (this.unifiedDataSubscription) {
-      console.log('[TradingView] Closing previous subscription for different token/timeframe');
       this.unsubscribeBars(this.unifiedDataSubscription.subscriberUID);
     }
 
@@ -409,23 +291,15 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
   }
 
   unsubscribeBars(subscriberUID: string) {
-    console.log(`[TradingView] 🔴 Unsubscribe requested for: ${subscriberUID}`);
-    console.trace('[TradingView] Unsubscribe called from:'); // Add stack trace to see who's calling
-
     if (!this.unifiedDataSubscription) {
-      console.log('[TradingView] No active subscription to unsubscribe');
       return;
     }
 
     const subscription = this.unifiedDataSubscription;
     if (subscription.subscriberUID !== subscriberUID) {
-      console.log(
-        `[TradingView] UID mismatch: expected ${subscription.subscriberUID}, got ${subscriberUID}`,
-      );
       return;
     }
 
-    console.log('[TradingView] ⚠️ Deactivating subscription and closing WebSocket');
     subscription.isActive = false;
 
     if (subscription.reconnectTimeout) {
@@ -451,7 +325,7 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     }
 
     this.unifiedDataSubscription = null;
-    console.log(`[TradingView] WebSocket unsubscribed successfully`);
+    console.log(`[TradingView] Unsubscribed from WebSocket: ${subscriberUID}`);
   }
 
   private startUnifiedWebSocket() {
@@ -489,24 +363,18 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       subscription.ws = ws;
 
       ws.onopen = () => {
-        console.log(
-          '[TradingView] ✅ WebSocket connected for real-time updates:',
-          subscription.tokenAddress,
-          subscription.timeframe,
-        );
+        console.log('[TradingView] WebSocket connected');
         if (!subscription.isActive) {
-          console.warn('[TradingView] ⚠️ Subscription inactive on open, closing...');
-          ws.close();
           return;
         }
 
-        const subscribeMessage = {
-          type: 'subscribe',
-          tokenAddress: subscription.tokenAddress,
-          timeframe: subscription.timeframe,
-        };
-        console.log('[TradingView] 📤 Sending subscribe message:', subscribeMessage);
-        ws.send(JSON.stringify(subscribeMessage));
+        ws.send(
+          JSON.stringify({
+            type: 'subscribe',
+            tokenAddress: subscription.tokenAddress,
+            timeframe: subscription.timeframe,
+          }),
+        );
       };
 
       ws.onmessage = (event) => {
@@ -526,8 +394,8 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
         console.error('[TradingView] WebSocket error:', error);
       };
 
-      ws.onclose = (event) => {
-        console.log('[TradingView] WebSocket closed, code:', event.code);
+      ws.onclose = () => {
+        console.log('[TradingView] WebSocket closed');
 
         if (!subscription.isActive) {
           return;
@@ -535,7 +403,7 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
 
         subscription.ws = null;
         subscription.reconnectTimeout = setTimeout(() => {
-          console.log('[TradingView] Reconnecting WebSocket...');
+          console.log('[TradingView] Attempting WebSocket reconnection...');
           this.startUnifiedWebSocket();
         }, 3000);
       };
@@ -561,7 +429,6 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
 
     switch (message.type) {
       case 'initial_data': {
-        console.log(`[TradingView] Initial data: ${message.candles?.length || 0} candles`);
         const candles = Array.isArray(message.candles) ? (message.candles as UnifiedCandle[]) : [];
         const bars = candles
           .map((candle) => this.candleToBar(candle, timeframeMs))
@@ -578,14 +445,7 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
           filledBars[filledBars.length - 1],
         );
         subscription.lastBar = this.cloneBar(filledBars[filledBars.length - 1]);
-
-        // DO NOT call onResetCacheNeededCallback here!
-        // Calling it triggers TradingView's resetCache() which unsubscribes from real-time data.
-        // Initial WebSocket data is not a cache invalidation event - it's just the initial load.
-        // The subscription should stay active to receive real-time updates via candle_update messages.
-        console.log(
-          '[TradingView] ✅ Initial data loaded, WebSocket staying connected for real-time updates',
-        );
+        subscription.onResetCacheNeededCallback();
         break;
       }
 
@@ -596,22 +456,9 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
           return;
         }
 
-        console.log(`[TradingView] 🔔 Real-time candle update received:`, {
-          time: new Date(bar.time).toISOString(),
-          close: bar.close,
-          timeframe: subscription.timeframe,
-        });
-
         const bridgedBar = this.bridgeBar(subscription.lastBar, bar);
         subscription.lastBar = bridgedBar;
-
-        try {
-          subscription.onRealtimeCallback(bridgedBar);
-          console.log('[TradingView] ✅ Real-time update applied to chart');
-        } catch (error) {
-          console.error('[TradingView] Error calling onRealtimeCallback:', error);
-        }
-
+        subscription.onRealtimeCallback(bridgedBar);
         this.updateHistoryCache(subscription.timeframe, bridgedBar);
         break;
       }
@@ -782,8 +629,8 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
 
   private async fetchHistoricalDataUnified(
     timeframe: string,
-    from: number,
-    to: number,
+    _from: number,
+    _to: number,
   ): Promise<{ bars: Bar[] }> {
     if (!this.tokenAddress || !this.tokenAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
       console.error('[TradingView] Invalid token address:', this.tokenAddress);
@@ -794,8 +641,6 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     const params = new URLSearchParams({
       timeframe,
       includeUsd: 'true',
-      from: from.toString(),
-      to: to.toString(),
     });
 
     console.log(`[TradingView] Fetching: ${apiUrl}?${params.toString()}`);
@@ -814,15 +659,6 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
 
     const candles = data.data.candles;
     const timeframeMs = this.timeframeToMs(timeframe);
-
-    // DEBUG: Log received data
-    console.log('🔍 [Frontend Datafeed] Received API response:', {
-      success: data.success,
-      candleCount: candles.length,
-      displayCurrency: this.displayCurrency,
-      acesUsdPrice: data.data.acesUsdPrice,
-      firstCandle: candles[0],
-    });
 
     const bars: Bar[] = candles
       .map((candle: any) => {
@@ -848,20 +684,6 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
             ? parseFloat(candle.closeUsd || candle.close)
             : parseFloat(candle.close);
 
-        // DEBUG: Log first candle processing
-        if (timestamp === candles[0].timestamp * 1000) {
-          console.log('🔍 [Frontend Datafeed] Processing first candle:', {
-            displayCurrency: this.displayCurrency,
-            candleOpenAces: candle.open,
-            candleOpenUsd: candle.openUsd,
-            candleCloseAces: candle.close,
-            candleCloseUsd: candle.closeUsd,
-            selectedOpen: open,
-            selectedClose: close,
-            usedUsdValue: this.displayCurrency === 'usd',
-          });
-        }
-
         return {
           time: timestamp,
           open,
@@ -882,13 +704,13 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     if (bars.length > 0) {
       console.log('[TradingView] First bar:', {
         time: new Date(bars[0].time).toISOString(),
-        raw: bars[0].close,
-        formatted: BondingCurveDatafeed.formatPriceWithZeroCount(bars[0].close),
+        open: bars[0].open,
+        close: bars[0].close,
       });
       console.log('[TradingView] Last bar:', {
         time: new Date(bars[bars.length - 1].time).toISOString(),
-        raw: bars[bars.length - 1].close,
-        formatted: BondingCurveDatafeed.formatPriceWithZeroCount(bars[bars.length - 1].close),
+        open: bars[bars.length - 1].open,
+        close: bars[bars.length - 1].close,
       });
     }
 
