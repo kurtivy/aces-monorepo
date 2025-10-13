@@ -93,6 +93,9 @@ importers:
       '@fastify/under-pressure':
         specifier: ^8.4.0
         version: 8.5.2
+      '@fastify/websocket':
+        specifier: ^8.3.1
+        version: 8.3.1
       '@google-cloud/storage':
         specifier: ^7.16.0
         version: 7.17.1
@@ -175,6 +178,9 @@ importers:
         specifier: ^3.23.1
         version: 3.24.6(zod@3.25.76)
     devDependencies:
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
       '@typescript-eslint/eslint-plugin':
         specifier: ^6.11.0
         version: 6.21.0(@typescript-eslint/parser@6.21.0)(eslint@8.57.1)(typescript@5.9.3)
@@ -199,6 +205,9 @@ importers:
       vitest:
         specifier: ^0.34.6
         version: 0.34.6(playwright@1.55.1)
+      ws:
+        specifier: ^8.18.3
+        version: 8.18.3(bufferutil@4.0.9)(utf-8-validate@5.0.10)
 
   apps/frontend:
     dependencies:
@@ -2204,6 +2213,16 @@ packages:
     dependencies:
       '@fastify/error': 3.4.1
       fastify-plugin: 4.5.1
+    dev: false
+
+  /@fastify/websocket@8.3.1:
+    resolution: {integrity: sha512-hsQYHHJme/kvP3ZS4v/WMUznPBVeeQHHwAoMy1LiN6m/HuPfbdXq1MBJ4Nt8qX1YI+eVbog4MnOsU7MTozkwYA==}
+    dependencies:
+      fastify-plugin: 4.5.1
+      ws: 8.18.3(bufferutil@4.0.9)(utf-8-validate@5.0.10)
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
     dev: false
 
   /@floating-ui/core@1.7.3:
@@ -7358,7 +7377,6 @@ packages:
     resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
     dependencies:
       '@types/node': 20.19.19
-    dev: false
 
   /@typescript-eslint/eslint-plugin@6.21.0(@typescript-eslint/parser@6.21.0)(eslint@8.57.1)(typescript@5.9.3):
     resolution: {integrity: sha512-oy9+hTPCUFpngkEZUSzbf9MxI65wbKFoQYsgPdILTfbUldp5ovUuphZVe4i30emU9M/kP+T64Di0mxl7dSw3MA==}
@@ -17266,6 +17284,7 @@ packages:
 
   /tslib@2.8.1:
     resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
+    requiresBuild: true
 
   /tsort@0.0.1:
     resolution: {integrity: sha512-Tyrf5mxF8Ofs1tNoxA13lFeZ2Zrbd6cKbuH3V+MQ5sb6DtBj5FjrXVsRWT8YvNAQTqNoz66dz1WsbigI22aEnw==}

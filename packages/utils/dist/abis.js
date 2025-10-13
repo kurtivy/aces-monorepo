@@ -1495,6 +1495,13 @@ exports.ACES_FACTORY_ABI = [
     },
     {
         type: 'function',
+        name: 'tokenImplementation',
+        inputs: [],
+        outputs: [{ name: '', type: 'address', internalType: 'address' }],
+        stateMutability: 'view',
+    },
+    {
+        type: 'function',
         name: 'tokens',
         inputs: [{ name: 'tokenAddress', type: 'address', internalType: 'address' }],
         outputs: [

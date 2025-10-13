@@ -37,7 +37,7 @@ const nextConfig: NextConfig = {
 
               // where your app may connect (added Supabase URL + backend localhost:8787 + WebSocket support for Next.js HMR)
 
-              "connect-src 'self' http://localhost:3000 http://localhost:3002 ws://localhost:3000 wss://localhost:3000 https://auth.privy.io wss://relay.walletconnect.com wss://relay.walletconnect.org wss://www.walletlink.org https://*.rpc.privy.systems https://explorer-api.walletconnect.com https://aces-monorepo-backend.vercel.app https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app https://pulse.walletconnect.org https://api.web3modal.org https://sepolia.base.org https://base-sepolia-rpc.publicnode.com https://base-sepolia.blockpi.network/v1/rpc/public https://base-sepolia.gateway.tenderly.co https://mainnet.base.org https://base-rpc.publicnode.com https://base.blockpi.network/v1/rpc/public https://base.gateway.tenderly.co https://1rpc.io https://min-api.cryptocompare.com https://api.thegraph.com https://api.coingecko.com https://api.coinbase.com https://api.binance.com https://www.google-analytics.com https://analytics.google.com https://vitals.vercel-insights.com https://*.clarity.ms https://api.twitch.tv https://id.twitch.tv https://fdglhdxswemqcaslsdwt.supabase.co https://saveload.tradingview.com https://dataservices.tradingview.com https://prodata.tradingview.com https://pronews.tradingview.com",
+              "connect-src 'self' http://localhost:3000 http://localhost:3002 ws://localhost:3000 wss://localhost:3000 ws://localhost:3002 wss://localhost:3002 https://auth.privy.io wss://relay.walletconnect.com wss://relay.walletconnect.org wss://www.walletlink.org https://*.rpc.privy.systems https://explorer-api.walletconnect.com https://aces-monorepo-backend.vercel.app https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app https://pulse.walletconnect.org https://api.web3modal.org https://sepolia.base.org https://base-sepolia-rpc.publicnode.com https://base-sepolia.blockpi.network/v1/rpc/public https://base-sepolia.gateway.tenderly.co https://mainnet.base.org https://base-rpc.publicnode.com https://base.blockpi.network/v1/rpc/public https://base.gateway.tenderly.co https://1rpc.io https://min-api.cryptocompare.com https://api.thegraph.com https://api.coingecko.com https://api.coinbase.com https://api.binance.com https://www.google-analytics.com https://analytics.google.com https://vitals.vercel-insights.com https://*.clarity.ms https://api.twitch.tv https://id.twitch.tv https://fdglhdxswemqcaslsdwt.supabase.co https://saveload.tradingview.com https://dataservices.tradingview.com https://prodata.tradingview.com https://pronews.tradingview.com https://charting-library.tradingview-widget.com https://*.tradingview.com",
 
               // workers, manifest
               "worker-src 'self' blob:",
@@ -174,6 +174,11 @@ const nextConfig: NextConfig = {
         {
           source: '/submissions/:path*',
           destination: 'http://localhost:3002/submissions/:path*',
+        },
+        // WebSocket proxy for chart data
+        {
+          source: '/ws/chart',
+          destination: 'http://localhost:3002/ws/chart',
         },
       ],
     };
