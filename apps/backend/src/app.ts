@@ -11,10 +11,10 @@ import { registerAuth } from './plugins/auth';
 import { submissionRoutes } from './routes/v1/submissions';
 import { adminRoutes } from './routes/v1/admin'; // Step 2: Enabled
 import { bidsRoutes } from './routes/v1/bids';
-import { accountVerificationRoutes } from './routes/v1/verification'; // Step 2: Enabled
+import { accountVerificationRoutes } from './routes/v1/verification';
 import { usersRoutes } from './routes/v1/users';
 // import { webhooksRoutes } from './routes/v1/webhooks';
-import { listingRoutes } from './routes/v1/listings'; // Step 5: Enabled
+import { listingRoutes } from './routes/v1/listings';
 import { contactRoutes } from './routes/v1/contact';
 import { purchaseRoutes } from './routes/v1/purchase';
 import { commentsRoutes } from './routes/v1/comments';
