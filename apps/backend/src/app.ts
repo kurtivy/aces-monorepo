@@ -40,6 +40,7 @@ import { chartRoutes } from './routes/v1/chart';
 // WebSocket services
 import { UnifiedChartDataService } from './services/unified-chart-data-service';
 import { ChartDataWebSocket } from './websockets/chart-data-socket';
+import { BondingMonitorWebSocket } from './websockets/bonding-monitor-socket';
 import { BitQueryService } from './services/bitquery-service';
 import { OHLCVService } from './services/ohlcv-service';
 import { SupplyBasedOHLCVService } from './services/supply-based-ohlcv-service';
@@ -61,7 +62,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
 
   // Initialize provider FIRST (needed by multiple services)
   const provider = new ethers.JsonRpcProvider(
-    process.env.BASE_MAINNET_RPC_URL || 'https://mainnet.base.org',
+    process.env.BASE_MAINNET_RPC_URL || process.env.QUICKNODE_BASE_URL,
   );
 
   // Initialize services
@@ -117,6 +118,13 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   await fastify.register(fastifyWebSocket);
   const chartWebSocket = new ChartDataWebSocket(fastify, unifiedService);
   await chartWebSocket.initialize();
+
+  // Initialize Bonding Monitor WebSocket
+  const bondingMonitor = new BondingMonitorWebSocket(fastify, prisma, aerodromeService);
+  await bondingMonitor.initialize();
+
+  // Decorate fastify with bonding monitor for access in routes
+  fastify.decorate('bondingMonitor', bondingMonitor);
 
   // Register custom plugins
   fastify.register(registerAuth);

@@ -224,7 +224,7 @@ export class TokenService {
     return timeframeHours[timeframe] || 168;
   }
 
-  private async fetchFromSubgraph(
+  async fetchFromSubgraph(
     contractAddress: string,
     retries = 3,
   ): Promise<{ data: { tokens: SubgraphToken[]; trades: SubgraphTrade[] } } | null> {

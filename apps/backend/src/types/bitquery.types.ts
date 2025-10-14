@@ -2,6 +2,7 @@ export interface BitQuerySwap {
   blockTime: Date;
   blockNumber: number;
   txHash: string;
+  sender: string; // Address of the trader who initiated the swap
   priceInAces: string;
   priceInUsd: string;
   amountToken: string;

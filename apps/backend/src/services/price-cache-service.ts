@@ -43,9 +43,7 @@ export class PriceCacheService {
     const acesAddress = process.env.ACES_TOKEN_ADDRESS;
 
     if (!poolAddress) {
-      throw new Error(
-        '[PriceCacheService] Missing AERODROME_ACES_WETH_POOL environment variable.',
-      );
+      throw new Error('[PriceCacheService] Missing AERODROME_ACES_WETH_POOL environment variable.');
     }
 
     if (!acesAddress) {
@@ -53,11 +51,7 @@ export class PriceCacheService {
     }
 
     this.provider = new ethers.JsonRpcProvider(rpcUrl);
-    this.poolContract = new ethers.Contract(
-      poolAddress,
-      AERODROME_POOL_ABI,
-      this.provider,
-    );
+    this.poolContract = new ethers.Contract(poolAddress, AERODROME_POOL_ABI, this.provider);
     this.ttlMs = DEFAULT_TTL_MS;
   }
 
@@ -142,9 +136,7 @@ export class PriceCacheService {
     });
 
     if (!response.ok) {
-      throw new Error(
-        `[PriceCacheService] Failed to fetch USD prices. Status ${response.status}`,
-      );
+      throw new Error(`[PriceCacheService] Failed to fetch USD prices. Status ${response.status}`);
     }
 
     const json = (await response.json()) as {

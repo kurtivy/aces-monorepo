@@ -76,12 +76,7 @@ function resolveChainConfig(chainId: number): ChainConfig | undefined {
       const rpcUrls = uniqueTruthy([
         process.env.QUICKNODE_BASE_URL,
         process.env.BASE_MAINNET_RPC_URL,
-        process.env.BASE_MAINNET_RPC,
-        process.env.QUICKNODE_BASE_RPC,
         'https://mainnet.base.org',
-        'https://base-rpc.publicnode.com',
-        'https://base.blockpi.network/v1/rpc/public',
-        'https://base.gateway.tenderly.co',
       ]);
 
       const factoryAddress =

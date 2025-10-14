@@ -60,6 +60,30 @@ export const BITQUERY_QUERIES = {
           }
           Trade {
             Sender
+            Buy {
+              Amount
+              Currency {
+                Symbol
+                SmartContract
+                Decimals
+              }
+              Price
+              PriceInUSD
+            }
+            Sell {
+              Amount
+              Currency {
+                Symbol
+                SmartContract
+                Decimals
+              }
+              Price
+              PriceInUSD
+            }
+            Dex {
+              ProtocolName
+              ProtocolFamily
+            }
           }
         }
       }
@@ -94,38 +118,72 @@ export const BITQUERY_QUERIES = {
           }
           Trade {
             Sender
+            Buy {
+              Amount
+              Currency {
+                Symbol
+                SmartContract
+                Decimals
+              }
+              Price
+              PriceInUSD
+            }
+            Sell {
+              Amount
+              Currency {
+                Symbol
+                SmartContract
+                Decimals
+              }
+              Price
+              PriceInUSD
+            }
+            Dex {
+              ProtocolName
+              ProtocolFamily
+            }
           }
         }
       }
     }
   `,
 
-  // Get OHLC data (aggregated candles)
+  // Get OHLC data (aggregated candles) using DEXTradeByTokens
   GET_OHLC_CANDLES: `
     query GetOHLCCandles(
       $network: evm_network
       $poolAddress: String!
+      $tokenAddress: String!
+      $counterToken: String!
       $from: DateTime!
       $to: DateTime!
-      $interval: Int!
+      $intervalCount: Int!
     ) {
-      EVM(network: $network) {
-        DEXTrades(
+      EVM(dataset: archive, network: $network) {
+        DEXTradeByTokens(
           where: {
+            Block: { Time: { since: $from, till: $to } }
             Trade: {
-              Dex: {
-                SmartContract: { is: $poolAddress }
-              }
-            }
-            Block: {
-              Time: { since: $from, till: $to }
+              Dex: { SmartContract: { is: $poolAddress } }
+              Currency: { SmartContract: { is: $tokenAddress } }
+              Side: { Currency: { SmartContract: { is: $counterToken } } }
             }
           }
+          orderBy: { ascendingByField: "Block_Time" }
         ) {
           Block {
-            Time(interval: { in: seconds, count: $interval })
+            Time(interval: { in: minutes, count: $intervalCount })
           }
-          count
+          Trade {
+            open: Price(minimum: Block_Time)
+            close: Price(maximum: Block_Time)
+            high: Price(maximum: Trade_Price)
+            low: Price(minimum: Trade_Price)
+            PriceInUSD
+          }
+          tradesCount: count
+          baseVolume: sum(of: Trade_Amount)
+          quoteVolume: sum(of: Trade_Side_Amount)
         }
       }
     }
@@ -166,3 +224,13 @@ export const BITQUERY_QUERIES = {
 };
 
 export const BASE_NETWORK = 'base'; // BitQuery network identifier for Base
+export const ACES_TOKEN_ADDRESS = '0x55337650856299363c496065C836B9C6E9dE0367'; // ACES token on Base
+export const WETH_TOKEN_ADDRESS = '0x4200000000000000000000000000000000000006'; // Canonical WETH on Base
+export const USDC_TOKEN_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'; // Base USDC
+
+const acesWethPoolEnv =
+  process.env.AERODROME_ACES_WETH_POOL || process.env.BITQUERY_ACES_WETH_POOL || '';
+const wethUsdcPoolEnv = process.env.WETH_USDC_POOL || process.env.BITQUERY_WETH_USDC_POOL || '';
+
+export const ACES_WETH_POOL_ADDRESS = acesWethPoolEnv ? acesWethPoolEnv.toLowerCase() : '';
+export const WETH_USDC_POOL_ADDRESS = wethUsdcPoolEnv ? wethUsdcPoolEnv.toLowerCase() : '';

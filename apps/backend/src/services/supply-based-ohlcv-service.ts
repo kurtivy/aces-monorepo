@@ -25,6 +25,7 @@ interface Candle {
   close: string;
   volume: string;
   trades: number;
+  circulatingSupply?: string; // Circulating supply at end of candle period
 }
 
 /**
@@ -38,7 +39,10 @@ export class SupplyBasedOHLCVService {
 
   constructor() {
     this.subgraphUrl = process.env.GOLDSKY_SUBGRAPH_URL || '';
-    this.rpcUrl = 'https://mainnet.base.org'; // Base mainnet
+    this.rpcUrl =
+      process.env.QUICKNODE_BASE_URL ||
+      process.env.BASE_MAINNET_RPC_URL ||
+      'https://mainnet.base.org'; // Base mainnet
     this.factoryAddress = '0x7e224ae4e6235bF18BBcb79cc2B5d04a7a6F8d1D'; // Factory proxy
     Decimal.set({ precision: 78 });
   }
@@ -299,6 +303,7 @@ export class SupplyBasedOHLCVService {
         prices: Decimal[];
         volumes: Decimal[];
         timestamps: number[];
+        supplies: string[]; // Track supply at each trade
       }
     >();
 
@@ -310,13 +315,14 @@ export class SupplyBasedOHLCVService {
       const tokens = new Decimal(trade.tokenAmount).div(new Decimal(10).pow(18));
 
       if (!candleMap.has(candleTimestamp)) {
-        candleMap.set(candleTimestamp, { prices: [], volumes: [], timestamps: [] });
+        candleMap.set(candleTimestamp, { prices: [], volumes: [], timestamps: [], supplies: [] });
       }
 
       const candle = candleMap.get(candleTimestamp)!;
       candle.prices.push(trade.marginalPrice);
       candle.volumes.push(tokens);
       candle.timestamps.push(timestamp);
+      candle.supplies.push(trade.supply);
     }
 
     // Convert to OHLCV candles
@@ -327,7 +333,12 @@ export class SupplyBasedOHLCVService {
 
       // Sort by timestamp to get correct open/close
       const sorted = data.prices
-        .map((price, i) => ({ price, volume: data.volumes[i], timestamp: data.timestamps[i] }))
+        .map((price, i) => ({
+          price,
+          volume: data.volumes[i],
+          timestamp: data.timestamps[i],
+          supply: data.supplies[i],
+        }))
         .sort((a, b) => a.timestamp - b.timestamp);
 
       const prices = sorted.map((s) => s.price);
@@ -337,6 +348,10 @@ export class SupplyBasedOHLCVService {
       const low = Decimal.min(...prices).toString();
       const volume = data.volumes.reduce((sum, v) => sum.add(v), new Decimal(0)).toString();
 
+      // Use the closing supply (last trade in this candle period)
+      const closingSupply = sorted[sorted.length - 1].supply;
+      const circulatingSupply = new Decimal(closingSupply).div(new Decimal(10).pow(18)).toString();
+
       candles.push({
         timestamp: new Date(timestamp),
         open,
@@ -345,6 +360,7 @@ export class SupplyBasedOHLCVService {
         close,
         volume,
         trades: data.prices.length,
+        circulatingSupply,
       });
     }
 

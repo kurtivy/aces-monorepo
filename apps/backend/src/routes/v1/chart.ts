@@ -187,18 +187,61 @@ export async function chartRoutes(fastify: FastifyInstance) {
           includeUsd: true,
         });
 
-        const marketCapCandles = chartData.candles.map((c: any) => {
+        const marketCapCandles = chartData.candles.map((c: any, index: number) => {
           const timestamp = Math.floor(
             (c.timestamp instanceof Date ? c.timestamp : new Date(c.timestamp)).getTime() / 1000,
           );
-          const mcValue = currency === 'usd' ? c.marketCapUsd : c.marketCapAces;
+
+          // Calculate market cap OHLC based on price OHLC and circulating supply
+          // This shows how market cap changed during the time period, not just the closing value
+          const supply = parseFloat(c.circulatingSupply || '0');
+
+          let mcOpen: string, mcHigh: string, mcLow: string, mcClose: string;
+
+          if (currency === 'usd') {
+            // Use USD prices to calculate USD market cap
+            const openUsd = parseFloat(c.openUsd || '0');
+            const highUsd = parseFloat(c.highUsd || '0');
+            const lowUsd = parseFloat(c.lowUsd || '0');
+            const closeUsd = parseFloat(c.closeUsd || '0');
+
+            mcOpen = (supply * openUsd).toFixed(2);
+            mcHigh = (supply * highUsd).toFixed(2);
+            mcLow = (supply * lowUsd).toFixed(2);
+            mcClose = (supply * closeUsd).toFixed(2);
+          } else {
+            // Use ACES prices to calculate ACES market cap
+            const open = parseFloat(c.open || '0');
+            const high = parseFloat(c.high || '0');
+            const low = parseFloat(c.low || '0');
+            const close = parseFloat(c.close || '0');
+
+            mcOpen = (supply * open).toFixed(2);
+            mcHigh = (supply * high).toFixed(2);
+            mcLow = (supply * low).toFixed(2);
+            mcClose = (supply * close).toFixed(2);
+          }
+
+          // DEBUG: Log first candle to see what we're calculating
+          if (index === 0) {
+            console.log('[Market Cap API] First candle calculation:', {
+              timestamp: c.timestamp,
+              currency,
+              supply,
+              prices:
+                currency === 'usd'
+                  ? { open: c.openUsd, high: c.highUsd, low: c.lowUsd, close: c.closeUsd }
+                  : { open: c.open, high: c.high, low: c.low, close: c.close },
+              marketCap: { open: mcOpen, high: mcHigh, low: mcLow, close: mcClose },
+            });
+          }
 
           return {
             timestamp,
-            open: mcValue,
-            high: mcValue,
-            low: mcValue,
-            close: mcValue,
+            open: mcOpen,
+            high: mcHigh,
+            low: mcLow,
+            close: mcClose,
             volume: c.volume,
             volumeUsd: c.volumeUsd,
             trades: c.trades,

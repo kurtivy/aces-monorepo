@@ -492,11 +492,51 @@ export async function dexRoutes(fastify: FastifyInstance) {
       reply,
     ) => {
       try {
-        const service = ensureService();
         const { address } = request.params;
         const { limit = 100 } = request.query;
 
-        const trades: AerodromeSwap[] = await service.getRecentTrades(address, limit);
+        // First, check if token has bonded to DEX (has poolAddress)
+        const token = await fastify.prisma.token.findUnique({
+          where: { contractAddress: address.toLowerCase() },
+          select: {
+            poolAddress: true,
+            phase: true,
+            priceSource: true,
+          },
+        });
+
+        if (!token?.poolAddress || token.phase !== 'DEX_TRADING') {
+          // Not on DEX yet, return empty array
+          return reply.send({ success: true, data: [] });
+        }
+
+        // Use BitQuery to get DEX trades
+        const { BitQueryService } = await import('../../services/bitquery-service');
+        const bitquery = new BitQueryService();
+
+        console.log(
+          `[DEX Trades] Fetching BitQuery trades for ${address} via pool ${token.poolAddress}`,
+        );
+
+        const swaps = await bitquery.getRecentSwaps(address, token.poolAddress, {
+          limit: Number(limit),
+        });
+
+        console.log(`[DEX Trades] Found ${swaps.length} trades from BitQuery`);
+
+        // Transform BitQuery format to match expected frontend format
+        const trades = swaps.map((swap) => ({
+          txHash: swap.txHash,
+          timestamp: new Date(swap.blockTime).getTime(),
+          direction: swap.side as 'buy' | 'sell',
+          amountToken: swap.amountToken,
+          amountCounter: swap.amountAces,
+          priceInCounter: parseFloat(swap.priceInAces),
+          priceInUsd: parseFloat(swap.priceInUsd) || undefined,
+          volumeUsd: swap.volumeUsd,
+          blockNumber: swap.blockNumber,
+          trader: swap.sender, // Address of the trader who made the swap
+        }));
 
         return reply.send({ success: true, data: trades });
       } catch (error) {
