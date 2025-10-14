@@ -8,15 +8,29 @@ interface WebSocketClient {
   lastPing: number;
 }
 
+interface ChartDataWebSocketOptions {
+  pollIntervalMs?: number;
+}
+
+const DEFAULT_POLL_INTERVAL_MS = Number(
+  process.env.BITQUERY_REALTIME_POLL_INTERVAL_MS ||
+    process.env.BITQUERY_POLL_INTERVAL_MS ||
+    7500,
+);
+
 export class ChartDataWebSocket {
   private clients = new Map<string, WebSocketClient>();
   private subscriptions = new Map<string, Set<string>>(); // "tokenAddress:timeframe" -> Set<clientId>
   private pollingIntervals = new Map<string, NodeJS.Timeout>();
+  private readonly pollIntervalMs: number;
 
   constructor(
     private fastify: FastifyInstance,
     private unifiedService: UnifiedChartDataService,
-  ) {}
+    options: ChartDataWebSocketOptions = {},
+  ) {
+    this.pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
+  }
 
   /**
    * Initialize WebSocket server
@@ -176,13 +190,15 @@ export class ChartDataWebSocket {
       return; // Already polling
     }
 
-    console.log(`🚀 [WebSocket] Starting polling for ${subscriptionKey} (every 2.5s)`);
+    console.log(
+      `🚀 [WebSocket] Starting polling for ${subscriptionKey} (every ${this.pollIntervalMs}ms)`,
+    );
 
-    // Poll every 2.5 seconds (backend) - users see updates every 5s due to cache
+    // Poll at configured interval – throttled to avoid exhausting BitQuery quota
     const interval = setInterval(async () => {
       console.log(`⏰ [WebSocket] Interval tick for ${subscriptionKey}`);
       await this.pollAndBroadcast(tokenAddress, timeframe);
-    }, 2500);
+    }, this.pollIntervalMs);
 
     this.pollingIntervals.set(subscriptionKey, interval);
     console.log(`✅ [WebSocket] Interval set, ID:`, interval);
