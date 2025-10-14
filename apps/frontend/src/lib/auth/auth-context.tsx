@@ -7,8 +7,9 @@ import React, {
   useState,
   useCallback,
   ReactNode,
+  useMemo,
 } from 'react';
-import { usePrivy } from '@privy-io/react-auth';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
 import {
   ProfileApi,
   UserProfile,
@@ -76,7 +77,6 @@ interface AuthState {
   user: UserProfile | null;
   isLoading: boolean;
   error: string | null;
-  hasExternalWallet: boolean;
 }
 
 export const useAuth = (): AuthContextType => {
@@ -90,18 +90,47 @@ export const useAuth = (): AuthContextType => {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const {
     authenticated: privyAuthenticated,
+    ready: privyReady,
     user: privyUser,
     login: privyLogin,
     logout: privyLogout,
+    linkWallet: privyLinkWallet,
+    connectWallet: privyConnectWallet,
     getAccessToken: privyGetAccessToken,
   } = usePrivy();
+  const { wallets } = useWallets();
 
   const [state, setState] = useState<AuthState>({
     user: null,
     isLoading: false,
     error: null,
-    hasExternalWallet: false,
   });
+
+  const externalEthereumWallet = useMemo(
+    () =>
+      wallets.find(
+        (wallet) =>
+          wallet.type === 'ethereum' &&
+          wallet.walletClientType !== 'privy' &&
+          wallet.walletClientType !== 'privy-v2',
+      ) || null,
+    [wallets],
+  );
+
+  const primaryWalletAddress = useMemo(() => {
+    if (externalEthereumWallet) {
+      return externalEthereumWallet.address;
+    }
+
+    const fallbackEthereumWallet = wallets.find((wallet) => wallet.type === 'ethereum');
+    if (fallbackEthereumWallet) {
+      return fallbackEthereumWallet.address;
+    }
+
+    return privyUser?.wallet?.address || null;
+  }, [externalEthereumWallet, wallets, privyUser]);
+
+  const hasExternalWalletConnected = Boolean(externalEthereumWallet);
 
   const isAdmin = state.user?.role === 'ADMIN';
 
@@ -116,7 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const userVerificationRequest: UserVerificationRequest = {
         privyDid: privyUser?.id || '',
-        walletAddress: privyUser?.wallet?.address || undefined,
+        walletAddress: primaryWalletAddress || undefined,
         email: privyUser?.email?.address || undefined,
         username: privyUser?.email?.address?.split('@')[0] || undefined,
       };
@@ -137,7 +166,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const fallbackProfile: UserProfile = {
         id: privyUser?.id || '',
         privyDid: privyUser?.id || '',
-        walletAddress: privyUser?.wallet?.address || null,
+        walletAddress: primaryWalletAddress,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         email: privyUser?.email?.address || null,
@@ -171,7 +200,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setState((prev) => ({ ...prev, isLoading: false }));
     }
-  }, [privyUser, privyGetAccessToken]);
+  }, [privyUser, privyGetAccessToken, primaryWalletAddress]);
 
   useEffect(() => {
     if (privyAuthenticated && privyUser) {
@@ -194,13 +223,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     try {
       setConnectionAttempting(true);
+      if (!privyReady) {
+        throw new Error('Wallet is still initializing. Please try again.');
+      }
+
       setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
-      if (privyAuthenticated && privyUser) {
+      if (!privyAuthenticated) {
+        // Use login() for initial authentication
+        await privyLogin();
         return;
       }
 
-      await privyLogin();
+      // Use linkWallet() to add additional wallets when already authenticated
+      await privyLinkWallet();
     } catch (error) {
       console.error('Connect wallet error:', error);
 
@@ -248,7 +284,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setState({
         user: null,
         isLoading: false,
-        hasExternalWallet: false,
         error: null,
       });
 
@@ -270,7 +305,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [privyAuthenticated, privyUser, initializeAuth]);
 
   const requiresExternalWallet = (): { required: boolean; message?: string } => {
-    if (!state.hasExternalWallet) {
+    if (!hasExternalWalletConnected) {
       return {
         required: true,
         message:
@@ -287,9 +322,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const token = await privyGetAccessToken();
       if (!token) throw new Error('No auth token available');
 
-      const walletAddress = privyUser?.wallet?.address || '';
+      const walletAddressForProfile = primaryWalletAddress || privyUser?.wallet?.address || '';
 
-      const result = await ProfileApi.updateProfile(data, token, walletAddress);
+      const result = await ProfileApi.updateProfile(data, token, walletAddressForProfile);
 
       if (result.success) {
         setState((prev) => ({ ...prev, user: { ...prev.user, ...data } as UserProfile }));
@@ -317,13 +352,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const token = await privyGetAccessToken();
       if (!token) throw new Error('No auth token available');
 
-      const walletAddress = privyUser?.wallet?.address || '';
+      const walletAddressForProfile = primaryWalletAddress || privyUser?.wallet?.address || '';
 
       const response = await fetch(`${API_BASE_URL}/api/v1/account-verification/submit`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
-          'x-wallet-address': walletAddress,
+          'x-wallet-address': walletAddressForProfile,
         },
         body: applicationData,
       });
@@ -391,9 +426,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     error: state.error,
     isLoading: state.isLoading,
     user: state.user,
-    walletAddress: privyUser?.wallet?.address || null,
+    walletAddress: primaryWalletAddress,
     isVerifiedSeller: state.user?.sellerStatus === 'APPROVED',
-    hasExternalWallet: state.hasExternalWallet,
+    hasExternalWallet: hasExternalWalletConnected,
 
     connectWallet,
     disconnectWallet,

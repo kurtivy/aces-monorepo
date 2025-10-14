@@ -1,7 +1,7 @@
 'use client';
 
 import { PrivyProvider } from '@privy-io/react-auth';
-import { WagmiProvider } from '@privy-io/wagmi';
+import { WagmiProvider, type SetActiveWalletForWagmiType } from '@privy-io/wagmi';
 import { createConfig, http, fallback } from 'wagmi';
 import { baseSepolia, base } from 'wagmi/chains';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -74,6 +74,21 @@ export const wagmiConfig = createConfig({
   ssr: true,
 });
 
+const selectActiveWalletForWagmi: SetActiveWalletForWagmiType = ({ wallets }) => {
+  if (!wallets.length) {
+    return undefined;
+  }
+
+  return (
+    wallets.find(
+      (wallet) =>
+        wallet.type === 'ethereum' &&
+        wallet.walletClientType !== 'privy' &&
+        wallet.walletClientType !== 'privy-v2',
+    ) || wallets.find((wallet) => wallet.type === 'ethereum') || wallets[0]
+  );
+};
+
 export default function AppProviders({ children }: { children: ReactNode }) {
   useEffect(() => {
     initCanvasFonts().catch((error) => {
@@ -134,6 +149,7 @@ export default function AppProviders({ children }: { children: ReactNode }) {
             coinbaseWallet: {
               connectionOptions: 'smartWalletOnly',
             },
+            // Remove the phantom config - it's not a valid option here
           },
           legal: {
             termsAndConditionsUrl: 'https://aces.fun/terms',
@@ -141,7 +157,7 @@ export default function AppProviders({ children }: { children: ReactNode }) {
           },
         }}
       >
-        <WagmiProvider config={wagmiConfig}>
+        <WagmiProvider config={wagmiConfig} setActiveWalletForWagmi={selectActiveWalletForWagmi}>
           <AuthProvider>
             <ModalProvider>
               <NetworkBanner />

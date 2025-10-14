@@ -1,48 +1,136 @@
 import type { NextConfig } from 'next';
 
+const DEFAULT_LOCAL_BACKEND = 'http://localhost:3002';
+
+const normalizeOrigin = (value?: string | null): string | null => {
+  if (!value) return null;
+
+  try {
+    const url = value.includes('://') ? new URL(value) : new URL(`https://${value}`);
+    return url.origin.replace(/\/$/, '');
+  } catch {
+    return value.replace(/\/$/, '') || null;
+  }
+};
+
+const getBackendOrigin = (): string | null => {
+  const preferred =
+    process.env.BACKEND_PROXY_URL || process.env.NEXT_PUBLIC_API_URL || process.env.API_BASE_URL;
+
+  const normalizedPreferred = normalizeOrigin(preferred);
+  if (normalizedPreferred) {
+    return normalizedPreferred;
+  }
+
+  if (!process.env.VERCEL) {
+    return DEFAULT_LOCAL_BACKEND;
+  }
+
+  return null;
+};
+
+const backendOrigin = getBackendOrigin();
+const backendWsOrigin = backendOrigin
+  ? backendOrigin.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:')
+  : null;
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   transpilePackages: ['three'],
 
   // Security headers - CSP commented out for development
   async headers() {
+    const connectSrc = [
+      "'self'",
+      'http://localhost:3000',
+      'http://localhost:3002',
+      'ws://localhost:3000',
+      'wss://localhost:3000',
+      'ws://localhost:3002',
+      'wss://localhost:3002',
+      'https://auth.privy.io',
+      'wss://relay.walletconnect.com',
+      'wss://relay.walletconnect.org',
+      'wss://www.walletlink.org',
+      'https://*.rpc.privy.systems',
+      'https://explorer-api.walletconnect.com',
+      'https://aces-monorepo-backend.vercel.app',
+      'https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app',
+      'https://pulse.walletconnect.org',
+      'https://api.web3modal.org',
+      'https://sepolia.base.org',
+      'https://base-sepolia-rpc.publicnode.com',
+      'https://base-sepolia.blockpi.network/v1/rpc/public',
+      'https://base-sepolia.gateway.tenderly.co',
+      'https://mainnet.base.org',
+      'https://base-rpc.publicnode.com',
+      'https://base.blockpi.network/v1/rpc/public',
+      'https://base.gateway.tenderly.co',
+      'https://1rpc.io',
+      'https://min-api.cryptocompare.com',
+      'https://api.thegraph.com',
+      'https://api.coingecko.com',
+      'https://api.coinbase.com',
+      'https://api.binance.com',
+      'https://www.google-analytics.com',
+      'https://analytics.google.com',
+      'https://vitals.vercel-insights.com',
+      'https://*.clarity.ms',
+      'https://api.twitch.tv',
+      'https://id.twitch.tv',
+      'https://fdglhdxswemqcaslsdwt.supabase.co',
+      'https://saveload.tradingview.com',
+      'https://dataservices.tradingview.com',
+      'https://prodata.tradingview.com',
+      'https://pronews.tradingview.com',
+      'https://charting-library.tradingview-widget.com',
+      'https://*.tradingview.com',
+    ];
+
+    const addConnectSrc = (entry?: string | null) => {
+      if (!entry) return;
+      if (!connectSrc.includes(entry)) {
+        connectSrc.push(entry);
+      }
+    };
+
+    addConnectSrc(backendOrigin);
+    addConnectSrc(backendWsOrigin);
+
+    if (backendOrigin && backendOrigin.startsWith('https://')) {
+      addConnectSrc(backendOrigin.replace('https://', 'wss://'));
+    }
+
+    if (backendOrigin && backendOrigin.includes('.up.railway.app')) {
+      addConnectSrc('https://*.up.railway.app');
+      addConnectSrc('wss://*.up.railway.app');
+    }
+
+    const directives = [
+      "default-src 'self'",
+      "base-uri 'self'",
+      "object-src 'none'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://challenges.cloudflare.com https://*.clarity.ms https://www.googletagmanager.com https://va.vercel-scripts.com https://vercel.live https://auth.privy.io https://embed.twitch.tv https://charting-library.tradingview-widget.com https://*.tradingview.com",
+      "script-src-elem 'self' 'unsafe-inline' blob: https://*.clarity.ms https://www.googletagmanager.com https://va.vercel-scripts.com https://vercel.live https://auth.privy.io https://embed.twitch.tv https://charting-library.tradingview-widget.com https://*.tradingview.com",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' data: https://fonts.gstatic.com",
+      "img-src 'self' data: blob: https:",
+      "form-action 'self'",
+      "frame-ancestors 'self' https://aces-monorepo-backend.vercel.app https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app https://aces.fun https://auth.privy.io",
+      'child-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org blob: data: https://*.tradingview.com',
+      'frame-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org https://challenges.cloudflare.com https://*.clarity.ms https://www.twitch.tv https://player.twitch.tv https://embed.twitch.tv blob: data: https://*.tradingview.com https://charting-library.tradingview-widget.com',
+      `connect-src ${connectSrc.join(' ')}`,
+      "worker-src 'self' blob:",
+      "manifest-src 'self'",
+    ];
+
     return [
       {
         source: '/(.*)',
         headers: [
           {
             key: 'Content-Security-Policy',
-            value: [
-              // sensible baseline
-              "default-src 'self'",
-              "base-uri 'self'",
-              "object-src 'none'",
-
-              // scripts you load (added *.clarity.ms + va.vercel-scripts.com + Twitch + TradingView)
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://challenges.cloudflare.com https://*.clarity.ms https://www.googletagmanager.com https://va.vercel-scripts.com https://vercel.live https://auth.privy.io https://embed.twitch.tv https://charting-library.tradingview-widget.com https://*.tradingview.com",
-
-              // mirror for script elements (prevents fallback confusion)
-              "script-src-elem 'self' 'unsafe-inline' blob: https://*.clarity.ms https://www.googletagmanager.com https://va.vercel-scripts.com https://vercel.live https://auth.privy.io https://embed.twitch.tv https://charting-library.tradingview-widget.com https://*.tradingview.com",
-
-              // styles/fonts/images
-              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-              "font-src 'self' data: https://fonts.gstatic.com",
-              "img-src 'self' data: blob: https:",
-
-              // form + embedding rules (unchanged + allow clarity iframes if any)
-              "form-action 'self'",
-              "frame-ancestors 'self' https://aces-monorepo-backend.vercel.app https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app https://aces.fun https://auth.privy.io",
-              'child-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org blob: data: https://*.tradingview.com',
-              'frame-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org https://challenges.cloudflare.com https://*.clarity.ms https://www.twitch.tv https://player.twitch.tv https://embed.twitch.tv blob: data: https://*.tradingview.com https://charting-library.tradingview-widget.com',
-
-              // where your app may connect (added Supabase URL + backend localhost:8787 + WebSocket support for Next.js HMR)
-
-              "connect-src 'self' http://localhost:3000 http://localhost:3002 ws://localhost:3000 wss://localhost:3000 ws://localhost:3002 wss://localhost:3002 https://auth.privy.io wss://relay.walletconnect.com wss://relay.walletconnect.org wss://www.walletlink.org https://*.rpc.privy.systems https://explorer-api.walletconnect.com https://aces-monorepo-backend.vercel.app https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app https://pulse.walletconnect.org https://api.web3modal.org https://sepolia.base.org https://base-sepolia-rpc.publicnode.com https://base-sepolia.blockpi.network/v1/rpc/public https://base-sepolia.gateway.tenderly.co https://mainnet.base.org https://base-rpc.publicnode.com https://base.blockpi.network/v1/rpc/public https://base.gateway.tenderly.co https://1rpc.io https://min-api.cryptocompare.com https://api.thegraph.com https://api.coingecko.com https://api.coinbase.com https://api.binance.com https://www.google-analytics.com https://analytics.google.com https://vitals.vercel-insights.com https://*.clarity.ms https://api.twitch.tv https://id.twitch.tv https://fdglhdxswemqcaslsdwt.supabase.co https://saveload.tradingview.com https://dataservices.tradingview.com https://prodata.tradingview.com https://pronews.tradingview.com https://charting-library.tradingview-widget.com https://*.tradingview.com",
-
-              // workers, manifest
-              "worker-src 'self' blob:",
-              "manifest-src 'self'",
-            ].join('; '),
+            value: directives.join('; '),
           },
           { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
           { key: 'X-Content-Type-Options', value: 'nosniff' },
@@ -55,6 +143,25 @@ const nextConfig: NextConfig = {
 
   // Multi-tenant and API proxy configuration
   async rewrites() {
+    const afterFiles: { source: string; destination: string }[] = [];
+
+    if (backendOrigin) {
+      const sanitizedBackend = backendOrigin.replace(/\/$/, '');
+      afterFiles.push({
+        source: '/api/v1/:path*',
+        destination: `${sanitizedBackend}/api/v1/:path*`,
+      });
+      afterFiles.push({
+        source: '/submissions/:path*',
+        destination: `${sanitizedBackend}/submissions/:path*`,
+      });
+
+      afterFiles.push({
+        source: '/ws/chart',
+        destination: `${sanitizedBackend}/ws/chart`,
+      });
+    }
+
     return {
       // Multi-tenant rewrites come first (beforeFiles)
       beforeFiles: [
@@ -166,21 +273,7 @@ const nextConfig: NextConfig = {
         },
       ],
       // API proxy rewrites come after (afterFiles)
-      afterFiles: [
-        {
-          source: '/api/v1/:path*',
-          destination: 'http://localhost:3002/api/v1/:path*',
-        },
-        {
-          source: '/submissions/:path*',
-          destination: 'http://localhost:3002/submissions/:path*',
-        },
-        // WebSocket proxy for chart data
-        {
-          source: '/ws/chart',
-          destination: 'http://localhost:3002/ws/chart',
-        },
-      ],
+      afterFiles,
     };
   },
 
