@@ -170,6 +170,15 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
   }
 
   /**
+   * Clear all caches - useful for debugging or forcing refresh
+   */
+  public clearCache(): void {
+    console.log('[TradingView] 🗑️ Clearing all caches');
+    this.historyCache.clear();
+    this.lastHistoricalBarByTimeframe.clear();
+  }
+
+  /**
    * Get current display currency
    */
   public getDisplayCurrency(): 'usd' | 'aces' {
@@ -220,10 +229,11 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       }
 
       // Ultra-high precision for micro-cap tokens to prevent scientific notation
-      // Supports up to 12 decimal places to handle extremely small prices
+      // Supports up to 18 decimal places to handle extremely small USD prices
       // This allows proper display of prices like 0.000000000123 as 0.0₁₀123
-      const precision = 12; // Up to 12 decimal places
-      const pricescale = Math.pow(10, precision); // 10^12 = 1,000,000,000,000
+      // For USD mode, we need extra precision since prices can be in millionths
+      const precision = 18; // Up to 18 decimal places (handles USD micro-prices)
+      const pricescale = Math.pow(10, precision); // 10^18 = 1,000,000,000,000,000,000
       const minmov = 1; // Smallest possible price movement
 
       const symbolInfo: LibrarySymbolInfo = {
@@ -244,6 +254,8 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
         listed_exchange: 'BondingCurve',
         // Use 'price' format which preserves decimal precision without scientific notation
         format: 'price',
+        // Force minimum tick to be incredibly small to show micro-price movements
+        // minTick: '0.000000000000000001', // 1e-18 to handle USD micro-prices
       };
 
       console.log('[TradingView] Symbol resolved with zero-count notation support:', {
@@ -302,10 +314,26 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       // Log sample price with zero-count notation to verify formatting
       if (filteredCopy.length > 0) {
         const samplePrice = filteredCopy[0].close;
-        console.log('[TradingView] Sample bar price:', {
-          raw: samplePrice,
-          formatted: BondingCurveDatafeed.formatPriceWithZeroCount(samplePrice),
-          time: new Date(filteredCopy[0].time).toISOString(),
+        console.log('[TradingView] 📊 Delivering bars to chart:', {
+          count: filteredCopy.length,
+          firstBar: {
+            time: new Date(filteredCopy[0].time).toISOString(),
+            open: filteredCopy[0].open,
+            high: filteredCopy[0].high,
+            low: filteredCopy[0].low,
+            close: filteredCopy[0].close,
+            hasBody: filteredCopy[0].open !== filteredCopy[0].close,
+          },
+          lastBar: {
+            time: new Date(filteredCopy[filteredCopy.length - 1].time).toISOString(),
+            open: filteredCopy[filteredCopy.length - 1].open,
+            high: filteredCopy[filteredCopy.length - 1].high,
+            low: filteredCopy[filteredCopy.length - 1].low,
+            close: filteredCopy[filteredCopy.length - 1].close,
+            hasBody:
+              filteredCopy[filteredCopy.length - 1].open !==
+              filteredCopy[filteredCopy.length - 1].close,
+          },
         });
       }
 
@@ -324,6 +352,15 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       `[TradingView] Fetching bars: ${this.tokenAddress} ${timeframe}`,
       `from: ${new Date(periodParams.from * 1000).toISOString()}, to: ${new Date(periodParams.to * 1000).toISOString()}`,
     );
+
+    console.log('[TradingView] 📊 Time range details:', {
+      fromUnix: periodParams.from,
+      toUnix: periodParams.to,
+      fromISO: new Date(periodParams.from * 1000).toISOString(),
+      toISO: new Date(periodParams.to * 1000).toISOString(),
+      rangeHours: ((periodParams.to - periodParams.from) / 3600).toFixed(1),
+      firstDataRequest: periodParams.firstDataRequest,
+    });
 
     this.fetchHistoricalDataUnified(timeframe, periodParams.from, periodParams.to)
       .then(({ bars }) => {

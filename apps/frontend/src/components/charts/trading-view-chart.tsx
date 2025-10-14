@@ -120,6 +120,17 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
 
         datafeedRef.current = datafeed;
 
+        // Expose datafeed to window for debugging
+        if (typeof window !== 'undefined') {
+          (window as any).__tradingViewDatafeed = datafeed;
+          console.log(
+            '[TradingView] 🔧 Datafeed exposed to window.__tradingViewDatafeed for debugging',
+          );
+          console.log(
+            '[TradingView] 🔧 Use: window.__tradingViewDatafeed.clearCache() to clear cache',
+          );
+        }
+
         const chartSymbol =
           chartMode === 'price'
             ? stableTokenSymbol.current
@@ -149,10 +160,10 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
           fullscreen: false,
           autosize: true,
           symbol: chartSymbol,
-          interval: '15',
+          interval: chartMode === 'mcap' ? '5' : '15', // Use 5min for market cap, 15min for price
           datafeed: datafeed,
           theme: 'dark',
-          style: '1',
+          style: '1', // Candlesticks for both - market cap now has proper OHLC
           toolbar_bg: '#231F20',
           loading_screen: {
             backgroundColor: '#231F20',
@@ -200,11 +211,15 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
             'scalesProperties.alignLabels': true,
             'paneProperties.topMargin': 10,
             'paneProperties.bottomMargin': 10,
-            'mainSeriesProperties.minTick': 'default',
+            // Set extremely small minTick to handle micro USD prices (0.000000001)
+            'mainSeriesProperties.minTick': '0.000000000000000001',
             'mainSeriesProperties.priceAxisProperties.percentage': false,
             'mainSeriesProperties.priceAxisProperties.autoScale': true,
-            // Disable logarithmic scale by default to show actual price values
-            'mainSeriesProperties.priceAxisProperties.log': false,
+            // Enable logarithmic scale to handle extreme price ranges (0.000000001 to 0.001)
+            // This makes small price movements visible even when prices vary by orders of magnitude
+            'mainSeriesProperties.priceAxisProperties.log': true,
+            // Force minimum price movement to be visible
+            'mainSeriesProperties.priceAxisProperties.minMove': 0.000000000000000001,
             // Show last value but hide symbol labels from price axis
             'scalesProperties.showSeriesLastValue': true,
             'scalesProperties.showStudyLastValue': false,
@@ -450,7 +465,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
               <div className="absolute inset-0 flex items-center justify-center bg-[#231F20]/80 z-30">
                 <div className="text-center">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#D0B284] mx-auto mb-4"></div>
-                  <div className="text-[#DCDDCC]">Loading professional chart...</div>
+                  <div className="text-[#DCDDCC]">Loading chart...</div>
                 </div>
               </div>
             )}

@@ -259,34 +259,85 @@ export class MarketCapDatafeed implements IBasicDataFeed {
 
     const candles = data.data.candles;
 
-    const bars: Bar[] = candles
-      .map((candle: any) => {
-        const timestamp = candle.timestamp * 1000;
-        const rawValue =
-          candle.close ??
-          candle.marketCap ??
-          candle.marketCapUsd ??
-          candle.marketCapAces ??
-          candle.open;
-        const marketCap = typeof rawValue === 'number' ? rawValue : parseFloat(rawValue || '0');
+    interface MarketCapCandle {
+      timestamp: number;
+      open: number | string;
+      high: number | string;
+      low: number | string;
+      close: number | string;
+      marketCap?: number | string;
+      marketCapUsd?: number | string;
+      marketCapAces?: number | string;
+      volume?: number | string;
+    }
 
-        if (!Number.isFinite(marketCap)) {
+    const bars: Bar[] = candles
+      .map((candle: MarketCapCandle) => {
+        const timestamp = candle.timestamp * 1000;
+
+        // Extract actual OHLC values from API response
+        // The backend sends proper market cap OHLC calculated from price OHLC * supply
+        const open = typeof candle.open === 'number' ? candle.open : parseFloat(candle.open || '0');
+        const high = typeof candle.high === 'number' ? candle.high : parseFloat(candle.high || '0');
+        const low = typeof candle.low === 'number' ? candle.low : parseFloat(candle.low || '0');
+        const close =
+          typeof candle.close === 'number' ? candle.close : parseFloat(candle.close || '0');
+
+        // Validate at least one value is valid
+        if (!Number.isFinite(close) && !Number.isFinite(open)) {
           return null;
         }
 
+        // Use actual OHLC values to form proper candle bodies
+        // This allows TradingView to render candles with visible bodies when market cap changes
         return {
           time: timestamp,
-          open: marketCap,
-          high: marketCap,
-          low: marketCap,
-          close: marketCap,
-          volume: parseFloat(candle.volume || '0'),
+          open: open,
+          high: high,
+          low: low,
+          close: close,
+          volume:
+            typeof candle.volume === 'number' ? candle.volume : parseFloat(candle.volume || '0'),
         };
       })
       .filter((bar: Bar | null): bar is Bar => bar !== null)
       .sort((a: Bar, b: Bar) => a.time - b.time);
 
     console.log(`[MarketCapDatafeed] Received ${bars.length} market cap bars`);
+
+    // Debug logging
+    if (bars.length === 0 && candles.length > 0) {
+      console.warn(
+        `[MarketCapDatafeed] ⚠️ No valid market cap data found. Received ${candles.length} candles but all had invalid values.`,
+        'Sample candle:',
+        candles[0],
+      );
+    } else if (bars.length > 0) {
+      const firstBar = bars[0];
+      const lastBar = bars[bars.length - 1];
+      console.log(`[MarketCapDatafeed] ✅ Market cap OHLC data:`, {
+        totalBars: bars.length,
+        firstCandle: {
+          open: firstBar.open,
+          high: firstBar.high,
+          low: firstBar.low,
+          close: firstBar.close,
+          hasBody: firstBar.open !== firstBar.close,
+        },
+        lastCandle: {
+          open: lastBar.open,
+          high: lastBar.high,
+          low: lastBar.low,
+          close: lastBar.close,
+          hasBody: lastBar.open !== lastBar.close,
+        },
+        range: {
+          minClose: Math.min(...bars.map((b) => b.close)),
+          maxClose: Math.max(...bars.map((b) => b.close)),
+        },
+        candlesWithBodies: bars.filter((b) => b.open !== b.close).length,
+      });
+    }
 
     return { bars };
   }
