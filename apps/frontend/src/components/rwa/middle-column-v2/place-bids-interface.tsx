@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { ChangeEvent, MouseEvent as ReactMouseEvent, useEffect, useState } from 'react';
-import { AlertCircle, CheckCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -67,6 +67,7 @@ export function PlaceBidsInterfaceV2(props: PlaceBidsInterfaceV2Props) {
   const [offerAmount, setOfferAmount] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [eligibility, setEligibility] = useState<{ isEligible: boolean; message: string } | null>(
     null,
   );
@@ -76,35 +77,31 @@ export function PlaceBidsInterfaceV2(props: PlaceBidsInterfaceV2Props) {
   const [termsAccepted, setTermsAccepted] = useState(false);
 
   useEffect(() => {
-    const checkEligibility = async () => {
+    const loadInitialData = async () => {
+      setInitialLoading(true);
+
+      // Check eligibility
       if (!user) {
         setEligibility({ isEligible: false, message: 'Please connect your wallet to place bids' });
-        return;
+      } else {
+        try {
+          const token = await getAccessToken();
+          if (!token) {
+            setEligibility({ isEligible: false, message: 'Unable to authenticate' });
+          } else {
+            const result = await BidsApi.checkBiddingEligibility(token);
+            if (result.success && result.data) {
+              setEligibility(result.data);
+            } else {
+              setEligibility({ isEligible: false, message: 'Unable to verify eligibility' });
+            }
+          }
+        } catch {
+          setEligibility({ isEligible: false, message: 'Error checking eligibility' });
+        }
       }
 
-      try {
-        const token = await getAccessToken();
-        if (!token) {
-          setEligibility({ isEligible: false, message: 'Unable to authenticate' });
-          return;
-        }
-
-        const result = await BidsApi.checkBiddingEligibility(token);
-        if (result.success && result.data) {
-          setEligibility(result.data);
-        } else {
-          setEligibility({ isEligible: false, message: 'Unable to verify eligibility' });
-        }
-      } catch {
-        setEligibility({ isEligible: false, message: 'Error checking eligibility' });
-      }
-    };
-
-    checkEligibility();
-  }, [user, getAccessToken]);
-
-  useEffect(() => {
-    const loadBidData = async () => {
+      // Load bid data
       try {
         const highestResult = await BidsApi.getHighestBid(listingId);
         if (highestResult.success && highestResult.data) {
@@ -113,10 +110,12 @@ export function PlaceBidsInterfaceV2(props: PlaceBidsInterfaceV2Props) {
       } catch (err) {
         console.error('Error loading bid data:', err);
       }
+
+      setInitialLoading(false);
     };
 
-    loadBidData();
-  }, [listingId]);
+    loadInitialData();
+  }, [user, getAccessToken, listingId]);
 
   useEffect(() => {
     const interval = setInterval(async () => {
@@ -318,28 +317,22 @@ export function PlaceBidsInterfaceV2(props: PlaceBidsInterfaceV2Props) {
           </div>
         )}
       </div>
-      {isIneligible ? (
-        <div className="p-6">
-          <div className="flex flex-col items-start gap-3 rounded-xl border border-red-500/20 bg-red-500/10 p-4">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-red-400" />
-              <span className="text-sm text-red-400">
-                {eligibility?.message || 'Bidding is currently unavailable for your account.'}
-              </span>
-            </div>
-            <p className="text-sm text-[#DCDDCC] font-proxima-nova">
-              You need to register first before you can bid.{' '}
-              <Link href="/verify" className="text-[#D0B284] underline underline-offset-2">
-                Register
-              </Link>
-            </p>
+      {initialLoading ? (
+        <div className="flex items-center justify-center p-12">
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="h-8 w-8 animate-spin text-[#D0B284]" />
+            <span className="text-sm text-[#D0B284]/80 font-proxima-nova">
+              Loading bid information...
+            </span>
           </div>
         </div>
       ) : (
         <div className="p-4 space-y-6">
           <div className="flex flex-col">
             <div>
-              <h2 className="text-lg font-semibold text-white font-neue-world">MAKE OFFER</h2>
+              <h2 className="text-lg font-semibold text-white font-neue-world">
+                {isIneligible ? 'CURRENT BID' : 'MAKE OFFER'}
+              </h2>
             </div>
             <div className="text-left">
               <div className="text-xs font-medium text-[#D0B284] font-proxima-nova">
@@ -354,111 +347,134 @@ export function PlaceBidsInterfaceV2(props: PlaceBidsInterfaceV2Props) {
                   '—'
                 )}
               </div>
-              <div className="text-xs text-[#D0B284]/80 font-proxima-nova italic">
+              <div className="text-xs text-[#D0B284]/80 font-proxima-nova italic mt-3">
                 {reserveStatusMessage}
               </div>
             </div>
 
-            {error && (
-              <div className="mt-4 rounded-lg border border-red-500/20 bg-red-500/10 p-3">
+            {isIneligible && (
+              <div className="flex flex-col items-start gap-3 rounded-xl border border-[#D0B284]/30 bg-[#D0B284]/10 p-4">
                 <div className="flex items-center gap-2">
-                  <AlertCircle className="h-4 w-4 text-red-400" />
-                  <span className="text-sm text-red-400">{error}</span>
-                </div>
-              </div>
-            )}
-
-            {success && (
-              <div className="mt-4 rounded-lg border border-green-500/20 bg-green-500/10 p-3">
-                <div className="flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 text-green-400" />
-                  <span className="text-sm text-green-400">{success}</span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-4">
-            <div className={`gap-3 ${isMobileVariant ? 'flex flex-col' : 'flex items-center'}`}>
-              <div className="w-full">
-                <label htmlFor={offerInputId} className="sr-only">
-                  Your Offer
-                </label>
-                <div className="flex flex-col rounded-xl border border-[#D0B284]/40 bg-[#101910] px-4 py-3">
-                  <span className="text-xs uppercase tracking-wide text-[#D0B284] font-proxima-nova">
-                    Your Offer
+                  <AlertCircle className="h-5 w-5 text-[#D0B284]" />
+                  <span className="text-sm text-[#D0B284]">
+                    {eligibility?.message || 'Bidding is currently unavailable for your account.'}
                   </span>
-                  <div className="mt-2 flex items-center gap-2">
-                    <span className="text-base text-[#DCDDCC] font-proxima-nova">$</span>
-                    <Input
-                      id={offerInputId}
-                      type="text"
-                      inputMode="decimal"
-                      placeholder="0.00"
-                      value={offerAmount}
-                      onChange={handleOfferInputChange}
-                      className="flex-1 border-0 bg-transparent p-0 text-lg font-semibold text-white placeholder:text-[#727B72] h-auto leading-tight focus-visible:shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:outline-none focus-visible:border-transparent focus-visible:text-white"
-                    />
-                    <span className="text-xs text-[#DCDDCC] font-proxima-nova">USD</span>
+                </div>
+                <p className="text-sm text-[#DCDDCC] font-proxima-nova">
+                  You need to register first before you can bid.{' '}
+                  <Link href="/verify" className="text-[#D0B284] underline underline-offset-2">
+                    Register
+                  </Link>
+                </p>
+              </div>
+            )}
+
+            {!isIneligible && (
+              <>
+                {error && (
+                  <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4 text-red-400" />
+                      <span className="text-sm text-red-400">{error}</span>
+                    </div>
+                  </div>
+                )}
+
+                {success && (
+                  <div className="rounded-lg border border-green-500/20 bg-green-500/10 p-3">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4 text-green-400" />
+                      <span className="text-sm text-green-400">{success}</span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-4">
+                  <div
+                    className={`gap-3 ${isMobileVariant ? 'flex flex-col' : 'flex items-center'}`}
+                  >
+                    <div className="w-full">
+                      <label htmlFor={offerInputId} className="sr-only">
+                        Your Offer
+                      </label>
+                      <div className="flex flex-col rounded-xl border border-[#D0B284]/40 bg-[#101910] px-4 py-3">
+                        <span className="text-xs uppercase tracking-wide text-[#D0B284] font-proxima-nova">
+                          Your Offer
+                        </span>
+                        <div className="mt-2 flex items-center gap-2">
+                          <span className="text-base text-[#DCDDCC] font-proxima-nova">$</span>
+                          <Input
+                            id={offerInputId}
+                            type="text"
+                            inputMode="decimal"
+                            placeholder="0.00"
+                            value={offerAmount}
+                            onChange={handleOfferInputChange}
+                            className="flex-1 border-0 bg-transparent p-0 text-lg font-semibold text-white placeholder:text-[#727B72] h-auto leading-tight focus-visible:shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:outline-none focus-visible:border-transparent focus-visible:text-white"
+                          />
+                          <span className="text-xs text-[#DCDDCC] font-proxima-nova">USD</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="w-full">
+                    <label htmlFor={messageInputId} className="sr-only">
+                      Message (Optional)
+                    </label>
+                    <div className="flex flex-col rounded-xl border border-[#D0B284]/40 bg-[#101910] px-4 py-3">
+                      <span className="text-xs uppercase tracking-wide text-[#D0B284] font-proxima-nova">
+                        Message (Optional)
+                      </span>
+                      <Textarea
+                        id={messageInputId}
+                        rows={3}
+                        placeholder="Add a message with your bid..."
+                        value={message}
+                        onChange={(e) => setMessage(e.target.value)}
+                        className="mt-2 min-h-[72px] max-h-32 resize-none border-0 bg-transparent p-0 text-sm text-white placeholder:text-[#727B72] leading-tight overflow-y-auto focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:shadow-none focus-visible:outline-none focus-visible:border-transparent"
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-            </div>
 
-            <div className="w-full">
-              <label htmlFor={messageInputId} className="sr-only">
-                Message (Optional)
-              </label>
-              <div className="flex flex-col rounded-xl border border-[#D0B284]/40 bg-[#101910] px-4 py-3">
-                <span className="text-xs uppercase tracking-wide text-[#D0B284] font-proxima-nova">
-                  Message (Optional)
-                </span>
-                <Textarea
-                  id={messageInputId}
-                  rows={3}
-                  placeholder="Add a message with your bid..."
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  className="mt-2 min-h-[72px] max-h-32 resize-none border-0 bg-transparent p-0 text-sm text-white placeholder:text-[#727B72] leading-tight overflow-y-auto focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:shadow-none focus-visible:outline-none focus-visible:border-transparent"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <div className="py-2 flex w-full">
-              <Button
-                onClick={handleSubmit}
-                disabled={!canSubmitBid}
-                className={`bg-black text-2xl border border-[#D0B284]/80 hover:bg-[#D0B284]/10 text-[#D0B284] font-spray-letters disabled:opacity-50 disabled:pointer-events-none ${
-                  isMobileVariant ? 'w-full py-4 text-base rounded-xl' : 'w-full'
-                }`}
-              >
-                {loading ? 'Placing...' : 'Place Bid'}
-              </Button>
-            </div>
-          </div>
-          <div className="flex items-start gap-2">
-            <Checkbox
-              id={termsCheckboxId}
-              checked={termsAccepted}
-              onCheckedChange={(checked) => setTermsAccepted(checked === true)}
-              className="mt-1 border-[#D0B284]/40 data-[state=checked]:bg-[#D0B284] data-[state=checked]:text-[#151c16]"
-            />
-            <label
-              htmlFor={termsCheckboxId}
-              className="text-xs text-[#DCDDCC] font-proxima-nova leading-relaxed cursor-pointer"
-            >
-              I have read and agree to the{' '}
-              <button
-                type="button"
-                onClick={handleTermsLinkClick}
-                className="text-[#D0B284] underline underline-offset-2 hover:text-[#f3d8a5]"
-              >
-                Terms & Conditions
-              </button>
-              .
-            </label>
+                <div className="space-y-3">
+                  <div className="py-2 flex w-full">
+                    <Button
+                      onClick={handleSubmit}
+                      disabled={!canSubmitBid}
+                      className={`bg-black text-2xl border border-[#D0B284]/80 hover:bg-[#D0B284]/10 text-[#D0B284] font-spray-letters disabled:opacity-50 disabled:pointer-events-none ${
+                        isMobileVariant ? 'w-full py-4 text-base rounded-xl' : 'w-full'
+                      }`}
+                    >
+                      {loading ? 'Placing...' : 'Place Bid'}
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <Checkbox
+                    id={termsCheckboxId}
+                    checked={termsAccepted}
+                    onCheckedChange={(checked) => setTermsAccepted(checked === true)}
+                    className="mt-1 border-[#D0B284]/40 data-[state=checked]:bg-[#D0B284] data-[state=checked]:text-[#151c16]"
+                  />
+                  <label
+                    htmlFor={termsCheckboxId}
+                    className="text-xs text-[#DCDDCC] font-proxima-nova leading-relaxed cursor-pointer"
+                  >
+                    I have read and agree to the{' '}
+                    <button
+                      type="button"
+                      onClick={handleTermsLinkClick}
+                      className="text-[#D0B284] underline underline-offset-2 hover:text-[#f3d8a5]"
+                    >
+                      Terms & Conditions
+                    </button>
+                    .
+                  </label>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

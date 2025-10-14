@@ -67,10 +67,12 @@ export function LeftColumnNavigationV2({
   }, [isChatOpen, onChatToggle]);
 
   useEffect(() => {
-    if (onChatToggle) {
-      onChatToggle();
-    } else {
-      setIsChatOpen(false);
+    // Close the chat when the listing changes
+    if (externalChatOpen) {
+      onChatToggle?.();
+    }
+    if (internalChatOpen) {
+      setInternalChatOpen(false);
     }
   }, [listing?.id]);
 
