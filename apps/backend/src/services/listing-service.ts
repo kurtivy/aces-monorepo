@@ -9,10 +9,7 @@ import {
   NotificationType,
   NotificationTemplates,
 } from './notification-service';
-import {
-  AerodromeDataService,
-  AerodromePoolState,
-} from './aerodrome-data-service';
+import { AerodromeDataService, AerodromePoolState } from './aerodrome-data-service';
 import { createProvider, getNetworkConfig } from '../config/network.config';
 
 // Type for listings with relations - using simpler type due to TypeScript language server caching
@@ -358,6 +355,9 @@ export class ListingService {
               volume24h: true,
               phase: true,
               isActive: true,
+              poolAddress: true,
+              dexLiveAt: true,
+              priceSource: true,
             },
           },
           _count: {
@@ -405,6 +405,7 @@ export class ListingService {
           owner: true,
           submission: true,
           approvedByUser: true,
+          token: true,
         },
         orderBy: { createdAt: 'desc' },
         take: limit + 1,
@@ -443,6 +444,7 @@ export class ListingService {
         where,
         include: {
           owner: true,
+          token: true,
           submission: true,
           approvedByUser: true,
         },
@@ -476,6 +478,7 @@ export class ListingService {
           owner: true,
           submission: true,
           approvedByUser: true,
+          token: true,
           _count: {
             select: {
               comments: true,
@@ -558,6 +561,7 @@ export class ListingService {
             },
           },
           approvedByUser: true,
+          token: true,
         },
         orderBy: { createdAt: 'desc' },
         take: limit + 1,
@@ -662,11 +666,11 @@ export class ListingService {
     const resolvedPoolAddress = poolState?.poolAddress ?? initialPoolAddress ?? null;
     const isDexLive = !!poolState || hasStoredDexPhase || !!resolvedPoolAddress;
     const lastUpdated = poolState ? new Date(poolState.lastUpdated).toISOString() : null;
-    const dexLiveAt = poolState ? lastUpdated : token?.dexLiveAt ?? null;
+    const dexLiveAt = poolState ? lastUpdated : (token?.dexLiveAt ?? null);
     const priceSource = isDexLive ? 'DEX' : 'BONDING_CURVE';
 
     if (token) {
-      token.phase = isDexLive ? 'DEX_TRADING' : token.phase ?? 'BONDING_CURVE';
+      token.phase = isDexLive ? 'DEX_TRADING' : (token.phase ?? 'BONDING_CURVE');
       (token as any).priceSource = priceSource;
       (token as any).poolAddress = resolvedPoolAddress;
       (token as any).dexLiveAt = dexLiveAt;

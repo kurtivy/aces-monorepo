@@ -300,6 +300,7 @@ export class AerodromeDataService {
   async getPairReserves(
     tokenIn: string,
     tokenOut: string,
+    knownPoolAddress?: string,
   ): Promise<{
     poolAddress: string;
     reserveIn: bigint;
@@ -308,7 +309,7 @@ export class AerodromeDataService {
     decimalsOut: number;
     stable: boolean;
   } | null> {
-    const state = await this.getGenericPoolState(tokenIn, tokenOut);
+    const state = await this.getGenericPoolState(tokenIn, tokenOut, knownPoolAddress);
     if (!state) {
       return null;
     }
@@ -377,9 +378,7 @@ export class AerodromeDataService {
     const normalizedB = tokenB.toLowerCase();
     const factory = new ethers.Contract(this.factoryAddress, FACTORY_ABI, this.provider);
 
-    const attempts = this.defaultStable
-      ? [true, false]
-      : [false, true];
+    const attempts = this.defaultStable ? [true, false] : [false, true];
 
     for (const stable of attempts) {
       try {
@@ -398,12 +397,12 @@ export class AerodromeDataService {
   private async getGenericPoolState(
     tokenA: string,
     tokenB: string,
+    knownPoolAddress?: string,
   ): Promise<AerodromeGenericPoolState | null> {
     const normalizedA = tokenA.toLowerCase();
     const normalizedB = tokenB.toLowerCase();
-    const cacheKey = normalizedA < normalizedB
-      ? `${normalizedA}-${normalizedB}`
-      : `${normalizedB}-${normalizedA}`;
+    const cacheKey =
+      normalizedA < normalizedB ? `${normalizedA}-${normalizedB}` : `${normalizedB}-${normalizedA}`;
 
     const cached = this.getCached(this.genericPoolCache, cacheKey);
     if (cached) {
@@ -418,7 +417,15 @@ export class AerodromeDataService {
       return null;
     }
 
-    const pair = await this.resolvePairAddress(normalizedA, normalizedB);
+    let pair: { address: string; stable: boolean } | null = null;
+
+    // Use known pool address if provided
+    if (knownPoolAddress && knownPoolAddress !== ethers.ZeroAddress) {
+      pair = { address: knownPoolAddress.toLowerCase(), stable: false };
+    } else {
+      pair = await this.resolvePairAddress(normalizedA, normalizedB);
+    }
+
     if (!pair) {
       return null;
     }
