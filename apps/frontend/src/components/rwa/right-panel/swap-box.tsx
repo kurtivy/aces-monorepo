@@ -11,6 +11,12 @@ import ProgressionBar from '@/components/rwa/middle-column/overview/progression-
 import type { DatabaseListing } from '@/types/rwa/section.types';
 import { getContractAddresses } from '@/lib/contracts/addresses';
 import { motion, AnimatePresence } from 'framer-motion';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 // Import NEW unified hooks
 import { useSwapContracts } from '@/hooks/swap/use-swap-contracts';
@@ -194,7 +200,6 @@ export default function TokenSwapInterface({
   const sellOptions = useMemo(() => {
     const orderedValues: Array<{ value: string; label: string }> = [
       { value: 'ETH', label: 'ETH' },
-      { value: 'WETH', label: 'wETH' },
       { value: 'USDT', label: 'USDT' },
       { value: 'USDC', label: 'USDC' },
       { value: 'ACES', label: 'ACES' },
@@ -216,6 +221,37 @@ export default function TokenSwapInterface({
 
     return uniqueOptions;
   }, [tokenSymbol]);
+
+  // Helper function to get token image
+  const getTokenImage = useCallback(
+    (asset: string) => {
+      const normalized = asset?.toUpperCase();
+      const symbolUpper = tokenSymbol?.toUpperCase();
+
+      if (normalized && symbolUpper && normalized === symbolUpper) {
+        return getValidImageSrc(primaryImage || imageGallery?.[0], undefined, {
+          width: 20,
+          height: 20,
+          text: tokenSymbol,
+        });
+      }
+
+      switch (normalized) {
+        case 'ETH':
+        case 'WETH':
+          return '/svg/eth.svg';
+        case 'USDC':
+          return '/svg/usdc.svg';
+        case 'USDT':
+          return '/svg/tether.svg';
+        case 'ACES':
+          return '/aces-logo.png';
+        default:
+          return '/aces-logo.png';
+      }
+    },
+    [tokenSymbol, primaryImage, imageGallery],
+  );
 
   const buyOptions = useMemo(() => {
     const rawOptions = [tokenSymbol, 'ACES'].filter(
@@ -946,18 +982,57 @@ export default function TokenSwapInterface({
                 <div className=" bg-[#0B0F0B] px-5 py-4 shadow-[0_20px_45px_rgba(0,0,0,0.35)]">
                   <div className="flex w-full items-center gap-6">
                     <div className="relative flex-shrink-0">
-                      <select
-                        className="peer appearance-none rounded-full border border-[#D0B284]/25 bg-black/70 px-5 pr-10 py-3 text-sm font-semibold text-[#D0B284] focus:outline-none focus:ring-2 focus:ring-[#D0B284]/40"
-                        value={selectedSellAsset ?? ''}
-                        onChange={(e) => handleSellAssetChange(e.target.value)}
-                      >
-                        {sellOptions.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#D0B284]/60" />
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            type="button"
+                            className="flex items-center gap-2 rounded-full border border-[#D0B284]/25 bg-black/70 px-4 py-2.5 text-sm font-semibold text-[#D0B284] transition-colors hover:bg-black/80 focus:outline-none focus:ring-2 focus:ring-[#D0B284]/40"
+                          >
+                            <Image
+                              src={getTokenImage(selectedSellAsset || '')}
+                              alt={sellAssetLabel}
+                              width={20}
+                              height={20}
+                              className={cn(
+                                'object-contain',
+                                selectedSellAsset?.toUpperCase() === tokenSymbol?.toUpperCase()
+                                  ? 'rounded-full'
+                                  : '',
+                              )}
+                              unoptimized={true}
+                            />
+                            <span>{sellAssetLabel}</span>
+                            <ChevronDown className="h-4 w-4 text-[#D0B284]/60" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                          align="start"
+                          className="min-w-[140px] bg-black/95 border-[#D0B284]/30 backdrop-blur-sm"
+                        >
+                          {sellOptions.map((option) => (
+                            <DropdownMenuItem
+                              key={option.value}
+                              onClick={() => handleSellAssetChange(option.value)}
+                              className="flex items-center gap-2 cursor-pointer text-[#D0B284] hover:bg-[#D0B284]/10 focus:bg-[#D0B284]/10"
+                            >
+                              <Image
+                                src={getTokenImage(option.value)}
+                                alt={option.label}
+                                width={20}
+                                height={20}
+                                className={cn(
+                                  'object-contain',
+                                  option.value.toUpperCase() === tokenSymbol?.toUpperCase()
+                                    ? 'rounded-full'
+                                    : '',
+                                )}
+                                unoptimized={true}
+                              />
+                              <span>{option.label}</span>
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
 
                     <div className="flex flex-1 flex-col items-end gap-1">
@@ -1001,18 +1076,57 @@ export default function TokenSwapInterface({
                 <div className="bg-[#0B0F0B] px-5 py-4 shadow-[0_20px_45px_rgba(0,0,0,0.35)]">
                   <div className="flex w-full items-center gap-6">
                     <div className="relative flex-shrink-0">
-                      <select
-                        className="peer appearance-none rounded-full border border-[#D0B284]/25 bg-black/70 px-5 pr-10 py-3 text-sm font-semibold text-[#D0B284] focus:outline-none focus:ring-2 focus:ring-[#D0B284]/40"
-                        value={selectedBuyAsset ?? ''}
-                        onChange={(e) => handleBuyAssetChange(e.target.value)}
-                      >
-                        {buyOptions.map((option) => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#D0B284]/60" />
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            type="button"
+                            className="flex items-center gap-2 rounded-full border border-[#D0B284]/25 bg-black/70 px-4 py-2.5 text-sm font-semibold text-[#D0B284] transition-colors hover:bg-black/80 focus:outline-none focus:ring-2 focus:ring-[#D0B284]/40"
+                          >
+                            <Image
+                              src={getTokenImage(selectedBuyAsset || '')}
+                              alt={buyAssetLabel}
+                              width={20}
+                              height={20}
+                              className={cn(
+                                'object-contain',
+                                selectedBuyAsset?.toUpperCase() === tokenSymbol?.toUpperCase()
+                                  ? 'rounded-full'
+                                  : '',
+                              )}
+                              unoptimized={true}
+                            />
+                            <span>{buyAssetLabel}</span>
+                            <ChevronDown className="h-4 w-4 text-[#D0B284]/60" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                          align="start"
+                          className="min-w-[140px] bg-black/95 border-[#D0B284]/30 backdrop-blur-sm"
+                        >
+                          {buyOptions.map((option) => (
+                            <DropdownMenuItem
+                              key={option}
+                              onClick={() => handleBuyAssetChange(option)}
+                              className="flex items-center gap-2 cursor-pointer text-[#D0B284] hover:bg-[#D0B284]/10 focus:bg-[#D0B284]/10"
+                            >
+                              <Image
+                                src={getTokenImage(option)}
+                                alt={option}
+                                width={20}
+                                height={20}
+                                className={cn(
+                                  'object-contain',
+                                  option.toUpperCase() === tokenSymbol?.toUpperCase()
+                                    ? 'rounded-full'
+                                    : '',
+                                )}
+                                unoptimized={true}
+                              />
+                              <span>{option}</span>
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
 
                     <div className="flex flex-1 flex-col items-end gap-1 text-right">
