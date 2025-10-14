@@ -19,6 +19,8 @@ const queryClient = new QueryClient({
 
 // Multiple RPC endpoints for Base Mainnet reliability
 const BASE_MAINNET_RPCS = [
+  process.env.QUICKNODE_BASE_URL,
+  process.env.BASE_MAINNET_RPC_URL,
   'https://mainnet.base.org',
   'https://base-rpc.publicnode.com',
   'https://base.blockpi.network/v1/rpc/public',
