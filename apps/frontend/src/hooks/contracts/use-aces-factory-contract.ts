@@ -140,7 +140,9 @@ export function useAcesFactoryContract(
 
         if (currentChainId === 8453) {
           // Base Mainnet
-          rpcUrl = 'https://mainnet.base.org';
+          rpcUrl =
+            (process.env.QUICKNODE_BASE_URL as string) ||
+            (process.env.BASE_MAINNET_RPC_URL as string);
         } else if (currentChainId === 84532) {
           // Base Sepolia
           rpcUrl = 'https://sepolia.base.org';

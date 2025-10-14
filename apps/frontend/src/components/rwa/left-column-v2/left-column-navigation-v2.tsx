@@ -5,7 +5,7 @@ import { TokenMetricsSection } from './token-metrics-section';
 import { ChatSection } from './chat-section';
 import { DatabaseListing } from '@/types/rwa/section.types';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { usePriceConversion } from '@/hooks/use-price-conversion';
+import { useTokenMarketCap } from '@/hooks/use-token-market-cap';
 import { AnimatePresence, motion } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import { BondingProgressSection } from '@/components/rwa/right-panel/bonding-progression-section';
@@ -23,22 +23,12 @@ export function LeftColumnNavigationV2({
   isChatOpen: externalChatOpen,
   onChatToggle,
 }: LeftColumnNavigationV2Props) {
-  // Calculate market cap from ACES balance
-  const acesBalance = listing?.token?.currentPriceACES || '0';
-  const acesDepositedFloat = useMemo(() => {
-    const parsed = parseFloat(acesBalance);
-    return isFinite(parsed) && parsed > 0 ? parsed : 0;
-  }, [acesBalance]);
-
-  const { data: marketCapConversion } = usePriceConversion(
-    acesDepositedFloat > 0 ? acesDepositedFloat.toString() : '0',
-  );
+  // Use the correct market cap hook that calculates price × circulating supply
+  const { marketCapUsd } = useTokenMarketCap(listing?.token?.contractAddress, 'usd');
 
   const marketCapUSD = useMemo(() => {
-    if (!marketCapConversion?.usdValue) return 0;
-    const usd = Number(marketCapConversion.usdValue);
-    return isFinite(usd) ? usd : 0;
-  }, [marketCapConversion]);
+    return isFinite(marketCapUsd) && marketCapUsd > 0 ? marketCapUsd : 0;
+  }, [marketCapUsd]);
 
   // Use external chat state if provided, otherwise use internal state
   const [internalChatOpen, setInternalChatOpen] = useState(false);
@@ -94,13 +84,15 @@ export function LeftColumnNavigationV2({
     );
   }
 
+  const tokenSymbol = listing.token?.symbol || listing.symbol || 'RWA';
+
   return (
     <>
       <div className="w-72 bg-[#151c16] flex flex-col overflow-hidden h-full min-h-[750px]">
         {/* Section 1: Token Header - Fixed */}
         <div className="flex-shrink-0">
           <TokenHeaderSection
-            tokenSymbol={listing.symbol}
+            tokenSymbol={tokenSymbol}
             tokenAddress={listing.token?.contractAddress}
             tokenImage={listing.imageGallery?.[0]}
             marketCap={marketCapUSD}
@@ -120,16 +112,11 @@ export function LeftColumnNavigationV2({
         </div>
 
         {/* Bonding Curve Progress */}
-        <div className="flex-shrink-0 border-t border-[#1E2B1E]/80 bg-[#151c16] px-6 py-4">
-          <div className="mb-3">
-            <h3 className="font-spray-letters text-sm font-bold uppercase tracking-[0.3em] text-[#D0B284] text-center">
-              Bonding Progress
-            </h3>
-          </div>
+        <div className="flex-shrink-0 border-t border-[#1E2B1E]/80 bg-[#151c16] px-6 py-2">
           <BondingProgressSection
             tokenAddress={listing?.token?.contractAddress}
             chainId={listing?.token?.chainId}
-            tokenSymbol={listing?.symbol || 'RWA'}
+            tokenSymbol={tokenSymbol}
           />
         </div>
       </div>

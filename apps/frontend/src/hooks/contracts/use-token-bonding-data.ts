@@ -9,7 +9,7 @@ const BASE_MAINNET_CHAIN_ID = 8453;
 
 const DEFAULT_CHAIN_PRIORITY = [BASE_MAINNET_CHAIN_ID, BASE_SEPOLIA_CHAIN_ID];
 
-const POLL_INTERVAL_MS = 60000;
+const POLL_INTERVAL_MS = 15000;
 
 const CHAIN_NAMES: Record<number, string> = {
   [BASE_SEPOLIA_CHAIN_ID]: 'Base Sepolia',
@@ -24,6 +24,8 @@ const RPC_ENDPOINTS: Record<number, string[]> = {
     'https://base-sepolia.gateway.tenderly.co',
   ],
   [BASE_MAINNET_CHAIN_ID]: [
+    process.env.QUICKNODE_BASE_URL as string,
+    process.env.BASE_MAINNET_RPC_URL as string,
     'https://mainnet.base.org',
     'https://base-rpc.publicnode.com',
     'https://base.blockpi.network/v1/rpc/public',
@@ -183,10 +185,27 @@ export function useTokenBondingData(
   useEffect(() => {
     fetchBondingData();
 
-    // Refresh at a slower cadence so we do not hammer public RPCs
-    const interval = setInterval(fetchBondingData, POLL_INTERVAL_MS);
+    // Refresh periodically while respecting tab visibility so we do not hammer public RPCs
+    const interval = setInterval(() => {
+      if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+        fetchBondingData();
+      }
+    }, POLL_INTERVAL_MS);
 
-    return () => clearInterval(interval);
+    const handleVisibilityChange = () => {
+      if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+        fetchBondingData();
+      }
+    };
+
+    window.addEventListener('focus', handleVisibilityChange);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleVisibilityChange);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [fetchBondingData]);
 
   return data;

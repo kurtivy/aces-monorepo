@@ -1,22 +1,12 @@
 'use client';
 
-import React, {
-  useMemo,
-  useState,
-  useCallback,
-  useRef,
-  useEffect,
-} from 'react';
+import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useTokenBondingData } from '@/hooks/contracts/use-token-bonding-data';
-import { usePriceConversion } from '@/hooks/use-price-conversion';
+import { useTokenMarketCap } from '@/hooks/use-token-market-cap';
 import type { ImageData } from '@/types/rwa/section.types';
-import {
-  createImageErrorHandler,
-  getValidImageSrc,
-} from '@/lib/utils/image-error-handler';
+import { createImageErrorHandler, getValidImageSrc } from '@/lib/utils/image-error-handler';
 
 interface TokenMarketCapProps {
   tokenAddress: string;
@@ -92,10 +82,7 @@ const InlineThumbnailCarousel: React.FC<InlineThumbnailCarouselProps> = ({
           <ChevronLeft size={14} strokeWidth={2.5} />
         </button>
       )}
-      <div
-        ref={scrollContainerRef}
-        className="flex max-w-[240px] gap-2 overflow-hidden"
-      >
+      <div ref={scrollContainerRef} className="flex max-w-[240px] gap-2 overflow-hidden">
         {images.map((image, index) => (
           <button
             type="button"
@@ -110,11 +97,11 @@ const InlineThumbnailCarousel: React.FC<InlineThumbnailCarouselProps> = ({
             aria-label={`View image ${index + 1}`}
           >
             <Image
-              src={getValidImageSrc(
-                image.thumbnail || image.src,
-                undefined,
-                { width: 120, height: 120, text: 'Image' }
-              )}
+              src={getValidImageSrc(image.thumbnail || image.src, undefined, {
+                width: 120,
+                height: 120,
+                text: 'Image',
+              })}
               alt={image.alt || `Gallery image ${index + 1}`}
               fill
               className="object-cover"
@@ -224,51 +211,41 @@ const TokenMarketCap: React.FC<TokenMarketCapProps> = ({
   selectedImageIndex,
   onImageSelect,
 }) => {
-  const { acesBalance, loading: bondingLoading } = useTokenBondingData(tokenAddress, chainId);
-
-  const depositedAces = useMemo(() => {
-    const parsed = parseFloat(acesBalance || '0');
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-  }, [acesBalance]);
-
-  const { data: conversion } = usePriceConversion(
-    depositedAces > 0 ? depositedAces.toString() : '0',
-  );
+  // Use the correct market cap hook that fetches price × supply
+  // NOT total ACES deposited in the bonding curve
+  const { marketCapUsd, marketCapAces, loading, error } = useTokenMarketCap(tokenAddress, 'usd');
 
   const formattedMarketCapUSD = useMemo(() => {
-    if (!conversion?.usdValue) {
+    if (marketCapUsd <= 0) {
       return null;
     }
 
-    const usd = Number(conversion.usdValue);
-    if (!Number.isFinite(usd)) {
-      return null;
-    }
-
-    return formatNumber(usd, {
+    return formatNumber(marketCapUsd, {
       style: 'currency',
       currency: 'USD',
-      maximumFractionDigits: usd >= 1000 ? 0 : 2,
-      notation: usd >= 1_000_000 ? 'compact' : 'standard',
+      maximumFractionDigits: marketCapUsd >= 1000 ? 0 : 2,
+      notation: marketCapUsd >= 1_000_000 ? 'compact' : 'standard',
     });
-  }, [conversion]);
+  }, [marketCapUsd]);
 
   const formattedMarketCapACES = useMemo(() => {
-    if (depositedAces <= 0) {
+    if (marketCapAces <= 0) {
       return `0 ACES`;
     }
 
-    return `${formatNumber(depositedAces, {
-      maximumFractionDigits: depositedAces >= 1000 ? 0 : 2,
-      notation: depositedAces >= 1_000_000 ? 'compact' : 'standard',
-    })} ${tokenSymbol}`;
-  }, [depositedAces, tokenSymbol]);
+    return `${formatNumber(marketCapAces, {
+      maximumFractionDigits: marketCapAces >= 1000 ? 0 : 2,
+      notation: marketCapAces >= 1_000_000 ? 'compact' : 'standard',
+    })} ACES`;
+  }, [marketCapAces]);
 
-  const isLoading = bondingLoading;
+  const isLoading = loading;
 
   const usdDisplay = isLoading
     ? 'Calculating…'
-    : (formattedMarketCapUSD ?? (depositedAces > 0 ? '$0.00' : '$0'));
+    : error
+      ? 'Error loading'
+      : (formattedMarketCapUSD ?? (marketCapAces > 0 ? '$0.00' : '$0'));
 
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 

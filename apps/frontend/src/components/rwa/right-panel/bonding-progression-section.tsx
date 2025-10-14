@@ -1,8 +1,9 @@
 'use client';
 
-import { useMemo } from 'react';
-import { ethers } from 'ethers';
+import { useMemo, useEffect, useState } from 'react';
 import { useTokenBondingData } from '@/hooks/contracts/use-token-bonding-data';
+
+const MAX_SUPPLY_TOKENS = 800_000_000;
 
 interface BondingProgressSectionProps {
   tokenAddress?: string;
@@ -19,38 +20,95 @@ export function BondingProgressSection({
   isBondedOverride,
   tokenSymbol = 'RWA',
 }: BondingProgressSectionProps) {
-  const { bondingPercentage, isBonded, loading, currentSupply, tokensBondedAt } =
-    useTokenBondingData(tokenAddress, chainId);
+  const { bondingPercentage, isBonded, loading, currentSupply } = useTokenBondingData(
+    tokenAddress,
+    chainId,
+  );
+
+  const supplyMetrics = useMemo(() => {
+    if (!currentSupply) {
+      return {
+        totalSupplyValue: null as number | null,
+        soldPercentage: null as number | null,
+        remainingDisplay: null as string | null,
+      };
+    }
+
+    const totalSupplyValue = Number.parseFloat(currentSupply);
+
+    if (!Number.isFinite(totalSupplyValue) || totalSupplyValue < 0) {
+      return {
+        totalSupplyValue: null,
+        soldPercentage: null,
+        remainingDisplay: null,
+      };
+    }
+
+    const soldPercentage = Math.min(100, (totalSupplyValue / MAX_SUPPLY_TOKENS) * 100);
+    const remainingTokens = Math.max(0, MAX_SUPPLY_TOKENS - totalSupplyValue);
+    const remainingDigits = remainingTokens >= 1 ? 2 : 6;
+
+    return {
+      totalSupplyValue,
+      soldPercentage,
+      remainingDisplay: remainingTokens.toLocaleString(undefined, {
+        maximumFractionDigits: remainingDigits,
+      }),
+    };
+  }, [currentSupply]);
 
   const combinedPercentage = useMemo(() => {
-    const a = Number.isFinite(bondingPercentage) ? bondingPercentage : 0;
-    const b = Number.isFinite(percentageOverride ?? Number.NaN)
+    const bonding = Number.isFinite(bondingPercentage) ? bondingPercentage : Number.NaN;
+    const sold = Number.isFinite(supplyMetrics.soldPercentage ?? Number.NaN)
+      ? (supplyMetrics.soldPercentage as number)
+      : Number.NaN;
+    const override = Number.isFinite(percentageOverride ?? Number.NaN)
       ? (percentageOverride as number)
-      : 0;
-    return Math.min(100, Math.max(a, b));
-  }, [bondingPercentage, percentageOverride]);
+      : Number.NaN;
 
-  const combinedIsBonded = isBondedOverride || isBonded || combinedPercentage >= 100;
+    const candidatePercentages = [sold, bonding, override].filter((value) =>
+      Number.isFinite(value),
+    ) as number[];
 
-  const remainingDisplay = useMemo(() => {
-    if (!tokensBondedAt || !currentSupply) return null;
-    try {
-      const maxWei = ethers.utils.parseEther(tokensBondedAt);
-      const curWei = ethers.utils.parseEther(currentSupply);
-      if (maxWei.lte(curWei)) return '0';
-      const remaining = Number.parseFloat(ethers.utils.formatEther(maxWei.sub(curWei)));
-      const maxFrac = remaining >= 1 ? 2 : 6;
-      return remaining.toLocaleString(undefined, { maximumFractionDigits: maxFrac });
-    } catch {
-      return null;
+    if (candidatePercentages.length === 0) {
+      return 0;
     }
-  }, [tokensBondedAt, currentSupply]);
+
+    return Math.min(100, Math.max(...candidatePercentages));
+  }, [bondingPercentage, percentageOverride, supplyMetrics.soldPercentage]);
+
+  const isSoldOut =
+    supplyMetrics.totalSupplyValue !== null && supplyMetrics.totalSupplyValue >= MAX_SUPPLY_TOKENS;
+
+  const [hasSoldOut, setHasSoldOut] = useState(false);
+
+  useEffect(() => {
+    if (isSoldOut) {
+      setHasSoldOut(true);
+    }
+  }, [isSoldOut]);
+
+  const soldOutState = hasSoldOut;
+  const combinedIsBonded = isBondedOverride || isBonded || soldOutState;
+  const cappedPercentage = soldOutState
+    ? 100
+    : Math.min(combinedPercentage, 99.9);
+  const percentageLabel = soldOutState
+    ? '100.0'
+    : combinedPercentage >= 99.9
+      ? '99.9'
+      : cappedPercentage.toFixed(1);
 
   return (
     <div className="">
       {/* Progress rail */}
+      {(soldOutState || supplyMetrics.remainingDisplay) && (
+        <div className="text-sm text-[#D0B284]/80 text-center mb-3 font-proxima-nova font-semibold">
+          {soldOutState ? 'Sold out' : `${supplyMetrics.remainingDisplay} ${tokenSymbol} left`}
+        </div>
+      )}
       <div className="h-3 rounded-full bg-[#1B1F1B] border border-[#D0B284]/20 relative overflow-hidden">
-        <div className="h-full bg-[#D7BF75]/70" style={{ width: `${combinedPercentage}%` }} />
+        <div className="h-full bg-[#D7BF75]/70" style={{ width: `${cappedPercentage}%` }} />
         {/* ticks */}
         <div className="absolute inset-0 pointer-events-none flex justify-between px-2">
           {[0, 25, 50, 75, 100].map((t) => (
@@ -64,16 +122,10 @@ export function BondingProgressSection({
       <div className="mt-2 text-xs font-semibold uppercase tracking-[0.3em] text-center text-[#D7BF75]/80">
         {loading && !combinedIsBonded
           ? 'Loading bonding data...'
-          : combinedIsBonded
+          : soldOutState
             ? 'BONDED - 100%'
-            : `BONDED ${combinedPercentage.toFixed(1)}% / 100%`}
+            : `BONDED ${percentageLabel}% / 100%`}
       </div>
-
-      {/* {!!remainingDisplay && !combinedIsBonded && (
-        <div className="mt-2 text-xs text-[#D0B284]/80 text-center">
-          {remainingDisplay} {tokenSymbol} left in the bonding curve
-        </div>
-      )} */}
     </div>
   );
 }

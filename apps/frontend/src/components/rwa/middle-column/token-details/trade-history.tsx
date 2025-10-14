@@ -153,8 +153,9 @@ export default function TradeHistory({
   );
   const contentClasses = cn('flex flex-col flex-1', contentClassName);
 
-  const formatUsd = (value: number | null | undefined) => {
+  const formatUsd = (value: number | null | undefined, options?: { isBuy?: boolean }) => {
     if (value == null || !Number.isFinite(value)) return '--';
+    if (options?.isBuy) return `$${value.toFixed(2)}`;
     return value < 10 ? `$${value.toFixed(6)}` : `$${value.toFixed(2)}`;
   };
 
@@ -309,7 +310,7 @@ export default function TradeHistory({
                         </span>
                       </td>
                       <td className={cn('px-3 py-2 text-right align-middle font-mono', accent)}>
-                        {formatUsd(usdVal)}
+                        {formatUsd(usdVal, { isBuy })}
                       </td>
                       <td className={cn('px-3 py-2 text-right align-middle font-mono', accent)}>
                         {formatAcesAmount(trade.counterAmount)}
@@ -425,7 +426,7 @@ export default function TradeHistory({
                     </span>
                   </div>
                   <div className={`text-center font-mono text-[13px] ${accent}`}>
-                    {formatUsd(usdVal)}
+                    {formatUsd(usdVal, { isBuy })}
                   </div>
                   <div className={`flex flex-col items-end gap-1 text-right ${accent}`}>
                     <span className="font-mono text-[13px]">

@@ -51,6 +51,7 @@ export function TradingSection({
   const [tableHeight, setTableHeight] = useState<number>(DEFAULT_TABLE_HEIGHT);
   const [isTableExpanded, setIsTableExpanded] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const resolvedTokenSymbol = tokenSymbol || 'RWA';
 
   const splitterRef = useRef<HTMLDivElement | null>(null);
   const activePointerIdRef = useRef<number | null>(null);
@@ -244,7 +245,7 @@ export function TradingSection({
         >
           <TradingViewChart
             tokenAddress={tokenAddress}
-            tokenSymbol={tokenSymbol}
+            tokenSymbol={resolvedTokenSymbol}
             tokenName={title}
             imageSrc={images?.[selectedImageIndex || 0]?.src}
             heightClass=""
@@ -275,7 +276,7 @@ export function TradingSection({
 
       <TradeHistory
         tokenAddress={tokenAddress}
-        tokenSymbol={tokenSymbol}
+        tokenSymbol={resolvedTokenSymbol}
         dexMeta={dexMeta}
         className="h-full rounded-t-none"
         contentClassName="h-full"

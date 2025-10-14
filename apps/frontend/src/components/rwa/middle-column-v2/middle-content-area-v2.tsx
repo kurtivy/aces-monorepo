@@ -56,6 +56,7 @@ export function MiddleContentAreaV2({
   }, [listing.imageGallery, listing.title]);
 
   const isOwner = user?.id === listing.ownerId;
+  const tokenSymbol = listing.token?.symbol || listing.symbol || 'RWA';
 
   return (
     <div className="relative h-full">
@@ -69,7 +70,7 @@ export function MiddleContentAreaV2({
 
         <TradingSection
           tokenAddress={listing.token?.contractAddress || ''}
-          tokenSymbol={listing.symbol}
+          tokenSymbol={tokenSymbol}
           title={listing.title}
           chainId={listing.token?.chainId}
           dexMeta={listing.dex}
