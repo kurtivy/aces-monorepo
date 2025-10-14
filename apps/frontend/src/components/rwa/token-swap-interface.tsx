@@ -1071,7 +1071,8 @@ export default function TokenSwapInterface({
 
       // Step 2: Buy tokens
       setLoading('Buying tokens...');
-      const buyTx = await factoryContract.buyTokens(tokenAddress, amountWei, priceWei);
+      const buyer = await signer.getAddress();
+      const buyTx = await factoryContract.buyTokens(buyer, tokenAddress, amountWei, priceWei);
       await buyTx.wait();
 
       // Step 3: Refresh balances

@@ -18,6 +18,8 @@ import { useSwapMode } from '@/hooks/swap/use-swap-mode';
 import { useTokenBalances } from '@/hooks/swap/use-token-balances';
 import { useUnifiedQuote } from '@/hooks/swap/use-unified-quote';
 import { useUnifiedSwap } from '@/hooks/swap/use-unified-swap';
+import { useTokenAllowance } from '@/hooks/swap/use-token-allowance';
+import { TransactionSuccessModal } from './transaction-success-modal';
 
 // Import utilities
 import { formatAmountForDisplay, formatUsdValue } from '@/lib/swap/formatters';
@@ -48,6 +50,7 @@ interface TokenSwapInterfaceProps {
 export default function TokenSwapInterface({
   tokenSymbol = 'RWA',
   tokenAddress,
+  tokenName,
   showFrame = true,
   showHeader = true,
   showProgression = true,
@@ -61,8 +64,15 @@ export default function TokenSwapInterface({
 
   // Initialize contracts
   const contracts = useSwapContracts(walletAddress, isAuthenticated, tokenAddress);
-  const { provider, signer, factoryContract, acesContract, currentChainId, isInitialized } =
-    contracts;
+  const {
+    provider,
+    signer,
+    factoryContract,
+    acesContract,
+    currentChainId,
+    isInitialized,
+    initializationError,
+  } = contracts;
 
   // Get contract addresses
   const contractAddresses = useMemo(
@@ -89,6 +99,41 @@ export default function TokenSwapInterface({
   });
 
   const { isDexMode, bondingPercentage, tokenBonded, bondingLoading, canSwap } = swapMode;
+
+  // Debug logging for DEX mode detection
+  useEffect(() => {
+    console.log('[SwapBox] DEX Mode Debug:', {
+      isDexMode,
+      tokenBonded,
+      bondingPercentage,
+      dexMeta,
+      routerAddress,
+      tokenAddress,
+    });
+  }, [isDexMode, tokenBonded, bondingPercentage, dexMeta, routerAddress, tokenAddress]);
+
+  // Debug logging for contract initialization
+  useEffect(() => {
+    console.log('[SwapBox] Contract Initialization State:', {
+      isAuthenticated,
+      walletAddress,
+      hasProvider: !!provider,
+      hasSigner: !!signer,
+      hasFactoryContract: !!factoryContract,
+      hasAcesContract: !!acesContract,
+      isInitialized,
+      initializationError,
+    });
+  }, [
+    isAuthenticated,
+    walletAddress,
+    provider,
+    signer,
+    factoryContract,
+    acesContract,
+    isInitialized,
+    initializationError,
+  ]);
 
   // Manage balances
   const balances = useTokenBalances({
@@ -118,6 +163,15 @@ export default function TokenSwapInterface({
   const [slippagePopoverOpen, setSlippagePopoverOpen] = useState(false);
   const [customSlippageInput, setCustomSlippageInput] = useState('');
   const slippagePopoverRef = useRef<HTMLDivElement | null>(null);
+
+  // Success modal state (shown for RWA buys)
+  const [successModalOpen, setSuccessModalOpen] = useState(false);
+  const [successTxHash, setSuccessTxHash] = useState('');
+  const [successTokenAmount, setSuccessTokenAmount] = useState('0');
+  const [successSpentAmount, setSuccessSpentAmount] = useState('0');
+  const [successSpentAsset, setSuccessSpentAsset] = useState<
+    'ACES' | 'USDC' | 'USDT' | 'ETH' | 'WETH'
+  >('ACES');
 
   useEffect(() => {
     if (!slippagePopoverOpen) return;
@@ -172,6 +226,30 @@ export default function TokenSwapInterface({
 
   const selectedSellAsset = activeTab === 'sell' ? tokenSymbol : paymentAsset;
   const selectedBuyAsset = activeTab === 'sell' ? 'ACES' : tokenSymbol;
+
+  // Check ACES allowance for DEX router (only needed when selling ACES in DEX mode)
+  const acesAllowance = useTokenAllowance({
+    tokenAddress: contractAddresses?.ACES_TOKEN || null,
+    ownerAddress: walletAddress,
+    spenderAddress: routerAddress || null,
+    signer,
+    enabled: isDexMode && selectedSellAsset === 'ACES',
+  });
+
+  // Debug logging for allowance state
+  useEffect(() => {
+    if (isDexMode && selectedSellAsset === 'ACES' && amount && amount !== '0') {
+      const needsApproval = !acesAllowance.hasAllowance(amount, 18);
+      console.log('[SwapBox] Allowance Check:', {
+        selectedSellAsset,
+        amount,
+        allowance: acesAllowance.allowance.toString(),
+        needsApproval,
+        allowanceLoading: acesAllowance.loading,
+        allowanceError: acesAllowance.error,
+      });
+    }
+  }, [isDexMode, selectedSellAsset, amount, acesAllowance]);
 
   const handleSellAssetChange = useCallback(
     (value: string) => {
@@ -320,6 +398,7 @@ export default function TokenSwapInterface({
 
   const isOutputToken =
     (selectedBuyAsset || '').toUpperCase() === (tokenSymbol || '').toUpperCase();
+  const isRwaBuy = activeTab === 'buy' && isOutputToken;
   const isTokenQuoteLoading = hasValidAmount && quote.loading;
   const isUsdQuoteLoading = hasValidAmount && !isDexMode && quote.loading;
 
@@ -345,6 +424,45 @@ export default function TokenSwapInterface({
     if (quote.strategy === 'bonding-multihop' && !swap.acesSwapDeployed) return false;
     return true;
   }, [quote.strategy, swap.acesSwapDeployed]);
+
+  // Debug logging for swap button state
+  useEffect(() => {
+    const needsApproval =
+      isDexMode &&
+      selectedSellAsset === 'ACES' &&
+      !acesAllowance.hasAllowance(amount, 18) &&
+      hasValidAmount;
+    console.log('[SwapBox] Swap Button State:', {
+      hasValidAmount,
+      loading,
+      canSwap,
+      isSwapSupported,
+      quoteStrategy: quote.strategy,
+      quoteOutputAmount: quote.outputAmount,
+      quoteLoading: quote.loading,
+      quoteError: quote.error,
+      amount,
+      sellToken,
+      buyToken,
+      isDexMode,
+      selectedSellAsset,
+      needsApproval,
+      willShowApprovalButton: needsApproval,
+      willShowSwapButton: !needsApproval,
+    });
+  }, [
+    hasValidAmount,
+    loading,
+    canSwap,
+    isSwapSupported,
+    quote,
+    amount,
+    sellToken,
+    buyToken,
+    isDexMode,
+    selectedSellAsset,
+    acesAllowance,
+  ]);
 
   // ========================================
   // HANDLERS
@@ -454,10 +572,20 @@ export default function TokenSwapInterface({
       });
 
       if (result.success) {
-        setTransactionStatus({
-          type: 'success',
-          message: isDexMode ? 'Swap confirmed on Aerodrome!' : 'Transaction successful!',
-        });
+        // If buying the RWA token, show full-screen success modal
+        if (isRwaBuy) {
+          setSuccessTxHash(result.hash || result.receipt?.transactionHash || '');
+          setSuccessTokenAmount(quote.outputAmount || '0');
+          setSuccessSpentAmount(amount);
+          setSuccessSpentAsset((selectedSellAsset as any) || 'ACES');
+          setSuccessModalOpen(true);
+        } else {
+          // Otherwise show a toast (e.g., ACES buys)
+          setTransactionStatus({
+            type: 'success',
+            message: isDexMode ? 'Swap confirmed on Aerodrome!' : 'Transaction successful!',
+          });
+        }
         setAmount('');
         await refreshBalances();
       } else {
@@ -475,7 +603,66 @@ export default function TokenSwapInterface({
     } finally {
       setLoading('');
     }
-  }, [isSwapSupported, swap, sellToken, buyToken, amount, quote, isDexMode, refreshBalances]);
+  }, [
+    isSwapSupported,
+    swap,
+    sellToken,
+    buyToken,
+    amount,
+    quote,
+    isDexMode,
+    refreshBalances,
+    isRwaBuy,
+    selectedSellAsset,
+  ]);
+
+  // ========================================
+  // APPROVAL HANDLER (for DEX mode)
+  // ========================================
+  const handleApproveAces = useCallback(async () => {
+    if (!signer || !routerAddress || !contractAddresses?.ACES_TOKEN) {
+      console.error('[SwapBox] Missing required data for approval');
+      return;
+    }
+
+    try {
+      setLoading('Requesting approval...');
+
+      const { ethers } = await import('ethers');
+      const ERC20_ABI = ['function approve(address spender, uint256 amount) returns (bool)'];
+      const acesTokenContract = new ethers.Contract(
+        contractAddresses.ACES_TOKEN,
+        ERC20_ABI,
+        signer,
+      );
+
+      const UNLIMITED_APPROVAL = ethers.constants.MaxUint256;
+
+      console.log('[SwapBox] Requesting unlimited ACES approval...');
+      const tx = await acesTokenContract.approve(routerAddress, UNLIMITED_APPROVAL);
+
+      setLoading('Confirming approval...');
+      await tx.wait();
+
+      console.log('[SwapBox] ✅ Approval confirmed');
+
+      // Refresh allowance
+      await acesAllowance.refetch();
+
+      setTransactionStatus({
+        type: 'success',
+        message: 'ACES spending approved!',
+      });
+    } catch (error) {
+      console.error('[SwapBox] Approval failed:', error);
+      setTransactionStatus({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Approval failed',
+      });
+    } finally {
+      setLoading('');
+    }
+  }, [signer, routerAddress, contractAddresses, acesAllowance]);
 
   // Auto-dismiss transaction status
   useMemo(() => {
@@ -861,13 +1048,44 @@ export default function TokenSwapInterface({
             </div>
 
             <div className="mt-4">
-              {!isAuthenticated || !provider ? (
+              {!isAuthenticated ? (
                 <Button
                   onClick={handleConnectWallet}
                   disabled={!!loading}
                   className="w-full h-14 rounded-2xl border border-[#D0B284]/30 bg-[#101610] text-[#D0B284] font-proxima-nova font-bold text-lg transition-colors hover:bg-[#151d14] disabled:opacity-50"
                 >
                   {loading || 'Connect Wallet'}
+                </Button>
+              ) : !provider ? (
+                <Button
+                  disabled
+                  className="w-full h-14 rounded-2xl border border-[#D0B284]/30 bg-[#101610] text-[#D0B284] font-proxima-nova font-bold text-lg transition-colors disabled:opacity-50"
+                >
+                  <span className="flex items-center justify-center gap-2">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    {initializationError
+                      ? 'Connection Failed - Retrying...'
+                      : 'Initializing Wallet...'}
+                  </span>
+                </Button>
+              ) : isDexMode &&
+                selectedSellAsset === 'ACES' &&
+                !acesAllowance.hasAllowance(amount, 18) &&
+                hasValidAmount ? (
+                <Button
+                  onClick={handleApproveAces}
+                  disabled={!!loading}
+                  className="w-full h-18 rounded-2xl border border-[#D0B284]/60 bg-black text-[#D0B284] font-spray-letters font-bold text-5xl tracking-widest uppercase transition-colors hover:bg-[#151d14] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {loading ? (
+                    <span className="flex items-center justify-center">
+                      <Loader2 className="h-6 w-6 animate-spin" />
+                    </span>
+                  ) : (
+                    <span className="bg-gradient-to-r from-[#d4af37] via-[#f4e5a6] to-[#d4af37] bg-clip-text text-transparent font-spray-letters">
+                      APPROVE ACES
+                    </span>
+                  )}
                 </Button>
               ) : (
                 <Button
@@ -889,7 +1107,7 @@ export default function TokenSwapInterface({
             </div>
           </div>
 
-          {transactionStatus && (
+          {!successModalOpen && transactionStatus && (
             <div className="fixed bottom-6 left-1/2 z-50 flex w-full max-w-sm -translate-x-1/2 px-4">
               <div
                 className={cn(
@@ -910,6 +1128,21 @@ export default function TokenSwapInterface({
                 </div>
               </div>
             </div>
+          )}
+          {/* Success modal for RWA buys */}
+          {successModalOpen && (
+            <TransactionSuccessModal
+              isOpen={successModalOpen}
+              onClose={() => setSuccessModalOpen(false)}
+              transactionHash={successTxHash}
+              tokenSymbol={tokenSymbol || 'RWA'}
+              tokenAmount={successTokenAmount}
+              acesSpent={successSpentAmount}
+              spentAssetSymbol={successSpentAsset}
+              chainId={currentChainId || chainId}
+              title={tokenName || tokenSymbol || 'RWA'}
+              imageSrc={primaryImage || imageGallery?.[0]}
+            />
           )}
         </div>
       </div>

@@ -97,8 +97,8 @@ export function TokenMetricsSection({
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ duration: 0.4, delay: index * 0.1 }}
                   >
-                    <span className="text-[#D0B284] flex-shrink-0 text-[12px] leading-none">
-                      &mdash;
+                    <span className="text-[#D0B284] flex-shrink-0 text-[12px] leading-none font-spray-letters">
+                      .
                     </span>
                     <span className="flex-1">{point}</span>
                   </motion.li>

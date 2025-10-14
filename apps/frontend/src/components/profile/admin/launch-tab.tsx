@@ -75,7 +75,8 @@ function useWagmiEthersSigner() {
         );
 
         // Get signer from provider
-        const ethersSigner = ethersProvider.getSigner(account.address);
+        // Don't specify address - let the wallet provider determine the signer
+        const ethersSigner = ethersProvider.getSigner();
 
         // Verify signer works
         const signerAddress = await ethersSigner.getAddress();
@@ -652,7 +653,8 @@ export function LaunchTab() {
         priceWei.toString(),
       );
 
-      const buyTx = await factoryContract.buyTokens(selectedToken, amountWei, priceWei);
+      const buyer = await hookSigner.getAddress();
+      const buyTx = await factoryContract.buyTokens(buyer, selectedToken, amountWei, priceWei);
       console.log('Buy transaction hash:', buyTx.hash);
 
       const buyReceipt = await buyTx.wait();
