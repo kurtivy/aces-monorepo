@@ -9,6 +9,7 @@ import { ACES_VAULT_ABI, getBondingCurveContracts } from '@aces/utils';
 import { useReliableETHPrice } from '../use-reliable-eth-price';
 import { wagmiConfig } from '@/components/providers/app-providers';
 import { base } from 'wagmi/chains';
+import { useAuth } from '@/lib/auth/auth-context';
 
 // Contract addresses - MAINNET CONFIGURATION
 const BASE_MAINNET_CONTRACTS = getBondingCurveContracts(8453); // Base Mainnet
@@ -46,13 +47,24 @@ export interface QuoteResult {
 }
 
 export function useBondingCurveContracts() {
-  const { ready, authenticated, user } = usePrivy();
+  const { ready } = usePrivy();
   const { wallets } = useWallets();
+  const { walletAddress, isAuthenticated } = useAuth();
 
   // Check if user has any connected wallets through Privy
   const hasConnectedWallet = wallets.length > 0;
-  const primaryWallet = wallets[0];
-  const walletAddress = user?.wallet?.address;
+  const primaryWallet = useMemo(() => {
+    if (!wallets.length) {
+      return null;
+    }
+
+    return (
+      wallets.find(
+        (wallet) => wallet.walletClientType !== 'privy' && wallet.walletClientType !== 'privy-v2',
+      ) || wallets[0]
+    );
+  }, [wallets]);
+  const typedWalletAddress = walletAddress ? (walletAddress as `0x${string}`) : undefined;
 
   // Get live ETH price
   const {
@@ -69,18 +81,18 @@ export function useBondingCurveContracts() {
 
   // Get wallet balances
   const { data: ethBalance } = useBalance({
-    address: walletAddress as `0x${string}`,
+    address: typedWalletAddress,
     query: {
-      enabled: ready && authenticated && !!walletAddress,
+      enabled: ready && isAuthenticated && !!typedWalletAddress,
       refetchInterval: 30000,
     },
   });
 
   const { data: tokenBalanceData } = useBalance({
-    address: walletAddress as `0x${string}`,
+    address: typedWalletAddress,
     token: ACES_TOKEN_ADDRESS,
     query: {
-      enabled: ready && authenticated && !!walletAddress,
+      enabled: ready && isAuthenticated && !!typedWalletAddress,
       refetchInterval: 30000,
     },
   });
@@ -113,9 +125,11 @@ export function useBondingCurveContracts() {
     address: ACES_VAULT_ADDRESS,
     abi: ACES_VAULT_ABI,
     functionName: 'getTokenBalance',
-    args: [SHARES_SUBJECT_ADDRESS, ROOM_NUMBER, walletAddress as `0x${string}`],
+    args: typedWalletAddress
+      ? [SHARES_SUBJECT_ADDRESS, ROOM_NUMBER, typedWalletAddress]
+      : undefined,
     query: {
-      enabled: ready && authenticated && !!walletAddress,
+      enabled: ready && isAuthenticated && !!typedWalletAddress,
       retry: 3,
       retryDelay: 1000,
       refetchInterval: 30000,
@@ -451,7 +465,7 @@ export function useBondingCurveContracts() {
   // Internal quote calculation logic
   const getQuoteInternal = useCallback(
     async (ethAmount: string): Promise<QuoteResult> => {
-      if (!ready || !authenticated) throw new Error('Not authenticated');
+      if (!ready || !isAuthenticated) throw new Error('Not authenticated');
 
       const ethAmountWei = parseEther(ethAmount);
 
@@ -529,7 +543,7 @@ export function useBondingCurveContracts() {
         throw new Error('Failed to get price quote');
       }
     },
-    [ready, authenticated, currentSharePrice, calculateSharesFromETH, quoteCache],
+    [ready, isAuthenticated, currentSharePrice, calculateSharesFromETH, quoteCache],
   );
 
   // Public getQuote function with request deduplication
@@ -562,11 +576,11 @@ export function useBondingCurveContracts() {
   // BUY TOKENS FUNCTION - simplified for proxy contract
   const buyTokens = useCallback(
     async (shareCount: bigint, ethCost: bigint) => {
-      if (!ready || !authenticated) {
+      if (!ready || !isAuthenticated) {
         throw new Error('Not authenticated with Privy');
       }
 
-      if (!hasConnectedWallet || !walletAddress) {
+      if (!hasConnectedWallet || !typedWalletAddress) {
         throw new Error('Wallet not connected. Please connect your wallet to make purchases.');
       }
 
@@ -602,7 +616,7 @@ export function useBondingCurveContracts() {
           args: [SHARES_SUBJECT_ADDRESS, ROOM_NUMBER, shareCount],
           value: safeFinalCost,
           chain: baseMainnet,
-          account: walletAddress as `0x${string}`,
+          account: typedWalletAddress,
         });
 
         // Refresh data after successful purchase
@@ -619,9 +633,9 @@ export function useBondingCurveContracts() {
     },
     [
       ready,
-      authenticated,
+      isAuthenticated,
       hasConnectedWallet,
-      walletAddress,
+      typedWalletAddress,
       primaryWallet,
       writeContractAsync,
       refetchRoomTokenSupply,

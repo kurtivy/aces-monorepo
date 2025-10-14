@@ -1,7 +1,7 @@
 'use client';
 
 import { useBalance, useReadContract } from 'wagmi';
-import { usePrivy } from '@privy-io/react-auth';
+import { useAuth } from '@/lib/auth/auth-context';
 import { formatUnits } from 'viem';
 import { ERC20_ABI } from '@aces/utils';
 
@@ -40,8 +40,8 @@ export interface AcesTokenData {
 }
 
 export function useAcesTokenBalance() {
-  const { user, authenticated, ready } = usePrivy();
-  const walletAddress = user?.wallet?.address as `0x${string}` | undefined;
+  const { walletAddress, isAuthenticated, isLoading: authLoading } = useAuth();
+  const connectedWalletAddress = walletAddress ? (walletAddress as `0x${string}`) : undefined;
 
   // Get ACES token balance
   const {
@@ -50,10 +50,10 @@ export function useAcesTokenBalance() {
     error: balanceError,
     refetch: refetchBalance,
   } = useBalance({
-    address: walletAddress,
+    address: connectedWalletAddress,
     token: ACES_TOKEN_ADDRESS,
     query: {
-      enabled: ready && authenticated && !!walletAddress,
+      enabled: isAuthenticated && !!connectedWalletAddress && !authLoading,
       refetchInterval: 30000, // Refetch every 30 seconds
       staleTime: 10000, // Consider data stale after 10 seconds
     },
@@ -138,7 +138,7 @@ export function useAcesTokenBalance() {
     error,
     refetchBalance,
     // Wallet connection status
-    isWalletConnected: ready && authenticated && !!walletAddress,
-    walletAddress,
+    isWalletConnected: isAuthenticated && !!connectedWalletAddress,
+    walletAddress: connectedWalletAddress,
   };
 }

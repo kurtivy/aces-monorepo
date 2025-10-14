@@ -2,6 +2,12 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { ethers } from 'ethers';
 import { getContractAddresses } from '@/lib/contracts/addresses';
 import { ACES_FACTORY_ABI, ERC20_ABI, LAUNCHPAD_TOKEN_ABI } from '@/lib/contracts/abi';
+import {
+  getActiveWalletProvider,
+  getCurrentChainId as getChainId,
+  getWalletInitDelay,
+  getActiveWalletName,
+} from '@/lib/utils/wallet-provider-utils';
 
 /**
  * Hook for managing Web3 provider, signer, and contract instances
@@ -28,20 +34,10 @@ export function useSwapContracts(
 
   /**
    * Get the current chain ID from the wallet
-   * @returns Chain ID or null if unavailable
+   * Uses centralized wallet provider utilities
    */
   const getCurrentChainId = useCallback(async (): Promise<number | null> => {
-    if (typeof window === 'undefined' || !window.ethereum) {
-      return null;
-    }
-
-    try {
-      const chainIdHex = (await window.ethereum.request({ method: 'eth_chainId' })) as string;
-      return Number.parseInt(chainIdHex, 16);
-    } catch (error) {
-      console.error('[useSwapContracts] Failed to get chain ID:', error);
-      return null;
-    }
+    return await getChainId();
   }, []);
 
   /**
@@ -68,16 +64,21 @@ export function useSwapContracts(
       initializingRef.current = true;
       setInitializationError(null);
 
-      console.log('[useSwapContracts] Starting initialization...');
+      const walletName = getActiveWalletName();
+      console.log('[useSwapContracts] Starting initialization with wallet:', walletName);
 
-      // Wait for Privy to inject the provider
-      let ethProvider = window.ethereum || (window as any).ethereum;
+      // Get the correct provider - handle multiple wallet providers
+      const ethProvider = getActiveWalletProvider();
 
       if (!ethProvider) {
-        console.log('[useSwapContracts] Provider not available, will retry...');
+        console.warn('[useSwapContracts] ⚠️ Wallet provider not available yet');
+        console.log('[useSwapContracts] window.ethereum:', typeof window.ethereum);
+        console.log('[useSwapContracts] Wallet address from auth:', walletAddress);
         initializingRef.current = false;
         return false;
       }
+
+      console.log('[useSwapContracts] ✅ Wallet provider found:', walletName);
 
       // Get current chain ID
       const chainId = await getCurrentChainId();
@@ -96,8 +97,10 @@ export function useSwapContracts(
       }
 
       // Initialize provider and signer
-      const newProvider = new ethers.providers.Web3Provider(ethProvider);
-      const newSigner = newProvider.getSigner(walletAddress);
+      const newProvider = new ethers.providers.Web3Provider(ethProvider, 'any');
+      // Don't specify address - let the wallet provider determine the signer
+      // This is important for Phantom and other wallets
+      const newSigner = newProvider.getSigner();
 
       // Verify signer address matches wallet address (prevents stale state)
       const signerAddress = await newSigner.getAddress();
@@ -180,16 +183,32 @@ export function useSwapContracts(
   }, [signer, tokenAddress]);
 
   /**
-   * Auto-initialize when wallet connects
+   * Auto-initialize when wallet connects (with retry logic)
    */
   useEffect(() => {
     if (isAuthenticated && walletAddress && !provider && !initializingRef.current) {
       console.log('[useSwapContracts] Auto-initializing from auth state...');
 
-      // Add small delay to ensure Privy provider is ready
-      const timeoutId = setTimeout(() => {
-        initializeProvider();
-      }, 500);
+      let retryCount = 0;
+      const maxRetries = 3;
+      const delay = getWalletInitDelay();
+
+      const attemptInitialization = async () => {
+        const success = await initializeProvider();
+
+        if (!success && retryCount < maxRetries) {
+          retryCount++;
+          console.log(
+            `[useSwapContracts] Initialization attempt ${retryCount} failed, retrying...`,
+          );
+          setTimeout(attemptInitialization, delay * (retryCount + 1)); // Increase delay with each retry
+        } else if (!success) {
+          console.error('[useSwapContracts] Failed to initialize after', maxRetries, 'attempts');
+        }
+      };
+
+      // Start first attempt after initial delay
+      const timeoutId = setTimeout(attemptInitialization, delay);
 
       return () => clearTimeout(timeoutId);
     } else if (!isAuthenticated || !walletAddress) {
@@ -208,26 +227,61 @@ export function useSwapContracts(
       return;
     }
 
-    const handleChainChanged = async () => {
-      console.log('[useSwapContracts] ⛓️ Chain changed, reinitializing...');
-      const newChainId = await getCurrentChainId();
+    const handleChainChanged = async (chainIdHex: string) => {
+      console.log('[useSwapContracts] ⛓️ Chain changed:', chainIdHex);
+      const newChainId = Number.parseInt(chainIdHex, 16);
 
       if (newChainId && newChainId !== currentChainId) {
+        console.log('[useSwapContracts] Switching from chain', currentChainId, 'to', newChainId);
         setCurrentChainId(newChainId);
-        // Force reinitialization
+        // Force reinitialization with a delay to let the provider settle
         cleanup();
+        const delay = getWalletInitDelay();
         setTimeout(() => {
           initializeProvider();
-        }, 100);
+        }, delay);
       }
     };
 
-    window.ethereum.on('chainChanged', handleChainChanged);
+    const handleAccountsChanged = (accounts: string[]) => {
+      console.log('[useSwapContracts] 👤 Accounts changed:', accounts);
+      if (accounts.length === 0) {
+        // User disconnected their wallet
+        cleanup();
+      } else if (walletAddress && accounts[0]?.toLowerCase() !== walletAddress.toLowerCase()) {
+        // Account switched - reinitialize
+        console.log('[useSwapContracts] Account switched, reinitializing...');
+        cleanup();
+        const delay = getWalletInitDelay();
+        setTimeout(() => {
+          initializeProvider();
+        }, delay);
+      }
+    };
+
+    // Get the correct provider for event listeners
+    const providerToUse = getActiveWalletProvider();
+
+    if (!providerToUse) {
+      console.warn('[useSwapContracts] No active wallet provider found for event listeners');
+      return;
+    }
+
+    // Listen to events on the correct provider
+    providerToUse.on('chainChanged', (...args: unknown[]) => handleChainChanged(args[0] as string));
+    providerToUse.on('accountsChanged', (...args: unknown[]) =>
+      handleAccountsChanged(args[0] as string[]),
+    );
 
     return () => {
-      window.ethereum?.removeListener('chainChanged', handleChainChanged);
+      providerToUse?.removeListener?.('chainChanged', (...args: unknown[]) =>
+        handleChainChanged(args[0] as string),
+      );
+      providerToUse?.removeListener?.('accountsChanged', (...args: unknown[]) =>
+        handleAccountsChanged(args[0] as string[]),
+      );
     };
-  }, [currentChainId, getCurrentChainId, cleanup, initializeProvider]);
+  }, [currentChainId, walletAddress, getCurrentChainId, cleanup, initializeProvider]);
 
   /**
    * Update chain ID on mount

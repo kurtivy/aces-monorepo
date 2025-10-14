@@ -808,7 +808,8 @@ export function useAcesFactoryContract(
         const amountWei = ethers.utils.parseEther(amount);
         const maxPriceWei = ethers.utils.parseEther(maxPrice);
 
-        const tx = await factoryContract.buyTokens(tokenAddress, amountWei, maxPriceWei);
+        const buyer = await factoryContract.signer.getAddress();
+        const tx = await factoryContract.buyTokens(buyer, tokenAddress, amountWei, maxPriceWei);
         await tx.wait();
 
         return { success: true };

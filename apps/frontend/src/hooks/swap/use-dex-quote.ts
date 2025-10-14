@@ -10,6 +10,7 @@ interface UseDexQuoteProps {
   activeTab: 'buy' | 'sell';
   isDexMode: boolean;
   enabled?: boolean;
+  slippageBps?: number; // override from UI
 }
 
 /**
@@ -24,6 +25,7 @@ export function useDexQuote({
   activeTab,
   isDexMode,
   enabled = true,
+  slippageBps: slippageBpsOverride,
 }: UseDexQuoteProps) {
   // Quote state
   const [quote, setQuote] = useState<DexQuoteResponse | null>(null);
@@ -32,6 +34,18 @@ export function useDexQuote({
 
   // Slippage configuration
   const [slippageBps, setSlippageBps] = useState<number>(DEFAULT_SLIPPAGE_BPS);
+
+  // Sync external override from UI when provided
+  useEffect(() => {
+    if (
+      typeof slippageBpsOverride === 'number' &&
+      slippageBpsOverride >= 0 &&
+      slippageBpsOverride <= 10000 &&
+      slippageBpsOverride !== slippageBps
+    ) {
+      setSlippageBps(slippageBpsOverride);
+    }
+  }, [slippageBpsOverride, slippageBps]);
 
   // Track if request is cancelled
   const cancelledRef = useRef<boolean>(false);
@@ -108,7 +122,9 @@ export function useDexQuote({
       } else {
         setQuote(null);
         const errorMessage =
-          result.error instanceof Error ? result.error.message : 'Failed to fetch quote';
+          typeof (result as any).error === 'string'
+            ? (result as any).error
+            : (result as any).error?.message || 'Failed to fetch quote';
         setError(errorMessage);
         console.error('[useDexQuote] ❌ Quote fetch failed:', errorMessage);
       }

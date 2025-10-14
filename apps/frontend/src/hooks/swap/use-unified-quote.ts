@@ -126,10 +126,7 @@ export function useUnifiedQuote({
 
     // WETH/USDC/USDT → RWA: Multi-hop via AcesSwap contract
     // (WETH/USDC/USDT → WETH → ACES via DEX, then ACES → RWA via bonding)
-    if (
-      ['WETH', 'USDC', 'USDT'].includes(normalizedSellToken as string) &&
-      isBuyRwa
-    ) {
+    if (['WETH', 'USDC', 'USDT'].includes(normalizedSellToken as string) && isBuyRwa) {
       return 'bonding-multihop';
     }
 
@@ -160,7 +157,7 @@ export function useUnifiedQuote({
   const dexQuote = useDexQuote({
     tokenAddress,
     amount,
-    paymentAsset: (normalizedSellToken as PaymentAsset),
+    paymentAsset: normalizedSellToken as PaymentAsset,
     activeTab:
       normalizedSellToken === 'ACES' ||
       ['WETH', 'USDC', 'USDT'].includes(normalizedSellToken as string)
@@ -168,6 +165,7 @@ export function useUnifiedQuote({
         : 'sell',
     isDexMode,
     enabled: quoteStrategy === 'dex' && enabled,
+    slippageBps,
   });
 
   /**
@@ -239,8 +237,7 @@ export function useUnifiedQuote({
     isDexMode: false,
     activeTab: 'buy',
     inputAsset: 'ACES',
-    paymentAsset:
-      sellToken === 'TOKEN' ? 'ACES' : (sellToken as PaymentAsset | undefined),
+    paymentAsset: sellToken === 'TOKEN' ? 'ACES' : (sellToken as PaymentAsset | undefined),
     slippageBps,
     autoRefreshEnabled: false,
   });
@@ -249,6 +246,17 @@ export function useUnifiedQuote({
    * Combine results based on strategy
    */
   const result: UnifiedQuoteResult = useMemo(() => {
+    console.log('[useUnifiedQuote] Building result:', {
+      quoteStrategy,
+      isDexMode,
+      dexQuoteData: dexQuote.quote,
+      dexQuoteLoading: dexQuote.loading,
+      dexQuoteError: dexQuote.error,
+      sellToken,
+      buyToken,
+      amount,
+    });
+
     const baseResult: UnifiedQuoteResult = {
       outputAmount: '0',
       outputUsdValue: null,
@@ -294,6 +302,7 @@ export function useUnifiedQuote({
       case 'dex':
         return {
           ...baseResult,
+          quote: dexQuote.quote, // Pass the full quote object for swap execution
           outputAmount: dexQuote.quote?.expectedOutput || '0',
           outputUsdValue: null, // TODO: Add USD value calculation from DEX quote
           inputUsdValue: null,

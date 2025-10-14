@@ -31,18 +31,25 @@ export function useSwapMode({
 
   /**
    * Normalize bonding percentage to ensure valid range
+   * If token is on DEX, it's 100% bonded (even if on-chain data is stale)
    */
   const normalizedBondingPercentage = useMemo(() => {
+    // Graduated tokens are always 100% bonded
+    if (dexMeta?.isDexLive === true) {
+      return 100;
+    }
     const percentage = Number.isFinite(readOnlyBondingPercentage) ? readOnlyBondingPercentage : 0;
     return Math.min(100, Math.max(0, percentage));
-  }, [readOnlyBondingPercentage]);
+  }, [readOnlyBondingPercentage, dexMeta]);
 
   /**
    * Determine if token is fully bonded
+   * Check both on-chain bonding curve data AND database dex metadata
+   * (Graduated tokens won't have bonding curve data, but will have dexMeta.isDexLive)
    */
   const tokenBonded = useMemo(() => {
-    return readOnlyIsBonded || normalizedBondingPercentage >= 100;
-  }, [readOnlyIsBonded, normalizedBondingPercentage]);
+    return readOnlyIsBonded || normalizedBondingPercentage >= 100 || dexMeta?.isDexLive === true;
+  }, [readOnlyIsBonded, normalizedBondingPercentage, dexMeta]);
 
   /**
    * Determine if we should use DEX mode
@@ -54,12 +61,10 @@ export function useSwapMode({
    * 5. Router address must be available
    */
   const isDexMode = useMemo(() => {
-    const hasRequiredData = Boolean(
-      tokenBonded && dexMeta?.isDexLive && dexMeta.poolAddress && tokenAddress && routerAddress,
-    );
-
-    return hasRequiredData;
-  }, [tokenBonded, dexMeta, tokenAddress, routerAddress]);
+    // Relax requirement: if token is bonded and we have router + token address, allow DEX mode.
+    // Backend will validate availability and return errors/quotes accordingly.
+    return Boolean(tokenBonded && tokenAddress && routerAddress);
+  }, [tokenBonded, tokenAddress, routerAddress]);
 
   /**
    * Get swap mode enum
@@ -72,16 +77,9 @@ export function useSwapMode({
    * DEX mode: available if pool is live
    */
   const canSwap = useMemo(() => {
-    if (bondingLoading) {
-      return false;
-    }
-
-    if (isDexMode) {
-      return Boolean(dexMeta?.isDexLive && dexMeta.poolAddress);
-    }
-
-    return true; // Bonding curve is always available when not bonded
-  }, [isDexMode, bondingLoading, dexMeta]);
+    if (bondingLoading) return false;
+    return true;
+  }, [bondingLoading]);
 
   /**
    * Get supported payment assets based on mode
