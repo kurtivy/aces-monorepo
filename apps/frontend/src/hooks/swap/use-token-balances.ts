@@ -103,10 +103,10 @@ export function useTokenBalances({
           }
 
           case 'ETH': {
-            const ethAddress = dexAddresses.WETH;
-            if (!ethAddress || ethAddress === '0') return;
-            const contract = new ethers.Contract(ethAddress, ERC20_ABI, signer);
-            const balance = await contract.balanceOf(address);
+            // Fetch native ETH balance, not WETH
+            const provider = signer.provider;
+            if (!provider) return;
+            const balance = await provider.getBalance(address);
             const formatted = ethers.utils.formatEther(balance);
             setStableBalances((prev) => ({ ...prev, ETH: formatted }));
             break;
@@ -190,9 +190,11 @@ export function useTokenBalances({
         const baseTokenConfigs = [
           { symbol: 'USDC', address: dexAddresses.USDC, decimals: 6 },
           { symbol: 'USDT', address: dexAddresses.USDT, decimals: 6 },
-          { symbol: 'ETH', address: dexAddresses.WETH, decimals: 18 },
         ].filter((config) => config.address && config.address !== '0');
 
+        const newBalances = { ...stableBalances };
+
+        // Fetch ERC20 token balances (USDC, USDT)
         if (baseTokenConfigs.length > 0) {
           const erc20Instances = baseTokenConfigs.map(
             (config) => new ethers.Contract(config.address, ERC20_ABI, signer),
@@ -202,20 +204,23 @@ export function useTokenBalances({
             erc20Instances.map((contract) => contract.balanceOf(address)),
           );
 
-          const formatted = baseTokenConfigs.reduce(
-            (acc, config, index) => {
-              const balanceValue = balances[index];
-              acc[config.symbol as 'USDC' | 'USDT' | 'ETH'] = ethers.utils.formatUnits(
-                balanceValue,
-                config.decimals,
-              );
-              return acc;
-            },
-            { USDC: stableBalances.USDC, USDT: stableBalances.USDT, ETH: stableBalances.ETH },
-          );
-
-          setStableBalances(formatted);
+          baseTokenConfigs.forEach((config, index) => {
+            const balanceValue = balances[index];
+            newBalances[config.symbol as 'USDC' | 'USDT'] = ethers.utils.formatUnits(
+              balanceValue,
+              config.decimals,
+            );
+          });
         }
+
+        // Fetch native ETH balance separately
+        const provider = signer.provider;
+        if (provider) {
+          const ethBalance = await provider.getBalance(address);
+          newBalances.ETH = ethers.utils.formatEther(ethBalance);
+        }
+
+        setStableBalances(newBalances);
       } catch (error) {
         console.error('[useTokenBalances] Failed to refresh stable balances:', error);
         if (!isCircuitBreakerError(error)) {

@@ -96,6 +96,33 @@ export default function TokenSwapInterface({
     [contractAddresses],
   );
 
+  // Helper function to get token address for a given asset
+  const getTokenAddressForAsset = useCallback(
+    (asset: string): string | null => {
+      const normalized = asset?.toUpperCase();
+      switch (normalized) {
+        case 'ACES':
+          return contractAddresses?.ACES_TOKEN || null;
+        case 'USDC':
+          return '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'; // Base USDC
+        case 'USDT':
+          return '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2'; // Base USDT
+        case 'ETH':
+        case 'WETH':
+          return null; // No approval needed for ETH
+        default:
+          return null;
+      }
+    },
+    [contractAddresses],
+  );
+
+  // Helper function to check if asset is an ERC20 token (needs approval)
+  const isERC20Token = useCallback((asset: string): boolean => {
+    const normalized = asset?.toUpperCase();
+    return ['ACES', 'USDC', 'USDT'].includes(normalized);
+  }, []);
+
   // Determine swap mode
   const swapMode = useSwapMode({
     tokenAddress,
@@ -198,29 +225,23 @@ export default function TokenSwapInterface({
   }, [slippagePopoverOpen]);
 
   const sellOptions = useMemo(() => {
-    const orderedValues: Array<{ value: string; label: string }> = [
-      { value: 'ETH', label: 'ETH' },
-      { value: 'USDT', label: 'USDT' },
-      { value: 'USDC', label: 'USDC' },
-      { value: 'ACES', label: 'ACES' },
-    ];
-
-    const uniqueOptions = orderedValues.reduce<Array<{ value: string; label: string }>>(
-      (acc, option) => {
-        if (!acc.some((existing) => existing.value === option.value)) {
-          acc.push(option);
-        }
-        return acc;
-      },
-      [],
-    );
-
-    if (tokenSymbol && !uniqueOptions.some((opt) => opt.value === tokenSymbol)) {
-      uniqueOptions.push({ value: tokenSymbol, label: tokenSymbol });
+    // When buying RWA in DEX mode, allow all payment options
+    if (activeTab === 'buy' && isDexMode) {
+      return [
+        { value: 'ETH', label: 'ETH' },
+        { value: 'USDC', label: 'USDC' },
+        { value: 'USDT', label: 'USDT' },
+        { value: 'ACES', label: 'ACES' },
+      ];
     }
 
-    return uniqueOptions;
-  }, [tokenSymbol]);
+    // When selling RWA, only allow selling for ACES
+    // When buying ACES (selling RWA), only show RWA token and ACES
+    return [
+      { value: 'ACES', label: 'ACES' },
+      { value: tokenSymbol, label: tokenSymbol },
+    ];
+  }, [activeTab, isDexMode, tokenSymbol]);
 
   // Helper function to get token image
   const getTokenImage = useCallback(
@@ -262,30 +283,6 @@ export default function TokenSwapInterface({
 
   const selectedSellAsset = activeTab === 'sell' ? tokenSymbol : paymentAsset;
   const selectedBuyAsset = activeTab === 'sell' ? 'ACES' : tokenSymbol;
-
-  // Check ACES allowance for DEX router (only needed when selling ACES in DEX mode)
-  const acesAllowance = useTokenAllowance({
-    tokenAddress: contractAddresses?.ACES_TOKEN || null,
-    ownerAddress: walletAddress,
-    spenderAddress: routerAddress || null,
-    signer,
-    enabled: isDexMode && selectedSellAsset === 'ACES',
-  });
-
-  // Debug logging for allowance state
-  useEffect(() => {
-    if (isDexMode && selectedSellAsset === 'ACES' && amount && amount !== '0') {
-      const needsApproval = !acesAllowance.hasAllowance(amount, 18);
-      console.log('[SwapBox] Allowance Check:', {
-        selectedSellAsset,
-        amount,
-        allowance: acesAllowance.allowance.toString(),
-        needsApproval,
-        allowanceLoading: acesAllowance.loading,
-        allowanceError: acesAllowance.error,
-      });
-    }
-  }, [isDexMode, selectedSellAsset, amount, acesAllowance]);
 
   const handleSellAssetChange = useCallback(
     (value: string) => {
@@ -382,6 +379,32 @@ export default function TokenSwapInterface({
     return true;
   }, [amount]);
 
+  // Check token allowance for DEX router (needed for any ERC20 token)
+  const tokenAllowance = useTokenAllowance({
+    tokenAddress: getTokenAddressForAsset(selectedSellAsset),
+    ownerAddress: walletAddress,
+    spenderAddress: routerAddress || null,
+    signer,
+    enabled: isDexMode && isERC20Token(selectedSellAsset) && hasValidAmount,
+  });
+
+  // Debug logging for allowance state
+  useEffect(() => {
+    if (isDexMode && isERC20Token(selectedSellAsset) && amount && amount !== '0') {
+      const assetInfo = getAssetBalanceInfo(selectedSellAsset);
+      const needsApproval = !tokenAllowance.hasAllowance(amount, assetInfo.decimals);
+      console.log('[SwapBox] Allowance Check:', {
+        selectedSellAsset,
+        amount,
+        decimals: assetInfo.decimals,
+        allowance: tokenAllowance.allowance.toString(),
+        needsApproval,
+        allowanceLoading: tokenAllowance.loading,
+        allowanceError: tokenAllowance.error,
+      });
+    }
+  }, [isDexMode, selectedSellAsset, amount, tokenAllowance, isERC20Token, getAssetBalanceInfo]);
+
   // ========================================
   // UNIFIED LOGIC (Map UI state to sellToken/buyToken)
   // ========================================
@@ -415,7 +438,7 @@ export default function TokenSwapInterface({
     amount,
     isDexMode,
     slippageBps,
-    enabled: isInitialized && !!tokenAddress,
+    enabled: !!tokenAddress && isDexMode,
   });
 
   // ========================================
@@ -463,12 +486,13 @@ export default function TokenSwapInterface({
 
   // Debug logging for swap button state
   useEffect(() => {
+    const assetInfo = getAssetBalanceInfo(selectedSellAsset);
     const needsApproval =
       isDexMode &&
-      selectedSellAsset === 'ACES' &&
-      !acesAllowance.hasAllowance(amount, 18) &&
+      isERC20Token(selectedSellAsset) &&
+      !tokenAllowance.hasAllowance(amount, assetInfo.decimals) &&
       hasValidAmount;
-    console.log('[SwapBox] Swap Button State:', {
+    console.log('[SwapBox] 🔍 Swap Button State:', {
       hasValidAmount,
       loading,
       canSwap,
@@ -482,9 +506,18 @@ export default function TokenSwapInterface({
       buyToken,
       isDexMode,
       selectedSellAsset,
+      isERC20: isERC20Token(selectedSellAsset),
+      decimals: assetInfo.decimals,
       needsApproval,
       willShowApprovalButton: needsApproval,
       willShowSwapButton: !needsApproval,
+      buttonDisabled: !hasValidAmount || !!loading || !canSwap || !isSwapSupported,
+      disabledReasons: {
+        noValidAmount: !hasValidAmount,
+        isLoading: !!loading,
+        cantSwap: !canSwap,
+        swapNotSupported: !isSwapSupported,
+      },
     });
   }, [
     hasValidAmount,
@@ -497,7 +530,9 @@ export default function TokenSwapInterface({
     buyToken,
     isDexMode,
     selectedSellAsset,
-    acesAllowance,
+    tokenAllowance,
+    isERC20Token,
+    getAssetBalanceInfo,
   ]);
 
   // ========================================
@@ -653,11 +688,18 @@ export default function TokenSwapInterface({
   ]);
 
   // ========================================
-  // APPROVAL HANDLER (for DEX mode)
+  // APPROVAL HANDLER (for DEX mode - any ERC20 token)
   // ========================================
-  const handleApproveAces = useCallback(async () => {
-    if (!signer || !routerAddress || !contractAddresses?.ACES_TOKEN) {
-      console.error('[SwapBox] Missing required data for approval');
+  const handleApproveToken = useCallback(async () => {
+    const tokenAddress = getTokenAddressForAsset(selectedSellAsset);
+
+    if (!signer || !routerAddress || !tokenAddress) {
+      console.error('[SwapBox] Missing required data for approval', {
+        hasSigner: !!signer,
+        hasRouter: !!routerAddress,
+        tokenAddress,
+        selectedSellAsset,
+      });
       return;
     }
 
@@ -666,28 +708,24 @@ export default function TokenSwapInterface({
 
       const { ethers } = await import('ethers');
       const ERC20_ABI = ['function approve(address spender, uint256 amount) returns (bool)'];
-      const acesTokenContract = new ethers.Contract(
-        contractAddresses.ACES_TOKEN,
-        ERC20_ABI,
-        signer,
-      );
+      const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
 
       const UNLIMITED_APPROVAL = ethers.constants.MaxUint256;
 
-      console.log('[SwapBox] Requesting unlimited ACES approval...');
-      const tx = await acesTokenContract.approve(routerAddress, UNLIMITED_APPROVAL);
+      console.log(`[SwapBox] Requesting unlimited ${selectedSellAsset} approval...`);
+      const tx = await tokenContract.approve(routerAddress, UNLIMITED_APPROVAL);
 
       setLoading('Confirming approval...');
       await tx.wait();
 
-      console.log('[SwapBox] ✅ Approval confirmed');
+      console.log(`[SwapBox] ✅ ${selectedSellAsset} approval confirmed`);
 
       // Refresh allowance
-      await acesAllowance.refetch();
+      await tokenAllowance.refetch();
 
       setTransactionStatus({
         type: 'success',
-        message: 'ACES spending approved!',
+        message: `${selectedSellAsset} spending approved!`,
       });
     } catch (error) {
       console.error('[SwapBox] Approval failed:', error);
@@ -698,7 +736,7 @@ export default function TokenSwapInterface({
     } finally {
       setLoading('');
     }
-  }, [signer, routerAddress, contractAddresses, acesAllowance]);
+  }, [signer, routerAddress, selectedSellAsset, getTokenAddressForAsset, tokenAllowance]);
 
   // Auto-dismiss transaction status
   useMemo(() => {
@@ -1155,6 +1193,12 @@ export default function TokenSwapInterface({
                           '≈ $0.00 USD'
                         )}
                       </div>
+                      {/* Optional: show DEX quote error inline for clarity */}
+                      {isDexMode && quote.strategy === 'dex' && quote.error && hasValidAmount && (
+                        <div className="mt-1 text-[11px] text-red-400/80 text-right max-w-full truncate">
+                          {quote.error}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1182,41 +1226,49 @@ export default function TokenSwapInterface({
                       : 'Initializing Wallet...'}
                   </span>
                 </Button>
-              ) : isDexMode &&
-                selectedSellAsset === 'ACES' &&
-                !acesAllowance.hasAllowance(amount, 18) &&
-                hasValidAmount ? (
-                <Button
-                  onClick={handleApproveAces}
-                  disabled={!!loading}
-                  className="w-full h-18 rounded-2xl border border-[#D0B284]/60 bg-black text-[#D0B284] font-spray-letters font-bold text-5xl tracking-widest uppercase transition-colors hover:bg-[#151d14] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {loading ? (
-                    <span className="flex items-center justify-center">
-                      <Loader2 className="h-6 w-6 animate-spin" />
-                    </span>
-                  ) : (
-                    <span className="bg-gradient-to-r from-[#d4af37] via-[#f4e5a6] to-[#d4af37] bg-clip-text text-transparent font-spray-letters">
-                      APPROVE ACES
-                    </span>
-                  )}
-                </Button>
               ) : (
-                <Button
-                  onClick={handleSwapClick}
-                  disabled={!hasValidAmount || !!loading || !canSwap || !isSwapSupported}
-                  className="w-full h-18 rounded-2xl border border-[#D0B284]/60 bg-black text-[#D0B284] font-spray-letters font-bold text-5xl tracking-widest uppercase transition-colors hover:bg-[#D] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {loading ? (
-                    <span className="flex items-center justify-center">
-                      <Loader2 className="h-6 w-6 animate-spin" />
-                    </span>
+                (() => {
+                  const assetInfo = getAssetBalanceInfo(selectedSellAsset);
+                  const needsApproval =
+                    isDexMode &&
+                    isERC20Token(selectedSellAsset) &&
+                    !tokenAllowance.hasAllowance(amount, assetInfo.decimals) &&
+                    hasValidAmount;
+
+                  return needsApproval ? (
+                    <Button
+                      onClick={handleApproveToken}
+                      disabled={!!loading}
+                      className="w-full h-18 rounded-2xl border border-[#D0B284]/60 bg-black text-[#D0B284] font-spray-letters font-bold text-5xl tracking-widest uppercase transition-colors hover:bg-[#151d14] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {loading ? (
+                        <span className="flex items-center justify-center">
+                          <Loader2 className="h-6 w-6 animate-spin" />
+                        </span>
+                      ) : (
+                        <span className="bg-gradient-to-r from-[#d4af37] via-[#f4e5a6] to-[#d4af37] bg-clip-text text-transparent font-spray-letters">
+                          APPROVE {selectedSellAsset?.toUpperCase()}
+                        </span>
+                      )}
+                    </Button>
                   ) : (
-                    <span className="bg-gradient-to-r from-[#d4af37] via-[#f4e5a6] to-[#d4af37] bg-clip-text text-transparent font-spray-letters">
-                      SWAP
-                    </span>
-                  )}
-                </Button>
+                    <Button
+                      onClick={handleSwapClick}
+                      disabled={!hasValidAmount || !!loading || !canSwap || !isSwapSupported}
+                      className="w-full h-18 rounded-2xl border border-[#D0B284]/60 bg-black text-[#D0B284] font-spray-letters font-bold text-5xl tracking-widest uppercase transition-colors hover:bg-[#D] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {loading ? (
+                        <span className="flex items-center justify-center">
+                          <Loader2 className="h-6 w-6 animate-spin" />
+                        </span>
+                      ) : (
+                        <span className="bg-gradient-to-r from-[#d4af37] via-[#f4e5a6] to-[#d4af37] bg-clip-text text-transparent font-spray-letters">
+                          SWAP
+                        </span>
+                      )}
+                    </Button>
+                  );
+                })()
               )}
             </div>
           </div>

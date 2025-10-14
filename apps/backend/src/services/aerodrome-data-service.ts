@@ -309,7 +309,15 @@ export class AerodromeDataService {
     decimalsOut: number;
     stable: boolean;
   } | null> {
+    console.log(`[getPairReserves] Called with:`, {
+      tokenIn: tokenIn.slice(0, 10) + '...',
+      tokenOut: tokenOut.slice(0, 10) + '...',
+      knownPoolAddress: knownPoolAddress ? knownPoolAddress.slice(0, 10) + '...' : 'none',
+    });
+
     const state = await this.getGenericPoolState(tokenIn, tokenOut, knownPoolAddress);
+    console.log(`[getPairReserves] getGenericPoolState returned: ${state ? 'STATE' : 'NULL'}`);
+
     if (!state) {
       return null;
     }
@@ -376,21 +384,29 @@ export class AerodromeDataService {
 
     const normalizedA = tokenA.toLowerCase();
     const normalizedB = tokenB.toLowerCase();
+    console.log(
+      `🔍 [AerodromeService] Resolving pair: ${normalizedA.slice(0, 8)}... / ${normalizedB.slice(0, 8)}...`,
+    );
+
     const factory = new ethers.Contract(this.factoryAddress, FACTORY_ABI, this.provider);
 
     const attempts = this.defaultStable ? [true, false] : [false, true];
 
     for (const stable of attempts) {
       try {
+        console.log(`  Trying ${stable ? 'stable' : 'volatile'} pool...`);
         const pairAddress = await factory.getPair(normalizedA, normalizedB, stable);
+        console.log(`  Result: ${pairAddress}`);
         if (pairAddress && pairAddress !== ethers.ZeroAddress) {
+          console.log(`  ✅ Found ${stable ? 'stable' : 'volatile'} pool at ${pairAddress}`);
           return { address: (pairAddress as string).toLowerCase(), stable };
         }
       } catch (error) {
-        console.error('❌ Failed to resolve pair address:', error);
+        console.error(`  ❌ Failed to query ${stable ? 'stable' : 'volatile'} pool:`, error);
       }
     }
 
+    console.log(`  ❌ No pool found for this pair`);
     return null;
   }
 

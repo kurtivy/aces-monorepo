@@ -90,7 +90,7 @@ export function useDexQuote({
       setLoading(true);
       setError(null);
 
-      console.log('[useDexQuote] Fetching quote...', {
+      console.log('[useDexQuote] 🔄 Fetching quote...', {
         tokenAddress,
         amount,
         paymentAsset,
@@ -103,11 +103,20 @@ export function useDexQuote({
       // On Buy tab: buying the token with ACES/USDC/USDT/wETH
       const inputAsset = activeTab === 'sell' ? 'TOKEN' : paymentAsset;
 
+      console.log('[useDexQuote] 📤 Calling DexApi.getQuote with:', {
+        tokenAddress,
+        inputAsset,
+        amount,
+        slippageBps,
+      });
+
       const result = await DexApi.getQuote(tokenAddress!, {
         inputAsset,
         amount,
         slippageBps,
       });
+
+      console.log('[useDexQuote] 📥 API Response:', result);
 
       // Check if request was cancelled
       if (cancelledRef.current) {
@@ -118,7 +127,13 @@ export function useDexQuote({
       if (result.success && result.data) {
         setQuote(result.data);
         setError(null);
-        console.log('[useDexQuote] ✅ Quote fetched successfully:', result.data);
+        console.log('[useDexQuote] ✅ Quote fetched successfully:', {
+          inputAsset,
+          expectedOutput: result.data.expectedOutput,
+          path: result.data.path,
+          routes: result.data.routes,
+          fullData: result.data,
+        });
       } else {
         setQuote(null);
         const errorMessage =
@@ -126,7 +141,10 @@ export function useDexQuote({
             ? (result as any).error
             : (result as any).error?.message || 'Failed to fetch quote';
         setError(errorMessage);
-        console.error('[useDexQuote] ❌ Quote fetch failed:', errorMessage);
+        console.error('[useDexQuote] ❌ Quote fetch failed:', {
+          errorMessage,
+          fullError: result,
+        });
       }
     } catch (error) {
       if (cancelledRef.current) {

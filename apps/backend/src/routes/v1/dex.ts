@@ -98,7 +98,7 @@ export async function dexRoutes(fastify: FastifyInstance) {
     USDC: {
       symbol: 'USDC',
       address: (
-        process.env.USDC_ADDRESS || '0x833589fCD6eDb6E08f4c7C0b43d5Ee1fCD46a7B3'
+        process.env.USDC_ADDRESS || '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
       ).toLowerCase(),
       decimals: Number(process.env.AERODROME_USDC_DECIMALS || 6),
     },
@@ -300,9 +300,12 @@ export async function dexRoutes(fastify: FastifyInstance) {
               normalizedToken,
               assetMetadata.ETH.address,
             );
+            const envAcesWeth = process.env.AERODROME_ACES_WETH_POOL || '';
+            const knownAcesWethPool = envAcesWeth ? envAcesWeth.toLowerCase() : undefined;
             const wethToAces = await service.getPairReserves(
               assetMetadata.ETH.address,
               assetMetadata.ACES.address,
+              knownAcesWethPool,
             );
 
             if (!tokenToWeth || !wethToAces) {
@@ -430,39 +433,81 @@ export async function dexRoutes(fastify: FastifyInstance) {
             });
           } else {
             // Fallback: WETH -> ACES -> TOKEN if ACES/TOKEN exists
-            const ethToAces = await service.getPairReserves(
+            // Note: Aerodrome pool is ACES/WETH (in that order), but we query WETH->ACES for the swap direction
+            console.log('🔄 Attempting WETH -> ACES -> TOKEN routing...');
+            console.log(`  WETH address: ${assetMetadata.ETH.address}`);
+            console.log(`  ACES address: ${assetMetadata.ACES.address}`);
+            console.log(`  TOKEN address: ${normalizedToken}`);
+            console.log(`  Known pool address: ${knownPoolAddress || 'none'}`);
+
+            // Query WETH -> ACES (we're swapping WETH for ACES)
+            // Prefer known ACES/WETH pool address if provided via env
+            const envAcesWeth2 = process.env.AERODROME_ACES_WETH_POOL || '';
+            const knownAcesWethPool = envAcesWeth2 ? envAcesWeth2.toLowerCase() : undefined;
+            const wethToAces = await service.getPairReserves(
               assetMetadata.ETH.address,
               assetMetadata.ACES.address,
+              knownAcesWethPool,
             );
+            console.log(`  WETH->ACES pool result: ${wethToAces ? 'FOUND' : 'NOT FOUND'}`);
+            if (wethToAces) {
+              console.log(`    Pool address: ${wethToAces.poolAddress}`);
+              console.log(`    Reserve in (WETH): ${wethToAces.reserveIn}`);
+              console.log(`    Reserve out (ACES): ${wethToAces.reserveOut}`);
+            }
+
+            // Query ACES -> TOKEN (we're swapping ACES for TOKEN)
             const acesToToken = await service.getPairReserves(
               assetMetadata.ACES.address,
               normalizedToken,
               knownPoolAddress,
             );
-            if (!ethToAces || !acesToToken) {
-              return reply.code(404).send({ success: false, error: 'Route pool not found' });
+            console.log(`  ACES->TOKEN pool result: ${acesToToken ? 'FOUND' : 'NOT FOUND'}`);
+            if (acesToToken) {
+              console.log(`    Pool address: ${acesToToken.poolAddress}`);
+              console.log(`    Reserve in (ACES): ${acesToToken.reserveIn}`);
+              console.log(`    Reserve out (TOKEN): ${acesToToken.reserveOut}`);
             }
+
+            if (!wethToAces || !acesToToken) {
+              const missingPool = !wethToAces ? 'WETH/ACES' : 'ACES/TOKEN';
+              console.error(`❌ Missing pool: ${missingPool}`);
+              return reply.code(404).send({
+                success: false,
+                error: `Route pool not found: ${missingPool} pool is missing. ${!acesToToken ? 'Token may not be bonded yet.' : ''}`,
+              });
+            }
+
+            // Calculate WETH -> ACES swap
             const acesAmountRaw = computeSwap(
               amountInRaw,
-              ethToAces.reserveIn,
-              ethToAces.reserveOut,
+              wethToAces.reserveIn,
+              wethToAces.reserveOut,
             );
+            console.log(`  Intermediate ACES amount: ${ethers.formatUnits(acesAmountRaw, 18)}`);
+
             intermediateSteps.push({
               symbol: 'ACES',
               amount: ethers.formatUnits(acesAmountRaw, assetMetadata.ACES.decimals),
             });
+
+            // Calculate ACES -> TOKEN swap
             expectedOutputRaw = computeSwap(
               acesAmountRaw,
               acesToToken.reserveIn,
               acesToToken.reserveOut,
             );
+            console.log(
+              `  Final TOKEN amount: ${ethers.formatUnits(expectedOutputRaw, tokenDecimals)}`,
+            );
+
             outputDecimals = tokenDecimals;
             outputSymbol = 'TOKEN';
             routePath = [assetMetadata.ETH.address, assetMetadata.ACES.address, normalizedToken];
             routes.push({
               from: assetMetadata.ETH.address,
               to: assetMetadata.ACES.address,
-              stable: Boolean(ethToAces.stable),
+              stable: Boolean(wethToAces.stable),
             });
             routes.push({
               from: assetMetadata.ACES.address,
@@ -514,9 +559,12 @@ export async function dexRoutes(fastify: FastifyInstance) {
             });
           } else {
             // Fallback through ACES only if WETH->TOKEN missing
+            const envAcesWeth3 = process.env.AERODROME_ACES_WETH_POOL || '';
+            const knownAcesWethPool2 = envAcesWeth3 ? envAcesWeth3.toLowerCase() : undefined;
             const wethToAces = await service.getPairReserves(
               assetMetadata.ETH.address,
               assetMetadata.ACES.address,
+              knownAcesWethPool2,
             );
             const acesToToken = await service.getPairReserves(
               assetMetadata.ACES.address,

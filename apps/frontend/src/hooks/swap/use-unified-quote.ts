@@ -92,7 +92,6 @@ export function useUnifiedQuote({
   const [multiHopLoading, setMultiHopLoading] = useState(false);
   const [multiHopError, setMultiHopError] = useState<string | null>(null);
 
-  const normalizedSellToken = sellToken === 'ETH' ? 'WETH' : sellToken;
   /**
    * Determine quote strategy based on tokens and mode
    */
@@ -124,15 +123,15 @@ export function useUnifiedQuote({
       return 'bonding-direct';
     }
 
-    // WETH/USDC/USDT → RWA: Multi-hop via AcesSwap contract
-    // (WETH/USDC/USDT → WETH → ACES via DEX, then ACES → RWA via bonding)
-    if (['WETH', 'USDC', 'USDT'].includes(normalizedSellToken as string) && isBuyRwa) {
+    // WETH/ETH/USDC/USDT → RWA: Multi-hop via AcesSwap contract
+    // (WETH/ETH/USDC/USDT → WETH → ACES via DEX, then ACES → RWA via bonding)
+    if (['WETH', 'ETH', 'USDC', 'USDT'].includes(sellToken as string) && isBuyRwa) {
       return 'bonding-multihop';
     }
 
     // Unsupported combination
     return 'none';
-  }, [enabled, tokenAddress, sellToken, buyToken, normalizedSellToken, isDexMode]);
+  }, [enabled, tokenAddress, sellToken, buyToken, isDexMode]);
 
   /**
    * Enhanced bonding curve quote (for ACES ↔ RWA direct swaps)
@@ -157,10 +156,9 @@ export function useUnifiedQuote({
   const dexQuote = useDexQuote({
     tokenAddress,
     amount,
-    paymentAsset: normalizedSellToken as PaymentAsset,
+    paymentAsset: sellToken as PaymentAsset,
     activeTab:
-      normalizedSellToken === 'ACES' ||
-      ['WETH', 'USDC', 'USDT'].includes(normalizedSellToken as string)
+      sellToken === 'ACES' || ['WETH', 'ETH', 'USDC', 'USDT'].includes(sellToken as string)
         ? 'buy'
         : 'sell',
     isDexMode,
@@ -179,7 +177,7 @@ export function useUnifiedQuote({
       return;
     }
 
-    if (!['WETH', 'USDC', 'USDT'].includes(normalizedSellToken as string)) {
+    if (!['WETH', 'ETH', 'USDC', 'USDT'].includes(sellToken as string)) {
       setMultiHopError('Invalid input asset for multi-hop');
       return;
     }
@@ -188,8 +186,11 @@ export function useUnifiedQuote({
       setMultiHopLoading(true);
       setMultiHopError(null);
 
+      // Normalize ETH to WETH for backend API
+      const apiAsset = sellToken === 'ETH' ? 'WETH' : sellToken;
+
       const result = await BondingApi.getMultiHopQuote(tokenAddress, {
-        inputAsset: normalizedSellToken as 'WETH' | 'USDC' | 'USDT',
+        inputAsset: apiAsset as 'WETH' | 'USDC' | 'USDT',
         amount,
         slippageBps,
       });
@@ -210,7 +211,7 @@ export function useUnifiedQuote({
     } finally {
       setMultiHopLoading(false);
     }
-  }, [quoteStrategy, tokenAddress, normalizedSellToken, sellToken, amount, slippageBps]);
+  }, [quoteStrategy, tokenAddress, sellToken, amount, slippageBps]);
 
   /**
    * Auto-fetch multi-hop quote when strategy changes
@@ -246,15 +247,19 @@ export function useUnifiedQuote({
    * Combine results based on strategy
    */
   const result: UnifiedQuoteResult = useMemo(() => {
-    console.log('[useUnifiedQuote] Building result:', {
+    console.log('[useUnifiedQuote] 📊 Building result:', {
       quoteStrategy,
       isDexMode,
-      dexQuoteData: dexQuote.quote,
-      dexQuoteLoading: dexQuote.loading,
-      dexQuoteError: dexQuote.error,
+      enabled,
       sellToken,
       buyToken,
       amount,
+      dexQuoteData: dexQuote.quote,
+      dexQuoteLoading: dexQuote.loading,
+      dexQuoteError: dexQuote.error,
+      dexQuoteExpectedOutput: dexQuote.quote?.expectedOutput,
+      bondingQuoteOutput: bondingQuote.outputAmount,
+      bondingQuoteLoading: bondingQuote.loading,
     });
 
     const baseResult: UnifiedQuoteResult = {
