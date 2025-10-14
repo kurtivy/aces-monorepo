@@ -62,6 +62,7 @@ export interface DexQuoteResponse {
   expectedOutput: string;
   minOutputRaw: string;
   path: string[];
+  routes?: Array<{ from: string; to: string; stable: boolean }>;
   priceImpact?: string;
   [key: string]: any;
 }

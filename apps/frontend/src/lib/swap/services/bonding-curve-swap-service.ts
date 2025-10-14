@@ -200,7 +200,7 @@ export class BondingCurveSwapService {
       onStatus?.('Buying tokens...');
       console.log('[BondingCurveSwapService] Executing buy with fresh quote...');
 
-      const buyTx = await this.factoryContract.buyTokens(tokenAddress, amount, maxACES);
+      const buyTx = await this.factoryContract.buyTokens(address, tokenAddress, amount, maxACES);
 
       onStatus?.('Waiting for confirmation...');
       console.log('[BondingCurveSwapService] Buy tx sent:', buyTx.hash);
@@ -327,6 +327,7 @@ export class BondingCurveSwapService {
       const maxACES = await this.getFreshQuoteWithSlippage(tokenAddress, amount, slippageBps);
 
       const gasEstimate = await this.factoryContract.estimateGas.buyTokens(
+        await this.factoryContract.signer.getAddress(),
         tokenAddress,
         amount,
         maxACES,

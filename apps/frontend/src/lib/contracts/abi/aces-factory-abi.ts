@@ -169,6 +169,7 @@ export const ACES_FACTORY_ABI = [
     type: 'function',
     name: 'buyTokens',
     inputs: [
+      { name: 'buyer', type: 'address', internalType: 'address' },
       { name: 'tokenAddress', type: 'address', internalType: 'address' },
       { name: 'amount', type: 'uint256', internalType: 'uint256' },
       { name: 'acesAmountIn', type: 'uint256', internalType: 'uint256' },
@@ -437,7 +438,7 @@ export const ACES_FACTORY_ABI = [
 // Specific function signatures for type safety
 export const ACES_FACTORY_FUNCTIONS = {
   CREATE_TOKEN: 'createToken(uint8,uint256,uint256,string,string,string,uint256)',
-  BUY_TOKENS: 'buyTokens(address,uint256,uint256)',
+  BUY_TOKENS: 'buyTokens(address,address,uint256,uint256)',
   SELL_TOKENS: 'sellTokens(address,uint256)',
   GET_BUY_PRICE_AFTER_FEE: 'getBuyPriceAfterFee(address,uint256)',
   GET_SELL_PRICE_AFTER_FEE: 'getSellPriceAfterFee(address,uint256)',

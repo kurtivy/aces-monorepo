@@ -78,6 +78,7 @@ export interface DexQuoteResponse {
   minOutputRaw: string;
   slippageBps: number;
   path: string[];
+  routes: Array<{ from: string; to: string; stable: boolean }>;
   intermediate?: Array<{ symbol: string; amount: string }>;
 }
 
