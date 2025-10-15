@@ -3,8 +3,6 @@
 import { useMemo, useEffect, useState } from 'react';
 import { useTokenBondingData } from '@/hooks/contracts/use-token-bonding-data';
 
-const MAX_SUPPLY_TOKENS = 800_000_000;
-
 interface BondingProgressSectionProps {
   tokenAddress?: string;
   chainId?: number;
@@ -20,13 +18,15 @@ export function BondingProgressSection({
   isBondedOverride,
   tokenSymbol = 'RWA',
 }: BondingProgressSectionProps) {
-  const { bondingPercentage, isBonded, loading, currentSupply } = useTokenBondingData(
-    tokenAddress,
-    chainId,
-  );
+  const { bondingPercentage, isBonded, loading, currentSupply, tokensBondedAt } =
+    useTokenBondingData(tokenAddress, chainId);
+
+  // Single source of truth for default bonding target used during loading/unknown
+  const DEFAULT_BONDING_TARGET = 30000000; // 30M
 
   const supplyMetrics = useMemo(() => {
-    if (!currentSupply) {
+    // Check if we have valid data - currentSupply can be '0' which is valid
+    if (currentSupply === undefined || currentSupply === null || currentSupply === '') {
       return {
         totalSupplyValue: null as number | null,
         soldPercentage: null as number | null,
@@ -35,8 +35,16 @@ export function BondingProgressSection({
     }
 
     const totalSupplyValue = Number.parseFloat(currentSupply);
+    // Prefer contract-provided tokensBondedAt when present and > 0; otherwise use default during loading
+    const parsedTarget = Number.parseFloat(tokensBondedAt || '');
+    const hasValidTarget = Number.isFinite(parsedTarget) && parsedTarget > 0;
+    const bondingTarget = hasValidTarget ? parsedTarget : DEFAULT_BONDING_TARGET;
 
-    if (!Number.isFinite(totalSupplyValue) || totalSupplyValue < 0) {
+    if (
+      !Number.isFinite(totalSupplyValue) ||
+      totalSupplyValue < 0 ||
+      !Number.isFinite(bondingTarget)
+    ) {
       return {
         totalSupplyValue: null,
         soldPercentage: null,
@@ -44,8 +52,17 @@ export function BondingProgressSection({
       };
     }
 
-    const soldPercentage = Math.min(100, (totalSupplyValue / MAX_SUPPLY_TOKENS) * 100);
-    const remainingTokens = Math.max(0, MAX_SUPPLY_TOKENS - totalSupplyValue);
+    // If target is not valid (e.g., explicitly 0), treat as unknown and avoid computing percentage
+    if (!hasValidTarget) {
+      return {
+        totalSupplyValue,
+        soldPercentage: null,
+        remainingDisplay: null,
+      };
+    }
+
+    const soldPercentage = Math.min(100, (totalSupplyValue / bondingTarget) * 100);
+    const remainingTokens = Math.max(0, bondingTarget - totalSupplyValue);
     const remainingDigits = remainingTokens >= 1 ? 2 : 6;
 
     return {
@@ -55,7 +72,7 @@ export function BondingProgressSection({
         maximumFractionDigits: remainingDigits,
       }),
     };
-  }, [currentSupply]);
+  }, [currentSupply, tokensBondedAt]);
 
   const combinedPercentage = useMemo(() => {
     const bonding = Number.isFinite(bondingPercentage) ? bondingPercentage : Number.NaN;
@@ -77,8 +94,13 @@ export function BondingProgressSection({
     return Math.min(100, Math.max(...candidatePercentages));
   }, [bondingPercentage, percentageOverride, supplyMetrics.soldPercentage]);
 
+  // Parse tokensBondedAt to number for comparison; do not default to a large number here
+  const bondingTargetNum = Number.parseFloat(tokensBondedAt || '');
   const isSoldOut =
-    supplyMetrics.totalSupplyValue !== null && supplyMetrics.totalSupplyValue >= MAX_SUPPLY_TOKENS;
+    supplyMetrics.totalSupplyValue !== null &&
+    Number.isFinite(bondingTargetNum) &&
+    bondingTargetNum > 0 &&
+    supplyMetrics.totalSupplyValue >= bondingTargetNum;
 
   const [hasSoldOut, setHasSoldOut] = useState(false);
 
@@ -90,9 +112,7 @@ export function BondingProgressSection({
 
   const soldOutState = hasSoldOut;
   const combinedIsBonded = isBondedOverride || isBonded || soldOutState;
-  const cappedPercentage = soldOutState
-    ? 100
-    : Math.min(combinedPercentage, 99.9);
+  const cappedPercentage = soldOutState ? 100 : Math.min(combinedPercentage, 99.9);
   const percentageLabel = soldOutState
     ? '100.0'
     : combinedPercentage >= 99.9

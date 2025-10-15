@@ -27,6 +27,7 @@ interface TokenBondingState {
 interface BondingDataContextValue {
   getTokenData: (tokenAddress: string, chainId?: number) => TokenBondingState;
   refreshToken: (tokenAddress: string, chainId?: number) => void;
+  subscribe: (cacheKey: string, callback: () => void) => () => void;
 }
 
 const BondingDataContext = createContext<BondingDataContextValue | undefined>(undefined);
@@ -48,22 +49,20 @@ interface BondingDataProviderProps {
 export function BondingDataProvider({ children }: BondingDataProviderProps) {
   const pathname = usePathname();
 
-  // Map of tokenAddress-chainId to BondingData
-  const [tokenDataMap, setTokenDataMap] = useState<Map<string, TokenBondingState>>(new Map());
+  // Use ref for data storage to avoid triggering re-renders
+  const tokenDataMapRef = useRef<Map<string, TokenBondingState>>(new Map());
 
   // Track which tokens are actively being polled
   const pollingTokens = useRef<Set<string>>(new Set());
-  const pollIntervals = useRef<Map<string, NodeJS.Timeout>>(new Map());
-  // Switch to timeout-based scheduler per token to avoid runaway intervals
-  const pollTimeouts = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const pollTimeouts = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const failureCounters = useRef<Map<string, number>>(new Map());
   const backoffDelays = useRef<Map<string, number>>(new Map());
   const lastInteraction = useRef<number>(Date.now());
   const isPaused = useRef(false);
-  // Track per-token last attempt timestamps (to avoid stale-closure on state)
   const lastAttemptAt = useRef<Map<string, number>>(new Map());
-  // Track in-flight requests to prevent overlap
   const inFlight = useRef<Map<string, boolean>>(new Map());
+  // Track subscribers for each token
+  const subscribers = useRef<Map<string, Set<() => void>>>(new Map());
 
   const resolveApiBaseUrl = useCallback(() => {
     if (process.env.NEXT_PUBLIC_API_URL) {
@@ -80,29 +79,39 @@ export function BondingDataProvider({ children }: BondingDataProviderProps) {
   }, []);
 
   const isActiveTrading = useCallback(() => {
-    // Check if we're on a token page (/rwa/[symbol])
     const isOnTokenPage = pathname?.includes('/rwa/');
-
-    // Check if there was recent interaction
     const recentInteraction = Date.now() - lastInteraction.current < INTERACTION_TIMEOUT;
-
     return isOnTokenPage && recentInteraction;
   }, [pathname]);
+
+  const notifySubscribers = useCallback((cacheKey: string) => {
+    const subs = subscribers.current.get(cacheKey);
+    if (subs) {
+      subs.forEach((callback) => callback());
+    }
+  }, []);
+
+  const stopPollingToken = useCallback(
+    (tokenAddress: string, chainId: number = 8453) => {
+      const cacheKey = getCacheKey(tokenAddress, chainId);
+      const timeout = pollTimeouts.current.get(cacheKey);
+      if (timeout) {
+        clearTimeout(timeout);
+        pollTimeouts.current.delete(cacheKey);
+      }
+      pollingTokens.current.delete(cacheKey);
+    },
+    [getCacheKey],
+  );
 
   const fetchBondingData = useCallback(
     async (tokenAddress: string, chainId: number = 8453) => {
       const cacheKey = getCacheKey(tokenAddress, chainId);
 
-      if (isPaused.current) {
+      if (isPaused.current || inFlight.current.get(cacheKey)) {
         return;
       }
 
-      // Prevent overlapping requests for the same token
-      if (inFlight.current.get(cacheKey)) {
-        return;
-      }
-
-      // Record attempt time immediately so scheduler respects backoff even if request is slow
       lastAttemptAt.current.set(cacheKey, Date.now());
       inFlight.current.set(cacheKey, true);
 
@@ -128,17 +137,16 @@ export function BondingDataProvider({ children }: BondingDataProviderProps) {
           throw new Error('Invalid response format');
         }
 
-        // Update state
-        setTokenDataMap((prev) => {
-          const newMap = new Map(prev);
-          newMap.set(cacheKey, {
-            data: result.data,
-            loading: false,
-            error: null,
-            lastFetch: Date.now(),
-          });
-          return newMap;
+        // Update ref directly
+        tokenDataMapRef.current.set(cacheKey, {
+          data: result.data,
+          loading: false,
+          error: null,
+          lastFetch: Date.now(),
         });
+
+        // Notify only subscribers for this specific token
+        notifySubscribers(cacheKey);
 
         // Reset failure counters on success
         failureCounters.current.set(cacheKey, 0);
@@ -149,37 +157,32 @@ export function BondingDataProvider({ children }: BondingDataProviderProps) {
         const currentFailures = (failureCounters.current.get(cacheKey) || 0) + 1;
         failureCounters.current.set(cacheKey, currentFailures);
 
-        // Exponential backoff
         if (err instanceof Error && err.message === 'RATE_LIMITED') {
           const currentBackoff = backoffDelays.current.get(cacheKey) || INITIAL_BACKOFF;
           backoffDelays.current.set(cacheKey, Math.min(currentBackoff * 2, MAX_BACKOFF));
         } else {
-          // On server errors (e.g., 5xx), back off aggressively to MAX to avoid storms
           backoffDelays.current.set(cacheKey, MAX_BACKOFF);
         }
 
-        // Pause this token after max failures
         if (currentFailures >= MAX_FAILURES) {
           console.error(`[BondingDataContext] Max failures reached for ${tokenAddress}. Pausing.`);
           stopPollingToken(tokenAddress, chainId);
         }
 
-        setTokenDataMap((prev) => {
-          const newMap = new Map(prev);
-          const existing = newMap.get(cacheKey);
-          newMap.set(cacheKey, {
-            data: existing?.data || null,
-            loading: false,
-            error: err instanceof Error ? err.message : 'Failed to fetch bonding data',
-            lastFetch: Date.now(),
-          });
-          return newMap;
+        const existing = tokenDataMapRef.current.get(cacheKey);
+        tokenDataMapRef.current.set(cacheKey, {
+          data: existing?.data || null,
+          loading: false,
+          error: err instanceof Error ? err.message : 'Failed to fetch bonding data',
+          lastFetch: Date.now(),
         });
+
+        notifySubscribers(cacheKey);
       } finally {
         inFlight.current.set(cacheKey, false);
       }
     },
-    [getCacheKey, resolveApiBaseUrl],
+    [getCacheKey, resolveApiBaseUrl, stopPollingToken, notifySubscribers],
   );
 
   const startPollingToken = useCallback(
@@ -187,12 +190,11 @@ export function BondingDataProvider({ children }: BondingDataProviderProps) {
       const cacheKey = getCacheKey(tokenAddress, chainId);
 
       if (pollingTokens.current.has(cacheKey)) {
-        return; // Already polling
+        return;
       }
 
       pollingTokens.current.add(cacheKey);
 
-      // Helper to schedule next poll based on current backoff and activity
       const scheduleNext = () => {
         if (isPaused.current || !pollingTokens.current.has(cacheKey)) {
           return;
@@ -202,17 +204,14 @@ export function BondingDataProvider({ children }: BondingDataProviderProps) {
         const backoff = backoffDelays.current.get(cacheKey) || INITIAL_BACKOFF;
         const effectiveInterval = Math.max(pollInterval, backoff);
 
-        // Clear any existing timeout before scheduling a new one
         const existing = pollTimeouts.current.get(cacheKey);
         if (existing) clearTimeout(existing);
 
         const timeout = setTimeout(async () => {
-          // If paused or token polling stopped, do not proceed
           if (isPaused.current || !pollingTokens.current.has(cacheKey)) return;
 
           await fetchBondingData(tokenAddress, chainId);
 
-          // If we've reached max failures, do not reschedule automatically
           const failures = failureCounters.current.get(cacheKey) || 0;
           if (failures >= MAX_FAILURES) return;
 
@@ -222,7 +221,6 @@ export function BondingDataProvider({ children }: BondingDataProviderProps) {
         pollTimeouts.current.set(cacheKey, timeout);
       };
 
-      // Kick off immediately, then schedule subsequent polls
       void fetchBondingData(tokenAddress, chainId).finally(() => {
         const failures = failureCounters.current.get(cacheKey) || 0;
         if (failures < MAX_FAILURES) {
@@ -233,38 +231,17 @@ export function BondingDataProvider({ children }: BondingDataProviderProps) {
     [getCacheKey, fetchBondingData, isActiveTrading],
   );
 
-  const stopPollingToken = useCallback(
-    (tokenAddress: string, chainId: number = 8453) => {
-      const cacheKey = getCacheKey(tokenAddress, chainId);
-
-      const interval = pollIntervals.current.get(cacheKey);
-      if (interval) {
-        clearInterval(interval);
-        pollIntervals.current.delete(cacheKey);
-      }
-
-      const timeout = pollTimeouts.current.get(cacheKey);
-      if (timeout) {
-        clearTimeout(timeout);
-        pollTimeouts.current.delete(cacheKey);
-      }
-
-      pollingTokens.current.delete(cacheKey);
-    },
-    [getCacheKey],
-  );
-
+  // Stable getTokenData that returns current state and subscribes component
   const getTokenData = useCallback(
     (tokenAddress: string, chainId: number = 8453): TokenBondingState => {
       const cacheKey = getCacheKey(tokenAddress, chainId);
 
-      // Start polling if not already
       if (!pollingTokens.current.has(cacheKey)) {
         startPollingToken(tokenAddress, chainId);
       }
 
       return (
-        tokenDataMap.get(cacheKey) || {
+        tokenDataMapRef.current.get(cacheKey) || {
           data: null,
           loading: true,
           error: null,
@@ -272,7 +249,7 @@ export function BondingDataProvider({ children }: BondingDataProviderProps) {
         }
       );
     },
-    [getCacheKey, startPollingToken, tokenDataMap],
+    [getCacheKey, startPollingToken],
   );
 
   const refreshToken = useCallback(
@@ -280,7 +257,6 @@ export function BondingDataProvider({ children }: BondingDataProviderProps) {
       const cacheKey = getCacheKey(tokenAddress, chainId);
       console.log(`[BondingDataContext] Manual refresh for ${tokenAddress}`);
 
-      // Reset failure counters
       failureCounters.current.set(cacheKey, 0);
       backoffDelays.current.set(cacheKey, INITIAL_BACKOFF);
 
@@ -289,7 +265,25 @@ export function BondingDataProvider({ children }: BondingDataProviderProps) {
     [getCacheKey, fetchBondingData],
   );
 
-  // Track user interactions for active trading detection
+  // Subscribe/unsubscribe mechanism
+  const subscribe = useCallback((cacheKey: string, callback: () => void) => {
+    if (!subscribers.current.has(cacheKey)) {
+      subscribers.current.set(cacheKey, new Set());
+    }
+    subscribers.current.get(cacheKey)!.add(callback);
+
+    return () => {
+      const subs = subscribers.current.get(cacheKey);
+      if (subs) {
+        subs.delete(callback);
+        if (subs.size === 0) {
+          subscribers.current.delete(cacheKey);
+        }
+      }
+    };
+  }, []);
+
+  // Track user interactions
   useEffect(() => {
     const handleInteraction = () => {
       lastInteraction.current = Date.now();
@@ -316,10 +310,19 @@ export function BondingDataProvider({ children }: BondingDataProviderProps) {
         console.log('[BondingDataContext] Tab visible, resuming polling');
         isPaused.current = false;
 
-        // Refresh all active tokens
         pollingTokens.current.forEach((cacheKey) => {
           const [tokenAddress, chainIdStr] = cacheKey.split('-');
-          fetchBondingData(tokenAddress, parseInt(chainIdStr));
+          const chainId = parseInt(chainIdStr);
+
+          if (!inFlight.current.get(cacheKey)) {
+            const lastAttempt = lastAttemptAt.current.get(cacheKey) || 0;
+            const timeSinceLastAttempt = Date.now() - lastAttempt;
+            const minInterval = backoffDelays.current.get(cacheKey) || INITIAL_BACKOFF;
+
+            if (timeSinceLastAttempt >= minInterval) {
+              fetchBondingData(tokenAddress, chainId);
+            }
+          }
         });
       }
     };
@@ -328,7 +331,17 @@ export function BondingDataProvider({ children }: BondingDataProviderProps) {
       isPaused.current = false;
       pollingTokens.current.forEach((cacheKey) => {
         const [tokenAddress, chainIdStr] = cacheKey.split('-');
-        fetchBondingData(tokenAddress, parseInt(chainIdStr));
+        const chainId = parseInt(chainIdStr);
+
+        if (!inFlight.current.get(cacheKey)) {
+          const lastAttempt = lastAttemptAt.current.get(cacheKey) || 0;
+          const timeSinceLastAttempt = Date.now() - lastAttempt;
+          const minInterval = backoffDelays.current.get(cacheKey) || INITIAL_BACKOFF;
+
+          if (timeSinceLastAttempt >= minInterval) {
+            fetchBondingData(tokenAddress, chainId);
+          }
+        }
       });
     };
 
@@ -344,20 +357,55 @@ export function BondingDataProvider({ children }: BondingDataProviderProps) {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      pollIntervals.current.forEach((interval) => clearInterval(interval));
-      pollIntervals.current.clear();
       pollTimeouts.current.forEach((timeout) => clearTimeout(timeout));
       pollTimeouts.current.clear();
       pollingTokens.current.clear();
     };
   }, []);
 
+  // Create stable context value - include subscribe
   const value: BondingDataContextValue = {
     getTokenData,
     refreshToken,
+    subscribe,
   };
 
   return <BondingDataContext.Provider value={value}>{children}</BondingDataContext.Provider>;
+}
+
+// Custom hook that properly subscribes to updates
+export function useBondingData(tokenAddress?: string, chainId: number = 8453) {
+  const context = useContext(BondingDataContext);
+  if (context === undefined) {
+    throw new Error('useBondingData must be used within a BondingDataProvider');
+  }
+
+  const [, forceUpdate] = useState(0);
+  const { getTokenData, subscribe } = context;
+
+  useEffect(() => {
+    if (!tokenAddress) return;
+
+    const cacheKey = `${tokenAddress.toLowerCase()}-${chainId}`;
+
+    // Subscribe to updates for this specific token
+    const unsubscribe = subscribe(cacheKey, () => {
+      forceUpdate((n) => n + 1);
+    });
+
+    return unsubscribe;
+  }, [tokenAddress, chainId, subscribe]);
+
+  if (!tokenAddress) {
+    return {
+      data: null,
+      loading: false,
+      error: null,
+      lastFetch: 0,
+    };
+  }
+
+  return getTokenData(tokenAddress, chainId);
 }
 
 export function useBondingDataContext() {
