@@ -485,16 +485,18 @@ export class UnifiedChartDataService {
     options: ChartDataOptions,
     acesUsdPriceHint: string | null,
   ): Promise<{ candles: UnifiedCandle[]; acesUsdPrice: string | null }> {
-    let candleData: Awaited<ReturnType<BitQueryService['getTradingTokensOHLC']>> = [];
+    let candleData: Awaited<ReturnType<BitQueryService['getOHLCCandles']>> = [];
 
     try {
-      // Use new Trading.Tokens query for accurate USD pricing
-      candleData = await this.bitQueryService.getTradingTokensOHLC(
+      // Use DEXTradeByTokens query with proper filters for accurate OHLC
+      candleData = await this.bitQueryService.getOHLCCandles(
         tokenAddress,
+        poolAddress,
         options.timeframe,
         {
           from: options.from,
           to: options.to,
+          counterTokenAddress: ACES_TOKEN_ADDRESS, // Trading against ACES
         },
       );
     } catch (error) {
@@ -541,7 +543,7 @@ export class UnifiedChartDataService {
     });
 
     // Convert to UnifiedCandle format
-    // Trading.Tokens query provides USD prices directly
+    // DEXTradeByTokens query provides USD prices directly
     // We pass through the OHLC values from BitQuery (which are already USD prices)
     // The frontend datafeed will use these for candle bodies since dataSource='dex'
     const resolvedCandles: UnifiedCandle[] = candleData.map((candle) => {

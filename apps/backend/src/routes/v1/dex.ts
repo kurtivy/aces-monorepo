@@ -8,6 +8,7 @@ import {
   AerodromePoolState,
   AerodromeSwap,
 } from '../../services/aerodrome-data-service';
+import { BitQueryService } from '../../services/bitquery-service';
 import { createProvider, getNetworkConfig } from '../../config/network.config';
 import { getPrismaClient } from '../../lib/database';
 
@@ -1091,6 +1092,10 @@ export async function dexRoutes(fastify: FastifyInstance) {
         const { address } = request.params;
         const { limit = 100 } = request.query;
 
+        console.log(`[DEX Trades] ===== TRADE HISTORY REQUEST =====`);
+        console.log(`[DEX Trades] Token address: ${address}`);
+        console.log(`[DEX Trades] Limit: ${limit}`);
+
         // First, check if token has bonded to DEX (has poolAddress)
         const token = await fastify.prisma.token.findUnique({
           where: { contractAddress: address.toLowerCase() },
@@ -1101,72 +1106,82 @@ export async function dexRoutes(fastify: FastifyInstance) {
           },
         });
 
+        console.log(`[DEX Trades] Token data from DB:`, {
+          poolAddress: token?.poolAddress,
+          phase: token?.phase,
+          priceSource: token?.priceSource,
+        });
+
         if (!token?.poolAddress || token.phase !== 'DEX_TRADING') {
-          // Not on DEX yet, return empty array
+          console.log(`[DEX Trades] Token not on DEX yet, returning empty array`);
           return reply.send({ success: true, data: [] });
         }
 
-        // Use BitQuery to get DEX trades
-        const { BitQueryService } = await import('../../services/bitquery-service');
+        console.log(`[DEX Trades] Token is on DEX, fetching trades from BitQuery...`);
+
+        // Use BitQuery DEXTradeByTokens to get trades with actual trader addresses
         const bitquery = new BitQueryService();
 
-        console.log(
-          `[DEX Trades] Fetching BitQuery trades for ${address} via pool ${token.poolAddress}`,
-        );
+        console.log(`[DEX Trades] BitQueryService instantiated, calling getTokenTrades...`);
 
-        const swaps = await bitquery.getRecentSwaps(address, token.poolAddress, {
-          limit: Number(limit),
-        });
+        const trades = await bitquery.getTokenTrades(address, Number(limit));
 
-        console.log(`[DEX Trades] Found ${swaps.length} trades from BitQuery`);
+        console.log(`[DEX Trades] ✅ getTokenTrades completed successfully`);
 
-        // Log first raw swap to see the complete structure
-        if (swaps.length > 0) {
-          console.log('[DEX Trades] ===== RAW BITQUERY SWAP DATA (First Trade) =====');
-          console.log(JSON.stringify(swaps[0], null, 2));
-          console.log('[DEX Trades] ================================================');
+        console.log(`[DEX Trades] Found ${trades.length} trades from BitQuery`);
+
+        // Log first raw trade to see the complete structure
+        if (trades.length > 0) {
+          console.log('[DEX Trades] ===== RAW BITQUERY TRADE DATA (First Trade) =====');
+          console.log(JSON.stringify(trades[0], null, 2));
+          console.log('[DEX Trades] ==============================================');
         }
 
-        // Transform BitQuery format to match expected frontend format
-        const trades = swaps.map((swap, index) => {
-          const transformed = {
-            txHash: swap.txHash,
-            timestamp: new Date(swap.blockTime).getTime(),
-            direction: swap.side as 'buy' | 'sell',
-            amountToken: swap.amountToken,
-            amountCounter: swap.amountAces,
-            priceInCounter: parseFloat(swap.priceInAces),
-            priceInUsd: parseFloat(swap.priceInUsd) || undefined,
-            volumeUsd: swap.volumeUsd,
-            blockNumber: swap.blockNumber,
-            trader: swap.sender, // Address of the trader who made the swap
+        // Transform to frontend format
+        const transformedTrades = trades.map((trade, index) => {
+          const result = {
+            txHash: trade.txHash,
+            timestamp: new Date(trade.blockTime).getTime(),
+            blockNumber: trade.blockNumber,
+            direction: trade.side as 'buy' | 'sell',
+            amountToken: trade.amountToken,
+            amountCounter: trade.amountAces,
+            priceInCounter: parseFloat(trade.priceInAces),
+            priceInUsd: trade.priceInUsd ? parseFloat(trade.priceInUsd) : undefined,
+            trader: trade.sender, // Actual wallet address from Transaction.From
           };
 
           // Log first few transformations for debugging
           if (index < 3) {
             console.log(`[DEX Trades] Transformation ${index + 1}:`, {
               raw: {
-                side: swap.side,
-                amountToken: swap.amountToken,
-                amountAces: swap.amountAces,
-                priceInAces: swap.priceInAces,
-                priceInUsd: swap.priceInUsd,
+                txHash: trade.txHash,
+                trader: trade.sender,
+                side: trade.side,
+                amountToken: trade.amountToken,
+                amountAces: trade.amountAces,
+                priceInAces: trade.priceInAces,
+                priceInUsd: trade.priceInUsd,
               },
-              transformed: {
-                direction: transformed.direction,
-                amountToken: transformed.amountToken,
-                amountCounter: transformed.amountCounter,
-                priceInCounter: transformed.priceInCounter,
-                priceInUsd: transformed.priceInUsd,
-              },
+              transformed: result,
             });
           }
 
-          return transformed;
+          return result;
         });
 
-        return reply.send({ success: true, data: trades });
+        return reply.send({ success: true, data: transformedTrades });
       } catch (error) {
+        console.error('[DEX Trades] ❌ ERROR in trades endpoint:', error);
+        console.error(
+          '[DEX Trades] Error type:',
+          error instanceof Error ? error.constructor.name : typeof error,
+        );
+        console.error(
+          '[DEX Trades] Error message:',
+          error instanceof Error ? error.message : String(error),
+        );
+        console.error('[DEX Trades] Error stack:', error instanceof Error ? error.stack : 'N/A');
         fastify.log.error({ err: error }, 'Failed to fetch trades');
         return reply.code(503).send({ success: false, error: 'Dex service unavailable' });
       }

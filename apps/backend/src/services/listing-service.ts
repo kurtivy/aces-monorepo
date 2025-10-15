@@ -47,6 +47,14 @@ type ListingWithRelations = {
     holdersCount?: number | null;
     chainId?: number | null;
   } | null;
+  dex?: {
+    poolAddress: string | null;
+    isDexLive: boolean;
+    dexLiveAt: Date | null;
+    priceSource: string;
+    lastUpdated: Date | null;
+    bondingCutoff: Date | null;
+  } | null;
   commentCount?: number | null;
 };
 
@@ -83,6 +91,7 @@ type ListingWithMinimalSubmission = {
     privyDid: string;
   } | null;
   token?: ListingWithRelations['token'];
+  dex?: ListingWithRelations['dex'];
   commentCount?: number | null;
 };
 
@@ -514,7 +523,7 @@ export class ListingService {
           owner: true,
           submission: true,
           approvedByUser: true,
-          token: true,
+          token: true, // Token includes dexLiveAt, poolAddress, etc.
           _count: {
             select: {
               comments: true,
