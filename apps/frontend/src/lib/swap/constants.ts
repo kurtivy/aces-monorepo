@@ -1,7 +1,7 @@
 /**
  * Default slippage tolerance in basis points (1% = 100 bps)
  */
-export const DEFAULT_SLIPPAGE_BPS = 100;
+export const DEFAULT_SLIPPAGE_BPS = 500;
 
 /**
  * Deadline buffer for DEX swaps in seconds (10 minutes)

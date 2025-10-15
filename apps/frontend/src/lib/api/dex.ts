@@ -80,6 +80,14 @@ export interface DexQuoteResponse {
   path: string[];
   routes: Array<{ from: string; to: string; stable: boolean }>;
   intermediate?: Array<{ symbol: string; amount: string }>;
+  inputUsdValue?: string;
+  outputUsdValue?: string;
+  prices?: {
+    aces?: number;
+    weth?: number;
+    usdc?: number;
+    usdt?: number;
+  };
 }
 
 export interface ApiSuccess<T> extends ApiResponse<T> {

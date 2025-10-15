@@ -23,7 +23,11 @@ export function usePriceConversion(acesAmount: string) {
       setError(null);
 
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3002';
+        const apiUrl =
+          process.env.NEXT_PUBLIC_API_URL ||
+          (typeof window !== 'undefined' && window.location.hostname === 'localhost'
+            ? 'http://localhost:3002'
+            : 'https://aces-monorepo-backend.vercel.app');
         const response = await fetch(`${apiUrl}/api/v1/price/convert?amount=${acesAmount}`);
 
         if (!response.ok) {

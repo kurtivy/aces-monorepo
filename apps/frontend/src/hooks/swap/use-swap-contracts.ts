@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { ethers } from 'ethers';
+import { useWallets } from '@privy-io/react-auth'; // ADD THIS
 import { getContractAddresses } from '@/lib/contracts/addresses';
 import { ACES_FACTORY_ABI, ERC20_ABI, LAUNCHPAD_TOKEN_ABI } from '@/lib/contracts/abi';
 import {
-  getActiveWalletProvider,
-  getCurrentChainId as getChainId,
+  getProviderForAddress, // CHANGED: Use new function
+  getCurrentChainIdFromProvider, // CHANGED: Use new function
   getWalletInitDelay,
-  getActiveWalletName,
+  getWalletNameFromType, // ADD THIS
 } from '@/lib/utils/wallet-provider-utils';
 
 /**
@@ -19,6 +20,9 @@ export function useSwapContracts(
   isAuthenticated: boolean,
   tokenAddress?: string,
 ) {
+  // Get Privy's connected wallets - THIS IS KEY!
+  const { wallets: privyWallets } = useWallets();
+
   // State
   const [provider, setProvider] = useState<ethers.providers.Web3Provider | null>(null);
   const [signer, setSigner] = useState<ethers.Signer | null>(null);
@@ -31,14 +35,6 @@ export function useSwapContracts(
 
   // Track if we're currently initializing to prevent race conditions
   const initializingRef = useRef(false);
-
-  /**
-   * Get the current chain ID from the wallet
-   * Uses centralized wallet provider utilities
-   */
-  const getCurrentChainId = useCallback(async (): Promise<number | null> => {
-    return await getChainId();
-  }, []);
 
   /**
    * Initialize provider and contracts
@@ -64,24 +60,43 @@ export function useSwapContracts(
       initializingRef.current = true;
       setInitializationError(null);
 
-      const walletName = getActiveWalletName();
-      console.log('[useSwapContracts] Starting initialization with wallet:', walletName);
+      // Find the Privy wallet that matches our address
+      const privyWallet = privyWallets.find(
+        (w) => w.address.toLowerCase() === walletAddress.toLowerCase(),
+      );
 
-      // Get the correct provider - handle multiple wallet providers
-      const ethProvider = getActiveWalletProvider();
-
-      if (!ethProvider) {
-        console.warn('[useSwapContracts] ⚠️ Wallet provider not available yet');
-        console.log('[useSwapContracts] window.ethereum:', typeof window.ethereum);
-        console.log('[useSwapContracts] Wallet address from auth:', walletAddress);
+      if (!privyWallet) {
+        console.warn('[useSwapContracts] ⚠️ Wallet not found in Privy wallets', {
+          targetAddress: walletAddress,
+          availableWallets: privyWallets.map((w) => ({
+            address: w.address,
+            type: w.walletClientType,
+          })),
+        });
         initializingRef.current = false;
         return false;
       }
 
-      console.log('[useSwapContracts] ✅ Wallet provider found:', walletName);
+      const walletName = getWalletNameFromType(privyWallet.walletClientType);
+      console.log('[useSwapContracts] 🎯 Starting initialization with:', {
+        walletName,
+        walletClientType: privyWallet.walletClientType,
+        address: privyWallet.address,
+      });
 
-      // Get current chain ID
-      const chainId = await getCurrentChainId();
+      // Get the correct provider for THIS specific wallet
+      const ethProvider = getProviderForAddress(walletAddress, privyWallets);
+
+      if (!ethProvider) {
+        console.warn('[useSwapContracts] ⚠️ Wallet provider not available yet');
+        initializingRef.current = false;
+        return false;
+      }
+
+      console.log('[useSwapContracts] ✅ Wallet provider found for', walletName);
+
+      // Get current chain ID from the specific provider
+      const chainId = await getCurrentChainIdFromProvider(ethProvider);
       console.log('[useSwapContracts] Current chain ID:', chainId);
 
       if (!chainId) {
@@ -98,17 +113,24 @@ export function useSwapContracts(
 
       // Initialize provider and signer
       const newProvider = new ethers.providers.Web3Provider(ethProvider, 'any');
-      // Don't specify address - let the wallet provider determine the signer
-      // This is important for Phantom and other wallets
       const newSigner = newProvider.getSigner();
 
-      // Verify signer address matches wallet address (prevents stale state)
+      // Verify signer address matches wallet address
       const signerAddress = await newSigner.getAddress();
+      console.log('[useSwapContracts] 🔍 Address verification:', {
+        signerAddress,
+        expectedAddress: walletAddress,
+        match: signerAddress.toLowerCase() === walletAddress.toLowerCase(),
+      });
+
       if (signerAddress.toLowerCase() !== walletAddress.toLowerCase()) {
-        throw new Error('Signer address mismatch - wallet may have changed');
+        throw new Error(
+          `Signer address mismatch! Expected ${walletAddress} but got ${signerAddress}. ` +
+            `This may happen if you switched wallets. Please refresh the page.`,
+        );
       }
 
-      console.log('[useSwapContracts] Provider and signer initialized');
+      console.log('[useSwapContracts] ✅ Provider and signer initialized');
 
       // Initialize contracts
       const factory = new ethers.Contract(addresses.FACTORY_PROXY, ACES_FACTORY_ABI, newSigner);
@@ -132,6 +154,8 @@ export function useSwapContracts(
 
       console.log('[useSwapContracts] ✅ Initialization complete', {
         chainId,
+        wallet: walletName,
+        signerAddress,
         factoryProxy: addresses.FACTORY_PROXY,
         acesToken: addresses.ACES_TOKEN,
         tokenAddress,
@@ -147,7 +171,7 @@ export function useSwapContracts(
     } finally {
       initializingRef.current = false;
     }
-  }, [isAuthenticated, walletAddress, tokenAddress, getCurrentChainId]);
+  }, [isAuthenticated, walletAddress, tokenAddress, privyWallets]); // ADD privyWallets to deps
 
   /**
    * Clean up provider and contract state
@@ -186,7 +210,13 @@ export function useSwapContracts(
    * Auto-initialize when wallet connects (with retry logic)
    */
   useEffect(() => {
-    if (isAuthenticated && walletAddress && !provider && !initializingRef.current) {
+    if (
+      isAuthenticated &&
+      walletAddress &&
+      !provider &&
+      !initializingRef.current &&
+      privyWallets.length > 0
+    ) {
       console.log('[useSwapContracts] Auto-initializing from auth state...');
 
       let retryCount = 0;
@@ -201,7 +231,7 @@ export function useSwapContracts(
           console.log(
             `[useSwapContracts] Initialization attempt ${retryCount} failed, retrying...`,
           );
-          setTimeout(attemptInitialization, delay * (retryCount + 1)); // Increase delay with each retry
+          setTimeout(attemptInitialization, delay * (retryCount + 1));
         } else if (!success) {
           console.error('[useSwapContracts] Failed to initialize after', maxRetries, 'attempts');
         }
@@ -217,24 +247,27 @@ export function useSwapContracts(
         cleanup();
       }
     }
-  }, [isAuthenticated, walletAddress, provider, initializeProvider, cleanup]);
+  }, [isAuthenticated, walletAddress, provider, privyWallets, initializeProvider, cleanup]); // ADD privyWallets
 
   /**
    * Handle chain changes
    */
+  /**
+   * Handle chain changes
+   */
   useEffect(() => {
-    if (typeof window === 'undefined' || !window.ethereum) {
+    if (typeof window === 'undefined' || !walletAddress) {
       return;
     }
 
-    const handleChainChanged = async (chainIdHex: string) => {
+    const handleChainChanged = async (...args: unknown[]) => {
+      const chainIdHex = args[0] as string;
       console.log('[useSwapContracts] ⛓️ Chain changed:', chainIdHex);
       const newChainId = Number.parseInt(chainIdHex, 16);
 
       if (newChainId && newChainId !== currentChainId) {
         console.log('[useSwapContracts] Switching from chain', currentChainId, 'to', newChainId);
         setCurrentChainId(newChainId);
-        // Force reinitialization with a delay to let the provider settle
         cleanup();
         const delay = getWalletInitDelay();
         setTimeout(() => {
@@ -243,13 +276,12 @@ export function useSwapContracts(
       }
     };
 
-    const handleAccountsChanged = (accounts: string[]) => {
+    const handleAccountsChanged = (...args: unknown[]) => {
+      const accounts = args[0] as string[];
       console.log('[useSwapContracts] 👤 Accounts changed:', accounts);
       if (accounts.length === 0) {
-        // User disconnected their wallet
         cleanup();
       } else if (walletAddress && accounts[0]?.toLowerCase() !== walletAddress.toLowerCase()) {
-        // Account switched - reinitialize
         console.log('[useSwapContracts] Account switched, reinitializing...');
         cleanup();
         const delay = getWalletInitDelay();
@@ -259,40 +291,22 @@ export function useSwapContracts(
       }
     };
 
-    // Get the correct provider for event listeners
-    const providerToUse = getActiveWalletProvider();
+    // Get the correct provider for event listeners - use Privy's wallet info
+    const ethProvider = getProviderForAddress(walletAddress, privyWallets);
 
-    if (!providerToUse) {
-      console.warn('[useSwapContracts] No active wallet provider found for event listeners');
+    if (!ethProvider) {
+      console.warn('[useSwapContracts] No provider found for event listeners');
       return;
     }
 
-    // Listen to events on the correct provider
-    providerToUse.on('chainChanged', (...args: unknown[]) => handleChainChanged(args[0] as string));
-    providerToUse.on('accountsChanged', (...args: unknown[]) =>
-      handleAccountsChanged(args[0] as string[]),
-    );
+    ethProvider.on('chainChanged', handleChainChanged);
+    ethProvider.on('accountsChanged', handleAccountsChanged);
 
     return () => {
-      providerToUse?.removeListener?.('chainChanged', (...args: unknown[]) =>
-        handleChainChanged(args[0] as string),
-      );
-      providerToUse?.removeListener?.('accountsChanged', (...args: unknown[]) =>
-        handleAccountsChanged(args[0] as string[]),
-      );
+      ethProvider?.removeListener?.('chainChanged', handleChainChanged);
+      ethProvider?.removeListener?.('accountsChanged', handleAccountsChanged);
     };
-  }, [currentChainId, walletAddress, getCurrentChainId, cleanup, initializeProvider]);
-
-  /**
-   * Update chain ID on mount
-   */
-  useEffect(() => {
-    getCurrentChainId().then((chainId) => {
-      if (chainId && chainId !== currentChainId) {
-        setCurrentChainId(chainId);
-      }
-    });
-  }, [getCurrentChainId, currentChainId]);
+  }, [currentChainId, walletAddress, privyWallets, cleanup, initializeProvider]); // ADD privyWallets
 
   return {
     // Contracts

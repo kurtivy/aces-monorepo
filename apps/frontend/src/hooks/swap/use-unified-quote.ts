@@ -87,10 +87,16 @@ export function useUnifiedQuote({
   slippageBps = DEFAULT_SLIPPAGE_BPS,
   enabled = true,
 }: UseUnifiedQuoteProps): UnifiedQuoteResult {
-  // Multi-hop quote state (for WETH/USDC/USDT → RWA in bonding mode)
+  // Multi-hop quote state (for ETH/USDC/USDT → RWA in bonding mode)
   const [multiHopQuote, setMultiHopQuote] = useState<MultiHopQuoteData | null>(null);
   const [multiHopLoading, setMultiHopLoading] = useState(false);
   const [multiHopError, setMultiHopError] = useState<string | null>(null);
+
+  // Lightweight client fallback for ACES input USD in DEX mode
+  const [dexUsdFallback, setDexUsdFallback] = useState<{
+    inputUsd: string | null;
+    outputUsd: string | null;
+  } | null>(null);
 
   /**
    * Determine quote strategy based on tokens and mode
@@ -165,6 +171,60 @@ export function useUnifiedQuote({
     enabled: quoteStrategy === 'dex' && enabled,
     slippageBps,
   });
+
+  // Compute a client-side USD fallback for ACES input in DEX mode when server omits USD
+  useEffect(() => {
+    let cancelled = false;
+
+    const needsFallback =
+      isDexMode &&
+      sellToken === 'ACES' &&
+      enabled &&
+      (amount || '').trim() !== '' &&
+      !dexQuote.quote?.inputUsdValue;
+
+    if (!needsFallback) {
+      setDexUsdFallback(null);
+      return;
+    }
+
+    const amountNum = Number.parseFloat(amount || '0');
+    if (!Number.isFinite(amountNum) || amountNum <= 0) {
+      setDexUsdFallback(null);
+      return;
+    }
+
+    (async () => {
+      try {
+        const baseUrl =
+          process.env.NEXT_PUBLIC_API_URL ||
+          (typeof window !== 'undefined' && window.location.hostname === 'localhost'
+            ? 'http://localhost:3002'
+            : 'https://aces-monorepo-backend.vercel.app');
+        const res = await fetch(`${baseUrl}/api/v1/prices/aces-usd`).catch(() => null);
+        if (!res || !res.ok) {
+          if (!cancelled) setDexUsdFallback(null);
+          return;
+        }
+        const payload = await res.json();
+        const acesUsd = payload?.data?.acesUsdPrice ?? payload?.price ?? null;
+        const acesUsdNum = Number.parseFloat(String(acesUsd ?? ''));
+        if (!Number.isFinite(acesUsdNum) || acesUsdNum <= 0) {
+          if (!cancelled) setDexUsdFallback(null);
+          return;
+        }
+        const inputUsd = (amountNum * acesUsdNum).toFixed(2);
+        const outputUsd = inputUsd; // TOKEN output approximated by input value
+        if (!cancelled) setDexUsdFallback({ inputUsd, outputUsd });
+      } catch {
+        if (!cancelled) setDexUsdFallback(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isDexMode, sellToken, enabled, amount, dexQuote.quote?.inputUsdValue]);
 
   /**
    * Fetch multi-hop quote for WETH/USDC/USDT → RWA
@@ -304,19 +364,28 @@ export function useUnifiedQuote({
           refreshQuote: fetchMultiHopQuote,
         };
 
-      case 'dex':
+      case 'dex': {
+        // Prefer server-provided USD values; fallback to client-computed values if present.
+        // If server provided input USD but omitted output USD for TOKEN, mirror input USD.
+        const inputUsdValue = dexQuote.quote?.inputUsdValue ?? dexUsdFallback?.inputUsd ?? null;
+        let outputUsdValue = dexQuote.quote?.outputUsdValue ?? dexUsdFallback?.outputUsd ?? null;
+        if (!outputUsdValue && inputUsdValue && buyToken === 'TOKEN') {
+          outputUsdValue = inputUsdValue;
+        }
+
         return {
           ...baseResult,
           quote: dexQuote.quote, // Pass the full quote object for swap execution
           outputAmount: dexQuote.quote?.expectedOutput || '0',
-          outputUsdValue: null, // TODO: Add USD value calculation from DEX quote
-          inputUsdValue: null,
+          outputUsdValue,
+          inputUsdValue,
           needsMultiHop: (dexQuote.quote?.path?.length || 0) > 2,
           path: dexQuote.quote?.path || [sellToken, buyToken],
           loading: dexQuote.loading,
           error: dexQuote.error,
           refreshQuote: dexQuote.refetchQuote,
         };
+      }
 
       case 'none':
       default:
@@ -337,6 +406,7 @@ export function useUnifiedQuote({
     buyToken,
     slippageBps,
     fetchMultiHopQuote,
+    dexUsdFallback,
   ]);
 
   return result;

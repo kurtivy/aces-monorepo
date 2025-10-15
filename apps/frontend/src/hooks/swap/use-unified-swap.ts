@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { ethers } from 'ethers';
 import { BondingCurveSwapService } from '@/lib/swap/services/bonding-curve-swap-service';
 import { DexSwapService } from '@/lib/swap/services/dex-swap-service';
-import { useAcesSwapContract } from '@/hooks/swap/use-aces-swap-contract';
+import { useAcesSwapV2 } from '@/hooks/swap/use-aces-swap-v2';
 import type { TransactionResult } from '@/lib/swap/types';
 import type { DexQuoteResponse } from '@/lib/api/dex';
 import type { UnifiedQuoteResult } from './use-unified-quote';
@@ -57,7 +57,7 @@ export function useUnifiedSwap({
   const [error, setError] = useState<string | null>(null);
 
   // AcesSwap contract hook (for multi-hop in bonding mode)
-  const acesSwapContract = useAcesSwapContract({ signer, walletAddress });
+  const acesSwapContract = useAcesSwapV2({ signer, walletAddress });
 
   /**
    * Execute swap based on token pair and mode
@@ -157,9 +157,9 @@ export function useUnifiedSwap({
           });
         }
 
-        // Case 3: WETH/USDC/USDT → RWA (Multi-hop via AcesSwap contract)
-        // Flow: USDC/USDT/WETH → WETH → ACES (via DEX) → RWA (via bonding curve)
-        if (['WETH', 'USDC', 'USDT'].includes(sellToken) && isBuyRwa) {
+        // Case 3: ETH/USDC/USDT → RWA (Multi-hop via AcesSwap contract)
+        // Flow: USDC/USDT/ETH → WETH → ACES (via DEX) → RWA (via bonding curve)
+        if (['ETH', 'USDC', 'USDT'].includes(sellToken) && isBuyRwa) {
           if (!acesSwapContract.isDeployed) {
             throw new Error(
               'Multi-token swaps coming soon! AcesSwap contract not yet deployed. ' +
@@ -188,11 +188,12 @@ export function useUnifiedSwap({
               tokenAddress,
               launchpadTokenAmount: rwaAmount,
             });
-          } else if (sellToken === 'WETH') {
-            // WETH support via AcesSwap (when contract is updated)
-            throw new Error(
-              'WETH swaps will be supported soon! For now, use ACES or wait until 100% bonded.',
-            );
+          } else if (sellToken === 'ETH') {
+            return await acesSwapContract.swapETHForToken({
+              ethAmountIn: amount,
+              tokenAddress,
+              launchpadTokenAmount: rwaAmount,
+            });
           }
         }
 
