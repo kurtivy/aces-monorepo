@@ -728,29 +728,40 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     };
 
     const open = priceFor('open');
-    const high = priceFor('high') || open;
-    const low = priceFor('low') || open;
-    const close = priceFor('close') || open;
+    const high = priceFor('high');
+    const low = priceFor('low');
+    const close = priceFor('close');
     const volume = Number((candle as any).volume ?? 0);
+
+    // Fallback only if values are truly missing (0 or invalid)
+    // Ensure high is at least as high as the highest of open/close
+    // Ensure low is at least as low as the lowest of open/close
+    const validHigh = high > 0 ? high : Math.max(open, close);
+    const validLow = low > 0 ? low : Math.min(open, close);
+
+    // Sanity check: high must be >= open, close, low
+    const finalHigh = Math.max(validHigh, open, close);
+    // Sanity check: low must be <= open, close, high
+    const finalLow = Math.min(validLow, open, close);
 
     if (
       !Number.isFinite(open) ||
-      !Number.isFinite(high) ||
-      !Number.isFinite(low) ||
+      !Number.isFinite(finalHigh) ||
+      !Number.isFinite(finalLow) ||
       !Number.isFinite(close)
     ) {
       return null;
     }
 
-    if (open <= 0 && high <= 0 && low <= 0 && close <= 0) {
+    if (open <= 0 && finalHigh <= 0 && finalLow <= 0 && close <= 0) {
       return null;
     }
 
     return {
       time: alignedTime,
       open,
-      high,
-      low,
+      high: finalHigh,
+      low: finalLow,
       close,
       volume: Number.isFinite(volume) ? volume : 0,
     };
@@ -889,10 +900,15 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
             displayCurrency: this.displayCurrency,
             candleOpenAces: candle.open,
             candleOpenUsd: candle.openUsd,
+            candleHighUsd: candle.highUsd,
+            candleLowUsd: candle.lowUsd,
             candleCloseAces: candle.close,
             candleCloseUsd: candle.closeUsd,
             selectedOpen: open,
+            selectedHigh: high,
+            selectedLow: low,
             selectedClose: close,
+            hasWicks: high > Math.max(open, close) || low < Math.min(open, close),
             usedUsdValue: this.displayCurrency === 'usd',
           });
         }

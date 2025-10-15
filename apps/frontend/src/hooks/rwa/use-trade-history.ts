@@ -107,8 +107,16 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
 
       let dexTrades: TradeHistoryEntry[] = [];
 
+      console.log('[TradeHistory] DEX check:', {
+        shouldUseDex,
+        bondingCutoffMs,
+        hasDexMeta: !!dexMeta,
+      });
+
       if (shouldUseDex) {
-        console.log(`[TradeHistory] Fetching DEX trades from /api/v1/dex/${tokenAddress}/trades`);
+        console.log(
+          `[TradeHistory] ✅ shouldUseDex is TRUE, fetching DEX trades from /api/v1/dex/${tokenAddress}/trades`,
+        );
         const dexResult = await DexApi.getTrades(tokenAddress, 100);
         console.log('[TradeHistory] DEX API result:', dexResult);
 
@@ -153,8 +161,10 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
             priceUsd: trade.priceInUsd,
           }));
         } else if (dexResult.error) {
-          console.warn('[TradeHistory] Failed to fetch Dex trades:', dexResult.error);
+          console.warn('[TradeHistory] Failed to fetch DEX trades:', dexResult.error);
         }
+      } else {
+        console.log('[TradeHistory] ❌ shouldUseDex is FALSE, skipping DEX trades fetch');
       }
 
       if (bondingCutoffMs) {
