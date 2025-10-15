@@ -241,7 +241,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
         });
 
         widgetRef.current.onChartReady(() => {
-          console.log('[TradingView] Chart ready');
+          // console.log('[TradingView] Chart ready');
           setIsReinitializing(false);
 
           // Create custom buttons using TradingView API
@@ -281,7 +281,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
         return;
       }
 
-      console.log(`[TradingView] Switching currency to ${newCurrency}`);
+      // console.log(`[TradingView] Switching currency to ${newCurrency}`);
 
       // Update datafeed currency
       datafeedRef.current.setDisplayCurrency(newCurrency);
@@ -292,7 +292,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
       // Trigger chart refresh by resetting the data
       try {
         widgetRef.current.activeChart().resetData();
-        console.log('[TradingView] ✅ Chart data refreshed with new currency');
+        // console.log('[TradingView] ✅ Chart data refreshed with new currency');
       } catch (error) {
         console.error('[TradingView] Error refreshing chart:', error);
       }
@@ -300,7 +300,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
 
     // Handle mode change (requires chart recreation for now)
     const handleModeChange = (newMode: 'price' | 'mcap') => {
-      console.log(`[TradingView] Switching mode to ${newMode}`);
+      // console.log(`[TradingView] Switching mode to ${newMode}`);
       // Mode change requires recreation since we need a different datafeed
       setChartMode(newMode);
     };
@@ -331,7 +331,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
       if (!widgetRef.current) return;
 
       try {
-        console.log('[TradingView] Creating toolbar buttons...');
+        // console.log('[TradingView] Creating toolbar buttons...');
 
         // Price/MCap toggle button
         const modeButton = widgetRef.current.createButton();
@@ -356,7 +356,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
         // Initial render
         updateButtonAppearance();
 
-        console.log('[TradingView] ✅ Toolbar buttons created');
+        // console.log('[TradingView] ✅ Toolbar buttons created');
       } catch (err) {
         console.error('[TradingView] Error creating toolbar buttons:', err);
       }

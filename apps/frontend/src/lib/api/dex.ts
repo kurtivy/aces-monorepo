@@ -66,6 +66,7 @@ export interface DexTradeResponse {
   amountToken: string;
   amountCounter: string;
   priceInCounter: number;
+  trader?: string;
 }
 
 export interface DexQuoteResponse {

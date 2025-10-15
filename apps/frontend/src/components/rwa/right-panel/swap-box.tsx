@@ -134,39 +134,39 @@ export default function TokenSwapInterface({
   const { isDexMode, bondingPercentage, tokenBonded, bondingLoading, canSwap } = swapMode;
 
   // Debug logging for DEX mode detection
-  useEffect(() => {
-    console.log('[SwapBox] DEX Mode Debug:', {
-      isDexMode,
-      tokenBonded,
-      bondingPercentage,
-      dexMeta,
-      routerAddress,
-      tokenAddress,
-    });
-  }, [isDexMode, tokenBonded, bondingPercentage, dexMeta, routerAddress, tokenAddress]);
+  // useEffect(() => {
+  //   console.log('[SwapBox] DEX Mode Debug:', {
+  //     isDexMode,
+  //     tokenBonded,
+  //     bondingPercentage,
+  //     dexMeta,
+  //     routerAddress,
+  //     tokenAddress,
+  //   });
+  // }, [isDexMode, tokenBonded, bondingPercentage, dexMeta, routerAddress, tokenAddress]);
 
   // Debug logging for contract initialization
-  useEffect(() => {
-    console.log('[SwapBox] Contract Initialization State:', {
-      isAuthenticated,
-      walletAddress,
-      hasProvider: !!provider,
-      hasSigner: !!signer,
-      hasFactoryContract: !!factoryContract,
-      hasAcesContract: !!acesContract,
-      isInitialized,
-      initializationError,
-    });
-  }, [
-    isAuthenticated,
-    walletAddress,
-    provider,
-    signer,
-    factoryContract,
-    acesContract,
-    isInitialized,
-    initializationError,
-  ]);
+  // useEffect(() => {
+  //   console.log('[SwapBox] Contract Initialization State:', {
+  //     isAuthenticated,
+  //     walletAddress,
+  //     hasProvider: !!provider,
+  //     hasSigner: !!signer,
+  //     hasFactoryContract: !!factoryContract,
+  //     hasAcesContract: !!acesContract,
+  //     isInitialized,
+  //     initializationError,
+  //   });
+  // }, [
+  //   isAuthenticated,
+  //   walletAddress,
+  //   provider,
+  //   signer,
+  //   factoryContract,
+  //   acesContract,
+  //   isInitialized,
+  //   initializationError,
+  // ]);
 
   // Manage balances
   const balances = useTokenBalances({
@@ -409,15 +409,15 @@ export default function TokenSwapInterface({
     if (isDexMode && isERC20Token(selectedSellAsset) && amount && amount !== '0') {
       const assetInfo = getAssetBalanceInfo(selectedSellAsset);
       const needsApproval = !tokenAllowance.hasAllowance(amount, assetInfo.decimals);
-      console.log('[SwapBox] Allowance Check:', {
-        selectedSellAsset,
-        amount,
-        decimals: assetInfo.decimals,
-        allowance: tokenAllowance.allowance.toString(),
-        needsApproval,
-        allowanceLoading: tokenAllowance.loading,
-        allowanceError: tokenAllowance.error,
-      });
+      // console.log('[SwapBox] Allowance Check:', {
+      //   selectedSellAsset,
+      //   amount,
+      //   decimals: assetInfo.decimals,
+      //   allowance: tokenAllowance.allowance.toString(),
+      //   needsApproval,
+      //   allowanceLoading: tokenAllowance.loading,
+      //   allowanceError: tokenAllowance.error,
+      // });
     }
   }, [isDexMode, selectedSellAsset, amount, tokenAllowance, isERC20Token, getAssetBalanceInfo]);
 
@@ -506,33 +506,33 @@ export default function TokenSwapInterface({
       isERC20Token(selectedSellAsset) &&
       !tokenAllowance.hasAllowance(amount, assetInfo.decimals) &&
       hasValidAmount;
-    console.log('[SwapBox] 🔍 Swap Button State:', {
-      hasValidAmount,
-      loading,
-      canSwap,
-      isSwapSupported,
-      quoteStrategy: quote.strategy,
-      quoteOutputAmount: quote.outputAmount,
-      quoteLoading: quote.loading,
-      quoteError: quote.error,
-      amount,
-      sellToken,
-      buyToken,
-      isDexMode,
-      selectedSellAsset,
-      isERC20: isERC20Token(selectedSellAsset),
-      decimals: assetInfo.decimals,
-      needsApproval,
-      willShowApprovalButton: needsApproval,
-      willShowSwapButton: !needsApproval,
-      buttonDisabled: !hasValidAmount || !!loading || !canSwap || !isSwapSupported,
-      disabledReasons: {
-        noValidAmount: !hasValidAmount,
-        isLoading: !!loading,
-        cantSwap: !canSwap,
-        swapNotSupported: !isSwapSupported,
-      },
-    });
+    // console.log('[SwapBox] 🔍 Swap Button State:', {
+    //   hasValidAmount,
+    //   loading,
+    //   canSwap,
+    //   isSwapSupported,
+    //   quoteStrategy: quote.strategy,
+    //   quoteOutputAmount: quote.outputAmount,
+    //   quoteLoading: quote.loading,
+    //   quoteError: quote.error,
+    //   amount,
+    //   sellToken,
+    //   buyToken,
+    //   isDexMode,
+    //   selectedSellAsset,
+    //   isERC20: isERC20Token(selectedSellAsset),
+    //   decimals: assetInfo.decimals,
+    //   needsApproval,
+    //   willShowApprovalButton: needsApproval,
+    //   willShowSwapButton: !needsApproval,
+    //   buttonDisabled: !hasValidAmount || !!loading || !canSwap || !isSwapSupported,
+    //   disabledReasons: {
+    //     noValidAmount: !hasValidAmount,
+    //     isLoading: !!loading,
+    //     cantSwap: !canSwap,
+    //     swapNotSupported: !isSwapSupported,
+    //   },
+    // });
   }, [
     hasValidAmount,
     loading,
@@ -730,13 +730,13 @@ export default function TokenSwapInterface({
 
       const UNLIMITED_APPROVAL = ethers.constants.MaxUint256;
 
-      console.log(`[SwapBox] Requesting unlimited ${selectedSellAsset} approval...`);
+      // console.log(`[SwapBox] Requesting unlimited ${selectedSellAsset} approval...`);
       const tx = await tokenContract.approve(spender, UNLIMITED_APPROVAL);
 
       setLoading('Confirming approval...');
       await tx.wait();
 
-      console.log(`[SwapBox] ✅ ${selectedSellAsset} approval confirmed`);
+      // console.log(`[SwapBox] ✅ ${selectedSellAsset} approval confirmed`);
 
       // Refresh allowance
       await tokenAllowance.refetch();

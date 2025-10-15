@@ -11,6 +11,9 @@ import GlobalModals from '../ui/custom/global-modals';
 import NetworkBanner from '../ui/custom/network-banner';
 import { type ReactNode, useEffect } from 'react';
 import { initCanvasFonts } from '../../lib/utils/font-loader';
+import { PriceProvider } from '../../contexts/price-context';
+import { BondingDataProvider } from '../../contexts/bonding-data-context';
+import { MarketCapProvider } from '../../contexts/market-cap-context';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -39,7 +42,7 @@ const BASE_MAINNET_RPCS = [
   'https://base.blockpi.network/v1/rpc/public',
   'https://base.gateway.tenderly.co',
   'https://1rpc.io/base',
-];
+].filter((url): url is string => typeof url === 'string' && url.length > 0);
 
 export const wagmiConfig = createConfig({
   chains: [baseSepolia, base],
@@ -85,7 +88,9 @@ const selectActiveWalletForWagmi: SetActiveWalletForWagmiType = ({ wallets }) =>
         wallet.type === 'ethereum' &&
         wallet.walletClientType !== 'privy' &&
         wallet.walletClientType !== 'privy-v2',
-    ) || wallets.find((wallet) => wallet.type === 'ethereum') || wallets[0]
+    ) ||
+    wallets.find((wallet) => wallet.type === 'ethereum') ||
+    wallets[0]
   );
 };
 
@@ -126,47 +131,56 @@ export default function AppProviders({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <PrivyProvider
-        appId={privyAppId}
-        config={{
-          loginMethods: ['wallet', 'email'],
-          appearance: {
-            theme: 'dark',
-            accentColor: '#D0B264',
-            logo: '/aces-logo.png',
-            loginMessage: 'Connect your wallet to ACES',
-            showWalletLoginFirst: true,
-            walletList: ['coinbase_wallet', 'metamask', 'wallet_connect', 'phantom'],
-          },
-          embeddedWallets: {
-            createOnLogin: 'all-users',
-            requireUserPasswordOnCreate: false,
-            showWalletUIs: true,
-          },
-          defaultChain: base,
-          supportedChains: [base, baseSepolia],
-          externalWallets: {
-            coinbaseWallet: {
-              connectionOptions: 'smartWalletOnly',
-            },
-            // Remove the phantom config - it's not a valid option here
-          },
-          legal: {
-            termsAndConditionsUrl: 'https://aces.fun/terms',
-            privacyPolicyUrl: 'https://aces.fun/privacy',
-          },
-        }}
-      >
-        <WagmiProvider config={wagmiConfig} setActiveWalletForWagmi={selectActiveWalletForWagmi}>
-          <AuthProvider>
-            <ModalProvider>
-              <NetworkBanner />
-              {children}
-              <GlobalModals />
-            </ModalProvider>
-          </AuthProvider>
-        </WagmiProvider>
-      </PrivyProvider>
+      <PriceProvider>
+        <BondingDataProvider>
+          <MarketCapProvider>
+            <PrivyProvider
+              appId={privyAppId}
+              config={{
+                loginMethods: ['wallet', 'email'],
+                appearance: {
+                  theme: 'dark',
+                  accentColor: '#D0B264',
+                  logo: '/aces-logo.png',
+                  loginMessage: 'Connect your wallet to ACES',
+                  showWalletLoginFirst: true,
+                  walletList: ['coinbase_wallet', 'metamask', 'wallet_connect', 'phantom'],
+                },
+                embeddedWallets: {
+                  createOnLogin: 'all-users',
+                  requireUserPasswordOnCreate: false,
+                  showWalletUIs: true,
+                },
+                defaultChain: base,
+                supportedChains: [base, baseSepolia],
+                externalWallets: {
+                  coinbaseWallet: {
+                    connectionOptions: 'smartWalletOnly',
+                  },
+                  // Remove the phantom config - it's not a valid option here
+                },
+                legal: {
+                  termsAndConditionsUrl: 'https://aces.fun/terms',
+                  privacyPolicyUrl: 'https://aces.fun/privacy',
+                },
+              }}
+            >
+              <WagmiProvider
+                config={wagmiConfig}
+                setActiveWalletForWagmi={selectActiveWalletForWagmi}
+              >
+                <AuthProvider>
+                  <ModalProvider>
+                    <NetworkBanner />
+                    {children}
+                    <GlobalModals />
+                  </ModalProvider>
+                </AuthProvider>
+              </WagmiProvider>
+            </PrivyProvider>
+          </MarketCapProvider>
+        </BondingDataProvider>
+      </PriceProvider>
     </QueryClientProvider>
   );
 }
