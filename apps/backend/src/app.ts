@@ -34,6 +34,7 @@ import productImagesRoutes from './routes/v1/product-images';
 import { testNotificationRoutes } from './routes/v1/test-notifications';
 import { adminTokenRoutes } from './routes/v1/admin/tokens';
 import { bondingRoutes } from './routes/v1/bonding';
+import { bondingDataRoutes } from './routes/v1/bonding-data';
 import { pricesRoutes } from './routes/v1/prices';
 import { chartRoutes } from './routes/v1/chart';
 
@@ -256,6 +257,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   fastify.register(testNotificationRoutes, { prefix: '/api/v1/notifications' });
 
   fastify.register(bondingRoutes, { prefix: '/api/v1/bonding' });
+  fastify.register(bondingDataRoutes, { prefix: '/api/v1/bonding' });
 
   fastify.register(pricesRoutes, { prefix: '/api/v1/prices' });
 

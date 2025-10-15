@@ -11,6 +11,8 @@ if (result.error) {
 } else {
   console.log('✅ Loaded .env file from:', envPath);
   console.log(`✅ Loaded ${Object.keys(result.parsed || {}).length} environment variables`);
+  console.log('🔍 DISABLE_BITQUERY =', process.env.DISABLE_BITQUERY);
+  console.log('🔍 DISABLE_WEBSOCKET_POLLING =', process.env.DISABLE_WEBSOCKET_POLLING);
 }
 
 async function start() {

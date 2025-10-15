@@ -325,20 +325,14 @@ export async function commentsRoutes(fastify: FastifyInstance) {
       const { commentId } = request.params as { commentId: string };
       const userId = request.user!.id;
 
-      console.log('🔍 Like request received:', { commentId, userId });
-
       try {
         // Check if comment exists
-        console.log('🔍 Checking if comment exists:', commentId);
         const comment = await prisma.listingComment.findUnique({
           where: { id: commentId },
           select: { id: true },
         });
 
-        console.log('🔍 Comment found:', comment);
-
         if (!comment) {
-          console.log('❌ Comment not found');
           return reply.status(404).send({
             success: false,
             error: 'Comment not found',
@@ -347,7 +341,6 @@ export async function commentsRoutes(fastify: FastifyInstance) {
 
         // Use upsert to handle like/unlike in a single atomic operation
         // This prevents race conditions and handles the unique constraint properly
-        console.log('🔍 Checking for existing like...');
         const existingLike = await prisma.listingCommentLike.findFirst({
           where: {
             commentId,
@@ -355,23 +348,18 @@ export async function commentsRoutes(fastify: FastifyInstance) {
           },
         });
 
-        console.log('🔍 Existing like found:', existingLike);
-
         let liked: boolean;
 
         if (existingLike) {
           // Unlike - remove the like
-          console.log('🔍 Removing existing like...');
           await prisma.listingCommentLike.delete({
             where: {
               id: existingLike.id,
             },
           });
           liked = false;
-          console.log('✅ Like removed successfully');
         } else {
           // Like - create new like
-          console.log('🔍 Creating new like...');
           await prisma.listingCommentLike.create({
             data: {
               commentId,
@@ -379,16 +367,12 @@ export async function commentsRoutes(fastify: FastifyInstance) {
             },
           });
           liked = true;
-          console.log('✅ Like created successfully');
         }
 
         // Get updated like count
-        console.log('🔍 Getting updated like count...');
         const newCount = await prisma.listingCommentLike.count({
           where: { commentId },
         });
-
-        console.log('✅ Like operation completed:', { liked, newCount });
 
         reply.send({
           success: true,
@@ -398,7 +382,6 @@ export async function commentsRoutes(fastify: FastifyInstance) {
           },
         });
       } catch (error: unknown) {
-        console.error('❌ Like operation failed:', error);
         console.error('❌ Error details:', {
           message: error instanceof Error ? error.message : 'Unknown error',
           stack: error instanceof Error ? error.stack : undefined,

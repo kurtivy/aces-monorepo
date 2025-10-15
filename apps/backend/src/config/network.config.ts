@@ -12,7 +12,8 @@ interface NetworkConfig {
 
 const baseMainnet: NetworkConfig = {
   chainId: 8453,
-  rpcUrl: process.env.QUICKNODE_BASE_URL || '',
+  // Accept either BASE_MAINNET_RPC_URL or QUICKNODE_BASE_URL
+  rpcUrl: process.env.BASE_MAINNET_RPC_URL || process.env.QUICKNODE_BASE_URL || '',
   aerodromeFactory: process.env.AERODROME_FACTORY_ADDRESS || '',
   aerodromeRouter: process.env.AERODROME_ROUTER_ADDRESS || '',
   acesToken: process.env.ACES_TOKEN_ADDRESS || '0x55337650856299363c496065C836B9C6E9dE0367',
