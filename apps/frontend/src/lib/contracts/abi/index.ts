@@ -1,4 +1,5 @@
 export { ACES_FACTORY_ABI, ACES_FACTORY_FUNCTIONS } from './aces-factory-abi';
+export { ACES_SWAP_NEW_ABI } from './aces-swap-new';
 
 // ERC20 ABI for token interactions
 export const ERC20_ABI = [

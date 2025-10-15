@@ -25,6 +25,9 @@ export const CONTRACT_ADDRESSES = {
       process.env.NEXT_PUBLIC_PROXY_ADDRESS_BASE_MAINNET ||
       '0xFAa139E3Fb1fb11271F743324405cB24f9bbD81e', // Base Mainnet factory proxy (main interaction point)
     AERODROME_ROUTER: process.env.NEXT_PUBLIC_AERODROME_ROUTER_BASE_MAINNET || '', // ⚠️ REQUIRED for DEX trades
+    ACES_SWAP:
+      process.env.NEXT_PUBLIC_ACES_SWAP_ADDRESS_BASE_MAINNET ||
+      '0x9EeC0656f7DE220877DC55FdB56cf3d56E97034d', // Base Mainnet AcesSwapNew
   },
 } as const;
 
