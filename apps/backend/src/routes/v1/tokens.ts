@@ -93,7 +93,14 @@ export async function tokensRoutes(fastify: FastifyInstance) {
       try {
         const { address } = request.params;
         const { limit = 50 } = request.query;
+
+        console.log(`[Tokens API] Fetching trades for ${address}, limit: ${limit}`);
         const trades = await tokenService.getRecentTradesForToken(address, limit);
+        console.log(`[Tokens API] Found ${trades.length} trades for ${address}`);
+
+        if (trades.length > 0) {
+          console.log(`[Tokens API] Sample trade:`, trades[0]);
+        }
 
         return reply.send({
           success: true,
@@ -264,8 +271,7 @@ export async function tokensRoutes(fastify: FastifyInstance) {
         fastify.log.warn({ error }, 'Token holder count fetch error');
         return reply.code(502).send({
           success: false,
-          error:
-            error instanceof Error ? error.message : 'Failed to fetch token holder count',
+          error: error instanceof Error ? error.message : 'Failed to fetch token holder count',
         });
       }
     },

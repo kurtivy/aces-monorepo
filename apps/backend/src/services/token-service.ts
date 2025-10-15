@@ -388,6 +388,10 @@ export class TokenService {
   // New method to fetch fresh trades from subgraph for trade history component
   async getRecentTradesForToken(contractAddress: string, limit = 50) {
     try {
+      console.log(
+        `[TokenService] Fetching trades for ${contractAddress} from subgraph, limit: ${limit}`,
+      );
+
       const query = `{
         trades(
           where: { token: "${contractAddress.toLowerCase()}" }
@@ -412,6 +416,7 @@ export class TokenService {
       });
 
       if (!response.ok) {
+        console.error(`[TokenService] Subgraph request failed with status: ${response.status}`);
         throw new Error(`Subgraph request failed: ${response.status}`);
       }
 
@@ -429,9 +434,18 @@ export class TokenService {
         };
       };
 
-      return result.data.trades || [];
+      const trades = result.data.trades || [];
+      console.log(
+        `[TokenService] Subgraph returned ${trades.length} trades for ${contractAddress}`,
+      );
+
+      if (trades.length > 0) {
+        console.log(`[TokenService] First trade:`, trades[0]);
+      }
+
+      return trades;
     } catch (error) {
-      console.error('Trade history fetch error:', error);
+      console.error('[TokenService] Trade history fetch error:', error);
       return [];
     }
   }

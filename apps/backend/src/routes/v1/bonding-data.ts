@@ -106,12 +106,8 @@ export async function bondingDataRoutes(fastify: FastifyInstance) {
           });
         }
 
-        // Get factory proxy address from environment
-        const factoryProxyAddress =
-          chainId === 8453
-            ? process.env.FACTORY_PROXY_ADDRESS || '0x9bFB05e7e67A73f6e51b505DEf4EB0F87e6C3b0A'
-            : process.env.FACTORY_PROXY_ADDRESS_SEPOLIA ||
-              '0x8B0D0E47C4DB8cF1498e0B52c84c16ECC87E4444';
+        // Get factory proxy address from network config
+        const factoryProxyAddress = networkConfig.acesFactoryProxy;
 
         if (!factoryProxyAddress) {
           fastify.log.error({ chainId }, '❌ [BondingData] Factory proxy not configured');
@@ -149,6 +145,10 @@ export async function bondingDataRoutes(fastify: FastifyInstance) {
           : tokensBondedAtNum > 0
             ? Math.min(100, (currentSupplyNum / tokensBondedAtNum) * 100)
             : 0;
+
+        if (tokensBondedAtNum === 0) {
+          fastify.log.warn({ tokenAddress, chainId }, '⚠️ [BondingData] tokensBondedAt is zero');
+        }
 
         const responseData: BondingDataResponse = {
           curve,

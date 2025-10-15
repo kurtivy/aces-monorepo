@@ -79,8 +79,17 @@ export class SupplyTrackingService {
         this.provider,
       );
 
+      // Use the AcesFactory proxy (not Aerodrome factory) to read token config
       const factoryAddress =
-        process.env.AERODROME_FACTORY_ADDRESS || '0x420DD381b31aEf6683db6B902084cB0FFECe40Da';
+        process.env.ACES_FACTORY_PROXY_ADDRESS ||
+        process.env.FACTORY_PROXY_ADDRESS ||
+        process.env.AERODROME_FACTORY_ADDRESS ||
+        '';
+
+      if (!factoryAddress) {
+        throw new Error('AcesFactory proxy address not configured');
+      }
+
       const factoryContract = new ethers.Contract(
         factoryAddress,
         [
@@ -107,7 +116,7 @@ export class SupplyTrackingService {
       // Return safe defaults - this is better than crashing
       return {
         circulatingSupply: '0',
-        totalSupply: '30000000', // Default bonding target
+        totalSupply: '800000000', // Default bonding target (800M tokens)
       };
     }
   }

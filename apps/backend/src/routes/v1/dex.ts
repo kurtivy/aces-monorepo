@@ -1120,19 +1120,50 @@ export async function dexRoutes(fastify: FastifyInstance) {
 
         console.log(`[DEX Trades] Found ${swaps.length} trades from BitQuery`);
 
+        // Log first raw swap to see the complete structure
+        if (swaps.length > 0) {
+          console.log('[DEX Trades] ===== RAW BITQUERY SWAP DATA (First Trade) =====');
+          console.log(JSON.stringify(swaps[0], null, 2));
+          console.log('[DEX Trades] ================================================');
+        }
+
         // Transform BitQuery format to match expected frontend format
-        const trades = swaps.map((swap) => ({
-          txHash: swap.txHash,
-          timestamp: new Date(swap.blockTime).getTime(),
-          direction: swap.side as 'buy' | 'sell',
-          amountToken: swap.amountToken,
-          amountCounter: swap.amountAces,
-          priceInCounter: parseFloat(swap.priceInAces),
-          priceInUsd: parseFloat(swap.priceInUsd) || undefined,
-          volumeUsd: swap.volumeUsd,
-          blockNumber: swap.blockNumber,
-          trader: swap.sender, // Address of the trader who made the swap
-        }));
+        const trades = swaps.map((swap, index) => {
+          const transformed = {
+            txHash: swap.txHash,
+            timestamp: new Date(swap.blockTime).getTime(),
+            direction: swap.side as 'buy' | 'sell',
+            amountToken: swap.amountToken,
+            amountCounter: swap.amountAces,
+            priceInCounter: parseFloat(swap.priceInAces),
+            priceInUsd: parseFloat(swap.priceInUsd) || undefined,
+            volumeUsd: swap.volumeUsd,
+            blockNumber: swap.blockNumber,
+            trader: swap.sender, // Address of the trader who made the swap
+          };
+
+          // Log first few transformations for debugging
+          if (index < 3) {
+            console.log(`[DEX Trades] Transformation ${index + 1}:`, {
+              raw: {
+                side: swap.side,
+                amountToken: swap.amountToken,
+                amountAces: swap.amountAces,
+                priceInAces: swap.priceInAces,
+                priceInUsd: swap.priceInUsd,
+              },
+              transformed: {
+                direction: transformed.direction,
+                amountToken: transformed.amountToken,
+                amountCounter: transformed.amountCounter,
+                priceInCounter: transformed.priceInCounter,
+                priceInUsd: transformed.priceInUsd,
+              },
+            });
+          }
+
+          return transformed;
+        });
 
         return reply.send({ success: true, data: trades });
       } catch (error) {
