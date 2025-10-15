@@ -1,3 +1,5 @@
+import type { ConnectedWallet } from '@privy-io/react-auth';
+
 /**
  * Utility functions for handling multiple wallet providers
  * Helps manage scenarios where users have multiple wallets installed (MetaMask, Phantom, etc.)
@@ -10,80 +12,204 @@ export interface WalletProvider {
   isMetaMask?: boolean;
   isPhantom?: boolean;
   isCoinbaseWallet?: boolean;
+  isRabby?: boolean;
   providers?: WalletProvider[];
 }
 
 /**
+ * Get provider for a specific wallet address
+ * This is the KEY function - it matches Privy's connected wallet to the actual provider
+ */
+export function getProviderForAddress(
+  targetAddress: string,
+  privyWallets?: ConnectedWallet[],
+): WalletProvider | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  // First, check if Privy knows about this wallet
+  const privyWallet = privyWallets?.find(
+    (w) => w.address.toLowerCase() === targetAddress.toLowerCase(),
+  );
+
+  if (privyWallet) {
+    console.log('[WalletProvider] Found Privy wallet:', {
+      address: privyWallet.address,
+      walletClientType: privyWallet.walletClientType,
+      connectorType: privyWallet.connectorType,
+    });
+
+    // Get the provider based on Privy's wallet client type
+    return getProviderForWalletType(privyWallet.walletClientType);
+  }
+
+  // Fallback to auto-detection
+  console.warn('[WalletProvider] No Privy wallet found for address, using auto-detection');
+  return getActiveWalletProvider();
+}
+
+/**
+ * Get provider for a specific wallet type (as reported by Privy)
+ */
+export function getProviderForWalletType(walletClientType: string): WalletProvider | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const normalized = walletClientType.toLowerCase();
+
+  console.log('[WalletProvider] Getting provider for wallet type:', walletClientType);
+
+  // Handle Phantom
+  if (normalized.includes('phantom')) {
+    const phantomEthereum = (window as any)?.phantom?.ethereum as WalletProvider | undefined;
+    if (phantomEthereum?.isPhantom) {
+      console.log('[WalletProvider] ✅ Found Phantom provider');
+      return phantomEthereum;
+    }
+  }
+
+  // Handle MetaMask
+  if (normalized.includes('metamask')) {
+    const ethereum = window.ethereum as WalletProvider;
+
+    // Check if there are multiple providers
+    if (ethereum?.providers && ethereum.providers.length > 0) {
+      const metamaskProvider = ethereum.providers.find(
+        (p: WalletProvider) => p.isMetaMask === true && p.isPhantom !== true,
+      );
+      if (metamaskProvider) {
+        console.log('[WalletProvider] ✅ Found MetaMask provider (from providers array)');
+        return metamaskProvider;
+      }
+    }
+
+    // Single provider that is MetaMask
+    if (ethereum?.isMetaMask && !ethereum.isPhantom) {
+      console.log('[WalletProvider] ✅ Found MetaMask provider (single)');
+      return ethereum;
+    }
+  }
+
+  // Handle Coinbase
+  if (normalized.includes('coinbase')) {
+    const ethereum = window.ethereum as WalletProvider;
+
+    if (ethereum?.providers && ethereum.providers.length > 0) {
+      const coinbaseProvider = ethereum.providers.find(
+        (p: WalletProvider) => p.isCoinbaseWallet === true,
+      );
+      if (coinbaseProvider) {
+        console.log('[WalletProvider] ✅ Found Coinbase provider');
+        return coinbaseProvider;
+      }
+    }
+
+    if (ethereum?.isCoinbaseWallet) {
+      console.log('[WalletProvider] ✅ Found Coinbase provider (single)');
+      return ethereum;
+    }
+  }
+
+  // Handle Rabby
+  if (normalized.includes('rabby')) {
+    const ethereum = window.ethereum as WalletProvider;
+
+    if (ethereum?.providers && ethereum.providers.length > 0) {
+      const rabbyProvider = ethereum.providers.find(
+        (p: WalletProvider) => (p as any).isRabby === true,
+      );
+      if (rabbyProvider) {
+        console.log('[WalletProvider] ✅ Found Rabby provider');
+        return rabbyProvider;
+      }
+    }
+  }
+
+  // Handle Privy embedded wallets
+  if (normalized.includes('privy')) {
+    console.log('[WalletProvider] Using Privy embedded wallet, returning window.ethereum');
+    return window.ethereum as WalletProvider;
+  }
+
+  // Fallback to window.ethereum
+  console.warn('[WalletProvider] ⚠️ Could not find specific provider, using window.ethereum');
+  return window.ethereum as WalletProvider;
+}
+
+/**
  * Detect which wallet provider the user is actively using
- * Handles the case where multiple wallets are installed
+ * ⚠️ DEPRECATED: Use getProviderForAddress() with Privy wallets instead
+ * This function is kept for backwards compatibility but may not work correctly
+ * when multiple wallets are installed.
  */
 export function getActiveWalletProvider(): WalletProvider | null {
   if (typeof window === 'undefined' || !window.ethereum) {
     // Phantom sometimes exposes provider at window.phantom.ethereum
-    // even when window.ethereum isn't available yet
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const phantomEthereum = (window as any)?.phantom?.ethereum as WalletProvider | undefined;
     return phantomEthereum || null;
   }
 
   const ethereum = window.ethereum as WalletProvider;
 
-  // Prefer Phantom's explicit provider if available
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const phantomEthereum = (window as any)?.phantom?.ethereum as WalletProvider | undefined;
-  if (phantomEthereum?.isPhantom) {
-    return phantomEthereum;
-  }
-
   // If there's only one provider, use it
   if (!ethereum.providers || ethereum.providers.length === 0) {
     return ethereum;
   }
 
-  // Multiple providers detected - prioritize based on common usage patterns
+  // Multiple providers detected
   console.log('[WalletProvider] Multiple providers detected:', ethereum.providers.length);
 
-  // Priority order:
-  // 1. Phantom (if actively selected)
-  // 2. MetaMask (if actively selected and not Phantom masquerading)
-  // 3. Coinbase Wallet
-  // 4. First available provider
-
-  const phantomProvider = ethereum.providers.find((p: WalletProvider) => p.isPhantom === true);
-
-  const metamaskProvider = ethereum.providers.find(
-    (p: WalletProvider) => p.isMetaMask === true && p.isPhantom !== true,
-  );
-
-  const coinbaseProvider = ethereum.providers.find(
-    (p: WalletProvider) => p.isCoinbaseWallet === true,
-  );
-
   // Check which one is actively being used by checking window.ethereum properties
-  if (ethereum.isPhantom && phantomProvider) {
-    console.log('[WalletProvider] Selected: Phantom');
-    return phantomProvider;
+  // Priority: whichever wallet has set itself as the active provider on window.ethereum
+
+  if (ethereum.isPhantom) {
+    const phantomProvider = ethereum.providers.find((p: WalletProvider) => p.isPhantom === true);
+    if (phantomProvider) {
+      console.log('[WalletProvider] Selected: Phantom (active)');
+      return phantomProvider;
+    }
   }
 
-  if (ethereum.isMetaMask && !ethereum.isPhantom && metamaskProvider) {
-    console.log('[WalletProvider] Selected: MetaMask');
-    return metamaskProvider;
+  if (ethereum.isMetaMask && !ethereum.isPhantom) {
+    const metamaskProvider = ethereum.providers.find(
+      (p: WalletProvider) => p.isMetaMask === true && p.isPhantom !== true,
+    );
+    if (metamaskProvider) {
+      console.log('[WalletProvider] Selected: MetaMask (active)');
+      return metamaskProvider;
+    }
   }
 
-  if (ethereum.isCoinbaseWallet && coinbaseProvider) {
-    console.log('[WalletProvider] Selected: Coinbase Wallet');
-    return coinbaseProvider;
+  if (ethereum.isCoinbaseWallet) {
+    const coinbaseProvider = ethereum.providers.find(
+      (p: WalletProvider) => p.isCoinbaseWallet === true,
+    );
+    if (coinbaseProvider) {
+      console.log('[WalletProvider] Selected: Coinbase Wallet (active)');
+      return coinbaseProvider;
+    }
   }
 
-  // Fallback to first provider
-  const fallback =
-    phantomProvider ||
-    metamaskProvider ||
-    coinbaseProvider ||
-    phantomEthereum ||
-    ethereum.providers[0];
-  console.log('[WalletProvider] Fallback to first available provider');
-  return fallback;
+  // Fallback: just use window.ethereum as-is
+  console.log('[WalletProvider] Using window.ethereum as-is');
+  return ethereum;
+}
+
+/**
+ * Get current chain ID from a specific provider
+ */
+export async function getCurrentChainIdFromProvider(
+  provider: WalletProvider,
+): Promise<number | null> {
+  try {
+    const chainIdHex = (await provider.request({ method: 'eth_chainId' })) as string;
+    return Number.parseInt(chainIdHex, 16);
+  } catch (error) {
+    console.error('[WalletProvider] Failed to get chain ID:', error);
+    return null;
+  }
 }
 
 /**
@@ -96,11 +222,23 @@ export async function getCurrentChainId(): Promise<number | null> {
       return null;
     }
 
-    const chainIdHex = (await provider.request({ method: 'eth_chainId' })) as string;
-    return Number.parseInt(chainIdHex, 16);
+    return getCurrentChainIdFromProvider(provider);
   } catch (error) {
     console.error('[WalletProvider] Failed to get chain ID:', error);
     return null;
+  }
+}
+
+/**
+ * Request accounts from a specific provider
+ */
+export async function getAccountsFromProvider(provider: WalletProvider): Promise<string[]> {
+  try {
+    const accounts = (await provider.request({ method: 'eth_accounts' })) as string[];
+    return accounts;
+  } catch (error) {
+    console.error('[WalletProvider] Failed to get accounts:', error);
+    return [];
   }
 }
 
@@ -114,8 +252,7 @@ export async function getAccounts(): Promise<string[]> {
       return [];
     }
 
-    const accounts = (await provider.request({ method: 'eth_accounts' })) as string[];
-    return accounts;
+    return getAccountsFromProvider(provider);
   } catch (error) {
     console.error('[WalletProvider] Failed to get accounts:', error);
     return [];
@@ -125,12 +262,22 @@ export async function getAccounts(): Promise<string[]> {
 /**
  * Check if a specific wallet type is installed
  */
-export function isWalletInstalled(walletType: 'phantom' | 'metamask' | 'coinbase'): boolean {
-  if (typeof window === 'undefined' || !window.ethereum) {
+export function isWalletInstalled(
+  walletType: 'phantom' | 'metamask' | 'coinbase' | 'rabby',
+): boolean {
+  if (typeof window === 'undefined') {
     return false;
   }
 
   const ethereum = window.ethereum as WalletProvider;
+
+  // Check Phantom at window.phantom.ethereum
+  if (walletType === 'phantom') {
+    const phantomEthereum = (window as any)?.phantom?.ethereum;
+    if (phantomEthereum?.isPhantom) return true;
+  }
+
+  if (!ethereum) return false;
 
   // Check providers array first
   if (ethereum.providers && ethereum.providers.length > 0) {
@@ -143,6 +290,8 @@ export function isWalletInstalled(walletType: 'phantom' | 'metamask' | 'coinbase
         );
       case 'coinbase':
         return ethereum.providers.some((p: WalletProvider) => p.isCoinbaseWallet === true);
+      case 'rabby':
+        return ethereum.providers.some((p: WalletProvider) => (p as any).isRabby === true);
       default:
         return false;
     }
@@ -156,6 +305,8 @@ export function isWalletInstalled(walletType: 'phantom' | 'metamask' | 'coinbase
       return ethereum.isMetaMask === true && ethereum.isPhantom !== true;
     case 'coinbase':
       return ethereum.isCoinbaseWallet === true;
+    case 'rabby':
+      return (ethereum as any).isRabby === true;
     default:
       return false;
   }
@@ -174,8 +325,24 @@ export function getActiveWalletName(): string {
   if (ethereum.isPhantom) return 'Phantom';
   if (ethereum.isMetaMask && !ethereum.isPhantom) return 'MetaMask';
   if (ethereum.isCoinbaseWallet) return 'Coinbase Wallet';
+  if ((ethereum as any).isRabby) return 'Rabby';
 
   return 'Unknown Wallet';
+}
+
+/**
+ * Get wallet name from Privy's wallet client type
+ */
+export function getWalletNameFromType(walletClientType: string): string {
+  const normalized = walletClientType.toLowerCase();
+
+  if (normalized.includes('phantom')) return 'Phantom';
+  if (normalized.includes('metamask')) return 'MetaMask';
+  if (normalized.includes('coinbase')) return 'Coinbase Wallet';
+  if (normalized.includes('rabby')) return 'Rabby';
+  if (normalized.includes('privy')) return 'Privy Embedded Wallet';
+
+  return walletClientType;
 }
 
 /**
@@ -202,6 +369,11 @@ export function getWalletInitDelay(): number {
   // Coinbase Wallet
   if (ethereum.isCoinbaseWallet) {
     return 600;
+  }
+
+  // Rabby
+  if ((ethereum as any).isRabby) {
+    return 500;
   }
 
   // Default for unknown wallets
