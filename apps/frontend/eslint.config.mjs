@@ -29,6 +29,8 @@ const eslintConfig = [
         WebSocket: 'readonly',
         URL: 'readonly',
         process: 'readonly',
+        fetch: 'readonly',
+        AbortSignal: 'readonly',
       },
     },
     plugins: {
