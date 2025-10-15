@@ -44,6 +44,14 @@ interface QuoteResponse {
   path: string[];
   routes: Array<{ from: string; to: string; stable: boolean }>;
   intermediate?: Array<{ symbol: string; amount: string }>;
+  inputUsdValue?: string;
+  outputUsdValue?: string;
+  prices?: {
+    aces?: number;
+    weth?: number;
+    usdc?: number;
+    usdt?: number;
+  };
 }
 
 export async function dexRoutes(fastify: FastifyInstance) {
@@ -518,18 +526,99 @@ export async function dexRoutes(fastify: FastifyInstance) {
         } else if (assetConfig!.symbol === 'USDC' || assetConfig!.symbol === 'USDT') {
           console.log(`💸 Computing buy: ${assetConfig!.symbol} path`);
 
-          const stableToWeth = await service.getPairReserves(
-            assetConfig!.address,
-            assetMetadata.ETH.address,
-          );
-          if (!stableToWeth) {
-            return reply.code(404).send({ success: false, error: 'Route pool not found' });
+          const isUsdc = assetConfig!.symbol === 'USDC';
+          let stableToWeth;
+          let firstHopAmount = amountInRaw;
+          const preWethHops: Array<{ from: string; to: string; stable: boolean }> = [];
+
+          // For USDT, route through USDC first to avoid Slipstream V3 pool issues
+          if (!isUsdc) {
+            console.log(`🔄 USDT detected - routing through USDC first`);
+            const usdcUsdtPool =
+              process.env.USDC_USDT_POOL || '0x5E7801e9B3aFf7C785E4E74Ff2076d4967d0cB6B';
+
+            console.log(`🔍 Step 1: USDT -> USDC`);
+            console.log(`  Pool: ${usdcUsdtPool}`);
+
+            const usdtToUsdc = await service.getPairReserves(
+              assetConfig!.address, // USDT
+              assetMetadata.USDC.address,
+              usdcUsdtPool.toLowerCase(),
+            );
+
+            if (!usdtToUsdc) {
+              console.error(`❌ USDT/USDC pool not found`);
+              return reply.code(404).send({
+                success: false,
+                error: `USDT/USDC pool not found. Expected pool: ${usdcUsdtPool}`,
+              });
+            }
+
+            console.log(`  ✅ USDT/USDC pool found: ${usdtToUsdc.poolAddress}`);
+            console.log(`  Reserve in (USDT): ${usdtToUsdc.reserveIn}`);
+            console.log(`  Reserve out (USDC): ${usdtToUsdc.reserveOut}`);
+
+            // Compute USDT -> USDC
+            firstHopAmount = computeSwap(amountInRaw, usdtToUsdc.reserveIn, usdtToUsdc.reserveOut);
+
+            console.log(
+              `  💱 Converted ${ethers.formatUnits(amountInRaw, 6)} USDT -> ${ethers.formatUnits(firstHopAmount, 6)} USDC`,
+            );
+
+            intermediateSteps.push({
+              symbol: 'USDC',
+              amount: ethers.formatUnits(firstHopAmount, 6),
+            });
+
+            preWethHops.push({
+              from: assetConfig!.address,
+              to: assetMetadata.USDC.address,
+              stable: Boolean(usdtToUsdc.stable),
+            });
           }
 
+          // Now USDC -> WETH (firstHopAmount is either original USDC or converted from USDT)
+          const wethUsdcPool =
+            process.env.WETH_USDC_POOL || '0xcdac0d6c6c59727a65f871236188350531885c43';
+
+          console.log(
+            `🔍 Step ${isUsdc ? '1' : '2'}: ${isUsdc ? 'USDC' : 'USDC (from USDT)'} -> WETH`,
+          );
+          console.log(`  Pool: ${wethUsdcPool}`);
+
+          stableToWeth = await service.getPairReserves(
+            assetMetadata.USDC.address,
+            assetMetadata.ETH.address,
+            wethUsdcPool.toLowerCase(),
+          );
+
+          if (!stableToWeth) {
+            console.warn(`⚠️ USDC/WETH pool lookup failed, retrying with reversed param order...`);
+            stableToWeth = await service.getPairReserves(
+              assetMetadata.ETH.address,
+              assetMetadata.USDC.address,
+              wethUsdcPool.toLowerCase(),
+            );
+          }
+
+          if (!stableToWeth) {
+            console.error(`❌ Failed to find USDC/WETH pool`);
+            return reply.code(404).send({
+              success: false,
+              error: `USDC/WETH pool not found. Expected pool: ${wethUsdcPool}`,
+            });
+          }
+
+          console.log(`  ✅ USDC/WETH pool found: ${stableToWeth.poolAddress}`);
+
           const wethAmountRaw = computeSwap(
-            amountInRaw,
+            firstHopAmount,
             stableToWeth.reserveIn,
             stableToWeth.reserveOut,
+          );
+
+          console.log(
+            `  💱 Converted ${ethers.formatUnits(firstHopAmount, 6)} USDC -> ${ethers.formatUnits(wethAmountRaw, 18)} WETH`,
           );
 
           // Prefer direct WETH->TOKEN after stable->WETH
@@ -546,9 +635,23 @@ export async function dexRoutes(fastify: FastifyInstance) {
             );
             outputDecimals = tokenDecimals;
             outputSymbol = 'TOKEN';
-            routePath = [assetConfig!.address, assetMetadata.ETH.address, normalizedToken];
+
+            // Build route path: USDT -> USDC -> WETH -> TOKEN (or USDC -> WETH -> TOKEN)
+            if (isUsdc) {
+              routePath = [assetConfig!.address, assetMetadata.ETH.address, normalizedToken];
+            } else {
+              routePath = [
+                assetConfig!.address,
+                assetMetadata.USDC.address,
+                assetMetadata.ETH.address,
+                normalizedToken,
+              ];
+            }
+
+            // Add all route hops
+            routes.push(...preWethHops); // USDT -> USDC if applicable
             routes.push({
-              from: assetConfig!.address,
+              from: assetMetadata.USDC.address,
               to: assetMetadata.ETH.address,
               stable: Boolean(stableToWeth.stable),
             });
@@ -579,6 +682,12 @@ export async function dexRoutes(fastify: FastifyInstance) {
               wethToAces.reserveIn,
               wethToAces.reserveOut,
             );
+
+            intermediateSteps.push({
+              symbol: 'ACES',
+              amount: ethers.formatUnits(acesAmountRaw, 18),
+            });
+
             expectedOutputRaw = computeSwap(
               acesAmountRaw,
               acesToToken.reserveIn,
@@ -586,14 +695,29 @@ export async function dexRoutes(fastify: FastifyInstance) {
             );
             outputDecimals = tokenDecimals;
             outputSymbol = 'TOKEN';
-            routePath = [
-              assetConfig!.address,
-              assetMetadata.ETH.address,
-              assetMetadata.ACES.address,
-              normalizedToken,
-            ];
+
+            // Build route path: USDT -> USDC -> WETH -> ACES -> TOKEN (or USDC -> WETH -> ACES -> TOKEN)
+            if (isUsdc) {
+              routePath = [
+                assetConfig!.address,
+                assetMetadata.ETH.address,
+                assetMetadata.ACES.address,
+                normalizedToken,
+              ];
+            } else {
+              routePath = [
+                assetConfig!.address,
+                assetMetadata.USDC.address,
+                assetMetadata.ETH.address,
+                assetMetadata.ACES.address,
+                normalizedToken,
+              ];
+            }
+
+            // Add all route hops
+            routes.push(...preWethHops); // USDT -> USDC if applicable
             routes.push({
-              from: assetConfig!.address,
+              from: assetMetadata.USDC.address,
               to: assetMetadata.ETH.address,
               stable: Boolean(stableToWeth.stable),
             });
@@ -668,6 +792,210 @@ export async function dexRoutes(fastify: FastifyInstance) {
 
         const minOutputRaw = (expectedOutputRaw * BigInt(10_000 - slippageBps)) / 10_000n;
 
+        // Calculate USD values using AcesUsdPriceService
+        let inputUsdValue: string | undefined;
+        let outputUsdValue: string | undefined;
+        const prices: {
+          aces?: number;
+          weth?: number;
+          usdc?: number;
+          usdt?: number;
+        } = {} as const;
+
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const acesUsdPriceService = (fastify as any).acesUsdPriceService;
+          console.log('💰 [USD Calculation] Starting USD value calculation...');
+          console.log(`   Service available: ${!!acesUsdPriceService}`);
+
+          if (acesUsdPriceService) {
+            const priceResult = await acesUsdPriceService.getAcesUsdPrice();
+            const acesUsdPrice = Number.parseFloat(priceResult.price);
+            prices.aces = acesUsdPrice;
+
+            console.log(`   ACES USD Price: $${acesUsdPrice}`);
+            console.log(`   Price source: ${priceResult.source}`);
+
+            // Stablecoins are $1
+            prices.usdc = 1.0;
+            prices.usdt = 1.0;
+
+            // Get WETH price from WETH/USDC pool
+            try {
+              const wethUsdcPool = await service.getPairReserves(
+                assetMetadata.ETH.address,
+                assetMetadata.USDC.address,
+                '0xcdac0d6c6c59727a65f871236188350531885c43',
+              );
+              if (wethUsdcPool) {
+                const wethReserve = Number(
+                  ethers.formatUnits(wethUsdcPool.reserveIn, wethUsdcPool.decimalsIn),
+                );
+                const usdcReserve = Number(
+                  ethers.formatUnits(wethUsdcPool.reserveOut, wethUsdcPool.decimalsOut),
+                );
+                prices.weth = wethReserve > 0 ? usdcReserve / wethReserve : 3000;
+              } else {
+                prices.weth = 3000; // Fallback
+              }
+            } catch (error) {
+              console.warn('Failed to get WETH price from pool:', error);
+              prices.weth = 3000; // Fallback
+            }
+
+            // Calculate input USD value
+            const inputAmount = Number.parseFloat(amountStr);
+            console.log(`💵 [USD Calculation] Input calculation:`);
+            console.log(`   Input amount: ${inputAmount}`);
+            console.log(`   Is sell mode: ${isSellMode}`);
+            console.log(`   Input asset: ${isSellMode ? 'TOKEN' : assetConfig!.symbol}`);
+
+            if (isSellMode) {
+              // Selling TOKEN - calculate based on output ACES value
+              const outputInAces = Number.parseFloat(
+                ethers.formatUnits(expectedOutputRaw, outputDecimals),
+              );
+              inputUsdValue = (outputInAces * acesUsdPrice).toFixed(2);
+              console.log(`   Calculated (TOKEN sell): $${inputUsdValue}`);
+            } else if (assetConfig!.symbol === 'ACES') {
+              inputUsdValue = (inputAmount * acesUsdPrice).toFixed(2);
+              console.log(
+                `   Calculated (ACES): ${inputAmount} × $${acesUsdPrice} = $${inputUsdValue}`,
+              );
+            } else if (assetConfig!.symbol === 'USDC' || assetConfig!.symbol === 'USDT') {
+              inputUsdValue = inputAmount.toFixed(2);
+              console.log(`   Calculated (${assetConfig!.symbol}): $${inputUsdValue}`);
+            } else if (assetConfig!.symbol === 'ETH') {
+              inputUsdValue = (inputAmount * prices.weth).toFixed(2);
+              console.log(
+                `   Calculated (ETH): ${inputAmount} × $${prices.weth} = $${inputUsdValue}`,
+              );
+            }
+
+            // Calculate output USD value
+            const outputAmount = Number.parseFloat(
+              ethers.formatUnits(expectedOutputRaw, outputDecimals),
+            );
+            console.log(`💵 [USD Calculation] Output calculation:`);
+            console.log(`   Output amount: ${outputAmount}`);
+            console.log(`   Output symbol: ${outputSymbol}`);
+
+            if (outputSymbol === 'ACES') {
+              outputUsdValue = (outputAmount * acesUsdPrice).toFixed(2);
+              console.log(
+                `   Calculated (ACES): ${outputAmount} × $${acesUsdPrice} = $${outputUsdValue}`,
+              );
+            } else if (outputSymbol === 'TOKEN') {
+              // TOKEN output - use input USD value as approximation
+              outputUsdValue = inputUsdValue;
+              console.log(`   Calculated (TOKEN): using input value = $${outputUsdValue}`);
+            }
+
+            console.log(`✅ [USD Calculation] Final values:`);
+            console.log(`   Input USD: $${inputUsdValue || 'undefined'}`);
+            console.log(`   Output USD: $${outputUsdValue || 'undefined'}`);
+          }
+        } catch (error) {
+          console.error('❌ [USD Calculation] Failed to calculate USD values:', error);
+          // Continue without USD values
+        }
+
+        // Fallback path: if we still don't have valid USD values (e.g., service unavailable or price=0),
+        // compute ACES/USD from on-chain reserves and fill at least input USD
+        const inputAmtNum = Number.parseFloat(amountStr);
+        const inputUsdNum = inputUsdValue ? Number.parseFloat(String(inputUsdValue)) : NaN;
+        const needsUsdFallback =
+          (!inputUsdValue ||
+            (!Number.isNaN(inputUsdNum) && inputUsdNum === 0 && inputAmtNum > 0)) &&
+          (!prices.aces || prices.aces <= 0);
+
+        if (needsUsdFallback) {
+          try {
+            console.log('🛟 [USD Fallback] Attempting fallback ACES/USD computation from pools...');
+
+            // 1) Get WETH/USD price from WETH/USDC pool
+            let wethUsd: number | null = null;
+            try {
+              const wethUsdcPool = await service.getPairReserves(
+                assetMetadata.ETH.address,
+                assetMetadata.USDC.address,
+                '0xcdac0d6c6c59727a65f871236188350531885c43',
+              );
+              if (wethUsdcPool) {
+                const wethReserve = Number(
+                  ethers.formatUnits(wethUsdcPool.reserveIn, wethUsdcPool.decimalsIn),
+                );
+                const usdcReserve = Number(
+                  ethers.formatUnits(wethUsdcPool.reserveOut, wethUsdcPool.decimalsOut),
+                );
+                wethUsd = wethReserve > 0 ? usdcReserve / wethReserve : null;
+                prices.weth = wethUsd ?? prices.weth;
+              }
+            } catch (err) {
+              console.warn('🛟 [USD Fallback] Failed to load WETH/USD from pool:', err);
+            }
+
+            // 2) Get ACES per WETH from ACES/WETH pool
+            let acesPerWeth: number | null = null;
+            try {
+              const envAcesWeth = process.env.AERODROME_ACES_WETH_POOL || '';
+              const knownAcesWeth = envAcesWeth ? envAcesWeth.toLowerCase() : undefined;
+              const acesWethPool = await service.getPairReserves(
+                assetMetadata.ACES.address,
+                assetMetadata.ETH.address,
+                knownAcesWeth,
+              );
+              if (acesWethPool) {
+                const acesReserve = Number(
+                  ethers.formatUnits(acesWethPool.reserveIn, acesWethPool.decimalsIn),
+                );
+                const wethReserve = Number(
+                  ethers.formatUnits(acesWethPool.reserveOut, acesWethPool.decimalsOut),
+                );
+                if (acesReserve > 0 && wethReserve > 0) {
+                  acesPerWeth = acesReserve / wethReserve; // ACES per 1 WETH
+                }
+              }
+            } catch (err) {
+              console.warn('🛟 [USD Fallback] Failed to load ACES/WETH reserves:', err);
+            }
+
+            // 3) Derive ACES/USD and compute input/output USD
+            if (!prices.aces && wethUsd && acesPerWeth && acesPerWeth > 0) {
+              const acesUsdDerived = wethUsd / acesPerWeth;
+              prices.aces = acesUsdDerived;
+              console.log(`🛟 [USD Fallback] Derived ACES/USD: $${acesUsdDerived.toFixed(6)}`);
+
+              const inputAmount = inputAmtNum;
+              if (isSellMode) {
+                const outputInAces = Number.parseFloat(
+                  ethers.formatUnits(expectedOutputRaw, outputDecimals),
+                );
+                inputUsdValue = (outputInAces * acesUsdDerived).toFixed(2);
+              } else if (assetConfig!.symbol === 'ACES') {
+                inputUsdValue = (inputAmount * acesUsdDerived).toFixed(2);
+              } else if (assetConfig!.symbol === 'ETH' && wethUsd) {
+                inputUsdValue = (inputAmount * wethUsd).toFixed(2);
+              } else if (assetConfig!.symbol === 'USDC' || assetConfig!.symbol === 'USDT') {
+                inputUsdValue = inputAmount.toFixed(2);
+              }
+
+              if (!outputUsdValue) {
+                const outputAmount = Number.parseFloat(
+                  ethers.formatUnits(expectedOutputRaw, outputDecimals),
+                );
+                if (outputSymbol === 'ACES') {
+                  outputUsdValue = (outputAmount * acesUsdDerived).toFixed(2);
+                } else if (outputSymbol === 'TOKEN') {
+                  outputUsdValue = inputUsdValue;
+                }
+              }
+            }
+          } catch (fallbackErr) {
+            console.warn('🛟 [USD Fallback] Fallback USD computation failed:', fallbackErr);
+          }
+        }
+
         const quote: QuoteResponse = {
           inputAsset: isSellMode ? 'TOKEN' : assetConfig!.symbol,
           inputAmount: amountStr,
@@ -680,6 +1008,9 @@ export async function dexRoutes(fastify: FastifyInstance) {
           path: routePath,
           routes,
           intermediate: intermediateSteps.length ? intermediateSteps : undefined,
+          inputUsdValue,
+          outputUsdValue,
+          prices,
         };
 
         return reply.send({ success: true, data: quote });

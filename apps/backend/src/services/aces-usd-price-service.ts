@@ -124,7 +124,7 @@ export class AcesUsdPriceService {
 
     // Resolve WETH→USD (USDC) leg
     const WETH_USDC_POOL = (
-      process.env.WETH_USDC_POOL || '0xd0b53D9277642d899DF5C87A3966A349A798F224'
+      process.env.WETH_USDC_POOL || '0xcdac0d6c6c59727a65f871236188350531885c43'
     ) // Base USDC/WETH v3 0.05%
       .toLowerCase();
 

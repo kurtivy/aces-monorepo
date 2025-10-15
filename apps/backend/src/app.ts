@@ -116,14 +116,27 @@ export const buildApp = async (): Promise<FastifyInstance> => {
 
   // Register WebSocket plugin and initialize WebSocket routes
   await fastify.register(fastifyWebSocket);
-  const chartWebSocket = new ChartDataWebSocket(fastify, unifiedService);
-  await chartWebSocket.initialize();
 
-  // Initialize Bonding Monitor WebSocket
-  const bondingMonitor = new BondingMonitorWebSocket(fastify, prisma, aerodromeService);
-  await bondingMonitor.initialize();
+  // Check if WebSocket polling should be disabled (useful for frontend development)
+  const disableWebSocketPolling = process.env.DISABLE_WEBSOCKET_POLLING === 'true';
 
-  // Decorate fastify with bonding monitor for access in routes
+  let chartWebSocket: ChartDataWebSocket | null = null;
+  let bondingMonitor: BondingMonitorWebSocket | null = null;
+
+  if (disableWebSocketPolling) {
+    console.log('⏸️  WebSocket polling disabled via DISABLE_WEBSOCKET_POLLING=true');
+  } else {
+    chartWebSocket = new ChartDataWebSocket(fastify, unifiedService);
+    await chartWebSocket.initialize();
+
+    // Initialize Bonding Monitor WebSocket
+    bondingMonitor = new BondingMonitorWebSocket(fastify, prisma, aerodromeService);
+    await bondingMonitor.initialize();
+
+    console.log('✅ WebSocket polling enabled');
+  }
+
+  // Decorate fastify with bonding monitor for access in routes (may be null)
   fastify.decorate('bondingMonitor', bondingMonitor);
 
   // Register custom plugins
@@ -272,6 +285,12 @@ export const buildApp = async (): Promise<FastifyInstance> => {
 
   // WebSocket stats endpoint
   fastify.get('/api/v1/ws/stats', async (request, reply) => {
+    if (!chartWebSocket) {
+      return {
+        status: 'disabled',
+        message: 'WebSocket polling is disabled via DISABLE_WEBSOCKET_POLLING=true',
+      };
+    }
     return chartWebSocket.getStats();
   });
 

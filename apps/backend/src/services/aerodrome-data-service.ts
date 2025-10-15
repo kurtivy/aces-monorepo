@@ -15,6 +15,14 @@ const FACTORY_ABI = [
 
 const ERC20_ABI = ['function decimals() view returns (uint8)'];
 
+// Slipstream (Uniswap V3 style) pool ABI for CL pools
+const SLIPSTREAM_POOL_ABI = [
+  'function token0() view returns (address)',
+  'function token1() view returns (address)',
+  'function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16, uint16, uint16, uint8, bool)',
+  'function liquidity() view returns (uint128)',
+];
+
 const FIVE_SECONDS_IN_MS = 5_000;
 
 export interface AerodromeDataServiceOptions {
@@ -420,16 +428,25 @@ export class AerodromeDataService {
     const cacheKey =
       normalizedA < normalizedB ? `${normalizedA}-${normalizedB}` : `${normalizedB}-${normalizedA}`;
 
+    console.log(`[getGenericPoolState] Called with:`);
+    console.log(`  tokenA: ${normalizedA}`);
+    console.log(`  tokenB: ${normalizedB}`);
+    console.log(`  knownPoolAddress: ${knownPoolAddress || 'none'}`);
+    console.log(`  cacheKey: ${cacheKey}`);
+
     const cached = this.getCached(this.genericPoolCache, cacheKey);
     if (cached) {
+      console.log(`  ✅ Returning cached pool state`);
       return cached;
     }
 
     if (this.mockEnabled) {
+      console.log(`  ⚠️ Mock mode enabled, returning null`);
       return null;
     }
 
     if (!this.provider) {
+      console.log(`  ❌ No provider available`);
       return null;
     }
 
@@ -437,20 +454,31 @@ export class AerodromeDataService {
 
     // Use known pool address if provided
     if (knownPoolAddress && knownPoolAddress !== ethers.ZeroAddress) {
+      console.log(`  ✅ Using known pool address: ${knownPoolAddress}`);
       pair = { address: knownPoolAddress.toLowerCase(), stable: false };
     } else {
+      console.log(`  🔍 Resolving pair address from factory...`);
       pair = await this.resolvePairAddress(normalizedA, normalizedB);
     }
 
     if (!pair) {
+      console.log(`  ❌ No pair found`);
       return null;
     }
 
+    console.log(`  📍 Using pool address: ${pair.address}`);
+
     try {
+      console.log(`  📞 Creating contract and calling getReserves()...`);
       const pairContract = new ethers.Contract(pair.address, PAIR_ABI, this.provider);
       const [reserve0, reserve1] = await pairContract.getReserves();
+      console.log(`  ✅ Got reserves - reserve0: ${reserve0}, reserve1: ${reserve1}`);
+
+      console.log(`  📞 Fetching token0 and token1...`);
       const token0 = ((await pairContract.token0()) as string).toLowerCase();
       const token1 = ((await pairContract.token1()) as string).toLowerCase();
+      console.log(`  ✅ token0: ${token0}`);
+      console.log(`  ✅ token1: ${token1}`);
 
       const state: AerodromeGenericPoolState = {
         poolAddress: pair.address,
@@ -462,12 +490,88 @@ export class AerodromeDataService {
         lastUpdated: Date.now(),
       };
 
+      console.log(`  ✅ Pool state created successfully, caching...`);
       this.setCached(this.genericPoolCache, cacheKey, state);
       return state;
     } catch (error) {
-      console.error('❌ ERROR reading generic pool state:', error);
+      console.error(`❌ ERROR reading V2 pool state for ${pair.address}:`, error);
+      console.log(`  🔄 Attempting to read as Slipstream (V3) pool...`);
+
+      // Try reading as a Slipstream/V3 pool
+      try {
+        const v3Result = await this.readSlipstreamPool(pair.address);
+        if (v3Result) {
+          console.log(`  ✅ Successfully read as Slipstream pool, caching...`);
+          this.setCached(this.genericPoolCache, cacheKey, v3Result);
+          return v3Result;
+        }
+      } catch (v3Error) {
+        console.error(`  ❌ Failed to read as Slipstream pool:`, v3Error);
+      }
+
+      console.error(`   Error details:`, {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        code: (error as any)?.code,
+        reason: (error as any)?.reason,
+      });
       return null;
     }
+  }
+
+  /**
+   * Read a Slipstream (V3) pool and convert it to V2-compatible format with synthetic reserves
+   */
+  private async readSlipstreamPool(poolAddress: string): Promise<AerodromeGenericPoolState | null> {
+    if (!this.provider) {
+      return null;
+    }
+
+    const pool = new ethers.Contract(poolAddress, SLIPSTREAM_POOL_ABI, this.provider);
+
+    // Read token addresses
+    const [token0, token1] = await Promise.all([pool.token0(), pool.token1()]);
+    const t0 = (token0 as string).toLowerCase();
+    const t1 = (token1 as string).toLowerCase();
+
+    console.log(`  📊 Slipstream pool tokens: ${t0} / ${t1}`);
+
+    // Read slot0 for price data
+    const [sqrtPriceX96, , , , , ,] = await pool.slot0();
+    const sqrt = BigInt(sqrtPriceX96);
+
+    console.log(`  📊 sqrtPriceX96: ${sqrt}`);
+
+    // Get decimals for both tokens
+    const d0 = await this.getTokenDecimals(t0);
+    const d1 = await this.getTokenDecimals(t1);
+
+    console.log(`  📊 Decimals: ${d0} / ${d1}`);
+
+    // Calculate price: price1Per0 = (sqrtPriceX96 / 2^96) ^ 2
+    // Then adjust for decimals: price1Per0 * 10^(d0 - d1)
+    const numerator = sqrt * sqrt;
+    const q192 = 2n ** 192n;
+    const base = Number(numerator) / Number(q192);
+    const price1Per0 = base * Math.pow(10, d0 - d1);
+
+    console.log(`  📊 price1Per0 (token1 per token0): ${price1Per0}`);
+
+    // Create synthetic reserves that maintain the price ratio
+    // We'll use a reasonable liquidity depth (e.g., 1000 units of token0)
+    const syntheticToken0Amount = 1000n * 10n ** BigInt(d0);
+    const syntheticToken1Amount = BigInt(Math.floor(Number(syntheticToken0Amount) * price1Per0));
+
+    console.log(`  📊 Synthetic reserves: ${syntheticToken0Amount} / ${syntheticToken1Amount}`);
+
+    return {
+      poolAddress: poolAddress.toLowerCase(),
+      token0: t0,
+      token1: t1,
+      reserve0: syntheticToken0Amount.toString(),
+      reserve1: syntheticToken1Amount.toString(),
+      stable: false, // V3 pools are volatile
+      lastUpdated: Date.now(),
+    };
   }
 
   private async getTokenDecimals(address: string): Promise<number> {
