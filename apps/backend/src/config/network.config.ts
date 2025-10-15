@@ -8,6 +8,7 @@ interface NetworkConfig {
   aerodromeFactory: string;
   aerodromeRouter: string;
   acesToken: string;
+  acesFactoryProxy?: string;
 }
 
 const baseMainnet: NetworkConfig = {
@@ -17,6 +18,8 @@ const baseMainnet: NetworkConfig = {
   aerodromeFactory: process.env.AERODROME_FACTORY_ADDRESS || '',
   aerodromeRouter: process.env.AERODROME_ROUTER_ADDRESS || '',
   acesToken: process.env.ACES_TOKEN_ADDRESS || '0x55337650856299363c496065C836B9C6E9dE0367',
+  acesFactoryProxy:
+    process.env.ACES_FACTORY_PROXY_ADDRESS || process.env.FACTORY_PROXY_ADDRESS || '',
 };
 
 const baseSepolia: NetworkConfig = {
@@ -28,6 +31,10 @@ const baseSepolia: NetworkConfig = {
     process.env.ACES_TOKEN_ADDRESS_SEPOLIA ||
     process.env.ACES_TOKEN_ADDRESS_BASE_SEPOLIA ||
     '0xF6b0c828ee8098120AFa90CEb11f80e6Fd4e2F1e',
+  acesFactoryProxy:
+    process.env.ACES_FACTORY_PROXY_ADDRESS_SEPOLIA ||
+    process.env.FACTORY_PROXY_ADDRESS_SEPOLIA ||
+    '',
 };
 
 const NETWORKS: Record<SupportedChainId, NetworkConfig> = {
@@ -44,5 +51,12 @@ export function createProvider(chainId: SupportedChainId): ethers.JsonRpcProvide
   if (!config.rpcUrl) {
     return null;
   }
-  return new ethers.JsonRpcProvider(config.rpcUrl);
+
+  // Create a proper Network object to prevent network detection failures
+  // This tells ethers to use the provided network info instead of auto-detecting
+  const network = new ethers.Network(chainId === 8453 ? 'base' : 'base-sepolia', chainId);
+
+  return new ethers.JsonRpcProvider(config.rpcUrl, network, {
+    staticNetwork: true, // Skip network detection
+  });
 }
