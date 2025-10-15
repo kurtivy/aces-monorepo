@@ -150,6 +150,17 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
       return;
     }
 
+    // Check if polling should be disabled (useful for development)
+    const disablePolling = process.env.NEXT_PUBLIC_DISABLE_TRADE_POLLING === 'true';
+
+    if (disablePolling) {
+      console.log('⏸️  Trade history polling disabled via NEXT_PUBLIC_DISABLE_TRADE_POLLING=true');
+      setTrades([]);
+      setIsLoading(false);
+      setIsConnected(false);
+      return;
+    }
+
     let intervalId: NodeJS.Timeout | null = null;
 
     // Initial fetch

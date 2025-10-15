@@ -225,7 +225,17 @@ export default function TokenSwapInterface({
   }, [slippagePopoverOpen]);
 
   const sellOptions = useMemo(() => {
-    // When buying RWA in DEX mode, allow all payment options
+    // In bonding mode, support ETH/USDC/USDT/ACES for buys
+    if (activeTab === 'buy' && !isDexMode) {
+      return [
+        { value: 'ETH', label: 'ETH' },
+        { value: 'USDC', label: 'USDC' },
+        { value: 'USDT', label: 'USDT' },
+        { value: 'ACES', label: 'ACES' },
+      ];
+    }
+
+    // In DEX mode, allow all payment options as before (including ETH)
     if (activeTab === 'buy' && isDexMode) {
       return [
         { value: 'ETH', label: 'ETH' },
@@ -235,8 +245,7 @@ export default function TokenSwapInterface({
       ];
     }
 
-    // When selling RWA, only allow selling for ACES
-    // When buying ACES (selling RWA), only show RWA token and ACES
+    // Selling RWA → ACES only
     return [
       { value: 'ACES', label: 'ACES' },
       { value: tokenSymbol, label: tokenSymbol },
@@ -380,12 +389,19 @@ export default function TokenSwapInterface({
   }, [amount]);
 
   // Check token allowance for DEX router (needed for any ERC20 token)
+  // Allowance: in bonding mode for stables, spender is the swap contract; in DEX mode it's the router
+  const bondingSwapAddress = useMemo(
+    () => (contractAddresses as Record<string, string> | undefined)?.ACES_SWAP || '',
+    [contractAddresses],
+  );
+
   const tokenAllowance = useTokenAllowance({
     tokenAddress: getTokenAddressForAsset(selectedSellAsset),
     ownerAddress: walletAddress,
-    spenderAddress: routerAddress || null,
+    spenderAddress:
+      (!isDexMode && isERC20Token(selectedSellAsset) ? bondingSwapAddress : routerAddress) || null,
     signer,
-    enabled: isDexMode && isERC20Token(selectedSellAsset) && hasValidAmount,
+    enabled: isERC20Token(selectedSellAsset) && hasValidAmount,
   });
 
   // Debug logging for allowance state
@@ -438,7 +454,7 @@ export default function TokenSwapInterface({
     amount,
     isDexMode,
     slippageBps,
-    enabled: !!tokenAddress && isDexMode,
+    enabled: !!tokenAddress,
   });
 
   // ========================================
@@ -459,20 +475,18 @@ export default function TokenSwapInterface({
     (selectedBuyAsset || '').toUpperCase() === (tokenSymbol || '').toUpperCase();
   const isRwaBuy = activeTab === 'buy' && isOutputToken;
   const isTokenQuoteLoading = hasValidAmount && quote.loading;
-  const isUsdQuoteLoading = hasValidAmount && !isDexMode && quote.loading;
+  const isUsdQuoteLoading = hasValidAmount && quote.loading;
 
   // ========================================
   // USD DISPLAY (from unified quote)
   // ========================================
   const inputUsdDisplay = useMemo(() => {
-    if (isDexMode) return null;
     return quote.inputUsdValue ? formatUsdValue(quote.inputUsdValue) : null;
-  }, [isDexMode, quote.inputUsdValue]);
+  }, [quote.inputUsdValue]);
 
   const outputUsdDisplay = useMemo(() => {
-    if (isDexMode) return null;
     return quote.outputUsdValue ? formatUsdValue(quote.outputUsdValue) : null;
-  }, [isDexMode, quote.outputUsdValue]);
+  }, [quote.outputUsdValue]);
 
   // ========================================
   // VALIDATION
@@ -693,10 +707,14 @@ export default function TokenSwapInterface({
   const handleApproveToken = useCallback(async () => {
     const tokenAddress = getTokenAddressForAsset(selectedSellAsset);
 
-    if (!signer || !routerAddress || !tokenAddress) {
+    // Use swap address in bonding mode for ERC20 approvals; router only for DEX
+    const spender =
+      !isDexMode && isERC20Token(selectedSellAsset) ? bondingSwapAddress : routerAddress;
+
+    if (!signer || !spender || !tokenAddress) {
       console.error('[SwapBox] Missing required data for approval', {
         hasSigner: !!signer,
-        hasRouter: !!routerAddress,
+        hasSpender: !!spender,
         tokenAddress,
         selectedSellAsset,
       });
@@ -713,7 +731,7 @@ export default function TokenSwapInterface({
       const UNLIMITED_APPROVAL = ethers.constants.MaxUint256;
 
       console.log(`[SwapBox] Requesting unlimited ${selectedSellAsset} approval...`);
-      const tx = await tokenContract.approve(routerAddress, UNLIMITED_APPROVAL);
+      const tx = await tokenContract.approve(spender, UNLIMITED_APPROVAL);
 
       setLoading('Confirming approval...');
       await tx.wait();
