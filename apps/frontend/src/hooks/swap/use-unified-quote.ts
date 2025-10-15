@@ -264,7 +264,7 @@ export function useUnifiedQuote({
         setMultiHopQuote(null);
       }
     } catch (error) {
-      console.error('[useUnifiedQuote] Multi-hop quote failed:', error); // eslint-disable-line
+      // console.error('[useUnifiedQuote] Multi-hop quote failed:', error); // eslint-disable-line
       const errorMsg = error instanceof Error ? error.message : 'Failed to fetch quote';
       setMultiHopError(errorMsg);
       setMultiHopQuote(null);
@@ -307,20 +307,20 @@ export function useUnifiedQuote({
    * Combine results based on strategy
    */
   const result: UnifiedQuoteResult = useMemo(() => {
-    console.log('[useUnifiedQuote] 📊 Building result:', {
-      quoteStrategy,
-      isDexMode,
-      enabled,
-      sellToken,
-      buyToken,
-      amount,
-      dexQuoteData: dexQuote.quote,
-      dexQuoteLoading: dexQuote.loading,
-      dexQuoteError: dexQuote.error,
-      dexQuoteExpectedOutput: dexQuote.quote?.expectedOutput,
-      bondingQuoteOutput: bondingQuote.outputAmount,
-      bondingQuoteLoading: bondingQuote.loading,
-    });
+    // console.log('[useUnifiedQuote] 📊 Building result:', {
+    //   quoteStrategy,
+    //   isDexMode,
+    //   enabled,
+    //   sellToken,
+    //   buyToken,
+    //   amount,
+    //   dexQuoteData: dexQuote.quote,
+    //   dexQuoteLoading: dexQuote.loading,
+    //   dexQuoteError: dexQuote.error,
+    //   dexQuoteExpectedOutput: dexQuote.quote?.expectedOutput,
+    //   bondingQuoteOutput: bondingQuote.outputAmount,
+    //   bondingQuoteLoading: bondingQuote.loading,
+    // });
 
     const baseResult: UnifiedQuoteResult = {
       outputAmount: '0',

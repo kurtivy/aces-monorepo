@@ -84,14 +84,6 @@ export function useTokenUsdPrice({
       setTokenUsdPrice(usdPricePerToken.toFixed(6));
       setTotalUsdValue(totalUsd.toFixed(2));
       setError(null);
-
-      console.log('[useTokenUsdPrice] Calculated:', {
-        mode: isTotalAmount ? 'total' : 'per-token',
-        acesUsdPrice: acesPrice,
-        tokenPriceInAces: priceInAces,
-        tokenUsdPrice: usdPricePerToken,
-        totalUsdValue: totalUsd,
-      });
     } catch (err) {
       console.error('[useTokenUsdPrice] Calculation failed:', err);
       setError(err instanceof Error ? err.message : 'Failed to calculate USD price');

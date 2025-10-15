@@ -100,6 +100,7 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
             counterAmount: trade.amountCounter,
             timestamp: Number(trade.timestamp),
             txHash: trade.txHash,
+            trader: trade.trader,
             priceInCounter: trade.priceInCounter,
           }));
         } else if (dexResult.error) {

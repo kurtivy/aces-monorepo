@@ -1,44 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { ethers } from 'ethers';
-import { getContractAddresses } from '@/lib/contracts/addresses';
+import { useMemo } from 'react';
+import { useBondingDataContext } from '@/contexts/bonding-data-context';
 
-const BASE_SEPOLIA_CHAIN_ID = 84532;
 const BASE_MAINNET_CHAIN_ID = 8453;
-
-const DEFAULT_CHAIN_PRIORITY = [BASE_MAINNET_CHAIN_ID, BASE_SEPOLIA_CHAIN_ID];
-
-const POLL_INTERVAL_MS = 15000;
-
-const CHAIN_NAMES: Record<number, string> = {
-  [BASE_SEPOLIA_CHAIN_ID]: 'Base Sepolia',
-  [BASE_MAINNET_CHAIN_ID]: 'Base Mainnet',
-};
-
-const RPC_ENDPOINTS: Record<number, string[]> = {
-  [BASE_SEPOLIA_CHAIN_ID]: [
-    'https://sepolia.base.org',
-    'https://base-sepolia-rpc.publicnode.com',
-    'https://base-sepolia.blockpi.network/v1/rpc/public',
-    'https://base-sepolia.gateway.tenderly.co',
-  ],
-  [BASE_MAINNET_CHAIN_ID]: [
-    process.env.QUICKNODE_BASE_URL as string,
-    process.env.BASE_MAINNET_RPC_URL as string,
-    'https://mainnet.base.org',
-    'https://base-rpc.publicnode.com',
-    'https://base.blockpi.network/v1/rpc/public',
-    'https://base.gateway.tenderly.co',
-  ],
-};
-
-// Simplified ABI - only what we need
-const FACTORY_ABI = [
-  'function tokens(address) view returns (uint8 curve, address tokenAddress, uint256 floor, uint256 steepness, uint256 acesTokenBalance, address subjectFeeDestination, uint256 tokensBondedAt, bool tokenBonded)',
-];
-
-const TOKEN_ABI = ['function totalSupply() view returns (uint256)'];
 
 interface BondingData {
   // Raw contract data
@@ -60,153 +25,64 @@ interface BondingData {
 }
 
 /**
- * Simple, single-purpose hook for fetching token bonding data
- * Defaults to Base Sepolia but supports Base Mainnet via the optional chainId
+ * Refactored to use shared BondingDataContext
+ * Now calls backend API with smart polling instead of direct RPC calls
+ * Maintains backward compatibility with old interface
  */
 export function useTokenBondingData(
   tokenAddress: string | undefined,
   chainId?: number,
 ): BondingData {
-  const isFetchingRef = useRef(false);
-  const [data, setData] = useState<BondingData>({
-    curve: 0,
-    currentSupply: '0',
-    tokensBondedAt: '30000000', // Default fallback
-    acesBalance: '0',
-    floorWei: '0',
-    floorPriceACES: '0',
-    steepness: '0',
-    isBonded: false,
-    bondingPercentage: 0,
-    loading: true,
-    error: null,
-  });
+  const { getTokenData } = useBondingDataContext();
 
-  const fetchBondingData = useCallback(async () => {
-    if (!tokenAddress || !ethers.utils.isAddress(tokenAddress)) {
-      setData((prev) => ({
-        ...prev,
+  return useMemo(() => {
+    if (!tokenAddress) {
+      return {
+        curve: 0,
+        currentSupply: '0',
+        tokensBondedAt: '30000000',
+        acesBalance: '0',
+        floorWei: '0',
+        floorPriceACES: '0',
+        steepness: '0',
+        isBonded: false,
+        bondingPercentage: 0,
         loading: false,
-        error: 'Invalid token address',
-      }));
-      return;
+        error: 'No token address provided',
+      };
     }
 
-    if (isFetchingRef.current) {
-      return;
+    const tokenState = getTokenData(tokenAddress, chainId || BASE_MAINNET_CHAIN_ID);
+
+    if (tokenState.loading || !tokenState.data) {
+      return {
+        curve: 0,
+        currentSupply: '0',
+        tokensBondedAt: '30000000',
+        acesBalance: '0',
+        floorWei: '0',
+        floorPriceACES: '0',
+        steepness: '0',
+        isBonded: false,
+        bondingPercentage: 0,
+        loading: tokenState.loading,
+        error: tokenState.error,
+      };
     }
 
-    isFetchingRef.current = true;
-
-    try {
-      const candidateChainIds = chainId ? [chainId] : DEFAULT_CHAIN_PRIORITY;
-
-      let lastError: unknown = null;
-
-      for (const candidateChainId of candidateChainIds) {
-        const rpcUrls = RPC_ENDPOINTS[candidateChainId];
-        if (!rpcUrls || rpcUrls.length === 0) {
-          console.warn(`⚠️ No RPC endpoints configured for chain ${candidateChainId}`);
-          continue;
-        }
-
-        const chainName = CHAIN_NAMES[candidateChainId] || `chain ${candidateChainId}`;
-        const { FACTORY_PROXY } = getContractAddresses(candidateChainId);
-
-        if (!FACTORY_PROXY) {
-          console.warn(`⚠️ Factory proxy not configured for ${chainName}. Skipping.`);
-          continue;
-        }
-
-        for (const rpcUrl of rpcUrls) {
-          try {
-            const provider = new ethers.providers.StaticJsonRpcProvider(rpcUrl, candidateChainId);
-            const factoryContract = new ethers.Contract(FACTORY_PROXY, FACTORY_ABI, provider);
-            const tokenContract = new ethers.Contract(tokenAddress, TOKEN_ABI, provider);
-
-            const [tokenData, totalSupply] = await Promise.all([
-              factoryContract.tokens(tokenAddress),
-              tokenContract.totalSupply(),
-            ]);
-
-            const curve = tokenData.curve;
-            const currentSupply = ethers.utils.formatEther(totalSupply);
-            const tokensBondedAt = ethers.utils.formatEther(tokenData.tokensBondedAt);
-            const acesBalance = ethers.utils.formatEther(tokenData.acesTokenBalance);
-            const floorWei = tokenData.floor.toString();
-            const floorPriceACES = ethers.utils.formatEther(tokenData.floor);
-            const steepness = tokenData.steepness.toString();
-            const isBonded = tokenData.tokenBonded;
-
-            const currentSupplyNum = parseFloat(currentSupply);
-            const tokensBondedAtNum = parseFloat(tokensBondedAt);
-            const bondingPercentage = isBonded
-              ? 100
-              : tokensBondedAtNum > 0
-                ? Math.min(100, (currentSupplyNum / tokensBondedAtNum) * 100)
-                : 0;
-
-            setData({
-              curve,
-              currentSupply,
-              tokensBondedAt,
-              acesBalance,
-              floorWei,
-              floorPriceACES,
-              steepness,
-              isBonded,
-              bondingPercentage,
-              loading: false,
-              error: null,
-            });
-
-            return;
-          } catch (rpcError) {
-            lastError = rpcError;
-            console.warn(`⚠️ RPC fetch failed for ${rpcUrl} (${chainName}):`, rpcError);
-          }
-        }
-      }
-
-      console.error('❌ Failed to fetch bonding data:', lastError);
-      setData((prev) => ({
-        ...prev,
-        loading: false,
-        error:
-          lastError instanceof Error
-            ? lastError.message
-            : `Failed to fetch data for ${tokenAddress}`,
-      }));
-    } finally {
-      isFetchingRef.current = false;
-    }
-  }, [tokenAddress, chainId]);
-
-  useEffect(() => {
-    fetchBondingData();
-
-    // Refresh periodically while respecting tab visibility so we do not hammer public RPCs
-    const interval = setInterval(() => {
-      if (typeof document === 'undefined' || document.visibilityState === 'visible') {
-        fetchBondingData();
-      }
-    }, POLL_INTERVAL_MS);
-
-    const handleVisibilityChange = () => {
-      if (typeof document === 'undefined' || document.visibilityState === 'visible') {
-        fetchBondingData();
-      }
+    // Map backend data to expected interface
+    return {
+      curve: tokenState.data.curve,
+      currentSupply: tokenState.data.currentSupply,
+      tokensBondedAt: tokenState.data.tokensBondedAt,
+      acesBalance: tokenState.data.acesBalance,
+      floorWei: tokenState.data.floorWei,
+      floorPriceACES: tokenState.data.floorPriceACES,
+      steepness: tokenState.data.steepness,
+      isBonded: tokenState.data.isBonded,
+      bondingPercentage: tokenState.data.bondingPercentage,
+      loading: false,
+      error: null,
     };
-
-    window.addEventListener('focus', handleVisibilityChange);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('focus', handleVisibilityChange);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [fetchBondingData]);
-
-  return data;
+  }, [tokenAddress, chainId, getTokenData]);
 }

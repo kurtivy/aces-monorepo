@@ -214,22 +214,22 @@ export function useEnhancedBondingQuote({
         const withSlippageFormatted = ethers.utils.formatUnits(withSlippage.toString(), 18);
         setOutputAmountWithSlippage(withSlippageFormatted);
 
-        console.log('[useEnhancedBondingQuote] SELL:', {
-          tokenInput: amount,
-          acesOutput: acesReceivedFormatted,
-          acesOutputWithSlippage: withSlippageFormatted,
-        });
+        // console.log('[useEnhancedBondingQuote] SELL:', {
+        //   tokenInput: amount,
+        //   acesOutput: acesReceivedFormatted,
+        //   acesOutputWithSlippage: withSlippageFormatted,
+        // });
       }
 
       setLastRefreshTime(Date.now());
     } catch (err) {
-      console.error('[useEnhancedBondingQuote] Calculation failed:', err);
-      console.error('[useEnhancedBondingQuote] State:', {
-        quoteState,
-        amount,
-        activeTab,
-        inputAsset,
-      });
+      // console.error('[useEnhancedBondingQuote] Calculation failed:', err);
+      // console.error('[useEnhancedBondingQuote] State:', {
+      //   quoteState,
+      //   amount,
+      //   activeTab,
+      //   inputAsset,
+      // });
       setError(err instanceof Error ? err.message : 'Quote calculation failed');
       setOutputAmount('0');
       setOutputAmountWithSlippage('0');
@@ -259,13 +259,13 @@ export function useEnhancedBondingQuote({
    * Trigger calculation when dependencies change
    */
   useEffect(() => {
-    console.log('[useEnhancedBondingQuote] useEffect triggered:', {
-      isDexMode,
-      amount,
-      activeTab,
-      inputAsset,
-      hasQuoteState: !!quoteState,
-    });
+    // console.log('[useEnhancedBondingQuote] useEffect triggered:', {
+    //   isDexMode,
+    //   amount,
+    //   activeTab,
+    //   inputAsset,
+    //   hasQuoteState: !!quoteState,
+    // });
 
     if (isDexMode) {
       setOutputAmount('0');
@@ -306,13 +306,13 @@ export function useEnhancedBondingQuote({
     // });
 
     if (!acesUsdPrice) {
-      console.log('[useEnhancedBondingQuote] No ACES USD price, returning null');
+      // console.log('[useEnhancedBondingQuote] No ACES USD price, returning null');
       return null;
     }
 
     const acesPrice = parseFloat(acesUsdPrice);
     if (!isFinite(acesPrice)) {
-      console.log('[useEnhancedBondingQuote] Invalid ACES price, returning null');
+      // console.log('[useEnhancedBondingQuote] Invalid ACES price, returning null');
       return null;
     }
 
@@ -331,18 +331,18 @@ export function useEnhancedBondingQuote({
         // Input is TOKEN, show USD of ACES cost
         const acesCostNum = parseFloat(acesCost || '0');
         const result = (acesCostNum * acesPrice).toFixed(2);
-        console.log('[useEnhancedBondingQuote] BUY with TOKEN input USD:', {
-          acesCostNum,
-          acesPrice,
-          result,
-        });
+        // console.log('[useEnhancedBondingQuote] BUY with TOKEN input USD:', {
+        //   acesCostNum,
+        //   acesPrice,
+        //   result,
+        // });
         return result;
       }
     } else {
       // SELL: Input is TOKEN, show USD of ACES that will be received
       const acesNum = parseFloat(acesReceived || '0');
       const result = (acesNum * acesPrice).toFixed(2);
-      console.log('[useEnhancedBondingQuote] SELL input USD:', { acesNum, acesPrice, result });
+      // console.log('[useEnhancedBondingQuote] SELL input USD:', { acesNum, acesPrice, result });
       return result;
     }
   }, [acesUsdPrice, activeTab, inputAsset, amount, acesCost, acesReceived]);

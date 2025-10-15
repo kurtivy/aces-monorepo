@@ -42,17 +42,17 @@ export function useSwapContracts(
    */
   const initializeProvider = useCallback(async (): Promise<boolean> => {
     if (initializingRef.current) {
-      console.log('[useSwapContracts] Initialization already in progress, skipping');
+      // console.log('[useSwapContracts] Initialization already in progress, skipping');
       return false;
     }
 
     if (!isAuthenticated || !walletAddress) {
-      console.log('[useSwapContracts] Not authenticated or no wallet address');
+      // console.log('[useSwapContracts] Not authenticated or no wallet address');
       return false;
     }
 
     if (typeof window === 'undefined') {
-      console.log('[useSwapContracts] Not in browser environment');
+      // console.log('[useSwapContracts] Not in browser environment');
       return false;
     }
 
@@ -77,13 +77,6 @@ export function useSwapContracts(
         return false;
       }
 
-      const walletName = getWalletNameFromType(privyWallet.walletClientType);
-      console.log('[useSwapContracts] 🎯 Starting initialization with:', {
-        walletName,
-        walletClientType: privyWallet.walletClientType,
-        address: privyWallet.address,
-      });
-
       // Get the correct provider for THIS specific wallet
       const ethProvider = getProviderForAddress(walletAddress, privyWallets);
 
@@ -93,11 +86,11 @@ export function useSwapContracts(
         return false;
       }
 
-      console.log('[useSwapContracts] ✅ Wallet provider found for', walletName);
+      // console.log('[useSwapContracts] ✅ Wallet provider found for', walletName);
 
       // Get current chain ID from the specific provider
       const chainId = await getCurrentChainIdFromProvider(ethProvider);
-      console.log('[useSwapContracts] Current chain ID:', chainId);
+      // console.log('[useSwapContracts] Current chain ID:', chainId);
 
       if (!chainId) {
         throw new Error('Failed to get chain ID');
@@ -105,7 +98,7 @@ export function useSwapContracts(
 
       // Get contract addresses for this chain
       const addresses = getContractAddresses(chainId);
-      console.log('[useSwapContracts] Contract addresses:', addresses);
+      // console.log('[useSwapContracts] Contract addresses:', addresses);
 
       if (!addresses.FACTORY_PROXY || !addresses.ACES_TOKEN) {
         throw new Error(`Contract addresses not configured for chain ID ${chainId}`);
@@ -117,11 +110,11 @@ export function useSwapContracts(
 
       // Verify signer address matches wallet address
       const signerAddress = await newSigner.getAddress();
-      console.log('[useSwapContracts] 🔍 Address verification:', {
-        signerAddress,
-        expectedAddress: walletAddress,
-        match: signerAddress.toLowerCase() === walletAddress.toLowerCase(),
-      });
+      // console.log('[useSwapContracts] 🔍 Address verification:', {
+      //   signerAddress,
+      //   expectedAddress: walletAddress,
+      //   match: signerAddress.toLowerCase() === walletAddress.toLowerCase(),
+      // });
 
       if (signerAddress.toLowerCase() !== walletAddress.toLowerCase()) {
         throw new Error(
@@ -130,7 +123,7 @@ export function useSwapContracts(
         );
       }
 
-      console.log('[useSwapContracts] ✅ Provider and signer initialized');
+      // console.log('[useSwapContracts] ✅ Provider and signer initialized');
 
       // Initialize contracts
       const factory = new ethers.Contract(addresses.FACTORY_PROXY, ACES_FACTORY_ABI, newSigner);
@@ -140,7 +133,7 @@ export function useSwapContracts(
       let token: ethers.Contract | null = null;
       if (tokenAddress) {
         token = new ethers.Contract(tokenAddress, LAUNCHPAD_TOKEN_ABI, newSigner);
-        console.log('[useSwapContracts] Token contract initialized:', tokenAddress);
+        // console.log('[useSwapContracts] Token contract initialized:', tokenAddress);
       }
 
       // Update state
@@ -151,15 +144,6 @@ export function useSwapContracts(
       setTokenContract(token);
       setCurrentChainId(chainId);
       setIsInitialized(true);
-
-      console.log('[useSwapContracts] ✅ Initialization complete', {
-        chainId,
-        wallet: walletName,
-        signerAddress,
-        factoryProxy: addresses.FACTORY_PROXY,
-        acesToken: addresses.ACES_TOKEN,
-        tokenAddress,
-      });
 
       return true;
     } catch (error) {
@@ -177,7 +161,7 @@ export function useSwapContracts(
    * Clean up provider and contract state
    */
   const cleanup = useCallback(() => {
-    console.log('[useSwapContracts] 🧹 Cleaning up state...');
+    // console.log('[useSwapContracts] 🧹 Cleaning up state...');
     setProvider(null);
     setSigner(null);
     setFactoryContract(null);
@@ -199,7 +183,7 @@ export function useSwapContracts(
     try {
       const token = new ethers.Contract(tokenAddress, LAUNCHPAD_TOKEN_ABI, signer);
       setTokenContract(token);
-      console.log('[useSwapContracts] Token contract updated:', tokenAddress);
+      // console.log('[useSwapContracts] Token contract updated:', tokenAddress);
     } catch (error) {
       console.error('[useSwapContracts] Failed to create token contract:', error);
       setTokenContract(null);
@@ -217,7 +201,7 @@ export function useSwapContracts(
       !initializingRef.current &&
       privyWallets.length > 0
     ) {
-      console.log('[useSwapContracts] Auto-initializing from auth state...');
+      // console.log('[useSwapContracts] Auto-initializing from auth state...');
 
       let retryCount = 0;
       const maxRetries = 3;
@@ -228,9 +212,6 @@ export function useSwapContracts(
 
         if (!success && retryCount < maxRetries) {
           retryCount++;
-          console.log(
-            `[useSwapContracts] Initialization attempt ${retryCount} failed, retrying...`,
-          );
           setTimeout(attemptInitialization, delay * (retryCount + 1));
         } else if (!success) {
           console.error('[useSwapContracts] Failed to initialize after', maxRetries, 'attempts');
@@ -262,11 +243,11 @@ export function useSwapContracts(
 
     const handleChainChanged = async (...args: unknown[]) => {
       const chainIdHex = args[0] as string;
-      console.log('[useSwapContracts] ⛓️ Chain changed:', chainIdHex);
+      // console.log('[useSwapContracts] ⛓️ Chain changed:', chainIdHex);
       const newChainId = Number.parseInt(chainIdHex, 16);
 
       if (newChainId && newChainId !== currentChainId) {
-        console.log('[useSwapContracts] Switching from chain', currentChainId, 'to', newChainId);
+        // console.log('[useSwapContracts] Switching from chain', currentChainId, 'to', newChainId);
         setCurrentChainId(newChainId);
         cleanup();
         const delay = getWalletInitDelay();
@@ -278,11 +259,11 @@ export function useSwapContracts(
 
     const handleAccountsChanged = (...args: unknown[]) => {
       const accounts = args[0] as string[];
-      console.log('[useSwapContracts] 👤 Accounts changed:', accounts);
+      // console.log('[useSwapContracts] 👤 Accounts changed:', accounts);
       if (accounts.length === 0) {
         cleanup();
       } else if (walletAddress && accounts[0]?.toLowerCase() !== walletAddress.toLowerCase()) {
-        console.log('[useSwapContracts] Account switched, reinitializing...');
+        // console.log('[useSwapContracts] Account switched, reinitializing...');
         cleanup();
         const delay = getWalletInitDelay();
         setTimeout(() => {
@@ -295,7 +276,7 @@ export function useSwapContracts(
     const ethProvider = getProviderForAddress(walletAddress, privyWallets);
 
     if (!ethProvider) {
-      console.warn('[useSwapContracts] No provider found for event listeners');
+      // console.warn('[useSwapContracts] No provider found for event listeners');
       return;
     }
 

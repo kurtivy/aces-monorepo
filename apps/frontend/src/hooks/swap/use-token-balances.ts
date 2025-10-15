@@ -58,7 +58,6 @@ export function useTokenBalances({
   const refreshBalance = useCallback(
     async (asset: BalanceAsset): Promise<void> => {
       if (!signer) {
-        console.log('[useTokenBalances] No signer available');
         return;
       }
 
@@ -123,7 +122,6 @@ export function useTokenBalances({
           typeof error.message === 'string' &&
           error.message.includes('circuit breaker')
         ) {
-          console.log('[useTokenBalances] Circuit breaker active - keeping existing balance');
           return;
         }
 
@@ -139,12 +137,10 @@ export function useTokenBalances({
    */
   const refreshBalances = useCallback(async (): Promise<void> => {
     if (refreshingRef.current) {
-      console.log('[useTokenBalances] Refresh already in progress, skipping');
       return;
     }
 
     if (!signer) {
-      console.log('[useTokenBalances] No signer available for balance refresh');
       return;
     }
 
@@ -152,8 +148,6 @@ export function useTokenBalances({
       refreshingRef.current = true;
       setLoading(true);
       setError(null);
-
-      console.log('[useTokenBalances] Refreshing all balances...');
 
       const address = await signer.getAddress();
 
@@ -164,7 +158,6 @@ export function useTokenBalances({
           const formattedAcesBalance = ethers.utils.formatEther(acesBalanceValue);
           setAcesBalance(formattedAcesBalance);
         } catch (error) {
-          console.error('[useTokenBalances] Failed to fetch ACES balance:', error);
           if (!isCircuitBreakerError(error)) {
             throw error;
           }
@@ -178,7 +171,6 @@ export function useTokenBalances({
           const formattedTokenBalance = ethers.utils.formatEther(tokenBalanceValue);
           setTokenBalance(formattedTokenBalance);
         } catch (error) {
-          console.error('[useTokenBalances] Failed to fetch token balance:', error);
           if (!isCircuitBreakerError(error)) {
             throw error;
           }
@@ -222,7 +214,6 @@ export function useTokenBalances({
 
         setStableBalances(newBalances);
       } catch (error) {
-        console.error('[useTokenBalances] Failed to refresh stable balances:', error);
         if (!isCircuitBreakerError(error)) {
           // Don't throw, just log - stable balances are non-critical
           console.warn('[useTokenBalances] Continuing despite stable balance error');
@@ -238,7 +229,6 @@ export function useTokenBalances({
 
           // This data could be used elsewhere, but we're not storing it here
           // to keep this hook focused on balances
-          console.log('[useTokenBalances] Bonding info fetched successfully');
         } catch (error) {
           // Silently ignore bonding curve errors - this is optional data
           console.debug('[useTokenBalances] Could not fetch bonding info:', error);
@@ -246,13 +236,11 @@ export function useTokenBalances({
       }
 
       setLastRefreshed(new Date());
-      console.log('[useTokenBalances] ✅ Balance refresh complete');
     } catch (error) {
       console.error('[useTokenBalances] ❌ Failed to refresh balances:', error);
 
       // Circuit breaker errors: keep existing state
       if (isCircuitBreakerError(error)) {
-        console.log('[useTokenBalances] Circuit breaker active - keeping existing balances');
         return;
       }
 
@@ -263,7 +251,6 @@ export function useTokenBalances({
         'code' in error &&
         (error.code === 'UNSUPPORTED_OPERATION' || error.code === 'CALL_EXCEPTION')
       ) {
-        console.log('[useTokenBalances] Signer no longer valid');
         setError('Wallet connection lost. Please reconnect.');
       } else {
         setError('Failed to refresh balances');
