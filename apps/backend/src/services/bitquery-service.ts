@@ -116,6 +116,58 @@ export class BitQueryService {
   }
 
   /**
+   * Get token trades using DEXTradeByTokens (returns actual trader addresses)
+   */
+  async getTokenTrades(tokenAddress: string, limit: number = 100): Promise<BitQuerySwap[]> {
+    if (this.disabled) {
+      console.log('[BitQuery] ⏸️  Skipping getTokenTrades (service disabled)');
+      return [];
+    }
+
+    console.log('[BitQuery] Fetching token trades:', {
+      tokenAddress,
+      limit,
+    });
+
+    const cacheKey = `token-trades:${tokenAddress}:${limit}`;
+    const cached = this.getFromCache<BitQuerySwap[]>(cacheKey);
+    if (cached) {
+      console.log(`[BitQuery] ✅ Returning ${cached.length} cached token trades`);
+      return cached;
+    }
+
+    try {
+      const queryVariables = {
+        network: BASE_NETWORK,
+        tokenAddress: tokenAddress.toLowerCase(),
+        limit,
+      };
+
+      console.log('[BitQuery] Querying BitQuery API for token trades...');
+      const response = await this.queryBitQuery<any>(
+        BITQUERY_QUERIES.GET_TOKEN_TRADES,
+        queryVariables,
+      );
+
+      const trades = response.data.EVM.DEXTradeByTokens;
+      console.log(`[BitQuery] ✅ Received ${trades?.length || 0} trades from BitQuery`);
+
+      if (trades && trades.length > 0) {
+        console.log('[BitQuery] Sample raw trade:', JSON.stringify(trades[0], null, 2));
+      }
+
+      const swaps = this.normalizeTokenTrades(trades || [], tokenAddress);
+      console.log(`[BitQuery] ✅ Normalized to ${swaps.length} swaps`);
+
+      this.setCache(cacheKey, swaps, 5000); // Cache for 5 seconds
+      return swaps;
+    } catch (error) {
+      console.error('[BitQuery] ❌ Failed to fetch token trades:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Fetch OHLC candles for a timeframe
    */
   async getOHLCCandles(
@@ -504,6 +556,67 @@ export class BitQueryService {
   }
 
   /**
+   * Normalize token trades from DEXTradeByTokens (NEW: Correct trader addresses)
+   */
+  private normalizeTokenTrades(trades: any[], tokenAddress: string): BitQuerySwap[] {
+    const normalizedTokenAddress = tokenAddress.toLowerCase();
+
+    return trades.map((trade) => {
+      const tradeData = trade.Trade;
+      const sideType = tradeData.Side.Type; // "buy" or "sell" (from ACES perspective)
+
+      // DEXTradeByTokens logic:
+      // Trade.Side.Type = "sell" means ACES was sold (token was BOUGHT) → user BOUGHT token
+      // Trade.Side.Type = "buy" means ACES was bought (token was SOLD) → user SOLD token
+      const side: 'buy' | 'sell' = sideType === 'sell' ? 'buy' : 'sell';
+
+      console.log('[BitQuery] TOKEN TRADE:', {
+        txHash: trade.Transaction.Hash,
+        trader: trade.Transaction.From,
+        sideType: sideType,
+        interpretedAs: side,
+        tokenAmount: tradeData.Amount,
+        acesAmount: tradeData.Side.Amount,
+        acesUSD: tradeData.Side.AmountInUSD,
+        tokenPrice: tradeData.Price,
+      });
+
+      // Extract amounts
+      const amountToken = tradeData.Amount || '0';
+      const amountAces = tradeData.Side.Amount || '0';
+
+      // Calculate price in USD from the trade
+      const acesAmountUSD = parseFloat(tradeData.Side.AmountInUSD || '0');
+      const tokenAmountNum = parseFloat(amountToken);
+      let priceInUsd = '0';
+
+      if (tokenAmountNum > 0 && acesAmountUSD > 0) {
+        // Price per token = Total USD spent / Token amount
+        priceInUsd = (acesAmountUSD / tokenAmountNum).toString();
+      }
+
+      // Price in ACES (from BitQuery)
+      const priceInAces = tradeData.Price || '0';
+
+      // Volume in USD
+      const volumeUsd = acesAmountUSD.toFixed(2);
+
+      return {
+        blockTime: new Date(trade.Block.Time),
+        blockNumber: trade.Block.Number,
+        txHash: trade.Transaction.Hash,
+        sender: trade.Transaction.From, // ACTUAL TRADER ADDRESS from Transaction.From!
+        priceInAces,
+        priceInUsd,
+        amountToken,
+        amountAces,
+        volumeUsd,
+        side,
+      };
+    });
+  }
+
+  /**
    * Normalize Trading.Tokens candles to BitQueryCandle format
    */
   private normalizeTradingTokensCandles(tokens: TradingTokensOHLC[]): BitQueryCandle[] {
@@ -540,43 +653,40 @@ export class BitQueryService {
       const timestamp = new Date(item.Block.Time);
       const trade = item.Trade;
 
-      // BitQuery DEXTradeByTokens gives us OHLC directly
-      const open = trade.open?.toString() || '0';
-      const high = trade.high?.toString() || '0';
-      const low = trade.low?.toString() || '0';
-      const close = trade.close?.toString() || '0';
-
-      // Get USD price (average of OHLC for now, could be refined)
-      const avgPrice =
-        (parseFloat(open) + parseFloat(high) + parseFloat(low) + parseFloat(close)) / 4;
-      const priceUsd = trade.PriceInUSD || 0;
-
-      // Calculate USD values
-      const openUsd = (parseFloat(open) * priceUsd).toString();
-      const highUsd = (parseFloat(high) * priceUsd).toString();
-      const lowUsd = (parseFloat(low) * priceUsd).toString();
-      const closeUsd = (parseFloat(close) * priceUsd).toString();
+      // DEXTradeByTokens with PriceInUSD aggregations returns USD prices directly
+      const openUsd = trade.open?.toString() || '0';
+      const highUsd = trade.high?.toString() || '0';
+      const lowUsd = trade.low?.toString() || '0';
+      const closeUsd = trade.close?.toString() || '0';
 
       // Volume data
-      const volume = item.baseVolume?.toString() || '0';
-      const volumeUsd = (parseFloat(volume) * priceUsd).toFixed(2);
+      const volumeUsd = item.volumeUsd?.toString() || '0';
+      const volume = item.volume?.toString() || '0';
 
-      console.log('[BitQuery] Normalized candle:', {
+      console.log('[BitQuery] Normalized DEX candle:', {
         timestamp: timestamp.toISOString(),
-        open,
-        high,
-        low,
-        close,
-        volume,
+        openUsd,
+        highUsd,
+        lowUsd,
+        closeUsd,
+        volumeUsd,
         trades: item.tradesCount,
+        hasWicks:
+          parseFloat(highUsd) > parseFloat(openUsd) || parseFloat(lowUsd) < parseFloat(closeUsd),
+        wickData: {
+          high: parseFloat(highUsd),
+          open: parseFloat(openUsd),
+          close: parseFloat(closeUsd),
+          low: parseFloat(lowUsd),
+        },
       });
 
       return {
         timestamp,
-        open,
-        high,
-        low,
-        close,
+        open: openUsd, // Use USD as base for DEX
+        high: highUsd,
+        low: lowUsd,
+        close: closeUsd,
         openUsd,
         highUsd,
         lowUsd,

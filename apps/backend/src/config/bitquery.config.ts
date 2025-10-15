@@ -28,7 +28,58 @@ export function getBitQueryConfig(): BitQueryConfig {
 
 // BitQuery GraphQL queries as constants
 export const BITQUERY_QUERIES = {
-  // Get recent swaps for a token pair
+  // Get recent swaps for a specific token (NEW: DEXTradeByTokens)
+  GET_TOKEN_TRADES: `
+    query GetTokenTrades(
+      $network: evm_network
+      $tokenAddress: String!
+      $limit: Int
+    ) {
+      EVM(network: $network) {
+        DEXTradeByTokens(
+          where: {
+            Trade: {
+              Currency: {
+                SmartContract: { is: $tokenAddress }
+              }
+              Price: { gt: 0 }
+            }
+          }
+          orderBy: { descending: Block_Time }
+          limit: { count: $limit }
+        ) {
+          Block {
+            Time
+            Number
+          }
+          Transaction {
+            Hash
+            From
+          }
+          Trade {
+            Amount
+            Price
+            Side {
+              Type
+              Amount
+              AmountInUSD
+              Currency {
+                Symbol
+                SmartContract
+                Name
+              }
+            }
+            Dex {
+              ProtocolName
+              ProtocolFamily
+            }
+          }
+        }
+      }
+    }
+  `,
+
+  // Get recent swaps for a token pair (LEGACY - kept for backwards compatibility)
   GET_RECENT_SWAPS: `
     query GetRecentSwaps(
       $network: evm_network
@@ -168,7 +219,11 @@ export const BITQUERY_QUERIES = {
             Trade: {
               Dex: { SmartContract: { is: $poolAddress } }
               Currency: { SmartContract: { is: $tokenAddress } }
-              Side: { Currency: { SmartContract: { is: $counterToken } } }
+              Side: { 
+                Amount: { gt: "0" }
+                Currency: { SmartContract: { is: $counterToken } } 
+              }
+              PriceAsymmetry: { lt: 0.5 }
             }
           }
           orderBy: { ascendingByField: "Block_Time" }
@@ -177,15 +232,14 @@ export const BITQUERY_QUERIES = {
             Time(interval: { in: minutes, count: $intervalCount })
           }
           Trade {
-            open: Price(minimum: Block_Time)
-            close: Price(maximum: Block_Time)
-            high: Price(maximum: Trade_Price)
-            low: Price(minimum: Trade_Price)
-            PriceInUSD
+            open: PriceInUSD(minimum: Block_Number)
+            close: PriceInUSD(maximum: Block_Number)
+            high: PriceInUSD(maximum: Trade_PriceInUSD)
+            low: PriceInUSD(minimum: Trade_PriceInUSD)
           }
+          volume: sum(of: Trade_Side_Amount)
+          volumeUsd: sum(of: Trade_Side_AmountInUSD)
           tradesCount: count
-          baseVolume: sum(of: Trade_Amount)
-          quoteVolume: sum(of: Trade_Side_Amount)
         }
       }
     }
