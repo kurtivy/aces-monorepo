@@ -63,14 +63,6 @@ export async function dexRoutes(fastify: FastifyInstance) {
     !mainnetConfig.aerodromeFactory ||
     !mainnetConfig.aerodromeRouter;
 
-  console.log('🔧 DEX Routes Initialization:');
-  console.log(`   RPC URL: ${mainnetConfig.rpcUrl ? 'SET' : 'MISSING'}`);
-  console.log(`   Factory: ${mainnetConfig.aerodromeFactory || 'MISSING'}`);
-  console.log(`   Router: ${mainnetConfig.aerodromeRouter || 'MISSING'}`);
-  console.log(`   ACES Token: ${mainnetConfig.acesToken}`);
-  console.log(`   Provider created: ${provider ? 'YES' : 'NO'}`);
-  console.log(`   Mock enabled: ${mockEnabled}`);
-
   let aerodromeService: AerodromeDataService | null = null;
 
   try {
@@ -84,7 +76,6 @@ export async function dexRoutes(fastify: FastifyInstance) {
       defaultStable: process.env.AERODROME_DEFAULT_STABLE === 'true',
       mockEnabled,
     });
-    console.log('✅ AerodromeDataService initialized successfully');
   } catch (error) {
     console.error('❌ Failed to initialize AerodromeDataService:', error);
     fastify.log.error({ err: error }, 'Failed to initialize AerodromeDataService');

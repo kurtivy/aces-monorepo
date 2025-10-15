@@ -3,6 +3,7 @@ import {
   BITQUERY_QUERIES,
   BASE_NETWORK,
   ACES_TOKEN_ADDRESS,
+  TIMEFRAME_TO_SECONDS,
 } from '../config/bitquery.config';
 export class BitQueryPaymentRequiredError extends Error {
   constructor(message: string = 'BitQuery payment required') {
@@ -16,6 +17,10 @@ import type {
   BitQueryCandle,
   BitQueryPoolState,
   BitQueryResponse,
+  BitQueryTradingResponse,
+  TradingTokensResponse,
+  TradingTokensOHLC,
+  LatestPriceResponse,
 } from '../types/bitquery.types';
 
 interface CacheEntry<T> {
@@ -26,6 +31,25 @@ interface CacheEntry<T> {
 export class BitQueryService {
   private config = getBitQueryConfig();
   private cache = new Map<string, CacheEntry<unknown>>();
+  private readonly disabled: boolean;
+
+  constructor() {
+    console.log(
+      '[BitQueryService Constructor] DISABLE_BITQUERY env var:',
+      process.env.DISABLE_BITQUERY,
+    );
+    console.log('[BitQueryService Constructor] Type:', typeof process.env.DISABLE_BITQUERY);
+    console.log(
+      '[BitQueryService Constructor] Comparison result:',
+      process.env.DISABLE_BITQUERY === 'true',
+    );
+    this.disabled = process.env.DISABLE_BITQUERY === 'true';
+    if (this.disabled) {
+      console.log('🚫 BitQuery service DISABLED via DISABLE_BITQUERY=true');
+    } else {
+      console.log('⚠️  BitQuery service is ENABLED');
+    }
+  }
 
   /**
    * Fetch recent swaps for a token pair
@@ -38,6 +62,11 @@ export class BitQueryService {
       limit?: number;
     } = {},
   ): Promise<BitQuerySwap[]> {
+    if (this.disabled) {
+      console.log('[BitQuery] ⏸️  Skipping getRecentSwaps (service disabled)');
+      return [];
+    }
+
     console.log('[BitQuery] Fetching recent swaps:', {
       tokenAddress,
       poolAddress,
@@ -99,6 +128,11 @@ export class BitQueryService {
       counterTokenAddress?: string;
     } = {},
   ): Promise<BitQueryCandle[]> {
+    if (this.disabled) {
+      console.log('[BitQuery] ⏸️  Skipping getOHLCCandles (service disabled)');
+      return [];
+    }
+
     const from = options.from || new Date(Date.now() - this.getTimeframeDuration(timeframe));
     const to = options.to || new Date();
     const counterTokenAddress = (options.counterTokenAddress || ACES_TOKEN_ADDRESS).toLowerCase();
@@ -163,6 +197,11 @@ export class BitQueryService {
    * Get current pool reserves and state
    */
   async getPoolState(poolAddress: string): Promise<BitQueryPoolState | null> {
+    if (this.disabled) {
+      console.log('[BitQuery] ⏸️  Skipping getPoolState (service disabled)');
+      return null;
+    }
+
     const cacheKey = `pool:${poolAddress}`;
     const cached = this.getFromCache<BitQueryPoolState>(cacheKey);
     if (cached) return cached;
@@ -186,7 +225,107 @@ export class BitQueryService {
   }
 
   /**
-   * Execute GraphQL query with retry logic
+   * Get OHLC candles using Trading.Tokens query (more accurate USD pricing)
+   */
+  async getTradingTokensOHLC(
+    tokenAddress: string,
+    timeframe: string,
+    options: {
+      from?: Date;
+      to?: Date;
+    } = {},
+  ): Promise<BitQueryCandle[]> {
+    if (this.disabled) {
+      console.log('[BitQuery] ⏸️  Skipping getTradingTokensOHLC (service disabled)');
+      return [];
+    }
+
+    const from = options.from || new Date(Date.now() - this.getTimeframeDuration(timeframe));
+    const to = options.to || new Date();
+    const intervalSeconds = TIMEFRAME_TO_SECONDS[timeframe] || this.getIntervalSeconds(timeframe);
+
+    console.log('[BitQuery] Fetching Trading.Tokens OHLC:', {
+      tokenAddress,
+      timeframe,
+      from: from.toISOString(),
+      to: to.toISOString(),
+      intervalSeconds,
+    });
+
+    const cacheKey = `trading-tokens:${tokenAddress}:${timeframe}:${from.getTime()}:${to.getTime()}`;
+    const cached = this.getFromCache<BitQueryCandle[]>(cacheKey);
+    if (cached) {
+      console.log(`[BitQuery] ✅ Returning ${cached.length} cached Trading.Tokens candles`);
+      return cached;
+    }
+
+    try {
+      const response = await this.queryBitQueryTrading<TradingTokensResponse>(
+        BITQUERY_QUERIES.GET_TRADING_TOKENS_OHLC,
+        {
+          tokenAddress: tokenAddress.toLowerCase(),
+          from: from.toISOString(),
+          to: to.toISOString(),
+          intervalSeconds,
+        },
+      );
+
+      const tokens = response.data.Trading.Tokens;
+      console.log(`[BitQuery] ✅ Received ${tokens?.length || 0} Trading.Tokens candles`);
+
+      const candles = this.normalizeTradingTokensCandles(tokens || []);
+      console.log(`[BitQuery] ✅ Normalized to ${candles.length} candles`);
+
+      this.setCache(cacheKey, candles);
+      return candles;
+    } catch (error) {
+      console.error('[BitQuery] ❌ Failed to fetch Trading.Tokens candles:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get latest USD price for market cap calculation
+   */
+  async getLatestPriceUSD(tokenAddress: string): Promise<number | null> {
+    if (this.disabled) {
+      console.log('[BitQuery] ⏸️  Skipping getLatestPriceUSD (service disabled)');
+      return null;
+    }
+
+    const cacheKey = `latest-price:${tokenAddress}`;
+    const cached = this.getFromCache<number>(cacheKey);
+    if (cached) return cached;
+
+    try {
+      const response = await this.queryBitQueryTrading<LatestPriceResponse>(
+        BITQUERY_QUERIES.GET_LATEST_PRICE_USD,
+        { tokenAddress: tokenAddress.toLowerCase() },
+      );
+
+      const tokens = response.data.Trading.Tokens;
+      if (!tokens || tokens.length === 0) return null;
+
+      const priceUsd = tokens[0].Price.Ohlc.Close;
+      this.setCache(cacheKey, priceUsd, 5000); // Cache for 5 seconds
+      return priceUsd;
+    } catch (error) {
+      console.error('[BitQuery] Failed to fetch latest price:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Calculate market cap: price × fixed supply (1 billion)
+   */
+  calculateMarketCap(priceUsd: number): string {
+    const FIXED_SUPPLY = 1_000_000_000; // 1 billion
+    const marketCap = priceUsd * FIXED_SUPPLY;
+    return marketCap.toFixed(2);
+  }
+
+  /**
+   * Execute GraphQL query with retry logic (for EVM queries)
    */
   private async queryBitQuery<T>(query: string, variables: any): Promise<BitQueryResponse<T>> {
     let lastError: Error | null = null;
@@ -236,6 +375,61 @@ export class BitQueryService {
     }
 
     throw lastError || new Error('BitQuery request failed after retries');
+  }
+
+  /**
+   * Execute GraphQL query with retry logic (for Trading queries)
+   */
+  private async queryBitQueryTrading<T>(
+    query: string,
+    variables: any,
+  ): Promise<BitQueryTradingResponse<T>> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt < this.config.maxRetries; attempt++) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), this.config.requestTimeoutMs);
+
+        const response = await fetch(this.config.endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${this.config.apiKey}`,
+          },
+          body: JSON.stringify({ query, variables }),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeout);
+
+        if (!response.ok) {
+          if (response.status === 402) {
+            throw new BitQueryPaymentRequiredError('BitQuery HTTP 402: Payment Required');
+          }
+          throw new Error(`BitQuery HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = (await response.json()) as BitQueryTradingResponse<T>;
+
+        if (data.errors && data.errors.length > 0) {
+          throw new Error(`BitQuery GraphQL errors: ${JSON.stringify(data.errors)}`);
+        }
+
+        return data;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        console.warn(`[BitQuery] Trading query attempt ${attempt + 1} failed:`, lastError.message);
+
+        if (attempt < this.config.maxRetries - 1) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, this.config.retryDelayMs * (attempt + 1)),
+          );
+        }
+      }
+    }
+
+    throw lastError || new Error('BitQuery Trading request failed after retries');
   }
 
   /**
@@ -298,13 +492,42 @@ export class BitQueryService {
         blockTime: new Date(trade.Block.Time),
         blockNumber: trade.Block.Number,
         txHash: trade.Transaction.Hash,
-        sender: tradeData.Sender || '0x0000000000000000000000000000000000000000',
+        sender: trade.Transaction.From || '0x0000000000000000000000000000000000000000',
         priceInAces,
         priceInUsd,
         amountToken,
         amountAces,
         volumeUsd,
         side,
+      };
+    });
+  }
+
+  /**
+   * Normalize Trading.Tokens candles to BitQueryCandle format
+   */
+  private normalizeTradingTokensCandles(tokens: TradingTokensOHLC[]): BitQueryCandle[] {
+    return tokens.map((item) => {
+      const timestamp = new Date(item.Block.Time);
+      const ohlc = item.Price.Ohlc;
+      const volume = item.Volume;
+
+      // BitQuery Trading.Tokens returns USD prices directly
+      // We populate both USD and non-USD fields with the same values
+      // since the frontend will use USD prices for DEX tokens (dataSource: 'dex')
+      return {
+        timestamp,
+        open: ohlc.Open.toString(), // Use USD price as base (for candle body calculation)
+        high: ohlc.High.toString(),
+        low: ohlc.Low.toString(),
+        close: ohlc.Close.toString(),
+        openUsd: ohlc.Open.toString(),
+        highUsd: ohlc.High.toString(),
+        lowUsd: ohlc.Low.toString(),
+        closeUsd: ohlc.Close.toString(),
+        volume: volume.Base.toString(),
+        volumeUsd: volume.Usd.toString(),
+        trades: 0, // Not provided by this query
       };
     });
   }

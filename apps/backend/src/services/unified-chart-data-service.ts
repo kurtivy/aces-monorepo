@@ -485,11 +485,12 @@ export class UnifiedChartDataService {
     options: ChartDataOptions,
     acesUsdPriceHint: string | null,
   ): Promise<{ candles: UnifiedCandle[]; acesUsdPrice: string | null }> {
-    let candleData: Awaited<ReturnType<BitQueryService['getOHLCCandles']>> = [];
+    let candleData: Awaited<ReturnType<BitQueryService['getTradingTokensOHLC']>> = [];
+
     try {
-      candleData = await this.bitQueryService.getOHLCCandles(
+      // Use new Trading.Tokens query for accurate USD pricing
+      candleData = await this.bitQueryService.getTradingTokensOHLC(
         tokenAddress,
-        poolAddress,
         options.timeframe,
         {
           from: options.from,
@@ -516,144 +517,58 @@ export class UnifiedChartDataService {
       };
     }
 
-    const timeframeMs = this.getIntervalMs(options.timeframe);
-    const toDate = options.to ?? new Date();
-    const fromDate =
-      options.from ??
-      (candleData.length > 0
-        ? candleData[0].timestamp
-        : new Date(toDate.getTime() - timeframeMs * 12));
-
-    let acesUsdLookup: Map<number, number> | null = null;
-    let latestSeriesPrice: number | null = null;
-
-    if (options.includeUsd !== false && candleData.length > 0) {
-      const series = await this.getAcesUsdSeries(options.timeframe, {
-        from: new Date(fromDate.getTime() - timeframeMs),
-        to: new Date(toDate.getTime() + timeframeMs),
-      });
-      acesUsdLookup = series.map;
-      latestSeriesPrice = series.lastPrice;
-    }
-
-    // Get circulating supply from subgraph (tokens that bonded have fixed supply)
-    let circulatingSupply = '0';
-    let totalSupply = '30000000';
+    // Get latest price for market cap calculation
+    let latestPriceUsd: number | null = null;
+    let marketCapUsd: string | null = null;
 
     try {
-      const tokenData = await this.tokenService.fetchFromSubgraph(tokenAddress);
-      if (tokenData?.data?.tokens?.[0]) {
-        circulatingSupply = tokenData.data.tokens[0].supply || '0';
-        console.log(
-          `[UnifiedChartData] Got supply from subgraph for ${tokenAddress}: ${circulatingSupply}`,
-        );
+      latestPriceUsd = await this.bitQueryService.getLatestPriceUSD(tokenAddress);
+      if (latestPriceUsd) {
+        marketCapUsd = this.bitQueryService.calculateMarketCap(latestPriceUsd);
+        console.log('[UnifiedChartData] DEX market cap calculated:', {
+          priceUsd: latestPriceUsd,
+          marketCapUsd,
+        });
       }
     } catch (error) {
-      console.warn('[UnifiedChartData] Failed to get supply from subgraph:', error);
+      console.warn('[UnifiedChartData] Failed to get latest price for market cap:', error);
     }
 
-    const fallbackAcesUsd =
-      latestSeriesPrice && Number.isFinite(latestSeriesPrice) && latestSeriesPrice > 0
-        ? latestSeriesPrice
-        : acesUsdPriceHint
-            ? parseFloat(acesUsdPriceHint)
-            : null;
+    console.log('[UnifiedChartData] DEX data from BitQuery:', {
+      candleCount: candleData.length,
+      latestPriceUsd,
+      marketCapUsd,
+    });
 
-    const alignTime = (date: Date) => Math.floor(date.getTime() / timeframeMs) * timeframeMs;
-    let lastKnownMultiplier =
-      latestSeriesPrice && Number.isFinite(latestSeriesPrice) && latestSeriesPrice > 0
-        ? latestSeriesPrice
-        : fallbackAcesUsd;
-
+    // Convert to UnifiedCandle format
+    // Trading.Tokens query provides USD prices directly
+    // We pass through the OHLC values from BitQuery (which are already USD prices)
+    // The frontend datafeed will use these for candle bodies since dataSource='dex'
     const resolvedCandles: UnifiedCandle[] = candleData.map((candle) => {
-      const aligned = alignTime(candle.timestamp);
-      const seriesMultiplier = acesUsdLookup?.get(aligned);
-
-      let priceMultiplier = Number.isFinite(seriesMultiplier ?? NaN) && (seriesMultiplier ?? 0) > 0
-        ? (seriesMultiplier as number)
-        : lastKnownMultiplier && Number.isFinite(lastKnownMultiplier) && lastKnownMultiplier > 0
-          ? lastKnownMultiplier
-          : fallbackAcesUsd;
-
-      if (!priceMultiplier || !Number.isFinite(priceMultiplier) || priceMultiplier <= 0) {
-        priceMultiplier = null;
-      } else {
-        lastKnownMultiplier = priceMultiplier;
-      }
-
-      const openAces = parseFloat(candle.open);
-      const highAces = parseFloat(candle.high);
-      const lowAces = parseFloat(candle.low);
-      const closeAces = parseFloat(candle.close);
-      const volumeBase = parseFloat(candle.volume);
-
-      const openUsd = priceMultiplier && Number.isFinite(openAces)
-        ? (openAces * priceMultiplier).toFixed(18)
-        : '0';
-      const highUsd = priceMultiplier && Number.isFinite(highAces)
-        ? (highAces * priceMultiplier).toFixed(18)
-        : '0';
-      const lowUsd = priceMultiplier && Number.isFinite(lowAces)
-        ? (lowAces * priceMultiplier).toFixed(18)
-        : '0';
-      const closeUsdNumber =
-        priceMultiplier && Number.isFinite(closeAces) ? closeAces * priceMultiplier : 0;
-      const closeUsd =
-        priceMultiplier && Number.isFinite(closeAces)
-          ? closeUsdNumber.toFixed(18)
-          : '0';
-
-      const volumeUsd =
-        priceMultiplier &&
-        Number.isFinite(volumeBase) &&
-        Number.isFinite(closeUsdNumber) &&
-        closeUsdNumber > 0
-          ? (volumeBase * closeUsdNumber).toFixed(2)
-          : '0';
-
-      // Calculate market cap from supply * price
-      const supply = parseFloat(circulatingSupply);
-      const marketCapAces =
-        supply > 0 && Number.isFinite(closeAces) && closeAces > 0
-          ? (supply * closeAces).toFixed(2)
-          : '0';
-
-      const marketCapUsd =
-        supply > 0 && closeUsdNumber > 0
-          ? (supply * closeUsdNumber).toFixed(2)
-          : '0';
-
       return {
         timestamp: candle.timestamp,
-        open: candle.open,
+        open: candle.open, // USD price (for candle body calculation)
         high: candle.high,
         low: candle.low,
         close: candle.close,
-        openUsd,
-        highUsd,
-        lowUsd,
-        closeUsd,
+        openUsd: candle.openUsd,
+        highUsd: candle.highUsd,
+        lowUsd: candle.lowUsd,
+        closeUsd: candle.closeUsd,
         volume: candle.volume,
-        volumeUsd,
+        volumeUsd: candle.volumeUsd,
         trades: candle.trades,
         dataSource: 'dex' as const,
-        circulatingSupply,
-        totalSupply,
-        marketCapAces,
-        marketCapUsd,
+        circulatingSupply: '1000000000', // Fixed 1B supply
+        totalSupply: '1000000000',
+        marketCapAces: undefined, // Not tracking ACES market cap for DEX tokens
+        marketCapUsd: marketCapUsd || undefined,
       };
     });
 
-    const resolvedAcesUsd =
-      lastKnownMultiplier && Number.isFinite(lastKnownMultiplier) && lastKnownMultiplier > 0
-        ? lastKnownMultiplier
-        : fallbackAcesUsd && Number.isFinite(fallbackAcesUsd) && fallbackAcesUsd > 0
-          ? fallbackAcesUsd
-          : null;
-
     return {
       candles: resolvedCandles,
-      acesUsdPrice: resolvedAcesUsd ? resolvedAcesUsd.toFixed(6) : null,
+      acesUsdPrice: acesUsdPriceHint, // Return the hint as-is for DEX tokens
     };
   }
 
@@ -796,15 +711,11 @@ export class UnifiedChartDataService {
     const openUsdValue =
       priceMultiplier && Number.isFinite(pricesUsd[pricesUsd.length - 1])
         ? pricesUsd[pricesUsd.length - 1]
-        : finiteUsdPrices[finiteUsdPrices.length - 1] ?? 0;
+        : (finiteUsdPrices[finiteUsdPrices.length - 1] ?? 0);
     const closeUsdValue =
-      priceMultiplier && Number.isFinite(pricesUsd[0])
-        ? pricesUsd[0]
-        : finiteUsdPrices[0] ?? 0;
-    const highUsdValue =
-      finiteUsdPrices.length > 0 ? Math.max(...finiteUsdPrices) : closeUsdValue;
-    const lowUsdValue =
-      finiteUsdPrices.length > 0 ? Math.min(...finiteUsdPrices) : closeUsdValue;
+      priceMultiplier && Number.isFinite(pricesUsd[0]) ? pricesUsd[0] : (finiteUsdPrices[0] ?? 0);
+    const highUsdValue = finiteUsdPrices.length > 0 ? Math.max(...finiteUsdPrices) : closeUsdValue;
+    const lowUsdValue = finiteUsdPrices.length > 0 ? Math.min(...finiteUsdPrices) : closeUsdValue;
 
     // Calculate market cap
     const supply = parseFloat(circulatingSupply);

@@ -57,6 +57,7 @@ export const BITQUERY_QUERIES = {
           }
           Transaction {
             Hash
+            From
           }
           Trade {
             Sender
@@ -115,6 +116,7 @@ export const BITQUERY_QUERIES = {
           }
           Transaction {
             Hash
+            From
           }
           Trade {
             Sender
@@ -221,6 +223,54 @@ export const BITQUERY_QUERIES = {
       }
     }
   `,
+
+  // Get OHLC data using Trading.Tokens query (accurate USD pricing)
+  GET_TRADING_TOKENS_OHLC: `
+    query GetTradingTokensOHLC(
+      $tokenAddress: String!
+      $from: DateTime!
+      $to: DateTime!
+      $intervalSeconds: Int!
+    ) {
+      Trading {
+        Tokens(
+          where: {
+            Volume: { Usd: { gt: 0 } }
+            Token: { Address: { is: $tokenAddress } }
+            Interval: { Time: { Duration: { eq: $intervalSeconds } } }
+            Block: { Time: { since: $from, till: $to } }
+          }
+        ) {
+          Block { Time Timestamp }
+          Interval { Time { Start End Duration } }
+          Price {
+            IsQuotedInUsd
+            Ohlc { Open High Low Close }
+          }
+          Volume { Base Quote Usd }
+          Token { Address Symbol Name }
+        }
+      }
+    }
+  `,
+
+  // Get latest price for market cap calculation
+  GET_LATEST_PRICE_USD: `
+    query GetLatestPriceUSD($tokenAddress: String!) {
+      Trading {
+        Tokens(
+          where: {
+            Token: { Address: { is: $tokenAddress } }
+          }
+          orderBy: { descending: Block_Time }
+          limit: { count: 1 }
+        ) {
+          Block { Time }
+          Price { Ohlc { Close } }
+        }
+      }
+    }
+  `,
 };
 
 export const BASE_NETWORK = 'base'; // BitQuery network identifier for Base
@@ -234,3 +284,12 @@ const wethUsdcPoolEnv = process.env.WETH_USDC_POOL || process.env.BITQUERY_WETH_
 
 export const ACES_WETH_POOL_ADDRESS = acesWethPoolEnv ? acesWethPoolEnv.toLowerCase() : '';
 export const WETH_USDC_POOL_ADDRESS = wethUsdcPoolEnv ? wethUsdcPoolEnv.toLowerCase() : '';
+
+// Timeframe to seconds mapping for Trading.Tokens query
+export const TIMEFRAME_TO_SECONDS: Record<string, number> = {
+  '5m': 300,
+  '15m': 900,
+  '1h': 3600,
+  '4h': 14400,
+  '1d': 86400,
+};
