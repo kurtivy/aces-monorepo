@@ -115,6 +115,13 @@ export class AdminApi {
   ): Promise<T> {
     const url = `${API_BASE_URL}/api/v1/admin${endpoint}`;
 
+    console.log('🌐 Making admin request:', {
+      url,
+      method: options.method || 'GET',
+      hasToken: !!token,
+      body: options.body,
+    });
+
     // Only set Content-Type to JSON if there's a body
     const headers: HeadersInit = {
       ...(token && { Authorization: `Bearer ${token}` }),
@@ -130,8 +137,15 @@ export class AdminApi {
       headers,
     });
 
+    console.log('📥 Response received:', {
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok,
+    });
+
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+      console.error('❌ Request failed:', errorData);
       throw new Error(errorData.message || `Request failed with status ${response.status}`);
     }
 
@@ -402,5 +416,32 @@ export class AdminApi {
     }>;
   }> {
     return this.adminRequest('/tokens', { method: 'GET' }, token);
+  }
+
+  static async updateTokenPoolAddress(
+    tokenAddress: string,
+    poolAddress: string,
+    token: string,
+  ): Promise<{
+    success: boolean;
+    message: string;
+    data?: {
+      contractAddress: string;
+      poolAddress: string;
+    };
+  }> {
+    console.log('📡 AdminApi.updateTokenPoolAddress called with:', {
+      tokenAddress,
+      poolAddress,
+      endpoint: `/tokens/${tokenAddress}/pool-address`,
+    });
+    return this.adminRequest(
+      `/tokens/${tokenAddress}/pool-address`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ poolAddress }),
+      },
+      token,
+    );
   }
 }

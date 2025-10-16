@@ -200,7 +200,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
     if (isOriginAllowed(origin)) {
       reply
         .header('Access-Control-Allow-Origin', origin)
-        .header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+        .header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
         .header(
           'Access-Control-Allow-Headers',
           'Content-Type, Authorization, Accept, Origin, X-Requested-With',
@@ -217,7 +217,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
     if (isOriginAllowed(origin)) {
       reply
         .header('Access-Control-Allow-Origin', origin)
-        .header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+        .header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
         .header(
           'Access-Control-Allow-Headers',
           'Content-Type, Authorization, Accept, Origin, X-Requested-With',

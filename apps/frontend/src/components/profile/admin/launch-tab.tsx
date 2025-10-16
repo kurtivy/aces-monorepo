@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { AdminApi } from '@/lib/api/admin';
+import { AerodromePoolPredictor } from './aerodrome-pool-predictor';
 import {
   Wallet,
   Coins,
@@ -1707,6 +1708,9 @@ export function LaunchTab() {
               )}
             </CardContent>
           </Card>
+
+          {/* Aerodrome Pool Predictor */}
+          <AerodromePoolPredictor />
 
           {/* Link Token to Listing Card */}
           <Card className="bg-black border-emerald-400/20">

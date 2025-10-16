@@ -435,4 +435,87 @@ export async function adminTokenRoutes(fastify: FastifyInstance) {
       }
     },
   );
+
+  /**
+   * PATCH /api/v1/admin/tokens/:address/pool-address
+   * Update the Aerodrome pool address for a token
+   */
+  fastify.patch(
+    '/api/v1/admin/tokens/:address/pool-address',
+    {
+      preHandler: [requireAdmin],
+      schema: {
+        params: zodToJsonSchema(
+          z.object({
+            address: z.string().regex(/^0x[a-fA-F0-9]{40}$/, 'Invalid Ethereum address'),
+          }),
+        ),
+        body: zodToJsonSchema(
+          z.object({
+            poolAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/, 'Invalid pool address'),
+          }),
+        ),
+        response: {
+          200: zodToJsonSchema(
+            z.object({
+              success: z.boolean(),
+              message: z.string(),
+              data: z.object({
+                contractAddress: z.string(),
+                poolAddress: z.string(),
+              }),
+            }),
+          ),
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { address } = request.params as { address: string };
+        const { poolAddress } = request.body as { poolAddress: string };
+
+        console.log(`[ADMIN] Updating pool address for token ${address} to ${poolAddress}`);
+
+        // Verify token exists
+        const token = await fastify.prisma.token.findUnique({
+          where: { contractAddress: address.toLowerCase() },
+        });
+
+        if (!token) {
+          return reply.code(404).send({
+            success: false,
+            error: 'Token not found',
+            message: `Token with address ${address} does not exist in database`,
+          });
+        }
+
+        // Update pool address
+        const updatedToken = await fastify.prisma.token.update({
+          where: { contractAddress: address.toLowerCase() },
+          data: { poolAddress: poolAddress.toLowerCase() },
+        });
+
+        console.log(
+          `[ADMIN] Successfully updated pool address for token ${updatedToken.symbol} to ${poolAddress}`,
+        );
+
+        return reply.send({
+          success: true,
+          message: `Pool address for token ${updatedToken.symbol} updated successfully`,
+          data: {
+            contractAddress: updatedToken.contractAddress,
+            poolAddress: updatedToken.poolAddress!,
+          },
+        });
+      } catch (error) {
+        console.error('[ADMIN] Error updating pool address:', error);
+
+        return reply.code(500).send({
+          success: false,
+          error: 'Failed to update pool address',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    },
+  );
 }
