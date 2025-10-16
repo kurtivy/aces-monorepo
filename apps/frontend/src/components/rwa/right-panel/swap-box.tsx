@@ -70,15 +70,8 @@ export default function TokenSwapInterface({
 
   // Initialize contracts
   const contracts = useSwapContracts(walletAddress, isAuthenticated, tokenAddress);
-  const {
-    provider,
-    signer,
-    factoryContract,
-    acesContract,
-    currentChainId,
-    isInitialized,
-    initializationError,
-  } = contracts;
+  const { provider, signer, factoryContract, acesContract, currentChainId, initializationError } =
+    contracts;
 
   // Get contract addresses
   const contractAddresses = useMemo(
@@ -424,7 +417,7 @@ export default function TokenSwapInterface({
   useEffect(() => {
     if (isERC20Token(selectedSellAsset) && amount && amount !== '0') {
       const assetInfo = getAssetBalanceInfo(selectedSellAsset);
-      const needsApproval = !tokenAllowance.hasAllowance(amount, assetInfo.decimals);
+      void tokenAllowance.hasAllowance(amount, assetInfo.decimals);
       // console.log('[SwapBox] Allowance Check:', {
       //   mode: isDexMode ? 'DEX' : 'Bonding',
       //   selectedSellAsset,
@@ -542,11 +535,12 @@ export default function TokenSwapInterface({
   // Debug logging for swap button state
   useEffect(() => {
     const assetInfo = getAssetBalanceInfo(selectedSellAsset);
-    const needsApproval =
+    void (
       isDexMode &&
       isERC20Token(selectedSellAsset) &&
       !tokenAllowance.hasAllowance(amount, assetInfo.decimals) &&
-      hasValidAmount;
+      hasValidAmount
+    );
     // console.log('[SwapBox] 🔍 Swap Button State:', {
     //   hasValidAmount,
     //   loading,
@@ -715,7 +709,9 @@ export default function TokenSwapInterface({
           setSuccessTxHash(result.hash || result.receipt?.transactionHash || '');
           setSuccessTokenAmount(quote.outputAmount || '0');
           setSuccessSpentAmount(amount);
-          setSuccessSpentAsset((selectedSellAsset as any) || 'ACES');
+          setSuccessSpentAsset(
+            (selectedSellAsset as 'ACES' | 'USDC' | 'USDT' | 'ETH' | 'WETH') || 'ACES',
+          );
           setSuccessModalOpen(true);
         } else {
           // Otherwise show a toast (e.g., ACES buys)
@@ -1298,9 +1294,17 @@ export default function TokenSwapInterface({
                 <Button
                   onClick={handleConnectWallet}
                   disabled={!!loading}
-                  className="w-full h-14 rounded-2xl border border-[#D0B284]/30 bg-[#101610] text-[#D0B284] font-proxima-nova font-bold text-lg transition-colors hover:bg-[#151d14] disabled:opacity-50"
+                  className="w-full h-18 rounded-2xl border border-[#D0B284]/60 bg-black text-[#D0B284] font-spray-letters font-bold tracking-widest uppercase transition-colors hover:bg-[#151d14] disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {loading || 'Connect Wallet'}
+                  {loading ? (
+                    <span className="flex items-center justify-center">
+                      <Loader2 className="h-6 w-6 animate-spin" />
+                    </span>
+                  ) : (
+                    <span className="bg-gradient-to-r from-[#d4af37] via-[#f4e5a6] to-[#d4af37] bg-clip-text text-transparent font-spray-letters text-4xl">
+                      CONNECT WALLET
+                    </span>
+                  )}
                 </Button>
               ) : !provider ? (
                 <Button
