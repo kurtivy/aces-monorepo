@@ -936,7 +936,7 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
           timestamp === candles[2]?.timestamp * 1000
         ) {
           console.log(
-            `🔍 [Frontend Datafeed] Processing candle ${candles.findIndex((c) => c.timestamp === timestamp / 1000) + 1}:`,
+            `🔍 [Frontend Datafeed] Processing candle ${candles.findIndex((c: { timestamp: number }) => c.timestamp === timestamp / 1000) + 1}:`,
             {
               displayCurrency: this.displayCurrency,
               rawCandle: {
