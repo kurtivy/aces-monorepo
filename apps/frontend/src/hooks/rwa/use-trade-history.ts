@@ -42,25 +42,20 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
   }, [dexMeta?.bondingCutoff]);
 
   // Debug log on mount and when key props change
-  useEffect(() => {
-    console.log('[TradeHistory] Hook initialized/updated:', {
-      tokenAddress,
-      shouldUseDex,
-      dexMeta,
-      bondingCutoffMs,
-    });
-  }, [tokenAddress, shouldUseDex, bondingCutoffMs]);
+  // useEffect(() => {
+  //   console.log('[TradeHistory] Hook initialized/updated:', {
+  //     tokenAddress,
+  //     shouldUseDex,
+  //     dexMeta,
+  //     bondingCutoffMs,
+  //   });
+  // }, [tokenAddress, shouldUseDex, bondingCutoffMs]);
 
   const fetchTrades = async () => {
     if (!tokenAddress) {
-      console.log('[TradeHistory] No token address provided');
+      // console.log('[TradeHistory] No token address provided');
       return;
     }
-
-    console.log(`[TradeHistory] Fetching trades for token: ${tokenAddress}`);
-    console.log(
-      `[TradeHistory] Should use DEX: ${shouldUseDex}, Bonding cutoff: ${bondingCutoffMs}`,
-    );
 
     try {
       // Only show loading on first load or after an error
@@ -70,25 +65,17 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
       setError(null);
 
       // Fetch bonding curve trades
-      console.log(
-        `[TradeHistory] Fetching bonding trades from /api/v1/tokens/${tokenAddress}/trades`,
-      );
       const bondingResult = await TokensApi.getTrades(tokenAddress, 100);
       let bondingTrades: TradeHistoryEntry[] = [];
 
-      console.log('[TradeHistory] Bonding API result:', bondingResult);
-
       if (bondingResult.success) {
         const payload = bondingResult.data as any;
-        console.log('[TradeHistory] Bonding payload:', payload);
 
         const tradePayload: TradeData[] = Array.isArray(payload?.data)
           ? payload.data
           : Array.isArray(payload)
             ? (payload as TradeData[])
             : [];
-
-        console.log(`[TradeHistory] Parsed ${tradePayload.length} bonding trades`);
 
         bondingTrades = tradePayload.map((trade) => ({
           id: `bonding-${trade.id}`,
@@ -107,22 +94,11 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
 
       let dexTrades: TradeHistoryEntry[] = [];
 
-      console.log('[TradeHistory] DEX check:', {
-        shouldUseDex,
-        bondingCutoffMs,
-        hasDexMeta: !!dexMeta,
-      });
-
       if (shouldUseDex) {
-        console.log(
-          `[TradeHistory] ✅ shouldUseDex is TRUE, fetching DEX trades from /api/v1/dex/${tokenAddress}/trades`,
-        );
         const dexResult = await DexApi.getTrades(tokenAddress, 100);
-        console.log('[TradeHistory] DEX API result:', dexResult);
 
         if (dexResult.success) {
           const payload = dexResult.data as any;
-          console.log('[TradeHistory] DEX payload:', payload);
 
           const dexArray: DexTradeResponse[] = Array.isArray(payload?.data)
             ? payload.data
@@ -130,11 +106,8 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
               ? (payload as DexTradeResponse[])
               : [];
 
-          console.log(`[TradeHistory] Parsed ${dexArray.length} DEX trades`);
-
           // Log first few raw DEX trades to debug price issues
           if (dexArray.length > 0) {
-            console.log('[TradeHistory] ===== FIRST 3 RAW DEX TRADES FROM API =====');
             dexArray.slice(0, 3).forEach((trade, idx) => {
               console.log(`Trade ${idx + 1}:`, {
                 direction: trade.direction,
@@ -145,7 +118,6 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
                 txHash: trade.txHash,
               });
             });
-            console.log('[TradeHistory] ===========================================');
           }
 
           dexTrades = dexArray.map((trade) => ({
@@ -168,24 +140,17 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
       }
 
       if (bondingCutoffMs) {
-        const beforeFilter = bondingTrades.length;
+        //  const beforeFilter = bondingTrades.length;
         bondingTrades = bondingTrades.filter((trade) => trade.timestamp < bondingCutoffMs);
-        console.log(
-          `[TradeHistory] Filtered bonding trades by cutoff: ${beforeFilter} → ${bondingTrades.length}`,
-        );
       }
 
       const combinedTrades = [...dexTrades, ...bondingTrades]
         .sort((a, b) => b.timestamp - a.timestamp)
         .slice(0, 100);
 
-      console.log(
-        `[TradeHistory] Combined trades: ${combinedTrades.length} (${dexTrades.length} DEX + ${bondingTrades.length} bonding)`,
-      );
-
       setTrades((prevTrades) => {
         if (prevTrades.length === 0) {
-          console.log('[TradeHistory] Setting initial trades:', combinedTrades.length);
+          // console.log('[TradeHistory] Setting initial trades:', combinedTrades.length);
           return combinedTrades;
         }
 
@@ -193,11 +158,11 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
         const newEntries = combinedTrades.filter((trade) => !prevIds.has(trade.id));
 
         if (newEntries.length === 0) {
-          console.log('[TradeHistory] No new trades to add');
+          // console.log('[TradeHistory] No new trades to add');
           return prevTrades;
         }
 
-        console.log(`[TradeHistory] Adding ${newEntries.length} new trades`);
+        // console.log(`[TradeHistory] Adding ${newEntries.length} new trades`);
         const merged = [...newEntries, ...prevTrades].sort((a, b) => b.timestamp - a.timestamp);
         return merged.slice(0, 100);
       });

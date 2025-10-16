@@ -1,6 +1,7 @@
 // hooks/rwa/use-listing-by-symbol.ts
 import { useState, useEffect } from 'react';
 import type { DatabaseListing } from '@/types/rwa/section.types';
+import { validateAndWarnAddress } from '@/lib/validation/address';
 
 const resolveApiBaseUrl = () => {
   // Use environment variable if available
@@ -61,7 +62,25 @@ export function useListingBySymbol(symbol: string) {
         const result = await response.json();
 
         if (result.success && result.data) {
-          setListing(result.data as DatabaseListing);
+          const listing = result.data as DatabaseListing;
+
+          // Validate and sanitize token address
+          if (listing.token?.contractAddress) {
+            const validatedAddress = validateAndWarnAddress(
+              listing.token.contractAddress,
+              'useListingBySymbol',
+            );
+
+            // Update the listing with validated address (keep original if validation fails)
+            if (validatedAddress) {
+              listing.token = {
+                ...listing.token,
+                contractAddress: validatedAddress,
+              };
+            }
+          }
+
+          setListing(listing);
         } else {
           setListing(null);
         }
@@ -98,7 +117,25 @@ export function useListingBySymbol(symbol: string) {
       const result = await response.json();
 
       if (result.success && result.data) {
-        setListing(result.data as DatabaseListing);
+        const listing = result.data as DatabaseListing;
+
+        // Validate and sanitize token address
+        if (listing.token?.contractAddress) {
+          const validatedAddress = validateAndWarnAddress(
+            listing.token.contractAddress,
+            'useListingBySymbol.refetch',
+          );
+
+          // Update the listing with validated address (keep original if validation fails)
+          if (validatedAddress) {
+            listing.token = {
+              ...listing.token,
+              contractAddress: validatedAddress,
+            };
+          }
+        }
+
+        setListing(listing);
       } else {
         setListing(null);
       }
