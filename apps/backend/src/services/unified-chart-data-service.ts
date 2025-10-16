@@ -327,12 +327,35 @@ export class UnifiedChartDataService {
 
       // Convert to unified format with USD values
       const unified = candles.map((candle, index) => {
-        const openAces = parseFloat(candle.open);
-        const highAces = parseFloat(candle.high);
-        const lowAces = parseFloat(candle.low);
-        const closeAces = parseFloat(candle.close);
+        let openAces = parseFloat(candle.open);
+        let highAces = parseFloat(candle.high);
+        let lowAces = parseFloat(candle.low);
+        let closeAces = parseFloat(candle.close);
         const volumeAces = parseFloat(candle.volume);
         const supply = candle.circulatingSupply ? parseFloat(candle.circulatingSupply) : 0;
+
+        // Validate and fix high/low values to prevent zero or invalid values
+        if (!Number.isFinite(highAces) || highAces <= 0) {
+          highAces = Math.max(openAces, closeAces);
+          console.warn('[UnifiedChartData] Invalid high value, using max(open, close):', {
+            original: candle.high,
+            fixed: highAces,
+          });
+        }
+
+        if (!Number.isFinite(lowAces) || lowAces <= 0) {
+          lowAces = Math.min(openAces, closeAces);
+          console.warn('[UnifiedChartData] Invalid low value, using min(open, close):', {
+            original: candle.low,
+            fixed: lowAces,
+          });
+        }
+
+        // Ensure high >= low
+        if (highAces < lowAces) {
+          [highAces, lowAces] = [lowAces, highAces];
+          console.warn('[UnifiedChartData] Swapped high/low values to ensure high >= low');
+        }
 
         const openUsd = parsedAcesPrice ? (openAces * parsedAcesPrice).toFixed(18) : '0';
         const highUsd = parsedAcesPrice ? (highAces * parsedAcesPrice).toFixed(18) : '0';
@@ -346,10 +369,10 @@ export class UnifiedChartDataService {
 
         return {
           timestamp: candle.timestamp,
-          open: candle.open,
-          high: candle.high,
-          low: candle.low,
-          close: candle.close,
+          open: openAces.toString(),
+          high: highAces.toString(),
+          low: lowAces.toString(),
+          close: closeAces.toString(),
           openUsd,
           highUsd,
           lowUsd,
@@ -462,6 +485,34 @@ export class UnifiedChartDataService {
   private convertDbCandleToUnified(dbCandle: any, acesUsdPrice: string | null): UnifiedCandle {
     const acesPrice = acesUsdPrice ? parseFloat(acesUsdPrice) : null;
 
+    // Validate and fix OHLC values from database
+    let openVal = parseFloat(dbCandle.open);
+    let highVal = parseFloat(dbCandle.high);
+    let lowVal = parseFloat(dbCandle.low);
+    let closeVal = parseFloat(dbCandle.close);
+
+    if (!Number.isFinite(highVal) || highVal <= 0) {
+      highVal = Math.max(openVal, closeVal);
+      console.warn('[UnifiedChartData] DB candle has invalid high, fixing:', {
+        timestamp: dbCandle.timestamp,
+        original: dbCandle.high,
+        fixed: highVal,
+      });
+    }
+
+    if (!Number.isFinite(lowVal) || lowVal <= 0) {
+      lowVal = Math.min(openVal, closeVal);
+      console.warn('[UnifiedChartData] DB candle has invalid low, fixing:', {
+        timestamp: dbCandle.timestamp,
+        original: dbCandle.low,
+        fixed: lowVal,
+      });
+    }
+
+    if (highVal < lowVal) {
+      [highVal, lowVal] = [lowVal, highVal];
+    }
+
     // Calculate market cap - prioritize stored values, but calculate on-the-fly if missing
     let marketCapAces = dbCandle.marketCapAces;
     let marketCapUsd = dbCandle.marketCapUsd;
@@ -517,19 +568,14 @@ export class UnifiedChartDataService {
 
     return {
       timestamp: new Date(dbCandle.timestamp),
-      open: dbCandle.open,
-      high: dbCandle.high,
-      low: dbCandle.low,
-      close: dbCandle.close,
-      openUsd:
-        dbCandle.openUsd || (acesPrice ? (parseFloat(dbCandle.open) * acesPrice).toFixed(18) : '0'),
-      highUsd:
-        dbCandle.highUsd || (acesPrice ? (parseFloat(dbCandle.high) * acesPrice).toFixed(18) : '0'),
-      lowUsd:
-        dbCandle.lowUsd || (acesPrice ? (parseFloat(dbCandle.low) * acesPrice).toFixed(18) : '0'),
-      closeUsd:
-        dbCandle.closeUsd ||
-        (acesPrice ? (parseFloat(dbCandle.close) * acesPrice).toFixed(18) : '0'),
+      open: openVal.toString(),
+      high: highVal.toString(),
+      low: lowVal.toString(),
+      close: closeVal.toString(),
+      openUsd: dbCandle.openUsd || (acesPrice ? (openVal * acesPrice).toFixed(18) : '0'),
+      highUsd: dbCandle.highUsd || (acesPrice ? (highVal * acesPrice).toFixed(18) : '0'),
+      lowUsd: dbCandle.lowUsd || (acesPrice ? (lowVal * acesPrice).toFixed(18) : '0'),
+      closeUsd: dbCandle.closeUsd || (acesPrice ? (closeVal * acesPrice).toFixed(18) : '0'),
       volume: dbCandle.volume,
       volumeUsd:
         dbCandle.volumeUsd ||
@@ -669,16 +715,36 @@ export class UnifiedChartDataService {
 
     const acesPrice = acesUsdPrice ? parseFloat(acesUsdPrice) : null;
 
+    // Validate and fix high/low values
+    let openVal = parseFloat(latestCandle.open);
+    let highVal = parseFloat(latestCandle.high);
+    let lowVal = parseFloat(latestCandle.low);
+    let closeVal = parseFloat(latestCandle.close);
+
+    if (!Number.isFinite(highVal) || highVal <= 0) {
+      highVal = Math.max(openVal, closeVal);
+      console.warn('[UnifiedChartData] Latest candle has invalid high, using max(open, close)');
+    }
+
+    if (!Number.isFinite(lowVal) || lowVal <= 0) {
+      lowVal = Math.min(openVal, closeVal);
+      console.warn('[UnifiedChartData] Latest candle has invalid low, using min(open, close)');
+    }
+
+    if (highVal < lowVal) {
+      [highVal, lowVal] = [lowVal, highVal];
+    }
+
     return {
       timestamp: latestCandle.timestamp,
-      open: latestCandle.open,
-      high: latestCandle.high,
-      low: latestCandle.low,
-      close: latestCandle.close,
-      openUsd: acesPrice ? (parseFloat(latestCandle.open) * acesPrice).toFixed(18) : '0',
-      highUsd: acesPrice ? (parseFloat(latestCandle.high) * acesPrice).toFixed(18) : '0',
-      lowUsd: acesPrice ? (parseFloat(latestCandle.low) * acesPrice).toFixed(18) : '0',
-      closeUsd: acesPrice ? (parseFloat(latestCandle.close) * acesPrice).toFixed(18) : '0',
+      open: openVal.toString(),
+      high: highVal.toString(),
+      low: lowVal.toString(),
+      close: closeVal.toString(),
+      openUsd: acesPrice ? (openVal * acesPrice).toFixed(18) : '0',
+      highUsd: acesPrice ? (highVal * acesPrice).toFixed(18) : '0',
+      lowUsd: acesPrice ? (lowVal * acesPrice).toFixed(18) : '0',
+      closeUsd: acesPrice ? (closeVal * acesPrice).toFixed(18) : '0',
       volume: latestCandle.volume,
       volumeUsd: acesPrice ? (parseFloat(latestCandle.volume) * acesPrice).toFixed(2) : '0',
       trades: latestCandle.trades,

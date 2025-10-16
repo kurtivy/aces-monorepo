@@ -772,6 +772,15 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       return null;
     }
 
+    // Final safety check: ensure high >= low (swap if needed)
+    if (finalHigh < finalLow) {
+      console.warn('[TradingView] High < Low detected, swapping values:', {
+        high: finalHigh,
+        low: finalLow,
+      });
+      [finalHigh, finalLow] = [finalLow, finalHigh];
+    }
+
     return {
       time: alignedTime,
       open,

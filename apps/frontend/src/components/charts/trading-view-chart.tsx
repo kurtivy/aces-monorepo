@@ -144,19 +144,17 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
             'use_localstorage_for_settings',
             'create_volume_indicator_by_default_once',
             'header_saveload',
+            'study_templates', // Disable to prevent CORS errors with TradingView's save/load service
           ],
           enabled_features: [
-            'study_templates',
             'side_toolbar_in_fullscreen_mode',
             'header_widget',
             'header_widget_dom_node',
             'timeframes_toolbar',
             'volume_force_overlay',
           ],
-          charts_storage_url: 'https://saveload.tradingview.com',
-          charts_storage_api_version: '1.1',
-          client_id: 'tradingview.com',
-          user_id: 'public_user_id',
+          // Removed charts_storage_url and related config to prevent CORS errors
+          // Users can still draw on charts, but templates won't be saved
           fullscreen: false,
           autosize: true,
           symbol: chartSymbol,
