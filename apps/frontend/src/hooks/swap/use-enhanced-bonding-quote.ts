@@ -1,3 +1,15 @@
+/**
+ * @deprecated This hook is deprecated in favor of API-based bonding quotes.
+ * Use `useBondingQuote` from './use-bonding-quote' instead.
+ *
+ * This client-side implementation had issues with:
+ * - Incorrect scaling of contract parameters (floor/steepness)
+ * - Division by zero errors
+ * - Complex reverse calculations for ACES → TOKEN quotes
+ *
+ * The new API-based approach is more reliable and matches how DEX quotes work.
+ */
+
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ethers } from 'ethers';
 import { useAcesUsdPrice } from '@/hooks/use-aces-usd-price';
@@ -154,8 +166,9 @@ export function useEnhancedBondingQuote({
         throw new Error('Invalid amount');
       }
 
-      // Convert to Wei (bigint)
-      const amountWei = BigInt(ethers.utils.parseUnits(amount, tokenDecimals).toString());
+      // Convert to Wei (bigint) - use correct decimals based on input asset
+      const inputDecimals = inputAsset === 'ACES' ? 18 : tokenDecimals;
+      const amountWei = BigInt(ethers.utils.parseUnits(amount, inputDecimals).toString());
 
       if (activeTab === 'buy') {
         if (inputAsset === 'ACES') {
@@ -173,6 +186,8 @@ export function useEnhancedBondingQuote({
 
           // console.log('[useEnhancedBondingQuote] BUY with ACES input:', {
           //   acesInput: amount,
+          //   amountWei: amountWei.toString(),
+          //   tokenAmountWei: tokenAmountWei.toString(),
           //   tokenOutput: tokenAmountWhole.toString(),
           //   tokenOutputWithSlippage: withSlippageWhole.toString(),
           // });
@@ -223,13 +238,13 @@ export function useEnhancedBondingQuote({
 
       setLastRefreshTime(Date.now());
     } catch (err) {
-      // console.error('[useEnhancedBondingQuote] Calculation failed:', err);
-      // console.error('[useEnhancedBondingQuote] State:', {
-      //   quoteState,
-      //   amount,
-      //   activeTab,
-      //   inputAsset,
-      // });
+      console.error('[useEnhancedBondingQuote] Calculation failed:', err);
+      console.error('[useEnhancedBondingQuote] State:', {
+        quoteState,
+        amount,
+        activeTab,
+        inputAsset,
+      });
       setError(err instanceof Error ? err.message : 'Quote calculation failed');
       setOutputAmount('0');
       setOutputAmountWithSlippage('0');

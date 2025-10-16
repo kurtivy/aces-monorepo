@@ -1,19 +1,13 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { ethers } from 'ethers';
-import { useEnhancedBondingQuote } from './use-enhanced-bonding-quote';
+import { useBondingQuote } from './use-bonding-quote';
 import { useDexQuote } from './use-dex-quote';
 import { BondingApi } from '@/lib/bonding-curve/bonding';
 import type { PaymentAsset } from '@/lib/swap/types';
 import { DEFAULT_SLIPPAGE_BPS } from '@/lib/swap/constants';
 
 interface UseUnifiedQuoteProps {
-  // Contracts
-  factoryContract: ethers.Contract | null;
-  tokenContract: ethers.Contract | null;
-
   // Token info
   tokenAddress?: string;
-  tokenDecimals: number;
 
   // Swap params
   sellToken: PaymentAsset | 'TOKEN'; // What user is selling
@@ -39,10 +33,12 @@ interface MultiHopQuoteData {
   intermediate?: Array<{ symbol: string; amount: string }>;
   needsMultiHop: boolean;
   slippageBps: number;
+  inputUsdValue?: string | null;
+  outputUsdValue?: string | null;
 }
 
 export interface UnifiedQuoteResult {
-  quote: any;
+  quote: unknown;
   // Output
   outputAmount: string;
   outputUsdValue: string | null;
@@ -71,15 +67,12 @@ type QuoteStrategy = 'bonding-direct' | 'bonding-multihop' | 'dex' | 'none';
 
 /**
  * Unified quote hook that intelligently routes to:
- * - Enhanced bonding curve (ACES ↔ RWA in bonding mode)
+ * - Direct bonding curve (ACES ↔ RWA in bonding mode via API)
  * - Multi-hop bonding (WETH/USDC/USDT → RWA in bonding mode, requires AcesSwap)
  * - DEX quotes (all pairs in DEX mode via Aerodrome)
  */
 export function useUnifiedQuote({
-  factoryContract,
-  tokenContract,
   tokenAddress,
-  tokenDecimals,
   sellToken,
   buyToken,
   amount,
@@ -140,20 +133,14 @@ export function useUnifiedQuote({
   }, [enabled, tokenAddress, sellToken, buyToken, isDexMode]);
 
   /**
-   * Enhanced bonding curve quote (for ACES ↔ RWA direct swaps)
+   * Direct bonding curve quote (for ACES ↔ RWA direct swaps)
    */
-  const bondingQuote = useEnhancedBondingQuote({
-    factoryContract,
-    tokenContract,
+  const bondingQuote = useBondingQuote({
     tokenAddress,
     amount,
-    tokenDecimals,
-    isDexMode: isDexMode || quoteStrategy !== 'bonding-direct',
-    activeTab: sellToken === 'ACES' ? 'buy' : 'sell',
     inputAsset: sellToken === 'ACES' ? 'ACES' : 'TOKEN',
-    paymentAsset: sellToken === 'TOKEN' ? 'ACES' : (sellToken as PaymentAsset),
+    enabled: quoteStrategy === 'bonding-direct' && enabled,
     slippageBps,
-    autoRefreshEnabled: quoteStrategy === 'bonding-direct' && enabled,
   });
 
   /**
@@ -286,22 +273,9 @@ export function useUnifiedQuote({
   }, [quoteStrategy, enabled, fetchMultiHopQuote]);
 
   /**
-   * For multi-hop, calculate final RWA output using bonding curve
-   * with the intermediate ACES amount from backend
+   * For multi-hop, backend now calculates the final RWA output
+   * No need for a separate client-side quote
    */
-  const multiHopFinalQuote = useEnhancedBondingQuote({
-    factoryContract,
-    tokenContract,
-    tokenAddress,
-    amount: multiHopQuote?.expectedAcesAmount || '0',
-    tokenDecimals,
-    isDexMode: false,
-    activeTab: 'buy',
-    inputAsset: 'ACES',
-    paymentAsset: sellToken === 'TOKEN' ? 'ACES' : (sellToken as PaymentAsset | undefined),
-    slippageBps,
-    autoRefreshEnabled: false,
-  });
 
   /**
    * Combine results based on strategy
@@ -340,27 +314,29 @@ export function useUnifiedQuote({
       case 'bonding-direct':
         return {
           ...baseResult,
-          outputAmount: bondingQuote.outputAmount,
-          outputUsdValue: bondingQuote.outputUsdValue,
-          inputUsdValue: bondingQuote.inputUsdValue,
+          quote: bondingQuote.quote,
+          outputAmount: bondingQuote.quote?.expectedOutput || '0',
+          outputUsdValue: bondingQuote.quote?.outputUsdValue || null,
+          inputUsdValue: bondingQuote.quote?.inputUsdValue || null,
           needsMultiHop: false,
-          path: [sellToken, buyToken],
+          path: bondingQuote.quote?.path || [sellToken, buyToken],
           loading: bondingQuote.loading,
           error: bondingQuote.error,
-          refreshQuote: bondingQuote.refreshQuote,
+          refreshQuote: bondingQuote.refetchQuote,
         };
 
       case 'bonding-multihop':
         return {
           ...baseResult,
-          outputAmount: multiHopFinalQuote.outputAmount || '0',
-          outputUsdValue: multiHopFinalQuote.outputUsdValue,
-          inputUsdValue: multiHopFinalQuote.inputUsdValue,
+          quote: multiHopQuote, // Use multi-hop quote data directly from backend
+          outputAmount: multiHopQuote?.expectedRwaOutput || '0', // Backend calculates final RWA tokens
+          outputUsdValue: multiHopQuote?.outputUsdValue || null,
+          inputUsdValue: multiHopQuote?.inputUsdValue || null,
           intermediateAcesAmount: multiHopQuote?.expectedAcesAmount,
           needsMultiHop: true,
           path: multiHopQuote?.path || [sellToken, 'ACES', buyToken],
-          loading: multiHopLoading || multiHopFinalQuote.loading,
-          error: multiHopError || multiHopFinalQuote.error,
+          loading: multiHopLoading,
+          error: multiHopError,
           refreshQuote: fetchMultiHopQuote,
         };
 
@@ -399,7 +375,6 @@ export function useUnifiedQuote({
     bondingQuote,
     dexQuote,
     multiHopQuote,
-    multiHopFinalQuote,
     multiHopLoading,
     multiHopError,
     sellToken,

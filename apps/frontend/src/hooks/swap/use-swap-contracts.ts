@@ -98,7 +98,8 @@ export function useSwapContracts(
 
       // Get contract addresses for this chain
       const addresses = getContractAddresses(chainId);
-      // console.log('[useSwapContracts] Contract addresses:', addresses);
+      console.log('[useSwapContracts] 🏭 FACTORY_PROXY:', addresses.FACTORY_PROXY);
+      console.log('[useSwapContracts] 🪙 ACES_TOKEN:', addresses.ACES_TOKEN);
 
       if (!addresses.FACTORY_PROXY || !addresses.ACES_TOKEN) {
         throw new Error(`Contract addresses not configured for chain ID ${chainId}`);
