@@ -62,9 +62,15 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   fastify.decorate('prisma', prisma);
 
   // Initialize provider FIRST (needed by multiple services)
-  const provider = new ethers.JsonRpcProvider(
-    process.env.BASE_MAINNET_RPC_URL || process.env.QUICKNODE_BASE_URL,
-  );
+  // Use QuickNode (paid) first, fallback to Alchemy free tier
+  const rpcUrl = process.env.QUICKNODE_BASE_URL || process.env.BASE_MAINNET_RPC_URL;
+
+  if (!rpcUrl) {
+    throw new Error('❌ No RPC URL configured! Set QUICKNODE_BASE_URL or BASE_MAINNET_RPC_URL');
+  }
+
+  console.log('[App] 🔗 Using RPC provider:', rpcUrl.substring(0, 40) + '...');
+  const provider = new ethers.JsonRpcProvider(rpcUrl);
 
   // Initialize services
   const bitQueryService = new BitQueryService();
