@@ -285,14 +285,14 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     onErrorCallback: (error: string) => void,
   ) {
     const timeframe = this.resolutionToTimeframe(resolution);
-    
+
     // 🔧 CRITICAL: Clear cache if this is the first request to ensure absolutely fresh data
     if (periodParams.firstDataRequest) {
       console.log('[TradingView] 🆕 First data request - clearing cache and fetching fresh data');
       this.clearCache();
       this.hasLoadedInitialHttpData = false;
     }
-    
+
     const cachedBars = this.historyCache.get(timeframe);
     const fromMs = periodParams.from * 1000;
     const toMs = periodParams.to * 1000;
@@ -359,9 +359,7 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
 
       if (cacheAgeMs <= maxCacheAgeMs) {
         // Cache is fresh, use it for zoom/pan operations
-        console.log(
-          `[TradingView] ✅ Using cached bars (${(cacheAgeMs / 1000).toFixed(1)}s old)`,
-        );
+        console.log(`[TradingView] ✅ Using cached bars (${(cacheAgeMs / 1000).toFixed(1)}s old)`);
         deliverBars(cachedBars, false);
         return;
       } else {
@@ -372,7 +370,7 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
         // Fall through to fetch fresh data
       }
     }
-    
+
     // If we reach here, we're fetching fresh data from API (either first request or cache miss/stale)
 
     // console.log(
