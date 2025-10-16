@@ -192,9 +192,12 @@ export async function chartRoutes(fastify: FastifyInstance) {
             (c.timestamp instanceof Date ? c.timestamp : new Date(c.timestamp)).getTime() / 1000,
           );
 
-          // Calculate market cap OHLC based on price OHLC and circulating supply
-          // This shows how market cap changed during the time period, not just the closing value
-          const supply = parseFloat(c.circulatingSupply || '0');
+          // Calculate market cap OHLC based on price OHLC and supply
+          // For bonding curve: use fixed 800 million supply (bonding target)
+          // For DEX (graduated): use actual circulating supply
+          const supply = chartData.graduationState?.poolReady
+            ? parseFloat(c.circulatingSupply || '0') // DEX: use actual circulating supply
+            : 800000000; // Bonding curve: fixed 800 million tokens
 
           let mcOpen: string, mcHigh: string, mcLow: string, mcClose: string;
 
@@ -228,6 +231,9 @@ export async function chartRoutes(fastify: FastifyInstance) {
               timestamp: c.timestamp,
               currency,
               supply,
+              supplySource: chartData.graduationState?.poolReady
+                ? 'circulating (DEX)'
+                : 'fixed 800M (bonding curve)',
               prices:
                 currency === 'usd'
                   ? { open: c.openUsd, high: c.highUsd, low: c.lowUsd, close: c.closeUsd }

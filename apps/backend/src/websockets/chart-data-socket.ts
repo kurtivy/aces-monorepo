@@ -4,7 +4,7 @@ import { UnifiedChartDataService } from '../services/unified-chart-data-service'
 interface WebSocketClient {
   id: string;
   socket: any; // Fastify WebSocket socket
-  subscriptions: Set<string>; // Set of "tokenAddress:timeframe"
+  subscriptions: Set<string>; // Set of "tokenAddress:timeframe:chartType"
   lastPing: number;
 }
 
@@ -18,7 +18,7 @@ const DEFAULT_POLL_INTERVAL_MS = Number(
 
 export class ChartDataWebSocket {
   private clients = new Map<string, WebSocketClient>();
-  private subscriptions = new Map<string, Set<string>>(); // "tokenAddress:timeframe" -> Set<clientId>
+  private subscriptions = new Map<string, Set<string>>(); // "tokenAddress:timeframe:chartType" -> Set<clientId>
   private pollingIntervals = new Map<string, NodeJS.Timeout>();
   private readonly pollIntervalMs: number;
 
@@ -89,11 +89,21 @@ export class ChartDataWebSocket {
 
     switch (data.type) {
       case 'subscribe':
-        this.subscribe(clientId, data.tokenAddress as string, data.timeframe as string);
+        this.subscribe(
+          clientId,
+          data.tokenAddress as string,
+          data.timeframe as string,
+          (data.chartType as 'price' | 'mcap') || 'price', // Default to price for backwards compatibility
+        );
         break;
 
       case 'unsubscribe':
-        this.unsubscribe(clientId, data.tokenAddress as string, data.timeframe as string);
+        this.unsubscribe(
+          clientId,
+          data.tokenAddress as string,
+          data.timeframe as string,
+          (data.chartType as 'price' | 'mcap') || 'price',
+        );
         break;
 
       case 'ping':
@@ -109,11 +119,16 @@ export class ChartDataWebSocket {
   /**
    * Subscribe client to token updates
    */
-  private subscribe(clientId: string, tokenAddress: string, timeframe: string) {
+  private subscribe(
+    clientId: string,
+    tokenAddress: string,
+    timeframe: string,
+    chartType: 'price' | 'mcap' = 'price',
+  ) {
     const client = this.clients.get(clientId);
     if (!client) return;
 
-    const subscriptionKey = `${tokenAddress.toLowerCase()}:${timeframe}`;
+    const subscriptionKey = `${tokenAddress.toLowerCase()}:${timeframe}:${chartType}`;
 
     // Add to client subscriptions
     client.subscriptions.add(subscriptionKey);
@@ -128,21 +143,26 @@ export class ChartDataWebSocket {
 
     // Start polling if this is first subscriber
     if (this.subscriptions.get(subscriptionKey)!.size === 1) {
-      this.startPolling(tokenAddress.toLowerCase(), timeframe);
+      this.startPolling(tokenAddress.toLowerCase(), timeframe, chartType);
     }
 
     // Send immediate update
-    this.sendUpdate(clientId, tokenAddress.toLowerCase(), timeframe);
+    this.sendUpdate(clientId, tokenAddress.toLowerCase(), timeframe, chartType);
   }
 
   /**
    * Unsubscribe client from token updates
    */
-  private unsubscribe(clientId: string, tokenAddress: string, timeframe: string) {
+  private unsubscribe(
+    clientId: string,
+    tokenAddress: string,
+    timeframe: string,
+    chartType: 'price' | 'mcap' = 'price',
+  ) {
     const client = this.clients.get(clientId);
     if (!client) return;
 
-    const subscriptionKey = `${tokenAddress.toLowerCase()}:${timeframe}`;
+    const subscriptionKey = `${tokenAddress.toLowerCase()}:${timeframe}:${chartType}`;
 
     client.subscriptions.delete(subscriptionKey);
     this.subscriptions.get(subscriptionKey)?.delete(clientId);
@@ -180,8 +200,12 @@ export class ChartDataWebSocket {
   /**
    * Start polling for a token/timeframe
    */
-  private startPolling(tokenAddress: string, timeframe: string) {
-    const subscriptionKey = `${tokenAddress}:${timeframe}`;
+  private startPolling(
+    tokenAddress: string,
+    timeframe: string,
+    chartType: 'price' | 'mcap' = 'price',
+  ) {
+    const subscriptionKey = `${tokenAddress}:${timeframe}:${chartType}`;
 
     if (this.pollingIntervals.has(subscriptionKey)) {
       console.log(`⚠️ [WebSocket] Already polling ${subscriptionKey}`);
@@ -195,7 +219,11 @@ export class ChartDataWebSocket {
     // Poll at configured interval – throttled to avoid exhausting BitQuery quota
     const interval = setInterval(async () => {
       console.log(`⏰ [WebSocket] Interval tick for ${subscriptionKey}`);
-      await this.pollAndBroadcast(tokenAddress, timeframe);
+      if (chartType === 'mcap') {
+        await this.pollAndBroadcastMarketCap(tokenAddress, timeframe);
+      } else {
+        await this.pollAndBroadcast(tokenAddress, timeframe);
+      }
     }, this.pollIntervalMs);
 
     this.pollingIntervals.set(subscriptionKey, interval);
@@ -203,7 +231,11 @@ export class ChartDataWebSocket {
 
     // Do initial poll immediately
     console.log(`📍 [WebSocket] Doing initial poll for ${subscriptionKey}`);
-    this.pollAndBroadcast(tokenAddress, timeframe);
+    if (chartType === 'mcap') {
+      this.pollAndBroadcastMarketCap(tokenAddress, timeframe);
+    } else {
+      this.pollAndBroadcast(tokenAddress, timeframe);
+    }
   }
 
   /**
@@ -219,11 +251,23 @@ export class ChartDataWebSocket {
   }
 
   /**
-   * Poll data and broadcast to subscribers
+   * Poll data and broadcast to subscribers (PRICE chart)
    */
   private async pollAndBroadcast(tokenAddress: string, timeframe: string) {
     try {
-      console.log(`🔄 [WebSocket] Polling ${tokenAddress} ${timeframe}...`);
+      console.log(`🔄 [WebSocket] Polling PRICE ${tokenAddress} ${timeframe}...`);
+
+      const subscriptionKey = `${tokenAddress}:${timeframe}:price`;
+      const subscribers = this.subscriptions.get(subscriptionKey);
+
+      // Defensive cleanup: if no subscribers, stop polling immediately
+      if (!subscribers || subscribers.size === 0) {
+        console.warn(`⚠️ [WebSocket] No subscribers for ${subscriptionKey}, stopping polling`);
+        this.stopPolling(subscriptionKey);
+        this.subscriptions.delete(subscriptionKey);
+        return;
+      }
+
       const candle = await this.unifiedService.getLatestCandle(tokenAddress, timeframe);
 
       if (!candle) {
@@ -236,14 +280,6 @@ export class ChartDataWebSocket {
         close: candle.close,
         closeUsd: candle.closeUsd,
       });
-
-      const subscriptionKey = `${tokenAddress}:${timeframe}`;
-      const subscribers = this.subscriptions.get(subscriptionKey);
-
-      if (!subscribers || subscribers.size === 0) {
-        console.warn(`⚠️ [WebSocket] No subscribers for ${subscriptionKey}`);
-        return;
-      }
 
       const message = JSON.stringify({
         type: 'candle_update',
@@ -297,9 +333,116 @@ export class ChartDataWebSocket {
   }
 
   /**
+   * Poll market cap data and broadcast to subscribers (MCAP chart)
+   */
+  private async pollAndBroadcastMarketCap(tokenAddress: string, timeframe: string) {
+    try {
+      console.log(`🔄 [WebSocket] Polling MARKET CAP ${tokenAddress} ${timeframe}...`);
+
+      const subscriptionKey = `${tokenAddress}:${timeframe}:mcap`;
+      const subscribers = this.subscriptions.get(subscriptionKey);
+
+      // Defensive cleanup: if no subscribers, stop polling immediately
+      if (!subscribers || subscribers.size === 0) {
+        console.warn(`⚠️ [WebSocket] No subscribers for ${subscriptionKey}, stopping polling`);
+        this.stopPolling(subscriptionKey);
+        this.subscriptions.delete(subscriptionKey);
+        return;
+      }
+
+      // Get latest price candle
+      const candle = await this.unifiedService.getLatestCandle(tokenAddress, timeframe);
+
+      if (!candle) {
+        console.warn(`⚠️ [WebSocket] No candle returned for ${tokenAddress} ${timeframe}`);
+        return;
+      }
+
+      // Get graduation state to determine supply
+      const chartData = await this.unifiedService.getChartData(tokenAddress, {
+        timeframe,
+        limit: 1,
+        includeUsd: true,
+      });
+
+      const supply = chartData.graduationState?.poolReady
+        ? parseFloat(candle.circulatingSupply || '0') // DEX: use actual circulating supply
+        : 800000000; // Bonding curve: fixed 800 million tokens
+
+      // Calculate market cap OHLC
+      const openUsd = parseFloat(candle.openUsd || '0');
+      const highUsd = parseFloat(candle.highUsd || '0');
+      const lowUsd = parseFloat(candle.lowUsd || '0');
+      const closeUsd = parseFloat(candle.closeUsd || '0');
+
+      const mcapCandle = {
+        timestamp: candle.timestamp.getTime(),
+        open: supply * openUsd,
+        high: supply * highUsd,
+        low: supply * lowUsd,
+        close: supply * closeUsd,
+        volume: candle.volume,
+        trades: candle.trades,
+        dataSource: candle.dataSource,
+      };
+
+      console.log(`✅ [WebSocket] Got market cap candle for ${tokenAddress} ${timeframe}:`, {
+        timestamp: candle.timestamp,
+        supply,
+        supplySource: chartData.graduationState?.poolReady
+          ? 'circulating (DEX)'
+          : 'fixed 800M (bonding)',
+        priceClose: closeUsd,
+        mcapClose: mcapCandle.close,
+      });
+
+      const message = JSON.stringify({
+        type: 'candle_update',
+        tokenAddress,
+        timeframe,
+        chartType: 'mcap',
+        candle: mcapCandle,
+        timestamp: Date.now(),
+      });
+
+      // Broadcast to all subscribers
+      let sentCount = 0;
+      for (const clientId of subscribers) {
+        const client = this.clients.get(clientId);
+        if (client && client.socket.readyState === 1) {
+          // WebSocket.OPEN
+          try {
+            client.socket.send(message);
+            sentCount++;
+          } catch (error) {
+            console.error(`❌ [WebSocket] Failed to send to ${clientId}:`, error);
+          }
+        } else {
+          console.warn(
+            `⚠️ [WebSocket] Client ${clientId} not ready, readyState:`,
+            client?.socket.readyState,
+          );
+        }
+      }
+
+      console.log(
+        `📡 [WebSocket] Broadcast ${subscriptionKey} to ${sentCount}/${subscribers.size} clients`,
+      );
+    } catch (error) {
+      console.error('❌ [WebSocket] Market cap poll error:', error);
+      console.error('Stack trace:', error);
+    }
+  }
+
+  /**
    * Send immediate update to specific client
    */
-  private async sendUpdate(clientId: string, tokenAddress: string, timeframe: string) {
+  private async sendUpdate(
+    clientId: string,
+    tokenAddress: string,
+    timeframe: string,
+    chartType: 'price' | 'mcap' = 'price',
+  ) {
     const client = this.clients.get(clientId);
     if (!client) return;
 
@@ -310,31 +453,70 @@ export class ChartDataWebSocket {
         includeUsd: true,
       });
 
-      const message = JSON.stringify({
-        type: 'initial_data',
-        tokenAddress,
-        timeframe,
-        candles: chartData.candles.map((c) => ({
-          timestamp: c.timestamp.getTime(),
-          open: c.open,
-          high: c.high,
-          low: c.low,
-          close: c.close,
-          openUsd: c.openUsd,
-          highUsd: c.highUsd,
-          lowUsd: c.lowUsd,
-          closeUsd: c.closeUsd,
-          volume: c.volume,
-          volumeUsd: c.volumeUsd,
-          trades: c.trades,
-          dataSource: c.dataSource,
-        })),
-        graduationState: chartData.graduationState,
-        acesUsdPrice: chartData.acesUsdPrice,
-        timestamp: Date.now(),
-      });
+      if (chartType === 'mcap') {
+        // Calculate market cap candles
+        const supply = chartData.graduationState?.poolReady ? null : 800000000; // Fixed 800M for bonding curve
 
-      client.socket.send(message);
+        const mcapCandles = chartData.candles.map((c) => {
+          const candleSupply = supply ?? parseFloat(c.circulatingSupply || '0');
+          const openUsd = parseFloat(c.openUsd || '0');
+          const highUsd = parseFloat(c.highUsd || '0');
+          const lowUsd = parseFloat(c.lowUsd || '0');
+          const closeUsd = parseFloat(c.closeUsd || '0');
+
+          return {
+            timestamp: c.timestamp.getTime(),
+            open: candleSupply * openUsd,
+            high: candleSupply * highUsd,
+            low: candleSupply * lowUsd,
+            close: candleSupply * closeUsd,
+            volume: c.volume,
+            trades: c.trades,
+            dataSource: c.dataSource,
+          };
+        });
+
+        const message = JSON.stringify({
+          type: 'initial_data',
+          tokenAddress,
+          timeframe,
+          chartType: 'mcap',
+          candles: mcapCandles,
+          graduationState: chartData.graduationState,
+          acesUsdPrice: chartData.acesUsdPrice,
+          timestamp: Date.now(),
+        });
+
+        client.socket.send(message);
+      } else {
+        // Send price candles (existing behavior)
+        const message = JSON.stringify({
+          type: 'initial_data',
+          tokenAddress,
+          timeframe,
+          chartType: 'price',
+          candles: chartData.candles.map((c) => ({
+            timestamp: c.timestamp.getTime(),
+            open: c.open,
+            high: c.high,
+            low: c.low,
+            close: c.close,
+            openUsd: c.openUsd,
+            highUsd: c.highUsd,
+            lowUsd: c.lowUsd,
+            closeUsd: c.closeUsd,
+            volume: c.volume,
+            volumeUsd: c.volumeUsd,
+            trades: c.trades,
+            dataSource: c.dataSource,
+          })),
+          graduationState: chartData.graduationState,
+          acesUsdPrice: chartData.acesUsdPrice,
+          timestamp: Date.now(),
+        });
+
+        client.socket.send(message);
+      }
     } catch (error) {
       console.error('[WebSocket] Failed to send initial data:', error);
     }

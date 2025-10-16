@@ -290,24 +290,6 @@ export default function TradeHistory({
                     (priceFromCounter && priceFromCounter > 0 ? priceFromCounter : null) ??
                     (usdVal != null && tokenAmt > 0 ? usdVal / tokenAmt : null);
 
-                  // Debug log price calculation for first 3 trades
-                  if (index < 3) {
-                    console.log(`[TradeHistory UI] Price calculation for trade ${index + 1}:`, {
-                      source: trade.source,
-                      direction: trade.direction,
-                      acesAmt,
-                      tokenAmt,
-                      acesUsd,
-                      priceInCounter: trade.priceInCounter,
-                      priceUsd: trade.priceUsd,
-                      priceFromTradeUsd,
-                      priceFromCounter,
-                      calculatedPrice: usdVal != null && tokenAmt > 0 ? usdVal / tokenAmt : null,
-                      finalUnitPrice: unitPrice,
-                      txHash: trade.txHash,
-                    });
-                  }
-
                   return (
                     <tr
                       key={trade.id}
