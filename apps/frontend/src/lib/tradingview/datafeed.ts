@@ -148,11 +148,16 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
   private lastHistoricalBarByTimeframe = new Map<string, Bar>();
   private historyCache = new Map<string, Bar[]>();
   private unifiedDataSubscription: UnifiedDataSubscription | null = null;
+  private hasLoadedInitialHttpData = false; // Track if we've loaded fresh HTTP data
 
   constructor(tokenAddress: string, displayCurrency: 'usd' | 'aces' = 'usd') {
     this.tokenAddress = tokenAddress.toLowerCase();
     this.displayCurrency = 'usd';
     this.useDex = false;
+
+    // Clear cache on initialization to ensure fresh start
+    this.clearCache();
+    this.hasLoadedInitialHttpData = false;
   }
 
   /**
@@ -296,6 +301,9 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
           cachedCopy.splice(0, cachedCopy.length - BondingCurveDatafeed.MAX_CACHED_BARS);
         }
         this.historyCache.set(timeframe, cachedCopy);
+
+        // Mark that we've loaded initial HTTP data
+        this.hasLoadedInitialHttpData = true;
       }
 
       if (filtered.length === 0) {
@@ -335,10 +343,12 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       onHistoryCallback(filteredCopy, { noData: false });
     };
 
-    // 🔧 Check frontend cache freshness before using it
-    if (!periodParams.firstDataRequest && cachedBars && cachedBars.length > 0) {
-      // For bonding curve tokens, check if cache is fresh (< 15 seconds old)
-      // The backend has a 10s cache, so 15s gives us margin for network delay
+    // 🔧 ALWAYS fetch fresh data on first request - skip cache entirely
+    if (periodParams.firstDataRequest) {
+      console.log('[TradingView] 🆕 First data request - fetching fresh data, ignoring cache');
+      // Fall through to fetch fresh data below
+    } else if (cachedBars && cachedBars.length > 0) {
+      // For subsequent requests (zoom/pan), check if cache is fresh
       const latestBar = cachedBars[cachedBars.length - 1];
       const cacheAgeMs = Date.now() - latestBar.time;
       const maxCacheAgeMs = 15000; // 15 seconds
@@ -609,6 +619,15 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
 
     switch (message.type) {
       case 'initial_data': {
+        // 🔧 Ignore WebSocket initial_data if we already have fresh HTTP data
+        // This prevents WebSocket from overwriting the fresh data we just fetched via HTTP
+        if (this.hasLoadedInitialHttpData) {
+          console.log(
+            '[TradingView] ⏭️ Ignoring WebSocket initial_data - already have fresh HTTP data',
+          );
+          return;
+        }
+
         // console.log(`[TradingView] Initial data: ${message.candles?.length || 0} candles`);
         const candles = Array.isArray(message.candles) ? (message.candles as UnifiedCandle[]) : [];
         const bars = candles
@@ -748,7 +767,7 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     const priceFor = (key: 'open' | 'high' | 'low' | 'close'): number => {
       const usdKey = `${key}Usd`;
 
-      // If displaying USD, only use USD values - never fall back to ACES
+      // If displaying USD, try to use USD values - fall back to ACES if USD is missing
       if (this.displayCurrency === 'usd') {
         const usdValue = (candle as any)[usdKey];
         // Check if USD value exists and is not "0"
@@ -758,7 +777,19 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
             return parsed;
           }
         }
-        // No valid USD value, return 0 to filter out this candle
+        // USD value is missing/invalid, fall back to ACES value instead of returning 0
+        // This prevents the chart from breaking when USD values are temporarily unavailable
+        const acesValue = (candle as any)[key];
+        const acesParsed =
+          typeof acesValue === 'string' ? parseFloat(acesValue) : Number(acesValue ?? 0);
+        if (Number.isFinite(acesParsed) && acesParsed > 0) {
+          console.warn(
+            `[TradingView] USD ${key} value missing, falling back to ACES value:`,
+            acesParsed,
+          );
+          return acesParsed;
+        }
+        // No valid value at all
         return 0;
       }
 
