@@ -82,16 +82,31 @@ const selectActiveWalletForWagmi: SetActiveWalletForWagmiType = ({ wallets }) =>
     return undefined;
   }
 
-  return (
-    wallets.find(
-      (wallet) =>
-        wallet.type === 'ethereum' &&
-        wallet.walletClientType !== 'privy' &&
-        wallet.walletClientType !== 'privy-v2',
-    ) ||
-    wallets.find((wallet) => wallet.type === 'ethereum') ||
-    wallets[0]
+  // Prioritize external wallets (MetaMask, Phantom, Coinbase Wallet, etc.)
+  const externalWallet = wallets.find(
+    (wallet) =>
+      wallet.type === 'ethereum' &&
+      wallet.walletClientType !== 'privy' &&
+      wallet.walletClientType !== 'privy-v2',
   );
+
+  if (externalWallet) {
+    return externalWallet;
+  }
+
+  // Fallback to Privy embedded wallet (for email login)
+  const privyWallet = wallets.find(
+    (wallet) =>
+      wallet.type === 'ethereum' &&
+      (wallet.walletClientType === 'privy' || wallet.walletClientType === 'privy-v2'),
+  );
+
+  if (privyWallet) {
+    return privyWallet;
+  }
+
+  // Final fallback to any ethereum wallet or first wallet
+  return wallets.find((wallet) => wallet.type === 'ethereum') || wallets[0];
 };
 
 export default function AppProviders({ children }: { children: ReactNode }) {
@@ -144,7 +159,13 @@ export default function AppProviders({ children }: { children: ReactNode }) {
                   logo: '/aces-logo.png',
                   loginMessage: 'Connect your wallet to ACES',
                   showWalletLoginFirst: true,
-                  walletList: ['coinbase_wallet', 'metamask', 'wallet_connect', 'phantom'],
+                  walletList: [
+                    'coinbase_wallet',
+                    'phantom',
+                    'metamask',
+                    'rabby_wallet',
+                    'wallet_connect',
+                  ],
                 },
                 embeddedWallets: {
                   createOnLogin: 'all-users',
