@@ -21,6 +21,16 @@ function getBondingApiBaseUrl(): string {
 
 const API_BASE_URL = getBondingApiBaseUrl();
 
+export interface DirectQuoteResponse {
+  inputAsset: 'ACES' | 'TOKEN';
+  inputAmount: string;
+  expectedOutput: string;
+  inputUsdValue: string | null;
+  outputUsdValue: string | null;
+  path: string[];
+  slippageBps: number;
+}
+
 export interface MultiHopQuoteResponse {
   inputAsset: 'ACES' | 'WETH' | 'USDC' | 'USDT';
   inputAmount: string;
@@ -84,6 +94,34 @@ async function request<T>(endpoint: string): Promise<ApiResult<T>> {
 }
 
 export class BondingApi {
+  /**
+   * Get direct bonding curve quote for ACES ↔ TOKEN swaps
+   * Used when user wants to swap directly between ACES and RWA token
+   */
+  static getDirectQuote(
+    tokenAddress: string,
+    {
+      inputAsset,
+      amount,
+      slippageBps,
+    }: {
+      inputAsset: 'ACES' | 'TOKEN';
+      amount: string;
+      slippageBps?: number;
+    },
+  ) {
+    const params = new URLSearchParams();
+    params.set('inputAsset', inputAsset);
+    params.set('amount', amount);
+    if (typeof slippageBps === 'number') {
+      params.set('slippageBps', String(slippageBps));
+    }
+
+    return request<DirectQuoteResponse>(
+      `/api/v1/bonding/${tokenAddress}/quote?${params.toString()}`,
+    );
+  }
+
   /**
    * Get multi-hop quote for bonding curve purchases
    * Used when user wants to buy RWA with WETH/USDC/USDT

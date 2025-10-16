@@ -20,11 +20,13 @@ export const CONTRACT_ADDRESSES = {
       '0x55337650856299363c496065C836B9C6E9dE0367', // Base Mainnet ACES token
     FACTORY_IMPLEMENTATION:
       process.env.NEXT_PUBLIC_FACTORY_ADDRESS_BASE_MAINNET ||
-      '0x4678ff6Abcec33080364D17858458bDe4D1fEFf5', // Base Mainnet factory implementation
+      '0x380A787B82EdaA484144a9B78EEC93D2639f3828', // Base Mainnet factory implementation (NEW)
     FACTORY_PROXY:
       process.env.NEXT_PUBLIC_PROXY_ADDRESS_BASE_MAINNET ||
-      '0xFAa139E3Fb1fb11271F743324405cB24f9bbD81e', // Base Mainnet factory proxy (main interaction point)
-    AERODROME_ROUTER: process.env.NEXT_PUBLIC_AERODROME_ROUTER_BASE_MAINNET || '', // ⚠️ REQUIRED for DEX trades
+      '0x84976E3C31a073a4E2fE6Bf19C613538b41633c9', // Base Mainnet factory proxy (NEW - main interaction point)
+    AERODROME_ROUTER:
+      process.env.NEXT_PUBLIC_AERODROME_ROUTER_BASE_MAINNET ||
+      '0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43', // Aerodrome Router on Base Mainnet
     ACES_SWAP:
       process.env.NEXT_PUBLIC_ACES_SWAP_ADDRESS_BASE_MAINNET ||
       '0x9EeC0656f7DE220877DC55FdB56cf3d56E97034d', // Base Mainnet AcesSwapNew
@@ -32,8 +34,8 @@ export const CONTRACT_ADDRESSES = {
 } as const;
 
 // Get addresses for current network
-export function getContractAddresses(chainId: number = 84532) {
-  // Default to Base Sepolia for testnet development
+export function getContractAddresses(chainId: number = 8453) {
+  // Default to Base Mainnet for production
   switch (chainId) {
     case 84532: // Base Sepolia (Testnet)
       return CONTRACT_ADDRESSES.baseSepolia;
@@ -41,9 +43,9 @@ export function getContractAddresses(chainId: number = 84532) {
       return CONTRACT_ADDRESSES.baseMainnet;
     default:
       console.warn(
-        `⚠️ Unsupported chain ID: ${chainId}. Only Base Sepolia (84532) and Base Mainnet (8453) are supported. Defaulting to Base Sepolia.`,
+        `⚠️ Unsupported chain ID: ${chainId}. Only Base Sepolia (84532) and Base Mainnet (8453) are supported. Defaulting to Base Mainnet.`,
       );
-      return CONTRACT_ADDRESSES.baseSepolia;
+      return CONTRACT_ADDRESSES.baseMainnet;
   }
 }
 
@@ -70,6 +72,6 @@ export function validateContractAddresses(chainId: number): boolean {
 
 // Network configuration
 export const NETWORK_CONFIG = {
-  DEFAULT_CHAIN_ID: parseInt(process.env.NEXT_PUBLIC_DEFAULT_CHAIN_ID || '84532'), // Base Sepolia
-  NETWORK_NAME: process.env.NEXT_PUBLIC_NETWORK_NAME || 'baseSepolia',
+  DEFAULT_CHAIN_ID: parseInt(process.env.NEXT_PUBLIC_DEFAULT_CHAIN_ID || '8453'), // Base Mainnet
+  NETWORK_NAME: process.env.NEXT_PUBLIC_NETWORK_NAME || 'baseMainnet',
 } as const;
