@@ -34,7 +34,8 @@ import {
   ArrowRightLeft,
 } from 'lucide-react';
 
-const MAX_FLOOR_VALUE = ethers.BigNumber.from('1000000000');
+// Removed restrictive max floor value - let the contract handle validation
+// const MAX_FLOOR_VALUE = ethers.BigNumber.from('1000000000');
 
 // Wagmi-to-Ethers signer hook (Solution 2: Better Privy Smart Wallet support)
 function useWagmiEthersSigner() {
@@ -432,7 +433,7 @@ export function LaunchTab() {
       const floorInput = createForm.floor.trim() === '' ? '0' : createForm.floor.trim();
       floorValue = ethers.BigNumber.from(floorInput);
     } catch (error) {
-      alert('Invalid Floor Price value. Please enter a whole number between 0 and 1,000,000,000.');
+      alert('Invalid Floor Price value. Please enter a valid whole number.');
       return;
     }
 
@@ -441,10 +442,7 @@ export function LaunchTab() {
       return;
     }
 
-    if (floorValue.gt(MAX_FLOOR_VALUE)) {
-      alert('Floor Price exceeds the maximum allowed value of 1,000,000,000 ACES.');
-      return;
-    }
+    // Removed max floor validation - let the smart contract handle any limits
 
     try {
       setLoading('Creating token...');
@@ -1140,7 +1138,7 @@ export function LaunchTab() {
               </p>
             )}
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             {hookSigner && (
               <Button
                 onClick={async () => {
@@ -1164,6 +1162,39 @@ export function LaunchTab() {
               >
                 <Network className="w-4 h-4 mr-2" />
                 Test Network
+              </Button>
+            )}
+            {hookSigner && factoryContract && (
+              <Button
+                onClick={async () => {
+                  try {
+                    console.log('=== Testing Factory Contract Floor Limit ===');
+                    console.log('Factory Proxy Address:', contractAddresses.FACTORY_PROXY);
+
+                    // Try to call the contract with a test value to see what the limit is
+                    // We can't actually create a token, but we can check what functions exist
+                    const code = await hookSigner.provider?.getCode(
+                      contractAddresses.FACTORY_PROXY,
+                    );
+                    console.log('Contract code length:', code?.length);
+
+                    alert(
+                      `Factory Contract Info:\n\n` +
+                        `Proxy Address: ${contractAddresses.FACTORY_PROXY}\n` +
+                        `Code Length: ${code?.length || 0} bytes\n\n` +
+                        `Check console for more details.`,
+                    );
+                  } catch (error) {
+                    console.error('Factory check failed:', error);
+                    alert('Factory contract check failed!');
+                  }
+                }}
+                variant="outline"
+                size="sm"
+                className="text-cyan-400 border-cyan-400/20 hover:bg-cyan-400/10"
+              >
+                <CheckCircle className="w-4 h-4 mr-2" />
+                Check Factory Version
               </Button>
             )}
             {walletAddress && hookSigner && (

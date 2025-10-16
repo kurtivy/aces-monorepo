@@ -4,6 +4,7 @@ import DynamicImageGallery from '../left-column/overview/dynamic-image-gallery';
 import BondingProgressSection from './bonding-progression-section';
 import SwapBox from './swap-box';
 import type { DatabaseListing } from '@/types/rwa/section.types';
+import { validateEthereumAddress } from '@/lib/validation/address';
 
 interface RightPanelProps {
   listing: DatabaseListing;
@@ -19,7 +20,8 @@ export default function RightPanel({
   loading = false,
 }: RightPanelProps) {
   const tokenSymbol = listing.token?.symbol || listing.symbol || 'RWA';
-  const tokenAddress = listing.token?.contractAddress;
+  // Validate token address format (must be 40-char Ethereum address)
+  const tokenAddress = validateEthereumAddress(listing.token?.contractAddress);
   const tokenName = listing.token?.name || listing.title;
   const chainId = listing.token?.chainId;
   const images = listing.imageGallery ?? [];

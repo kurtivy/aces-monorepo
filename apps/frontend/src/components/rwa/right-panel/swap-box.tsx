@@ -389,27 +389,44 @@ export default function TokenSwapInterface({
   }, [amount]);
 
   // Check token allowance for DEX router (needed for any ERC20 token)
-  // Allowance: in bonding mode for stables, spender is the swap contract; in DEX mode it's the router
+  // Allowance logic:
+  // - Bonding mode + ACES: approve FACTORY_PROXY (for direct buys)
+  // - Bonding mode + USDC/USDT: approve ACES_SWAP (for multi-hop swaps)
+  // - DEX mode: approve AERODROME_ROUTER
   const bondingSwapAddress = useMemo(
     () => (contractAddresses as Record<string, string> | undefined)?.ACES_SWAP || '',
     [contractAddresses],
   );
 
+  const getSpenderAddress = useCallback(() => {
+    if (isDexMode) {
+      return routerAddress; // DEX mode: approve Aerodrome router
+    }
+
+    // Bonding mode
+    if (selectedSellAsset === 'ACES') {
+      return factoryProxyAddress; // ACES: approve Factory for direct buys
+    }
+
+    // USDC/USDT/ETH: approve AcesSwap for multi-hop
+    return bondingSwapAddress;
+  }, [isDexMode, selectedSellAsset, factoryProxyAddress, bondingSwapAddress, routerAddress]);
+
   const tokenAllowance = useTokenAllowance({
     tokenAddress: getTokenAddressForAsset(selectedSellAsset),
     ownerAddress: walletAddress,
-    spenderAddress:
-      (!isDexMode && isERC20Token(selectedSellAsset) ? bondingSwapAddress : routerAddress) || null,
+    spenderAddress: getSpenderAddress() || null,
     signer,
     enabled: isERC20Token(selectedSellAsset) && hasValidAmount,
   });
 
   // Debug logging for allowance state
   useEffect(() => {
-    if (isDexMode && isERC20Token(selectedSellAsset) && amount && amount !== '0') {
+    if (isERC20Token(selectedSellAsset) && amount && amount !== '0') {
       const assetInfo = getAssetBalanceInfo(selectedSellAsset);
       const needsApproval = !tokenAllowance.hasAllowance(amount, assetInfo.decimals);
       // console.log('[SwapBox] Allowance Check:', {
+      //   mode: isDexMode ? 'DEX' : 'Bonding',
       //   selectedSellAsset,
       //   amount,
       //   decimals: assetInfo.decimals,
@@ -417,9 +434,18 @@ export default function TokenSwapInterface({
       //   needsApproval,
       //   allowanceLoading: tokenAllowance.loading,
       //   allowanceError: tokenAllowance.error,
+      //   spender: getSpenderAddress(),
       // });
     }
-  }, [isDexMode, selectedSellAsset, amount, tokenAllowance, isERC20Token, getAssetBalanceInfo]);
+  }, [
+    isDexMode,
+    selectedSellAsset,
+    amount,
+    tokenAllowance,
+    isERC20Token,
+    getAssetBalanceInfo,
+    getSpenderAddress,
+  ]);
 
   // ========================================
   // UNIFIED LOGIC (Map UI state to sellToken/buyToken)
@@ -445,10 +471,7 @@ export default function TokenSwapInterface({
   // UNIFIED QUOTE HOOK
   // ========================================
   const quote = useUnifiedQuote({
-    factoryContract,
-    tokenContract: contracts.tokenContract,
     tokenAddress,
-    tokenDecimals,
     sellToken,
     buyToken,
     amount,
@@ -497,6 +520,24 @@ export default function TokenSwapInterface({
     if (quote.strategy === 'bonding-multihop' && !swap.acesSwapDeployed) return false;
     return true;
   }, [quote.strategy, swap.acesSwapDeployed]);
+
+  // Check if output amount meets minimum requirement (1 token for multi-hop RWA buys)
+  const minimumAmountWarning = useMemo(() => {
+    if (!hasValidAmount || !quote.needsMultiHop || !isRwaBuy) return null;
+
+    const outputNum = Number.parseFloat(quote.outputAmount || '0');
+    if (outputNum < 1 && outputNum > 0) {
+      return `Minimum purchase is 1 ${tokenSymbol} token. Please increase your ${selectedSellAsset} amount to buy at least 1 token.`;
+    }
+    return null;
+  }, [
+    hasValidAmount,
+    quote.needsMultiHop,
+    quote.outputAmount,
+    isRwaBuy,
+    tokenSymbol,
+    selectedSellAsset,
+  ]);
 
   // Debug logging for swap button state
   useEffect(() => {
@@ -645,6 +686,18 @@ export default function TokenSwapInterface({
       return;
     }
 
+    // Validate minimum output amount for multi-hop swaps (ETH/USDC/USDT → RWA)
+    if (quote.needsMultiHop && isRwaBuy) {
+      const outputNum = Number.parseFloat(quote.outputAmount || '0');
+      if (outputNum < 1) {
+        setTransactionStatus({
+          type: 'error',
+          message: `Minimum purchase is 1 ${tokenSymbol} token. Please increase your ${selectedSellAsset} amount.`,
+        });
+        return;
+      }
+    }
+
     try {
       setLoading('Preparing swap...');
 
@@ -699,6 +752,7 @@ export default function TokenSwapInterface({
     refreshBalances,
     isRwaBuy,
     selectedSellAsset,
+    tokenSymbol,
   ]);
 
   // ========================================
@@ -707,9 +761,8 @@ export default function TokenSwapInterface({
   const handleApproveToken = useCallback(async () => {
     const tokenAddress = getTokenAddressForAsset(selectedSellAsset);
 
-    // Use swap address in bonding mode for ERC20 approvals; router only for DEX
-    const spender =
-      !isDexMode && isERC20Token(selectedSellAsset) ? bondingSwapAddress : routerAddress;
+    // Get the correct spender based on mode and asset
+    const spender = getSpenderAddress();
 
     if (!signer || !spender || !tokenAddress) {
       console.error('[SwapBox] Missing required data for approval', {
@@ -717,6 +770,7 @@ export default function TokenSwapInterface({
         hasSpender: !!spender,
         tokenAddress,
         selectedSellAsset,
+        mode: isDexMode ? 'DEX' : 'Bonding',
       });
       return;
     }
@@ -754,7 +808,14 @@ export default function TokenSwapInterface({
     } finally {
       setLoading('');
     }
-  }, [signer, routerAddress, selectedSellAsset, getTokenAddressForAsset, tokenAllowance]);
+  }, [
+    signer,
+    getSpenderAddress,
+    selectedSellAsset,
+    getTokenAddressForAsset,
+    tokenAllowance,
+    isDexMode,
+  ]);
 
   // Auto-dismiss transaction status
   useMemo(() => {
@@ -1223,6 +1284,15 @@ export default function TokenSwapInterface({
               </div>
             </div>
 
+            {/* Minimum Amount Warning */}
+            {minimumAmountWarning && (
+              <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-900/20 px-4 py-3">
+                <p className="text-sm text-amber-200/90 leading-relaxed">
+                  ⚠️ {minimumAmountWarning}
+                </p>
+              </div>
+            )}
+
             <div className="mt-4">
               {!isAuthenticated ? (
                 <Button
@@ -1248,7 +1318,6 @@ export default function TokenSwapInterface({
                 (() => {
                   const assetInfo = getAssetBalanceInfo(selectedSellAsset);
                   const needsApproval =
-                    isDexMode &&
                     isERC20Token(selectedSellAsset) &&
                     !tokenAllowance.hasAllowance(amount, assetInfo.decimals) &&
                     hasValidAmount;
