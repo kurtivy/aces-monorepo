@@ -273,27 +273,45 @@ export class UnifiedChartDataService {
           });
           // Fall through to generate fresh candles with supply data
         } else {
-          console.log(`[UnifiedChartData] Using ${dbCandles.length} cached candles from database`);
-          console.log('[UnifiedChartData] 📊 First DB candle raw data:', {
-            timestamp: dbCandles[0].timestamp,
-            circulatingSupply: dbCandles[0].circulatingSupply,
-            marketCapAces: dbCandles[0].marketCapAces,
-            marketCapUsd: dbCandles[0].marketCapUsd,
-            close: dbCandles[0].close,
-            closeUsd: dbCandles[0].closeUsd,
-          });
-          const converted = dbCandles.map((candle) =>
-            this.convertDbCandleToUnified(candle, acesUsdPrice),
-          );
-          console.log('🔍 [UnifiedChartData] First cached candle after conversion:', {
-            hasUsd: !!converted[0]?.openUsd,
-            openUsd: converted[0]?.openUsd,
-            closeUsd: converted[0]?.closeUsd,
-            marketCapAces: converted[0]?.marketCapAces,
-            marketCapUsd: converted[0]?.marketCapUsd,
-            circulatingSupply: converted[0]?.circulatingSupply,
-          });
-          return converted;
+          // 🔧 CHECK IF CACHE IS STALE
+          // For bonding curve tokens, cache should be fresh (< 10 seconds old)
+          // to show recent trades immediately
+          const latestCandle = dbCandles[dbCandles.length - 1];
+          const latestCandleTime = new Date(latestCandle.timestamp).getTime();
+          const now = Date.now();
+          const cacheAgeMs = now - latestCandleTime;
+          const maxCacheAgeMs = 10000; // 10 seconds
+
+          if (cacheAgeMs > maxCacheAgeMs) {
+            console.log(
+              `[UnifiedChartData] ⚠️ Cache is stale (${(cacheAgeMs / 1000).toFixed(1)}s old), fetching fresh data...`,
+            );
+            // Fall through to generate fresh candles
+          } else {
+            console.log(
+              `[UnifiedChartData] Using ${dbCandles.length} cached candles from database (${(cacheAgeMs / 1000).toFixed(1)}s old)`,
+            );
+            console.log('[UnifiedChartData] 📊 First DB candle raw data:', {
+              timestamp: dbCandles[0].timestamp,
+              circulatingSupply: dbCandles[0].circulatingSupply,
+              marketCapAces: dbCandles[0].marketCapAces,
+              marketCapUsd: dbCandles[0].marketCapUsd,
+              close: dbCandles[0].close,
+              closeUsd: dbCandles[0].closeUsd,
+            });
+            const converted = dbCandles.map((candle) =>
+              this.convertDbCandleToUnified(candle, acesUsdPrice),
+            );
+            console.log('🔍 [UnifiedChartData] First cached candle after conversion:', {
+              hasUsd: !!converted[0]?.openUsd,
+              openUsd: converted[0]?.openUsd,
+              closeUsd: converted[0]?.closeUsd,
+              marketCapAces: converted[0]?.marketCapAces,
+              marketCapUsd: converted[0]?.marketCapUsd,
+              circulatingSupply: converted[0]?.circulatingSupply,
+            });
+            return converted;
+          }
         }
       }
 
@@ -304,40 +322,27 @@ export class UnifiedChartDataService {
         options.timeframe as any,
       );
 
-      // Convert to unified format with USD values
-      return candles.map((candle, index) => {
-        const acesPrice = acesUsdPrice ? parseFloat(acesUsdPrice) : null;
+      // Parse ACES/USD price once for consistent usage
+      const parsedAcesPrice = acesUsdPrice ? parseFloat(acesUsdPrice) : null;
 
+      // Convert to unified format with USD values
+      const unified = candles.map((candle, index) => {
         const openAces = parseFloat(candle.open);
+        const highAces = parseFloat(candle.high);
+        const lowAces = parseFloat(candle.low);
         const closeAces = parseFloat(candle.close);
         const volumeAces = parseFloat(candle.volume);
         const supply = candle.circulatingSupply ? parseFloat(candle.circulatingSupply) : 0;
 
-        const openUsd = acesPrice ? (openAces * acesPrice).toFixed(18) : '0';
-        const closeUsd = acesPrice ? (closeAces * acesPrice).toFixed(18) : '0';
+        const openUsd = parsedAcesPrice ? (openAces * parsedAcesPrice).toFixed(18) : '0';
+        const highUsd = parsedAcesPrice ? (highAces * parsedAcesPrice).toFixed(18) : '0';
+        const lowUsd = parsedAcesPrice ? (lowAces * parsedAcesPrice).toFixed(18) : '0';
+        const closeUsd = parsedAcesPrice ? (closeAces * parsedAcesPrice).toFixed(18) : '0';
 
         // Calculate market cap using circulating supply
         const marketCapAces = supply > 0 ? (supply * closeAces).toFixed(2) : '0';
         const marketCapUsd =
-          supply > 0 && acesPrice ? (supply * closeAces * acesPrice).toFixed(2) : '0';
-
-        // DEBUG: Log first candle conversion
-        if (index === 0) {
-          console.log('🔍 [UnifiedChartData] Converting first candle from supply service:', {
-            acesUsdPrice,
-            acesPrice,
-            openRaw: candle.open,
-            openParsed: openAces,
-            openCalculated: openAces * (acesPrice || 0),
-            openUsdFinal: openUsd,
-            closeRaw: candle.close,
-            closeParsed: closeAces,
-            closeUsdFinal: closeUsd,
-            circulatingSupply: candle.circulatingSupply,
-            marketCapAces,
-            marketCapUsd,
-          });
-        }
+          supply > 0 && parsedAcesPrice ? (supply * closeAces * parsedAcesPrice).toFixed(2) : '0';
 
         return {
           timestamp: candle.timestamp,
@@ -346,11 +351,11 @@ export class UnifiedChartDataService {
           low: candle.low,
           close: candle.close,
           openUsd,
-          highUsd: acesPrice ? (parseFloat(candle.high) * acesPrice).toFixed(18) : '0',
-          lowUsd: acesPrice ? (parseFloat(candle.low) * acesPrice).toFixed(18) : '0',
+          highUsd,
+          lowUsd,
           closeUsd,
           volume: candle.volume,
-          volumeUsd: acesPrice ? (volumeAces * acesPrice).toFixed(2) : '0',
+          volumeUsd: parsedAcesPrice ? (volumeAces * parsedAcesPrice).toFixed(2) : '0',
           trades: candle.trades,
           dataSource: 'bonding_curve' as const,
           circulatingSupply: candle.circulatingSupply || '0',
@@ -359,6 +364,68 @@ export class UnifiedChartDataService {
           marketCapUsd,
         };
       });
+
+      // Bridge candle opens to previous close to produce bodies when price changed within bucket
+      if (unified.length > 1) {
+        for (let i = 1; i < unified.length; i++) {
+          const prev = unified[i - 1];
+          const curr = unified[i];
+
+          const prevCloseAces = parseFloat(prev.close);
+          const currCloseAces = parseFloat(curr.close);
+          const prevCloseUsd = parsedAcesPrice ? prevCloseAces * parsedAcesPrice : 0;
+
+          // Update open to previous close
+          curr.open = prevCloseAces.toString();
+          curr.openUsd = parsedAcesPrice ? prevCloseUsd.toFixed(18) : '0';
+
+          // Adjust high/low to include previous close
+          const currHighAces = Math.max(parseFloat(curr.high), prevCloseAces, currCloseAces);
+          const currLowAces = Math.min(parseFloat(curr.low), prevCloseAces, currCloseAces);
+          curr.high = currHighAces.toString();
+          curr.low = currLowAces.toString();
+
+          if (parsedAcesPrice) {
+            const currHighUsd = Math.max(
+              parseFloat(curr.highUsd),
+              prevCloseUsd,
+              parseFloat(curr.closeUsd),
+            );
+            const currLowUsd = Math.min(
+              parseFloat(curr.lowUsd),
+              prevCloseUsd,
+              parseFloat(curr.closeUsd),
+            );
+            curr.highUsd = currHighUsd.toFixed(18);
+            curr.lowUsd = currLowUsd.toFixed(18);
+          }
+        }
+      }
+
+      // Log summary
+      if (unified.length > 0) {
+        const first = unified[0];
+        console.log('🔍 [UnifiedChartData] Bonding curve candles converted:', {
+          totalCandles: unified.length,
+          acesUsdPrice,
+          firstCandle: {
+            timestamp: first.timestamp,
+            openAces: first.open,
+            openUsd: first.openUsd,
+            highAces: first.high,
+            highUsd: first.highUsd,
+            lowAces: first.low,
+            lowUsd: first.lowUsd,
+            closeAces: first.close,
+            closeUsd: first.closeUsd,
+            hasWicks: first.high !== first.low,
+            hasBody: first.open !== first.close,
+            trades: first.trades,
+          },
+        });
+      }
+
+      return unified;
     } catch (error) {
       console.error('[UnifiedChartData] Error fetching bonding curve data:', error);
       return [];

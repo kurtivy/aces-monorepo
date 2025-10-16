@@ -48,7 +48,8 @@ export class SupplyBasedOHLCVService {
   }
 
   /**
-   * Fetch trades with supply information and calculate marginal prices
+   * Fetch pre-aggregated candles directly from subgraph
+   * These candles already have proper OHLC values computed on-chain
    */
   async getCandles(
     tokenAddress: string,
@@ -56,25 +57,181 @@ export class SupplyBasedOHLCVService {
     limit = 1000,
   ): Promise<Candle[]> {
     try {
-      // Fetch trades with supply data
-      const trades = await this.fetchTradesWithSupply(tokenAddress, limit);
+      console.log(`[SupplyBasedOHLCV] Fetching pre-aggregated ${timeframe} candles from subgraph`);
 
-      if (trades.length === 0) {
+      // Map timeframe to subgraph entity name
+      const entityMap: Record<string, string> = {
+        '5m': 'tokenFives',
+        '15m': 'tokenFifteens',
+        '1h': 'tokenHours',
+        '4h': 'tokenFourHours',
+        '1d': 'tokenDays',
+      };
+
+      const entityName = entityMap[timeframe];
+      if (!entityName) {
+        throw new Error(`Unsupported timeframe: ${timeframe}`);
+      }
+
+      // Fetch pre-aggregated candles from subgraph
+      const query = `{
+        tokens(where: {address: "${tokenAddress.toLowerCase()}"}) {
+          ${entityName}(first: ${limit}, orderBy: id, orderDirection: desc) {
+            id
+            tradesCount
+            tokensBought
+            tokensSold
+            open
+            high
+            low
+            close
+          }
+        }
+      }`;
+
+      const response = await fetch(this.subgraphUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query }),
+        signal: AbortSignal.timeout(15000),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Subgraph request failed: ${response.status}`);
+      }
+
+      interface SubgraphCandleResponse {
+        data: {
+          tokens: Array<{
+            [key: string]: Array<{
+              id: string;
+              tradesCount: number;
+              tokensBought: string;
+              tokensSold: string;
+              open: string;
+              high: string;
+              low: string;
+              close: string;
+            }>;
+          }>;
+        };
+        errors?: any[];
+      }
+
+      const result = (await response.json()) as SubgraphCandleResponse;
+
+      if (result.errors) {
+        throw new Error(`Subgraph errors: ${JSON.stringify(result.errors)}`);
+      }
+
+      if (!result.data.tokens || result.data.tokens.length === 0) {
+        console.log('[SupplyBasedOHLCV] No token data found in subgraph');
         return [];
       }
 
-      // Fetch token parameters (curve, steepness, floor)
-      const tokenParams = await this.fetchTokenParameters(tokenAddress);
+      const tokenData = result.data.tokens[0];
+      const rawCandles = tokenData[entityName] || [];
 
-      if (!tokenParams) {
-        throw new Error('Could not fetch token parameters');
+      if (rawCandles.length === 0) {
+        console.log(`[SupplyBasedOHLCV] No ${timeframe} candles found for token`);
+        return [];
       }
 
-      // Calculate marginal price for each trade
-      const tradesWithPrices = await this.calculateMarginalPrices(trades, tokenParams);
+      console.log(`[SupplyBasedOHLCV] ✅ Fetched ${rawCandles.length} pre-aggregated candles`);
 
-      // Aggregate into OHLCV candles
-      return this.aggregateTradesToCandles(tradesWithPrices, timeframe);
+      // Convert from WEI to decimal and extract timestamp from ID
+      const candles: Candle[] = rawCandles
+        .map((candle): Candle | null => {
+          // ID format: "tokenAddress-periodId"
+          // For 5m: periodId = timestamp / 300 (5 minutes in seconds)
+          // For 15m: periodId = timestamp / 900
+          // For 1h: periodId = timestamp / 3600
+          // For 4h: periodId = timestamp / 14400
+          // For 1d: periodId = timestamp / 86400
+          const parts = candle.id.split('-');
+          if (parts.length !== 2) {
+            console.warn(`[SupplyBasedOHLCV] Invalid candle ID format: ${candle.id}`);
+            return null;
+          }
+
+          const periodId = parseInt(parts[1], 10);
+          const intervalSeconds: Record<string, number> = {
+            '5m': 300,
+            '15m': 900,
+            '1h': 3600,
+            '4h': 14400,
+            '1d': 86400,
+          };
+
+          const timestamp = new Date(periodId * intervalSeconds[timeframe] * 1000);
+
+          // Convert from WEI (18 decimals) to decimal
+          // NOTE: The subgraph stores prices as marginal price * 10^18 (WEI format)
+          // For example: 9684000000031987286 represents 0.000009684... ACES per token
+          const WEI_DIVISOR = new Decimal(10).pow(18);
+
+          const open = new Decimal(candle.open).div(WEI_DIVISOR).toString();
+          const high = new Decimal(candle.high).div(WEI_DIVISOR).toString();
+          const low = new Decimal(candle.low).div(WEI_DIVISOR).toString();
+          const close = new Decimal(candle.close).div(WEI_DIVISOR).toString();
+
+          // DEBUG: Log the conversion for first candle
+          if (candle.id === rawCandles[0].id) {
+            console.log('[SupplyBasedOHLCV] 🔍 Price conversion check:', {
+              rawOpen: candle.open,
+              afterDivision: open,
+              shouldBe: '0.000009684... ACES per token',
+              rawOpenAsNumber: Number(candle.open),
+              divided: Number(candle.open) / 1e18,
+            });
+          }
+
+          const tokensBought = new Decimal(candle.tokensBought || '0').div(WEI_DIVISOR);
+          const tokensSold = new Decimal(candle.tokensSold || '0').div(WEI_DIVISOR);
+          const volume = tokensBought.add(tokensSold).toString();
+
+          return {
+            timestamp,
+            open,
+            high,
+            low,
+            close,
+            volume,
+            trades: candle.tradesCount,
+          };
+        })
+        .filter((candle): candle is Candle => candle !== null)
+        .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+
+      console.log(`[SupplyBasedOHLCV] ✅ Returning ${candles.length} candles with proper OHLC`);
+
+      // Log first and last candle for debugging
+      if (candles.length > 0) {
+        const first = candles[0];
+        const last = candles[candles.length - 1];
+        console.log('[SupplyBasedOHLCV] First candle:', {
+          timestamp: first.timestamp.toISOString(),
+          open: first.open,
+          high: first.high,
+          low: first.low,
+          close: first.close,
+          trades: first.trades,
+          hasWicks: first.high !== first.low,
+          hasBody: first.open !== first.close,
+        });
+        console.log('[SupplyBasedOHLCV] Last candle:', {
+          timestamp: last.timestamp.toISOString(),
+          open: last.open,
+          high: last.high,
+          low: last.low,
+          close: last.close,
+          trades: last.trades,
+          hasWicks: last.high !== last.low,
+          hasBody: last.open !== last.close,
+        });
+      }
+
+      return candles;
     } catch (error) {
       console.error('[SupplyBasedOHLCV] Error getting candles:', error);
       throw error;
