@@ -262,6 +262,17 @@ export class UnifiedChartDataService {
         const hasSupplyData =
           dbCandles[0].circulatingSupply && dbCandles[0].circulatingSupply !== '0';
 
+        // 🔧 CHECK IF USD PRICES ARE VALID (not 0 or suspiciously ACES prices)
+        const hasValidUsdPrices =
+          options.includeUsd !== false &&
+          acesUsdPrice &&
+          parseFloat(acesUsdPrice) > 0 &&
+          dbCandles[0].closeUsd &&
+          dbCandles[0].closeUsd !== '0';
+
+        // Check if USD price looks like it's actually an ACES price (> 0.01)
+        const usdLooksWrong = hasValidUsdPrices && parseFloat(dbCandles[0].closeUsd || '0') > 0.01;
+
         if (!hasSupplyData) {
           console.log(
             '[UnifiedChartData] ⚠️ Cached candles lack supply data, generating fresh candles with supply...',
@@ -272,6 +283,17 @@ export class UnifiedChartDataService {
             marketCapUsd: dbCandles[0].marketCapUsd,
           });
           // Fall through to generate fresh candles with supply data
+        } else if (!hasValidUsdPrices || usdLooksWrong) {
+          console.log(
+            '[UnifiedChartData] ⚠️ Cached candles have invalid USD prices, regenerating...',
+            {
+              closeUsd: dbCandles[0].closeUsd,
+              acesUsdPrice,
+              hasValidUsdPrices,
+              usdLooksWrong,
+            },
+          );
+          // Fall through to generate fresh candles with correct USD prices
         } else {
           // 🔧 CHECK IF CACHE IS STALE
           // For bonding curve tokens, cache should be fresh (< 10 seconds old)
@@ -327,22 +349,28 @@ export class UnifiedChartDataService {
       // Parse ACES/USD price once for consistent usage
       const parsedAcesPrice = acesUsdPrice ? parseFloat(acesUsdPrice) : null;
 
+      // 🔧 TEMPORARILY DISABLED: BitQuery series cache can have wrong conversion rates
+      // Using spot price for all candles until we fix the series calculation
       // Build an ACES/USD series aligned to timeframe buckets for per-bucket conversion
       let acesUsdSeries: { map: Map<number, number>; lastPrice: number | null } = {
         map: new Map(),
-        lastPrice: null,
+        lastPrice: parsedAcesPrice, // Use current spot price for all candles
       };
-      try {
-        const intervalMs = this.getIntervalMs(options.timeframe);
-        const from =
-          candles.length > 0 ? candles[0].timestamp : new Date(Date.now() - intervalMs * 500);
-        const to = candles.length > 0 ? candles[candles.length - 1].timestamp : new Date();
-        acesUsdSeries = await this.getAcesUsdSeries(options.timeframe, { from, to });
-      } catch (err) {
-        console.warn(
-          '[UnifiedChartData] Failed to build ACES/USD series, will use spot price fallback',
-        );
-      }
+      console.log(
+        '[UnifiedChartData] 🔧 Using spot ACES/USD price for all candles:',
+        parsedAcesPrice,
+      );
+      // try {
+      //   const intervalMs = this.getIntervalMs(options.timeframe);
+      //   const from =
+      //     candles.length > 0 ? candles[0].timestamp : new Date(Date.now() - intervalMs * 500);
+      //   const to = candles.length > 0 ? candles[candles.length - 1].timestamp : new Date();
+      //   acesUsdSeries = await this.getAcesUsdSeries(options.timeframe, { from, to });
+      // } catch (err) {
+      //   console.warn(
+      //     '[UnifiedChartData] Failed to build ACES/USD series, will use spot price fallback',
+      //   );
+      // }
 
       const alignToBucket = (date: Date) => {
         const ms = this.getIntervalMs(options.timeframe);
@@ -805,18 +833,85 @@ export class UnifiedChartDataService {
       [highVal, lowVal] = [lowVal, highVal];
     }
 
+    // 🔧 CRITICAL FIX: When ACES/USD price fetch fails, try to get fallback USD values from database
+    // This prevents WebSocket updates from breaking the chart by sending '0' USD values
+    let openUsd: string;
+    let highUsd: string;
+    let lowUsd: string;
+    let closeUsd: string;
+    let volumeUsd: string;
+
+    if (acesPrice && acesPrice > 0) {
+      // Normal path: calculate USD from ACES price
+      openUsd = (openVal * acesPrice).toFixed(18);
+      highUsd = (highVal * acesPrice).toFixed(18);
+      lowUsd = (lowVal * acesPrice).toFixed(18);
+      closeUsd = (closeVal * acesPrice).toFixed(18);
+      volumeUsd = (parseFloat(latestCandle.volume) * acesPrice).toFixed(2);
+    } else {
+      // Fallback: Try to get USD values from database candle for this timeframe
+      console.warn(
+        '[UnifiedChartData] ACES/USD price unavailable, attempting to use cached DB candle for USD values...',
+      );
+      try {
+        const dbCandles = await this.getCachedCandles(tokenAddress, timeframe);
+        const latestDbCandle = dbCandles.length > 0 ? dbCandles[dbCandles.length - 1] : null;
+
+        // 🔧 Validate cached USD prices (check if they're suspiciously high = ACES not USD)
+        const cachedCloseUsd = latestDbCandle?.closeUsd ? parseFloat(latestDbCandle.closeUsd) : 0;
+        const usdLooksWrong = cachedCloseUsd > 0.01; // USD prices should be very small (< 0.01)
+
+        if (
+          latestDbCandle &&
+          latestDbCandle.closeUsd &&
+          latestDbCandle.closeUsd !== '0' &&
+          !usdLooksWrong
+        ) {
+          // Use database USD values which already have price conversion applied
+          openUsd = latestDbCandle.openUsd || '0';
+          highUsd = latestDbCandle.highUsd || '0';
+          lowUsd = latestDbCandle.lowUsd || '0';
+          closeUsd = latestDbCandle.closeUsd || '0';
+          volumeUsd = latestDbCandle.volumeUsd || '0';
+          console.log('[UnifiedChartData] ✅ Using USD values from cached DB candle');
+        } else {
+          if (usdLooksWrong) {
+            console.warn(
+              '[UnifiedChartData] ⚠️ Cached USD price looks wrong (too high), rejecting:',
+              cachedCloseUsd,
+            );
+          }
+          // No valid cached USD values either
+          console.warn('[UnifiedChartData] ⚠️ No cached USD values available, sending ACES only');
+          openUsd = '0';
+          highUsd = '0';
+          lowUsd = '0';
+          closeUsd = '0';
+          volumeUsd = '0';
+        }
+      } catch (error) {
+        console.warn('[UnifiedChartData] Failed to get cached candle for USD fallback:', error);
+        // Send ACES values without USD
+        openUsd = '0';
+        highUsd = '0';
+        lowUsd = '0';
+        closeUsd = '0';
+        volumeUsd = '0';
+      }
+    }
+
     return {
       timestamp: latestCandle.timestamp,
       open: openVal.toString(),
       high: highVal.toString(),
       low: lowVal.toString(),
       close: closeVal.toString(),
-      openUsd: acesPrice ? (openVal * acesPrice).toFixed(18) : '0',
-      highUsd: acesPrice ? (highVal * acesPrice).toFixed(18) : '0',
-      lowUsd: acesPrice ? (lowVal * acesPrice).toFixed(18) : '0',
-      closeUsd: acesPrice ? (closeVal * acesPrice).toFixed(18) : '0',
+      openUsd,
+      highUsd,
+      lowUsd,
+      closeUsd,
       volume: latestCandle.volume,
-      volumeUsd: acesPrice ? (parseFloat(latestCandle.volume) * acesPrice).toFixed(2) : '0',
+      volumeUsd,
       trades: latestCandle.trades,
       dataSource: 'bonding_curve',
     };

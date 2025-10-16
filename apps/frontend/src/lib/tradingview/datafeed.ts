@@ -154,10 +154,6 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     this.tokenAddress = tokenAddress.toLowerCase();
     this.displayCurrency = 'usd';
     this.useDex = false;
-
-    // Clear cache on initialization to ensure fresh start
-    this.clearCache();
-    this.hasLoadedInitialHttpData = false;
   }
 
   /**
@@ -173,7 +169,7 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
    * Clear all caches - useful for debugging or forcing refresh
    */
   public clearCache(): void {
-    console.log('[TradingView] 🗑️ Clearing all caches');
+    // console.log('[TradingView] 🗑️ Clearing all caches');
     this.historyCache.clear();
     this.lastHistoricalBarByTimeframe.clear();
   }
@@ -285,14 +281,6 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     onErrorCallback: (error: string) => void,
   ) {
     const timeframe = this.resolutionToTimeframe(resolution);
-
-    // 🔧 CRITICAL: Clear cache if this is the first request to ensure absolutely fresh data
-    if (periodParams.firstDataRequest) {
-      console.log('[TradingView] 🆕 First data request - clearing cache and fetching fresh data');
-      this.clearCache();
-      this.hasLoadedInitialHttpData = false;
-    }
-
     const cachedBars = this.historyCache.get(timeframe);
     const fromMs = periodParams.from * 1000;
     const toMs = periodParams.to * 1000;
@@ -351,27 +339,18 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       onHistoryCallback(filteredCopy, { noData: false });
     };
 
-    // 🔧 For subsequent requests (not first), check if cache is fresh enough to use
+    // Check cache freshness
     if (!periodParams.firstDataRequest && cachedBars && cachedBars.length > 0) {
       const latestBar = cachedBars[cachedBars.length - 1];
       const cacheAgeMs = Date.now() - latestBar.time;
       const maxCacheAgeMs = 15000; // 15 seconds
 
       if (cacheAgeMs <= maxCacheAgeMs) {
-        // Cache is fresh, use it for zoom/pan operations
-        console.log(`[TradingView] ✅ Using cached bars (${(cacheAgeMs / 1000).toFixed(1)}s old)`);
+        // Cache is fresh, use it
         deliverBars(cachedBars, false);
         return;
-      } else {
-        // Cache is stale, fetch fresh data
-        console.log(
-          `[TradingView] ⚠️ Cache is stale (${(cacheAgeMs / 1000).toFixed(1)}s old), fetching fresh data...`,
-        );
-        // Fall through to fetch fresh data
       }
     }
-
-    // If we reach here, we're fetching fresh data from API (either first request or cache miss/stale)
 
     // console.log(
     //   `[TradingView] Fetching bars: ${this.tokenAddress} ${timeframe}`,
