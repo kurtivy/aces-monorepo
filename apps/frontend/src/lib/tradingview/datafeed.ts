@@ -642,23 +642,50 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
           return;
         }
 
-        // console.log(`[TradingView] 🔔 Real-time candle update received:`, {
-        //   time: new Date(bar.time).toISOString(),
-        //   close: bar.close,
-        //   timeframe: subscription.timeframe,
-        // });
+        // Determine if this is an update to the current candle or a new candle
+        const isUpdateToCurrentCandle =
+          subscription.lastBar && subscription.lastBar.time === bar.time;
 
-        const bridgedBar = this.bridgeBar(subscription.lastBar, bar);
-        subscription.lastBar = bridgedBar;
+        console.log(`[TradingView] 🔔 Real-time candle update:`, {
+          time: new Date(bar.time).toISOString(),
+          isUpdate: isUpdateToCurrentCandle,
+          lastBarTime: subscription.lastBar
+            ? new Date(subscription.lastBar.time).toISOString()
+            : 'none',
+          incomingBar: {
+            open: bar.open,
+            high: bar.high,
+            low: bar.low,
+            close: bar.close,
+            hasBody: bar.open !== bar.close,
+            hasWicks: bar.high !== bar.low,
+          },
+        });
+
+        // Only bridge if this is a NEW candle, not an update to existing candle
+        const finalBar = isUpdateToCurrentCandle
+          ? bar // Use the bar as-is for updates to current candle
+          : this.bridgeBar(subscription.lastBar, bar); // Bridge only for new candles
+
+        // Update subscription's last bar reference
+        subscription.lastBar = this.cloneBar(finalBar);
 
         try {
-          subscription.onRealtimeCallback(bridgedBar);
-          // console.log('[TradingView] ✅ Real-time update applied to chart');
+          subscription.onRealtimeCallback(finalBar);
+          console.log('[TradingView] ✅ Real-time update applied:', {
+            time: new Date(finalBar.time).toISOString(),
+            applied: {
+              open: finalBar.open,
+              high: finalBar.high,
+              low: finalBar.low,
+              close: finalBar.close,
+            },
+          });
         } catch (error) {
           console.error('[TradingView] Error calling onRealtimeCallback:', error);
         }
 
-        this.updateHistoryCache(subscription.timeframe, bridgedBar);
+        this.updateHistoryCache(subscription.timeframe, finalBar);
         break;
       }
 
@@ -720,8 +747,24 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
 
     const priceFor = (key: 'open' | 'high' | 'low' | 'close'): number => {
       const usdKey = `${key}Usd`;
-      const source = (candle as any)[usdKey] ?? (candle as any)[key];
-      const value = typeof source === 'string' ? parseFloat(source) : Number(source ?? 0);
+
+      // If displaying USD, only use USD values - never fall back to ACES
+      if (this.displayCurrency === 'usd') {
+        const usdValue = (candle as any)[usdKey];
+        // Check if USD value exists and is not "0"
+        if (usdValue && usdValue !== '0') {
+          const parsed = typeof usdValue === 'string' ? parseFloat(usdValue) : Number(usdValue);
+          if (Number.isFinite(parsed) && parsed > 0) {
+            return parsed;
+          }
+        }
+        // No valid USD value, return 0 to filter out this candle
+        return 0;
+      }
+
+      // If displaying ACES, use ACES values
+      const acesValue = (candle as any)[key];
+      const value = typeof acesValue === 'string' ? parseFloat(acesValue) : Number(acesValue ?? 0);
       return Number.isFinite(value) ? value : 0;
     };
 
@@ -781,7 +824,25 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       [finalHigh, finalLow] = [finalLow, finalHigh];
     }
 
-    return {
+    // Ensure high encompasses both open and close
+    if (finalHigh < Math.max(open, close)) {
+      console.warn('[TradingView] ⚠️ candleToBar: High < max(open, close), fixing:', {
+        original: { open, high: finalHigh, low: finalLow, close },
+        maxOC: Math.max(open, close),
+      });
+      finalHigh = Math.max(finalHigh, open, close);
+    }
+
+    // Ensure low encompasses both open and close
+    if (finalLow > Math.min(open, close)) {
+      console.warn('[TradingView] ⚠️ candleToBar: Low > min(open, close), fixing:', {
+        original: { open, high: finalHigh, low: finalLow, close },
+        minOC: Math.min(open, close),
+      });
+      finalLow = Math.min(finalLow, open, close);
+    }
+
+    const bar = {
       time: alignedTime,
       open,
       high: finalHigh,
@@ -789,6 +850,26 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       close,
       volume: Number.isFinite(volume) ? volume : 0,
     };
+
+    // Debug log if we detect a potentially flat candle
+    if (bar.high === bar.low && bar.open === bar.close) {
+      console.warn('[TradingView] ⚠️ Created flat candle (OHLC all equal):', {
+        time: new Date(bar.time).toISOString(),
+        price: bar.close,
+        rawCandle: {
+          openUsd: (candle as any).openUsd,
+          highUsd: (candle as any).highUsd,
+          lowUsd: (candle as any).lowUsd,
+          closeUsd: (candle as any).closeUsd,
+          open: (candle as any).open,
+          high: (candle as any).high,
+          low: (candle as any).low,
+          close: (candle as any).close,
+        },
+      });
+    }
+
+    return bar;
   }
 
   private fillMissingBars(bars: Bar[], timeframeMs: number): Bar[] {
@@ -918,25 +999,33 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       .map((candle: any) => {
         const timestamp = candle.timestamp * 1000;
 
-        const open =
-          this.displayCurrency === 'usd'
-            ? parseFloat(candle.openUsd || candle.open)
-            : parseFloat(candle.open);
+        // Helper to safely parse USD values - only use if valid, never fall back to ACES price
+        const parseUsdValue = (usdValue: string | undefined, acesValue: string) => {
+          if (this.displayCurrency !== 'usd') {
+            return parseFloat(acesValue);
+          }
 
-        const high =
-          this.displayCurrency === 'usd'
-            ? parseFloat(candle.highUsd || candle.high)
-            : parseFloat(candle.high);
+          // Check if USD value exists and is not "0"
+          if (usdValue && usdValue !== '0') {
+            const parsed = parseFloat(usdValue);
+            if (Number.isFinite(parsed) && parsed > 0) {
+              return parsed;
+            }
+          }
 
-        const low =
-          this.displayCurrency === 'usd'
-            ? parseFloat(candle.lowUsd || candle.low)
-            : parseFloat(candle.low);
+          // If no valid USD value, return null to filter out this candle
+          return null;
+        };
 
-        const close =
-          this.displayCurrency === 'usd'
-            ? parseFloat(candle.closeUsd || candle.close)
-            : parseFloat(candle.close);
+        const open = parseUsdValue(candle.openUsd, candle.open);
+        const high = parseUsdValue(candle.highUsd, candle.high);
+        const low = parseUsdValue(candle.lowUsd, candle.low);
+        const close = parseUsdValue(candle.closeUsd, candle.close);
+
+        // If any value is null (missing USD data), skip this candle
+        if (open === null || high === null || low === null || close === null) {
+          return null;
+        }
 
         // DEBUG: Log first 3 candles processing
         if (
@@ -983,7 +1072,10 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
           volume: parseFloat(candle.volume || '0'),
         };
       })
-      .filter((bar: Bar) => {
+      .filter((bar: Bar | null): bar is Bar => {
+        if (bar === null) {
+          return false;
+        }
         const hasValidPrices = bar.open > 0 || bar.high > 0 || bar.low > 0 || bar.close > 0;
         if (!hasValidPrices) {
           console.warn('🔍 [Frontend Datafeed] Filtering out bar with all zero prices:', bar);
@@ -995,16 +1087,32 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     console.log(`🔍 [Frontend Datafeed] After filtering: ${bars.length} bars`);
 
     if (bars.length > 0) {
-      console.log('🔍 [Frontend Datafeed] First bar after conversion:', {
+      console.log('🔍 [Frontend Datafeed] ✅ First bar sent to chart:', {
         time: new Date(bars[0].time).toISOString(),
         open: bars[0].open,
         high: bars[0].high,
         low: bars[0].low,
         close: bars[0].close,
+        displayCurrency: this.displayCurrency,
         hasWicks: bars[0].high !== bars[0].low,
         hasBody: bars[0].open !== bars[0].close,
         formatted: BondingCurveDatafeed.formatPriceWithZeroCount(bars[0].close),
       });
+      console.log('🔍 [Frontend Datafeed] ✅ Last bar sent to chart:', {
+        time: new Date(bars[bars.length - 1].time).toISOString(),
+        close: bars[bars.length - 1].close,
+        formatted: BondingCurveDatafeed.formatPriceWithZeroCount(bars[bars.length - 1].close),
+      });
+
+      // Check if we're accidentally sending ACES prices instead of USD
+      if (this.displayCurrency === 'usd' && bars[0].close > 0.01) {
+        console.error('⚠️ [Frontend Datafeed] WARNING: Price looks like ACES not USD!', {
+          close: bars[0].close,
+          expectedRange: '0.00001 - 0.0001',
+          actualValue: bars[0].close,
+          possiblyInAces: bars[0].close > 0.01,
+        });
+      }
     } else {
       console.error(
         '🔍 [Frontend Datafeed] ❌ No bars after filtering! Check if all prices are zero.',
@@ -1023,19 +1131,64 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
 
     const bridged: Bar = { ...bar };
 
+    // Don't bridge if there's no previous bar or if this is an update to the same bar
     if (!previousBar || previousBar.time === bridged.time) {
       return bridged;
     }
 
     const prevClose = previousBar.close;
 
-    if (!Number.isFinite(prevClose)) {
+    if (!Number.isFinite(prevClose) || prevClose <= 0) {
       return bridged;
     }
 
+    // Bridge the gap between the previous close and this bar's open
     bridged.open = prevClose;
-    bridged.high = Math.max(bridged.high, prevClose);
-    bridged.low = Math.min(bridged.low, prevClose);
+
+    // Ensure high includes the bridge
+    bridged.high = Math.max(bridged.high, prevClose, bridged.open, bridged.close);
+
+    // Ensure low includes the bridge
+    bridged.low = Math.min(bridged.low, prevClose, bridged.open, bridged.close);
+
+    // Validate the bridged bar maintains OHLC invariants
+    if (bridged.high < bridged.low) {
+      console.error('[TradingView] ⚠️ Bridge created invalid bar (high < low), swapping', {
+        before: { high: bar.high, low: bar.low },
+        after: { high: bridged.high, low: bridged.low },
+      });
+      [bridged.high, bridged.low] = [bridged.low, bridged.high];
+    }
+
+    // Ensure high is at least as large as open and close
+    if (bridged.high < Math.max(bridged.open, bridged.close)) {
+      console.warn('[TradingView] ⚠️ Fixing bridged bar: high < max(open, close)');
+      bridged.high = Math.max(bridged.high, bridged.open, bridged.close);
+    }
+
+    // Ensure low is at most as small as open and close
+    if (bridged.low > Math.min(bridged.open, bridged.close)) {
+      console.warn('[TradingView] ⚠️ Fixing bridged bar: low > min(open, close)');
+      bridged.low = Math.min(bridged.low, bridged.open, bridged.close);
+    }
+
+    console.log('[TradingView] 🌉 Bridged new candle:', {
+      prevClose,
+      original: {
+        time: new Date(bar.time).toISOString(),
+        open: bar.open,
+        high: bar.high,
+        low: bar.low,
+        close: bar.close,
+      },
+      bridged: {
+        time: new Date(bridged.time).toISOString(),
+        open: bridged.open,
+        high: bridged.high,
+        low: bridged.low,
+        close: bridged.close,
+      },
+    });
 
     return bridged;
   }

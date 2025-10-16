@@ -336,8 +336,8 @@ const acesWethPoolEnv =
   process.env.AERODROME_ACES_WETH_POOL || process.env.BITQUERY_ACES_WETH_POOL || '';
 const wethUsdcPoolEnv = process.env.WETH_USDC_POOL || process.env.BITQUERY_WETH_USDC_POOL || '';
 
-export const ACES_WETH_POOL_ADDRESS = acesWethPoolEnv ? acesWethPoolEnv.toLowerCase() : '';
-export const WETH_USDC_POOL_ADDRESS = wethUsdcPoolEnv ? wethUsdcPoolEnv.toLowerCase() : '';
+export const AERODROME_ACES_WETH_POOL = acesWethPoolEnv ? acesWethPoolEnv.toLowerCase() : '';
+export const WETH_USDC_POOL = wethUsdcPoolEnv ? wethUsdcPoolEnv.toLowerCase() : '';
 
 // Timeframe to seconds mapping for Trading.Tokens query
 export const TIMEFRAME_TO_SECONDS: Record<string, number> = {

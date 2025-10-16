@@ -8,10 +8,10 @@ import { PoolDetectionService } from './pool-detection-service';
 import { AcesUsdPriceService } from './aces-usd-price-service';
 import {
   ACES_TOKEN_ADDRESS,
-  ACES_WETH_POOL_ADDRESS,
+  AERODROME_ACES_WETH_POOL,
   USDC_TOKEN_ADDRESS,
   WETH_TOKEN_ADDRESS,
-  WETH_USDC_POOL_ADDRESS,
+  WETH_USDC_POOL,
 } from '../config/bitquery.config';
 
 interface UnifiedCandle {
@@ -150,8 +150,8 @@ export class UnifiedChartDataService {
       candles = await this.getBondingChartData(normalizedAddress, options, acesUsdPrice);
     }
 
-    // Store candles to database (async, non-blocking)
-    this.storeCandlesAsync(normalizedAddress, candles).catch((err) => {
+    // Store candles to database (async, non-blocking) with actual timeframe
+    this.storeCandlesAsync(normalizedAddress, options.timeframe, candles).catch((err) => {
       console.warn('[UnifiedChartData] Background storage failed:', err);
     });
 
@@ -317,15 +317,39 @@ export class UnifiedChartDataService {
 
       // FALLBACK: Generate from supply-based service (real-time calculation)
       console.log('[UnifiedChartData] No cached candles, generating from trades...');
+      // Request latest candles (frontend windows by range)
       const candles = await this.supplyBasedOHLCVService.getCandles(
         tokenAddress,
         options.timeframe as any,
+        3000,
       );
 
       // Parse ACES/USD price once for consistent usage
       const parsedAcesPrice = acesUsdPrice ? parseFloat(acesUsdPrice) : null;
 
-      // Convert to unified format with USD values
+      // Build an ACES/USD series aligned to timeframe buckets for per-bucket conversion
+      let acesUsdSeries: { map: Map<number, number>; lastPrice: number | null } = {
+        map: new Map(),
+        lastPrice: null,
+      };
+      try {
+        const intervalMs = this.getIntervalMs(options.timeframe);
+        const from =
+          candles.length > 0 ? candles[0].timestamp : new Date(Date.now() - intervalMs * 500);
+        const to = candles.length > 0 ? candles[candles.length - 1].timestamp : new Date();
+        acesUsdSeries = await this.getAcesUsdSeries(options.timeframe, { from, to });
+      } catch (err) {
+        console.warn(
+          '[UnifiedChartData] Failed to build ACES/USD series, will use spot price fallback',
+        );
+      }
+
+      const alignToBucket = (date: Date) => {
+        const ms = this.getIntervalMs(options.timeframe);
+        return Math.floor(date.getTime() / ms) * ms;
+      };
+
+      // Convert to unified format with per-bucket USD values
       const unified = candles.map((candle, index) => {
         let openAces = parseFloat(candle.open);
         let highAces = parseFloat(candle.high);
@@ -333,6 +357,22 @@ export class UnifiedChartDataService {
         let closeAces = parseFloat(candle.close);
         const volumeAces = parseFloat(candle.volume);
         const supply = candle.circulatingSupply ? parseFloat(candle.circulatingSupply) : 0;
+
+        // 🔍 DEBUG: Log first candle ACES-to-USD conversion
+        if (index === 0) {
+          // eslint-disable-next-line no-console
+          console.log('🔍 [UnifiedChartData] ===== ACES → USD CONVERSION (First Candle) =====');
+          // eslint-disable-next-line no-console
+          console.log('🔍 [UnifiedChartData] ACES prices from candle:');
+          // eslint-disable-next-line no-console
+          console.log('🔍 [UnifiedChartData]   open:', openAces, 'ACES per TOKEN');
+          // eslint-disable-next-line no-console
+          console.log('🔍 [UnifiedChartData]   close:', closeAces, 'ACES per TOKEN');
+          // eslint-disable-next-line no-console
+          console.log('🔍 [UnifiedChartData] ACES/USD price:', parsedAcesPrice);
+          // eslint-disable-next-line no-console
+          console.log('🔍 [UnifiedChartData] Expected result: ~$0.0000421 (0.0₄421)');
+        }
 
         // Validate and fix high/low values to prevent zero or invalid values
         if (!Number.isFinite(highAces) || highAces <= 0) {
@@ -357,10 +397,36 @@ export class UnifiedChartDataService {
           console.warn('[UnifiedChartData] Swapped high/low values to ensure high >= low');
         }
 
-        const openUsd = parsedAcesPrice ? (openAces * parsedAcesPrice).toFixed(18) : '0';
-        const highUsd = parsedAcesPrice ? (highAces * parsedAcesPrice).toFixed(18) : '0';
-        const lowUsd = parsedAcesPrice ? (lowAces * parsedAcesPrice).toFixed(18) : '0';
-        const closeUsd = parsedAcesPrice ? (closeAces * parsedAcesPrice).toFixed(18) : '0';
+        // Determine per-bucket ACES/USD (prefer series value at bucket start; fallback to lastPrice or spot)
+        const bucketTs = alignToBucket(candle.timestamp);
+        let bucketAcesUsd =
+          acesUsdSeries.map.get(bucketTs) ?? acesUsdSeries.lastPrice ?? parsedAcesPrice;
+
+        const openUsd = bucketAcesUsd ? (openAces * bucketAcesUsd).toFixed(18) : '0';
+        const highUsd = bucketAcesUsd ? (highAces * bucketAcesUsd).toFixed(18) : '0';
+        const lowUsd = bucketAcesUsd ? (lowAces * bucketAcesUsd).toFixed(18) : '0';
+        const closeUsd = bucketAcesUsd ? (closeAces * bucketAcesUsd).toFixed(18) : '0';
+
+        // 🔍 DEBUG: Log first candle USD results
+        if (index === 0) {
+          // eslint-disable-next-line no-console
+          console.log('🔍 [UnifiedChartData] USD prices after conversion:');
+          // eslint-disable-next-line no-console
+          console.log('🔍 [UnifiedChartData]   openUsd:', openUsd);
+          // eslint-disable-next-line no-console
+          console.log('🔍 [UnifiedChartData]   closeUsd:', closeUsd);
+          // eslint-disable-next-line no-console
+          console.log(
+            '🔍 [UnifiedChartData] Calculation: ',
+            openAces,
+            '* ',
+            parsedAcesPrice,
+            '=',
+            openUsd,
+          );
+          // eslint-disable-next-line no-console
+          console.log('🔍 [UnifiedChartData] ================================================');
+        }
 
         // Calculate market cap using circulating supply
         const marketCapAces = supply > 0 ? (supply * closeAces).toFixed(2) : '0';
@@ -396,7 +462,10 @@ export class UnifiedChartDataService {
 
           const prevCloseAces = parseFloat(prev.close);
           const currCloseAces = parseFloat(curr.close);
-          const prevCloseUsd = parsedAcesPrice ? prevCloseAces * parsedAcesPrice : 0;
+          const prevBucketTs = alignToBucket(prev.timestamp as unknown as Date);
+          const prevBucketAcesUsd =
+            acesUsdSeries.map.get(prevBucketTs) ?? acesUsdSeries.lastPrice ?? parsedAcesPrice;
+          const prevCloseUsd = prevBucketAcesUsd ? prevCloseAces * prevBucketAcesUsd : 0;
 
           // Update open to previous close
           curr.open = prevCloseAces.toString();
@@ -408,7 +477,8 @@ export class UnifiedChartDataService {
           curr.high = currHighAces.toString();
           curr.low = currLowAces.toString();
 
-          if (parsedAcesPrice) {
+          // Adjust USD highs/lows using available USD values and bridged prevCloseUsd
+          if (prevCloseUsd > 0) {
             const currHighUsd = Math.max(
               parseFloat(curr.highUsd),
               prevCloseUsd,
@@ -900,7 +970,7 @@ export class UnifiedChartDataService {
     timeframe: string,
     range: { from: Date; to: Date },
   ): Promise<{ map: Map<number, number>; lastPrice: number | null }> {
-    if (!ACES_WETH_POOL_ADDRESS || !WETH_USDC_POOL_ADDRESS) {
+    if (!AERODROME_ACES_WETH_POOL || !WETH_USDC_POOL) {
       console.warn(
         '[UnifiedChartData] Missing ACES/WETH or WETH/USDC pool address env vars – USD conversion disabled.',
       );
@@ -926,12 +996,17 @@ export class UnifiedChartDataService {
 
     try {
       const [acesWethCandles, wethUsdCandles] = await Promise.all([
-        this.bitQueryService.getOHLCCandles(ACES_TOKEN_ADDRESS, ACES_WETH_POOL_ADDRESS, timeframe, {
-          from: range.from,
-          to: range.to,
-          counterTokenAddress: WETH_TOKEN_ADDRESS,
-        }),
-        this.bitQueryService.getOHLCCandles(WETH_TOKEN_ADDRESS, WETH_USDC_POOL_ADDRESS, timeframe, {
+        this.bitQueryService.getOHLCCandles(
+          ACES_TOKEN_ADDRESS,
+          AERODROME_ACES_WETH_POOL,
+          timeframe,
+          {
+            from: range.from,
+            to: range.to,
+            counterTokenAddress: WETH_TOKEN_ADDRESS,
+          },
+        ),
+        this.bitQueryService.getOHLCCandles(WETH_TOKEN_ADDRESS, WETH_USDC_POOL, timeframe, {
           from: range.from,
           to: range.to,
           counterTokenAddress: USDC_TOKEN_ADDRESS,
@@ -1053,14 +1128,18 @@ export class UnifiedChartDataService {
   /**
    * Store candles to database (async)
    */
-  private async storeCandlesAsync(tokenAddress: string, candles: UnifiedCandle[]): Promise<void> {
+  private async storeCandlesAsync(
+    tokenAddress: string,
+    timeframe: string,
+    candles: UnifiedCandle[],
+  ): Promise<void> {
     try {
       for (const candle of candles) {
         await this.prisma.tokenOHLCV.upsert({
           where: {
             contractAddress_timeframe_timestamp_dataSource: {
               contractAddress: tokenAddress,
-              timeframe: '1h', // TODO: Get actual timeframe
+              timeframe: timeframe,
               timestamp: candle.timestamp,
               dataSource: candle.dataSource,
             },
@@ -1080,7 +1159,7 @@ export class UnifiedChartDataService {
           },
           create: {
             contractAddress: tokenAddress,
-            timeframe: '1h', // TODO: Get actual timeframe
+            timeframe: timeframe,
             timestamp: candle.timestamp,
             open: candle.open,
             high: candle.high,
