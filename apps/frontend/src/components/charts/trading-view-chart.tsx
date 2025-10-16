@@ -48,9 +48,9 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
     const [isLoading, setIsLoading] = useState(true);
     const [isReinitializing, setIsReinitializing] = useState(false);
 
-    // Chart mode and currency state
+    // Chart mode (USD-only)
     const [chartMode, setChartMode] = useState<'price' | 'mcap'>('price');
-    const [currency, setCurrency] = useState<'usd' | 'aces'>('usd');
+    const currency: 'usd' = 'usd';
 
     // Stabilize tokenSymbol to prevent unnecessary re-renders
     const stableTokenSymbol = useRef(tokenSymbol);
@@ -175,15 +175,11 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
             priceFormatterFactory: () => {
               return {
                 format: (price: number) => {
-                  // Use the appropriate datafeed's formatPriceWithZeroCount method
-                  // Note: Both datafeeds have identical static formatters
                   const formatter =
                     chartMode === 'price'
                       ? BondingCurveDatafeed.formatPriceWithZeroCount
                       : MarketCapDatafeed.formatPriceWithZeroCount;
-                  // Show $ symbol only for USD currency
-                  const showSymbol = currency === 'usd';
-                  return formatter(price, showSymbol);
+                  return formatter(price, true);
                 },
               };
             },
@@ -283,19 +279,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
 
       // console.log(`[TradingView] Switching currency to ${newCurrency}`);
 
-      // Update datafeed currency
-      datafeedRef.current.setDisplayCurrency(newCurrency);
-
-      // Update state
-      setCurrency(newCurrency);
-
-      // Trigger chart refresh by resetting the data
-      try {
-        widgetRef.current.activeChart().resetData();
-        // console.log('[TradingView] ✅ Chart data refreshed with new currency');
-      } catch (error) {
-        console.error('[TradingView] Error refreshing chart:', error);
-      }
+      // USD-only: ignore currency changes
     };
 
     // Handle mode change (requires chart recreation for now)
@@ -316,14 +300,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
         `;
       }
 
-      if (currencyButtonRef.current) {
-        currencyButtonRef.current.innerHTML = `
-          <div style="display: flex; align-items: center; gap: 4px; padding: 2px; background: rgba(0,0,0,0.3); border-radius: 4px;">
-            <span style="padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 500; background: ${currency === 'usd' ? '#D0B284' : 'transparent'}; color: ${currency === 'usd' ? 'black' : '#999'}; cursor: pointer;">USD</span>
-            <span style="padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 500; background: ${currency === 'aces' ? '#D0B284' : 'transparent'}; color: ${currency === 'aces' ? 'black' : '#999'}; cursor: pointer;">ACES</span>
-          </div>
-        `;
-      }
+      // USD-only: remove currency toggle
     }, [chartMode, currency]);
 
     // Create custom buttons using TradingView API
@@ -343,15 +320,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
           handleModeChange(newMode);
         });
 
-        // USD/ACES toggle button
-        const currencyButton = widgetRef.current.createButton();
-        currencyButton.setAttribute('title', 'Toggle USD / ACES');
-        currencyButton.classList.add('apply-common-tooltip');
-        currencyButtonRef.current = currencyButton;
-        currencyButton.addEventListener('click', () => {
-          const newCurrency = currency === 'usd' ? 'aces' : 'usd';
-          handleCurrencyChange(newCurrency);
-        });
+        // USD-only: no currency toggle button
 
         // Initial render
         updateButtonAppearance();

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import { isValidEthereumAddress } from '@/lib/validation/address';
 
 interface MarketCapData {
   marketCapAces: number;
@@ -62,6 +63,22 @@ export function MarketCapProvider({ children }: MarketCapProviderProps) {
       const cacheKey = getCacheKey(tokenAddress, currency);
 
       if (isPaused.current) {
+        return;
+      }
+
+      // Validate token address format (must be 40-char Ethereum address)
+      if (!isValidEthereumAddress(tokenAddress)) {
+        console.warn(`[MarketCapContext] Invalid token address format: ${tokenAddress}`);
+        setTokenDataMap((prev) => {
+          const newMap = new Map(prev);
+          newMap.set(cacheKey, {
+            data: null,
+            loading: false,
+            error: 'Invalid token address format',
+            lastFetch: Date.now(),
+          });
+          return newMap;
+        });
         return;
       }
 
@@ -175,6 +192,12 @@ export function MarketCapProvider({ children }: MarketCapProviderProps) {
   const startPollingToken = useCallback(
     (tokenAddress: string, currency: 'usd' | 'aces' = 'usd') => {
       const cacheKey = getCacheKey(tokenAddress, currency);
+
+      // Validate token address format before starting to poll
+      if (!isValidEthereumAddress(tokenAddress)) {
+        console.warn(`[MarketCapContext] Cannot poll invalid token address: ${tokenAddress}`);
+        return;
+      }
 
       if (pollingTokens.current.has(cacheKey)) {
         return; // Already polling
