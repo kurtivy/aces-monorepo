@@ -32,6 +32,7 @@ import { formatAmountForDisplay, formatUsdValue } from '@/lib/swap/formatters';
 import type { PaymentAsset } from '@/lib/swap/types';
 
 import { PercentageSelector } from './percentage-selector';
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
 
 interface TokenSwapInterfaceProps {
   tokenSymbol?: string;
@@ -185,6 +186,7 @@ export default function TokenSwapInterface({
   const [activeTab, setActiveTab] = useState<'buy' | 'sell'>('buy');
   const [paymentAsset, setPaymentAsset] = useState<PaymentAsset>('ACES');
   const [amount, setAmount] = useState('');
+  const debouncedAmount = useDebouncedValue(amount, 300);
   const [loading, setLoading] = useState<string>('');
   const [localTransactionStatus, setLocalTransactionStatus] = useState<{
     type: 'success' | 'error';
@@ -477,7 +479,7 @@ export default function TokenSwapInterface({
     tokenAddress,
     sellToken,
     buyToken,
-    amount,
+    amount: debouncedAmount,
     isDexMode,
     slippageBps,
     enabled: !!tokenAddress,
@@ -1193,6 +1195,7 @@ export default function TokenSwapInterface({
                       <input
                         value={formattedAmount}
                         onChange={(e) => handleAmountChange(e.target.value)}
+                        onBlur={() => quote.refreshQuote?.()}
                         placeholder="0"
                         inputMode="decimal"
                         className={cn(

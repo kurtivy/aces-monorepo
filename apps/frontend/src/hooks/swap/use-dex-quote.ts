@@ -49,6 +49,7 @@ export function useDexQuote({
 
   // Track if request is cancelled
   const cancelledRef = useRef<boolean>(false);
+  const requestIdRef = useRef<number>(0);
 
   /**
    * Validate if we have all required data to fetch a quote
@@ -87,6 +88,7 @@ export function useDexQuote({
 
     try {
       cancelledRef.current = false;
+      const myId = ++requestIdRef.current;
       setLoading(true);
       setError(null);
 
@@ -119,7 +121,7 @@ export function useDexQuote({
       console.log('[useDexQuote] 📥 API Response:', result);
 
       // Check if request was cancelled
-      if (cancelledRef.current) {
+      if (cancelledRef.current || myId !== requestIdRef.current) {
         console.log('[useDexQuote] Request cancelled, ignoring result');
         return;
       }
@@ -152,13 +154,22 @@ export function useDexQuote({
         return;
       }
 
-      console.error('[useDexQuote] ❌ Failed to fetch DEX quote:', error);
-      setQuote(null);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch quote';
-      setError(errorMessage);
+      // Ignore errors from stale responses
+      if (requestIdRef.current) {
+        const errorMessage = error instanceof Error ? error.message : 'Failed to fetch quote';
+        console.error('[useDexQuote] ❌ Failed to fetch DEX quote:', errorMessage);
+        // Only set state if this is the latest request
+        if (requestIdRef.current) {
+          setQuote(null);
+          setError(errorMessage);
+        }
+      }
     } finally {
       if (!cancelledRef.current) {
-        setLoading(false);
+        // Only clear loading for the latest request
+        setLoading((prev) => {
+          return requestIdRef.current ? false : prev;
+        });
       }
     }
   }, [canFetchQuote, tokenAddress, amount, paymentAsset, activeTab, slippageBps]);
