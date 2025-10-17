@@ -44,6 +44,8 @@ export interface MultiHopQuoteResponse {
   intermediate?: Array<{ symbol: string; amount: string }>;
   slippageBps: number;
   needsMultiHop: boolean;
+  inputUsdValue?: string | null;
+  outputUsdValue?: string | null;
 }
 
 export interface ApiSuccess<T> extends ApiResponse<T> {

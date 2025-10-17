@@ -1259,14 +1259,24 @@ export default function TokenSwapInterface({
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center justify-end gap-2 text-sm text-[#D0B284]/60">
-                        {isUsdQuoteLoading ? (
-                          <Loader2 className="h-4 w-4 animate-spin text-[#D0B284]" />
-                        ) : hasValidAmount && outputUsdDisplay ? (
-                          <>≈ {outputUsdDisplay}</>
-                        ) : (
-                          '≈ $0.00 USD'
-                        )}
+                      <div className="flex flex-col items-end gap-0.5">
+                        <div className="flex items-center justify-end gap-2 text-sm text-[#D0B284]/60">
+                          {isUsdQuoteLoading ? (
+                            <Loader2 className="h-4 w-4 animate-spin text-[#D0B284]" />
+                          ) : hasValidAmount && outputUsdDisplay ? (
+                            <>≈ {outputUsdDisplay}</>
+                          ) : (
+                            '≈ $0.00 USD'
+                          )}
+                        </div>
+                        {!isUsdQuoteLoading &&
+                          hasValidAmount &&
+                          quote.minOutputUsdValue &&
+                          quote.minOutputUsdValue !== outputUsdDisplay && (
+                            <div className="text-[10px] text-[#D0B284]/50">
+                              min. {formatUsdValue(quote.minOutputUsdValue)}
+                            </div>
+                          )}
                       </div>
                       {/* Optional: show DEX quote error inline for clarity */}
                       {isDexMode && quote.strategy === 'dex' && quote.error && hasValidAmount && (

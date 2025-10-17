@@ -50,6 +50,8 @@ interface MultiHopQuoteResponse {
   intermediate?: Array<{ symbol: string; amount: string }>;
   slippageBps: number;
   needsMultiHop: boolean;
+  inputUsdValue?: string | null;
+  outputUsdValue?: string | null;
 }
 
 // Factory contract ABI for bonding curve calculations
@@ -1045,6 +1047,52 @@ export async function bondingRoutes(fastify: FastifyInstance) {
           expectedRwaOutput = '0';
         }
 
+        // Calculate USD values
+        let inputUsdValue: string | null = null;
+        let outputUsdValue: string | null = null;
+
+        try {
+          const acesUsdResponse = await fetch(
+            `${process.env.API_BASE_URL || 'http://localhost:3002'}/api/v1/prices/aces-usd`,
+          );
+          if (acesUsdResponse.ok) {
+            const acesUsdData = (await acesUsdResponse.json()) as {
+              data?: {
+                acesUsdPrice?: number;
+                wethUsdPrice?: number;
+                usdcUsdPrice?: number;
+                usdtUsdPrice?: number;
+              };
+              price?: number;
+            };
+            const acesUsd = parseFloat(
+              String(acesUsdData?.data?.acesUsdPrice ?? acesUsdData?.price ?? '0'),
+            );
+            const wethUsd = parseFloat(String(acesUsdData?.data?.wethUsdPrice ?? '0'));
+            const usdcUsd = parseFloat(String(acesUsdData?.data?.usdcUsdPrice ?? '1'));
+            const usdtUsd = parseFloat(String(acesUsdData?.data?.usdtUsdPrice ?? '1'));
+
+            if (acesUsd > 0) {
+              // Calculate input USD value based on input asset
+              if (inputAsset === 'WETH' && wethUsd > 0) {
+                inputUsdValue = (amountNum * wethUsd).toFixed(2);
+              } else if (inputAsset === 'USDC' && usdcUsd > 0) {
+                inputUsdValue = (amountNum * usdcUsd).toFixed(2);
+              } else if (inputAsset === 'USDT' && usdtUsd > 0) {
+                inputUsdValue = (amountNum * usdtUsd).toFixed(2);
+              }
+
+              // Calculate output USD value based on ACES being spent to buy RWA tokens
+              // The RWA tokens are purchased with acesAmountRaw ACES
+              // So output value = ACES spent * ACES USD price
+              const acesSpentNum = parseFloat(ethers.formatUnits(acesAmountRaw, 18));
+              outputUsdValue = (acesSpentNum * acesUsd).toFixed(2);
+            }
+          }
+        } catch (error) {
+          fastify.log.warn('⚠️ [BondingQuote] Failed to fetch USD prices for multi-hop quote');
+        }
+
         const response: MultiHopQuoteResponse = {
           inputAsset: inputAsset as 'ACES' | 'WETH' | 'USDC' | 'USDT',
           inputAmount: amount,
@@ -1058,6 +1106,8 @@ export async function bondingRoutes(fastify: FastifyInstance) {
           intermediate: intermediateSteps.length ? intermediateSteps : undefined,
           slippageBps: slippage,
           needsMultiHop: true,
+          inputUsdValue,
+          outputUsdValue,
         };
 
         fastify.log.info(
@@ -1067,6 +1117,8 @@ export async function bondingRoutes(fastify: FastifyInstance) {
             expectedAcesAmount: response.expectedAcesAmount,
             minAcesAmount: response.minAcesAmount,
             expectedRwaOutput: response.expectedRwaOutput,
+            inputUsdValue: response.inputUsdValue,
+            outputUsdValue: response.outputUsdValue,
             path: response.path,
             intermediateSteps: response.intermediate,
           },

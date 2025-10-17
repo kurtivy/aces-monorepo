@@ -4,6 +4,11 @@ import { useDexQuote } from './use-dex-quote';
 import { BondingApi } from '@/lib/bonding-curve/bonding';
 import type { PaymentAsset } from '@/lib/swap/types';
 import { DEFAULT_SLIPPAGE_BPS } from '@/lib/swap/constants';
+import {
+  getPlatformFeeBps,
+  applyFeeToUsdValue,
+  applySlippageToUsdValue,
+} from '@/lib/swap/fee-calculator';
 
 interface UseUnifiedQuoteProps {
   // Token info
@@ -42,6 +47,7 @@ export interface UnifiedQuoteResult {
   // Output
   outputAmount: string;
   outputUsdValue: string | null;
+  minOutputUsdValue?: string | null; // Output USD value with slippage applied
 
   // Input
   inputUsdValue: string | null;
@@ -311,12 +317,22 @@ export function useUnifiedQuote({
     };
 
     switch (quoteStrategy) {
-      case 'bonding-direct':
+      case 'bonding-direct': {
+        // Apply platform fees to output USD value
+        const feeBps = getPlatformFeeBps(sellToken);
+        const adjustedOutputUsd = applyFeeToUsdValue(
+          bondingQuote.quote?.outputUsdValue || null,
+          feeBps,
+        );
+        // Apply slippage to get minimum output USD
+        const minOutputUsd = applySlippageToUsdValue(adjustedOutputUsd, slippageBps);
+
         return {
           ...baseResult,
           quote: bondingQuote.quote,
           outputAmount: bondingQuote.quote?.expectedOutput || '0',
-          outputUsdValue: bondingQuote.quote?.outputUsdValue || null,
+          outputUsdValue: adjustedOutputUsd,
+          minOutputUsdValue: minOutputUsd,
           inputUsdValue: bondingQuote.quote?.inputUsdValue || null,
           needsMultiHop: false,
           path: bondingQuote.quote?.path || [sellToken, buyToken],
@@ -324,13 +340,21 @@ export function useUnifiedQuote({
           error: bondingQuote.error,
           refreshQuote: bondingQuote.refetchQuote,
         };
+      }
 
-      case 'bonding-multihop':
+      case 'bonding-multihop': {
+        // Apply platform fees to output USD value
+        const feeBps = getPlatformFeeBps(sellToken);
+        const adjustedOutputUsd = applyFeeToUsdValue(multiHopQuote?.outputUsdValue || null, feeBps);
+        // Apply slippage to get minimum output USD
+        const minOutputUsd = applySlippageToUsdValue(adjustedOutputUsd, slippageBps);
+
         return {
           ...baseResult,
           quote: multiHopQuote, // Use multi-hop quote data directly from backend
           outputAmount: multiHopQuote?.expectedRwaOutput || '0', // Backend calculates final RWA tokens
-          outputUsdValue: multiHopQuote?.outputUsdValue || null,
+          outputUsdValue: adjustedOutputUsd,
+          minOutputUsdValue: minOutputUsd,
           inputUsdValue: multiHopQuote?.inputUsdValue || null,
           intermediateAcesAmount: multiHopQuote?.expectedAcesAmount,
           needsMultiHop: true,
@@ -339,6 +363,7 @@ export function useUnifiedQuote({
           error: multiHopError,
           refreshQuote: fetchMultiHopQuote,
         };
+      }
 
       case 'dex': {
         // Prefer server-provided USD values; fallback to client-computed values if present.
