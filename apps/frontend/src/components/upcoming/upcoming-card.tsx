@@ -1,9 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { FEATURED_TARGET_DATE, type TimeLeft, calculateTimeLeft } from '@/lib/constants/dates';
 
 export interface UpcomingAsset {
   id: string;
@@ -21,8 +20,6 @@ interface UpcomingCardProps {
 }
 
 export default function UpcomingCard({ asset }: UpcomingCardProps) {
-  // Use asset prop if provided, otherwise calculate time left from featured date
-  const targetDate = asset?.startDate || FEATURED_TARGET_DATE;
   const router = useRouter();
 
   const normalizedSymbol = asset?.symbol ? asset.symbol.trim().replace(/^\$/u, '') : '';
@@ -32,24 +29,6 @@ export default function UpcomingCard({ asset }: UpcomingCardProps) {
       ? asset.symbol
       : `$${asset.symbol}`
     : '$TBD';
-
-  const [timeLeft, setTimeLeft] = useState<TimeLeft>({ days: 0, hours: 0, minutes: 0, seconds: 0 });
-
-  useEffect(() => {
-    // Initial calculation
-    setTimeLeft(calculateTimeLeft(targetDate));
-
-    // Update every second
-    const timer = setInterval(() => {
-      setTimeLeft(calculateTimeLeft(targetDate));
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [targetDate]);
-
-  const formatTimeUnit = (value: number) => {
-    return value.toString().padStart(2, '0');
-  };
 
   // Truncate description to specific character length
   const truncateDescription = (text: string, maxLength: number = 132): string => {
@@ -67,7 +46,10 @@ export default function UpcomingCard({ asset }: UpcomingCardProps) {
   };
 
   return (
-    <div className="relative pointer-events-auto">
+    <div
+      className={`relative pointer-events-auto ${hasSymbol ? 'cursor-pointer' : 'cursor-default'}`}
+      onClick={hasSymbol ? handleViewAssetClick : undefined}
+    >
       {/* Card container matching the form/tokenize page styling */}
       <div className="relative bg-[#151c16]/80 border border-dashed border-[#E6E3D3]/20 rounded-2xl overflow-hidden shadow-[0_10px_40px_rgba(215,191,117,0.06)] hover:border-[#C9AE6A]/40 transition-all duration-300">
         {/* Bottom corner ticks only */}
@@ -117,48 +99,18 @@ export default function UpcomingCard({ asset }: UpcomingCardProps) {
             </p>
           </div>
 
-          {/* Countdown Timer */}
-          {/* <div className="bg-[#0f1511] border border-dashed border-[#E6E3D3]/15 rounded-xl p-4">
-            <p className="text-[#C9AE6A] text-xs uppercase tracking-wide mb-2 text-center">
-              Starts in
-            </p>
-            <div className="grid grid-cols-4 gap-2 text-center">
-              <div className="bg-[#151c16] rounded-lg p-2">
-                <div className="text-[#D0B284] font-bold text-lg font-mono">
-                  {formatTimeUnit(timeLeft.days)}
-                </div>
-                <div className="text-[#E6E3D3]/60 text-xs uppercase">D</div>
-              </div>
-              <div className="bg-[#151c16] rounded-lg p-2">
-                <div className="text-[#D0B284] font-bold text-lg font-mono">
-                  {formatTimeUnit(timeLeft.hours)}
-                </div>
-                <div className="text-[#E6E3D3]/60 text-xs uppercase">H</div>
-              </div>
-              <div className="bg-[#151c16] rounded-lg p-2">
-                <div className="text-[#D0B284] font-bold text-lg font-mono">
-                  {formatTimeUnit(timeLeft.minutes)}
-                </div>
-                <div className="text-[#E6E3D3]/60 text-xs uppercase">M</div>
-              </div>
-              <div className="bg-[#151c16] rounded-lg p-2">
-                <div className="text-[#D0B284] font-bold text-lg font-mono">
-                  {formatTimeUnit(timeLeft.seconds)}
-                </div>
-                <div className="text-[#E6E3D3]/60 text-xs uppercase">S</div>
-              </div>
-            </div>
-          </div> */}
-
           {/* View Asset Button */}
           <div className="mt-4">
             <button
               type="button"
-              onClick={handleViewAssetClick}
+              onClick={(e) => {
+                e.stopPropagation(); // Prevent card click when clicking button directly
+                handleViewAssetClick();
+              }}
               disabled={!hasSymbol}
               className="w-full flex items-center justify-center text-[#D0B264] hover:text-[#D0B264] transition-colors duration-150 px-4 py-2 rounded-md bg-black/80 hover:bg-black/70 border border-[#D0B264]/30 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed font-mono text-sm font-medium uppercase tracking-wide"
             >
-              Coming Soon
+              {hasSymbol ? 'Trade now!' : 'Coming Soon'}
             </button>
           </div>
         </div>

@@ -380,9 +380,11 @@ export const useCanvasInteractions = ({
           featuredAreaHeight,
         )
       ) {
-        // Navigate to RWA page if symbol exists, otherwise fall back to modal
-        const symbol = featuredImage.metadata.symbol;
-        if (symbol) {
+        // Navigate to RWA page using ticker (symbol)
+        const ticker = featuredImage.metadata.ticker;
+        if (ticker) {
+          // Strip the $ prefix from ticker to get the symbol (e.g., "$APK" -> "APK")
+          const symbol = ticker.trim().replace(/^\$/u, '');
           window.location.href = `/rwa/${symbol}`;
         } else {
           _onFeaturedImageClick?.(featuredImage);
