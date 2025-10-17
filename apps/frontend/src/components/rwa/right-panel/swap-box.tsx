@@ -51,6 +51,10 @@ interface TokenSwapInterfaceProps {
   currentAmount?: number;
   targetAmount?: number;
   percentage?: number;
+  transactionStatus?: { type: 'success' | 'error'; message: string } | null;
+  onTransactionStatusChange?: (
+    status: { type: 'success' | 'error'; message: string } | null,
+  ) => void;
 }
 
 export default function TokenSwapInterface({
@@ -65,6 +69,8 @@ export default function TokenSwapInterface({
   chainId = 84532,
   dexMeta = null,
   tokenDecimals = 18,
+  transactionStatus: externalTransactionStatus,
+  onTransactionStatusChange,
 }: TokenSwapInterfaceProps) {
   const { walletAddress, isAuthenticated, connectWallet: authConnectWallet } = useAuth();
 
@@ -180,7 +186,7 @@ export default function TokenSwapInterface({
   const [paymentAsset, setPaymentAsset] = useState<PaymentAsset>('ACES');
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState<string>('');
-  const [transactionStatus, setTransactionStatus] = useState<{
+  const [localTransactionStatus, setLocalTransactionStatus] = useState<{
     type: 'success' | 'error';
     message: string;
   } | null>(null);
@@ -189,6 +195,10 @@ export default function TokenSwapInterface({
   const [slippagePopoverOpen, setSlippagePopoverOpen] = useState(false);
   const [customSlippageInput, setCustomSlippageInput] = useState('');
   const slippagePopoverRef = useRef<HTMLDivElement | null>(null);
+
+  // Use external status if provided, otherwise fall back to local
+  const transactionStatus = externalTransactionStatus ?? localTransactionStatus;
+  const setTransactionStatus = onTransactionStatusChange ?? setLocalTransactionStatus;
 
   // Success modal state (shown for RWA buys)
   const [successModalOpen, setSuccessModalOpen] = useState(false);
@@ -813,12 +823,43 @@ export default function TokenSwapInterface({
     isDexMode,
   ]);
 
-  // Auto-dismiss transaction status
-  useMemo(() => {
-    if (!transactionStatus) return;
-    const timeout = setTimeout(() => setTransactionStatus(null), 5000);
-    return () => clearTimeout(timeout);
-  }, [transactionStatus]);
+  // Auto-detect and display errors (minimum amount warnings, DEX quote errors)
+  useEffect(() => {
+    // Don't override transaction errors (they have priority)
+    if (transactionStatus?.type === 'error' && loading) return;
+    if (transactionStatus?.type === 'success') return;
+
+    // Check for minimum amount warning
+    if (minimumAmountWarning) {
+      setTransactionStatus({
+        type: 'error',
+        message: minimumAmountWarning,
+      });
+      return;
+    }
+
+    // Check for DEX quote errors
+    if (isDexMode && quote.strategy === 'dex' && quote.error && hasValidAmount) {
+      setTransactionStatus({
+        type: 'error',
+        message: quote.error,
+      });
+      return;
+    }
+
+    // Clear errors if conditions no longer met
+    if (transactionStatus?.type === 'error' && !minimumAmountWarning && !quote.error) {
+      setTransactionStatus(null);
+    }
+  }, [
+    minimumAmountWarning,
+    quote.error,
+    quote.strategy,
+    isDexMode,
+    hasValidAmount,
+    transactionStatus,
+    loading,
+  ]);
 
   // ========================================
   // RENDER (UI UNCHANGED)
@@ -1278,26 +1319,11 @@ export default function TokenSwapInterface({
                             </div>
                           )}
                       </div>
-                      {/* Optional: show DEX quote error inline for clarity */}
-                      {isDexMode && quote.strategy === 'dex' && quote.error && hasValidAmount && (
-                        <div className="mt-1 text-[11px] text-red-400/80 text-right max-w-full truncate">
-                          {quote.error}
-                        </div>
-                      )}
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-
-            {/* Minimum Amount Warning */}
-            {minimumAmountWarning && (
-              <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-900/20 px-4 py-3">
-                <p className="text-sm text-amber-200/90 leading-relaxed">
-                  ⚠️ {minimumAmountWarning}
-                </p>
-              </div>
-            )}
 
             <div className="mt-4">
               {!isAuthenticated ? (
@@ -1374,28 +1400,6 @@ export default function TokenSwapInterface({
             </div>
           </div>
 
-          {!successModalOpen && transactionStatus && (
-            <div className="fixed bottom-6 left-1/2 z-50 flex w-full max-w-sm -translate-x-1/2 px-4">
-              <div
-                className={cn(
-                  'flex-1 rounded-xl border px-4 py-3 text-sm shadow-[0_12px_30px_rgba(0,0,0,0.45)] backdrop-blur-md',
-                  transactionStatus.type === 'success'
-                    ? 'bg-green-900/80 border-green-500/30 text-green-100'
-                    : 'bg-red-900/80 border-red-600/40 text-red-100',
-                )}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <span className="leading-snug">{transactionStatus.message}</span>
-                  <button
-                    onClick={() => setTransactionStatus(null)}
-                    className="text-xs font-semibold uppercase tracking-wide opacity-80 transition-opacity hover:opacity-100"
-                  >
-                    Dismiss
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
           {/* Success modal for RWA buys */}
           {successModalOpen && (
             <TransactionSuccessModal

@@ -811,67 +811,24 @@ export async function bondingRoutes(fastify: FastifyInstance) {
             tokenAddress.toLowerCase(),
           ];
         } else if (inputAsset === 'USDT') {
-          fastify.log.info('🔄 [BondingQuote] Computing USDT → USDC → WETH → ACES');
+          // Treat USDT as USDC since they're both stablecoins with ~1:1 value
+          // Use the same USDC → WETH → ACES path
+          fastify.log.info('🔄 [BondingQuote] Computing USDT → WETH → ACES (using USDC pools)');
 
-          // Initialize Aerodrome service for dynamic pool discovery
-          const aerodromeService = new AerodromeDataService({
-            provider,
-            acesTokenAddress: acesAddress,
-            factoryAddress:
-              process.env.AERODROME_FACTORY_ADDRESS || '0x420DD381b31aEf6683db6B902084cB0FFECe40Da',
-            mockEnabled: false,
-          });
-
-          // Step 1: USDT → USDC
-          fastify.log.info('🔍 [BondingQuote] Step 1: USDT → USDC (via Aerodrome)');
-
-          const usdtToUsdcReserves = await aerodromeService.getPairReserves(
-            inputConfig.address,
-            assetMetadata.USDC.address,
-          );
-
-          if (!usdtToUsdcReserves) {
-            fastify.log.error('❌ [BondingQuote] Failed to find USDT/USDC pool via Aerodrome');
-
-            return reply.code(404).send({
-              success: false,
-              error: 'USDT/USDC pool not found. This route may not be available.',
-            });
-          }
-
-          const usdcAmountRaw = computeSwap(
-            amountInWithSlippage,
-            usdtToUsdcReserves.reserveIn,
-            usdtToUsdcReserves.reserveOut,
-          );
-
-          intermediateSteps.push({
-            symbol: 'USDC',
-            amount: ethers.formatUnits(usdcAmountRaw, assetMetadata.USDC.decimals),
-          });
-
-          fastify.log.info(
-            {
-              input: `${amount} USDT`,
-              output: `${ethers.formatUnits(usdcAmountRaw, 6)} USDC`,
-            },
-            '✅ [BondingQuote] USDT → USDC',
-          );
-
-          // Step 2: USDC → WETH
-          fastify.log.info('🔍 [BondingQuote] Step 2: USDC → WETH');
+          // Step 1: USDT → WETH (using USDC/WETH pool since USDT ≈ USDC)
+          fastify.log.info('🔍 [BondingQuote] Step 1: USDT → WETH (via USDC pool proxy)');
 
           const usdcWethPool = knownPools['USDC-WETH'];
-          const usdcToWeth = await getPoolReservesDirect(
+          const stableToWeth = await getPoolReservesDirect(
             usdcWethPool,
-            assetMetadata.USDC.address,
+            assetMetadata.USDC.address, // Use USDC pool address
             assetMetadata.WETH.address,
           );
 
-          if (!usdcToWeth) {
+          if (!stableToWeth) {
             fastify.log.error(
               { poolAddress: usdcWethPool },
-              '❌ [BondingQuote] Failed to read USDC/WETH pool',
+              '❌ [BondingQuote] Failed to read USDC/WETH pool for USDT quote',
             );
 
             return reply.code(404).send({
@@ -881,9 +838,9 @@ export async function bondingRoutes(fastify: FastifyInstance) {
           }
 
           const wethAmountRaw = computeSwap(
-            usdcAmountRaw,
-            usdcToWeth.reserveIn,
-            usdcToWeth.reserveOut,
+            amountInWithSlippage,
+            stableToWeth.reserveIn,
+            stableToWeth.reserveOut,
           );
 
           intermediateSteps.push({
@@ -893,14 +850,15 @@ export async function bondingRoutes(fastify: FastifyInstance) {
 
           fastify.log.info(
             {
-              input: `${ethers.formatUnits(usdcAmountRaw, 6)} USDC`,
+              input: `${amount} USDT`,
               output: `${ethers.formatUnits(wethAmountRaw, 18)} WETH`,
+              note: 'Using USDC pool (USDT ≈ USDC)',
             },
-            '✅ [BondingQuote] USDC → WETH',
+            '✅ [BondingQuote] USDT → WETH',
           );
 
-          // Step 3: WETH → ACES
-          fastify.log.info('🔍 [BondingQuote] Step 3: WETH → ACES');
+          // Step 2: WETH → ACES
+          fastify.log.info('🔍 [BondingQuote] Step 2: WETH → ACES');
 
           const wethAcesPool = knownPools['WETH-ACES'];
           const wethToAces = await getPoolReservesDirect(
@@ -933,7 +891,6 @@ export async function bondingRoutes(fastify: FastifyInstance) {
 
           routePath = [
             inputConfig.address, // USDT
-            assetMetadata.USDC.address, // USDC
             assetMetadata.WETH.address, // WETH
             assetMetadata.ACES.address, // ACES
             tokenAddress.toLowerCase(), // RWA token

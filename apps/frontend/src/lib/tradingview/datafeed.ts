@@ -169,7 +169,6 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
    * Clear all caches - useful for debugging or forcing refresh
    */
   public clearCache(): void {
-    // console.log('[TradingView] 🗑️ Clearing all caches');
     this.historyCache.clear();
     this.lastHistoricalBarByTimeframe.clear();
   }
@@ -193,7 +192,6 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       return fullUrl;
     }
 
-    // console.log('[TradingView] Using relative URL (development):', path);
     return path;
   }
 
@@ -254,14 +252,6 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
         // minTick: '0.000000000000000001', // 1e-18 to handle USD micro-prices
       };
 
-      // console.log('[TradingView] Symbol resolved with zero-count notation support:', {
-      //   precision,
-      //   pricescale,
-      //   minmov: symbolInfo.minmov,
-      //   currency: this.displayCurrency,
-      //   formatter: 'Zero-count notation enabled',
-      // });
-
       setTimeout(() => onSymbolResolvedCallback(symbolInfo), 0);
     } catch (error) {
       console.error('[TradingView] Error resolving symbol:', error);
@@ -313,27 +303,6 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       // Log sample price with zero-count notation to verify formatting
       if (filteredCopy.length > 0) {
         const samplePrice = filteredCopy[0].close;
-        // console.log('[TradingView] 📊 Delivering bars to chart:', {
-        //   count: filteredCopy.length,
-        //   firstBar: {
-        //     time: new Date(filteredCopy[0].time).toISOString(),
-        //     open: filteredCopy[0].open,
-        //     high: filteredCopy[0].high,
-        //     low: filteredCopy[0].low,
-        //     close: filteredCopy[0].close,
-        //     hasBody: filteredCopy[0].open !== filteredCopy[0].close,
-        //   },
-        //   lastBar: {
-        //     time: new Date(filteredCopy[filteredCopy.length - 1].time).toISOString(),
-        //     open: filteredCopy[filteredCopy.length - 1].open,
-        //     high: filteredCopy[filteredCopy.length - 1].high,
-        //     low: filteredCopy[filteredCopy.length - 1].low,
-        //     close: filteredCopy[filteredCopy.length - 1].close,
-        //     hasBody:
-        //       filteredCopy[filteredCopy.length - 1].open !==
-        //       filteredCopy[filteredCopy.length - 1].close,
-        //   },
-        // });
       }
 
       onHistoryCallback(filteredCopy, { noData: false });
@@ -351,20 +320,6 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
         return;
       }
     }
-
-    // console.log(
-    //   `[TradingView] Fetching bars: ${this.tokenAddress} ${timeframe}`,
-    //   `from: ${new Date(periodParams.from * 1000).toISOString()}, to: ${new Date(periodParams.to * 1000).toISOString()}`,
-    // );
-
-    // console.log('[TradingView] 📊 Time range details:', {
-    //   fromUnix: periodParams.from,
-    //   toUnix: periodParams.to,
-    //   fromISO: new Date(periodParams.from * 1000).toISOString(),
-    //   toISO: new Date(periodParams.to * 1000).toISOString(),
-    //   rangeHours: ((periodParams.to - periodParams.from) / 3600).toFixed(1),
-    //   firstDataRequest: periodParams.firstDataRequest,
-    // });
 
     this.fetchHistoricalDataUnified(timeframe, periodParams.from, periodParams.to)
       .then(({ bars }) => {
@@ -408,10 +363,6 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
   ) {
     const timeframe = this.resolutionToTimeframe(resolution);
 
-    console.log(
-      `[TradingView] Starting WebSocket subscription for ${this.tokenAddress} ${timeframe}`,
-    );
-
     // Check if we already have an active subscription for this exact setup
     if (
       this.unifiedDataSubscription &&
@@ -419,7 +370,6 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       this.unifiedDataSubscription.timeframe === timeframe &&
       this.unifiedDataSubscription.isActive
     ) {
-      console.log('[TradingView] ⚠️ Already subscribed, updating callbacks only');
       // Update callbacks without recreating WebSocket
       this.unifiedDataSubscription.onRealtimeCallback = onRealtimeCallback;
       this.unifiedDataSubscription.onResetCacheNeededCallback = onResetCacheNeededCallback;
@@ -429,7 +379,6 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
 
     // Close previous subscription only if it's for a different token/timeframe
     if (this.unifiedDataSubscription) {
-      console.log('[TradingView] Closing previous subscription for different token/timeframe');
       this.unsubscribeBars(this.unifiedDataSubscription.subscriberUID);
     }
 
@@ -450,23 +399,15 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
   }
 
   unsubscribeBars(subscriberUID: string) {
-    // console.log(`[TradingView] 🔴 Unsubscribe requested for: ${subscriberUID}`);
-    // console.trace('[TradingView] Unsubscribe called from:'); // Add stack trace to see who's calling
-
     if (!this.unifiedDataSubscription) {
-      // console.log('[TradingView] No active subscription to unsubscribe');
       return;
     }
 
     const subscription = this.unifiedDataSubscription;
     if (subscription.subscriberUID !== subscriberUID) {
-      // console.log(
-      //   `[TradingView] UID mismatch: expected ${subscription.subscriberUID}, got ${subscriberUID}`,
-      // );
       return;
     }
 
-    // console.log('[TradingView] ⚠️ Deactivating subscription and closing WebSocket');
     subscription.isActive = false;
 
     if (subscription.reconnectTimeout) {
@@ -492,12 +433,10 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     }
 
     this.unifiedDataSubscription = null;
-    // console.log(`[TradingView] WebSocket unsubscribed successfully`);
   }
 
   private startUnifiedWebSocket() {
     if (typeof window === 'undefined') {
-      // console.warn('[TradingView] WebSocket not started - window is undefined');
       return;
     }
 
@@ -515,7 +454,6 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     if (subscription.ws) {
       const state = subscription.ws.readyState;
       if (state === WebSocket.OPEN || state === WebSocket.CONNECTING) {
-        // console.log('[TradingView] WebSocket already connecting/connected');
         return;
       }
     }
@@ -530,13 +468,7 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       subscription.ws = ws;
 
       ws.onopen = () => {
-        // console.log(
-        //   '[TradingView] ✅ WebSocket connected for real-time updates:',
-        //   subscription.tokenAddress,
-        //   subscription.timeframe,
-        // );
         if (!subscription.isActive) {
-          console.warn('[TradingView] ⚠️ Subscription inactive on open, closing...');
           ws.close();
           return;
         }
@@ -546,7 +478,6 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
           tokenAddress: subscription.tokenAddress,
           timeframe: subscription.timeframe,
         };
-        // console.log('[TradingView] 📤 Sending subscribe message:', subscribeMessage);
         ws.send(JSON.stringify(subscribeMessage));
       };
 
@@ -568,15 +499,12 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       };
 
       ws.onclose = (event) => {
-        // console.log('[TradingView] WebSocket closed, code:', event.code);
-
         if (!subscription.isActive) {
           return;
         }
 
         subscription.ws = null;
         subscription.reconnectTimeout = setTimeout(() => {
-          // console.log('[TradingView] Reconnecting WebSocket...');
           this.startUnifiedWebSocket();
         }, 3000);
       };
@@ -605,13 +533,9 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
         // 🔧 Ignore WebSocket initial_data if we already have fresh HTTP data
         // This prevents WebSocket from overwriting the fresh data we just fetched via HTTP
         if (this.hasLoadedInitialHttpData) {
-          console.log(
-            '[TradingView] ⏭️ Ignoring WebSocket initial_data - already have fresh HTTP data',
-          );
           return;
         }
 
-        // console.log(`[TradingView] Initial data: ${message.candles?.length || 0} candles`);
         const candles = Array.isArray(message.candles) ? (message.candles as UnifiedCandle[]) : [];
         const bars = candles
           .map((candle) => this.candleToBar(candle, timeframeMs))
@@ -648,22 +572,6 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
         const isUpdateToCurrentCandle =
           subscription.lastBar && subscription.lastBar.time === bar.time;
 
-        console.log(`[TradingView] 🔔 Real-time candle update:`, {
-          time: new Date(bar.time).toISOString(),
-          isUpdate: isUpdateToCurrentCandle,
-          lastBarTime: subscription.lastBar
-            ? new Date(subscription.lastBar.time).toISOString()
-            : 'none',
-          incomingBar: {
-            open: bar.open,
-            high: bar.high,
-            low: bar.low,
-            close: bar.close,
-            hasBody: bar.open !== bar.close,
-            hasWicks: bar.high !== bar.low,
-          },
-        });
-
         // Only bridge if this is a NEW candle, not an update to existing candle
         const finalBar = isUpdateToCurrentCandle
           ? bar // Use the bar as-is for updates to current candle
@@ -674,15 +582,6 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
 
         try {
           subscription.onRealtimeCallback(finalBar);
-          console.log('[TradingView] ✅ Real-time update applied:', {
-            time: new Date(finalBar.time).toISOString(),
-            applied: {
-              open: finalBar.open,
-              high: finalBar.high,
-              low: finalBar.low,
-              close: finalBar.close,
-            },
-          });
         } catch (error) {
           console.error('[TradingView] Error calling onRealtimeCallback:', error);
         }
@@ -972,8 +871,6 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       to: to.toString(),
     });
 
-    // console.log(`[TradingView] Fetching: ${apiUrl}?${params.toString()}`);
-
     const response = await window.fetch(`${apiUrl}?${params.toString()}`);
 
     if (!response.ok) {
@@ -982,31 +879,12 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
 
     const data = await response.json();
 
-    console.log('🔍 [Frontend Datafeed] Raw API response:', {
-      success: data.success,
-      hasCandlesArray: !!data.data?.candles,
-      candleCount: data.data?.candles?.length || 0,
-      graduationState: data.data?.graduationState,
-    });
-
     if (!data.success || !data.data?.candles) {
       throw new Error('No chart data available');
     }
 
     const candles = data.data.candles;
 
-    console.log('🔍 [Frontend Datafeed] First raw candle from backend:', {
-      timestamp: candles[0]?.timestamp,
-      open: candles[0]?.open,
-      high: candles[0]?.high,
-      low: candles[0]?.low,
-      close: candles[0]?.close,
-      openUsd: candles[0]?.openUsd,
-      highUsd: candles[0]?.highUsd,
-      lowUsd: candles[0]?.lowUsd,
-      closeUsd: candles[0]?.closeUsd,
-      dataSource: candles[0]?.dataSource,
-    });
     const timeframeMs = this.timeframeToMs(timeframe);
 
     const bars: Bar[] = candles
@@ -1041,42 +919,6 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
           return null;
         }
 
-        // DEBUG: Log first 3 candles processing
-        if (
-          timestamp === candles[0].timestamp * 1000 ||
-          timestamp === candles[1]?.timestamp * 1000 ||
-          timestamp === candles[2]?.timestamp * 1000
-        ) {
-          console.log(
-            `🔍 [Frontend Datafeed] Processing candle ${candles.findIndex((c: { timestamp: number }) => c.timestamp === timestamp / 1000) + 1}:`,
-            {
-              displayCurrency: this.displayCurrency,
-              rawCandle: {
-                openAces: candle.open,
-                highAces: candle.high,
-                lowAces: candle.low,
-                closeAces: candle.close,
-                openUsd: candle.openUsd,
-                highUsd: candle.highUsd,
-                lowUsd: candle.lowUsd,
-                closeUsd: candle.closeUsd,
-              },
-              parsedValues: {
-                open,
-                high,
-                low,
-                close,
-              },
-              validityChecks: {
-                allPositive: open > 0 && high > 0 && low > 0 && close > 0,
-                hasWicks: high > Math.max(open, close) || low < Math.min(open, close),
-                hasBody: open !== close,
-              },
-              usedUsdValue: this.displayCurrency === 'usd',
-            },
-          );
-        }
-
         return {
           time: timestamp,
           open,
@@ -1098,26 +940,7 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       })
       .sort((a: Bar, b: Bar) => a.time - b.time);
 
-    console.log(`🔍 [Frontend Datafeed] After filtering: ${bars.length} bars`);
-
     if (bars.length > 0) {
-      console.log('🔍 [Frontend Datafeed] ✅ First bar sent to chart:', {
-        time: new Date(bars[0].time).toISOString(),
-        open: bars[0].open,
-        high: bars[0].high,
-        low: bars[0].low,
-        close: bars[0].close,
-        displayCurrency: this.displayCurrency,
-        hasWicks: bars[0].high !== bars[0].low,
-        hasBody: bars[0].open !== bars[0].close,
-        formatted: BondingCurveDatafeed.formatPriceWithZeroCount(bars[0].close),
-      });
-      console.log('🔍 [Frontend Datafeed] ✅ Last bar sent to chart:', {
-        time: new Date(bars[bars.length - 1].time).toISOString(),
-        close: bars[bars.length - 1].close,
-        formatted: BondingCurveDatafeed.formatPriceWithZeroCount(bars[bars.length - 1].close),
-      });
-
       // Check if we're accidentally sending ACES prices instead of USD
       if (this.displayCurrency === 'usd' && bars[0].close > 0.01) {
         console.error('⚠️ [Frontend Datafeed] WARNING: Price looks like ACES not USD!', {
@@ -1185,24 +1008,6 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       console.warn('[TradingView] ⚠️ Fixing bridged bar: low > min(open, close)');
       bridged.low = Math.min(bridged.low, bridged.open, bridged.close);
     }
-
-    console.log('[TradingView] 🌉 Bridged new candle:', {
-      prevClose,
-      original: {
-        time: new Date(bar.time).toISOString(),
-        open: bar.open,
-        high: bar.high,
-        low: bar.low,
-        close: bar.close,
-      },
-      bridged: {
-        time: new Date(bridged.time).toISOString(),
-        open: bridged.open,
-        high: bridged.high,
-        low: bridged.low,
-        close: bridged.close,
-      },
-    });
 
     return bridged;
   }

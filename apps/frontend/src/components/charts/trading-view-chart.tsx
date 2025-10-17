@@ -42,7 +42,6 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
     const widgetRef = useRef<any>(null);
     const datafeedRef = useRef<any>(null);
     const modeButtonRef = useRef<HTMLElement | null>(null);
-    const currencyButtonRef = useRef<HTMLElement | null>(null);
     const [isLibraryLoaded, setIsLibraryLoaded] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -50,7 +49,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
 
     // Chart mode (USD-only)
     const [chartMode, setChartMode] = useState<'price' | 'mcap'>('price');
-    const currency: 'usd' = 'usd';
+    const currency = 'usd' as const;
 
     // Stabilize tokenSymbol to prevent unnecessary re-renders
     const stableTokenSymbol = useRef(tokenSymbol);
@@ -123,12 +122,6 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
         // Expose datafeed to window for debugging
         if (typeof window !== 'undefined') {
           (window as any).__tradingViewDatafeed = datafeed;
-          console.log(
-            '[TradingView] 🔧 Datafeed exposed to window.__tradingViewDatafeed for debugging',
-          );
-          console.log(
-            '[TradingView] 🔧 Use: window.__tradingViewDatafeed.clearCache() to clear cache',
-          );
         }
 
         const chartSymbol =
@@ -235,7 +228,6 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
         });
 
         widgetRef.current.onChartReady(() => {
-          // console.log('[TradingView] Chart ready');
           setIsReinitializing(false);
 
           // Create custom buttons using TradingView API
@@ -268,21 +260,8 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
       hideNativeHeader,
     ]);
 
-    // Handle currency change without recreating chart
-    const handleCurrencyChange = (newCurrency: 'usd' | 'aces') => {
-      if (!datafeedRef.current || !widgetRef.current) {
-        console.warn('[TradingView] Cannot change currency: chart not ready');
-        return;
-      }
-
-      // console.log(`[TradingView] Switching currency to ${newCurrency}`);
-
-      // USD-only: ignore currency changes
-    };
-
     // Handle mode change (requires chart recreation for now)
     const handleModeChange = (newMode: 'price' | 'mcap') => {
-      // console.log(`[TradingView] Switching mode to ${newMode}`);
       // Mode change requires recreation since we need a different datafeed
       setChartMode(newMode);
     };
@@ -306,8 +285,6 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
       if (!widgetRef.current) return;
 
       try {
-        // console.log('[TradingView] Creating toolbar buttons...');
-
         // Price/MCap toggle button
         const modeButton = widgetRef.current.createButton();
         modeButton.setAttribute('title', 'Toggle Price / Market Cap');
@@ -322,8 +299,6 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
 
         // Initial render
         updateButtonAppearance();
-
-        // console.log('[TradingView] ✅ Toolbar buttons created');
       } catch (err) {
         console.error('[TradingView] Error creating toolbar buttons:', err);
       }

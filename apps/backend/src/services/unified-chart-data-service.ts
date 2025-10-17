@@ -95,13 +95,6 @@ export class UnifiedChartDataService {
     // Check token graduation state
     const graduationState = await this.getGraduationState(normalizedAddress);
 
-    console.log('[UnifiedChartData] Token state:', {
-      tokenAddress: normalizedAddress,
-      isBonded: graduationState.isBonded,
-      poolReady: graduationState.poolReady,
-      dexLiveAt: graduationState.dexLiveAt,
-    });
-
     // Get ACES/USD price for conversions
     let acesUsdPrice: string | null = null;
     if (options.includeUsd !== false) {
@@ -118,7 +111,6 @@ export class UnifiedChartDataService {
 
     if (graduationState.poolReady && graduationState.poolAddress) {
       // Token is graduated - fetch DEX data
-      console.log('[UnifiedChartData] Fetching DEX data from BitQuery');
       const dexResult = await this.getDexChartData(
         normalizedAddress,
         graduationState.poolAddress,
@@ -146,7 +138,6 @@ export class UnifiedChartDataService {
       }
     } else {
       // Token is still in bonding curve
-      console.log('[UnifiedChartData] Fetching bonding curve data from Goldsky');
       candles = await this.getBondingChartData(normalizedAddress, options, acesUsdPrice);
     }
 
@@ -274,25 +265,8 @@ export class UnifiedChartDataService {
         const usdLooksWrong = hasValidUsdPrices && parseFloat(dbCandles[0].closeUsd || '0') > 0.01;
 
         if (!hasSupplyData) {
-          console.log(
-            '[UnifiedChartData] ⚠️ Cached candles lack supply data, generating fresh candles with supply...',
-          );
-          console.log('[UnifiedChartData] First cached candle:', {
-            circulatingSupply: dbCandles[0].circulatingSupply,
-            marketCapAces: dbCandles[0].marketCapAces,
-            marketCapUsd: dbCandles[0].marketCapUsd,
-          });
           // Fall through to generate fresh candles with supply data
         } else if (!hasValidUsdPrices || usdLooksWrong) {
-          console.log(
-            '[UnifiedChartData] ⚠️ Cached candles have invalid USD prices, regenerating...',
-            {
-              closeUsd: dbCandles[0].closeUsd,
-              acesUsdPrice,
-              hasValidUsdPrices,
-              usdLooksWrong,
-            },
-          );
           // Fall through to generate fresh candles with correct USD prices
         } else {
           // 🔧 CHECK IF CACHE IS STALE
@@ -305,40 +279,17 @@ export class UnifiedChartDataService {
           const maxCacheAgeMs = 10000; // 10 seconds
 
           if (cacheAgeMs > maxCacheAgeMs) {
-            console.log(
-              `[UnifiedChartData] ⚠️ Cache is stale (${(cacheAgeMs / 1000).toFixed(1)}s old), fetching fresh data...`,
-            );
             // Fall through to generate fresh candles
           } else {
-            console.log(
-              `[UnifiedChartData] Using ${dbCandles.length} cached candles from database (${(cacheAgeMs / 1000).toFixed(1)}s old)`,
-            );
-            console.log('[UnifiedChartData] 📊 First DB candle raw data:', {
-              timestamp: dbCandles[0].timestamp,
-              circulatingSupply: dbCandles[0].circulatingSupply,
-              marketCapAces: dbCandles[0].marketCapAces,
-              marketCapUsd: dbCandles[0].marketCapUsd,
-              close: dbCandles[0].close,
-              closeUsd: dbCandles[0].closeUsd,
-            });
             const converted = dbCandles.map((candle) =>
               this.convertDbCandleToUnified(candle, acesUsdPrice),
             );
-            console.log('🔍 [UnifiedChartData] First cached candle after conversion:', {
-              hasUsd: !!converted[0]?.openUsd,
-              openUsd: converted[0]?.openUsd,
-              closeUsd: converted[0]?.closeUsd,
-              marketCapAces: converted[0]?.marketCapAces,
-              marketCapUsd: converted[0]?.marketCapUsd,
-              circulatingSupply: converted[0]?.circulatingSupply,
-            });
             return converted;
           }
         }
       }
 
       // FALLBACK: Generate from supply-based service (real-time calculation)
-      console.log('[UnifiedChartData] No cached candles, generating from trades...');
       // Request latest candles (frontend windows by range)
       const candles = await this.supplyBasedOHLCVService.getCandles(
         tokenAddress,
@@ -352,25 +303,10 @@ export class UnifiedChartDataService {
       // 🔧 TEMPORARILY DISABLED: BitQuery series cache can have wrong conversion rates
       // Using spot price for all candles until we fix the series calculation
       // Build an ACES/USD series aligned to timeframe buckets for per-bucket conversion
-      let acesUsdSeries: { map: Map<number, number>; lastPrice: number | null } = {
+      const acesUsdSeries: { map: Map<number, number>; lastPrice: number | null } = {
         map: new Map(),
         lastPrice: parsedAcesPrice, // Use current spot price for all candles
       };
-      console.log(
-        '[UnifiedChartData] 🔧 Using spot ACES/USD price for all candles:',
-        parsedAcesPrice,
-      );
-      // try {
-      //   const intervalMs = this.getIntervalMs(options.timeframe);
-      //   const from =
-      //     candles.length > 0 ? candles[0].timestamp : new Date(Date.now() - intervalMs * 500);
-      //   const to = candles.length > 0 ? candles[candles.length - 1].timestamp : new Date();
-      //   acesUsdSeries = await this.getAcesUsdSeries(options.timeframe, { from, to });
-      // } catch (err) {
-      //   console.warn(
-      //     '[UnifiedChartData] Failed to build ACES/USD series, will use spot price fallback',
-      //   );
-      // }
 
       const alignToBucket = (date: Date) => {
         const ms = this.getIntervalMs(options.timeframe);
@@ -385,22 +321,6 @@ export class UnifiedChartDataService {
         let closeAces = parseFloat(candle.close);
         const volumeAces = parseFloat(candle.volume);
         const supply = candle.circulatingSupply ? parseFloat(candle.circulatingSupply) : 0;
-
-        // 🔍 DEBUG: Log first candle ACES-to-USD conversion
-        if (index === 0) {
-          // eslint-disable-next-line no-console
-          console.log('🔍 [UnifiedChartData] ===== ACES → USD CONVERSION (First Candle) =====');
-          // eslint-disable-next-line no-console
-          console.log('🔍 [UnifiedChartData] ACES prices from candle:');
-          // eslint-disable-next-line no-console
-          console.log('🔍 [UnifiedChartData]   open:', openAces, 'ACES per TOKEN');
-          // eslint-disable-next-line no-console
-          console.log('🔍 [UnifiedChartData]   close:', closeAces, 'ACES per TOKEN');
-          // eslint-disable-next-line no-console
-          console.log('🔍 [UnifiedChartData] ACES/USD price:', parsedAcesPrice);
-          // eslint-disable-next-line no-console
-          console.log('🔍 [UnifiedChartData] Expected result: ~$0.0000421 (0.0₄421)');
-        }
 
         // Validate and fix high/low values to prevent zero or invalid values
         if (!Number.isFinite(highAces) || highAces <= 0) {
@@ -434,27 +354,6 @@ export class UnifiedChartDataService {
         const highUsd = bucketAcesUsd ? (highAces * bucketAcesUsd).toFixed(18) : '0';
         const lowUsd = bucketAcesUsd ? (lowAces * bucketAcesUsd).toFixed(18) : '0';
         const closeUsd = bucketAcesUsd ? (closeAces * bucketAcesUsd).toFixed(18) : '0';
-
-        // 🔍 DEBUG: Log first candle USD results
-        if (index === 0) {
-          // eslint-disable-next-line no-console
-          console.log('🔍 [UnifiedChartData] USD prices after conversion:');
-          // eslint-disable-next-line no-console
-          console.log('🔍 [UnifiedChartData]   openUsd:', openUsd);
-          // eslint-disable-next-line no-console
-          console.log('🔍 [UnifiedChartData]   closeUsd:', closeUsd);
-          // eslint-disable-next-line no-console
-          console.log(
-            '🔍 [UnifiedChartData] Calculation: ',
-            openAces,
-            '* ',
-            parsedAcesPrice,
-            '=',
-            openUsd,
-          );
-          // eslint-disable-next-line no-console
-          console.log('🔍 [UnifiedChartData] ================================================');
-        }
 
         // Calculate market cap using circulating supply
         const marketCapAces = supply > 0 ? (supply * closeAces).toFixed(2) : '0';
@@ -521,29 +420,6 @@ export class UnifiedChartDataService {
             curr.lowUsd = currLowUsd.toFixed(18);
           }
         }
-      }
-
-      // Log summary
-      if (unified.length > 0) {
-        const first = unified[0];
-        console.log('🔍 [UnifiedChartData] Bonding curve candles converted:', {
-          totalCandles: unified.length,
-          acesUsdPrice,
-          firstCandle: {
-            timestamp: first.timestamp,
-            openAces: first.open,
-            openUsd: first.openUsd,
-            highAces: first.high,
-            highUsd: first.highUsd,
-            lowAces: first.low,
-            lowUsd: first.lowUsd,
-            closeAces: first.close,
-            closeUsd: first.closeUsd,
-            hasWicks: first.high !== first.low,
-            hasBody: first.open !== first.close,
-            trades: first.trades,
-          },
-        });
       }
 
       return unified;
@@ -628,14 +504,6 @@ export class UnifiedChartDataService {
       if (acesPrice) {
         marketCapUsd = (supply * priceInAces * acesPrice).toFixed(2);
       }
-
-      console.log('[UnifiedChartData] 💡 Calculated market cap from supply:', {
-        supply,
-        priceInAces,
-        marketCapAces,
-        marketCapUsd,
-        acesPrice,
-      });
     }
 
     // If still missing, calculate from ACES market cap using current ACES price
@@ -738,20 +606,10 @@ export class UnifiedChartDataService {
       latestPriceUsd = await this.bitQueryService.getLatestPriceUSD(tokenAddress);
       if (latestPriceUsd) {
         marketCapUsd = this.bitQueryService.calculateMarketCap(latestPriceUsd);
-        console.log('[UnifiedChartData] DEX market cap calculated:', {
-          priceUsd: latestPriceUsd,
-          marketCapUsd,
-        });
       }
     } catch (error) {
       console.warn('[UnifiedChartData] Failed to get latest price for market cap:', error);
     }
-
-    console.log('[UnifiedChartData] DEX data from BitQuery:', {
-      candleCount: candleData.length,
-      latestPriceUsd,
-      marketCapUsd,
-    });
 
     // Convert to UnifiedCandle format
     // DEXTradeByTokens query provides USD prices directly
@@ -772,16 +630,16 @@ export class UnifiedChartDataService {
         volumeUsd: candle.volumeUsd,
         trades: candle.trades,
         dataSource: 'dex' as const,
-        circulatingSupply: '1000000000', // Fixed 1B supply
+        circulatingSupply: '1000000000',
         totalSupply: '1000000000',
-        marketCapAces: undefined, // Not tracking ACES market cap for DEX tokens
+        marketCapAces: undefined,
         marketCapUsd: marketCapUsd || undefined,
       };
     });
 
     return {
       candles: resolvedCandles,
-      acesUsdPrice: acesUsdPriceHint, // Return the hint as-is for DEX tokens
+      acesUsdPrice: acesUsdPriceHint,
     };
   }
 
@@ -795,7 +653,7 @@ export class UnifiedChartDataService {
     const candles = await this.supplyBasedOHLCVService.getCandles(
       tokenAddress,
       timeframe as any,
-      100, // Last 100 trades
+      100,
     );
 
     if (candles.length === 0) return null;
@@ -873,7 +731,6 @@ export class UnifiedChartDataService {
           lowUsd = latestDbCandle.lowUsd || '0';
           closeUsd = latestDbCandle.closeUsd || '0';
           volumeUsd = latestDbCandle.volumeUsd || '0';
-          console.log('[UnifiedChartData] ✅ Using USD values from cached DB candle');
         } else {
           if (usdLooksWrong) {
             console.warn(

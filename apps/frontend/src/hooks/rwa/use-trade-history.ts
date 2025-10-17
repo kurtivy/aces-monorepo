@@ -41,19 +41,8 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
     return Number.isNaN(parsed) ? null : parsed;
   }, [dexMeta?.bondingCutoff]);
 
-  // Debug log on mount and when key props change
-  // useEffect(() => {
-  //   console.log('[TradeHistory] Hook initialized/updated:', {
-  //     tokenAddress,
-  //     shouldUseDex,
-  //     dexMeta,
-  //     bondingCutoffMs,
-  //   });
-  // }, [tokenAddress, shouldUseDex, bondingCutoffMs]);
-
   const fetchTrades = async () => {
     if (!tokenAddress) {
-      // console.log('[TradeHistory] No token address provided');
       return;
     }
 
@@ -88,7 +77,6 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
           trader: trade.trader?.id,
         }));
       } else if (bondingResult.error) {
-        console.error('[TradeHistory] Bonding API error:', bondingResult.error);
         setError(bondingResult.error);
       }
 
@@ -106,20 +94,6 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
               ? (payload as DexTradeResponse[])
               : [];
 
-          // Log first few raw DEX trades to debug price issues
-          if (dexArray.length > 0) {
-            dexArray.slice(0, 3).forEach((trade, idx) => {
-              console.log(`Trade ${idx + 1}:`, {
-                direction: trade.direction,
-                amountToken: trade.amountToken,
-                amountCounter: trade.amountCounter,
-                priceInCounter: trade.priceInCounter,
-                priceInUsd: trade.priceInUsd,
-                txHash: trade.txHash,
-              });
-            });
-          }
-
           dexTrades = dexArray.map((trade) => ({
             id: `dex-${trade.txHash ?? trade.timestamp}`,
             source: 'DEX' as TradeSource,
@@ -133,10 +107,8 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
             priceUsd: trade.priceInUsd,
           }));
         } else if (dexResult.error) {
-          console.warn('[TradeHistory] Failed to fetch DEX trades:', dexResult.error);
+          // DEX trades fetch failed, continue without them
         }
-      } else {
-        console.log('[TradeHistory] ❌ shouldUseDex is FALSE, skipping DEX trades fetch');
       }
 
       if (bondingCutoffMs) {
@@ -150,7 +122,6 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
 
       setTrades((prevTrades) => {
         if (prevTrades.length === 0) {
-          // console.log('[TradeHistory] Setting initial trades:', combinedTrades.length);
           return combinedTrades;
         }
 
@@ -158,11 +129,9 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
         const newEntries = combinedTrades.filter((trade) => !prevIds.has(trade.id));
 
         if (newEntries.length === 0) {
-          // console.log('[TradeHistory] No new trades to add');
           return prevTrades;
         }
 
-        // console.log(`[TradeHistory] Adding ${newEntries.length} new trades`);
         const merged = [...newEntries, ...prevTrades].sort((a, b) => b.timestamp - a.timestamp);
         return merged.slice(0, 100);
       });
@@ -170,7 +139,6 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
       setIsConnected(true);
       setError(null);
     } catch (error) {
-      console.error('[TradeHistory] Trade history fetch error:', error);
       setError('Network error while fetching trades');
       setIsConnected(false);
     } finally {
@@ -190,14 +158,11 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
     const disablePolling = process.env.NEXT_PUBLIC_DISABLE_TRADE_POLLING === 'true';
 
     if (disablePolling) {
-      console.log('⏸️  Trade history polling disabled via NEXT_PUBLIC_DISABLE_TRADE_POLLING=true');
       setTrades([]);
       setIsLoading(false);
       setIsConnected(false);
       return;
     }
-
-    console.log('[TradeHistory] Polling enabled, starting trade history fetch');
 
     let intervalId: NodeJS.Timeout | null = null;
 
