@@ -958,7 +958,58 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
 
     const filledBars = this.fillMissingBars(bars, timeframeMs);
 
-    return { bars: filledBars };
+    // 🌟 GENESIS CANDLE: Inject a "token birth" candle at price ~0 before first real candle
+    // This shows the token starting from nothing and jumping to its first trade price
+    const barsWithGenesis = this.injectGenesisCandleIfNeeded(filledBars, timeframeMs);
+
+    return { bars: barsWithGenesis };
+  }
+
+  /**
+   * Injects a synthetic "genesis candle" before the first real candle
+   * This shows the token starting from ~$0 before its first trade
+   *
+   * The genesis candle:
+   * - Is placed one timeframe before the first real candle
+   * - Has OHLC at a very small price (~$0.0000000001) to show "birth at 0"
+   * - Has volume = 0 (no trades yet)
+   * - Close price equals the first real candle's open (creates a smooth visual jump)
+   */
+  private injectGenesisCandleIfNeeded(bars: Bar[], timeframeMs: number): Bar[] {
+    if (bars.length === 0) {
+      return bars;
+    }
+
+    const firstBar = bars[0];
+
+    // Use an extremely small price to represent "starting from zero"
+    // Not exactly 0 because logarithmic scale can't handle 0
+    // This will display as "$0.0₁₀1" (0.0 with 10 zeros then 1) in our zero-count notation
+    const genesisPrice = 0.0000000001; // 1e-10
+
+    // Genesis candle is placed one timeframe before the first real candle
+    const genesisTime = firstBar.time - timeframeMs;
+
+    // Create the genesis candle
+    // Open/High/Low start at near-zero, Close bridges to first real price
+    const genesisCandle: Bar = {
+      time: genesisTime,
+      open: genesisPrice,
+      high: Math.max(genesisPrice, firstBar.open), // High extends up to first trade
+      low: genesisPrice,
+      close: firstBar.open, // Close at first trade price (creates the jump visual)
+      volume: 0, // No trades yet
+    };
+
+    console.log('🌟 [TradingView] Injecting genesis candle:', {
+      genesisTime: new Date(genesisTime).toISOString(),
+      genesisPrice: genesisPrice,
+      firstRealPrice: firstBar.open,
+      firstRealTime: new Date(firstBar.time).toISOString(),
+    });
+
+    // Prepend genesis candle to the beginning of the array
+    return [genesisCandle, ...bars];
   }
 
   private bridgeBar(previousBar: Bar | null, bar: Bar): Bar {

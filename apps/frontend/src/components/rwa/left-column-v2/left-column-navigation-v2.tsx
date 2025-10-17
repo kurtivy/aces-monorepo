@@ -24,11 +24,18 @@ export function LeftColumnNavigationV2({
   onChatToggle,
 }: LeftColumnNavigationV2Props) {
   // Use the correct market cap hook that calculates price × circulating supply
-  const { marketCapUsd } = useTokenMarketCap(listing?.token?.contractAddress, 'usd');
+  const { marketCapUsd, currentPriceUsd } = useTokenMarketCap(
+    listing?.token?.contractAddress,
+    'usd',
+  );
 
   const marketCapUSD = useMemo(() => {
     return isFinite(marketCapUsd) && marketCapUsd > 0 ? marketCapUsd : 0;
   }, [marketCapUsd]);
+
+  const liveTokenPrice = useMemo(() => {
+    return isFinite(currentPriceUsd) && currentPriceUsd > 0 ? currentPriceUsd : undefined;
+  }, [currentPriceUsd]);
 
   // Use external chat state if provided, otherwise use internal state
   const [internalChatOpen, setInternalChatOpen] = useState(false);
@@ -110,6 +117,9 @@ export function LeftColumnNavigationV2({
             rrp={listing.rrp || listing.reservePrice}
             brand={listing.brand}
             hypePoints={listing.hypePoints}
+            marketCap={marketCapUSD}
+            dexMeta={listing.dex || null}
+            liveTokenPrice={liveTokenPrice}
           />
         </div>
 

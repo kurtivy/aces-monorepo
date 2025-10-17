@@ -13,6 +13,8 @@ import BondingCurveChart from './overview/bonding-curve-chart';
 import { useTokenHolderCount } from '@/hooks/rwa/use-token-holder-count';
 import { NETWORK_CONFIG } from '@/lib/contracts/addresses';
 import { createImageErrorHandler, getValidImageSrc } from '@/lib/utils/image-error-handler';
+import { useTokenData } from '@/hooks/use-token-data';
+import { useTokenMarketCap } from '@/hooks/use-token-market-cap';
 
 interface DynamicActiveSectionContentProps extends ActiveSectionContentProps {
   listing?: DatabaseListing | null;
@@ -57,6 +59,20 @@ export function ActiveSectionContent({
     listingTokenChainId,
     directHolderCount,
   );
+
+  // Fetch token data including 24h volume
+  const { tokenData } = useTokenData(listingTokenAddress);
+
+  // Fetch live token price
+  const { currentPriceUsd } = useTokenMarketCap(listingTokenAddress, 'usd');
+
+  const liveTokenPrice = useMemo(() => {
+    return isFinite(currentPriceUsd) && currentPriceUsd > 0 ? currentPriceUsd : undefined;
+  }, [currentPriceUsd]);
+
+  const volume24hAces = useMemo(() => {
+    return tokenData?.volume24h || '0';
+  }, [tokenData]);
 
   const totalComments = useMemo(() => {
     const explicitCount = parseCount(listing?.commentCount);
@@ -161,6 +177,9 @@ export function ActiveSectionContent({
           tokenAddress={listing?.token?.contractAddress}
           reservePrice={listing?.reservePrice}
           chainId={tokenChainId}
+          dexMeta={listing?.dex || null}
+          liveTokenPrice={liveTokenPrice}
+          volume24hAces={volume24hAces}
         />
       </div>
     </div>,

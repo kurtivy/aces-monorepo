@@ -1,12 +1,14 @@
 'use client';
 
-import { forwardRef, useState, type ReactNode } from 'react';
+import { forwardRef, useState, useMemo, type ReactNode } from 'react';
 import { MessageSquare, BarChart3, ChevronDown } from 'lucide-react';
 import RWAForumReal from '@/components/rwa/middle-column/chat/rwa-forum-real';
 import TradeHistory from '@/components/rwa/middle-column/token-details/trade-history';
 import TokenHealthPanel from '@/components/rwa/left-column/token-details/token-health-panel';
 import type { DatabaseListing } from '@/types/rwa/section.types';
 import { NETWORK_CONFIG } from '@/lib/contracts/addresses';
+import { useTokenData } from '@/hooks/use-token-data';
+import { useTokenMarketCap } from '@/hooks/use-token-market-cap';
 
 interface MobileCommentsHistorySectionProps {
   listing: DatabaseListing;
@@ -19,6 +21,20 @@ const MobileCommentsHistorySection = forwardRef<HTMLDivElement, MobileCommentsHi
     const [tradesExpanded, setTradesExpanded] = useState(true);
     const [commentsExpanded, setCommentsExpanded] = useState(true);
     const tokenChainId = listing.token?.chainId ?? NETWORK_CONFIG.DEFAULT_CHAIN_ID;
+
+    // Fetch token data including 24h volume
+    const { tokenData } = useTokenData(listing.token?.contractAddress);
+
+    // Fetch live token price
+    const { currentPriceUsd } = useTokenMarketCap(listing.token?.contractAddress, 'usd');
+
+    const liveTokenPrice = useMemo(() => {
+      return isFinite(currentPriceUsd) && currentPriceUsd > 0 ? currentPriceUsd : undefined;
+    }, [currentPriceUsd]);
+
+    const volume24hAces = useMemo(() => {
+      return tokenData?.volume24h || '0';
+    }, [tokenData]);
 
     const renderAccordionHeader = (
       label: string,
@@ -133,6 +149,9 @@ const MobileCommentsHistorySection = forwardRef<HTMLDivElement, MobileCommentsHi
                 tokenAddress={listing.token?.contractAddress}
                 reservePrice={listing.reservePrice}
                 chainId={tokenChainId}
+                dexMeta={listing.dex || null}
+                liveTokenPrice={liveTokenPrice}
+                volume24hAces={volume24hAces}
               />
             </div>
           )}

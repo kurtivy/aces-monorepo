@@ -611,7 +611,67 @@ export class MarketCapDatafeed implements IBasicDataFeed {
       });
     }
 
-    return { bars };
+    // 🌟 GENESIS CANDLE: Inject a "token birth" candle at market cap ~0 before first real candle
+    const timeframeMs = this.timeframeToMs(timeframe);
+    const barsWithGenesis = this.injectGenesisCandleIfNeeded(bars, timeframeMs);
+
+    return { bars: barsWithGenesis };
+  }
+
+  /**
+   * Injects a synthetic "genesis candle" before the first real candle
+   * This shows the token starting from ~$0 market cap before its first trade
+   */
+  private injectGenesisCandleIfNeeded(bars: Bar[], timeframeMs: number): Bar[] {
+    if (bars.length === 0) {
+      return bars;
+    }
+
+    const firstBar = bars[0];
+
+    // Use an extremely small market cap to represent "starting from zero"
+    // Not exactly 0 because logarithmic scale can't handle 0
+    const genesisMarketCap = 0.0000000001; // 1e-10
+
+    // Genesis candle is placed one timeframe before the first real candle
+    const genesisTime = firstBar.time - timeframeMs;
+
+    // Create the genesis candle
+    const genesisCandle: Bar = {
+      time: genesisTime,
+      open: genesisMarketCap,
+      high: Math.max(genesisMarketCap, firstBar.open), // High extends up to first trade
+      low: genesisMarketCap,
+      close: firstBar.open, // Close at first trade market cap (creates the jump visual)
+      volume: 0, // No trades yet
+    };
+
+    console.log('🌟 [MarketCapDatafeed] Injecting genesis candle:', {
+      genesisTime: new Date(genesisTime).toISOString(),
+      genesisMarketCap: genesisMarketCap,
+      firstRealMarketCap: firstBar.open,
+      firstRealTime: new Date(firstBar.time).toISOString(),
+    });
+
+    // Prepend genesis candle to the beginning of the array
+    return [genesisCandle, ...bars];
+  }
+
+  private timeframeToMs(timeframe: string): number {
+    switch (timeframe) {
+      case '5m':
+        return 5 * 60 * 1000;
+      case '15m':
+        return 15 * 60 * 1000;
+      case '1h':
+        return 60 * 60 * 1000;
+      case '4h':
+        return 4 * 60 * 60 * 1000;
+      case '1d':
+        return 24 * 60 * 60 * 1000;
+      default:
+        return 60 * 60 * 1000;
+    }
   }
 
   private resolutionToTimeframe(resolution: ResolutionString): string {

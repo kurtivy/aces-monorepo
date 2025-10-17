@@ -4,10 +4,10 @@ import { useMemo, useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Info } from 'lucide-react';
 import { useTokenBondingData } from '@/hooks/contracts/use-token-bonding-data';
-import { usePriceConversion } from '@/hooks/use-price-conversion';
 import { useAuth } from '@/lib/auth/auth-context';
 import { ethers } from 'ethers';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import { useAcesPrice } from '@/hooks/use-aces-price';
 
 // ERC20 ABI for balance checking
 const ERC20_ABI = ['function balanceOf(address) view returns (uint256)'];
@@ -84,22 +84,21 @@ class ValueEquilibriumCalculator {
   }
 
   getMetrics(
-    lpPoolTokens: number,
+    circulatingSupply: number,
     tokenPrice: number,
     communityReward: number,
     assetSalePrice: number,
+    marketCap: number,
   ): TokenMetrics {
-    const circulatingSupply = this.calculateCirculatingSupply(lpPoolTokens);
     const rewardPerToken = this.calculateRewardPerToken(communityReward, circulatingSupply);
     const valueEquilibriumRatio = this.calculateVER(tokenPrice, rewardPerToken);
-    const marketCap = tokenPrice * circulatingSupply;
     const signal = this.generateMarketSignal(valueEquilibriumRatio);
-    const equilibriumPrice = this.findEquilibriumPrice(communityReward, lpPoolTokens);
+    const equilibriumPrice = rewardPerToken; // Equilibrium is when price = reward per token
     const acesRatio = assetSalePrice > 0 ? marketCap / assetSalePrice : 0;
 
     return {
       totalSupply: this.TOTAL_SUPPLY,
-      lpPoolTokens,
+      lpPoolTokens: this.TOTAL_SUPPLY - circulatingSupply, // For display purposes only
       circulatingSupply,
       tokenPrice,
       communityReward,
@@ -176,15 +175,30 @@ interface TokenHealthPanelProps {
   tokenAddress?: string;
   reservePrice?: string | null; // USD value of physical asset
   chainId?: number;
+  marketCap?: number; // Market cap in USD (passed from parent)
+  dexMeta?: {
+    poolAddress: string | null;
+    isDexLive: boolean;
+    dexLiveAt: string | null;
+  } | null;
+  liveTokenPrice?: number; // Live token price in USD from chart datafeed
+  volume24hAces?: string; // 24h volume in ACES from API
 }
 
 export default function TokenHealthPanel({
   tokenAddress,
   reservePrice,
   chainId,
+  marketCap: marketCapProp,
+  dexMeta,
+  liveTokenPrice,
+  volume24hAces,
 }: TokenHealthPanelProps) {
   const { walletAddress } = useAuth();
   const [userTokenBalance, setUserTokenBalance] = useState<string>('0');
+
+  // Fetch ACES/USD price for volume conversion
+  const { acesUsdPrice } = useAcesPrice();
 
   // Fetch bonding data
   const {
@@ -192,6 +206,11 @@ export default function TokenHealthPanel({
     acesBalance,
     loading: bondingLoading,
   } = useTokenBondingData(tokenAddress, chainId);
+
+  // Determine if token is in DEX mode
+  const isDexMode = useMemo(() => {
+    return Boolean(dexMeta?.isDexLive);
+  }, [dexMeta]);
 
   // Parse asset sale price (reserve price)
   const assetSalePrice = useMemo(() => {
@@ -205,39 +224,45 @@ export default function TokenHealthPanel({
     return assetSalePrice * 0.1;
   }, [assetSalePrice]);
 
-  // Parse current supply - this is the CIRCULATING supply (tokens already sold)
+  // Constants for market cap supply (fixed values)
+  const BONDING_SUPPLY = 800_000_000; // 800M during bonding curve
+  const DEX_SUPPLY = 1_000_000_000; // 1B after DEX graduation
+
+  // Market cap supply: Fixed 800M (bonding) or 1B (DEX)
+  const marketCapSupply = useMemo(() => {
+    return isDexMode ? DEX_SUPPLY : BONDING_SUPPLY;
+  }, [isDexMode]);
+
+  // Circulating supply: Actual tokens sold (used for reward calculations)
+  // This varies from 1 to 800M during bonding, then up to 1B in DEX mode
   const circulatingSupply = useMemo(() => {
     const parsed = parseFloat(currentSupply || '0');
     return Number.isFinite(parsed) ? parsed : 0;
   }, [currentSupply]);
 
-  // Calculate LP pool tokens (tokens still in bonding curve)
-  const TOTAL_SUPPLY = 1_000_000_000;
-  const lpPoolTokens = useMemo(() => {
-    return TOTAL_SUPPLY - circulatingSupply;
-  }, [circulatingSupply]);
-
-  // Get market cap in USD (ACES balance converted to USD)
-  const acesDepositedFloat = useMemo(() => {
-    const parsed = parseFloat(acesBalance || '0');
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-  }, [acesBalance]);
-
-  const { data: marketCapConversion } = usePriceConversion(
-    acesDepositedFloat > 0 ? acesDepositedFloat.toString() : '0',
-  );
-
-  const marketCapUSD = useMemo(() => {
-    if (!marketCapConversion?.usdValue) return 0;
-    const usd = Number(marketCapConversion.usdValue);
-    return Number.isFinite(usd) ? usd : 0;
-  }, [marketCapConversion]);
-
-  // Calculate token price in USD
+  // Use live token price if available, otherwise calculate from market cap
   const tokenPrice = useMemo(() => {
-    if (circulatingSupply <= 0 || marketCapUSD <= 0) return 0;
-    return marketCapUSD / circulatingSupply;
-  }, [marketCapUSD, circulatingSupply]);
+    // Prefer live token price from chart datafeed (affected by ACES price movements)
+    if (
+      liveTokenPrice !== undefined &&
+      liveTokenPrice !== null &&
+      Number.isFinite(liveTokenPrice)
+    ) {
+      return liveTokenPrice;
+    }
+
+    // Fallback: calculate from market cap if available
+    if (marketCapProp && circulatingSupply > 0) {
+      return marketCapProp / circulatingSupply;
+    }
+
+    return 0;
+  }, [liveTokenPrice, marketCapProp, circulatingSupply]);
+
+  // Calculate market cap for ACES Ratio (using fixed supply and live price)
+  const calculatedMarketCap = useMemo(() => {
+    return tokenPrice * marketCapSupply;
+  }, [tokenPrice, marketCapSupply]);
 
   // Fetch user's token balance
   const fetchUserBalance = useCallback(async () => {
@@ -269,12 +294,34 @@ export default function TokenHealthPanel({
     return Number.isFinite(parsed) ? parsed : 0;
   }, [userTokenBalance]);
 
+  // Calculate 24h volume in USD
+  const volume24hUsd = useMemo(() => {
+    if (!volume24hAces || !acesUsdPrice) return 0;
+    const volumeAces = parseFloat(volume24hAces);
+    if (!Number.isFinite(volumeAces)) return 0;
+    return volumeAces * acesUsdPrice;
+  }, [volume24hAces, acesUsdPrice]);
+
   const calculator = useMemo(() => new ValueEquilibriumCalculator(), []);
 
   const metrics = useMemo(() => {
-    // Pass lpPoolTokens - calculator will derive circulating supply from it
-    return calculator.getMetrics(lpPoolTokens, tokenPrice, communityReward, assetSalePrice);
-  }, [calculator, lpPoolTokens, tokenPrice, communityReward, assetSalePrice]);
+    // Use actual circulating supply for reward calculations
+    // Use calculated market cap for ACES ratio
+    return calculator.getMetrics(
+      circulatingSupply,
+      tokenPrice,
+      communityReward,
+      assetSalePrice,
+      calculatedMarketCap,
+    );
+  }, [
+    calculator,
+    circulatingSupply,
+    tokenPrice,
+    communityReward,
+    assetSalePrice,
+    calculatedMarketCap,
+  ]);
 
   // Get signal color
   const tradingCredits = useMemo(() => {
@@ -363,20 +410,14 @@ export default function TokenHealthPanel({
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5, delay: 0.12 }}
       >
-        <SectionLabel label="SIGNAL" />
+        <SectionLabel label="VOLUME (24H)" />
         {isLoading || !hasData ? (
           <span className={valueClass}>...</span>
         ) : (
-          <div className="flex items-center gap-2">
-            <div
-              className="w-3 h-3 rounded-full"
-              style={{ backgroundColor: getSignalColor(metrics.signal.action) }}
-            />
-            <span
-              className="text-sm font-bold font-spray-letters tracking-[0.3em]"
-              style={{ color: getSignalColor(metrics.signal.action) }}
-            >
-              {metrics.signal.action}
+          <div className="flex items-baseline gap-0.5 text-white">
+            <span className="text-sm font-proxima-nova leading-none">$</span>
+            <span className="text-lg font-semibold font-proxima-nova leading-none text-white">
+              {formatNumber(volume24hUsd)}
             </span>
           </div>
         )}

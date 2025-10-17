@@ -299,13 +299,8 @@ export class TokenService {
         };
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
-        console.warn(
-          `[TokenService] Subgraph attempt ${attempt}/${retries} failed:`,
-          lastError.message,
-        );
 
         if (attempt < retries) {
-          // Exponential backoff: 1s, 2s, 4s
           const delay = Math.pow(2, attempt - 1) * 1000;
           await new Promise((resolve) => setTimeout(resolve, delay));
         }
@@ -388,10 +383,6 @@ export class TokenService {
   // New method to fetch fresh trades from subgraph for trade history component
   async getRecentTradesForToken(contractAddress: string, limit = 50) {
     try {
-      console.log(
-        `[TokenService] Fetching trades for ${contractAddress} from subgraph, limit: ${limit}`,
-      );
-
       const query = `{
         trades(
           where: { token: "${contractAddress.toLowerCase()}" }
@@ -435,14 +426,6 @@ export class TokenService {
       };
 
       const trades = result.data.trades || [];
-      console.log(
-        `[TokenService] Subgraph returned ${trades.length} trades for ${contractAddress}`,
-      );
-
-      if (trades.length > 0) {
-        console.log(`[TokenService] First trade:`, trades[0]);
-      }
-
       return trades;
     } catch (error) {
       console.error('[TokenService] Trade history fetch error:', error);

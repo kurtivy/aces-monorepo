@@ -2,6 +2,8 @@
 
 import { motion } from 'framer-motion';
 import TokenHealthPanel from '../left-column/token-details/token-health-panel';
+import { useTokenData } from '@/hooks/use-token-data';
+import { useMemo } from 'react';
 
 interface TokenMetricsSectionProps {
   tokenAddress?: string;
@@ -10,6 +12,13 @@ interface TokenMetricsSectionProps {
   rrp?: string | null;
   brand?: string | null;
   hypePoints?: string[] | null;
+  marketCap?: number;
+  dexMeta?: {
+    poolAddress: string | null;
+    isDexLive: boolean;
+    dexLiveAt: string | null;
+  } | null;
+  liveTokenPrice?: number;
 }
 
 const TARGET_CHART_HEIGHT_PX = 560; // Keep in sync with TradingSection chart height.
@@ -28,8 +37,19 @@ export function TokenMetricsSection({
   rrp,
   brand,
   hypePoints,
+  marketCap,
+  dexMeta,
+  liveTokenPrice,
 }: TokenMetricsSectionProps) {
   const hasHypePoints = hypePoints && hypePoints.length > 0;
+
+  // Fetch token data including 24h volume
+  const { tokenData } = useTokenData(tokenAddress);
+
+  // Extract volume24h in ACES
+  const volume24hAces = useMemo(() => {
+    return tokenData?.volume24h || '0';
+  }, [tokenData]);
 
   return (
     <div
@@ -49,6 +69,10 @@ export function TokenMetricsSection({
           tokenAddress={tokenAddress}
           reservePrice={reservePrice}
           chainId={chainId}
+          marketCap={marketCap}
+          dexMeta={dexMeta}
+          liveTokenPrice={liveTokenPrice}
+          volume24hAces={volume24hAces}
         />
 
         {/* STORY Section */}
