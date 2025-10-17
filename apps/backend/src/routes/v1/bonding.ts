@@ -4,6 +4,7 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 import { ethers } from 'ethers';
 import { getNetworkConfig, createProvider } from '../../config/network.config';
 import { AerodromeDataService } from '../../services/aerodrome-data-service';
+import { priceCacheService } from '../../services/price-cache-service';
 
 const addressSchema = z.string().regex(/^0x[a-fA-F0-9]{40}$/);
 
@@ -354,31 +355,22 @@ export async function bondingRoutes(fastify: FastifyInstance) {
         let outputUsdValue: string | null = null;
 
         try {
-          const acesUsdResponse = await fetch(
-            `${process.env.API_BASE_URL || 'http://localhost:3002'}/api/v1/prices/aces-usd`,
-          );
-          if (acesUsdResponse.ok) {
-            const acesUsdData = (await acesUsdResponse.json()) as {
-              data?: { acesUsdPrice?: number };
-              price?: number;
-            };
-            const acesUsd = parseFloat(
-              String(acesUsdData?.data?.acesUsdPrice ?? acesUsdData?.price ?? '0'),
-            );
+          // Use price cache service directly instead of making HTTP call to self
+          const priceData = await priceCacheService.getPrices();
+          const acesUsd = priceData.acesUsd;
 
-            if (acesUsd > 0) {
-              if (inputAsset === 'ACES') {
-                inputUsdValue = (amountNum * acesUsd).toFixed(2);
-                outputUsdValue = inputUsdValue; // Approximate
-              } else {
-                const outputNum = parseFloat(expectedOutput);
-                outputUsdValue = (outputNum * acesUsd).toFixed(2);
-                inputUsdValue = outputUsdValue; // Approximate
-              }
+          if (acesUsd > 0) {
+            if (inputAsset === 'ACES') {
+              inputUsdValue = (amountNum * acesUsd).toFixed(2);
+              outputUsdValue = inputUsdValue; // Approximate
+            } else {
+              const outputNum = parseFloat(expectedOutput);
+              outputUsdValue = (outputNum * acesUsd).toFixed(2);
+              inputUsdValue = outputUsdValue; // Approximate
             }
           }
         } catch (error) {
-          fastify.log.warn('⚠️ [DirectBondingQuote] Failed to fetch ACES USD price');
+          fastify.log.warn({ error }, '⚠️ [DirectBondingQuote] Failed to fetch ACES USD price');
         }
 
         const response: DirectQuoteResponse = {
@@ -1052,45 +1044,34 @@ export async function bondingRoutes(fastify: FastifyInstance) {
         let outputUsdValue: string | null = null;
 
         try {
-          const acesUsdResponse = await fetch(
-            `${process.env.API_BASE_URL || 'http://localhost:3002'}/api/v1/prices/aces-usd`,
-          );
-          if (acesUsdResponse.ok) {
-            const acesUsdData = (await acesUsdResponse.json()) as {
-              data?: {
-                acesUsdPrice?: number;
-                wethUsdPrice?: number;
-                usdcUsdPrice?: number;
-                usdtUsdPrice?: number;
-              };
-              price?: number;
-            };
-            const acesUsd = parseFloat(
-              String(acesUsdData?.data?.acesUsdPrice ?? acesUsdData?.price ?? '0'),
-            );
-            const wethUsd = parseFloat(String(acesUsdData?.data?.wethUsdPrice ?? '0'));
-            const usdcUsd = parseFloat(String(acesUsdData?.data?.usdcUsdPrice ?? '1'));
-            const usdtUsd = parseFloat(String(acesUsdData?.data?.usdtUsdPrice ?? '1'));
+          // Use price cache service directly instead of making HTTP call to self
+          const priceData = await priceCacheService.getPrices();
+          const acesUsd = priceData.acesUsd;
+          const wethUsd = priceData.wethUsd;
+          const usdcUsd = priceData.usdcUsd;
+          const usdtUsd = priceData.usdtUsd;
 
-            if (acesUsd > 0) {
-              // Calculate input USD value based on input asset
-              if (inputAsset === 'WETH' && wethUsd > 0) {
-                inputUsdValue = (amountNum * wethUsd).toFixed(2);
-              } else if (inputAsset === 'USDC' && usdcUsd > 0) {
-                inputUsdValue = (amountNum * usdcUsd).toFixed(2);
-              } else if (inputAsset === 'USDT' && usdtUsd > 0) {
-                inputUsdValue = (amountNum * usdtUsd).toFixed(2);
-              }
-
-              // Calculate output USD value based on ACES being spent to buy RWA tokens
-              // The RWA tokens are purchased with acesAmountRaw ACES
-              // So output value = ACES spent * ACES USD price
-              const acesSpentNum = parseFloat(ethers.formatUnits(acesAmountRaw, 18));
-              outputUsdValue = (acesSpentNum * acesUsd).toFixed(2);
+          if (acesUsd > 0) {
+            // Calculate input USD value based on input asset
+            if (inputAsset === 'WETH' && wethUsd > 0) {
+              inputUsdValue = (amountNum * wethUsd).toFixed(2);
+            } else if (inputAsset === 'USDC' && usdcUsd > 0) {
+              inputUsdValue = (amountNum * usdcUsd).toFixed(2);
+            } else if (inputAsset === 'USDT' && usdtUsd > 0) {
+              inputUsdValue = (amountNum * usdtUsd).toFixed(2);
             }
+
+            // Calculate output USD value based on ACES being spent to buy RWA tokens
+            // The RWA tokens are purchased with acesAmountRaw ACES
+            // So output value = ACES spent * ACES USD price
+            const acesSpentNum = parseFloat(ethers.formatUnits(acesAmountRaw, 18));
+            outputUsdValue = (acesSpentNum * acesUsd).toFixed(2);
           }
         } catch (error) {
-          fastify.log.warn('⚠️ [BondingQuote] Failed to fetch USD prices for multi-hop quote');
+          fastify.log.warn(
+            { error },
+            '⚠️ [BondingQuote] Failed to fetch USD prices for multi-hop quote',
+          );
         }
 
         const response: MultiHopQuoteResponse = {
