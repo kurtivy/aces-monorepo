@@ -189,11 +189,12 @@ export function useUnifiedQuote({
 
     (async () => {
       try {
+        // Resolve API URL with proper fallback priority
         const baseUrl =
           process.env.NEXT_PUBLIC_API_URL ||
           (typeof window !== 'undefined' && window.location.hostname === 'localhost'
             ? 'http://localhost:3002'
-            : 'https://aces-monorepo-backend.vercel.app');
+            : 'https://acesbackend-production.up.railway.app'); // Update this to your Railway URL
         const res = await fetch(`${baseUrl}/api/v1/prices/aces-usd`).catch(() => null);
         if (!res || !res.ok) {
           if (!cancelled) setDexUsdFallback(null);

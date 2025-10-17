@@ -207,7 +207,7 @@ export async function bondingRoutes(fastify: FastifyInstance) {
           // Binary search for the maximum token amount we can buy with the given ACES (after slippage)
           const oneToken = ethers.parseUnits('1', tokenDecimals);
           let left = oneToken;
-          let right = ethers.parseUnits('1000000', tokenDecimals); // Max tokens to search
+          let right = ethers.parseUnits('1000000000', tokenDecimals); // Max 1B tokens to search (same as total supply)
           let bestTokenAmount = 0n;
 
           // Check if we can even afford 1 token
@@ -991,7 +991,7 @@ export async function bondingRoutes(fastify: FastifyInstance) {
         // Binary search to find max RWA tokens we can buy with the ACES amount
         const oneToken = ethers.parseUnits('1', tokenDecimals);
         let left = oneToken;
-        let right = ethers.parseUnits('1000000', tokenDecimals);
+        let right = ethers.parseUnits('1000000000', tokenDecimals);
         let bestTokenAmount = 0n;
 
         try {

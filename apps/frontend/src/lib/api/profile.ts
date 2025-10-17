@@ -23,7 +23,7 @@ function getProfileApiBaseUrl(): string {
   }
 
   // Production fallback (main branch and aces.fun)
-  return 'https://aces-monorepo-backend.vercel.app';
+  return 'https://acesbackend-production.up.railway.app';
 }
 
 const API_BASE_URL = getProfileApiBaseUrl();

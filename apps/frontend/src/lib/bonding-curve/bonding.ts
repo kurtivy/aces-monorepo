@@ -16,7 +16,7 @@ function getBondingApiBaseUrl(): string {
     }
   }
 
-  return 'https://aces-monorepo-backend.vercel.app';
+  return 'https://acesbackend-production.up.railway.app';
 }
 
 const API_BASE_URL = getBondingApiBaseUrl();

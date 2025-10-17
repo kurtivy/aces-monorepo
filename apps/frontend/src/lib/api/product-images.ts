@@ -40,7 +40,7 @@ export class ProductImagesApi {
     }
 
     // Production fallback (main branch and aces.fun)
-    const fallbackUrl = 'https://aces-monorepo-backend.vercel.app';
+    const fallbackUrl = 'https://acesbackend-production.up.railway.app';
     console.log('Using production backend URL:', fallbackUrl);
     return fallbackUrl;
   }

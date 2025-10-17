@@ -55,10 +55,11 @@ export function PriceProvider({ children, pollInterval = 10000 }: PriceProviderP
     if (process.env.NEXT_PUBLIC_API_URL) {
       return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
     }
-    if (typeof window !== 'undefined' && window.location?.origin) {
-      return window.location.origin;
+    // Fallback to Railway backend URL (not frontend origin)
+    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+      return 'http://localhost:3002';
     }
-    return '';
+    return 'https://acesbackend-production.up.railway.app'; // Update this to your Railway URL
   }, []);
 
   const fetchPrices = useCallback(async () => {

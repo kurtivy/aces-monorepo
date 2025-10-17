@@ -23,11 +23,12 @@ export function usePriceConversion(acesAmount: string) {
       setError(null);
 
       try {
+        // Resolve API URL with proper fallback priority
         const apiUrl =
           process.env.NEXT_PUBLIC_API_URL ||
           (typeof window !== 'undefined' && window.location.hostname === 'localhost'
             ? 'http://localhost:3002'
-            : 'https://aces-monorepo-backend.vercel.app');
+            : 'https://acesbackend-production.up.railway.app'); // Update this to your Railway URL
         const response = await fetch(`${apiUrl}/api/v1/price/convert?amount=${acesAmount}`);
 
         if (!response.ok) {
