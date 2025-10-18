@@ -1,8 +1,9 @@
 export interface ImageInfo {
-  element: HTMLImageElement;
+  element: HTMLImageElement | HTMLVideoElement; // Support both images and videos
   type: 'square' | 'landscape' | 'portrait' | 'submit-asset';
   displayWidth: number;
   displayHeight: number;
+  isVideo?: boolean; // Flag to indicate if this is a video element
   metadata: {
     id?: string;
     title: string;

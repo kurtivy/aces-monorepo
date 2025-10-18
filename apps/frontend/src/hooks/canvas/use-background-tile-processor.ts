@@ -33,6 +33,7 @@ interface RepeatedTokenPosition {
   worldX: number;
   worldY: number;
   tileId: string;
+  element: HTMLImageElement | HTMLVideoElement;
 }
 
 interface TilePriority {
@@ -80,7 +81,11 @@ interface UseBackgroundTileProcessorProps {
     height: number;
     index: number;
   }>;
-  stableCreateTokenPositions: Array<{ worldX: number; worldY: number }>;
+  stableCreateTokenPositions: Array<{
+    worldX: number;
+    worldY: number;
+    element: HTMLImageElement | HTMLVideoElement;
+  }>;
   originalGridBounds: {
     startX: number;
     startY: number;
@@ -332,6 +337,7 @@ export const useBackgroundTileProcessor = ({
           worldX: newTokenX,
           worldY: newTokenY,
           tileId,
+          element: original.element, // Include the specific image or video element
         });
       });
 

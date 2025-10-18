@@ -9,7 +9,7 @@ const borderGradientCache = new Map<string, CanvasGradient>();
 
 export const drawImage = (
   ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement,
+  img: HTMLImageElement | HTMLVideoElement, // Support both images and videos
   x: number,
   y: number,
   width: number,
@@ -46,13 +46,20 @@ export const drawImage = (
   );
   ctx.clip();
 
+  // Determine if this is a video or image element
+  const isVideo = img instanceof HTMLVideoElement;
+
+  // Get natural dimensions based on element type
+  const naturalWidth = isVideo ? img.videoWidth : img.naturalWidth;
+  const naturalHeight = isVideo ? img.videoHeight : img.naturalHeight;
+
   // Calculate scale to cover the entire area
-  const scaleX = scaledWidth / img.naturalWidth;
-  const scaleY = scaledHeight / img.naturalHeight;
+  const scaleX = scaledWidth / naturalWidth;
+  const scaleY = scaledHeight / naturalHeight;
   const imageScale = Math.max(scaleX, scaleY);
 
-  const scaledImageWidth = img.naturalWidth * imageScale;
-  const scaledImageHeight = img.naturalHeight * imageScale;
+  const scaledImageWidth = naturalWidth * imageScale;
+  const scaledImageHeight = naturalHeight * imageScale;
 
   // MOBILE SHIMMER FIX: Round image positioning to integer pixels
   // Center the image with integer coordinates
@@ -67,7 +74,7 @@ export const drawImage = (
     ctx.imageSmoothingQuality = 'high'; // Skip expensive quality setting on Safari
   }
 
-  // Draw image with integer pixel coordinates
+  // Draw image/video with integer pixel coordinates
   ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
 
   // Add subtle border
@@ -128,7 +135,7 @@ export const drawImage = (
  */
 export const drawImageWithoutContext = (
   ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement,
+  img: HTMLImageElement | HTMLVideoElement, // Support both images and videos
   x: number,
   y: number,
   width: number,
@@ -162,13 +169,20 @@ export const drawImageWithoutContext = (
   );
   ctx.clip();
 
+  // Determine if this is a video or image element
+  const isVideo = img instanceof HTMLVideoElement;
+
+  // Get natural dimensions based on element type
+  const naturalWidth = isVideo ? img.videoWidth : img.naturalWidth;
+  const naturalHeight = isVideo ? img.videoHeight : img.naturalHeight;
+
   // Calculate scale to cover the entire area
-  const scaleX = scaledWidth / img.naturalWidth;
-  const scaleY = scaledHeight / img.naturalHeight;
+  const scaleX = scaledWidth / naturalWidth;
+  const scaleY = scaledHeight / naturalHeight;
   const imageScale = Math.max(scaleX, scaleY);
 
-  const scaledImageWidth = img.naturalWidth * imageScale;
-  const scaledImageHeight = img.naturalHeight * imageScale;
+  const scaledImageWidth = naturalWidth * imageScale;
+  const scaledImageHeight = naturalHeight * imageScale;
 
   // MOBILE SHIMMER FIX: Round image positioning to integer pixels
   // Center the image with integer coordinates
@@ -183,7 +197,7 @@ export const drawImageWithoutContext = (
     ctx.imageSmoothingQuality = 'high'; // Skip expensive quality setting on Safari
   }
 
-  // Draw image with integer pixel coordinates
+  // Draw image/video with integer pixel coordinates
   ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
 
   // Add subtle border without save/restore

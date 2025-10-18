@@ -73,7 +73,12 @@ export default function TokenSwapInterface({
   transactionStatus: externalTransactionStatus,
   onTransactionStatusChange,
 }: TokenSwapInterfaceProps) {
-  const { walletAddress, isAuthenticated, connectWallet: authConnectWallet } = useAuth();
+  const {
+    walletAddress,
+    isAuthenticated,
+    connectWallet: authConnectWallet,
+    isLoading: authIsLoading,
+  } = useAuth();
 
   // Initialize contracts
   const contracts = useSwapContracts(walletAddress, isAuthenticated, tokenAddress);
@@ -671,11 +676,12 @@ export default function TokenSwapInterface({
 
   const handleConnectWallet = useCallback(async () => {
     try {
-      setLoading('Connecting wallet...');
+      // Don't set local loading state - the auth context handles loading state for wallet connection
+      // This ensures the button stays in loading state until the wallet is fully initialized
       await authConnectWallet();
     } catch (error) {
       console.error('Failed to connect wallet:', error);
-    } finally {
+      // Only set loading state if there's an error
       setLoading('');
     }
   }, [authConnectWallet]);
@@ -1332,10 +1338,10 @@ export default function TokenSwapInterface({
               {!isAuthenticated ? (
                 <Button
                   onClick={handleConnectWallet}
-                  disabled={!!loading}
+                  disabled={!!loading || authIsLoading}
                   className="w-full h-18 rounded-2xl border border-[#D0B284]/60 bg-black text-[#D0B284] font-spray-letters font-bold tracking-widest uppercase transition-colors hover:bg-[#151d14] disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {loading ? (
+                  {loading || authIsLoading ? (
                     <span className="flex items-center justify-center">
                       <Loader2 className="h-6 w-6 animate-spin" />
                     </span>
@@ -1369,15 +1375,16 @@ export default function TokenSwapInterface({
                     <Button
                       onClick={handleApproveToken}
                       disabled={!!loading}
-                      className="w-full h-18 rounded-2xl border border-[#D0B284]/60 bg-black text-[#D0B284] font-spray-letters font-bold text-5xl tracking-widest uppercase transition-colors hover:bg-[#151d14] disabled:cursor-not-allowed disabled:opacity-50"
+                      className="w-3/4 max-w-[300px] mx-auto h-18 rounded-2xl border border-[#6BD18E]/25 bg-[#221F20] text-[#f4e5a6] font-spray-letters font-bold text-3xl tracking-widest uppercase transition-colors hover:bg-[#151d14] disabled:cursor-not-allowed disabled:opacity-50 flex items-center justify-center"
                     >
                       {loading ? (
                         <span className="flex items-center justify-center">
                           <Loader2 className="h-6 w-6 animate-spin" />
                         </span>
                       ) : (
-                        <span className="bg-gradient-to-r from-[#d4af37] via-[#f4e5a6] to-[#d4af37] bg-clip-text text-transparent font-spray-letters">
-                          APPROVE {selectedSellAsset?.toUpperCase()}
+                        <span className="bg-gradient-to-r text-[#f8e28b] bg-clip-text font-spray-letters">
+                          APPROVE
+                          {/* {selectedSellAsset?.toUpperCase()} */}
                         </span>
                       )}
                     </Button>
@@ -1385,15 +1392,15 @@ export default function TokenSwapInterface({
                     <Button
                       onClick={handleSwapClick}
                       disabled={!hasValidAmount || !!loading || !canSwap || !isSwapSupported}
-                      className="w-full h-18 rounded-2xl border border-[#D0B284]/60 bg-black text-[#D0B284] font-spray-letters font-bold text-5xl tracking-widest uppercase transition-colors hover:bg-[#D] disabled:cursor-not-allowed disabled:opacity-50"
+                      className="w-3/4 max-w-[300px] mx-auto h-18 rounded-2xl border border-[#6BD18E]/60 bg-transparent text-[#6BD18E] font-spray-letters font-bold text-5xl tracking-widest uppercase transition-colors hover:bg-[#D] disabled:cursor-not-allowed disabled:opacity-50 flex items-center justify-center"
                     >
                       {loading ? (
                         <span className="flex items-center justify-center">
                           <Loader2 className="h-6 w-6 animate-spin" />
                         </span>
                       ) : (
-                        <span className="bg-gradient-to-r from-[#d4af37] via-[#f4e5a6] to-[#d4af37] bg-clip-text text-transparent font-spray-letters">
-                          SWAP
+                        <span className="bg-clip-text font-spray-letters tracking-widest">
+                          TRADE
                         </span>
                       )}
                     </Button>

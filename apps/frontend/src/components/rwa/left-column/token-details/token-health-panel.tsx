@@ -47,7 +47,7 @@ class ValueEquilibriumCalculator {
 
   calculateVER(tokenPrice: number, rewardPerToken: number): number {
     if (rewardPerToken <= 0) return Infinity;
-    return tokenPrice / rewardPerToken;
+    return (rewardPerToken / tokenPrice) * 100;
   }
 
   generateMarketSignal(ver: number): MarketSignal {
@@ -126,6 +126,8 @@ const formatPrice = (price: number): string => {
   if (price < 1) return price.toFixed(4);
   return price.toFixed(2);
 };
+// Not currently used (VER/Signal display removed from UI), but kept for future use
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const getSignalColor = (action: string) => {
   switch (action) {
     case 'STRONG_BUY':
@@ -200,12 +202,8 @@ export default function TokenHealthPanel({
   // Fetch ACES/USD price for volume conversion
   const { acesUsdPrice } = useAcesPrice();
 
-  // Fetch bonding data
-  const {
-    currentSupply,
-    acesBalance,
-    loading: bondingLoading,
-  } = useTokenBondingData(tokenAddress, chainId);
+  // Fetch bonding data (acesBalance not extracted - market cap comes from props now)
+  const { currentSupply, loading: bondingLoading } = useTokenBondingData(tokenAddress, chainId);
 
   // Determine if token is in DEX mode
   const isDexMode = useMemo(() => {
@@ -323,10 +321,12 @@ export default function TokenHealthPanel({
     calculatedMarketCap,
   ]);
 
-  // Get signal color
-  const tradingCredits = useMemo(() => {
-    return userTokenHoldings * metrics.rewardPerToken;
-  }, [userTokenHoldings, metrics.rewardPerToken]);
+  // Calculate total reward earned: (user holdings / circulating supply) × community reward (10% of asset price)
+  const totalRewardEarned = useMemo(() => {
+    if (circulatingSupply <= 0 || userTokenHoldings <= 0) return 0;
+    const userShareOfSupply = userTokenHoldings / circulatingSupply;
+    return userShareOfSupply * communityReward;
+  }, [userTokenHoldings, circulatingSupply, communityReward]);
 
   const ratioDisplay = useMemo(() => {
     const safeRatio = Number.isFinite(metrics.acesRatio) ? metrics.acesRatio : 0;
@@ -341,13 +341,13 @@ export default function TokenHealthPanel({
     return { numeric: match[1], suffix: raw.slice(match[1].length) };
   }, [metrics.acesRatio]);
 
-  const tradingCreditsDisplay = useMemo(() => {
-    const formatted = formatNumber(tradingCredits);
+  const rewardDisplay = useMemo(() => {
+    const formatted = formatNumber(totalRewardEarned);
     return {
       numeric: formatted,
       prefix: '$',
     };
-  }, [tradingCredits]);
+  }, [totalRewardEarned]);
 
   const rowClass =
     'flex items-center justify-between gap-4 px-5 py-3 border-b border-[#D0B284]/15 last:border-b-0';
@@ -399,10 +399,36 @@ export default function TokenHealthPanel({
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5, delay: 0.1 }}
       >
-        <SectionLabel label="VER" />
+        <LabelWithTooltip
+          label="TRADE REWARD"
+          tooltip="Reward multiplier from collectible sale commissions. Shows how much you'll receive per dollar spent when the item sells, distributed proportionally to your token holdings."
+        />
         <span className={valueClass}>
-          {isLoading ? '...' : hasData ? metrics.valueEquilibriumRatio.toFixed(2) : '--'}
+          {isLoading ? '...' : hasData ? metrics.valueEquilibriumRatio.toFixed(0) : '--'}%
         </span>
+      </motion.div>
+      <motion.div
+        className={rowClass}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.5, delay: 0.2 }}
+      >
+        <LabelWithTooltip
+          label="TOTAL REWARD EARNED"
+          tooltip="Your proportional share of the community reward pool. Calculated as: (Your Holdings ÷ Circulating Supply) × Community Reward."
+        />
+        {isLoading || !hasData ? (
+          <span className={valueClass}>...</span>
+        ) : (
+          <div className="flex items-baseline gap-0.5 text-white">
+            <span className="text-sm font-proxima-nova leading-none text-white">
+              {rewardDisplay.prefix}
+            </span>
+            <span className="text-lg font-semibold font-proxima-nova leading-none text-white">
+              {rewardDisplay.numeric}
+            </span>
+          </div>
+        )}
       </motion.div>
       <motion.div
         className={rowClass}
@@ -422,29 +448,7 @@ export default function TokenHealthPanel({
           </div>
         )}
       </motion.div>
-      <motion.div
-        className={rowClass}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.5, delay: 0.2 }}
-      >
-        <LabelWithTooltip
-          label="TRADING CREDITS"
-          tooltip="Your share of the community reward pool = Your Token Balance × Reward Per Token. These credits can be used for future trading."
-        />
-        {isLoading || !hasData ? (
-          <span className={valueClass}>...</span>
-        ) : (
-          <div className="flex items-baseline gap-0.5 text-white">
-            <span className="text-sm font-proxima-nova leading-none text-white">
-              {tradingCreditsDisplay.prefix}
-            </span>
-            <span className="text-lg font-semibold font-proxima-nova leading-none text-white">
-              {tradingCreditsDisplay.numeric}
-            </span>
-          </div>
-        )}
-      </motion.div>
+
       <motion.div
         className={rowClass}
         initial={{ opacity: 0 }}
@@ -452,7 +456,7 @@ export default function TokenHealthPanel({
         transition={{ duration: 0.5, delay: 0.15 }}
       >
         <LabelWithTooltip
-          label="REWARD PER TOKEN"
+          label="LIQUIDITY"
           tooltip="Community Reward ÷ Circulating Supply. Community reward is 10% of the asset's sale price, distributed among all token holders."
         />
         {isLoading || !hasData ? (

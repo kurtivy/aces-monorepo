@@ -43,7 +43,11 @@ interface UseCanvasEntranceAnimationProps {
     height: number;
     index: number;
   }>;
-  tokenPositions: Array<{ worldX: number; worldY: number }>;
+  tokenPositions: Array<{
+    worldX: number;
+    worldY: number;
+    element: HTMLImageElement | HTMLVideoElement;
+  }>;
   featuredSectionPosition?: {
     x: number;
     y: number;
@@ -78,6 +82,7 @@ export interface AnimatedProductElement {
 export interface AnimatedTokenElement {
   worldX: number;
   worldY: number;
+  element: HTMLImageElement | HTMLVideoElement;
   // Animated properties (final calculated values)
   animatedX: number;
   animatedY: number;
@@ -282,6 +287,7 @@ export const useCanvasEntranceAnimation = ({
           return {
             worldX: base.worldX,
             worldY: base.worldY,
+            element: base.element,
             animatedX: base.worldX,
             animatedY: base.baseY,
             animatedOpacity: 1,
@@ -306,6 +312,7 @@ export const useCanvasEntranceAnimation = ({
           return {
             worldX: base.worldX,
             worldY: base.worldY,
+            element: base.element,
             animatedX: base.worldX,
             animatedY: base.baseY + currentOffset,
             animatedOpacity: easedTokenProgress,
@@ -316,6 +323,7 @@ export const useCanvasEntranceAnimation = ({
           return {
             worldX: base.worldX,
             worldY: base.worldY,
+            element: base.element,
             animatedX: base.worldX,
             animatedY: base.baseY + base.startOffset,
             animatedOpacity: 0,

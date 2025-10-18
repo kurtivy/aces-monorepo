@@ -204,15 +204,31 @@ export function useSwapContracts(
     ) {
       // console.log('[useSwapContracts] Auto-initializing from auth state...');
 
+      // Find the wallet to determine client type
+      const wallet = privyWallets.find(
+        (w) => w.address.toLowerCase() === walletAddress.toLowerCase(),
+      );
+      const walletClientType = wallet?.walletClientType || 'unknown';
+      const isPrivyWallet = walletClientType.toLowerCase().includes('privy');
+
       let retryCount = 0;
-      const maxRetries = 3;
-      const delay = getWalletInitDelay();
+      const maxRetries = isPrivyWallet ? 5 : 3; // More retries for Privy embedded wallets
+      const delay = getWalletInitDelay(walletClientType);
+
+      console.log('[useSwapContracts] Initialization config:', {
+        walletClientType,
+        maxRetries,
+        delay,
+      });
 
       const attemptInitialization = async () => {
         const success = await initializeProvider();
 
         if (!success && retryCount < maxRetries) {
           retryCount++;
+          console.log(
+            `[useSwapContracts] Retry ${retryCount}/${maxRetries} in ${delay * (retryCount + 1)}ms`,
+          );
           setTimeout(attemptInitialization, delay * (retryCount + 1));
         } else if (!success) {
           console.error('[useSwapContracts] Failed to initialize after', maxRetries, 'attempts');

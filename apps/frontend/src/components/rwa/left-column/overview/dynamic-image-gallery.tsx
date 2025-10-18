@@ -97,7 +97,7 @@ export default function DynamicImageGallery({
     };
   }, [clampedSelectedIndex]);
 
-  // Auto-cycle images every 5 seconds when lightbox is closed
+  // Auto-cycle images every 12 seconds when lightbox is closed
   useEffect(() => {
     if (isLightboxOpen || images.length <= 1) {
       return;
@@ -106,7 +106,7 @@ export default function DynamicImageGallery({
     const timeoutId = window.setTimeout(() => {
       const nextIndex = clampedSelectedIndex === images.length - 1 ? 0 : clampedSelectedIndex + 1;
       onImageSelect(nextIndex);
-    }, 5000);
+    }, 12000);
 
     return () => {
       window.clearTimeout(timeoutId);

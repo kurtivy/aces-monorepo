@@ -94,6 +94,15 @@ export function TokenMetricsSection({
             </span>
           </div>
 
+          <div className="flex items-center justify-between px-5 py-3 border-b border-[#D0B284]/10">
+            <span className="text-xs tracking-[0.2em] uppercase text-[#D0B284] font-proxima-nova font-semibold">
+              COMMUNITY REWARD
+            </span>
+            <span className="text-base font-semibold text-white font-proxima-nova">
+              {formatPrice((reservePrice ? parseFloat(reservePrice) * 0.1 : 0).toFixed(2))}
+            </span>
+          </div>
+
           {/* BRAND Row */}
           <div className="flex items-center justify-between px-5 py-3 border-b border-[#D0B284]/10">
             <span className="text-xs tracking-[0.2em] uppercase text-[#D0B284] font-proxima-nova font-semibold">
@@ -111,28 +120,11 @@ export function TokenMetricsSection({
                 HYPE
               </span>
             </div>
-            {hasHypePoints ? (
-              <ul className="space-y-1.5 text-sm font-proxima-nova">
-                {hypePoints.map((point, index) => (
-                  <motion.li
-                    key={index}
-                    className="flex items-start gap-1.5 text-white/90"
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.4, delay: index * 0.1 }}
-                  >
-                    <span className="text-[#D0B284] flex-shrink-0 text-[12px] leading-none font-spray-letters">
-                      .
-                    </span>
-                    <span className="flex-1">{point}</span>
-                  </motion.li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-white/50 italic font-proxima-nova">
-                No hype points available
-              </p>
-            )}
+            <p className="text-xs font-proxima-nova text-white/90">
+              A groundbreaking collaboration between haute horology and contemporary art, this
+              Audemars Piguet Royal Oak Concept is a limited edition masterpiece designed with the
+              artist KAWS.
+            </p>
           </div>
         </div>
       </div>

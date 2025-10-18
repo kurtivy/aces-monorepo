@@ -475,8 +475,14 @@ export const drawFeaturedSection = (
   ctx.roundRect(x, y, width, height, radius);
   ctx.fill();
 
-  // Draw featured image if available
-  if (featuredImage && featuredImage.element && featuredImage.element.complete) {
+  // Draw featured image/video if available
+  const isElementReady =
+    featuredImage &&
+    featuredImage.element &&
+    (featuredImage.element instanceof HTMLVideoElement ||
+      (featuredImage.element instanceof HTMLImageElement && featuredImage.element.complete));
+
+  if (isElementReady) {
     ctx.save();
 
     // Create rounded rectangle clipping path with padding
@@ -490,15 +496,28 @@ export const drawFeaturedSection = (
     ctx.roundRect(imageX, imageY, imageWidth, imageHeight, radius - 4);
     ctx.clip();
 
+    // Get natural dimensions based on element type
+    const element = featuredImage.element;
+    let naturalWidth: number;
+    let naturalHeight: number;
+
+    if (element instanceof HTMLVideoElement) {
+      naturalWidth = element.videoWidth;
+      naturalHeight = element.videoHeight;
+    } else {
+      naturalWidth = element.naturalWidth;
+      naturalHeight = element.naturalHeight;
+    }
+
     // Calculate scale to cover the entire area while maintaining aspect ratio
-    const scaleX = imageWidth / featuredImage.element.naturalWidth;
-    const scaleY = imageHeight / featuredImage.element.naturalHeight;
+    const scaleX = imageWidth / naturalWidth;
+    const scaleY = imageHeight / naturalHeight;
     const baseScale = Math.max(scaleX, scaleY);
     const zoomFactor = 1.15; // 15% additional zoom to reduce black space
     const imageScale = baseScale * zoomFactor;
 
-    const scaledImageWidth = featuredImage.element.naturalWidth * imageScale;
-    const scaledImageHeight = featuredImage.element.naturalHeight * imageScale;
+    const scaledImageWidth = naturalWidth * imageScale;
+    const scaledImageHeight = naturalHeight * imageScale;
 
     // Center the image
     const offsetX = Math.round(imageX + (imageWidth - scaledImageWidth) / 2);
@@ -511,7 +530,7 @@ export const drawFeaturedSection = (
       ctx.imageSmoothingQuality = 'high';
     }
 
-    // Draw the featured image
+    // Draw the featured image/video
     ctx.drawImage(featuredImage.element, offsetX, offsetY, drawWidth, drawHeight);
 
     ctx.restore();
@@ -683,13 +702,14 @@ export const drawAnimatedFeaturedSection = (
   ctx.roundRect(drawX, drawY, width, height, radius);
   ctx.fill();
 
-  // Draw featured image with image animation progress
-  if (
+  // Draw featured image/video with image animation progress
+  const isElementReadyForAnimation =
     featuredImage &&
     featuredImage.element &&
-    featuredImage.element.complete &&
-    imageAnimationProgress > 0
-  ) {
+    (featuredImage.element instanceof HTMLVideoElement ||
+      (featuredImage.element instanceof HTMLImageElement && featuredImage.element.complete));
+
+  if (isElementReadyForAnimation && imageAnimationProgress > 0) {
     ctx.save();
 
     // Apply image-specific opacity
@@ -706,15 +726,28 @@ export const drawAnimatedFeaturedSection = (
     ctx.roundRect(imageX, imageY, imageWidth, imageHeight, radius - 4);
     ctx.clip();
 
+    // Get natural dimensions based on element type
+    const element = featuredImage.element;
+    let naturalWidth: number;
+    let naturalHeight: number;
+
+    if (element instanceof HTMLVideoElement) {
+      naturalWidth = element.videoWidth;
+      naturalHeight = element.videoHeight;
+    } else {
+      naturalWidth = element.naturalWidth;
+      naturalHeight = element.naturalHeight;
+    }
+
     // Calculate scale to cover the entire area while maintaining aspect ratio
-    const scaleX = imageWidth / featuredImage.element.naturalWidth;
-    const scaleY = imageHeight / featuredImage.element.naturalHeight;
+    const scaleX = imageWidth / naturalWidth;
+    const scaleY = imageHeight / naturalHeight;
     const baseScale = Math.max(scaleX, scaleY);
     const zoomFactor = 1.15; // 15% additional zoom to reduce black space
     const imageScale = baseScale * zoomFactor;
 
-    const scaledImageWidth = featuredImage.element.naturalWidth * imageScale;
-    const scaledImageHeight = featuredImage.element.naturalHeight * imageScale;
+    const scaledImageWidth = naturalWidth * imageScale;
+    const scaledImageHeight = naturalHeight * imageScale;
 
     // Center the image
     const offsetX = Math.round(imageX + (imageWidth - scaledImageWidth) / 2);

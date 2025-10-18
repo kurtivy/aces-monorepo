@@ -99,28 +99,26 @@ export function TransactionSuccessModal({
               )}
 
               <div className="mb-3">
-                <h2 className="text-lg font-bold text-[#D0B264] text-balance">
-                  {title ? `You acquired ${title}` : 'Transaction Confirmed'}
+                <h2 className="text-lg font-bold text-[#D0B264] text-center">Congratualtions!</h2>
+                <h2 className="text-lg font-bold text-[#D0B264] text-center">
+                  You just collected culture.
                 </h2>
-                <p className="text-xs text-[#D0B264]/60 mt-1">
-                  Congratualtions! You have acquired a price of culture
-                </p>
               </div>
 
               <div className="space-y-2 mb-4 pb-4 border-b border-[#D0B264]/15">
-                <div className="flex items-center justify-between">
+                {/* <div className="flex items-center justify-between">
                   <span className="text-xs text-[#D0B264]/60">Received</span>
                   <span className="font-mono text-sm font-semibold text-[#D0B264]">
                     {Number.parseFloat(tokenAmount).toFixed(4)} {tokenSymbol}
                   </span>
-                </div>
-
+                </div> */}
+                {/* 
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-[#D0B264]/60">Spent</span>
                   <span className="font-mono text-sm font-semibold text-[#D0B264]">
                     {Number.parseFloat(acesSpent).toFixed(4)} {spentAssetSymbol}
                   </span>
-                </div>
+                </div> */}
 
                 {usdValue && (
                   <div className="flex items-center justify-between">

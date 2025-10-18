@@ -112,6 +112,7 @@ interface RepeatedTokenPosition {
   worldX: number;
   worldY: number;
   tileId: string;
+  element: HTMLImageElement | HTMLVideoElement;
 }
 
 // Phase 3.1: Dirty Region Tracking Interface
@@ -344,7 +345,7 @@ export const useCanvasRenderer = ({
   const [hoveredTokenIndex, setHoveredTokenIndex] = useState<number | null>(null);
   const mousePositionRef = useRef({ x: 0, y: 0 });
   const logoImageRef = useRef<HTMLImageElement | null>(null);
-  const submitAssetImageRef = useRef<HTMLImageElement | null>(null);
+  const submitAssetImageRef = useRef<HTMLImageElement | HTMLVideoElement | null>(null);
   const lastFrameTime = useRef<number>(performance.now());
 
   // Canvas loading progress tracking
@@ -452,7 +453,9 @@ export const useCanvasRenderer = ({
     }>
   >([]);
 
-  const stableCreateTokenPositions = useRef<Array<{ worldX: number; worldY: number }>>([]);
+  const stableCreateTokenPositions = useRef<
+    Array<{ worldX: number; worldY: number; element: HTMLImageElement | HTMLVideoElement }>
+  >([]);
   const [placementsCalculated, setPlacementsCalculated] = useState(false);
 
   // Phase 1: Initialize extracted animation timing hook
@@ -593,13 +596,15 @@ export const useCanvasRenderer = ({
 
   const websiteLogoRef = useRef<HTMLImageElement | null>(null);
 
-  // Find and store the submit asset image
+  // Store submit asset video as fallback (prefer video over image for better visual experience)
   useEffect(() => {
     if (images && images.length > 0) {
+      // Try to get video first, fall back to image
+      const submitAssetVideo = images.find((img) => img.metadata.id === 'submit-asset-video');
       const submitAssetImage = images.find((img) => img.metadata.id === 'submit-asset');
-      if (submitAssetImage) {
-        submitAssetImageRef.current = submitAssetImage.element;
-      }
+
+      // Prefer video for fallback
+      submitAssetImageRef.current = submitAssetVideo?.element || submitAssetImage?.element || null;
     }
   }, [images]);
 
@@ -811,7 +816,11 @@ export const useCanvasRenderer = ({
       height: number;
       index: number;
     }> = [];
-    const createTokenPositions: Array<{ worldX: number; worldY: number }> = [];
+    const createTokenPositions: Array<{
+      worldX: number;
+      worldY: number;
+      element: HTMLImageElement | HTMLVideoElement;
+    }> = [];
 
     // FEATURED SECTION: Mark entire reserved area (2×3) as occupied
     for (let i = 0; i < 2; i++) {
@@ -874,7 +883,7 @@ export const useCanvasRenderer = ({
             imagePlacementMap.current.set(`${gridX},${gridY}`, placedItem);
 
             if (imageInfo.type === 'submit-asset') {
-              createTokenPositions.push({ worldX: x, worldY: y });
+              createTokenPositions.push({ worldX: x, worldY: y, element: imageInfo.element });
             } else {
               productPlacements.push({
                 image: imageInfo,
@@ -1658,7 +1667,7 @@ export const useCanvasRenderer = ({
           });
 
           const transformedRepeatedTokens = batchTransformElements(
-            allRepeatedTokens.map((token) => ({
+            allRepeatedTokens.map((token: RepeatedTokenPosition) => ({
               x: token.worldX,
               y: token.worldY,
               width: unitSize,
@@ -1667,6 +1676,7 @@ export const useCanvasRenderer = ({
               worldX: token.worldX, // Add required properties
               worldY: token.worldY,
               tileId: token.tileId,
+              element: token.element, // Include element for proper type inference
               original: token,
             })),
             viewTransform,
@@ -1783,6 +1793,22 @@ export const useCanvasRenderer = ({
         const actualHoverProgress = isCurrentlyHovered ? currentHoverProgress : 0;
 
         if (tokenElement.opacity > 0) {
+          // Get the specific element for this token - prefer from animation, fallback to position array, then ref
+          const animatedToken = tokenElement.original as any; // Type assertion for element access
+          const submitAssetElement =
+            animatedToken?.element ||
+            stableCreateTokenPositions.current[index]?.element ||
+            submitAssetImageRef.current;
+
+          // Ensure video is playing if this token's submit asset is a video
+          if (submitAssetElement instanceof HTMLVideoElement) {
+            if (submitAssetElement.paused) {
+              submitAssetElement.play().catch(() => {
+                // Silently handle autoplay failures
+              });
+            }
+          }
+
           ctx.save();
           ctx.globalAlpha = tokenElement.opacity;
 
@@ -1793,11 +1819,11 @@ export const useCanvasRenderer = ({
           ctx.scale(tokenElement.original.animatedScale, tokenElement.original.animatedScale);
           ctx.translate(-centerX, -centerY);
 
-          // Draw submit asset image instead of token square
-          if (submitAssetImageRef.current) {
+          // Draw submit asset image/video instead of token square
+          if (submitAssetElement) {
             drawImage(
               ctx,
-              submitAssetImageRef.current,
+              submitAssetElement,
               tokenElement.screenX,
               tokenElement.screenY,
               unitSize,
@@ -1821,7 +1847,7 @@ export const useCanvasRenderer = ({
 
         // Batch transform repeated tokens to screen coordinates
         const transformedRepeatedTokens = batchTransformElements(
-          allRepeatedTokensForRendering.map((token) => ({
+          allRepeatedTokensForRendering.map((token: RepeatedTokenPosition) => ({
             x: token.worldX,
             y: token.worldY,
             width: unitSize,
@@ -1830,6 +1856,7 @@ export const useCanvasRenderer = ({
             worldX: token.worldX,
             worldY: token.worldY,
             tileId: token.tileId,
+            element: token.element, // Include element for proper type inference
             original: token,
           })),
           viewTransform,
@@ -1856,11 +1883,23 @@ export const useCanvasRenderer = ({
             hoveredRepeatedToken.worldY === tokenElement.original.worldY;
           const actualHoverProgress = isCurrentlyHoveredRepeated ? currentHoverProgress : 0;
 
-          // Draw submit asset image instead of token square
-          if (submitAssetImageRef.current) {
+          // Get the specific element for this repeated token
+          const submitAssetElement = tokenElement.original.element || submitAssetImageRef.current;
+
+          // Ensure video is playing if this token's submit asset is a video
+          if (submitAssetElement instanceof HTMLVideoElement) {
+            if (submitAssetElement.paused) {
+              submitAssetElement.play().catch(() => {
+                // Silently handle autoplay failures
+              });
+            }
+          }
+
+          // Draw submit asset image/video instead of token square
+          if (submitAssetElement) {
             drawImage(
               ctx,
-              submitAssetImageRef.current,
+              submitAssetElement,
               tokenElement.screenX,
               tokenElement.screenY,
               unitSize,

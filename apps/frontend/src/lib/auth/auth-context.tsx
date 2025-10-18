@@ -229,14 +229,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
+      const wasAuthenticated = privyAuthenticated;
+
       if (!privyAuthenticated) {
-        // Use login() for initial authentication
+        // Use login() for initial authentication (embedded wallet will be created)
         await privyLogin();
+        // Don't clear loading state here - let the useEffect handle it
+        // The useEffect will trigger initializeAuth when privyAuthenticated becomes true
         return;
+      } else {
+        // Use linkWallet() to add additional wallets when already authenticated
+        await privyLinkWallet();
       }
 
-      // Use linkWallet() to add additional wallets when already authenticated
-      await privyLinkWallet();
+      // Only clear loading for linkWallet flow (not for initial login)
+      if (wasAuthenticated) {
+        setState((prev) => ({ ...prev, isLoading: false }));
+      }
     } catch (error) {
       console.error('Connect wallet error:', error);
 
@@ -252,9 +261,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setState((prev) => ({
         ...prev,
         error: errorMessage,
+        isLoading: false,
       }));
     } finally {
-      setState((prev) => ({ ...prev, isLoading: false }));
       setConnectionAttempting(false);
     }
   };

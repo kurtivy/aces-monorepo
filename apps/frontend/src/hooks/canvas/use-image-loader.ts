@@ -259,6 +259,65 @@ export const useImageLoader = ({ unitSize, enableLazyLoading = false }: UseImage
         return;
       }
 
+      // Check if this is a video file (submit-asset-video)
+      const isVideo = metadata.image.endsWith('.mp4') || metadata.image.endsWith('.webm');
+
+      if (isVideo) {
+        // Handle video loading
+        const video = document.createElement('video');
+        video.src = metadata.image;
+        video.loop = true;
+        video.muted = true;
+        video.playsInline = true;
+        video.autoplay = true;
+
+        video.addEventListener('loadeddata', () => {
+          try {
+            // Start playing the video
+            video.play().catch((error) => {
+              LuxuryLogger.log(`Video autoplay failed: ${error}`, 'warn');
+            });
+
+            const width = video.videoWidth || unitSize;
+            const height = video.videoHeight || unitSize;
+
+            const type = getImageType(width, height);
+            const { width: proportionalWidth, height: proportionalHeight } = getDisplayDimensions(
+              type,
+              unitSize,
+            );
+
+            loadedImages[index] = {
+              element: video as any, // Cast video to HTMLImageElement for typing
+              type: 'submit-asset',
+              displayWidth: proportionalWidth * (unitSize / 200),
+              displayHeight: proportionalHeight * (unitSize / 200),
+              metadata,
+              isVideo: true, // Flag to indicate this is a video
+            };
+            updateState();
+          } catch (error) {
+            LuxuryLogger.log(`Video processing error: ${error}`, 'error');
+            handleError();
+          }
+        });
+
+        video.addEventListener('error', (e) => {
+          LuxuryLogger.log(`Failed to load video: ${metadata.image}`, 'error');
+          handleError();
+        });
+
+        // Timeout for video loading
+        setTimeout(() => {
+          if (!loadedImages[index]) {
+            LuxuryLogger.log(`Video loading timeout: ${metadata.image}`, 'warn');
+            handleError();
+          }
+        }, loadingConfig.timeout);
+
+        return;
+      }
+
       // Phase 2 Step 1: Use browser-specific loading configuration
       const loadImage = async () => {
         const result = await loadImageWithFallback({

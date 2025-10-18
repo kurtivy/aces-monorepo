@@ -41,7 +41,8 @@ export function getProviderForAddress(
     });
 
     // Get the provider based on Privy's wallet client type
-    return getProviderForWalletType(privyWallet.walletClientType);
+    // For Privy embedded wallets, pass the wallet object itself
+    return getProviderForWalletType(privyWallet.walletClientType, privyWallet);
   }
 
   // Fallback to auto-detection
@@ -52,7 +53,10 @@ export function getProviderForAddress(
 /**
  * Get provider for a specific wallet type (as reported by Privy)
  */
-export function getProviderForWalletType(walletClientType: string): WalletProvider | null {
+export function getProviderForWalletType(
+  walletClientType: string,
+  privyWallet?: ConnectedWallet,
+): WalletProvider | null {
   if (typeof window === 'undefined') {
     return null;
   }
@@ -60,6 +64,34 @@ export function getProviderForWalletType(walletClientType: string): WalletProvid
   const normalized = walletClientType.toLowerCase();
 
   console.log('[WalletProvider] Getting provider for wallet type:', walletClientType);
+
+  // Handle Privy embedded wallets FIRST (before checking window.ethereum)
+  if (normalized.includes('privy') && privyWallet) {
+    console.log('[WalletProvider] Using Privy embedded wallet provider');
+
+    // Privy embedded wallets provide their own EIP-1193 provider
+    // Access it via getEthereumProvider() method
+    try {
+      const provider = (privyWallet as any).getEthereumProvider?.();
+      if (provider) {
+        console.log('[WalletProvider] ✅ Got Privy embedded wallet provider');
+        return provider as WalletProvider;
+      }
+    } catch (error) {
+      console.error('[WalletProvider] Failed to get Privy provider:', error);
+    }
+
+    // Fallback: Some Privy versions might expose it differently
+    // Try accessing the provider directly from the wallet object
+    const directProvider = (privyWallet as any).provider;
+    if (directProvider) {
+      console.log('[WalletProvider] ✅ Got Privy provider (direct access)');
+      return directProvider as WalletProvider;
+    }
+
+    console.warn('[WalletProvider] ⚠️ Could not get Privy embedded wallet provider');
+    return null;
+  }
 
   // Handle Phantom
   if (normalized.includes('phantom')) {
@@ -127,15 +159,14 @@ export function getProviderForWalletType(walletClientType: string): WalletProvid
     }
   }
 
-  // Handle Privy embedded wallets
-  if (normalized.includes('privy')) {
-    console.log('[WalletProvider] Using Privy embedded wallet, returning window.ethereum');
+  // Fallback to window.ethereum for unknown wallet types
+  if (window.ethereum) {
+    console.warn('[WalletProvider] ⚠️ Could not find specific provider, using window.ethereum');
     return window.ethereum as WalletProvider;
   }
 
-  // Fallback to window.ethereum
-  console.warn('[WalletProvider] ⚠️ Could not find specific provider, using window.ethereum');
-  return window.ethereum as WalletProvider;
+  console.error('[WalletProvider] ❌ No provider found for wallet type:', walletClientType);
+  return null;
 }
 
 /**
@@ -349,7 +380,15 @@ export function getWalletNameFromType(walletClientType: string): string {
  * Get recommended initialization delay based on wallet type
  * Different wallets need different initialization times
  */
-export function getWalletInitDelay(): number {
+export function getWalletInitDelay(walletClientType?: string): number {
+  // Privy embedded wallets need extra time to initialize
+  if (walletClientType) {
+    const normalized = walletClientType.toLowerCase();
+    if (normalized.includes('privy')) {
+      return 1500; // Privy embedded wallets need more time
+    }
+  }
+
   if (typeof window === 'undefined' || !window.ethereum) {
     return 500; // Default delay
   }

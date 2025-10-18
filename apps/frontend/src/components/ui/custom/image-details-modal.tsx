@@ -2,13 +2,14 @@
 
 import type React from 'react';
 
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
 import type { ImageInfo } from '../../../types/canvas';
 import { getImageMetadata } from '../../../lib/utils/luxury-logger';
-import CountdownTimer from '../countdown-timer';
 import PurchaseInquiryModal from './purchase-inquiry-modal';
+import { useListingBySymbol } from '../../../hooks/rwa/use-listing-by-symbol';
+import { useTokenMarketCap } from '../../../hooks/use-token-market-cap';
 
 import {
   addWindowEventListenerSafe,
@@ -218,6 +219,35 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
   // State for purchase inquiry modal
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
 
+  // Extract symbol from imageInfo metadata
+  const symbol = imageInfo?.metadata?.symbol;
+
+  // Fetch listing data if symbol exists
+  const { listing } = useListingBySymbol(symbol || '');
+
+  // Get token address from listing
+  const tokenAddress = listing?.token?.contractAddress;
+
+  // Fetch live market cap data
+  const { marketCapUsd } = useTokenMarketCap(tokenAddress, 'usd');
+
+  // Calculate live market cap
+  const liveMarketCap = useMemo(() => {
+    return isFinite(marketCapUsd) && marketCapUsd > 0 ? marketCapUsd : 0;
+  }, [marketCapUsd]);
+
+  // Get RRP (Asset Sale Price) from metadata
+  const rrpValue = imageInfo?.metadata?.rrp as number | undefined;
+  const assetSalePrice = useMemo(() => {
+    return rrpValue !== undefined ? rrpValue : 0;
+  }, [rrpValue]);
+
+  // Calculate ACES Ratio: Market Cap / Asset Sale Price
+  const acesRatio = useMemo(() => {
+    if (assetSalePrice <= 0 || liveMarketCap <= 0) return 0;
+    return liveMarketCap / assetSalePrice;
+  }, [liveMarketCap, assetSalePrice]);
+
   const [backdropStyles, setBackdropStyles] = useState<{
     backdropFilter?: string;
     WebkitBackdropFilter?: string;
@@ -257,9 +287,9 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
     // Phase 2 Step 3: Early exit if modal is not visible (prevents unnecessary listeners)
     if (!imageInfo) return;
 
-    const handleEscape = (e: Event) => {
-      const keyboardEvent = e as KeyboardEvent;
-      if (keyboardEvent.key === 'Escape') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const handleEscape = (e: any) => {
+      if (e.key === 'Escape') {
         stableOnClose();
       }
     };
@@ -352,11 +382,11 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
 
                       {/* Updated Price Display - RRP Price • Token Symbol */}
                       <div className="flex flex-col space-y-2 mb-3">
-                        <div className="text-[#FFFFFF]/60 text-xs sm:text-sm font-jetbrains-mono tracking-wide">
+                        {/* <div className="text-[#FFFFFF]/60 text-xs sm:text-sm font-jetbrains-mono tracking-wide">
                           Bids starting at
-                        </div>
+                        </div> */}
                         {/* Price Line: RRP [Price] • [Token Symbol] */}
-                        <div className="flex items-baseline space-x-2">
+                        {/* <div className="flex items-baseline space-x-2">
                           {(() => {
                             const rrpValue = imageInfo?.metadata?.rrp as number | undefined;
                             if (rrpValue === undefined) return null;
@@ -376,7 +406,7 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                           <span className="text-lg sm:text-xl lg:text-2xl font-neue-world text-[#D0B264] font-mono tracking-widest">
                             {safeMetadata.ticker}
                           </span>
-                        </div>
+                        </div> */}
                       </div>
                     </div>
                   </div>
@@ -451,31 +481,43 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                   {/* Asset Stats - More space allocated */}
                   <div className="mt-6 sm:mt-8 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-4 sm:gap-y-6">
                     {(() => {
-                      // Helper formatter
-                      //   const formatUSD = (v?: number) =>
-                      //     v === undefined
-                      //       ? '`—'
-                      //     : `$${v.toLocaleString('en-US', {
-                      //         minimumFractionDigits: v >= 1 ? 2 : 4,
-                      //         maximumFractionDigits: v >= 1 ? 2 : 6,
-                      //       })}`;
+                      // Format numbers for display
+                      const formatNumber = (num: number): string => {
+                        if (num >= 1_000_000_000) return `${(num / 1_000_000_000).toFixed(2)}B`;
+                        if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(2)}M`;
+                        if (num >= 1_000) return `${(num / 1_000).toFixed(2)}K`;
+                        return num.toFixed(2);
+                      };
 
-                      // const formatNumber = (v?: number) =>
-                      //   v === undefined ? '—' : v.toLocaleString('en-US');
+                      // Format ACES Ratio
+                      const acesRatioDisplay = acesRatio > 0 ? `${acesRatio.toFixed(2)}x` : 'TBD';
 
-                      // const { tokenSupply, tokenPrice, marketCap } = (imageInfo?.metadata ||
-                      //   {}) as ImageInfo['metadata'];
+                      // Format Asset Sale Price
+                      const assetSalePriceDisplay =
+                        assetSalePrice > 0
+                          ? `$${assetSalePrice.toLocaleString('en-US', {
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 0,
+                            })}`
+                          : 'TBD';
+
+                      // Format Market Cap
+                      const marketCapDisplay =
+                        liveMarketCap > 0 ? `$${formatNumber(liveMarketCap)}` : 'TBD';
 
                       const stats = [
                         {
-                          label: 'Token Price',
-                          value: 'TBD',
+                          label: 'Market Cap',
+                          value: marketCapDisplay,
                         },
                         {
-                          label: 'Market Cap',
-                          value: 'TBD',
+                          label: 'Real World Value',
+                          value: assetSalePriceDisplay,
                         },
-                        { label: 'Token Supply', value: 'TBD' },
+                        {
+                          label: 'ACES Ratio',
+                          value: acesRatioDisplay,
+                        },
                       ];
 
                       return stats.map(({ label, value }) => (
@@ -495,12 +537,20 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
 
               {/* Fixed Button Area */}
               <div className="flex-shrink-0 p-3 sm:p-6 lg:p-8 pt-0 bg-gradient-to-t from-black via-black/95 to-transparent">
-                <button
-                  onClick={() => setIsPurchaseModalOpen(true)}
-                  className="block w-full bg-gradient-to-r from-[#D0B264] to-[#D0B264]/80 hover:from-[#D0B264]/90 hover:to-[#D0B264]/70 text-[#231F20] font-syne font-bold py-3 sm:py-4 px-4 sm:px-6 lg:px-8 rounded-lg sm:rounded-xl transition-all duration-150 transform active:scale-[0.98] shadow-goldGlow text-sm sm:text-base lg:text-lg md:hover:scale-[1.02] text-center"
-                >
-                  Buy Now!
-                </button>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setIsPurchaseModalOpen(true)}
+                    className="flex-1 bg-gradient-to-r from-[#D0B264] to-[#D0B264]/80 hover:from-[#D0B264]/90 hover:to-[#D0B264]/70 text-[#231F20] font-syne font-bold py-3 sm:py-4 px-4 sm:px-6 lg:px-8 rounded-lg sm:rounded-xl transition-all duration-150 transform active:scale-[0.98] shadow-goldGlow text-sm sm:text-base lg:text-lg md:hover:scale-[1.02] text-center"
+                  >
+                    TRADE
+                  </button>
+                  <button
+                    onClick={() => setIsPurchaseModalOpen(true)}
+                    className="flex-1 bg-gradient-to-r from-[#231F20] to-[#231F20]/90 hover:from-[#181515]/90 hover:to-[#363636]/80 text-[#D0B264] font-syne font-bold py-3 sm:py-4 px-4 sm:px-6 lg:px-8 rounded-lg sm:rounded-xl transition-all duration-150 transform active:scale-[0.98] shadow-goldGlow text-sm sm:text-base lg:text-lg md:hover:scale-[1.02] text-center border border-[#D0B264]/70"
+                  >
+                    AUCTION
+                  </button>
+                </div>
               </div>
             </div>
           </div>

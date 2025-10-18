@@ -144,10 +144,14 @@ export const canPlaceImage = (
 let globalImageUsageCount: Map<string, number> = new Map();
 let globalPlacementHistory: Array<{ gridX: number; gridY: number; imageId: string }> = [];
 
+// Submit asset alternation tracking (for alternating between image and video)
+let submitAssetOccurrenceCount = 0;
+
 // Reset global tracking (useful for testing or when reloading)
 export const resetGlobalPlacementTracking = () => {
   globalImageUsageCount = new Map();
   globalPlacementHistory = [];
+  submitAssetOccurrenceCount = 0; // Reset submit asset alternation
 };
 
 // Check if a position is adjacent to any existing placement of the same image
@@ -224,7 +228,7 @@ export const getImageCandidatesForPosition = (
       relativeY > tileHeight - edgeThreshold;
   }
 
-  // Option 1: Try to place a "Submit Your Asset" image (USING ACTUAL IMAGE)
+  // Option 1: Try to place a "Submit Your Asset" image/video (ALTERNATING)
   // Place a "Submit Your Asset" image every 8th available square position (deterministic but sparse)
   if (
     Math.abs(gridX * 13 + gridY * 17) % 8 === 0 && // Deterministic but sparse
@@ -248,10 +252,17 @@ export const getImageCandidatesForPosition = (
       unitSize,
     ) // Ensure it's not adjacent to reserved area
   ) {
-    // Find the submit asset image from images array
+    // ALTERNATING: Determine which submit asset to use based on occurrence count
+    // Odd occurrences (1st, 3rd, 5th...) → 'submit-asset' (image)
+    // Even occurrences (2nd, 4th, 6th...) → 'submit-asset-video' (video)
+    const isOddOccurrence = submitAssetOccurrenceCount % 2 === 0; // 0-indexed, so even count = odd occurrence
+    const submitAssetId = isOddOccurrence ? 'submit-asset' : 'submit-asset-video';
+
+    // Find the appropriate submit asset (image or video) from images array
     const submitAssetImage = imagesRefCurrent.find(
-      (img: ImageInfo) => img.metadata.id === 'submit-asset',
+      (img: ImageInfo) => img.metadata.id === submitAssetId,
     );
+
     if (submitAssetImage) {
       candidates.push({
         element: submitAssetImage.element,
@@ -260,6 +271,9 @@ export const getImageCandidatesForPosition = (
         displayHeight: unitSize,
         metadata: submitAssetImage.metadata,
       });
+
+      // Increment the occurrence counter for next placement
+      submitAssetOccurrenceCount++;
     }
   }
 
@@ -346,10 +360,16 @@ export const getImageCandidatesForPosition = (
     }
   }
 
-  // Filter out duplicates and ensure complete images
-  return Array.from(new Set(candidates)).filter(
-    (img) => img.type === 'submit-asset' || img.element.complete,
-  );
+  // Filter out duplicates and ensure complete images/videos
+  return Array.from(new Set(candidates)).filter((img) => {
+    if (img.type === 'submit-asset') return true;
+    // Check if it's an image and complete, or a video
+    if (img.element instanceof HTMLImageElement) {
+      return img.element.complete;
+    }
+    // Videos are always "ready" once loaded
+    return img.element instanceof HTMLVideoElement;
+  });
 };
 
 // Call this function when an image is successfully placed
