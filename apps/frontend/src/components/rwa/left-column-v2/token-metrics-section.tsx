@@ -85,7 +85,7 @@ export function TokenMetricsSection({
           </div>
 
           {/* VALUE (RRP) Row */}
-          <div className="flex items-center justify-between px-5 py-3 border-b border-[#D0B284]/10">
+          <div className="flex items-center justify-between px-5 py-2 border-b border-[#D0B284]/10">
             <span className="text-xs tracking-[0.2em] uppercase text-[#D0B284] font-proxima-nova font-semibold">
               VALUE
             </span>
@@ -94,7 +94,7 @@ export function TokenMetricsSection({
             </span>
           </div>
 
-          <div className="flex items-center justify-between px-5 py-3 border-b border-[#D0B284]/10">
+          <div className="flex items-center justify-between px-5 py-2 border-b border-[#D0B284]/10">
             <span className="text-xs tracking-[0.2em] uppercase text-[#D0B284] font-proxima-nova font-semibold">
               COMMUNITY REWARD
             </span>
@@ -104,7 +104,7 @@ export function TokenMetricsSection({
           </div>
 
           {/* BRAND Row */}
-          <div className="flex items-center justify-between px-5 py-3 border-b border-[#D0B284]/10">
+          <div className="flex items-center justify-between px-5 py-2 border-b border-[#D0B284]/10">
             <span className="text-xs tracking-[0.2em] uppercase text-[#D0B284] font-proxima-nova font-semibold">
               BRAND
             </span>
@@ -115,7 +115,7 @@ export function TokenMetricsSection({
 
           {/* HYPE Section */}
           <div className="px-5 py-3 flex-1">
-            <div className="mb-2">
+            <div className="mb-1">
               <span className="text-xs tracking-[0.2em] uppercase text-[#D0B284] font-proxima-nova font-semibold">
                 HYPE
               </span>

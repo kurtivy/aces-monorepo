@@ -8,6 +8,7 @@ import { useAuth } from '@/lib/auth/auth-context';
 import { ethers } from 'ethers';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { useAcesPrice } from '@/hooks/use-aces-price';
+import { LoadingDots } from './loading-dots';
 
 // ERC20 ABI for balance checking
 const ERC20_ABI = ['function balanceOf(address) view returns (uint256)'];
@@ -374,7 +375,9 @@ export default function TokenHealthPanel({
           tooltip="Market Cap divided by the asset's reserve price. Shows how much the token market values the asset compared to its physical value."
         />
         <div className="flex items-end gap-1 text-white">
-          {ratioDisplay.numeric ? (
+          {isLoading || !hasData ? (
+            <LoadingDots className="text-lg font-semibold font-proxima-nova leading-none text-white" />
+          ) : ratioDisplay.numeric ? (
             <>
               <span className="text-lg font-semibold font-proxima-nova leading-none text-white">
                 {ratioDisplay.numeric}
@@ -404,7 +407,11 @@ export default function TokenHealthPanel({
           tooltip="Reward multiplier from collectible sale commissions. Shows how much you'll receive per dollar spent when the item sells, distributed proportionally to your token holdings."
         />
         <span className={valueClass}>
-          {isLoading ? '...' : hasData ? metrics.valueEquilibriumRatio.toFixed(0) : '--'}%
+          {isLoading || !hasData ? (
+            <LoadingDots className={valueClass} />
+          ) : (
+            `${metrics.valueEquilibriumRatio.toFixed(0)}%`
+          )}
         </span>
       </motion.div>
       <motion.div
@@ -414,11 +421,11 @@ export default function TokenHealthPanel({
         transition={{ duration: 0.5, delay: 0.2 }}
       >
         <LabelWithTooltip
-          label="TOTAL REWARD EARNED"
+          label="REWARD EARNED"
           tooltip="Your proportional share of the community reward pool. Calculated as: (Your Holdings ÷ Circulating Supply) × Community Reward."
         />
         {isLoading || !hasData ? (
-          <span className={valueClass}>...</span>
+          <LoadingDots className={valueClass} />
         ) : (
           <div className="flex items-baseline gap-0.5 text-white">
             <span className="text-sm font-proxima-nova leading-none text-white">
@@ -438,7 +445,7 @@ export default function TokenHealthPanel({
       >
         <SectionLabel label="VOLUME (24H)" />
         {isLoading || !hasData ? (
-          <span className={valueClass}>...</span>
+          <LoadingDots className={valueClass} />
         ) : (
           <div className="flex items-baseline gap-0.5 text-white">
             <span className="text-sm font-proxima-nova leading-none">$</span>
@@ -460,7 +467,7 @@ export default function TokenHealthPanel({
           tooltip="Community Reward ÷ Circulating Supply. Community reward is 10% of the asset's sale price, distributed among all token holders."
         />
         {isLoading || !hasData ? (
-          <span className={valueClass}>...</span>
+          <LoadingDots className={valueClass} />
         ) : (
           <div className="flex items-baseline gap-0.5 text-white">
             <span className="text-sm font-proxima-nova leading-none">$</span>

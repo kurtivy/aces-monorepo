@@ -25,6 +25,7 @@ import { useTokenBalances } from '@/hooks/swap/use-token-balances';
 import { useUnifiedQuote } from '@/hooks/swap/use-unified-quote';
 import { useUnifiedSwap } from '@/hooks/swap/use-unified-swap';
 import { useTokenAllowance } from '@/hooks/swap/use-token-allowance';
+import { useTokenBondingData } from '@/hooks/contracts/use-token-bonding-data';
 import { TransactionSuccessModal } from './transaction-success-modal';
 
 // Import utilities
@@ -137,6 +138,24 @@ export default function TokenSwapInterface({
   });
 
   const { isDexMode, bondingPercentage, tokenBonded, bondingLoading, canSwap } = swapMode;
+
+  // Get bonding curve data to check remaining capacity
+  const bondingData = useTokenBondingData(tokenAddress, chainId);
+  const { currentSupply, tokensBondedAt } = bondingData;
+
+  // Calculate remaining tokens available in bonding curve
+  const remainingBondingCapacity = useMemo(() => {
+    if (isDexMode || !currentSupply || !tokensBondedAt) return null;
+
+    const supply = Number.parseFloat(currentSupply);
+    const target = Number.parseFloat(tokensBondedAt);
+
+    if (!Number.isFinite(supply) || !Number.isFinite(target) || target <= 0) {
+      return null;
+    }
+
+    return Math.max(0, target - supply);
+  }, [isDexMode, currentSupply, tokensBondedAt]);
 
   // Debug logging for DEX mode detection
   // useEffect(() => {
@@ -510,6 +529,93 @@ export default function TokenSwapInterface({
   const isTokenQuoteLoading = hasValidAmount && quote.loading;
   const isUsdQuoteLoading = hasValidAmount && quote.loading;
 
+  // Cap the output amount to the remaining bonding curve capacity
+  const cappedOutputAmount = useMemo(() => {
+    // Only apply capping for RWA buys in bonding mode
+    if (!isRwaBuy || isDexMode || remainingBondingCapacity === null || !quote.outputAmount) {
+      return quote.outputAmount;
+    }
+
+    const outputNum = Number.parseFloat(quote.outputAmount);
+    if (!Number.isFinite(outputNum)) {
+      return quote.outputAmount;
+    }
+
+    // Cap to remaining capacity
+    if (outputNum > remainingBondingCapacity) {
+      return remainingBondingCapacity.toString();
+    }
+
+    return quote.outputAmount;
+  }, [isRwaBuy, isDexMode, remainingBondingCapacity, quote.outputAmount]);
+
+  // Check if the output was capped
+  const isOutputCapped = useMemo(() => {
+    if (!quote.outputAmount || !cappedOutputAmount) return false;
+    return Number.parseFloat(quote.outputAmount) > Number.parseFloat(cappedOutputAmount);
+  }, [quote.outputAmount, cappedOutputAmount]);
+
+  // Calculate proportionally adjusted USD values when output is capped
+  const cappedOutputUsdValue = useMemo(() => {
+    if (!isOutputCapped || !quote.outputUsdValue || !quote.outputAmount) {
+      return quote.outputUsdValue;
+    }
+
+    const originalAmount = Number.parseFloat(quote.outputAmount);
+    const cappedAmount = Number.parseFloat(cappedOutputAmount);
+
+    if (
+      !Number.isFinite(originalAmount) ||
+      !Number.isFinite(cappedAmount) ||
+      originalAmount === 0
+    ) {
+      return quote.outputUsdValue;
+    }
+
+    const ratio = cappedAmount / originalAmount;
+
+    // Parse USD value (handle both numeric strings and formatted strings like "$1,234.56")
+    const originalUsdStr = String(quote.outputUsdValue).replace(/[$,]/g, '');
+    const originalUsd = Number.parseFloat(originalUsdStr);
+
+    if (!Number.isFinite(originalUsd)) {
+      return quote.outputUsdValue;
+    }
+
+    const cappedUsd = originalUsd * ratio;
+    return cappedUsd.toFixed(2);
+  }, [isOutputCapped, quote.outputUsdValue, quote.outputAmount, cappedOutputAmount]);
+
+  const cappedMinOutputUsdValue = useMemo(() => {
+    if (!isOutputCapped || !quote.minOutputUsdValue || !quote.outputAmount) {
+      return quote.minOutputUsdValue;
+    }
+
+    const originalAmount = Number.parseFloat(quote.outputAmount);
+    const cappedAmount = Number.parseFloat(cappedOutputAmount);
+
+    if (
+      !Number.isFinite(originalAmount) ||
+      !Number.isFinite(cappedAmount) ||
+      originalAmount === 0
+    ) {
+      return quote.minOutputUsdValue;
+    }
+
+    const ratio = cappedAmount / originalAmount;
+
+    // Parse USD value (handle both numeric strings and formatted strings)
+    const originalMinUsdStr = String(quote.minOutputUsdValue).replace(/[$,]/g, '');
+    const originalMinUsd = Number.parseFloat(originalMinUsdStr);
+
+    if (!Number.isFinite(originalMinUsd)) {
+      return quote.minOutputUsdValue;
+    }
+
+    const cappedMinUsd = originalMinUsd * ratio;
+    return cappedMinUsd.toFixed(2);
+  }, [isOutputCapped, quote.minOutputUsdValue, quote.outputAmount, cappedOutputAmount]);
+
   // ========================================
   // USD DISPLAY (from unified quote)
   // ========================================
@@ -518,8 +624,8 @@ export default function TokenSwapInterface({
   }, [quote.inputUsdValue]);
 
   const outputUsdDisplay = useMemo(() => {
-    return quote.outputUsdValue ? formatUsdValue(quote.outputUsdValue) : null;
-  }, [quote.outputUsdValue]);
+    return cappedOutputUsdValue ? formatUsdValue(cappedOutputUsdValue) : null;
+  }, [cappedOutputUsdValue]);
 
   // ========================================
   // VALIDATION
@@ -653,16 +759,16 @@ export default function TokenSwapInterface({
   }, [amount]);
 
   const outputAmountDisplay = useMemo(() => {
-    if (!hasValidAmount || !quote.outputAmount) {
+    if (!hasValidAmount || !cappedOutputAmount) {
       return isOutputToken ? '0' : '0.00';
     }
 
     if (isOutputToken) {
-      return formatIntegerDisplay(quote.outputAmount);
+      return formatIntegerDisplay(cappedOutputAmount);
     }
 
-    return formatDecimalDisplay(quote.outputAmount, 4);
-  }, [hasValidAmount, quote.outputAmount, isOutputToken]);
+    return formatDecimalDisplay(cappedOutputAmount, 4);
+  }, [hasValidAmount, cappedOutputAmount, isOutputToken]);
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -700,7 +806,7 @@ export default function TokenSwapInterface({
 
     // Validate minimum output amount for multi-hop swaps (ETH/USDC/USDT → RWA)
     if (quote.needsMultiHop && isRwaBuy) {
-      const outputNum = Number.parseFloat(quote.outputAmount || '0');
+      const outputNum = Number.parseFloat(cappedOutputAmount || '0');
       if (outputNum < 1) {
         setTransactionStatus({
           type: 'error',
@@ -713,11 +819,14 @@ export default function TokenSwapInterface({
     try {
       setLoading('Preparing swap...');
 
+      // Use capped output amount for the swap if applicable
+      const swapQuote = isOutputCapped ? { ...quote, outputAmount: cappedOutputAmount } : quote;
+
       const result = await swap.executeSwap({
         sellToken,
         buyToken,
         amount,
-        quote,
+        quote: swapQuote,
         onStatus: setLoading,
       });
 
@@ -725,7 +834,7 @@ export default function TokenSwapInterface({
         // If buying the RWA token, show full-screen success modal
         if (isRwaBuy) {
           setSuccessTxHash(result.hash || result.receipt?.transactionHash || '');
-          setSuccessTokenAmount(quote.outputAmount || '0');
+          setSuccessTokenAmount(cappedOutputAmount || '0');
           setSuccessSpentAmount(amount);
           setSuccessSpentAsset(
             (selectedSellAsset as 'ACES' | 'USDC' | 'USDT' | 'ETH' | 'WETH') || 'ACES',
@@ -767,6 +876,9 @@ export default function TokenSwapInterface({
     isRwaBuy,
     selectedSellAsset,
     tokenSymbol,
+    cappedOutputAmount,
+    isOutputCapped,
+    setTransactionStatus,
   ]);
 
   // ========================================
@@ -867,6 +979,7 @@ export default function TokenSwapInterface({
     hasValidAmount,
     transactionStatus,
     loading,
+    setTransactionStatus,
   ]);
 
   // ========================================
@@ -1321,12 +1434,17 @@ export default function TokenSwapInterface({
                         </div>
                         {!isUsdQuoteLoading &&
                           hasValidAmount &&
-                          quote.minOutputUsdValue &&
-                          quote.minOutputUsdValue !== outputUsdDisplay && (
+                          cappedMinOutputUsdValue &&
+                          cappedMinOutputUsdValue !== outputUsdDisplay && (
                             <div className="text-[10px] text-[#D0B284]/50">
-                              min. {formatUsdValue(quote.minOutputUsdValue)}
+                              min. {formatUsdValue(cappedMinOutputUsdValue)}
                             </div>
                           )}
+                        {isOutputCapped && (
+                          <div className="text-[10px] text-[#D0B284]/70 font-semibold">
+                            (max available)
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
