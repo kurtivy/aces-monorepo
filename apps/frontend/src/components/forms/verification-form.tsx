@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { VerificationAccordionSection } from '@/components/ui/verification-accordion-section';
 import { VerificationSubmissionModal } from '@/components/ui/verification-submission-modal';
+import { CountrySelect } from '@/components/ui/country-select';
 
 // Form data interface matching Prisma AccountVerification model
 interface VerificationFormData {
@@ -243,6 +244,7 @@ export function VerificationForm({ disabled = false }: VerificationFormProps) {
       return;
     }
 
+    console.log('🚀 Starting verification submission...');
     setIsSubmitting(true);
     setSubmitStatus('submitting');
     setSubmitMessage('Processing your verification documents and selfie...');
@@ -250,8 +252,10 @@ export function VerificationForm({ disabled = false }: VerificationFormProps) {
     setIsSubmissionModalOpen(true);
 
     try {
+      console.log('🔑 Getting authentication token...');
       const authToken = await getAccessToken();
       if (!authToken) throw new Error('Authentication required. Please connect your wallet.');
+      console.log('✅ Authentication token obtained');
 
       // Small delay to ensure state updates are complete
       await new Promise((resolve) => setTimeout(resolve, 150));
@@ -300,13 +304,16 @@ export function VerificationForm({ disabled = false }: VerificationFormProps) {
         documentImage: documentImagePreview.file,
       };
 
+      console.log('📄 Step 1: Submitting document verification...');
       // Step 1: Submit document verification
       const documentResponse = await VerificationApi.submitVerification(
         verificationData,
         authToken,
       );
+      console.log('📄 Document verification response:', documentResponse);
 
       if (!documentResponse.success) {
+        console.error('❌ Document verification failed:', documentResponse.error);
         setSubmitStatus('error');
         const errorMessage = documentResponse.error || 'Failed to submit document verification';
         setSubmitMessage(errorMessage);
@@ -319,35 +326,38 @@ export function VerificationForm({ disabled = false }: VerificationFormProps) {
         return;
       }
 
+      console.log('✅ Document verification successful');
       setSubmitMessage('Document verification successful. Processing facial verification...');
 
+      console.log('📸 Step 2: Submitting facial verification (selfie)...');
       // Step 2: Submit facial verification (selfie)
       const facialResponse = await VerificationApi.submitFacialVerification(
         selfieImagePreview.file,
         authToken,
       );
+      console.log('📸 Facial verification response:', facialResponse);
 
       if (facialResponse.success) {
+        console.log('✅ Facial verification successful!');
+        const wasAutoApproved = facialResponse.data.autoApproved;
+        console.log('📊 Auto-approved:', wasAutoApproved);
+
         setSubmitStatus('success');
         setSubmitMessage(
-          'Verification submitted successfully! Your application is under review and you will be notified of the results via email.',
+          wasAutoApproved
+            ? 'Verification approved! Your identity has been verified and you can now submit luxury assets for tokenization.'
+            : 'Verification submitted successfully! Your application requires manual review, but you can still submit assets while we process your verification.',
         );
 
+        console.log('🔄 Refreshing user profile...');
         // Refresh user profile to get updated status
         await refreshUserProfile();
+        console.log('✅ User profile refreshed');
 
-        // Clear form
-        reset();
-        if (documentImagePreview) {
-          URL.revokeObjectURL(documentImagePreview.preview);
-          setDocumentImagePreview(null);
-        }
-        if (selfieImagePreview) {
-          URL.revokeObjectURL(selfieImagePreview.preview);
-          setSelfieImagePreview(null);
-        }
-        setCurrentStep(1);
+        // Keep modal open with navigation buttons
+        // Don't clear form or close modal yet - user will navigate away via buttons
       } else {
+        console.error('❌ Facial verification failed:', facialResponse.error);
         setSubmitStatus('error');
         const errorMessage = facialResponse.error || 'Failed to submit facial verification';
         setSubmitMessage(errorMessage);
@@ -359,6 +369,7 @@ export function VerificationForm({ disabled = false }: VerificationFormProps) {
         }
       }
     } catch (e) {
+      console.error('💥 Exception during submission:', e);
       setSubmitStatus('error');
       setSubmitMessage(
         e instanceof Error ? e.message : 'Network error occurred. Please try again.',
@@ -366,8 +377,9 @@ export function VerificationForm({ disabled = false }: VerificationFormProps) {
       setSubmitErrorDetails([
         e instanceof Error ? e.message : 'Network error occurred. Please try again.',
       ]);
-      console.error(e);
+      console.error('Full error details:', e);
     } finally {
+      console.log('🏁 Submission process completed, isSubmitting set to false');
       setIsSubmitting(false);
     }
   });
@@ -620,11 +632,17 @@ export function VerificationForm({ disabled = false }: VerificationFormProps) {
                   required
                   error={errors.countryOfIssue?.message}
                 >
-                  <Input
-                    {...register('countryOfIssue')}
-                    placeholder="United States"
-                    disabled={disabled}
-                    className="bg-[#0f1511] border border-[#E6E3D3]/20 text-[#E6E3D3] placeholder:text-[#E6E3D3]/45 h-12 focus-visible:ring-[#C9AE6A] focus-visible:border-[#C9AE6A] disabled:opacity-50 disabled:cursor-not-allowed"
+                  <Controller
+                    name="countryOfIssue"
+                    control={control}
+                    render={({ field }) => (
+                      <CountrySelect
+                        value={field.value}
+                        onValueChange={field.onChange}
+                        disabled={disabled}
+                        placeholder="Select country of issue"
+                      />
+                    )}
                   />
                 </Field>
 
@@ -739,7 +757,7 @@ export function VerificationForm({ disabled = false }: VerificationFormProps) {
             <VerificationAccordionSection
               icon={Camera}
               title="Identity Verification"
-              description="Take a selfie to verify your identity matches your uploaded document"
+              description="Take a selfie to verify your identity matches your uploaded document. Please remove head and face wear such as masks, hats, or glasses, for the best results."
               isCompleted={isAllSectionsComplete}
               isActive={currentStep === 3}
               stepNumber={3}
@@ -908,6 +926,14 @@ export function VerificationForm({ disabled = false }: VerificationFormProps) {
           status={submitStatus}
           message={submitMessage}
           errorDetails={submitErrorDetails}
+          onNavigateToLaunch={() => {
+            setIsSubmissionModalOpen(false);
+            window.location.href = '/launch';
+          }}
+          onNavigateHome={() => {
+            setIsSubmissionModalOpen(false);
+            window.location.href = '/';
+          }}
         />
       </div>
     </div>

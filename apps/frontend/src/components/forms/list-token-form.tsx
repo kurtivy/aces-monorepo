@@ -2,9 +2,7 @@
 
 import React, { useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
 import { useAuth } from '@/lib/auth/auth-context';
-import { CreateSubmissionSchema } from '@aces/utils';
 import { SubmissionsApi } from '@/lib/api/submissions';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
@@ -29,8 +27,17 @@ import {
   Info,
   ChevronRight,
   Layers,
-  Mail,
 } from 'lucide-react';
+import { CountrySelect } from '@/components/ui/country-select';
+import { AssetSubmissionModal } from '@/components/ui/asset-submission-modal';
+
+// Helper to get error message as string
+const getErrorMessage = (error: any): string | undefined => {
+  if (!error) return undefined;
+  if (typeof error === 'string') return error;
+  if (error.message) return String(error.message);
+  return undefined;
+};
 
 // Local form UI primitives tuned to Figma
 function Section({
@@ -92,18 +99,49 @@ function Field({
 }
 
 export default function ListTokenForm() {
-  const { getAccessToken, isVerifiedSeller, isAuthenticated } = useAuth();
+  const { getAccessToken, isVerifiedSeller, isAuthenticated, user } = useAuth();
+
+  // Debug logging to see verification status
+  console.log('📋 ListTokenForm - User status:', {
+    isAuthenticated,
+    isVerifiedSeller,
+    sellerStatus: user?.sellerStatus,
+    user,
+  });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [imagePreviews, setImagePreviews] = useState<Array<{ preview: string; file: File }>>([]);
-  const [proofImagePreview, setProofImagePreview] = useState<{
-    preview: string;
-    file: File;
-  } | null>(null);
-  const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [ownershipDocs, setOwnershipDocs] = useState<{
+    BILL_OF_SALE?: { preview: string; file: File };
+    CERTIFICATE_OF_AUTH?: { preview: string; file: File };
+    INSURANCE_DOC?: { preview: string; file: File };
+    DEED_OR_TITLE?: { preview: string; file: File };
+    APPRAISAL_DOC?: { preview: string; file: File };
+    PROVENANCE_DOC?: { preview: string; file: File };
+  }>({});
+  const [submitStatus, setSubmitStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>(
+    'idle',
+  );
   const [submitMessage, setSubmitMessage] = useState<string>('');
+  const [submitErrorDetails, setSubmitErrorDetails] = useState<string[]>([]);
+  const [isSubmissionModalOpen, setIsSubmissionModalOpen] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [currentStep, setCurrentStep] = useState(1);
+
+  // Currency formatting helpers
+  const formatCurrency = (value: string): string => {
+    // Remove all non-digit characters
+    const numbers = value.replace(/\D/g, '');
+    if (!numbers) return '';
+    // Add commas for thousands
+    const formatted = parseInt(numbers).toLocaleString('en-US');
+    return `$${formatted}`;
+  };
+
+  const parseCurrency = (value: string): string => {
+    // Remove $ and commas, return just the number
+    return value.replace(/[$,]/g, '');
+  };
 
   const {
     register,
@@ -112,11 +150,20 @@ export default function ListTokenForm() {
     reset,
     watch,
     control,
-  } = useForm({
-    resolver: zodResolver(CreateSubmissionSchema),
-  });
+  } = useForm();
 
-  const watchedValues = watch(['title', 'symbol', 'description', 'assetType']);
+  const watchedValues = watch([
+    'title',
+    'symbol',
+    'brand',
+    'story',
+    'details',
+    'provenance',
+    'value',
+    'reservePrice',
+    'hypeSentence',
+    'assetType',
+  ]);
   const isSection1Complete =
     watchedValues.every((value) => value && value.toString().trim() !== '') &&
     imagePreviews.length > 0;
@@ -141,106 +188,197 @@ export default function ListTokenForm() {
     });
   };
 
-  const handleProofImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleOwnershipDocUpload = (
+    docType: keyof typeof ownershipDocs,
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     const file = event.target.files?.[0];
     if (file) {
-      if (proofImagePreview) {
-        URL.revokeObjectURL(proofImagePreview.preview);
+      // Clean up previous preview if exists
+      if (ownershipDocs[docType]) {
+        URL.revokeObjectURL(ownershipDocs[docType]!.preview);
       }
-      setProofImagePreview({
-        preview: URL.createObjectURL(file),
-        file,
+      setOwnershipDocs((prev) => ({
+        ...prev,
+        [docType]: {
+          preview: URL.createObjectURL(file),
+          file,
+        },
+      }));
+    }
+  };
+
+  const removeOwnershipDoc = (docType: keyof typeof ownershipDocs) => {
+    if (ownershipDocs[docType]) {
+      URL.revokeObjectURL(ownershipDocs[docType]!.preview);
+      setOwnershipDocs((prev) => {
+        const next = { ...prev };
+        delete next[docType];
+        return next;
       });
     }
   };
 
-  const removeProofImage = () => {
-    if (proofImagePreview) {
-      URL.revokeObjectURL(proofImagePreview.preview);
-      setProofImagePreview(null);
-    }
-  };
+  const onSubmit = handleSubmit(
+    async (formData) => {
+      console.log('🚀 Form submitted! Data:', formData);
+      console.log('📸 Image previews:', imagePreviews.length);
+      console.log('📄 Ownership docs:', Object.keys(ownershipDocs).length);
 
-  const onSubmit = handleSubmit(async (formData) => {
-    // Prevent submission if user is not verified
-    if (!isVerifiedSeller) {
-      setSubmitStatus('error');
-      setSubmitMessage(
-        'You must be a verified user to submit tokens. Please complete verification first.',
-      );
-      return;
-    }
-
-    setIsSubmitting(true);
-    setSubmitStatus('idle');
-    setSubmitMessage('');
-    setUploadProgress(0);
-    try {
-      const authToken = await getAccessToken();
-      if (!authToken) throw new Error('Authentication required. Please connect your wallet.');
-
-      // Validate required images
-      if (imagePreviews.length === 0) {
-        throw new Error('At least one asset image is required.');
-      }
-      if (!proofImagePreview) {
-        throw new Error('Proof documentation image is required.');
-      }
-
-      const uploadedUrls: string[] = [];
-      const totalImages = imagePreviews.length + 1; // +1 for proof image (now required)
-
-      // Upload asset images
-      for (let i = 0; i < imagePreviews.length; i++) {
-        const { file } = imagePreviews[i];
-        const publicUrl = await SubmissionsApi.uploadImage(file, authToken);
-        uploadedUrls.push(publicUrl);
-        setUploadProgress(((i + 1) / totalImages) * 100);
-      }
-
-      // Upload proof of ownership image (now required)
-      const proofImageUrl = await SubmissionsApi.uploadImage(proofImagePreview.file, authToken);
-      setUploadProgress(((imagePreviews.length + 1) / totalImages) * 100);
-
-      const submissionData = {
-        ...formData,
-        imageGallery: uploadedUrls,
-        proofOfOwnershipImageUrl: proofImageUrl,
-        location: formData.location || undefined,
-        email: formData.email || undefined,
-      };
-      const response = await SubmissionsApi.createTestSubmission(submissionData, authToken);
-
-      if (response.success) {
-        setSubmitStatus('success');
+      // Prevent submission if user hasn't submitted verification
+      if (!isVerifiedSeller) {
+        setSubmitStatus('error');
         setSubmitMessage(
-          'Token submission created successfully! It will be reviewed for approval.',
+          'Please submit identity verification before listing assets. You can submit assets immediately after submitting your verification.',
         );
-        reset();
-        imagePreviews.forEach(({ preview }) => URL.revokeObjectURL(preview));
-        setImagePreviews([]);
-        if (proofImagePreview) {
-          URL.revokeObjectURL(proofImagePreview.preview);
-          setProofImagePreview(null);
+        setSubmitErrorDetails([]);
+        setIsSubmissionModalOpen(true);
+        return;
+      }
+
+      setIsSubmitting(true);
+      setSubmitStatus('submitting');
+      setSubmitMessage('Uploading your asset and documentation...');
+      setSubmitErrorDetails([]);
+      setIsSubmissionModalOpen(true);
+      setUploadProgress(0);
+
+      try {
+        const authToken = await getAccessToken();
+        if (!authToken) throw new Error('Authentication required. Please connect your wallet.');
+
+        // Validate required images
+        if (imagePreviews.length === 0) {
+          throw new Error('At least one asset image is required.');
         }
-        setCurrentStep(1);
-      } else {
+
+        // Validate ownership documentation - at least 3 required
+        const uploadedDocs = Object.entries(ownershipDocs).filter(([_, doc]) => doc !== undefined);
+        if (uploadedDocs.length < 3) {
+          throw new Error('At least 3 ownership documents are required.');
+        }
+
+        const uploadedUrls: string[] = [];
+        const totalImages = imagePreviews.length + uploadedDocs.length;
+        let uploadedCount = 0;
+
+        // Upload asset images to PUBLIC bucket (aces-product-images)
+        console.log('📸 Uploading asset images to public bucket...');
+        for (let i = 0; i < imagePreviews.length; i++) {
+          const { file } = imagePreviews[i];
+          const publicUrl = await SubmissionsApi.uploadImage(file, authToken, 'asset');
+          uploadedUrls.push(publicUrl);
+          uploadedCount++;
+          setUploadProgress((uploadedCount / totalImages) * 100);
+        }
+
+        // Upload ownership documentation images to SECURE bucket (aces-secure-documents)
+        console.log('🔒 Uploading ownership documents to secure bucket...');
+        const ownershipDocumentation: Array<{
+          type:
+            | 'BILL_OF_SALE'
+            | 'CERTIFICATE_OF_AUTH'
+            | 'INSURANCE_DOC'
+            | 'DEED_OR_TITLE'
+            | 'APPRAISAL_DOC'
+            | 'PROVENANCE_DOC';
+          imageUrl: string;
+          uploadedAt: string;
+        }> = [];
+
+        for (const [docType, docData] of uploadedDocs) {
+          if (docData) {
+            const docImageUrl = await SubmissionsApi.uploadImage(
+              docData.file,
+              authToken,
+              'ownership',
+            );
+            ownershipDocumentation.push({
+              type: docType as
+                | 'BILL_OF_SALE'
+                | 'CERTIFICATE_OF_AUTH'
+                | 'INSURANCE_DOC'
+                | 'DEED_OR_TITLE'
+                | 'APPRAISAL_DOC'
+                | 'PROVENANCE_DOC',
+              imageUrl: docImageUrl,
+              uploadedAt: new Date().toISOString(),
+            });
+            uploadedCount++;
+            setUploadProgress((uploadedCount / totalImages) * 100);
+          }
+        }
+
+        const submissionData: any = {
+          ...formData,
+          imageGallery: uploadedUrls,
+          ownershipDocumentation,
+          location: formData.location || undefined,
+        };
+
+        // Debug: Log the final submission data
+        console.log('📦 Final submission data being sent:', {
+          title: submissionData.title,
+          symbol: submissionData.symbol,
+          brand: submissionData.brand,
+          assetType: submissionData.assetType,
+          story: submissionData.story?.substring(0, 50) + '...',
+          details: submissionData.details?.substring(0, 50) + '...',
+          provenance: submissionData.provenance?.substring(0, 50) + '...',
+          value: submissionData.value,
+          reservePrice: submissionData.reservePrice,
+          hypeSentence: submissionData.hypeSentence?.substring(0, 50) + '...',
+          location: submissionData.location,
+          imageGalleryCount: submissionData.imageGallery?.length,
+          ownershipDocsCount: submissionData.ownershipDocumentation?.length,
+        });
+
+        const response = await SubmissionsApi.createTestSubmission(submissionData, authToken);
+
+        if (response.success) {
+          setSubmitStatus('success');
+          setSubmitMessage(
+            'Your asset has been submitted successfully! You will receive an email notification once it has been reviewed and approved.',
+          );
+          setSubmitErrorDetails([]);
+          reset();
+          imagePreviews.forEach(({ preview }) => URL.revokeObjectURL(preview));
+          setImagePreviews([]);
+          // Clean up ownership doc previews
+          Object.values(ownershipDocs).forEach((doc) => {
+            if (doc) URL.revokeObjectURL(doc.preview);
+          });
+          setOwnershipDocs({});
+          setCurrentStep(1);
+        } else {
+          setSubmitStatus('error');
+          const errorMessage =
+            typeof response.error === 'string'
+              ? response.error
+              : response.error?.message || 'Failed to create token submission';
+          setSubmitMessage(errorMessage);
+          setSubmitErrorDetails(
+            response.error && typeof response.error === 'object' && 'details' in response.error
+              ? (response.error.details as string[])
+              : [],
+          );
+        }
+      } catch (e) {
         setSubmitStatus('error');
         const errorMessage =
-          typeof response.error === 'string'
-            ? response.error
-            : response.error?.message || 'Failed to create token submission';
+          e instanceof Error ? e.message : 'Network error occurred. Please try again.';
         setSubmitMessage(errorMessage);
+        setSubmitErrorDetails([]);
+        console.error(e);
+      } finally {
+        setIsSubmitting(false);
+        setUploadProgress(0);
       }
-    } catch (e) {
-      setSubmitStatus('error');
-      setSubmitMessage('Network error occurred. Please try again.');
-      console.error(e);
-    } finally {
-      setIsSubmitting(false);
-      setUploadProgress(0);
-    }
-  });
+    },
+    (errors) => {
+      console.error('❌ Form validation errors:', errors);
+    },
+  );
 
   return (
     <div className="relative pointer-events-auto">
@@ -251,13 +389,14 @@ export default function ListTokenForm() {
             <Shield className="w-12 h-12 text-[#D7BF75] mx-auto mb-4" />
             <h3 className="text-xl font-bold text-[#D7BF75] mb-2">Verification Required</h3>
             <p className="text-[#DCDDCC]/80 mb-4">
-              You must complete identity verification before you can submit tokens for listing.
+              Please submit identity verification to list assets. You'll be able to submit assets
+              immediately after submitting your verification (you don't need to wait for approval).
             </p>
             <Button
               onClick={() => (window.location.href = '/verify')}
               className="bg-[#D7BF75] hover:bg-[#D7BF75]/80 text-black font-medium px-6 py-2"
             >
-              Complete Verification
+              Submit Verification
             </Button>
           </div>
         </div>
@@ -277,26 +416,6 @@ export default function ListTokenForm() {
         <span className="pointer-events-none absolute right-3 bottom-3 h-3 w-0.5 bg-[#C9AE6A]" />
         <span className="pointer-events-none absolute right-3 bottom-3 w-3 h-0.5 bg-[#C9AE6A]" />
 
-        {/* Status Message */}
-        {submitStatus !== 'idle' && (
-          <div className="mb-8">
-            <div
-              className={`p-6 rounded-2xl flex items-center gap-4 shadow-xl backdrop-blur-sm ${
-                submitStatus === 'success'
-                  ? 'bg-gradient-to-r from-green-900/30 to-emerald-900/30 border border-green-500/50 text-green-300'
-                  : 'bg-gradient-to-r from-red-900/30 to-rose-900/30 border border-red-500/50 text-red-300'
-              }`}
-            >
-              {submitStatus === 'success' ? (
-                <CheckCircle className="w-6 h-6 flex-shrink-0" />
-              ) : (
-                <AlertCircle className="w-6 h-6 flex-shrink-0" />
-              )}
-              <p className="text-lg font-medium">{submitMessage}</p>
-            </div>
-          </div>
-        )}
-
         <form onSubmit={onSubmit} className="space-y-10">
           {/* Section 1 */}
           <Section
@@ -305,7 +424,12 @@ export default function ListTokenForm() {
             description="Tell us about your luxury asset and create its digital identity"
           >
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Field label="Token Symbol" icon={Tag} required error={errors.symbol?.message}>
+              <Field
+                label="Token Symbol"
+                icon={Tag}
+                required
+                error={getErrorMessage(errors.symbol)}
+              >
                 <Input
                   {...register('symbol')}
                   placeholder="LAMBO"
@@ -316,7 +440,12 @@ export default function ListTokenForm() {
                 />
               </Field>
 
-              <Field label="Asset Type" icon={Layers} required error={errors.assetType?.message}>
+              <Field
+                label="Asset Type"
+                icon={Layers}
+                required
+                error={getErrorMessage(errors.assetType)}
+              >
                 <Controller
                   name="assetType"
                   control={control}
@@ -357,43 +486,107 @@ export default function ListTokenForm() {
               </Field>
             </div>
 
-            <Field label="Asset Title" icon={FileText} required error={errors.title?.message}>
+            <Field
+              label="Asset Title"
+              icon={FileText}
+              required
+              error={getErrorMessage(errors.title)}
+            >
               <Input
                 {...register('title')}
-                placeholder="e.g., 2023 Lamborghini Huracán STO"
                 className="bg-[#0f1511] border border-[#E6E3D3]/20 text-[#E6E3D3] placeholder:text-[#E6E3D3]/45 h-12 focus-visible:ring-[#C9AE6A] focus-visible:border-[#C9AE6A]"
               />
             </Field>
 
-            <Field label="Asset Description" required error={errors.description?.message}>
+            <Field label="Brand" icon={Tag} required error={getErrorMessage(errors.brand)}>
+              <Input
+                {...register('brand')}
+                className="bg-[#0f1511] border border-[#E6E3D3]/20 text-[#E6E3D3] placeholder:text-[#E6E3D3]/45 h-12 focus-visible:ring-[#C9AE6A] focus-visible:border-[#C9AE6A]"
+              />
+            </Field>
+
+            <Field label="Story" required error={getErrorMessage(errors.story)}>
               <Textarea
-                {...register('description')}
-                placeholder="Provide detailed information about your luxury asset, including condition, specifications, unique features, and any relevant history..."
+                {...register('story')}
+                className="bg-[#0f1511] border border-[#E6E3D3]/20 text-[#E6E3D3] placeholder:text-[#E6E3D3]/45 min-h-[120px] focus-visible:ring-[#C9AE6A] focus-visible:border-[#C9AE6A] resize-none"
+              />
+            </Field>
+
+            <Field label="Details" required error={getErrorMessage(errors.details)}>
+              <Textarea
+                {...register('details')}
+                className="bg-[#0f1511] border border-[#E6E3D3]/20 text-[#E6E3D3] placeholder:text-[#E6E3D3]/45 min-h-[120px] focus-visible:ring-[#C9AE6A] focus-visible:border-[#C9AE6A] resize-none"
+              />
+            </Field>
+
+            <Field label="Provenance" required error={getErrorMessage(errors.provenance)}>
+              <Textarea
+                {...register('provenance')}
                 className="bg-[#0f1511] border border-[#E6E3D3]/20 text-[#E6E3D3] placeholder:text-[#E6E3D3]/45 min-h-[120px] focus-visible:ring-[#C9AE6A] focus-visible:border-[#C9AE6A] resize-none"
               />
             </Field>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Field label="Location" icon={MapPin} error={errors.location?.message}>
-                <Input
-                  {...register('location')}
-                  placeholder="e.g., Los Angeles, CA"
-                  className="bg-[#0f1511] border border-[#E6E3D3]/20 text-[#E6E3D3] placeholder:text-[#E6E3D3]/45 h-12 focus-visible:ring-[#C9AE6A] focus-visible:border-[#C9AE6A]"
+              <Field label="Value" required error={getErrorMessage(errors.value)}>
+                <Controller
+                  name="value"
+                  control={control}
+                  render={({ field }) => (
+                    <Input
+                      value={field.value ? formatCurrency(field.value) : ''}
+                      onChange={(e) => {
+                        const parsed = parseCurrency(e.target.value);
+                        field.onChange(parsed);
+                      }}
+                      placeholder="$60,000"
+                      className="bg-[#0f1511] border border-[#E6E3D3]/20 text-[#E6E3D3] placeholder:text-[#E6E3D3]/45 h-12 focus-visible:ring-[#C9AE6A] focus-visible:border-[#C9AE6A]"
+                    />
+                  )}
                 />
               </Field>
 
-              <Field label="Email" icon={Mail} error={errors.email?.message}>
-                <Input
-                  {...register('email')}
-                  type="email"
-                  placeholder="your.email@example.com"
-                  className="bg-[#0f1511] border border-[#E6E3D3]/20 text-[#E6E3D3] placeholder:text-[#E6E3D3]/45 h-12 focus-visible:ring-[#C9AE6A] focus-visible:border-[#C9AE6A]"
+              <Field label="Reserve Price" required error={getErrorMessage(errors.reservePrice)}>
+                <Controller
+                  name="reservePrice"
+                  control={control}
+                  render={({ field }) => (
+                    <Input
+                      value={field.value ? formatCurrency(field.value) : ''}
+                      onChange={(e) => {
+                        const parsed = parseCurrency(e.target.value);
+                        field.onChange(parsed);
+                      }}
+                      placeholder="$50,000"
+                      className="bg-[#0f1511] border border-[#E6E3D3]/20 text-[#E6E3D3] placeholder:text-[#E6E3D3]/45 h-12 focus-visible:ring-[#C9AE6A] focus-visible:border-[#C9AE6A]"
+                    />
+                  )}
                 />
               </Field>
             </div>
 
+            <Field label="Hype Sentence" required error={getErrorMessage(errors.hypeSentence)}>
+              <Textarea
+                {...register('hypeSentence')}
+                className="bg-[#0f1511] border border-[#E6E3D3]/20 text-[#E6E3D3] placeholder:text-[#E6E3D3]/45 min-h-[80px] focus-visible:ring-[#C9AE6A] focus-visible:border-[#C9AE6A] resize-none"
+              />
+            </Field>
+
+            <Field label="Location" icon={MapPin} error={getErrorMessage(errors.location)}>
+              <Controller
+                name="location"
+                control={control}
+                render={({ field }) => (
+                  <CountrySelect
+                    value={field.value}
+                    onValueChange={field.onChange}
+                    placeholder="Select country"
+                  />
+                )}
+              />
+            </Field>
+
             {/* Asset Image Upload */}
-            <Field label="Asset Images" icon={Camera} required error={errors.imageGallery?.message}>
+            <Field label="Asset Images" icon={Camera} required>
               <div className="relative">
                 <input
                   type="file"
@@ -483,100 +676,137 @@ export default function ListTokenForm() {
             <Section
               icon={Shield}
               title="Proof of Ownership & Verification"
-              description="Provide documentation and proof to verify your ownership of the asset"
+              description="Upload at least 3 of the following ownership documents to verify your asset"
             >
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Field label="Type of Ownership" required error={errors.typeOfOwnership?.message}>
-                  <Input
-                    {...register('typeOfOwnership')}
-                    placeholder="Vehicle Title, Deed, Certificate, etc."
-                    className="bg-[#0f1511] border border-[#E6E3D3]/20 text-[#E6E3D3] placeholder:text-[#E6E3D3]/45 h-12 focus-visible:ring-[#C9AE6A] focus-visible:border-[#C9AE6A]"
-                  />
-                </Field>
-
-                <Field label="Proof Identifier" required error={errors.proofOfOwnership?.message}>
-                  <Input
-                    {...register('proofOfOwnership')}
-                    placeholder="VIN#, Serial#, Certificate# etc."
-                    className="bg-[#0f1511] border border-[#E6E3D3]/20 text-[#E6E3D3] placeholder:text-[#E6E3D3]/45 h-12 focus-visible:ring-[#C9AE6A] focus-visible:border-[#C9AE6A]"
-                  />
-                </Field>
+              {/* Info box about minimum requirement */}
+              <div className="bg-[#D7BF75]/10 border border-[#D7BF75]/30 rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Info className="w-5 h-5 text-[#D7BF75]" />
+                  <h4 className="text-sm font-semibold text-[#D7BF75]">
+                    Documentation Requirements
+                  </h4>
+                </div>
+                <p className="text-sm text-[#DCDDCC]/80 leading-relaxed">
+                  Please upload at least 3 of the 6 documentation types below. The more
+                  documentation you provide, the faster we can verify your ownership.
+                </p>
+                <p className="text-sm text-[#D7BF75] mt-2 font-medium">
+                  Uploaded:{' '}
+                  {
+                    Object.keys(ownershipDocs).filter(
+                      (k) => ownershipDocs[k as keyof typeof ownershipDocs],
+                    ).length
+                  }{' '}
+                  / 6 (minimum 3 required)
+                </p>
               </div>
 
-              {/* Proof of Ownership Image Upload */}
-              <Field
-                label="Proof Documentation"
-                icon={Camera}
-                required
-                error={errors.proofOfOwnershipImageUrl?.message}
-              >
-                <div className="relative">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleProofImageUpload}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                  />
-                  <div className="border-2 border-dashed border-[#E6E3D3]/25 rounded-xl p-8 text-center hover:border-[#C9AE6A]/50 transition-all duration-300 bg-[#0f1511]">
-                    {/* Corner ticks */}
-                    <span className="pointer-events-none absolute left-2 top-2 h-3 w-0.5 bg-[#C9AE6A]" />
-                    <span className="pointer-events-none absolute left-2 top-2 w-3 h-0.5 bg-[#C9AE6A]" />
-                    <span className="pointer-events-none absolute right-2 top-2 h-3 w-0.5 bg-[#C9AE6A]" />
-                    <span className="pointer-events-none absolute right-2 top-2 w-3 h-0.5 bg-[#C9AE6A]" />
-                    <span className="pointer-events-none absolute left-2 bottom-2 h-3 w-0.5 bg-[#C9AE6A]" />
-                    <span className="pointer-events-none absolute left-2 bottom-2 w-3 h-0.5 bg-[#C9AE6A]" />
-                    <span className="pointer-events-none absolute right-2 bottom-2 h-3 w-0.5 bg-[#C9AE6A]" />
-                    <span className="pointer-events-none absolute right-2 bottom-2 w-3 h-0.5 bg-[#C9AE6A]" />
-                    {proofImagePreview ? (
-                      <div className="space-y-6">
-                        <div className="flex justify-center">
-                          <div className="relative group">
-                            <Image
-                              src={proofImagePreview.preview}
-                              alt="Proof of ownership document"
-                              width={300}
-                              height={300}
-                              className="w-full max-w-md h-64 object-cover rounded-lg border border-[#E6E3D3]/20"
-                            />
-                            <button
-                              type="button"
-                              onClick={removeProofImage}
-                              className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-all duration-200 shadow-lg"
-                            >
-                              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                <path
-                                  fillRule="evenodd"
-                                  d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                                  clipRule="evenodd"
-                                />
-                              </svg>
-                            </button>
+              {/* Document Upload Fields */}
+              {(
+                [
+                  { key: 'BILL_OF_SALE', label: 'Bill of Sale/Receipt' },
+                  { key: 'CERTIFICATE_OF_AUTH', label: 'Certificate of Authentification' },
+                  { key: 'INSURANCE_DOC', label: 'Insurance Documentation' },
+                  { key: 'DEED_OR_TITLE', label: 'Documentation of Deed or Title' },
+                  { key: 'APPRAISAL_DOC', label: 'Appraisal Documentation' },
+                  { key: 'PROVENANCE_DOC', label: 'Provenance Documentation' },
+                ] as const
+              ).map(({ key, label }) => {
+                const doc = ownershipDocs[key];
+                return (
+                  <div key={key} className="space-y-2">
+                    <label className="flex items-center gap-2 text-[#C9AE6A] font-medium text-sm uppercase tracking-wide">
+                      <FileText className="w-4 h-4" />
+                      {label}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => handleOwnershipDocUpload(key, e)}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                      />
+                      <div
+                        className={`border-2 border-dashed rounded-xl p-6 transition-all duration-300 ${
+                          doc
+                            ? 'border-[#C9AE6A]/70 bg-[#C9AE6A]/15 hover:border-[#C9AE6A]'
+                            : 'border-[#E6E3D3]/25 bg-[#0f1511] hover:border-[#C9AE6A]/50'
+                        }`}
+                      >
+                        {/* Corner ticks */}
+                        <span
+                          className={`pointer-events-none absolute left-2 top-2 h-3 w-0.5 ${doc ? 'bg-[#C9AE6A]' : 'bg-[#C9AE6A]/50'}`}
+                        />
+                        <span
+                          className={`pointer-events-none absolute left-2 top-2 w-3 h-0.5 ${doc ? 'bg-[#C9AE6A]' : 'bg-[#C9AE6A]/50'}`}
+                        />
+                        <span
+                          className={`pointer-events-none absolute right-2 top-2 h-3 w-0.5 ${doc ? 'bg-[#C9AE6A]' : 'bg-[#C9AE6A]/50'}`}
+                        />
+                        <span
+                          className={`pointer-events-none absolute right-2 top-2 w-3 h-0.5 ${doc ? 'bg-[#C9AE6A]' : 'bg-[#C9AE6A]/50'}`}
+                        />
+                        <span
+                          className={`pointer-events-none absolute left-2 bottom-2 h-3 w-0.5 ${doc ? 'bg-[#C9AE6A]' : 'bg-[#C9AE6A]/50'}`}
+                        />
+                        <span
+                          className={`pointer-events-none absolute left-2 bottom-2 w-3 h-0.5 ${doc ? 'bg-[#C9AE6A]' : 'bg-[#C9AE6A]/50'}`}
+                        />
+                        <span
+                          className={`pointer-events-none absolute right-2 bottom-2 h-3 w-0.5 ${doc ? 'bg-[#C9AE6A]' : 'bg-[#C9AE6A]/50'}`}
+                        />
+                        <span
+                          className={`pointer-events-none absolute right-2 bottom-2 w-3 h-0.5 ${doc ? 'bg-[#C9AE6A]' : 'bg-[#C9AE6A]/50'}`}
+                        />
+                        {doc ? (
+                          <div className="flex items-center gap-4">
+                            <div className="relative group flex-shrink-0">
+                              <Image
+                                src={doc.preview}
+                                alt={label}
+                                width={120}
+                                height={120}
+                                className="w-32 h-24 object-cover rounded-lg border border-[#E6E3D3]/20"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeOwnershipDoc(key)}
+                                className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-all duration-200 shadow-lg"
+                              >
+                                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                  <path
+                                    fillRule="evenodd"
+                                    d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                                    clipRule="evenodd"
+                                  />
+                                </svg>
+                              </button>
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-[#E6E3D3] font-medium mb-1">✓ Document Uploaded</p>
+                              <p className="text-[#E6E3D3]/70 text-sm">Click to replace document</p>
+                            </div>
                           </div>
-                        </div>
-                        <div className="border-t border-[#D0B284]/20 pt-4">
-                          <p className="text-[#DCDDCC]/70 text-sm">
-                            Click to replace proof document
-                          </p>
-                        </div>
+                        ) : (
+                          <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-[#0f1511] border border-dashed border-[#E6E3D3]/20 rounded-xl flex items-center justify-center flex-shrink-0">
+                              <Upload className="w-6 h-6 text-[#C9AE6A]" />
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-[#E6E3D3] font-medium text-sm mb-1">
+                                Upload Document
+                              </p>
+                              <p className="text-[#E6E3D3]/70 text-xs">
+                                Click to upload {label.toLowerCase()}
+                              </p>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    ) : (
-                      <div className="space-y-4">
-                        <div className="w-16 h-16 bg-[#0f1511] border border-dashed border-[#E6E3D3]/20 rounded-xl flex items-center justify-center mx-auto">
-                          <Upload className="w-8 h-8 text-[#C9AE6A]" />
-                        </div>
-                        <div>
-                          <p className="text-[#E6E3D3] font-medium text-lg mb-2">
-                            Upload Proof Document
-                          </p>
-                          <p className="text-[#E6E3D3]/70 text-sm">
-                            Photo of title, certificate, receipt, or other ownership documentation
-                          </p>
-                        </div>
-                      </div>
-                    )}
+                    </div>
                   </div>
-                </div>
-              </Field>
+                );
+              })}
 
               {uploadProgress > 0 && uploadProgress < 100 && (
                 <div className="space-y-2">
@@ -605,8 +835,20 @@ export default function ListTokenForm() {
 
                 <Button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={
+                    isSubmitting ||
+                    Object.keys(ownershipDocs).filter(
+                      (k) => ownershipDocs[k as keyof typeof ownershipDocs],
+                    ).length < 3
+                  }
                   className="bg-[#C9AE6A] hover:bg-[#d6bf86] text-black font-bold py-4 px-12 text-lg rounded-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                  title={
+                    Object.keys(ownershipDocs).filter(
+                      (k) => ownershipDocs[k as keyof typeof ownershipDocs],
+                    ).length < 3
+                      ? 'Please upload at least 3 ownership documents'
+                      : 'Submit your asset for approval'
+                  }
                 >
                   {isSubmitting ? (
                     <div className="flex items-center gap-3">
@@ -622,6 +864,23 @@ export default function ListTokenForm() {
           )}
         </form>
       </div>
+
+      {/* Submission Status Modal */}
+      <AssetSubmissionModal
+        isOpen={isSubmissionModalOpen}
+        onClose={() => setIsSubmissionModalOpen(false)}
+        status={submitStatus}
+        message={submitMessage}
+        errorDetails={submitErrorDetails}
+        onNavigateToProfile={() => {
+          setIsSubmissionModalOpen(false);
+          window.location.href = '/profile';
+        }}
+        onNavigateHome={() => {
+          setIsSubmissionModalOpen(false);
+          window.location.href = '/';
+        }}
+      />
     </div>
   );
 }
