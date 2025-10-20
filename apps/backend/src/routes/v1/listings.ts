@@ -17,12 +17,21 @@ const UpdateListingSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   symbol: z.string().min(1).max(10).optional(),
   description: z.string().min(1).max(2000).optional(),
+  brand: z.string().max(100).optional(),
+  story: z.string().max(5000).optional(),
+  details: z.string().max(5000).optional(),
+  provenance: z.string().max(5000).optional(),
+  value: z.string().max(100).optional(),
+  reservePrice: z.string().max(100).optional(),
+  hypeSentence: z.string().max(500).optional(),
   assetType: z
     .enum(['VEHICLE', 'JEWELRY', 'COLLECTIBLE', 'ART', 'FASHION', 'ALCOHOL', 'OTHER'])
     .optional(),
   imageGallery: z.array(z.string().url()).optional(),
   location: z.string().max(200).optional(),
   email: z.string().email().optional(),
+  assetDetails: z.record(z.string()).optional(),
+  startingBidPrice: z.string().max(100).optional(),
 });
 
 // Owner-allowed update schema (broader set for pre-launch editing)
@@ -535,6 +544,89 @@ export async function listingRoutes(fastify: FastifyInstance) {
         });
       } catch (error) {
         console.error('Error deleting listing:', error);
+        throw error;
+      }
+    },
+  );
+
+  /**
+   * Finalize user details (user submits final confirmation before admin review)
+   */
+  fastify.patch(
+    '/:id/finalize-user-details',
+    {
+      preHandler: [requireAuth],
+      schema: {
+        params: zodToJsonSchema(
+          z.object({
+            id: z.string(),
+          }),
+        ),
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        const userId = request.user?.id;
+
+        if (!userId) {
+          throw errors.unauthorized();
+        }
+
+        const listing = await listingService.finalizeUserDetails(id, userId);
+
+        return reply.send({
+          success: true,
+          data: listing,
+          message:
+            'Listing details finalized! Admin will review and prepare your token for minting.',
+        });
+      } catch (error) {
+        console.error('Error finalizing user details:', error);
+        throw error;
+      }
+    },
+  );
+
+  /**
+   * Mint token (user completes minting after admin preparation)
+   */
+  fastify.post(
+    '/:id/mint-token',
+    {
+      preHandler: [requireAuth],
+      schema: {
+        params: zodToJsonSchema(
+          z.object({
+            id: z.string(),
+          }),
+        ),
+        body: zodToJsonSchema(
+          z.object({
+            contractAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+          }),
+        ),
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        const { contractAddress } = request.body as { contractAddress: string };
+        const userId = request.user?.id;
+
+        if (!userId) {
+          throw errors.unauthorized();
+        }
+
+        const result = await listingService.completeMinting(id, contractAddress, userId);
+
+        return reply.send({
+          success: true,
+          data: result,
+          message: 'Token minted successfully! Your listing is now live.',
+        });
+      } catch (error) {
+        console.error('Error completing mint:', error);
         throw error;
       }
     },

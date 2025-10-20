@@ -5,7 +5,10 @@ import { TokenService } from '../../services/token-service';
 import { TokenHolderService } from '../../services/token-holder-service';
 import { OHLCVService } from '../../services/ohlcv-service';
 import { SupplyBasedOHLCVService } from '../../services/supply-based-ohlcv-service';
+import { PriceService } from '../../services/price-service';
 import { SupportedTimeframe } from '../../types/subgraph.types';
+
+const BASE_MAINNET_CHAIN_ID = 8453;
 
 interface TokenParams {
   address: string;
@@ -37,6 +40,7 @@ export async function tokensRoutes(fastify: FastifyInstance) {
   const tokenHolderService = new TokenHolderService();
   const ohlcvService = new OHLCVService(fastify.prisma, tokenService);
   const supplyBasedOHLCVService = new SupplyBasedOHLCVService();
+  const priceService = new PriceService(fastify.prisma);
 
   // Get token data (fetches fresh from subgraph)
   fastify.get(
@@ -370,6 +374,119 @@ export async function tokensRoutes(fastify: FastifyInstance) {
           success: false,
           error: 'Failed to fetch live data',
           message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    },
+  );
+
+  // Get aggregated token metrics for listings display
+  fastify.get(
+    '/:address/metrics',
+    {
+      schema: {
+        params: zodToJsonSchema(
+          z.object({
+            address: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+          }),
+        ),
+        querystring: zodToJsonSchema(
+          z.object({
+            chainId: z
+              .string()
+              .regex(/^[0-9]+$/)
+              .transform((value) => Number(value))
+              .optional(),
+          }),
+        ),
+      },
+    },
+    async (
+      request: FastifyRequest<{
+        Params: TokenParams;
+        Querystring: { chainId?: number };
+      }>,
+      reply,
+    ) => {
+      try {
+        const { address } = request.params;
+        const { chainId } = request.query;
+
+        // 1. Fetch token data (has volume24h, currentPriceACES, supply)
+        const tokenData = await tokenService.fetchAndUpdateTokenData(address);
+
+        // 2. Get ACES/USD price for conversions using existing PriceService
+        const priceData = await priceService.getAcesPrice();
+        const acesUsdPrice = parseFloat(priceData.priceUSD);
+        fastify.log.info(
+          { acesUsdPrice, isStale: priceData.isStale },
+          'ACES/USD price fetched from PriceService',
+        );
+
+        // 3. Get holder count via RPC (with timeout to prevent hanging)
+        let holderCount = 0;
+        try {
+          const holderCountPromise = tokenHolderService.getHolderCount(
+            address,
+            chainId ?? BASE_MAINNET_CHAIN_ID,
+          );
+          // Add 10-second timeout to prevent hanging
+          holderCount = await Promise.race([
+            holderCountPromise,
+            new Promise<number>((_, reject) =>
+              setTimeout(() => reject(new Error('Holder count timeout')), 10000),
+            ),
+          ]);
+          fastify.log.info({ address, holderCount }, 'Holder count fetched successfully');
+        } catch (error) {
+          fastify.log.warn({ error, address }, 'Failed to fetch holder count, defaulting to 0');
+          // Default to 0 on error or timeout
+          holderCount = 0;
+        }
+
+        // 4. Get total fees from subgraph
+        const fees = await tokenService.getTotalFees(address);
+
+        // 5. Calculate derived metrics
+        // Convert volume from WEI to ACES (divide by 10^18)
+        const volume24hWei = tokenData.volume24h || '0';
+        const volume24hAces = parseFloat(volume24hWei) / 1e18;
+        const volume24hUsd = volume24hAces * acesUsdPrice;
+        fastify.log.info(
+          { volume24hWei, volume24hAces, acesUsdPrice, volume24hUsd },
+          'Volume calculation',
+        );
+
+        const tokenPriceAces = parseFloat(tokenData.currentPriceACES || '0');
+        const tokenPriceUsd = tokenPriceAces * acesUsdPrice;
+        fastify.log.info({ tokenPriceAces, acesUsdPrice, tokenPriceUsd }, 'Price calculation');
+
+        // Determine supply based on token state (bonding curve vs DEX)
+        // TODO: Check if token has graduated to DEX to use 1B supply
+        // For now, assume bonding curve (800M) unless we have DEX metadata
+        const supply = 800_000_000; // Will be updated when DEX detection is added
+        const marketCapUsd = tokenPriceUsd * supply;
+
+        const totalFeesAces = parseFloat(fees.acesAmount);
+        const totalFeesUsd = totalFeesAces * acesUsdPrice;
+
+        return reply.send({
+          success: true,
+          data: {
+            contractAddress: address,
+            volume24hUsd,
+            volume24hAces: volume24hAces.toString(),
+            marketCapUsd,
+            tokenPriceUsd,
+            holderCount,
+            totalFeesUsd,
+            totalFeesAces: fees.acesAmount,
+          },
+        });
+      } catch (error) {
+        fastify.log.error({ error }, 'Token metrics fetch error');
+        return reply.code(500).send({
+          success: false,
+          error: 'Failed to fetch token metrics',
         });
       }
     },

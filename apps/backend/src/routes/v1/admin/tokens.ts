@@ -2,7 +2,9 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { TokenService } from '../../../services/token-service';
+import { ListingService } from '../../../services/listing-service';
 import { requireAdmin } from '../../../lib/auth-middleware';
+import { TokenParametersSchema } from '@aces/utils';
 
 // Validation schema for adding token
 const AddTokenSchema = z.object({
@@ -519,6 +521,90 @@ export async function adminTokenRoutes(fastify: FastifyInstance) {
         return reply.code(500).send({
           success: false,
           error: 'Failed to update pool address',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    },
+  );
+
+  /**
+   * PATCH /api/v1/admin/listings/:id/token-parameters
+   * Save token parameters for a listing (admin configures before minting)
+   */
+  fastify.patch(
+    '/api/v1/admin/listings/:id/token-parameters',
+    {
+      preHandler: [requireAdmin],
+      schema: {
+        params: zodToJsonSchema(
+          z.object({
+            id: z.string(),
+          }),
+        ),
+        body: zodToJsonSchema(TokenParametersSchema),
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        const tokenParameters = request.body as z.infer<typeof TokenParametersSchema>;
+
+        console.log(`[ADMIN] Saving token parameters for listing ${id}`);
+
+        const listingService = new ListingService(fastify.prisma);
+        const listing = await listingService.saveTokenParameters(id, tokenParameters);
+
+        return reply.send({
+          success: true,
+          data: listing,
+          message: 'Token parameters saved successfully',
+        });
+      } catch (error) {
+        console.error('[ADMIN] Error saving token parameters:', error);
+        return reply.code(500).send({
+          success: false,
+          error: 'Failed to save token parameters',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    },
+  );
+
+  /**
+   * POST /api/v1/admin/listings/:id/prepare-mint
+   * Prepare listing for minting (admin finalizes and notifies user)
+   */
+  fastify.post(
+    '/api/v1/admin/listings/:id/prepare-mint',
+    {
+      preHandler: [requireAdmin],
+      schema: {
+        params: zodToJsonSchema(
+          z.object({
+            id: z.string(),
+          }),
+        ),
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+
+        console.log(`[ADMIN] Preparing listing ${id} for minting`);
+
+        const listingService = new ListingService(fastify.prisma);
+        const listing = await listingService.prepareForMinting(id);
+
+        return reply.send({
+          success: true,
+          data: listing,
+          message: 'Listing prepared for minting. User has been notified.',
+        });
+      } catch (error) {
+        console.error('[ADMIN] Error preparing for minting:', error);
+        return reply.code(500).send({
+          success: false,
+          error: 'Failed to prepare for minting',
           message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
