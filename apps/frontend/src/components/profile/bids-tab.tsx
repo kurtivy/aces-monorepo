@@ -409,15 +409,17 @@ export function BidsTab() {
 
           {/* Table Content */}
           <div className="p-6">
-            {/* Seller Dashboard Button */}
-            <div className="flex justify-end items-center mb-6">
-              <Button
-                onClick={() => setIsSellerDashboardOpen(true)}
-                className="bg-[#C9AE6A] hover:bg-[#C9AE6A]/80 text-black font-medium text-sm px-4 py-2"
-              >
-                SELLER DASHBOARD
-              </Button>
-            </div>
+            {/* Seller Dashboard Button (visible only if verified) */}
+            {user?.sellerStatus === 'APPROVED' && (
+              <div className="flex justify-end items-center mb-6">
+                <Button
+                  onClick={() => setIsSellerDashboardOpen(true)}
+                  className="bg-[#C9AE6A] hover:bg-[#C9AE6A]/80 text-black font-medium text-sm px-4 py-2"
+                >
+                  SELLER DASHBOARD
+                </Button>
+              </div>
+            )}
 
             {/* Bids Content */}
             {renderContent()}

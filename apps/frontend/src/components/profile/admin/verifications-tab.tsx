@@ -5,11 +5,23 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Check, X, Search, Eye, FileText, Calendar, MapPin } from 'lucide-react';
+import {
+  Check,
+  X,
+  Search,
+  Eye,
+  FileText,
+  Calendar,
+  MapPin,
+  Loader2,
+  AlertTriangle,
+} from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import Image from 'next/image';
 import { useAuth } from '@/lib/auth/auth-context';
 import { VerificationsApi, VerificationData } from '@/lib/api/verifications';
+import { AdminApi, type VerificationApplication } from '@/lib/api/admin';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 export function VerificationsTab() {
   const { getAccessToken } = useAuth();
@@ -18,11 +30,21 @@ export function VerificationsTab() {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>(
-    'ALL',
+    'PENDING',
   );
   const [selectedVerification, setSelectedVerification] = useState<VerificationData | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
   const [isReviewing, setIsReviewing] = useState(false);
+  const [docSignedUrl, setDocSignedUrl] = useState<string | null>(null);
+  const [selfieSignedUrl, setSelfieSignedUrl] = useState<string | null>(null);
+  const [loadingImages, setLoadingImages] = useState(false);
+  const [imageLoadingError, setImageLoadingError] = useState<string | null>(null);
+  const [userVerification, setUserVerification] = useState<VerificationApplication | null>(null);
+  const [loadingUserVerification, setLoadingUserVerification] = useState(false);
+  const [userVerificationError, setUserVerificationError] = useState<string | null>(null);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxImages, setLightboxImages] = useState<string[]>([]);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
 
   useEffect(() => {
     const fetchVerifications = async () => {
@@ -36,7 +58,10 @@ export function VerificationsTab() {
           return;
         }
 
-        const result = await VerificationsApi.getAllVerifications(token);
+        const result =
+          statusFilter === 'PENDING'
+            ? await VerificationsApi.getPendingVerifications(token)
+            : await VerificationsApi.getAllVerifications(token);
 
         if (result.success) {
           setVerifications(result.data);
@@ -53,7 +78,7 @@ export function VerificationsTab() {
     };
 
     fetchVerifications();
-  }, [getAccessToken]);
+  }, [getAccessToken, statusFilter]);
 
   const filteredVerifications = verifications.filter((verification) => {
     const fullName = `${verification.firstName} ${verification.lastName}`;
@@ -74,7 +99,7 @@ export function VerificationsTab() {
       const token = await getAccessToken();
       if (!token) return;
 
-      const result = await VerificationsApi.reviewVerification(id, true, undefined, token);
+      const result = await VerificationsApi.reviewVerification(id, 'APPROVED', undefined, token);
 
       if (result.success) {
         setVerifications((prev) =>
@@ -97,7 +122,7 @@ export function VerificationsTab() {
       const token = await getAccessToken();
       if (!token) return;
 
-      const result = await VerificationsApi.reviewVerification(id, false, reason, token);
+      const result = await VerificationsApi.reviewVerification(id, 'REJECTED', reason, token);
 
       if (result.success) {
         setVerifications((prev) =>
@@ -115,6 +140,93 @@ export function VerificationsTab() {
     } finally {
       setIsReviewing(false);
     }
+  };
+
+  // Fetch signed URLs for selected verification images
+  const fetchSignedImageUrls = async (verificationId: string) => {
+    try {
+      setLoadingImages(true);
+      setImageLoadingError(null);
+      const token = await getAccessToken();
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+      const response = await VerificationsApi.getVerificationImages(verificationId, token);
+      if (response.success) {
+        const images = response.data.images || [];
+        const doc = images.find((i) => i.type === 'DOCUMENT');
+        const selfie = images.find((i) => i.type === 'SELFIE');
+        setDocSignedUrl(doc ? doc.signedUrl : null);
+        setSelfieSignedUrl(selfie ? selfie.signedUrl : null);
+      } else {
+        setImageLoadingError(response.error || 'Failed to load images');
+        setDocSignedUrl(null);
+        setSelfieSignedUrl(null);
+      }
+    } catch (err) {
+      setImageLoadingError(
+        err instanceof Error ? err.message : 'Failed to load images securely. Showing fallback.',
+      );
+      setDocSignedUrl(null);
+      setSelfieSignedUrl(null);
+    } finally {
+      setLoadingImages(false);
+    }
+  };
+
+  // Fetch user verification details (for AI metrics)
+  const fetchUserVerificationDetails = async (userId: string) => {
+    try {
+      setLoadingUserVerification(true);
+      setUserVerificationError(null);
+      const token = await getAccessToken();
+      if (!token) throw new Error('Authentication required');
+      const res = await AdminApi.getUserVerificationDetails(userId, token);
+      setUserVerification(res.data || null);
+    } catch (err) {
+      setUserVerificationError(
+        err instanceof Error ? err.message : 'Failed to load user verification details.',
+      );
+      setUserVerification(null);
+    } finally {
+      setLoadingUserVerification(false);
+    }
+  };
+
+  // When opening a verification, load signed URLs and user verification details
+  useEffect(() => {
+    if (selectedVerification) {
+      setDocSignedUrl(null);
+      setSelfieSignedUrl(null);
+      setUserVerification(null);
+      setImageLoadingError(null);
+      setUserVerificationError(null);
+      Promise.all([
+        fetchSignedImageUrls(selectedVerification.id),
+        selectedVerification.user?.id
+          ? fetchUserVerificationDetails(selectedVerification.user.id)
+          : Promise.resolve(),
+      ]).catch(() => {
+        /* swallow */
+      });
+    }
+  }, [selectedVerification]);
+
+  // Lightbox helpers
+  const openLightbox = (images: string[], startIndex = 0) => {
+    const cleaned = images.filter((u): u is string => !!u);
+    if (cleaned.length === 0) return;
+    setLightboxImages(cleaned);
+    setLightboxIndex(Math.max(0, Math.min(startIndex, cleaned.length - 1)));
+    setLightboxOpen(true);
+  };
+
+  const navigateLightbox = (direction: 'prev' | 'next') => {
+    if (lightboxImages.length === 0) return;
+    const maxIndex = lightboxImages.length - 1;
+    setLightboxIndex((prev) =>
+      direction === 'prev' ? (prev > 0 ? prev - 1 : maxIndex) : prev < maxIndex ? prev + 1 : 0,
+    );
   };
 
   const getStatusColor = (status: string) => {
@@ -216,6 +328,15 @@ export function VerificationsTab() {
             <option value="APPROVED">Approved</option>
             <option value="REJECTED">Rejected</option>
           </select>
+          <Button
+            onClick={() => setStatusFilter((prev) => prev)}
+            variant="ghost"
+            size="sm"
+            className="text-[#D0B284] hover:bg-[#D0B284]/10"
+            disabled={isLoading}
+          >
+            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Refresh'}
+          </Button>
         </div>
       </div>
 
@@ -345,18 +466,81 @@ export function VerificationsTab() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
                 {/* Document Image */}
-                {selectedVerification.documentImageUrl && (
+                {(docSignedUrl || selectedVerification.documentImageUrl) && (
                   <div>
                     <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase mb-2 block">
                       Document Image
                     </label>
-                    <Image
-                      src={selectedVerification.documentImageUrl || '/placeholder.svg'}
-                      alt="Document"
-                      className="w-full h-64 object-cover rounded-lg border border-[#D0B284]/20"
-                      width={400}
-                      height={300}
-                    />
+                    {imageLoadingError && (
+                      <Alert className="bg-[#D7BF75]/10 border-[#D7BF75]/20 mb-2">
+                        <AlertTriangle className="h-4 w-4 text-[#D7BF75]" />
+                        <AlertDescription className="text-[#D7BF75] text-sm">
+                          {imageLoadingError}
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                    {loadingImages && (
+                      <div className="mb-2 text-[#DCDDCC] text-sm flex items-center gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin" /> Loading secure images...
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openLightbox(
+                          [
+                            (docSignedUrl || selectedVerification.documentImageUrl) as string,
+                            (selfieSignedUrl as string) || '',
+                          ],
+                          0,
+                        )
+                      }
+                      className="block focus:outline-none"
+                      aria-label="Open document image in lightbox"
+                    >
+                      <Image
+                        src={
+                          docSignedUrl ||
+                          selectedVerification.documentImageUrl ||
+                          '/placeholder.svg'
+                        }
+                        alt="Document"
+                        className="w-full h-64 object-cover rounded-lg border border-[#D0B284]/20"
+                        width={400}
+                        height={300}
+                      />
+                    </button>
+                  </div>
+                )}
+
+                {/* Selfie Image */}
+                {selfieSignedUrl && (
+                  <div>
+                    <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase mb-2 block">
+                      Selfie Image
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openLightbox(
+                          [
+                            (docSignedUrl || selectedVerification.documentImageUrl) as string,
+                            selfieSignedUrl as string,
+                          ],
+                          1,
+                        )
+                      }
+                      className="block focus:outline-none"
+                      aria-label="Open selfie image in lightbox"
+                    >
+                      <Image
+                        src={selfieSignedUrl}
+                        alt="Selfie"
+                        className="w-full h-64 object-cover rounded-lg border border-[#D0B284]/20"
+                        width={400}
+                        height={300}
+                      />
+                    </button>
                   </div>
                 )}
 
@@ -428,6 +612,55 @@ export function VerificationsTab() {
                 </div>
               </div>
 
+              {/* AI Verification Details */}
+              <div className="mt-6 space-y-4">
+                {loadingUserVerification && (
+                  <div className="text-[#DCDDCC] text-sm flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Loading verification details...
+                  </div>
+                )}
+                {userVerificationError && (
+                  <Alert className="bg-red-400/10 border-red-400/20">
+                    <AlertTriangle className="h-4 w-4 text-red-400" />
+                    <AlertDescription className="text-red-400">
+                      {userVerificationError}
+                    </AlertDescription>
+                  </Alert>
+                )}
+                {userVerification && (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {userVerification.faceComparisonScore !== undefined && (
+                      <div>
+                        <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
+                          Face Match
+                        </label>
+                        <p className="text-white mt-1">{userVerification.faceComparisonScore}%</p>
+                      </div>
+                    )}
+                    {userVerification.overallVerificationScore !== undefined && (
+                      <div>
+                        <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
+                          Overall Score
+                        </label>
+                        <p className="text-white mt-1">
+                          {userVerification.overallVerificationScore}%
+                        </p>
+                      </div>
+                    )}
+                    {userVerification.visionApiRecommendation && (
+                      <div>
+                        <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
+                          AI Recommendation
+                        </label>
+                        <p className="text-white mt-1">
+                          {userVerification.visionApiRecommendation}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* Actions */}
               {selectedVerification.status === 'PENDING' && (
                 <div className="mt-6 space-y-4">
@@ -466,6 +699,45 @@ export function VerificationsTab() {
               )}
             </>
           )}
+        </DialogContent>
+      </Dialog>
+      {/* Lightbox Modal */}
+      <Dialog open={lightboxOpen} onOpenChange={setLightboxOpen}>
+        <DialogContent className="max-w-5xl bg-black border border-[#D0B284]/20">
+          <div className="relative">
+            {lightboxImages.length > 0 && (
+              <Image
+                src={lightboxImages[lightboxIndex]}
+                alt={`Preview ${lightboxIndex + 1}`}
+                width={1600}
+                height={900}
+                className="w-full h-auto max-h-[80vh] object-contain"
+              />
+            )}
+            {lightboxImages.length > 1 && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white"
+                  onClick={() => navigateLightbox('prev')}
+                >
+                  ‹
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white"
+                  onClick={() => navigateLightbox('next')}
+                >
+                  ›
+                </Button>
+                <div className="absolute bottom-2 right-2 bg-black/70 text-white text-sm px-2 py-1 rounded">
+                  {lightboxIndex + 1} / {lightboxImages.length}
+                </div>
+              </>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>

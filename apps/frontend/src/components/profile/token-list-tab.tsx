@@ -5,10 +5,12 @@ import { SellerDashboardOverlay } from './seller-dashboard-overlay';
 import Image from 'next/image';
 import { useState } from 'react';
 import { useAcesTokenBalance } from '@/hooks/use-aces-token-balance';
+import { useAuth } from '@/lib/auth/auth-context';
 
 export function TokenListTab() {
   const [isSellerDashboardOpen, setIsSellerDashboardOpen] = useState(false);
   const { tokenData, hasTokens, isLoading, error, isWalletConnected } = useAcesTokenBalance();
+  const { user } = useAuth();
 
   // Format contract address for display (show first 6 and last 4 characters)
   const formatAddress = (address: string) => {
@@ -54,15 +56,17 @@ export function TokenListTab() {
 
           {/* Table Content */}
           <div className="p-6">
-            {/* Seller Dashboard button - right aligned */}
-            <div className="flex justify-end items-center mb-6">
-              <Button
-                onClick={() => setIsSellerDashboardOpen(true)}
-                className="bg-[#C9AE6A] hover:bg-[#C9AE6A]/80 text-black font-medium text-sm px-4 py-2"
-              >
-                SELLER DASHBOARD
-              </Button>
-            </div>
+            {/* Seller Dashboard button - right aligned (visible only if verified) */}
+            {user?.sellerStatus === 'APPROVED' && (
+              <div className="flex justify-end items-center mb-6">
+                <Button
+                  onClick={() => setIsSellerDashboardOpen(true)}
+                  className="bg-[#C9AE6A] hover:bg-[#C9AE6A]/80 text-black font-medium text-sm px-4 py-2"
+                >
+                  SELLER DASHBOARD
+                </Button>
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 items-center text-[#D7BF75] text-sm uppercase tracking-wide font-medium mb-4 pb-4 border-b border-dashed border-[#E6E3D3]/25">
               <div className="text-left">RWA</div>
               <div className="text-center">TICKER</div>

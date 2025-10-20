@@ -55,6 +55,14 @@ export function SubmissionsTab() {
   const [userVerification, setUserVerification] = useState<VerificationApplication | null>(null);
   const [loadingUserVerification, setLoadingUserVerification] = useState(false);
   const [userVerificationError, setUserVerificationError] = useState<string | null>(null);
+  const [ownershipDocs, setOwnershipDocs] = useState<
+    Array<{ type: string; originalUrl: string; signedUrl: string; uploadedAt: string }>
+  >([]);
+  const [loadingOwnershipDocs, setLoadingOwnershipDocs] = useState(false);
+  const [ownershipDocsError, setOwnershipDocsError] = useState<string | null>(null);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxImages, setLightboxImages] = useState<string[]>([]);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
 
   // Fetch submissions from the backend
   const fetchSubmissions = async () => {
@@ -120,7 +128,8 @@ export function SubmissionsTab() {
 
       setActionResult({
         type: 'success',
-        message: `Submission approved successfully! ${result.message || 'RWA Listing has been created automatically.'}`,
+        message:
+          "Submission approved successfully! Listing will appear in the seller's profile shortly.",
       });
       setSelectedSubmission(null);
       setShowConfirmDialog(null);
@@ -183,6 +192,23 @@ export function SubmissionsTab() {
       default:
         return 'text-[#DCDDCC] bg-[#DCDDCC]/10';
     }
+  };
+
+  const formatCurrency = (value?: string | null) => {
+    if (!value) return '—';
+    const numeric = value.replace(/[^0-9.]/g, '');
+    if (!numeric) return '—';
+    const integer = numeric.split('.')[0] || '0';
+    return `$${Number(integer).toLocaleString('en-US')}`;
+  };
+
+  const displayAssetType = (assetType?: string | null) => {
+    if (!assetType) return '—';
+    return assetType
+      .toString()
+      .toLowerCase()
+      .replace(/_/g, ' ')
+      .replace(/(^|\s)\S/g, (t) => t.toUpperCase());
   };
 
   const formatDate = (dateString: string) => {
@@ -258,6 +284,26 @@ export function SubmissionsTab() {
     }
   };
 
+  // Fetch ownership documentation signed URLs
+  const fetchOwnershipDocuments = async (submissionId: string) => {
+    try {
+      setLoadingOwnershipDocs(true);
+      setOwnershipDocsError(null);
+      const token = await getAccessToken();
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+      const response = await AdminApi.getOwnershipDocuments(submissionId, token);
+      setOwnershipDocs(response.data.documents);
+    } catch (err) {
+      console.error('Failed to fetch ownership documents:', err);
+      setOwnershipDocsError('Failed to load ownership documents.');
+      setOwnershipDocs([]);
+    } finally {
+      setLoadingOwnershipDocs(false);
+    }
+  };
+
   // Open submission for review and reset gallery index
   const openSubmissionForReview = async (submission: RwaSubmissionWithRelations) => {
     setSelectedSubmission(submission);
@@ -267,11 +313,14 @@ export function SubmissionsTab() {
     setSignedImageUrls([]); // Reset signed URLs
     setUserVerification(null); // Reset user verification
     setUserVerificationError(null);
+    setOwnershipDocs([]);
+    setOwnershipDocsError(null);
 
     // Fetch signed URLs for this submission and user verification details
     await Promise.all([
       fetchSignedImageUrls(submission.id),
       fetchUserVerificationDetails(submission.owner.id),
+      fetchOwnershipDocuments(submission.id),
     ]);
   };
 
@@ -286,6 +335,21 @@ export function SubmissionsTab() {
     } else {
       setCurrentImageIndex((prev) => (prev < maxIndex ? prev + 1 : 0));
     }
+  };
+
+  // Lightbox helpers
+  const openLightbox = (images: string[], startIndex = 0) => {
+    setLightboxImages(images);
+    setLightboxIndex(Math.max(0, Math.min(startIndex, images.length - 1)));
+    setLightboxOpen(true);
+  };
+
+  const navigateLightbox = (direction: 'prev' | 'next') => {
+    if (lightboxImages.length === 0) return;
+    const maxIndex = lightboxImages.length - 1;
+    setLightboxIndex((prev) =>
+      direction === 'prev' ? (prev > 0 ? prev - 1 : maxIndex) : prev < maxIndex ? prev + 1 : 0,
+    );
   };
 
   if (!isAdmin) {
@@ -402,6 +466,12 @@ export function SubmissionsTab() {
                     Asset
                   </th>
                   <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-4">
+                    Brand
+                  </th>
+                  <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-4">
+                    Asset Type
+                  </th>
+                  <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-4">
                     Submitter
                   </th>
                   <th className="text-center text-[#DCDDCC] text-sm font-jetbrains uppercase py-4 px-4">
@@ -444,6 +514,14 @@ export function SubmissionsTab() {
                             </span>
                           </div>
                         </div>
+                      </td>
+                      <td className="py-4 px-4 text-center">
+                        <span className="text-white text-sm">{submission.brand || '—'}</span>
+                      </td>
+                      <td className="py-4 px-4 text-center">
+                        <span className="text-white text-sm">
+                          {displayAssetType((submission as any).assetType)}
+                        </span>
                       </td>
                       <td className="py-4 px-4 text-center">
                         <div>
@@ -537,6 +615,12 @@ export function SubmissionsTab() {
                     Submission Details
                   </TabsTrigger>
                   <TabsTrigger
+                    value="documents"
+                    className="bg-transparent text-[#DCDDCC] text-base font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-[#D0B284]"
+                  >
+                    Documents
+                  </TabsTrigger>
+                  <TabsTrigger
                     value="user"
                     className="bg-transparent text-[#DCDDCC] text-base font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-[#D0B284]"
                   >
@@ -569,20 +653,29 @@ export function SubmissionsTab() {
                           </div>
                         )}
 
-                        <Image
-                          src={getAllImages(selectedSubmission)[currentImageIndex]}
-                          alt={`${selectedSubmission.title} - Image ${currentImageIndex + 1}`}
-                          className="w-full h-80 object-cover rounded-lg border border-[#D0B284]/20"
-                          width={500}
-                          height={320}
-                          onError={() => {
-                            if (!imageLoadingError) {
-                              setImageLoadingError(
-                                'Failed to load this image. It may have been moved or deleted.',
-                              );
-                            }
-                          }}
-                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openLightbox(getAllImages(selectedSubmission), currentImageIndex)
+                          }
+                          className="block focus:outline-none"
+                          aria-label="Open image in lightbox"
+                        >
+                          <Image
+                            src={getAllImages(selectedSubmission)[currentImageIndex]}
+                            alt={`${selectedSubmission.title} - Image ${currentImageIndex + 1}`}
+                            className="w-full h-80 object-cover rounded-lg border border-[#D0B284]/20"
+                            width={500}
+                            height={320}
+                            onError={() => {
+                              if (!imageLoadingError) {
+                                setImageLoadingError(
+                                  'Failed to load this image. It may have been moved or deleted.',
+                                );
+                              }
+                            }}
+                          />
+                        </button>
 
                         {/* Gallery Navigation */}
                         {getAllImages(selectedSubmission).length > 1 && (
@@ -663,31 +756,78 @@ export function SubmissionsTab() {
                         </div>
                       </div>
 
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
+                            Brand
+                          </label>
+                          <p className="text-white mt-1 bg-black/30 p-3 rounded border border-[#D0B284]/10">
+                            {(selectedSubmission as any).brand || '—'}
+                          </p>
+                        </div>
+                        <div>
+                          <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
+                            Asset Type
+                          </label>
+                          <p className="text-white mt-1 bg-black/30 p-3 rounded border border-[#D0B284]/10">
+                            {displayAssetType((selectedSubmission as any).assetType)}
+                          </p>
+                        </div>
+                      </div>
+
                       <div>
                         <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
-                          Description
+                          Story
                         </label>
-                        <p className="text-white mt-1 bg-black/30 p-3 rounded border border-[#D0B284]/10">
-                          {selectedSubmission.description}
+                        <p className="text-white mt-1 bg-black/30 p-3 rounded border border-[#D0B284]/10 max-h-24 overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-words">
+                          {(selectedSubmission as any).story || '—'}
                         </p>
                       </div>
 
                       <div>
                         <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
-                          Proof of Ownership
+                          Details
                         </label>
-                        <p className="text-white mt-1 bg-black/30 p-3 rounded border border-[#D0B284]/10">
-                          {selectedSubmission.proofOfOwnership}
+                        <p className="text-white mt-1 bg-black/30 p-3 rounded border border-[#D0B284]/10 max-h-24 overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-words">
+                          {(selectedSubmission as any).details || '—'}
                         </p>
                       </div>
 
                       <div>
                         <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
-                          Type of Ownership
+                          Provenance
+                        </label>
+                        <p className="text-white mt-1 bg-black/30 p-3 rounded border border-[#D0B284]/10 max-h-24 overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-words">
+                          {(selectedSubmission as any).provenance || '—'}
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
+                          Hype Sentence
                         </label>
                         <p className="text-white mt-1 bg-black/30 p-3 rounded border border-[#D0B284]/10">
-                          {selectedSubmission.typeOfOwnership}
+                          {(selectedSubmission as any).hypeSentence || '—'}
                         </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
+                            Value
+                          </label>
+                          <p className="text-white mt-1 bg-black/30 p-3 rounded border border-[#D0B284]/10">
+                            {formatCurrency((selectedSubmission as any).value)}
+                          </p>
+                        </div>
+                        <div>
+                          <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
+                            Reserve Price
+                          </label>
+                          <p className="text-white mt-1 bg-black/30 p-3 rounded border border-[#D0B284]/10">
+                            {formatCurrency((selectedSubmission as any).reservePrice)}
+                          </p>
+                        </div>
                       </div>
 
                       {/* Contact Information */}
@@ -743,12 +883,35 @@ export function SubmissionsTab() {
                         <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
                           Rejection Reason (Required if rejecting)
                         </label>
-                        <Textarea
-                          value={rejectionReason}
-                          onChange={(e) => setRejectionReason(e.target.value)}
-                          placeholder="Provide a detailed reason for rejection..."
-                          className="mt-2 bg-black/50 border-[#D0B284]/20 text-white min-h-[100px]"
-                        />
+                        <div className="space-y-2 mt-2">
+                          <div className="flex flex-wrap gap-2">
+                            {[
+                              'Insufficient documentation',
+                              'Asset details unclear',
+                              'Ownership cannot be verified',
+                              'Provenance incomplete',
+                            ].map((tpl) => (
+                              <Button
+                                key={tpl}
+                                variant="outline"
+                                size="sm"
+                                className="border-[#D0B284]/30 text-[#DCDDCC] hover:bg-[#D0B284]/10"
+                                onClick={() =>
+                                  setRejectionReason((prev) => (prev ? `${prev} ${tpl}` : tpl))
+                                }
+                              >
+                                {tpl}
+                              </Button>
+                            ))}
+                          </div>
+                          <Textarea
+                            value={rejectionReason}
+                            onChange={(e) => setRejectionReason(e.target.value)}
+                            placeholder="Provide a detailed reason for rejection..."
+                            className="bg-black/50 border-[#D0B284]/20 text-white min-h-[100px]"
+                          />
+                          <p className="text-xs text-[#D7BF75]">User will be notified by email.</p>
+                        </div>
                       </div>
 
                       <div className="flex justify-end space-x-4">
@@ -780,6 +943,74 @@ export function SubmissionsTab() {
                       </Alert>
                     </div>
                   )}
+                </TabsContent>
+
+                {/* Ownership Documents */}
+                <TabsContent value="documents" className="mt-0">
+                  <div className="space-y-6">
+                    {loadingOwnershipDocs && (
+                      <div className="text-center py-8">
+                        <Loader2 className="w-8 h-8 animate-spin mx-auto text-[#D0B284]" />
+                        <p className="text-[#DCDDCC] mt-2">Loading ownership documents...</p>
+                      </div>
+                    )}
+
+                    {ownershipDocsError && (
+                      <Alert className="bg-red-400/10 border-red-400/20">
+                        <AlertTriangle className="h-4 w-4 text-red-400" />
+                        <AlertDescription className="text-red-400">
+                          {ownershipDocsError}
+                        </AlertDescription>
+                      </Alert>
+                    )}
+
+                    {!loadingOwnershipDocs && !ownershipDocsError && (
+                      <>
+                        {ownershipDocs.length === 0 ? (
+                          <div className="text-center py-8">
+                            <p className="text-[#DCDDCC]">No ownership documentation uploaded.</p>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {ownershipDocs.map((doc, idx) => (
+                              <div
+                                key={idx}
+                                className="bg-black/30 rounded-lg border border-[#D0B284]/10 p-3"
+                              >
+                                <div className="flex items-center justify-between mb-2">
+                                  <Badge className="border-none text-[#C9AE6A] bg-[#C9AE6A]/10">
+                                    {doc.type.replace(/_/g, ' ')}
+                                  </Badge>
+                                  <span className="text-xs text-[#DCDDCC]">
+                                    {new Date(doc.uploadedAt).toLocaleDateString()}
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    openLightbox(
+                                      ownershipDocs.map((d) => d.signedUrl),
+                                      idx,
+                                    )
+                                  }
+                                  className="relative aspect-video overflow-hidden rounded border border-[#D0B284]/10 bg-black/40 w-full block focus:outline-none"
+                                  aria-label="Open document in lightbox"
+                                >
+                                  <Image
+                                    src={doc.signedUrl}
+                                    alt={doc.type}
+                                    fill
+                                    sizes="(max-width: 768px) 100vw, 33vw"
+                                    className="object-contain"
+                                  />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </TabsContent>
 
                 <TabsContent value="user" className="mt-0">
@@ -1073,6 +1304,46 @@ export function SubmissionsTab() {
               </Tabs>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Lightbox Modal */}
+      <Dialog open={lightboxOpen} onOpenChange={setLightboxOpen}>
+        <DialogContent className="max-w-5xl bg-black border border-[#D0B284]/20">
+          <div className="relative">
+            {lightboxImages.length > 0 && (
+              <Image
+                src={lightboxImages[lightboxIndex]}
+                alt={`Preview ${lightboxIndex + 1}`}
+                width={1600}
+                height={900}
+                className="w-full h-auto max-h-[80vh] object-contain"
+              />
+            )}
+            {lightboxImages.length > 1 && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white"
+                  onClick={() => navigateLightbox('prev')}
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white"
+                  onClick={() => navigateLightbox('next')}
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </Button>
+                <div className="absolute bottom-2 right-2 bg-black/70 text-white text-sm px-2 py-1 rounded">
+                  {lightboxIndex + 1} / {lightboxImages.length}
+                </div>
+              </>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 
