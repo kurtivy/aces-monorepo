@@ -1,37 +1,80 @@
 import { z } from 'zod';
+export declare const OwnershipDocumentTypeEnum: z.ZodEnum<["BILL_OF_SALE", "CERTIFICATE_OF_AUTH", "INSURANCE_DOC", "DEED_OR_TITLE", "APPRAISAL_DOC", "PROVENANCE_DOC"]>;
+export declare const OwnershipDocumentSchema: z.ZodObject<{
+    type: z.ZodEnum<["BILL_OF_SALE", "CERTIFICATE_OF_AUTH", "INSURANCE_DOC", "DEED_OR_TITLE", "APPRAISAL_DOC", "PROVENANCE_DOC"]>;
+    imageUrl: z.ZodString;
+    uploadedAt: z.ZodString;
+}, "strip", z.ZodTypeAny, {
+    type: "BILL_OF_SALE" | "CERTIFICATE_OF_AUTH" | "INSURANCE_DOC" | "DEED_OR_TITLE" | "APPRAISAL_DOC" | "PROVENANCE_DOC";
+    imageUrl: string;
+    uploadedAt: string;
+}, {
+    type: "BILL_OF_SALE" | "CERTIFICATE_OF_AUTH" | "INSURANCE_DOC" | "DEED_OR_TITLE" | "APPRAISAL_DOC" | "PROVENANCE_DOC";
+    imageUrl: string;
+    uploadedAt: string;
+}>;
 export declare const CreateSubmissionSchema: z.ZodObject<{
     title: z.ZodString;
     symbol: z.ZodString;
-    description: z.ZodString;
+    brand: z.ZodString;
+    story: z.ZodString;
+    details: z.ZodString;
+    provenance: z.ZodString;
+    value: z.ZodString;
+    reservePrice: z.ZodString;
+    hypeSentence: z.ZodString;
     assetType: z.ZodEnum<["VEHICLE", "JEWELRY", "COLLECTIBLE", "ART", "FASHION", "ALCOHOL", "OTHER"]>;
     imageGallery: z.ZodArray<z.ZodString, "many">;
-    proofOfOwnership: z.ZodString;
-    proofOfOwnershipImageUrl: z.ZodString;
-    typeOfOwnership: z.ZodString;
+    ownershipDocumentation: z.ZodArray<z.ZodObject<{
+        type: z.ZodEnum<["BILL_OF_SALE", "CERTIFICATE_OF_AUTH", "INSURANCE_DOC", "DEED_OR_TITLE", "APPRAISAL_DOC", "PROVENANCE_DOC"]>;
+        imageUrl: z.ZodString;
+        uploadedAt: z.ZodString;
+    }, "strip", z.ZodTypeAny, {
+        type: "BILL_OF_SALE" | "CERTIFICATE_OF_AUTH" | "INSURANCE_DOC" | "DEED_OR_TITLE" | "APPRAISAL_DOC" | "PROVENANCE_DOC";
+        imageUrl: string;
+        uploadedAt: string;
+    }, {
+        type: "BILL_OF_SALE" | "CERTIFICATE_OF_AUTH" | "INSURANCE_DOC" | "DEED_OR_TITLE" | "APPRAISAL_DOC" | "PROVENANCE_DOC";
+        imageUrl: string;
+        uploadedAt: string;
+    }>, "many">;
     location: z.ZodOptional<z.ZodString>;
-    email: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     symbol: string;
+    value: string;
     title: string;
-    description: string;
+    brand: string;
+    story: string;
+    details: string;
+    provenance: string;
+    reservePrice: string;
+    hypeSentence: string;
     assetType: "VEHICLE" | "JEWELRY" | "COLLECTIBLE" | "ART" | "FASHION" | "ALCOHOL" | "OTHER";
     imageGallery: string[];
-    proofOfOwnership: string;
-    proofOfOwnershipImageUrl: string;
-    typeOfOwnership: string;
+    ownershipDocumentation: {
+        type: "BILL_OF_SALE" | "CERTIFICATE_OF_AUTH" | "INSURANCE_DOC" | "DEED_OR_TITLE" | "APPRAISAL_DOC" | "PROVENANCE_DOC";
+        imageUrl: string;
+        uploadedAt: string;
+    }[];
     location?: string | undefined;
-    email?: string | undefined;
 }, {
     symbol: string;
+    value: string;
     title: string;
-    description: string;
+    brand: string;
+    story: string;
+    details: string;
+    provenance: string;
+    reservePrice: string;
+    hypeSentence: string;
     assetType: "VEHICLE" | "JEWELRY" | "COLLECTIBLE" | "ART" | "FASHION" | "ALCOHOL" | "OTHER";
     imageGallery: string[];
-    proofOfOwnership: string;
-    proofOfOwnershipImageUrl: string;
-    typeOfOwnership: string;
+    ownershipDocumentation: {
+        type: "BILL_OF_SALE" | "CERTIFICATE_OF_AUTH" | "INSURANCE_DOC" | "DEED_OR_TITLE" | "APPRAISAL_DOC" | "PROVENANCE_DOC";
+        imageUrl: string;
+        uploadedAt: string;
+    }[];
     location?: string | undefined;
-    email?: string | undefined;
 }>;
 export declare const CreateBidSchema: z.ZodObject<{
     listingId: z.ZodString;
@@ -39,13 +82,13 @@ export declare const CreateBidSchema: z.ZodObject<{
     currency: z.ZodEnum<["ETH", "ACES"]>;
     expiresAt: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    amount: string;
     listingId: string;
+    amount: string;
     currency: "ETH" | "ACES";
     expiresAt?: string | undefined;
 }, {
-    amount: string;
     listingId: string;
+    amount: string;
     currency: "ETH" | "ACES";
     expiresAt?: string | undefined;
 }>;
@@ -86,12 +129,12 @@ export declare const UpdateTokenMetadataSchema: z.ZodObject<{
     imageGallery: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
 }, "strip", z.ZodTypeAny, {
     contractAddress: string;
-    description?: string | undefined;
     imageGallery?: string[] | undefined;
+    description?: string | undefined;
 }, {
     contractAddress: string;
-    description?: string | undefined;
     imageGallery?: string[] | undefined;
+    description?: string | undefined;
 }>;
 export declare const PaginationSchema: z.ZodObject<{
     cursor: z.ZodOptional<z.ZodString>;

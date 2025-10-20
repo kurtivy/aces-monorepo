@@ -1,7 +1,22 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ChainEventWebhookSchema = exports.SubmissionStatusEnum = exports.PaginationSchema = exports.UpdateTokenMetadataSchema = exports.WebhookReplaySchema = exports.RecoverySchema = exports.RejectionSchema = exports.ApprovalSchema = exports.CreateBidSchema = exports.CreateSubmissionSchema = void 0;
+exports.ChainEventWebhookSchema = exports.SubmissionStatusEnum = exports.PaginationSchema = exports.UpdateTokenMetadataSchema = exports.WebhookReplaySchema = exports.RecoverySchema = exports.RejectionSchema = exports.ApprovalSchema = exports.CreateBidSchema = exports.CreateSubmissionSchema = exports.OwnershipDocumentSchema = exports.OwnershipDocumentTypeEnum = void 0;
 const zod_1 = require("zod");
+// Document type enum for ownership documentation
+exports.OwnershipDocumentTypeEnum = zod_1.z.enum([
+    'BILL_OF_SALE',
+    'CERTIFICATE_OF_AUTH',
+    'INSURANCE_DOC',
+    'DEED_OR_TITLE',
+    'APPRAISAL_DOC',
+    'PROVENANCE_DOC',
+]);
+// Ownership documentation object schema
+exports.OwnershipDocumentSchema = zod_1.z.object({
+    type: exports.OwnershipDocumentTypeEnum,
+    imageUrl: zod_1.z.string().url('Please provide a valid documentation image URL'),
+    uploadedAt: zod_1.z.string().datetime(),
+});
 // Submission schemas (from backend.md API contract)
 exports.CreateSubmissionSchema = zod_1.z.object({
     title: zod_1.z
@@ -9,10 +24,25 @@ exports.CreateSubmissionSchema = zod_1.z.object({
         .min(1, 'Asset title is required')
         .max(200, 'Asset title must be less than 200 characters'),
     symbol: zod_1.z.string().min(1, 'Symbol is required').max(10, 'Symbol must be less than 10 characters'),
-    description: zod_1.z
+    brand: zod_1.z.string().min(1, 'Brand is required').max(100, 'Brand must be less than 100 characters'),
+    story: zod_1.z
         .string()
-        .min(10, 'Description must be at least 10 characters')
-        .max(2000, 'Description must be less than 2000 characters'),
+        .min(10, 'Story must be at least 10 characters')
+        .max(5000, 'Story must be less than 5000 characters'),
+    details: zod_1.z
+        .string()
+        .min(10, 'Details must be at least 10 characters')
+        .max(5000, 'Details must be less than 5000 characters'),
+    provenance: zod_1.z
+        .string()
+        .min(10, 'Provenance must be at least 10 characters')
+        .max(5000, 'Provenance must be less than 5000 characters'),
+    value: zod_1.z.string().min(1, 'Value is required'),
+    reservePrice: zod_1.z.string().min(1, 'Reserve price is required'),
+    hypeSentence: zod_1.z
+        .string()
+        .min(10, 'Hype sentence must be at least 10 characters')
+        .max(500, 'Hype sentence must be less than 500 characters'),
     assetType: zod_1.z.enum(['VEHICLE', 'JEWELRY', 'COLLECTIBLE', 'ART', 'FASHION', 'ALCOHOL', 'OTHER'], {
         required_error: 'Asset type is required',
         invalid_type_error: 'Please select a valid asset type',
@@ -20,17 +50,11 @@ exports.CreateSubmissionSchema = zod_1.z.object({
     imageGallery: zod_1.z
         .array(zod_1.z.string().url('Please provide valid image URLs'))
         .min(1, 'At least one asset image is required'),
-    proofOfOwnership: zod_1.z
-        .string()
-        .min(1, 'Proof of ownership is required')
-        .max(1000, 'Proof of ownership must be less than 1000 characters'),
-    proofOfOwnershipImageUrl: zod_1.z.string().url('Please provide a valid proof documentation image'),
-    typeOfOwnership: zod_1.z
-        .string()
-        .min(1, 'Type of ownership is required')
-        .max(100, 'Type of ownership must be less than 100 characters'),
+    ownershipDocumentation: zod_1.z
+        .array(exports.OwnershipDocumentSchema)
+        .min(3, 'At least 3 ownership documents are required')
+        .max(6, 'Maximum 6 ownership documents allowed'),
     location: zod_1.z.string().max(200, 'Location must be less than 200 characters').optional(),
-    email: zod_1.z.string().email('Please enter a valid email address').optional(),
 });
 exports.CreateBidSchema = zod_1.z.object({
     listingId: zod_1.z.string().cuid(),

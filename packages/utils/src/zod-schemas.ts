@@ -1,5 +1,22 @@
 import { z } from 'zod';
 
+// Document type enum for ownership documentation
+export const OwnershipDocumentTypeEnum = z.enum([
+  'BILL_OF_SALE',
+  'CERTIFICATE_OF_AUTH',
+  'INSURANCE_DOC',
+  'DEED_OR_TITLE',
+  'APPRAISAL_DOC',
+  'PROVENANCE_DOC',
+]);
+
+// Ownership documentation object schema
+export const OwnershipDocumentSchema = z.object({
+  type: OwnershipDocumentTypeEnum,
+  imageUrl: z.string().url('Please provide a valid documentation image URL'),
+  uploadedAt: z.string().datetime(),
+});
+
 // Submission schemas (from backend.md API contract)
 export const CreateSubmissionSchema = z.object({
   title: z
@@ -7,10 +24,25 @@ export const CreateSubmissionSchema = z.object({
     .min(1, 'Asset title is required')
     .max(200, 'Asset title must be less than 200 characters'),
   symbol: z.string().min(1, 'Symbol is required').max(10, 'Symbol must be less than 10 characters'),
-  description: z
+  brand: z.string().min(1, 'Brand is required').max(100, 'Brand must be less than 100 characters'),
+  story: z
     .string()
-    .min(10, 'Description must be at least 10 characters')
-    .max(2000, 'Description must be less than 2000 characters'),
+    .min(10, 'Story must be at least 10 characters')
+    .max(5000, 'Story must be less than 5000 characters'),
+  details: z
+    .string()
+    .min(10, 'Details must be at least 10 characters')
+    .max(5000, 'Details must be less than 5000 characters'),
+  provenance: z
+    .string()
+    .min(10, 'Provenance must be at least 10 characters')
+    .max(5000, 'Provenance must be less than 5000 characters'),
+  value: z.string().min(1, 'Value is required'),
+  reservePrice: z.string().min(1, 'Reserve price is required'),
+  hypeSentence: z
+    .string()
+    .min(10, 'Hype sentence must be at least 10 characters')
+    .max(500, 'Hype sentence must be less than 500 characters'),
   assetType: z.enum(['VEHICLE', 'JEWELRY', 'COLLECTIBLE', 'ART', 'FASHION', 'ALCOHOL', 'OTHER'], {
     required_error: 'Asset type is required',
     invalid_type_error: 'Please select a valid asset type',
@@ -18,17 +50,11 @@ export const CreateSubmissionSchema = z.object({
   imageGallery: z
     .array(z.string().url('Please provide valid image URLs'))
     .min(1, 'At least one asset image is required'),
-  proofOfOwnership: z
-    .string()
-    .min(1, 'Proof of ownership is required')
-    .max(1000, 'Proof of ownership must be less than 1000 characters'),
-  proofOfOwnershipImageUrl: z.string().url('Please provide a valid proof documentation image'),
-  typeOfOwnership: z
-    .string()
-    .min(1, 'Type of ownership is required')
-    .max(100, 'Type of ownership must be less than 100 characters'),
+  ownershipDocumentation: z
+    .array(OwnershipDocumentSchema)
+    .min(3, 'At least 3 ownership documents are required')
+    .max(6, 'Maximum 6 ownership documents allowed'),
   location: z.string().max(200, 'Location must be less than 200 characters').optional(),
-  email: z.string().email('Please enter a valid email address').optional(),
 });
 
 export const CreateBidSchema = z.object({

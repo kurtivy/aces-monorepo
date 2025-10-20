@@ -21,14 +21,25 @@ export type SubmissionStatus = 'PENDING' | 'APPROVED' | 'LIVE' | 'REJECTED';
 export type TxStatus = 'SUBMITTED' | 'MINED' | 'FAILED' | 'DROPPED';
 export type RejectionType = 'MANUAL' | 'TX_FAILURE';
 export type ActionType = 'USER' | 'SYSTEM' | 'WEBHOOK' | 'ADMIN';
+export interface OwnershipDocumentMeta {
+    type: 'BILL_OF_SALE' | 'CERTIFICATE_OF_AUTH' | 'INSURANCE_DOC' | 'DEED_OR_TITLE' | 'APPRAISAL_DOC' | 'PROVENANCE_DOC';
+    imageUrl: string;
+    uploadedAt: string;
+}
 export interface RwaSubmission {
     id: string;
     title: string;
     symbol: string;
-    description: string;
+    brand: string | null;
+    story: string | null;
+    details: string | null;
+    provenance: string | null;
+    value: string | null;
+    reservePrice: string | null;
+    hypeSentence: string | null;
+    assetType: string;
     imageGallery: string[];
-    proofOfOwnership: string;
-    typeOfOwnership: string;
+    ownershipDocumentation: OwnershipDocumentMeta[] | null;
     ownerId: string;
     email: string | null;
     location: string | null;
@@ -40,6 +51,9 @@ export interface RwaSubmission {
     updatedBy: string | null;
     createdAt: Date;
     updatedAt: Date;
+    description?: string;
+    proofOfOwnership?: string;
+    typeOfOwnership?: string;
 }
 export interface Token {
     id: string;

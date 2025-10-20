@@ -32,18 +32,38 @@ export type RejectionType = 'MANUAL' | 'TX_FAILURE';
 export type ActionType = 'USER' | 'SYSTEM' | 'WEBHOOK' | 'ADMIN';
 
 // Base RwaSubmission interface - matches Prisma model fields only (no relations)
+export interface OwnershipDocumentMeta {
+  type:
+    | 'BILL_OF_SALE'
+    | 'CERTIFICATE_OF_AUTH'
+    | 'INSURANCE_DOC'
+    | 'DEED_OR_TITLE'
+    | 'APPRAISAL_DOC'
+    | 'PROVENANCE_DOC';
+  imageUrl: string;
+  uploadedAt: string;
+}
+
 export interface RwaSubmission {
   id: string;
   title: string; // Changed from name to title
   symbol: string;
-  description: string;
+  // New RWA submission fields
+  brand: string | null;
+  story: string | null;
+  details: string | null;
+  provenance: string | null;
+  value: string | null; // stored as string for precision
+  reservePrice: string | null; // stored as string for precision
+  hypeSentence: string | null;
+  assetType: string; // enum on backend
   imageGallery: string[]; // Changed from imageUrl to imageGallery array
-  proofOfOwnership: string;
-  typeOfOwnership: string; // Added this field
+  ownershipDocumentation: OwnershipDocumentMeta[] | null;
+  // Contact / misc
   ownerId: string;
   email: string | null;
-  location: string | null; // Added this field
-  contractAddress: string | null; // Added this field
+  location: string | null; // country or city, optional
+  contractAddress: string | null; // if/when linked
   status: string;
   rejectionType: string | null;
   approvedAt: Date | null;
@@ -51,6 +71,10 @@ export interface RwaSubmission {
   updatedBy: string | null;
   createdAt: Date;
   updatedAt: Date;
+  // Legacy fields kept optional for backward-compat in some UIs
+  description?: string;
+  proofOfOwnership?: string;
+  typeOfOwnership?: string;
 }
 
 export interface Token {
