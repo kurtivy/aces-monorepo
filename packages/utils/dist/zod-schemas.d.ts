@@ -163,6 +163,115 @@ export declare const ChainEventWebhookSchema: z.ZodObject<{
     blockNumber?: number | undefined;
     gasUsed?: string | undefined;
 }>;
+export declare const TokenCreationStatusEnum: z.ZodEnum<["AWAITING_USER_DETAILS", "PENDING_ADMIN_REVIEW", "READY_TO_MINT", "MINTED"]>;
+export declare const TokenParametersSchema: z.ZodObject<{
+    curve: z.ZodNumber;
+    steepness: z.ZodString;
+    floor: z.ZodString;
+    tokensBondedAt: z.ZodString;
+    salt: z.ZodString;
+    chainId: z.ZodEffects<z.ZodNumber, 8453 | 84532, number>;
+    name: z.ZodOptional<z.ZodString>;
+    symbol: z.ZodOptional<z.ZodString>;
+    predictedAddress: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    curve: number;
+    steepness: string;
+    floor: string;
+    tokensBondedAt: string;
+    salt: string;
+    chainId: 8453 | 84532;
+    symbol?: string | undefined;
+    name?: string | undefined;
+    predictedAddress?: string | undefined;
+}, {
+    curve: number;
+    steepness: string;
+    floor: string;
+    tokensBondedAt: string;
+    salt: string;
+    chainId: number;
+    symbol?: string | undefined;
+    name?: string | undefined;
+    predictedAddress?: string | undefined;
+}>;
+export declare const SaveTokenParametersSchema: z.ZodObject<{
+    listingId: z.ZodString;
+    tokenParameters: z.ZodObject<{
+        curve: z.ZodNumber;
+        steepness: z.ZodString;
+        floor: z.ZodString;
+        tokensBondedAt: z.ZodString;
+        salt: z.ZodString;
+        chainId: z.ZodEffects<z.ZodNumber, 8453 | 84532, number>;
+        name: z.ZodOptional<z.ZodString>;
+        symbol: z.ZodOptional<z.ZodString>;
+        predictedAddress: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        curve: number;
+        steepness: string;
+        floor: string;
+        tokensBondedAt: string;
+        salt: string;
+        chainId: 8453 | 84532;
+        symbol?: string | undefined;
+        name?: string | undefined;
+        predictedAddress?: string | undefined;
+    }, {
+        curve: number;
+        steepness: string;
+        floor: string;
+        tokensBondedAt: string;
+        salt: string;
+        chainId: number;
+        symbol?: string | undefined;
+        name?: string | undefined;
+        predictedAddress?: string | undefined;
+    }>;
+}, "strip", z.ZodTypeAny, {
+    listingId: string;
+    tokenParameters: {
+        curve: number;
+        steepness: string;
+        floor: string;
+        tokensBondedAt: string;
+        salt: string;
+        chainId: 8453 | 84532;
+        symbol?: string | undefined;
+        name?: string | undefined;
+        predictedAddress?: string | undefined;
+    };
+}, {
+    listingId: string;
+    tokenParameters: {
+        curve: number;
+        steepness: string;
+        floor: string;
+        tokensBondedAt: string;
+        salt: string;
+        chainId: number;
+        symbol?: string | undefined;
+        name?: string | undefined;
+        predictedAddress?: string | undefined;
+    };
+}>;
+export declare const PrepareForMintingSchema: z.ZodObject<{
+    listingId: z.ZodString;
+}, "strip", z.ZodTypeAny, {
+    listingId: string;
+}, {
+    listingId: string;
+}>;
+export declare const MintTokenSchema: z.ZodObject<{
+    listingId: z.ZodString;
+    contractAddress: z.ZodString;
+}, "strip", z.ZodTypeAny, {
+    listingId: string;
+    contractAddress: string;
+}, {
+    listingId: string;
+    contractAddress: string;
+}>;
 export type CreateSubmissionRequest = z.infer<typeof CreateSubmissionSchema>;
 export type CreateBidRequest = z.infer<typeof CreateBidSchema>;
 export type ApprovalRequest = z.infer<typeof ApprovalSchema>;
@@ -172,4 +281,8 @@ export type WebhookReplayRequest = z.infer<typeof WebhookReplaySchema>;
 export type UpdateTokenMetadataRequest = z.infer<typeof UpdateTokenMetadataSchema>;
 export type PaginationRequest = z.infer<typeof PaginationSchema>;
 export type ChainEventWebhookRequest = z.infer<typeof ChainEventWebhookSchema>;
+export type TokenParametersRequest = z.infer<typeof TokenParametersSchema>;
+export type SaveTokenParametersRequest = z.infer<typeof SaveTokenParametersSchema>;
+export type PrepareForMintingRequest = z.infer<typeof PrepareForMintingSchema>;
+export type MintTokenRequest = z.infer<typeof MintTokenSchema>;
 //# sourceMappingURL=zod-schemas.d.ts.map

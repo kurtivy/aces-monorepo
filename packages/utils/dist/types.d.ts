@@ -81,6 +81,7 @@ export interface RwaSubmissionWithListing extends RwaSubmission {
 export interface RwaSubmissionWithRelations extends RwaSubmission {
     owner: User;
     rwaListing: RwaListing | null;
+    listing: RwaListing | null;
 }
 export interface RwaListing {
     id: string;
@@ -95,6 +96,8 @@ export interface RwaListing {
     rwaSubmissionId: string;
     ownerId: string;
     updatedBy: string | null;
+    tokenCreationStatus?: string | null;
+    tokenParameters?: TokenParameters | null;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -145,5 +148,16 @@ export interface RecoveryResult {
     success: boolean;
     txHash?: string;
     message?: string;
+}
+export type TokenCreationStatus = 'AWAITING_USER_DETAILS' | 'PENDING_ADMIN_REVIEW' | 'READY_TO_MINT' | 'MINTED';
+export interface TokenParameters {
+    curve: number;
+    steepness: string;
+    floor: string;
+    tokensBondedAt: string;
+    salt: string;
+    chainId: number;
+    name?: string;
+    symbol?: string;
 }
 //# sourceMappingURL=types.d.ts.map

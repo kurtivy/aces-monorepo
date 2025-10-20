@@ -108,6 +108,7 @@ export interface RwaSubmissionWithListing extends RwaSubmission {
 export interface RwaSubmissionWithRelations extends RwaSubmission {
   owner: User;
   rwaListing: RwaListing | null; // Changed from token to rwaListing
+  listing: RwaListing | null; // Alias for backward compatibility
 }
 
 // RwaListing interface to match the new schema
@@ -124,6 +125,8 @@ export interface RwaListing {
   rwaSubmissionId: string;
   ownerId: string;
   updatedBy: string | null;
+  tokenCreationStatus?: string | null;
+  tokenParameters?: TokenParameters | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -186,4 +189,22 @@ export interface RecoveryResult {
   success: boolean;
   txHash?: string;
   message?: string;
+}
+
+// Token creation workflow types
+export type TokenCreationStatus =
+  | 'AWAITING_USER_DETAILS'
+  | 'PENDING_ADMIN_REVIEW'
+  | 'READY_TO_MINT'
+  | 'MINTED';
+
+export interface TokenParameters {
+  curve: number; // 0 = Quadratic, 1 = Linear
+  steepness: string; // BigNumber as string
+  floor: string; // BigNumber as string
+  tokensBondedAt: string; // BigNumber as string (in wei)
+  salt: string; // Unique salt for CREATE2
+  chainId: number; // Network (8453 = Base Mainnet)
+  name?: string; // Optional - can derive from listing
+  symbol?: string; // Optional - can derive from listing
 }

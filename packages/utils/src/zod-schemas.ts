@@ -106,6 +106,48 @@ export const ChainEventWebhookSchema = z.object({
   gasUsed: z.string().optional(),
 });
 
+// Token creation workflow schemas
+export const TokenCreationStatusEnum = z.enum([
+  'AWAITING_USER_DETAILS',
+  'PENDING_ADMIN_REVIEW',
+  'READY_TO_MINT',
+  'MINTED',
+]);
+
+export const TokenParametersSchema = z.object({
+  curve: z.number().int().min(0).max(1), // 0 = Quadratic, 1 = Linear
+  steepness: z.string().regex(/^\d+$/, 'Steepness must be a valid number string'),
+  floor: z.string().regex(/^\d+$/, 'Floor must be a valid number string'),
+  tokensBondedAt: z.string().regex(/^\d+$/, 'Tokens bonded at must be a valid number string'),
+  salt: z.string().min(1, 'Salt is required'),
+  chainId: z
+    .number()
+    .int()
+    .refine((val) => val === 8453 || val === 84532, {
+      message: 'Chain ID must be Base Mainnet (8453) or Base Sepolia (84532)',
+    }),
+  name: z.string().optional(),
+  symbol: z.string().optional(),
+  predictedAddress: z
+    .string()
+    .regex(/^0x[a-fA-F0-9]{40}$/, 'Invalid predicted address')
+    .optional(),
+});
+
+export const SaveTokenParametersSchema = z.object({
+  listingId: z.string().cuid(),
+  tokenParameters: TokenParametersSchema,
+});
+
+export const PrepareForMintingSchema = z.object({
+  listingId: z.string().cuid(),
+});
+
+export const MintTokenSchema = z.object({
+  listingId: z.string().cuid(),
+  contractAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/, 'Invalid contract address'),
+});
+
 // Export inferred types
 export type CreateSubmissionRequest = z.infer<typeof CreateSubmissionSchema>;
 export type CreateBidRequest = z.infer<typeof CreateBidSchema>;
@@ -116,3 +158,7 @@ export type WebhookReplayRequest = z.infer<typeof WebhookReplaySchema>;
 export type UpdateTokenMetadataRequest = z.infer<typeof UpdateTokenMetadataSchema>;
 export type PaginationRequest = z.infer<typeof PaginationSchema>;
 export type ChainEventWebhookRequest = z.infer<typeof ChainEventWebhookSchema>;
+export type TokenParametersRequest = z.infer<typeof TokenParametersSchema>;
+export type SaveTokenParametersRequest = z.infer<typeof SaveTokenParametersSchema>;
+export type PrepareForMintingRequest = z.infer<typeof PrepareForMintingSchema>;
+export type MintTokenRequest = z.infer<typeof MintTokenSchema>;

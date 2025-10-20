@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ChainEventWebhookSchema = exports.SubmissionStatusEnum = exports.PaginationSchema = exports.UpdateTokenMetadataSchema = exports.WebhookReplaySchema = exports.RecoverySchema = exports.RejectionSchema = exports.ApprovalSchema = exports.CreateBidSchema = exports.CreateSubmissionSchema = exports.OwnershipDocumentSchema = exports.OwnershipDocumentTypeEnum = void 0;
+exports.MintTokenSchema = exports.PrepareForMintingSchema = exports.SaveTokenParametersSchema = exports.TokenParametersSchema = exports.TokenCreationStatusEnum = exports.ChainEventWebhookSchema = exports.SubmissionStatusEnum = exports.PaginationSchema = exports.UpdateTokenMetadataSchema = exports.WebhookReplaySchema = exports.RecoverySchema = exports.RejectionSchema = exports.ApprovalSchema = exports.CreateBidSchema = exports.CreateSubmissionSchema = exports.OwnershipDocumentSchema = exports.OwnershipDocumentTypeEnum = void 0;
 const zod_1 = require("zod");
 // Document type enum for ownership documentation
 exports.OwnershipDocumentTypeEnum = zod_1.z.enum([
@@ -95,5 +95,42 @@ exports.ChainEventWebhookSchema = zod_1.z.object({
     status: zod_1.z.enum(['MINED', 'FAILED', 'DROPPED']),
     blockNumber: zod_1.z.number().optional(),
     gasUsed: zod_1.z.string().optional(),
+});
+// Token creation workflow schemas
+exports.TokenCreationStatusEnum = zod_1.z.enum([
+    'AWAITING_USER_DETAILS',
+    'PENDING_ADMIN_REVIEW',
+    'READY_TO_MINT',
+    'MINTED',
+]);
+exports.TokenParametersSchema = zod_1.z.object({
+    curve: zod_1.z.number().int().min(0).max(1), // 0 = Quadratic, 1 = Linear
+    steepness: zod_1.z.string().regex(/^\d+$/, 'Steepness must be a valid number string'),
+    floor: zod_1.z.string().regex(/^\d+$/, 'Floor must be a valid number string'),
+    tokensBondedAt: zod_1.z.string().regex(/^\d+$/, 'Tokens bonded at must be a valid number string'),
+    salt: zod_1.z.string().min(1, 'Salt is required'),
+    chainId: zod_1.z
+        .number()
+        .int()
+        .refine((val) => val === 8453 || val === 84532, {
+        message: 'Chain ID must be Base Mainnet (8453) or Base Sepolia (84532)',
+    }),
+    name: zod_1.z.string().optional(),
+    symbol: zod_1.z.string().optional(),
+    predictedAddress: zod_1.z
+        .string()
+        .regex(/^0x[a-fA-F0-9]{40}$/, 'Invalid predicted address')
+        .optional(),
+});
+exports.SaveTokenParametersSchema = zod_1.z.object({
+    listingId: zod_1.z.string().cuid(),
+    tokenParameters: exports.TokenParametersSchema,
+});
+exports.PrepareForMintingSchema = zod_1.z.object({
+    listingId: zod_1.z.string().cuid(),
+});
+exports.MintTokenSchema = zod_1.z.object({
+    listingId: zod_1.z.string().cuid(),
+    contractAddress: zod_1.z.string().regex(/^0x[a-fA-F0-9]{40}$/, 'Invalid contract address'),
 });
 //# sourceMappingURL=zod-schemas.js.map
