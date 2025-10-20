@@ -25,6 +25,26 @@ const UpdateListingSchema = z.object({
   email: z.string().email().optional(),
 });
 
+// Owner-allowed update schema (broader set for pre-launch editing)
+const OwnerUpdateListingSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+  symbol: z.string().min(1).max(10).optional(),
+  brand: z.string().max(100).optional(),
+  story: z.string().max(5000).optional(),
+  details: z.string().max(5000).optional(),
+  provenance: z.string().max(5000).optional(),
+  value: z.string().max(100).optional(),
+  reservePrice: z.string().max(100).optional(),
+  hypeSentence: z.string().max(500).optional(),
+  assetType: z
+    .enum(['VEHICLE', 'JEWELRY', 'COLLECTIBLE', 'ART', 'FASHION', 'ALCOHOL', 'OTHER'])
+    .optional(),
+  imageGallery: z.array(z.string().url()).optional(),
+  location: z.string().max(200).optional(),
+  assetDetails: z.record(z.string()).optional(),
+  startingBidPrice: z.string().max(100).optional(),
+});
+
 const SetListingLiveSchema = z.object({
   isLive: z.boolean(),
 });
@@ -220,6 +240,45 @@ export async function listingRoutes(fastify: FastifyInstance) {
         });
       } catch (error) {
         console.error('Error getting user listings:', error);
+        throw error;
+      }
+    },
+  );
+
+  /**
+   * Update listing (owner, pre-launch only)
+   */
+  fastify.put(
+    '/:id',
+    {
+      preHandler: [requireAuth],
+      schema: {
+        params: zodToJsonSchema(
+          z.object({
+            id: z.string(),
+          }),
+        ),
+        body: zodToJsonSchema(OwnerUpdateListingSchema),
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        const data = request.body as z.infer<typeof OwnerUpdateListingSchema>;
+
+        const listing = await listingService.updateListingByOwner(
+          id,
+          data as any,
+          request.user!.id,
+        );
+
+        return reply.send({
+          success: true,
+          data: listing,
+          message: 'Listing updated successfully',
+        });
+      } catch (error) {
+        console.error('Error updating listing (owner):', error);
         throw error;
       }
     },

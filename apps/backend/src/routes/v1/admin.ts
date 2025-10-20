@@ -4,6 +4,10 @@ import { AccountVerificationService } from '../../services/verification-service'
 import { SubmissionService } from '../../services/submission-service';
 import { ListingService } from '../../services/listing-service';
 import { requireAdmin } from '../../lib/auth-middleware';
+import { getSignedSecureUrl } from '../../lib/secure-storage-utils';
+import { ProductStorageService } from '../../lib/product-storage-utils';
+import { z } from 'zod';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 
 export async function adminRoutes(fastify: FastifyInstance) {
   const verificationService = new AccountVerificationService(fastify.prisma);
@@ -157,6 +161,211 @@ export async function adminRoutes(fastify: FastifyInstance) {
         });
       } catch (error) {
         console.error('Error getting admin submissions:', error);
+        throw error;
+      }
+    },
+  );
+
+  /**
+   * Get signed product image URLs for a submission's imageGallery (admin only)
+   */
+  fastify.get(
+    '/submissions/:id/images',
+    {
+      preHandler: [requireAdmin],
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        const submission = await fastify.prisma.submission.findUnique({
+          where: { id },
+          select: { imageGallery: true },
+        });
+
+        if (!submission) {
+          return reply.code(404).send({ success: false, message: 'Submission not found' });
+        }
+
+        const originalUrls: string[] = (submission.imageGallery as any) || [];
+        const signed = await ProductStorageService.convertToSignedUrls(originalUrls, 60);
+        const images = originalUrls.map((url, i) => ({
+          originalUrl: url,
+          signedUrl: signed[i] || url,
+          expiresIn: 60 * 60, // seconds (1h)
+        }));
+
+        return reply.send({
+          success: true,
+          data: { submissionId: id, images },
+        });
+      } catch (error) {
+        console.error('Error getting submission images:', error);
+        throw error;
+      }
+    },
+  );
+
+  /**
+   * Get signed ownership document URLs for a submission (admin only)
+   */
+  fastify.get(
+    '/submissions/:id/ownership-docs',
+    {
+      preHandler: [requireAdmin],
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        const submission = await fastify.prisma.submission.findUnique({
+          where: { id },
+          select: {
+            ownershipDocumentation: true,
+          },
+        });
+
+        if (!submission) {
+          return reply.code(404).send({ success: false, message: 'Submission not found' });
+        }
+
+        const docs: Array<{
+          type: string;
+          imageUrl: string;
+          uploadedAt: string;
+        }> = (submission.ownershipDocumentation as any) || [];
+
+        const result = await Promise.all(
+          docs.map(async (doc) => {
+            const fileName = doc.imageUrl.split('/').slice(4).join('/');
+            // If imageUrl is already a signed URL, keep as-is; else sign via secure util
+            const signedUrl = doc.imageUrl.includes('X-Goog-Signature')
+              ? doc.imageUrl
+              : await getSignedSecureUrl(fileName, 30);
+            return {
+              type: doc.type,
+              originalUrl: doc.imageUrl,
+              signedUrl,
+              uploadedAt: doc.uploadedAt,
+            };
+          }),
+        );
+
+        return reply.send({
+          success: true,
+          data: {
+            submissionId: id,
+            documents: result,
+          },
+        });
+      } catch (error) {
+        console.error('Error getting ownership docs:', error);
+        throw error;
+      }
+    },
+  );
+
+  /**
+   * Get verification details for a given user (admin only)
+   */
+  fastify.get(
+    '/users/:id/verification',
+    {
+      preHandler: [requireAdmin],
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        const verification = await verificationService.getVerificationByUserId(id);
+        return reply.send({ success: true, data: verification });
+      } catch (error) {
+        console.error('Error getting user verification (admin):', error);
+        throw error;
+      }
+    },
+  );
+
+  /**
+   * Approve a submission (admin convenience endpoint to match frontend)
+   * POST /api/v1/admin/approve/:id
+   */
+  fastify.post(
+    '/approve/:id',
+    {
+      preHandler: [requireAdmin],
+      schema: {
+        params: zodToJsonSchema(
+          z.object({
+            id: z.string(),
+          }),
+        ),
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        const submission = await submissionService.approveSubmission(id, request.user!.id);
+        // Create listing from this approved submission (idempotent)
+        try {
+          await listingService.createListingFromSubmission(id, request.user!.id);
+        } catch (creationError) {
+          const msg =
+            creationError instanceof Error ? creationError.message : String(creationError);
+          if (!msg.includes('Listing already exists')) {
+            throw creationError;
+          }
+          request.log?.warn(
+            { err: creationError, submissionId: id },
+            'Listing already exists for submission',
+          );
+        }
+        return reply.send({
+          success: true,
+          data: submission,
+          message: 'Submission approved successfully',
+        });
+      } catch (error) {
+        console.error('Error approving submission (admin):', error);
+        throw error;
+      }
+    },
+  );
+
+  /**
+   * Reject a submission (admin convenience endpoint to match frontend)
+   * POST /api/v1/admin/reject/:id
+   */
+  fastify.post(
+    '/reject/:id',
+    {
+      preHandler: [requireAdmin],
+      schema: {
+        params: zodToJsonSchema(
+          z.object({
+            id: z.string(),
+          }),
+        ),
+        body: zodToJsonSchema(
+          z.object({
+            rejectionReason: z.string().min(1),
+          }),
+        ),
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        const { rejectionReason } = request.body as { rejectionReason: string };
+        const submission = await submissionService.rejectSubmission(
+          id,
+          request.user!.id,
+          rejectionReason,
+        );
+        return reply.send({
+          success: true,
+          data: submission,
+          message: 'Submission rejected successfully',
+        });
+      } catch (error) {
+        console.error('Error rejecting submission (admin):', error);
         throw error;
       }
     },

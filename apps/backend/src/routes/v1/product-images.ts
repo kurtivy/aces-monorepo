@@ -77,10 +77,7 @@ export default async function productImagesRoutes(fastify: FastifyInstance) {
           },
         });
 
-        // Make file publicly readable
-        await file.makePublic();
-
-        // Generate public URL
+        // Generate public URL (bucket has uniform bucket-level access enabled)
         const imageUrl = ProductStorageService.getProductUrl(fileName);
 
         return reply.send({

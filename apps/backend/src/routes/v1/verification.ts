@@ -6,6 +6,7 @@ import { MultipartFile } from '@fastify/multipart';
 import { AccountVerificationService } from '../../services/verification-service';
 import { requireAuth, requireAdmin } from '../../lib/auth-middleware';
 import { DocumentType, VerificationStatus } from '../../lib/prisma-enums';
+import { getSignedSecureUrl } from '../../lib/secure-storage-utils';
 
 // Validation schemas
 const SubmitVerificationSchema = z.object({
@@ -228,6 +229,97 @@ export async function accountVerificationRoutes(fastify: FastifyInstance) {
         });
       } catch (error) {
         console.error('Error getting all verifications:', error);
+        throw error;
+      }
+    },
+  );
+
+  /**
+   * Get signed URLs for verification images (admin only)
+   * Returns signed URLs for document and selfie images if present
+   */
+  fastify.get(
+    '/admin/:id/images',
+    {
+      preHandler: [requireAdmin],
+      schema: {
+        params: zodToJsonSchema(
+          z.object({
+            id: z.string(),
+          }),
+        ),
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        const verification = await fastify.prisma.accountVerification.findUnique({
+          where: { id },
+          select: {
+            id: true,
+            documentImageUrl: true,
+            selfieImageUrl: true,
+          },
+        });
+
+        if (!verification) {
+          return reply.code(404).send({ success: false, message: 'Verification not found' });
+        }
+
+        const extractObjectName = (url: string | null): string | null => {
+          if (!url) return null;
+          // If it's a mock URL, we can't sign it; return null to skip signing
+          if (url.startsWith('mock://')) return null;
+          // If it's a full GCS URL, strip the bucket prefix to get the object name
+          if (url.startsWith('http')) {
+            try {
+              const u = new URL(url);
+              if (u.hostname === 'storage.googleapis.com') {
+                // Expecting path like /<bucket>/<object...>
+                const parts = u.pathname.replace(/^\//, '').split('/');
+                // Remove the bucket segment
+                if (parts.length >= 2) {
+                  return parts.slice(1).join('/');
+                }
+              }
+              // If not our expected host, don't attempt to sign
+              return null;
+            } catch {
+              return null;
+            }
+          }
+          // Otherwise it's likely an object name already
+          return url;
+        };
+
+        const documentObject = extractObjectName(verification.documentImageUrl);
+        const selfieObject = extractObjectName(verification.selfieImageUrl as any);
+
+        const [documentSignedUrl, selfieSignedUrl] = await Promise.all([
+          documentObject ? getSignedSecureUrl(documentObject, 60) : Promise.resolve(null),
+          selfieObject ? getSignedSecureUrl(selfieObject, 60) : Promise.resolve(null),
+        ]);
+
+        return reply.send({
+          success: true,
+          data: {
+            verificationId: verification.id,
+            images: [
+              documentSignedUrl && {
+                type: 'DOCUMENT',
+                originalUrl: verification.documentImageUrl,
+                signedUrl: documentSignedUrl,
+              },
+              selfieSignedUrl && {
+                type: 'SELFIE',
+                originalUrl: verification.selfieImageUrl,
+                signedUrl: selfieSignedUrl,
+              },
+            ].filter(Boolean),
+          },
+        });
+      } catch (error) {
+        console.error('Error getting verification images:', error);
         throw error;
       }
     },
