@@ -15,27 +15,27 @@ import { cn } from '@/lib/utils';
 
 type SubmissionStatus = 'idle' | 'submitting' | 'success' | 'error';
 
-interface VerificationSubmissionModalProps {
+interface AssetSubmissionModalProps {
   isOpen: boolean;
   onClose: () => void;
   status: SubmissionStatus;
   message: string;
   errorDetails?: string[];
-  onNavigateToLaunch?: () => void;
+  onNavigateToProfile?: () => void;
   onNavigateHome?: () => void;
 }
 
-export function VerificationSubmissionModal({
+export function AssetSubmissionModal({
   isOpen,
   onClose,
   status,
   message,
   errorDetails,
-  onNavigateToLaunch,
+  onNavigateToProfile,
   onNavigateHome,
-}: VerificationSubmissionModalProps) {
+}: AssetSubmissionModalProps) {
   // Debug logging
-  console.log('🎭 Modal render:', { isOpen, status, message });
+  console.log('🎭 Asset Modal render:', { isOpen, status, message });
 
   const getStatusIcon = () => {
     switch (status) {
@@ -68,9 +68,9 @@ export function VerificationSubmissionModal({
   const getStatusTitle = () => {
     switch (status) {
       case 'submitting':
-        return 'Submitting Verification';
+        return 'Submitting Asset';
       case 'success':
-        return 'Verification Submitted';
+        return 'Asset Submitted Successfully';
       case 'error':
         return 'Submission Failed';
       default:
@@ -135,7 +135,7 @@ export function VerificationSubmissionModal({
 
           {/* Required for accessibility - fixes the Dialog warning */}
           <DialogPrimitive.Description className="sr-only" id="dialog-description">
-            Verification submission status and next steps
+            Asset submission status and next steps
           </DialogPrimitive.Description>
 
           {/* Custom close button - only show if not submitting */}
@@ -187,7 +187,7 @@ export function VerificationSubmissionModal({
                     <div className="bg-gradient-to-r from-[#D0B284] to-[#C9AE6A] h-full rounded-full animate-pulse w-3/4 shadow-sm"></div>
                   </div>
                   <p className="text-[#E6E3D3]/70 text-sm font-medium">
-                    Processing your verification documents...
+                    Uploading your asset and documentation...
                   </p>
                   <p className="text-[#C9AE6A]/60 text-xs">This may take a few moments</p>
                 </div>
@@ -201,10 +201,10 @@ export function VerificationSubmissionModal({
                   <>
                     {/* Success state: Show navigation buttons */}
                     <Button
-                      onClick={onNavigateToLaunch}
+                      onClick={onNavigateToProfile}
                       className="w-full bg-gradient-to-r from-[#D0B284] to-[#D7BF75] hover:from-[#D7BF75] hover:to-[#D0B284] text-black font-semibold py-3 rounded-xl transition-all duration-300 shadow-lg"
                     >
-                      Submit Your First Asset
+                      Go to Profile
                     </Button>
                     <Button
                       onClick={onNavigateHome}
@@ -244,3 +244,4 @@ export function VerificationSubmissionModal({
     </Dialog>
   );
 }
+
