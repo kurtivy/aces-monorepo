@@ -1,7 +1,6 @@
 'use client';
 
-import type React from 'react';
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Footer from '@/components/ui/custom/footer';
 import LuxuryAssetsBackground from '@/components/ui/custom/luxury-assets-background';
@@ -12,10 +11,26 @@ import PageLoader from '@/components/loading/page-loader';
 import ListTokenForm from '@/components/forms/list-token-form';
 import { Dialog, DialogTitle, DialogContent, DialogHeader } from '@/components/ui/dialog';
 import { VerificationForm } from '@/components/forms/verification-form';
+import { useAuth } from '@/lib/auth/auth-context';
 
 export default function CreateTokenForm() {
   const [imageLoaded, setImageLoaded] = useState(false);
   const [showVerificationModal, setShowVerificationModal] = useState(false);
+
+  // Import useAuth to refresh user profile on page load
+  const { refreshUserProfile } = useAuth();
+
+  // Refresh user profile when page loads to ensure latest verification status
+  useEffect(() => {
+    console.log('🔄 Launch page loaded, refreshing user profile...');
+    refreshUserProfile()
+      .then(() => {
+        console.log('✅ User profile refreshed on launch page');
+      })
+      .catch((error) => {
+        console.error('❌ Error refreshing profile on launch page:', error);
+      });
+  }, [refreshUserProfile]);
 
   if (!imageLoaded) {
     return (
@@ -90,7 +105,7 @@ export default function CreateTokenForm() {
               <div className="space-y-6 sm:space-y-8">
                 {/* Booster Pack Image - responsive sizing, no cropping needed */}
                 <div className="relative flex justify-center">
-                  <div className="relative w-full max-w-[500px] sm:w-[400px] md:w-[500px]">
+                  {/* <div className="relative w-full max-w-[500px] sm:w-[400px] md:w-[500px]">
                     <Image
                       src="/webp/aces-booster-pack.webp"
                       alt="ACES Booster Pack"
@@ -100,18 +115,18 @@ export default function CreateTokenForm() {
                       priority
                       sizes="(max-width: 640px) 100vw, (max-width: 768px) 400px, 500px"
                     />
-                  </div>
+                  </div> */}
                 </div>
 
                 {/* Coming Soon Banner - responsive text sizing */}
                 <div className="relative">
-                  <div className="bg-[#0A120B] border border-[#D7BF75] py-4 sm:py-6 rounded-lg">
+                  {/* <div className="bg-[#0A120B] border border-[#D7BF75] py-4 sm:py-6 rounded-lg">
                     <div className="text-center">
                       <h2 className="text-[#D7BF75] text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-neue-world uppercase tracking-widest leading-tight">
                         Coming Soon
                       </h2>
                     </div>
-                  </div>
+                  </div> */}
                 </div>
               </div>
             </div>

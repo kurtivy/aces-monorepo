@@ -32,8 +32,13 @@ export default function ProfilePage() {
       }
     };
     measure();
-    const ResizeObserverCtor = (window as unknown as { ResizeObserver?: typeof ResizeObserver })
-      .ResizeObserver;
+    const ResizeObserverCtor = (window as unknown as { ResizeObserver?: unknown })
+      .ResizeObserver as
+      | (new (callback: (...args: unknown[]) => void) => {
+          observe: (el: unknown) => void;
+          unobserve: (el: unknown) => void;
+        })
+      | undefined;
     const header = getHeader();
     const ro = ResizeObserverCtor && header ? new ResizeObserverCtor(measure) : null;
     if (ro && header) ro.observe(header);
