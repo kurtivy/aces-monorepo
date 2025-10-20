@@ -112,7 +112,7 @@ export class VerificationsApi {
   }
 
   static async getAllVerifications(authToken: string): Promise<ApiResult<VerificationData[]>> {
-    return this.request('/admin/verifications', {
+    return this.request('/verification/admin/all', {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${authToken}`,
@@ -121,7 +121,7 @@ export class VerificationsApi {
   }
 
   static async getPendingVerifications(authToken: string): Promise<ApiResult<VerificationData[]>> {
-    return this.request('/admin/verifications/pending', {
+    return this.request('/verification/admin/pending', {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${authToken}`,
@@ -131,19 +131,36 @@ export class VerificationsApi {
 
   static async reviewVerification(
     verificationId: string,
-    approved: boolean,
+    decision: 'APPROVED' | 'REJECTED',
     rejectionReason: string | undefined,
     authToken: string,
   ): Promise<ApiResult<VerificationData>> {
-    return this.request(`/admin/verifications/${verificationId}/review`, {
-      method: 'POST',
+    return this.request(`/verification/admin/${verificationId}/review`, {
+      method: 'PUT',
       headers: {
         Authorization: `Bearer ${authToken}`,
       },
       body: JSON.stringify({
-        approved,
+        decision,
         rejectionReason,
       }),
+    });
+  }
+
+  static async getVerificationImages(
+    verificationId: string,
+    authToken: string,
+  ): Promise<
+    ApiResult<{
+      verificationId: string;
+      images: Array<{ type: 'DOCUMENT' | 'SELFIE'; originalUrl: string | null; signedUrl: string }>;
+    }>
+  > {
+    return this.request(`/verification/admin/${verificationId}/images`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
     });
   }
 }

@@ -71,6 +71,8 @@ export interface FacialVerificationResult {
   facialVerificationStatus: string;
   overallScore: number;
   recommendation: 'APPROVE' | 'REJECT' | 'MANUAL_REVIEW';
+  autoApproved: boolean;
+  requiresManualReview: boolean;
   message: string;
 }
 

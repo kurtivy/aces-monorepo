@@ -156,6 +156,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error(result.error || 'Failed to verify user');
       }
 
+      console.log('👤 User profile loaded:', {
+        sellerStatus: result.data.profile.sellerStatus,
+        role: result.data.profile.role,
+        email: result.data.profile.email,
+      });
+
       setState((prev) => ({
         ...prev,
         user: result.data.profile,
@@ -436,7 +442,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isLoading: state.isLoading,
     user: state.user,
     walletAddress: primaryWalletAddress,
-    isVerifiedSeller: state.user?.sellerStatus === 'APPROVED',
+    isVerifiedSeller:
+      state.user?.sellerStatus === 'APPROVED' || state.user?.sellerStatus === 'PENDING',
     hasExternalWallet: hasExternalWalletConnected,
 
     connectWallet,

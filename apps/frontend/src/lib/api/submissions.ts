@@ -29,7 +29,8 @@ export interface UploadUrlResponse {
 }
 
 export interface UploadImageResponse {
-  publicUrl: string;
+  imageUrl: string;
+  fileName: string;
 }
 
 export class SubmissionsApi {
@@ -143,12 +144,17 @@ export class SubmissionsApi {
     return result.data!;
   }
 
-  static async uploadImage(file: File, authToken?: string): Promise<string> {
+  static async uploadImage(
+    file: File,
+    authToken?: string,
+    type: 'asset' | 'ownership' = 'asset',
+  ): Promise<string> {
     const formData = new FormData();
     formData.append('file', file);
 
-    const result = await this.makeRequest<ApiResponse<UploadImageResponse>>(
-      '/api/v1/submissions/upload-image',
+    // The backend returns { success, imageUrl, fileName } directly, not wrapped in ApiResponse
+    const result = await this.makeRequest<{ success: boolean; imageUrl: string; fileName: string }>(
+      `/api/v1/submissions/upload-image?type=${type}`,
       {
         method: 'POST',
         body: formData,
@@ -156,7 +162,11 @@ export class SubmissionsApi {
       },
     );
 
-    return result.data!.publicUrl;
+    if (!result.success || !result.imageUrl) {
+      throw new Error('Failed to upload image - no URL returned');
+    }
+
+    return result.imageUrl;
   }
 
   static async createTestSubmission(
@@ -165,6 +175,9 @@ export class SubmissionsApi {
   ): Promise<ApiResponse<any>> {
     // Debug logging
     console.log('Sending submission data:', JSON.stringify(data, null, 2));
+    console.log('🔑 Auth token present?', !!authToken);
+    console.log('🔑 Auth token length:', authToken?.length);
+    console.log('🔑 Auth token preview:', authToken?.substring(0, 20) + '...');
     console.log('ImageGallery URLs:');
     data.imageGallery?.forEach((url, i) => {
       console.log(`URL ${i}:`, url);
@@ -173,7 +186,7 @@ export class SubmissionsApi {
       console.log(`Has spaces?`, url.includes(' '));
     });
 
-    return await this.makeRequest<ApiResponse<any>>('/api/v1/submissions/test', {
+    return await this.makeRequest<ApiResponse<any>>('/api/v1/submissions', {
       method: 'POST',
       body: data,
       authToken,

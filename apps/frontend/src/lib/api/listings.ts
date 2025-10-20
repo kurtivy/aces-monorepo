@@ -33,6 +33,16 @@ export interface ListingData {
   title: string;
   symbol: string;
   description: string;
+  // New schema fields (optional while backend transitions)
+  brand?: string | null;
+  story?: string | null;
+  details?: string | null;
+  provenance?: string | null;
+  hypeSentence?: string | null;
+  value?: string | null;
+  reservePrice?: string | null;
+  startingBidPrice?: string | null;
+  assetDetails?: Record<string, string> | null;
   imageGallery: string[];
   contractAddress?: string;
   location?: string;
@@ -93,9 +103,8 @@ export class ListingsApi {
     endpoint: string,
     options: RequestInit = {},
   ): Promise<ApiResult<T>> {
-    // For admin endpoints, use the admin base path
-    const isAdminEndpoint = endpoint.startsWith('/admin/');
-    const basePath = isAdminEndpoint ? '/api/v1' : '/api/v1/listings';
+    // For all listings-related endpoints (including admin), keep the listings base path
+    const basePath = '/api/v1/listings';
     const url = `${API_BASE_URL}${basePath}${endpoint}`;
 
     const finalHeaders = {
@@ -148,6 +157,35 @@ export class ListingsApi {
     });
   }
 
+  static async updateMyListing(
+    listingId: string,
+    data: Partial<{
+      title: string;
+      symbol: string;
+      brand: string;
+      story: string;
+      details: string;
+      provenance: string;
+      value: string;
+      reservePrice: string;
+      hypeSentence: string;
+      assetType: string;
+      imageGallery: string[];
+      location: string;
+      assetDetails: Record<string, string>;
+      startingBidPrice: string;
+    }>,
+    authToken: string,
+  ): Promise<ApiResult<ListingData>> {
+    return this.request(`/${listingId}`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify(data),
+    });
+  }
+
   static async toggleListingStatus(
     listingId: string,
     isLive: boolean,
@@ -163,11 +201,24 @@ export class ListingsApi {
   }
 
   static async getAllListingsForAdmin(authToken: string): Promise<ApiResult<ListingData[]>> {
-    return this.request('/admin/listings', {
+    return this.request('/admin/all', {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${authToken}`,
       },
+    });
+  }
+
+  static async createListingFromSubmission(
+    submissionId: string,
+    authToken: string,
+  ): Promise<ApiResult<ListingData>> {
+    return this.request('/admin/create-from-submission', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({ submissionId }),
     });
   }
 }

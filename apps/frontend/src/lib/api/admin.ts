@@ -299,6 +299,28 @@ export class AdminApi {
     );
   }
 
+  static async getOwnershipDocuments(
+    submissionId: string,
+    token?: string,
+  ): Promise<{
+    success: boolean;
+    data: {
+      submissionId: string;
+      documents: Array<{
+        type: string;
+        originalUrl: string;
+        signedUrl: string;
+        uploadedAt: string;
+      }>;
+    };
+  }> {
+    return this.adminRequest(
+      `/submissions/${submissionId}/ownership-docs`,
+      { method: 'GET' },
+      token,
+    );
+  }
+
   // Token management methods
   static async addTokenToDatabase(
     contractAddress: string,
