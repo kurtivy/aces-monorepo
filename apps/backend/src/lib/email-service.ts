@@ -568,4 +568,187 @@ Reply directly to this email to respond to the customer.
       };
     }
   }
+
+  /**
+   * Send email notification when token is ready to mint
+   */
+  async sendReadyToMintEmail(data: {
+    email: string;
+    listingTitle: string;
+    listingSymbol: string;
+  }): Promise<EmailServiceResponse> {
+    try {
+      if (!process.env.RESEND_API_KEY) {
+        console.error('RESEND_API_KEY environment variable is not set');
+        return { success: false, error: 'Email service configuration error' };
+      }
+
+      const subject = `Your token is ready to mint - ${data.listingTitle}`;
+      const emailHtml = `
+        <html>
+          <body style="font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; color: #1a1a1a;">
+            <div style="max-width:600px;margin:0 auto;padding:24px;">
+              <h1 style="margin:0 0 16px 0;color:#231F20;">🎉 Token Ready to Mint!</h1>
+              <p style="margin:0 0 12px 0;">Great news! Your listing <strong>${data.listingTitle} (${data.listingSymbol})</strong> has been configured by our admin team and is now ready for you to mint the token.</p>
+              
+              <div style="margin:20px 0;padding:16px;border-left:4px solid #9333ea;background:#f3e8ff;">
+                <h3 style="margin:0 0 8px 0;color:#7c3aed;">Next Steps:</h3>
+                <ol style="margin:8px 0;padding-left:20px;">
+                  <li>Log in to your ACES account</li>
+                  <li>Go to your Profile page</li>
+                  <li>Find your listing "${data.listingTitle}"</li>
+                  <li>Click the "Mint Token" button</li>
+                  <li>Confirm the transaction in your wallet</li>
+                </ol>
+              </div>
+
+              <p style="margin:16px 0 0 0;"><strong>Important:</strong> You'll need to have your wallet connected and ready to sign the transaction. The token will be deployed using the parameters configured by our admin team.</p>
+              
+              <div style="margin:24px 0;">
+                <a href="https://aces.fun/profile" style="display:inline-block;padding:12px 24px;background:#9333ea;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;">
+                  Go to Profile
+                </a>
+              </div>
+
+              <p style="margin:16px 0 0 0;color:#666;">Questions? Reply to this email and we'll help you out!</p>
+            </div>
+          </body>
+        </html>
+      `;
+
+      const emailText = `
+Token Ready to Mint - ${data.listingTitle}
+
+Great news! Your listing "${data.listingTitle} (${data.listingSymbol})" has been configured and is ready for you to mint the token.
+
+Next Steps:
+1. Log in to your ACES account
+2. Go to your Profile page
+3. Find your listing "${data.listingTitle}"
+4. Click the "Mint Token" button
+5. Confirm the transaction in your wallet
+
+Visit: https://aces.fun/profile
+
+Questions? Reply to this email and we'll help you out!
+      `;
+
+      const result = await resend.emails.send({
+        from: 'ACES Notifications <noreply@aces.fun>',
+        to: [data.email],
+        subject,
+        html: emailHtml,
+        text: emailText,
+      });
+
+      if (result.error) {
+        console.error('Resend API error:', result.error);
+        return { success: false, error: 'Failed to send email' };
+      }
+
+      console.log('Ready to mint email sent successfully:', result.data?.id);
+      return { success: true, messageId: result.data?.id };
+    } catch (error) {
+      console.error('sendReadyToMintEmail error:', error);
+      return { success: false, error: 'Failed to send email' };
+    }
+  }
+
+  /**
+   * Send email notification when token has been minted successfully
+   */
+  async sendTokenMintedEmail(data: {
+    email: string;
+    listingTitle: string;
+    listingSymbol: string;
+    contractAddress: string;
+  }): Promise<EmailServiceResponse> {
+    try {
+      if (!process.env.RESEND_API_KEY) {
+        console.error('RESEND_API_KEY environment variable is not set');
+        return { success: false, error: 'Email service configuration error' };
+      }
+
+      const subject = `Token minted successfully - ${data.listingTitle}`;
+      const emailHtml = `
+        <html>
+          <body style="font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; color: #1a1a1a;">
+            <div style="max-width:600px;margin:0 auto;padding:24px;">
+              <h1 style="margin:0 0 16px 0;color:#231F20;">🚀 Token Minted Successfully!</h1>
+              <p style="margin:0 0 12px 0;">Congratulations! Your token for <strong>${data.listingTitle} (${data.listingSymbol})</strong> has been successfully minted and is now live on ACES!</p>
+              
+              <div style="margin:20px 0;padding:16px;border-left:4px solid #16a34a;background:#f0fdf4;">
+                <h3 style="margin:0 0 8px 0;color:#15803d;">Token Details:</h3>
+                <p style="margin:4px 0;"><strong>Name:</strong> ${data.listingTitle}</p>
+                <p style="margin:4px 0;"><strong>Symbol:</strong> ${data.listingSymbol}</p>
+                <p style="margin:4px 0;"><strong>Contract Address:</strong><br/><code style="background:#e5e7eb;padding:4px 8px;border-radius:4px;font-size:12px;">${data.contractAddress}</code></p>
+              </div>
+
+              <div style="margin:20px 0;padding:16px;background:#fef3c7;border-left:4px solid #f59e0b;">
+                <h3 style="margin:0 0 8px 0;color:#d97706;">What's Next?</h3>
+                <ul style="margin:8px 0;padding-left:20px;">
+                  <li>Your listing is now live on ACES</li>
+                  <li>Users can start trading your token</li>
+                  <li>Monitor trading activity from your profile</li>
+                  <li>Engage with your community</li>
+                </ul>
+              </div>
+              
+              <div style="margin:24px 0;">
+                <a href="https://aces.fun/token/${data.contractAddress}" style="display:inline-block;padding:12px 24px;background:#16a34a;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;margin-right:12px;">
+                  View Token Page
+                </a>
+                <a href="https://aces.fun/profile" style="display:inline-block;padding:12px 24px;background:#6b7280;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;">
+                  Go to Profile
+                </a>
+              </div>
+
+              <p style="margin:16px 0 0 0;color:#666;">Share your listing with the community and start building your following!</p>
+            </div>
+          </body>
+        </html>
+      `;
+
+      const emailText = `
+Token Minted Successfully - ${data.listingTitle}
+
+Congratulations! Your token for "${data.listingTitle} (${data.listingSymbol})" has been successfully minted and is now live on ACES!
+
+Token Details:
+- Name: ${data.listingTitle}
+- Symbol: ${data.listingSymbol}
+- Contract Address: ${data.contractAddress}
+
+What's Next?
+- Your listing is now live on ACES
+- Users can start trading your token
+- Monitor trading activity from your profile
+- Engage with your community
+
+View your token: https://aces.fun/token/${data.contractAddress}
+Go to profile: https://aces.fun/profile
+
+Share your listing with the community and start building your following!
+      `;
+
+      const result = await resend.emails.send({
+        from: 'ACES Notifications <noreply@aces.fun>',
+        to: [data.email],
+        subject,
+        html: emailHtml,
+        text: emailText,
+      });
+
+      if (result.error) {
+        console.error('Resend API error:', result.error);
+        return { success: false, error: 'Failed to send email' };
+      }
+
+      console.log('Token minted email sent successfully:', result.data?.id);
+      return { success: true, messageId: result.data?.id };
+    } catch (error) {
+      console.error('sendTokenMintedEmail error:', error);
+      return { success: false, error: 'Failed to send email' };
+    }
+  }
 }

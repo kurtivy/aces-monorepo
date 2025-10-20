@@ -11,6 +11,10 @@ import {
 } from './notification-service';
 import { AerodromeDataService, AerodromePoolState } from './aerodrome-data-service';
 import { createProvider, getNetworkConfig } from '../config/network.config';
+import { TokenParameters } from '@aces/utils';
+import { TokenService } from './token-service';
+import { EmailService } from '../lib/email-service';
+import { ethers } from 'ethers';
 
 // Type for listings with relations - using simpler type due to TypeScript language server caching
 type ListingWithRelations = {
@@ -763,6 +767,413 @@ export class ListingService {
       ...listing,
       token,
       dex: dexMeta,
+    };
+  }
+
+  /**
+   * Finalize user details - User confirms listing ready for admin review
+   */
+  async finalizeUserDetails(listingId: string, userId: string) {
+    // Verify listing exists and user owns it
+    const listing = await this.prisma.listing.findUnique({
+      where: { id: listingId },
+      include: { owner: true },
+    });
+
+    if (!listing) {
+      throw errors.notFound('Listing');
+    }
+
+    if (listing.ownerId !== userId) {
+      throw errors.forbidden('You do not own this listing');
+    }
+
+    // Check if listing is in correct status
+    if (listing.tokenCreationStatus !== 'AWAITING_USER_DETAILS') {
+      throw {
+        statusCode: 400,
+        code: 'INVALID_STATUS',
+        message: 'Listing is not awaiting user details',
+      };
+    }
+
+    // Update status to PENDING_ADMIN_REVIEW
+    const updatedListing = await this.prisma.listing.update({
+      where: { id: listingId },
+      data: {
+        tokenCreationStatus: 'PENDING_ADMIN_REVIEW',
+        updatedAt: new Date(),
+      },
+      include: {
+        owner: true,
+        submission: true,
+      },
+    });
+
+    console.log(`[ListingService] Listing ${listingId} finalized by user, pending admin review`);
+
+    return updatedListing;
+  }
+
+  /**
+   * Save token parameters - Admin configures token creation parameters
+   */
+  async saveTokenParameters(listingId: string, tokenParameters: TokenParameters) {
+    // Verify listing exists
+    const listing = await this.prisma.listing.findUnique({
+      where: { id: listingId },
+    });
+
+    if (!listing) {
+      throw errors.notFound('Listing');
+    }
+
+    // Update tokenParameters
+    const updatedListing = await this.prisma.listing.update({
+      where: { id: listingId },
+      data: {
+        tokenParameters: tokenParameters as any, // Prisma Json type
+        updatedAt: new Date(),
+      },
+      include: {
+        owner: true,
+        submission: true,
+      },
+    });
+
+    console.log(`[ListingService] Token parameters saved for listing ${listingId}`);
+
+    return updatedListing;
+  }
+
+  /**
+   * Prepare for minting - Admin finalizes, predicts addresses, adds to DB, notifies user
+   */
+  async prepareForMinting(listingId: string) {
+    // Verify listing exists and has token parameters
+    const listing = await this.prisma.listing.findUnique({
+      where: { id: listingId },
+      include: { owner: true },
+    });
+
+    if (!listing) {
+      throw errors.notFound('Listing');
+    }
+
+    if (!listing.tokenParameters) {
+      throw {
+        statusCode: 400,
+        code: 'MISSING_TOKEN_PARAMETERS',
+        message: 'Token parameters must be configured before preparing for minting',
+      };
+    }
+
+    const tokenParams = listing.tokenParameters as any;
+
+    // Ensure name and symbol are set (use listing values as fallback)
+    if (!tokenParams.name) {
+      tokenParams.name = listing.title;
+    }
+    if (!tokenParams.symbol) {
+      tokenParams.symbol = listing.symbol;
+    }
+
+    console.log(`[ListingService] Preparing listing ${listingId} for minting...`);
+    console.log(`[ListingService] Token params:`, {
+      curve: tokenParams.curve,
+      steepness: tokenParams.steepness,
+      floor: tokenParams.floor,
+      name: tokenParams.name,
+      symbol: tokenParams.symbol,
+      salt: tokenParams.salt,
+      tokensBondedAt: tokenParams.tokensBondedAt,
+      chainId: tokenParams.chainId,
+    });
+
+    try {
+      // Step 1: Get the predicted token address
+      // If it was already predicted during salt mining, use that
+      // Otherwise, try to predict it using the factory contract
+      let predictedTokenAddress: string;
+
+      if (tokenParams.predictedAddress) {
+        console.log(`[ListingService] Using pre-computed predicted address from salt mining`);
+        predictedTokenAddress = tokenParams.predictedAddress;
+      } else {
+        console.log(`[ListingService] Predicting token address using factory contract...`);
+        predictedTokenAddress = await this.predictTokenAddress(tokenParams);
+      }
+
+      console.log(`[ListingService] Predicted token address: ${predictedTokenAddress}`);
+
+      // Step 2: Predict the pool address (token paired with ACES)
+      const predictedPoolAddress = await this.predictPoolAddress(predictedTokenAddress);
+      console.log(`[ListingService] Predicted pool address: ${predictedPoolAddress}`);
+
+      // Step 3: Add token to database with predicted addresses
+      const tokenService = new TokenService(this.prisma);
+
+      // Check if token already exists
+      let token = await this.prisma.token.findUnique({
+        where: { contractAddress: predictedTokenAddress.toLowerCase() },
+      });
+
+      if (!token) {
+        // Create token with predicted data
+        token = await this.prisma.token.create({
+          data: {
+            contractAddress: predictedTokenAddress.toLowerCase(),
+            symbol: tokenParams.symbol || listing.symbol,
+            name: tokenParams.name || listing.title,
+            decimals: 18, // Standard for ERC20
+            currentPrice: '0',
+            currentPriceACES: '0',
+            volume24h: '0',
+            phase: 'BONDING_CURVE', // Starts in bonding phase
+            isActive: false, // Not active until minted
+            chainId: tokenParams.chainId || 8453, // Base Mainnet
+            poolAddress: predictedPoolAddress?.toLowerCase() || null,
+            listingId: listingId, // Link to listing
+          },
+        });
+        console.log(`[ListingService] Token added to database: ${token.contractAddress}`);
+      } else {
+        // Update existing token with pool address and listing link
+        token = await this.prisma.token.update({
+          where: { contractAddress: predictedTokenAddress.toLowerCase() },
+          data: {
+            poolAddress: predictedPoolAddress?.toLowerCase() || null,
+            listingId: listingId,
+          },
+        });
+        console.log(`[ListingService] Token updated in database: ${token.contractAddress}`);
+      }
+
+      // Step 4: Update listing status to READY_TO_MINT
+      const updatedListing = await this.prisma.listing.update({
+        where: { id: listingId },
+        data: {
+          tokenCreationStatus: 'READY_TO_MINT',
+          updatedAt: new Date(),
+        },
+        include: {
+          owner: true,
+          submission: true,
+          token: true,
+        },
+      });
+
+      // Step 5: Send notification and email to user
+      const notificationService = new NotificationService(this.prisma);
+      const emailService = new EmailService();
+
+      try {
+        await notificationService.createNotification({
+          userId: listing.ownerId,
+          listingId: listing.id,
+          type: NotificationType.READY_TO_MINT,
+          title: 'Your token is ready to mint!',
+          message: `Your listing "${listing.title}" has been configured and is ready for you to mint the token.`,
+          actionUrl: `/profile`,
+        });
+
+        // Send email notification
+        if (listing.owner.email) {
+          await emailService.sendReadyToMintEmail({
+            email: listing.owner.email,
+            listingTitle: listing.title,
+            listingSymbol: listing.symbol,
+          });
+        }
+      } catch (error) {
+        console.error('[ListingService] Failed to send notification/email:', error);
+        // Don't fail the operation if notification fails
+      }
+
+      console.log(
+        `[ListingService] Listing ${listingId} prepared for minting with predicted addresses`,
+      );
+
+      return updatedListing;
+    } catch (error) {
+      console.error('[ListingService] Error preparing for minting:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Predict token address using CREATE2
+   */
+  private async predictTokenAddress(tokenParams: any): Promise<string> {
+    const chainId = tokenParams.chainId || 8453;
+    const networkConfig = getNetworkConfig(chainId as 8453 | 84532);
+    const provider = createProvider(chainId as 8453 | 84532);
+
+    if (!provider) {
+      throw new Error('Failed to create provider');
+    }
+
+    if (!networkConfig.acesFactoryProxy) {
+      throw new Error('Factory address not configured');
+    }
+
+    const factoryAbi = [
+      'function predictTokenAddress(uint8 curve, uint256 steepness, uint256 floor, string name, string symbol, bytes32 salt, uint256 tokensBondedAt) view returns (address)',
+    ];
+
+    const factory = new ethers.Contract(networkConfig.acesFactoryProxy, factoryAbi, provider);
+
+    try {
+      const predictedAddress = await factory.predictTokenAddress(
+        tokenParams.curve,
+        tokenParams.steepness,
+        tokenParams.floor,
+        tokenParams.name,
+        tokenParams.symbol,
+        tokenParams.salt,
+        tokenParams.tokensBondedAt,
+      );
+
+      return predictedAddress;
+    } catch (error) {
+      console.error('[ListingService] Error predicting token address:', error);
+      throw new Error('Failed to predict token address');
+    }
+  }
+
+  /**
+   * Predict pool address on Aerodrome (token paired with ACES)
+   */
+  private async predictPoolAddress(tokenAddress: string): Promise<string | null> {
+    try {
+      const ACES_TOKEN_ADDRESS = '0x55337650856299363c496065C836B9C6E9dE0367'; // Base Mainnet ACES
+      const AERODROME_FACTORY = '0x420DD381b31aEf6683db6B902084cB0FFECe40Da'; // Base Mainnet
+
+      const networkConfig = getNetworkConfig(8453); // Base Mainnet
+      const provider = createProvider(8453);
+
+      if (!provider) {
+        console.log('[ListingService] Failed to create provider for pool prediction');
+        return null;
+      }
+
+      const factoryAbi = [
+        'function getPair(address tokenA, address tokenB, bool stable) view returns (address)',
+      ];
+
+      const factory = new ethers.Contract(AERODROME_FACTORY, factoryAbi, provider);
+
+      // Try volatile pool first (default for RWA tokens)
+      const volatilePool = await factory.getPair(tokenAddress, ACES_TOKEN_ADDRESS, false);
+
+      if (volatilePool && volatilePool !== ethers.ZeroAddress) {
+        return volatilePool;
+      }
+
+      // Fallback: try stable pool
+      const stablePool = await factory.getPair(tokenAddress, ACES_TOKEN_ADDRESS, true);
+
+      if (stablePool && stablePool !== ethers.ZeroAddress) {
+        return stablePool;
+      }
+
+      // Pool doesn't exist yet - return null
+      console.log('[ListingService] Pool does not exist yet for', tokenAddress);
+      return null;
+    } catch (error) {
+      console.error('[ListingService] Error predicting pool address:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Complete minting - User has minted the token, link it and go live
+   */
+  async completeMinting(listingId: string, contractAddress: string, userId: string) {
+    // Verify listing exists and user owns it
+    const listing = await this.prisma.listing.findUnique({
+      where: { id: listingId },
+      include: { owner: true },
+    });
+
+    if (!listing) {
+      throw errors.notFound('Listing');
+    }
+
+    if (listing.ownerId !== userId) {
+      throw errors.forbidden('You do not own this listing');
+    }
+
+    // Check if listing is in correct status
+    if (listing.tokenCreationStatus !== 'READY_TO_MINT') {
+      throw {
+        statusCode: 400,
+        code: 'INVALID_STATUS',
+        message: 'Listing is not ready for minting',
+      };
+    }
+
+    // Add token to database
+    const tokenService = new TokenService(this.prisma);
+    const token = await tokenService.getOrCreateToken(contractAddress);
+    await tokenService.fetchAndUpdateTokenData(contractAddress);
+
+    // Link token to listing and set isLive = true, status = MINTED
+    const updatedListing = await this.prisma.listing.update({
+      where: { id: listingId },
+      data: {
+        isLive: true,
+        tokenCreationStatus: 'MINTED',
+        updatedAt: new Date(),
+      },
+      include: {
+        owner: true,
+        submission: true,
+        token: true,
+      },
+    });
+
+    // Update token with listing reference
+    await this.prisma.token.update({
+      where: { contractAddress: contractAddress.toLowerCase() },
+      data: { listingId: listingId },
+    });
+
+    // Send success notification and email
+    const notificationService = new NotificationService(this.prisma);
+    const emailService = new EmailService();
+
+    try {
+      await notificationService.createNotification({
+        userId: listing.ownerId,
+        listingId: listing.id,
+        type: NotificationType.TOKEN_MINTED_SUCCESS,
+        title: 'Token minted successfully!',
+        message: `Your token for "${listing.title}" has been minted and is now live!`,
+        actionUrl: `/token/${contractAddress}`,
+      });
+
+      // Send email notification
+      if (listing.owner.email) {
+        await emailService.sendTokenMintedEmail({
+          email: listing.owner.email,
+          listingTitle: listing.title,
+          listingSymbol: listing.symbol,
+          contractAddress: contractAddress,
+        });
+      }
+    } catch (error) {
+      console.error('[ListingService] Failed to send notification/email:', error);
+      // Don't fail the operation if notification fails
+    }
+
+    console.log(
+      `[ListingService] Token ${contractAddress} minted for listing ${listingId}, now live`,
+    );
+
+    return {
+      listing: updatedListing,
+      token,
     };
   }
 }

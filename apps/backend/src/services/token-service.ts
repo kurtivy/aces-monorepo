@@ -432,4 +432,53 @@ export class TokenService {
       return [];
     }
   }
+
+  /**
+   * Fetches total fees accumulated from all trades for a token
+   * Returns fees in ACES (converted from WEI)
+   */
+  async getTotalFees(tokenAddress: string): Promise<{ acesAmount: string; weiAmount: string }> {
+    try {
+      const query = `{
+        trades(where: {token: "${tokenAddress.toLowerCase()}"}, first: 1000) {
+          subjectFeeAmount
+        }
+      }`;
+
+      const response = await fetch(process.env.GOLDSKY_SUBGRAPH_URL!, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Subgraph request failed: ${response.status}`);
+      }
+
+      const result = (await response.json()) as {
+        data: { trades: Array<{ subjectFeeAmount: string }> };
+      };
+
+      const trades = result.data.trades || [];
+
+      // Sum all subjectFeeAmount values (in WEI)
+      const totalFeesWei = trades.reduce((sum, trade) => {
+        return sum.add(new Decimal(trade.subjectFeeAmount || '0'));
+      }, new Decimal(0));
+
+      // Convert from WEI to ACES (divide by 10^18)
+      const totalFeesAces = totalFeesWei.div(new Decimal(10).pow(18));
+
+      return {
+        weiAmount: totalFeesWei.toString(),
+        acesAmount: totalFeesAces.toString(),
+      };
+    } catch (error) {
+      console.error('[TokenService] Failed to fetch total fees:', error);
+      return {
+        weiAmount: '0',
+        acesAmount: '0',
+      };
+    }
+  }
 }

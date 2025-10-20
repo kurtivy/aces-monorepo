@@ -3,9 +3,10 @@ import { ethers, type EventLog, type Log } from 'ethers';
 const BASE_SEPOLIA_CHAIN_ID = 84532;
 const BASE_MAINNET_CHAIN_ID = 8453;
 
-const DEFAULT_CHAIN_PRIORITY = [BASE_SEPOLIA_CHAIN_ID, BASE_MAINNET_CHAIN_ID];
+const DEFAULT_CHAIN_PRIORITY = [BASE_MAINNET_CHAIN_ID, BASE_SEPOLIA_CHAIN_ID]; // Prioritize mainnet
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const ZERO_ADDRESS = ethers.ZeroAddress;
+const ALCHEMY_MAX_BLOCK_RANGE = 10000; // Alchemy supports larger ranges than standard RPC
 
 const LAUNCHPAD_TOKEN_ABI = [
   'event Transfer(address indexed from, address indexed to, uint256 value)',
@@ -232,11 +233,13 @@ export class TokenHolderService {
     chainConfig: ChainConfig,
     rpcUrl: string,
   ): Promise<number> {
+    console.log(`[TokenHolderService] 🔗 Connecting to RPC: ${rpcUrl.substring(0, 50)}...`);
     const provider = new ethers.JsonRpcProvider(rpcUrl, chainConfig.chainId);
     const tokenContract = new ethers.Contract(tokenAddress, LAUNCHPAD_TOKEN_ABI, provider);
 
     let startBlock = 0;
     if (chainConfig.factoryAddress) {
+      console.log(`[TokenHolderService] 🏭 Looking up token creation block...`);
       const factoryContract = new ethers.Contract(
         chainConfig.factoryAddress,
         ACES_FACTORY_EVENT_ABI,
@@ -245,14 +248,38 @@ export class TokenHolderService {
       const creationBlock = await this.resolveCreationBlock(factoryContract, tokenAddress);
       if (creationBlock) {
         startBlock = creationBlock;
+        console.log(`[TokenHolderService] ✅ Token created at block: ${startBlock}`);
+      } else {
+        console.log(`[TokenHolderService] ⚠️  Could not find creation block, starting from 0`);
       }
     }
 
     const latestBlock = await provider.getBlockNumber();
+    const blockRange = latestBlock - startBlock;
+    console.log(
+      `[TokenHolderService] 📊 Scanning blocks ${startBlock} to ${latestBlock} (${blockRange.toLocaleString()} blocks)`,
+    );
+
+    // Safeguard: If token wasn't found in factory and block range is huge, fail fast
+    // For newly minted tokens, this should never trigger
+    const MAX_BLOCK_RANGE = 1_000_000; // ~20 days of blocks on Base (2-second blocks)
+    if (startBlock === 0 && blockRange > MAX_BLOCK_RANGE) {
+      console.log(
+        `[TokenHolderService] ⚠️  Block range too large (${blockRange.toLocaleString()} blocks)`,
+      );
+      console.log(`[TokenHolderService] 💡 This token was not created via ACES factory`);
+      throw new Error(
+        `Token not found in factory and block range too large. This service only supports ACES factory tokens.`,
+      );
+    }
+
+    console.log(`[TokenHolderService] 🔍 Fetching Transfer events...`);
     const events = await this.collectTransferEvents(tokenContract, startBlock, latestBlock);
+    console.log(`[TokenHolderService] 📝 Found ${events.length.toLocaleString()} Transfer events`);
 
     const balances = new Map<string, bigint>();
 
+    console.log(`[TokenHolderService] 🧮 Processing ${events.length.toLocaleString()} events...`);
     for (const event of events) {
       const eventArgs = event.args as any;
       if (!eventArgs) {
@@ -294,6 +321,7 @@ export class TokenHolderService {
       }
     }
 
+    console.log(`[TokenHolderService] ✅ Calculated holder count: ${holderCount}`);
     return holderCount;
   }
 
@@ -351,24 +379,66 @@ export class TokenHolderService {
     const transferFilter = tokenContract.filters.Transfer();
 
     try {
+      console.log(
+        `[TokenHolderService] 📡 Attempting single query for blocks ${fromBlock}-${toBlock}...`,
+      );
       const events = await tokenContract.queryFilter(transferFilter, fromBlock, toBlock);
+      console.log(`[TokenHolderService] ✅ Single query successful, got ${events.length} events`);
       return events.map((event) => this.normalizeEvent(tokenContract, event));
     } catch (error) {
+      console.log(`[TokenHolderService] ⚠️  Single query failed, switching to chunked queries...`);
       if (!shouldChunkQuery(error)) {
         throw error instanceof Error ? error : new Error('Failed to fetch transfer events');
       }
 
-      const chunkSize = 50_000;
+      // Use Alchemy's larger block range support
+      const chunkSize = ALCHEMY_MAX_BLOCK_RANGE;
       const events: TransferEvent[] = [];
+      const totalChunks = Math.ceil((toBlock - fromBlock) / chunkSize);
+      console.log(
+        `[TokenHolderService] 📦 Will process ${totalChunks} chunks of ${chunkSize} blocks each`,
+      );
 
       let currentFrom = fromBlock;
+      let chunkNum = 0;
       while (currentFrom <= toBlock) {
+        chunkNum++;
         const currentTo = Math.min(currentFrom + chunkSize, toBlock);
-        const chunk = await tokenContract.queryFilter(transferFilter, currentFrom, currentTo);
-        events.push(...chunk.map((log) => this.normalizeEvent(tokenContract, log)));
+        const progress = ((chunkNum / totalChunks) * 100).toFixed(1);
+        console.log(
+          `[TokenHolderService] 🔄 Processing chunk ${chunkNum}/${totalChunks} (${progress}%) - blocks ${currentFrom}-${currentTo}`,
+        );
+
+        try {
+          const chunk = await tokenContract.queryFilter(transferFilter, currentFrom, currentTo);
+          console.log(
+            `[TokenHolderService]    ✅ Chunk ${chunkNum} complete: ${chunk.length} events`,
+          );
+          events.push(...chunk.map((log) => this.normalizeEvent(tokenContract, log)));
+        } catch (chunkError) {
+          console.log(
+            `[TokenHolderService]    ⚠️  Chunk ${chunkNum} failed, trying smaller chunks...`,
+          );
+          // If even chunked query fails, try smaller chunks
+          if (shouldChunkQuery(chunkError)) {
+            const smallerChunkSize = Math.floor(chunkSize / 5);
+            const subChunks = Math.ceil((currentTo - currentFrom) / smallerChunkSize);
+            console.log(
+              `[TokenHolderService]    📦 Breaking into ${subChunks} smaller chunks of ${smallerChunkSize} blocks`,
+            );
+            for (let i = currentFrom; i <= currentTo; i += smallerChunkSize) {
+              const smallTo = Math.min(i + smallerChunkSize, currentTo);
+              const smallChunk = await tokenContract.queryFilter(transferFilter, i, smallTo);
+              events.push(...smallChunk.map((log) => this.normalizeEvent(tokenContract, log)));
+            }
+          } else {
+            throw chunkError;
+          }
+        }
         currentFrom = currentTo + 1;
       }
 
+      console.log(`[TokenHolderService] 🎉 All chunks processed, total events: ${events.length}`);
       return events;
     }
   }

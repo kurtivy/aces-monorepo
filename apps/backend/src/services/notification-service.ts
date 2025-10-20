@@ -32,6 +32,7 @@ export enum NotificationType {
   LISTING_APPROVED = 'LISTING_APPROVED',
   READY_TO_MINT = 'READY_TO_MINT',
   TOKEN_MINTED = 'TOKEN_MINTED',
+  TOKEN_MINTED_SUCCESS = 'TOKEN_MINTED_SUCCESS',
   ADMIN_MESSAGE = 'ADMIN_MESSAGE',
   SYSTEM_ALERT = 'SYSTEM_ALERT',
 
@@ -358,6 +359,11 @@ export const NotificationTemplates: Record<NotificationType, NotificationTemplat
     message:
       'Congratulations! Your token has been successfully minted and is now live for trading.',
     getActionUrl: (symbol: string) => `/rwa/${symbol}`,
+  },
+  [NotificationType.TOKEN_MINTED_SUCCESS]: {
+    title: 'Token Minted Successfully!',
+    message: 'Congratulations! Your token has been successfully minted and is now live on ACES.',
+    getActionUrl: (contractAddress: string) => `/token/${contractAddress}`,
   },
   [NotificationType.TOKEN_PARAMETERS_SUBMITTED]: {
     title: 'Token Parameters Under Review',
