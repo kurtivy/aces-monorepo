@@ -1,15 +1,29 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Search, Eye, Edit, Trash2, X } from 'lucide-react';
+import {
+  Search,
+  Eye,
+  Edit,
+  Trash2,
+  ChevronLeft,
+  ChevronRight,
+  Mail,
+  Wallet,
+  Save,
+  X,
+} from 'lucide-react';
 import { useAuth } from '@/lib/auth/auth-context';
 import { ListingsApi, ListingData } from '@/lib/api/listings';
 import Image from 'next/image';
+import { TokenCreationTabContent } from './token-creation-tab-content';
+import type { TokenParameters } from '@aces/utils';
 
 interface AdminListingData {
   id: string;
@@ -38,10 +52,27 @@ const getListingStatus = (listing: ListingData): 'active' | 'pending' | 'suspend
   return 'active';
 };
 
+// Helper function to fix double-encoded URLs
+const fixImageUrl = (url: string): string => {
+  if (!url) return '/placeholder.svg';
+
+  try {
+    // Check if URL contains encoded query parameters (e.g., %3F instead of ?)
+    if (url.includes('%3F') || url.includes('%26')) {
+      // Decode once to get the actual URL with proper query parameters
+      return decodeURIComponent(url);
+    }
+    return url;
+  } catch (error) {
+    console.error('Error fixing image URL:', error);
+    return url;
+  }
+};
+
 // Helper function to format listing data for admin display
 const formatListingForAdminDisplay = (listing: ListingData): AdminListingData => {
   const status = getListingStatus(listing);
-  const imageUrl = listing.imageGallery?.[0] || '/placeholder.svg';
+  const imageUrl = fixImageUrl(listing.imageGallery?.[0] || '/placeholder.svg');
 
   // Get seller name from account verification first, then fallback to displayName
   let sellerName = 'Unknown';
@@ -88,6 +119,51 @@ export function AdminListingsTab() {
   // Modal state
   const [selectedListing, setSelectedListing] = useState<ListingData | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [isEditingOverview, setIsEditingOverview] = useState(false);
+  const [editedListing, setEditedListing] = useState<Partial<ListingData>>({});
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  // Helper to check if Token Creation tab should show
+  const shouldShowTokenCreationTab = (listing: ListingData) => {
+    return (
+      !listing.isLive &&
+      (listing.tokenCreationStatus === 'PENDING_ADMIN_REVIEW' ||
+        listing.tokenCreationStatus === 'READY_TO_MINT')
+    );
+  };
+
+  // Helper functions for formatting
+  const formatCurrency = (value?: string | null) => {
+    if (!value) return '—';
+    const numeric = value.replace(/[^0-9.]/g, '');
+    if (!numeric) return '—';
+    const integer = numeric.split('.')[0] || '0';
+    return `$${Number(integer).toLocaleString('en-US')}`;
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  // Navigate gallery images
+  const navigateGallery = (direction: 'prev' | 'next') => {
+    if (!selectedListing || !selectedListing.imageGallery) return;
+    const images = selectedListing.imageGallery;
+    const maxIndex = images.length - 1;
+
+    if (direction === 'prev') {
+      setCurrentImageIndex((prev) => (prev > 0 ? prev - 1 : maxIndex));
+    } else {
+      setCurrentImageIndex((prev) => (prev < maxIndex ? prev + 1 : 0));
+    }
+  };
 
   useEffect(() => {
     const fetchListings = async () => {
@@ -183,8 +259,67 @@ export function AdminListingsTab() {
     const listing = originalListings.find((l) => l.id === id);
     if (listing) {
       setSelectedListing(listing);
+      setEditedListing(listing);
+      setCurrentImageIndex(0);
+      setIsEditingOverview(false);
       setIsDetailModalOpen(true);
     }
+  };
+
+  const handleEditListing = (id: string) => {
+    const listing = originalListings.find((l) => l.id === id);
+    if (listing) {
+      setSelectedListing(listing);
+      setEditedListing(listing);
+      setCurrentImageIndex(0);
+      setIsEditingOverview(true);
+      setIsDetailModalOpen(true);
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!selectedListing || !editedListing) return;
+
+    try {
+      setIsSavingEdit(true);
+      const token = await getAccessToken();
+      if (!token) {
+        setError('Authentication required');
+        return;
+      }
+
+      // Call API to update listing
+      const result = await ListingsApi.updateListing(selectedListing.id, editedListing, token);
+
+      if (result.success) {
+        // Refetch listings
+        const listingsResult = await ListingsApi.getAllListingsForAdmin(token);
+        if (listingsResult.success) {
+          setOriginalListings(listingsResult.data);
+          const formattedListings = listingsResult.data.map(formatListingForAdminDisplay);
+          setListings(formattedListings);
+
+          // Update selected listing
+          const updatedListing = listingsResult.data.find((l) => l.id === selectedListing.id);
+          if (updatedListing) {
+            setSelectedListing(updatedListing);
+            setEditedListing(updatedListing);
+          }
+        }
+        setIsEditingOverview(false);
+      } else {
+        setError(result.error || 'Failed to update listing');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred while updating listing');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditedListing(selectedListing || {});
+    setIsEditingOverview(false);
   };
 
   if (isLoading) {
@@ -325,6 +460,10 @@ export function AdminListingsTab() {
                           className="w-10 h-10 rounded-full object-cover border border-[#D0B284]/20"
                           width={40}
                           height={40}
+                          unoptimized={true}
+                          onError={(e) => {
+                            (e.currentTarget as any).src = '/placeholder.svg';
+                          }}
                         />
                         <div>
                           <h3 className="text-white font-medium text-sm">
@@ -382,6 +521,7 @@ export function AdminListingsTab() {
                           variant="ghost"
                           size="sm"
                           className="text-[#DCDDCC] hover:bg-[#DCDDCC]/10"
+                          onClick={() => handleEditListing(listing.id)}
                         >
                           <Edit className="w-4 h-4 mr-1" />
                           Edit
@@ -418,265 +558,533 @@ export function AdminListingsTab() {
 
       {/* Detailed Listing View Modal */}
       <Dialog open={isDetailModalOpen} onOpenChange={setIsDetailModalOpen}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto bg-[#231F20] border border-[#D0B284]/20">
-          <DialogHeader>
-            <div className="flex items-center justify-between">
-              <DialogTitle className="text-2xl font-bold text-[#D0B284] font-libre-caslon">
-                Listing Details
-              </DialogTitle>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setIsDetailModalOpen(false)}
-                className="text-[#DCDDCC] hover:bg-[#DCDDCC]/10"
-              >
-                <X className="w-4 h-4" />
-              </Button>
-            </div>
-          </DialogHeader>
-
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto bg-[#231F20] border border-[#D0B284]/20">
           {selectedListing && (
-            <Tabs defaultValue="overview" className="w-full">
-              <TabsList className="grid w-full grid-cols-4 bg-[#231F20] border border-[#D0B284]/20">
-                <TabsTrigger
-                  value="overview"
-                  className="data-[state=active]:bg-[#D0B284]/20 data-[state=active]:text-[#D0B284]"
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-[#D0B284] text-xl font-libre-caslon">
+                  {selectedListing.title} (${selectedListing.symbol})
+                </DialogTitle>
+                <Badge
+                  className={`${getStatusColor(getListingStatus(selectedListing))} border-none w-fit`}
                 >
-                  Overview
-                </TabsTrigger>
-                <TabsTrigger
-                  value="seller"
-                  className="data-[state=active]:bg-[#D0B284]/20 data-[state=active]:text-[#D0B284]"
-                >
-                  Seller Details
-                </TabsTrigger>
-                <TabsTrigger
-                  value="submission"
-                  className="data-[state=active]:bg-[#D0B284]/20 data-[state=active]:text-[#D0B284]"
-                >
-                  Submission
-                </TabsTrigger>
-                <TabsTrigger
-                  value="activity"
-                  className="data-[state=active]:bg-[#D0B284]/20 data-[state=active]:text-[#D0B284]"
-                >
-                  Activity
-                </TabsTrigger>
-              </TabsList>
+                  {getListingStatus(selectedListing).charAt(0).toUpperCase() +
+                    getListingStatus(selectedListing).slice(1)}
+                </Badge>
+              </DialogHeader>
 
-              {/* Overview Tab */}
-              <TabsContent value="overview" className="space-y-6 mt-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Asset Information */}
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-[#D0B284]">Asset Information</h3>
-                    <div className="bg-[#1A1A1A] border border-[#D0B284]/10 rounded-lg p-4 space-y-3">
-                      <div className="flex items-center space-x-4">
-                        <Image
-                          src={selectedListing.imageGallery?.[0] || '/placeholder.svg'}
-                          alt={selectedListing.title}
-                          className="w-16 h-16 rounded-lg object-cover border border-[#D0B284]/20"
-                          width={64}
-                          height={64}
-                        />
-                        <div>
-                          <h4 className="text-white font-medium">{selectedListing.title}</h4>
-                          <p className="text-[#DCDDCC] font-jetbrains text-sm">
-                            {selectedListing.symbol}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex justify-between">
-                          <span className="text-[#DCDDCC]">Description:</span>
-                          <span className="text-white max-w-64 text-right text-sm">
-                            {selectedListing.description || 'N/A'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-[#DCDDCC]">Status:</span>
-                          <Badge
-                            className={`${getStatusColor(getListingStatus(selectedListing))} border-none`}
-                          >
-                            {getListingStatus(selectedListing).charAt(0).toUpperCase() +
-                              getListingStatus(selectedListing).slice(1)}
-                          </Badge>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-[#DCDDCC]">Location:</span>
-                          <span className="text-white">{selectedListing.location || 'N/A'}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-[#DCDDCC]">Contract Address:</span>
-                          <span className="text-white font-jetbrains text-xs">
-                            {selectedListing.contractAddress || 'N/A'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
+              <Tabs defaultValue="overview" className="w-full mt-6">
+                <TabsList className="bg-transparent border-none p-0 h-auto space-x-6 mb-6">
+                  <TabsTrigger
+                    value="overview"
+                    className="bg-transparent text-[#DCDDCC] text-base font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-[#D0B284]"
+                  >
+                    Overview
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="seller"
+                    className="bg-transparent text-[#DCDDCC] text-base font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-[#D0B284]"
+                  >
+                    Seller Details
+                  </TabsTrigger>
+                  {shouldShowTokenCreationTab(selectedListing) && (
+                    <TabsTrigger
+                      value="token-creation"
+                      className="bg-transparent text-[#DCDDCC] text-base font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-[#D0B284]"
+                    >
+                      Token Creation
+                    </TabsTrigger>
+                  )}
+                </TabsList>
+
+                {/* Overview Tab */}
+                <TabsContent value="overview" className="mt-0">
+                  {/* Edit Controls */}
+                  <div className="flex justify-end space-x-2 mb-4">
+                    {isEditingOverview ? (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="border-[#D0B284] text-[#D0B284] hover:bg-[#D0B284]/10"
+                          onClick={handleCancelEdit}
+                          disabled={isSavingEdit}
+                        >
+                          <X className="w-4 h-4 mr-1" />
+                          Cancel
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="bg-[#184D37] text-white hover:bg-[#184D37]/80"
+                          onClick={handleSaveEdit}
+                          disabled={isSavingEdit}
+                        >
+                          <Save className="w-4 h-4 mr-1" />
+                          {isSavingEdit ? 'Saving...' : 'Save Changes'}
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-[#D0B284] text-[#D0B284] hover:bg-[#D0B284]/10"
+                        onClick={() => setIsEditingOverview(true)}
+                      >
+                        <Edit className="w-4 h-4 mr-1" />
+                        Edit Details
+                      </Button>
+                    )}
                   </div>
 
-                  {/* Image Gallery */}
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-[#D0B284]">Image Gallery</h3>
-                    <div className="bg-[#1A1A1A] border border-[#D0B284]/10 rounded-lg p-4">
-                      <div className="grid grid-cols-2 gap-2">
-                        {selectedListing.imageGallery
-                          ?.slice(0, 4)
-                          .map((image, index) => (
-                            <Image
-                              key={index}
-                              src={image}
-                              alt={`Asset ${index + 1}`}
-                              className="w-full h-24 rounded-lg object-cover border border-[#D0B284]/20"
-                              width={100}
-                              height={100}
-                            />
-                          ))}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-6">
+                    {/* Enhanced Image Gallery */}
+                    <div className="space-y-4">
+                      <div className="relative">
+                        <Image
+                          src={fixImageUrl(
+                            selectedListing.imageGallery?.[currentImageIndex] || '/placeholder.svg',
+                          )}
+                          alt={`${selectedListing.title} - Image ${currentImageIndex + 1}`}
+                          className="w-full h-80 object-cover rounded-lg border border-[#D0B284]/20"
+                          width={500}
+                          height={320}
+                          unoptimized={true}
+                          onError={(e) => {
+                            (e.currentTarget as any).src = '/placeholder.svg';
+                          }}
+                        />
+
+                        {/* Gallery Navigation */}
+                        {selectedListing.imageGallery &&
+                          selectedListing.imageGallery.length > 1 && (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="absolute left-2 top-1/2 transform -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white"
+                                onClick={() => navigateGallery('prev')}
+                              >
+                                <ChevronLeft className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white"
+                                onClick={() => navigateGallery('next')}
+                              >
+                                <ChevronRight className="w-4 h-4" />
+                              </Button>
+
+                              {/* Image Counter */}
+                              <div className="absolute bottom-2 right-2 bg-black/70 text-white text-sm px-2 py-1 rounded">
+                                {currentImageIndex + 1} of {selectedListing.imageGallery.length}
+                              </div>
+                            </>
+                          )}
                       </div>
-                      {selectedListing.imageGallery && selectedListing.imageGallery.length > 4 && (
-                        <p className="text-[#DCDDCC] text-center mt-2 text-sm">
-                          +{selectedListing.imageGallery.length - 4} more images
-                        </p>
+
+                      {/* Image Thumbnails */}
+                      {selectedListing.imageGallery && selectedListing.imageGallery.length > 1 && (
+                        <div className="flex space-x-2 overflow-x-auto pb-2">
+                          {selectedListing.imageGallery.map((image, index) => (
+                            <button
+                              key={index}
+                              onClick={() => setCurrentImageIndex(index)}
+                              className={`flex-shrink-0 w-16 h-16 rounded border-2 overflow-hidden ${
+                                index === currentImageIndex
+                                  ? 'border-[#D0B284]'
+                                  : 'border-[#D0B284]/20 hover:border-[#D0B284]/50'
+                              }`}
+                            >
+                              <Image
+                                src={fixImageUrl(image)}
+                                alt={`Thumbnail ${index + 1}`}
+                                className="w-full h-full object-cover"
+                                width={64}
+                                height={64}
+                                unoptimized={true}
+                                onError={(e) => {
+                                  (e.currentTarget as any).src = '/placeholder.svg';
+                                }}
+                              />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Listing Details */}
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
+                            Symbol
+                          </label>
+                          {isEditingOverview ? (
+                            <Input
+                              value={editedListing.symbol || ''}
+                              onChange={(e) =>
+                                setEditedListing({ ...editedListing, symbol: e.target.value })
+                              }
+                              className="mt-1 bg-black/30 border-[#D0B284]/20 text-white"
+                            />
+                          ) : (
+                            <p className="text-white mt-1 font-medium font-jetbrains">
+                              ${selectedListing.symbol}
+                            </p>
+                          )}
+                        </div>
+                        <div>
+                          <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
+                            Listed
+                          </label>
+                          <p className="text-white mt-1">{formatDate(selectedListing.createdAt)}</p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
+                            Brand
+                          </label>
+                          {isEditingOverview ? (
+                            <Input
+                              value={editedListing.brand || ''}
+                              onChange={(e) =>
+                                setEditedListing({ ...editedListing, brand: e.target.value })
+                              }
+                              className="mt-1 bg-black/30 border-[#D0B284]/20 text-white"
+                            />
+                          ) : (
+                            <p className="text-white mt-1 bg-black/30 p-3 rounded border border-[#D0B284]/10">
+                              {selectedListing.brand || '—'}
+                            </p>
+                          )}
+                        </div>
+                        <div>
+                          <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
+                            Location
+                          </label>
+                          {isEditingOverview ? (
+                            <Input
+                              value={editedListing.location || ''}
+                              onChange={(e) =>
+                                setEditedListing({ ...editedListing, location: e.target.value })
+                              }
+                              className="mt-1 bg-black/30 border-[#D0B284]/20 text-white"
+                            />
+                          ) : (
+                            <p className="text-white mt-1 bg-black/30 p-3 rounded border border-[#D0B284]/10">
+                              {selectedListing.location || '—'}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
+                          Story
+                        </label>
+                        {isEditingOverview ? (
+                          <Textarea
+                            value={editedListing.story || ''}
+                            onChange={(e) =>
+                              setEditedListing({ ...editedListing, story: e.target.value })
+                            }
+                            className="mt-1 bg-black/30 border-[#D0B284]/20 text-white min-h-24"
+                          />
+                        ) : (
+                          <p className="text-white mt-1 bg-black/30 p-3 rounded border border-[#D0B284]/10 max-h-24 overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-words">
+                            {selectedListing.story || '—'}
+                          </p>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
+                          Details
+                        </label>
+                        {isEditingOverview ? (
+                          <Textarea
+                            value={editedListing.details || ''}
+                            onChange={(e) =>
+                              setEditedListing({ ...editedListing, details: e.target.value })
+                            }
+                            className="mt-1 bg-black/30 border-[#D0B284]/20 text-white min-h-24"
+                          />
+                        ) : (
+                          <p className="text-white mt-1 bg-black/30 p-3 rounded border border-[#D0B284]/10 max-h-24 overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-words">
+                            {selectedListing.details || '—'}
+                          </p>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
+                          Provenance
+                        </label>
+                        {isEditingOverview ? (
+                          <Textarea
+                            value={editedListing.provenance || ''}
+                            onChange={(e) =>
+                              setEditedListing({ ...editedListing, provenance: e.target.value })
+                            }
+                            className="mt-1 bg-black/30 border-[#D0B284]/20 text-white min-h-24"
+                          />
+                        ) : (
+                          <p className="text-white mt-1 bg-black/30 p-3 rounded border border-[#D0B284]/10 max-h-24 overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-words">
+                            {selectedListing.provenance || '—'}
+                          </p>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
+                          Hype Sentence
+                        </label>
+                        {isEditingOverview ? (
+                          <Input
+                            value={editedListing.hypeSentence || ''}
+                            onChange={(e) =>
+                              setEditedListing({ ...editedListing, hypeSentence: e.target.value })
+                            }
+                            className="mt-1 bg-black/30 border-[#D0B284]/20 text-white"
+                          />
+                        ) : (
+                          <p className="text-white mt-1 bg-black/30 p-3 rounded border border-[#D0B284]/10">
+                            {selectedListing.hypeSentence || '—'}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
+                            Value
+                          </label>
+                          {isEditingOverview ? (
+                            <Input
+                              value={editedListing.value || ''}
+                              onChange={(e) =>
+                                setEditedListing({ ...editedListing, value: e.target.value })
+                              }
+                              className="mt-1 bg-black/30 border-[#D0B284]/20 text-white"
+                              placeholder="$100,000"
+                            />
+                          ) : (
+                            <p className="text-white mt-1 bg-black/30 p-3 rounded border border-[#D0B284]/10">
+                              {formatCurrency(selectedListing.value)}
+                            </p>
+                          )}
+                        </div>
+                        <div>
+                          <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
+                            Reserve Price
+                          </label>
+                          {isEditingOverview ? (
+                            <Input
+                              value={editedListing.reservePrice || ''}
+                              onChange={(e) =>
+                                setEditedListing({
+                                  ...editedListing,
+                                  reservePrice: e.target.value,
+                                })
+                              }
+                              className="mt-1 bg-black/30 border-[#D0B284]/20 text-white"
+                              placeholder="$80,000"
+                            />
+                          ) : (
+                            <p className="text-white mt-1 bg-black/30 p-3 rounded border border-[#D0B284]/10">
+                              {formatCurrency(selectedListing.reservePrice)}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Contact Information */}
+                      <div className="space-y-3">
+                        <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
+                          Contact Information
+                        </label>
+                        <div className="bg-black/30 p-3 rounded border border-[#D0B284]/10 space-y-2">
+                          {selectedListing.email && (
+                            <div className="flex items-center space-x-2">
+                              <Mail className="w-4 h-4 text-[#D0B284]" />
+                              <span className="text-white">{selectedListing.email}</span>
+                            </div>
+                          )}
+
+                          {selectedListing.owner?.walletAddress && (
+                            <div className="flex items-center space-x-2">
+                              <Wallet className="w-4 h-4 text-[#D0B284]" />
+                              <span className="text-white font-mono text-sm break-all">
+                                {selectedListing.owner.walletAddress}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {selectedListing.contractAddress && (
+                        <div>
+                          <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
+                            Contract Address
+                          </label>
+                          <p className="text-white mt-1 bg-black/30 p-3 rounded border border-[#D0B284]/10 font-mono text-xs break-all">
+                            {selectedListing.contractAddress}
+                          </p>
+                        </div>
                       )}
                     </div>
                   </div>
-                </div>
-              </TabsContent>
+                </TabsContent>
 
-              {/* Seller Details Tab */}
-              <TabsContent value="seller" className="space-y-6 mt-6">
-                <div className="bg-[#1A1A1A] border border-[#D0B284]/10 rounded-lg p-6">
-                  <h3 className="text-lg font-semibold text-[#D0B284] mb-4">Seller Information</h3>
-                  <div className="space-y-4">
-                    <div className="flex justify-between">
-                      <span className="text-[#DCDDCC]">Username:</span>
-                      <span className="text-white">
-                        {selectedListing.owner?.username || 'N/A'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-[#DCDDCC]">Wallet Address:</span>
-                      <span className="text-white font-jetbrains text-sm">
-                        {selectedListing.owner?.walletAddress || 'N/A'}
-                      </span>
-                    </div>
-                    {selectedListing.owner?.accountVerification && (
-                      <>
-                        <div className="flex justify-between">
-                          <span className="text-[#DCDDCC]">First Name:</span>
-                          <span className="text-white">
-                            {selectedListing.owner.accountVerification.firstName || 'N/A'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-[#DCDDCC]">Last Name:</span>
-                          <span className="text-white">
-                            {selectedListing.owner.accountVerification.lastName || 'N/A'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-[#DCDDCC]">Verification Status:</span>
-                          <Badge
-                            className={`${selectedListing.owner.accountVerification.status === 'VERIFIED' ? 'text-[#184D37] bg-[#184D37]/10' : 'text-[#D7BF75] bg-[#D7BF75]/10'} border-none`}
-                          >
-                            {selectedListing.owner.accountVerification.status}
-                          </Badge>
-                        </div>
-                      </>
-                    )}
-                    <div className="flex justify-between">
-                      <span className="text-[#DCDDCC]">Contact Email:</span>
-                      <span className="text-white">{selectedListing.email || 'N/A'}</span>
-                    </div>
-                  </div>
-                </div>
-              </TabsContent>
-
-              {/* Submission Tab */}
-              <TabsContent value="submission" className="space-y-6 mt-6">
-                <div className="bg-[#1A1A1A] border border-[#D0B284]/10 rounded-lg p-6">
-                  <h3 className="text-lg font-semibold text-[#D0B284] mb-4">Original Submission</h3>
-                  <div className="space-y-4">
-                    <div className="flex justify-between">
-                      <span className="text-[#DCDDCC]">Submission ID:</span>
-                      <span className="text-white font-jetbrains text-sm">
-                        {selectedListing.rwaSubmissionId}
-                      </span>
-                    </div>
-                    {selectedListing.rwaSubmission && (
-                      <>
-                        <div className="flex justify-between">
-                          <span className="text-[#DCDDCC]">Submission Status:</span>
-                          <Badge className="text-[#184D37] bg-[#184D37]/10 border-none">
-                            {selectedListing.rwaSubmission.status}
-                          </Badge>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-[#DCDDCC]">Submitted At:</span>
-                          <span className="text-white">
-                            {new Date(selectedListing.rwaSubmission.createdAt).toLocaleString()}
-                          </span>
-                        </div>
-                      </>
-                    )}
-                    <div className="flex justify-between">
-                      <span className="text-[#DCDDCC]">Listed At:</span>
-                      <span className="text-white">
-                        {new Date(selectedListing.createdAt).toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-[#DCDDCC]">Last Updated:</span>
-                      <span className="text-white">
-                        {new Date(selectedListing.updatedAt).toLocaleString()}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </TabsContent>
-
-              {/* Activity Tab */}
-              <TabsContent value="activity" className="space-y-6 mt-6">
-                <div className="bg-[#1A1A1A] border border-[#D0B284]/10 rounded-lg p-6">
-                  <h3 className="text-lg font-semibold text-[#D0B284] mb-4">Recent Activity</h3>
-                  {selectedListing.bids && selectedListing.bids.length > 0 ? (
-                    <div className="space-y-3">
-                      {selectedListing.bids.map((bid) => (
-                        <div
-                          key={bid.id}
-                          className="flex justify-between items-center p-3 bg-[#231F20] rounded-lg border border-[#D0B284]/10"
-                        >
-                          <div className="flex items-center space-x-3">
-                            <div className="w-8 h-8 rounded-full bg-[#D0B284]/20 flex items-center justify-center">
-                              <span className="text-[#D0B284] text-sm font-bold">
-                                {bid.bidder.username?.charAt(0) || '?'}
-                              </span>
+                {/* Seller Details Tab */}
+                <TabsContent value="seller" className="mt-0">
+                  <div className="space-y-6 mt-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      {/* Personal Information */}
+                      <div className="space-y-6">
+                        <div>
+                          <h3 className="text-lg font-medium text-[#D0B284] mb-4">
+                            Personal Information
+                          </h3>
+                          <div className="space-y-4">
+                            <div>
+                              <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
+                                Username
+                              </label>
+                              <p className="text-white mt-1 bg-black/30 p-2 rounded border border-[#D0B284]/10">
+                                {selectedListing.owner?.username || 'N/A'}
+                              </p>
+                            </div>
+                            {selectedListing.owner?.accountVerification && (
+                              <>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  <div>
+                                    <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
+                                      First Name
+                                    </label>
+                                    <p className="text-white mt-1 bg-black/30 p-2 rounded border border-[#D0B284]/10">
+                                      {selectedListing.owner.accountVerification.firstName || 'N/A'}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
+                                      Last Name
+                                    </label>
+                                    <p className="text-white mt-1 bg-black/30 p-2 rounded border border-[#D0B284]/10">
+                                      {selectedListing.owner.accountVerification.lastName || 'N/A'}
+                                    </p>
+                                  </div>
+                                </div>
+                              </>
+                            )}
+                            <div>
+                              <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
+                                Email Address
+                              </label>
+                              <p className="text-white mt-1 bg-black/30 p-2 rounded border border-[#D0B284]/10">
+                                {selectedListing.email || 'N/A'}
+                              </p>
                             </div>
                             <div>
-                              <p className="text-white font-medium">
-                                {bid.bidder.username || 'Unknown'}
-                              </p>
-                              <p className="text-[#DCDDCC] text-sm">
-                                {new Date(bid.createdAt).toLocaleString()}
+                              <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
+                                Wallet Address
+                              </label>
+                              <p className="text-white mt-1 bg-black/30 p-2 rounded border border-[#D0B284]/10 font-mono text-xs break-all">
+                                {selectedListing.owner?.walletAddress || 'N/A'}
                               </p>
                             </div>
                           </div>
-                          <div className="text-right">
-                            <p className="text-white font-medium">
-                              {bid.amount} {bid.currency}
-                            </p>
-                            <p className="text-[#DCDDCC] text-sm">Bid</p>
+                        </div>
+                      </div>
+
+                      {/* Verification Information */}
+                      <div className="space-y-6">
+                        <div>
+                          <h3 className="text-lg font-medium text-[#D0B284] mb-4">
+                            Verification Status
+                          </h3>
+                          <div className="space-y-4">
+                            {selectedListing.owner?.accountVerification ? (
+                              <>
+                                <div>
+                                  <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
+                                    Status
+                                  </label>
+                                  <div className="mt-1">
+                                    <Badge
+                                      className={`${
+                                        selectedListing.owner.accountVerification.status ===
+                                        'VERIFIED'
+                                          ? 'text-[#184D37] bg-[#184D37]/10'
+                                          : 'text-[#D7BF75] bg-[#D7BF75]/10'
+                                      } border-none`}
+                                    >
+                                      {selectedListing.owner.accountVerification.status}
+                                    </Badge>
+                                  </div>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="text-center py-8">
+                                <p className="text-[#DCDDCC]">
+                                  No verification information found for this user.
+                                </p>
+                                <p className="text-[#DCDDCC]/60 text-sm mt-2">
+                                  The user may not have submitted account verification yet.
+                                </p>
+                              </div>
+                            )}
                           </div>
                         </div>
-                      ))}
+                      </div>
                     </div>
-                  ) : (
-                    <p className="text-[#DCDDCC] text-center py-8">No bids yet</p>
-                  )}
-                </div>
-              </TabsContent>
-            </Tabs>
+                  </div>
+                </TabsContent>
+
+                {/* Token Creation Tab */}
+                {shouldShowTokenCreationTab(selectedListing) && (
+                  <TabsContent value="token-creation" className="mt-0">
+                    <div className="space-y-6 mt-6">
+                      <TokenCreationTabContent
+                        listing={{
+                          id: selectedListing.id,
+                          title: selectedListing.title,
+                          symbol: selectedListing.symbol,
+                          tokenCreationStatus:
+                            selectedListing.tokenCreationStatus || 'AWAITING_USER_DETAILS',
+                          tokenParameters:
+                            (selectedListing.tokenParameters as TokenParameters) ?? null,
+                        }}
+                        onSuccess={async () => {
+                          // Refetch listings to get updated data
+                          const token = await getAccessToken();
+                          if (token) {
+                            const result = await ListingsApi.getAllListingsForAdmin(token);
+                            if (result.success) {
+                              setOriginalListings(result.data);
+                              const formattedListings = result.data.map(
+                                formatListingForAdminDisplay,
+                              );
+                              setListings(formattedListings);
+                              // Update selected listing with fresh data
+                              const updatedListing = result.data.find(
+                                (l) => l.id === selectedListing.id,
+                              );
+                              if (updatedListing) {
+                                setSelectedListing(updatedListing);
+                              }
+                            }
+                          }
+                        }}
+                      />
+                    </div>
+                  </TabsContent>
+                )}
+              </Tabs>
+            </>
           )}
         </DialogContent>
       </Dialog>

@@ -8,6 +8,7 @@ import { Edit, Eye, MoreHorizontal, X, Check, MessageCircle, Clock } from 'lucid
 import Image from 'next/image';
 import { useAuth } from '@/lib/auth/auth-context';
 import { ListingsApi, ListingData } from '@/lib/api/listings';
+import { useTokenMetrics } from '@/hooks/use-token-metrics';
 
 import {
   DropdownMenu,
@@ -87,6 +88,23 @@ const getListingStatus = (listing: ListingData): 'active' | 'pending' | 'sold' |
   return 'active';
 };
 
+// Utility functions for formatting
+const formatNumber = (num: number, decimals: number = 2): string => {
+  if (!Number.isFinite(num) || num === 0) return '0';
+  if (num >= 1_000_000_000) return `${(num / 1_000_000_000).toFixed(decimals)}B`;
+  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(decimals)}M`;
+  if (num >= 1_000) return `${(num / 1_000).toFixed(decimals)}K`;
+  return num.toFixed(decimals);
+};
+
+const formatPrice = (price: number): string => {
+  if (!Number.isFinite(price) || price === 0) return '0';
+  if (price < 0.00001) return price.toExponential(2);
+  if (price < 0.01) return price.toFixed(6);
+  if (price < 1) return price.toFixed(4);
+  return price.toFixed(2);
+};
+
 // Helper function to format listing data for display
 const formatListingForDisplay = (listing: ListingData): DisplayListingData => {
   const status = getListingStatus(listing);
@@ -105,21 +123,294 @@ const formatListingForDisplay = (listing: ListingData): DisplayListingData => {
       };
     }) || [];
 
+  // Get contract address from the linked token (if it exists)
+  const contractAddress =
+    listing.token?.contractAddress || listing.contractAddress || '0x0000...0000';
+
+  // DEBUG: Temporary logging (remove after debugging)
+  if (listing.symbol === 'APK') {
+    console.log('🔍 DEBUG - APK Listing:', {
+      listingId: listing.id,
+      title: listing.title,
+      symbol: listing.symbol,
+      hasToken: !!listing.token,
+      tokenContractAddress: listing.token?.contractAddress,
+      listingContractAddress: listing.contractAddress,
+      finalContractAddress: contractAddress,
+    });
+  }
+
   return {
     id: listing.id,
     name: listing.title,
     ticker: listing.symbol,
     image: imageUrl,
-    contractAddress: listing.contractAddress || '0x0000...0000',
-    volume: '0 ETH', // Placeholder - would need to calculate from transactions
-    marketCap: '0', // Placeholder - would need to calculate from token data
-    tokenPrice: '0 ETH', // Placeholder - would need to calculate from token data
-    holders: 0, // Placeholder - would need to get from token data
-    feesMade: '0 ETH', // Placeholder - would need to calculate from transactions
+    contractAddress,
+    volume: '0 ETH', // Placeholder - will be replaced by real metrics
+    marketCap: '0', // Placeholder - will be replaced by real metrics
+    tokenPrice: '0 ETH', // Placeholder - will be replaced by real metrics
+    holders: 0, // Placeholder - will be replaced by real metrics
+    feesMade: '0 ETH', // Placeholder - will be replaced by real metrics
     status,
     offers,
   };
 };
+
+// Component that renders a single listing row with real-time metrics
+interface ListingRowProps {
+  listing: DisplayListingData;
+  expandedRow: string | null;
+  toggleOffers: (id: string) => void;
+  setExpandedRow: (id: string | null) => void;
+  getImageSrc: (url: string) => string;
+  handleImageError: (url: string) => void;
+}
+
+function ListingRow({
+  listing,
+  expandedRow,
+  toggleOffers,
+  setExpandedRow,
+  getImageSrc,
+  handleImageError,
+}: ListingRowProps) {
+  // Fetch real-time metrics for this listing's token
+  const { metrics, loading: metricsLoading } = useTokenMetrics(
+    listing.contractAddress && listing.contractAddress !== '0x0000...0000'
+      ? listing.contractAddress
+      : undefined,
+  );
+
+  return (
+    <React.Fragment key={listing.id}>
+      {/* Main Listing Row */}
+      <tr className="border-b border-dashed border-[#D7BF75]/10 last:border-b-0">
+        {/* RWA Info */}
+        <td className="py-4 px-2">
+          <div className="flex items-center space-x-3">
+            <Image
+              src={getImageSrc(listing.image)}
+              alt={listing.name}
+              className="w-10 h-10 rounded-full object-cover border border-[#D0B284]/20"
+              width={40}
+              height={40}
+              unoptimized={listing.image.includes('storage.googleapis.com')}
+              onError={() => handleImageError(listing.image)}
+            />
+            <div className="flex-1 min-w-0">
+              <h3 className="text-[#E6E3D3] font-medium truncate text-sm">
+                {listing.name.split(' ').slice(0, 2).join(' ')}
+              </h3>
+              <div className="flex items-center space-x-2 mt-1">
+                <span className="text-[#E6E3D3] font-mono text-xs">{listing.ticker}</span>
+                <Badge className={`${getStatusColor(listing.status)} border-none text-xs`}>
+                  {listing.status.charAt(0).toUpperCase() + listing.status.slice(1)}
+                </Badge>
+              </div>
+            </div>
+          </div>
+        </td>
+
+        {/* Contract */}
+        <td className="py-4 px-2 text-center">
+          <span className="text-[#E6E3D3] font-mono text-xs">{listing.contractAddress}</span>
+        </td>
+
+        {/* Volume - Real-time data */}
+        <td className="py-4 px-2 text-center">
+          <span className="text-[#E6E3D3] text-sm">
+            {metricsLoading ? (
+              <span className="text-[#D7BF75]/50">...</span>
+            ) : metrics?.volume24hUsd ? (
+              `$${formatNumber(metrics.volume24hUsd)}`
+            ) : (
+              '--'
+            )}
+          </span>
+        </td>
+
+        {/* Market Cap - Real-time data */}
+        <td className="py-4 px-2 text-center">
+          <span className="text-[#E6E3D3] text-sm">
+            {metricsLoading ? (
+              <span className="text-[#D7BF75]/50">...</span>
+            ) : metrics?.marketCapUsd ? (
+              `$${formatNumber(metrics.marketCapUsd)}`
+            ) : (
+              '--'
+            )}
+          </span>
+        </td>
+
+        {/* Token Price - Real-time data */}
+        <td className="py-4 px-2 text-center">
+          <span className="text-[#E6E3D3] text-sm">
+            {metricsLoading ? (
+              <span className="text-[#D7BF75]/50">...</span>
+            ) : metrics?.tokenPriceUsd ? (
+              `$${formatPrice(metrics.tokenPriceUsd)}`
+            ) : (
+              '--'
+            )}
+          </span>
+        </td>
+
+        {/* Holders - Real-time data */}
+        <td className="py-4 px-2 text-center">
+          <span className="text-[#E6E3D3] text-sm">
+            {metricsLoading ? (
+              <span className="text-[#D7BF75]/50">...</span>
+            ) : metrics?.holderCount !== undefined ? (
+              metrics.holderCount.toLocaleString()
+            ) : (
+              '--'
+            )}
+          </span>
+        </td>
+
+        {/* Fees Made - Real-time data */}
+        <td className="py-4 px-2 text-center">
+          <span className="text-[#E6E3D3] text-sm">
+            {metricsLoading ? (
+              <span className="text-[#D7BF75]/50">...</span>
+            ) : metrics?.totalFeesUsd ? (
+              <>
+                ${formatNumber(metrics.totalFeesUsd)} (
+                {formatNumber(parseFloat(metrics.totalFeesAces))} ACES)
+              </>
+            ) : (
+              '--'
+            )}
+          </span>
+        </td>
+
+        {/* Actions */}
+        <td className="py-4 px-2 text-right">
+          <div className="flex items-center justify-end space-x-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="bg-[#184D37] hover:bg-[#184D37]/80 text-white border border-[#184D37] text-xs px-3 py-1"
+              onClick={() => toggleOffers(listing.id)}
+            >
+              <Eye className="w-3 h-3 mr-1" />
+              VIEW OFFERS ({listing.offers.length})
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="text-[#DCDDCC] hover:bg-[#D0B284]/10">
+                  <MoreHorizontal className="w-4 h-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="bg-[#231F20] border border-[#D0B284]/20">
+                <DropdownMenuItem className="text-[#DCDDCC] hover:bg-[#D0B284]/10">
+                  <Edit className="w-4 h-4 mr-2" />
+                  Edit Listing
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </td>
+      </tr>
+
+      {/* Expandable Offers Subtable */}
+      {expandedRow === listing.id && (
+        <tr>
+          <td colSpan={8} className="p-0">
+            <div className="bg-[#184D37]/10 border-t border-[#184D37]/20 animate-in slide-in-from-top-2 duration-300">
+              <div className="p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className="text-[#D0B284] font-medium text-sm">
+                    Offers for {listing.name.split(' ').slice(0, 2).join(' ')}
+                  </h4>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-[#DCDDCC] hover:bg-[#D0B284]/10"
+                    onClick={() => setExpandedRow(null)}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+
+                {listing.offers.length === 0 ? (
+                  <div className="text-center py-6">
+                    <p className="text-[#DCDDCC] text-sm">No offers yet</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {listing.offers.map((offer) => (
+                      <div
+                        key={offer.id}
+                        className="flex items-center justify-between p-3 bg-[#231F20]/50 rounded-lg border border-[#D0B284]/10"
+                      >
+                        {/* Offer Info */}
+                        <div className="flex items-center space-x-4">
+                          <div>
+                            <div className="flex items-center space-x-2 mb-1">
+                              <span className="text-[#D0B284] font-medium text-sm">
+                                {offer.offerAmount}
+                              </span>
+                              <Badge
+                                className={`${getOfferStatusColor(offer.status)} border-none text-xs`}
+                              >
+                                {offer.status.charAt(0).toUpperCase() + offer.status.slice(1)}
+                              </Badge>
+                            </div>
+                            <div className="flex items-center space-x-3 text-xs text-[#DCDDCC]">
+                              <span>
+                                from{' '}
+                                {offer.fromDisplayName ||
+                                  `${offer.fromAddress.slice(0, 6)}...${offer.fromAddress.slice(-4)}`}
+                              </span>
+                              <div className="flex items-center space-x-1">
+                                <Clock className="w-3 h-3" />
+                                <span>{offer.timestamp}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Offer Actions */}
+                        {offer.status === 'active' && (
+                          <div className="flex items-center space-x-2">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-[#DCDDCC] hover:bg-[#D0B284]/10 border border-[#DCDDCC]/20 text-xs px-2 py-1"
+                            >
+                              <MessageCircle className="w-3 h-3 mr-1" />
+                              Counter
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-red-400 hover:bg-red-400/10 border border-red-400/20 text-xs px-2 py-1"
+                            >
+                              <X className="w-3 h-3 mr-1" />
+                              Decline
+                            </Button>
+                            <Button
+                              size="sm"
+                              className="bg-[#184D37] hover:bg-[#184D37]/80 text-white text-xs px-2 py-1"
+                            >
+                              <Check className="w-3 h-3 mr-1" />
+                              Accept
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+    </React.Fragment>
+  );
+}
 
 export function ListingsTab() {
   const { getAccessToken } = useAuth();
@@ -304,203 +595,15 @@ export function ListingsTab() {
                 </tr>
               ) : (
                 listings.map((listing) => (
-                  <React.Fragment key={listing.id}>
-                    {/* Main Listing Row */}
-                    <tr className="border-b border-dashed border-[#D7BF75]/10 last:border-b-0">
-                      {/* RWA Info */}
-                      <td className="py-4 px-2">
-                        <div className="flex items-center space-x-3">
-                          <Image
-                            src={getImageSrc(listing.image)}
-                            alt={listing.name}
-                            className="w-10 h-10 rounded-full object-cover border border-[#D0B284]/20"
-                            width={40}
-                            height={40}
-                            unoptimized={listing.image.includes('storage.googleapis.com')}
-                            onError={() => handleImageError(listing.image)}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <h3 className="text-[#E6E3D3] font-medium truncate text-sm">
-                              {listing.name.split(' ').slice(0, 2).join(' ')}
-                            </h3>
-                            <div className="flex items-center space-x-2 mt-1">
-                              <span className="text-[#E6E3D3] font-mono text-xs">
-                                {listing.ticker}
-                              </span>
-                              <Badge
-                                className={`${getStatusColor(listing.status)} border-none text-xs`}
-                              >
-                                {listing.status.charAt(0).toUpperCase() + listing.status.slice(1)}
-                              </Badge>
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Contract */}
-                      <td className="py-4 px-2 text-center">
-                        <span className="text-[#E6E3D3] font-mono text-xs">
-                          {listing.contractAddress}
-                        </span>
-                      </td>
-
-                      {/* Volume */}
-                      <td className="py-4 px-2 text-center">
-                        <span className="text-[#E6E3D3] text-sm">{listing.volume}</span>
-                      </td>
-
-                      {/* Market Cap */}
-                      <td className="py-4 px-2 text-center">
-                        <span className="text-[#E6E3D3] text-sm">{listing.marketCap}</span>
-                      </td>
-
-                      {/* Token Price */}
-                      <td className="py-4 px-2 text-center">
-                        <span className="text-[#E6E3D3] text-sm">{listing.tokenPrice}</span>
-                      </td>
-
-                      {/* Holders */}
-                      <td className="py-4 px-2 text-center">
-                        <span className="text-[#E6E3D3] text-sm">
-                          {listing.holders.toLocaleString()}
-                        </span>
-                      </td>
-
-                      {/* Fees Made */}
-                      <td className="py-4 px-2 text-center">
-                        <span className="text-[#E6E3D3] text-sm">{listing.feesMade}</span>
-                      </td>
-
-                      {/* Actions */}
-                      <td className="py-4 px-2 text-right">
-                        <div className="flex items-center justify-end space-x-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="bg-[#184D37] hover:bg-[#184D37]/80 text-white border border-[#184D37] text-xs px-3 py-1"
-                            onClick={() => toggleOffers(listing.id)}
-                          >
-                            <Eye className="w-3 h-3 mr-1" />
-                            VIEW OFFERS ({listing.offers.length})
-                          </Button>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-[#DCDDCC] hover:bg-[#D0B284]/10"
-                              >
-                                <MoreHorizontal className="w-4 h-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent className="bg-[#231F20] border border-[#D0B284]/20">
-                              <DropdownMenuItem className="text-[#DCDDCC] hover:bg-[#D0B284]/10">
-                                <Edit className="w-4 h-4 mr-2" />
-                                Edit Listing
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </td>
-                    </tr>
-
-                    {/* Expandable Offers Subtable */}
-                    {expandedRow === listing.id && (
-                      <tr>
-                        <td colSpan={8} className="p-0">
-                          <div className="bg-[#184D37]/10 border-t border-[#184D37]/20 animate-in slide-in-from-top-2 duration-300">
-                            <div className="p-4">
-                              <div className="flex items-center justify-between mb-4">
-                                <h4 className="text-[#D0B284] font-medium text-sm">
-                                  Offers for {listing.name.split(' ').slice(0, 2).join(' ')}
-                                </h4>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="text-[#DCDDCC] hover:bg-[#D0B284]/10"
-                                  onClick={() => setExpandedRow(null)}
-                                >
-                                  <X className="w-4 h-4" />
-                                </Button>
-                              </div>
-
-                              {listing.offers.length === 0 ? (
-                                <div className="text-center py-6">
-                                  <p className="text-[#DCDDCC] text-sm">No offers yet</p>
-                                </div>
-                              ) : (
-                                <div className="space-y-3">
-                                  {listing.offers.map((offer) => (
-                                    <div
-                                      key={offer.id}
-                                      className="flex items-center justify-between p-3 bg-[#231F20]/50 rounded-lg border border-[#D0B284]/10"
-                                    >
-                                      {/* Offer Info */}
-                                      <div className="flex items-center space-x-4">
-                                        <div>
-                                          <div className="flex items-center space-x-2 mb-1">
-                                            <span className="text-[#D0B284] font-medium text-sm">
-                                              {offer.offerAmount}
-                                            </span>
-                                            <Badge
-                                              className={`${getOfferStatusColor(offer.status)} border-none text-xs`}
-                                            >
-                                              {offer.status.charAt(0).toUpperCase() +
-                                                offer.status.slice(1)}
-                                            </Badge>
-                                          </div>
-                                          <div className="flex items-center space-x-3 text-xs text-[#DCDDCC]">
-                                            <span>
-                                              from{' '}
-                                              {offer.fromDisplayName ||
-                                                `${offer.fromAddress.slice(0, 6)}...${offer.fromAddress.slice(-4)}`}
-                                            </span>
-                                            <div className="flex items-center space-x-1">
-                                              <Clock className="w-3 h-3" />
-                                              <span>{offer.timestamp}</span>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </div>
-
-                                      {/* Offer Actions */}
-                                      {offer.status === 'active' && (
-                                        <div className="flex items-center space-x-2">
-                                          <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            className="text-[#DCDDCC] hover:bg-[#D0B284]/10 border border-[#DCDDCC]/20 text-xs px-2 py-1"
-                                          >
-                                            <MessageCircle className="w-3 h-3 mr-1" />
-                                            Counter
-                                          </Button>
-                                          <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            className="text-red-400 hover:bg-red-400/10 border border-red-400/20 text-xs px-2 py-1"
-                                          >
-                                            <X className="w-3 h-3 mr-1" />
-                                            Decline
-                                          </Button>
-                                          <Button
-                                            size="sm"
-                                            className="bg-[#184D37] hover:bg-[#184D37]/80 text-white text-xs px-2 py-1"
-                                          >
-                                            <Check className="w-3 h-3 mr-1" />
-                                            Accept
-                                          </Button>
-                                        </div>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
+                  <ListingRow
+                    key={listing.id}
+                    listing={listing}
+                    expandedRow={expandedRow}
+                    toggleOffers={toggleOffers}
+                    setExpandedRow={setExpandedRow}
+                    getImageSrc={getImageSrc}
+                    handleImageError={handleImageError}
+                  />
                 ))
               )}
             </tbody>

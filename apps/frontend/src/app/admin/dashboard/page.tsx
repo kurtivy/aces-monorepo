@@ -88,12 +88,12 @@ export default function AdminDashboardPage() {
         <div className="flex-1 p-6 overflow-y-auto">
           <Tabs defaultValue="analytics" className="w-full">
             <TabsList className="bg-transparent border-none p-0 h-auto space-x-6 mb-6 flex-wrap">
-              <TabsTrigger
+              {/* <TabsTrigger
                 value="analytics"
                 className="bg-transparent text-[#DCDDCC] text-lg font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-purple-400"
               >
                 Analytics
-              </TabsTrigger>
+              </TabsTrigger> */}
               <TabsTrigger
                 value="launch"
                 className="bg-transparent text-[#DCDDCC] text-lg font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-purple-400"
