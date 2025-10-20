@@ -77,29 +77,32 @@ model AccountVerification {
 }
 
 model Submission {
-  id                       String             @id @default(cuid())
-  title                    String
-  symbol                   String
-  description              String
-  assetType                AssetType
-  imageGallery             String[]           @default([])
-  location                 String?
-  email                    String?
-  proofOfOwnership         String
-  proofOfOwnershipImageUrl String?
-  typeOfOwnership          String
-  status                   SubmissionStatus   @default(PENDING)
-  rejectionType            RejectionType?
-  rejectionReason          String?
-  ownerId                  String
-  approvedBy               String?
-  createdAt                DateTime           @default(now())
-  updatedAt                DateTime           @updatedAt
-  approvedAt               DateTime?
-  approvedByUser           User?              @relation("ApprovedBy", fields: [approvedBy], references: [id])
-  owner                    User               @relation(fields: [ownerId], references: [id])
-  listing                  Listing?
-  notifications            UserNotification[]
+  id                     String             @id @default(cuid())
+  title                  String
+  symbol                 String
+  brand                  String?
+  story                  String?
+  details                String?
+  provenance             String?
+  value                  String?            // Stored as string for precision
+  reservePrice           String?            // Stored as string for precision
+  hypeSentence           String?
+  assetType              AssetType
+  imageGallery           String[]           @default([])
+  location               String?
+  ownershipDocumentation Json?              // Array of {type, imageUrl, uploadedAt}
+  status                 SubmissionStatus   @default(PENDING)
+  rejectionType          RejectionType?
+  rejectionReason        String?
+  ownerId                String
+  approvedBy             String?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+  approvedAt             DateTime?
+  approvedByUser         User?              @relation("ApprovedBy", fields: [approvedBy], references: [id])
+  owner                  User               @relation(fields: [ownerId], references: [id])
+  listing                Listing?
+  notifications          UserNotification[]
 
   @@index([status, createdAt])
   @@index([ownerId, createdAt])
@@ -111,23 +114,25 @@ model Listing {
 
   title        String
   symbol       String
-  description  String
+  brand        String?
+  story        String?
+  details      String?
+  provenance   String?
+  value        String? // Stored as string for precision
+  reservePrice String? // Stored as string for precision
+  hypeSentence String?
   assetDetails Json? // Array of {key: string, value: string} objects
   assetType    AssetType
   imageGallery String[]  @default([])
   location     String?
-  email        String?
 
   isLive     Boolean   @default(false)
   launchDate DateTime? // When the asset will go live for sale
 
   // NEW: Bidding fields
   startingBidPrice String? // Minimum bid amount (USD)
-  reservePrice     String? // Hidden reserve price (USD)
   
   // NEW: Asset story/info fields for V2 dashboard
-  rrp         String?   // Retail Recommended Price (same as VALUE in UI)
-  brand       String?   // Brand name
   hypePoints  String[]  @default([]) // Array of bullet points for hype section
 
   // NEW: Token creation workflow fields
