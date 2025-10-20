@@ -1,4 +1,4 @@
-import type { RwaSubmissionWithRelations } from '@aces/utils';
+import type { RwaSubmissionWithRelations, TokenParameters } from '@aces/utils';
 
 function getAdminApiBaseUrl(): string {
   // Use environment variable if available
@@ -462,6 +462,57 @@ export class AdminApi {
       {
         method: 'PATCH',
         body: JSON.stringify({ poolAddress }),
+      },
+      token,
+    );
+  }
+
+  /**
+   * Save token parameters for a listing (admin configures before minting)
+   */
+  static async saveTokenParameters(
+    listingId: string,
+    tokenParameters: TokenParameters,
+    token: string,
+  ): Promise<{
+    success: boolean;
+    message: string;
+    data?: any;
+  }> {
+    console.log('📡 AdminApi.saveTokenParameters called with:', {
+      listingId,
+      tokenParameters,
+      endpoint: `/listings/${listingId}/token-parameters`,
+    });
+    return this.adminRequest(
+      `/listings/${listingId}/token-parameters`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(tokenParameters),
+      },
+      token,
+    );
+  }
+
+  /**
+   * Prepare listing for minting (admin finalizes and notifies user)
+   */
+  static async prepareForMinting(
+    listingId: string,
+    token: string,
+  ): Promise<{
+    success: boolean;
+    message: string;
+    data?: any;
+  }> {
+    console.log('📡 AdminApi.prepareForMinting called with:', {
+      listingId,
+      endpoint: `/listings/${listingId}/prepare-mint`,
+    });
+    return this.adminRequest(
+      `/listings/${listingId}/prepare-mint`,
+      {
+        method: 'POST',
       },
       token,
     );

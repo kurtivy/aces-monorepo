@@ -1,6 +1,6 @@
 import type { ApiResponse } from '@aces/utils';
 
-function getTokensApiBaseUrl(): string {
+function getBaseUrl(): string {
   // Use environment variable if available
   if (process.env.NEXT_PUBLIC_API_URL) {
     return process.env.NEXT_PUBLIC_API_URL;
@@ -26,7 +26,7 @@ function getTokensApiBaseUrl(): string {
   return 'https://acesbackend-production.up.railway.app';
 }
 
-const API_BASE_URL = getTokensApiBaseUrl();
+const API_BASE_URL = getBaseUrl();
 
 export interface TokenData {
   contractAddress: string;
@@ -65,11 +65,23 @@ export interface TradeData {
   blockNumber: string;
 }
 
-export interface ApiSuccessResponse<T> extends ApiResponse<T> {
-  success: true;
+export interface TokenMetrics {
+  contractAddress: string;
+  volume24hUsd: number;
+  volume24hAces: string;
+  marketCapUsd: number;
+  tokenPriceUsd: number;
+  holderCount: number;
+  totalFeesUsd: number;
+  totalFeesAces: string;
 }
 
-export interface ApiErrorResponse {
+export interface ApiSuccessResponse<T> extends ApiResponse<T> {
+  success: true;
+  data: T;
+}
+
+export interface ApiErrorResponse extends ApiResponse<never> {
   success: false;
   error: string;
 }
@@ -81,53 +93,52 @@ export class TokensApi {
     endpoint: string,
     options: RequestInit = {},
   ): Promise<ApiResult<T>> {
-    const url = `${API_BASE_URL}${endpoint}`;
+    const basePath = '/api/v1/tokens';
+    const url = `${API_BASE_URL}${basePath}${endpoint}`;
 
-    const requestOptions: RequestInit = {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
+    const finalHeaders = {
+      'Content-Type': 'application/json',
+      ...options.headers,
     };
 
     try {
-      const response = await fetch(url, requestOptions);
+      const response = await fetch(url, {
+        ...options,
+        headers: finalHeaders,
+      });
+
+      const data = await response.json();
 
       if (!response.ok) {
-        let errorMessage = `Request failed with status ${response.status}`;
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.error || errorData.message || errorMessage;
-        } catch {
-          errorMessage = response.statusText || errorMessage;
-        }
         return {
           success: false,
-          error: errorMessage,
+          error: data.error || data.message || `Request failed with status ${response.status}`,
         };
       }
 
-      const data = await response.json();
-      return {
-        success: true,
-        data,
-      };
+      return data as ApiSuccessResponse<T>;
     } catch (error) {
-      console.error(`API request failed for ${endpoint}:`, error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Network error',
+        error: error instanceof Error ? error.message : 'An unknown error occurred',
       };
     }
   }
 
+  static async getTokenMetrics(tokenAddress: string): Promise<ApiResult<TokenMetrics>> {
+    return this.request(`/${tokenAddress}/metrics`, {
+      method: 'GET',
+    });
+  }
+
   static async getTokenData(tokenAddress: string): Promise<ApiResult<TokenData>> {
-    return this.request<TokenData>(`/api/v1/tokens/${tokenAddress}`);
+    return this.request<TokenData>(`/${tokenAddress}`, {
+      method: 'GET',
+    });
   }
 
   static async refreshTokenData(tokenAddress: string): Promise<ApiResult<TokenData>> {
-    return this.request<TokenData>(`/api/v1/tokens/${tokenAddress}/refresh`, {
+    return this.request<TokenData>(`/${tokenAddress}/refresh`, {
       method: 'POST',
     });
   }
@@ -136,10 +147,14 @@ export class TokensApi {
     tokenAddress: string,
     timeframe: string,
   ): Promise<ApiResult<ChartData>> {
-    return this.request<ChartData>(`/api/v1/tokens/${tokenAddress}/ohlcv?timeframe=${timeframe}`);
+    return this.request<ChartData>(`/${tokenAddress}/ohlcv?timeframe=${timeframe}`, {
+      method: 'GET',
+    });
   }
 
   static async getTrades(tokenAddress: string, limit = 50): Promise<ApiResult<TradeData[]>> {
-    return this.request<TradeData[]>(`/api/v1/tokens/${tokenAddress}/trades?limit=${limit}`);
+    return this.request<TradeData[]>(`/${tokenAddress}/trades?limit=${limit}`, {
+      method: 'GET',
+    });
   }
 }

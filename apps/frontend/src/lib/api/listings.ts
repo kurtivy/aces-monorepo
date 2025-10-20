@@ -48,6 +48,8 @@ export interface ListingData {
   location?: string;
   email?: string;
   isLive: boolean;
+  tokenCreationStatus?: string | null;
+  tokenParameters?: Record<string, any> | null;
   createdAt: string;
   updatedAt: string;
   ownerId: string;
@@ -219,6 +221,55 @@ export class ListingsApi {
         Authorization: `Bearer ${authToken}`,
       },
       body: JSON.stringify({ submissionId }),
+    });
+  }
+
+  /**
+   * Update listing details - Admin updates listing information
+   */
+  static async updateListing(
+    listingId: string,
+    updates: Partial<ListingData>,
+    authToken: string,
+  ): Promise<ApiResult<ListingData>> {
+    return this.request(`/admin/${listingId}`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify(updates),
+    });
+  }
+
+  /**
+   * Finalize user details - User confirms listing ready for admin review
+   */
+  static async finalizeUserDetails(
+    listingId: string,
+    authToken: string,
+  ): Promise<ApiResult<ListingData>> {
+    return this.request(`/${listingId}/finalize-user-details`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
+    });
+  }
+
+  /**
+   * Complete minting - User has minted the token
+   */
+  static async mintToken(
+    listingId: string,
+    contractAddress: string,
+    authToken: string,
+  ): Promise<ApiResult<{ listing: ListingData; token: any }>> {
+    return this.request(`/${listingId}/mint-token`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({ contractAddress }),
     });
   }
 }
