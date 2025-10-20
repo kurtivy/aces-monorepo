@@ -13,6 +13,7 @@ export interface SimpleUserProfile {
   username: string | null;
   role: keyof typeof UserRole;
   isActive: boolean;
+  sellerStatus: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -35,6 +36,7 @@ export class UsersService {
           username: true,
           role: true,
           isActive: true,
+          sellerStatus: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -76,6 +78,7 @@ export class UsersService {
           username: true,
           role: true,
           isActive: true,
+          sellerStatus: true,
           createdAt: true,
           updatedAt: true,
         },

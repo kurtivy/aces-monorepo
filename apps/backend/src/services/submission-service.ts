@@ -8,6 +8,7 @@ import {
   NotificationType,
   NotificationTemplates,
 } from './notification-service';
+import { EmailService } from '../lib/email-service';
 
 // Type for submissions with relations
 type SubmissionWithRelations = Prisma.SubmissionGetPayload<{
@@ -18,17 +19,32 @@ type SubmissionWithRelations = Prisma.SubmissionGetPayload<{
   approvedByUser?: User | null;
 };
 
+export interface OwnershipDocument {
+  type:
+    | 'BILL_OF_SALE'
+    | 'CERTIFICATE_OF_AUTH'
+    | 'INSURANCE_DOC'
+    | 'DEED_OR_TITLE'
+    | 'APPRAISAL_DOC'
+    | 'PROVENANCE_DOC';
+  imageUrl: string;
+  uploadedAt: string;
+}
+
 export interface CreateSubmissionRequest {
   title: string;
   symbol: string;
-  description: string;
+  brand: string;
+  story: string;
+  details: string;
+  provenance: string;
+  value: string;
+  reservePrice: string;
+  hypeSentence: string;
   assetType: keyof typeof AssetType;
   imageGallery?: string[];
   location?: string;
-  email?: string;
-  proofOfOwnership: string;
-  proofOfOwnershipImageUrl?: string;
-  typeOfOwnership: string;
+  ownershipDocumentation: OwnershipDocument[];
 }
 
 export class SubmissionService {
@@ -43,6 +59,7 @@ export class SubmissionService {
 
   /**
    * Check if user is verified before allowing submission
+   * Users can submit if they have PENDING or APPROVED status
    */
   async checkUserVerification(userId: string): Promise<boolean> {
     const verification = await this.prisma.accountVerification.findUnique({
@@ -50,7 +67,9 @@ export class SubmissionService {
       select: { status: true },
     });
 
-    return verification?.status === 'APPROVED';
+    // Allow submissions if verification is PENDING or APPROVED
+    // Reject if no verification exists or if REJECTED
+    return verification?.status === 'PENDING' || verification?.status === 'APPROVED';
   }
 
   /**
@@ -61,29 +80,28 @@ export class SubmissionService {
     data: CreateSubmissionRequest,
   ): Promise<SubmissionWithRelations> {
     try {
-      // Check if user is verified
-      const isVerified = await this.checkUserVerification(userId);
-      if (!isVerified) {
-        throw errors.forbidden('Account verification required to submit assets');
+      // Check if user has submitted verification (PENDING or APPROVED status)
+      const hasVerification = await this.checkUserVerification(userId);
+      if (!hasVerification) {
+        throw errors.forbidden(
+          'Please submit identity verification before listing assets. You can submit assets immediately after submitting your verification.',
+        );
       }
-
-      // Get user's email from their profile
-      const user = await this.prisma.user.findUnique({
-        where: { id: userId },
-        select: { email: true },
-      });
 
       const submissionData = {
         title: data.title,
         symbol: data.symbol,
-        description: data.description,
+        brand: data.brand || null,
+        story: data.story || null,
+        details: data.details || null,
+        provenance: data.provenance || null,
+        value: data.value || null,
+        reservePrice: data.reservePrice || null,
+        hypeSentence: data.hypeSentence || null,
         assetType: data.assetType,
         imageGallery: data.imageGallery || [],
-        proofOfOwnership: data.proofOfOwnership,
-        proofOfOwnershipImageUrl: data.proofOfOwnershipImageUrl || null,
-        typeOfOwnership: data.typeOfOwnership,
+        ownershipDocumentation: data.ownershipDocumentation as unknown as Prisma.JsonArray,
         location: data.location || null,
-        email: data.email || user?.email || null,
         ownerId: userId,
         status: SubmissionStatus.PENDING,
       };
@@ -319,6 +337,14 @@ export class SubmissionService {
           message: template.message,
           actionUrl: template.getActionUrl(),
         });
+        // Send approval email if we have the user's email
+        if (submission.owner.email) {
+          await EmailService.sendSubmissionApprovedEmail({
+            toEmail: submission.owner.email,
+            title: submission.title,
+            symbol: submission.symbol,
+          });
+        }
       } catch (notificationError) {
         console.error('Error creating submission approved notification:', notificationError);
         // Don't fail the approval if notification fails
@@ -365,6 +391,15 @@ export class SubmissionService {
           message: `${template.message} Reason: ${rejectionReason}`,
           actionUrl: template.getActionUrl(),
         });
+        // Send rejection email if we have the user's email
+        if (submission.owner.email) {
+          await EmailService.sendSubmissionRejectedEmail({
+            toEmail: submission.owner.email,
+            title: submission.title,
+            symbol: submission.symbol,
+            reason: rejectionReason,
+          });
+        }
       } catch (notificationError) {
         console.error('Error creating submission rejected notification:', notificationError);
         // Don't fail the rejection if notification fails

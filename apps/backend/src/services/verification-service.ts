@@ -10,6 +10,7 @@ import {
   NotificationType,
   NotificationTemplates,
 } from './notification-service';
+import { EmailService } from '../lib/email-service';
 
 export interface DocumentAnalysisResults {
   faceComparison: {
@@ -386,6 +387,18 @@ export class AccountVerificationService {
           message: template.message,
           actionUrl: template.getActionUrl(),
         });
+
+        // Send verification result email if user has an email
+        if (result.user?.email) {
+          if (decision === VerificationStatus.APPROVED) {
+            await EmailService.sendVerificationApprovedEmail({ toEmail: result.user.email });
+          } else if (decision === VerificationStatus.REJECTED) {
+            await EmailService.sendVerificationRejectedEmail({
+              toEmail: result.user.email,
+              reason: rejectionReason || 'No reason provided',
+            });
+          }
+        }
       } catch (notificationError) {
         console.error('Error creating verification result notification:', notificationError);
         // Don't fail the verification review if notification fails
@@ -545,6 +558,11 @@ export class AccountVerificationService {
         faceMatch: visionResult.faceComparison.match,
       });
 
+      // Determine status based on Vision API recommendation
+      const shouldAutoApprove = visionResult.recommendation === 'APPROVE';
+      const newStatus = shouldAutoApprove ? 'APPROVED' : 'PENDING';
+      const newSellerStatus = shouldAutoApprove ? 'APPROVED' : 'PENDING';
+
       // Update verification record with Vision API results
       const updatedVerification = await this.prisma.accountVerification.update({
         where: { userId },
@@ -559,8 +577,36 @@ export class AccountVerificationService {
             reasons: visionResult.reasons,
           },
           facialVerificationAt: new Date(),
+          status: newStatus,
         } as any,
       });
+
+      // Update user's sellerStatus
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { sellerStatus: newSellerStatus },
+      });
+
+      // Send notification based on result
+      if (shouldAutoApprove) {
+        console.log('✅ Auto-approving verification for user:', userId);
+        await this.notificationService.createNotification({
+          userId,
+          type: NotificationType.VERIFICATION_APPROVED,
+          title: 'Identity Verified',
+          message:
+            'Your identity verification has been approved! You can now submit luxury assets for tokenization.',
+        });
+      } else {
+        console.log('⏳ Verification requires manual review for user:', userId);
+        await this.notificationService.createNotification({
+          userId,
+          type: NotificationType.VERIFICATION_PENDING,
+          title: 'Verification Under Review',
+          message:
+            'Your verification is under manual review. You can still submit assets while we review your application.',
+        });
+      }
 
       return {
         verificationId: updatedVerification.id,
@@ -569,6 +615,8 @@ export class AccountVerificationService {
         faceComparisonScore: visionResult.faceComparison.similarity,
         visionApiRecommendation: visionResult.recommendation,
         recommendation: visionResult.recommendation,
+        autoApproved: shouldAutoApprove,
+        requiresManualReview: !shouldAutoApprove,
         message: this.getVerificationMessage(visionResult.recommendation, visionResult.reasons),
       };
     } catch (error) {

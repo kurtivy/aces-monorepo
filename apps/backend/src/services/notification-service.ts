@@ -174,7 +174,7 @@ export class NotificationService {
 
       const finalWhereClause = !includeRead ? { ...whereClause, isRead: false } : whereClause;
 
-      const notifications = await (this.prisma as any).userNotification.findMany({
+      const notifications = await this.prisma.userNotification.findMany({
         where: finalWhereClause,
         include: {
           user: {
@@ -329,9 +329,18 @@ export class NotificationService {
 }
 
 /**
+ * Template structure for notifications
+ */
+type NotificationTemplate = {
+  title: string;
+  message: string;
+  getActionUrl: (...args: any[]) => string;
+};
+
+/**
  * Notification templates for consistent messaging
  */
-export const NotificationTemplates = {
+export const NotificationTemplates: Record<NotificationType, NotificationTemplate> = {
   [NotificationType.LISTING_APPROVED]: {
     title: 'Listing Approved!',
     message:
@@ -369,22 +378,22 @@ export const NotificationTemplates = {
 
   // Verification notifications
   [NotificationType.VERIFICATION_PENDING]: {
-    title: 'Verification Submitted',
+    title: 'Verification Under Review',
     message:
-      'Your identity verification has been submitted and is under review. You will be notified of the results.',
+      "Your verification requires manual review by our team. You can still submit assets while we review your application. We'll notify you once the review is complete.",
     getActionUrl: () => '/profile',
   },
   [NotificationType.VERIFICATION_APPROVED]: {
-    title: 'Verification Approved!',
+    title: 'Identity Verified',
     message:
-      'Your identity has been successfully verified! You can now submit assets for tokenization and place bids.',
+      'Your identity has been successfully verified! You can now submit luxury assets for tokenization and place bids.',
     getActionUrl: () => '/launch',
   },
   [NotificationType.VERIFICATION_REJECTED]: {
     title: 'Verification Rejected',
     message:
       'Your verification was rejected. Please review the requirements and resubmit with correct information.',
-    getActionUrl: () => '/profile',
+    getActionUrl: () => '/verify',
   },
 
   // Submission notifications

@@ -111,6 +111,23 @@ export interface UpdateListingRequest {
   launchDate?: Date | null;
 }
 
+export interface OwnerUpdateListingRequest {
+  title?: string;
+  symbol?: string;
+  brand?: string | null;
+  story?: string | null;
+  details?: string | null;
+  provenance?: string | null;
+  value?: string | null;
+  reservePrice?: string | null;
+  hypeSentence?: string | null;
+  assetType?: keyof typeof AssetType;
+  imageGallery?: string[];
+  location?: string | null;
+  assetDetails?: Record<string, string>;
+  startingBidPrice?: string | null;
+}
+
 export class ListingService {
   private notificationService: NotificationService;
   private aerodromeDataService?: AerodromeDataService;
@@ -186,11 +203,16 @@ export class ListingService {
         data: {
           title: submission.title,
           symbol: submission.symbol,
-          description: submission.description,
+          brand: submission.brand || null,
+          story: submission.story || null,
+          details: submission.details || null,
+          provenance: submission.provenance || null,
+          value: submission.value || null,
+          reservePrice: submission.reservePrice || null,
+          hypeSentence: submission.hypeSentence || null,
           assetType: submission.assetType,
           imageGallery: submission.imageGallery,
           location: submission.location,
-          email: submission.email,
           isLive: false, // Always start as not live
           submissionId: submission.id,
           ownerId: submission.ownerId,
@@ -251,6 +273,49 @@ export class ListingService {
       return listing;
     } catch (error) {
       console.error('Error updating listing:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update listing details by owner (pre-launch only)
+   */
+  async updateListingByOwner(
+    listingId: string,
+    data: OwnerUpdateListingRequest,
+    ownerId: string,
+  ): Promise<ListingWithRelations> {
+    try {
+      const listing = await (this.prisma as any).listing.findUnique({ where: { id: listingId } });
+
+      if (!listing) {
+        throw errors.notFound('Listing not found');
+      }
+
+      if (listing.ownerId !== ownerId) {
+        throw errors.forbidden('You do not have permission to update this listing');
+      }
+
+      if (listing.isLive) {
+        throw errors.validation('Cannot update listing after it is live');
+      }
+
+      const updated = await (this.prisma as any).listing.update({
+        where: { id: listingId },
+        data: {
+          ...data,
+          updatedAt: new Date(),
+        },
+        include: {
+          owner: true,
+          submission: true,
+          approvedByUser: true,
+        },
+      });
+
+      return updated;
+    } catch (error) {
+      console.error('Error updating listing by owner:', error);
       throw error;
     }
   }
