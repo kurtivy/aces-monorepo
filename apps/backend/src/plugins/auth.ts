@@ -159,6 +159,7 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
               email: true,
               role: true,
               isActive: true,
+              sellerStatus: true,
               createdAt: true,
               updatedAt: true,
             },
@@ -179,6 +180,7 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
                 email,
                 role: 'TRADER', // Using string literal to match enum
                 isActive: true,
+                sellerStatus: 'NOT_APPLIED', // Default seller status
               },
               select: {
                 id: true,
@@ -187,12 +189,15 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
                 email: true,
                 role: true,
                 isActive: true,
+                sellerStatus: true,
                 createdAt: true,
                 updatedAt: true,
               },
             });
 
-            console.log('✅ User created successfully:', user.id);
+            if (user) {
+              console.log('✅ User created successfully:', user.id);
+            }
           } else {
             console.log('✅ Existing user found:', user.id);
 
@@ -233,12 +238,15 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
                   email: true,
                   role: true,
                   isActive: true,
+                  sellerStatus: true,
                   createdAt: true,
                   updatedAt: true,
                 },
               });
 
-              console.log('✅ User updated successfully:', user.id);
+              if (user) {
+                console.log('✅ User updated successfully:', user.id);
+              }
             }
           }
 
@@ -254,7 +262,9 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
             },
           };
 
-          console.log('✅ Auth context created successfully for user:', user.id);
+          if (user) {
+            console.log('✅ Auth context created successfully for user:', user.id);
+          }
         } catch (jwtError) {
           console.error('❌ JWT verification failed:', jwtError);
 

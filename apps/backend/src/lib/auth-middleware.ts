@@ -54,15 +54,28 @@ export function createAuthContext(user: SimpleUser | null): SimpleAuthContext {
  * Middleware to require authentication
  */
 export async function requireAuth(request: FastifyRequest, _reply: FastifyReply) {
+  console.log('🔐 requireAuth middleware called for:', request.method, request.url);
+  console.log('🔐 Has auth?', !!request.auth);
+  console.log('🔐 Has user?', !!request.user);
+  console.log('🔐 isAuthenticated?', request.auth?.isAuthenticated);
+  console.log('🔐 User ID:', request.user?.id);
+
   if (!request.auth) {
-    console.error('request.auth is null/undefined');
+    console.error('❌ request.auth is null/undefined');
     throw errors.unauthorized('Authentication not initialized');
   }
 
   if (!request.auth.isAuthenticated || !request.user) {
-    console.error('User not authenticated');
+    console.error(
+      '❌ User not authenticated - isAuthenticated:',
+      request.auth.isAuthenticated,
+      'user:',
+      !!request.user,
+    );
     throw errors.unauthorized('Authentication required');
   }
+
+  console.log('✅ Auth check passed for user:', request.user.id);
 }
 
 /**

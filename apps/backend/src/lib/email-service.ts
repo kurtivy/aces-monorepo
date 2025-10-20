@@ -23,6 +23,189 @@ export interface EmailServiceResponse {
 }
 
 export class EmailService {
+  static async sendVerificationApprovedEmail(data: {
+    toEmail: string;
+  }): Promise<EmailServiceResponse> {
+    try {
+      if (!process.env.RESEND_API_KEY) {
+        console.error('RESEND_API_KEY environment variable is not set');
+        return { success: false, error: 'Email service configuration error' };
+      }
+
+      const subject = `Your identity has been verified`;
+      const emailHtml = `
+        <html>
+          <body style="font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; color: #1a1a1a;">
+            <div style="max-width:600px;margin:0 auto;padding:24px;">
+              <h1 style="margin:0 0 16px 0;color:#231F20;">Identity Verified</h1>
+              <p style="margin:0 0 12px 0;">Your account verification has been approved.</p>
+              <div style="margin:16px 0;padding:12px;border-left:4px solid #184D37;background:#f0f7f3;">
+                <strong>You can now submit luxury assets and place bids on ACES.</strong>
+              </div>
+              <p style="margin:16px 0 0 0;">Get started by launching a submission from your profile.</p>
+            </div>
+          </body>
+        </html>
+      `;
+      const emailText = `Your account verification has been approved. You can now submit assets and place bids on ACES.`;
+
+      const result = await resend.emails.send({
+        from: 'ACES Notifications <noreply@aces.fun>',
+        to: [data.toEmail],
+        subject,
+        html: emailHtml,
+        text: emailText,
+      });
+
+      if (result.error) {
+        console.error('Resend API error:', result.error);
+        return { success: false, error: 'Failed to send email' };
+      }
+      return { success: true, messageId: result.data?.id };
+    } catch (error) {
+      console.error('sendVerificationApprovedEmail error:', error);
+      return { success: false, error: 'Failed to send email' };
+    }
+  }
+
+  static async sendVerificationRejectedEmail(data: {
+    toEmail: string;
+    reason?: string;
+  }): Promise<EmailServiceResponse> {
+    try {
+      if (!process.env.RESEND_API_KEY) {
+        console.error('RESEND_API_KEY environment variable is not set');
+        return { success: false, error: 'Email service configuration error' };
+      }
+
+      const subject = `Your verification was rejected`;
+      const emailHtml = `
+        <html>
+          <body style="font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; color: #1a1a1a;">
+            <div style="max-width:600px;margin:0 auto;padding:24px;">
+              <h1 style="margin:0 0 16px 0;color:#231F20;">Verification Rejected</h1>
+              <p style="margin:0 0 12px 0;">Thank you for submitting your verification to ACES. After review, we were unable to approve it at this time.</p>
+              ${data.reason ? `<div style="margin:16px 0;padding:12px;border-left:4px solid #b91c1c;background:#fef2f2;"><strong>Reason:</strong> ${data.reason}</div>` : ''}
+              <p style="margin:16px 0 0 0;">Please review the requirements and resubmit when ready.</p>
+            </div>
+          </body>
+        </html>
+      `;
+      const emailText = `Your verification was rejected.${data.reason ? ` Reason: ${data.reason}` : ''}`;
+
+      const result = await resend.emails.send({
+        from: 'ACES Notifications <noreply@aces.fun>',
+        to: [data.toEmail],
+        subject,
+        html: emailHtml,
+        text: emailText,
+      });
+
+      if (result.error) {
+        console.error('Resend API error:', result.error);
+        return { success: false, error: 'Failed to send email' };
+      }
+      return { success: true, messageId: result.data?.id };
+    } catch (error) {
+      console.error('sendVerificationRejectedEmail error:', error);
+      return { success: false, error: 'Failed to send email' };
+    }
+  }
+  static async sendSubmissionApprovedEmail(data: {
+    toEmail: string;
+    title: string;
+    symbol: string;
+  }): Promise<EmailServiceResponse> {
+    try {
+      if (!process.env.RESEND_API_KEY) {
+        console.error('RESEND_API_KEY environment variable is not set');
+        return { success: false, error: 'Email service configuration error' };
+      }
+
+      const subject = `Your submission was approved: ${data.title} (${data.symbol})`;
+      const emailHtml = `
+        <html>
+          <body style="font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; color: #1a1a1a;">
+            <div style="max-width:600px;margin:0 auto;padding:24px;">
+              <h1 style="margin:0 0 16px 0;color:#231F20;">Submission Approved</h1>
+              <p style="margin:0 0 12px 0;">Congratulations! Your submission has been approved.</p>
+              <div style="margin:16px 0;padding:12px;border-left:4px solid #184D37;background:#f0f7f3;">
+                <strong>${data.title} (${data.symbol})</strong>
+              </div>
+              <p style="margin:16px 0 0 0;">You can track your listing in your profile on ACES.</p>
+            </div>
+          </body>
+        </html>
+      `;
+      const emailText = `Your submission was approved: ${data.title} (${data.symbol}).`;
+
+      const result = await resend.emails.send({
+        from: 'ACES Notifications <noreply@aces.fun>',
+        to: [data.toEmail],
+        subject,
+        html: emailHtml,
+        text: emailText,
+      });
+
+      if (result.error) {
+        console.error('Resend API error:', result.error);
+        return { success: false, error: 'Failed to send email' };
+      }
+      return { success: true, messageId: result.data?.id };
+    } catch (error) {
+      console.error('sendSubmissionApprovedEmail error:', error);
+      return { success: false, error: 'Failed to send email' };
+    }
+  }
+
+  static async sendSubmissionRejectedEmail(data: {
+    toEmail: string;
+    title: string;
+    symbol: string;
+    reason: string;
+  }): Promise<EmailServiceResponse> {
+    try {
+      if (!process.env.RESEND_API_KEY) {
+        console.error('RESEND_API_KEY environment variable is not set');
+        return { success: false, error: 'Email service configuration error' };
+      }
+
+      const subject = `Your submission was rejected: ${data.title} (${data.symbol})`;
+      const emailHtml = `
+        <html>
+          <body style="font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; color: #1a1a1a;">
+            <div style="max-width:600px;margin:0 auto;padding:24px;">
+              <h1 style="margin:0 0 16px 0;color:#231F20;">Submission Rejected</h1>
+              <p style="margin:0 0 12px 0;">Thank you for your submission to ACES. After review, we were unable to approve it at this time.</p>
+              <div style="margin:16px 0;padding:12px;border-left:4px solid #b91c1c;background:#fef2f2;">
+                <strong>${data.title} (${data.symbol})</strong>
+              </div>
+              <p style="margin:0 0 12px 0;"><strong>Reason:</strong> ${data.reason}</p>
+              <p style="margin:16px 0 0 0;">You can address the feedback and resubmit when ready.</p>
+            </div>
+          </body>
+        </html>
+      `;
+      const emailText = `Your submission was rejected: ${data.title} (${data.symbol}). Reason: ${data.reason}`;
+
+      const result = await resend.emails.send({
+        from: 'ACES Notifications <noreply@aces.fun>',
+        to: [data.toEmail],
+        subject,
+        html: emailHtml,
+        text: emailText,
+      });
+
+      if (result.error) {
+        console.error('Resend API error:', result.error);
+        return { success: false, error: 'Failed to send email' };
+      }
+      return { success: true, messageId: result.data?.id };
+    } catch (error) {
+      console.error('sendSubmissionRejectedEmail error:', error);
+      return { success: false, error: 'Failed to send email' };
+    }
+  }
   static async sendContactFormEmail(data: ContactFormData): Promise<EmailServiceResponse> {
     try {
       if (!process.env.RESEND_API_KEY) {
