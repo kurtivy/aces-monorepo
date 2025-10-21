@@ -131,6 +131,12 @@ export default function TradeHistory({
     return `${prefix}…${suffix}`;
   };
 
+  const formatWalletAddressMobile = (address?: string) => {
+    if (!address) return '--';
+    const prefix = address.slice(0, 5);
+    return `${prefix}…`;
+  };
+
   const formatTxHash = (hash: string) => {
     return `${hash.slice(0, 6)}...${hash.slice(-4)}`;
   };
@@ -365,21 +371,16 @@ export default function TradeHistory({
           </div>
         </div>
 
-        <div className="space-y-3 text-xs md:hidden">
-          <div className="grid grid-cols-[1.4fr_1fr_1fr_1fr_auto] items-center gap-2 px-3 text-[11px] uppercase tracking-wide text-[#8F9B8F]">
-            <span className="text-left">Account</span>
-            <span>Type</span>
-            <span>USD</span>
-            <span>{tokenSymbol}</span>
-            <span>Txn</span>
-          </div>
-          <div className="space-y-2">
+        <div className="md:hidden">
+          <div className="space-y-2 px-3 pb-3">
             {safeTrades.map((trade, index) => {
               const isBuy = trade.direction === 'buy';
               const accent = isBuy ? 'text-[#37d488]' : 'text-[#f87171]';
               const isHighlighted = index < 3;
               const alternatingBg = index % 2 === 0 ? 'bg-[#112118]' : 'bg-[#0d1a12]';
-              const actorLabel = trade.trader ? formatWalletAddress(trade.trader) : 'Aerodrome LP';
+              const actorLabelMobile = trade.trader
+                ? formatWalletAddressMobile(trade.trader)
+                : 'Aerodrome LP';
               const actorLink = trade.trader ? getAddressUrl(trade.trader) : null;
               const txHash = trade.txHash ?? trade.id;
               const txLink = getTxUrl(txHash);
@@ -403,57 +404,69 @@ export default function TradeHistory({
               return (
                 <div
                   key={trade.id}
-                  className={`grid grid-cols-[1.4fr_1fr_1fr_1fr_auto] items-center gap-2 rounded-xl border border-[#2a3b2a] px-3 py-3 transition-all duration-300 justify-items-center ${alternatingBg} ${
-                    isHighlighted ? 'shadow-[0_0_0_1px_rgba(24,77,55,0.3)] bg-[#184D37]/15' : ''
-                  }`}
+                  className={cn(
+                    'rounded-xl border border-[#2a3b2a] p-3 transition-all duration-300',
+                    alternatingBg,
+                    isHighlighted && 'shadow-[0_0_0_1px_rgba(24,77,55,0.3)] bg-[#184D37]/15',
+                  )}
                 >
-                  {actorLink ? (
-                    <a
-                      href={actorLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex w-full flex-col items-start justify-center gap-1 text-sm text-white transition-colors hover:text-[#D0B284]"
-                    >
-                      <span className="font-mono text-[13px]">{actorLabel}</span>
-                      <span className="text-[11px] text-[#8F9B8F]">
-                        {trade.source === 'DEX' ? 'Aerodrome' : 'Bonding'} ·{' '}
-                        {formatRelativeTime(trade.timestamp)}
+                  <div className="flex items-start justify-between gap-4">
+                    {actorLink ? (
+                      <a
+                        href={actorLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex flex-col text-sm text-white transition-colors hover:text-[#D0B284]"
+                      >
+                        <span className="font-mono text-[13px]">{actorLabelMobile}</span>
+                        <span className="text-[11px] text-[#8F9B8F]">
+                          {formatRelativeTime(trade.timestamp)}
+                        </span>
+                      </a>
+                    ) : (
+                      <div className="flex flex-col text-sm text-white">
+                        <span className="font-mono text-[13px]">{actorLabelMobile}</span>
+                        <span className="text-[11px] text-[#8F9B8F]">
+                          {formatRelativeTime(trade.timestamp)}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex flex-col items-end text-right">
+                      <span className={cn('text-[13px] font-semibold', accent)}>
+                        {isBuy ? 'Buy' : 'Sell'}
                       </span>
-                    </a>
-                  ) : (
-                    <div className="flex w-full flex-col items-start justify-center gap-1 text-sm text-white">
-                      <span className="font-mono text-[13px]">{actorLabel}</span>
-                      <span className="text-[11px] text-[#8F9B8F]">
-                        {trade.source === 'DEX' ? 'Aerodrome' : 'Bonding'} ·{' '}
-                        {formatRelativeTime(trade.timestamp)}
+                      <span className="text-[11px] uppercase tracking-wide text-[#8F9B8F]">
+                        {formatUnitPrice(unitPrice)}
                       </span>
                     </div>
-                  )}
-                  <div className="flex flex-col items-center text-center text-[12px]">
-                    <span className={`font-semibold ${accent}`}>{isBuy ? 'Buy' : 'Sell'}</span>
-                    <span className="text-[10px] uppercase tracking-wider text-[#8F9B8F]">
-                      {trade.source === 'DEX' ? 'Aerodrome' : 'Bonding'}
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] uppercase tracking-wide text-[#8F9B8F]">
+                    <span>USD</span>
+                    <span className={cn('text-right font-mono text-[13px]', accent)}>
+                      {formatUsd(usdVal, { isBuy })}
                     </span>
-                  </div>
-                  <div className={`text-center font-mono text-[13px] ${accent}`}>
-                    {formatUsd(usdVal, { isBuy })}
-                  </div>
-                  <div className={`flex flex-col items-end gap-1 text-right ${accent}`}>
-                    <span className="font-mono text-[13px]">
+                    <span>ACES</span>
+                    <span className={cn('text-right font-mono text-[13px]', accent)}>
+                      {formatAcesAmount(trade.counterAmount)}
+                    </span>
+                    <span>{tokenSymbol}</span>
+                    <span className={cn('text-right font-mono text-[13px]', accent)}>
                       {formatTokenAmount(trade.tokenAmount)}
                     </span>
-                    <span className="font-mono text-[11px] text-[#8F9B8F]">
-                      {formatUnitPrice(unitPrice)}
-                    </span>
                   </div>
-                  <div className="flex justify-center">
+
+                  <div className="mt-3 flex items-center justify-between">
+                    <span className="text-[11px] uppercase tracking-wide text-[#8F9B8F]">
+                      Txn
+                    </span>
                     <a
                       href={txLink}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 rounded-lg border border-[#2a3b2a] px-2 py-1 text-[11px] text-[#D0B284] transition-colors hover:bg-[#D0B284]/10"
                     >
-                      Txn
+                      View
                       <ExternalLink className="h-3 w-3" />
                     </a>
                   </div>
