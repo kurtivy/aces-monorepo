@@ -20,7 +20,12 @@ export class ChartDataWebSocket {
   private clients = new Map<string, WebSocketClient>();
   private subscriptions = new Map<string, Set<string>>(); // "tokenAddress:timeframe:chartType" -> Set<clientId>
   private pollingIntervals = new Map<string, NodeJS.Timeout>();
+  private currentIntervalMs = new Map<string, number>(); // Track current interval for each subscription
   private readonly pollIntervalMs: number;
+  private graduationStateCache = new Map<
+    string,
+    { poolReady: boolean; poolAddress: string | null }
+  >();
 
   constructor(
     private fastify: FastifyInstance,
@@ -146,8 +151,10 @@ export class ChartDataWebSocket {
       this.startPolling(tokenAddress.toLowerCase(), timeframe, chartType);
     }
 
-    // Send immediate update
-    this.sendUpdate(clientId, tokenAddress.toLowerCase(), timeframe, chartType);
+    // Send immediate update (async - don't await to avoid blocking)
+    this.sendUpdate(clientId, tokenAddress.toLowerCase(), timeframe, chartType).catch((error) => {
+      console.error(`[WebSocket] Error sending initial data to ${clientId}:`, error);
+    });
   }
 
   /**
@@ -227,6 +234,7 @@ export class ChartDataWebSocket {
     }, this.pollIntervalMs);
 
     this.pollingIntervals.set(subscriptionKey, interval);
+    this.currentIntervalMs.set(subscriptionKey, this.pollIntervalMs); // Track initial interval
     console.log(`✅ [WebSocket] Interval set, ID:`, interval);
 
     // Do initial poll immediately
@@ -246,6 +254,7 @@ export class ChartDataWebSocket {
     if (interval) {
       clearInterval(interval);
       this.pollingIntervals.delete(subscriptionKey);
+      this.currentIntervalMs.delete(subscriptionKey); // Clean up interval tracking
       console.log(`[WebSocket] Stopped polling for ${subscriptionKey}`);
     }
   }
@@ -255,8 +264,6 @@ export class ChartDataWebSocket {
    */
   private async pollAndBroadcast(tokenAddress: string, timeframe: string) {
     try {
-      console.log(`🔄 [WebSocket] Polling PRICE ${tokenAddress} ${timeframe}...`);
-
       const subscriptionKey = `${tokenAddress}:${timeframe}:price`;
       const subscribers = this.subscriptions.get(subscriptionKey);
 
@@ -268,6 +275,11 @@ export class ChartDataWebSocket {
         return;
       }
 
+      console.log(
+        `🔄 [WebSocket] Polling PRICE ${tokenAddress} ${timeframe} (${subscribers.size} subscribers)...`,
+      );
+
+      // Get latest candle
       const candle = await this.unifiedService.getLatestCandle(tokenAddress, timeframe);
 
       if (!candle) {
@@ -275,10 +287,58 @@ export class ChartDataWebSocket {
         return;
       }
 
-      console.log(`✅ [WebSocket] Got candle for ${tokenAddress} ${timeframe}:`, {
+      console.log(`📊 [WebSocket] Latest candle:`, {
+        dataSource: candle.dataSource,
         timestamp: candle.timestamp,
         close: candle.close,
         closeUsd: candle.closeUsd,
+        open: candle.open,
+        openUsd: candle.openUsd,
+        high: candle.high,
+        highUsd: candle.highUsd,
+        low: candle.low,
+        lowUsd: candle.lowUsd,
+        volume: candle.volume,
+        trades: candle.trades,
+      });
+
+      // Get current graduation state
+      const chartData = await this.unifiedService.getChartData(tokenAddress, {
+        timeframe,
+        limit: 1,
+        includeUsd: true,
+      });
+
+      const currentGraduationState = chartData.graduationState;
+
+      console.log(`🎓 [WebSocket] Graduation state:`, {
+        poolReady: currentGraduationState.poolReady,
+        poolAddress: currentGraduationState.poolAddress,
+        dexLiveAt: currentGraduationState.dexLiveAt,
+      });
+
+      // Check for graduation event
+      const cachedState = this.graduationStateCache.get(tokenAddress);
+      const justGraduated =
+        cachedState &&
+        !cachedState.poolReady &&
+        currentGraduationState.poolReady &&
+        currentGraduationState.poolAddress;
+
+      if (justGraduated) {
+        console.log(`🎓 [WebSocket] Token ${tokenAddress} just graduated to DEX!`, {
+          poolAddress: currentGraduationState.poolAddress,
+          dexLiveAt: currentGraduationState.dexLiveAt,
+        });
+
+        // Broadcast graduation event to ALL subscribers of this token (all timeframes)
+        this.broadcastGraduationEvent(tokenAddress, currentGraduationState);
+      }
+
+      // Update cached state
+      this.graduationStateCache.set(tokenAddress, {
+        poolReady: currentGraduationState.poolReady,
+        poolAddress: currentGraduationState.poolAddress,
       });
 
       const message = JSON.stringify({
@@ -300,6 +360,7 @@ export class ChartDataWebSocket {
           trades: candle.trades,
           dataSource: candle.dataSource,
         },
+        graduationState: currentGraduationState,
         timestamp: Date.now(),
       });
 
@@ -326,9 +387,60 @@ export class ChartDataWebSocket {
       console.log(
         `📡 [WebSocket] Broadcast ${subscriptionKey} to ${sentCount}/${subscribers.size} clients`,
       );
+
+      // 🔥 DISABLED: Dynamic polling optimization was causing constant interval restarts
+      // This was preventing real-time updates. Keep polling at consistent 2.5s interval.
+      // this.adjustPollingInterval(subscriptionKey, tokenAddress, timeframe, candle);
     } catch (error) {
       console.error('❌ [WebSocket] Poll error:', error);
       console.error('Stack trace:', error);
+    }
+  }
+
+  /**
+   * Adjust polling interval dynamically based on trading activity
+   * Active trading = faster polling, low activity = slower polling
+   */
+  private adjustPollingInterval(
+    subscriptionKey: string,
+    tokenAddress: string,
+    timeframe: string,
+    candle: any,
+  ) {
+    const candleAge = Date.now() - candle.timestamp.getTime();
+    let newInterval: number;
+
+    if (candleAge < 30000) {
+      // Active trading (< 30s old)
+      newInterval = 1500; // Poll every 1.5s
+    } else if (candleAge < 120000) {
+      // Moderate activity (< 2m old)
+      newInterval = 5000; // Poll every 5s
+    } else {
+      // Low activity (> 2m old)
+      newInterval = 10000; // Poll every 10s
+    }
+
+    // Get current interval
+    const currentInterval = this.pollingIntervals.get(subscriptionKey);
+
+    // Only restart if interval changed significantly (avoid unnecessary restarts)
+    if (!currentInterval || Math.abs(newInterval - this.pollIntervalMs) > 1000) {
+      console.log(`⏱️ [WebSocket] Adjusting polling interval for ${subscriptionKey}:`, {
+        candleAge: `${(candleAge / 1000).toFixed(1)}s`,
+        newInterval: `${newInterval}ms`,
+        oldInterval: this.pollIntervalMs,
+      });
+
+      // Stop current polling
+      this.stopPolling(subscriptionKey);
+
+      // Start new polling with adjusted interval
+      const interval = setInterval(() => {
+        this.pollAndBroadcast(tokenAddress, timeframe);
+      }, newInterval);
+
+      this.pollingIntervals.set(subscriptionKey, interval);
     }
   }
 
@@ -365,7 +477,33 @@ export class ChartDataWebSocket {
         includeUsd: true,
       });
 
-      const supply = chartData.graduationState?.poolReady
+      const currentGraduationState = chartData.graduationState;
+
+      // Check for graduation event
+      const cachedState = this.graduationStateCache.get(tokenAddress);
+      const justGraduated =
+        cachedState &&
+        !cachedState.poolReady &&
+        currentGraduationState.poolReady &&
+        currentGraduationState.poolAddress;
+
+      if (justGraduated) {
+        console.log(`🎓 [WebSocket] Token ${tokenAddress} just graduated to DEX!`, {
+          poolAddress: currentGraduationState.poolAddress,
+          dexLiveAt: currentGraduationState.dexLiveAt,
+        });
+
+        // Broadcast graduation event to ALL subscribers of this token (all timeframes)
+        this.broadcastGraduationEvent(tokenAddress, currentGraduationState);
+      }
+
+      // Update cached state
+      this.graduationStateCache.set(tokenAddress, {
+        poolReady: currentGraduationState.poolReady,
+        poolAddress: currentGraduationState.poolAddress,
+      });
+
+      const supply = currentGraduationState?.poolReady
         ? parseFloat(candle.circulatingSupply || '0') // DEX: use actual circulating supply
         : 800000000; // Bonding curve: fixed 800 million tokens
 
@@ -389,7 +527,7 @@ export class ChartDataWebSocket {
       console.log(`✅ [WebSocket] Got market cap candle for ${tokenAddress} ${timeframe}:`, {
         timestamp: candle.timestamp,
         supply,
-        supplySource: chartData.graduationState?.poolReady
+        supplySource: currentGraduationState?.poolReady
           ? 'circulating (DEX)'
           : 'fixed 800M (bonding)',
         priceClose: closeUsd,
@@ -402,6 +540,7 @@ export class ChartDataWebSocket {
         timeframe,
         chartType: 'mcap',
         candle: mcapCandle,
+        graduationState: currentGraduationState,
         timestamp: Date.now(),
       });
 
@@ -444,14 +583,27 @@ export class ChartDataWebSocket {
     chartType: 'price' | 'mcap' = 'price',
   ) {
     const client = this.clients.get(clientId);
-    if (!client) return;
+    if (!client) {
+      console.warn(`[WebSocket] ⚠️ Client ${clientId} not found when sending update`);
+      return;
+    }
+
+    // Check if socket is still open before proceeding
+    if (client.socket.readyState !== 1) {
+      console.warn(
+        `[WebSocket] ⚠️ Client ${clientId} socket not open (readyState: ${client.socket.readyState})`,
+      );
+      return;
+    }
 
     try {
+      console.log(`[WebSocket] 📤 Fetching initial chart data for ${clientId}...`);
       const chartData = await this.unifiedService.getChartData(tokenAddress, {
         timeframe,
         limit: 100, // Send last 100 candles on subscribe
         includeUsd: true,
       });
+      console.log(`[WebSocket] ✅ Got ${chartData.candles.length} candles for ${clientId}`);
 
       if (chartType === 'mcap') {
         // Calculate market cap candles
@@ -487,7 +639,12 @@ export class ChartDataWebSocket {
           timestamp: Date.now(),
         });
 
-        client.socket.send(message);
+        // Double-check socket is still open before sending
+        if (client.socket.readyState === 1) {
+          client.socket.send(message);
+        } else {
+          console.warn(`[WebSocket] ⚠️ Socket closed before sending mcap data to ${clientId}`);
+        }
       } else {
         // Send price candles (existing behavior)
         const message = JSON.stringify({
@@ -515,11 +672,73 @@ export class ChartDataWebSocket {
           timestamp: Date.now(),
         });
 
-        client.socket.send(message);
+        // Double-check socket is still open before sending
+        if (client.socket.readyState === 1) {
+          client.socket.send(message);
+          console.log(
+            `[WebSocket] 📨 Sent initial_data to ${clientId} (${chartData.candles.length} candles)`,
+          );
+        } else {
+          console.warn(`[WebSocket] ⚠️ Socket closed before sending price data to ${clientId}`);
+        }
       }
     } catch (error) {
-      console.error('[WebSocket] Failed to send initial data:', error);
+      console.error('[WebSocket] ❌ Failed to send initial data:', error);
+      console.error('[WebSocket] Error details:', {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        clientId,
+        tokenAddress,
+        timeframe,
+        chartType,
+      });
     }
+  }
+
+  /**
+   * Broadcast graduation event to all subscribers of a token
+   */
+  private broadcastGraduationEvent(
+    tokenAddress: string,
+    graduationState: {
+      isBonded: boolean;
+      poolReady: boolean;
+      poolAddress: string | null;
+      dexLiveAt: Date | null;
+    },
+  ) {
+    console.log(`📣 [WebSocket] Broadcasting graduation event for ${tokenAddress}`);
+
+    const message = JSON.stringify({
+      type: 'graduation_event',
+      tokenAddress,
+      graduationState,
+      timestamp: Date.now(),
+    });
+
+    let broadcastCount = 0;
+
+    // Find all subscription keys for this token (across all timeframes and chart types)
+    for (const [subscriptionKey, subscribers] of this.subscriptions.entries()) {
+      if (subscriptionKey.startsWith(`${tokenAddress}:`)) {
+        for (const clientId of subscribers) {
+          const client = this.clients.get(clientId);
+          if (client && client.socket.readyState === 1) {
+            try {
+              client.socket.send(message);
+              broadcastCount++;
+            } catch (error) {
+              console.error(
+                `❌ [WebSocket] Failed to send graduation event to ${clientId}:`,
+                error,
+              );
+            }
+          }
+        }
+      }
+    }
+
+    console.log(`✅ [WebSocket] Graduation event sent to ${broadcastCount} clients`);
   }
 
   /**
