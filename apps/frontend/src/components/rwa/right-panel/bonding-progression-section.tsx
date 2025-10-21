@@ -21,6 +21,14 @@ export function BondingProgressSection({
   const { bondingPercentage, isBonded, loading, currentSupply, tokensBondedAt } =
     useTokenBondingData(tokenAddress, chainId);
 
+  const barGradient = `linear-gradient(90deg,
+        #184D37 0%,
+        #928357 25%,
+        #D0B284 50%,
+        #D7BF75 75%,
+        #D0B284 100%
+      )`;
+
   // Single source of truth for default bonding target used during loading/unknown
   const DEFAULT_BONDING_TARGET = 30000000; // 30M
 
@@ -121,26 +129,75 @@ export function BondingProgressSection({
 
   return (
     <div className="">
-      {/* Progress rail */}
+      {/* Remaining supply display */}
       {(soldOutState || supplyMetrics.remainingDisplay) && (
-        <div className="text-sm text-[#D0B284]/80 text-center mb-3 font-proxima-nova font-semibold">
+        <div className="text-sm text-[#D0B284]/80 text-center mb-2 font-proxima-nova font-semibold">
           {soldOutState ? 'Sold out' : `${supplyMetrics.remainingDisplay} ${tokenSymbol} left`}
         </div>
       )}
-      <div className="h-3 rounded-full bg-[#1B1F1B] border border-[#D0B284]/20 relative overflow-hidden">
-        <div className="h-full bg-[#D7BF75]/70" style={{ width: `${cappedPercentage}%` }} />
-        {/* ticks */}
-        <div className="absolute inset-0 pointer-events-none flex justify-between px-2">
-          {[0, 25, 50, 75, 100].map((t) => (
-            <div key={t} className="h-full flex items-center">
-              <div className="w-px h-3 bg-[#D0B284]/30" />
+
+      <div className="relative w-full overflow-hidden px-2 py-1">
+        <div className="relative h-4 w-full group">
+          <div className="relative h-full w-full overflow-hidden rounded-full border border-[#D0B284]/20 bg-gradient-to-r from-[#231F20] to-[#1a1718] shadow-inner">
+            <div className="absolute inset-[3px] rounded-full bg-gradient-to-r from-[#0f0d0e] to-[#231F20]">
+              <div className="absolute inset-0 flex items-center">
+                {[25, 50, 75].map((milestone) => (
+                  <div
+                    key={milestone}
+                    className="absolute h-2 w-0.5 rounded-full bg-[#D0B264]/30"
+                    style={{ left: `${milestone}%`, transform: 'translateX(-50%)' }}
+                  />
+                ))}
+              </div>
+
+              {loading && !soldOutState ? (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="text-xs text-[#D0B284]/60">...</div>
+                </div>
+              ) : (
+                <>
+                  <div
+                    className="absolute left-0.5 top-0.5 bottom-0.5 overflow-hidden rounded-full shadow-lg transition-all duration-1000 ease-out"
+                    style={{
+                      width: `${cappedPercentage}%`,
+                      background: barGradient,
+                    }}
+                  >
+                    <div className="absolute inset-0 opacity-60" />
+                    <div
+                      className={`absolute right-0 top-0 h-full w-3 bg-gradient-to-l ${
+                        combinedIsBonded ? 'from-green-300/80' : 'from-[#D7BF75]/80'
+                      } to-transparent`}
+                    />
+                    <div className="absolute left-0 right-0 top-0 h-0.5 rounded-full bg-gradient-to-r from-white/20 to-transparent" />
+                  </div>
+
+                  <div
+                    className="absolute top-1/2 h-4 w-4 -translate-y-1/2 -translate-x-1/2 rounded-full border-2 border-white/30 shadow-lg transition-all duration-1000 ease-out bg-gradient-to-br from-[#D7BF75] to-[#D0B284]"
+                    style={{ left: `${cappedPercentage}%` }}
+                  >
+                    <div className="absolute inset-[2px] rounded-full bg-gradient-to-br from-[#D7BF75] to-[#D0B284]" />
+                  </div>
+                </>
+              )}
             </div>
-          ))}
+          </div>
+
+          <div
+            className="absolute -bottom-5 flex w-full justify-between text-[10px] uppercase tracking-[0.3em] text-[#DCDDCC]/60"
+            style={{ fontFamily: 'JetBrains Mono, monospace' }}
+          >
+            <span>0%</span>
+            <span>25%</span>
+            <span>50%</span>
+            <span>75%</span>
+            <span>100%</span>
+          </div>
         </div>
       </div>
 
       <div className="mt-2 text-xs font-semibold uppercase tracking-[0.3em] text-center text-[#D7BF75]/80">
-        {loading && !combinedIsBonded
+        {loading && !combinedIsBonded && !soldOutState
           ? 'Loading bonding data...'
           : soldOutState
             ? 'BONDED - 100%'
