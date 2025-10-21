@@ -368,7 +368,29 @@ export default function ListTokenForm() {
         const errorMessage =
           e instanceof Error ? e.message : 'Network error occurred. Please try again.';
         setSubmitMessage(errorMessage);
-        setSubmitErrorDetails([]);
+        // Attempt to extract backend validation details if present
+        const anyError = e as any;
+        const details = anyError && anyError.details ? anyError.details : undefined;
+        if (Array.isArray(details)) {
+          try {
+            const parsed = details.map((d: any) => {
+              const path = Array.isArray(d.path) ? d.path.join('.') : d.path;
+              const message = d.message || String(d);
+              return path ? `${path}: ${message}` : message;
+            });
+            setSubmitErrorDetails(parsed);
+          } catch {
+            setSubmitErrorDetails([]);
+          }
+        } else if (details && typeof details === 'object') {
+          try {
+            setSubmitErrorDetails([JSON.stringify(details)]);
+          } catch {
+            setSubmitErrorDetails([]);
+          }
+        } else {
+          setSubmitErrorDetails([]);
+        }
         console.error(e);
       } finally {
         setIsSubmitting(false);
@@ -701,112 +723,118 @@ export default function ListTokenForm() {
                 </p>
               </div>
 
-              {/* Document Upload Fields */}
-              {(
-                [
-                  { key: 'BILL_OF_SALE', label: 'Bill of Sale/Receipt' },
-                  { key: 'CERTIFICATE_OF_AUTH', label: 'Certificate of Authentification' },
-                  { key: 'INSURANCE_DOC', label: 'Insurance Documentation' },
-                  { key: 'DEED_OR_TITLE', label: 'Documentation of Deed or Title' },
-                  { key: 'APPRAISAL_DOC', label: 'Appraisal Documentation' },
-                  { key: 'PROVENANCE_DOC', label: 'Provenance Documentation' },
-                ] as const
-              ).map(({ key, label }) => {
-                const doc = ownershipDocs[key];
-                return (
-                  <div key={key} className="space-y-2">
-                    <label className="flex items-center gap-2 text-[#C9AE6A] font-medium text-sm uppercase tracking-wide">
-                      <FileText className="w-4 h-4" />
-                      {label}
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => handleOwnershipDocUpload(key, e)}
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                      />
-                      <div
-                        className={`border-2 border-dashed rounded-xl p-6 transition-all duration-300 ${
-                          doc
-                            ? 'border-[#C9AE6A]/70 bg-[#C9AE6A]/15 hover:border-[#C9AE6A]'
-                            : 'border-[#E6E3D3]/25 bg-[#0f1511] hover:border-[#C9AE6A]/50'
-                        }`}
-                      >
-                        {/* Corner ticks */}
-                        <span
-                          className={`pointer-events-none absolute left-2 top-2 h-3 w-0.5 ${doc ? 'bg-[#C9AE6A]' : 'bg-[#C9AE6A]/50'}`}
+              {/* Document Upload Fields - 2x3 grid on large screens */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
+                {(
+                  [
+                    { key: 'BILL_OF_SALE', label: 'Bill of Sale/Receipt' },
+                    { key: 'CERTIFICATE_OF_AUTH', label: 'Certificate of Authentification' },
+                    { key: 'INSURANCE_DOC', label: 'Insurance Documentation' },
+                    { key: 'DEED_OR_TITLE', label: 'Documentation of Deed or Title' },
+                    { key: 'APPRAISAL_DOC', label: 'Appraisal Documentation' },
+                    { key: 'PROVENANCE_DOC', label: 'Provenance Documentation' },
+                  ] as const
+                ).map(({ key, label }) => {
+                  const doc = ownershipDocs[key];
+                  return (
+                    <div key={key} className="space-y-2">
+                      <label className="flex items-center gap-2 text-[#C9AE6A] font-medium text-sm uppercase tracking-wide">
+                        <FileText className="w-4 h-4" />
+                        {label}
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => handleOwnershipDocUpload(key, e)}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                         />
-                        <span
-                          className={`pointer-events-none absolute left-2 top-2 w-3 h-0.5 ${doc ? 'bg-[#C9AE6A]' : 'bg-[#C9AE6A]/50'}`}
-                        />
-                        <span
-                          className={`pointer-events-none absolute right-2 top-2 h-3 w-0.5 ${doc ? 'bg-[#C9AE6A]' : 'bg-[#C9AE6A]/50'}`}
-                        />
-                        <span
-                          className={`pointer-events-none absolute right-2 top-2 w-3 h-0.5 ${doc ? 'bg-[#C9AE6A]' : 'bg-[#C9AE6A]/50'}`}
-                        />
-                        <span
-                          className={`pointer-events-none absolute left-2 bottom-2 h-3 w-0.5 ${doc ? 'bg-[#C9AE6A]' : 'bg-[#C9AE6A]/50'}`}
-                        />
-                        <span
-                          className={`pointer-events-none absolute left-2 bottom-2 w-3 h-0.5 ${doc ? 'bg-[#C9AE6A]' : 'bg-[#C9AE6A]/50'}`}
-                        />
-                        <span
-                          className={`pointer-events-none absolute right-2 bottom-2 h-3 w-0.5 ${doc ? 'bg-[#C9AE6A]' : 'bg-[#C9AE6A]/50'}`}
-                        />
-                        <span
-                          className={`pointer-events-none absolute right-2 bottom-2 w-3 h-0.5 ${doc ? 'bg-[#C9AE6A]' : 'bg-[#C9AE6A]/50'}`}
-                        />
-                        {doc ? (
-                          <div className="flex items-center gap-4">
-                            <div className="relative group flex-shrink-0">
-                              <Image
-                                src={doc.preview}
-                                alt={label}
-                                width={120}
-                                height={120}
-                                className="w-32 h-24 object-cover rounded-lg border border-[#E6E3D3]/20"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => removeOwnershipDoc(key)}
-                                className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-all duration-200 shadow-lg"
-                              >
-                                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                  <path
-                                    fillRule="evenodd"
-                                    d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                                    clipRule="evenodd"
-                                  />
-                                </svg>
-                              </button>
+                        <div
+                          className={`border-2 border-dashed rounded-xl p-6 transition-all duration-300 ${
+                            doc
+                              ? 'border-[#C9AE6A]/70 bg-[#C9AE6A]/15 hover:border-[#C9AE6A]'
+                              : 'border-[#E6E3D3]/25 bg-[#0f1511] hover:border-[#C9AE6A]/50'
+                          }`}
+                        >
+                          {/* Corner ticks */}
+                          <span
+                            className={`pointer-events-none absolute left-2 top-2 h-3 w-0.5 ${doc ? 'bg-[#C9AE6A]' : 'bg-[#C9AE6A]/50'}`}
+                          />
+                          <span
+                            className={`pointer-events-none absolute left-2 top-2 w-3 h-0.5 ${doc ? 'bg-[#C9AE6A]' : 'bg-[#C9AE6A]/50'}`}
+                          />
+                          <span
+                            className={`pointer-events-none absolute right-2 top-2 h-3 w-0.5 ${doc ? 'bg-[#C9AE6A]' : 'bg-[#C9AE6A]/50'}`}
+                          />
+                          <span
+                            className={`pointer-events-none absolute right-2 top-2 w-3 h-0.5 ${doc ? 'bg-[#C9AE6A]' : 'bg-[#C9AE6A]/50'}`}
+                          />
+                          <span
+                            className={`pointer-events-none absolute left-2 bottom-2 h-3 w-0.5 ${doc ? 'bg-[#C9AE6A]' : 'bg-[#C9AE6A]/50'}`}
+                          />
+                          <span
+                            className={`pointer-events-none absolute left-2 bottom-2 w-3 h-0.5 ${doc ? 'bg-[#C9AE6A]' : 'bg-[#C9AE6A]/50'}`}
+                          />
+                          <span
+                            className={`pointer-events-none absolute right-2 bottom-2 h-3 w-0.5 ${doc ? 'bg-[#C9AE6A]' : 'bg-[#C9AE6A]/50'}`}
+                          />
+                          <span
+                            className={`pointer-events-none absolute right-2 bottom-2 w-3 h-0.5 ${doc ? 'bg-[#C9AE6A]' : 'bg-[#C9AE6A]/50'}`}
+                          />
+                          {doc ? (
+                            <div className="flex items-center gap-4">
+                              <div className="relative group flex-shrink-0">
+                                <Image
+                                  src={doc.preview}
+                                  alt={label}
+                                  width={120}
+                                  height={120}
+                                  className="w-32 h-24 object-cover rounded-lg border border-[#E6E3D3]/20"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => removeOwnershipDoc(key)}
+                                  className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-all duration-200 shadow-lg"
+                                >
+                                  <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                    <path
+                                      fillRule="evenodd"
+                                      d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                                      clipRule="evenodd"
+                                    />
+                                  </svg>
+                                </button>
+                              </div>
+                              <div className="flex-1">
+                                <p className="text-[#E6E3D3] font-medium mb-1">
+                                  ✓ Document Uploaded
+                                </p>
+                                <p className="text-[#E6E3D3]/70 text-sm">
+                                  Click to replace document
+                                </p>
+                              </div>
                             </div>
-                            <div className="flex-1">
-                              <p className="text-[#E6E3D3] font-medium mb-1">✓ Document Uploaded</p>
-                              <p className="text-[#E6E3D3]/70 text-sm">Click to replace document</p>
+                          ) : (
+                            <div className="flex items-center gap-4">
+                              <div className="w-12 h-12 bg-[#0f1511] border border-dashed border-[#E6E3D3]/20 rounded-xl flex items-center justify-center flex-shrink-0">
+                                <Upload className="w-6 h-6 text-[#C9AE6A]" />
+                              </div>
+                              <div className="flex-1">
+                                <p className="text-[#E6E3D3] font-medium text-sm mb-1">
+                                  Upload Document
+                                </p>
+                                <p className="text-[#E6E3D3]/70 text-xs">
+                                  Click to upload {label.toLowerCase()}
+                                </p>
+                              </div>
                             </div>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 bg-[#0f1511] border border-dashed border-[#E6E3D3]/20 rounded-xl flex items-center justify-center flex-shrink-0">
-                              <Upload className="w-6 h-6 text-[#C9AE6A]" />
-                            </div>
-                            <div className="flex-1">
-                              <p className="text-[#E6E3D3] font-medium text-sm mb-1">
-                                Upload Document
-                              </p>
-                              <p className="text-[#E6E3D3]/70 text-xs">
-                                Click to upload {label.toLowerCase()}
-                              </p>
-                            </div>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
 
               {uploadProgress > 0 && uploadProgress < 100 && (
                 <div className="space-y-2">

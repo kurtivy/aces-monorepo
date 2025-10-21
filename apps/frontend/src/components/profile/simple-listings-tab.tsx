@@ -389,7 +389,11 @@ function useWagmiEthersSigner() {
   return { signer, provider };
 }
 
-export function SimpleListingsTab() {
+export function SimpleListingsTab({
+  defaultShowPending = false,
+}: {
+  defaultShowPending?: boolean;
+}) {
   const { getAccessToken } = useAuth();
   const router = useRouter();
 
@@ -409,7 +413,7 @@ export function SimpleListingsTab() {
   const [expandedOffers, setExpandedOffers] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [mintingListingId, setMintingListingId] = useState<string | null>(null);
-  const [showPendingListings, setShowPendingListings] = useState(false);
+  const [showPendingListings, setShowPendingListings] = useState(defaultShowPending);
 
   // Normalize potentially percent-encoded signed URLs coming from storage
   const normalizeImageUrl = useCallback((url: string | undefined) => {
@@ -884,20 +888,11 @@ export function SimpleListingsTab() {
 
   // Fixed Image Gallery Editor with proper API usage
   const ImageGalleryEditor: React.FC<ImageGalleryEditorProps> = ({ value, onChange }) => {
-    const [newImageUrl, setNewImageUrl] = useState('');
     const [isUploading, setIsUploading] = useState(false);
     const [uploadError, setUploadError] = useState('');
 
     const MAX_IMAGES = 5;
     const currentImages = value || [];
-
-    const addImageUrl = () => {
-      if (newImageUrl.trim() && currentImages.length < MAX_IMAGES) {
-        const updatedGallery = [...currentImages, newImageUrl.trim()];
-        onChange(updatedGallery);
-        setNewImageUrl('');
-      }
-    };
 
     const handleFileUpload = async (event: any) => {
       const input = event.target as any;
@@ -981,12 +976,6 @@ export function SimpleListingsTab() {
       onChange(updatedGallery);
     };
 
-    const updateImageUrl = (index: number, newUrl: string) => {
-      const updatedGallery = [...currentImages];
-      updatedGallery[index] = newUrl;
-      onChange(updatedGallery);
-    };
-
     return (
       <div className="space-y-3">
         <div className="flex items-center justify-between">
@@ -996,39 +985,34 @@ export function SimpleListingsTab() {
           {uploadError && <span className="text-red-400 text-xs">{uploadError}</span>}
         </div>
 
-        {/* Existing Images */}
-        {currentImages.map((imageUrl: string, index: number) => (
-          <div key={index} className="flex gap-2 p-3 bg-black/30 rounded-lg">
-            <div className="flex-shrink-0">
+        {/* Existing Images - Grid 3 x 2 */}
+        <div className="grid grid-cols-3 gap-3">
+          {currentImages.map((imageUrl: string, index: number) => (
+            <div key={index} className="relative p-2 bg-black/30 rounded-lg">
               <Image
                 src={normalizeImageUrl(imageUrl) || LISTING_PLACEHOLDER}
                 alt={`Gallery image ${index + 1}`}
-                className="w-16 h-16 rounded-lg object-cover border border-[#D0B284]/20"
-                width={64}
-                height={64}
+                className="w-full h-24 rounded-lg object-cover border border-[#D0B284]/20"
+                width={256}
+                height={256}
                 onError={(e) => {
                   const target = e.target as unknown as { src: string };
                   target.src = LISTING_PLACEHOLDER;
                 }}
               />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => removeImage(index)}
+                className="absolute top-2 right-2 text-red-400 hover:bg-red-400/10 p-1"
+                aria-label={`Remove image ${index + 1}`}
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
             </div>
-            <Input
-              value={imageUrl}
-              onChange={(e) => updateImageUrl(index, e.target.value)}
-              placeholder="Image URL"
-              className="flex-1 bg-[#151c16]/40 border-[#D0B284]/20 text-white"
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => removeImage(index)}
-              className="text-red-400 hover:bg-red-400/10"
-            >
-              <Trash2 className="w-4 h-4" />
-            </Button>
-          </div>
-        ))}
+          ))}
+        </div>
 
         {/* Upload New Image */}
         {currentImages.length < MAX_IMAGES && (
@@ -1062,32 +1046,6 @@ export function SimpleListingsTab() {
                   )}
                 </label>
               </div>
-            </div>
-
-            {/* Or add URL manually */}
-            <div className="flex gap-2">
-              <Input
-                value={newImageUrl}
-                onChange={(e) => setNewImageUrl(e.target.value)}
-                placeholder="Or paste image URL"
-                className="flex-1 bg-[#151c16]/40 border-[#D0B284]/20 text-white text-sm"
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    addImageUrl();
-                  }
-                }}
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={addImageUrl}
-                className="text-[#D0B284] hover:bg-[#D0B284]/10"
-                disabled={!newImageUrl.trim() || currentImages.length >= MAX_IMAGES}
-              >
-                Add URL
-              </Button>
             </div>
           </div>
         )}
@@ -1135,16 +1093,16 @@ export function SimpleListingsTab() {
   }
 
   return (
-    <div className="bg-[#0A120B] rounded-lg border border-dashed border-[#D7BF75]/25 relative h-full">
+    <div className="bg-[#0A120B] rounded-lg border-t border-dashed border-[#D7BF75]/25 relative h-full">
       {/* Corner ticks */}
       <span className="pointer-events-none absolute left-3 top-3 h-3 w-0.5 bg-[#D7BF75]" />
       <span className="pointer-events-none absolute left-3 top-3 w-3 h-0.5 bg-[#D7BF75]" />
       <span className="pointer-events-none absolute right-3 top-3 h-3 w-0.5 bg-[#D7BF75]" />
       <span className="pointer-events-none absolute right-3 top-3 w-3 h-0.5 bg-[#D7BF75]" />
-      <span className="pointer-events-none absolute left-3 bottom-3 h-3 w-0.5 bg-[#D7BF75]" />
+      {/* <span className="pointer-events-none absolute left-3 bottom-3 h-3 w-0.5 bg-[#D7BF75]" />
       <span className="pointer-events-none absolute left-3 bottom-3 w-3 h-0.5 bg-[#D7BF75]" />
       <span className="pointer-events-none absolute right-3 bottom-3 h-3 w-0.5 bg-[#D7BF75]" />
-      <span className="pointer-events-none absolute right-3 bottom-3 w-3 h-0.5 bg-[#D7BF75]" />
+      <span className="pointer-events-none absolute right-3 bottom-3 w-3 h-0.5 bg-[#D7BF75]" /> */}
 
       <div className="p-6">
         <div className="flex items-center justify-between mb-6">

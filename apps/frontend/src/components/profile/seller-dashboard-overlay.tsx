@@ -91,7 +91,7 @@ export function SellerDashboardOverlay({ isOpen, onClose }: SellerDashboardOverl
               </div>
 
               <TabsContent value="listings" className="mt-0 w-full h-full">
-                <SimpleListingsTab />
+                <SimpleListingsTab defaultShowPending={true} />
               </TabsContent>
               <TabsContent value="offers" className="mt-0 w-full h-full">
                 <OffersTab />

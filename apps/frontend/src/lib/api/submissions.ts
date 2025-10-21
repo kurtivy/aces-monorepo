@@ -114,14 +114,20 @@ export class SubmissionsApi {
 
       if (!response.ok) {
         let errorMessage = `Request failed with status ${response.status}`;
+        let errorDetails: unknown = undefined;
         try {
           const errorData = await response.json();
           errorMessage = errorData.error || errorData.message || errorMessage;
+          if (errorData.details) {
+            errorDetails = errorData.details;
+          }
         } catch {
           // If we can't parse the error response, use the status text
           errorMessage = response.statusText || errorMessage;
         }
-        throw new Error(errorMessage);
+        const err: any = new Error(errorMessage);
+        if (errorDetails) err.details = errorDetails;
+        throw err;
       }
 
       return await response.json();
