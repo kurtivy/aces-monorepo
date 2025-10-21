@@ -192,52 +192,53 @@ export async function chartRoutes(fastify: FastifyInstance) {
             (c.timestamp instanceof Date ? c.timestamp : new Date(c.timestamp)).getTime() / 1000,
           );
 
-          // Calculate market cap OHLC based on price OHLC and supply
-          // For bonding curve: use fixed 800 million supply (bonding target)
-          // For DEX (graduated): use actual circulating supply
-          const supply = chartData.graduationState?.poolReady
-            ? parseFloat(c.circulatingSupply || '0') // DEX: use actual circulating supply
-            : 800000000; // Bonding curve: fixed 800 million tokens
+          // Use pre-calculated market cap OHLC instead of calculating on-the-fly
+          const mcapOhlc = currency === 'usd' ? c.marketCapOhlcUsd : c.marketCapOhlcAces;
 
+          // Fallback to on-the-fly calculation if pre-calculated not available (for backward compatibility)
           let mcOpen: string, mcHigh: string, mcLow: string, mcClose: string;
 
-          if (currency === 'usd') {
-            // Use USD prices to calculate USD market cap
-            const openUsd = parseFloat(c.openUsd || '0');
-            const highUsd = parseFloat(c.highUsd || '0');
-            const lowUsd = parseFloat(c.lowUsd || '0');
-            const closeUsd = parseFloat(c.closeUsd || '0');
-
-            mcOpen = (supply * openUsd).toFixed(2);
-            mcHigh = (supply * highUsd).toFixed(2);
-            mcLow = (supply * lowUsd).toFixed(2);
-            mcClose = (supply * closeUsd).toFixed(2);
+          if (mcapOhlc) {
+            // Use pre-calculated market cap OHLC (preferred)
+            mcOpen = mcapOhlc.open;
+            mcHigh = mcapOhlc.high;
+            mcLow = mcapOhlc.low;
+            mcClose = mcapOhlc.close;
           } else {
-            // Use ACES prices to calculate ACES market cap
-            const open = parseFloat(c.open || '0');
-            const high = parseFloat(c.high || '0');
-            const low = parseFloat(c.low || '0');
-            const close = parseFloat(c.close || '0');
+            // Fallback: Calculate on-the-fly (legacy behavior)
+            const supply = chartData.graduationState?.poolReady
+              ? parseFloat(c.circulatingSupply || '0')
+              : 800000000;
 
-            mcOpen = (supply * open).toFixed(2);
-            mcHigh = (supply * high).toFixed(2);
-            mcLow = (supply * low).toFixed(2);
-            mcClose = (supply * close).toFixed(2);
+            if (currency === 'usd') {
+              const openUsd = parseFloat(c.openUsd || '0');
+              const highUsd = parseFloat(c.highUsd || '0');
+              const lowUsd = parseFloat(c.lowUsd || '0');
+              const closeUsd = parseFloat(c.closeUsd || '0');
+
+              mcOpen = (supply * openUsd).toFixed(2);
+              mcHigh = (supply * highUsd).toFixed(2);
+              mcLow = (supply * lowUsd).toFixed(2);
+              mcClose = (supply * closeUsd).toFixed(2);
+            } else {
+              const open = parseFloat(c.open || '0');
+              const high = parseFloat(c.high || '0');
+              const low = parseFloat(c.low || '0');
+              const close = parseFloat(c.close || '0');
+
+              mcOpen = (supply * open).toFixed(2);
+              mcHigh = (supply * high).toFixed(2);
+              mcLow = (supply * low).toFixed(2);
+              mcClose = (supply * close).toFixed(2);
+            }
           }
 
-          // DEBUG: Log first candle to see what we're calculating
+          // DEBUG: Log first candle
           if (index === 0) {
-            console.log('[Market Cap API] First candle calculation:', {
+            console.log('[Market Cap API] First candle:', {
               timestamp: c.timestamp,
               currency,
-              supply,
-              supplySource: chartData.graduationState?.poolReady
-                ? 'circulating (DEX)'
-                : 'fixed 800M (bonding curve)',
-              prices:
-                currency === 'usd'
-                  ? { open: c.openUsd, high: c.highUsd, low: c.lowUsd, close: c.closeUsd }
-                  : { open: c.open, high: c.high, low: c.low, close: c.close },
+              usingPreCalculated: !!mcapOhlc,
               marketCap: { open: mcOpen, high: mcHigh, low: mcLow, close: mcClose },
             });
           }

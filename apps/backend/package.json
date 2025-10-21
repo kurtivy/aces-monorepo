@@ -48,7 +48,9 @@
     "format:check": "prettier --check \"src/**/*.{ts,js,json}\"",
     "clean": "rm -rf dist node_modules/.cache",
     "docker:build": "docker build -t aces-backend .",
-    "docker:run": "docker run -p 3001:3001 aces-backend"
+    "docker:run": "docker run -p 3001:3001 aces-backend",
+    "backfill:graduated-tokens": "tsx scripts/backfill-graduated-token-candles.ts",
+    "backfill:graduated-tokens:dry-run": "tsx scripts/backfill-graduated-token-candles.ts --dry-run"
   },
   "keywords": [],
   "author": "",

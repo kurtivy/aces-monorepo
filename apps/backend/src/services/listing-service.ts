@@ -218,6 +218,7 @@ export class ListingService {
           imageGallery: submission.imageGallery,
           location: submission.location,
           isLive: false, // Always start as not live
+          tokenCreationStatus: 'AWAITING_USER_DETAILS', // Set initial token creation status
           submissionId: submission.id,
           ownerId: submission.ownerId,
           approvedBy: adminId,
@@ -706,10 +707,25 @@ export class ListingService {
   private async prepareListingForResponse(listing: any, includeDex = false): Promise<any> {
     const commentCount = listing?._count?.comments ?? listing?.commentCount ?? null;
 
+    // Add timeout to signed URL generation (max 5 seconds)
+    let imageGallery: string[];
+    try {
+      imageGallery = await Promise.race([
+        ProductStorageService.convertToSignedUrls(listing.imageGallery),
+        new Promise<string[]>((_, reject) =>
+          setTimeout(() => reject(new Error('Signed URL timeout')), 5000),
+        ),
+      ]);
+    } catch (error) {
+      console.warn('[ListingService] Failed to convert image URLs, using originals:', error);
+      // Fallback to original URLs if signed URL generation fails or times out
+      imageGallery = listing.imageGallery || [];
+    }
+
     const safeListing = {
       ...listing,
       commentCount,
-      imageGallery: await ProductStorageService.convertToSignedUrls(listing.imageGallery),
+      imageGallery,
     };
 
     if ('_count' in safeListing) {
@@ -729,7 +745,11 @@ export class ListingService {
     let poolState: AerodromePoolState | null = null;
     if (token?.contractAddress && this.aerodromeDataService) {
       try {
-        poolState = await this.aerodromeDataService.getPoolState(token.contractAddress);
+        // Add timeout to pool state fetch (max 3 seconds)
+        poolState = await Promise.race([
+          this.aerodromeDataService.getPoolState(token.contractAddress),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
+        ]);
       } catch (error) {
         console.warn(
           `[ListingService] Failed to fetch pool state for ${token.contractAddress}:`,
@@ -789,11 +809,12 @@ export class ListingService {
     }
 
     // Check if listing is in correct status
-    if (listing.tokenCreationStatus !== 'AWAITING_USER_DETAILS') {
+    // Allow null status for backwards compatibility with existing listings
+    if (listing.tokenCreationStatus && listing.tokenCreationStatus !== 'AWAITING_USER_DETAILS') {
       throw {
         statusCode: 400,
         code: 'INVALID_STATUS',
-        message: 'Listing is not awaiting user details',
+        message: `Listing is not awaiting user details. Current status: ${listing.tokenCreationStatus}`,
       };
     }
 

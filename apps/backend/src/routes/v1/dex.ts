@@ -1103,6 +1103,7 @@ export async function dexRoutes(fastify: FastifyInstance) {
             poolAddress: true,
             phase: true,
             priceSource: true,
+            dexLiveAt: true,
           },
         });
 
@@ -1110,11 +1111,23 @@ export async function dexRoutes(fastify: FastifyInstance) {
           poolAddress: token?.poolAddress,
           phase: token?.phase,
           priceSource: token?.priceSource,
+          dexLiveAt: token?.dexLiveAt,
         });
 
         if (!token?.poolAddress || token.phase !== 'DEX_TRADING') {
           console.log(`[DEX Trades] Token not on DEX yet, returning empty array`);
-          return reply.send({ success: true, data: [] });
+          return reply.send({
+            success: true,
+            data: [],
+            meta: {
+              graduation: {
+                isDexLive: false,
+                poolAddress: null,
+                dexLiveAt: null,
+                bondingCutoff: null,
+              },
+            },
+          });
         }
 
         console.log(`[DEX Trades] Token is on DEX, fetching trades from BitQuery...`);
@@ -1170,7 +1183,21 @@ export async function dexRoutes(fastify: FastifyInstance) {
           return result;
         });
 
-        return reply.send({ success: true, data: transformedTrades });
+        // Include graduation metadata
+        const graduationMeta = {
+          isDexLive: true,
+          poolAddress: token.poolAddress,
+          dexLiveAt: token.dexLiveAt?.toISOString() || null,
+          bondingCutoff: token.dexLiveAt?.toISOString() || null,
+        };
+
+        return reply.send({
+          success: true,
+          data: transformedTrades,
+          meta: {
+            graduation: graduationMeta,
+          },
+        });
       } catch (error) {
         console.error('[DEX Trades] ❌ ERROR in trades endpoint:', error);
         console.error(

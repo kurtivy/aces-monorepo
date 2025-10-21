@@ -54,6 +54,9 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
         '/api/cron/sync-liquidity',
         '/', // Root path for listings, contact, etc.
         '/api/v1/bonding', // Bonding curve endpoints
+        '/api/v1/listings/live', // Public listing endpoints
+        '/api/v1/listings/symbol', // Public listing by symbol endpoint
+        '/api/v1/prices', // Public price endpoints
       ];
 
       // Check if this is a public path
@@ -65,13 +68,17 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
           if (path === '/api/v1/tokens' && request.url.startsWith('/api/v1/tokens')) return true;
           if (path === '/api/v1/dex' && request.url.startsWith('/api/v1/dex')) return true;
           if (path === '/api/v1/bonding' && request.url.startsWith('/api/v1/bonding')) return true;
+          if (path === '/api/v1/listings/live' && request.url.startsWith('/api/v1/listings/live')) return true;
+          if (path === '/api/v1/listings/symbol' && request.url.startsWith('/api/v1/listings/symbol')) return true;
+          if (path === '/api/v1/prices' && request.url.startsWith('/api/v1/prices')) return true;
           return false;
         }) ||
         (request.method === 'GET' && ['/live', '/search', '/stats', '/'].includes(request.url));
 
       if (isPublicPath) {
-        // Only log public path skips for non-token endpoints to reduce noise
-        if (!request.url.startsWith('/api/v1/tokens')) {
+        // Only log public path skips for non-token/non-listing endpoints to reduce noise
+        const quietPaths = ['/api/v1/tokens', '/api/v1/listings', '/api/v1/prices'];
+        if (!quietPaths.some(p => request.url.startsWith(p))) {
           console.log('✅ Public path, skipping auth:', request.url);
         }
         request.user = null;

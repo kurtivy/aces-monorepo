@@ -106,9 +106,32 @@ export async function tokensRoutes(fastify: FastifyInstance) {
           console.log(`[Tokens API] Sample trade:`, trades[0]);
         }
 
+        // Include graduation metadata for frontend detection
+        const token = await fastify.prisma.token.findUnique({
+          where: { contractAddress: address.toLowerCase() },
+          select: {
+            phase: true,
+            priceSource: true,
+            poolAddress: true,
+            dexLiveAt: true,
+          },
+        });
+
+        const graduationMeta = token
+          ? {
+              isDexLive: token.phase === 'DEX_TRADING',
+              poolAddress: token.poolAddress,
+              dexLiveAt: token.dexLiveAt?.toISOString() || null,
+              bondingCutoff: token.dexLiveAt?.toISOString() || null,
+            }
+          : null;
+
         return reply.send({
           success: true,
           data: trades,
+          meta: {
+            graduation: graduationMeta,
+          },
         });
       } catch (error) {
         fastify.log.error({ error }, 'Trades fetch error');
