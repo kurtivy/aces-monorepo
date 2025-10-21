@@ -48,6 +48,8 @@ interface WebSocketMessage {
   graduationState?: UnifiedGraduationState;
   candles?: UnifiedCandle[];
   candle?: UnifiedCandle;
+  tokenAddress?: string;
+  timestamp?: number;
 }
 
 export class BondingCurveDatafeed implements IBasicDataFeed {
@@ -468,7 +470,9 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       subscription.ws = ws;
 
       ws.onopen = () => {
+        console.log('[TradingView] ✅ WebSocket connected!');
         if (!subscription.isActive) {
+          console.warn('[TradingView] ⚠️ Subscription inactive on open, closing...');
           ws.close();
           return;
         }
@@ -478,16 +482,20 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
           tokenAddress: subscription.tokenAddress,
           timeframe: subscription.timeframe,
         };
+        console.log('[TradingView] 📤 Sending subscribe message:', subscribeMessage);
         ws.send(JSON.stringify(subscribeMessage));
       };
 
       ws.onmessage = (event) => {
+        console.log('[TradingView] 📨 Raw WebSocket message received:', event.data);
         if (!subscription.isActive) {
+          console.warn('[TradingView] ⚠️ Subscription inactive, ignoring message');
           return;
         }
 
         try {
           const message = JSON.parse(event.data);
+          console.log('[TradingView] 📦 Parsed message type:', message.type);
           this.handleUnifiedWebSocketMessage(message, subscription);
         } catch (error) {
           console.error('[TradingView] WebSocket message error:', error);
@@ -499,12 +507,14 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       };
 
       ws.onclose = (event) => {
+        console.log('[TradingView] WebSocket closed, code:', event.code, 'reason:', event.reason);
         if (!subscription.isActive) {
           return;
         }
 
         subscription.ws = null;
         subscription.reconnectTimeout = setTimeout(() => {
+          console.log('[TradingView] Reconnecting WebSocket...');
           this.startUnifiedWebSocket();
         }, 3000);
       };
@@ -523,12 +533,45 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
 
     const timeframeMs = this.timeframeToMs(subscription.timeframe);
 
+    // Update useDex state from graduation state in all messages
     if (message.graduationState) {
       const graduationState = message.graduationState as UnifiedGraduationState;
-      this.useDex = Boolean(graduationState?.poolReady);
+      if (graduationState) {
+        this.useDex = Boolean(graduationState.poolReady);
+      }
     }
 
     switch (message.type) {
+      case 'graduation_event': {
+        // 🎓 ONLY handle graduation detection for dedicated graduation_event messages
+        // Do NOT trigger on initial_data (token might already be graduated when chart loads)
+        console.log('[TradingView] 🎓 Received graduation_event!');
+
+        if (message.graduationState) {
+          const graduationState = message.graduationState as UnifiedGraduationState;
+
+          if (graduationState && graduationState.poolReady) {
+            console.log('[TradingView] Token just graduated to DEX!', {
+              poolAddress: graduationState.poolAddress,
+              dexLiveAt: graduationState.dexLiveAt,
+            });
+
+            // Clear history cache so next request fetches merged data (bonding curve + DEX)
+            this.historyCache.clear();
+            this.lastHistoricalBarByTimeframe.clear();
+
+            // Force TradingView to reset and refetch chart data
+            // This triggers getBars() to fetch fresh data from the unified endpoint
+            try {
+              subscription.onResetCacheNeededCallback();
+              console.log('[TradingView] ✅ Initiated chart data refresh for graduation');
+            } catch (error) {
+              console.error('[TradingView] Error resetting cache on graduation:', error);
+            }
+          }
+        }
+        break;
+      }
       case 'initial_data': {
         // 🔧 Ignore WebSocket initial_data if we already have fresh HTTP data
         // This prevents WebSocket from overwriting the fresh data we just fetched via HTTP
@@ -538,7 +581,7 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
 
         const candles = Array.isArray(message.candles) ? (message.candles as UnifiedCandle[]) : [];
         const bars = candles
-          .map((candle) => this.candleToBar(candle, timeframeMs))
+          .map((candle) => this.candleToBar(candle, timeframeMs, null))
           .filter((bar): bar is Bar => Boolean(bar));
 
         if (bars.length === 0) {
@@ -562,20 +605,67 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       }
 
       case 'candle_update': {
-        const bar = this.candleToBar(message.candle as UnifiedCandle, timeframeMs);
+        console.log('[TradingView] 📊 Received candle_update:', {
+          dataSource: (message.candle as any)?.dataSource,
+          timestamp: (message.candle as any)?.timestamp,
+          close: (message.candle as any)?.close,
+          closeUsd: (message.candle as any)?.closeUsd,
+          open: (message.candle as any)?.open,
+          openUsd: (message.candle as any)?.openUsd,
+          high: (message.candle as any)?.high,
+          highUsd: (message.candle as any)?.highUsd,
+          low: (message.candle as any)?.low,
+          lowUsd: (message.candle as any)?.lowUsd,
+          hasGraduationState: !!message.graduationState,
+        });
+
+        const bar = this.candleToBar(
+          message.candle as UnifiedCandle,
+          timeframeMs,
+          subscription.lastBar,
+        );
 
         if (!bar) {
+          console.error('[TradingView] ❌ candleToBar returned null!', {
+            candle: message.candle,
+            lastBar: subscription.lastBar,
+            reason: 'Likely missing or invalid price data',
+          });
           return;
         }
+
+        console.log('[TradingView] ✅ Converted to bar:', {
+          time: new Date(bar.time).toISOString(),
+          open: bar.open,
+          close: bar.close,
+          high: bar.high,
+          low: bar.low,
+        });
 
         // Determine if this is an update to the current candle or a new candle
         const isUpdateToCurrentCandle =
           subscription.lastBar && subscription.lastBar.time === bar.time;
 
+        console.log('[TradingView] Candle type:', {
+          isUpdate: isUpdateToCurrentCandle,
+          willBridge: !isUpdateToCurrentCandle,
+          lastBarTime: subscription.lastBar
+            ? new Date(subscription.lastBar.time).toISOString()
+            : 'none',
+          currentBarTime: new Date(bar.time).toISOString(),
+        });
+
         // Only bridge if this is a NEW candle, not an update to existing candle
         const finalBar = isUpdateToCurrentCandle
           ? bar // Use the bar as-is for updates to current candle
           : this.bridgeBar(subscription.lastBar, bar); // Bridge only for new candles
+
+        console.log('[TradingView] 📤 Sending to TradingView:', {
+          time: new Date(finalBar.time).toISOString(),
+          open: finalBar.open,
+          close: finalBar.close,
+          wasBridged: !isUpdateToCurrentCandle,
+        });
 
         // Update subscription's last bar reference
         subscription.lastBar = this.cloneBar(finalBar);
@@ -627,6 +717,7 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
   private candleToBar(
     candle: Partial<UnifiedCandle> | null | undefined,
     timeframeMs: number,
+    lastBar?: Bar | null,
   ): Bar | null {
     if (!candle) {
       return null;
@@ -649,29 +740,43 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     const priceFor = (key: 'open' | 'high' | 'low' | 'close'): number => {
       const usdKey = `${key}Usd`;
 
-      // If displaying USD, try to use USD values - fall back to ACES if USD is missing
+      // If displaying USD, ONLY use USD values - NEVER fall back to ACES
       if (this.displayCurrency === 'usd') {
         const usdValue = (candle as any)[usdKey];
-        // Check if USD value exists and is not "0"
-        if (usdValue && usdValue !== '0') {
+
+        // Try to parse USD value
+        if (usdValue !== undefined && usdValue !== null && usdValue !== '0') {
           const parsed = typeof usdValue === 'string' ? parseFloat(usdValue) : Number(usdValue);
           if (Number.isFinite(parsed) && parsed > 0) {
             return parsed;
           }
         }
-        // USD value is missing/invalid, fall back to ACES value instead of returning 0
-        // This prevents the chart from breaking when USD values are temporarily unavailable
-        const acesValue = (candle as any)[key];
-        const acesParsed =
-          typeof acesValue === 'string' ? parseFloat(acesValue) : Number(acesValue ?? 0);
-        if (Number.isFinite(acesParsed) && acesParsed > 0) {
-          console.warn(
-            `[TradingView] USD ${key} value missing, falling back to ACES value:`,
-            acesParsed,
-          );
-          return acesParsed;
+
+        // 🚨 NEVER FALL BACK TO ACES PRICES - it breaks the chart scale!
+        // If USD is missing, use last known USD price from previous bar
+        if (lastBar) {
+          const lastPrice = lastBar[key];
+          if (Number.isFinite(lastPrice) && lastPrice > 0) {
+            console.warn(
+              `[TradingView] ⚠️ USD value missing for ${key}, using previous bar's ${key}: ${lastPrice}`,
+              {
+                timestamp: (candle as any).timestamp,
+                usdValue,
+                lastPrice,
+              },
+            );
+            return lastPrice;
+          }
         }
-        // No valid value at all
+
+        // If no previous bar, return 0 (candle will be rejected)
+        console.error(
+          `[TradingView] ❌ No valid USD price for ${key} and no previous bar to fall back to`,
+          {
+            timestamp: (candle as any).timestamp,
+            usdValue,
+          },
+        );
         return 0;
       }
 

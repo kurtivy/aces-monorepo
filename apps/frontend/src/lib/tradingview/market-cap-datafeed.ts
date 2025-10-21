@@ -444,7 +444,39 @@ export class MarketCapDatafeed implements IBasicDataFeed {
       return;
     }
 
+    // Check for graduation in ALL messages
+    // When a token graduates from bonding curve to DEX, we need to refresh the chart
+    if (message.graduationState) {
+      const graduationState = message.graduationState;
+      const justGraduated = graduationState.poolReady;
+
+      if (justGraduated) {
+        console.log('[MarketCapDatafeed] 🎓 Token graduated! Refreshing market cap data', {
+          poolAddress: graduationState.poolAddress,
+          dexLiveAt: graduationState.dexLiveAt,
+          messageType: message.type,
+        });
+
+        // Clear caches and force refresh
+        this.historyCache.clear();
+        this.lastHistoricalBarByTimeframe.clear();
+
+        try {
+          subscription.onResetCacheNeededCallback();
+          console.log('[MarketCapDatafeed] ✅ Initiated chart data refresh for graduation');
+        } catch (error) {
+          console.error('[MarketCapDatafeed] Error resetting cache on graduation:', error);
+        }
+      }
+    }
+
     switch (message.type) {
+      case 'graduation_event': {
+        // Dedicated graduation event - already handled above
+        console.log('[MarketCapDatafeed] Received graduation_event, cache reset already triggered');
+        break;
+      }
+
       case 'initial_data': {
         console.log(`[MarketCapDatafeed] Initial data: ${message.candles?.length || 0} candles`);
         // Don't overwrite HTTP data - just log for now

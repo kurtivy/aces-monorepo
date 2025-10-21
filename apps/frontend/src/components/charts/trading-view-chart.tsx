@@ -166,11 +166,25 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
             priceFormatterFactory: () => {
               return {
                 format: (price: number) => {
-                  const formatter =
-                    chartMode === 'price'
-                      ? BondingCurveDatafeed.formatPriceWithZeroCount
-                      : MarketCapDatafeed.formatPriceWithZeroCount;
-                  return formatter(price, true);
+                  try {
+                    const formatter =
+                      chartMode === 'price'
+                        ? BondingCurveDatafeed.formatPriceWithZeroCount
+                        : MarketCapDatafeed.formatPriceWithZeroCount;
+                    const formatted = formatter(price, true);
+
+                    // Debug: Log Y-axis price formatting
+                    if (Math.random() < 0.1) {
+                      // Only log 10% of the time to avoid spam
+                      console.log('[TradingView] Y-axis price format:', { price, formatted });
+                    }
+
+                    return formatted;
+                  } catch (error) {
+                    console.error('[TradingView] Price formatter error:', error, { price });
+                    // Fallback to simple formatting
+                    return `$${price.toFixed(8)}`;
+                  }
                 },
               };
             },
@@ -198,15 +212,12 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
             'scalesProperties.alignLabels': true,
             'paneProperties.topMargin': 10,
             'paneProperties.bottomMargin': 10,
-            // Set extremely small minTick to handle micro USD prices (0.000000001)
-            'mainSeriesProperties.minTick': '0.000000000000000001',
+            // Removed extremely small minTick - let TradingView auto-calculate based on pricescale
             'mainSeriesProperties.priceAxisProperties.percentage': false,
             'mainSeriesProperties.priceAxisProperties.autoScale': true,
             // Enable logarithmic scale to handle extreme price ranges (0.000000001 to 0.001)
             // This makes small price movements visible even when prices vary by orders of magnitude
             'mainSeriesProperties.priceAxisProperties.log': true,
-            // Force minimum price movement to be visible
-            'mainSeriesProperties.priceAxisProperties.minMove': 0.000000000000000001,
             // Show last value but hide symbol labels from price axis
             'scalesProperties.showSeriesLastValue': true,
             'scalesProperties.showStudyLastValue': false,

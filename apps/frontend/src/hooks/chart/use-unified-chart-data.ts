@@ -19,7 +19,7 @@ interface RawCandle {
   totalSupply?: number | string | null;
   marketCapAces?: number | string | null;
   marketCapUsd?: number | string | null;
-  dataSource?: 'bonding_curve' | 'dex' | string;
+  dataSource?: 'bonding_curve' | 'dex' | 'graduation' | string;
   [key: string]: unknown;
 }
 
@@ -47,7 +47,7 @@ interface Candle {
   volume: number;
   volumeUsd: number;
   trades: number;
-  dataSource: 'bonding_curve' | 'dex';
+  dataSource: 'bonding_curve' | 'dex' | 'graduation';
   circulatingSupply: number | null;
   totalSupply: number | null;
   marketCapAces: number | null;
@@ -84,9 +84,7 @@ const toNumeric = (value: number | string | null | undefined, fallback = 0): num
   return Number.isFinite(num) ? num : fallback;
 };
 
-const toNullableNumeric = (
-  value: number | string | null | undefined,
-): number | null => {
+const toNullableNumeric = (value: number | string | null | undefined): number | null => {
   if (value === null || value === undefined) return null;
   const num = typeof value === 'number' ? value : parseFloat(value);
   return Number.isFinite(num) ? num : null;
@@ -98,7 +96,7 @@ const normalizeCandle = (rawCandle: RawCandle): Candle => {
       ? rawCandle.timestamp
       : typeof rawCandle.timestamp === 'string'
         ? Number(rawCandle.timestamp)
-        : rawCandle.timestamp?.valueOf() ?? Date.now();
+        : (rawCandle.timestamp?.valueOf() ?? Date.now());
 
   return {
     timestamp,
