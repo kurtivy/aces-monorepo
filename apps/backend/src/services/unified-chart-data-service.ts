@@ -14,6 +14,13 @@ import {
   WETH_USDC_POOL,
 } from '../config/bitquery.config';
 
+interface MarketCapOhlc {
+  open: string;
+  high: string;
+  low: string;
+  close: string;
+}
+
 interface UnifiedCandle {
   timestamp: Date;
   open: string;
@@ -27,11 +34,13 @@ interface UnifiedCandle {
   volume: string;
   volumeUsd: string;
   trades: number;
-  dataSource: 'bonding_curve' | 'dex';
+  dataSource: 'bonding_curve' | 'dex' | 'graduation';
   circulatingSupply?: string;
   totalSupply?: string;
   marketCapAces?: string;
   marketCapUsd?: string;
+  marketCapOhlcAces?: MarketCapOhlc;
+  marketCapOhlcUsd?: MarketCapOhlc;
 }
 
 interface ChartDataOptions {
@@ -134,7 +143,7 @@ export class UnifiedChartDataService {
           acesUsdPrice,
         );
 
-        candles = this.mergeCandles(bondingCandles, candles);
+        candles = this.mergeCandles(bondingCandles, candles, graduationState.dexLiveAt);
       }
     } else {
       // Token is still in bonding curve
@@ -360,6 +369,32 @@ export class UnifiedChartDataService {
         const marketCapUsd =
           supply > 0 && parsedAcesPrice ? (supply * closeAces * parsedAcesPrice).toFixed(2) : '0';
 
+        // Calculate full market cap OHLC (price OHLC × supply)
+        const mcapOpenAces = supply > 0 ? supply * openAces : 0;
+        const mcapHighAces = supply > 0 ? supply * highAces : 0;
+        const mcapLowAces = supply > 0 ? supply * lowAces : 0;
+        const mcapCloseAces = supply > 0 ? supply * closeAces : 0;
+
+        const marketCapOhlcAces: MarketCapOhlc | undefined =
+          supply > 0
+            ? {
+                open: mcapOpenAces.toFixed(2),
+                high: mcapHighAces.toFixed(2),
+                low: mcapLowAces.toFixed(2),
+                close: mcapCloseAces.toFixed(2),
+              }
+            : undefined;
+
+        const marketCapOhlcUsd: MarketCapOhlc | undefined =
+          supply > 0 && parsedAcesPrice
+            ? {
+                open: (mcapOpenAces * parsedAcesPrice).toFixed(2),
+                high: (mcapHighAces * parsedAcesPrice).toFixed(2),
+                low: (mcapLowAces * parsedAcesPrice).toFixed(2),
+                close: (mcapCloseAces * parsedAcesPrice).toFixed(2),
+              }
+            : undefined;
+
         return {
           timestamp: candle.timestamp,
           open: openAces.toString(),
@@ -378,6 +413,8 @@ export class UnifiedChartDataService {
           totalSupply: '30000000',
           marketCapAces,
           marketCapUsd,
+          marketCapOhlcAces,
+          marketCapOhlcUsd,
         };
       });
 
@@ -556,7 +593,8 @@ export class UnifiedChartDataService {
   }
 
   /**
-   * Get DEX chart data
+   * Get DEX chart data - refactored to match subgraph pattern
+   * Fetches individual trades and aggregates them into candles
    */
   private async getDexChartData(
     tokenAddress: string,
@@ -564,24 +602,103 @@ export class UnifiedChartDataService {
     options: ChartDataOptions,
     acesUsdPriceHint: string | null,
   ): Promise<{ candles: UnifiedCandle[]; acesUsdPrice: string | null }> {
-    let candleData: Awaited<ReturnType<BitQueryService['getOHLCCandles']>> = [];
-
     try {
-      // Use DEXTradeByTokens query with proper filters for accurate OHLC
-      candleData = await this.bitQueryService.getOHLCCandles(
-        tokenAddress,
-        poolAddress,
-        options.timeframe,
-        {
-          from: options.from,
-          to: options.to,
-          counterTokenAddress: ACES_TOKEN_ADDRESS, // Trading against ACES
-        },
+      console.log('[UnifiedChartData] Fetching individual DEX trades for aggregation...');
+
+      // Fetch individual trades (not pre-aggregated candles)
+      const trades = await this.bitQueryService.getDexTrades(tokenAddress, poolAddress, {
+        from: options.from,
+        to: options.to,
+        counterTokenAddress: ACES_TOKEN_ADDRESS,
+        limit: 10000, // Get enough trades to cover the requested timeframe
+      });
+
+      console.log(
+        `[UnifiedChartData] Received ${trades.length} individual DEX trades, aggregating into ${options.timeframe} candles...`,
       );
+
+      if (trades.length === 0) {
+        console.warn('[UnifiedChartData] No DEX trades found for this token');
+        return {
+          candles: [],
+          acesUsdPrice: acesUsdPriceHint,
+        };
+      }
+
+      // Aggregate trades into candles using SAME pattern as bonding curve
+      const candles = this.aggregateDexTradesToCandles(trades, options.timeframe);
+
+      console.log(
+        `[UnifiedChartData] ✅ Aggregated ${trades.length} trades into ${candles.length} candles`,
+      );
+
+      // Get latest price for market cap calculation
+      let latestPriceUsd: number | null = null;
+      let marketCapUsd: string | null = null;
+
+      try {
+        latestPriceUsd = await this.bitQueryService.getLatestPriceUSD(tokenAddress);
+        if (latestPriceUsd) {
+          marketCapUsd = this.bitQueryService.calculateMarketCap(latestPriceUsd);
+        }
+      } catch (error) {
+        console.warn('[UnifiedChartData] Failed to get latest price for market cap:', error);
+      }
+
+      // Convert to UnifiedCandle format with market cap OHLC
+      const resolvedCandles: UnifiedCandle[] = candles.map((candle) => {
+        const supply = 1000000000; // 1B tokens at graduation
+        const parsedAcesPrice = acesUsdPriceHint ? parseFloat(acesUsdPriceHint) : null;
+
+        // Price OHLC (already in USD from DEX)
+        const openUsd = parseFloat(candle.openUsd);
+        const highUsd = parseFloat(candle.highUsd);
+        const lowUsd = parseFloat(candle.lowUsd);
+        const closeUsd = parseFloat(candle.closeUsd);
+
+        // Market Cap OHLC (price × supply)
+        const mcapOpenUsd = supply * openUsd;
+        const mcapHighUsd = supply * highUsd;
+        const mcapLowUsd = supply * lowUsd;
+        const mcapCloseUsd = supply * closeUsd;
+
+        const marketCapOhlcUsd: MarketCapOhlc = {
+          open: mcapOpenUsd.toFixed(2),
+          high: mcapHighUsd.toFixed(2),
+          low: mcapLowUsd.toFixed(2),
+          close: mcapCloseUsd.toFixed(2),
+        };
+
+        // Calculate ACES market cap OHLC if we have ACES price
+        const marketCapOhlcAces: MarketCapOhlc | undefined = parsedAcesPrice
+          ? {
+              open: (mcapOpenUsd / parsedAcesPrice).toFixed(2),
+              high: (mcapHighUsd / parsedAcesPrice).toFixed(2),
+              low: (mcapLowUsd / parsedAcesPrice).toFixed(2),
+              close: (mcapCloseUsd / parsedAcesPrice).toFixed(2),
+            }
+          : undefined;
+
+        return {
+          ...candle,
+          dataSource: 'dex' as const,
+          circulatingSupply: supply.toString(),
+          totalSupply: supply.toString(),
+          marketCapAces: marketCapOhlcAces?.close,
+          marketCapUsd: marketCapOhlcUsd.close,
+          marketCapOhlcAces,
+          marketCapOhlcUsd,
+        };
+      });
+
+      return {
+        candles: resolvedCandles,
+        acesUsdPrice: acesUsdPriceHint,
+      };
     } catch (error) {
       if (error instanceof BitQueryPaymentRequiredError) {
         console.warn(
-          '[UnifiedChartData] BitQuery payment required while fetching candles – returning empty dataset.',
+          '[UnifiedChartData] BitQuery payment required while fetching trades – returning empty dataset.',
         );
         return {
           candles: [],
@@ -590,57 +707,125 @@ export class UnifiedChartDataService {
       }
       throw error;
     }
+  }
 
-    if (candleData.length === 0) {
-      return {
-        candles: [],
-        acesUsdPrice: acesUsdPriceHint,
-      };
-    }
-
-    // Get latest price for market cap calculation
-    let latestPriceUsd: number | null = null;
-    let marketCapUsd: string | null = null;
-
-    try {
-      latestPriceUsd = await this.bitQueryService.getLatestPriceUSD(tokenAddress);
-      if (latestPriceUsd) {
-        marketCapUsd = this.bitQueryService.calculateMarketCap(latestPriceUsd);
+  /**
+   * Aggregate individual DEX trades into candles
+   * Uses SAME pattern as SupplyBasedOHLCVService.aggregateTradesToCandles()
+   */
+  private aggregateDexTradesToCandles(
+    trades: Array<{
+      blockTime: Date;
+      priceInUsd: string;
+      amountToken: string;
+      volumeUsd: string;
+    }>,
+    timeframe: string,
+  ): Array<{
+    timestamp: Date;
+    open: string;
+    high: string;
+    low: string;
+    close: string;
+    openUsd: string;
+    highUsd: string;
+    lowUsd: string;
+    closeUsd: string;
+    volume: string;
+    volumeUsd: string;
+    trades: number;
+  }> {
+    const intervalMs = this.getIntervalMs(timeframe);
+    const candleMap = new Map<
+      number,
+      {
+        pricesUsd: number[];
+        volumes: number[];
+        volumesUsd: number[];
+        timestamps: number[];
       }
-    } catch (error) {
-      console.warn('[UnifiedChartData] Failed to get latest price for market cap:', error);
+    >();
+
+    // Group trades by candle period
+    for (const trade of trades) {
+      const timestamp = trade.blockTime.getTime();
+      const candleTimestamp = Math.floor(timestamp / intervalMs) * intervalMs;
+
+      const priceUsd = parseFloat(trade.priceInUsd);
+      const volume = parseFloat(trade.amountToken);
+      const volumeUsd = parseFloat(trade.volumeUsd);
+
+      if (!candleMap.has(candleTimestamp)) {
+        candleMap.set(candleTimestamp, {
+          pricesUsd: [],
+          volumes: [],
+          volumesUsd: [],
+          timestamps: [],
+        });
+      }
+
+      const candle = candleMap.get(candleTimestamp)!;
+      candle.pricesUsd.push(priceUsd);
+      candle.volumes.push(volume);
+      candle.volumesUsd.push(volumeUsd);
+      candle.timestamps.push(timestamp);
     }
 
-    // Convert to UnifiedCandle format
-    // DEXTradeByTokens query provides USD prices directly
-    // We pass through the OHLC values from BitQuery (which are already USD prices)
-    // The frontend datafeed will use these for candle bodies since dataSource='dex'
-    const resolvedCandles: UnifiedCandle[] = candleData.map((candle) => {
-      return {
-        timestamp: candle.timestamp,
-        open: candle.open, // USD price (for candle body calculation)
-        high: candle.high,
-        low: candle.low,
-        close: candle.close,
-        openUsd: candle.openUsd,
-        highUsd: candle.highUsd,
-        lowUsd: candle.lowUsd,
-        closeUsd: candle.closeUsd,
-        volume: candle.volume,
-        volumeUsd: candle.volumeUsd,
-        trades: candle.trades,
-        dataSource: 'dex' as const,
-        circulatingSupply: '1000000000',
-        totalSupply: '1000000000',
-        marketCapAces: undefined,
-        marketCapUsd: marketCapUsd || undefined,
-      };
-    });
+    // Convert to OHLCV candles
+    const candles: Array<{
+      timestamp: Date;
+      open: string;
+      high: string;
+      low: string;
+      close: string;
+      openUsd: string;
+      highUsd: string;
+      lowUsd: string;
+      closeUsd: string;
+      volume: string;
+      volumeUsd: string;
+      trades: number;
+    }> = [];
 
-    return {
-      candles: resolvedCandles,
-      acesUsdPrice: acesUsdPriceHint,
-    };
+    for (const [timestamp, data] of candleMap.entries()) {
+      if (data.pricesUsd.length === 0) continue;
+
+      // Sort by timestamp to get correct open/close
+      const sorted = data.pricesUsd
+        .map((price, i) => ({
+          price,
+          volume: data.volumes[i],
+          volumeUsd: data.volumesUsd[i],
+          timestamp: data.timestamps[i],
+        }))
+        .sort((a, b) => a.timestamp - b.timestamp);
+
+      const prices = sorted.map((s) => s.price);
+      const open = prices[0];
+      const close = prices[prices.length - 1];
+      const high = Math.max(...prices);
+      const low = Math.min(...prices);
+      const volume = data.volumes.reduce((sum, v) => sum + v, 0);
+      const volumeUsd = data.volumesUsd.reduce((sum, v) => sum + v, 0);
+
+      candles.push({
+        timestamp: new Date(timestamp),
+        open: open.toString(),
+        high: high.toString(),
+        low: low.toString(),
+        close: close.toString(),
+        openUsd: open.toFixed(18),
+        highUsd: high.toFixed(18),
+        lowUsd: low.toFixed(18),
+        closeUsd: close.toFixed(18),
+        volume: volume.toString(),
+        volumeUsd: volumeUsd.toFixed(2),
+        trades: data.pricesUsd.length,
+      });
+    }
+
+    // Sort by timestamp ascending
+    return candles.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
   }
 
   /**
@@ -782,10 +967,16 @@ export class UnifiedChartDataService {
     poolAddress: string,
     timeframe: string,
   ): Promise<UnifiedCandle | null> {
-    let swaps: Awaited<ReturnType<BitQueryService['getRecentSwaps']>> = [];
+    let swaps: Awaited<ReturnType<BitQueryService['getDexTrades']>> = [];
     try {
-      swaps = await this.bitQueryService.getRecentSwaps(tokenAddress, poolAddress, {
-        limit: 100,
+      const intervalMs = this.getIntervalMs(timeframe);
+      const latestTo = new Date();
+      const latestFrom = new Date(latestTo.getTime() - intervalMs * 2);
+      swaps = await this.bitQueryService.getDexTrades(tokenAddress, poolAddress, {
+        from: latestFrom,
+        to: latestTo,
+        counterTokenAddress: ACES_TOKEN_ADDRESS,
+        limit: 200,
       });
     } catch (error) {
       if (error instanceof BitQueryPaymentRequiredError) {
@@ -806,38 +997,8 @@ export class UnifiedChartDataService {
 
     const candleSwaps = swaps.filter((swap) => swap.blockTime.getTime() >= candleStart);
 
-    const prices = candleSwaps.map((s) => parseFloat(s.priceInAces));
-
-    let priceMultiplier: number | null = null;
-    try {
-      const series = await this.getAcesUsdSeries(timeframe, {
-        from: new Date(candleStart - intervalMs),
-        to: new Date(candleStart + intervalMs * 2),
-      });
-      priceMultiplier = series.map.get(candleStart) ?? series.lastPrice ?? null;
-    } catch (error) {
-      console.warn('[UnifiedChartData] Failed to build ACES/USD series for latest candle:', error);
-    }
-
-    if (!priceMultiplier || !Number.isFinite(priceMultiplier) || priceMultiplier <= 0) {
-      try {
-        const priceResult = await this.acesUsdPriceService.getAcesUsdPrice();
-        const parsed = parseFloat(priceResult.price);
-        if (Number.isFinite(parsed) && parsed > 0) {
-          priceMultiplier = parsed;
-        }
-      } catch (error) {
-        console.warn('[UnifiedChartData] ACES/USD price fallback failed:', error);
-      }
-    }
-
-    const pricesUsd = candleSwaps.map((s) => {
-      const acesPrice = parseFloat(s.priceInAces);
-      if (!priceMultiplier || !Number.isFinite(acesPrice) || !Number.isFinite(priceMultiplier)) {
-        return 0;
-      }
-      return acesPrice * priceMultiplier;
-    });
+    // Use per-trade USD prices from DEXTradeByTokens normalization (accurate USD per token)
+    let pricesUsd = candleSwaps.map((s) => parseFloat(s.priceInUsd));
 
     // Get circulating supply from subgraph
     let circulatingSupply = '0';
@@ -852,50 +1013,63 @@ export class UnifiedChartDataService {
       console.warn('[UnifiedChartData] Failed to get supply for latest DEX candle:', error);
     }
 
-    const finitePrices = prices.filter((val) => Number.isFinite(val) && val > 0);
-    if (finitePrices.length === 0) {
-      return null;
+    let finiteUsdPrices = pricesUsd.filter((val) => Number.isFinite(val) && val > 0);
+    if (finiteUsdPrices.length === 0) {
+      // Fallback: derive USD prices from ACES price using spot ACES/USD
+      let spotAcesUsd: number | null = null;
+      try {
+        const priceResult = await this.acesUsdPriceService.getAcesUsdPrice();
+        const parsed = parseFloat(priceResult.price);
+        if (Number.isFinite(parsed) && parsed > 0) {
+          spotAcesUsd = parsed;
+        }
+      } catch (error) {
+        console.warn(
+          '[UnifiedChartData] Failed to fetch spot ACES/USD for realtime fallback:',
+          error,
+        );
+      }
+
+      if (spotAcesUsd && spotAcesUsd > 0) {
+        pricesUsd = candleSwaps.map((s) => {
+          const priceInAces = parseFloat(s.priceInAces);
+          return Number.isFinite(priceInAces) && priceInAces > 0 ? priceInAces * spotAcesUsd! : 0;
+        });
+        finiteUsdPrices = pricesUsd.filter((val) => Number.isFinite(val) && val > 0);
+      }
+
+      if (finiteUsdPrices.length === 0) {
+        return null;
+      }
     }
 
-    const openPriceValue = Number.isFinite(prices[prices.length - 1])
-      ? prices[prices.length - 1]
-      : finitePrices[finitePrices.length - 1];
-    const closePriceValue = Number.isFinite(prices[0]) ? prices[0] : finitePrices[0];
-    const highPriceValue = Math.max(...finitePrices);
-    const lowPriceValue = Math.min(...finitePrices);
-
-    const finiteUsdPrices = pricesUsd.filter((val) => Number.isFinite(val) && val > 0);
-    const openUsdValue =
-      priceMultiplier && Number.isFinite(pricesUsd[pricesUsd.length - 1])
-        ? pricesUsd[pricesUsd.length - 1]
-        : (finiteUsdPrices[finiteUsdPrices.length - 1] ?? 0);
-    const closeUsdValue =
-      priceMultiplier && Number.isFinite(pricesUsd[0]) ? pricesUsd[0] : (finiteUsdPrices[0] ?? 0);
-    const highUsdValue = finiteUsdPrices.length > 0 ? Math.max(...finiteUsdPrices) : closeUsdValue;
-    const lowUsdValue = finiteUsdPrices.length > 0 ? Math.min(...finiteUsdPrices) : closeUsdValue;
+    // Determine OHLC in USD directly from per-trade USD prices
+    const openUsdValue = Number.isFinite(pricesUsd[pricesUsd.length - 1])
+      ? pricesUsd[pricesUsd.length - 1]
+      : finiteUsdPrices[finiteUsdPrices.length - 1];
+    const closeUsdValue = Number.isFinite(pricesUsd[0]) ? pricesUsd[0] : finiteUsdPrices[0];
+    const highUsdValue = Math.max(...finiteUsdPrices);
+    const lowUsdValue = Math.min(...finiteUsdPrices);
 
     // Calculate market cap
     const supply = parseFloat(circulatingSupply);
-
-    const marketCapAces =
-      supply > 0 && Number.isFinite(closePriceValue) && closePriceValue > 0
-        ? (supply * closePriceValue).toFixed(2)
-        : '0';
 
     const marketCapUsd =
       supply > 0 && closeUsdValue > 0 ? (supply * closeUsdValue).toFixed(2) : '0';
 
     return {
       timestamp: new Date(candleStart),
-      open: openPriceValue.toString(),
-      high: highPriceValue.toString(),
-      low: lowPriceValue.toString(),
-      close: closePriceValue.toString(),
-      openUsd: priceMultiplier ? openUsdValue.toFixed(18) : '0',
-      highUsd: priceMultiplier ? highUsdValue.toFixed(18) : '0',
-      lowUsd: priceMultiplier ? lowUsdValue.toFixed(18) : '0',
-      closeUsd: priceMultiplier ? closeUsdValue.toFixed(18) : '0',
-      volume: candleSwaps.reduce((sum, s) => sum + parseFloat(s.amountAces), 0).toString(),
+      // For DEX, use USD prices for both base OHLC and USD OHLC to match historical path
+      open: openUsdValue.toString(),
+      high: highUsdValue.toString(),
+      low: lowUsdValue.toString(),
+      close: closeUsdValue.toString(),
+      openUsd: openUsdValue.toFixed(18),
+      highUsd: highUsdValue.toFixed(18),
+      lowUsd: lowUsdValue.toFixed(18),
+      closeUsd: closeUsdValue.toFixed(18),
+      // Align volume with historical aggregation: sum of token amounts
+      volume: candleSwaps.reduce((sum, s) => sum + parseFloat(s.amountToken), 0).toString(),
       volumeUsd: candleSwaps
         .reduce((sum, s, idx) => {
           const amountToken = parseFloat(s.amountToken);
@@ -910,7 +1084,6 @@ export class UnifiedChartDataService {
       dataSource: 'dex',
       circulatingSupply,
       totalSupply,
-      marketCapAces,
       marketCapUsd,
     };
   }
@@ -1056,25 +1229,88 @@ export class UnifiedChartDataService {
   }
 
   /**
-   * Merge bonding curve and DEX candles
+   * Merge bonding curve and DEX candles with graduation candle and bridging
    */
   private mergeCandles(
     bondingCandles: UnifiedCandle[],
     dexCandles: UnifiedCandle[],
+    graduationTimestamp?: Date | null,
   ): UnifiedCandle[] {
-    const merged = [...bondingCandles, ...dexCandles];
+    // Handle edge cases
+    if (bondingCandles.length === 0) return dexCandles;
+    if (dexCandles.length === 0) return bondingCandles;
 
-    // Sort by timestamp
-    merged.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+    const merged: UnifiedCandle[] = [...bondingCandles];
 
-    // Remove duplicates (prefer DEX data)
-    const seen = new Set<string>();
-    return merged.filter((candle) => {
-      const key = `${candle.timestamp.getTime()}-${candle.dataSource}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+    // Create graduation candle showing price jump
+    if (graduationTimestamp && dexCandles.length > 0) {
+      const lastBonding = bondingCandles[bondingCandles.length - 1];
+      const firstDex = dexCandles[0];
+
+      const graduationCandle: UnifiedCandle = {
+        timestamp: graduationTimestamp,
+        open: lastBonding.close,
+        close: firstDex.open,
+        high: Math.max(parseFloat(lastBonding.close), parseFloat(firstDex.open)).toString(),
+        low: Math.min(parseFloat(lastBonding.close), parseFloat(firstDex.open)).toString(),
+        openUsd: lastBonding.closeUsd,
+        closeUsd: firstDex.openUsd,
+        highUsd: Math.max(parseFloat(lastBonding.closeUsd), parseFloat(firstDex.openUsd)).toFixed(
+          18,
+        ),
+        lowUsd: Math.min(parseFloat(lastBonding.closeUsd), parseFloat(firstDex.openUsd)).toFixed(
+          18,
+        ),
+        volume: '0',
+        volumeUsd: '0',
+        trades: 0,
+        dataSource: 'graduation' as const,
+        circulatingSupply: firstDex.circulatingSupply,
+        totalSupply: firstDex.totalSupply,
+        marketCapAces: undefined,
+        marketCapUsd: undefined,
+      };
+
+      merged.push(graduationCandle);
+
+      console.log('🎓 [UnifiedChartData] Created graduation candle:', {
+        timestamp: graduationCandle.timestamp,
+        openPrice: graduationCandle.open,
+        closePrice: graduationCandle.close,
+        priceJump:
+          (
+            ((parseFloat(graduationCandle.close) - parseFloat(graduationCandle.open)) /
+              parseFloat(graduationCandle.open)) *
+            100
+          ).toFixed(2) + '%',
+      });
+    }
+
+    // Add DEX candles with bridging (like bonding curve does)
+    for (let i = 0; i < dexCandles.length; i++) {
+      const curr = { ...dexCandles[i] };
+      const prev = merged[merged.length - 1];
+
+      // Bridge current candle's open to previous close
+      const prevCloseAces = parseFloat(prev.close);
+      const prevCloseUsd = parseFloat(prev.closeUsd);
+      const currCloseAces = parseFloat(curr.close);
+      const currCloseUsd = parseFloat(curr.closeUsd);
+
+      curr.open = prevCloseAces.toString();
+      curr.openUsd = prevCloseUsd.toFixed(18);
+
+      // Adjust high/low to include bridged open
+      curr.high = Math.max(parseFloat(curr.high), prevCloseAces, currCloseAces).toString();
+      curr.low = Math.min(parseFloat(curr.low), prevCloseAces, currCloseAces).toString();
+      curr.highUsd = Math.max(parseFloat(curr.highUsd), prevCloseUsd, currCloseUsd).toFixed(18);
+      curr.lowUsd = Math.min(parseFloat(curr.lowUsd), prevCloseUsd, currCloseUsd).toFixed(18);
+
+      merged.push(curr);
+    }
+
+    // Sort by timestamp (should already be sorted, but ensure it)
+    return merged.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
   }
 
   /**

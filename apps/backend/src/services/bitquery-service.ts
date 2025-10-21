@@ -107,7 +107,9 @@ export class BitQueryService {
       const swaps = this.normalizeSwaps(trades || [], tokenAddress);
       console.log(`[BitQuery] ✅ Normalized to ${swaps.length} swaps`);
 
-      this.setCache(cacheKey, swaps);
+      // 🔥 REAL-TIME FIX: Use 1-second cache for recent swaps to allow real-time chart updates
+      // WebSocket polls every 2.5 seconds, so 1s cache ensures fresh data on each poll
+      this.setCache(cacheKey, swaps, 1000); // Cache for only 1 second
       return swaps;
     } catch (error) {
       console.error('[BitQuery] ❌ Failed to fetch swaps:', error);
@@ -163,6 +165,99 @@ export class BitQueryService {
       return swaps;
     } catch (error) {
       console.error('[BitQuery] ❌ Failed to fetch token trades:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch individual DEX trades for aggregation (not pre-aggregated candles)
+   * This method is used for manual candle aggregation matching the subgraph pattern
+   */
+  async getDexTrades(
+    tokenAddress: string,
+    poolAddress: string,
+    options: {
+      from?: Date;
+      to?: Date;
+      counterTokenAddress?: string;
+      limit?: number;
+    } = {},
+  ): Promise<BitQuerySwap[]> {
+    if (this.disabled) {
+      console.log('[BitQuery] ⏸️  Skipping getDexTrades (service disabled)');
+      return [];
+    }
+
+    const from = options.from || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // Default 7 days
+    const to = options.to || new Date();
+    const counterTokenAddress = (options.counterTokenAddress || ACES_TOKEN_ADDRESS).toLowerCase();
+    const limit = options.limit || 5000;
+
+    console.log('[BitQuery] Fetching individual DEX trades for aggregation:', {
+      tokenAddress,
+      poolAddress,
+      from: from.toISOString(),
+      to: to.toISOString(),
+      counterTokenAddress,
+      limit,
+    });
+
+    const cacheKey = `dex-trades:${poolAddress}:${counterTokenAddress}:${from.getTime()}:${to.getTime()}:${limit}`;
+    const cached = this.getFromCache<BitQuerySwap[]>(cacheKey);
+    if (cached) {
+      console.log(`[BitQuery] ✅ Returning ${cached.length} cached DEX trades`);
+      return cached;
+    }
+
+    try {
+      // Use GET_TOKEN_TRADES (DEXTradeByTokens) for accurate price calculation
+      const response = await this.queryBitQuery<any>(BITQUERY_QUERIES.GET_TOKEN_TRADES, {
+        network: BASE_NETWORK,
+        tokenAddress: tokenAddress.toLowerCase(),
+        limit,
+      });
+
+      const rawTrades = response.data.EVM.DEXTradeByTokens;
+      console.log(
+        `[BitQuery] ✅ Received ${rawTrades?.length || 0} individual trades from BitQuery`,
+      );
+
+      // Filter trades by date range (BitQuery doesn't support date filtering in DEXTradeByTokens query)
+      const filteredTrades = rawTrades.filter((trade: any) => {
+        const tradeTime = new Date(trade.Block.Time);
+        return tradeTime >= from && tradeTime <= to;
+      });
+
+      console.log(`[BitQuery] ✅ Filtered to ${filteredTrades.length} trades within date range`);
+
+      // Use normalizeTokenTrades which correctly calculates price from amounts
+      const normalizedTrades = this.normalizeTokenTrades(
+        filteredTrades,
+        tokenAddress.toLowerCase(),
+      );
+
+      // Sort by timestamp ascending (oldest first) for candle aggregation
+      normalizedTrades.sort((a, b) => a.blockTime.getTime() - b.blockTime.getTime());
+
+      if (normalizedTrades.length > 0) {
+        console.log('[BitQuery] First trade:', {
+          timestamp: normalizedTrades[0].blockTime,
+          priceUsd: normalizedTrades[0].priceInUsd,
+          amountToken: normalizedTrades[0].amountToken,
+          side: normalizedTrades[0].side,
+        });
+        console.log('[BitQuery] Last trade:', {
+          timestamp: normalizedTrades[normalizedTrades.length - 1].blockTime,
+          priceUsd: normalizedTrades[normalizedTrades.length - 1].priceInUsd,
+          amountToken: normalizedTrades[normalizedTrades.length - 1].amountToken,
+          side: normalizedTrades[normalizedTrades.length - 1].side,
+        });
+      }
+
+      this.setCache(cacheKey, normalizedTrades);
+      return normalizedTrades;
+    } catch (error) {
+      console.error('[BitQuery] ❌ Failed to fetch DEX trades:', error);
       throw error;
     }
   }
@@ -527,7 +622,7 @@ export class BitQueryService {
       const amountToken = poolBoughtToken ? buyAmount : sellAmount;
       const amountAces = poolBoughtToken ? sellAmount : buyAmount;
 
-      // Extract prices
+      // Extract prices (NOTE: This method is deprecated for DEX aggregation, use normalizeTokenTrades instead)
       const buyPrice = tradeData.Buy.Price || '0';
       const sellPrice = tradeData.Sell.Price || '0';
       const buyPriceUsd = tradeData.Buy.PriceInUSD || '0';
