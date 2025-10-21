@@ -1,8 +1,14 @@
-// ABI extracted from AcesSwapNew.json
+// ABI extracted from AcesSwapNewest.json
 export const ACES_SWAP_NEW_ABI = [
   {
     type: 'constructor',
-    inputs: [],
+    inputs: [
+      {
+        name: '_acesCurves',
+        type: 'address',
+        internalType: 'address',
+      },
+    ],
     stateMutability: 'nonpayable',
   },
   {

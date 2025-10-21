@@ -28,8 +28,8 @@ export const CONTRACT_ADDRESSES = {
       process.env.NEXT_PUBLIC_AERODROME_ROUTER_BASE_MAINNET ||
       '0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43', // Aerodrome Router on Base Mainnet
     ACES_SWAP:
-      process.env.NEXT_PUBLIC_ACES_SWAP_ADDRESS_BASE_MAINNET ||
-      '0x9EeC0656f7DE220877DC55FdB56cf3d56E97034d', // Base Mainnet AcesSwapNew
+      process.env.NEXT_PUBLIC_SWAP_ADDRESS_MAINNET ||
+      '0xD884a65b36D6b435f49e01BfD1dBB4643E97D57b', // Base Mainnet AcesSwapNewest
   },
 } as const;
 
