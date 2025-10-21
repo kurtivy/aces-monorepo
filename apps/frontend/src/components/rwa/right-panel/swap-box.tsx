@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth/auth-context';
 import { Copy, Check, Loader2, ChevronDown, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -34,6 +33,10 @@ import type { PaymentAsset } from '@/lib/swap/types';
 
 import { PercentageSelector } from './percentage-selector';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
+import RoyalTradeButton from './royal-trade-button';
+import GraffitiTradeButton from './graffiti-trade-button';
+
+const USE_GRAFFITI_TRADE_BUTTON = true;
 
 interface TokenSwapInterfaceProps {
   tokenSymbol?: string;
@@ -74,6 +77,7 @@ export default function TokenSwapInterface({
   transactionStatus: externalTransactionStatus,
   onTransactionStatusChange,
 }: TokenSwapInterfaceProps) {
+  const TradeButtonComponent = USE_GRAFFITI_TRADE_BUTTON ? GraffitiTradeButton : RoyalTradeButton;
   const {
     walletAddress,
     isAuthenticated,
@@ -1452,35 +1456,26 @@ export default function TokenSwapInterface({
               </div>
             </div>
 
-            <div className="mt-4">
+            <div className="mt-4 flex justify-center">
               {!isAuthenticated ? (
-                <Button
+                <TradeButtonComponent
+                  className="w-full max-w-[320px]"
+                  state="connect"
+                  size="xl"
                   onClick={handleConnectWallet}
                   disabled={!!loading || authIsLoading}
-                  className="w-full h-18 rounded-2xl border border-[#D0B284]/60 bg-black text-[#D0B284] font-spray-letters font-bold tracking-widest uppercase transition-colors hover:bg-[#151d14] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {loading || authIsLoading ? (
-                    <span className="flex items-center justify-center">
-                      <Loader2 className="h-6 w-6 animate-spin" />
-                    </span>
-                  ) : (
-                    <span className="bg-gradient-to-r from-[#d4af37] via-[#f4e5a6] to-[#d4af37] bg-clip-text text-transparent font-spray-letters text-4xl">
-                      CONNECT WALLET
-                    </span>
-                  )}
-                </Button>
+                  loading={!!loading || authIsLoading}
+                  fullWidth
+                />
               ) : !provider ? (
-                <Button
+                <TradeButtonComponent
+                  className="w-full max-w-[320px]"
+                  state="connect"
+                  size="lg"
                   disabled
-                  className="w-full h-14 rounded-2xl border border-[#D0B284]/30 bg-[#101610] text-[#D0B284] font-proxima-nova font-bold text-lg transition-colors disabled:opacity-50"
-                >
-                  <span className="flex items-center justify-center gap-2">
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    {initializationError
-                      ? 'Connection Failed - Retrying...'
-                      : 'Initializing Wallet...'}
-                  </span>
-                </Button>
+                  loading
+                  fullWidth
+                />
               ) : (
                 (() => {
                   const assetInfo = getAssetBalanceInfo(selectedSellAsset);
@@ -1490,38 +1485,25 @@ export default function TokenSwapInterface({
                     hasValidAmount;
 
                   return needsApproval ? (
-                    <Button
+                    <TradeButtonComponent
+                      className="w-full max-w-[320px]"
+                      state="approve"
+                      size="xl"
                       onClick={handleApproveToken}
                       disabled={!!loading}
-                      className="w-3/4 max-w-[300px] mx-auto h-18 rounded-2xl border border-[#6BD18E]/25 bg-[#221F20] text-[#f4e5a6] font-spray-letters font-bold text-3xl tracking-widest uppercase transition-colors hover:bg-[#151d14] disabled:cursor-not-allowed disabled:opacity-50 flex items-center justify-center"
-                    >
-                      {loading ? (
-                        <span className="flex items-center justify-center">
-                          <Loader2 className="h-6 w-6 animate-spin" />
-                        </span>
-                      ) : (
-                        <span className="bg-gradient-to-r text-[#f8e28b] bg-clip-text font-spray-letters">
-                          APPROVE
-                          {/* {selectedSellAsset?.toUpperCase()} */}
-                        </span>
-                      )}
-                    </Button>
+                      loading={!!loading}
+                      fullWidth
+                    />
                   ) : (
-                    <Button
+                    <TradeButtonComponent
+                      className="w-full max-w-[320px]"
+                      state="trade"
+                      size="xl"
                       onClick={handleSwapClick}
                       disabled={!hasValidAmount || !!loading || !canSwap || !isSwapSupported}
-                      className="w-3/4 max-w-[300px] mx-auto h-18 rounded-2xl border border-[#6BD18E]/60 bg-transparent text-[#6BD18E] font-spray-letters font-bold text-5xl tracking-widest uppercase transition-colors hover:bg-[#D] disabled:cursor-not-allowed disabled:opacity-50 flex items-center justify-center"
-                    >
-                      {loading ? (
-                        <span className="flex items-center justify-center">
-                          <Loader2 className="h-6 w-6 animate-spin" />
-                        </span>
-                      ) : (
-                        <span className="bg-clip-text font-spray-letters tracking-widest">
-                          TRADE
-                        </span>
-                      )}
-                    </Button>
+                      loading={!!loading}
+                      fullWidth
+                    />
                   );
                 })()
               )}
