@@ -1,10 +1,12 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { X } from 'lucide-react';
-import TokenSwapInterface from '@/components/rwa/token-swap-interface';
+import SwapBox from '@/components/rwa/right-panel/swap-box';
 import type { DatabaseListing } from '@/types/rwa/section.types';
 import { NETWORK_CONFIG } from '@/lib/contracts/addresses';
+import { cn } from '@/lib/utils';
 
 interface MobileTradeDrawerProps {
   isOpen: boolean;
@@ -13,9 +15,21 @@ interface MobileTradeDrawerProps {
 }
 
 export default function MobileTradeDrawer({ isOpen, onClose, listing }: MobileTradeDrawerProps) {
-  const NAV_OFFSET_PX = 88;
-  const bottomOffset = `calc(${NAV_OFFSET_PX}px + env(safe-area-inset-bottom, 0px))`;
+  const bottomNavHeight = 'var(--mobile-bottom-nav-height, 96px)';
+  const bottomOffset = bottomNavHeight;
+  const drawerHeight = `calc(100dvh - ${bottomNavHeight})`;
   const tokenChainId = listing.token?.chainId ?? NETWORK_CONFIG.DEFAULT_CHAIN_ID;
+  const [transactionStatus, setTransactionStatus] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!transactionStatus) return;
+
+    const timeout = setTimeout(() => setTransactionStatus(null), 5000);
+    return () => clearTimeout(timeout);
+  }, [transactionStatus]);
 
   return (
     <AnimatePresence>
@@ -35,38 +49,67 @@ export default function MobileTradeDrawer({ isOpen, onClose, listing }: MobileTr
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 24, stiffness: 320 }}
-            className="fixed left-0 right-0 z-50 max-h-[78vh] overflow-hidden rounded-t-2xl border-t border-[#D0B284]/20 bg-[#151c16] shadow-2xl"
-            style={{ bottom: bottomOffset }}
+            className="fixed left-0 right-0 z-50 overflow-hidden rounded-t-2xl border-t border-[#D0B284]/20 bg-[#151c16] shadow-2xl"
+            style={{ bottom: bottomOffset, height: drawerHeight, maxHeight: drawerHeight }}
           >
-            <div className="flex items-center justify-between border-b border-[#D0B284]/20 p-4">
-              <h3 className="text-lg font-bold text-[#D0B284]">
-                Trade ${listing.token?.symbol ?? listing.symbol}
-              </h3>
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-lg p-2 transition-colors hover:bg-[#D0B284]/10"
-                aria-label="Close trade drawer"
-              >
-                <X className="h-5 w-5 text-[#D0B284]" />
-              </button>
+            <div className="relative flex h-full flex-col overflow-y-auto scrollbar-hide pb-0 safe-area-pb">
+              <div className="mx-auto w-full max-w-lg rounded-2xl border border-[#D0B284]/20 bg-[#131a13]/95 p-4 shadow-[0_15px_35px_rgba(0,0,0,0.45)]">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-lg p-2 transition-colors hover:bg-[#D0B284]/10"
+                  aria-label="Close trade drawer"
+                >
+                  <X className="h-5 w-5 text-[#D0B284]" />
+                </button>
+                <SwapBox
+                  tokenSymbol={listing.token?.symbol ?? listing.symbol}
+                  tokenAddress={listing.token?.contractAddress}
+                  tokenName={listing.token?.name ?? listing.title}
+                  primaryImage={listing.imageGallery?.[0]}
+                  imageGallery={listing.imageGallery}
+                  chainId={tokenChainId}
+                  dexMeta={listing.dex ?? null}
+                  showProgression={false}
+                  showHeader={false}
+                  showFrame
+                  transactionStatus={transactionStatus}
+                  onTransactionStatusChange={setTransactionStatus}
+                />
+              </div>
             </div>
 
-            <div className="max-h-[calc(78vh-70px)] overflow-y-auto scrollbar-hide px-4 pb-6 pt-4">
-              <TokenSwapInterface
-                tokenSymbol={listing.token?.symbol ?? listing.symbol}
-                tokenPrice={listing.token?.currentPriceACES ? Number.parseFloat(listing.token.currentPriceACES) : 0.000268}
-                userBalance={1.2547}
-                tokenAddress={listing.token?.contractAddress}
-                tokenName={listing.token?.name ?? listing.title}
-                primaryImage={listing.imageGallery?.[0]}
-                imageGallery={listing.imageGallery}
-                showFrame={false}
-                showProgression={false}
-                chainId={tokenChainId}
-                dexMeta={listing.dex ?? null}
-              />
-            </div>
+            <AnimatePresence>
+              {transactionStatus && (
+                <motion.div
+                  initial={{ opacity: 0, y: 30 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 30 }}
+                  transition={{ duration: 0.25, ease: 'easeOut' }}
+                  className="pointer-events-none absolute left-1/2 top-[72px] z-50 w-full max-w-xs -translate-x-1/2 px-4"
+                >
+                  <div
+                    className={cn(
+                      'rounded-xl border px-4 py-3 text-sm shadow-[0_12px_30px_rgba(0,0,0,0.45)] backdrop-blur-md',
+                      transactionStatus.type === 'success'
+                        ? 'bg-green-900/80 border-green-500/30 text-green-100'
+                        : 'bg-red-900/80 border-red-600/40 text-red-100',
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="leading-snug">{transactionStatus.message}</span>
+                      <button
+                        type="button"
+                        onClick={() => setTransactionStatus(null)}
+                        className="pointer-events-auto text-xs font-semibold uppercase tracking-wide opacity-80 transition-opacity hover:opacity-100"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </motion.div>
         </>
       )}
