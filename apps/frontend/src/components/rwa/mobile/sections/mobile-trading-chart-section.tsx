@@ -1,7 +1,8 @@
 'use client';
 
 import { forwardRef } from 'react';
-import TradingChart from '@/components/rwa/middle-column/token-details/trading-chart';
+import TradingViewChart from '@/components/charts/trading-view-chart';
+import MobileMarketCapHeader from '@/components/rwa/mobile/mobile-market-cap-header';
 import type { DatabaseListing } from '@/types/rwa/section.types';
 
 interface MobileTradingChartSectionProps {
@@ -36,13 +37,16 @@ const MobileTradingChartSection = forwardRef<HTMLDivElement, MobileTradingChartS
         data-section-id="chart"
         className="w-full bg-[#151c16] border-t border-[#D0B284]/20"
       >
-        <TradingChart
-          tokenAddress={listing.token?.contractAddress ?? ''}
-          tokenSymbol={listing.token?.symbol ?? listing.symbol}
-          title={listing.token?.name ?? listing.title}
-          heightClass="h-[400px]"
-          dexMeta={listing.dex ?? null}
-        />
+        <div className="overflow-hidden border border-[#D0B284]/15">
+          <MobileMarketCapHeader tokenAddress={listing.token?.contractAddress ?? null} />
+          <TradingViewChart
+            tokenAddress={listing.token?.contractAddress ?? ''}
+            tokenSymbol={listing.token?.symbol ?? listing.symbol}
+            tokenName={listing.token?.name ?? listing.title}
+            heightClass="h-[400px]"
+            dexMeta={listing.dex ?? null}
+          />
+        </div>
       </section>
     );
   },

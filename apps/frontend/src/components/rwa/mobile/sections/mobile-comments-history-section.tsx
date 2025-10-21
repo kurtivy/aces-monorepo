@@ -1,13 +1,12 @@
 'use client';
 
-import { forwardRef, useState, useMemo, type ReactNode } from 'react';
+import { forwardRef, useMemo, useState, type ReactNode } from 'react';
 import { MessageSquare, BarChart3, ChevronDown } from 'lucide-react';
 import RWAForumReal from '@/components/rwa/middle-column/chat/rwa-forum-real';
 import TradeHistory from '@/components/rwa/middle-column/token-details/trade-history';
-import TokenHealthPanel from '@/components/rwa/left-column/token-details/token-health-panel';
+import { TokenMetricsSection } from '@/components/rwa/left-column-v2/token-metrics-section';
 import type { DatabaseListing } from '@/types/rwa/section.types';
 import { NETWORK_CONFIG } from '@/lib/contracts/addresses';
-import { useTokenData } from '@/hooks/use-token-data';
 import { useTokenMarketCap } from '@/hooks/use-token-market-cap';
 
 interface MobileCommentsHistorySectionProps {
@@ -22,19 +21,15 @@ const MobileCommentsHistorySection = forwardRef<HTMLDivElement, MobileCommentsHi
     const [commentsExpanded, setCommentsExpanded] = useState(true);
     const tokenChainId = listing.token?.chainId ?? NETWORK_CONFIG.DEFAULT_CHAIN_ID;
 
-    // Fetch token data including 24h volume
-    const { tokenData } = useTokenData(listing.token?.contractAddress);
-
     // Fetch live token price
-    const { currentPriceUsd } = useTokenMarketCap(listing.token?.contractAddress, 'usd');
+    const { currentPriceUsd, marketCapUsd } = useTokenMarketCap(
+      listing.token?.contractAddress,
+      'usd',
+    );
 
     const liveTokenPrice = useMemo(() => {
       return isFinite(currentPriceUsd) && currentPriceUsd > 0 ? currentPriceUsd : undefined;
     }, [currentPriceUsd]);
-
-    const volume24hAces = useMemo(() => {
-      return tokenData?.volume24h || '0';
-    }, [tokenData]);
 
     const renderAccordionHeader = (
       label: string,
@@ -63,7 +58,7 @@ const MobileCommentsHistorySection = forwardRef<HTMLDivElement, MobileCommentsHi
         data-section-id="comments"
         className="w-full bg-[#151c16] border-t border-[#D0B284]/20"
       >
-        <div className="px-4 pt-6 pb-4">
+        <div className="px-2 pt-6">
           <div className="flex border-b border-[#253224]">
             <button
               type="button"
@@ -81,20 +76,6 @@ const MobileCommentsHistorySection = forwardRef<HTMLDivElement, MobileCommentsHi
             </button>
             <button
               type="button"
-              onClick={() => setActiveTab('comments')}
-              className={`flex-1 pb-3 text-sm font-semibold tracking-wide text-center relative transition-colors ${
-                activeTab === 'comments' ? 'text-white' : 'text-[#8F9B8F]'
-              }`}
-            >
-              Comments
-              <span
-                className={`absolute left-0 right-0 -bottom-[1px] h-0.5 transition-colors ${
-                  activeTab === 'comments' ? 'bg-[#D0B284]' : 'bg-transparent'
-                }`}
-              />
-            </button>
-            <button
-              type="button"
               onClick={() => setActiveTab('stats')}
               className={`flex-1 pb-3 text-sm font-semibold tracking-wide text-center relative transition-colors ${
                 activeTab === 'stats' ? 'text-white' : 'text-[#8F9B8F]'
@@ -107,18 +88,34 @@ const MobileCommentsHistorySection = forwardRef<HTMLDivElement, MobileCommentsHi
                 }`}
               />
             </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('comments')}
+              className={`flex-1 pb-3 text-sm font-semibold tracking-wide text-center relative transition-colors ${
+                activeTab === 'comments' ? 'text-white' : 'text-[#8F9B8F]'
+              }`}
+            >
+              Comments
+              <span
+                className={`absolute left-0 right-0 -bottom-[1px] h-0.5 transition-colors ${
+                  activeTab === 'comments' ? 'bg-[#D0B284]' : 'bg-transparent'
+                }`}
+              />
+            </button>
           </div>
         </div>
 
         <div className="pb-6 space-y-4">
           {activeTab === 'trades' ? (
             <div className="space-y-3">
-              {renderAccordionHeader(
-                'Recent Trades',
-                tradesExpanded,
-                () => setTradesExpanded((prev) => !prev),
-                <BarChart3 className="h-4 w-4" />,
-              )}
+              <div className="sticky top-0 z-20 bg-[#151c16] pb-2 pt-1">
+                {renderAccordionHeader(
+                  'Recent Trades',
+                  tradesExpanded,
+                  () => setTradesExpanded((prev) => !prev),
+                  <BarChart3 className="h-4 w-4" />,
+                )}
+              </div>
               {tradesExpanded && (
                 <TradeHistory
                   tokenAddress={listing.token?.contractAddress ?? ''}
@@ -126,14 +123,30 @@ const MobileCommentsHistorySection = forwardRef<HTMLDivElement, MobileCommentsHi
                 />
               )}
             </div>
-          ) : activeTab === 'comments' ? (
+          ) : activeTab === 'stats' ? (
+            <div className="">
+              <TokenMetricsSection
+                tokenAddress={listing.token?.contractAddress}
+                reservePrice={listing.reservePrice}
+                chainId={tokenChainId}
+                rrp={listing.rrp || listing.reservePrice}
+                brand={listing.brand}
+                hypePoints={listing.hypePoints}
+                marketCap={marketCapUsd}
+                dexMeta={listing.dex || null}
+                liveTokenPrice={liveTokenPrice}
+              />
+            </div>
+          ) : (
             <div className="space-y-3">
-              {renderAccordionHeader(
-                'Community Comments',
-                commentsExpanded,
-                () => setCommentsExpanded((prev) => !prev),
-                <MessageSquare className="h-4 w-4" />,
-              )}
+              <div className="sticky top-0 z-20 bg-[#151c16] pb-2 pt-1">
+                {renderAccordionHeader(
+                  'Community Comments',
+                  commentsExpanded,
+                  () => setCommentsExpanded((prev) => !prev),
+                  <MessageSquare className="h-4 w-4" />,
+                )}
+              </div>
               {commentsExpanded && (
                 <RWAForumReal
                   listingId={listing.id}
@@ -142,17 +155,6 @@ const MobileCommentsHistorySection = forwardRef<HTMLDivElement, MobileCommentsHi
                   variant="mobile"
                 />
               )}
-            </div>
-          ) : (
-            <div className="px-4">
-              <TokenHealthPanel
-                tokenAddress={listing.token?.contractAddress}
-                reservePrice={listing.reservePrice}
-                chainId={tokenChainId}
-                dexMeta={listing.dex || null}
-                liveTokenPrice={liveTokenPrice}
-                volume24hAces={volume24hAces}
-              />
             </div>
           )}
         </div>

@@ -2,7 +2,8 @@
 
 import { forwardRef, useEffect, useMemo, useState } from 'react';
 import ImageCarousel from '@/components/rwa/middle-column/overview/image-carousel';
-import OverviewBottomSection from '@/components/rwa/middle-column/overview/overview-bottom-section';
+import ScoreboardSplitFlap from '@/components/rwa/middle-column/overview/scorebaord-split-flap';
+import BondingProgressSection from '@/components/rwa/right-panel/bonding-progression-section';
 import { mockImages } from '@/constants/rwa';
 import type { DatabaseListing } from '@/types/rwa/section.types';
 import { NETWORK_CONFIG } from '@/lib/contracts/addresses';
@@ -39,7 +40,7 @@ const MobileOverviewSection = forwardRef<HTMLDivElement, MobileOverviewSectionPr
       <section
         ref={ref}
         data-section-id="overview"
-        className="w-full bg-[#151c16] px-4 py-6 space-y-6"
+        className="w-full bg-[#151c16] px-4 py-3 space-y-6"
       >
         <div className="h-64 w-full rounded-lg overflow-hidden border border-[#D0B284]/15">
           <ImageCarousel
@@ -51,12 +52,15 @@ const MobileOverviewSection = forwardRef<HTMLDivElement, MobileOverviewSectionPr
         </div>
 
         <div className="w-full">
-          <OverviewBottomSection
-            launchDate={launchDate}
-            showProgression={Boolean(listing.token?.contractAddress)}
-            tokenAddress={listing.token?.contractAddress}
-            chainId={tokenChainId}
-          />
+          <div className="space-y-4">
+            {listing.token?.contractAddress ? (
+              <BondingProgressSection
+                tokenAddress={listing.token.contractAddress}
+                chainId={tokenChainId}
+                tokenSymbol={listing.token?.symbol ?? 'RWA'}
+              />
+            ) : null}
+          </div>
         </div>
       </section>
     );
