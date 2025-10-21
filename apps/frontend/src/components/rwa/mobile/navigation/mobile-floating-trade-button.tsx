@@ -1,7 +1,7 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { TrendingUp } from 'lucide-react';
+import { GraffitiTradeButton } from '@/components/rwa/right-panel/graffiti-trade-button';
 
 interface MobileFloatingTradeButtonProps {
   isVisible: boolean;
@@ -14,7 +14,7 @@ export default function MobileFloatingTradeButton({
   tokenSymbol,
   onTradeClick,
 }: MobileFloatingTradeButtonProps) {
-  const buttonOffset = 'calc(104px + env(safe-area-inset-bottom, 0px))';
+  const buttonOffset = 'calc(var(--mobile-bottom-nav-height, 96px) + 8px)';
 
   return (
     <AnimatePresence>
@@ -27,14 +27,14 @@ export default function MobileFloatingTradeButton({
           className="fixed left-0 right-0 z-40 px-4"
           style={{ bottom: buttonOffset }}
         >
-          <button
-            type="button"
-            onClick={onTradeClick}
-            className="w-full max-w-md mx-auto flex items-center justify-center gap-2 rounded-xl bg-[#D0B284] hover:bg-[#D0B284]/90 text-[#151c16] font-semibold shadow-lg transition-all duration-200 active:scale-95 touch-manipulation py-3"
-          >
-            <TrendingUp className="h-4 w-4" />
-            <span className="text-base font-proxima-nova">Trade ${tokenSymbol}</span>
-          </button>
+          <div className="w-full max-w-md mx-auto">
+            <GraffitiTradeButton
+              onClick={onTradeClick}
+              state="trade"
+              size="md"
+              fullWidth
+            />
+          </div>
         </motion.div>
       )}
     </AnimatePresence>
