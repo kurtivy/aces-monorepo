@@ -112,9 +112,17 @@ export default function TradeHistory({
     return value.toFixed(fractionDigits);
   };
 
-  const formatAcesAmount = (amount: string) => formatAmount(amount, 4);
+  const formatAcesAmount = (amount: string) => {
+    const value = normalizeAmount(amount);
+    if (value > 0 && value < 0.01) return '< 0.01';
+    return formatAmount(amount, 4);
+  };
 
-  const formatTokenAmount = (amount: string) => formatAmount(amount, 2);
+  const formatTokenAmount = (amount: string) => {
+    const value = normalizeAmount(amount);
+    if (value > 0 && value < 0.01) return '< 0.01';
+    return formatAmount(amount, 2);
+  };
 
   const formatWalletAddress = (address?: string) => {
     if (!address) return '--';
@@ -155,6 +163,8 @@ export default function TradeHistory({
 
   const formatUsd = (value: number | null | undefined, options?: { isBuy?: boolean }) => {
     if (value == null || !Number.isFinite(value)) return '--';
+    const abs = Math.abs(value);
+    if (abs > 0 && abs < 0.01) return '< $0.01';
     if (options?.isBuy) return `$${value.toFixed(2)}`;
     return value < 10 ? `$${value.toFixed(6)}` : `$${value.toFixed(2)}`;
   };

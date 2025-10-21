@@ -151,6 +151,12 @@ export function useTokenBalances({
 
       const address = await signer.getAddress();
 
+      // Validate that we have a valid token address before attempting to fetch token balance
+      if (tokenContract && tokenAddress && !tokenAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
+        console.warn('[useTokenBalances] Invalid token address format:', tokenAddress);
+        // Continue without token balance, but fetch other balances
+      }
+
       // Refresh ACES balance
       if (acesContract) {
         try {
@@ -164,15 +170,30 @@ export function useTokenBalances({
         }
       }
 
-      // Refresh token balance
-      if (tokenContract) {
+      // Refresh token balance (only if valid token address)
+      if (tokenContract && tokenAddress && tokenAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
         try {
           const tokenBalanceValue = await tokenContract.balanceOf(address);
           const formattedTokenBalance = ethers.utils.formatEther(tokenBalanceValue);
           setTokenBalance(formattedTokenBalance);
         } catch (error) {
+          // If balanceOf call fails, log warning but don't crash
+          console.warn('[useTokenBalances] Failed to fetch token balance:', error);
           if (!isCircuitBreakerError(error)) {
-            throw error;
+            // For CALL_EXCEPTION, just log and continue (token might not be deployed yet)
+            if (
+              error &&
+              typeof error === 'object' &&
+              'code' in error &&
+              error.code === 'CALL_EXCEPTION'
+            ) {
+              console.warn(
+                '[useTokenBalances] Token contract not deployed or invalid:',
+                tokenAddress,
+              );
+            } else {
+              throw error;
+            }
           }
         }
       }

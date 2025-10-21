@@ -18,24 +18,30 @@ export function useAcesPrice(): AcesPriceData {
 
   const fetchAcesPrice = useCallback(async () => {
     try {
-      // Fetch from CoinGecko API
-      const response = await fetch(
-        'https://api.coingecko.com/api/v3/simple/price?ids=ace-of-base&vs_currencies=usd',
-        {
-          headers: {
-            Accept: 'application/json',
-          },
+      // Determine API base URL
+      const apiBaseUrl =
+        process.env.NEXT_PUBLIC_API_URL ||
+        (typeof window !== 'undefined' && window.location.hostname === 'localhost'
+          ? 'http://localhost:3002'
+          : 'https://acesbackend-production.up.railway.app');
+
+      // Fetch from backend API endpoint
+      const response = await fetch(`${apiBaseUrl}/api/v1/prices/aces-usd`, {
+        headers: {
+          Accept: 'application/json',
         },
-      );
+      });
 
       if (!response.ok) {
-        throw new Error(`CoinGecko API error: ${response.status}`);
+        throw new Error(`API error: ${response.status}`);
       }
 
-      const data = await response.json();
-      const price = data['ace-of-base']?.usd;
+      const result = await response.json();
 
-      if (typeof price === 'number' && Number.isFinite(price)) {
+      // Extract price from backend response format
+      const price = result?.data?.acesUsdPrice;
+
+      if (typeof price === 'number' && Number.isFinite(price) && price > 0) {
         setAcesUsdPrice(price);
         setError(null);
       } else {
@@ -44,6 +50,7 @@ export function useAcesPrice(): AcesPriceData {
     } catch (err) {
       console.error('[useAcesPrice] Failed to fetch ACES price:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch ACES price');
+      // Keep last known price on error to avoid breaking UI
     } finally {
       setLoading(false);
     }

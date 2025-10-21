@@ -28,7 +28,17 @@ interface TradeHistoryOptions {
 export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptions = {}) => {
   const { intervalMs = 2500, dexMeta } = options; // 2.5 seconds for real-time updates (matches chart)
 
-  const shouldUseDex = Boolean(dexMeta?.isDexLive);
+  // Track graduation state dynamically - can change mid-session
+  const [detectedGraduationState, setDetectedGraduationState] = useState<{
+    isDexLive: boolean;
+    bondingCutoff: string | null;
+  }>({
+    isDexLive: Boolean(dexMeta?.isDexLive),
+    bondingCutoff: dexMeta?.bondingCutoff || null,
+  });
+
+  // Use detected state instead of prop - this allows mid-session updates
+  const shouldUseDex = detectedGraduationState.isDexLive;
 
   const [trades, setTrades] = useState<TradeHistoryEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -36,10 +46,10 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
   const [isConnected, setIsConnected] = useState(false);
 
   const bondingCutoffMs = useMemo(() => {
-    if (!dexMeta?.bondingCutoff) return null;
-    const parsed = Date.parse(dexMeta.bondingCutoff);
+    if (!detectedGraduationState.bondingCutoff) return null;
+    const parsed = Date.parse(detectedGraduationState.bondingCutoff);
     return Number.isNaN(parsed) ? null : parsed;
-  }, [dexMeta?.bondingCutoff]);
+  }, [detectedGraduationState.bondingCutoff]);
 
   const fetchTrades = async () => {
     if (!tokenAddress) {
@@ -82,7 +92,11 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
 
       let dexTrades: TradeHistoryEntry[] = [];
 
-      if (shouldUseDex) {
+      // Always check DEX trades if we're not already using them
+      // This allows us to detect graduation mid-session
+      const checkDex = shouldUseDex || !detectedGraduationState.isDexLive;
+
+      if (checkDex) {
         const dexResult = await DexApi.getTrades(tokenAddress, 100);
 
         if (dexResult.success) {
@@ -106,6 +120,24 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
             priceInCounter: trade.priceInCounter,
             priceUsd: trade.priceInUsd,
           }));
+
+          // Detect graduation: if we got DEX trades but weren't expecting them
+          if (!detectedGraduationState.isDexLive && dexTrades.length > 0) {
+            console.log('[TradeHistory] 🎓 Token graduated! Detected DEX trades', {
+              dexTradeCount: dexTrades.length,
+              firstDexTrade: dexTrades[0],
+            });
+
+            // Update graduation state - use the earliest DEX trade as bondingCutoff
+            const earliestDexTimestamp = Math.min(...dexTrades.map((t) => t.timestamp));
+            setDetectedGraduationState({
+              isDexLive: true,
+              bondingCutoff: new Date(earliestDexTimestamp).toISOString(),
+            });
+
+            // Clear trades to force a clean refresh with the new state
+            setTrades([]);
+          }
         } else if (dexResult.error) {
           // DEX trades fetch failed, continue without them
         }
@@ -145,6 +177,16 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
       setIsLoading(false);
     }
   };
+
+  // Sync with prop changes (for initial load or external updates)
+  useEffect(() => {
+    if (dexMeta?.isDexLive !== detectedGraduationState.isDexLive) {
+      setDetectedGraduationState({
+        isDexLive: Boolean(dexMeta?.isDexLive),
+        bondingCutoff: dexMeta?.bondingCutoff || null,
+      });
+    }
+  }, [dexMeta?.isDexLive, dexMeta?.bondingCutoff]);
 
   useEffect(() => {
     if (!tokenAddress) {
