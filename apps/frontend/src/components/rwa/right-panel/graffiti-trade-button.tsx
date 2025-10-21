@@ -22,9 +22,25 @@ const labelFor = (state: GraffitiButtonState) => {
   }
 };
 
-const sizeConfig: Record<GraffitiButtonSize, { container: string; textSize: string }> = {
-  lg: { container: 'min-w-[200px] h-16', textSize: 'text-[42px]' },
-  xl: { container: 'min-w-[224px] h-[72px]', textSize: 'text-[48px]' },
+const sizeConfig: Record<
+  GraffitiButtonSize,
+  { container: string; outerLabelClass: string; innerLabelClass: string }
+> = {
+  md: {
+    container: 'min-w-[180px] h-14',
+    outerLabelClass: 'text-[38px]',
+    innerLabelClass: 'text-[52px]',
+  },
+  lg: {
+    container: 'min-w-[200px] h-16',
+    outerLabelClass: 'text-[42px]',
+    innerLabelClass: 'text-[60px]',
+  },
+  xl: {
+    container: 'min-w-[224px] h-[72px]',
+    outerLabelClass: 'text-[48px]',
+    innerLabelClass: 'text-[68px]',
+  },
 };
 
 export function GraffitiTradeButton({
@@ -38,7 +54,7 @@ export function GraffitiTradeButton({
   fullWidth = false,
   ...rest
 }: GraffitiTradeButtonProps) {
-  const { container, textSize } = sizeConfig[size];
+  const { container, outerLabelClass, innerLabelClass } = sizeConfig[size];
   const content = children ?? labelFor(state);
 
   return (
@@ -68,7 +84,7 @@ export function GraffitiTradeButton({
         <span
           className={cn(
             'absolute top-1/2 left-[60%] -translate-x-1/2 -translate-y-1/2 -rotate-[4deg] select-none',
-            textSize,
+            outerLabelClass,
             'font-normal text-[#4ecdc4] drop-shadow',
             'transition-colors duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]',
             'group-hover:text-[#5fd3cc]',
@@ -80,7 +96,12 @@ export function GraffitiTradeButton({
             filter: 'drop-shadow(0 0 3px currentColor)',
           }}
         >
-          <span className="inline-block transition-[filter,text-shadow,color] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] group-hover:filter-[drop-shadow(0_0_5px_currentColor)] group-active:filter-[drop-shadow(0_0_8px_rgba(213,183,129,0.8))] font-spray-letters text-6xl uppercase tracking-[0.2em]">
+          <span
+            className={cn(
+              'inline-block transition-[filter,text-shadow,color] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] group-hover:filter-[drop-shadow(0_0_5px_currentColor)] group-active:filter-[drop-shadow(0_0_8px_rgba(213,183,129,0.8))] font-spray-letters uppercase tracking-[0.2em]',
+              innerLabelClass,
+            )}
+          >
             {content}
           </span>
         </span>

@@ -993,7 +993,7 @@ export default function TokenSwapInterface({
     <div className="h-full">
       <div
         className={cn(
-          'bg-[#151c16] h-full flex flex-col relative',
+          ' h-full flex flex-col relative',
           showFrame ? '' : cn('px-4 sm:px-6 pb-6', showHeader ? 'pt-4' : 'pt-2'),
         )}
       >

@@ -5,7 +5,7 @@ import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type RoyalTradeButtonState = 'connect' | 'approve' | 'trade';
-type RoyalTradeButtonSize = 'lg' | 'xl';
+type RoyalTradeButtonSize = 'md' | 'lg' | 'xl';
 
 export type RoyalTradeButtonProps = {
   state?: RoyalTradeButtonState;
@@ -28,7 +28,8 @@ const labelFor = (state: RoyalTradeButtonState) => {
 };
 
 const sizes: Record<RoyalTradeButtonSize, string> = {
-  lg: 'h-14 px-6 text-[18px] gap-2',
+  md: 'h-12 px-5 text-[16px] gap-2 tracking-[0.18em]',
+  lg: 'h-14 px-6 text-[18px] gap-2 tracking-[0.2em]',
   xl: 'h-18 px-8 text-[28px] gap-3 tracking-widest',
 };
 
