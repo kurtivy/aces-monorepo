@@ -7,7 +7,7 @@ import { TokenService } from '../../services/token-service';
 import { TokenHolderService } from '../../services/token-holder-service';
 import { OHLCVService } from '../../services/ohlcv-service';
 import { SupplyBasedOHLCVService } from '../../services/supply-based-ohlcv-service';
-import { PriceService } from '../../services/price-service';
+import { priceCacheService } from '../../services/price-cache-service';
 import { BitQueryService } from '../../services/bitquery-service';
 import { SupportedTimeframe } from '../../types/subgraph.types';
 import { ACES_TOKEN_ADDRESS } from '../../config/bitquery.config';
@@ -45,7 +45,6 @@ export async function tokensRoutes(fastify: FastifyInstance) {
   const tokenHolderService = new TokenHolderService();
   const ohlcvService = new OHLCVService(fastify.prisma, tokenService);
   const supplyBasedOHLCVService = new SupplyBasedOHLCVService();
-  const priceService = new PriceService(fastify.prisma);
   const bitQueryService = new BitQueryService();
 
   // Get token data (fetches fresh from subgraph)
@@ -449,22 +448,31 @@ export async function tokensRoutes(fastify: FastifyInstance) {
         const { chainId } = request.query;
 
         // 1. Fetch token data (has volume24h, currentPriceACES, supply)
-        const tokenData = await tokenService.fetchAndUpdateTokenData(address);
+        // Try database first, but continue without it if unavailable
+        let tokenData;
+        try {
+          tokenData = await tokenService.fetchAndUpdateTokenData(address);
+        } catch (dbError) {
+          fastify.log.warn(
+            { error: dbError, address },
+            'Database unavailable, fetching metrics directly from subgraph',
+          );
+          tokenData = null;
+        }
         const isDexMode =
           tokenData?.phase === 'DEX_TRADING' ||
           tokenData?.dexLiveAt !== null ||
           tokenData?.priceSource === 'DEX';
         const poolAddress = tokenData?.poolAddress;
 
-        // 2. Get ACES/USD price for conversions using existing PriceService
-        const priceData = await priceService.getAcesPrice();
-        const parsedAcesUsdPrice = parseFloat(priceData.priceUSD);
-        const acesUsdPrice = Number.isFinite(parsedAcesUsdPrice) ? parsedAcesUsdPrice : 0;
+        // 2. Get ACES/USD price for conversions using PriceCacheService
+        const priceData = await priceCacheService.getPrices();
+        const acesUsdPrice = Number.isFinite(priceData.acesUsd) ? priceData.acesUsd : 0;
         fastify.log.info(
           { acesUsdPrice, isStale: priceData.isStale },
-          'ACES/USD price fetched from PriceService',
+          'ACES/USD price fetched from PriceCacheService',
         );
-        const tokenPriceAces = parseFloat(tokenData.currentPriceACES || '0');
+        const tokenPriceAces = parseFloat(tokenData?.currentPriceACES || '0');
         const tokenPriceUsd = Number.isFinite(acesUsdPrice) ? tokenPriceAces * acesUsdPrice : 0;
         fastify.log.info({ tokenPriceAces, acesUsdPrice, tokenPriceUsd }, 'Price calculation');
 
@@ -739,7 +747,7 @@ export async function tokensRoutes(fastify: FastifyInstance) {
         }
 
         if (volumeSource === 'bonding_curve') {
-          const volume24hWei = tokenData.volume24h || '0';
+          const volume24hWei = tokenData?.volume24h || '0';
           const parsedAces = parseFloat(volume24hWei) / 1e18;
           volume24hAces = Number.isFinite(parsedAces) ? parsedAces : 0;
           volume24hUsd = Number.isFinite(acesUsdPrice) ? volume24hAces * acesUsdPrice : 0;

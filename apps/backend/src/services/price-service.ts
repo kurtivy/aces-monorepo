@@ -55,6 +55,7 @@ export class PriceService {
    * Get ACES price in USD with caching and throttling
    */
   async getAcesPrice(): Promise<PriceData> {
+    console.log('🚨🚨🚨 [PriceService] getAcesPrice() called - CODE IS UPDATED! 🚨🚨🚨');
     try {
       // Check cache first
       const cached = await this.prisma.tokenPrice.findUnique({
@@ -80,7 +81,13 @@ export class PriceService {
       // Fetch fresh price
       const acesPerWeth = await this.getAcesPerWeth(); // e.g., 1,723,047 ACES per 1 WETH
       const wethUsdPrice = await this.getWethUsdPrice(); // e.g., $3,832 per 1 WETH
+
+      console.log('[PriceService DEBUG] acesPerWeth:', acesPerWeth);
+      console.log('[PriceService DEBUG] wethUsdPrice:', wethUsdPrice);
+
       const acesUsdPrice = wethUsdPrice / acesPerWeth; // e.g., $3,832 / 1,723,047 = $0.002224 per ACES
+
+      console.log('[PriceService DEBUG] Final acesUsdPrice:', acesUsdPrice);
 
       // Validate price is reasonable
       if (!this.validatePrice(acesUsdPrice)) {
@@ -149,10 +156,17 @@ export class PriceService {
     const acesReserve = isToken0Aces ? reserve0 : reserve1;
     const wethReserve = isToken0Aces ? reserve1 : reserve0;
 
+    console.log('[getAcesPerWeth DEBUG] token0:', token0);
+    console.log('[getAcesPerWeth DEBUG] acesAddress:', acesAddress);
+    console.log('[getAcesPerWeth DEBUG] isToken0Aces:', isToken0Aces);
+    console.log('[getAcesPerWeth DEBUG] acesReserve:', ethers.formatEther(acesReserve));
+    console.log('[getAcesPerWeth DEBUG] wethReserve:', ethers.formatEther(wethReserve));
+
     // Return ACES / WETH (how many ACES you get per WETH)
-    return (
-      parseFloat(ethers.formatEther(acesReserve)) / parseFloat(ethers.formatEther(wethReserve))
-    );
+    const ratio =
+      parseFloat(ethers.formatEther(acesReserve)) / parseFloat(ethers.formatEther(wethReserve));
+    console.log('[getAcesPerWeth DEBUG] Returning ratio (ACES/WETH):', ratio);
+    return ratio;
   }
 
   /**
