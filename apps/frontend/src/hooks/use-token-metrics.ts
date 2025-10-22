@@ -8,6 +8,7 @@ interface UseTokenMetricsResult {
   error: string | null;
   refetch: () => void;
   circulatingSupply: number | null;
+  currentPriceUsd: number;
 }
 
 /**
@@ -24,6 +25,7 @@ export function useTokenMetrics(
 ): UseTokenMetricsResult {
   const [metrics, setMetrics] = useState<TokenMetrics | null>(null);
   const [circulatingSupply, setCirculatingSupply] = useState<number | null>(null);
+  const [currentPriceUsd, setCurrentPriceUsd] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -86,6 +88,14 @@ export function useTokenMetrics(
           setCirculatingSupply(null);
         }
 
+        // Extract currentPriceUsd from marketCapData
+        if (healthData.marketCapData?.currentPriceUsd !== undefined) {
+          const priceUsd = healthData.marketCapData.currentPriceUsd;
+          setCurrentPriceUsd(Number.isFinite(priceUsd) ? priceUsd : 0);
+        } else {
+          setCurrentPriceUsd(0);
+        }
+
         setError(null);
       } else {
         console.error('[useTokenMetrics] ❌ No metrics data in health response');
@@ -106,6 +116,7 @@ export function useTokenMetrics(
     if (!tokenAddress) {
       setMetrics(null);
       setCirculatingSupply(null);
+      setCurrentPriceUsd(0);
       setLoading(false);
       setError(null);
       return;
@@ -126,5 +137,6 @@ export function useTokenMetrics(
     error,
     refetch: fetchMetrics,
     circulatingSupply,
+    currentPriceUsd,
   };
 }

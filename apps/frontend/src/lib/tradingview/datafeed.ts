@@ -1014,6 +1014,22 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
         : 'no candles',
     });
 
+    // If no candles received, provide detailed error message
+    if (candles.length === 0) {
+      console.error('🔍 [Frontend Datafeed] ❌ Backend returned 0 candles!', {
+        tokenAddress: this.tokenAddress,
+        timeframe,
+        from: new Date(from * 1000).toISOString(),
+        to: new Date(to * 1000).toISOString(),
+        apiUrl: fullUrl,
+        message:
+          'This could mean: 1) Token has no trades yet, 2) Subgraph indexing lag, 3) Backend error',
+      });
+      throw new Error(
+        `No chart data available for ${timeframe}. The token may not have enough trading history yet, or the backend is experiencing issues. Please try a different timeframe or refresh in a moment.`,
+      );
+    }
+
     const timeframeMs = this.timeframeToMs(timeframe);
 
     const bars: Bar[] = candles
@@ -1088,7 +1104,15 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       }
     } else {
       console.error(
-        '🔍 [Frontend Datafeed] ❌ No bars after filtering! Check if all prices are zero.',
+        '🔍 [Frontend Datafeed] ❌ No bars after filtering! All candles had invalid/zero prices.',
+        {
+          totalReceived: candles.length,
+          timeframe,
+          sampleCandle: candles[0],
+        },
+      );
+      throw new Error(
+        `All ${candles.length} candles had invalid price data for ${timeframe}. This indicates a data quality issue - please try a different timeframe or refresh.`,
       );
     }
 

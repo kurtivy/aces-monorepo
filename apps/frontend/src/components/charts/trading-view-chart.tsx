@@ -4,6 +4,112 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { BondingCurveDatafeed } from '@/lib/tradingview/datafeed';
 import { MarketCapDatafeed } from '@/lib/tradingview/market-cap-datafeed';
 
+const toolbarStylesId = 'aces-tradingview-toolbar-styles';
+
+const ensureTradingViewToolbarStyles = () => {
+  if (typeof document === 'undefined') return;
+  if (document.getElementById(toolbarStylesId)) return;
+
+  const style = document.createElement('style');
+  style.id = toolbarStylesId;
+  style.textContent = `
+    .aces-tv-mode-button {
+      padding: 0 !important;
+      border: 0 !important;
+      background: transparent !important;
+      box-shadow: none !important;
+    }
+
+    .aces-tv-mode-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      padding: 4px;
+      background: rgba(22, 30, 46, 0.75);
+      border-radius: 9999px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 4px 12px rgba(0, 0, 0, 0.35);
+      transition: background 0.2s ease, box-shadow 0.2s ease;
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+    }
+
+    .aces-tv-mode-toggle:hover {
+      background: rgba(35, 47, 70, 0.85);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 6px 16px rgba(0, 0, 0, 0.4);
+    }
+
+    .aces-tv-mode-option {
+      appearance: none;
+      border: none;
+      background: transparent;
+      color: #a0aec0;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      cursor: pointer;
+      transition: color 0.2s ease, background 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .aces-tv-mode-option:focus-visible {
+      outline: 1px solid #d0b284;
+      outline-offset: 2px;
+    }
+
+    .aces-tv-mode-option::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: rgba(255, 255, 255, 0.06);
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+
+    .aces-tv-mode-option:hover::before {
+      opacity: 1;
+    }
+
+    .aces-tv-mode-option:active {
+      transform: scale(0.97);
+    }
+
+    .aces-tv-mode-option[data-interacting='true'] {
+      transform: scale(0.96);
+      background: rgba(16, 185, 129, 0.2);
+    }
+
+    .aces-tv-mode-option[data-active='true'] {
+      color: #0f172a;
+      background: linear-gradient(135deg, #34d399, #10b981);
+      box-shadow: 0 0 14px rgba(16, 185, 129, 0.35);
+    }
+
+    .aces-tv-mode-option[data-active='true']::after {
+      content: '';
+      position: absolute;
+      inset: -20%;
+      border-radius: 9999px;
+      background: radial-gradient(circle at center, rgba(52, 211, 153, 0.32), transparent 60%);
+      opacity: 1;
+      pointer-events: none;
+    }
+
+    .aces-tv-mode-option[data-active='false']::after {
+      opacity: 0;
+    }
+
+    .aces-tv-mode-option[disabled] {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+  `;
+
+  document.head.appendChild(style);
+};
+
 interface TradingViewChartProps {
   tokenAddress: string;
   tokenSymbol?: string;
@@ -42,6 +148,8 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
     const widgetRef = useRef<any>(null);
     const datafeedRef = useRef<any>(null);
     const modeButtonRef = useRef<HTMLElement | null>(null);
+    const priceOptionRef = useRef<HTMLButtonElement | null>(null);
+    const mcapOptionRef = useRef<HTMLButtonElement | null>(null);
     const [isLibraryLoaded, setIsLibraryLoaded] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -49,6 +157,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
 
     // Chart mode (USD-only)
     const [chartMode, setChartMode] = useState<'price' | 'mcap'>('price');
+    const chartModeRef = useRef<'price' | 'mcap'>(chartMode);
     const currency = 'usd' as const;
 
     // Stabilize tokenSymbol to prevent unnecessary re-renders
@@ -290,6 +399,10 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
       cleanupDatafeed, // Include cleanup function in dependencies
     ]);
 
+    useEffect(() => {
+      chartModeRef.current = chartMode;
+    }, [chartMode]);
+
     // Handle mode change (requires chart recreation for now)
     const handleModeChange = (newMode: 'price' | 'mcap') => {
       // Mode change requires recreation since we need a different datafeed
@@ -298,13 +411,23 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
 
     // Update button appearance
     const updateButtonAppearance = useCallback(() => {
+      const priceButton = priceOptionRef.current;
+      const mcapButton = mcapOptionRef.current;
+
       if (modeButtonRef.current) {
-        modeButtonRef.current.innerHTML = `
-          <div style="display: flex; align-items: center; gap: 4px; padding: 2px; background: rgba(0,0,0,0.3); border-radius: 4px;">
-            <span style="padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 500; background: ${chartMode === 'price' ? '#10b981' : 'transparent'}; color: ${chartMode === 'price' ? 'white' : '#999'}; cursor: pointer;">Price</span>
-            <span style="padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 500; background: ${chartMode === 'mcap' ? '#10b981' : 'transparent'}; color: ${chartMode === 'mcap' ? 'white' : '#999'}; cursor: pointer;">MCap</span>
-          </div>
-        `;
+        modeButtonRef.current.setAttribute('data-mode', chartMode);
+      }
+
+      if (priceButton) {
+        const isPriceActive = chartMode === 'price';
+        priceButton.dataset.active = isPriceActive ? 'true' : 'false';
+        priceButton.setAttribute('aria-pressed', isPriceActive ? 'true' : 'false');
+      }
+
+      if (mcapButton) {
+        const isMcapActive = chartMode === 'mcap';
+        mcapButton.dataset.active = isMcapActive ? 'true' : 'false';
+        mcapButton.setAttribute('aria-pressed', isMcapActive ? 'true' : 'false');
       }
     }, [chartMode]);
 
@@ -313,15 +436,59 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
       if (!widgetRef.current) return;
 
       try {
+        ensureTradingViewToolbarStyles();
+
         // Price/MCap toggle button (USD-only)
         const modeButton = widgetRef.current.createButton();
         modeButton.setAttribute('title', 'Toggle Price / Market Cap (USD)');
         modeButton.classList.add('apply-common-tooltip');
+        modeButton.classList.add('aces-tv-mode-button');
+        modeButton.innerHTML = '';
         modeButtonRef.current = modeButton;
-        modeButton.addEventListener('click', () => {
-          const newMode = chartMode === 'price' ? 'mcap' : 'price';
-          handleModeChange(newMode);
-        });
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'aces-tv-mode-toggle';
+
+        const createOptionButton = (
+          label: string,
+          mode: 'price' | 'mcap',
+        ) => {
+          const optionButton = document.createElement('button');
+          optionButton.type = 'button';
+          optionButton.className = 'aces-tv-mode-option';
+          optionButton.dataset.mode = mode;
+          optionButton.dataset.active = chartMode === mode ? 'true' : 'false';
+          optionButton.dataset.interacting = 'false';
+          optionButton.setAttribute('aria-pressed', chartMode === mode ? 'true' : 'false');
+          optionButton.setAttribute('aria-label', `${label} chart mode`);
+          optionButton.textContent = label;
+          optionButton.addEventListener('click', (event) => {
+            event.stopPropagation();
+            if (chartModeRef.current !== mode) {
+              handleModeChange(mode);
+            }
+          });
+          optionButton.addEventListener('mousedown', () => {
+            optionButton.dataset.interacting = 'true';
+          });
+          optionButton.addEventListener('mouseup', () => {
+            optionButton.dataset.interacting = 'false';
+          });
+          optionButton.addEventListener('mouseleave', () => {
+            optionButton.dataset.interacting = 'false';
+          });
+          return optionButton;
+        };
+
+        const priceButton = createOptionButton('Price', 'price');
+        const mcapButton = createOptionButton('MCap', 'mcap');
+
+        priceOptionRef.current = priceButton;
+        mcapOptionRef.current = mcapButton;
+
+        wrapper.appendChild(priceButton);
+        wrapper.appendChild(mcapButton);
+        modeButton.appendChild(wrapper);
 
         // Initial render
         updateButtonAppearance();

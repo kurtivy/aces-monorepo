@@ -602,6 +602,22 @@ export class MarketCapDatafeed implements IBasicDataFeed {
 
     const candles = data.data.candles;
 
+    // Check if backend returned empty candles
+    if (!candles || candles.length === 0) {
+      console.error('[MarketCapDatafeed] ❌ Backend returned 0 market cap candles!', {
+        tokenAddress: this.tokenAddress,
+        timeframe,
+        from: from ? new Date(from * 1000).toISOString() : 'N/A',
+        to: to ? new Date(to * 1000).toISOString() : 'N/A',
+        currency: this.currency,
+        message:
+          'This could mean: 1) Token has no trades yet, 2) Subgraph indexing lag, 3) Backend error',
+      });
+      throw new Error(
+        `No market cap data available for ${timeframe}. The token may not have enough trading history yet, or the backend is experiencing issues. Please try a different timeframe or refresh in a moment.`,
+      );
+    }
+
     interface MarketCapCandle {
       timestamp: number;
       open: number | string;
@@ -650,10 +666,13 @@ export class MarketCapDatafeed implements IBasicDataFeed {
 
     // Debug logging
     if (bars.length === 0 && candles.length > 0) {
-      console.warn(
+      console.error(
         `[MarketCapDatafeed] ⚠️ No valid market cap data found. Received ${candles.length} candles but all had invalid values.`,
         'Sample candle:',
         candles[0],
+      );
+      throw new Error(
+        `All ${candles.length} market cap candles had invalid data for ${timeframe}. This indicates a data quality issue - please try a different timeframe or refresh.`,
       );
     } else if (bars.length > 0) {
       const firstBar = bars[0];

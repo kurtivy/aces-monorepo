@@ -63,8 +63,13 @@ export function TokenMetricsSection({
     return 'Hype details coming soon.';
   }, [hypeSentence, hypePoints, hasHypePoints]);
 
-  // Fetch aggregated token metrics (includes volume in ACES + USD)
-  const { metrics, loading: metricsLoading, circulatingSupply } = useTokenMetrics(tokenAddress);
+  // Fetch aggregated token metrics (includes volume in ACES + USD and price)
+  const {
+    metrics,
+    loading: metricsLoading,
+    circulatingSupply,
+    currentPriceUsd,
+  } = useTokenMetrics(tokenAddress);
 
   const volume24hAces = useMemo(() => {
     return metrics?.volume24hAces ?? '0';

@@ -61,10 +61,11 @@ export class SupplyBasedOHLCVService {
       const cacheKey = `${tokenAddress.toLowerCase()}::${timeframe}::${limit}`;
       const cached = this.candlesCache.get(cacheKey);
       if (cached && Date.now() - cached.timestamp < SupplyBasedOHLCVService.CACHE_TTL_MS) {
+        console.log(`[SupplyBasedOHLCV] ✅ Using cached ${timeframe} candles: ${cached.candles.length}`);
         return cached.candles;
       }
       // Try trade-based pipeline first
-      // console.log(`[SupplyBasedOHLCV] Building ${timeframe} candles from trades (preferred)`);
+      console.log(`[SupplyBasedOHLCV] 🔄 Building ${timeframe} candles from trades for ${tokenAddress.slice(0, 8)}...`);
 
       const tokenParams = await this.fetchTokenParameters(tokenAddress);
       if (tokenParams) {
@@ -72,21 +73,32 @@ export class SupplyBasedOHLCVService {
         const TRADE_LIMIT = Math.max(500, Math.min(5000, limit * 10));
         const trades = await this.fetchTradesWithSupply(tokenAddress, TRADE_LIMIT);
 
+        console.log(`[SupplyBasedOHLCV] 📊 Fetched ${trades?.length || 0} trades for ${timeframe}`);
+
         if (trades && trades.length > 0) {
           const priced = await this.calculateMarginalPrices(trades, tokenParams);
           const candles = this.aggregateTradesToCandles(priced, timeframe);
 
+          console.log(`[SupplyBasedOHLCV] 🕯️  Trade-based aggregation produced ${candles.length} ${timeframe} candles`);
+
           if (candles.length > 0) {
-            // console.log(`[SupplyBasedOHLCV] ✅ Trade-based produced ${candles.length} candles`);
-            return candles.slice(-limit);
+            const result = candles.slice(-limit);
+            this.candlesCache.set(cacheKey, { candles: result, timestamp: Date.now() });
+            console.log(`[SupplyBasedOHLCV] ✅ Returning ${result.length} trade-based candles for ${timeframe}`);
+            return result;
+          } else {
+            console.warn(`[SupplyBasedOHLCV] ⚠️  Trade aggregation returned 0 candles for ${timeframe}`);
           }
         } else {
-          // console.log('[SupplyBasedOHLCV] No trades returned for token; falling back to subgraph');
+          console.log('[SupplyBasedOHLCV] ⚠️  No trades returned for token; falling back to subgraph');
         }
       } else {
+        console.log('[SupplyBasedOHLCV] ⚠️  No token params found; trying direct trade aggregation');
         // If token params are missing, derive price directly from trade amounts
         const TRADE_LIMIT = Math.max(500, Math.min(5000, limit * 10));
         const trades = await this.fetchTradesWithSupply(tokenAddress, TRADE_LIMIT);
+
+        console.log(`[SupplyBasedOHLCV] 📊 Fetched ${trades?.length || 0} trades for direct aggregation`);
 
         if (trades && trades.length > 0) {
           // Derive ACES-per-token price from emitted trade amounts
@@ -98,14 +110,21 @@ export class SupplyBasedOHLCVService {
           });
 
           const candles = this.aggregateTradesToCandles(priced, timeframe);
+          console.log(`[SupplyBasedOHLCV] 🕯️  Direct aggregation produced ${candles.length} ${timeframe} candles`);
+          
           if (candles.length > 0) {
-            return candles.slice(-limit);
+            const result = candles.slice(-limit);
+            this.candlesCache.set(cacheKey, { candles: result, timestamp: Date.now() });
+            console.log(`[SupplyBasedOHLCV] ✅ Returning ${result.length} direct-aggregated candles for ${timeframe}`);
+            return result;
+          } else {
+            console.warn(`[SupplyBasedOHLCV] ⚠️  Direct aggregation returned 0 candles for ${timeframe}`);
           }
         }
       }
 
       // Fallback: pre-aggregated subgraph candles (existing behavior)
-      // console.log(`[SupplyBasedOHLCV] Fetching pre-aggregated ${timeframe} candles from subgraph`);
+      console.log(`[SupplyBasedOHLCV] 🔄 Falling back to pre-aggregated ${timeframe} candles from subgraph`);
 
       // Map timeframe to subgraph entity name
       const entityMap: Record<string, string> = {
@@ -118,6 +137,7 @@ export class SupplyBasedOHLCVService {
 
       const entityName = entityMap[timeframe];
       if (!entityName) {
+        console.error(`[SupplyBasedOHLCV] ❌ Unsupported timeframe: ${timeframe}`);
         throw new Error(`Unsupported timeframe: ${timeframe}`);
       }
 
@@ -139,6 +159,8 @@ export class SupplyBasedOHLCVService {
         }
       }`;
 
+      console.log(`[SupplyBasedOHLCV] 📡 Querying subgraph for ${entityName}...`);
+
       const response = await fetch(this.subgraphUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -147,6 +169,7 @@ export class SupplyBasedOHLCVService {
       });
 
       if (!response.ok) {
+        console.error(`[SupplyBasedOHLCV] ❌ Subgraph request failed: ${response.status}`);
         throw new Error(`Subgraph request failed: ${response.status}`);
       }
 
@@ -177,11 +200,12 @@ export class SupplyBasedOHLCVService {
       const result = (await response.json()) as SubgraphCandleResponse;
 
       if (result.errors) {
+        console.error(`[SupplyBasedOHLCV] ❌ Subgraph errors: ${JSON.stringify(result.errors)}`);
         throw new Error(`Subgraph errors: ${JSON.stringify(result.errors)}`);
       }
 
       if (!result.data.tokens || result.data.tokens.length === 0) {
-        // console.log('[SupplyBasedOHLCV] No token data found in subgraph');
+        console.warn(`[SupplyBasedOHLCV] ⚠️  No token data found in subgraph for ${tokenAddress.slice(0, 8)}...`);
         return [];
       }
 
@@ -198,12 +222,14 @@ export class SupplyBasedOHLCVService {
           close: string;
         }>) || [];
 
+      console.log(`[SupplyBasedOHLCV] 📊 Subgraph returned ${rawCandles.length} pre-aggregated ${timeframe} candles`);
+
       if (rawCandles.length === 0) {
-        // console.log(`[SupplyBasedOHLCV] No ${timeframe} candles found for token`);
+        console.warn(`[SupplyBasedOHLCV] ⚠️  No ${timeframe} candles found in subgraph for ${tokenAddress.slice(0, 8)}...`);
         return [];
       }
 
-      // console.log(`[SupplyBasedOHLCV] ✅ Fetched ${rawCandles.length} pre-aggregated candles`);
+      console.log(`[SupplyBasedOHLCV] ✅ Fetched ${rawCandles.length} pre-aggregated candles from subgraph`);
 
       let candles: Candle[] = rawCandles
         .map(
@@ -265,11 +291,11 @@ export class SupplyBasedOHLCVService {
         candles = candles.slice(-limit);
       }
 
-      // console.log(`[SupplyBasedOHLCV] ✅ Returning ${candles.length} candles with proper OHLC`);
+      console.log(`[SupplyBasedOHLCV] ✅ Returning ${candles.length} subgraph candles for ${timeframe} (caching for ${SupplyBasedOHLCVService.CACHE_TTL_MS}ms)`);
       this.candlesCache.set(cacheKey, { candles, timestamp: Date.now() });
       return candles;
     } catch (error) {
-      console.error('[SupplyBasedOHLCV] Error getting candles:', error);
+      console.error(`[SupplyBasedOHLCV] ❌ Error getting ${timeframe} candles for ${tokenAddress.slice(0, 8)}...:`, error);
       throw error;
     }
   }

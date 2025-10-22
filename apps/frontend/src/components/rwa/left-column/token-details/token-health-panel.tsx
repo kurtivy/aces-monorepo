@@ -235,10 +235,11 @@ export default function TokenHealthPanel({
   // Circulating supply: Actual tokens sold (used for reward calculations)
   // This varies from 1 to 800M during bonding, then up to 1B in DEX mode
   const circulatingSupply = useMemo(() => {
+    // Accept 0 as a valid value (early bonding state)
     if (circulatingSupplyProp !== undefined && circulatingSupplyProp !== null) {
       return Number.isFinite(circulatingSupplyProp) ? circulatingSupplyProp : 0;
     }
-    return 0;
+    return null; // Return null instead of 0 for truly missing data
   }, [circulatingSupplyProp]);
 
   // Use live token price if available, otherwise calculate from market cap
@@ -253,7 +254,7 @@ export default function TokenHealthPanel({
     }
 
     // Fallback: calculate from market cap if available
-    if (marketCapProp && circulatingSupply > 0) {
+    if (marketCapProp && circulatingSupply !== null && circulatingSupply > 0) {
       return marketCapProp / circulatingSupply;
     }
 
@@ -322,10 +323,13 @@ export default function TokenHealthPanel({
   const calculator = useMemo(() => new ValueEquilibriumCalculator(), []);
 
   const metrics = useMemo(() => {
+    // Ensure circulatingSupply is at least 1 to avoid division by zero
+    const safeCirculatingSupply = Math.max(circulatingSupply ?? 1, 1);
+
     // Use actual circulating supply for reward calculations
     // Use calculated market cap for ACES ratio
     return calculator.getMetrics(
-      circulatingSupply,
+      safeCirculatingSupply,
       tokenPrice,
       communityReward,
       assetSalePrice,
@@ -342,7 +346,7 @@ export default function TokenHealthPanel({
 
   // Calculate total reward earned: (user holdings / circulating supply) × community reward (10% of asset price)
   const totalRewardEarned = useMemo(() => {
-    if (circulatingSupply <= 0 || userTokenHoldings <= 0) return 0;
+    if (circulatingSupply === null || circulatingSupply <= 0 || userTokenHoldings <= 0) return 0;
     const userShareOfSupply = userTokenHoldings / circulatingSupply;
     return userShareOfSupply * communityReward;
   }, [userTokenHoldings, circulatingSupply, communityReward]);
@@ -372,9 +376,18 @@ export default function TokenHealthPanel({
   const valueClass = 'text-base font-semibold font-proxima-nova leading-none text-white';
 
   // Progressive loading states for each metric
-  const acesRatioLoading = !liveTokenPrice || !assetSalePrice || !tokenAddress;
-  const tradeRewardLoading = !circulatingSupply || !assetSalePrice || !tokenAddress;
-  const rewardEarnedLoading = !circulatingSupply || !tokenAddress;
+  const acesRatioLoading =
+    liveTokenPrice === undefined || liveTokenPrice === null || !assetSalePrice || !tokenAddress;
+
+  const tradeRewardLoading =
+    circulatingSupply === undefined ||
+    circulatingSupply === null ||
+    !assetSalePrice ||
+    !tokenAddress;
+
+  const rewardEarnedLoading =
+    circulatingSupply === undefined || circulatingSupply === null || !tokenAddress;
+
   const volumeLoading = metricsLoading || !tokenAddress;
 
   return (

@@ -13,7 +13,6 @@ import BondingCurveChart from './overview/bonding-curve-chart';
 import { useTokenHolderCount } from '@/hooks/rwa/use-token-holder-count';
 import { NETWORK_CONFIG } from '@/lib/contracts/addresses';
 import { createImageErrorHandler, getValidImageSrc } from '@/lib/utils/image-error-handler';
-import { useTokenMarketCap } from '@/hooks/use-token-market-cap';
 import { useTokenMetrics } from '@/hooks/use-token-metrics';
 
 interface DynamicActiveSectionContentProps extends ActiveSectionContentProps {
@@ -60,15 +59,13 @@ export function ActiveSectionContent({
     directHolderCount,
   );
 
-  // Fetch token metrics (includes DEX-adjusted 24h volume)
+  // Fetch token metrics (includes price via marketCapData)
   const {
     metrics: tokenMetrics,
     loading: tokenMetricsLoading,
     circulatingSupply,
+    currentPriceUsd,
   } = useTokenMetrics(listingTokenAddress);
-
-  // Fetch live token price
-  const { currentPriceUsd } = useTokenMarketCap(listingTokenAddress, 'usd');
 
   const liveTokenPrice = useMemo(() => {
     return isFinite(currentPriceUsd) && currentPriceUsd > 0 ? currentPriceUsd : undefined;
