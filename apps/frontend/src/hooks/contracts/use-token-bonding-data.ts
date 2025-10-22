@@ -17,6 +17,7 @@ interface BondingData {
 
   // Calculated values
   bondingPercentage: number; // 0-100
+  bondingTargetSource?: 'contract' | 'max_total_supply' | 'subgraph' | 'listing_parameters' | 'default';
 
   // Loading state
   loading: boolean;
@@ -35,6 +36,7 @@ const EMPTY_BONDING_DATA: BondingData = {
   bondingPercentage: 0,
   loading: false,
   error: 'No token address provided',
+  bondingTargetSource: 'default',
 };
 
 /**
@@ -66,8 +68,11 @@ export function useTokenBondingData(
       bondingPercentage: 0,
       loading: tokenState.loading,
       error: tokenState.error,
+      bondingTargetSource: 'default',
     };
   }
+
+  console.log('[useTokenBondingData] backend data', tokenState.data);
 
   // Map backend data to expected interface
   return {
@@ -80,6 +85,7 @@ export function useTokenBondingData(
     steepness: tokenState.data.steepness,
     isBonded: tokenState.data.isBonded,
     bondingPercentage: tokenState.data.bondingPercentage,
+    bondingTargetSource: tokenState.data.bondingTargetSource,
     loading: false,
     error: null,
   };

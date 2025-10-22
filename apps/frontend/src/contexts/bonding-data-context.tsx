@@ -15,6 +15,7 @@ interface BondingData {
   bondingPercentage: number;
   chainId: number;
   lastUpdated: number;
+  bondingTargetSource?: 'contract' | 'max_total_supply' | 'subgraph' | 'listing_parameters' | 'default';
 }
 
 interface TokenBondingState {

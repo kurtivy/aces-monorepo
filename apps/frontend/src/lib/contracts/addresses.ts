@@ -20,16 +20,15 @@ export const CONTRACT_ADDRESSES = {
       '0x55337650856299363c496065C836B9C6E9dE0367', // Base Mainnet ACES token
     FACTORY_IMPLEMENTATION:
       process.env.NEXT_PUBLIC_FACTORY_ADDRESS_BASE_MAINNET ||
-      '0x380A787B82EdaA484144a9B78EEC93D2639f3828', // Base Mainnet factory implementation (NEW)
+      '0xd412A18B862Ae8641993ED31368366dD1b3F726c', // Base Mainnet factory implementation (NEW)
     FACTORY_PROXY:
       process.env.NEXT_PUBLIC_PROXY_ADDRESS_BASE_MAINNET ||
-      '0x84976E3C31a073a4E2fE6Bf19C613538b41633c9', // Base Mainnet factory proxy (NEW - main interaction point)
+      '0x676BB442f45b5e11885Cf6e7ab8A15B5Ff7c5c51', // Base Mainnet factory proxy (ACTIVE - main interaction point)
     AERODROME_ROUTER:
       process.env.NEXT_PUBLIC_AERODROME_ROUTER_BASE_MAINNET ||
       '0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43', // Aerodrome Router on Base Mainnet
     ACES_SWAP:
-      process.env.NEXT_PUBLIC_SWAP_ADDRESS_MAINNET ||
-      '0xD884a65b36D6b435f49e01BfD1dBB4643E97D57b', // Base Mainnet AcesSwapNewest
+      process.env.NEXT_PUBLIC_SWAP_ADDRESS_MAINNET || '0xD884a65b36D6b435f49e01BfD1dBB4643E97D57b', // Base Mainnet AcesSwapNewest
   },
 } as const;
 

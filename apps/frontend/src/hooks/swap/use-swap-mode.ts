@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
+import { DexApi } from '@/lib/api/dex';
 import { useTokenBondingData } from '@/hooks/contracts/use-token-bonding-data';
 import { SUPPORTED_DEX_ASSETS } from '@/lib/swap/constants';
 import type { DatabaseListing } from '@/types/rwa/section.types';
@@ -27,6 +28,9 @@ export function useSwapMode({
   const [detectedGraduation, setDetectedGraduation] = useState<boolean>(
     Boolean(dexMeta?.isDexLive),
   );
+
+  // Track DEX pool/route readiness
+  const [dexReady, setDexReady] = useState<boolean>(false);
 
   // Get bonding data from read-only hook
   const {
@@ -60,6 +64,46 @@ export function useSwapMode({
       setDetectedGraduation(Boolean(dexMeta?.isDexLive));
     }
   }, [dexMeta?.isDexLive]);
+
+  // Probe backend to verify DEX readiness (pool or viable route)
+  useEffect(() => {
+    let cancelled = false;
+    async function checkDexReadiness() {
+      // Reset when inputs are missing or not graduated
+      if (!detectedGraduation || !tokenAddress || !routerAddress) {
+        if (!cancelled) setDexReady(false);
+        return;
+      }
+
+      // If listing metadata is present and indicates not live, gate off
+      if (dexMeta && (!dexMeta.isDexLive || !dexMeta.poolAddress)) {
+        if (!cancelled) setDexReady(false);
+        return;
+      }
+
+      // Step 1: Check for direct pool
+      const poolRes = await DexApi.getPool(tokenAddress);
+      if (!cancelled && poolRes.success) {
+        setDexReady(true);
+        return;
+      }
+
+      // Step 2: Probe a tiny ACES -> TOKEN quote to see if multi-hop is viable
+      const quoteRes = await DexApi.getQuote(tokenAddress, {
+        inputAsset: 'ACES',
+        amount: '1',
+        slippageBps: 100,
+      });
+      if (!cancelled) {
+        setDexReady(Boolean(quoteRes.success && quoteRes.data));
+      }
+    }
+
+    void checkDexReadiness();
+    return () => {
+      cancelled = true;
+    };
+  }, [detectedGraduation, tokenAddress, routerAddress, dexMeta]);
 
   /**
    * Normalize bonding percentage to ensure valid range
@@ -95,11 +139,18 @@ export function useSwapMode({
    * Only switch to DEX mode when the DEX pool is actually live.
    * Graduation is detected automatically when bonding reaches 100%.
    */
+  const metaAllowsDex = useMemo(() => {
+    if (!dexMeta) return true;
+    return Boolean(dexMeta.isDexLive && dexMeta.poolAddress);
+  }, [dexMeta]);
+
   const isDexMode = useMemo(() => {
-    // Only use DEX mode when the DEX pool is confirmed live (detected or via prop)
+    // Only use DEX mode when the DEX pool/route is confirmed ready and metadata (if present) allows it
     // This allows AcesSwap to work through the entire bonding phase (0-100%)
-    return Boolean(detectedGraduation && tokenAddress && routerAddress);
-  }, [detectedGraduation, tokenAddress, routerAddress]);
+    return Boolean(
+      detectedGraduation && tokenAddress && routerAddress && dexReady && metaAllowsDex,
+    );
+  }, [detectedGraduation, tokenAddress, routerAddress, dexReady, metaAllowsDex]);
 
   /**
    * Get swap mode enum
@@ -156,5 +207,6 @@ export function useSwapMode({
 
     // Raw data (for debugging/advanced use)
     dexMeta,
+    dexReady,
   };
 }

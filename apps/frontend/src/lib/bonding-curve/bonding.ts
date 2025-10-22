@@ -73,9 +73,10 @@ async function request<T>(endpoint: string): Promise<ApiResult<T>> {
       let message = response.statusText;
       try {
         const errorPayload = await response.json();
+        console.log('[BondingApi] Error response payload:', errorPayload);
         message = errorPayload.error || errorPayload.message || message;
-      } catch {
-        // ignore
+      } catch (e) {
+        console.log('[BondingApi] Failed to parse error response:', e);
       }
 
       return {
@@ -85,6 +86,7 @@ async function request<T>(endpoint: string): Promise<ApiResult<T>> {
     }
 
     const payload = await response.json();
+    console.log('[BondingApi] Success response payload:', payload);
     return payload as ApiResult<T>;
   } catch (error) {
     console.error(`[BondingApi] request failed for ${endpoint}:`, error);

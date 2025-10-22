@@ -122,10 +122,8 @@ export function useBondingQuote({
             ? (result as any).error
             : (result as any).error?.message || 'Failed to fetch quote';
         setError(errorMessage);
-        console.error('[useBondingQuote] ❌ Quote fetch failed:', {
-          errorMessage,
-          fullError: result,
-        });
+        console.error('[useBondingQuote] ❌ Quote fetch failed:', errorMessage);
+        console.error('[useBondingQuote] Full error response:', JSON.stringify(result, null, 2));
       }
     } catch (error) {
       if (cancelledRef.current) {
@@ -196,4 +194,3 @@ export function useBondingQuote({
     refetchQuote,
   };
 }
-
