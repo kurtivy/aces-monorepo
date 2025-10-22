@@ -13,8 +13,8 @@ import BondingCurveChart from './overview/bonding-curve-chart';
 import { useTokenHolderCount } from '@/hooks/rwa/use-token-holder-count';
 import { NETWORK_CONFIG } from '@/lib/contracts/addresses';
 import { createImageErrorHandler, getValidImageSrc } from '@/lib/utils/image-error-handler';
-import { useTokenData } from '@/hooks/use-token-data';
 import { useTokenMarketCap } from '@/hooks/use-token-market-cap';
+import { useTokenMetrics } from '@/hooks/use-token-metrics';
 
 interface DynamicActiveSectionContentProps extends ActiveSectionContentProps {
   listing?: DatabaseListing | null;
@@ -60,8 +60,9 @@ export function ActiveSectionContent({
     directHolderCount,
   );
 
-  // Fetch token data including 24h volume
-  const { tokenData } = useTokenData(listingTokenAddress);
+  // Fetch token metrics (includes DEX-adjusted 24h volume)
+  const { metrics: tokenMetrics, loading: tokenMetricsLoading } =
+    useTokenMetrics(listingTokenAddress);
 
   // Fetch live token price
   const { currentPriceUsd } = useTokenMarketCap(listingTokenAddress, 'usd');
@@ -71,8 +72,20 @@ export function ActiveSectionContent({
   }, [currentPriceUsd]);
 
   const volume24hAces = useMemo(() => {
-    return tokenData?.volume24h || '0';
-  }, [tokenData]);
+    return tokenMetrics?.volume24hAces ?? '0';
+  }, [tokenMetrics]);
+
+  const volume24hUsd = useMemo(() => {
+    return tokenMetrics?.volume24hUsd;
+  }, [tokenMetrics]);
+
+  const liquidityUsd = useMemo(() => {
+    return tokenMetrics?.liquidityUsd;
+  }, [tokenMetrics]);
+
+  const liquiditySource = useMemo(() => {
+    return tokenMetrics?.liquiditySource;
+  }, [tokenMetrics]);
 
   const totalComments = useMemo(() => {
     const explicitCount = parseCount(listing?.commentCount);
@@ -180,6 +193,10 @@ export function ActiveSectionContent({
           dexMeta={listing?.dex || null}
           liveTokenPrice={liveTokenPrice}
           volume24hAces={volume24hAces}
+          volume24hUsd={volume24hUsd}
+          liquidityUsd={liquidityUsd}
+          liquiditySource={liquiditySource}
+          metricsLoading={tokenMetricsLoading}
         />
       </div>
     </div>,

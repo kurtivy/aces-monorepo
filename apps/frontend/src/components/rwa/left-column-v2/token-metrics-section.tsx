@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion';
 import TokenHealthPanel from '../left-column/token-details/token-health-panel';
-import { useTokenData } from '@/hooks/use-token-data';
+import { useTokenMetrics } from '@/hooks/use-token-metrics';
 import { useMemo } from 'react';
 
 interface TokenMetricsSectionProps {
@@ -43,13 +43,24 @@ export function TokenMetricsSection({
 }: TokenMetricsSectionProps) {
   const hasHypePoints = hypePoints && hypePoints.length > 0;
 
-  // Fetch token data including 24h volume
-  const { tokenData } = useTokenData(tokenAddress);
+  // Fetch aggregated token metrics (includes volume in ACES + USD)
+  const { metrics, loading: metricsLoading } = useTokenMetrics(tokenAddress);
 
-  // Extract volume24h in ACES
   const volume24hAces = useMemo(() => {
-    return tokenData?.volume24h || '0';
-  }, [tokenData]);
+    return metrics?.volume24hAces ?? '0';
+  }, [metrics]);
+
+  const volume24hUsd = useMemo(() => {
+    return metrics?.volume24hUsd;
+  }, [metrics]);
+
+  const liquidityUsd = useMemo(() => {
+    return metrics?.liquidityUsd;
+  }, [metrics]);
+
+  const liquiditySource = useMemo(() => {
+    return metrics?.liquiditySource;
+  }, [metrics]);
 
   return (
     <div
@@ -73,6 +84,10 @@ export function TokenMetricsSection({
           dexMeta={dexMeta}
           liveTokenPrice={liveTokenPrice}
           volume24hAces={volume24hAces}
+          volume24hUsd={volume24hUsd}
+          liquidityUsd={liquidityUsd}
+          liquiditySource={liquiditySource}
+          metricsLoading={metricsLoading}
         />
 
         {/* STORY Section */}

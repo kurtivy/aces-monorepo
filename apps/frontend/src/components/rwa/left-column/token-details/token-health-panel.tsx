@@ -121,12 +121,6 @@ const formatNumber = (num: number, decimals: number = 2): string => {
   return num.toFixed(decimals);
 };
 
-const formatPrice = (price: number): string => {
-  if (price < 0.00001) return price.toExponential(2);
-  if (price < 0.01) return price.toFixed(6);
-  if (price < 1) return price.toFixed(4);
-  return price.toFixed(2);
-};
 // Not currently used (VER/Signal display removed from UI), but kept for future use
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const getSignalColor = (action: string) => {
@@ -186,7 +180,16 @@ interface TokenHealthPanelProps {
   } | null;
   liveTokenPrice?: number; // Live token price in USD from chart datafeed
   volume24hAces?: string; // 24h volume in ACES from API
+  volume24hUsd?: number; // 24h volume in USD (preferred when available)
+  liquidityUsd?: number | null;
+  liquiditySource?: 'bonding_curve' | 'dex' | null;
+  metricsLoading?: boolean;
 }
+
+type LiquidityState =
+  | { status: 'loading' }
+  | { status: 'unavailable' }
+  | { status: 'ready'; value: number };
 
 export default function TokenHealthPanel({
   tokenAddress,
@@ -196,6 +199,10 @@ export default function TokenHealthPanel({
   dexMeta,
   liveTokenPrice,
   volume24hAces,
+  volume24hUsd: volume24hUsdProp,
+  liquidityUsd: liquidityUsdProp,
+  liquiditySource,
+  metricsLoading = false,
 }: TokenHealthPanelProps) {
   const { walletAddress } = useAuth();
   const [userTokenBalance, setUserTokenBalance] = useState<string>('0');
@@ -295,11 +302,33 @@ export default function TokenHealthPanel({
 
   // Calculate 24h volume in USD
   const volume24hUsd = useMemo(() => {
-    if (!volume24hAces || !acesUsdPrice) return 0;
-    const volumeAces = parseFloat(volume24hAces);
-    if (!Number.isFinite(volumeAces)) return 0;
-    return volumeAces * acesUsdPrice;
-  }, [volume24hAces, acesUsdPrice]);
+    if (volume24hUsdProp !== undefined && Number.isFinite(volume24hUsdProp)) {
+      return volume24hUsdProp;
+    }
+
+    if (!volume24hAces) return 0;
+
+    try {
+      const volumeAces = parseFloat(ethers.utils.formatUnits(volume24hAces, 18));
+      if (!Number.isFinite(volumeAces) || !acesUsdPrice) return 0;
+      return volumeAces * acesUsdPrice;
+    } catch (error) {
+      console.error('Failed to parse volume24hAces:', error);
+      return 0;
+    }
+  }, [volume24hAces, volume24hUsdProp, acesUsdPrice]);
+
+  const liquidityState: LiquidityState = useMemo(() => {
+    if (metricsLoading || liquidityUsdProp === undefined) {
+      return { status: 'loading' } as const;
+    }
+
+    if (liquidityUsdProp === null || !Number.isFinite(liquidityUsdProp)) {
+      return { status: 'unavailable' } as const;
+    }
+
+    return { status: 'ready', value: liquidityUsdProp as number } as const;
+  }, [liquidityUsdProp, metricsLoading]);
 
   const calculator = useMemo(() => new ValueEquilibriumCalculator(), []);
 
@@ -464,16 +493,27 @@ export default function TokenHealthPanel({
       >
         <LabelWithTooltip
           label="LIQUIDITY"
-          tooltip="Community Reward ÷ Circulating Supply. Community reward is 10% of the asset's sale price, distributed among all token holders."
+          tooltip="During bonding this is the ACES deposited into the curve (converted to USD). After launch it reflects Aerodrome pool liquidity."
         />
-        {isLoading || !hasData ? (
+        {isLoading || liquidityState.status === 'loading' ? (
           <LoadingDots className={valueClass} />
+        ) : liquidityState.status === 'unavailable' ? (
+          <span className="text-sm font-proxima-nova leading-none text-white/60">
+            Data unavailable
+          </span>
         ) : (
-          <div className="flex items-baseline gap-0.5 text-white">
-            <span className="text-sm font-proxima-nova leading-none">$</span>
-            <span className="text-lg font-semibold font-proxima-nova leading-none text-white">
-              {formatPrice(metrics.rewardPerToken)}
-            </span>
+          <div className="flex items-baseline gap-1 text-white">
+            <div className="flex items-baseline gap-0.5">
+              <span className="text-sm font-proxima-nova leading-none">$</span>
+              <span className="text-lg font-semibold font-proxima-nova leading-none text-white">
+                {formatNumber(liquidityState.value, 2)}
+              </span>
+            </div>
+            {liquiditySource ? (
+              <span className="text-[10px] font-proxima-nova uppercase tracking-[0.2em] text-[#D0B284]">
+                {liquiditySource === 'dex' ? 'DEX' : 'BONDING'}
+              </span>
+            ) : null}
           </div>
         )}
       </motion.div>
