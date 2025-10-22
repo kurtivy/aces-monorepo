@@ -70,6 +70,9 @@ export interface DatabaseListing {
   title: string;
   symbol: string;
   description: string;
+  story: string | null;
+  details: string | null;
+  provenance: string | null;
   assetDetails: Array<{ key: string; value: string }> | null; // Structured asset details
   assetType: AssetType;
   imageGallery: string[];
@@ -83,8 +86,10 @@ export interface DatabaseListing {
   reservePrice: string | null; // Hidden reserve price (USD)
 
   // NEW: Asset story/info fields for V2 dashboard
-  rrp: string | null; // Retail Recommended Price (same as VALUE in UI)
+  value: string | null; // Retail Recommended Price (VALUE in UI)
+  rrp?: string | null; // Legacy alias for value
   brand: string | null; // Brand name
+  hypeSentence?: string | null;
   hypePoints: string[]; // Array of bullet points for hype section
 
   submissionId: string;

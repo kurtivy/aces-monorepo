@@ -16,22 +16,34 @@ export function AssetAboutDetailsV2({
   onClose,
   listing,
 }: AssetAboutDetailsV2Props) {
-  const descriptionParagraphs =
-    description
-      ?.split(/\n+/)
-      .map((paragraph) => paragraph.trim())
-      .filter(Boolean) ?? [];
+  const parseContent = (content?: string | null) =>
+    content
+      ? content
+          .split(/\n+/)
+          .map((paragraph) => paragraph.trim())
+          .filter(Boolean)
+      : [];
 
-  const hasDescription = descriptionParagraphs.length > 0;
-  const placeholderCardBody =
-    descriptionParagraphs[1] ?? descriptionParagraphs[0] ?? 'Additional information coming soon.';
-  const location = listing?.location || 'Worldwide';
-
+  const fallbackText = 'Additional information coming soon.';
   const cards = [
-    { title: 'Story', body: placeholderCardBody },
-    { title: 'Details', body: placeholderCardBody },
-    { title: 'Provenance', body: placeholderCardBody },
+    {
+      title: 'Story',
+      paragraphs: parseContent(listing?.story ?? description ?? listing?.description ?? null),
+    },
+    {
+      title: 'Details',
+      paragraphs: parseContent(
+        listing?.details ?? description ?? listing?.description ?? listing?.story ?? null,
+      ),
+    },
+    {
+      title: 'Provenance',
+      paragraphs: parseContent(listing?.provenance ?? null),
+    },
   ];
+
+  const hasAnyCardContent = cards.some((card) => card.paragraphs.length > 0);
+  const location = listing?.location || 'Worldwide';
 
   return (
     <div className="relative h-full flex flex-col gap-6 bg-[#151c16] p-6">
@@ -67,7 +79,7 @@ export function AssetAboutDetailsV2({
         ) : null}
       </div>
 
-      {hasDescription ? (
+      {hasAnyCardContent ? (
         <div className="flex flex-col">
           <div className="flex flex-col gap-6">
             {cards.map((card) => (
@@ -88,9 +100,20 @@ export function AssetAboutDetailsV2({
                   <h3 className="text-base font-semibold uppercase tracking-[0.35em] text-[#D0B284] font-neue-world">
                     {card.title}
                   </h3>
-                  <p className="text-sm leading-relaxed text-white font-proxima-nova">
-                    {card.body}
-                  </p>
+                  {card.paragraphs.length > 0 ? (
+                    card.paragraphs.map((paragraph, index) => (
+                      <p
+                        key={`${card.title}-${index}`}
+                        className="text-sm leading-relaxed text-white font-proxima-nova"
+                      >
+                        {paragraph}
+                      </p>
+                    ))
+                  ) : (
+                    <p className="text-sm leading-relaxed text-white font-proxima-nova">
+                      {fallbackText}
+                    </p>
+                  )}
                 </div>
               </div>
             ))}

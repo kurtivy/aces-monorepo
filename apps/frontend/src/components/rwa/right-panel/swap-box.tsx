@@ -949,37 +949,36 @@ export default function TokenSwapInterface({
 
   // Auto-detect and display errors (minimum amount warnings, DEX quote errors)
   useEffect(() => {
-    // Don't override transaction errors (they have priority)
+    // Don't override transaction errors while a transaction is in-flight
     if (transactionStatus?.type === 'error' && loading) return;
     if (transactionStatus?.type === 'success') return;
 
-    // Check for minimum amount warning
-    if (minimumAmountWarning) {
-      setTransactionStatus({
-        type: 'error',
-        message: minimumAmountWarning,
-      });
+    let dexError =
+      isDexMode && quote.strategy === 'dex' && quote.error && hasValidAmount ? quote.error : null;
+
+    // Improve DEX error copy for missing pools
+    if (dexError && /route pool not found/i.test(dexError)) {
+      dexError = 'DEX pool not live yet; staying in bonding mode. Try ACES or wait for pool.';
+    }
+    const nextMessage = minimumAmountWarning ?? dexError ?? null;
+
+    // Set error only if it actually changed
+    if (nextMessage) {
+      if (transactionStatus?.type !== 'error' || transactionStatus.message !== nextMessage) {
+        setTransactionStatus({ type: 'error', message: nextMessage });
+      }
       return;
     }
 
-    // Check for DEX quote errors
-    if (isDexMode && quote.strategy === 'dex' && quote.error && hasValidAmount) {
-      setTransactionStatus({
-        type: 'error',
-        message: quote.error,
-      });
-      return;
-    }
-
-    // Clear errors if conditions no longer met
-    if (transactionStatus?.type === 'error' && !minimumAmountWarning && !quote.error) {
+    // Clear auto errors when conditions are no longer met
+    if (transactionStatus?.type === 'error') {
       setTransactionStatus(null);
     }
   }, [
     minimumAmountWarning,
-    quote.error,
-    quote.strategy,
     isDexMode,
+    quote.strategy,
+    quote.error,
     hasValidAmount,
     transactionStatus,
     loading,

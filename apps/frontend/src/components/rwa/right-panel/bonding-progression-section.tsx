@@ -2,6 +2,7 @@
 
 import { useMemo, useEffect, useState } from 'react';
 import { useTokenBondingData } from '@/hooks/contracts/use-token-bonding-data';
+import { parseUnits, formatUnits } from 'viem';
 
 interface BondingProgressSectionProps {
   tokenAddress?: string;
@@ -60,25 +61,75 @@ export function BondingProgressSection({
       };
     }
 
-    // If target is not valid (e.g., explicitly 0), treat as unknown and avoid computing percentage
-    if (!hasValidTarget) {
-      return {
-        totalSupplyValue,
-        soldPercentage: null,
-        remainingDisplay: null,
-      };
+    const soldPercentage = hasValidTarget
+      ? Math.min(100, (totalSupplyValue / bondingTarget) * 100)
+      : null;
+
+    let remainingTokensNumber = Math.max(0, bondingTarget - totalSupplyValue);
+    let remainingWei: bigint | null = null;
+
+    try {
+      const supplyWei = parseUnits(currentSupply, 18);
+      const targetWei = hasValidTarget
+        ? parseUnits(tokensBondedAt as string, 18)
+        : parseUnits(DEFAULT_BONDING_TARGET.toString(), 18);
+      remainingWei = targetWei > supplyWei ? targetWei - supplyWei : BigInt(0);
+      remainingTokensNumber = Number.parseFloat(formatUnits(remainingWei, 18));
+    } catch {
+      remainingWei = null;
     }
 
-    const soldPercentage = Math.min(100, (totalSupplyValue / bondingTarget) * 100);
-    const remainingTokens = Math.max(0, bondingTarget - totalSupplyValue);
-    const remainingDigits = remainingTokens >= 1 ? 2 : 6;
+    let remainingDisplay: string | null = null;
+    if (Number.isFinite(remainingTokensNumber)) {
+      if (remainingWei !== null) {
+        const remainingStr = formatUnits(remainingWei, 18);
+        if (!remainingStr.includes('.')) {
+          remainingDisplay = Number.parseFloat(remainingStr).toLocaleString(undefined, {
+            maximumFractionDigits: 2,
+          });
+        } else {
+          const [intPart, rawFraction = ''] = remainingStr.split('.');
+          const fraction = rawFraction.replace(/0+$/, '');
+
+          if (intPart !== '0') {
+            remainingDisplay = Number.parseFloat(`${intPart}.${fraction || '0'}`).toLocaleString(
+              undefined,
+              {
+                maximumFractionDigits: 2,
+              },
+            );
+          } else if (fraction) {
+            const firstSignificant = fraction.search(/[1-9]/);
+            if (firstSignificant === -1) {
+              remainingDisplay = '0';
+            } else {
+              const leadingZeros = fraction.slice(0, firstSignificant);
+              const significantDigits = fraction
+                .slice(firstSignificant, firstSignificant + 6)
+                .replace(/0+$/, '');
+              remainingDisplay = `0.${leadingZeros}${significantDigits}`;
+            }
+          } else {
+            remainingDisplay = '0';
+          }
+        }
+      } else if (remainingTokensNumber >= 1) {
+        remainingDisplay = remainingTokensNumber.toLocaleString(undefined, {
+          maximumFractionDigits: 2,
+        });
+      } else if (remainingTokensNumber > 0) {
+        remainingDisplay = remainingTokensNumber.toLocaleString(undefined, {
+          maximumFractionDigits: 12,
+        });
+      } else {
+        remainingDisplay = '0';
+      }
+    }
 
     return {
       totalSupplyValue,
       soldPercentage,
-      remainingDisplay: remainingTokens.toLocaleString(undefined, {
-        maximumFractionDigits: remainingDigits,
-      }),
+      remainingDisplay,
     };
   }, [currentSupply, tokensBondedAt]);
 
@@ -101,6 +152,16 @@ export function BondingProgressSection({
 
     return Math.min(100, Math.max(...candidatePercentages));
   }, [bondingPercentage, percentageOverride, supplyMetrics.soldPercentage]);
+
+  useEffect(() => {
+    console.log('[BondingProgressSection] supply snapshot', {
+      tokenAddress,
+      chainId,
+      currentSupply,
+      tokensBondedAt,
+      supplyMetrics,
+    });
+  }, [tokenAddress, chainId, currentSupply, tokensBondedAt, supplyMetrics]);
 
   // Parse tokensBondedAt to number for comparison; do not default to a large number here
   const bondingTargetNum = Number.parseFloat(tokensBondedAt || '');
