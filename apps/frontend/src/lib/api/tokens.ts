@@ -74,6 +74,8 @@ export interface TokenMetrics {
   holderCount: number;
   totalFeesUsd: number;
   totalFeesAces: string;
+  liquidityUsd: number | null;
+  liquiditySource: 'bonding_curve' | 'dex' | null;
 }
 
 export interface ApiSuccessResponse<T> extends ApiResponse<T> {

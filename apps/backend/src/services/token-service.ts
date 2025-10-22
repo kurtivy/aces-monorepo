@@ -51,6 +51,12 @@ interface SubgraphToken {
 }
 
 export class TokenService {
+  private bondingLiquidityCache = new Map<
+    string,
+    { netWei: Decimal; fetchedAt: number; tradeCount: number }
+  >();
+  private static readonly BONDING_LIQUIDITY_CACHE_MS = 30_000;
+
   constructor(private prisma: PrismaClient) {}
 
   async getOrCreateToken(contractAddress: string) {
@@ -480,5 +486,118 @@ export class TokenService {
         acesAmount: '0',
       };
     }
+  }
+
+  /**
+   * Calculates net ACES liquidity still held in the bonding curve by aggregating subgraph trades.
+   * Applies a short-lived in-memory cache to limit repeated full-history scans.
+   */
+  async getBondingCurveLiquidity(tokenAddress: string): Promise<{
+    netLiquidityWei: Decimal;
+    tradeCount: number;
+  }> {
+    const normalizedAddress = tokenAddress.toLowerCase();
+    const cached = this.bondingLiquidityCache.get(normalizedAddress);
+    if (cached && Date.now() - cached.fetchedAt < TokenService.BONDING_LIQUIDITY_CACHE_MS) {
+      return {
+        netLiquidityWei: cached.netWei,
+        tradeCount: cached.tradeCount,
+      };
+    }
+
+    const pageSize = 1000;
+    const maxPages = 50; // Safeguard: cap at 50k trades per refresh cycle
+    let skip = 0;
+    let netWei = new Decimal(0);
+    let processedTrades = 0;
+
+    try {
+      for (let page = 0; page < maxPages; page++) {
+        const query = `
+          query BondingCurveLiquidity($token: String!, $first: Int!, $skip: Int!) {
+            trades(
+              where: { token: $token }
+              orderBy: createdAt
+              orderDirection: asc
+              first: $first
+              skip: $skip
+            ) {
+              isBuy
+              acesTokenAmount
+            }
+          }
+        `;
+
+        const response = await fetch(process.env.GOLDSKY_SUBGRAPH_URL!, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query,
+            variables: {
+              token: normalizedAddress,
+              first: pageSize,
+              skip,
+            },
+          }),
+          signal: AbortSignal.timeout(15000),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Subgraph request failed: ${response.status} ${response.statusText}`);
+        }
+
+        const result = (await response.json()) as {
+          data?: {
+            trades?: Array<{ isBuy: boolean; acesTokenAmount: string }>;
+          };
+          errors?: Array<{ message: string }>;
+        };
+
+        if (result.errors?.length) {
+          throw new Error(`Subgraph GraphQL errors: ${JSON.stringify(result.errors)}`);
+        }
+
+        const trades = result.data?.trades ?? [];
+        if (trades.length === 0) {
+          break;
+        }
+
+        for (const trade of trades) {
+          const amountWei = new Decimal(trade.acesTokenAmount || '0');
+          if (trade.isBuy) {
+            netWei = netWei.add(amountWei);
+          } else {
+            netWei = netWei.sub(amountWei);
+          }
+        }
+
+        processedTrades += trades.length;
+        skip += trades.length;
+
+        if (trades.length < pageSize) {
+          break;
+        }
+      }
+    } catch (error) {
+      console.error('[TokenService] Failed to aggregate bonding curve liquidity:', error);
+      return {
+        netLiquidityWei: Decimal.max(new Decimal(0), netWei),
+        tradeCount: processedTrades,
+      };
+    }
+
+    // Clamp to zero to avoid negative liquidity when sells exceed buys
+    const clampedWei = Decimal.max(new Decimal(0), netWei);
+
+    this.bondingLiquidityCache.set(normalizedAddress, {
+      netWei: clampedWei,
+      fetchedAt: Date.now(),
+      tradeCount: processedTrades,
+    });
+
+    return {
+      netLiquidityWei: clampedWei,
+      tradeCount: processedTrades,
+    };
   }
 }

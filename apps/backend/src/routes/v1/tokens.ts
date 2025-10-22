@@ -1,12 +1,15 @@
 import { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
+import { Decimal } from 'decimal.js';
 import { TokenService } from '../../services/token-service';
 import { TokenHolderService } from '../../services/token-holder-service';
 import { OHLCVService } from '../../services/ohlcv-service';
 import { SupplyBasedOHLCVService } from '../../services/supply-based-ohlcv-service';
 import { PriceService } from '../../services/price-service';
+import { BitQueryService } from '../../services/bitquery-service';
 import { SupportedTimeframe } from '../../types/subgraph.types';
+import { ACES_TOKEN_ADDRESS } from '../../config/bitquery.config';
 
 const BASE_MAINNET_CHAIN_ID = 8453;
 
@@ -41,6 +44,7 @@ export async function tokensRoutes(fastify: FastifyInstance) {
   const ohlcvService = new OHLCVService(fastify.prisma, tokenService);
   const supplyBasedOHLCVService = new SupplyBasedOHLCVService();
   const priceService = new PriceService(fastify.prisma);
+  const bitQueryService = new BitQueryService();
 
   // Get token data (fetches fresh from subgraph)
   fastify.get(
@@ -436,14 +440,23 @@ export async function tokensRoutes(fastify: FastifyInstance) {
 
         // 1. Fetch token data (has volume24h, currentPriceACES, supply)
         const tokenData = await tokenService.fetchAndUpdateTokenData(address);
+        const isDexMode =
+          tokenData?.phase === 'DEX_TRADING' ||
+          tokenData?.dexLiveAt !== null ||
+          tokenData?.priceSource === 'DEX';
+        const poolAddress = tokenData?.poolAddress;
 
         // 2. Get ACES/USD price for conversions using existing PriceService
         const priceData = await priceService.getAcesPrice();
-        const acesUsdPrice = parseFloat(priceData.priceUSD);
+        const parsedAcesUsdPrice = parseFloat(priceData.priceUSD);
+        const acesUsdPrice = Number.isFinite(parsedAcesUsdPrice) ? parsedAcesUsdPrice : 0;
         fastify.log.info(
           { acesUsdPrice, isStale: priceData.isStale },
           'ACES/USD price fetched from PriceService',
         );
+        const tokenPriceAces = parseFloat(tokenData.currentPriceACES || '0');
+        const tokenPriceUsd = Number.isFinite(acesUsdPrice) ? tokenPriceAces * acesUsdPrice : 0;
+        fastify.log.info({ tokenPriceAces, acesUsdPrice, tokenPriceUsd }, 'Price calculation');
 
         // 3. Get holder count via RPC (with timeout to prevent hanging)
         let holderCount = 0;
@@ -470,23 +483,194 @@ export async function tokensRoutes(fastify: FastifyInstance) {
         const fees = await tokenService.getTotalFees(address);
 
         // 5. Calculate derived metrics
-        // Convert volume from WEI to ACES (divide by 10^18)
-        const volume24hWei = tokenData.volume24h || '0';
-        const volume24hAces = parseFloat(volume24hWei) / 1e18;
-        const volume24hUsd = volume24hAces * acesUsdPrice;
-        fastify.log.info(
-          { volume24hWei, volume24hAces, acesUsdPrice, volume24hUsd },
-          'Volume calculation',
-        );
+        let volume24hAces = 0;
+        let volume24hUsd = 0;
+        let volumeSource: 'dex' | 'bonding_curve' = 'bonding_curve';
 
-        const tokenPriceAces = parseFloat(tokenData.currentPriceACES || '0');
-        const tokenPriceUsd = tokenPriceAces * acesUsdPrice;
-        fastify.log.info({ tokenPriceAces, acesUsdPrice, tokenPriceUsd }, 'Price calculation');
+        if (isDexMode && typeof poolAddress === 'string' && poolAddress.length > 0) {
+          const now = new Date();
+          const from = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+          try {
+            const dexTrades = await bitQueryService.getDexTrades(address, poolAddress, {
+              from,
+              to: now,
+            });
+
+            fastify.log.info(
+              { address, poolAddress, tradeCount: dexTrades.length },
+              'Fetched DEX trades for 24h volume',
+            );
+
+            volume24hUsd = dexTrades.reduce((sum, trade) => {
+              const usd = parseFloat(trade.volumeUsd || '0');
+              return Number.isFinite(usd) ? sum + usd : sum;
+            }, 0);
+
+            volume24hAces = dexTrades.reduce((sum, trade) => {
+              const aces = parseFloat(trade.amountAces || '0');
+              return Number.isFinite(aces) ? sum + aces : sum;
+            }, 0);
+
+            volumeSource = 'dex';
+
+            fastify.log.info(
+              { address, volume24hUsd, volume24hAces },
+              'DEX volume calculation complete',
+            );
+          } catch (dexError) {
+            fastify.log.error(
+              { error: dexError, address, poolAddress },
+              'Failed to fetch DEX trades, falling back to bonding curve volume',
+            );
+          }
+        }
+
+        if (volumeSource === 'bonding_curve') {
+          const volume24hWei = tokenData.volume24h || '0';
+          const parsedAces = parseFloat(volume24hWei) / 1e18;
+          volume24hAces = Number.isFinite(parsedAces) ? parsedAces : 0;
+          volume24hUsd = Number.isFinite(acesUsdPrice) ? volume24hAces * acesUsdPrice : 0;
+
+          fastify.log.info(
+            { volume24hWei, volume24hAces, acesUsdPrice, volume24hUsd },
+            'Bonding curve volume calculation',
+          );
+        }
+
+        let liquidityUsd: number | null = null;
+        let liquiditySource: 'bonding_curve' | 'dex' | null = null;
+
+        if (
+          liquidityUsd === null &&
+          isDexMode &&
+          typeof poolAddress === 'string' &&
+          poolAddress.length > 0
+        ) {
+          try {
+            const poolState = await bitQueryService.getPoolState(poolAddress);
+
+            if (poolState) {
+              const acesAddress = ACES_TOKEN_ADDRESS.toLowerCase();
+              const targetAddress = address.toLowerCase();
+
+              const normalizeReserve = (reserve: string, decimals: number): Decimal => {
+                try {
+                  const value = new Decimal(reserve || '0');
+                  const divisor = new Decimal(10).pow(decimals || 0);
+                  return divisor.eq(0) ? new Decimal(0) : value.div(divisor);
+                } catch (error) {
+                  fastify.log.error(
+                    { error, reserve, decimals },
+                    'Failed to normalize pool reserve',
+                  );
+                  return new Decimal(0);
+                }
+              };
+
+              const token0Address = poolState.token0.address.toLowerCase();
+              const token1Address = poolState.token1.address.toLowerCase();
+
+              const token0Normalized = normalizeReserve(
+                poolState.token0.reserve,
+                poolState.token0.decimals ?? 18,
+              );
+              const token1Normalized = normalizeReserve(
+                poolState.token1.reserve,
+                poolState.token1.decimals ?? 18,
+              );
+
+              let acesReserve = new Decimal(0);
+              let rwaReserve = new Decimal(0);
+
+              if (token0Address === acesAddress) {
+                acesReserve = token0Normalized;
+              } else if (token1Address === acesAddress) {
+                acesReserve = token1Normalized;
+              }
+
+              if (token0Address === targetAddress) {
+                rwaReserve = token0Normalized;
+              } else if (token1Address === targetAddress) {
+                rwaReserve = token1Normalized;
+              }
+
+              const acesUsdDecimal = new Decimal(acesUsdPrice || 0);
+              const acesReserveUsd = acesReserve.mul(acesUsdDecimal);
+
+              let effectiveTokenPriceUsd = new Decimal(tokenPriceUsd || 0);
+              if (
+                (!effectiveTokenPriceUsd.isFinite() || effectiveTokenPriceUsd.lte(0)) &&
+                rwaReserve.gt(0) &&
+                acesReserveUsd.gt(0)
+              ) {
+                effectiveTokenPriceUsd = acesReserveUsd.div(rwaReserve);
+              }
+
+              let liquidityValue = acesReserveUsd;
+              if (rwaReserve.gt(0) && effectiveTokenPriceUsd.gt(0)) {
+                liquidityValue = liquidityValue.add(rwaReserve.mul(effectiveTokenPriceUsd));
+              } else if (acesReserveUsd.gt(0)) {
+                liquidityValue = acesReserveUsd.mul(2);
+              }
+
+              const liquidityValueNumber = liquidityValue.isFinite()
+                ? liquidityValue.toNumber()
+                : 0;
+              liquidityUsd = liquidityValueNumber >= 0 ? liquidityValueNumber : 0;
+              liquiditySource = 'dex';
+              fastify.log.info(
+                {
+                  address,
+                  poolAddress,
+                  liquidityUsd,
+                  acesReserve: acesReserve.toString(),
+                  rwaReserve: rwaReserve.toString(),
+                },
+                'Calculated DEX liquidity',
+              );
+            }
+          } catch (error) {
+            fastify.log.error(
+              { error, address, poolAddress },
+              'Failed to compute DEX liquidity via BitQuery',
+            );
+          }
+        }
+
+        if (liquidityUsd === null) {
+          try {
+            const { netLiquidityWei } = await tokenService.getBondingCurveLiquidity(address);
+            const liquidityAces = netLiquidityWei.div(new Decimal(10).pow(18));
+            const liquidityValue = liquidityAces.mul(new Decimal(acesUsdPrice || 0));
+
+            if (liquidityValue.gt(0)) {
+              liquidityUsd = liquidityValue.toNumber();
+              liquiditySource = 'bonding_curve';
+            } else {
+              liquidityUsd = null;
+            }
+
+            fastify.log.info(
+              {
+                address,
+                liquidityUsd,
+                liquiditySource,
+                liquidityAces: liquidityAces.toString(),
+              },
+              'Calculated bonding curve liquidity',
+            );
+          } catch (error) {
+            fastify.log.error(
+              { error, address },
+              'Failed to compute bonding curve liquidity from subgraph',
+            );
+            liquidityUsd = null;
+          }
+        }
 
         // Determine supply based on token state (bonding curve vs DEX)
-        // TODO: Check if token has graduated to DEX to use 1B supply
-        // For now, assume bonding curve (800M) unless we have DEX metadata
-        const supply = 800_000_000; // Will be updated when DEX detection is added
+        const supply = isDexMode ? 1_000_000_000 : 800_000_000;
         const marketCapUsd = tokenPriceUsd * supply;
 
         const totalFeesAces = parseFloat(fees.acesAmount);
@@ -503,6 +687,8 @@ export async function tokensRoutes(fastify: FastifyInstance) {
             holderCount,
             totalFeesUsd,
             totalFeesAces: fees.acesAmount,
+            liquidityUsd,
+            liquiditySource,
           },
         });
       } catch (error) {
