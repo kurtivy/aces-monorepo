@@ -144,7 +144,7 @@ export const drawCustomLogoBanner = (
   ctx.fillText('.FUN', funX, funY);
 
   // --- Tagline ---
-  const tagline = 'TRADE TOKENIZED COLLECTIBLES';
+  const tagline = 'Trade Collectible Hype Markets';
   const taglineY = bottomY + taglineOffset;
 
   // Align tagline to the right edge of ".FUN" text instead of container edge

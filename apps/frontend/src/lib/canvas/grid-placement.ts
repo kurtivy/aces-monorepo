@@ -289,9 +289,15 @@ export const getImageCandidatesForPosition = (
 
     // NEW: Filter images based on boundary constraints
     const boundaryFilteredImages = validImages.filter((img) => {
-      // At tile boundaries, only allow square images (including submit-asset)
+      // At tile boundaries, only allow square images (including submit-asset and interactive squares)
       if (isAtTileBoundary) {
-        return img.type === 'square' || img.type === 'submit-asset';
+        return (
+          img.type === 'square' ||
+          img.type === 'submit-asset' ||
+          img.metadata?.id === 'click-to-trade' ||
+          img.metadata?.id === 'pretty-rare-tv' ||
+          img.metadata?.id === 'drvn'
+        );
       }
       // In tile interior, allow all image types but prefer non-squares
       return true;
@@ -362,7 +368,13 @@ export const getImageCandidatesForPosition = (
 
   // Filter out duplicates and ensure complete images/videos
   return Array.from(new Set(candidates)).filter((img) => {
-    if (img.type === 'submit-asset') return true;
+    if (
+      img.type === 'submit-asset' ||
+      img.metadata?.id === 'click-to-trade' ||
+      img.metadata?.id === 'pretty-rare-tv' ||
+      img.metadata?.id === 'drvn'
+    )
+      return true;
     // Check if it's an image and complete, or a video
     if (img.element instanceof HTMLImageElement) {
       return img.element.complete;

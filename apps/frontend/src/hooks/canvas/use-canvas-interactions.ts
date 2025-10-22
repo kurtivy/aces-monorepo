@@ -240,8 +240,14 @@ export const useCanvasInteractions = ({
         if (!placedItem?.image) continue;
         const { image, x, y, width, height } = placedItem;
 
-        // Skip submit-asset images (they already have their own hover system)
-        if (image.type === 'submit-asset') continue;
+        // Skip interactive squares from product hover detection
+        if (
+          image.type === 'submit-asset' ||
+          image.metadata.id === 'click-to-trade' ||
+          image.metadata.id === 'pretty-rare-tv' ||
+          image.metadata.id === 'drvn'
+        )
+          continue;
 
         if (worldX >= x && worldX <= x + width && worldY >= y && worldY <= y + height) {
           hoveredImage = { image, x, y, width, height, isRepeated: false };
@@ -253,8 +259,14 @@ export const useCanvasInteractions = ({
       if (!hoveredImage && repeatedPlacements) {
         for (const tilePlacements of repeatedPlacements.values()) {
           for (const placement of tilePlacements) {
-            // Skip submit-asset images (they already have their own hover system)
-            if (placement.image.type === 'submit-asset') continue;
+            // Skip interactive squares from product hover detection
+            if (
+              placement.image.type === 'submit-asset' ||
+              placement.image.metadata.id === 'click-to-trade' ||
+              placement.image.metadata.id === 'pretty-rare-tv' ||
+              placement.image.metadata.id === 'drvn'
+            )
+              continue;
 
             if (
               worldX >= placement.x &&
@@ -464,6 +476,23 @@ export const useCanvasInteractions = ({
       }
 
       if (clickedImage) {
+        // Handle special interactive squares
+        if (clickedImage.metadata.id === 'click-to-trade') {
+          window.location.href = '/rwa/apk';
+          return;
+        }
+        if (clickedImage.metadata.id === 'pretty-rare-tv') {
+          window.open(
+            'https://www.youtube.com/watch?v=p4wGZNWjMHA&list=PLaNaS35sxPHFoaR3P0YBhU-vVcmZi10dZ',
+            '_blank',
+          );
+          return;
+        }
+        if (clickedImage.metadata.id === 'drvn') {
+          // No action yet
+          return;
+        }
+
         // Skip submit-asset images - they are non-interactive
         if (clickedImage.type === 'submit-asset') {
           return;

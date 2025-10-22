@@ -831,6 +831,65 @@ export const useCanvasRenderer = ({
       }
     }
 
+    // PRIORITY PLACEMENT: Place interactive squares first in visible area around home/featured section
+    // Find the three interactive square images
+    const clickToTradeImage = images.find((img) => img.metadata.id === 'click-to-trade');
+    const prettyRareTVImage = images.find((img) => img.metadata.id === 'pretty-rare-tv');
+    const drvnImage = images.find((img) => img.metadata.id === 'drvn');
+
+    // Define priority placement positions around the home/featured area (within 2 units)
+    // These positions are strategically placed to be visible on initial load
+    const priorityPositions = [
+      // Left side of featured section (2 units left) - Click to Trade
+      { x: totalReservedAreaWorldX - unitSize * 2, y: totalReservedAreaWorldY + unitSize },
+      // Right side of featured section (1 unit right) - Pretty Rare TV
+      {
+        x: totalReservedAreaWorldX + totalReservedAreaWidth + unitSize,
+        y: totalReservedAreaWorldY + unitSize,
+      },
+      // Left side, below Click to Trade (touching it) - DRVN
+      {
+        x: totalReservedAreaWorldX - unitSize * 2,
+        y: totalReservedAreaWorldY + unitSize * 2,
+      },
+    ];
+
+    const interactiveSquares = [clickToTradeImage, prettyRareTVImage, drvnImage].filter(
+      (img) => img !== undefined,
+    ) as ImageInfo[];
+
+    // Place interactive squares at priority positions first
+    interactiveSquares.forEach((imageInfo, index) => {
+      if (index < priorityPositions.length) {
+        const pos = priorityPositions[index];
+        const { width, height } = getDisplayDimensions(imageInfo.type, unitSize);
+        const gridX = Math.floor(pos.x / unitSize);
+        const gridY = Math.floor(pos.y / unitSize);
+
+        // Check if position is available and doesn't overlap reserved area
+        if (
+          !occupiedSpaces.has(`${gridX},${gridY}`) &&
+          canPlaceImage(
+            pos.x,
+            pos.y,
+            { ...imageInfo, displayWidth: width, displayHeight: height },
+            occupiedSpaces,
+            unitSize,
+            totalReservedAreaWorldX,
+            totalReservedAreaWorldY,
+            totalReservedAreaWidth,
+            totalReservedAreaHeight,
+          )
+        ) {
+          const placedItem = { image: imageInfo, x: pos.x, y: pos.y, width, height };
+          imagePlacementMap.current.set(`${gridX},${gridY}`, placedItem);
+          createTokenPositions.push({ worldX: pos.x, worldY: pos.y, element: imageInfo.element });
+          recordImagePlacement(gridX, gridY, imageInfo);
+          markSpaceOccupied(pos.x, pos.y, width, height, occupiedSpaces, unitSize);
+        }
+      }
+    });
+
     let productIndex = 0;
     const totalCells = ((gridEndY - gridStartY) / unitSize) * ((gridEndX - gridStartX) / unitSize);
     let processedCells = 0;
@@ -882,7 +941,12 @@ export const useCanvasRenderer = ({
             const placedItem = { image: imageInfo, x, y, width, height };
             imagePlacementMap.current.set(`${gridX},${gridY}`, placedItem);
 
-            if (imageInfo.type === 'submit-asset') {
+            if (
+              imageInfo.type === 'submit-asset' ||
+              imageInfo.metadata.id === 'click-to-trade' ||
+              imageInfo.metadata.id === 'pretty-rare-tv' ||
+              imageInfo.metadata.id === 'drvn'
+            ) {
               createTokenPositions.push({ worldX: x, worldY: y, element: imageInfo.element });
             } else {
               productPlacements.push({
@@ -1105,8 +1169,14 @@ export const useCanvasRenderer = ({
         if (!placedItem?.image) continue;
         const { image, x, y, width, height } = placedItem;
 
-        // Skip submit-asset images (they already have their own hover system)
-        if (image.type === 'submit-asset') continue;
+        // Skip interactive squares from hover effects in renderer
+        if (
+          image.type === 'submit-asset' ||
+          image.metadata.id === 'click-to-trade' ||
+          image.metadata.id === 'pretty-rare-tv' ||
+          image.metadata.id === 'drvn'
+        )
+          continue;
 
         if (worldX >= x && worldX <= x + width && worldY >= y && worldY <= y + height) {
           hoveredImage = { image, x, y, width, height, isRepeated: false };
@@ -1118,8 +1188,14 @@ export const useCanvasRenderer = ({
       if (!hoveredImage && repeatedPlacements.current) {
         for (const tilePlacements of repeatedPlacements.current.values()) {
           for (const placement of tilePlacements) {
-            // Skip submit-asset images (they already have their own hover system)
-            if (placement.image.type === 'submit-asset') continue;
+            // Skip interactive squares from hover effects in renderer
+            if (
+              placement.image.type === 'submit-asset' ||
+              placement.image.metadata.id === 'click-to-trade' ||
+              placement.image.metadata.id === 'pretty-rare-tv' ||
+              placement.image.metadata.id === 'drvn'
+            )
+              continue;
 
             if (
               worldX >= placement.x &&

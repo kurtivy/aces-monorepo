@@ -379,31 +379,45 @@ As one of the pioneering NFT projects that defined the digital art and collectib
     marketCap: 197260,
     tokenSupply: 100000,
   },
-  // Special submit asset image to replace create token squares (alternating)
+  // Click to Trade square - redirects to /rwa/apk
   {
-    id: 'submit-asset',
-    title: 'ACES Description',
-    description:
-      'Learn about ACES platform. Transform your high-value collectibles, art, vehicles, and other assets into tradeable digital tokens.',
-    date: '2024-03-15',
-    countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
-    ticker: '$SUBMIT',
-    image: '/webp/aces-description.webp',
-    rrp: 0, // Special asset, no price
-    tokenPrice: 0,
-    marketCap: 0,
-    tokenSupply: 0,
-  },
-  // Special submit asset VIDEO to replace create token squares (alternating with image)
-  {
-    id: 'submit-asset-video',
+    id: 'click-to-trade',
     title: 'Click to Trade',
     description:
       'Click to trade luxury assets on the ACES platform. Transform your high-value collectibles, art, vehicles, and other assets into tradeable digital tokens.',
     date: '2024-03-15',
     countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
-    ticker: '$SUBMIT',
-    image: '/webp/click-to-trade.mp4', // Video file
+    ticker: '$LAUNCH',
+    image: '/webp/clicktotrade.webp',
+    rrp: 0, // Special asset, no price
+    tokenPrice: 0,
+    marketCap: 0,
+    tokenSupply: 0,
+  },
+  // Pretty Rare TV square - opens YouTube channel
+  {
+    id: 'pretty-rare-tv',
+    title: 'Pretty Rare TV',
+    description:
+      'Watch ACES content on YouTube. Subscribe to our channel for the latest updates on luxury asset tokenization.',
+    date: '2024-03-15',
+    countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
+    ticker: '$PRETTYRARE',
+    image: '/webp/pretty-rare-tv.webp',
+    rrp: 0, // Special asset, no price
+    tokenPrice: 0,
+    marketCap: 0,
+    tokenSupply: 0,
+  },
+  // DRVN square - no click action yet
+  {
+    id: 'drvn',
+    title: 'DRVN',
+    description: 'DRVN - Coming Soon',
+    date: '2024-03-15',
+    countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
+    ticker: '$DRVN',
+    image: '/webp/drvn-square.webp',
     rrp: 0, // Special asset, no price
     tokenPrice: 0,
     marketCap: 0,

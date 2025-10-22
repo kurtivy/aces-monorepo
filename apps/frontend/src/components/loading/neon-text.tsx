@@ -219,7 +219,7 @@ const NeonText: React.FC<NeonTextProps> = ({ isComplete = false, skipLetterAnima
           className="text-base sm:text-lg md:text-xl lg:text-xl text-[#D7BF75]/80 font-light tracking-wide uppercase"
           style={{ fontFamily: '"Metropolis", sans-serif', fontWeight: '300' }}
         >
-          Own different.
+          Buy Culture. Trade Hype.
         </p>
       </motion.div>
     </div>
