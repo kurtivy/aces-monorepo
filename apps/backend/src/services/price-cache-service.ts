@@ -10,7 +10,7 @@ interface CachedPricePayload {
   isStale: boolean;
 }
 
-const DEFAULT_TTL_MS = Number(process.env.PRICE_CACHE_TTL_MS || 60_000);
+const DEFAULT_TTL_MS = Number(process.env.PRICE_CACHE_TTL_MS || 30000);
 const COINGECKO_ENDPOINT =
   'https://api.coingecko.com/api/v3/simple/price?ids=weth,usd-coin,tether&vs_currencies=usd';
 

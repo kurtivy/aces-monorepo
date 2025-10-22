@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { isValidEthereumAddress } from '@/lib/validation/address';
+import { fetchTokenHealth, clearHealthCache } from '@/lib/api/token-health';
 
 interface MarketCapData {
   marketCapAces: number;
@@ -82,63 +83,18 @@ export function MarketCapProvider({ children }: MarketCapProviderProps) {
       }
 
       try {
-        const apiUrl = resolveApiBaseUrl();
-        const response = await fetch(
-          `${apiUrl}/api/v1/chart/${tokenAddress}/market-cap?timeframe=5m&limit=1&currency=${currency}`,
-          {
-            signal: AbortSignal.timeout(5000),
-          },
-        );
+        // Use unified health endpoint (automatically deduped)
+        const healthData = await fetchTokenHealth(tokenAddress, 8453, currency);
 
-        if (!response.ok) {
-          if (response.status === 429) {
-            throw new Error('RATE_LIMITED');
-          }
-          throw new Error(`HTTP ${response.status}`);
-        }
-
-        const result = await response.json();
-
-        if (!result.success || !result.data?.candles || result.data.candles.length === 0) {
+        if (!healthData.marketCapData) {
           throw new Error('No market cap data available');
-        }
-
-        // Get the most recent candle
-        const latestCandle = result.data.candles[result.data.candles.length - 1];
-        const marketCap = parseFloat(latestCandle.close || '0');
-        const supply = parseFloat(latestCandle.circulatingSupply || '0');
-        const priceInCurrency = supply > 0 ? marketCap / supply : 0;
-        const acesUsdPrice = parseFloat(result.data.acesUsdPrice || '1');
-
-        let marketCapAces: number;
-        let marketCapUsd: number;
-        let currentPriceAces: number;
-        let currentPriceUsd: number;
-
-        if (currency === 'usd') {
-          marketCapUsd = marketCap;
-          marketCapAces = acesUsdPrice > 0 ? marketCap / acesUsdPrice : 0;
-          currentPriceUsd = priceInCurrency;
-          currentPriceAces = acesUsdPrice > 0 ? priceInCurrency / acesUsdPrice : 0;
-        } else {
-          marketCapAces = marketCap;
-          marketCapUsd = marketCap * acesUsdPrice;
-          currentPriceAces = priceInCurrency;
-          currentPriceUsd = priceInCurrency * acesUsdPrice;
         }
 
         // Update state
         setTokenDataMap((prev) => {
           const newMap = new Map(prev);
           newMap.set(cacheKey, {
-            data: {
-              marketCapAces,
-              marketCapUsd,
-              circulatingSupply: supply,
-              currentPriceAces,
-              currentPriceUsd,
-              lastUpdated: Date.now(),
-            },
+            data: healthData.marketCapData,
             loading: false,
             error: null,
             lastFetch: Date.now(),
@@ -182,7 +138,7 @@ export function MarketCapProvider({ children }: MarketCapProviderProps) {
         });
       }
     },
-    [getCacheKey, resolveApiBaseUrl],
+    [getCacheKey],
   );
 
   const startPollingToken = useCallback(

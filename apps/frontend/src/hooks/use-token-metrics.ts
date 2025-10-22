@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { TokensApi, type TokenMetrics } from '@/lib/api/tokens';
+import { fetchTokenHealth } from '@/lib/api/token-health';
 
 interface UseTokenMetricsResult {
   metrics: TokenMetrics | null;
@@ -31,19 +32,40 @@ export function useTokenMetrics(
     }
 
     try {
-      const result = await TokensApi.getTokenMetrics(tokenAddress);
+      // Use unified health endpoint (automatically deduped)
+      const healthData = await fetchTokenHealth(tokenAddress, 8453, 'usd');
 
-      if (result.success) {
+      if (healthData.metricsData) {
         // Preserve previous liquidity value if new value is null but we had a valid value before
         // This prevents flickering when ACES price is temporarily unavailable
-        const updatedMetrics = { ...result.data };
+        const updatedMetrics: TokenMetrics = {
+          contractAddress: healthData.metricsData.contractAddress,
+          volume24hUsd: healthData.metricsData.volume24hUsd,
+          volume24hAces: healthData.metricsData.volume24hAces,
+          marketCapUsd: healthData.metricsData.marketCapUsd,
+          tokenPriceUsd: healthData.metricsData.tokenPriceUsd,
+          holderCount: healthData.metricsData.holderCount,
+          totalFeesUsd: healthData.metricsData.totalFeesUsd,
+          totalFeesAces: healthData.metricsData.totalFeesAces,
+          liquidityUsd:
+            healthData.metricsData.liquidityUsd === null &&
+            metrics?.liquidityUsd !== null &&
+            metrics?.liquidityUsd !== undefined
+              ? metrics.liquidityUsd
+              : healthData.metricsData.liquidityUsd,
+          liquiditySource:
+            healthData.metricsData.liquidityUsd === null &&
+            metrics?.liquiditySource !== null &&
+            metrics?.liquiditySource !== undefined
+              ? metrics.liquiditySource
+              : healthData.metricsData.liquiditySource,
+        };
+
         if (
-          result.data.liquidityUsd === null &&
+          healthData.metricsData.liquidityUsd === null &&
           metrics?.liquidityUsd !== null &&
           metrics?.liquidityUsd !== undefined
         ) {
-          updatedMetrics.liquidityUsd = metrics.liquidityUsd;
-          updatedMetrics.liquiditySource = metrics.liquiditySource;
           console.log(
             '[useTokenMetrics] ⚠️ Preserving previous liquidity value:',
             metrics.liquidityUsd,
@@ -55,8 +77,8 @@ export function useTokenMetrics(
         setMetrics(updatedMetrics);
         setError(null);
       } else {
-        console.error('[useTokenMetrics] ❌ Failed to fetch metrics:', result.error);
-        setError(result.error);
+        console.error('[useTokenMetrics] ❌ No metrics data in health response');
+        setError('No metrics data available');
         // Keep previous metrics on error to avoid flickering
       }
     } catch (err) {

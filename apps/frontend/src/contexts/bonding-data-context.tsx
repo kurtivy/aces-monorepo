@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
+import { fetchTokenHealth } from '@/lib/api/token-health';
 
 interface BondingData {
   curve: number;
@@ -15,7 +16,12 @@ interface BondingData {
   bondingPercentage: number;
   chainId: number;
   lastUpdated: number;
-  bondingTargetSource?: 'contract' | 'max_total_supply' | 'subgraph' | 'listing_parameters' | 'default';
+  bondingTargetSource?:
+    | 'contract'
+    | 'max_total_supply'
+    | 'subgraph'
+    | 'listing_parameters'
+    | 'default';
 }
 
 interface TokenBondingState {
@@ -65,15 +71,15 @@ export function BondingDataProvider({ children }: BondingDataProviderProps) {
   // Track subscribers for each token
   const subscribers = useRef<Map<string, Set<() => void>>>(new Map());
 
-  const resolveApiBaseUrl = useCallback(() => {
-    if (process.env.NEXT_PUBLIC_API_URL) {
-      return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
-    }
-    if (typeof window !== 'undefined' && window.location?.origin) {
-      return window.location.origin;
-    }
-    return '';
-  }, []);
+  // const resolveApiBaseUrl = useCallback(() => {
+  //   if (process.env.NEXT_PUBLIC_API_URL) {
+  //     return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
+  //   }
+  //   if (typeof window !== 'undefined' && window.location?.origin) {
+  //     return window.location.origin;
+  //   }
+  //   return '';
+  // }, []);
 
   const getCacheKey = useCallback((tokenAddress: string, chainId: number = 8453) => {
     return `${tokenAddress.toLowerCase()}-${chainId}`;
@@ -117,30 +123,16 @@ export function BondingDataProvider({ children }: BondingDataProviderProps) {
       inFlight.current.set(cacheKey, true);
 
       try {
-        const apiUrl = resolveApiBaseUrl();
-        const response = await fetch(
-          `${apiUrl}/api/v1/bonding/${tokenAddress}/data?chainId=${chainId}`,
-          {
-            signal: AbortSignal.timeout(5000),
-          },
-        );
+        // Use unified health endpoint (automatically deduped)
+        const healthData = await fetchTokenHealth(tokenAddress, chainId, 'usd');
 
-        if (!response.ok) {
-          if (response.status === 429) {
-            throw new Error('RATE_LIMITED');
-          }
-          throw new Error(`HTTP ${response.status}`);
-        }
-
-        const result = await response.json();
-
-        if (!result.success || !result.data) {
-          throw new Error('Invalid response format');
+        if (!healthData.bondingData) {
+          throw new Error('No bonding data in response');
         }
 
         // Update ref directly
         tokenDataMapRef.current.set(cacheKey, {
-          data: result.data,
+          data: healthData.bondingData,
           loading: false,
           error: null,
           lastFetch: Date.now(),
@@ -183,7 +175,7 @@ export function BondingDataProvider({ children }: BondingDataProviderProps) {
         inFlight.current.set(cacheKey, false);
       }
     },
-    [getCacheKey, resolveApiBaseUrl, stopPollingToken, notifySubscribers],
+    [getCacheKey, stopPollingToken, notifySubscribers],
   );
 
   const startPollingToken = useCallback(

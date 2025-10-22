@@ -47,6 +47,175 @@ export async function tokensRoutes(fastify: FastifyInstance) {
   const supplyBasedOHLCVService = new SupplyBasedOHLCVService();
   const bitQueryService = new BitQueryService();
 
+  // Unified health endpoint - combines bonding data, market cap, and metrics
+  // MUST come before /:address route to avoid route conflicts
+  fastify.get(
+    '/:address/health',
+    {
+      schema: {
+        params: zodToJsonSchema(
+          z.object({
+            address: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+          }),
+        ),
+        querystring: zodToJsonSchema(
+          z.object({
+            chainId: z.string().optional(),
+            currency: z.enum(['usd', 'aces']).optional().default('usd'),
+          }),
+        ),
+      },
+    },
+    async (
+      request: FastifyRequest<{
+        Params: TokenParams;
+        Querystring: { chainId?: string; currency?: 'usd' | 'aces' };
+      }>,
+      reply,
+    ) => {
+      try {
+        const { address } = request.params;
+        const { chainId: chainIdStr, currency = 'usd' } = request.query;
+        const chainId = chainIdStr ? parseInt(chainIdStr) : BASE_MAINNET_CHAIN_ID;
+
+        fastify.log.info({ address, chainId }, '🏥 [Health] Fetching unified health data');
+
+        // Get base URL for internal API calls
+        const protocol = request.headers['x-forwarded-proto'] || request.protocol;
+        const host = request.headers['x-forwarded-host'] || request.hostname;
+        const baseUrl = `${protocol}://${host}`;
+
+        // Fetch all data in parallel for maximum performance
+        const [bondingResponse, metricsResponse, marketCapResponse] = await Promise.allSettled([
+          // 1. Bonding data
+          fetch(`${baseUrl}/api/v1/bonding/${address}/data?chainId=${chainId}`).then((r) =>
+            r.json(),
+          ),
+
+          // 2. Metrics data
+          fetch(`${baseUrl}/api/v1/tokens/${address}/metrics?chainId=${chainId}`).then((r) =>
+            r.json(),
+          ),
+
+          // 3. Market cap (latest candle only)
+          fetch(
+            `${baseUrl}/api/v1/chart/${address}/market-cap?timeframe=5m&limit=1&currency=${currency}`,
+          ).then((r) => r.json()),
+        ]);
+
+        // Extract data from results
+        const bondingData =
+          bondingResponse.status === 'fulfilled' &&
+          (bondingResponse.value as { success: boolean; data: unknown })?.success
+            ? (bondingResponse.value as { success: boolean; data: unknown }).data
+            : null;
+
+        type MetricsResponseType = { success: boolean; data: unknown };
+        const metricsData =
+          metricsResponse.status === 'fulfilled' &&
+          (metricsResponse.value as MetricsResponseType)?.success
+            ? (metricsResponse.value as MetricsResponseType).data
+            : null;
+
+        let marketCapData = null;
+        if (
+          marketCapResponse.status === 'fulfilled' &&
+          (marketCapResponse.value as { success?: boolean })?.success
+        ) {
+          const result = (marketCapResponse.value as { success?: boolean; data: unknown })?.data;
+          const latestCandle = (
+            result as { candles: { close: string; circulatingSupply: string }[] }
+          )?.candles?.[
+            (result as { candles: { close: string; circulatingSupply: string }[] })?.candles
+              .length - 1
+          ];
+
+          if (latestCandle) {
+            const marketCap = parseFloat(latestCandle.close || '0');
+            const supply = parseFloat(latestCandle.circulatingSupply || '0');
+            const priceInCurrency = supply > 0 ? marketCap / supply : 0;
+            const acesUsdPrice = parseFloat(
+              (result as { acesUsdPrice: string })?.acesUsdPrice || '1',
+            );
+
+            let marketCapAces: number;
+            let marketCapUsd: number;
+            let currentPriceAces: number;
+            let currentPriceUsd: number;
+
+            if (currency === 'usd') {
+              marketCapUsd = marketCap;
+              marketCapAces = acesUsdPrice > 0 ? marketCap / acesUsdPrice : 0;
+              currentPriceUsd = priceInCurrency;
+              currentPriceAces = acesUsdPrice > 0 ? priceInCurrency / acesUsdPrice : 0;
+            } else {
+              marketCapAces = marketCap;
+              marketCapUsd = marketCap * acesUsdPrice;
+              currentPriceAces = priceInCurrency;
+              currentPriceUsd = priceInCurrency * acesUsdPrice;
+            }
+
+            marketCapData = {
+              marketCapAces,
+              marketCapUsd,
+              circulatingSupply: supply,
+              currentPriceAces,
+              currentPriceUsd,
+              lastUpdated: Date.now(),
+            };
+          }
+        }
+
+        // Log any failures
+        if (bondingResponse.status === 'rejected') {
+          fastify.log.warn(
+            { error: bondingResponse.reason },
+            '⚠️ [Health] Bonding data fetch failed',
+          );
+        }
+        if (metricsResponse.status === 'rejected') {
+          fastify.log.warn(
+            { error: metricsResponse.reason },
+            '⚠️ [Health] Metrics data fetch failed',
+          );
+        }
+        if (marketCapResponse.status === 'rejected') {
+          fastify.log.warn(
+            { error: marketCapResponse.reason },
+            '⚠️ [Health] Market cap fetch failed',
+          );
+        }
+
+        fastify.log.info(
+          {
+            address,
+            hasBonding: !!bondingData,
+            hasMetrics: !!metricsData,
+            hasMarketCap: !!marketCapData,
+          },
+          '✅ [Health] Unified health data fetched',
+        );
+
+        return reply.send({
+          success: true,
+          data: {
+            bondingData,
+            metricsData,
+            marketCapData,
+          },
+          timestamp: Date.now(),
+        });
+      } catch (error) {
+        fastify.log.error({ error }, '❌ [Health] Failed to fetch unified health data');
+        return reply.code(500).send({
+          success: false,
+          error: 'Failed to fetch token health data',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    },
+  );
+
   // Get token data (fetches fresh from subgraph)
   fastify.get(
     '/:address',
