@@ -132,6 +132,7 @@ const MobileCommentsHistorySection = forwardRef<HTMLDivElement, MobileCommentsHi
                 rrp={listing.rrp || listing.reservePrice}
                 brand={listing.brand}
                 hypePoints={listing.hypePoints}
+                hypeSentence={listing.hypeSentence}
                 marketCap={marketCapUsd}
                 dexMeta={listing.dex || null}
                 liveTokenPrice={liveTokenPrice}

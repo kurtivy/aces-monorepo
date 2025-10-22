@@ -12,6 +12,7 @@ interface TokenMetricsSectionProps {
   rrp?: string | null;
   brand?: string | null;
   hypePoints?: string[] | null;
+  hypeSentence?: string | null;
   marketCap?: number;
   dexMeta?: {
     poolAddress: string | null;
@@ -37,11 +38,29 @@ export function TokenMetricsSection({
   rrp,
   brand,
   hypePoints,
+  hypeSentence,
   marketCap,
   dexMeta,
   liveTokenPrice,
 }: TokenMetricsSectionProps) {
-  const hasHypePoints = hypePoints && hypePoints.length > 0;
+  const hasHypePoints =
+    Array.isArray(hypePoints) && hypePoints.some((point) => point && point.trim().length > 0);
+
+  const hypeDescription = useMemo(() => {
+    const sentence = hypeSentence?.trim();
+    if (sentence) {
+      return sentence;
+    }
+
+    if (hasHypePoints && hypePoints) {
+      return hypePoints
+        .filter((point) => point && point.trim().length > 0)
+        .map((point) => point.trim())
+        .join(' • ');
+    }
+
+    return 'Hype details coming soon.';
+  }, [hypeSentence, hypePoints, hasHypePoints]);
 
   // Fetch aggregated token metrics (includes volume in ACES + USD)
   const { metrics, loading: metricsLoading } = useTokenMetrics(tokenAddress);
@@ -136,9 +155,7 @@ export function TokenMetricsSection({
               </span>
             </div>
             <p className="text-xs font-proxima-nova text-white/90">
-              A groundbreaking collaboration between haute horology and contemporary art, this
-              Audemars Piguet Royal Oak Concept is a limited edition masterpiece designed with the
-              artist KAWS.
+              {hypeDescription}
             </p>
           </div>
         </div>

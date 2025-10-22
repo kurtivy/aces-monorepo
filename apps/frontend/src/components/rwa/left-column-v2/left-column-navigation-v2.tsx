@@ -117,6 +117,7 @@ export function LeftColumnNavigationV2({
             rrp={listing.rrp || listing.reservePrice}
             brand={listing.brand}
             hypePoints={listing.hypePoints}
+            hypeSentence={listing.hypeSentence}
             marketCap={marketCapUSD}
             dexMeta={listing.dex || null}
             liveTokenPrice={liveTokenPrice}
