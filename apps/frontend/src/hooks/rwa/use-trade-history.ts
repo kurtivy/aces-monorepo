@@ -26,7 +26,7 @@ interface TradeHistoryOptions {
 }
 
 export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptions = {}) => {
-  const { intervalMs = 750, dexMeta } = options; // 750ms for ultra-fast real-time updates (matches chart WebSocket polling)
+  const { intervalMs = 3000, dexMeta } = options; // 3s for real-time updates - reduced from 750ms to prevent rate limiting
 
   // Track graduation state dynamically - can change mid-session
   const [detectedGraduationState, setDetectedGraduationState] = useState<{

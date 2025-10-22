@@ -24,6 +24,10 @@ interface McapDataSubscription {
 }
 
 export class MarketCapDatafeed implements IBasicDataFeed {
+  // Shared cache across all instances (persists when switching modes)
+  private static historyCache = new Map<string, Bar[]>();
+  private static lastHistoricalBarByTimeframe = new Map<string, Bar>();
+
   // Subscript digit map for zero-count notation (0.0₅487)
   private static readonly SUBSCRIPT_MAP: Record<string, string> = {
     '0': '₀',
@@ -113,13 +117,16 @@ export class MarketCapDatafeed implements IBasicDataFeed {
 
   private tokenAddress: string;
   private readonly currency = 'usd' as const;
-  private historyCache = new Map<string, Bar[]>();
-  private lastHistoricalBarByTimeframe = new Map<string, Bar>();
   private mcapSubscription: McapDataSubscription | null = null;
   private currentResolution: ResolutionString | null = null;
 
   constructor(tokenAddress: string) {
     this.tokenAddress = tokenAddress.toLowerCase();
+  }
+
+  private getCacheKey(timeframe: string): string {
+    // Scope by token + timeframe + mode + currency
+    return `${this.tokenAddress}:${timeframe}:mcap:${this.currency}`;
   }
 
   searchSymbols() {
@@ -199,8 +206,12 @@ export class MarketCapDatafeed implements IBasicDataFeed {
     onErrorCallback: (error: string) => void,
   ) {
     const timeframe = this.resolutionToTimeframe(resolution);
-    const cacheKey = `${timeframe}_usd`;
-    const cachedBars = this.historyCache.get(cacheKey);
+    const cacheKey = this.getCacheKey(timeframe);
+    const cachedBars = MarketCapDatafeed.historyCache.get(cacheKey);
+
+    console.log(
+      `[MarketCapDatafeed] getBars called for ${timeframe}, firstRequest: ${periodParams.firstDataRequest}, cached: ${!!cachedBars}`,
+    );
 
     // Track current resolution for WebSocket validation
     this.currentResolution = resolution;
@@ -229,11 +240,11 @@ export class MarketCapDatafeed implements IBasicDataFeed {
         }
 
         // Cache the bars with specific key
-        this.historyCache.set(cacheKey, bars);
+        MarketCapDatafeed.historyCache.set(cacheKey, bars);
 
         // Track last bar for WebSocket subscriptions
         if (bars.length > 0) {
-          this.lastHistoricalBarByTimeframe.set(timeframe, bars[bars.length - 1]);
+          MarketCapDatafeed.lastHistoricalBarByTimeframe.set(cacheKey, bars[bars.length - 1]);
           console.log(`[MarketCapDatafeed] Sample market cap value (${timeframe}):`, bars[0].close);
         }
 
@@ -253,6 +264,7 @@ export class MarketCapDatafeed implements IBasicDataFeed {
     onResetCacheNeededCallback: () => void,
   ) {
     const timeframe = this.resolutionToTimeframe(resolution);
+    const cacheKey = this.getCacheKey(timeframe);
 
     console.log(`[MarketCapDatafeed] 🔔 Subscribe to bars: ${timeframe} (${subscriberUID})`);
 
@@ -281,20 +293,9 @@ export class MarketCapDatafeed implements IBasicDataFeed {
       this.mcapSubscription = null;
     }
 
-    // Clear cache if switching timeframes to prevent stale data
-    const cacheKey = `${timeframe}_usd`;
-    if (this.currentResolution !== resolution) {
-      console.log(
-        `[MarketCapDatafeed] 🔄 Timeframe changed (${this.currentResolution} → ${resolution}), clearing relevant cache`,
-      );
-      // Only clear cache for different timeframes, keep current one
-      for (const [key] of this.historyCache) {
-        if (key !== cacheKey) {
-          this.historyCache.delete(key);
-        }
-      }
-    }
-
+    // Update resolution tracking
+    // Note: We don't aggressively clear cache here anymore - let TradingView manage it
+    // Only clear on explicit events like graduation
     this.currentResolution = resolution;
 
     // Create new subscription
@@ -306,7 +307,7 @@ export class MarketCapDatafeed implements IBasicDataFeed {
       onRealtimeCallback,
       onResetCacheNeededCallback,
       isActive: true,
-      lastBar: this.cloneBar(this.lastHistoricalBarByTimeframe.get(timeframe) || null),
+      lastBar: this.cloneBar(MarketCapDatafeed.lastHistoricalBarByTimeframe.get(cacheKey) || null),
       ws: null,
       reconnectTimeout: null,
       createdAt: Date.now(), // Track when subscription was created
@@ -442,8 +443,8 @@ export class MarketCapDatafeed implements IBasicDataFeed {
       return;
     }
 
-    if (subscription.createdAt && Date.now() - subscription.createdAt < 1000) {
-      // Ignore messages in the first second to prevent race conditions
+    if (subscription.createdAt && Date.now() - subscription.createdAt < 500) {
+      // Ignore messages in the first 500ms to prevent race conditions
       console.log(
         '[MarketCapDatafeed] Dropping message - subscription too new (race condition protection)',
       );
@@ -464,8 +465,8 @@ export class MarketCapDatafeed implements IBasicDataFeed {
         });
 
         // Clear caches and force refresh
-        this.historyCache.clear();
-        this.lastHistoricalBarByTimeframe.clear();
+        MarketCapDatafeed.historyCache.clear();
+        MarketCapDatafeed.lastHistoricalBarByTimeframe.clear();
 
         try {
           subscription.onResetCacheNeededCallback();
@@ -567,17 +568,35 @@ export class MarketCapDatafeed implements IBasicDataFeed {
       `/api/v1/chart/${this.tokenAddress}/market-cap?timeframe=${timeframe}&from=${from}&to=${to}&currency=${this.currency}`,
     );
 
-    console.log(`[MarketCapDatafeed] Fetching: ${apiUrl}`);
+    console.log(`[MarketCapDatafeed] 📡 Fetching market cap data:`, {
+      timeframe,
+      from: new Date(from * 1000).toISOString(),
+      to: new Date(to * 1000).toISOString(),
+      url: apiUrl,
+    });
 
     const response = await window.fetch(apiUrl);
 
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[MarketCapDatafeed] ❌ API request failed:`, {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
+      });
       throw new Error(`API request failed: ${response.status}`);
     }
 
     const data = await response.json();
 
+    console.log(`[MarketCapDatafeed] ✅ API response:`, {
+      success: data.success,
+      candleCount: data.data?.candles?.length || 0,
+      timeframe,
+    });
+
     if (!data.success || !data.data?.candles) {
+      console.error(`[MarketCapDatafeed] ❌ No market cap data in response:`, data);
       throw new Error('No market cap data available');
     }
 

@@ -137,7 +137,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
         // Create datafeed with current mode (always USD)
         const datafeed =
           chartMode === 'price'
-            ? new BondingCurveDatafeed(tokenAddress, currency)
+            ? new BondingCurveDatafeed(tokenAddress)
             : new MarketCapDatafeed(tokenAddress);
 
         datafeedRef.current = datafeed;
@@ -432,7 +432,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
             {(isLoading || !isLibraryLoaded || isReinitializing) && (
               <div className="absolute inset-0 flex items-center justify-center bg-[#231F20]/80 z-30">
                 <div className="text-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#D0B284] mx-auto mb-4"></div>
+                  {/* <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#D0B284] mx-auto mb-4"></div> */}
                   <div className="text-[#DCDDCC]">Loading chart...</div>
                 </div>
               </div>

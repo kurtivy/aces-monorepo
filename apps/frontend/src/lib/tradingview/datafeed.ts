@@ -25,12 +25,14 @@ interface UnifiedDataSubscription {
   subscriberUID: string;
   tokenAddress: string;
   timeframe: string;
+  resolution: ResolutionString; // Track resolution for validation
   onRealtimeCallback: SubscribeBarsCallback;
   onResetCacheNeededCallback: () => void;
   isActive: boolean;
   lastBar: Bar | null;
   ws: WebSocket | null;
   reconnectTimeout: ReturnType<typeof setTimeout> | null;
+  createdAt: number; // Track subscription creation time
 }
 
 interface SearchSymbol {
@@ -55,6 +57,10 @@ interface WebSocketMessage {
 export class BondingCurveDatafeed implements IBasicDataFeed {
   private static readonly MAX_GAP_FILL_DURATION_MS = 48 * 60 * 60 * 1000;
   private static readonly MAX_CACHED_BARS = 5000;
+
+  // Shared cache across all instances (persists when switching modes)
+  private static historyCache = new Map<string, Bar[]>();
+  private static lastHistoricalBarByTimeframe = new Map<string, Bar>();
 
   // Subscript digit map for zero-count notation (0.0₅487)
   private static readonly SUBSCRIPT_MAP: Record<string, string> = {
@@ -144,42 +150,29 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
   }
 
   private tokenAddress: string;
-  private displayCurrency: 'usd';
+  private readonly currency = 'usd' as const;
   private useDex: boolean;
   private tokenMetadata: TokenMetadata | null = null;
-  private lastHistoricalBarByTimeframe = new Map<string, Bar>();
-  private historyCache = new Map<string, Bar[]>();
   private unifiedDataSubscription: UnifiedDataSubscription | null = null;
   private hasLoadedInitialHttpData = false; // Track if we've loaded fresh HTTP data
+  private currentResolution: ResolutionString | null = null;
 
-  constructor(tokenAddress: string, displayCurrency: 'usd' | 'aces' = 'usd') {
+  constructor(tokenAddress: string) {
     this.tokenAddress = tokenAddress.toLowerCase();
-    this.displayCurrency = 'usd';
     this.useDex = false;
   }
 
-  /**
-   * Change display currency dynamically without recreating the datafeed
-   * This allows switching between USD and ACES without breaking the WebSocket
-   */
-  // USD-only
-  public setDisplayCurrency(_currency: 'usd' | 'aces'): void {
-    return;
+  private getCacheKey(timeframe: string): string {
+    // Scope by token + timeframe + mode + currency
+    return `${this.tokenAddress}:${timeframe}:price:${this.currency}`;
   }
 
   /**
    * Clear all caches - useful for debugging or forcing refresh
    */
   public clearCache(): void {
-    this.historyCache.clear();
-    this.lastHistoricalBarByTimeframe.clear();
-  }
-
-  /**
-   * Get current display currency
-   */
-  public getDisplayCurrency(): 'usd' | 'aces' {
-    return this.displayCurrency;
+    BondingCurveDatafeed.historyCache.clear();
+    BondingCurveDatafeed.lastHistoricalBarByTimeframe.clear();
   }
 
   private getApiUrl(path: string): string {
@@ -273,9 +266,13 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     onErrorCallback: (error: string) => void,
   ) {
     const timeframe = this.resolutionToTimeframe(resolution);
-    const cachedBars = this.historyCache.get(timeframe);
+    const cacheKey = this.getCacheKey(timeframe);
+    const cachedBars = BondingCurveDatafeed.historyCache.get(cacheKey);
     const fromMs = periodParams.from * 1000;
     const toMs = periodParams.to * 1000;
+
+    // Track current resolution for WebSocket validation
+    this.currentResolution = resolution;
 
     const deliverBars = (sourceBars: Bar[], cacheSource: boolean) => {
       const filtered = sourceBars.filter((bar) => bar.time >= fromMs && bar.time <= toMs);
@@ -283,12 +280,15 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       if (cacheSource) {
         const cachedCopy = this.cloneBars(sourceBars);
         if (cachedCopy.length > 0) {
-          this.lastHistoricalBarByTimeframe.set(timeframe, cachedCopy[cachedCopy.length - 1]);
+          BondingCurveDatafeed.lastHistoricalBarByTimeframe.set(
+            cacheKey,
+            cachedCopy[cachedCopy.length - 1],
+          );
         }
         if (cachedCopy.length > BondingCurveDatafeed.MAX_CACHED_BARS) {
           cachedCopy.splice(0, cachedCopy.length - BondingCurveDatafeed.MAX_CACHED_BARS);
         }
-        this.historyCache.set(timeframe, cachedCopy);
+        BondingCurveDatafeed.historyCache.set(cacheKey, cachedCopy);
 
         // Mark that we've loaded initial HTTP data
         this.hasLoadedInitialHttpData = true;
@@ -300,7 +300,10 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       }
 
       const filteredCopy = this.cloneBars(filtered);
-      this.lastHistoricalBarByTimeframe.set(timeframe, filteredCopy[filteredCopy.length - 1]);
+      BondingCurveDatafeed.lastHistoricalBarByTimeframe.set(
+        cacheKey,
+        filteredCopy[filteredCopy.length - 1],
+      );
 
       // Log sample price with zero-count notation to verify formatting
       if (filteredCopy.length > 0) {
@@ -310,24 +313,18 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       onHistoryCallback(filteredCopy, { noData: false });
     };
 
-    // Check cache freshness
+    // Use cache if available (no expiration - WebSocket keeps it fresh)
     if (!periodParams.firstDataRequest && cachedBars && cachedBars.length > 0) {
-      const latestBar = cachedBars[cachedBars.length - 1];
-      const cacheAgeMs = Date.now() - latestBar.time;
-      const maxCacheAgeMs = 15000; // 15 seconds
-
-      if (cacheAgeMs <= maxCacheAgeMs) {
-        // Cache is fresh, use it
-        deliverBars(cachedBars, false);
-        return;
-      }
+      console.log(`[TradingView] Using cached data for ${timeframe} (${cachedBars.length} bars)`);
+      deliverBars(cachedBars, false);
+      return;
     }
 
     this.fetchHistoricalDataUnified(timeframe, periodParams.from, periodParams.to)
       .then(({ bars }) => {
         if (bars.length === 0) {
           onHistoryCallback([], { noData: true });
-          this.historyCache.set(timeframe, []);
+          BondingCurveDatafeed.historyCache.set(cacheKey, []);
           return;
         }
 
@@ -364,36 +361,53 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
     onResetCacheNeededCallback: () => void,
   ) {
     const timeframe = this.resolutionToTimeframe(resolution);
+    const cacheKey = this.getCacheKey(timeframe);
 
-    // Check if we already have an active subscription for this exact setup
-    if (
-      this.unifiedDataSubscription &&
-      this.unifiedDataSubscription.tokenAddress === this.tokenAddress &&
-      this.unifiedDataSubscription.timeframe === timeframe &&
-      this.unifiedDataSubscription.isActive
-    ) {
-      // Update callbacks without recreating WebSocket
-      this.unifiedDataSubscription.onRealtimeCallback = onRealtimeCallback;
-      this.unifiedDataSubscription.onResetCacheNeededCallback = onResetCacheNeededCallback;
-      this.unifiedDataSubscription.subscriberUID = subscriberUID;
-      return;
-    }
+    console.log(`[TradingView] 🔔 Subscribe to bars: ${timeframe} (${subscriberUID})`);
 
-    // Close previous subscription only if it's for a different token/timeframe
+    // Properly cleanup existing subscription before creating new one
     if (this.unifiedDataSubscription) {
-      this.unsubscribeBars(this.unifiedDataSubscription.subscriberUID);
+      const oldSubscription = this.unifiedDataSubscription;
+      console.log(`[TradingView] 🧹 Cleaning up old subscription (${oldSubscription.timeframe})`);
+
+      // Mark as inactive first
+      oldSubscription.isActive = false;
+
+      // Close WebSocket
+      if (oldSubscription.ws) {
+        oldSubscription.ws.close();
+        oldSubscription.ws = null;
+      }
+
+      // Clear timeout
+      if (oldSubscription.reconnectTimeout) {
+        clearTimeout(oldSubscription.reconnectTimeout);
+        oldSubscription.reconnectTimeout = null;
+      }
+
+      this.unifiedDataSubscription = null;
     }
 
+    // Update resolution tracking
+    // Note: We don't aggressively clear cache here anymore - let TradingView manage it
+    // Only clear on explicit events like graduation
+    this.currentResolution = resolution;
+
+    // Create new subscription
     const subscription: UnifiedDataSubscription = {
       subscriberUID,
       tokenAddress: this.tokenAddress,
       timeframe,
+      resolution, // Store resolution for validation
       onRealtimeCallback,
       onResetCacheNeededCallback,
       isActive: true,
-      lastBar: this.cloneBar(this.lastHistoricalBarByTimeframe.get(timeframe) || null),
+      lastBar: this.cloneBar(
+        BondingCurveDatafeed.lastHistoricalBarByTimeframe.get(cacheKey) || null,
+      ),
       ws: null,
       reconnectTimeout: null,
+      createdAt: Date.now(), // Track when subscription was created
     };
 
     this.unifiedDataSubscription = subscription;
@@ -426,6 +440,7 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
             type: 'unsubscribe',
             tokenAddress: this.tokenAddress,
             timeframe: subscription.timeframe,
+            chartType: 'price',
           }),
         );
       }
@@ -480,6 +495,7 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
           type: 'subscribe',
           tokenAddress: subscription.tokenAddress,
           timeframe: subscription.timeframe,
+          chartType: 'price',
         };
         ws.send(JSON.stringify(subscribeMessage));
       };
@@ -487,6 +503,14 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       ws.onmessage = (event) => {
         if (!subscription.isActive) {
           console.warn('[TradingView] ⚠️ Subscription inactive, ignoring message');
+          return;
+        }
+
+        // Validate subscription is still active and matches current timeframe
+        if (this.currentResolution !== subscription.resolution) {
+          console.log(
+            `[TradingView] Ignoring message - resolution mismatch (current: ${this.currentResolution}, subscription: ${subscription.resolution})`,
+          );
           return;
         }
 
@@ -525,7 +549,22 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       return;
     }
 
+    // Additional validation to prevent cross-timeframe contamination
+    if (!subscription.isActive) {
+      console.log('[TradingView] Dropping message - subscription inactive');
+      return;
+    }
+
+    if (subscription.createdAt && Date.now() - subscription.createdAt < 500) {
+      // Ignore messages in the first 500ms to prevent race conditions
+      console.log(
+        '[TradingView] Dropping message - subscription too new (race condition protection)',
+      );
+      return;
+    }
+
     const timeframeMs = this.timeframeToMs(subscription.timeframe);
+    const cacheKey = this.getCacheKey(subscription.timeframe);
 
     // Update useDex state from graduation state in all messages
     if (message.graduationState) {
@@ -545,8 +584,8 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
 
           if (graduationState && graduationState.poolReady) {
             // Clear history cache so next request fetches merged data (bonding curve + DEX)
-            this.historyCache.clear();
-            this.lastHistoricalBarByTimeframe.clear();
+            BondingCurveDatafeed.historyCache.clear();
+            BondingCurveDatafeed.lastHistoricalBarByTimeframe.clear();
 
             // Force TradingView to reset and refetch chart data
             // This triggers getBars() to fetch fresh data from the unified endpoint
@@ -576,9 +615,9 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
         }
 
         const filledBars = this.fillMissingBars(bars, timeframeMs);
-        this.historyCache.set(subscription.timeframe, this.cloneBars(filledBars));
-        this.lastHistoricalBarByTimeframe.set(
-          subscription.timeframe,
+        BondingCurveDatafeed.historyCache.set(cacheKey, this.cloneBars(filledBars));
+        BondingCurveDatafeed.lastHistoricalBarByTimeframe.set(
+          cacheKey,
           filledBars[filledBars.length - 1],
         );
         subscription.lastBar = this.cloneBar(filledBars[filledBars.length - 1]);
@@ -690,7 +729,7 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       const usdKey = `${key}Usd`;
 
       // If displaying USD, ONLY use USD values - NEVER fall back to ACES
-      if (this.displayCurrency === 'usd') {
+      if (this.currency === 'usd') {
         const usdValue = (candle as any)[usdKey];
 
         // Try to parse USD value
@@ -925,7 +964,16 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       to: to.toString(),
     });
 
-    const response = await window.fetch(`${apiUrl}?${params.toString()}`);
+    const fullUrl = `${apiUrl}?${params.toString()}`;
+    console.log('🔍 [Frontend Datafeed] Fetching chart data:', {
+      url: fullUrl,
+      tokenAddress: this.tokenAddress,
+      timeframe,
+      from: new Date(from * 1000).toISOString(),
+      to: new Date(to * 1000).toISOString(),
+    });
+
+    const response = await window.fetch(fullUrl);
 
     if (!response.ok) {
       throw new Error(`API request failed: ${response.status}`);
@@ -933,11 +981,38 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
 
     const data = await response.json();
 
+    console.log('🔍 [Frontend Datafeed] Full API response:', {
+      success: data.success,
+      hasData: !!data.data,
+      hasCandlesArray: !!data.data?.candles,
+      error: data.error,
+      message: data.message,
+    });
+
     if (!data.success || !data.data?.candles) {
+      console.error('🔍 [Frontend Datafeed] API error or no data:', {
+        success: data.success,
+        error: data.error,
+        message: data.message,
+        dataKeys: data.data ? Object.keys(data.data) : 'no data object',
+      });
       throw new Error('No chart data available');
     }
 
     const candles = data.data.candles;
+
+    console.log('🔍 [Frontend Datafeed] Raw API response:', {
+      candlesCount: candles.length,
+      firstCandle: candles[0],
+      hasUsdFields: candles[0]
+        ? {
+            openUsd: 'openUsd' in candles[0],
+            highUsd: 'highUsd' in candles[0],
+            lowUsd: 'lowUsd' in candles[0],
+            closeUsd: 'closeUsd' in candles[0],
+          }
+        : 'no candles',
+    });
 
     const timeframeMs = this.timeframeToMs(timeframe);
 
@@ -947,7 +1022,7 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
 
         // Helper to safely parse USD values - only use if valid, never fall back to ACES price
         const parseUsdValue = (usdValue: string | undefined, acesValue: string) => {
-          if (this.displayCurrency !== 'usd') {
+          if (this.currency !== 'usd') {
             return parseFloat(acesValue);
           }
 
@@ -994,9 +1069,16 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       })
       .sort((a: Bar, b: Bar) => a.time - b.time);
 
+    console.log('🔍 [Frontend Datafeed] After filtering:', {
+      totalCandles: candles.length,
+      validBars: bars.length,
+      filteredOut: candles.length - bars.length,
+      sampleBar: bars[0],
+    });
+
     if (bars.length > 0) {
       // Check if we're accidentally sending ACES prices instead of USD
-      if (this.displayCurrency === 'usd' && bars[0].close > 0.01) {
+      if (this.currency === 'usd' && bars[0].close > 0.01) {
         console.error('⚠️ [Frontend Datafeed] WARNING: Price looks like ACES not USD!', {
           close: bars[0].close,
           expectedRange: '0.00001 - 0.0001',
@@ -1122,12 +1204,13 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
   }
 
   private updateHistoryCache(timeframe: string, bar: Bar) {
+    const cacheKey = this.getCacheKey(timeframe);
     const clonedBar = { ...bar };
-    const existing = this.historyCache.get(timeframe);
+    const existing = BondingCurveDatafeed.historyCache.get(cacheKey);
 
     if (!existing || existing.length === 0) {
-      this.historyCache.set(timeframe, [clonedBar]);
-      this.lastHistoricalBarByTimeframe.set(timeframe, clonedBar);
+      BondingCurveDatafeed.historyCache.set(cacheKey, [clonedBar]);
+      BondingCurveDatafeed.lastHistoricalBarByTimeframe.set(cacheKey, clonedBar);
       return;
     }
 
@@ -1154,7 +1237,7 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       updated.splice(0, updated.length - BondingCurveDatafeed.MAX_CACHED_BARS);
     }
 
-    this.historyCache.set(timeframe, updated);
-    this.lastHistoricalBarByTimeframe.set(timeframe, updated[updated.length - 1]);
+    BondingCurveDatafeed.historyCache.set(cacheKey, updated);
+    BondingCurveDatafeed.lastHistoricalBarByTimeframe.set(cacheKey, updated[updated.length - 1]);
   }
 }

@@ -646,9 +646,13 @@ export class UnifiedChartDataService {
         console.warn('[UnifiedChartData] Failed to get latest price for market cap:', error);
       }
 
+      // Get total supply for graduated token (all 1B tokens minted at graduation)
+      // For DEX tokens, supply is fixed at 1B since all tokens are minted upon graduation
+      const totalSupply = 1000000000;
+
       // Convert to UnifiedCandle format with market cap OHLC
       const resolvedCandles: UnifiedCandle[] = candles.map((candle) => {
-        const supply = 1000000000; // 1B tokens at graduation
+        const supply = totalSupply; // Use total supply for all DEX candles
         const parsedAcesPrice = acesUsdPriceHint ? parseFloat(acesUsdPriceHint) : null;
 
         // Price OHLC (already in USD from DEX)

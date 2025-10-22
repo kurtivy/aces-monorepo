@@ -12,6 +12,7 @@ interface ChartQuery {
   to?: string;
   limit?: string;
   includeUsd?: string;
+  source?: 'fresh' | 'auto'; // fresh = always from subgraph/Bitquery (default); auto = reserved for future caching
 }
 
 export async function chartRoutes(fastify: FastifyInstance) {
@@ -32,6 +33,7 @@ export async function chartRoutes(fastify: FastifyInstance) {
             to: z.string().optional(),
             limit: z.string().optional(),
             includeUsd: z.string().optional().default('true'),
+            source: z.enum(['fresh', 'auto']).optional().default('fresh'),
           }),
         ),
       },
@@ -45,7 +47,14 @@ export async function chartRoutes(fastify: FastifyInstance) {
     ) => {
       try {
         const { tokenAddress } = request.params;
-        const { timeframe = '1h', from, to, limit, includeUsd = 'true' } = request.query;
+        const {
+          timeframe = '1h',
+          from,
+          to,
+          limit,
+          includeUsd = 'true',
+          source = 'fresh',
+        } = request.query;
 
         // Get current ACES/USD price for conversion
         const acesUsdPriceService = (fastify as any).acesUsdPriceService;
@@ -64,17 +73,46 @@ export async function chartRoutes(fastify: FastifyInstance) {
 
         if (!acesUsdPrice || isNaN(acesUsdPrice) || acesUsdPrice <= 0) {
           console.error('❌ [Chart API] INVALID ACES/USD PRICE - USD conversion will fail!');
+          console.error(
+            '❌ [Chart API] This will cause "No bars after filtering" error on frontend',
+          );
+          console.error(
+            '❌ [Chart API] Check: AERODROME_ACES_WETH_POOL, WETH_USDC_POOL, ACES_TOKEN_ADDRESS env vars',
+          );
+          console.error('❌ [Chart API] Check: RPC provider connectivity');
+
+          // Return error immediately instead of sending back zero-price candles
+          return reply.code(503).send({
+            success: false,
+            error: 'ACES/USD price unavailable',
+            message:
+              'Unable to fetch ACES/USD price for USD conversion. Please check server configuration.',
+          });
         }
 
-        // Use unifiedChartService to get candles (generates from trades, not database)
+        // Use unifiedChartService to get candles
+        // NOTE: Always fetches fresh from subgraph (bonding) or Bitquery (DEX), never from DB cache.
+        // The 'source' parameter is for future-proofing; currently only 'fresh' is implemented.
         const unifiedService = (fastify as any).unifiedChartService;
-        const chartData = await unifiedService.getChartData(tokenAddress, {
-          timeframe,
-          from: from ? new Date(parseInt(from) * 1000) : undefined,
-          to: to ? new Date(parseInt(to) * 1000) : undefined,
-          limit: limit ? parseInt(limit) : 1000,
-          includeUsd: includeUsd === 'true',
-        });
+
+        let chartData;
+        try {
+          chartData = await unifiedService.getChartData(tokenAddress, {
+            timeframe,
+            from: from ? new Date(parseInt(from) * 1000) : undefined,
+            to: to ? new Date(parseInt(to) * 1000) : undefined,
+            limit: limit ? parseInt(limit) : 1000,
+            includeUsd: includeUsd === 'true',
+          });
+        } catch (fetchError) {
+          console.error('[Chart API] ❌ Failed to fetch chart data:', {
+            tokenAddress,
+            timeframe,
+            error: fetchError instanceof Error ? fetchError.message : String(fetchError),
+            stack: fetchError instanceof Error ? fetchError.stack : undefined,
+          });
+          throw fetchError; // Re-throw to be caught by outer try/catch
+        }
 
         console.log(
           `[Chart API] Generated ${chartData.candles.length} candles for ${tokenAddress} ${timeframe}, ACES/USD: ${acesUsdPrice}`,
@@ -163,6 +201,7 @@ export async function chartRoutes(fastify: FastifyInstance) {
             from: z.string().optional(),
             to: z.string().optional(),
             currency: z.enum(['usd', 'aces']).default('usd'),
+            source: z.enum(['fresh', 'auto']).optional().default('fresh'),
           }),
         ),
       },
@@ -176,8 +215,9 @@ export async function chartRoutes(fastify: FastifyInstance) {
     ) => {
       try {
         const { tokenAddress } = request.params;
-        const { timeframe = '1h', from, to, currency = 'usd' } = request.query;
+        const { timeframe = '1h', from, to, currency = 'usd', source = 'fresh' } = request.query;
 
+        // NOTE: Always fetches fresh from subgraph/Bitquery, never from DB cache
         const unifiedService = (fastify as any).unifiedChartService;
 
         const chartData = await unifiedService.getChartData(tokenAddress, {

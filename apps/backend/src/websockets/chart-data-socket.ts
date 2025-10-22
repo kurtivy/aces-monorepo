@@ -13,7 +13,7 @@ interface ChartDataWebSocketOptions {
 }
 
 const DEFAULT_POLL_INTERVAL_MS = Number(
-  process.env.BITQUERY_REALTIME_POLL_INTERVAL_MS || process.env.BITQUERY_POLL_INTERVAL_MS || 750, // 750ms - ultra-fast real-time updates
+  process.env.BITQUERY_POLL_INTERVAL_MS || 3000, // 750ms - ultra-fast real-time updates
 );
 
 export class ChartDataWebSocket {
