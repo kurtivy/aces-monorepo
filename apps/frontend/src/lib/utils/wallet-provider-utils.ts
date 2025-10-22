@@ -7,7 +7,7 @@ import type { ConnectedWallet } from '@privy-io/react-auth';
 
 export interface WalletProvider {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
-  on: (event: string, handler: (...args: unknown[]) => void) => void;
+  on?: (event: string, handler: (...args: unknown[]) => void) => void;
   removeListener?: (event: string, handler: (...args: unknown[]) => void) => void;
   isMetaMask?: boolean;
   isPhantom?: boolean;

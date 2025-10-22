@@ -135,17 +135,20 @@ export default function TokenSwapInterface({
     if (typeof window !== 'undefined' && window.ethereum) {
       updateChainId();
 
-      // Listen for chain changes
+      // Listen for chain changes (if provider supports it)
       const handleChainChanged = () => {
         console.log('Chain changed, updating...');
         updateChainId();
       };
 
-      window.ethereum.on('chainChanged', handleChainChanged);
+      // Check if provider supports event listeners (Privy smart wallets may not)
+      if (typeof window.ethereum.on === 'function') {
+        window.ethereum.on('chainChanged', handleChainChanged);
 
-      return () => {
-        window.ethereum?.removeListener('chainChanged', handleChainChanged);
-      };
+        return () => {
+          window.ethereum?.removeListener?.('chainChanged', handleChainChanged);
+        };
+      }
     }
   }, [currentChainId]);
 

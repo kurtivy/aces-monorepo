@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { ethers } from 'ethers';
-import { useWallets } from '@privy-io/react-auth'; // ADD THIS
+import { useWallets } from '@privy-io/react-auth';
+import { useWalletClient } from 'wagmi';
 import { getContractAddresses } from '@/lib/contracts/addresses';
 import { ACES_FACTORY_ABI, ERC20_ABI, LAUNCHPAD_TOKEN_ABI } from '@/lib/contracts/abi';
 import {
-  getProviderForAddress, // CHANGED: Use new function
-  getCurrentChainIdFromProvider, // CHANGED: Use new function
+  getProviderForAddress,
+  getCurrentChainIdFromProvider,
   getWalletInitDelay,
-  getWalletNameFromType, // ADD THIS
+  getWalletNameFromType,
 } from '@/lib/utils/wallet-provider-utils';
 
 /**
@@ -22,6 +23,8 @@ export function useSwapContracts(
 ) {
   // Get Privy's connected wallets - THIS IS KEY!
   const { wallets: privyWallets } = useWallets();
+  // Get wagmi wallet client for Privy smart wallet support
+  const { data: walletClient } = useWalletClient();
 
   // State
   const [provider, setProvider] = useState<ethers.providers.Web3Provider | null>(null);
@@ -77,23 +80,56 @@ export function useSwapContracts(
         return false;
       }
 
-      // Get the correct provider for THIS specific wallet
-      const ethProvider = getProviderForAddress(walletAddress, privyWallets);
+      const walletClientType = privyWallet.walletClientType || '';
+      const isPrivyWallet = walletClientType.toLowerCase().includes('privy');
 
-      if (!ethProvider) {
-        console.warn('[useSwapContracts] ⚠️ Wallet provider not available yet');
-        initializingRef.current = false;
-        return false;
-      }
+      let newProvider: ethers.providers.Web3Provider;
+      let chainId: number;
 
-      // console.log('[useSwapContracts] ✅ Wallet provider found for', walletName);
+      // Use wagmi for Privy smart wallets
+      if (isPrivyWallet) {
+        if (!walletClient) {
+          console.log('[useSwapContracts] ⏸️ Waiting for Wagmi wallet client...');
+          initializingRef.current = false;
+          return false;
+        }
 
-      // Get current chain ID from the specific provider
-      const chainId = await getCurrentChainIdFromProvider(ethProvider);
-      // console.log('[useSwapContracts] Current chain ID:', chainId);
+        console.log('[useSwapContracts] ✅ Using Wagmi for Privy smart wallet');
 
-      if (!chainId) {
-        throw new Error('Failed to get chain ID');
+        // Create ethers provider from wagmi wallet client
+        const network = {
+          chainId: walletClient.chain.id,
+          name: walletClient.chain.name,
+        };
+
+        newProvider = new ethers.providers.Web3Provider(
+          walletClient.transport as unknown as ethers.providers.ExternalProvider,
+          network,
+        );
+
+        chainId = walletClient.chain.id;
+        console.log('[useSwapContracts] Chain ID from Wagmi:', chainId);
+      } else {
+        // Use traditional EIP-1193 provider for external wallets
+        const ethProvider = getProviderForAddress(walletAddress, privyWallets);
+
+        if (!ethProvider) {
+          console.warn('[useSwapContracts] ⚠️ Wallet provider not available yet');
+          initializingRef.current = false;
+          return false;
+        }
+
+        console.log('[useSwapContracts] ✅ Using EIP-1193 provider for external wallet');
+
+        // Get current chain ID from the specific provider
+        const detectedChainId = await getCurrentChainIdFromProvider(ethProvider);
+
+        if (!detectedChainId) {
+          throw new Error('Failed to get chain ID');
+        }
+
+        chainId = detectedChainId;
+        newProvider = new ethers.providers.Web3Provider(ethProvider, 'any');
       }
 
       // Get contract addresses for this chain
@@ -105,8 +141,7 @@ export function useSwapContracts(
         throw new Error(`Contract addresses not configured for chain ID ${chainId}`);
       }
 
-      // Initialize provider and signer
-      const newProvider = new ethers.providers.Web3Provider(ethProvider, 'any');
+      // Get signer from provider
       const newSigner = newProvider.getSigner();
 
       // Verify signer address matches wallet address
@@ -156,7 +191,7 @@ export function useSwapContracts(
     } finally {
       initializingRef.current = false;
     }
-  }, [isAuthenticated, walletAddress, tokenAddress, privyWallets]); // ADD privyWallets to deps
+  }, [isAuthenticated, walletAddress, tokenAddress, privyWallets, walletClient]); // ADD privyWallets and walletClient to deps
 
   /**
    * Clean up provider and contract state
@@ -245,7 +280,15 @@ export function useSwapContracts(
         cleanup();
       }
     }
-  }, [isAuthenticated, walletAddress, provider, privyWallets, initializeProvider, cleanup]); // ADD privyWallets
+  }, [
+    isAuthenticated,
+    walletAddress,
+    provider,
+    privyWallets,
+    walletClient,
+    initializeProvider,
+    cleanup,
+  ]); // ADD privyWallets and walletClient
 
   /**
    * Handle chain changes
@@ -294,6 +337,14 @@ export function useSwapContracts(
 
     if (!ethProvider) {
       // console.warn('[useSwapContracts] No provider found for event listeners');
+      return;
+    }
+
+    // Check if the provider supports event listeners (Privy smart wallets may not)
+    if (typeof ethProvider.on !== 'function') {
+      console.log(
+        '[useSwapContracts] Provider does not support event listeners (Privy Smart Wallet)',
+      );
       return;
     }
 

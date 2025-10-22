@@ -88,17 +88,20 @@ export function useAcesFactoryContract(
     if (typeof window !== 'undefined' && window.ethereum) {
       updateChainId();
 
-      // Listen for chain changes
+      // Listen for chain changes (if provider supports it)
       const handleChainChanged = () => {
         console.log('Chain changed, updating...');
         updateChainId();
       };
 
-      window.ethereum.on('chainChanged', handleChainChanged);
+      // Check if provider supports event listeners (Privy smart wallets may not)
+      if (typeof window.ethereum.on === 'function') {
+        window.ethereum.on('chainChanged', handleChainChanged);
 
-      return () => {
-        window.ethereum?.removeListener('chainChanged', handleChainChanged);
-      };
+        return () => {
+          window.ethereum?.removeListener?.('chainChanged', handleChainChanged);
+        };
+      }
     }
   }, [currentChainId]);
 
@@ -319,13 +322,16 @@ export function useAcesFactoryContract(
         initializeContract();
       };
 
-      window.ethereum.on('accountsChanged', handleAccountsChanged);
-      window.ethereum.on('chainChanged', handleChainChanged);
+      // Check if provider supports event listeners (Privy smart wallets may not)
+      if (typeof window.ethereum.on === 'function') {
+        window.ethereum.on('accountsChanged', handleAccountsChanged);
+        window.ethereum.on('chainChanged', handleChainChanged);
 
-      return () => {
-        window.ethereum?.removeListener('accountsChanged', handleAccountsChanged);
-        window.ethereum?.removeListener('chainChanged', handleChainChanged);
-      };
+        return () => {
+          window.ethereum?.removeListener?.('accountsChanged', handleAccountsChanged);
+          window.ethereum?.removeListener?.('chainChanged', handleChainChanged);
+        };
+      }
     }
   }, [currentChainId, contractAddresses.FACTORY_PROXY, externalSigner, externalProvider]);
 
