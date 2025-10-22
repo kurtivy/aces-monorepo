@@ -144,6 +144,12 @@ export async function bondingRoutes(fastify: FastifyInstance) {
         const factoryProxyAddress = networkConfig.acesFactoryProxy;
         const provider = createProvider(8453);
 
+        console.log('🏭 Factory configuration:', {
+          factoryProxyAddress,
+          acesAddress,
+          hasProvider: !!provider,
+        });
+
         if (!provider) {
           fastify.log.error('❌ [DirectBondingQuote] RPC provider not available');
           return reply.code(500).send({
@@ -175,13 +181,208 @@ export async function bondingRoutes(fastify: FastifyInstance) {
         let expectedOutput: string = '0';
         let outputAsset: string = tokenAddress;
 
-        // Check if token is bonded first
-        const tokenInfo = await factoryContract.tokens(tokenAddress);
+        // Try to get token info from subgraph first (more reliable for older tokens)
+        // If that fails, fall back to direct contract query
+        let tokenInfo;
+        let tokenParams: { steepness: bigint; floor: bigint } | null = null;
 
-        if (tokenInfo.tokenBonded) {
+        try {
+          const subgraphUrl = process.env.GOLDSKY_SUBGRAPH_URL;
+          console.log(
+            '🔍 Attempting to fetch from subgraph:',
+            subgraphUrl ? 'URL configured' : 'NO URL',
+          );
+
+          if (subgraphUrl) {
+            const subgraphQuery = `{
+              tokens(where: { address: "${tokenAddress.toLowerCase()}" }) {
+                address
+                curve
+                steepness
+                floor
+              }
+            }`;
+
+            console.log('📤 Subgraph query:', subgraphQuery);
+
+            const subgraphResponse = await fetch(subgraphUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ query: subgraphQuery }),
+            });
+
+            console.log('📥 Subgraph response status:', subgraphResponse.status);
+
+            if (subgraphResponse.ok) {
+              const subgraphData = (await subgraphResponse.json()) as {
+                data?: {
+                  tokens?: Array<{
+                    address: string;
+                    curve: number;
+                    steepness: string;
+                    floor: string;
+                  }>;
+                };
+              };
+
+              console.log('📦 Subgraph data:', JSON.stringify(subgraphData, null, 2));
+              const tokens = subgraphData?.data?.tokens;
+
+              if (tokens && tokens.length > 0) {
+                const token = tokens[0];
+                console.log('✅ Got token params from subgraph:', {
+                  address: token.address,
+                  steepness: token.steepness,
+                  floor: token.floor,
+                });
+
+                // Store params for later use
+                tokenParams = {
+                  steepness: BigInt(token.steepness),
+                  floor: BigInt(token.floor),
+                };
+
+                // Verify token data from contract as a sanity check
+                try {
+                  const contractTokenInfo = await factoryContract.tokens(tokenAddress);
+                  console.log('🔍 Verifying token info from contract:', {
+                    curve: contractTokenInfo.curve,
+                    tokenAddress: contractTokenInfo.tokenAddress,
+                    floor: contractTokenInfo.floor.toString(),
+                    steepness: contractTokenInfo.steepness.toString(),
+                    acesTokenBalance: contractTokenInfo.acesTokenBalance.toString(),
+                    tokenBonded: contractTokenInfo.tokenBonded,
+                  });
+
+                  // If contract returns valid data (non-zero tokenAddress), use it as authoritative
+                  if (
+                    contractTokenInfo.tokenAddress !== '0x0000000000000000000000000000000000000000'
+                  ) {
+                    console.log('✅ Contract has valid token data, using contract data');
+                    tokenInfo = contractTokenInfo; // SET tokenInfo so later checks work!
+                    tokenParams = {
+                      steepness: contractTokenInfo.steepness,
+                      floor: contractTokenInfo.floor,
+                    };
+
+                    // Check if token is bonded
+                    if (contractTokenInfo.tokenBonded) {
+                      return reply.code(400).send({
+                        success: false,
+                        error: 'Token is fully bonded, use DEX mode',
+                      });
+                    }
+                  } else {
+                    console.log('⚠️ Contract returned zero address, using subgraph data');
+                  }
+                } catch (contractError) {
+                  console.warn(
+                    '⚠️ Could not verify from contract, using subgraph data:',
+                    contractError,
+                  );
+                }
+              } else {
+                console.log('⚠️ No tokens found in subgraph response');
+              }
+            } else {
+              console.log('❌ Subgraph response not OK');
+            }
+          }
+        } catch (subgraphError) {
+          console.error('❌ Subgraph error:', subgraphError);
+          fastify.log.warn(
+            { err: subgraphError },
+            '⚠️ Failed to fetch from subgraph, will try contract',
+          );
+        }
+
+        // Fall back to contract query if subgraph didn't work
+        if (!tokenParams) {
+          tokenInfo = await factoryContract.tokens(tokenAddress);
+
+          console.log('🔍 Token info from contract:', {
+            curve: tokenInfo.curve,
+            tokenAddress: tokenInfo.tokenAddress,
+            floor: tokenInfo.floor.toString(),
+            steepness: tokenInfo.steepness.toString(),
+            acesTokenBalance: tokenInfo.acesTokenBalance.toString(),
+            tokenBonded: tokenInfo.tokenBonded,
+          });
+
+          tokenParams = {
+            steepness: tokenInfo.steepness,
+            floor: tokenInfo.floor,
+          };
+
+          if (tokenInfo.tokenBonded) {
+            return reply.code(400).send({
+              success: false,
+              error: 'Token is fully bonded, use DEX mode',
+            });
+          }
+
+          // Check if token exists (tokenAddress should not be zero address)
+          if (tokenInfo.tokenAddress === '0x0000000000000000000000000000000000000000') {
+            fastify.log.error({ tokenAddress }, '❌ Token not found in factory');
+            return reply.code(404).send({
+              success: false,
+              error: 'Token not found or not registered with bonding curve',
+            });
+          }
+        }
+
+        // Validate bonding curve parameters
+        if (!tokenParams) {
+          fastify.log.error(
+            { tokenAddress },
+            '❌ No token params available from subgraph or contract',
+          );
+          return reply.code(404).send({
+            success: false,
+            error: 'Token not found or not registered with bonding curve',
+          });
+        }
+
+        if (tokenParams.steepness === 0n) {
+          fastify.log.error(
+            { tokenAddress },
+            '❌ Token has zero steepness - invalid bonding curve',
+          );
           return reply.code(400).send({
             success: false,
-            error: 'Token is fully bonded, use DEX mode',
+            error: 'Invalid token: bonding curve has zero steepness',
+          });
+        }
+
+        if (tokenParams.floor === 0n) {
+          fastify.log.warn({ tokenAddress }, '⚠️ Token has zero floor price');
+        }
+
+        // Check if we should use contract methods or calculate directly
+        // If contract returned zero address, we can't use its methods
+        const canUseContractMethods =
+          tokenInfo && tokenInfo.tokenAddress !== '0x0000000000000000000000000000000000000000';
+
+        console.log('🎯 Quote calculation strategy:', {
+          canUseContractMethods,
+          willUseContractMethods: canUseContractMethods,
+          willCalculateDirectly: !canUseContractMethods,
+        });
+
+        if (!canUseContractMethods) {
+          console.log(
+            '❌ Cannot use contract methods - token not found on configured factory contract',
+          );
+          console.log(
+            '   Token has valid data in subgraph but not on contract:',
+            factoryProxyAddress,
+          );
+          console.log('   This token may be on a different factory version');
+
+          return reply.code(400).send({
+            success: false,
+            error:
+              'This token is on a different factory version. Direct quotes are not available. Please use DEX mode or wait for backend update.',
           });
         }
 
@@ -242,7 +443,26 @@ export async function bondingRoutes(fastify: FastifyInstance) {
               });
             }
           } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            console.error('❌ Contract error when getting price:', errorMsg);
             fastify.log.error({ err: error }, '❌ Failed to get price for 1 token');
+
+            // Check for specific contract errors
+            if (errorMsg.includes('DIVIDE_BY_ZERO') || errorMsg.includes('Panic')) {
+              return reply.code(400).send({
+                success: false,
+                error:
+                  'This token has an invalid bonding curve configuration. The contract cannot calculate prices.',
+              });
+            }
+
+            if (errorMsg.includes('execution reverted')) {
+              return reply.code(400).send({
+                success: false,
+                error: 'Unable to calculate quote. The token may be in an invalid state.',
+              });
+            }
+
             throw error;
           }
 
@@ -340,14 +560,38 @@ export async function bondingRoutes(fastify: FastifyInstance) {
             '🔄 [DirectBondingQuote] Calculating TOKEN → ACES',
           );
 
-          const acesWei = await factoryContract.getSellPriceAfterFee(tokenAddress, amountWei);
-          expectedOutput = ethers.formatEther(acesWei);
-          outputAsset = acesAddress;
+          try {
+            const acesWei = await factoryContract.getSellPriceAfterFee(tokenAddress, amountWei);
+            expectedOutput = ethers.formatEther(acesWei);
+            outputAsset = acesAddress;
 
-          fastify.log.info(
-            { input: `${amount} TOKEN`, output: `${expectedOutput} ACES` },
-            '✅ [DirectBondingQuote] TOKEN → ACES calculated',
-          );
+            fastify.log.info(
+              { input: `${amount} TOKEN`, output: `${expectedOutput} ACES` },
+              '✅ [DirectBondingQuote] TOKEN → ACES calculated',
+            );
+          } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            console.error('❌ Contract error when calculating sell price:', errorMsg);
+            fastify.log.error({ err: error }, '❌ Failed to calculate TOKEN → ACES');
+
+            // Check for specific contract errors
+            if (errorMsg.includes('DIVIDE_BY_ZERO') || errorMsg.includes('Panic')) {
+              return reply.code(400).send({
+                success: false,
+                error:
+                  'This token has an invalid bonding curve configuration. The contract cannot calculate prices.',
+              });
+            }
+
+            if (errorMsg.includes('execution reverted')) {
+              return reply.code(400).send({
+                success: false,
+                error: 'Unable to calculate quote. The token may be in an invalid state.',
+              });
+            }
+
+            throw error;
+          }
         }
 
         // Get ACES USD price for USD value calculation

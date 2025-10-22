@@ -70,6 +70,7 @@ export class UnifiedChartDataService {
   private provider: JsonRpcProvider;
   private readonly acesUsdSeriesCacheTtlMs: number;
   private acesUsdSeriesCache = new Map<string, AcesUsdSeriesCacheEntry>();
+  private lastDexUsdPrice = new Map<string, number>();
 
   constructor(
     private prisma: PrismaClient,
@@ -991,14 +992,16 @@ export class UnifiedChartDataService {
     if (swaps.length === 0) return null;
 
     // Build candle from recent swaps
-    const latestSwap = swaps[0];
+    const latestSwap = swaps[swaps.length - 1];
     const intervalMs = this.getIntervalMs(timeframe);
     const candleStart = Math.floor(latestSwap.blockTime.getTime() / intervalMs) * intervalMs;
 
     const candleSwaps = swaps.filter((swap) => swap.blockTime.getTime() >= candleStart);
+    const cacheKey = `${tokenAddress.toLowerCase()}:${timeframe}`;
 
     // Use per-trade USD prices from DEXTradeByTokens normalization (accurate USD per token)
     let pricesUsd = candleSwaps.map((s) => parseFloat(s.priceInUsd));
+    let usedFallback = false;
 
     // Get circulating supply from subgraph
     let circulatingSupply = '0';
@@ -1036,18 +1039,59 @@ export class UnifiedChartDataService {
           return Number.isFinite(priceInAces) && priceInAces > 0 ? priceInAces * spotAcesUsd! : 0;
         });
         finiteUsdPrices = pricesUsd.filter((val) => Number.isFinite(val) && val > 0);
+        usedFallback = true;
       }
 
       if (finiteUsdPrices.length === 0) {
-        return null;
+        const cachedPrice = this.lastDexUsdPrice.get(cacheKey);
+        if (cachedPrice && cachedPrice > 0) {
+          console.warn(
+            '[UnifiedChartData] Using cached USD price for DEX candle fallback as BitQuery returned no USD values.',
+            {
+              tokenAddress,
+              timeframe,
+              cachedPrice,
+              swapCount: candleSwaps.length,
+            },
+          );
+          pricesUsd = candleSwaps.map(() => cachedPrice);
+          finiteUsdPrices = [cachedPrice];
+        } else {
+          return null;
+        }
+      }
+    }
+
+    if (usedFallback) {
+      const previousClose = this.lastDexUsdPrice.get(cacheKey);
+      const candidateClose =
+        pricesUsd[pricesUsd.length - 1] ?? finiteUsdPrices[finiteUsdPrices.length - 1] ?? 0;
+      if (previousClose && previousClose > 0 && candidateClose > 0) {
+        const ratio =
+          candidateClose > previousClose
+            ? candidateClose / previousClose
+            : previousClose / candidateClose;
+        if (ratio > 10) {
+          console.warn(
+            '[UnifiedChartData] Fallback USD price deviates too much, reverting to cached close.',
+            {
+              tokenAddress,
+              timeframe,
+              candidateClose,
+              previousClose,
+            },
+          );
+          pricesUsd = pricesUsd.map(() => previousClose);
+          finiteUsdPrices = [previousClose];
+        }
       }
     }
 
     // Determine OHLC in USD directly from per-trade USD prices
-    const openUsdValue = Number.isFinite(pricesUsd[pricesUsd.length - 1])
+    const openUsdValue = Number.isFinite(pricesUsd[0]) ? pricesUsd[0] : finiteUsdPrices[0];
+    const closeUsdValue = Number.isFinite(pricesUsd[pricesUsd.length - 1])
       ? pricesUsd[pricesUsd.length - 1]
       : finiteUsdPrices[finiteUsdPrices.length - 1];
-    const closeUsdValue = Number.isFinite(pricesUsd[0]) ? pricesUsd[0] : finiteUsdPrices[0];
     const highUsdValue = Math.max(...finiteUsdPrices);
     const lowUsdValue = Math.min(...finiteUsdPrices);
 
@@ -1056,6 +1100,10 @@ export class UnifiedChartDataService {
 
     const marketCapUsd =
       supply > 0 && closeUsdValue > 0 ? (supply * closeUsdValue).toFixed(2) : '0';
+
+    if (closeUsdValue > 0) {
+      this.lastDexUsdPrice.set(cacheKey, closeUsdValue);
+    }
 
     return {
       timestamp: new Date(candleStart),

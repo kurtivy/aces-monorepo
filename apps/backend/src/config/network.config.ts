@@ -19,7 +19,9 @@ const baseMainnet: NetworkConfig = {
   aerodromeRouter: process.env.AERODROME_ROUTER_ADDRESS || '',
   acesToken: process.env.ACES_TOKEN_ADDRESS || '0x55337650856299363c496065C836B9C6E9dE0367',
   acesFactoryProxy:
-    process.env.ACES_FACTORY_PROXY_ADDRESS || process.env.FACTORY_PROXY_ADDRESS || '',
+    process.env.ACES_FACTORY_PROXY_ADDRESS ||
+    process.env.FACTORY_PROXY_ADDRESS ||
+    '0x676BB442f45b5e11885Cf6e7ab8A15B5Ff7c5c51', // Base Mainnet factory proxy (NEW)
 };
 
 const baseSepolia: NetworkConfig = {

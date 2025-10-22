@@ -21,6 +21,7 @@ export class ChartDataWebSocket {
   private subscriptions = new Map<string, Set<string>>(); // "tokenAddress:timeframe:chartType" -> Set<clientId>
   private pollingIntervals = new Map<string, NodeJS.Timeout>();
   private currentIntervalMs = new Map<string, number>(); // Track current interval for each subscription
+  private lastBroadcast = new Map<string, { payload: any }>();
   private readonly pollIntervalMs: number;
   private graduationStateCache = new Map<
     string,
@@ -255,6 +256,7 @@ export class ChartDataWebSocket {
       clearInterval(interval);
       this.pollingIntervals.delete(subscriptionKey);
       this.currentIntervalMs.delete(subscriptionKey); // Clean up interval tracking
+      this.lastBroadcast.delete(subscriptionKey);
       console.log(`[WebSocket] Stopped polling for ${subscriptionKey}`);
     }
   }
@@ -283,7 +285,32 @@ export class ChartDataWebSocket {
       const candle = await this.unifiedService.getLatestCandle(tokenAddress, timeframe);
 
       if (!candle) {
-        console.warn(`⚠️ [WebSocket] No candle returned for ${tokenAddress} ${timeframe}`);
+        const cached = this.lastBroadcast.get(subscriptionKey);
+        if (cached) {
+          const replayPayload = {
+            ...cached.payload,
+            timestamp: Date.now(),
+            candle: { ...cached.payload.candle },
+          };
+          const replayMessage = JSON.stringify(replayPayload);
+          let replayCount = 0;
+          for (const clientId of subscribers) {
+            const client = this.clients.get(clientId);
+            if (client && client.socket.readyState === 1) {
+              try {
+                client.socket.send(replayMessage);
+                replayCount++;
+              } catch (error) {
+                console.error(`❌ [WebSocket] Failed to send cached candle to ${clientId}:`, error);
+              }
+            }
+          }
+          console.log(
+            `♻️ [WebSocket] Replayed last candle for ${subscriptionKey} to ${replayCount}/${subscribers.size} clients`,
+          );
+        } else {
+          console.warn(`⚠️ [WebSocket] No candle returned for ${tokenAddress} ${timeframe}`);
+        }
         return;
       }
 
@@ -341,7 +368,7 @@ export class ChartDataWebSocket {
         poolAddress: currentGraduationState.poolAddress,
       });
 
-      const message = JSON.stringify({
+      const payload = {
         type: 'candle_update',
         tokenAddress,
         timeframe,
@@ -362,7 +389,8 @@ export class ChartDataWebSocket {
         },
         graduationState: currentGraduationState,
         timestamp: Date.now(),
-      });
+      };
+      const message = JSON.stringify(payload);
 
       // Broadcast to all subscribers
       let sentCount = 0;
@@ -387,6 +415,8 @@ export class ChartDataWebSocket {
       console.log(
         `📡 [WebSocket] Broadcast ${subscriptionKey} to ${sentCount}/${subscribers.size} clients`,
       );
+
+      this.lastBroadcast.set(subscriptionKey, { payload });
 
       // 🔥 DISABLED: Dynamic polling optimization was causing constant interval restarts
       // This was preventing real-time updates. Keep polling at consistent 2.5s interval.
@@ -647,6 +677,7 @@ export class ChartDataWebSocket {
         }
       } else {
         // Send price candles (existing behavior)
+        const subscriptionKey = `${tokenAddress}:${timeframe}:${chartType}`;
         const message = JSON.stringify({
           type: 'initial_data',
           tokenAddress,
@@ -678,6 +709,49 @@ export class ChartDataWebSocket {
           console.log(
             `[WebSocket] 📨 Sent initial_data to ${clientId} (${chartData.candles.length} candles)`,
           );
+          const lastPriceCandle = chartData.candles[chartData.candles.length - 1];
+          if (lastPriceCandle) {
+            const candleTimestamp =
+              lastPriceCandle.timestamp instanceof Date
+                ? lastPriceCandle.timestamp.getTime()
+                : new Date(lastPriceCandle.timestamp).getTime();
+
+            const initialUpdatePayload = {
+              type: 'candle_update',
+              tokenAddress,
+              timeframe,
+              candle: {
+                timestamp: candleTimestamp,
+                open: lastPriceCandle.open,
+                high: lastPriceCandle.high,
+                low: lastPriceCandle.low,
+                close: lastPriceCandle.close,
+                openUsd: lastPriceCandle.openUsd,
+                highUsd: lastPriceCandle.highUsd,
+                lowUsd: lastPriceCandle.lowUsd,
+                closeUsd: lastPriceCandle.closeUsd,
+                volume: lastPriceCandle.volume,
+                volumeUsd: lastPriceCandle.volumeUsd,
+                trades: lastPriceCandle.trades,
+                dataSource: lastPriceCandle.dataSource,
+              },
+              graduationState: chartData.graduationState,
+              timestamp: Date.now(),
+            };
+
+            try {
+              client.socket.send(JSON.stringify(initialUpdatePayload));
+              this.lastBroadcast.set(subscriptionKey, { payload: initialUpdatePayload });
+              console.log(
+                `[WebSocket] 📡 Sent immediate candle_update to ${clientId} to prime subscribers`,
+              );
+            } catch (error) {
+              console.error(
+                `[WebSocket] ❌ Failed to send immediate candle_update to ${clientId}:`,
+                error,
+              );
+            }
+          }
         } else {
           console.warn(`[WebSocket] ⚠️ Socket closed before sending price data to ${clientId}`);
         }
