@@ -57,7 +57,11 @@ export default function ProfilePage() {
     );
   }
 
-  if (error) {
+  // Don't block UI on backend errors - show warning but let user continue
+  // The fallback profile allows basic functionality to work
+  const hasBackendError = error && error.includes('Internal Server Error');
+
+  if (error && !hasBackendError) {
     return (
       <div className="min-h-screen bg-black">
         <AcesHeader />
@@ -130,6 +134,16 @@ export default function ProfilePage() {
           className="absolute left-1/2 -translate-x-1/2 w-full max-w-[1200px] z-10 h-[1200px] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] px-2"
           style={{ top: `${contentTop}px` }}
         >
+          {/* Backend error warning banner */}
+          {hasBackendError && (
+            <div className="mb-4 bg-yellow-900/20 border border-yellow-600/50 rounded-lg p-3">
+              <p className="text-yellow-200 text-sm">
+                ⚠️ Connection to backend is limited. Some features may not be available. Your wallet
+                is connected and you can still trade.
+              </p>
+            </div>
+          )}
+
           {/* Profile header bar - outside the panel, full content width */}
           <HorizontalProfileHeader
             user={profileData}

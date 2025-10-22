@@ -150,9 +150,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         username: privyUser?.email?.address?.split('@')[0] || undefined,
       };
 
+      console.log('🔐 Verifying user with backend:', {
+        privyDid: userVerificationRequest.privyDid,
+        walletAddress: userVerificationRequest.walletAddress,
+        hasToken: !!token,
+      });
+
       const result = await ProfileApi.verifyOrCreateUser(userVerificationRequest, token);
 
       if (!result.success) {
+        console.error('❌ Backend verification failed:', result.error);
         throw new Error(result.error || 'Failed to verify user');
       }
 
@@ -167,7 +174,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user: result.data.profile,
       }));
     } catch (error) {
-      console.error('Auth initialization error:', error);
+      console.error('❌ Auth initialization error:', error);
+      console.log(
+        '⚠️ Using fallback profile - app will continue to work with limited functionality',
+      );
 
       const fallbackProfile: UserProfile = {
         id: privyUser?.id || '',
