@@ -9,6 +9,8 @@ type Props = {
   gapFromDivider?: number; // px padding to the right of the divider
   className?: string;
   contentLineOffset?: number; // px inside-content side dashed line inset
+  tag?: string;
+  tagClassName?: string;
 };
 
 const BOTTOM_RULE_HEIGHT = 8; // header's dashed bottom rule visual height in px
@@ -20,6 +22,8 @@ export default function PageBandTitle({
   gapFromDivider = 24,
   className = '',
   contentLineOffset = 8,
+  tag,
+  tagClassName = '',
 }: Props) {
   const [top, setTop] = useState<number>(0);
   const [isMeasured, setIsMeasured] = useState<boolean>(false);
@@ -74,9 +78,18 @@ export default function PageBandTitle({
           visibility: isMeasured ? 'visible' : 'hidden',
         }}
       >
-        <h1 className="text-xl sm:text-2xl font-bold text-[#D7BF75] tracking-tight drop-shadow-sm text-center">
-          {title}
-        </h1>
+        <div className="flex items-center gap-3">
+          {tag ? (
+            <span
+              className={`inline-flex items-center rounded-full border border-[#D7BF75] bg-black/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.3em] text-[#D7BF75] ${tagClassName}`}
+            >
+              {tag}
+            </span>
+          ) : null}
+          <h1 className="text-xl sm:text-2xl font-bold text-[#D7BF75] tracking-tight drop-shadow-sm text-center">
+            {title}
+          </h1>
+        </div>
       </div>
 
       {/* Desktop version - original positioning */}
@@ -97,9 +110,18 @@ export default function PageBandTitle({
             width: `calc(${rightGuide} - (${dividerLeft} + ${gapFromDivider}px))`,
           }}
         >
-          <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold text-[#D7BF75] tracking-tight drop-shadow-sm text-center">
-            {title}
-          </h1>
+          <div className="flex items-center justify-center gap-4">
+            {tag ? (
+              <span
+                className={`inline-flex items-center rounded-full border border-[#D7BF75] bg-black/60 px-4 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-[#D7BF75] ${tagClassName}`}
+              >
+                {tag}
+              </span>
+            ) : null}
+            <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold text-[#D7BF75] tracking-tight drop-shadow-sm text-center">
+              {title}
+            </h1>
+          </div>
         </div>
 
         {/* Visual divider reference (non-interactive overlay) - desktop only */}

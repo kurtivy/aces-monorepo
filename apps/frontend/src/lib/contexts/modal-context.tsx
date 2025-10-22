@@ -2,11 +2,14 @@
 
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 
+export type TermsModalTab = 'terms' | 'privacy' | 'launchpad';
+
 interface ModalContextType {
   isAboutModalOpen: boolean;
   isTermsModalOpen: boolean;
+  termsModalInitialTab: TermsModalTab;
   openAboutModal: () => void;
-  openTermsModal: () => void;
+  openTermsModal: (tab?: TermsModalTab) => void;
   closeAboutModal: () => void;
   closeTermsModal: () => void;
 }
@@ -28,15 +31,20 @@ interface ModalProviderProps {
 export const ModalProvider: React.FC<ModalProviderProps> = ({ children }) => {
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
+  const [termsModalInitialTab, setTermsModalInitialTab] = useState<TermsModalTab>('terms');
 
   const openAboutModal = () => setIsAboutModalOpen(true);
   const closeAboutModal = () => setIsAboutModalOpen(false);
-  const openTermsModal = () => setIsTermsModalOpen(true);
+  const openTermsModal = (tab: TermsModalTab = 'terms') => {
+    setTermsModalInitialTab(tab);
+    setIsTermsModalOpen(true);
+  };
   const closeTermsModal = () => setIsTermsModalOpen(false);
 
   const value: ModalContextType = {
     isAboutModalOpen,
     isTermsModalOpen,
+    termsModalInitialTab,
     openAboutModal,
     openTermsModal,
     closeAboutModal,
