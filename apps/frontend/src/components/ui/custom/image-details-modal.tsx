@@ -8,6 +8,7 @@ import Image from 'next/image';
 import type { ImageInfo } from '../../../types/canvas';
 import { getImageMetadata } from '../../../lib/utils/luxury-logger';
 import PurchaseInquiryModal from './purchase-inquiry-modal';
+import AuctionInterestModal from '@/components/ui/custom/auction-interest-modal';
 import { useListingBySymbol } from '../../../hooks/rwa/use-listing-by-symbol';
 import { useTokenMarketCap } from '../../../hooks/use-token-market-cap';
 
@@ -218,12 +219,14 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
 
   // State for purchase inquiry modal
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
+  // State for auction interest modal (when listing is not live)
+  const [isAuctionModalOpen, setIsAuctionModalOpen] = useState(false);
 
   // Extract symbol from imageInfo metadata
   const symbol = imageInfo?.metadata?.symbol;
 
   // Fetch listing data if symbol exists
-  const { listing } = useListingBySymbol(symbol || '');
+  const { listing, isLive } = useListingBySymbol(symbol || '');
 
   // Get token address from listing
   const tokenAddress = listing?.token?.contractAddress;
@@ -316,6 +319,7 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
   return (
     <AnimatePresence>
       <motion.div
+        key="image-details-overlay"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -330,63 +334,82 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
         }}
         onClick={stableOnClose}
       >
-        <motion.div
-          initial={{ scale: 0.98, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 0.98, opacity: 0 }}
-          transition={{
-            duration: 0.15,
-            ease: 'easeOut',
-            // Disable scale animation on mobile for better performance
-            scale: {
-              duration: typeof window !== 'undefined' && window.innerWidth < 768 ? 0 : 0.15,
-            },
-          }}
-          className="bg-black rounded-2xl sm:rounded-3xl overflow-hidden max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-6xl w-full shadow-goldGlow border border-[#D0B264]/40 max-h-[95vh] sm:max-h-[90vh] lg:h-[90vh] flex flex-col"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Scrollable Content Area */}
-          <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
-            {/* Image Section - Now with Lazy Loading */}
-            <div className="flex-shrink-0 lg:w-1/2 bg-gradient-to-b from-black/60 to-black p-3 sm:p-6 lg:p-8">
-              <div className="relative h-40 sm:h-48 md:h-56 lg:h-full min-h-[160px] max-h-[40vh] sm:max-h-[50vh] lg:max-h-none overflow-hidden rounded-xl sm:rounded-2xl bg-black">
-                {safeMetadata.image ? (
-                  <LazyModalImage
-                    src={safeMetadata.image}
-                    alt={safeMetadata.title}
-                    className="object-contain transition-transform duration-200 md:hover:scale-105 bg-black"
-                    style={{
-                      backgroundColor: '#000000',
-                      // Force black background during all loading states
-                      backgroundImage: 'none',
-                      backgroundRepeat: 'no-repeat',
-                    }}
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-[#D0B264]/60">
-                    <span>No image available</span>
-                  </div>
-                )}
+        <div className="origin-center scale-[0.85]">
+          <motion.div
+            initial={{ scale: 0.98, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.98, opacity: 0 }}
+            transition={{
+              duration: 0.15,
+              ease: 'easeOut',
+              // Disable scale animation on mobile for better performance
+              scale: {
+                duration: typeof window !== 'undefined' && window.innerWidth < 768 ? 0 : 0.15,
+              },
+            }}
+            className="bg-black rounded-2xl sm:rounded-3xl overflow-hidden max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-6xl w-full shadow-goldGlow border border-[#D0B264]/40 max-h-[95vh] sm:max-h-[90vh] lg:h-[90vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Scrollable Content Area */}
+            <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
+              {/* Image Section - Now with Lazy Loading */}
+              <div className="flex-shrink-0 lg:w-1/2 bg-gradient-to-b from-black/60 to-black p-3 sm:p-6 lg:p-8">
+                <div className="relative h-40 sm:h-48 md:h-56 lg:h-full min-h-[160px] max-h-[40vh] sm:max-h-[50vh] lg:max-h-none overflow-hidden rounded-xl sm:rounded-2xl bg-black">
+                  {safeMetadata.image ? (
+                    <LazyModalImage
+                      src={safeMetadata.image}
+                      alt={safeMetadata.title}
+                      className="object-contain transition-transform duration-200 md:hover:scale-105 bg-black"
+                      style={{
+                        backgroundColor: '#000000',
+                        // Force black background during all loading states
+                        backgroundImage: 'none',
+                        backgroundRepeat: 'no-repeat',
+                      }}
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-[#D0B264]/60">
+                      <span>No image available</span>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
 
-            {/* Content Section - Scrollable */}
-            <div className="flex-1 flex flex-col overflow-hidden">
-              <div className="flex-1 overflow-y-auto p-3 sm:p-6 lg:p-8 pb-0">
-                <div className="flex items-start justify-between mb-4 sm:mb-6">
-                  <div className="flex-1 pr-2">
-                    <div>
-                      <h2 className="text-xl sm:text-2xl lg:text-3xl xl:text-4xl font-bold text-[#D0B264] mb-2 sm:mb-3 font-neue-world tracking-wide leading-tight">
-                        {safeMetadata.title}
-                      </h2>
+              {/* Content Section - Scrollable */}
+              <div className="flex-1 flex flex-col overflow-hidden">
+                <div className="flex-1 overflow-y-auto p-3 sm:p-6 lg:p-8 pb-0">
+                  <div className="flex items-start justify-between mb-4 sm:mb-6">
+                    <div className="flex-1 pr-2">
+                      <div>
+                        <h2 className="text-xl sm:text-2xl lg:text-3xl xl:text-4xl font-bold text-[#D0B264] mb-2 sm:mb-3 font-neue-world tracking-wide leading-tight">
+                          {safeMetadata.title}
+                        </h2>
 
-                      {/* Updated Price Display - RRP Price • Token Symbol */}
-                      <div className="flex flex-col space-y-2 mb-3">
-                        {/* <div className="text-[#FFFFFF]/60 text-xs sm:text-sm font-jetbrains-mono tracking-wide">
+                        {/* Live trading status indicator */}
+                        <div className="mt-1">
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] sm:text-xs border ${
+                              isLive
+                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                                : 'bg-zinc-800/60 text-zinc-300 border-zinc-700'
+                            }`}
+                          >
+                            <span
+                              className={`h-1.5 w-1.5 rounded-full mr-1.5 ${
+                                isLive ? 'bg-emerald-400' : 'bg-zinc-500'
+                              }`}
+                            />
+                            {isLive ? 'Trading live' : 'Not live yet'}
+                          </span>
+                        </div>
+
+                        {/* Updated Price Display - RRP Price • Token Symbol */}
+                        <div className="flex flex-col space-y-2 mb-3">
+                          {/* <div className="text-[#FFFFFF]/60 text-xs sm:text-sm font-jetbrains-mono tracking-wide">
                           Bids starting at
                         </div> */}
-                        {/* Price Line: RRP [Price] • [Token Symbol] */}
-                        {/* <div className="flex items-baseline space-x-2">
+                          {/* Price Line: RRP [Price] • [Token Symbol] */}
+                          {/* <div className="flex items-baseline space-x-2">
                           {(() => {
                             const rrpValue = imageInfo?.metadata?.rrp as number | undefined;
                             if (rrpValue === undefined) return null;
@@ -407,158 +430,162 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                             {safeMetadata.ticker}
                           </span>
                         </div> */}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <button
-                    onClick={stableOnClose}
-                    className="text-[#D0B264]/80 hover:text-[#D0B264] transition-colors duration-150 p-1 flex-shrink-0"
-                  >
-                    <svg
-                      className="w-5 h-5 sm:w-6 sm:h-6"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
+                    <button
+                      onClick={stableOnClose}
+                      className="text-[#D0B264]/80 hover:text-[#D0B264] transition-colors duration-150 p-1 flex-shrink-0"
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M6 18L18 6M6 6l12 12"
-                      />
-                    </svg>
-                  </button>
-                </div>
+                      <svg
+                        className="w-5 h-5 sm:w-6 sm:h-6"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M6 18L18 6M6 6l12 12"
+                        />
+                      </svg>
+                    </button>
+                  </div>
 
-                {/* Add Countdown Timer */}
-                {/* <div className="mb-2">
+                  {/* Add Countdown Timer */}
+                  {/* <div className="mb-2">
                   <CountdownTimer
                     targetDate={new Date(safeMetadata.countdownDate || '2025-09-26T16:00:00.000Z')} // Use metadata countdown date or fallback
                   />
                 </div> */}
 
-                <div className="mb-4 sm:mb-6">
-                  {/* Enhanced Description with Read More/Less functionality - More space allocated */}
-                  <div className="prose prose-invert">
-                    <div className="relative">
-                      <p
-                        className={`text-[#FFFFFF]/80 text-sm sm:text-base leading-relaxed font-spectral tracking-wide transition-all duration-300 ${
-                          isDescriptionExpanded ? '' : 'line-clamp-3'
-                        }`}
-                      >
-                        {safeMetadata.description}
-                      </p>
+                  <div className="mb-4 sm:mb-6">
+                    {/* Enhanced Description with Read More/Less functionality - More space allocated */}
+                    <div className="prose prose-invert">
+                      <div className="relative">
+                        <p
+                          className={`text-[#FFFFFF]/80 text-sm sm:text-base leading-relaxed font-spectral tracking-wide transition-all duration-300 ${
+                            isDescriptionExpanded ? '' : 'line-clamp-3'
+                          }`}
+                        >
+                          {safeMetadata.description}
+                        </p>
 
-                      {/* Read More Button - Show if description is long enough to be truncated */}
-                      {safeMetadata.description && safeMetadata.description.length > 200 && (
-                        <div className="mt-3">
-                          <button
-                            onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
-                            className="text-[#D0B264] text-sm font-medium hover:text-[#D0B264]/80 transition-colors duration-150 flex items-center space-x-1"
-                          >
-                            <span>{isDescriptionExpanded ? 'Show Less' : 'Read More'}</span>
-                            <svg
-                              className={`w-4 h-4 transition-transform duration-200 ${
-                                isDescriptionExpanded ? 'rotate-180' : ''
-                              }`}
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
+                        {/* Read More Button - Show if description is long enough to be truncated */}
+                        {safeMetadata.description && safeMetadata.description.length > 200 && (
+                          <div className="mt-3">
+                            <button
+                              onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
+                              className="text-[#D0B264] text-sm font-medium hover:text-[#D0B264]/80 transition-colors duration-150 flex items-center space-x-1"
                             >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M19 9l-7 7-7-7"
-                              />
-                            </svg>
-                          </button>
-                        </div>
-                      )}
+                              <span>{isDescriptionExpanded ? 'Show Less' : 'Read More'}</span>
+                              <svg
+                                className={`w-4 h-4 transition-transform duration-200 ${
+                                  isDescriptionExpanded ? 'rotate-180' : ''
+                                }`}
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M19 9l-7 7-7-7"
+                                />
+                              </svg>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Asset Stats - More space allocated */}
+                    <div className="mt-6 sm:mt-8 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-4 sm:gap-y-6">
+                      {(() => {
+                        // Format numbers for display
+                        const formatNumber = (num: number): string => {
+                          if (num >= 1_000_000_000) return `${(num / 1_000_000_000).toFixed(2)}B`;
+                          if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(2)}M`;
+                          if (num >= 1_000) return `${(num / 1_000).toFixed(2)}K`;
+                          return num.toFixed(2);
+                        };
+
+                        // Format ACES Ratio
+                        const acesRatioDisplay = acesRatio > 0 ? `${acesRatio.toFixed(2)}x` : 'TBD';
+
+                        // Format Asset Sale Price
+                        const assetSalePriceDisplay =
+                          assetSalePrice > 0
+                            ? `$${assetSalePrice.toLocaleString('en-US', {
+                                minimumFractionDigits: 0,
+                                maximumFractionDigits: 0,
+                              })}`
+                            : 'TBD';
+
+                        // Format Market Cap
+                        const marketCapDisplay =
+                          liveMarketCap > 0 ? `$${formatNumber(liveMarketCap)}` : 'TBD';
+
+                        const stats = [
+                          {
+                            label: 'Market Cap',
+                            value: marketCapDisplay,
+                          },
+                          {
+                            label: 'Real World Value',
+                            value: assetSalePriceDisplay,
+                          },
+                          {
+                            label: 'ACES Ratio',
+                            value: acesRatioDisplay,
+                          },
+                        ];
+
+                        return stats.map(({ label, value }) => (
+                          <div key={label} className="flex flex-col">
+                            <span className="text-[10px] xs:text-xs sm:text-xs md:text-sm text-[#FFFFFF]/60 tracking-wide font-jetbrains-mono uppercase">
+                              {label}
+                            </span>
+                            <span className="text-xs xs:text-sm sm:text-sm md:text-base font-neue-world font-bold text-[#D0B264] mt-1">
+                              {value}
+                            </span>
+                          </div>
+                        ));
+                      })()}
                     </div>
                   </div>
-
-                  {/* Asset Stats - More space allocated */}
-                  <div className="mt-6 sm:mt-8 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-4 sm:gap-y-6">
-                    {(() => {
-                      // Format numbers for display
-                      const formatNumber = (num: number): string => {
-                        if (num >= 1_000_000_000) return `${(num / 1_000_000_000).toFixed(2)}B`;
-                        if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(2)}M`;
-                        if (num >= 1_000) return `${(num / 1_000).toFixed(2)}K`;
-                        return num.toFixed(2);
-                      };
-
-                      // Format ACES Ratio
-                      const acesRatioDisplay = acesRatio > 0 ? `${acesRatio.toFixed(2)}x` : 'TBD';
-
-                      // Format Asset Sale Price
-                      const assetSalePriceDisplay =
-                        assetSalePrice > 0
-                          ? `$${assetSalePrice.toLocaleString('en-US', {
-                              minimumFractionDigits: 0,
-                              maximumFractionDigits: 0,
-                            })}`
-                          : 'TBD';
-
-                      // Format Market Cap
-                      const marketCapDisplay =
-                        liveMarketCap > 0 ? `$${formatNumber(liveMarketCap)}` : 'TBD';
-
-                      const stats = [
-                        {
-                          label: 'Market Cap',
-                          value: marketCapDisplay,
-                        },
-                        {
-                          label: 'Real World Value',
-                          value: assetSalePriceDisplay,
-                        },
-                        {
-                          label: 'ACES Ratio',
-                          value: acesRatioDisplay,
-                        },
-                      ];
-
-                      return stats.map(({ label, value }) => (
-                        <div key={label} className="flex flex-col">
-                          <span className="text-[10px] xs:text-xs sm:text-xs md:text-sm text-[#FFFFFF]/60 tracking-wide font-jetbrains-mono uppercase">
-                            {label}
-                          </span>
-                          <span className="text-xs xs:text-sm sm:text-sm md:text-base font-neue-world font-bold text-[#D0B264] mt-1">
-                            {value}
-                          </span>
-                        </div>
-                      ));
-                    })()}
-                  </div>
                 </div>
-              </div>
 
-              {/* Fixed Button Area */}
-              <div className="flex-shrink-0 p-3 sm:p-6 lg:p-8 pt-0 bg-gradient-to-t from-black via-black/95 to-transparent">
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => setIsPurchaseModalOpen(true)}
-                    className="flex-1 bg-gradient-to-r from-[#D0B264] to-[#D0B264]/80 hover:from-[#D0B264]/90 hover:to-[#D0B264]/70 text-[#231F20] font-syne font-bold py-3 sm:py-4 px-4 sm:px-6 lg:px-8 rounded-lg sm:rounded-xl transition-all duration-150 transform active:scale-[0.98] shadow-goldGlow text-sm sm:text-base lg:text-lg md:hover:scale-[1.02] text-center"
-                  >
-                    TRADE
-                  </button>
-                  <button
-                    onClick={() => setIsPurchaseModalOpen(true)}
-                    className="flex-1 bg-gradient-to-r from-[#231F20] to-[#231F20]/90 hover:from-[#181515]/90 hover:to-[#363636]/80 text-[#D0B264] font-syne font-bold py-3 sm:py-4 px-4 sm:px-6 lg:px-8 rounded-lg sm:rounded-xl transition-all duration-150 transform active:scale-[0.98] shadow-goldGlow text-sm sm:text-base lg:text-lg md:hover:scale-[1.02] text-center border border-[#D0B264]/70"
-                  >
-                    AUCTION
-                  </button>
+                {/* Fixed Button Area */}
+                <div className="flex-shrink-0 p-3 sm:p-6 lg:p-8 pt-0 bg-gradient-to-t from-black via-black/95 to-transparent">
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setIsPurchaseModalOpen(true)}
+                      className="flex-1 bg-gradient-to-r from-[#D0B264] to-[#D0B264]/80 hover:from-[#D0B264]/90 hover:to-[#D0B264]/70 text-[#231F20] font-syne font-bold py-3 sm:py-4 px-4 sm:px-6 lg:px-8 rounded-lg sm:rounded-xl transition-all duration-150 transform active:scale-[0.98] shadow-goldGlow text-sm sm:text-base lg:text-lg md:hover:scale-[1.02] text-center"
+                    >
+                      TRADE
+                    </button>
+                    <button
+                      onClick={() =>
+                        isLive ? setIsPurchaseModalOpen(true) : setIsAuctionModalOpen(true)
+                      }
+                      className="flex-1 bg-gradient-to-r from-[#231F20] to-[#231F20]/90 hover:from-[#181515]/90 hover:to-[#363636]/80 text-[#D0B264] font-syne font-bold py-3 sm:py-4 px-4 sm:px-6 lg:px-8 rounded-lg sm:rounded-xl transition-all duration-150 transform active:scale-[0.98] shadow-goldGlow text-sm sm:text-base lg:text-lg md:hover:scale-[1.02] text-center border border-[#D0B264]/70"
+                    >
+                      AUCTION
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </motion.div>
+          </motion.div>
+        </div>
       </motion.div>
 
       {/* Purchase Inquiry Modal */}
       <PurchaseInquiryModal
+        key="purchase-inquiry-modal"
         isOpen={isPurchaseModalOpen}
         onClose={() => setIsPurchaseModalOpen(false)}
         productTitle={safeMetadata.title}
@@ -571,6 +598,15 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
             maximumFractionDigits: 0,
           })}`;
         })()}
+      />
+
+      {/* Auction Interest Modal (when listing is not live) */}
+      <AuctionInterestModal
+        key="auction-interest-modal"
+        isOpen={isAuctionModalOpen}
+        onClose={() => setIsAuctionModalOpen(false)}
+        productTitle={safeMetadata.title}
+        productTicker={safeMetadata.ticker}
       />
     </AnimatePresence>
   );
