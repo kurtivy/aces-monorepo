@@ -10,7 +10,6 @@ import { NotificationBell } from '@/components/ui/custom/notification-bell';
 import { useAuth } from '@/lib/auth/auth-context';
 import { useSwapContracts } from '@/hooks/swap/use-swap-contracts';
 import { useTokenBalances } from '@/hooks/swap/use-token-balances';
-import { formatAmountForDisplay } from '@/lib/swap/formatters';
 
 interface HorizontalProfileHeaderProps {
   user: {
@@ -99,7 +98,7 @@ export function HorizontalProfileHeader({
   const acesBalanceNum = parseFloat(acesBalance || '0');
   const usdValue = acesUsdPrice ? acesBalanceNum * acesUsdPrice : 0;
 
-  const formattedAcesBalance = formatAmountForDisplay(acesBalance, 18);
+  const formattedAcesBalance = Math.floor(acesBalanceNum).toLocaleString('en-US');
   const formattedUsdValue = `$${usdValue.toFixed(2)}`;
 
   const walletUsernameSeed = user.walletAddress ? user.walletAddress.slice(2, 9).toUpperCase() : '';

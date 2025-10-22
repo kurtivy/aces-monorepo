@@ -7,10 +7,6 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '@/lib/auth/auth-context';
 import { NotificationsApi, NotificationData } from '@/lib/api/notifications';
-import {
-  SubmissionDetailsModal,
-  SubmissionData,
-} from '@/components/shared/submission-details-modal';
 
 export function NotificationBell() {
   const { getAccessToken, user } = useAuth();
@@ -20,7 +16,6 @@ export function NotificationBell() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const [selectedSubmission, setSelectedSubmission] = useState<SubmissionData | null>(null);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -164,33 +159,6 @@ export function NotificationBell() {
     return `${diffDays}d ago`;
   };
 
-  const handleNotificationClick = (notification: NotificationData) => {
-    // Check if this is a submission-related notification
-    const isSubmissionNotification =
-      notification.type === 'SUBMISSION_APPROVED' || notification.type === 'SUBMISSION_REJECTED';
-
-    if (isSubmissionNotification && notification.submission) {
-      // Open submission details modal
-      const submissionData: SubmissionData = {
-        id: notification.submission.id,
-        title: notification.submission.title,
-        symbol: notification.submission.symbol,
-        status: notification.submission.status,
-        imageGallery: notification.submission.imageGallery,
-        rejectionReason: notification.submission.rejectionReason,
-        createdAt: notification.createdAt, // Use notification createdAt as fallback
-        approvedAt: null, // Will be null for now
-        rwaListing: null, // Will be null for now
-      };
-      setSelectedSubmission(submissionData);
-      setIsOpen(false);
-    } else if (notification.actionUrl) {
-      // Regular notification - navigate to action URL
-      window.location.href = notification.actionUrl;
-      setIsOpen(false);
-    }
-  };
-
   if (!user) return null;
 
   return (
@@ -290,23 +258,9 @@ export function NotificationBell() {
                         <p className="text-xs text-[#DCDDCC] mb-2 line-clamp-2">
                           {notification.message}
                         </p>
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs text-[#DCDDCC]/70">
-                            {getNotificationAge(notification.createdAt)}
-                          </span>
-                          {(notification.actionUrl ||
-                            notification.type === 'SUBMISSION_APPROVED' ||
-                            notification.type === 'SUBMISSION_REJECTED') && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleNotificationClick(notification)}
-                              className="text-xs text-[#D0B284] hover:text-white h-6 px-2"
-                            >
-                              View
-                            </Button>
-                          )}
-                        </div>
+                        <span className="text-xs text-[#DCDDCC]/70">
+                          {getNotificationAge(notification.createdAt)}
+                        </span>
                       </div>
                       <div className="flex flex-col gap-1">
                         {!notification.isRead && (
@@ -355,13 +309,6 @@ export function NotificationBell() {
           )}
         </div>
       )}
-
-      {/* Submission Details Modal */}
-      <SubmissionDetailsModal
-        submission={selectedSubmission}
-        isOpen={!!selectedSubmission}
-        onClose={() => setSelectedSubmission(null)}
-      />
     </div>
   );
 }

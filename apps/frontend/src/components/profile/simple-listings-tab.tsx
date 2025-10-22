@@ -748,7 +748,7 @@ export function SimpleListingsTab({
           size="sm"
           onClick={() => handleMintToken(listing)}
           disabled={isMinting || !contractReady}
-          className="bg-green-500 hover:bg-green-600 text-white text-xs"
+          className="bg-[#1e3c23] hover:bg-[#1e3c23]/80 text-white text-xs"
         >
           {isMinting ? (
             <>
