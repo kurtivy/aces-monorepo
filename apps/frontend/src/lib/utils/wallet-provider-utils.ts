@@ -16,6 +16,174 @@ export interface WalletProvider {
   providers?: WalletProvider[];
 }
 
+type ProviderWithMetadata = WalletProvider & {
+  id?: string;
+  info?: {
+    rdns?: string;
+    name?: string;
+  };
+  selectedAddress?: string;
+  accounts?: string[];
+};
+
+const META_MASK_IDENTIFIERS = ['metamask', 'io.metamask'];
+const PHANTOM_IDENTIFIERS = ['phantom', 'app.phantom'];
+const COINBASE_IDENTIFIERS = ['coinbase', 'wallet.coinbase'];
+const RABBY_IDENTIFIERS = ['rabby'];
+
+function collectInjectedProviders(): WalletProvider[] {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+
+  const collected = new Set<WalletProvider>();
+  const seen = new Set<WalletProvider>();
+
+  const queue: WalletProvider[] = [];
+
+  const enqueueIfValid = (candidate: unknown) => {
+    if (!candidate || typeof candidate !== 'object') {
+      return;
+    }
+
+    const provider = candidate as WalletProvider;
+    if (typeof provider.request !== 'function' || seen.has(provider)) {
+      return;
+    }
+
+    seen.add(provider);
+    queue.push(provider);
+  };
+
+  enqueueIfValid(window.ethereum as WalletProvider | undefined);
+  enqueueIfValid((window as any)?.phantom?.ethereum);
+
+  for (const entry of queue) {
+    collected.add(entry);
+
+    const withProviders = entry as WalletProvider & { providers?: WalletProvider[] };
+    if (Array.isArray(withProviders.providers)) {
+      withProviders.providers.forEach((p) => enqueueIfValid(p));
+    }
+
+    const detected = (entry as any)?.detected;
+    if (Array.isArray(detected)) {
+      detected.forEach((p: WalletProvider) => enqueueIfValid(p));
+    }
+
+    const providerMap = (entry as any)?.providerMap;
+    if (providerMap && typeof providerMap.values === 'function') {
+      for (const value of providerMap.values()) {
+        enqueueIfValid(value?.provider ?? value);
+      }
+    }
+  }
+
+  return Array.from(collected);
+}
+
+function isMetaMaskProvider(provider: ProviderWithMetadata): boolean {
+  if (provider.isMetaMask === true && provider.isPhantom !== true) {
+    return true;
+  }
+
+  const id = provider.id?.toLowerCase();
+  const rdns = provider.info?.rdns?.toLowerCase();
+  const name = provider.info?.name?.toLowerCase();
+
+  return META_MASK_IDENTIFIERS.some(
+    (needle) => id?.includes(needle) || rdns?.includes(needle) || name?.includes(needle),
+  );
+}
+
+function isPhantomProvider(provider: ProviderWithMetadata): boolean {
+  if (provider.isPhantom === true) {
+    return true;
+  }
+
+  const id = provider.id?.toLowerCase();
+  const rdns = provider.info?.rdns?.toLowerCase();
+  const name = provider.info?.name?.toLowerCase();
+
+  return PHANTOM_IDENTIFIERS.some(
+    (needle) => id?.includes(needle) || rdns?.includes(needle) || name?.includes(needle),
+  );
+}
+
+function isCoinbaseProvider(provider: ProviderWithMetadata): boolean {
+  if (provider.isCoinbaseWallet === true) {
+    return true;
+  }
+
+  const id = provider.id?.toLowerCase();
+  const rdns = provider.info?.rdns?.toLowerCase();
+  const name = provider.info?.name?.toLowerCase();
+
+  return COINBASE_IDENTIFIERS.some(
+    (needle) => id?.includes(needle) || rdns?.includes(needle) || name?.includes(needle),
+  );
+}
+
+function isRabbyProvider(provider: ProviderWithMetadata): boolean {
+  if ((provider as any).isRabby === true) {
+    return true;
+  }
+
+  const id = provider.id?.toLowerCase();
+  const rdns = provider.info?.rdns?.toLowerCase();
+  const name = provider.info?.name?.toLowerCase();
+
+  return RABBY_IDENTIFIERS.some(
+    (needle) => id?.includes(needle) || rdns?.includes(needle) || name?.includes(needle),
+  );
+}
+
+function providerHasSelectedAddress(provider: ProviderWithMetadata, targetAddress?: string): boolean {
+  if (!targetAddress) {
+    return false;
+  }
+
+  const normalized = targetAddress.toLowerCase();
+
+  const selected = provider.selectedAddress;
+  if (typeof selected === 'string' && selected.toLowerCase() === normalized) {
+    return true;
+  }
+
+  const accounts = provider.accounts;
+  if (Array.isArray(accounts)) {
+    return accounts.some(
+      (account) => typeof account === 'string' && account.toLowerCase() === normalized,
+    );
+  }
+
+  return false;
+}
+
+function selectInjectedProvider(
+  predicate: (provider: ProviderWithMetadata) => boolean,
+  targetAddress?: string,
+): WalletProvider | null {
+  const providers = collectInjectedProviders().filter((provider) =>
+    predicate(provider as ProviderWithMetadata),
+  );
+
+  if (providers.length === 0) {
+    return null;
+  }
+
+  if (targetAddress) {
+    const matchByAddress = providers.find((provider) =>
+      providerHasSelectedAddress(provider as ProviderWithMetadata, targetAddress),
+    );
+    if (matchByAddress) {
+      return matchByAddress;
+    }
+  }
+
+  return providers[0];
+}
+
 /**
  * Get provider for a specific wallet address
  * This is the KEY function - it matches Privy's connected wallet to the actual provider
@@ -36,7 +204,22 @@ export function getProviderForAddress(
   if (privyWallet) {
     // Get the provider based on Privy's wallet client type
     // For Privy embedded wallets, pass the wallet object itself
-    return getProviderForWalletType(privyWallet.walletClientType, privyWallet);
+    const provider = getProviderForWalletType(
+      privyWallet.walletClientType,
+      privyWallet,
+      targetAddress,
+    );
+    if (provider) {
+      return provider;
+    }
+  }
+
+  // Try to match an injected provider by selected address
+  const addressMatch = collectInjectedProviders().find((provider) =>
+    providerHasSelectedAddress(provider as ProviderWithMetadata, targetAddress),
+  );
+  if (addressMatch) {
+    return addressMatch;
   }
 
   // Fallback to auto-detection
@@ -49,6 +232,7 @@ export function getProviderForAddress(
 export function getProviderForWalletType(
   walletClientType: string,
   privyWallet?: ConnectedWallet,
+  targetAddress?: string,
 ): WalletProvider | null {
   if (typeof window === 'undefined') {
     return null;
@@ -56,95 +240,81 @@ export function getProviderForWalletType(
 
   const normalized = walletClientType.toLowerCase();
 
-  // Handle Privy embedded wallets FIRST (before checking window.ethereum)
-  if (normalized.includes('privy') && privyWallet) {
-    // Privy embedded wallets provide their own EIP-1193 provider
-    // Access it via getEthereumProvider() method
+  // Try to get the provider directly from the Privy wallet object (works for embedded and some externals)
+  if (privyWallet) {
     try {
-      const provider = (privyWallet as any).getEthereumProvider?.();
-      if (provider) {
-        return provider as WalletProvider;
+      const direct =
+        (privyWallet as any).getEthereumProvider?.() ??
+        (privyWallet as any).provider ??
+        (privyWallet as any).ethereumProvider;
+      if (direct && typeof (direct as WalletProvider).request === 'function') {
+        return direct as WalletProvider;
       }
     } catch (error) {
-      console.error('[WalletProvider] Failed to get Privy provider:', error);
+      console.error('[WalletProvider] Failed to get provider from Privy wallet:', error);
     }
+  }
 
-    // Fallback: Some Privy versions might expose it differently
-    // Try accessing the provider directly from the wallet object
-    const directProvider = (privyWallet as any).provider;
-    if (directProvider) {
-      return directProvider as WalletProvider;
-    }
-
+  if (normalized.includes('privy')) {
+    // Embedded wallets should have been handled above
     return null;
   }
 
-  // Handle Phantom
   if (normalized.includes('phantom')) {
     const phantomEthereum = (window as any)?.phantom?.ethereum as WalletProvider | undefined;
     if (phantomEthereum?.isPhantom) {
       return phantomEthereum;
     }
+
+    const phantomProvider = selectInjectedProvider(isPhantomProvider, targetAddress);
+    if (phantomProvider) {
+      return phantomProvider;
+    }
+
+    console.warn('[WalletProvider] ⚠️ Phantom wallet not found');
+    return null;
   }
 
-  // Handle MetaMask
   if (normalized.includes('metamask')) {
-    const ethereum = window.ethereum as WalletProvider;
-
-    // Check if there are multiple providers
-    if (ethereum?.providers && ethereum.providers.length > 0) {
-      const metamaskProvider = ethereum.providers.find(
-        (p: WalletProvider) => p.isMetaMask === true && p.isPhantom !== true,
-      );
-      if (metamaskProvider) {
-        return metamaskProvider;
-      }
+    const metamaskProvider = selectInjectedProvider(isMetaMaskProvider, targetAddress);
+    if (metamaskProvider) {
+      return metamaskProvider;
     }
 
-    // Single provider that is MetaMask
-    if (ethereum?.isMetaMask && !ethereum.isPhantom) {
-      return ethereum;
-    }
+    console.warn('[WalletProvider] ⚠️ MetaMask provider not detected');
+    return null;
   }
 
-  // Handle Coinbase
   if (normalized.includes('coinbase')) {
-    const ethereum = window.ethereum as WalletProvider;
-
-    if (ethereum?.providers && ethereum.providers.length > 0) {
-      const coinbaseProvider = ethereum.providers.find(
-        (p: WalletProvider) => p.isCoinbaseWallet === true,
-      );
-      if (coinbaseProvider) {
-        return coinbaseProvider;
-      }
+    const coinbaseProvider = selectInjectedProvider(isCoinbaseProvider, targetAddress);
+    if (coinbaseProvider) {
+      return coinbaseProvider;
     }
 
-    if (ethereum?.isCoinbaseWallet) {
-      return ethereum;
-    }
+    console.warn('[WalletProvider] ⚠️ Coinbase Wallet provider not detected');
+    return null;
   }
 
-  // Handle Rabby
   if (normalized.includes('rabby')) {
-    const ethereum = window.ethereum as WalletProvider;
+    const rabbyProvider = selectInjectedProvider(isRabbyProvider, targetAddress);
+    if (rabbyProvider) {
+      return rabbyProvider;
+    }
 
-    if (ethereum?.providers && ethereum.providers.length > 0) {
-      const rabbyProvider = ethereum.providers.find(
-        (p: WalletProvider) => (p as any).isRabby === true,
-      );
-      if (rabbyProvider) {
-        return rabbyProvider;
-      }
+    console.warn('[WalletProvider] ⚠️ Rabby provider not detected');
+    return null;
+  }
+
+  if (targetAddress) {
+    const byAddress = collectInjectedProviders().find((provider) =>
+      providerHasSelectedAddress(provider as ProviderWithMetadata, targetAddress),
+    );
+    if (byAddress) {
+      return byAddress;
     }
   }
 
-  // Fallback to window.ethereum for unknown wallet types
-  if (window.ethereum) {
-    return window.ethereum as WalletProvider;
-  }
-
-  return null;
+  return getActiveWalletProvider();
 }
 
 /**
@@ -154,51 +324,17 @@ export function getProviderForWalletType(
  * when multiple wallets are installed.
  */
 export function getActiveWalletProvider(): WalletProvider | null {
-  if (typeof window === 'undefined' || !window.ethereum) {
-    // Phantom sometimes exposes provider at window.phantom.ethereum
-    const phantomEthereum = (window as any)?.phantom?.ethereum as WalletProvider | undefined;
-    return phantomEthereum || null;
+  if (typeof window === 'undefined') {
+    return null;
   }
 
-  const ethereum = window.ethereum as WalletProvider;
-
-  // If there's only one provider, use it
-  if (!ethereum.providers || ethereum.providers.length === 0) {
+  const ethereum = window.ethereum as WalletProvider | undefined;
+  if (ethereum && typeof ethereum.request === 'function') {
     return ethereum;
   }
 
-  // Multiple providers detected
-
-  // Check which one is actively being used by checking window.ethereum properties
-  // Priority: whichever wallet has set itself as the active provider on window.ethereum
-
-  if (ethereum.isPhantom) {
-    const phantomProvider = ethereum.providers.find((p: WalletProvider) => p.isPhantom === true);
-    if (phantomProvider) {
-      return phantomProvider;
-    }
-  }
-
-  if (ethereum.isMetaMask && !ethereum.isPhantom) {
-    const metamaskProvider = ethereum.providers.find(
-      (p: WalletProvider) => p.isMetaMask === true && p.isPhantom !== true,
-    );
-    if (metamaskProvider) {
-      return metamaskProvider;
-    }
-  }
-
-  if (ethereum.isCoinbaseWallet) {
-    const coinbaseProvider = ethereum.providers.find(
-      (p: WalletProvider) => p.isCoinbaseWallet === true,
-    );
-    if (coinbaseProvider) {
-      return coinbaseProvider;
-    }
-  }
-
-  // Fallback: just use window.ethereum as-is
-  return ethereum;
+  const providers = collectInjectedProviders();
+  return providers[0] ?? null;
 }
 
 /**

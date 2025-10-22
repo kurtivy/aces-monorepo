@@ -68,7 +68,6 @@ export function MarketCapProvider({ children }: MarketCapProviderProps) {
 
       // Validate token address format (must be 40-char Ethereum address)
       if (!isValidEthereumAddress(tokenAddress)) {
-        console.warn(`[MarketCapContext] Invalid token address format: ${tokenAddress}`);
         setTokenDataMap((prev) => {
           const newMap = new Map(prev);
           newMap.set(cacheKey, {
@@ -151,8 +150,6 @@ export function MarketCapProvider({ children }: MarketCapProviderProps) {
         failureCounters.current.set(cacheKey, 0);
         backoffDelays.current.set(cacheKey, INITIAL_BACKOFF);
       } catch (err) {
-        console.error(`[MarketCapContext] Fetch error for ${tokenAddress}:`, err);
-
         const currentFailures = (failureCounters.current.get(cacheKey) || 0) + 1;
         failureCounters.current.set(cacheKey, currentFailures);
 
@@ -169,7 +166,6 @@ export function MarketCapProvider({ children }: MarketCapProviderProps) {
 
         // Pause this token after max failures
         if (currentFailures >= MAX_FAILURES) {
-          console.error(`[MarketCapContext] Max failures reached for ${tokenAddress}. Pausing.`);
           stopPollingToken(tokenAddress, currency);
         }
 
@@ -195,7 +191,6 @@ export function MarketCapProvider({ children }: MarketCapProviderProps) {
 
       // Validate token address format before starting to poll
       if (!isValidEthereumAddress(tokenAddress)) {
-        console.warn(`[MarketCapContext] Cannot poll invalid token address: ${tokenAddress}`);
         return;
       }
 
@@ -265,7 +260,6 @@ export function MarketCapProvider({ children }: MarketCapProviderProps) {
   const refreshToken = useCallback(
     (tokenAddress: string, currency: 'usd' | 'aces' = 'usd') => {
       const cacheKey = getCacheKey(tokenAddress, currency);
-      console.log(`[MarketCapContext] Manual refresh for ${tokenAddress}`);
 
       // Reset failure counters
       failureCounters.current.set(cacheKey, 0);
@@ -280,10 +274,8 @@ export function MarketCapProvider({ children }: MarketCapProviderProps) {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        console.log('[MarketCapContext] Tab hidden, pausing polling');
         isPaused.current = true;
       } else {
-        console.log('[MarketCapContext] Tab visible, resuming polling');
         isPaused.current = false;
 
         // Refresh all active tokens

@@ -101,7 +101,7 @@ export const useRealtimeChart = (tokenAddress: string, timeframe: string = '1h')
               });
             }
           }
-        }, 5000); // 5-second polling as per plan
+        }, 10000); // 10-second polling to reduce subgraph pressure
 
         // Store interval for cleanup
         pollingManagerRef.current.subscriptions.get(subscriptionId).interval = interval;
