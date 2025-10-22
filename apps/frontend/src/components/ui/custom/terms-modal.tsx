@@ -1,16 +1,24 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
+import type { TermsModalTab } from '@/lib/contexts/modal-context';
 
 interface TermsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialTab?: TermsModalTab;
 }
 
-export default function TermsModal({ isOpen, onClose }: TermsModalProps) {
-  const [activeTab, setActiveTab] = useState<'terms' | 'privacy' | 'launchpad'>('terms');
+export default function TermsModal({ isOpen, onClose, initialTab = 'terms' }: TermsModalProps) {
+  const [activeTab, setActiveTab] = useState<TermsModalTab>('terms');
+
+  useEffect(() => {
+    if (isOpen) {
+      setActiveTab(initialTab);
+    }
+  }, [isOpen, initialTab]);
 
   return (
     <AnimatePresence>
