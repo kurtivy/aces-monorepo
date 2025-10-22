@@ -8,7 +8,6 @@ import {
   getProviderForAddress,
   getCurrentChainIdFromProvider,
   getWalletInitDelay,
-  getWalletNameFromType,
 } from '@/lib/utils/wallet-provider-utils';
 
 /**
@@ -89,12 +88,9 @@ export function useSwapContracts(
       // Use wagmi for Privy smart wallets
       if (isPrivyWallet) {
         if (!walletClient) {
-          console.log('[useSwapContracts] ⏸️ Waiting for Wagmi wallet client...');
           initializingRef.current = false;
           return false;
         }
-
-        console.log('[useSwapContracts] ✅ Using Wagmi for Privy smart wallet');
 
         // Create ethers provider from wagmi wallet client
         const network = {
@@ -108,7 +104,6 @@ export function useSwapContracts(
         );
 
         chainId = walletClient.chain.id;
-        console.log('[useSwapContracts] Chain ID from Wagmi:', chainId);
       } else {
         // Use traditional EIP-1193 provider for external wallets
         const ethProvider = getProviderForAddress(walletAddress, privyWallets);
@@ -118,8 +113,6 @@ export function useSwapContracts(
           initializingRef.current = false;
           return false;
         }
-
-        console.log('[useSwapContracts] ✅ Using EIP-1193 provider for external wallet');
 
         // Get current chain ID from the specific provider
         const detectedChainId = await getCurrentChainIdFromProvider(ethProvider);
@@ -134,8 +127,6 @@ export function useSwapContracts(
 
       // Get contract addresses for this chain
       const addresses = getContractAddresses(chainId);
-      console.log('[useSwapContracts] 🏭 FACTORY_PROXY:', addresses.FACTORY_PROXY);
-      console.log('[useSwapContracts] 🪙 ACES_TOKEN:', addresses.ACES_TOKEN);
 
       if (!addresses.FACTORY_PROXY || !addresses.ACES_TOKEN) {
         throw new Error(`Contract addresses not configured for chain ID ${chainId}`);
@@ -250,20 +241,11 @@ export function useSwapContracts(
       const maxRetries = isPrivyWallet ? 5 : 3; // More retries for Privy embedded wallets
       const delay = getWalletInitDelay(walletClientType);
 
-      console.log('[useSwapContracts] Initialization config:', {
-        walletClientType,
-        maxRetries,
-        delay,
-      });
-
       const attemptInitialization = async () => {
         const success = await initializeProvider();
 
         if (!success && retryCount < maxRetries) {
           retryCount++;
-          console.log(
-            `[useSwapContracts] Retry ${retryCount}/${maxRetries} in ${delay * (retryCount + 1)}ms`,
-          );
           setTimeout(attemptInitialization, delay * (retryCount + 1));
         } else if (!success) {
           console.error('[useSwapContracts] Failed to initialize after', maxRetries, 'attempts');
@@ -342,9 +324,6 @@ export function useSwapContracts(
 
     // Check if the provider supports event listeners (Privy smart wallets may not)
     if (typeof ethProvider.on !== 'function') {
-      console.log(
-        '[useSwapContracts] Provider does not support event listeners (Privy Smart Wallet)',
-      );
       return;
     }
 

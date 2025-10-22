@@ -17,7 +17,12 @@ interface BondingData {
 
   // Calculated values
   bondingPercentage: number; // 0-100
-  bondingTargetSource?: 'contract' | 'max_total_supply' | 'subgraph' | 'listing_parameters' | 'default';
+  bondingTargetSource?:
+    | 'contract'
+    | 'max_total_supply'
+    | 'subgraph'
+    | 'listing_parameters'
+    | 'default';
 
   // Loading state
   loading: boolean;
@@ -71,8 +76,6 @@ export function useTokenBondingData(
       bondingTargetSource: 'default',
     };
   }
-
-  console.log('[useTokenBondingData] backend data', tokenState.data);
 
   // Map backend data to expected interface
   return {

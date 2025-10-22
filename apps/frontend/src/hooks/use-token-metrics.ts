@@ -30,17 +30,12 @@ export function useTokenMetrics(
       return;
     }
 
-    console.log('[useTokenMetrics] 🎯 Fetching metrics for:', tokenAddress);
-
     try {
       const result = await TokensApi.getTokenMetrics(tokenAddress);
-
-      console.log('[useTokenMetrics] 📊 API response:', result);
 
       if (result.success) {
         setMetrics(result.data);
         setError(null);
-        console.log('[useTokenMetrics] ✅ Metrics updated:', result.data);
       } else {
         console.error('[useTokenMetrics] ❌ Failed to fetch metrics:', result.error);
         setError(result.error);
