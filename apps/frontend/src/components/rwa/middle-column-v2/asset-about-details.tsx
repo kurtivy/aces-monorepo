@@ -1,6 +1,7 @@
 'use client';
 
-import { MapPin, X } from 'lucide-react';
+import { useState } from 'react';
+import { MapPin, X, ChevronDown } from 'lucide-react';
 import type { DatabaseListing } from '@/types/rwa/section.types';
 
 interface AssetAboutDetailsV2Props {
@@ -16,6 +17,7 @@ export function AssetAboutDetailsV2({
   onClose,
   listing,
 }: AssetAboutDetailsV2Props) {
+  const [openSection, setOpenSection] = useState<'Story' | 'Details' | 'Provenance'>('Story');
   const parseContent = (content?: string | null) =>
     content
       ? content
@@ -82,41 +84,59 @@ export function AssetAboutDetailsV2({
       {hasAnyCardContent ? (
         <div className="flex flex-col">
           <div className="flex flex-col gap-6">
-            {cards.map((card) => (
-              <div
-                key={card.title}
-                className="relative overflow-hidden rounded-xl border border-black/10  bg-black/40 p-5 shadow-[0_10px_25px_rgba(0,0,0,0.12)]"
-              >
-                <div className="pointer-events-none absolute inset-0">
-                  <div className="absolute inset-5 rounded-lg bg-black/60 blur-2xl" />
-                </div>
+            {cards.map((card) => {
+              const isOpen = openSection === card.title;
+              return (
+                <div
+                  key={card.title}
+                  className="relative overflow-hidden rounded-xl border border-black/10  bg-black/40 p-5 shadow-[0_10px_25px_rgba(0,0,0,0.12)]"
+                >
+                  <div className="pointer-events-none absolute inset-0">
+                    <div className="absolute inset-5 rounded-lg bg-black/60 blur-2xl" />
+                  </div>
 
-                <span className="absolute top-2 left-2 h-2 w-2 rounded-full bg-[#D0B284]/80" />
-                <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-[#D0B284]/80" />
-                <span className="absolute bottom-2 left-2 h-2 w-2 rounded-full bg-[#D0B284]/80" />
-                <span className="absolute bottom-2 right-2 h-2 w-2 rounded-full bg-[#D0B284]/80" />
+                  <span className="absolute top-2 left-2 h-2 w-2 rounded-full bg-[#D0B284]/80" />
+                  <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-[#D0B284]/80" />
+                  <span className="absolute bottom-2 left-2 h-2 w-2 rounded-full bg-[#D0B284]/80" />
+                  <span className="absolute bottom-2 right-2 h-2 w-2 rounded-full bg-[#D0B284]/80" />
 
-                <div className="relative flex h-full flex-col gap-3">
-                  <h3 className="text-base font-semibold uppercase tracking-[0.35em] text-[#D0B284] font-neue-world">
-                    {card.title}
-                  </h3>
-                  {card.paragraphs.length > 0 ? (
-                    card.paragraphs.map((paragraph, index) => (
-                      <p
-                        key={`${card.title}-${index}`}
-                        className="text-sm leading-relaxed text-white font-proxima-nova"
-                      >
-                        {paragraph}
-                      </p>
-                    ))
-                  ) : (
-                    <p className="text-sm leading-relaxed text-white font-proxima-nova">
-                      {fallbackText}
-                    </p>
-                  )}
+                  <div className="relative flex h-full flex-col gap-3">
+                    <button
+                      type="button"
+                      aria-expanded={isOpen}
+                      onClick={() =>
+                        setOpenSection(card.title as 'Story' | 'Details' | 'Provenance')
+                      }
+                      className="flex w-full items-center justify-between text-left"
+                    >
+                      <span className="text-base font-semibold uppercase tracking-[0.35em] text-[#D0B284] font-neue-world">
+                        {card.title}
+                      </span>
+                      <ChevronDown
+                        className={`h-4 w-4 text-[#D0B284] transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                      />
+                    </button>
+
+                    {isOpen ? (
+                      card.paragraphs.length > 0 ? (
+                        card.paragraphs.map((paragraph, index) => (
+                          <p
+                            key={`${card.title}-${index}`}
+                            className="text-sm leading-relaxed text-white font-proxima-nova"
+                          >
+                            {paragraph}
+                          </p>
+                        ))
+                      ) : (
+                        <p className="text-sm leading-relaxed text-white font-proxima-nova">
+                          {fallbackText}
+                        </p>
+                      )
+                    ) : null}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       ) : (

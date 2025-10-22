@@ -434,7 +434,7 @@ export default function ListTokenForm() {
     <div className="relative pointer-events-auto">
       {/* Verification Required Overlay */}
       {isAuthenticated && !isVerifiedSeller && (
-        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm rounded-2xl z-20 flex items-center justify-center">
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm rounded-2xl z-20 flex items-start justify-center pt-6 sm:pt-10">
           <div className="bg-[#151c16] border border-[#D7BF75] rounded-xl p-6 text-center max-w-md mx-4">
             <Shield className="w-12 h-12 text-[#D7BF75] mx-auto mb-4" />
             <h3 className="text-xl font-bold text-[#D7BF75] mb-2">Verification Required</h3>
