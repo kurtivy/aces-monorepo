@@ -34,7 +34,25 @@ export function useTokenMetrics(
       const result = await TokensApi.getTokenMetrics(tokenAddress);
 
       if (result.success) {
-        setMetrics(result.data);
+        // Preserve previous liquidity value if new value is null but we had a valid value before
+        // This prevents flickering when ACES price is temporarily unavailable
+        const updatedMetrics = { ...result.data };
+        if (
+          result.data.liquidityUsd === null &&
+          metrics?.liquidityUsd !== null &&
+          metrics?.liquidityUsd !== undefined
+        ) {
+          updatedMetrics.liquidityUsd = metrics.liquidityUsd;
+          updatedMetrics.liquiditySource = metrics.liquiditySource;
+          console.log(
+            '[useTokenMetrics] ⚠️ Preserving previous liquidity value:',
+            metrics.liquidityUsd,
+            'source:',
+            metrics.liquiditySource,
+          );
+        }
+
+        setMetrics(updatedMetrics);
         setError(null);
       } else {
         console.error('[useTokenMetrics] ❌ Failed to fetch metrics:', result.error);
@@ -49,7 +67,7 @@ export function useTokenMetrics(
     } finally {
       setLoading(false);
     }
-  }, [tokenAddress]);
+  }, [tokenAddress, metrics]);
 
   useEffect(() => {
     if (!tokenAddress) {

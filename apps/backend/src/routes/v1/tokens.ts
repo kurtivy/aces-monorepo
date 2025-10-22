@@ -480,17 +480,23 @@ export async function tokensRoutes(fastify: FastifyInstance) {
         let bondingLiquidityUsd: number | null = null;
         try {
           const bonding = await tokenService.getBondingCurveLiquidity(address);
-          const usdVal = bonding.netLiquidityWei
-            .div(new Decimal(10).pow(18))
-            .mul(new Decimal(acesUsdPrice || 0));
-          if (usdVal.isFinite() && usdVal.gt(0)) {
-            bondingLiquidityUsd = usdVal.toNumber();
+          // Only calculate USD value if ACES price is valid
+          // If ACES price is 0 or invalid, skip calculation to avoid returning $0
+          if (acesUsdPrice && acesUsdPrice > 0) {
+            const usdVal = bonding.netLiquidityWei
+              .div(new Decimal(10).pow(18))
+              .mul(new Decimal(acesUsdPrice));
+            if (usdVal.isFinite() && usdVal.gt(0)) {
+              bondingLiquidityUsd = usdVal.toNumber();
+            }
           }
           fastify.log.info(
             {
               address,
               bondingLiquidityUsd,
               tradeCount: bonding.tradeCount,
+              acesUsdPrice,
+              skippedDueToInvalidPrice: !acesUsdPrice || acesUsdPrice <= 0,
             },
             'Calculated bonding liquidity from subgraph (net buys - sells)',
           );
@@ -843,8 +849,13 @@ export async function tokensRoutes(fastify: FastifyInstance) {
               const liquidityValueNumber = liquidityValue.isFinite()
                 ? liquidityValue.toNumber()
                 : 0;
-              liquidityUsd = liquidityValueNumber >= 0 ? liquidityValueNumber : 0;
-              liquiditySource = 'dex';
+              // Only set liquidityUsd if value is valid and > 0, otherwise keep as null
+              // This is consistent with bonding curve liquidity handling
+              if (liquidityValueNumber > 0) {
+                liquidityUsd = liquidityValueNumber;
+                liquiditySource = 'dex';
+              }
+
               fastify.log.info(
                 {
                   address,
@@ -856,13 +867,13 @@ export async function tokensRoutes(fastify: FastifyInstance) {
                 'Calculated DEX liquidity',
               );
 
-              // Fallback to bonding liquidity if DEX result is zero/non-informative
-              if ((liquidityUsd === 0 || !Number.isFinite(liquidityUsd)) && bondingLiquidityUsd) {
+              // Fallback to bonding liquidity if DEX liquidity is unavailable
+              if (liquidityUsd === null && bondingLiquidityUsd) {
                 liquidityUsd = bondingLiquidityUsd;
                 liquiditySource = 'bonding_curve';
                 fastify.log.info(
                   { address, poolAddress, liquidityUsd },
-                  'DEX liquidity zero -> falling back to bonding liquidity',
+                  'DEX liquidity unavailable -> falling back to bonding liquidity',
                 );
               }
             }
@@ -901,12 +912,20 @@ export async function tokensRoutes(fastify: FastifyInstance) {
             const liquidityAces = new Decimal(acesBalanceWei.toString()).div(
               new Decimal(10).pow(18),
             );
-            const liquidityValue = liquidityAces.mul(new Decimal(acesUsdPrice || 0));
 
-            if (liquidityValue.gt(0)) {
-              liquidityUsd = liquidityValue.toNumber();
-              liquiditySource = 'bonding_curve';
+            // Only calculate USD value if ACES price is valid
+            // If ACES price is 0 or invalid, fall back to bondingLiquidityUsd or null
+            if (acesUsdPrice && acesUsdPrice > 0) {
+              const liquidityValue = liquidityAces.mul(new Decimal(acesUsdPrice));
+              if (liquidityValue.gt(0)) {
+                liquidityUsd = liquidityValue.toNumber();
+                liquiditySource = 'bonding_curve';
+              } else {
+                liquidityUsd = bondingLiquidityUsd ?? null;
+                liquiditySource = liquidityUsd !== null ? 'bonding_curve' : liquiditySource;
+              }
             } else {
+              // ACES price is invalid, use fallback or keep as null
               liquidityUsd = bondingLiquidityUsd ?? null;
               liquiditySource = liquidityUsd !== null ? 'bonding_curve' : liquiditySource;
             }
@@ -918,6 +937,8 @@ export async function tokensRoutes(fastify: FastifyInstance) {
                 liquiditySource,
                 liquidityAces: liquidityAces.toString(),
                 acesBalanceWei: acesBalanceWei.toString(),
+                acesUsdPrice,
+                skippedDueToInvalidPrice: !acesUsdPrice || acesUsdPrice <= 0,
               },
               'Calculated bonding curve liquidity from contract',
             );
