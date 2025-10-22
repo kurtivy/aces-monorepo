@@ -6,7 +6,7 @@ import { ethers } from 'ethers';
 import {
   AerodromeDataService,
   AerodromePoolState,
-  AerodromeSwap,
+  // AerodromeSwap,
 } from '../../services/aerodrome-data-service';
 import { BitQueryService } from '../../services/bitquery-service';
 import { createProvider, getNetworkConfig } from '../../config/network.config';
@@ -1092,10 +1092,6 @@ export async function dexRoutes(fastify: FastifyInstance) {
         const { address } = request.params;
         const { limit = 100 } = request.query;
 
-        console.log(`[DEX Trades] ===== TRADE HISTORY REQUEST =====`);
-        console.log(`[DEX Trades] Token address: ${address}`);
-        console.log(`[DEX Trades] Limit: ${limit}`);
-
         // First, check if token has bonded to DEX (has poolAddress)
         const token = await fastify.prisma.token.findUnique({
           where: { contractAddress: address.toLowerCase() },
@@ -1107,15 +1103,7 @@ export async function dexRoutes(fastify: FastifyInstance) {
           },
         });
 
-        console.log(`[DEX Trades] Token data from DB:`, {
-          poolAddress: token?.poolAddress,
-          phase: token?.phase,
-          priceSource: token?.priceSource,
-          dexLiveAt: token?.dexLiveAt,
-        });
-
         if (!token?.poolAddress || token.phase !== 'DEX_TRADING') {
-          console.log(`[DEX Trades] Token not on DEX yet, returning empty array`);
           return reply.send({
             success: true,
             data: [],
@@ -1130,25 +1118,10 @@ export async function dexRoutes(fastify: FastifyInstance) {
           });
         }
 
-        console.log(`[DEX Trades] Token is on DEX, fetching trades from BitQuery...`);
-
         // Use BitQuery DEXTradeByTokens to get trades with actual trader addresses
         const bitquery = new BitQueryService();
 
-        console.log(`[DEX Trades] BitQueryService instantiated, calling getTokenTrades...`);
-
         const trades = await bitquery.getTokenTrades(address, Number(limit));
-
-        console.log(`[DEX Trades] ✅ getTokenTrades completed successfully`);
-
-        console.log(`[DEX Trades] Found ${trades.length} trades from BitQuery`);
-
-        // Log first raw trade to see the complete structure
-        if (trades.length > 0) {
-          console.log('[DEX Trades] ===== RAW BITQUERY TRADE DATA (First Trade) =====');
-          console.log(JSON.stringify(trades[0], null, 2));
-          console.log('[DEX Trades] ==============================================');
-        }
 
         // Transform to frontend format
         const transformedTrades = trades.map((trade, index) => {
@@ -1163,22 +1136,6 @@ export async function dexRoutes(fastify: FastifyInstance) {
             priceInUsd: trade.priceInUsd ? parseFloat(trade.priceInUsd) : undefined,
             trader: trade.sender, // Actual wallet address from Transaction.From
           };
-
-          // Log first few transformations for debugging
-          if (index < 3) {
-            console.log(`[DEX Trades] Transformation ${index + 1}:`, {
-              raw: {
-                txHash: trade.txHash,
-                trader: trade.sender,
-                side: trade.side,
-                amountToken: trade.amountToken,
-                amountAces: trade.amountAces,
-                priceInAces: trade.priceInAces,
-                priceInUsd: trade.priceInUsd,
-              },
-              transformed: result,
-            });
-          }
 
           return result;
         });

@@ -104,24 +104,32 @@ export async function tokensRoutes(fastify: FastifyInstance) {
         const { address } = request.params;
         const { limit = 50 } = request.query;
 
-        console.log(`[Tokens API] Fetching trades for ${address}, limit: ${limit}`);
         const trades = await tokenService.getRecentTradesForToken(address, limit);
-        console.log(`[Tokens API] Found ${trades.length} trades for ${address}`);
 
-        if (trades.length > 0) {
-          console.log(`[Tokens API] Sample trade:`, trades[0]);
+        // Include graduation metadata for frontend detection (non-fatal if DB unavailable)
+        let token: {
+          phase: string | null;
+          priceSource: string | null;
+          poolAddress: string | null;
+          dexLiveAt: Date | null;
+        } | null = null;
+        try {
+          token = await fastify.prisma.token.findUnique({
+            where: { contractAddress: address.toLowerCase() },
+            select: {
+              phase: true,
+              priceSource: true,
+              poolAddress: true,
+              dexLiveAt: true,
+            },
+          });
+        } catch (e) {
+          fastify.log.warn(
+            { error: e },
+            'Graduation metadata lookup failed — proceeding without meta',
+          );
+          token = null;
         }
-
-        // Include graduation metadata for frontend detection
-        const token = await fastify.prisma.token.findUnique({
-          where: { contractAddress: address.toLowerCase() },
-          select: {
-            phase: true,
-            priceSource: true,
-            poolAddress: true,
-            dexLiveAt: true,
-          },
-        });
 
         const graduationMeta = token
           ? {
