@@ -135,6 +135,11 @@ export function VerificationForm({ disabled = false }: VerificationFormProps) {
   const [isSubmissionModalOpen, setIsSubmissionModalOpen] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
 
+  // Refs for each section to enable smooth scrolling
+  const section1Ref = React.useRef<HTMLDivElement>(null);
+  const section2Ref = React.useRef<HTMLDivElement>(null);
+  const section3Ref = React.useRef<HTMLDivElement>(null);
+
   const {
     register,
     handleSubmit,
@@ -162,6 +167,19 @@ export function VerificationForm({ disabled = false }: VerificationFormProps) {
       );
     }
   }, [user]);
+
+  // Smooth scroll to section when currentStep changes
+  React.useEffect(() => {
+    const sectionRefs = [section1Ref, section2Ref, section3Ref];
+    const targetRef = sectionRefs[currentStep - 1];
+
+    if (targetRef?.current) {
+      targetRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }
+  }, [currentStep]);
 
   const watchedValues = watch(['firstName', 'lastName', 'emailAddress', 'dateOfBirth', 'address']);
   const isSection1Complete = watchedValues.every(
@@ -424,201 +442,29 @@ export function VerificationForm({ disabled = false }: VerificationFormProps) {
 
         <form onSubmit={onSubmit} className="space-y-6">
           {/* Section 1: Personal Information */}
-          <VerificationAccordionSection
-            icon={User}
-            title="Personal Information"
-            description="Provide your basic personal details as they appear on your identification document"
-            isCompleted={isSection1Complete}
-            isActive={currentStep === 1}
-            stepNumber={1}
-          >
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Field label="First Name" icon={User} required error={errors.firstName?.message}>
-                <Input
-                  {...register('firstName')}
-                  placeholder="John"
-                  disabled={disabled}
-                  className="bg-[#0f1511] border border-[#E6E3D3]/20 text-[#E6E3D3] placeholder:text-[#E6E3D3]/45 h-12 focus-visible:ring-[#C9AE6A] focus-visible:border-[#C9AE6A] disabled:opacity-50 disabled:cursor-not-allowed"
-                />
-              </Field>
-
-              <Field label="Last Name" icon={User} required error={errors.lastName?.message}>
-                <Input
-                  {...register('lastName')}
-                  placeholder="Doe"
-                  disabled={disabled}
-                  className="bg-[#0f1511] border border-[#E6E3D3]/20 text-[#E6E3D3] placeholder:text-[#E6E3D3]/45 h-12 focus-visible:ring-[#C9AE6A] focus-visible:border-[#C9AE6A] disabled:opacity-50 disabled:cursor-not-allowed"
-                />
-              </Field>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Field
-                label="Email Address"
-                icon={Mail}
-                required
-                error={errors.emailAddress?.message}
-              >
-                <Input
-                  {...register('emailAddress')}
-                  type="email"
-                  placeholder="john.doe@example.com"
-                  disabled={disabled}
-                  className="bg-[#0f1511] border border-[#E6E3D3]/20 text-[#E6E3D3] placeholder:text-[#E6E3D3]/45 h-12 focus-visible:ring-[#C9AE6A] focus-visible:border-[#C9AE6A] disabled:opacity-50 disabled:cursor-not-allowed"
-                />
-              </Field>
-
-              <Field
-                label="Date of Birth"
-                icon={CalendarIcon}
-                required
-                error={errors.dateOfBirth?.message}
-              >
-                <Controller
-                  name="dateOfBirth"
-                  control={control}
-                  render={({ field }) => {
-                    const [open, setOpen] = useState(false);
-                    return (
-                      <Popover
-                        open={disabled ? false : open}
-                        onOpenChange={disabled ? undefined : setOpen}
-                      >
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            disabled={disabled}
-                            className="w-full justify-between font-normal bg-[#0f1511] border border-[#E6E3D3]/20 text-[#D7BF75] h-12 focus-visible:ring-[#C9AE6A] focus-visible:border-[#C9AE6A] disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {field.value ? format(field.value, 'PPP') : 'Select date of birth'}
-                            <CalendarIcon className="h-4 w-4 text-[#D7BF75]" />
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent
-                          className="w-auto overflow-hidden p-0 bg-[#151c16] border border-[#E6E3D3]/20"
-                          align="start"
-                          side="bottom"
-                          sideOffset={4}
-                          avoidCollisions={false}
-                        >
-                          <Calendar
-                            mode="single"
-                            selected={field.value}
-                            captionLayout="dropdown"
-                            fromYear={1900}
-                            toYear={new Date().getFullYear()}
-                            disabled={(date) => date > new Date() || date < new Date('1900-01-01')}
-                            onSelect={(date) => {
-                              field.onChange(date);
-                              setOpen(false);
-                            }}
-                            showOutsideDays={false}
-                            fixedWeeks={false}
-                            className="bg-[#151c16] text-[#D7BF75] p-3"
-                            classNames={{
-                              caption_label: 'hidden',
-                              nav: 'hidden',
-                              nav_button: 'hidden',
-                              nav_button_previous: 'hidden',
-                              nav_button_next: 'hidden',
-                              dropdowns: 'flex justify-center gap-2',
-                              dropdown:
-                                'bg-[#0f1511] border border-[#E6E3D3]/20 text-[#D7BF75] text-sm rounded-md px-3 py-2 outline-none focus:ring-1 focus:ring-[#C9AE6A]',
-                              weekday:
-                                'text-[#D7BF75]/60 font-normal text-xs w-9 h-9 flex items-center justify-center',
-                              day_button:
-                                'text-[#E6E3D3] hover:bg-[#C9AE6A]/10 hover:text-[#D7BF75]',
-                              day_selected:
-                                'bg-[#C9AE6A] text-black hover:bg-[#C9AE6A] hover:text-black focus:bg-[#C9AE6A] focus:text-black',
-                              day_today: 'bg-[#D7BF75]/20 text-[#D7BF75]',
-                              day_outside: 'text-[#E6E3D3]/30 opacity-50',
-                              day_disabled: 'text-[#E6E3D3]/30 opacity-50',
-                            }}
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    );
-                  }}
-                />
-              </Field>
-            </div>
-
-            <Field label="Address" icon={MapPin} required error={errors.address?.message}>
-              <Textarea
-                {...register('address')}
-                placeholder="123 Main Street, City, State/Province, Postal Code"
-                disabled={disabled}
-                className="bg-[#0f1511] border border-[#E6E3D3]/20 text-[#E6E3D3] placeholder:text-[#E6E3D3]/45 min-h-[80px] focus-visible:ring-[#C9AE6A] focus-visible:border-[#C9AE6A] resize-none disabled:opacity-50 disabled:cursor-not-allowed"
-              />
-            </Field>
-
-            <div className="flex justify-end pt-4">
-              <Button
-                type="button"
-                onClick={() => setCurrentStep(2)}
-                disabled={disabled || !isSection1Complete}
-                className="bg-gradient-to-r from-[#D0B284] to-[#D7BF75] hover:from-[#D7BF75] hover:to-[#D0B284] text-black font-semibold px-8 py-3 disabled:opacity-50"
-              >
-                Continue to Document
-                <ChevronRight className="w-5 h-5 ml-2" />
-              </Button>
-            </div>
-          </VerificationAccordionSection>
-
-          {/* Section 2: Document Information */}
-          {currentStep >= 2 && (
+          <div ref={section1Ref} className="scroll-mt-8">
             <VerificationAccordionSection
-              icon={FileText}
-              title="Identity Document"
-              description="Upload a clear photo of your government-issued identification document"
-              isCompleted={isSection2Complete}
-              isActive={currentStep === 2}
-              stepNumber={2}
+              icon={User}
+              title="Personal Information"
+              description="Provide your basic personal details as they appear on your identification document"
+              isCompleted={isSection1Complete}
+              isActive={currentStep === 1}
+              stepNumber={1}
             >
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Field
-                  label="Document Type"
-                  icon={FileText}
-                  required
-                  error={errors.documentType?.message}
-                >
-                  <Controller
-                    name="documentType"
-                    control={control}
-                    render={({ field }) => (
-                      <Select
-                        onValueChange={field.onChange}
-                        value={field.value}
-                        disabled={disabled}
-                      >
-                        <SelectTrigger className="bg-[#0f1511] border border-[#E6E3D3]/20 text-[#E6E3D3] h-12 focus-visible:ring-[#C9AE6A] focus-visible:border-[#C9AE6A] disabled:opacity-50 disabled:cursor-not-allowed">
-                          <SelectValue placeholder="Select document type" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-[#151c16] border border-[#E6E3D3]/20 text-[#E6E3D3]">
-                          <SelectItem value="DRIVERS_LICENSE" className="hover:bg-[#C9AE6A]/10">
-                            Driver's License
-                          </SelectItem>
-                          <SelectItem value="PASSPORT" className="hover:bg-[#C9AE6A]/10">
-                            Passport
-                          </SelectItem>
-                          <SelectItem value="ID_CARD" className="hover:bg-[#C9AE6A]/10">
-                            National ID Card
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    )}
+                <Field label="First Name" icon={User} required error={errors.firstName?.message}>
+                  <Input
+                    {...register('firstName')}
+                    placeholder="John"
+                    disabled={disabled}
+                    className="bg-[#0f1511] border border-[#E6E3D3]/20 text-[#E6E3D3] placeholder:text-[#E6E3D3]/45 h-12 focus-visible:ring-[#C9AE6A] focus-visible:border-[#C9AE6A] disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </Field>
 
-                <Field
-                  label="Document Number"
-                  icon={FileText}
-                  required
-                  error={errors.documentNumber?.message}
-                >
+                <Field label="Last Name" icon={User} required error={errors.lastName?.message}>
                   <Input
-                    {...register('documentNumber')}
-                    placeholder="123456789"
+                    {...register('lastName')}
+                    placeholder="Doe"
                     disabled={disabled}
                     className="bg-[#0f1511] border border-[#E6E3D3]/20 text-[#E6E3D3] placeholder:text-[#E6E3D3]/45 h-12 focus-visible:ring-[#C9AE6A] focus-visible:border-[#C9AE6A] disabled:opacity-50 disabled:cursor-not-allowed"
                   />
@@ -627,295 +473,475 @@ export function VerificationForm({ disabled = false }: VerificationFormProps) {
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <Field
-                  label="Country of Issue"
-                  icon={MapPin}
+                  label="Email Address"
+                  icon={Mail}
                   required
-                  error={errors.countryOfIssue?.message}
+                  error={errors.emailAddress?.message}
                 >
-                  <Controller
-                    name="countryOfIssue"
-                    control={control}
-                    render={({ field }) => (
-                      <CountrySelect
-                        value={field.value}
-                        onValueChange={field.onChange}
-                        disabled={disabled}
-                        placeholder="Select country of issue"
-                      />
-                    )}
-                  />
-                </Field>
-
-                <Field label="State/Province" icon={MapPin} error={errors.state?.message}>
                   <Input
-                    {...register('state')}
-                    placeholder="California (optional)"
+                    {...register('emailAddress')}
+                    type="email"
+                    placeholder="john.doe@example.com"
                     disabled={disabled}
                     className="bg-[#0f1511] border border-[#E6E3D3]/20 text-[#E6E3D3] placeholder:text-[#E6E3D3]/45 h-12 focus-visible:ring-[#C9AE6A] focus-visible:border-[#C9AE6A] disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </Field>
+
+                <Field
+                  label="Date of Birth"
+                  icon={CalendarIcon}
+                  required
+                  error={errors.dateOfBirth?.message}
+                >
+                  <Controller
+                    name="dateOfBirth"
+                    control={control}
+                    render={({ field }) => {
+                      const [open, setOpen] = useState(false);
+                      return (
+                        <Popover
+                          open={disabled ? false : open}
+                          onOpenChange={disabled ? undefined : setOpen}
+                        >
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              disabled={disabled}
+                              className="w-full justify-between font-normal bg-[#0f1511] border border-[#E6E3D3]/20 text-[#D7BF75] h-12 focus-visible:ring-[#C9AE6A] focus-visible:border-[#C9AE6A] disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {field.value ? format(field.value, 'PPP') : 'Select date of birth'}
+                              <CalendarIcon className="h-4 w-4 text-[#D7BF75]" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent
+                            className="w-auto overflow-hidden p-0 bg-[#151c16] border border-[#E6E3D3]/20"
+                            align="start"
+                            side="bottom"
+                            sideOffset={4}
+                            avoidCollisions={false}
+                          >
+                            <Calendar
+                              mode="single"
+                              selected={field.value}
+                              captionLayout="dropdown"
+                              fromYear={1900}
+                              toYear={new Date().getFullYear()}
+                              disabled={(date) =>
+                                date > new Date() || date < new Date('1900-01-01')
+                              }
+                              onSelect={(date) => {
+                                field.onChange(date);
+                                setOpen(false);
+                              }}
+                              showOutsideDays={false}
+                              fixedWeeks={false}
+                              className="bg-[#151c16] text-[#D7BF75] p-3"
+                              classNames={{
+                                caption_label: 'hidden',
+                                nav: 'hidden',
+                                nav_button: 'hidden',
+                                nav_button_previous: 'hidden',
+                                nav_button_next: 'hidden',
+                                dropdowns: 'flex justify-center gap-2',
+                                dropdown:
+                                  'bg-[#0f1511] border border-[#E6E3D3]/20 text-[#D7BF75] text-sm rounded-md px-3 py-2 outline-none focus:ring-1 focus:ring-[#C9AE6A]',
+                                weekday:
+                                  'text-[#D7BF75]/60 font-normal text-xs w-9 h-9 flex items-center justify-center',
+                                day_button:
+                                  'text-[#E6E3D3] hover:bg-[#C9AE6A]/10 hover:text-[#D7BF75]',
+                                day_selected:
+                                  'bg-[#C9AE6A] text-black hover:bg-[#C9AE6A] hover:text-black focus:bg-[#C9AE6A] focus:text-black',
+                                day_today: 'bg-[#D7BF75]/20 text-[#D7BF75]',
+                                day_outside: 'text-[#E6E3D3]/30 opacity-50',
+                                day_disabled: 'text-[#E6E3D3]/30 opacity-50',
+                              }}
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      );
+                    }}
+                  />
+                </Field>
               </div>
 
-              {/* Document Image Upload */}
-              <Field label="Document Photo" icon={Camera} required>
-                <div className="relative">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleDocumentImageUpload}
-                    disabled={disabled}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 disabled:cursor-not-allowed"
-                  />
-                  <div className="border-2 border-dashed border-[#E6E3D3]/25 rounded-xl p-8 text-center hover:border-[#C9AE6A]/50 transition-all duration-300 bg-[#0f1511]">
-                    {/* Corner ticks */}
-                    <span className="pointer-events-none absolute left-2 top-2 h-3 w-0.5 bg-[#C9AE6A]" />
-                    <span className="pointer-events-none absolute left-2 top-2 w-3 h-0.5 bg-[#C9AE6A]" />
-                    <span className="pointer-events-none absolute right-2 top-2 h-3 w-0.5 bg-[#C9AE6A]" />
-                    <span className="pointer-events-none absolute right-2 top-2 w-3 h-0.5 bg-[#C9AE6A]" />
-                    <span className="pointer-events-none absolute left-2 bottom-2 h-3 w-0.5 bg-[#C9AE6A]" />
-                    <span className="pointer-events-none absolute left-2 bottom-2 w-3 h-0.5 bg-[#C9AE6A]" />
-                    <span className="pointer-events-none absolute right-2 bottom-2 h-3 w-0.5 bg-[#C9AE6A]" />
-                    <span className="pointer-events-none absolute right-2 bottom-2 w-3 h-0.5 bg-[#C9AE6A]" />
-                    {documentImagePreview ? (
-                      <div className="space-y-6">
-                        <div className="flex justify-center">
-                          <div className="relative group">
-                            <Image
-                              src={documentImagePreview.preview}
-                              alt="Document preview"
-                              width={300}
-                              height={300}
-                              className="w-full max-w-md h-64 object-cover rounded-lg border border-[#E6E3D3]/20"
-                            />
-                            <button
-                              type="button"
-                              onClick={removeDocumentImage}
-                              className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-all duration-200 shadow-lg"
-                            >
-                              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                <path
-                                  fillRule="evenodd"
-                                  d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                                  clipRule="evenodd"
-                                />
-                              </svg>
-                            </button>
-                          </div>
-                        </div>
-                        <div className="border-t border-[#D0B284]/20 pt-4">
-                          <p className="text-[#DCDDCC]/70 text-sm">
-                            Click to replace document image
-                          </p>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="space-y-4">
-                        <div className="w-16 h-16 bg-[#0f1511] border border-dashed border-[#E6E3D3]/20 rounded-xl flex items-center justify-center mx-auto">
-                          <Upload className="w-8 h-8 text-[#C9AE6A]" />
-                        </div>
-                        <div>
-                          <p className="text-[#E6E3D3] font-medium text-lg mb-2">
-                            Upload Document Photo
-                          </p>
-                          <p className="text-[#E6E3D3]/70 text-sm">
-                            Take a clear photo of your ID. Ensure all text is readable and the image
-                            is well-lit.
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
+              <Field label="Address" icon={MapPin} required error={errors.address?.message}>
+                <Textarea
+                  {...register('address')}
+                  placeholder="123 Main Street, City, State/Province, Postal Code"
+                  disabled={disabled}
+                  className="bg-[#0f1511] border border-[#E6E3D3]/20 text-[#E6E3D3] placeholder:text-[#E6E3D3]/45 min-h-[80px] focus-visible:ring-[#C9AE6A] focus-visible:border-[#C9AE6A] resize-none disabled:opacity-50 disabled:cursor-not-allowed"
+                />
               </Field>
 
-              <div className="flex justify-between items-center pt-8">
+              <div className="flex justify-end pt-4">
                 <Button
                   type="button"
-                  variant="outline"
-                  onClick={() => setCurrentStep(1)}
-                  disabled={disabled}
-                  className="border border-dashed border-[#C9AE6A]/60 text-[#C9AE6A] hover:bg-[#C9AE6A]/10 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Back to Personal Info
-                </Button>
-
-                <Button
-                  type="button"
-                  onClick={() => setCurrentStep(3)}
-                  disabled={disabled || !isSection2Complete}
+                  onClick={() => setCurrentStep(2)}
+                  disabled={disabled || !isSection1Complete}
                   className="bg-gradient-to-r from-[#D0B284] to-[#D7BF75] hover:from-[#D7BF75] hover:to-[#D0B284] text-black font-semibold px-8 py-3 disabled:opacity-50"
                 >
-                  Continue to Selfie
+                  Continue to Document
                   <ChevronRight className="w-5 h-5 ml-2" />
                 </Button>
               </div>
             </VerificationAccordionSection>
+          </div>
+
+          {/* Section 2: Document Information */}
+          {currentStep >= 2 && (
+            <div ref={section2Ref} className="scroll-mt-8">
+              <VerificationAccordionSection
+                icon={FileText}
+                title="Identity Document"
+                description="Upload a clear photo of your government-issued identification document"
+                isCompleted={isSection2Complete}
+                isActive={currentStep === 2}
+                stepNumber={2}
+              >
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <Field
+                    label="Document Type"
+                    icon={FileText}
+                    required
+                    error={errors.documentType?.message}
+                  >
+                    <Controller
+                      name="documentType"
+                      control={control}
+                      render={({ field }) => (
+                        <Select
+                          onValueChange={field.onChange}
+                          value={field.value}
+                          disabled={disabled}
+                        >
+                          <SelectTrigger className="bg-[#0f1511] border border-[#E6E3D3]/20 text-[#E6E3D3] h-12 focus-visible:ring-[#C9AE6A] focus-visible:border-[#C9AE6A] disabled:opacity-50 disabled:cursor-not-allowed">
+                            <SelectValue placeholder="Select document type" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-[#151c16] border border-[#E6E3D3]/20 text-[#E6E3D3]">
+                            <SelectItem value="DRIVERS_LICENSE" className="hover:bg-[#C9AE6A]/10">
+                              Driver's License
+                            </SelectItem>
+                            <SelectItem value="PASSPORT" className="hover:bg-[#C9AE6A]/10">
+                              Passport
+                            </SelectItem>
+                            <SelectItem value="ID_CARD" className="hover:bg-[#C9AE6A]/10">
+                              National ID Card
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
+                  </Field>
+
+                  <Field
+                    label="Document Number"
+                    icon={FileText}
+                    required
+                    error={errors.documentNumber?.message}
+                  >
+                    <Input
+                      {...register('documentNumber')}
+                      placeholder="123456789"
+                      disabled={disabled}
+                      className="bg-[#0f1511] border border-[#E6E3D3]/20 text-[#E6E3D3] placeholder:text-[#E6E3D3]/45 h-12 focus-visible:ring-[#C9AE6A] focus-visible:border-[#C9AE6A] disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                  </Field>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <Field
+                    label="Country of Issue"
+                    icon={MapPin}
+                    required
+                    error={errors.countryOfIssue?.message}
+                  >
+                    <Controller
+                      name="countryOfIssue"
+                      control={control}
+                      render={({ field }) => (
+                        <CountrySelect
+                          value={field.value}
+                          onValueChange={field.onChange}
+                          disabled={disabled}
+                          placeholder="Select country of issue"
+                        />
+                      )}
+                    />
+                  </Field>
+
+                  <Field label="State/Province" icon={MapPin} error={errors.state?.message}>
+                    <Input
+                      {...register('state')}
+                      placeholder="California (optional)"
+                      disabled={disabled}
+                      className="bg-[#0f1511] border border-[#E6E3D3]/20 text-[#E6E3D3] placeholder:text-[#E6E3D3]/45 h-12 focus-visible:ring-[#C9AE6A] focus-visible:border-[#C9AE6A] disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                  </Field>
+                </div>
+
+                {/* Document Image Upload */}
+                <Field label="Document Photo" icon={Camera} required>
+                  <div className="relative">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleDocumentImageUpload}
+                      disabled={disabled}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 disabled:cursor-not-allowed"
+                    />
+                    <div className="border-2 border-dashed border-[#E6E3D3]/25 rounded-xl p-8 text-center hover:border-[#C9AE6A]/50 transition-all duration-300 bg-[#0f1511]">
+                      {/* Corner ticks */}
+                      <span className="pointer-events-none absolute left-2 top-2 h-3 w-0.5 bg-[#C9AE6A]" />
+                      <span className="pointer-events-none absolute left-2 top-2 w-3 h-0.5 bg-[#C9AE6A]" />
+                      <span className="pointer-events-none absolute right-2 top-2 h-3 w-0.5 bg-[#C9AE6A]" />
+                      <span className="pointer-events-none absolute right-2 top-2 w-3 h-0.5 bg-[#C9AE6A]" />
+                      <span className="pointer-events-none absolute left-2 bottom-2 h-3 w-0.5 bg-[#C9AE6A]" />
+                      <span className="pointer-events-none absolute left-2 bottom-2 w-3 h-0.5 bg-[#C9AE6A]" />
+                      <span className="pointer-events-none absolute right-2 bottom-2 h-3 w-0.5 bg-[#C9AE6A]" />
+                      <span className="pointer-events-none absolute right-2 bottom-2 w-3 h-0.5 bg-[#C9AE6A]" />
+                      {documentImagePreview ? (
+                        <div className="space-y-6">
+                          <div className="flex justify-center">
+                            <div className="relative group">
+                              <Image
+                                src={documentImagePreview.preview}
+                                alt="Document preview"
+                                width={300}
+                                height={300}
+                                className="w-full max-w-md h-64 object-cover rounded-lg border border-[#E6E3D3]/20"
+                              />
+                              <button
+                                type="button"
+                                onClick={removeDocumentImage}
+                                className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-all duration-200 shadow-lg"
+                              >
+                                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                  <path
+                                    fillRule="evenodd"
+                                    d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                                    clipRule="evenodd"
+                                  />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                          <div className="border-t border-[#D0B284]/20 pt-4">
+                            <p className="text-[#DCDDCC]/70 text-sm">
+                              Click to replace document image
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          <div className="w-16 h-16 bg-[#0f1511] border border-dashed border-[#E6E3D3]/20 rounded-xl flex items-center justify-center mx-auto">
+                            <Upload className="w-8 h-8 text-[#C9AE6A]" />
+                          </div>
+                          <div>
+                            <p className="text-[#E6E3D3] font-medium text-lg mb-2">
+                              Upload Document Photo
+                            </p>
+                            <p className="text-[#E6E3D3]/70 text-sm">
+                              Take a clear photo of your ID. Ensure all text is readable and the
+                              image is well-lit.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </Field>
+
+                <div className="flex justify-between items-center pt-8">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setCurrentStep(1)}
+                    disabled={disabled}
+                    className="border border-dashed border-[#C9AE6A]/60 text-[#C9AE6A] hover:bg-[#C9AE6A]/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Back to Personal Info
+                  </Button>
+
+                  <Button
+                    type="button"
+                    onClick={() => setCurrentStep(3)}
+                    disabled={disabled || !isSection2Complete}
+                    className="bg-gradient-to-r from-[#D0B284] to-[#D7BF75] hover:from-[#D7BF75] hover:to-[#D0B284] text-black font-semibold px-8 py-3 disabled:opacity-50"
+                  >
+                    Continue to Selfie
+                    <ChevronRight className="w-5 h-5 ml-2" />
+                  </Button>
+                </div>
+              </VerificationAccordionSection>
+            </div>
           )}
 
           {/* Section 3: Selfie Verification */}
           {currentStep >= 3 && (
-            <VerificationAccordionSection
-              icon={Camera}
-              title="Identity Verification"
-              description="Take a selfie to verify your identity matches your uploaded document. Please remove head and face wear such as masks, hats, or glasses, for the best results."
-              isCompleted={isAllSectionsComplete}
-              isActive={currentStep === 3}
-              stepNumber={3}
-            >
-              {/* Camera Interface */}
-              {showCamera ? (
-                <div className="space-y-6">
-                  <div className="bg-[#D7BF75]/10 border border-[#D7BF75]/30 rounded-xl p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Camera className="w-5 h-5 text-[#D7BF75]" />
-                      <h4 className="text-sm font-semibold text-[#D7BF75]">Take Your Selfie</h4>
-                    </div>
-                    <p className="text-sm text-[#DCDDCC]/80 leading-relaxed">
-                      Position your face clearly in the camera and ensure good lighting. This photo
-                      will be compared with your ID document.
-                    </p>
-                  </div>
-
-                  <div className="flex justify-center">
-                    <div style={{ width: '400px', height: '300px' }}>
-                      <CameraCapture
-                        onCapture={handleSelfieCapture}
-                        onCancel={handleCameraCancel}
-                        isUploading={isSubmitting}
-                      />
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  {/* Selfie Upload */}
-                  <Field label="Selfie Photo" icon={Camera} required>
-                    {selfieImagePreview ? (
-                      <div className="space-y-4">
-                        <div className="flex justify-center">
-                          <div className="relative group">
-                            <Image
-                              src={selfieImagePreview.preview}
-                              alt="Selfie preview"
-                              width={300}
-                              height={300}
-                              className="w-full max-w-md h-64 object-cover rounded-lg border border-[#E6E3D3]/20"
-                            />
-                            <button
-                              type="button"
-                              onClick={removeSelfieImage}
-                              className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-all duration-200 shadow-lg"
-                            >
-                              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                <path
-                                  fillRule="evenodd"
-                                  d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                                  clipRule="evenodd"
-                                />
-                              </svg>
-                            </button>
-                          </div>
-                        </div>
-                        <div className="flex justify-center">
-                          <Button
-                            type="button"
-                            onClick={() => setShowCamera(true)}
-                            variant="outline"
-                            className="border border-dashed border-[#C9AE6A]/60 text-[#C9AE6A] hover:bg-[#C9AE6A]/10"
-                          >
-                            <Camera className="w-4 h-4 mr-2" />
-                            Retake Selfie
-                          </Button>
-                        </div>
+            <div ref={section3Ref} className="scroll-mt-8">
+              <VerificationAccordionSection
+                icon={Camera}
+                title="Identity Verification"
+                description="Take a selfie to verify your identity matches your uploaded document. Please remove head and face wear such as masks, hats, or glasses, for the best results."
+                isCompleted={isAllSectionsComplete}
+                isActive={currentStep === 3}
+                stepNumber={3}
+              >
+                {/* Camera Interface */}
+                {showCamera ? (
+                  <div className="space-y-6">
+                    <div className="bg-[#D7BF75]/10 border border-[#D7BF75]/30 rounded-xl p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Camera className="w-5 h-5 text-[#D7BF75]" />
+                        <h4 className="text-sm font-semibold text-[#D7BF75]">Take Your Selfie</h4>
                       </div>
-                    ) : (
-                      <div className="relative">
-                        <div className="border-2 border-dashed border-[#E6E3D3]/25 rounded-xl p-8 text-center hover:border-[#C9AE6A]/50 transition-all duration-300 bg-[#0f1511]">
-                          {/* Corner ticks */}
-                          <span className="pointer-events-none absolute left-2 top-2 h-3 w-0.5 bg-[#C9AE6A]" />
-                          <span className="pointer-events-none absolute left-2 top-2 w-3 h-0.5 bg-[#C9AE6A]" />
-                          <span className="pointer-events-none absolute right-2 top-2 h-3 w-0.5 bg-[#C9AE6A]" />
-                          <span className="pointer-events-none absolute right-2 top-2 w-3 h-0.5 bg-[#C9AE6A]" />
-                          <span className="pointer-events-none absolute left-2 bottom-2 h-3 w-0.5 bg-[#C9AE6A]" />
-                          <span className="pointer-events-none absolute left-2 bottom-2 w-3 h-0.5 bg-[#C9AE6A]" />
-                          <span className="pointer-events-none absolute right-2 bottom-2 h-3 w-0.5 bg-[#C9AE6A]" />
-                          <span className="pointer-events-none absolute right-2 bottom-2 w-3 h-0.5 bg-[#C9AE6A]" />
+                      <p className="text-sm text-[#DCDDCC]/80 leading-relaxed">
+                        Position your face clearly in the camera and ensure good lighting. This
+                        photo will be compared with your ID document.
+                      </p>
+                    </div>
 
-                          <div className="space-y-4">
-                            <div className="w-16 h-16 bg-[#0f1511] border border-dashed border-[#E6E3D3]/20 rounded-xl flex items-center justify-center mx-auto">
-                              <Camera className="w-8 h-8 text-[#C9AE6A]" />
-                            </div>
-                            <div>
-                              <p className="text-[#E6E3D3] font-medium text-lg mb-2">
-                                Take Your Selfie
-                              </p>
-                              <p className="text-[#E6E3D3]/70 text-sm mb-4">
-                                Use your device camera to take a clear selfie for identity
-                                verification
-                              </p>
-                              <Button
+                    <div className="flex justify-center">
+                      <div style={{ width: '400px', height: '300px' }}>
+                        <CameraCapture
+                          onCapture={handleSelfieCapture}
+                          onCancel={handleCameraCancel}
+                          isUploading={isSubmitting}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Selfie Upload */}
+                    <Field label="Selfie Photo" icon={Camera} required>
+                      {selfieImagePreview ? (
+                        <div className="space-y-4">
+                          <div className="flex justify-center">
+                            <div className="relative group">
+                              <Image
+                                src={selfieImagePreview.preview}
+                                alt="Selfie preview"
+                                width={300}
+                                height={300}
+                                className="w-full max-w-md h-64 object-cover rounded-lg border border-[#E6E3D3]/20"
+                              />
+                              <button
                                 type="button"
-                                onClick={() => setShowCamera(true)}
-                                disabled={disabled}
-                                className="bg-gradient-to-r from-[#D7BF75] to-[#C9AE6A] hover:from-[#C9AE6A] hover:to-[#D7BF75] text-black font-medium px-6 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                onClick={removeSelfieImage}
+                                className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-all duration-200 shadow-lg"
                               >
-                                <Camera className="w-4 h-4 mr-2" />
-                                Open Camera
-                              </Button>
+                                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                  <path
+                                    fillRule="evenodd"
+                                    d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                                    clipRule="evenodd"
+                                  />
+                                </svg>
+                              </button>
                             </div>
                           </div>
-                        </div>
-                      </div>
-                    )}
-                  </Field>
-
-                  <div className="flex justify-between items-center pt-8">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setCurrentStep(2)}
-                      disabled={disabled}
-                      className="border border-dashed border-[#C9AE6A]/60 text-[#C9AE6A] hover:bg-[#C9AE6A]/10 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Back to Document
-                    </Button>
-
-                    <Button
-                      type="submit"
-                      disabled={disabled || isSubmitting || !isAllSectionsComplete}
-                      className="bg-[#C9AE6A] hover:bg-[#d6bf86] text-black font-bold py-4 px-12 text-lg rounded-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
-                      title={
-                        disabled
-                          ? 'Please connect your wallet to submit verification'
-                          : !isAllSectionsComplete
-                            ? !documentImagePreview
-                              ? 'Please upload a document image first'
-                              : !selfieImagePreview
-                                ? 'Please take a selfie photo first'
-                                : 'Complete all sections to submit'
-                            : 'Submit your verification for review'
-                      }
-                    >
-                      {isSubmitting ? (
-                        <div className="flex items-center gap-3">
-                          <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
-                          Submitting...
+                          <div className="flex justify-center">
+                            <Button
+                              type="button"
+                              onClick={() => setShowCamera(true)}
+                              variant="outline"
+                              className="border border-dashed border-[#C9AE6A]/60 text-[#C9AE6A] hover:bg-[#C9AE6A]/10"
+                            >
+                              <Camera className="w-4 h-4 mr-2" />
+                              Retake Selfie
+                            </Button>
+                          </div>
                         </div>
                       ) : (
-                        <div className="flex items-center gap-3">
-                          <Shield className="w-5 h-5" />
-                          {isAllSectionsComplete
-                            ? 'Submit for Verification'
-                            : !selfieImagePreview
-                              ? 'Take Selfie to Continue'
-                              : 'Complete All Steps'}
+                        <div className="relative">
+                          <div className="border-2 border-dashed border-[#E6E3D3]/25 rounded-xl p-8 text-center hover:border-[#C9AE6A]/50 transition-all duration-300 bg-[#0f1511]">
+                            {/* Corner ticks */}
+                            <span className="pointer-events-none absolute left-2 top-2 h-3 w-0.5 bg-[#C9AE6A]" />
+                            <span className="pointer-events-none absolute left-2 top-2 w-3 h-0.5 bg-[#C9AE6A]" />
+                            <span className="pointer-events-none absolute right-2 top-2 h-3 w-0.5 bg-[#C9AE6A]" />
+                            <span className="pointer-events-none absolute right-2 top-2 w-3 h-0.5 bg-[#C9AE6A]" />
+                            <span className="pointer-events-none absolute left-2 bottom-2 h-3 w-0.5 bg-[#C9AE6A]" />
+                            <span className="pointer-events-none absolute left-2 bottom-2 w-3 h-0.5 bg-[#C9AE6A]" />
+                            <span className="pointer-events-none absolute right-2 bottom-2 h-3 w-0.5 bg-[#C9AE6A]" />
+                            <span className="pointer-events-none absolute right-2 bottom-2 w-3 h-0.5 bg-[#C9AE6A]" />
+
+                            <div className="space-y-4">
+                              <div className="w-16 h-16 bg-[#0f1511] border border-dashed border-[#E6E3D3]/20 rounded-xl flex items-center justify-center mx-auto">
+                                <Camera className="w-8 h-8 text-[#C9AE6A]" />
+                              </div>
+                              <div>
+                                <p className="text-[#E6E3D3] font-medium text-lg mb-2">
+                                  Take Your Selfie
+                                </p>
+                                <p className="text-[#E6E3D3]/70 text-sm mb-4">
+                                  Use your device camera to take a clear selfie for identity
+                                  verification
+                                </p>
+                                <Button
+                                  type="button"
+                                  onClick={() => setShowCamera(true)}
+                                  disabled={disabled}
+                                  className="bg-gradient-to-r from-[#D7BF75] to-[#C9AE6A] hover:from-[#C9AE6A] hover:to-[#D7BF75] text-black font-medium px-6 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  <Camera className="w-4 h-4 mr-2" />
+                                  Open Camera
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       )}
-                    </Button>
-                  </div>
-                </>
-              )}
-            </VerificationAccordionSection>
+                    </Field>
+
+                    <div className="flex justify-between items-center pt-8">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setCurrentStep(2)}
+                        disabled={disabled}
+                        className="border border-dashed border-[#C9AE6A]/60 text-[#C9AE6A] hover:bg-[#C9AE6A]/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Back to Document
+                      </Button>
+
+                      <Button
+                        type="submit"
+                        disabled={disabled || isSubmitting || !isAllSectionsComplete}
+                        className="bg-[#C9AE6A] hover:bg-[#d6bf86] text-black font-bold py-4 px-12 text-lg rounded-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                        title={
+                          disabled
+                            ? 'Please connect your wallet to submit verification'
+                            : !isAllSectionsComplete
+                              ? !documentImagePreview
+                                ? 'Please upload a document image first'
+                                : !selfieImagePreview
+                                  ? 'Please take a selfie photo first'
+                                  : 'Complete all sections to submit'
+                              : 'Submit your verification for review'
+                        }
+                      >
+                        {isSubmitting ? (
+                          <div className="flex items-center gap-3">
+                            <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                            Submitting...
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-3">
+                            <Shield className="w-5 h-5" />
+                            {isAllSectionsComplete
+                              ? 'Submit for Verification'
+                              : !selfieImagePreview
+                                ? 'Take Selfie to Continue'
+                                : 'Complete All Steps'}
+                          </div>
+                        )}
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </VerificationAccordionSection>
+            </div>
           )}
         </form>
 
