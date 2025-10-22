@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, type Dispatch, type SetStateAction } from 'react';
 import { ChartHeader } from './chart-header';
 import { TradingSection } from './trading-section';
 import { DetailsOverlay } from './details-overlay';
@@ -19,7 +19,7 @@ interface MiddleContentAreaV2Props {
   isLive: boolean;
   isLaunched: boolean;
   selectedImageIndex?: number;
-  onImageSelect?: (index: number) => void;
+  onImageSelect?: Dispatch<SetStateAction<number>>;
   onChatClick?: () => void;
 }
 

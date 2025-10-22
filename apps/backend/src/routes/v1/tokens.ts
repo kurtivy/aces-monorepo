@@ -468,6 +468,31 @@ export async function tokensRoutes(fastify: FastifyInstance) {
         const tokenPriceUsd = Number.isFinite(acesUsdPrice) ? tokenPriceAces * acesUsdPrice : 0;
         fastify.log.info({ tokenPriceAces, acesUsdPrice, tokenPriceUsd }, 'Price calculation');
 
+        // 2b. Compute bonding liquidity (subgraph-based net ACES in curve)
+        let bondingLiquidityUsd: number | null = null;
+        try {
+          const bonding = await tokenService.getBondingCurveLiquidity(address);
+          const usdVal = bonding.netLiquidityWei
+            .div(new Decimal(10).pow(18))
+            .mul(new Decimal(acesUsdPrice || 0));
+          if (usdVal.isFinite() && usdVal.gt(0)) {
+            bondingLiquidityUsd = usdVal.toNumber();
+          }
+          fastify.log.info(
+            {
+              address,
+              bondingLiquidityUsd,
+              tradeCount: bonding.tradeCount,
+            },
+            'Calculated bonding liquidity from subgraph (net buys - sells)',
+          );
+        } catch (e) {
+          fastify.log.warn(
+            { error: e instanceof Error ? e.message : String(e), address },
+            'Failed to calculate bonding liquidity via subgraph; will use fallbacks',
+          );
+        }
+
         // 3. Get holder count - use Subgraph for bonding phase, BitQuery for DEX phase
         let holderCount = 0;
 
@@ -728,6 +753,12 @@ export async function tokensRoutes(fastify: FastifyInstance) {
         let liquidityUsd: number | null = null;
         let liquiditySource: 'bonding_curve' | 'dex' | null = null;
 
+        // Prefer subgraph-based bonding liquidity during bonding phase
+        if (!isDexMode && bondingLiquidityUsd !== null) {
+          liquidityUsd = bondingLiquidityUsd;
+          liquiditySource = 'bonding_curve';
+        }
+
         if (
           liquidityUsd === null &&
           isDexMode &&
@@ -816,6 +847,16 @@ export async function tokensRoutes(fastify: FastifyInstance) {
                 },
                 'Calculated DEX liquidity',
               );
+
+              // Fallback to bonding liquidity if DEX result is zero/non-informative
+              if ((liquidityUsd === 0 || !Number.isFinite(liquidityUsd)) && bondingLiquidityUsd) {
+                liquidityUsd = bondingLiquidityUsd;
+                liquiditySource = 'bonding_curve';
+                fastify.log.info(
+                  { address, poolAddress, liquidityUsd },
+                  'DEX liquidity zero -> falling back to bonding liquidity',
+                );
+              }
             }
           } catch (error) {
             fastify.log.error(
@@ -858,7 +899,8 @@ export async function tokensRoutes(fastify: FastifyInstance) {
               liquidityUsd = liquidityValue.toNumber();
               liquiditySource = 'bonding_curve';
             } else {
-              liquidityUsd = null;
+              liquidityUsd = bondingLiquidityUsd ?? null;
+              liquiditySource = liquidityUsd !== null ? 'bonding_curve' : liquiditySource;
             }
 
             fastify.log.info(

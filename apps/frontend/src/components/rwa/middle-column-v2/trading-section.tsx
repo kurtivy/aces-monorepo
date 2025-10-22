@@ -7,6 +7,8 @@ import {
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
+  type Dispatch,
+  type SetStateAction,
 } from 'react';
 import TradingViewChart from '@/components/charts/trading-view-chart';
 import TradeHistory from '../middle-column/token-details/trade-history';
@@ -28,7 +30,7 @@ interface TradingSectionProps {
   dexMeta?: DatabaseListing['dex'] | null;
   images?: ImageData[];
   selectedImageIndex?: number;
-  onImageSelect?: (index: number) => void;
+  onImageSelect?: Dispatch<SetStateAction<number>>;
 }
 
 const DEFAULT_CHART_HEIGHT = 600;

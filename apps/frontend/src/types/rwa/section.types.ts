@@ -1,3 +1,4 @@
+import type { Dispatch, SetStateAction } from 'react';
 import type { Comment } from '@/types/comments';
 
 export interface Section {
@@ -11,7 +12,7 @@ export interface SectionNavigationProps {
   activeSection: number;
   onSectionChange: (index: number) => void;
   selectedImageIndex: number;
-  setSelectedImageIndex: (index: number) => void;
+  setSelectedImageIndex: Dispatch<SetStateAction<number>>;
   isAnimating: boolean;
   previousActiveSection: number | null;
 }
@@ -22,7 +23,7 @@ export interface CardProps {
   isActive: boolean;
   onSectionChange: (index: number) => void;
   selectedImageIndex: number;
-  setSelectedImageIndex: (index: number) => void;
+  setSelectedImageIndex: Dispatch<SetStateAction<number>>;
   isAnimating: boolean;
   previousActiveSection: number | null;
 }
@@ -30,13 +31,13 @@ export interface CardProps {
 export interface ActiveSectionContentProps {
   sectionIndex: number;
   selectedImageIndex: number;
-  setSelectedImageIndex: (index: number) => void;
+  setSelectedImageIndex: Dispatch<SetStateAction<number>>;
 }
 
 export interface MiddleContentAreaProps {
   activeSection: number;
   selectedImageIndex: number;
-  setSelectedImageIndex: (index: number) => void;
+  setSelectedImageIndex: Dispatch<SetStateAction<number>>;
   navigationDirection: 'up' | 'down' | null;
 }
 

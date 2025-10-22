@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { Eye, TrendingUp, MessageSquare, Gavel } from 'lucide-react';
+import { Eye, MessageSquare, Gavel } from 'lucide-react';
 
 interface MobileBottomNavProps {
   activeSection: string;
@@ -10,7 +10,6 @@ interface MobileBottomNavProps {
 
 const navItems = [
   { id: 'overview', icon: Eye, label: 'Overview' },
-  { id: 'chart', icon: TrendingUp, label: 'Chart' },
   { id: 'comments', icon: MessageSquare, label: 'Stats' },
   { id: 'bids', icon: Gavel, label: 'Auction' },
 ] as const;

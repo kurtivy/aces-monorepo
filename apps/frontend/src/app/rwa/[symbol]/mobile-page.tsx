@@ -5,7 +5,6 @@ import { motion } from 'framer-motion';
 import MobileRWAHeader from '../../../components/rwa/mobile/headers/mobile-rwa-header';
 import MobileTokenHeader from '../../../components/rwa/mobile/headers/mobile-token-header';
 import MobileOverviewSection from '../../../components/rwa/mobile/sections/mobile-overview-section';
-import MobileTradingChartSection from '../../../components/rwa/mobile/sections/mobile-trading-chart-section';
 import MobileCommentsHistorySection from '../../../components/rwa/mobile/sections/mobile-comments-history-section';
 import MobilePlaceBidsSection from '../../../components/rwa/mobile/sections/mobile-place-bids-section';
 import MobileBottomNav from '../../../components/rwa/mobile/navigation/mobile-bottom-nav';
@@ -35,7 +34,6 @@ export default function MobileRWAItemPage({
   symbol,
 }: MobileRWAItemPageProps) {
   const overviewRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<HTMLDivElement>(null);
   const commentsRef = useRef<HTMLDivElement>(null);
   const bidsRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -43,11 +41,10 @@ export default function MobileRWAItemPage({
   const sectionRefs = useMemo(
     () => [
       { id: 'overview', ref: overviewRef },
-      { id: 'chart', ref: chartRef },
       { id: 'comments', ref: commentsRef },
       { id: 'bids', ref: bidsRef },
     ],
-    [overviewRef, chartRef, commentsRef, bidsRef],
+    [overviewRef, commentsRef, bidsRef],
   );
 
   const { activeSection, isTradeButtonVisible, scrollToSection } = useMobileScrollManager(
@@ -114,12 +111,6 @@ export default function MobileRWAItemPage({
             launchDate={launchDate}
           />
 
-          <MobileTradingChartSection
-            ref={chartRef}
-            listing={listing}
-            isLive={isLive}
-            isLaunched={isLaunched}
-          />
           <MobileCommentsHistorySection ref={commentsRef} listing={listing} isLive={isLive} />
           <MobilePlaceBidsSection
             ref={bidsRef}

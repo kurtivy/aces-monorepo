@@ -5,11 +5,12 @@ import { cn } from '@/lib/utils';
 import DynamicImageGallery from '../left-column/overview/dynamic-image-gallery';
 import type { ImageData } from '@/types/rwa/section.types';
 import { createImageErrorHandler, getValidImageSrc } from '@/lib/utils/image-error-handler';
+import type { Dispatch, SetStateAction } from 'react';
 
 interface RWAGallerySectionProps {
   images: ImageData[];
   selectedImageIndex: number;
-  onImageSelect: (index: number) => void;
+  onImageSelect: Dispatch<SetStateAction<number>>;
 }
 
 export function RWAGallerySection({

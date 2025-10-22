@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type Dispatch, type SetStateAction } from 'react';
 import DynamicImageGallery from '../left-column/overview/dynamic-image-gallery';
 import BondingProgressSection from './bonding-progression-section';
 import SwapBox from './swap-box';
@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 interface RightPanelProps {
   listing: DatabaseListing;
   selectedImageIndex: number;
-  onSelectImage: (index: number) => void;
+  onSelectImage: Dispatch<SetStateAction<number>>;
   loading?: boolean;
 }
 

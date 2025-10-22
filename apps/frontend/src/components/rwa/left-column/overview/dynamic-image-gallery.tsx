@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
@@ -11,7 +11,7 @@ import { createImageErrorHandler, getValidImageSrc } from '@/lib/utils/image-err
 interface DynamicImageGalleryProps {
   images: ImageData[];
   selectedImageIndex: number;
-  onImageSelect: (index: number) => void;
+  onImageSelect: Dispatch<SetStateAction<number>>;
   loading?: boolean;
 }
 

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { type Dispatch, type SetStateAction } from 'react';
 import TradingViewChart from '@/components/charts/trading-view-chart';
 import TokenMarketCap from './token-market-cap';
 import type { DatabaseListing, ImageData } from '@/types/rwa/section.types';
@@ -13,7 +13,7 @@ interface TradingChartProps {
   dexMeta?: DatabaseListing['dex'] | null;
   images?: ImageData[];
   selectedImageIndex?: number;
-  onImageSelect?: (index: number) => void;
+  onImageSelect?: Dispatch<SetStateAction<number>>;
 }
 
 const TradingChart: React.FC<TradingChartProps> = ({

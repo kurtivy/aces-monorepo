@@ -110,8 +110,10 @@ export class TokenService {
         const recentTrades = trades.filter((t: SubgraphTrade) => parseInt(t.createdAt) > oneDayAgo);
 
         const volume24h = recentTrades
+          .filter((trade: SubgraphTrade) => trade.isBuy)
           .reduce((sum: Decimal, trade: SubgraphTrade) => {
-            return sum.add(new Decimal(trade.acesTokenAmount));
+            const acesAmount = new Decimal(trade.acesTokenAmount || '0');
+            return sum.add(acesAmount.abs());
           }, new Decimal(0))
           .toString();
 

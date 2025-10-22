@@ -5,6 +5,7 @@ import type React from 'react';
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import type { ImageInfo } from '../../../types/canvas';
 import { getImageMetadata } from '../../../lib/utils/luxury-logger';
 import PurchaseInquiryModal from './purchase-inquiry-modal';
@@ -213,6 +214,7 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
   // Phase 2 Step 3 Action 4: Stabilize onClose to prevent event listener re-registration
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const router = useRouter();
 
   // State for expandable description - starts expanded (true)
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(true);
@@ -308,13 +310,19 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
     };
   }, [imageInfo, stableOnClose]); // Phase 2 Step 3 Action 4: Use stable callback instead of onClose
 
+  const safeMetadata = getImageMetadata(imageInfo);
+
+  const handleTradeClick = useCallback(() => {
+    if (safeMetadata.id === '7') {
+      stableOnClose();
+      router.push('/rwa/apk');
+    }
+  }, [router, safeMetadata.id, stableOnClose]);
+
   // Enhanced null safety checks
   if (!imageInfo) {
     return null;
   }
-
-  // Use safe metadata access
-  const safeMetadata = getImageMetadata(imageInfo);
 
   return (
     <AnimatePresence>
@@ -562,7 +570,7 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                 <div className="flex-shrink-0 p-3 sm:p-6 lg:p-8 pt-0 bg-gradient-to-t from-black via-black/95 to-transparent">
                   <div className="flex gap-3">
                     <button
-                      onClick={() => setIsPurchaseModalOpen(true)}
+                      onClick={handleTradeClick}
                       className="flex-1 bg-gradient-to-r from-[#D0B264] to-[#D0B264]/80 hover:from-[#D0B264]/90 hover:to-[#D0B264]/70 text-[#231F20] font-syne font-bold py-3 sm:py-4 px-4 sm:px-6 lg:px-8 rounded-lg sm:rounded-xl transition-all duration-150 transform active:scale-[0.98] shadow-goldGlow text-sm sm:text-base lg:text-lg md:hover:scale-[1.02] text-center"
                     >
                       TRADE

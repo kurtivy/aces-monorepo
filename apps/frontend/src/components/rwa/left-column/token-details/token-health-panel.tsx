@@ -12,6 +12,7 @@ import { LoadingDots } from './loading-dots';
 
 // ERC20 ABI for balance checking
 const ERC20_ABI = ['function balanceOf(address) view returns (uint256)'];
+const COMMUNITY_REWARD_USD = 40_000;
 
 // Value Equilibrium Calculator (embedded)
 interface TokenMetrics {
@@ -225,10 +226,8 @@ export default function TokenHealthPanel({
     return Number.isFinite(parsed) ? parsed : 0;
   }, [reservePrice]);
 
-  // Calculate community reward (10% of asset sale price)
-  const communityReward = useMemo(() => {
-    return assetSalePrice * 0.1;
-  }, [assetSalePrice]);
+  // Community reward pool is currently fixed at $40,000
+  const communityReward = COMMUNITY_REWARD_USD;
 
   // Constants for market cap supply (fixed values)
   const BONDING_SUPPLY = 800_000_000; // 800M during bonding curve

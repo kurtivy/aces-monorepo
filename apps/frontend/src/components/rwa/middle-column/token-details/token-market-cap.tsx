@@ -1,6 +1,14 @@
 'use client';
 
-import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
+import React, {
+  useMemo,
+  useState,
+  useCallback,
+  useRef,
+  useEffect,
+  type Dispatch,
+  type SetStateAction,
+} from 'react';
 import Image from 'next/image';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -14,7 +22,7 @@ interface TokenMarketCapProps {
   chainId?: number;
   images?: ImageData[];
   selectedImageIndex?: number;
-  onImageSelect?: (index: number) => void;
+  onImageSelect?: Dispatch<SetStateAction<number>>;
 }
 
 const formatNumber = (value: number, options?: Intl.NumberFormatOptions) => {
@@ -24,7 +32,7 @@ const formatNumber = (value: number, options?: Intl.NumberFormatOptions) => {
 interface InlineThumbnailCarouselProps {
   images: ImageData[];
   selectedIndex?: number;
-  onSelect?: (index: number) => void;
+  onSelect?: Dispatch<SetStateAction<number>>;
   onOpen: (index: number) => void;
 }
 

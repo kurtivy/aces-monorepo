@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type Dispatch, type SetStateAction } from 'react';
 import ImageCarousel from './image-carousel';
 import OverviewBottomSection from './overview-bottom-section';
 import type { ImageData } from '../../../../types/rwa/section.types';
@@ -8,7 +8,7 @@ import Image from 'next/image';
 
 interface OverviewSectionProps {
   selectedImageIndex: number;
-  setSelectedImageIndex: (index: number) => void;
+  setSelectedImageIndex: Dispatch<SetStateAction<number>>;
   mockImages: ImageData[];
   launchDate?: string | null;
   tokenAddress?: string;

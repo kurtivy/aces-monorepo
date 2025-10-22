@@ -23,6 +23,7 @@ interface TokenMetricsSectionProps {
 }
 
 const TARGET_CHART_HEIGHT_PX = 560; // Keep in sync with TradingSection chart height.
+const COMMUNITY_REWARD_USD = 40_000;
 
 const formatPrice = (price: string | null | undefined): string => {
   if (!price) return 'N/A';
@@ -133,7 +134,7 @@ export function TokenMetricsSection({
               COMMUNITY REWARD
             </span>
             <span className="text-base font-semibold text-white font-proxima-nova">
-              {formatPrice((reservePrice ? parseFloat(reservePrice) * 0.1 : 0).toFixed(2))}
+              {formatPrice(COMMUNITY_REWARD_USD.toFixed(0))}
             </span>
           </div>
 
