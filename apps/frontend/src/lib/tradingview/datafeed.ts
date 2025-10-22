@@ -470,7 +470,6 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       subscription.ws = ws;
 
       ws.onopen = () => {
-        console.log('[TradingView] ✅ WebSocket connected!');
         if (!subscription.isActive) {
           console.warn('[TradingView] ⚠️ Subscription inactive on open, closing...');
           ws.close();
@@ -482,12 +481,10 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
           tokenAddress: subscription.tokenAddress,
           timeframe: subscription.timeframe,
         };
-        console.log('[TradingView] 📤 Sending subscribe message:', subscribeMessage);
         ws.send(JSON.stringify(subscribeMessage));
       };
 
       ws.onmessage = (event) => {
-        console.log('[TradingView] 📨 Raw WebSocket message received:', event.data);
         if (!subscription.isActive) {
           console.warn('[TradingView] ⚠️ Subscription inactive, ignoring message');
           return;
@@ -495,7 +492,6 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
 
         try {
           const message = JSON.parse(event.data);
-          console.log('[TradingView] 📦 Parsed message type:', message.type);
           this.handleUnifiedWebSocketMessage(message, subscription);
         } catch (error) {
           console.error('[TradingView] WebSocket message error:', error);
@@ -507,14 +503,12 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       };
 
       ws.onclose = (event) => {
-        console.log('[TradingView] WebSocket closed, code:', event.code, 'reason:', event.reason);
         if (!subscription.isActive) {
           return;
         }
 
         subscription.ws = null;
         subscription.reconnectTimeout = setTimeout(() => {
-          console.log('[TradingView] Reconnecting WebSocket...');
           this.startUnifiedWebSocket();
         }, 3000);
       };
@@ -545,17 +539,11 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       case 'graduation_event': {
         // 🎓 ONLY handle graduation detection for dedicated graduation_event messages
         // Do NOT trigger on initial_data (token might already be graduated when chart loads)
-        console.log('[TradingView] 🎓 Received graduation_event!');
 
         if (message.graduationState) {
           const graduationState = message.graduationState as UnifiedGraduationState;
 
           if (graduationState && graduationState.poolReady) {
-            console.log('[TradingView] Token just graduated to DEX!', {
-              poolAddress: graduationState.poolAddress,
-              dexLiveAt: graduationState.dexLiveAt,
-            });
-
             // Clear history cache so next request fetches merged data (bonding curve + DEX)
             this.historyCache.clear();
             this.lastHistoricalBarByTimeframe.clear();
@@ -564,7 +552,6 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
             // This triggers getBars() to fetch fresh data from the unified endpoint
             try {
               subscription.onResetCacheNeededCallback();
-              console.log('[TradingView] ✅ Initiated chart data refresh for graduation');
             } catch (error) {
               console.error('[TradingView] Error resetting cache on graduation:', error);
             }
@@ -605,20 +592,6 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       }
 
       case 'candle_update': {
-        console.log('[TradingView] 📊 Received candle_update:', {
-          dataSource: (message.candle as any)?.dataSource,
-          timestamp: (message.candle as any)?.timestamp,
-          close: (message.candle as any)?.close,
-          closeUsd: (message.candle as any)?.closeUsd,
-          open: (message.candle as any)?.open,
-          openUsd: (message.candle as any)?.openUsd,
-          high: (message.candle as any)?.high,
-          highUsd: (message.candle as any)?.highUsd,
-          low: (message.candle as any)?.low,
-          lowUsd: (message.candle as any)?.lowUsd,
-          hasGraduationState: !!message.graduationState,
-        });
-
         const bar = this.candleToBar(
           message.candle as UnifiedCandle,
           timeframeMs,
@@ -634,38 +607,14 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
           return;
         }
 
-        console.log('[TradingView] ✅ Converted to bar:', {
-          time: new Date(bar.time).toISOString(),
-          open: bar.open,
-          close: bar.close,
-          high: bar.high,
-          low: bar.low,
-        });
-
         // Determine if this is an update to the current candle or a new candle
         const isUpdateToCurrentCandle =
           subscription.lastBar && subscription.lastBar.time === bar.time;
-
-        console.log('[TradingView] Candle type:', {
-          isUpdate: isUpdateToCurrentCandle,
-          willBridge: !isUpdateToCurrentCandle,
-          lastBarTime: subscription.lastBar
-            ? new Date(subscription.lastBar.time).toISOString()
-            : 'none',
-          currentBarTime: new Date(bar.time).toISOString(),
-        });
 
         // Only bridge if this is a NEW candle, not an update to existing candle
         const finalBar = isUpdateToCurrentCandle
           ? bar // Use the bar as-is for updates to current candle
           : this.bridgeBar(subscription.lastBar, bar); // Bridge only for new candles
-
-        console.log('[TradingView] 📤 Sending to TradingView:', {
-          time: new Date(finalBar.time).toISOString(),
-          open: finalBar.open,
-          close: finalBar.close,
-          wasBridged: !isUpdateToCurrentCandle,
-        });
 
         // Update subscription's last bar reference
         subscription.lastBar = this.cloneBar(finalBar);
@@ -1105,14 +1054,6 @@ export class BondingCurveDatafeed implements IBasicDataFeed {
       close: firstBar.open, // Close at first trade price (creates the jump visual)
       volume: 0, // No trades yet
     };
-
-    console.log('🌟 [TradingView] Injecting genesis candle:', {
-      genesisTime: new Date(genesisTime).toISOString(),
-      genesisPrice: genesisPrice,
-      firstRealPrice: firstBar.open,
-      firstRealTime: new Date(firstBar.time).toISOString(),
-    });
-
     // Prepend genesis candle to the beginning of the array
     return [genesisCandle, ...bars];
   }

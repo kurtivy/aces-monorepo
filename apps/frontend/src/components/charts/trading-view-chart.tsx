@@ -173,12 +173,6 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
                         : MarketCapDatafeed.formatPriceWithZeroCount;
                     const formatted = formatter(price, true);
 
-                    // Debug: Log Y-axis price formatting
-                    if (Math.random() < 0.1) {
-                      // Only log 10% of the time to avoid spam
-                      console.log('[TradingView] Y-axis price format:', { price, formatted });
-                    }
-
                     return formatted;
                   } catch (error) {
                     console.error('[TradingView] Price formatter error:', error, { price });
