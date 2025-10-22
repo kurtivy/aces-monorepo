@@ -34,19 +34,12 @@ export function getProviderForAddress(
   );
 
   if (privyWallet) {
-    console.log('[WalletProvider] Found Privy wallet:', {
-      address: privyWallet.address,
-      walletClientType: privyWallet.walletClientType,
-      connectorType: privyWallet.connectorType,
-    });
-
     // Get the provider based on Privy's wallet client type
     // For Privy embedded wallets, pass the wallet object itself
     return getProviderForWalletType(privyWallet.walletClientType, privyWallet);
   }
 
   // Fallback to auto-detection
-  console.warn('[WalletProvider] No Privy wallet found for address, using auto-detection');
   return getActiveWalletProvider();
 }
 
@@ -63,18 +56,13 @@ export function getProviderForWalletType(
 
   const normalized = walletClientType.toLowerCase();
 
-  console.log('[WalletProvider] Getting provider for wallet type:', walletClientType);
-
   // Handle Privy embedded wallets FIRST (before checking window.ethereum)
   if (normalized.includes('privy') && privyWallet) {
-    console.log('[WalletProvider] Using Privy embedded wallet provider');
-
     // Privy embedded wallets provide their own EIP-1193 provider
     // Access it via getEthereumProvider() method
     try {
       const provider = (privyWallet as any).getEthereumProvider?.();
       if (provider) {
-        console.log('[WalletProvider] ✅ Got Privy embedded wallet provider');
         return provider as WalletProvider;
       }
     } catch (error) {
@@ -85,11 +73,9 @@ export function getProviderForWalletType(
     // Try accessing the provider directly from the wallet object
     const directProvider = (privyWallet as any).provider;
     if (directProvider) {
-      console.log('[WalletProvider] ✅ Got Privy provider (direct access)');
       return directProvider as WalletProvider;
     }
 
-    console.warn('[WalletProvider] ⚠️ Could not get Privy embedded wallet provider');
     return null;
   }
 
@@ -97,7 +83,6 @@ export function getProviderForWalletType(
   if (normalized.includes('phantom')) {
     const phantomEthereum = (window as any)?.phantom?.ethereum as WalletProvider | undefined;
     if (phantomEthereum?.isPhantom) {
-      console.log('[WalletProvider] ✅ Found Phantom provider');
       return phantomEthereum;
     }
   }
@@ -112,14 +97,12 @@ export function getProviderForWalletType(
         (p: WalletProvider) => p.isMetaMask === true && p.isPhantom !== true,
       );
       if (metamaskProvider) {
-        console.log('[WalletProvider] ✅ Found MetaMask provider (from providers array)');
         return metamaskProvider;
       }
     }
 
     // Single provider that is MetaMask
     if (ethereum?.isMetaMask && !ethereum.isPhantom) {
-      console.log('[WalletProvider] ✅ Found MetaMask provider (single)');
       return ethereum;
     }
   }
@@ -133,13 +116,11 @@ export function getProviderForWalletType(
         (p: WalletProvider) => p.isCoinbaseWallet === true,
       );
       if (coinbaseProvider) {
-        console.log('[WalletProvider] ✅ Found Coinbase provider');
         return coinbaseProvider;
       }
     }
 
     if (ethereum?.isCoinbaseWallet) {
-      console.log('[WalletProvider] ✅ Found Coinbase provider (single)');
       return ethereum;
     }
   }
@@ -153,7 +134,6 @@ export function getProviderForWalletType(
         (p: WalletProvider) => (p as any).isRabby === true,
       );
       if (rabbyProvider) {
-        console.log('[WalletProvider] ✅ Found Rabby provider');
         return rabbyProvider;
       }
     }
@@ -161,11 +141,9 @@ export function getProviderForWalletType(
 
   // Fallback to window.ethereum for unknown wallet types
   if (window.ethereum) {
-    console.warn('[WalletProvider] ⚠️ Could not find specific provider, using window.ethereum');
     return window.ethereum as WalletProvider;
   }
 
-  console.error('[WalletProvider] ❌ No provider found for wallet type:', walletClientType);
   return null;
 }
 
@@ -190,7 +168,6 @@ export function getActiveWalletProvider(): WalletProvider | null {
   }
 
   // Multiple providers detected
-  console.log('[WalletProvider] Multiple providers detected:', ethereum.providers.length);
 
   // Check which one is actively being used by checking window.ethereum properties
   // Priority: whichever wallet has set itself as the active provider on window.ethereum
@@ -198,7 +175,6 @@ export function getActiveWalletProvider(): WalletProvider | null {
   if (ethereum.isPhantom) {
     const phantomProvider = ethereum.providers.find((p: WalletProvider) => p.isPhantom === true);
     if (phantomProvider) {
-      console.log('[WalletProvider] Selected: Phantom (active)');
       return phantomProvider;
     }
   }
@@ -208,7 +184,6 @@ export function getActiveWalletProvider(): WalletProvider | null {
       (p: WalletProvider) => p.isMetaMask === true && p.isPhantom !== true,
     );
     if (metamaskProvider) {
-      console.log('[WalletProvider] Selected: MetaMask (active)');
       return metamaskProvider;
     }
   }
@@ -218,13 +193,11 @@ export function getActiveWalletProvider(): WalletProvider | null {
       (p: WalletProvider) => p.isCoinbaseWallet === true,
     );
     if (coinbaseProvider) {
-      console.log('[WalletProvider] Selected: Coinbase Wallet (active)');
       return coinbaseProvider;
     }
   }
 
   // Fallback: just use window.ethereum as-is
-  console.log('[WalletProvider] Using window.ethereum as-is');
   return ethereum;
 }
 
@@ -238,7 +211,6 @@ export async function getCurrentChainIdFromProvider(
     const chainIdHex = (await provider.request({ method: 'eth_chainId' })) as string;
     return Number.parseInt(chainIdHex, 16);
   } catch (error) {
-    console.error('[WalletProvider] Failed to get chain ID:', error);
     return null;
   }
 }
@@ -255,7 +227,6 @@ export async function getCurrentChainId(): Promise<number | null> {
 
     return getCurrentChainIdFromProvider(provider);
   } catch (error) {
-    console.error('[WalletProvider] Failed to get chain ID:', error);
     return null;
   }
 }
@@ -268,7 +239,6 @@ export async function getAccountsFromProvider(provider: WalletProvider): Promise
     const accounts = (await provider.request({ method: 'eth_accounts' })) as string[];
     return accounts;
   } catch (error) {
-    console.error('[WalletProvider] Failed to get accounts:', error);
     return [];
   }
 }
@@ -285,7 +255,6 @@ export async function getAccounts(): Promise<string[]> {
 
     return getAccountsFromProvider(provider);
   } catch (error) {
-    console.error('[WalletProvider] Failed to get accounts:', error);
     return [];
   }
 }

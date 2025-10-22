@@ -34,7 +34,7 @@ interface AuthContextType {
   disconnectWallet: () => void;
   refreshUserProfile: () => Promise<void>;
   updateProfile: (data: Partial<UserProfile>) => Promise<{ success: boolean; error?: string }>;
-  applyForSeller: (formData: FormData) => Promise<boolean>;
+  applyForSeller: (formData: any) => Promise<boolean>;
   getVerificationStatus: () => Promise<VerificationStatus | null>;
   getAccessToken: () => Promise<string | null>;
 
@@ -149,12 +149,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: privyUser?.email?.address || undefined,
         username: privyUser?.email?.address?.split('@')[0] || undefined,
       };
-
-      console.log('🔐 Verifying user with backend:', {
-        privyDid: userVerificationRequest.privyDid,
-        walletAddress: userVerificationRequest.walletAddress,
-        hasToken: !!token,
-      });
 
       const result = await ProfileApi.verifyOrCreateUser(userVerificationRequest, token);
 
@@ -290,13 +284,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       await privyLogout();
 
-      localStorage.removeItem('sellerCredentials');
-      localStorage.removeItem('privy:token');
-      localStorage.removeItem('privy:refresh_token');
+      if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
+        window.localStorage.removeItem('sellerCredentials');
+        window.localStorage.removeItem('privy:token');
+        window.localStorage.removeItem('privy:refresh_token');
+      }
 
       const keysToRemove = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const key = window.localStorage.key(i);
         if (
           key &&
           (key.startsWith('privy:') || key.startsWith('auth:') || key.startsWith('wallet:'))
@@ -304,7 +300,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           keysToRemove.push(key);
         }
       }
-      keysToRemove.forEach((key) => localStorage.removeItem(key));
+      keysToRemove.forEach((key) => window.localStorage.removeItem(key));
 
       setState({
         user: null,
@@ -366,7 +362,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const applyForSeller = async (applicationData: FormData): Promise<boolean> => {
+  const applyForSeller = async (applicationData: any): Promise<boolean> => {
     if (!privyAuthenticated || !privyUser) {
       throw new Error('User not authenticated');
     }
