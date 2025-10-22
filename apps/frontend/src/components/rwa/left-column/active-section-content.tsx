@@ -61,8 +61,11 @@ export function ActiveSectionContent({
   );
 
   // Fetch token metrics (includes DEX-adjusted 24h volume)
-  const { metrics: tokenMetrics, loading: tokenMetricsLoading } =
-    useTokenMetrics(listingTokenAddress);
+  const {
+    metrics: tokenMetrics,
+    loading: tokenMetricsLoading,
+    circulatingSupply,
+  } = useTokenMetrics(listingTokenAddress);
 
   // Fetch live token price
   const { currentPriceUsd } = useTokenMarketCap(listingTokenAddress, 'usd');
@@ -197,6 +200,7 @@ export function ActiveSectionContent({
           liquidityUsd={liquidityUsd}
           liquiditySource={liquiditySource}
           metricsLoading={tokenMetricsLoading}
+          circulatingSupply={circulatingSupply}
         />
       </div>
     </div>,

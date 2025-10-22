@@ -64,7 +64,7 @@ export function TokenMetricsSection({
   }, [hypeSentence, hypePoints, hasHypePoints]);
 
   // Fetch aggregated token metrics (includes volume in ACES + USD)
-  const { metrics, loading: metricsLoading } = useTokenMetrics(tokenAddress);
+  const { metrics, loading: metricsLoading, circulatingSupply } = useTokenMetrics(tokenAddress);
 
   const volume24hAces = useMemo(() => {
     return metrics?.volume24hAces ?? '0';
@@ -108,6 +108,7 @@ export function TokenMetricsSection({
           liquidityUsd={liquidityUsd}
           liquiditySource={liquiditySource}
           metricsLoading={metricsLoading}
+          circulatingSupply={circulatingSupply}
         />
 
         {/* STORY Section */}
@@ -155,9 +156,7 @@ export function TokenMetricsSection({
                 HYPE
               </span>
             </div>
-            <p className="text-xs font-proxima-nova text-white/90">
-              {hypeDescription}
-            </p>
+            <p className="text-xs font-proxima-nova text-white/90">{hypeDescription}</p>
           </div>
         </div>
       </div>

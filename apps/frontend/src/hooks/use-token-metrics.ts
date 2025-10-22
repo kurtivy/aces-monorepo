@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { TokensApi, type TokenMetrics } from '@/lib/api/tokens';
+import type { TokenMetrics } from '@/lib/api/tokens';
 import { fetchTokenHealth } from '@/lib/api/token-health';
 
 interface UseTokenMetricsResult {
@@ -7,6 +7,7 @@ interface UseTokenMetricsResult {
   loading: boolean;
   error: string | null;
   refetch: () => void;
+  circulatingSupply: number | null;
 }
 
 /**
@@ -22,6 +23,7 @@ export function useTokenMetrics(
   refreshIntervalMs: number = 30000,
 ): UseTokenMetricsResult {
   const [metrics, setMetrics] = useState<TokenMetrics | null>(null);
+  const [circulatingSupply, setCirculatingSupply] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,6 +77,15 @@ export function useTokenMetrics(
         }
 
         setMetrics(updatedMetrics);
+
+        // Extract circulatingSupply from bondingData with safe parsing
+        if (healthData.bondingData?.currentSupply) {
+          const parsed = parseFloat(healthData.bondingData.currentSupply);
+          setCirculatingSupply(Number.isFinite(parsed) ? parsed : null);
+        } else {
+          setCirculatingSupply(null);
+        }
+
         setError(null);
       } else {
         console.error('[useTokenMetrics] ❌ No metrics data in health response');
@@ -94,6 +105,7 @@ export function useTokenMetrics(
   useEffect(() => {
     if (!tokenAddress) {
       setMetrics(null);
+      setCirculatingSupply(null);
       setLoading(false);
       setError(null);
       return;
@@ -113,5 +125,6 @@ export function useTokenMetrics(
     loading,
     error,
     refetch: fetchMetrics,
+    circulatingSupply,
   };
 }

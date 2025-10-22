@@ -3,11 +3,9 @@
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Info } from 'lucide-react';
-import { useTokenBondingData } from '@/hooks/contracts/use-token-bonding-data';
 import { useAuth } from '@/lib/auth/auth-context';
 import { ethers } from 'ethers';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
-import { useAcesPrice } from '@/hooks/use-aces-price';
 import { LoadingDots } from './loading-dots';
 
 // ERC20 ABI for balance checking
@@ -185,6 +183,7 @@ interface TokenHealthPanelProps {
   liquidityUsd?: number | null;
   liquiditySource?: 'bonding_curve' | 'dex' | null;
   metricsLoading?: boolean;
+  circulatingSupply?: number | null; // Circulating supply from unified health endpoint
 }
 
 type LiquidityState =
@@ -204,15 +203,10 @@ export default function TokenHealthPanel({
   liquidityUsd: liquidityUsdProp,
   liquiditySource,
   metricsLoading = false,
+  circulatingSupply: circulatingSupplyProp,
 }: TokenHealthPanelProps) {
   const { walletAddress } = useAuth();
   const [userTokenBalance, setUserTokenBalance] = useState<string>('0');
-
-  // Fetch ACES/USD price for volume conversion
-  const { acesUsdPrice } = useAcesPrice();
-
-  // Fetch bonding data (acesBalance not extracted - market cap comes from props now)
-  const { currentSupply, loading: bondingLoading } = useTokenBondingData(tokenAddress, chainId);
 
   // Determine if token is in DEX mode
   const isDexMode = useMemo(() => {
@@ -241,9 +235,11 @@ export default function TokenHealthPanel({
   // Circulating supply: Actual tokens sold (used for reward calculations)
   // This varies from 1 to 800M during bonding, then up to 1B in DEX mode
   const circulatingSupply = useMemo(() => {
-    const parsed = parseFloat(currentSupply || '0');
-    return Number.isFinite(parsed) ? parsed : 0;
-  }, [currentSupply]);
+    if (circulatingSupplyProp !== undefined && circulatingSupplyProp !== null) {
+      return Number.isFinite(circulatingSupplyProp) ? circulatingSupplyProp : 0;
+    }
+    return 0;
+  }, [circulatingSupplyProp]);
 
   // Use live token price if available, otherwise calculate from market cap
   const tokenPrice = useMemo(() => {
@@ -299,23 +295,14 @@ export default function TokenHealthPanel({
     return Number.isFinite(parsed) ? parsed : 0;
   }, [userTokenBalance]);
 
-  // Calculate 24h volume in USD
+  // Calculate 24h volume in USD (prefer USD value from backend)
   const volume24hUsd = useMemo(() => {
+    // Prefer pre-calculated USD volume from backend
     if (volume24hUsdProp !== undefined && Number.isFinite(volume24hUsdProp)) {
       return volume24hUsdProp;
     }
-
-    if (!volume24hAces) return 0;
-
-    try {
-      const volumeAces = parseFloat(ethers.utils.formatUnits(volume24hAces, 18));
-      if (!Number.isFinite(volumeAces) || !acesUsdPrice) return 0;
-      return volumeAces * acesUsdPrice;
-    } catch (error) {
-      console.error('Failed to parse volume24hAces:', error);
-      return 0;
-    }
-  }, [volume24hAces, volume24hUsdProp, acesUsdPrice]);
+    return 0;
+  }, [volume24hUsdProp]);
 
   const liquidityState: LiquidityState = useMemo(() => {
     // Show loading while metrics are being fetched or liquidity value hasn't been received yet
@@ -384,8 +371,11 @@ export default function TokenHealthPanel({
     'flex items-center justify-between gap-4 px-5 py-3 border-b border-[#D0B284]/15 last:border-b-0';
   const valueClass = 'text-base font-semibold font-proxima-nova leading-none text-white';
 
-  const isLoading = bondingLoading || !tokenAddress;
-  const hasData = circulatingSupply > 0 && tokenPrice > 0;
+  // Progressive loading states for each metric
+  const acesRatioLoading = !liveTokenPrice || !assetSalePrice || !tokenAddress;
+  const tradeRewardLoading = !circulatingSupply || !assetSalePrice || !tokenAddress;
+  const rewardEarnedLoading = !circulatingSupply || !tokenAddress;
+  const volumeLoading = metricsLoading || !tokenAddress;
 
   return (
     <motion.div
@@ -405,7 +395,7 @@ export default function TokenHealthPanel({
           tooltip="Market Cap divided by the asset's reserve price. Shows how much the token market values the asset compared to its physical value."
         />
         <div className="flex items-end gap-1 text-white">
-          {isLoading || !hasData ? (
+          {acesRatioLoading ? (
             <LoadingDots className="text-lg font-semibold font-proxima-nova leading-none text-white" />
           ) : ratioDisplay.numeric ? (
             <>
@@ -437,7 +427,7 @@ export default function TokenHealthPanel({
           tooltip="Reward multiplier from collectible sale commissions. Shows how much you'll receive per dollar spent when the item sells, distributed proportionally to your token holdings."
         />
         <span className={valueClass}>
-          {isLoading || !hasData ? (
+          {tradeRewardLoading ? (
             <LoadingDots className={valueClass} />
           ) : (
             `${metrics.valueEquilibriumRatio.toFixed(0)}%`
@@ -454,7 +444,7 @@ export default function TokenHealthPanel({
           label="REWARD EARNED"
           tooltip="Your proportional share of the community reward pool. Calculated as: (Your Holdings ÷ Circulating Supply) × Community Reward."
         />
-        {isLoading || !hasData ? (
+        {rewardEarnedLoading ? (
           <LoadingDots className={valueClass} />
         ) : (
           <div className="flex items-baseline gap-0.5 text-white">
@@ -477,7 +467,7 @@ export default function TokenHealthPanel({
           label="LIQUIDITY"
           tooltip="During bonding this is the ACES deposited into the curve (converted to USD). After launch it reflects Aerodrome pool liquidity."
         />
-        {isLoading || liquidityState.status === 'loading' ? (
+        {liquidityState.status === 'loading' ? (
           <LoadingDots className={valueClass} />
         ) : liquidityState.status === 'unavailable' ? (
           <span className="text-sm font-proxima-nova leading-none text-white/60">
@@ -500,7 +490,7 @@ export default function TokenHealthPanel({
         transition={{ duration: 0.5, delay: 0.15 }}
       >
         <SectionLabel label="VOLUME (24H)" />
-        {isLoading || !hasData ? (
+        {volumeLoading ? (
           <LoadingDots className={valueClass} />
         ) : (
           <div className="flex items-baseline gap-0.5 text-white">
