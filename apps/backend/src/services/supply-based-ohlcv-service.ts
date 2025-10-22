@@ -35,6 +35,8 @@ export class SupplyBasedOHLCVService {
   private subgraphUrl: string;
   private rpcUrl: string;
   private factoryAddress: string;
+  private candlesCache = new Map<string, { candles: Candle[]; timestamp: number }>();
+  private static readonly CACHE_TTL_MS = 2000;
 
   constructor() {
     this.subgraphUrl = process.env.GOLDSKY_SUBGRAPH_URL || '';
@@ -56,6 +58,11 @@ export class SupplyBasedOHLCVService {
     limit = 1000,
   ): Promise<Candle[]> {
     try {
+      const cacheKey = `${tokenAddress.toLowerCase()}::${timeframe}::${limit}`;
+      const cached = this.candlesCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < SupplyBasedOHLCVService.CACHE_TTL_MS) {
+        return cached.candles;
+      }
       // Try trade-based pipeline first
       // console.log(`[SupplyBasedOHLCV] Building ${timeframe} candles from trades (preferred)`);
 
@@ -259,6 +266,7 @@ export class SupplyBasedOHLCVService {
       }
 
       // console.log(`[SupplyBasedOHLCV] ✅ Returning ${candles.length} candles with proper OHLC`);
+      this.candlesCache.set(cacheKey, { candles, timestamp: Date.now() });
       return candles;
     } catch (error) {
       console.error('[SupplyBasedOHLCV] Error getting candles:', error);
