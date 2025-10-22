@@ -94,11 +94,18 @@ export async function submissionRoutes(fastify: FastifyInstance) {
         }
 
         // Validate file type
-        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-        if (!allowedTypes.includes(data.mimetype)) {
+        const imageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+        const ownershipAllowedTypes = [...imageTypes, 'application/pdf'];
+        const isOwnership = uploadType === 'ownership';
+        const isAllowed = (isOwnership ? ownershipAllowedTypes : imageTypes).includes(
+          data.mimetype,
+        );
+        if (!isAllowed) {
           return reply.status(400).send({
             success: false,
-            error: 'Invalid file type. Only JPEG, PNG, and WebP images are allowed.',
+            error: isOwnership
+              ? 'Invalid file type. Only JPEG, PNG, WebP images, and PDF documents are allowed for ownership documentation.'
+              : 'Invalid file type. Only JPEG, PNG, and WebP images are allowed.',
           });
         }
 

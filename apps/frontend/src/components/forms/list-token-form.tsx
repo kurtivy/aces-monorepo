@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { CountrySelect } from '@/components/ui/country-select';
 import { AssetSubmissionModal } from '@/components/ui/asset-submission-modal';
+import { VerificationAccordionSection } from '@/components/ui/verification-accordion-section';
 
 // Helper to get error message as string
 const getErrorMessage = (error: any): string | undefined => {
@@ -38,34 +39,6 @@ const getErrorMessage = (error: any): string | undefined => {
   if (error.message) return String(error.message);
   return undefined;
 };
-
-// Local form UI primitives tuned to Figma
-function Section({
-  icon: Icon,
-  title,
-  description,
-  children,
-}: {
-  icon: React.ElementType;
-  title: string;
-  description: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <div className="p-3 bg-[#0f1511] border border-dashed border-[#E6E3D3]/15 rounded-xl">
-          <Icon className="w-6 h-6 text-[#C9AE6A]" />
-        </div>
-        <div>
-          <h2 className="text-2xl font-bold text-[#D0B284] mb-1">{title}</h2>
-          <p className="text-[#E6E3D3]/70 text-sm">{description}</p>
-        </div>
-      </div>
-      <div className="space-y-6">{children}</div>
-    </div>
-  );
-}
 
 function Field({
   label,
@@ -173,6 +146,11 @@ export default function ListTokenForm() {
   const isSection1Complete =
     watchedValues.every((value) => value && value.toString().trim() !== '') &&
     imagePreviews.length > 0;
+
+  const ownershipDocsCount = Object.keys(ownershipDocs).filter(
+    (k) => ownershipDocs[k as keyof typeof ownershipDocs],
+  ).length;
+  const isSection2Complete = ownershipDocsCount >= 3 && hasAcceptedTerms;
 
   // Smooth scroll to section when currentStep changes
   React.useEffect(() => {
@@ -469,10 +447,13 @@ export default function ListTokenForm() {
         <form onSubmit={onSubmit} className="space-y-10">
           {/* Section 1 */}
           <div ref={section1Ref} className="scroll-mt-8">
-            <Section
+            <VerificationAccordionSection
               icon={Info}
               title="Asset Information"
               description="Tell us about your luxury asset and create its digital identity"
+              isCompleted={isSection1Complete}
+              isActive={currentStep === 1}
+              stepNumber={1}
             >
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <Field
@@ -720,16 +701,19 @@ export default function ListTokenForm() {
                   <ChevronRight className="w-5 h-5 ml-2" />
                 </Button>
               </div>
-            </Section>
+            </VerificationAccordionSection>
           </div>
 
           {/* Section 2 */}
           {currentStep >= 2 && (
             <div ref={section2Ref} className="scroll-mt-8">
-              <Section
+              <VerificationAccordionSection
                 icon={Shield}
                 title="Proof of Ownership & Verification"
                 description="Upload at least 3 of the following ownership documents to verify your asset"
+                isCompleted={isSection2Complete}
+                isActive={currentStep === 2}
+                stepNumber={2}
               >
                 {/* Info box about minimum requirement */}
                 <div className="bg-[#D7BF75]/10 border border-[#D7BF75]/30 rounded-xl p-4">
@@ -744,13 +728,7 @@ export default function ListTokenForm() {
                     documentation you provide, the faster we can verify your ownership.
                   </p>
                   <p className="text-sm text-[#D7BF75] mt-2 font-medium">
-                    Uploaded:{' '}
-                    {
-                      Object.keys(ownershipDocs).filter(
-                        (k) => ownershipDocs[k as keyof typeof ownershipDocs],
-                      ).length
-                    }{' '}
-                    / 6 (minimum 3 required)
+                    Uploaded: {ownershipDocsCount} / 6 (minimum 3 required)
                   </p>
                 </div>
 
@@ -767,6 +745,12 @@ export default function ListTokenForm() {
                     ] as const
                   ).map(({ key, label }) => {
                     const doc = ownershipDocs[key];
+                    const isPdf =
+                      !!doc &&
+                      ((doc.file && doc.file.type === 'application/pdf') ||
+                        (doc.file &&
+                          typeof (doc.file as any).name === 'string' &&
+                          (doc.file as any).name.toLowerCase().endsWith('.pdf')));
                     return (
                       <div key={key} className="space-y-2">
                         <label className="flex items-center gap-2 text-[#C9AE6A] font-medium text-sm uppercase tracking-wide">
@@ -776,7 +760,7 @@ export default function ListTokenForm() {
                         <div className="relative">
                           <input
                             type="file"
-                            accept="image/*"
+                            accept="image/*,application/pdf"
                             onChange={(e) => handleOwnershipDocUpload(key, e)}
                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                           />
@@ -815,13 +799,24 @@ export default function ListTokenForm() {
                             {doc ? (
                               <div className="flex items-center gap-4">
                                 <div className="relative group flex-shrink-0">
-                                  <Image
-                                    src={doc.preview}
-                                    alt={label}
-                                    width={120}
-                                    height={120}
-                                    className="w-32 h-24 object-cover rounded-lg border border-[#E6E3D3]/20"
-                                  />
+                                  {isPdf ? (
+                                    <div className="w-32 h-24 flex items-center justify-center rounded-lg border border-[#E6E3D3]/20 bg-[#0f1511]">
+                                      <div className="text-center">
+                                        <FileText className="w-6 h-6 mx-auto text-[#C9AE6A]" />
+                                        <span className="block text-xs text-[#E6E3D3]/80 mt-1">
+                                          PDF
+                                        </span>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <Image
+                                      src={doc.preview}
+                                      alt={label}
+                                      width={120}
+                                      height={120}
+                                      className="w-32 h-24 object-cover rounded-lg border border-[#E6E3D3]/20"
+                                    />
+                                  )}
                                   <button
                                     type="button"
                                     onClick={() => removeOwnershipDoc(key)}
@@ -842,11 +837,22 @@ export default function ListTokenForm() {
                                 </div>
                                 <div className="flex-1">
                                   <p className="text-[#E6E3D3] font-medium mb-1">
-                                    ✓ Document Uploaded
+                                    ✓ Document Uploaded{isPdf ? ' (PDF)' : ''}
                                   </p>
                                   <p className="text-[#E6E3D3]/70 text-sm">
                                     Click to replace document
                                   </p>
+                                  {isPdf && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        window.open(doc.preview, '_blank', 'noopener,noreferrer')
+                                      }
+                                      className="mt-2 text-[#D7BF75] hover:text-[#C9AE6A] text-xs underline"
+                                    >
+                                      Open PDF
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                             ) : (
@@ -859,7 +865,7 @@ export default function ListTokenForm() {
                                     Upload Document
                                   </p>
                                   <p className="text-[#E6E3D3]/70 text-xs">
-                                    Click to upload {label.toLowerCase()}
+                                    Click to upload {label.toLowerCase()} (image or PDF)
                                   </p>
                                 </div>
                               </div>
@@ -925,18 +931,10 @@ export default function ListTokenForm() {
 
                   <Button
                     type="submit"
-                    disabled={
-                      isSubmitting ||
-                      Object.keys(ownershipDocs).filter(
-                        (k) => ownershipDocs[k as keyof typeof ownershipDocs],
-                      ).length < 3 ||
-                      !hasAcceptedTerms
-                    }
+                    disabled={isSubmitting || ownershipDocsCount < 3 || !hasAcceptedTerms}
                     className="bg-[#C9AE6A] hover:bg-[#d6bf86] text-black font-bold py-4 px-12 text-lg rounded-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
                     title={
-                      Object.keys(ownershipDocs).filter(
-                        (k) => ownershipDocs[k as keyof typeof ownershipDocs],
-                      ).length < 3
+                      ownershipDocsCount < 3
                         ? 'Please upload at least 3 ownership documents'
                         : !hasAcceptedTerms
                           ? 'Please accept the Launchpad Agreement'
@@ -953,7 +951,7 @@ export default function ListTokenForm() {
                     )}
                   </Button>
                 </div>
-              </Section>
+              </VerificationAccordionSection>
             </div>
           )}
         </form>
