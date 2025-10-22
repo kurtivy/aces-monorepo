@@ -5,6 +5,7 @@ import { useWalletClient } from 'wagmi';
 import { getContractAddresses } from '@/lib/contracts/addresses';
 import { ACES_FACTORY_ABI, ERC20_ABI, LAUNCHPAD_TOKEN_ABI } from '@/lib/contracts/abi';
 import {
+  WalletProvider,
   getProviderForAddress,
   getCurrentChainIdFromProvider,
   getWalletInitDelay,
@@ -82,20 +83,24 @@ export function useSwapContracts(
       const walletClientType = privyWallet.walletClientType || '';
       const isPrivyWallet = walletClientType.toLowerCase().includes('privy');
 
-      let newProvider: ethers.providers.Web3Provider;
-      let chainId: number;
+      console.log('[useSwapContracts] 🔍 Wallet Detection:', {
+        walletClientType,
+        isPrivyWallet,
+        isPhantom: walletClientType.toLowerCase().includes('phantom'),
+        isMetaMask: walletClientType.toLowerCase().includes('metamask'),
+        address: walletAddress,
+      });
 
-      // Use wagmi for Privy smart wallets
-      if (isPrivyWallet) {
-        if (!walletClient) {
-          initializingRef.current = false;
-          return false;
-        }
+      let newProvider: ethers.providers.Web3Provider | null = null;
+      let chainId: number | null = null;
 
-        // Create ethers provider from wagmi wallet client
+      const walletClientMatchesAddress =
+        walletClient?.account?.address?.toLowerCase() === walletAddress.toLowerCase();
+
+      if (walletClientMatchesAddress && walletClient?.transport) {
         const network = {
-          chainId: walletClient.chain.id,
-          name: walletClient.chain.name,
+          chainId: walletClient.chain?.id ?? undefined,
+          name: walletClient.chain?.name ?? 'unknown',
         };
 
         newProvider = new ethers.providers.Web3Provider(
@@ -103,26 +108,70 @@ export function useSwapContracts(
           network,
         );
 
-        chainId = walletClient.chain.id;
-      } else {
-        // Use traditional EIP-1193 provider for external wallets
-        const ethProvider = getProviderForAddress(walletAddress, privyWallets);
+        chainId = walletClient.chain?.id ?? null;
+      }
 
-        if (!ethProvider) {
-          console.warn('[useSwapContracts] ⚠️ Wallet provider not available yet');
-          initializingRef.current = false;
-          return false;
+      if (!newProvider) {
+        if (isPrivyWallet) {
+          if (!walletClient) {
+            initializingRef.current = false;
+            return false;
+          }
+
+          const network = {
+            chainId: walletClient.chain.id,
+            name: walletClient.chain.name,
+          };
+
+          newProvider = new ethers.providers.Web3Provider(
+            walletClient.transport as unknown as ethers.providers.ExternalProvider,
+            network,
+          );
+
+          chainId = walletClient.chain.id;
+        } else {
+          // Use traditional EIP-1193 provider for external wallets (MetaMask, Phantom, etc.)
+          console.log(
+            '[useSwapContracts] 🔍 Getting provider for external wallet:',
+            walletClientType,
+          );
+          const ethProvider = getProviderForAddress(walletAddress, privyWallets);
+
+          if (!ethProvider) {
+            console.warn('[useSwapContracts] ⚠️ Wallet provider not available yet');
+            console.warn('[useSwapContracts] 📍 Phantom check:', {
+              hasWindowPhantom: !!(window as any)?.phantom,
+              hasPhantomEthereum: !!(window as any)?.phantom?.ethereum,
+              hasWindowEthereum: !!window.ethereum,
+              windowEthereumIsPhantom: !!(window.ethereum as any)?.isPhantom,
+            });
+            initializingRef.current = false;
+            return false;
+          }
+
+          console.log('[useSwapContracts] ✅ Provider obtained:', {
+            isPhantom: (ethProvider as any).isPhantom,
+            isMetaMask: (ethProvider as any).isMetaMask,
+          });
+
+          const detectedChainId = await getCurrentChainIdFromProvider(ethProvider);
+
+          if (!detectedChainId) {
+            throw new Error('Failed to get chain ID');
+          }
+
+          chainId = detectedChainId;
+          newProvider = new ethers.providers.Web3Provider(ethProvider, 'any');
         }
+      }
 
-        // Get current chain ID from the specific provider
-        const detectedChainId = await getCurrentChainIdFromProvider(ethProvider);
+      if (!newProvider) {
+        throw new Error('Failed to initialize wallet provider');
+      }
 
-        if (!detectedChainId) {
-          throw new Error('Failed to get chain ID');
-        }
-
-        chainId = detectedChainId;
-        newProvider = new ethers.providers.Web3Provider(ethProvider, 'any');
+      if (chainId === null) {
+        const networkMeta = await newProvider.getNetwork();
+        chainId = networkMeta.chainId;
       }
 
       // Get contract addresses for this chain
@@ -136,16 +185,41 @@ export function useSwapContracts(
       const newSigner = newProvider.getSigner();
 
       // Verify signer address matches wallet address
-      const signerAddress = await newSigner.getAddress();
+      // Add retry logic with exponential backoff for cases where wallet is still initializing
+      let signerAddress: string | null = null;
+      let retries = 5; // Increased from 3 to 5
+      let delay = 300; // Start with 300ms
+
+      while (retries > 0 && !signerAddress) {
+        try {
+          signerAddress = await newSigner.getAddress();
+          break;
+        } catch (error) {
+          retries--;
+          if (retries === 0) {
+            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+            throw new Error(
+              `Failed to get wallet address after multiple attempts. ${errorMsg}\n\n` +
+                'This usually happens when:\n' +
+                '1. Multiple wallet extensions are installed (please disable extras)\n' +
+                '2. Your wallet needs to be reconnected (try disconnecting and reconnecting)\n' +
+                '3. The page needs to be refreshed',
+            );
+          }
+          // Exponential backoff: wait longer each time
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          delay *= 1.5; // Increase delay: 300ms, 450ms, 675ms, 1012ms
+        }
+      }
       // console.log('[useSwapContracts] 🔍 Address verification:', {
       //   signerAddress,
       //   expectedAddress: walletAddress,
       //   match: signerAddress.toLowerCase() === walletAddress.toLowerCase(),
       // });
 
-      if (signerAddress.toLowerCase() !== walletAddress.toLowerCase()) {
+      if (!signerAddress || signerAddress.toLowerCase() !== walletAddress.toLowerCase()) {
         throw new Error(
-          `Signer address mismatch! Expected ${walletAddress} but got ${signerAddress}. ` +
+          `Signer address mismatch! Expected ${walletAddress} but got ${signerAddress || 'none'}. ` +
             `This may happen if you switched wallets. Please refresh the page.`,
         );
       }
@@ -315,7 +389,15 @@ export function useSwapContracts(
     };
 
     // Get the correct provider for event listeners - use Privy's wallet info
-    const ethProvider = getProviderForAddress(walletAddress, privyWallets);
+    let ethProvider = getProviderForAddress(walletAddress, privyWallets);
+
+    if (
+      !ethProvider &&
+      walletClient?.account?.address?.toLowerCase() === walletAddress.toLowerCase() &&
+      walletClient.transport
+    ) {
+      ethProvider = walletClient.transport as unknown as WalletProvider;
+    }
 
     if (!ethProvider) {
       // console.warn('[useSwapContracts] No provider found for event listeners');
@@ -334,7 +416,7 @@ export function useSwapContracts(
       ethProvider?.removeListener?.('chainChanged', handleChainChanged);
       ethProvider?.removeListener?.('accountsChanged', handleAccountsChanged);
     };
-  }, [currentChainId, walletAddress, privyWallets, cleanup, initializeProvider]); // ADD privyWallets
+  }, [currentChainId, walletAddress, privyWallets, cleanup, initializeProvider, walletClient]); // ADD privyWallets
 
   return {
     // Contracts

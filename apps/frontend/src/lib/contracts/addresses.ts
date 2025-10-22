@@ -23,12 +23,13 @@ export const CONTRACT_ADDRESSES = {
       '0xd412A18B862Ae8641993ED31368366dD1b3F726c', // Base Mainnet factory implementation (NEW)
     FACTORY_PROXY:
       process.env.NEXT_PUBLIC_PROXY_ADDRESS_BASE_MAINNET ||
-      '0x676BB442f45b5e11885Cf6e7ab8A15B5Ff7c5c51', // Base Mainnet factory proxy (ACTIVE - main interaction point)
+      '0x676BB442f45b5e11885Cf6e7ab8A15B5Ff7c5c51', // Base Mainnet factory proxy (ACTIVE - bonding curve contract with buyTokens)
     AERODROME_ROUTER:
       process.env.NEXT_PUBLIC_AERODROME_ROUTER_BASE_MAINNET ||
       '0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43', // Aerodrome Router on Base Mainnet
     ACES_SWAP:
-      process.env.NEXT_PUBLIC_SWAP_ADDRESS_MAINNET || '0xD884a65b36D6b435f49e01BfD1dBB4643E97D57b', // Base Mainnet AcesSwapNewest
+      process.env.NEXT_PUBLIC_ACES_SWAP_ADDRESS_MAINNET || 
+      '0xD884a65b36D6b435f49e01BfD1dBB4643E97D57b', // Base Mainnet AcesSwapNewest (multi-hop: ETH/USDC/USDT → ACES → RWA)
   },
 } as const;
 

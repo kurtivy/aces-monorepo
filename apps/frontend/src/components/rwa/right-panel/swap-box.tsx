@@ -263,7 +263,7 @@ export default function TokenSwapInterface({
       return [
         { value: 'ETH', label: 'ETH' },
         { value: 'USDC', label: 'USDC' },
-        { value: 'USDT', label: 'USDT' },
+        // { value: 'USDT', label: 'USDT' },
         { value: 'ACES', label: 'ACES' },
       ];
     }
@@ -273,7 +273,7 @@ export default function TokenSwapInterface({
       return [
         { value: 'ETH', label: 'ETH' },
         { value: 'USDC', label: 'USDC' },
-        { value: 'USDT', label: 'USDT' },
+        // { value: 'USDT', label: 'USDT' },
         { value: 'ACES', label: 'ACES' },
       ];
     }
@@ -786,15 +786,20 @@ export default function TokenSwapInterface({
 
   const handleConnectWallet = useCallback(async () => {
     try {
-      // Don't set local loading state - the auth context handles loading state for wallet connection
-      // This ensures the button stays in loading state until the wallet is fully initialized
+      setLoading('Connecting wallet...');
       await authConnectWallet();
+      // Wait a bit for wallet to fully initialize
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      setLoading('');
     } catch (error) {
       console.error('Failed to connect wallet:', error);
-      // Only set loading state if there's an error
+      setTransactionStatus({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Failed to connect wallet',
+      });
       setLoading('');
     }
-  }, [authConnectWallet]);
+  }, [authConnectWallet, setTransactionStatus]);
 
   // ========================================
   // UNIFIED SWAP HANDLER
@@ -909,12 +914,24 @@ export default function TokenSwapInterface({
       setLoading('Requesting approval...');
 
       const { ethers } = await import('ethers');
-      const ERC20_ABI = ['function approve(address spender, uint256 amount) returns (bool)'];
+
+      // USDT on Base doesn't return a boolean from approve(), so we need a special ABI
+      // that doesn't expect a return value to avoid decoding errors
+      const isUSDT = selectedSellAsset === 'USDT';
+      const ERC20_ABI = isUSDT
+        ? ['function approve(address spender, uint256 amount)'] // No return type for USDT
+        : ['function approve(address spender, uint256 amount) returns (bool)'];
+
       const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
 
       const UNLIMITED_APPROVAL = ethers.constants.MaxUint256;
 
-      // console.log(`[SwapBox] Requesting unlimited ${selectedSellAsset} approval...`);
+      console.log(`[SwapBox] Requesting unlimited ${selectedSellAsset} approval...`, {
+        tokenAddress,
+        spender,
+        isUSDT,
+      });
+
       const tx = await tokenContract.approve(spender, UNLIMITED_APPROVAL);
 
       setLoading('Confirming approval...');
@@ -1466,15 +1483,22 @@ export default function TokenSwapInterface({
                   loading={!!loading || authIsLoading}
                   fullWidth
                 />
-              ) : !provider ? (
-                <TradeButtonComponent
-                  className="w-full max-w-[320px]"
-                  state="connect"
-                  size="lg"
-                  disabled
-                  loading
-                  fullWidth
-                />
+              ) : !provider || initializationError ? (
+                <>
+                  <TradeButtonComponent
+                    className="w-full max-w-[320px]"
+                    state="connect"
+                    size="lg"
+                    disabled={!!initializationError}
+                    loading={!initializationError}
+                    fullWidth
+                  />
+                  {initializationError && (
+                    <div className="mt-2 text-center text-xs text-red-400/80 max-w-[320px]">
+                      Wallet connection issue. Try refreshing or disabling extra wallet extensions.
+                    </div>
+                  )}
+                </>
               ) : (
                 (() => {
                   const assetInfo = getAssetBalanceInfo(selectedSellAsset);

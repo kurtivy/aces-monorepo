@@ -36,7 +36,13 @@ export function useAcesSwapV2({ signer, walletAddress }: UseAcesSwapV2Props) {
           return;
         }
 
-        const network = await signer.provider?.getNetwork();
+        // Ensure provider is available before attempting to get network
+        if (!signer.provider) {
+          setContract(null);
+          return;
+        }
+
+        const network = await signer.provider.getNetwork();
         const chainId = Number(network?.chainId || 0);
 
         // Resolve address by chain
