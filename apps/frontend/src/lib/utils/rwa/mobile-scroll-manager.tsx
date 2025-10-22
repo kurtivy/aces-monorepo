@@ -36,6 +36,7 @@ export function useMobileScrollManager(
       const targetRef = sectionMap.get(sectionId);
       if (!targetRef?.current) return;
 
+      setActiveSection(sectionId);
       const targetPosition = targetRef.current.offsetTop - MOBILE_HEADER_OFFSET;
 
       if (containerRef?.current) {

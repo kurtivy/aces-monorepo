@@ -1,5 +1,6 @@
 'use client';
 
+import { type Dispatch, type SetStateAction } from 'react';
 import Image from 'next/image';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { ImageData } from '../../../../types/rwa/section.types';
@@ -7,7 +8,7 @@ import { createImageErrorHandler, getValidImageSrc } from '@/lib/utils/image-err
 
 interface ImageCarouselProps {
   selectedImageIndex: number;
-  setSelectedImageIndex: (index: number) => void;
+  setSelectedImageIndex: Dispatch<SetStateAction<number>>;
   mockImages: ImageData[];
   onImageClick?: (image: ImageData) => void;
 }
@@ -19,14 +20,16 @@ export default function ImageCarousel({
   onImageClick,
 }: ImageCarouselProps) {
   const handlePrevImage = () => {
-    setSelectedImageIndex(
-      selectedImageIndex === 0 ? mockImages.length - 1 : selectedImageIndex - 1,
+    if (!mockImages.length) return;
+    setSelectedImageIndex((prevIndex) =>
+      prevIndex === 0 ? mockImages.length - 1 : prevIndex - 1,
     );
   };
 
   const handleNextImage = () => {
-    setSelectedImageIndex(
-      selectedImageIndex === mockImages.length - 1 ? 0 : selectedImageIndex + 1,
+    if (!mockImages.length) return;
+    setSelectedImageIndex((prevIndex) =>
+      prevIndex === mockImages.length - 1 ? 0 : prevIndex + 1,
     );
   };
 
@@ -35,6 +38,10 @@ export default function ImageCarousel({
       onImageClick(mockImages[selectedImageIndex]);
     }
   };
+
+  if (!mockImages.length) {
+    return null;
+  }
 
   return (
     <div className="relative w-full h-full bg-black/20 rounded-xl overflow-hidden">

@@ -16,7 +16,7 @@ interface MobileCommentsHistorySectionProps {
 
 const MobileCommentsHistorySection = forwardRef<HTMLDivElement, MobileCommentsHistorySectionProps>(
   ({ listing, isLive }, ref) => {
-    const [activeTab, setActiveTab] = useState<'comments' | 'trades' | 'stats'>('trades');
+    const [activeTab, setActiveTab] = useState<'comments' | 'trades' | 'stats'>('stats');
     const [tradesExpanded, setTradesExpanded] = useState(true);
     const [commentsExpanded, setCommentsExpanded] = useState(true);
     const tokenChainId = listing.token?.chainId ?? NETWORK_CONFIG.DEFAULT_CHAIN_ID;
