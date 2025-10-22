@@ -319,14 +319,17 @@ export default function TokenHealthPanel({
   }, [volume24hAces, volume24hUsdProp, acesUsdPrice]);
 
   const liquidityState: LiquidityState = useMemo(() => {
+    // Show loading while metrics are being fetched or liquidity value hasn't been received yet
     if (metricsLoading || liquidityUsdProp === undefined) {
       return { status: 'loading' } as const;
     }
 
+    // Show unavailable if liquidity is explicitly null or invalid
     if (liquidityUsdProp === null || !Number.isFinite(liquidityUsdProp)) {
       return { status: 'unavailable' } as const;
     }
 
+    // Show the actual liquidity value
     return { status: 'ready', value: liquidityUsdProp as number } as const;
   }, [liquidityUsdProp, metricsLoading]);
 
@@ -472,25 +475,6 @@ export default function TokenHealthPanel({
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5, delay: 0.12 }}
       >
-        <SectionLabel label="VOLUME (24H)" />
-        {isLoading || !hasData ? (
-          <LoadingDots className={valueClass} />
-        ) : (
-          <div className="flex items-baseline gap-0.5 text-white">
-            <span className="text-sm font-proxima-nova leading-none">$</span>
-            <span className="text-lg font-semibold font-proxima-nova leading-none text-white">
-              {formatNumber(volume24hUsd)}
-            </span>
-          </div>
-        )}
-      </motion.div>
-
-      <motion.div
-        className={rowClass}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.5, delay: 0.15 }}
-      >
         <LabelWithTooltip
           label="LIQUIDITY"
           tooltip="During bonding this is the ACES deposited into the curve (converted to USD). After launch it reflects Aerodrome pool liquidity."
@@ -502,18 +486,30 @@ export default function TokenHealthPanel({
             Data unavailable
           </span>
         ) : (
-          <div className="flex items-baseline gap-1 text-white">
-            <div className="flex items-baseline gap-0.5">
-              <span className="text-sm font-proxima-nova leading-none">$</span>
-              <span className="text-lg font-semibold font-proxima-nova leading-none text-white">
-                {formatNumber(liquidityState.value, 2)}
-              </span>
-            </div>
-            {liquiditySource ? (
-              <span className="text-[10px] font-proxima-nova uppercase tracking-[0.2em] text-[#D0B284]">
-                {liquiditySource === 'dex' ? 'DEX' : 'BONDING'}
-              </span>
-            ) : null}
+          <div className="flex items-baseline gap-0.5 text-white">
+            <span className="text-sm font-proxima-nova leading-none">$</span>
+            <span className="text-lg font-semibold font-proxima-nova leading-none text-white">
+              {formatNumber(liquidityState.value, 2)}
+            </span>
+          </div>
+        )}
+      </motion.div>
+
+      <motion.div
+        className={rowClass}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.5, delay: 0.15 }}
+      >
+        <SectionLabel label="VOLUME (24H)" />
+        {isLoading || !hasData ? (
+          <LoadingDots className={valueClass} />
+        ) : (
+          <div className="flex items-baseline gap-0.5 text-white">
+            <span className="text-sm font-proxima-nova leading-none">$</span>
+            <span className="text-lg font-semibold font-proxima-nova leading-none text-white">
+              {formatNumber(volume24hUsd)}
+            </span>
           </div>
         )}
       </motion.div>
