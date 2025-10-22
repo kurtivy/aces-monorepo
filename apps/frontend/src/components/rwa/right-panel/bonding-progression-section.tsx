@@ -153,15 +153,7 @@ export function BondingProgressSection({
     return Math.min(100, Math.max(...candidatePercentages));
   }, [bondingPercentage, percentageOverride, supplyMetrics.soldPercentage]);
 
-  useEffect(() => {
-    console.log('[BondingProgressSection] supply snapshot', {
-      tokenAddress,
-      chainId,
-      currentSupply,
-      tokensBondedAt,
-      supplyMetrics,
-    });
-  }, [tokenAddress, chainId, currentSupply, tokensBondedAt, supplyMetrics]);
+  // useEffect(() => {}, [tokenAddress, chainId, currentSupply, tokensBondedAt, supplyMetrics]);
 
   // Parse tokensBondedAt to number for comparison; do not default to a large number here
   const bondingTargetNum = Number.parseFloat(tokensBondedAt || '');
