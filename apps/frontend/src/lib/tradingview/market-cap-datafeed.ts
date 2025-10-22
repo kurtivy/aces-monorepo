@@ -8,6 +8,14 @@ import {
   HistoryCallback,
   SubscribeBarsCallback,
 } from '../../../public/charting_library/charting_library';
+import {
+  alignTimeToTimeframe,
+  bridgeBar,
+  cloneBar,
+  ensureValidOhlc,
+  fillMissingBars,
+  normaliseTimestamp,
+} from './utils/candles';
 
 interface McapDataSubscription {
   subscriberUID: string;
@@ -21,7 +29,21 @@ interface McapDataSubscription {
   reconnectTimeout: ReturnType<typeof setTimeout> | null;
 }
 
+interface MarketCapCandle {
+  timestamp: number;
+  time?: number;
+  open: number | string;
+  high: number | string;
+  low: number | string;
+  close: number | string;
+  marketCap?: number | string;
+  marketCapUsd?: number | string;
+  marketCapAces?: number | string;
+  volume?: number | string;
+}
+
 export class MarketCapDatafeed implements IBasicDataFeed {
+  private static readonly MAX_CACHED_BARS = 5000;
   // Subscript digit map for zero-count notation (0.0₅487)
   private static readonly SUBSCRIPT_MAP: Record<string, string> = {
     '0': '₀',
@@ -297,7 +319,7 @@ export class MarketCapDatafeed implements IBasicDataFeed {
       onRealtimeCallback,
       onResetCacheNeededCallback,
       isActive: true,
-      lastBar: this.cloneBar(this.lastHistoricalBarByTimeframe.get(timeframe) || null),
+      lastBar: cloneBar(this.lastHistoricalBarByTimeframe.get(timeframe) || null),
       ws: null,
       reconnectTimeout: null,
     };
@@ -484,39 +506,47 @@ export class MarketCapDatafeed implements IBasicDataFeed {
       }
 
       case 'candle_update': {
-        const candle = message.candle;
+        const candle = message.candle as MarketCapCandle | undefined;
         if (!candle) {
           return;
         }
 
-        const bar: Bar = {
-          time: candle.timestamp,
-          open: candle.open,
-          high: candle.high,
-          low: candle.low,
-          close: candle.close,
-          volume: candle.volume || 0,
-        };
+        const timeframeMs = this.timeframeToMs(subscription.timeframe);
+        const baseBar = this.marketCapCandleToBar(candle, timeframeMs);
+
+        if (!baseBar) {
+          console.warn('[MarketCapDatafeed] Skipping invalid real-time candle:', candle);
+          return;
+        }
 
         // Determine if this is an update to the current candle or a new candle
         const isUpdateToCurrentCandle =
-          subscription.lastBar && subscription.lastBar.time === bar.time;
+          subscription.lastBar && subscription.lastBar.time === baseBar.time;
 
         console.log(`[MarketCapDatafeed] 🔔 Real-time market cap update:`, {
-          time: new Date(bar.time).toISOString(),
+          time: new Date(baseBar.time).toISOString(),
           isUpdate: isUpdateToCurrentCandle,
-          marketCap: bar.close,
+          marketCap: baseBar.close,
         });
 
-        // Update subscription's last bar reference
-        subscription.lastBar = this.cloneBar(bar);
+        const bridgedBar = isUpdateToCurrentCandle
+          ? baseBar
+          : bridgeBar(subscription.lastBar, baseBar);
+
+        const clonedBar = cloneBar(bridgedBar);
+        subscription.lastBar = clonedBar;
+        if (clonedBar) {
+          this.lastHistoricalBarByTimeframe.set(subscription.timeframe, clonedBar);
+        }
 
         try {
-          subscription.onRealtimeCallback(bar);
+          subscription.onRealtimeCallback(bridgedBar);
           console.log('[MarketCapDatafeed] ✅ Real-time update applied');
         } catch (error) {
           console.error('[MarketCapDatafeed] Error calling onRealtimeCallback:', error);
         }
+
+        this.updateHistoryCache(subscription.timeframe, bridgedBar);
 
         break;
       }
@@ -529,13 +559,6 @@ export class MarketCapDatafeed implements IBasicDataFeed {
       default:
         break;
     }
-  }
-
-  private cloneBar(bar: Bar | null): Bar | null {
-    if (!bar) {
-      return null;
-    }
-    return { ...bar };
   }
 
   private async fetchMarketCapData(
@@ -561,49 +584,11 @@ export class MarketCapDatafeed implements IBasicDataFeed {
       throw new Error('No market cap data available');
     }
 
-    const candles = data.data.candles;
-
-    interface MarketCapCandle {
-      timestamp: number;
-      open: number | string;
-      high: number | string;
-      low: number | string;
-      close: number | string;
-      marketCap?: number | string;
-      marketCapUsd?: number | string;
-      marketCapAces?: number | string;
-      volume?: number | string;
-    }
+    const candles: MarketCapCandle[] = data.data.candles;
+    const timeframeMs = this.timeframeToMs(timeframe);
 
     const bars: Bar[] = candles
-      .map((candle: MarketCapCandle) => {
-        const timestamp = candle.timestamp * 1000;
-
-        // Extract actual OHLC values from API response
-        // The backend sends proper market cap OHLC calculated from price OHLC * supply
-        const open = typeof candle.open === 'number' ? candle.open : parseFloat(candle.open || '0');
-        const high = typeof candle.high === 'number' ? candle.high : parseFloat(candle.high || '0');
-        const low = typeof candle.low === 'number' ? candle.low : parseFloat(candle.low || '0');
-        const close =
-          typeof candle.close === 'number' ? candle.close : parseFloat(candle.close || '0');
-
-        // Validate at least one value is valid
-        if (!Number.isFinite(close) && !Number.isFinite(open)) {
-          return null;
-        }
-
-        // Use actual OHLC values to form proper candle bodies
-        // This allows TradingView to render candles with visible bodies when market cap changes
-        return {
-          time: timestamp,
-          open: open,
-          high: high,
-          low: low,
-          close: close,
-          volume:
-            typeof candle.volume === 'number' ? candle.volume : parseFloat(candle.volume || '0'),
-        };
-      })
+      .map((candle) => this.marketCapCandleToBar(candle, timeframeMs))
       .filter((bar: Bar | null): bar is Bar => bar !== null)
       .sort((a: Bar, b: Bar) => a.time - b.time);
 
@@ -643,11 +628,84 @@ export class MarketCapDatafeed implements IBasicDataFeed {
       });
     }
 
+    const filledBars = fillMissingBars(bars, timeframeMs);
+
     // 🌟 GENESIS CANDLE: Inject a "token birth" candle at market cap ~0 before first real candle
-    const timeframeMs = this.timeframeToMs(timeframe);
-    const barsWithGenesis = this.injectGenesisCandleIfNeeded(bars, timeframeMs);
+    const barsWithGenesis = this.injectGenesisCandleIfNeeded(filledBars, timeframeMs);
 
     return { bars: barsWithGenesis };
+  }
+
+  private marketCapCandleToBar(candle: MarketCapCandle, timeframeMs: number): Bar | null {
+    if (!candle) {
+      return null;
+    }
+
+    const parseValue = (value: number | string | null | undefined): number => {
+      if (typeof value === 'number') {
+        return value;
+      }
+      if (typeof value === 'string' && value.trim() !== '') {
+        const parsed = parseFloat(value);
+        if (!Number.isNaN(parsed)) {
+          return parsed;
+        }
+      }
+      return NaN;
+    };
+
+    const parseWithFallback = (
+      primary: number | string | null | undefined,
+      ...fallbacks: Array<number | string | null | undefined>
+    ): number => {
+      const candidates = [primary, ...fallbacks];
+
+      for (const candidate of candidates) {
+        const parsed = parseValue(candidate);
+        if (Number.isFinite(parsed)) {
+          return parsed;
+        }
+      }
+
+      for (const candidate of candidates) {
+        const parsed = parseValue(candidate);
+        if (!Number.isNaN(parsed)) {
+          return parsed;
+        }
+      }
+
+      return NaN;
+    };
+
+    const preferredFallback =
+      this.displayCurrency === 'aces' ? candle.marketCapAces : candle.marketCapUsd;
+
+    const timestampMs = normaliseTimestamp(candle.timestamp ?? candle.time);
+
+    if (!Number.isFinite(timestampMs)) {
+      return null;
+    }
+
+    const alignedTime = alignTimeToTimeframe(timestampMs, timeframeMs);
+
+    const fallbackValue = preferredFallback ?? candle.marketCap;
+
+    const open = parseWithFallback(candle.open, fallbackValue);
+    const high = parseWithFallback(candle.high, fallbackValue);
+    const low = parseWithFallback(candle.low, fallbackValue);
+    const close = parseWithFallback(candle.close, fallbackValue);
+    const volumeParsed = parseValue(candle.volume ?? 0);
+
+    const baseBar: Bar = {
+      time: alignedTime,
+      open,
+      high,
+      low,
+      close,
+      volume: Number.isFinite(volumeParsed) ? volumeParsed : 0,
+    };
+
+    return ensureValidOhlc(baseBar);
   }
 
   /**
@@ -687,6 +745,47 @@ export class MarketCapDatafeed implements IBasicDataFeed {
 
     // Prepend genesis candle to the beginning of the array
     return [genesisCandle, ...bars];
+  }
+
+  private updateHistoryCache(timeframe: string, bar: Bar) {
+    if (!bar) {
+      return;
+    }
+
+    const clonedBar: Bar = { ...bar };
+    const existing = this.historyCache.get(timeframe);
+
+    if (!existing || existing.length === 0) {
+      this.historyCache.set(timeframe, [clonedBar]);
+      this.lastHistoricalBarByTimeframe.set(timeframe, clonedBar);
+      return;
+    }
+
+    const updated = [...existing];
+    const lastIndex = updated.length - 1;
+
+    if (updated[lastIndex].time === clonedBar.time) {
+      updated[lastIndex] = clonedBar;
+    } else if (clonedBar.time > updated[lastIndex].time) {
+      updated.push(clonedBar);
+    } else {
+      const insertIndex = updated.findIndex((cachedBar) => cachedBar.time > clonedBar.time);
+
+      if (insertIndex === -1) {
+        updated.push(clonedBar);
+      } else if (updated[insertIndex].time === clonedBar.time) {
+        updated[insertIndex] = clonedBar;
+      } else {
+        updated.splice(insertIndex, 0, clonedBar);
+      }
+    }
+
+    if (updated.length > MarketCapDatafeed.MAX_CACHED_BARS) {
+      updated.splice(0, updated.length - MarketCapDatafeed.MAX_CACHED_BARS);
+    }
+
+    this.historyCache.set(timeframe, updated);
+    this.lastHistoricalBarByTimeframe.set(timeframe, updated[updated.length - 1]);
   }
 
   private timeframeToMs(timeframe: string): number {
