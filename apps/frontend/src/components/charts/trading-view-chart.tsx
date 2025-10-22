@@ -58,6 +58,26 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
       stableTokenSymbol.current = tokenSymbol;
     }, [tokenAddress]); // Only depends on tokenAddress, not tokenSymbol
 
+    // Cleanup datafeed function
+    const cleanupDatafeed = useCallback(() => {
+      if (datafeedRef.current) {
+        console.log('[TradingView] 🧹 Cleaning up old datafeed');
+
+        // If it's a MarketCapDatafeed, it has unsubscribeBars method
+        if (typeof datafeedRef.current.unsubscribeBars === 'function') {
+          try {
+            // Call unsubscribe for any active subscriptions
+            datafeedRef.current.unsubscribeBars('all');
+          } catch (error) {
+            console.warn('[TradingView] Error during datafeed cleanup:', error);
+          }
+        }
+
+        // Clear the reference
+        datafeedRef.current = null;
+      }
+    }, []);
+
     // Load TradingView library
     useEffect(() => {
       if (window.TradingView) {
@@ -107,15 +127,18 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
         widgetRef.current = null;
       }
 
+      // Cleanup old datafeed
+      cleanupDatafeed();
+
       setIsReinitializing(true);
       setError(null);
 
       try {
-        // Create datafeed with current mode/currency
+        // Create datafeed with current mode (always USD)
         const datafeed =
           chartMode === 'price'
             ? new BondingCurveDatafeed(tokenAddress, currency)
-            : new MarketCapDatafeed(tokenAddress, currency);
+            : new MarketCapDatafeed(tokenAddress);
 
         datafeedRef.current = datafeed;
 
@@ -253,7 +276,8 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
           }
           widgetRef.current = null;
         }
-        datafeedRef.current = null;
+        // Cleanup datafeed on unmount
+        cleanupDatafeed();
       };
     }, [
       isLibraryLoaded,
@@ -263,6 +287,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
       chartMode,
       currency,
       hideNativeHeader,
+      cleanupDatafeed, // Include cleanup function in dependencies
     ]);
 
     // Handle mode change (requires chart recreation for now)
@@ -281,26 +306,22 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
           </div>
         `;
       }
-
-      // USD-only: remove currency toggle
-    }, [chartMode, currency]);
+    }, [chartMode]);
 
     // Create custom buttons using TradingView API
     const createCustomButtons = async () => {
       if (!widgetRef.current) return;
 
       try {
-        // Price/MCap toggle button
+        // Price/MCap toggle button (USD-only)
         const modeButton = widgetRef.current.createButton();
-        modeButton.setAttribute('title', 'Toggle Price / Market Cap');
+        modeButton.setAttribute('title', 'Toggle Price / Market Cap (USD)');
         modeButton.classList.add('apply-common-tooltip');
         modeButtonRef.current = modeButton;
         modeButton.addEventListener('click', () => {
           const newMode = chartMode === 'price' ? 'mcap' : 'price';
           handleModeChange(newMode);
         });
-
-        // USD-only: no currency toggle button
 
         // Initial render
         updateButtonAppearance();

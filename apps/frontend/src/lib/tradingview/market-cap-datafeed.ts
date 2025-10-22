@@ -13,12 +13,14 @@ interface McapDataSubscription {
   subscriberUID: string;
   tokenAddress: string;
   timeframe: string;
+  resolution: ResolutionString; // Track resolution for validation
   onRealtimeCallback: SubscribeBarsCallback;
   onResetCacheNeededCallback: () => void;
   isActive: boolean;
   lastBar: Bar | null;
   ws: WebSocket | null;
   reconnectTimeout: ReturnType<typeof setTimeout> | null;
+  createdAt: number; // Track subscription creation time
 }
 
 export class MarketCapDatafeed implements IBasicDataFeed {
@@ -110,32 +112,14 @@ export class MarketCapDatafeed implements IBasicDataFeed {
   }
 
   private tokenAddress: string;
-  private displayCurrency: 'usd' | 'aces';
+  private readonly currency = 'usd' as const;
   private historyCache = new Map<string, Bar[]>();
   private lastHistoricalBarByTimeframe = new Map<string, Bar>();
   private mcapSubscription: McapDataSubscription | null = null;
+  private currentResolution: ResolutionString | null = null;
 
-  constructor(tokenAddress: string, displayCurrency: 'usd' | 'aces' = 'usd') {
+  constructor(tokenAddress: string) {
     this.tokenAddress = tokenAddress.toLowerCase();
-    this.displayCurrency = displayCurrency;
-  }
-
-  /**
-   * Change display currency dynamically without recreating the datafeed
-   */
-  public setDisplayCurrency(currency: 'usd' | 'aces'): void {
-    console.log(
-      `[TradingView MCap] Switching display currency from ${this.displayCurrency} to ${currency}`,
-    );
-    this.displayCurrency = currency;
-    this.historyCache.clear();
-  }
-
-  /**
-   * Get current display currency
-   */
-  public getDisplayCurrency(): 'usd' | 'aces' {
-    return this.displayCurrency;
   }
 
   searchSymbols() {
@@ -159,7 +143,7 @@ export class MarketCapDatafeed implements IBasicDataFeed {
     onResolveErrorCallback: (reason: string) => void,
   ) {
     try {
-      const currencyLabel = this.displayCurrency.toUpperCase();
+      const currencyLabel = 'USD';
 
       // CRITICAL FIX: Use high precision for market cap to handle small values
       // Market cap for micro-cap tokens can be very small (e.g., $100.5678)
@@ -194,7 +178,7 @@ export class MarketCapDatafeed implements IBasicDataFeed {
       console.log('[MarketCapDatafeed] Symbol resolved with precision:', {
         precision,
         pricescale,
-        currency: this.displayCurrency,
+        currency: this.currency,
       });
 
       setTimeout(() => onSymbolResolvedCallback(symbolInfo), 0);
@@ -215,7 +199,11 @@ export class MarketCapDatafeed implements IBasicDataFeed {
     onErrorCallback: (error: string) => void,
   ) {
     const timeframe = this.resolutionToTimeframe(resolution);
-    const cachedBars = this.historyCache.get(timeframe);
+    const cacheKey = `${timeframe}_usd`;
+    const cachedBars = this.historyCache.get(cacheKey);
+
+    // Track current resolution for WebSocket validation
+    this.currentResolution = resolution;
 
     if (!periodParams.firstDataRequest && cachedBars) {
       const filtered = cachedBars.filter(
@@ -223,7 +211,10 @@ export class MarketCapDatafeed implements IBasicDataFeed {
       );
 
       if (filtered.length > 0) {
-        console.log('[MarketCapDatafeed] Sample cached market cap:', filtered[0].close);
+        console.log(
+          `[MarketCapDatafeed] Sample cached market cap (${timeframe}):`,
+          filtered[0].close,
+        );
       }
 
       onHistoryCallback(filtered, { noData: filtered.length === 0 });
@@ -237,13 +228,13 @@ export class MarketCapDatafeed implements IBasicDataFeed {
           return;
         }
 
-        // Cache the bars
-        this.historyCache.set(timeframe, bars);
+        // Cache the bars with specific key
+        this.historyCache.set(cacheKey, bars);
 
         // Track last bar for WebSocket subscriptions
         if (bars.length > 0) {
           this.lastHistoricalBarByTimeframe.set(timeframe, bars[bars.length - 1]);
-          console.log('[MarketCapDatafeed] Sample market cap value:', bars[0].close);
+          console.log(`[MarketCapDatafeed] Sample market cap value (${timeframe}):`, bars[0].close);
         }
 
         onHistoryCallback(bars, { noData: false });
@@ -263,43 +254,62 @@ export class MarketCapDatafeed implements IBasicDataFeed {
   ) {
     const timeframe = this.resolutionToTimeframe(resolution);
 
-    console.log(
-      `[MarketCapDatafeed] Starting WebSocket subscription for ${this.tokenAddress} ${timeframe}`,
-    );
+    console.log(`[MarketCapDatafeed] 🔔 Subscribe to bars: ${timeframe} (${subscriberUID})`);
 
-    // Check if we already have an active subscription for this exact setup
-    if (
-      this.mcapSubscription &&
-      this.mcapSubscription.tokenAddress === this.tokenAddress &&
-      this.mcapSubscription.timeframe === timeframe &&
-      this.mcapSubscription.isActive
-    ) {
-      console.log('[MarketCapDatafeed] ⚠️ Already subscribed, updating callbacks only');
-      // Update callbacks without recreating WebSocket
-      this.mcapSubscription.onRealtimeCallback = onRealtimeCallback;
-      this.mcapSubscription.onResetCacheNeededCallback = onResetCacheNeededCallback;
-      this.mcapSubscription.subscriberUID = subscriberUID;
-      return;
-    }
-
-    // Close previous subscription only if it's for a different token/timeframe
+    // Properly cleanup existing subscription before creating new one
     if (this.mcapSubscription) {
+      const oldSubscription = this.mcapSubscription;
       console.log(
-        '[MarketCapDatafeed] Closing previous subscription for different token/timeframe',
+        `[MarketCapDatafeed] 🧹 Cleaning up old subscription (${oldSubscription.timeframe})`,
       );
-      this.unsubscribeBars(this.mcapSubscription.subscriberUID);
+
+      // Mark as inactive first
+      oldSubscription.isActive = false;
+
+      // Close WebSocket
+      if (oldSubscription.ws) {
+        oldSubscription.ws.close();
+        oldSubscription.ws = null;
+      }
+
+      // Clear timeout
+      if (oldSubscription.reconnectTimeout) {
+        clearTimeout(oldSubscription.reconnectTimeout);
+        oldSubscription.reconnectTimeout = null;
+      }
+
+      this.mcapSubscription = null;
     }
 
+    // Clear cache if switching timeframes to prevent stale data
+    const cacheKey = `${timeframe}_usd`;
+    if (this.currentResolution !== resolution) {
+      console.log(
+        `[MarketCapDatafeed] 🔄 Timeframe changed (${this.currentResolution} → ${resolution}), clearing relevant cache`,
+      );
+      // Only clear cache for different timeframes, keep current one
+      for (const [key] of this.historyCache) {
+        if (key !== cacheKey) {
+          this.historyCache.delete(key);
+        }
+      }
+    }
+
+    this.currentResolution = resolution;
+
+    // Create new subscription
     const subscription: McapDataSubscription = {
       subscriberUID,
       tokenAddress: this.tokenAddress,
       timeframe,
+      resolution, // Store resolution for validation
       onRealtimeCallback,
       onResetCacheNeededCallback,
       isActive: true,
       lastBar: this.cloneBar(this.lastHistoricalBarByTimeframe.get(timeframe) || null),
       ws: null,
       reconnectTimeout: null,
+      createdAt: Date.now(), // Track when subscription was created
     };
 
     this.mcapSubscription = subscription;
@@ -307,49 +317,23 @@ export class MarketCapDatafeed implements IBasicDataFeed {
   }
 
   unsubscribeBars(subscriberUID: string) {
-    console.log(`[MarketCapDatafeed] 🔴 Unsubscribe requested for: ${subscriberUID}`);
+    console.log(`[MarketCapDatafeed] 🔕 Unsubscribe from bars: ${subscriberUID}`);
 
-    if (!this.mcapSubscription) {
-      console.log('[MarketCapDatafeed] No active subscription to unsubscribe');
-      return;
-    }
+    if (this.mcapSubscription && this.mcapSubscription.subscriberUID === subscriberUID) {
+      this.mcapSubscription.isActive = false;
 
-    const subscription = this.mcapSubscription;
-    if (subscription.subscriberUID !== subscriberUID) {
-      console.log(
-        `[MarketCapDatafeed] UID mismatch: expected ${subscription.subscriberUID}, got ${subscriberUID}`,
-      );
-      return;
-    }
-
-    console.log('[MarketCapDatafeed] ⚠️ Deactivating subscription and closing WebSocket');
-    subscription.isActive = false;
-
-    if (subscription.reconnectTimeout) {
-      clearTimeout(subscription.reconnectTimeout);
-      subscription.reconnectTimeout = null;
-    }
-
-    if (subscription.ws) {
-      const ws = subscription.ws;
-
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(
-          JSON.stringify({
-            type: 'unsubscribe',
-            tokenAddress: this.tokenAddress,
-            timeframe: subscription.timeframe,
-            chartType: 'mcap',
-          }),
-        );
+      if (this.mcapSubscription.ws) {
+        this.mcapSubscription.ws.close();
+        this.mcapSubscription.ws = null;
       }
 
-      ws.close();
-      subscription.ws = null;
-    }
+      if (this.mcapSubscription.reconnectTimeout) {
+        clearTimeout(this.mcapSubscription.reconnectTimeout);
+        this.mcapSubscription.reconnectTimeout = null;
+      }
 
-    this.mcapSubscription = null;
-    console.log(`[MarketCapDatafeed] WebSocket unsubscribed successfully`);
+      this.mcapSubscription = null;
+    }
   }
 
   private startWebSocket() {
@@ -409,6 +393,14 @@ export class MarketCapDatafeed implements IBasicDataFeed {
           return;
         }
 
+        // Validate subscription is still active and matches current timeframe
+        if (this.currentResolution !== subscription.resolution) {
+          console.log(
+            `[MarketCapDatafeed] Ignoring message - resolution mismatch (current: ${this.currentResolution}, subscription: ${subscription.resolution})`,
+          );
+          return;
+        }
+
         try {
           const message = JSON.parse(event.data);
           this.handleWebSocketMessage(message, subscription);
@@ -441,6 +433,20 @@ export class MarketCapDatafeed implements IBasicDataFeed {
 
   private handleWebSocketMessage(message: any, subscription: McapDataSubscription) {
     if (!message || typeof message !== 'object') {
+      return;
+    }
+
+    // Additional validation to prevent cross-timeframe contamination
+    if (!subscription.isActive) {
+      console.log('[MarketCapDatafeed] Dropping message - subscription inactive');
+      return;
+    }
+
+    if (subscription.createdAt && Date.now() - subscription.createdAt < 1000) {
+      // Ignore messages in the first second to prevent race conditions
+      console.log(
+        '[MarketCapDatafeed] Dropping message - subscription too new (race condition protection)',
+      );
       return;
     }
 
@@ -489,6 +495,14 @@ export class MarketCapDatafeed implements IBasicDataFeed {
           return;
         }
 
+        // Validate timeframe matches
+        if (message.timeframe && message.timeframe !== subscription.timeframe) {
+          console.log(
+            `[MarketCapDatafeed] Ignoring candle update - timeframe mismatch (expected: ${subscription.timeframe}, received: ${message.timeframe})`,
+          );
+          return;
+        }
+
         const bar: Bar = {
           time: candle.timestamp,
           open: candle.open,
@@ -502,18 +516,24 @@ export class MarketCapDatafeed implements IBasicDataFeed {
         const isUpdateToCurrentCandle =
           subscription.lastBar && subscription.lastBar.time === bar.time;
 
-        console.log(`[MarketCapDatafeed] 🔔 Real-time market cap update:`, {
-          time: new Date(bar.time).toISOString(),
-          isUpdate: isUpdateToCurrentCandle,
-          marketCap: bar.close,
-        });
+        console.log(
+          `[MarketCapDatafeed] 🔔 Real-time market cap update (${subscription.timeframe}):`,
+          {
+            time: new Date(bar.time).toISOString(),
+            isUpdate: isUpdateToCurrentCandle,
+            marketCap: bar.close,
+            subscription: subscription.subscriberUID,
+          },
+        );
 
         // Update subscription's last bar reference
         subscription.lastBar = this.cloneBar(bar);
 
         try {
           subscription.onRealtimeCallback(bar);
-          console.log('[MarketCapDatafeed] ✅ Real-time update applied');
+          console.log(
+            `[MarketCapDatafeed] ✅ Real-time update applied (${subscription.timeframe})`,
+          );
         } catch (error) {
           console.error('[MarketCapDatafeed] Error calling onRealtimeCallback:', error);
         }
@@ -544,7 +564,7 @@ export class MarketCapDatafeed implements IBasicDataFeed {
     to: number,
   ): Promise<{ bars: Bar[] }> {
     const apiUrl = this.getApiUrl(
-      `/api/v1/chart/${this.tokenAddress}/market-cap?timeframe=${timeframe}&from=${from}&to=${to}&currency=${this.displayCurrency}`,
+      `/api/v1/chart/${this.tokenAddress}/market-cap?timeframe=${timeframe}&from=${from}&to=${to}&currency=${this.currency}`,
     );
 
     console.log(`[MarketCapDatafeed] Fetching: ${apiUrl}`);
@@ -607,7 +627,7 @@ export class MarketCapDatafeed implements IBasicDataFeed {
       .filter((bar: Bar | null): bar is Bar => bar !== null)
       .sort((a: Bar, b: Bar) => a.time - b.time);
 
-    console.log(`[MarketCapDatafeed] Received ${bars.length} market cap bars`);
+    console.log(`[MarketCapDatafeed] Received ${bars.length} market cap bars for ${timeframe}`);
 
     // Debug logging
     if (bars.length === 0 && candles.length > 0) {
@@ -619,7 +639,7 @@ export class MarketCapDatafeed implements IBasicDataFeed {
     } else if (bars.length > 0) {
       const firstBar = bars[0];
       const lastBar = bars[bars.length - 1];
-      console.log(`[MarketCapDatafeed] ✅ Market cap OHLC data:`, {
+      console.log(`[MarketCapDatafeed] ✅ Market cap OHLC data (${timeframe}):`, {
         totalBars: bars.length,
         firstCandle: {
           open: firstBar.open,
