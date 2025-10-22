@@ -32,6 +32,7 @@ interface SubgraphToken {
     address: string;
   };
   bonded?: boolean;
+  holdersCount?: number; // Holders count from subgraph
   tokensBought?: string;
   tokensSold?: string;
   subjectFeeAmount?: string;
@@ -247,6 +248,7 @@ export class TokenService {
             supply
             tradesCount
             bonded
+            holdersCount
             tokensBought
             tokensSold
             subjectFeeAmount

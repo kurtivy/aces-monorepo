@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { Decimal } from 'decimal.js';
+import { ethers } from 'ethers';
 import { TokenService } from '../../services/token-service';
 import { TokenHolderService } from '../../services/token-holder-service';
 import { OHLCVService } from '../../services/ohlcv-service';
@@ -10,6 +11,7 @@ import { PriceService } from '../../services/price-service';
 import { BitQueryService } from '../../services/bitquery-service';
 import { SupportedTimeframe } from '../../types/subgraph.types';
 import { ACES_TOKEN_ADDRESS } from '../../config/bitquery.config';
+import { getNetworkConfig, type SupportedChainId } from '../../config/network.config';
 
 const BASE_MAINNET_CHAIN_ID = 8453;
 
@@ -458,25 +460,84 @@ export async function tokensRoutes(fastify: FastifyInstance) {
         const tokenPriceUsd = Number.isFinite(acesUsdPrice) ? tokenPriceAces * acesUsdPrice : 0;
         fastify.log.info({ tokenPriceAces, acesUsdPrice, tokenPriceUsd }, 'Price calculation');
 
-        // 3. Get holder count via RPC (with timeout to prevent hanging)
+        // 3. Get holder count - use Subgraph for bonding phase, BitQuery for DEX phase
         let holderCount = 0;
-        try {
-          const holderCountPromise = tokenHolderService.getHolderCount(
-            address,
-            chainId ?? BASE_MAINNET_CHAIN_ID,
-          );
-          // Add 10-second timeout to prevent hanging
-          holderCount = await Promise.race([
-            holderCountPromise,
-            new Promise<number>((_, reject) =>
-              setTimeout(() => reject(new Error('Holder count timeout')), 10000),
-            ),
-          ]);
-          fastify.log.info({ address, holderCount }, 'Holder count fetched successfully');
-        } catch (error) {
-          fastify.log.warn({ error, address }, 'Failed to fetch holder count, defaulting to 0');
-          // Default to 0 on error or timeout
-          holderCount = 0;
+
+        // For bonding phase tokens, get holder count from subgraph
+        if (!isDexMode) {
+          try {
+            // Query subgraph directly for holdersCount
+            const holderCountQuery = `{
+              tokens(where: {address: "${address.toLowerCase()}"}) {
+                holdersCount
+              }
+            }`;
+
+            const subgraphResponse = await fetch(process.env.GOLDSKY_SUBGRAPH_URL!, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ query: holderCountQuery }),
+              signal: AbortSignal.timeout(5000), // 5 second timeout
+            });
+
+            if (subgraphResponse.ok) {
+              const result = (await subgraphResponse.json()) as {
+                data: { tokens: Array<{ holdersCount?: number }> };
+              };
+
+              const subgraphHolderCount = result.data.tokens?.[0]?.holdersCount;
+              if (subgraphHolderCount !== undefined && subgraphHolderCount !== null) {
+                holderCount = subgraphHolderCount;
+                fastify.log.info(
+                  { address, holderCount, source: 'subgraph' },
+                  'Holder count from subgraph (bonding phase)',
+                );
+              } else {
+                fastify.log.warn(
+                  { address },
+                  'Subgraph returned no holdersCount for bonding phase token',
+                );
+              }
+            } else {
+              fastify.log.warn(
+                { address, status: subgraphResponse.status },
+                'Failed to fetch holdersCount from subgraph',
+              );
+            }
+          } catch (error) {
+            fastify.log.warn(
+              { error, address },
+              'Error fetching holdersCount from subgraph, will try RPC fallback',
+            );
+          }
+        }
+
+        // If we didn't get holder count from subgraph (either graduated or failed), use RPC
+        if (holderCount === 0) {
+          try {
+            const holderCountPromise = tokenHolderService.getHolderCount(
+              address,
+              chainId ?? BASE_MAINNET_CHAIN_ID,
+            );
+            // Add 10-second timeout to prevent hanging
+            holderCount = await Promise.race([
+              holderCountPromise,
+              new Promise<number>((_, reject) =>
+                setTimeout(() => reject(new Error('Holder count timeout')), 10000),
+              ),
+            ]);
+            fastify.log.info(
+              { address, holderCount, source: 'rpc' },
+              'Holder count fetched via RPC',
+            );
+          } catch (error) {
+            fastify.log.warn(
+              { error, address, isDexMode },
+              'Failed to fetch holder count via RPC, defaulting to 0',
+            );
+            // Default to 0 on error or timeout
+            holderCount = 0;
+          }
         }
 
         // 4. Get total fees from subgraph
@@ -485,38 +546,156 @@ export async function tokensRoutes(fastify: FastifyInstance) {
         // 5. Calculate derived metrics
         let volume24hAces = 0;
         let volume24hUsd = 0;
-        let volumeSource: 'dex' | 'bonding_curve' = 'bonding_curve';
+        let volumeSource: 'dex' | 'bonding_curve' | 'hybrid' = 'bonding_curve';
+
+        const now = new Date();
+        const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        const dexLiveAt = tokenData?.dexLiveAt ? new Date(tokenData.dexLiveAt) : null;
+
+        // Check if token graduated to DEX within the last 24 hours
+        const graduatedRecently =
+          isDexMode && dexLiveAt && dexLiveAt > twentyFourHoursAgo && dexLiveAt <= now;
 
         if (isDexMode && typeof poolAddress === 'string' && poolAddress.length > 0) {
-          const now = new Date();
-          const from = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-
           try {
+            // Determine time range for DEX trades
+            const dexTradeStart = graduatedRecently && dexLiveAt ? dexLiveAt : twentyFourHoursAgo;
+
             const dexTrades = await bitQueryService.getDexTrades(address, poolAddress, {
-              from,
+              from: dexTradeStart,
               to: now,
             });
 
             fastify.log.info(
-              { address, poolAddress, tradeCount: dexTrades.length },
+              {
+                address,
+                poolAddress,
+                tradeCount: dexTrades.length,
+                graduatedRecently,
+                dexLiveAt: dexLiveAt?.toISOString(),
+                dexTradeStart: dexTradeStart.toISOString(),
+              },
               'Fetched DEX trades for 24h volume',
             );
 
-            volume24hUsd = dexTrades.reduce((sum, trade) => {
+            const dexVolumeUsd = dexTrades.reduce((sum, trade) => {
               const usd = parseFloat(trade.volumeUsd || '0');
               return Number.isFinite(usd) ? sum + usd : sum;
             }, 0);
 
-            volume24hAces = dexTrades.reduce((sum, trade) => {
+            const dexVolumeAces = dexTrades.reduce((sum, trade) => {
               const aces = parseFloat(trade.amountAces || '0');
               return Number.isFinite(aces) ? sum + aces : sum;
             }, 0);
 
-            volumeSource = 'dex';
+            // If graduated recently, also fetch bonding curve volume from before graduation
+            if (graduatedRecently && dexLiveAt) {
+              fastify.log.info(
+                {
+                  address,
+                  dexLiveAt: dexLiveAt.toISOString(),
+                  bondingCurveEnd: dexLiveAt.toISOString(),
+                  bondingCurveStart: twentyFourHoursAgo.toISOString(),
+                },
+                'Token graduated within 24h, fetching bonding curve volume too',
+              );
+
+              try {
+                // Query bonding curve trades from subgraph for the period before graduation
+                const startTimeSeconds = Math.floor(twentyFourHoursAgo.getTime() / 1000);
+                const endTimeSeconds = Math.floor(dexLiveAt.getTime() / 1000);
+
+                const query = `{
+                  trades(
+                    where: {
+                      token: "${address.toLowerCase()}"
+                      createdAt_gte: "${startTimeSeconds}"
+                      createdAt_lte: "${endTimeSeconds}"
+                    }
+                    orderBy: createdAt
+                    orderDirection: asc
+                    first: 1000
+                  ) {
+                    id
+                    acesTokenAmount
+                  }
+                }`;
+
+                const response = await fetch(process.env.GOLDSKY_SUBGRAPH_URL!, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ query }),
+                  signal: AbortSignal.timeout(10000),
+                });
+
+                if (response.ok) {
+                  const result = (await response.json()) as {
+                    data: { trades: Array<{ id: string; acesTokenAmount: string }> };
+                  };
+                  const bondingTrades = result.data.trades || [];
+
+                  const bondingVolumeAces = bondingTrades.reduce((sum, trade) => {
+                    const aces = parseFloat(trade.acesTokenAmount) / 1e18;
+                    return Number.isFinite(aces) ? sum + aces : sum;
+                  }, 0);
+
+                  const bondingVolumeUsd = bondingVolumeAces * acesUsdPrice;
+
+                  fastify.log.info(
+                    {
+                      address,
+                      bondingTradeCount: bondingTrades.length,
+                      bondingVolumeAces,
+                      bondingVolumeUsd,
+                      dexVolumeAces,
+                      dexVolumeUsd,
+                    },
+                    'Bonding curve volume fetched, combining with DEX volume',
+                  );
+
+                  // Combine both volumes
+                  volume24hAces = bondingVolumeAces + dexVolumeAces;
+                  volume24hUsd = bondingVolumeUsd + dexVolumeUsd;
+                  volumeSource = 'hybrid';
+
+                  fastify.log.info(
+                    {
+                      address,
+                      volume24hAces,
+                      volume24hUsd,
+                      bondingContribution: bondingVolumeUsd,
+                      dexContribution: dexVolumeUsd,
+                    },
+                    'Hybrid volume calculation complete (bonding + DEX)',
+                  );
+                } else {
+                  fastify.log.warn(
+                    { address, status: response.status },
+                    'Failed to fetch bonding curve trades, using DEX volume only',
+                  );
+                  volume24hAces = dexVolumeAces;
+                  volume24hUsd = dexVolumeUsd;
+                  volumeSource = 'dex';
+                }
+              } catch (bondingError) {
+                fastify.log.error(
+                  { error: bondingError, address },
+                  'Error fetching bonding curve volume, using DEX volume only',
+                );
+                volume24hAces = dexVolumeAces;
+                volume24hUsd = dexVolumeUsd;
+                volumeSource = 'dex';
+              }
+            } else {
+              // Token graduated >24h ago, use DEX volume only
+              volume24hAces = dexVolumeAces;
+              volume24hUsd = dexVolumeUsd;
+              volumeSource = 'dex';
+            }
 
             fastify.log.info(
-              { address, volume24hUsd, volume24hAces },
-              'DEX volume calculation complete',
+              { address, volume24hUsd, volume24hAces, volumeSource },
+              'Final volume calculation complete',
             );
           } catch (dexError) {
             fastify.log.error(
@@ -640,8 +819,31 @@ export async function tokensRoutes(fastify: FastifyInstance) {
 
         if (liquidityUsd === null) {
           try {
-            const { netLiquidityWei } = await tokenService.getBondingCurveLiquidity(address);
-            const liquidityAces = netLiquidityWei.div(new Decimal(10).pow(18));
+            // Query contract directly for ACES balance (source of truth)
+            const effectiveChainId = (chainId ?? BASE_MAINNET_CHAIN_ID) as SupportedChainId;
+            const networkConfig = getNetworkConfig(effectiveChainId);
+
+            if (!networkConfig.rpcUrl || !networkConfig.acesFactoryProxy) {
+              throw new Error(
+                `Network config incomplete for chainId ${effectiveChainId}: rpcUrl=${!!networkConfig.rpcUrl}, factory=${!!networkConfig.acesFactoryProxy}`,
+              );
+            }
+
+            const provider = new ethers.JsonRpcProvider(networkConfig.rpcUrl);
+            const FACTORY_ABI = [
+              'function tokens(address) view returns (address tokenAddress, uint256 curve, uint256 acesTokenBalance, uint256 tokensBondedAt, bool tokenBonded, uint256 floor, uint256 steepness)',
+            ];
+
+            const factoryContract = new ethers.Contract(
+              networkConfig.acesFactoryProxy,
+              FACTORY_ABI,
+              provider,
+            );
+            const tokenData = await factoryContract.tokens(address);
+            const acesBalanceWei = tokenData.acesTokenBalance;
+            const liquidityAces = new Decimal(acesBalanceWei.toString()).div(
+              new Decimal(10).pow(18),
+            );
             const liquidityValue = liquidityAces.mul(new Decimal(acesUsdPrice || 0));
 
             if (liquidityValue.gt(0)) {
@@ -657,13 +859,14 @@ export async function tokensRoutes(fastify: FastifyInstance) {
                 liquidityUsd,
                 liquiditySource,
                 liquidityAces: liquidityAces.toString(),
+                acesBalanceWei: acesBalanceWei.toString(),
               },
-              'Calculated bonding curve liquidity',
+              'Calculated bonding curve liquidity from contract',
             );
           } catch (error) {
             fastify.log.error(
               { error, address },
-              'Failed to compute bonding curve liquidity from subgraph',
+              'Failed to compute bonding curve liquidity from contract',
             );
             liquidityUsd = null;
           }
