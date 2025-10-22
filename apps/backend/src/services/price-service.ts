@@ -78,9 +78,9 @@ export class PriceService {
       await this.throttler.throttle();
 
       // Fetch fresh price
-      const acesPerWeth = await this.getAcesPerWeth();
-      const wethUsdPrice = await this.getWethUsdPrice();
-      const acesUsdPrice = acesPerWeth * wethUsdPrice;
+      const acesPerWeth = await this.getAcesPerWeth(); // e.g., 1,723,047 ACES per 1 WETH
+      const wethUsdPrice = await this.getWethUsdPrice(); // e.g., $3,832 per 1 WETH
+      const acesUsdPrice = wethUsdPrice / acesPerWeth; // e.g., $3,832 / 1,723,047 = $0.002224 per ACES
 
       // Validate price is reasonable
       if (!this.validatePrice(acesUsdPrice)) {
@@ -132,8 +132,8 @@ export class PriceService {
   }
 
   /**
-   * Get ACES price per WETH from Aerodrome pool
-   * Fixed: Now correctly calculates WETH/ACES ratio
+   * Get ACES per WETH ratio from Aerodrome pool
+   * Returns how many ACES you get for 1 WETH
    */
   private async getAcesPerWeth(): Promise<number> {
     const poolAddress = process.env.AERODROME_ACES_WETH_POOL!;
@@ -149,9 +149,9 @@ export class PriceService {
     const acesReserve = isToken0Aces ? reserve0 : reserve1;
     const wethReserve = isToken0Aces ? reserve1 : reserve0;
 
-    // Price = WETH / ACES (how much WETH you get per ACES)
+    // Return ACES / WETH (how many ACES you get per WETH)
     return (
-      parseFloat(ethers.formatEther(wethReserve)) / parseFloat(ethers.formatEther(acesReserve))
+      parseFloat(ethers.formatEther(acesReserve)) / parseFloat(ethers.formatEther(wethReserve))
     );
   }
 

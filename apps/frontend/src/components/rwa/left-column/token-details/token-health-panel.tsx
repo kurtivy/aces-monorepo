@@ -362,8 +362,7 @@ export default function TokenHealthPanel({
 
   const ratioDisplay = useMemo(() => {
     const safeRatio = Number.isFinite(metrics.acesRatio) ? metrics.acesRatio : 0;
-    const displayRatio = Math.max(safeRatio, 0.1);
-    const raw = `${displayRatio.toFixed(2)}x`;
+    const raw = `${safeRatio.toFixed(2)}x`;
     const match = raw.match(/^([0-9.,]+)/);
 
     if (!match) {
