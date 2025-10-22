@@ -19,6 +19,11 @@ export default function VerifyPage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
 
+  // Scroll to top on page load
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
   // Check user's verification status on page load
   useEffect(() => {
     const checkVerificationStatus = async () => {
@@ -91,6 +96,7 @@ export default function VerifyPage() {
         contentWidth={1200}
         bandHeight={96}
         contentLineOffset={8}
+        tag="BETA"
       />
       <PageBandSubtitle
         text="Complete your identity verification to unlock the ability to submit luxury assets for tokenization. This process ensures the security and authenticity of our marketplace."

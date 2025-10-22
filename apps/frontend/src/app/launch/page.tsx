@@ -20,6 +20,11 @@ export default function CreateTokenForm() {
   // Import useAuth to refresh user profile on page load
   const { refreshUserProfile } = useAuth();
 
+  // Scroll to top on page load
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
   // Refresh user profile when page loads to ensure latest verification status
   useEffect(() => {
     console.log('🔄 Launch page loaded, refreshing user profile...');
@@ -75,6 +80,7 @@ export default function CreateTokenForm() {
         contentWidth={1200}
         bandHeight={96}
         contentLineOffset={8}
+        tag="BETA"
       />
       <PageBandSubtitle
         text="Tokenizing your RWAs through ACES.fun will be launching soon."
