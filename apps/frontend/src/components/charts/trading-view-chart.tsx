@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { BondingCurveDatafeed } from '@/lib/tradingview/datafeed';
-import { MarketCapDatafeed } from '@/lib/tradingview/market-cap-datafeed';
+import { UnifiedDatafeed } from '@/lib/tradingview/unified-datafeed';
 
 const toolbarStylesId = 'aces-tradingview-toolbar-styles';
 
@@ -110,6 +109,46 @@ const ensureTradingViewToolbarStyles = () => {
   document.head.appendChild(style);
 };
 
+// Helper function to format prices with zero-count subscript notation
+// Example: 0.000001 → 0.0₅1
+const formatPriceWithZeroCount = (price: number): string => {
+  if (price === 0) return '$0.00';
+  if (price >= 0.01) return `$${price.toFixed(2)}`;
+
+  const str = price.toFixed(18);
+  const match = str.match(/^0\.(0+)([1-9]\d{0,2})/);
+
+  if (match) {
+    const zeros = match[1].length;
+    const digits = match[2];
+
+    // Subscript Unicode characters
+    const subscriptMap: { [key: string]: string } = {
+      '0': '₀',
+      '1': '₁',
+      '2': '₂',
+      '3': '₃',
+      '4': '₄',
+      '5': '₅',
+      '6': '₆',
+      '7': '₇',
+      '8': '₈',
+      '9': '₉',
+    };
+
+    if (zeros >= 4) {
+      const subscriptZeros = zeros
+        .toString()
+        .split('')
+        .map((d) => subscriptMap[d] || d)
+        .join('');
+      return `$0.0${subscriptZeros}${digits}`;
+    }
+  }
+
+  return `$${price.toFixed(8)}`;
+};
+
 interface TradingViewChartProps {
   tokenAddress: string;
   tokenSymbol?: string;
@@ -172,7 +211,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
       if (datafeedRef.current) {
         console.log('[TradingView] 🧹 Cleaning up old datafeed');
 
-        // If it's a MarketCapDatafeed, it has unsubscribeBars method
+        // UnifiedDatafeed has unsubscribeBars method
         if (typeof datafeedRef.current.unsubscribeBars === 'function') {
           try {
             // Call unsubscribe for any active subscriptions
@@ -243,11 +282,15 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
       setError(null);
 
       try {
-        // Create datafeed with current mode (always USD)
-        const datafeed =
-          chartMode === 'price'
-            ? new BondingCurveDatafeed(tokenAddress)
-            : new MarketCapDatafeed(tokenAddress);
+        // Create unified datafeed (handles both price and market cap)
+        const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+        const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3002/ws/chart';
+
+        const datafeed = new UnifiedDatafeed({
+          apiBaseUrl,
+          wsUrl, // Enabled for real-time updates
+          debug: process.env.NODE_ENV === 'development',
+        });
 
         datafeedRef.current = datafeed;
 
@@ -256,10 +299,9 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
           (window as any).__tradingViewDatafeed = datafeed;
         }
 
-        const chartSymbol =
-          chartMode === 'price'
-            ? stableTokenSymbol.current
-            : `${stableTokenSymbol.current}_MCAP_${currency.toUpperCase()}`;
+        // Use token address + mode as the symbol for the datafeed
+        // Format: "0x123...abc" for price mode, "0x123...abc_MCAP" for market cap mode
+        const chartSymbol = chartMode === 'price' ? tokenAddress : `${tokenAddress}_MCAP`;
 
         widgetRef.current = new window.TradingView.widget({
           container: chartContainerRef.current,
@@ -299,13 +341,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
               return {
                 format: (price: number) => {
                   try {
-                    const formatter =
-                      chartMode === 'price'
-                        ? BondingCurveDatafeed.formatPriceWithZeroCount
-                        : MarketCapDatafeed.formatPriceWithZeroCount;
-                    const formatted = formatter(price, true);
-
-                    return formatted;
+                    return formatPriceWithZeroCount(price);
                   } catch (error) {
                     console.error('[TradingView] Price formatter error:', error, { price });
                     // Fallback to simple formatting
@@ -343,7 +379,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
             'mainSeriesProperties.priceAxisProperties.autoScale': true,
             // Enable logarithmic scale to handle extreme price ranges (0.000000001 to 0.001)
             // This makes small price movements visible even when prices vary by orders of magnitude
-            'mainSeriesProperties.priceAxisProperties.log': true,
+
             // Show last value but hide symbol labels from price axis
             'scalesProperties.showSeriesLastValue': true,
             'scalesProperties.showStudyLastValue': false,
@@ -438,6 +474,9 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
       try {
         ensureTradingViewToolbarStyles();
 
+        // Wait for header to be ready before creating buttons
+        await widgetRef.current.headerReady();
+
         // Price/MCap toggle button (USD-only)
         const modeButton = widgetRef.current.createButton();
         modeButton.setAttribute('title', 'Toggle Price / Market Cap (USD)');
@@ -449,10 +488,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
         const wrapper = document.createElement('div');
         wrapper.className = 'aces-tv-mode-toggle';
 
-        const createOptionButton = (
-          label: string,
-          mode: 'price' | 'mcap',
-        ) => {
+        const createOptionButton = (label: string, mode: 'price' | 'mcap') => {
           const optionButton = document.createElement('button');
           optionButton.type = 'button';
           optionButton.className = 'aces-tv-mode-option';
