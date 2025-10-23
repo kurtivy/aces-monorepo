@@ -35,17 +35,13 @@ import { adminTokenRoutes } from './routes/v1/admin/tokens';
 import { bondingRoutes } from './routes/v1/bonding';
 import { bondingDataRoutes } from './routes/v1/bonding-data';
 import { pricesRoutes } from './routes/v1/prices';
-import { chartRoutes } from './routes/v1/chart';
+import { chartUnifiedRoutes } from './routes/v1/chart-unified';
 
 // WebSocket services
-import { UnifiedChartDataService } from './services/unified-chart-data-service';
 import { ChartDataWebSocket } from './websockets/chart-data-socket';
 import { BondingMonitorWebSocket } from './websockets/bonding-monitor-socket';
 import { BitQueryService } from './services/bitquery-service';
-import { OHLCVService } from './services/ohlcv-service';
-import { SupplyBasedOHLCVService } from './services/supply-based-ohlcv-service';
 import { TokenService } from './services/token-service';
-import { PoolDetectionService } from './services/pool-detection-service';
 import { AcesUsdPriceService } from './services/aces-usd-price-service';
 import { AerodromeDataService } from './services/aerodrome-data-service';
 import { ethers } from 'ethers';
@@ -74,8 +70,6 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   // Initialize services
   const bitQueryService = new BitQueryService();
   const tokenService = new TokenService(prisma);
-  const ohlcvService = new OHLCVService(prisma, tokenService);
-  const supplyBasedOHLCVService = new SupplyBasedOHLCVService();
 
   // Initialize AerodromeDataService for AcesUsdPriceService
   const aerodromeService = new AerodromeDataService({
@@ -84,32 +78,16 @@ export const buildApp = async (): Promise<FastifyInstance> => {
     factoryAddress: '0x7e224ae4e6235bF18BBcb79cc2B5d04a7a6F8d1D',
     apiBaseUrl: process.env.AERODROME_API_URL || 'https://base.api.aerodrome.finance/v1',
     apiKey: process.env.AERODROME_API_KEY || '',
-    provider: provider, // Add the provider here
+    provider: provider,
   });
 
   const acesUsdPriceService = new AcesUsdPriceService(
     aerodromeService,
     process.env.ACES_TOKEN_ADDRESS || '0x55337650856299363c496065C836B9C6E9dE0367',
   );
-  const poolDetectionService = new PoolDetectionService(
-    provider,
-    '0x7e224ae4e6235bF18BBcb79cc2B5d04a7a6F8d1D', // Factory address
-    process.env.ACES_TOKEN_ADDRESS || '0x55337650856299363c496065C836B9C6E9dE0367',
-  );
-
-  const unifiedService = new UnifiedChartDataService(
-    prisma,
-    bitQueryService,
-    ohlcvService,
-    supplyBasedOHLCVService,
-    tokenService,
-    poolDetectionService,
-    acesUsdPriceService,
-    provider, // Pass provider for supply tracking
-  );
 
   // Register services with Fastify instance
-  fastify.decorate('unifiedChartService', unifiedService);
+  fastify.decorate('bitQueryService', bitQueryService);
   fastify.decorate('acesUsdPriceService', acesUsdPriceService);
 
   // Register plugins
@@ -132,14 +110,24 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   if (disableWebSocketPolling) {
     console.log('⏸️  WebSocket polling disabled via DISABLE_WEBSOCKET_POLLING=true');
   } else {
-    chartWebSocket = new ChartDataWebSocket(fastify, unifiedService);
+    // Initialize Chart WebSocket with new ChartAggregationService
+    const { ChartAggregationService } = await import('./services/chart-aggregation-service');
+    const chartAggregationService = new ChartAggregationService(
+      prisma,
+      bitQueryService,
+      acesUsdPriceService,
+    );
+
+    chartWebSocket = new ChartDataWebSocket(fastify, chartAggregationService, {
+      pollIntervalMs: 5000, // Poll every 5 seconds for real-time updates
+    });
     await chartWebSocket.initialize();
+    console.log('✅ Chart WebSocket enabled with ChartAggregationService');
 
     // Initialize Bonding Monitor WebSocket
     bondingMonitor = new BondingMonitorWebSocket(fastify, prisma, aerodromeService);
     await bondingMonitor.initialize();
-
-    console.log('✅ WebSocket polling enabled');
+    console.log('✅ Bonding Monitor WebSocket enabled');
   }
 
   // Decorate fastify with bonding monitor for access in routes (may be null)
@@ -266,7 +254,8 @@ export const buildApp = async (): Promise<FastifyInstance> => {
 
   fastify.register(pricesRoutes, { prefix: '/api/v1/prices' });
 
-  fastify.register(chartRoutes);
+  // Register new unified chart route
+  fastify.register(chartUnifiedRoutes);
   fastify.register(debugRoutes);
 
   // Register hooks
@@ -292,13 +281,18 @@ export const buildApp = async (): Promise<FastifyInstance> => {
 
   // WebSocket stats endpoint
   fastify.get('/api/v1/ws/stats', async (request, reply) => {
-    if (!chartWebSocket) {
-      return {
-        status: 'disabled',
-        message: 'WebSocket polling is disabled via DISABLE_WEBSOCKET_POLLING=true',
-      };
+    const stats: any = {
+      bondingMonitor: bondingMonitor ? 'enabled' : 'disabled',
+    };
+
+    if (chartWebSocket) {
+      stats.chartWebSocket = 'enabled';
+      stats.chartStats = chartWebSocket.getStats();
+    } else {
+      stats.chartWebSocket = 'disabled';
     }
-    return chartWebSocket.getStats();
+
+    return reply.send(stats);
   });
 
   // Global error handler

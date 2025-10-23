@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify';
-import { UnifiedChartDataService } from '../services/unified-chart-data-service';
+import { ChartAggregationService } from '../services/chart-aggregation-service';
 
 interface WebSocketClient {
   id: string;
@@ -30,7 +30,7 @@ export class ChartDataWebSocket {
 
   constructor(
     private fastify: FastifyInstance,
-    private unifiedService: UnifiedChartDataService,
+    private chartService: ChartAggregationService,
     options: ChartDataWebSocketOptions = {},
   ) {
     this.pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
@@ -281,8 +281,19 @@ export class ChartDataWebSocket {
         `🔄 [WebSocket] Polling PRICE ${tokenAddress} ${timeframe} (${subscribers.size} subscribers)...`,
       );
 
-      // Get latest candle
-      const candle = await this.unifiedService.getLatestCandle(tokenAddress, timeframe);
+      // Get latest candle - using new ChartAggregationService
+      // TODO: Implement getLatestCandle method in ChartAggregationService
+      // For now, get the full chart data and take the last candle
+      const now = new Date();
+      const from = new Date(now.getTime() - 24 * 60 * 60 * 1000); // Last 24 hours
+      const chartData = await this.chartService.getChartData(tokenAddress, {
+        timeframe,
+        from,
+        to: now,
+        limit: 1,
+      });
+      const candle =
+        chartData.candles.length > 0 ? chartData.candles[chartData.candles.length - 1] : null;
 
       if (!candle) {
         const cached = this.lastBroadcast.get(subscriptionKey);
@@ -329,13 +340,7 @@ export class ChartDataWebSocket {
         trades: candle.trades,
       });
 
-      // Get current graduation state
-      const chartData = await this.unifiedService.getChartData(tokenAddress, {
-        timeframe,
-        limit: 1,
-        includeUsd: true,
-      });
-
+      // Get current graduation state from the chart data we just fetched
       const currentGraduationState = chartData.graduationState;
 
       console.log(`🎓 [WebSocket] Graduation state:`, {
@@ -492,20 +497,23 @@ export class ChartDataWebSocket {
         return;
       }
 
-      // Get latest price candle
-      const candle = await this.unifiedService.getLatestCandle(tokenAddress, timeframe);
+      // Get latest candle and graduation state - using new ChartAggregationService
+      const now = new Date();
+      const from = new Date(now.getTime() - 24 * 60 * 60 * 1000); // Last 24 hours
+      const chartData = await this.chartService.getChartData(tokenAddress, {
+        timeframe,
+        from,
+        to: now,
+        limit: 1,
+      });
+
+      const candle =
+        chartData.candles.length > 0 ? chartData.candles[chartData.candles.length - 1] : null;
 
       if (!candle) {
         console.warn(`⚠️ [WebSocket] No candle returned for ${tokenAddress} ${timeframe}`);
         return;
       }
-
-      // Get graduation state to determine supply
-      const chartData = await this.unifiedService.getChartData(tokenAddress, {
-        timeframe,
-        limit: 1,
-        includeUsd: true,
-      });
 
       const currentGraduationState = chartData.graduationState;
 
@@ -533,9 +541,18 @@ export class ChartDataWebSocket {
         poolAddress: currentGraduationState.poolAddress,
       });
 
-      const supply = currentGraduationState?.poolReady
-        ? parseFloat(candle.circulatingSupply || '0') // DEX: use actual circulating supply
-        : 800000000; // Bonding curve: fixed 800 million tokens
+      // Prefer candle.circulatingSupply if available; fallback based on graduation state
+      let supply = 0;
+      if (candle.circulatingSupply) {
+        supply =
+          typeof candle.circulatingSupply === 'string'
+            ? parseFloat(candle.circulatingSupply)
+            : (candle.circulatingSupply as unknown as number);
+      } else {
+        supply = currentGraduationState?.poolReady
+          ? parseFloat(candle.circulatingSupply || '0') // DEX: use actual circulating supply
+          : 800000000; // Bonding curve: fallback to fixed 800M only if missing
+      }
 
       // Calculate market cap OHLC
       const openUsd = parseFloat(candle.openUsd || '0');
@@ -557,9 +574,11 @@ export class ChartDataWebSocket {
       console.log(`✅ [WebSocket] Got market cap candle for ${tokenAddress} ${timeframe}:`, {
         timestamp: candle.timestamp,
         supply,
-        supplySource: currentGraduationState?.poolReady
-          ? 'circulating (DEX)'
-          : 'fixed 800M (bonding)',
+        supplySource: candle.circulatingSupply
+          ? 'circulating (from candle)'
+          : currentGraduationState?.poolReady
+            ? 'circulating (DEX)'
+            : 'fixed 800M (bonding)',
         priceClose: closeUsd,
         mcapClose: mcapCandle.close,
       });
@@ -628,10 +647,13 @@ export class ChartDataWebSocket {
 
     try {
       console.log(`[WebSocket] 📤 Fetching initial chart data for ${clientId}...`);
-      const chartData = await this.unifiedService.getChartData(tokenAddress, {
+      const now = new Date();
+      const from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000); // Last 7 days for initial load
+      const chartData = await this.chartService.getChartData(tokenAddress, {
         timeframe,
+        from,
+        to: now,
         limit: 100, // Send last 100 candles on subscribe
-        includeUsd: true,
       });
       console.log(`[WebSocket] ✅ Got ${chartData.candles.length} candles for ${clientId}`);
 
@@ -639,7 +661,7 @@ export class ChartDataWebSocket {
         // Calculate market cap candles
         const supply = chartData.graduationState?.poolReady ? null : 800000000; // Fixed 800M for bonding curve
 
-        const mcapCandles = chartData.candles.map((c) => {
+        const mcapCandles = chartData.candles.map((c: any) => {
           const candleSupply = supply ?? parseFloat(c.circulatingSupply || '0');
           const openUsd = parseFloat(c.openUsd || '0');
           const highUsd = parseFloat(c.highUsd || '0');
@@ -683,7 +705,7 @@ export class ChartDataWebSocket {
           tokenAddress,
           timeframe,
           chartType: 'price',
-          candles: chartData.candles.map((c) => ({
+          candles: chartData.candles.map((c: any) => ({
             timestamp: c.timestamp.getTime(),
             open: c.open,
             high: c.high,

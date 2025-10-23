@@ -57,6 +57,7 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
         '/api/v1/listings/live', // Public listing endpoints
         '/api/v1/listings/symbol', // Public listing by symbol endpoint
         '/api/v1/prices', // Public price endpoints
+        '/ws/chart', // WebSocket chart path (handshake)
       ];
 
       // Check if this is a public path
@@ -68,17 +69,25 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
           if (path === '/api/v1/tokens' && request.url.startsWith('/api/v1/tokens')) return true;
           if (path === '/api/v1/dex' && request.url.startsWith('/api/v1/dex')) return true;
           if (path === '/api/v1/bonding' && request.url.startsWith('/api/v1/bonding')) return true;
-          if (path === '/api/v1/listings/live' && request.url.startsWith('/api/v1/listings/live')) return true;
-          if (path === '/api/v1/listings/symbol' && request.url.startsWith('/api/v1/listings/symbol')) return true;
+          if (path === '/api/v1/listings/live' && request.url.startsWith('/api/v1/listings/live'))
+            return true;
+          if (
+            path === '/api/v1/listings/symbol' &&
+            request.url.startsWith('/api/v1/listings/symbol')
+          )
+            return true;
           if (path === '/api/v1/prices' && request.url.startsWith('/api/v1/prices')) return true;
+          if (path === '/ws/chart' && request.url.startsWith('/ws/chart')) return true;
           return false;
         }) ||
+        // Explicitly allow market cap endpoint
+        (request.url.startsWith('/api/v1/chart/') && request.url.includes('/market-cap')) ||
         (request.method === 'GET' && ['/live', '/search', '/stats', '/'].includes(request.url));
 
       if (isPublicPath) {
         // Only log public path skips for non-token/non-listing endpoints to reduce noise
         const quietPaths = ['/api/v1/tokens', '/api/v1/listings', '/api/v1/prices'];
-        if (!quietPaths.some(p => request.url.startsWith(p))) {
+        if (!quietPaths.some((p) => request.url.startsWith(p))) {
           console.log('✅ Public path, skipping auth:', request.url);
         }
         request.user = null;
