@@ -22,33 +22,36 @@ const ensureTradingViewToolbarStyles = () => {
     .aces-tv-mode-toggle {
       display: inline-flex;
       align-items: center;
-      gap: 2px;
-      padding: 4px;
-      background: rgba(22, 30, 46, 0.75);
-      border-radius: 9999px;
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 4px 12px rgba(0, 0, 0, 0.35);
-      transition: background 0.2s ease, box-shadow 0.2s ease;
-      backdrop-filter: blur(14px);
-      -webkit-backdrop-filter: blur(14px);
+      gap: 6px;
+      padding: 0 18px 0 0;
+      background: transparent;
+      border: none;
+      border-radius: 6px;
+      box-shadow: none;
+      transition: opacity 0.2s ease;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      position: relative;
+      font-size: 14px;
+      font-weight: 500;
     }
 
     .aces-tv-mode-toggle:hover {
-      background: rgba(35, 47, 70, 0.85);
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 6px 16px rgba(0, 0, 0, 0.4);
+      background: transparent;
     }
 
     .aces-tv-mode-option {
       appearance: none;
       border: none;
       background: transparent;
-      color: #a0aec0;
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 0.02em;
-      padding: 4px 12px;
-      border-radius: 9999px;
+      color: rgba(226, 232, 240, 0.58);
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: 0.01em;
+      padding: 0;
+      border-radius: 4px;
       cursor: pointer;
-      transition: color 0.2s ease, background 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease;
+      transition: color 0.25s ease, transform 0.1s ease;
       position: relative;
       overflow: hidden;
     }
@@ -59,16 +62,11 @@ const ensureTradingViewToolbarStyles = () => {
     }
 
     .aces-tv-mode-option::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: rgba(255, 255, 255, 0.06);
-      opacity: 0;
-      transition: opacity 0.2s ease;
+      display: none;
     }
 
-    .aces-tv-mode-option:hover::before {
-      opacity: 1;
+    .aces-tv-mode-option:hover {
+      color: rgba(226, 232, 240, 0.82);
     }
 
     .aces-tv-mode-option:active {
@@ -77,23 +75,14 @@ const ensureTradingViewToolbarStyles = () => {
 
     .aces-tv-mode-option[data-interacting='true'] {
       transform: scale(0.96);
-      background: rgba(16, 185, 129, 0.2);
     }
 
     .aces-tv-mode-option[data-active='true'] {
-      color: #0f172a;
-      background: linear-gradient(135deg, #34d399, #10b981);
-      box-shadow: 0 0 14px rgba(16, 185, 129, 0.35);
+      color: #d0b284;
     }
 
     .aces-tv-mode-option[data-active='true']::after {
-      content: '';
-      position: absolute;
-      inset: -20%;
-      border-radius: 9999px;
-      background: radial-gradient(circle at center, rgba(52, 211, 153, 0.32), transparent 60%);
-      opacity: 1;
-      pointer-events: none;
+      display: none;
     }
 
     .aces-tv-mode-option[data-active='false']::after {
@@ -103,6 +92,69 @@ const ensureTradingViewToolbarStyles = () => {
     .aces-tv-mode-option[disabled] {
       opacity: 0.6;
       cursor: not-allowed;
+    }
+
+    .aces-tv-mode-toggle[data-loading='true'] {
+      pointer-events: none;
+      opacity: 0.6;
+    }
+
+    .aces-tv-mode-toggle[data-loading='true']::after {
+      content: '';
+      position: absolute;
+      right: 2px;
+      top: 50%;
+      width: 14px;
+      height: 14px;
+      border-radius: 9999px;
+      border: 2px solid rgba(208, 178, 132, 0.25);
+      border-top-color: #d0b284;
+      transform: translateY(-50%);
+      animation: aces-tv-spin 0.9s linear infinite;
+      z-index: 2;
+    }
+
+    .aces-tv-mode-toggle[data-loading='true'] .aces-tv-mode-option {
+      opacity: 0.4;
+    }
+
+    .aces-tv-dark-skin .chart-controls-bar,
+    .aces-tv-dark-skin .chart-controls-bar:before,
+    .aces-tv-dark-skin .chart-controls-bar:after,
+    .aces-tv-dark-skin .layout__area--center,
+    .aces-tv-dark-skin .chart-container,
+    .aces-tv-dark-skin .chart-widget,
+    .aces-tv-dark-skin .tv-side-toolbar,
+    .aces-tv-dark-skin .tv-side-toolbar__inner,
+    .aces-tv-dark-skin .tv-header__inner,
+    .aces-tv-dark-skin .chart-markup-table,
+    .aces-tv-dark-skin .layout__area--center:before {
+      background-color: #000000 !important;
+      background: #000000 !important;
+    }
+
+    .aces-tv-dark-skin .tv-side-toolbar__inner {
+      border-color: rgba(255, 255, 255, 0.08) !important;
+    }
+
+    .aces-tv-dark-skin .chart-controls-bar {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+    }
+
+    .aces-tv-mode-separator {
+      color: rgba(226, 232, 240, 0.35);
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: 0.01em;
+    }
+
+    @keyframes aces-tv-spin {
+      from {
+        transform: rotate(0deg);
+      }
+      to {
+        transform: rotate(360deg);
+      }
     }
   `;
 
@@ -149,6 +201,47 @@ const formatPriceWithZeroCount = (price: number): string => {
   return `$${price.toFixed(8)}`;
 };
 
+const formatMarketCapValue = (value: number): string => {
+  if (!Number.isFinite(value)) return '$0';
+
+  const sign = value < 0 ? '-' : '';
+  const absValue = Math.abs(value);
+
+  const formatWithSuffix = (val: number, divisor: number, suffix: string) => {
+    const scaled = val / divisor;
+    const precision = scaled >= 100
+      ? 0
+      : scaled >= 10
+        ? 1
+        : 2;
+    const formatted = parseFloat(scaled.toFixed(precision));
+    return `${formatted}${suffix}`;
+  };
+
+  if (absValue >= 1_000_000_000) {
+    return `${sign}$${formatWithSuffix(absValue, 1_000_000_000, 'B')}`;
+  }
+
+  if (absValue >= 1_000_000) {
+    return `${sign}$${formatWithSuffix(absValue, 1_000_000, 'M')}`;
+  }
+
+  if (absValue >= 10_000) {
+    return `${sign}$${formatWithSuffix(absValue, 1_000, 'K')}`;
+  }
+
+  const precision = absValue < 100 ? 2 : 0;
+  const formattedBase = absValue
+    .toLocaleString('en-US', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: precision,
+      useGrouping: false,
+    })
+    .replace(/\.0+$/, '');
+
+  return `${sign}$${formattedBase}`;
+};
+
 interface TradingViewChartProps {
   tokenAddress: string;
   tokenSymbol?: string;
@@ -187,12 +280,15 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
     const widgetRef = useRef<any>(null);
     const datafeedRef = useRef<any>(null);
     const modeButtonRef = useRef<HTMLElement | null>(null);
+    const modeWrapperRef = useRef<HTMLDivElement | null>(null);
     const priceOptionRef = useRef<HTMLButtonElement | null>(null);
     const mcapOptionRef = useRef<HTMLButtonElement | null>(null);
+    const currentSymbolRef = useRef<string | null>(null);
     const [isLibraryLoaded, setIsLibraryLoaded] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isReinitializing, setIsReinitializing] = useState(false);
+    const [isModeSwitching, setIsModeSwitching] = useState(false);
 
     // Chart mode (USD-only)
     const [chartMode, setChartMode] = useState<'price' | 'mcap'>('price');
@@ -279,9 +375,13 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
       cleanupDatafeed();
 
       setIsReinitializing(true);
+      setIsModeSwitching(false);
       setError(null);
 
       try {
+        if (chartContainerRef.current) {
+          chartContainerRef.current.classList.add('aces-tv-dark-skin');
+        }
         // Create unified datafeed (handles both price and market cap)
         const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
         const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3002/ws/chart';
@@ -301,7 +401,9 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
 
         // Use token address + mode as the symbol for the datafeed
         // Format: "0x123...abc" for price mode, "0x123...abc_MCAP" for market cap mode
-        const chartSymbol = chartMode === 'price' ? tokenAddress : `${tokenAddress}_MCAP`;
+        const currentMode = chartModeRef.current;
+        const chartSymbol =
+          currentMode === 'price' ? tokenAddress : `${tokenAddress}_MCAP`;
 
         widgetRef.current = new window.TradingView.widget({
           container: chartContainerRef.current,
@@ -312,6 +414,9 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
             'create_volume_indicator_by_default_once',
             'header_saveload',
             'study_templates', // Disable to prevent CORS errors with TradingView's save/load service
+            'header_symbol_search',
+            'header_compare',
+            'header_indicators',
           ],
           enabled_features: [
             'side_toolbar_in_fullscreen_mode',
@@ -325,13 +430,13 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
           fullscreen: false,
           autosize: true,
           symbol: chartSymbol,
-          interval: chartMode === 'mcap' ? '5' : '15', // Use 5min for market cap, 15min for price
+          interval: '15', // Default to 15-minute candles for both price and market cap
           datafeed: datafeed,
           theme: 'dark',
           style: '1', // Candlesticks for both - market cap now has proper OHLC
-          toolbar_bg: '#231F20',
+          toolbar_bg: '#000000',
           loading_screen: {
-            backgroundColor: '#231F20',
+            backgroundColor: '#000000',
             foregroundColor: '#D0B284',
           },
           // Apply custom price formatter for zero-count notation (0.0₅487)
@@ -341,18 +446,25 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
               return {
                 format: (price: number) => {
                   try {
-                    return formatPriceWithZeroCount(price);
+                    const mode = chartModeRef.current;
+                    const formatter =
+                      mode === 'mcap' ? formatMarketCapValue : formatPriceWithZeroCount;
+
+                    return formatter(price);
                   } catch (error) {
                     console.error('[TradingView] Price formatter error:', error, { price });
                     // Fallback to simple formatting
-                    return `$${price.toFixed(8)}`;
+                    const mode = chartModeRef.current;
+                    return mode === 'mcap' ? `$${price.toFixed(0)}` : `$${price.toFixed(8)}`;
                   }
                 },
               };
             },
           },
           overrides: {
-            'paneProperties.background': '#231F20',
+            'paneProperties.background': '#000000',
+            'paneProperties.backgroundGradientStartColor': '#000000',
+            'paneProperties.backgroundGradientEndColor': '#000000',
             'paneProperties.vertGridProperties.color': 'rgba(208, 178, 132, 0.1)',
             'paneProperties.horzGridProperties.color': 'rgba(208, 178, 132, 0.1)',
             'symbolWatermarkProperties.transparency': 90,
@@ -399,6 +511,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
             { text: '1d', resolution: '1D', description: '1 Day' },
           ],
         });
+        currentSymbolRef.current = chartSymbol;
 
         widgetRef.current.onChartReady(() => {
           setIsReinitializing(false);
@@ -410,6 +523,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
         console.error('[TradingView] Error initializing:', err);
         setError('Failed to initialize chart');
         setIsReinitializing(false);
+        setIsModeSwitching(false);
       }
 
       return () => {
@@ -421,6 +535,10 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
           }
           widgetRef.current = null;
         }
+        modeWrapperRef.current = null;
+        modeButtonRef.current = null;
+        priceOptionRef.current = null;
+        mcapOptionRef.current = null;
         // Cleanup datafeed on unmount
         cleanupDatafeed();
       };
@@ -429,7 +547,6 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
       tokenAddress,
       // Removed tokenSymbol to prevent re-initialization when only the symbol changes
       // The stableTokenSymbol ref will be used instead
-      chartMode,
       currency,
       hideNativeHeader,
       cleanupDatafeed, // Include cleanup function in dependencies
@@ -439,9 +556,61 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
       chartModeRef.current = chartMode;
     }, [chartMode]);
 
-    // Handle mode change (requires chart recreation for now)
+    useEffect(() => {
+      if (!isLibraryLoaded || !widgetRef.current || !tokenAddress || isReinitializing) {
+        return;
+      }
+
+      const targetSymbol = chartMode === 'price' ? tokenAddress : `${tokenAddress}_MCAP`;
+
+      if (currentSymbolRef.current === targetSymbol) {
+        setIsModeSwitching(false);
+        return;
+      }
+
+      const widget = widgetRef.current;
+      const getActiveChart =
+        typeof widget.activeChart === 'function' ? widget.activeChart : widget.chart;
+      const chart = typeof getActiveChart === 'function' ? getActiveChart.call(widget) : null;
+
+      if (!chart || typeof chart.setSymbol !== 'function') {
+        setIsModeSwitching(false);
+        return;
+      }
+
+      setIsModeSwitching(true);
+
+      try {
+        chart.setSymbol(targetSymbol, '15', () => {
+          currentSymbolRef.current = targetSymbol;
+          setIsModeSwitching(false);
+        });
+      } catch (symbolError) {
+        console.error('[TradingView] Failed to switch symbol:', symbolError);
+        setIsModeSwitching(false);
+      }
+    }, [chartMode, tokenAddress, isLibraryLoaded, isReinitializing]);
+
+    useEffect(() => {
+      const wrapper = modeWrapperRef.current;
+      if (!wrapper) return;
+
+      const isBusy = isReinitializing || isModeSwitching;
+      wrapper.dataset.loading = isBusy ? 'true' : 'false';
+
+      const buttons = wrapper.querySelectorAll('button');
+      buttons.forEach((button) => {
+        (button as HTMLButtonElement).disabled = isBusy;
+      });
+    }, [isReinitializing, isModeSwitching]);
+
+    // Handle mode change by switching the active symbol
     const handleModeChange = (newMode: 'price' | 'mcap') => {
-      // Mode change requires recreation since we need a different datafeed
+      if (!tokenAddress || newMode === chartModeRef.current || isReinitializing || isModeSwitching) {
+        return;
+      }
+
+      setIsModeSwitching(true);
       setChartMode(newMode);
     };
 
@@ -517,14 +686,20 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
         };
 
         const priceButton = createOptionButton('Price', 'price');
+        const separator = document.createElement('span');
+        separator.className = 'aces-tv-mode-separator';
+        separator.textContent = '/';
         const mcapButton = createOptionButton('MCap', 'mcap');
 
         priceOptionRef.current = priceButton;
         mcapOptionRef.current = mcapButton;
 
         wrapper.appendChild(priceButton);
+        wrapper.appendChild(separator);
         wrapper.appendChild(mcapButton);
         modeButton.appendChild(wrapper);
+        modeWrapperRef.current = wrapper;
+        wrapper.dataset.loading = isReinitializing || isModeSwitching ? 'true' : 'false';
 
         // Initial render
         updateButtonAppearance();
@@ -598,8 +773,8 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
 
       const containerClass =
         typeof heightPx === 'number'
-          ? 'flex flex-col w-full bg-[#231f20]/50 overflow-hidden'
-          : `flex flex-col ${heightClass} w-full bg-[#231f20]/50 overflow-hidden`;
+          ? 'flex flex-col w-full bg-black overflow-hidden'
+          : `flex flex-col ${heightClass} w-full bg-black overflow-hidden`;
 
       return (
         <div className={containerClass} style={containerStyle}>
@@ -625,15 +800,15 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
 
     const containerClass =
       typeof heightPx === 'number'
-        ? 'flex flex-col w-full bg-[#231f20]/50 overflow-hidden'
-        : `flex flex-col ${heightClass} w-full bg-[#231f20]/50 overflow-hidden`;
+        ? 'flex flex-col w-full bg-black overflow-hidden'
+        : `flex flex-col ${heightClass} w-full bg-black overflow-hidden`;
 
     return (
       <div className={containerClass} style={containerStyle}>
-        <div className="w-full h-full bg-[#231F20] relative flex flex-col">
+        <div className="w-full h-full bg-black relative flex flex-col">
           <div className="flex-1 relative">
             {(isLoading || !isLibraryLoaded || isReinitializing) && (
-              <div className="absolute inset-0 flex items-center justify-center bg-[#231F20]/80 z-30">
+              <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-30">
                 <div className="text-center">
                   {/* <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#D0B284] mx-auto mb-4"></div> */}
                   <div className="text-[#DCDDCC]">Loading chart...</div>
