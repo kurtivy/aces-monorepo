@@ -18,6 +18,7 @@ import {
   ResolveCallback,
   OnReadyCallback,
 } from '../../../public/charting_library';
+import { emitMarketCapUpdate } from './market-cap-events';
 
 interface UnifiedDatafeedConfig {
   apiBaseUrl: string;
@@ -74,6 +75,11 @@ export class UnifiedDatafeed implements IBasicDataFeed {
   private config: UnifiedDatafeedConfig;
   private lastBars = new Map<string, Bar>();
   private subscribers = new Map<string, WebSocket>();
+  private latestSupply = new Map<string, number>();
+  private lastEmittedMarketCap = new Map<
+    string,
+    { marketCapUsd: number; currentPriceUsd?: number; timestamp: number }
+  >();
 
   constructor(config: UnifiedDatafeedConfig) {
     this.config = {
@@ -217,6 +223,13 @@ export class UnifiedDatafeed implements IBasicDataFeed {
 
       // Convert to TradingView Bar format
       const bars: Bar[] = filteredCandles.map((candle) => {
+        if (candle.supply?.circulating) {
+          const supplyValue = parseFloat(candle.supply.circulating);
+          if (Number.isFinite(supplyValue) && supplyValue > 0) {
+            this.latestSupply.set(tokenAddress.toLowerCase(), supplyValue);
+          }
+        }
+
         if (isMarketCapMode) {
           // Market cap mode: Use pre-calculated market cap OHLC (with smooth connections!)
           const marketCapOpenUsd = parseFloat(candle.marketCap.marketCapOpenUsd || '0');
@@ -248,6 +261,35 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       // Store last bar for WebSocket updates
       if (bars.length > 0 && symbolInfo.ticker) {
         this.lastBars.set(symbolInfo.ticker, bars[bars.length - 1]);
+      }
+
+      // Emit latest market cap update for downstream consumers
+      const lastCandle = filteredCandles[filteredCandles.length - 1];
+      if (lastCandle) {
+        const closePriceUsd = parseFloat(lastCandle.price?.closeUsd || '0');
+        const supplyValue = parseFloat(
+          lastCandle.supply?.circulating || lastCandle.supply?.total || '0',
+        );
+        const marketCapCloseUsd = parseFloat(
+          lastCandle.marketCap.marketCapCloseUsd || lastCandle.marketCap.usd || '0',
+        );
+
+        if (
+          Number.isFinite(marketCapCloseUsd) &&
+          marketCapCloseUsd > 0 &&
+          Number.isFinite(supplyValue) &&
+          supplyValue > 0
+        ) {
+          this.latestSupply.set(tokenAddress.toLowerCase(), supplyValue);
+          this.emitMarketCapIfChanged(
+            tokenAddress,
+            marketCapCloseUsd,
+            Number.isFinite(closePriceUsd) && closePriceUsd > 0 ? closePriceUsd : undefined,
+            Number.isFinite(supplyValue) && supplyValue > 0 ? supplyValue : undefined,
+            lastCandle.timestamp * 1000,
+            isMarketCapMode ? 'mcap' : 'price',
+          );
+        }
       }
 
       if (this.config.debug) {
@@ -339,6 +381,30 @@ export class UnifiedDatafeed implements IBasicDataFeed {
             if (this.config.debug) {
               console.log('[UnifiedDatafeed] Tick received:', bar);
             }
+
+            const normalizedToken = (tokenAddress ?? '').toLowerCase();
+            const supplyValue = this.latestSupply.get(normalizedToken);
+            const closePriceUsd =
+              typeof update.candle.closeUsd === 'string'
+                ? parseFloat(update.candle.closeUsd)
+                : Number(update.candle.closeUsd ?? 0);
+
+            if (
+              Number.isFinite(closePriceUsd) &&
+              closePriceUsd > 0 &&
+              Number.isFinite(supplyValue) &&
+              supplyValue !== undefined &&
+              supplyValue > 0
+            ) {
+              this.emitMarketCapIfChanged(
+                normalizedToken,
+                closePriceUsd * supplyValue,
+                closePriceUsd,
+                supplyValue,
+                candleTime,
+                'price',
+              );
+            }
           }
         } catch (error) {
           console.error('[UnifiedDatafeed] Error processing WebSocket message:', error);
@@ -392,5 +458,57 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     };
 
     return map[resolution] || '1h';
+  }
+
+  private emitMarketCapIfChanged(
+    tokenAddress: string,
+    marketCapUsd: number,
+    currentPriceUsd?: number,
+    circulatingSupply?: number,
+    timestamp?: number,
+    source: 'price' | 'mcap' = 'price',
+  ): void {
+    if (!Number.isFinite(marketCapUsd) || marketCapUsd <= 0) {
+      return;
+    }
+
+    const normalized = tokenAddress.toLowerCase();
+    const now = Date.now();
+    const last = this.lastEmittedMarketCap.get(normalized);
+
+    const priceVal =
+      currentPriceUsd !== undefined && Number.isFinite(currentPriceUsd) && currentPriceUsd > 0
+        ? currentPriceUsd
+        : undefined;
+
+    const minIntervalMs = 1000;
+    const deltaThresholdRatio = 0.001; // 0.1%
+
+    const shouldEmit =
+      !last ||
+      now - last.timestamp >= minIntervalMs ||
+      Math.abs(marketCapUsd - last.marketCapUsd) / last.marketCapUsd >= deltaThresholdRatio ||
+      (priceVal !== undefined &&
+        last.currentPriceUsd !== undefined &&
+        Math.abs(priceVal - last.currentPriceUsd) / last.currentPriceUsd >= deltaThresholdRatio);
+
+    if (!shouldEmit) {
+      return;
+    }
+
+    this.lastEmittedMarketCap.set(normalized, {
+      marketCapUsd,
+      currentPriceUsd: priceVal,
+      timestamp: now,
+    });
+
+    emitMarketCapUpdate({
+      tokenAddress: normalized,
+      marketCapUsd,
+      currentPriceUsd: priceVal,
+      circulatingSupply,
+      timestamp: timestamp ?? now,
+      source,
+    });
   }
 }
