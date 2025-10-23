@@ -4,12 +4,14 @@ import { motion } from 'framer-motion';
 import { Copy, Check } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
+import { LoadingDots } from '../left-column/token-details/loading-dots';
 
 interface TokenHeaderSectionProps {
   tokenSymbol: string;
   tokenAddress?: string;
   tokenImage?: string;
   marketCap?: number;
+  marketCapLoading?: boolean;
 }
 
 const formatMarketCap = (value: number): string => {
@@ -29,6 +31,7 @@ export function TokenHeaderSection({
   tokenAddress,
   tokenImage,
   marketCap = 0,
+  marketCapLoading = false,
 }: TokenHeaderSectionProps) {
   const [copied, setCopied] = useState(false);
   const [isLgUp, setIsLgUp] = useState(false);
@@ -40,7 +43,7 @@ export function TokenHeaderSection({
     : undefined;
   const bottomRowStyles = isLgUp
     ? {
-        backgroundColor: '#0f0f0f',
+        backgroundColor: '#000000',
         height: 'var(--tradingview-header-height, 38px)',
       }
     : undefined;
@@ -104,7 +107,7 @@ export function TokenHeaderSection({
 
   return (
     <motion.div
-      className="flex flex-col border-b border-[#D0B284]/20 bg-[#151C16] w-full"
+      className="flex flex-col border-b border-[#D0B284]/20 bg-[#151c16] w-full"
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
@@ -129,7 +132,7 @@ export function TokenHeaderSection({
         {tokenAddress ? (
           <div
             className={`inline-flex items-center px-2 rounded-lg border shadow-sm w-fit space-x-2 ${
-              isLgUp ? 'border-[#D0B284]/30 bg-[#D0B284]/10' : 'border-[#D0B284]/30 bg-[#0F0F0F]'
+              isLgUp ? 'border-[#D0B284]/30 bg-[#D0B284]/10' : 'border-[#D0B284]/30 bg-black'
             }`}
           >
             <span
@@ -155,14 +158,18 @@ export function TokenHeaderSection({
       </div>
 
       <div
-        className="flex items-center justify-between transition-colors px-6 lg:h-[54px]"
+        className="flex items-center justify-between transition-colors px-6 lg:h-[54px] bg-black"
         style={bottomRowStyles}
       >
         <div className="text-base font-proxima-nova font-bold uppercase tracking-wide text-[#D0B284]">
           MARKET CAP
         </div>
         <div className="text-xl font-semibold text-white font-proxima-nova">
-          {formatMarketCap(marketCap)}
+          {marketCapLoading ? (
+            <LoadingDots className="text-xl font-semibold font-proxima-nova leading-none text-white" />
+          ) : (
+            formatMarketCap(marketCap)
+          )}
         </div>
       </div>
     </motion.div>

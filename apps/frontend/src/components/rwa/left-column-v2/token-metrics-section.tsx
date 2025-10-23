@@ -20,6 +20,7 @@ interface TokenMetricsSectionProps {
     dexLiveAt: string | null;
   } | null;
   liveTokenPrice?: number;
+  marketCapLoading?: boolean;
 }
 
 const TARGET_CHART_HEIGHT_PX = 560; // Keep in sync with TradingSection chart height.
@@ -43,6 +44,7 @@ export function TokenMetricsSection({
   marketCap,
   dexMeta,
   liveTokenPrice,
+  marketCapLoading,
 }: TokenMetricsSectionProps) {
   const hasHypePoints =
     Array.isArray(hypePoints) && hypePoints.some((point) => point && point.trim().length > 0);
@@ -88,10 +90,7 @@ export function TokenMetricsSection({
   }, [metrics]);
 
   return (
-    <div
-      className="bg-[#221F20] overflow-hidden flex flex-col"
-      style={{ minHeight: `${TARGET_CHART_HEIGHT_PX}px` }}
-    >
+    <div className="bg-black overflow-hidden flex flex-col" style={{ minHeight: `${TARGET_CHART_HEIGHT_PX}px` }}>
       {/* DATA Section Title */}
       <div className="py-1 border-b border-[#D0B284]/10">
         <h3 className="text-[#D0B284] text-base font-bold uppercase tracking-[0.3em] font-spray-letters text-center">
@@ -106,6 +105,7 @@ export function TokenMetricsSection({
           reservePrice={reservePrice}
           chainId={chainId}
           marketCap={marketCap}
+          marketCapLoading={marketCapLoading}
           dexMeta={dexMeta}
           liveTokenPrice={liveTokenPrice}
           volume24hAces={volume24hAces}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { TokenMetrics } from '@/lib/api/tokens';
 import { fetchTokenHealth } from '@/lib/api/token-health';
+import { subscribeToMarketCapUpdates } from '@/lib/tradingview/market-cap-events';
 
 interface BondingDataSubset {
   bondingPercentage: number;
@@ -17,6 +18,7 @@ interface UseTokenMetricsResult {
   circulatingSupply: number | null;
   currentPriceUsd: number;
   bondingData: BondingDataSubset | null;
+  marketCapUsd: number;
 }
 
 /**
@@ -35,6 +37,7 @@ export function useTokenMetrics(
   const [circulatingSupply, setCirculatingSupply] = useState<number | null>(null);
   const [currentPriceUsd, setCurrentPriceUsd] = useState<number>(0);
   const [bondingData, setBondingData] = useState<BondingDataSubset | null>(null);
+  const [marketCapUsd, setMarketCapUsd] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -105,6 +108,12 @@ export function useTokenMetrics(
           setCurrentPriceUsd(0);
         }
 
+        // Extract latest market cap (USD)
+        if (healthData.marketCapData?.marketCapUsd !== undefined) {
+          const latestMarketCapUsd = healthData.marketCapData.marketCapUsd;
+          setMarketCapUsd(Number.isFinite(latestMarketCapUsd) ? latestMarketCapUsd : 0);
+        }
+
         // Extract bonding data for progression components
         if (healthData.bondingData) {
           setBondingData({
@@ -139,6 +148,7 @@ export function useTokenMetrics(
       setCirculatingSupply(null);
       setCurrentPriceUsd(0);
       setBondingData(null);
+      setMarketCapUsd(0);
       setLoading(false);
       setError(null);
       return;
@@ -153,6 +163,42 @@ export function useTokenMetrics(
     return () => clearInterval(interval);
   }, [tokenAddress, refreshIntervalMs, fetchMetrics]);
 
+  useEffect(() => {
+    if (!tokenAddress) {
+      return;
+    }
+
+    const normalizedAddress = tokenAddress.toLowerCase();
+
+    const unsubscribe = subscribeToMarketCapUpdates((update) => {
+      if (update.tokenAddress !== normalizedAddress) {
+        return;
+      }
+
+      if (Number.isFinite(update.marketCapUsd) && update.marketCapUsd > 0) {
+        setMarketCapUsd(update.marketCapUsd);
+      }
+
+      if (
+        update.currentPriceUsd !== undefined &&
+        Number.isFinite(update.currentPriceUsd) &&
+        update.currentPriceUsd > 0
+      ) {
+        setCurrentPriceUsd(update.currentPriceUsd);
+      }
+
+      if (
+        update.circulatingSupply !== undefined &&
+        Number.isFinite(update.circulatingSupply) &&
+        update.circulatingSupply > 0
+      ) {
+        setCirculatingSupply(update.circulatingSupply);
+      }
+    });
+
+    return unsubscribe;
+  }, [tokenAddress]);
+
   return {
     metrics,
     loading,
@@ -161,5 +207,6 @@ export function useTokenMetrics(
     circulatingSupply,
     currentPriceUsd,
     bondingData,
+    marketCapUsd,
   };
 }

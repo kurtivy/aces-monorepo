@@ -236,7 +236,7 @@ export function TradingSection({
   return (
     <div className="flex flex-col" style={{ minHeight: `${containerMinHeight}px` }}>
       <div
-        className="overflow-hidden rounded-t-xl bg-[#231f20]/50"
+        className="overflow-hidden bg-[#231f20]/50"
         style={{ height: `${Math.max(effectiveChartHeight, 0)}px` }}
       >
         <div

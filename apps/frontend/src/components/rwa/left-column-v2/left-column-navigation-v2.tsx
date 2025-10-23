@@ -24,19 +24,22 @@ export function LeftColumnNavigationV2({
   onChatToggle,
 }: LeftColumnNavigationV2Props) {
   // Use unified token metrics hook for all data (price, bonding, metrics)
-  const { metrics, currentPriceUsd, bondingData, circulatingSupply } = useTokenMetrics(
-    listing?.token?.contractAddress,
-  );
+  const { metrics, currentPriceUsd, bondingData, circulatingSupply, marketCapUsd } =
+    useTokenMetrics(listing?.token?.contractAddress);
 
-  const marketCapUSD = useMemo(() => {
+  const fallbackMarketCap = useMemo(() => {
     const supply = circulatingSupply ?? NaN;
     const price = currentPriceUsd;
     if (Number.isFinite(supply) && Number.isFinite(price) && supply > 0 && price > 0) {
       return supply * price;
     }
     const mcap = metrics?.marketCapUsd ?? NaN;
-    return Number.isFinite(mcap) && mcap > 0 ? mcap : 0;
+    return Number.isFinite(mcap) && mcap > 0 ? mcap : undefined;
   }, [circulatingSupply, currentPriceUsd, metrics?.marketCapUsd]);
+
+  const hasUnifiedMarketCap = Number.isFinite(marketCapUsd) && marketCapUsd > 0;
+  const marketCapUSD = hasUnifiedMarketCap ? marketCapUsd : fallbackMarketCap ?? 0;
+  const marketCapLoading = !hasUnifiedMarketCap;
 
   const liveTokenPrice = useMemo(() => {
     return isFinite(currentPriceUsd) && currentPriceUsd > 0 ? currentPriceUsd : undefined;
@@ -110,6 +113,7 @@ export function LeftColumnNavigationV2({
             tokenAddress={listing.token?.contractAddress}
             tokenImage={listing.imageGallery?.[0]}
             marketCap={marketCapUSD}
+            marketCapLoading={marketCapLoading}
           />
         </div>
 
@@ -126,6 +130,7 @@ export function LeftColumnNavigationV2({
             marketCap={marketCapUSD}
             dexMeta={listing.dex || null}
             liveTokenPrice={liveTokenPrice}
+            marketCapLoading={marketCapLoading}
           />
         </div>
 

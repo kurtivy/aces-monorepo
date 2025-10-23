@@ -172,6 +172,7 @@ interface TokenHealthPanelProps {
   reservePrice?: string | null; // USD value of physical asset
   chainId?: number;
   marketCap?: number; // Market cap in USD (passed from parent)
+  marketCapLoading?: boolean;
   dexMeta?: {
     poolAddress: string | null;
     isDexLive: boolean;
@@ -196,6 +197,7 @@ export default function TokenHealthPanel({
   reservePrice,
   chainId,
   marketCap: marketCapProp,
+  marketCapLoading = false,
   dexMeta,
   liveTokenPrice,
   volume24hAces,
@@ -266,6 +268,18 @@ export default function TokenHealthPanel({
     return tokenPrice * marketCapSupply;
   }, [tokenPrice, marketCapSupply]);
 
+  const marketCapForMetrics = useMemo(() => {
+    if (
+      marketCapProp !== undefined &&
+      marketCapProp !== null &&
+      Number.isFinite(marketCapProp) &&
+      marketCapProp > 0
+    ) {
+      return marketCapProp;
+    }
+    return calculatedMarketCap;
+  }, [marketCapProp, calculatedMarketCap]);
+
   // Fetch user's token balance
   const fetchUserBalance = useCallback(async () => {
     if (!tokenAddress || !walletAddress || !window.ethereum) {
@@ -333,7 +347,7 @@ export default function TokenHealthPanel({
       tokenPrice,
       communityReward,
       assetSalePrice,
-      calculatedMarketCap,
+      marketCapForMetrics,
     );
   }, [
     calculator,
@@ -341,7 +355,7 @@ export default function TokenHealthPanel({
     tokenPrice,
     communityReward,
     assetSalePrice,
-    calculatedMarketCap,
+    marketCapForMetrics,
   ]);
 
   // Calculate total reward earned: (user holdings / circulating supply) × community reward (10% of asset price)
@@ -377,7 +391,11 @@ export default function TokenHealthPanel({
 
   // Progressive loading states for each metric
   const acesRatioLoading =
-    liveTokenPrice === undefined || liveTokenPrice === null || !assetSalePrice || !tokenAddress;
+    marketCapLoading ||
+    !assetSalePrice ||
+    !tokenAddress ||
+    !Number.isFinite(marketCapForMetrics) ||
+    marketCapForMetrics <= 0;
 
   const tradeRewardLoading =
     circulatingSupply === undefined ||
