@@ -10,6 +10,13 @@ interface BondingProgressSectionProps {
   percentageOverride?: number;
   isBondedOverride?: boolean;
   tokenSymbol?: string;
+  // Optional: Pass bonding data from parent to avoid duplicate API calls
+  bondingDataFromParent?: {
+    bondingPercentage: number;
+    isBonded: boolean;
+    currentSupply: string;
+    tokensBondedAt: string;
+  } | null;
 }
 
 export function BondingProgressSection({
@@ -18,9 +25,17 @@ export function BondingProgressSection({
   percentageOverride,
   isBondedOverride,
   tokenSymbol = 'RWA',
+  bondingDataFromParent,
 }: BondingProgressSectionProps) {
-  const { bondingPercentage, isBonded, loading, currentSupply, tokensBondedAt } =
-    useTokenBondingData(tokenAddress, chainId);
+  // Fetch bonding data only if not provided by parent
+  const hookData = useTokenBondingData(tokenAddress, bondingDataFromParent ? undefined : chainId);
+
+  // Use parent data if available, otherwise use hook data
+  const bondingPercentage = bondingDataFromParent?.bondingPercentage ?? hookData.bondingPercentage;
+  const isBonded = bondingDataFromParent?.isBonded ?? hookData.isBonded;
+  const currentSupply = bondingDataFromParent?.currentSupply ?? hookData.currentSupply;
+  const tokensBondedAt = bondingDataFromParent?.tokensBondedAt ?? hookData.tokensBondedAt;
+  const loading = bondingDataFromParent ? false : hookData.loading;
 
   const barGradient = `linear-gradient(90deg,
         #184D37 0%,

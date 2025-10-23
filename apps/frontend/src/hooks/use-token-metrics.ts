@@ -2,6 +2,13 @@ import { useState, useEffect, useCallback } from 'react';
 import type { TokenMetrics } from '@/lib/api/tokens';
 import { fetchTokenHealth } from '@/lib/api/token-health';
 
+interface BondingDataSubset {
+  bondingPercentage: number;
+  isBonded: boolean;
+  currentSupply: string;
+  tokensBondedAt: string;
+}
+
 interface UseTokenMetricsResult {
   metrics: TokenMetrics | null;
   loading: boolean;
@@ -9,6 +16,7 @@ interface UseTokenMetricsResult {
   refetch: () => void;
   circulatingSupply: number | null;
   currentPriceUsd: number;
+  bondingData: BondingDataSubset | null;
 }
 
 /**
@@ -26,6 +34,7 @@ export function useTokenMetrics(
   const [metrics, setMetrics] = useState<TokenMetrics | null>(null);
   const [circulatingSupply, setCirculatingSupply] = useState<number | null>(null);
   const [currentPriceUsd, setCurrentPriceUsd] = useState<number>(0);
+  const [bondingData, setBondingData] = useState<BondingDataSubset | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -96,6 +105,18 @@ export function useTokenMetrics(
           setCurrentPriceUsd(0);
         }
 
+        // Extract bonding data for progression components
+        if (healthData.bondingData) {
+          setBondingData({
+            bondingPercentage: healthData.bondingData.bondingPercentage || 0,
+            isBonded: healthData.bondingData.isBonded || false,
+            currentSupply: healthData.bondingData.currentSupply || '0',
+            tokensBondedAt: healthData.bondingData.tokensBondedAt || '30000000',
+          });
+        } else {
+          setBondingData(null);
+        }
+
         setError(null);
       } else {
         console.error('[useTokenMetrics] ❌ No metrics data in health response');
@@ -117,6 +138,7 @@ export function useTokenMetrics(
       setMetrics(null);
       setCirculatingSupply(null);
       setCurrentPriceUsd(0);
+      setBondingData(null);
       setLoading(false);
       setError(null);
       return;
@@ -138,5 +160,6 @@ export function useTokenMetrics(
     refetch: fetchMetrics,
     circulatingSupply,
     currentPriceUsd,
+    bondingData,
   };
 }

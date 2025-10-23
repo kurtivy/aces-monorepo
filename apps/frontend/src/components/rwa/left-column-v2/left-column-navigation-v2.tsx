@@ -5,7 +5,7 @@ import { TokenMetricsSection } from './token-metrics-section';
 import { ChatSection } from './chat-section';
 import { DatabaseListing } from '@/types/rwa/section.types';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useTokenMarketCap } from '@/hooks/use-token-market-cap';
+import { useTokenMetrics } from '@/hooks/use-token-metrics';
 import { AnimatePresence, motion } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import { BondingProgressSection } from '@/components/rwa/right-panel/bonding-progression-section';
@@ -23,15 +23,20 @@ export function LeftColumnNavigationV2({
   isChatOpen: externalChatOpen,
   onChatToggle,
 }: LeftColumnNavigationV2Props) {
-  // Use the correct market cap hook that calculates price × circulating supply
-  const { marketCapUsd, currentPriceUsd } = useTokenMarketCap(
+  // Use unified token metrics hook for all data (price, bonding, metrics)
+  const { metrics, currentPriceUsd, bondingData, circulatingSupply } = useTokenMetrics(
     listing?.token?.contractAddress,
-    'usd',
   );
 
   const marketCapUSD = useMemo(() => {
-    return isFinite(marketCapUsd) && marketCapUsd > 0 ? marketCapUsd : 0;
-  }, [marketCapUsd]);
+    const supply = circulatingSupply ?? NaN;
+    const price = currentPriceUsd;
+    if (Number.isFinite(supply) && Number.isFinite(price) && supply > 0 && price > 0) {
+      return supply * price;
+    }
+    const mcap = metrics?.marketCapUsd ?? NaN;
+    return Number.isFinite(mcap) && mcap > 0 ? mcap : 0;
+  }, [circulatingSupply, currentPriceUsd, metrics?.marketCapUsd]);
 
   const liveTokenPrice = useMemo(() => {
     return isFinite(currentPriceUsd) && currentPriceUsd > 0 ? currentPriceUsd : undefined;
@@ -130,6 +135,7 @@ export function LeftColumnNavigationV2({
             tokenAddress={listing?.token?.contractAddress}
             chainId={listing?.token?.chainId}
             tokenSymbol={tokenSymbol}
+            bondingDataFromParent={bondingData}
           />
         </div>
       </div>
