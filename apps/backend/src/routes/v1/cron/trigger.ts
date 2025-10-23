@@ -2,7 +2,6 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 // Import services with type assertions to avoid compilation issues
 import { TokenService } from '../../../services/token-service';
-import { OHLCVService } from '../../../services/ohlcv-service';
 
 export async function cronRoutes(fastify: FastifyInstance) {
   // Manual trigger endpoint for testing
@@ -17,7 +16,6 @@ export async function cronRoutes(fastify: FastifyInstance) {
       const activeTokensFromSubgraph = await getActiveTokensFromSubgraph(fastify.prisma);
 
       const tokenService = new TokenService(fastify.prisma);
-      const ohlcvService = new OHLCVService(fastify.prisma, tokenService);
 
       const results = {
         processed: 0,
@@ -27,7 +25,7 @@ export async function cronRoutes(fastify: FastifyInstance) {
 
       for (const tokenData of activeTokensFromSubgraph) {
         try {
-          await syncTokenData(tokenData, tokenService, ohlcvService, fastify.prisma);
+          await syncTokenData(tokenData, tokenService, fastify.prisma);
           results.processed++;
           results.tokenResults.push({
             address: tokenData.address,
@@ -195,7 +193,6 @@ async function getRecentlyViewedTokens(prisma: PrismaClient): Promise<string[]> 
 async function syncTokenData(
   tokenData: any,
   tokenService: any,
-  ohlcvService: any,
   prisma: PrismaClient,
 ) {
   const contractAddress = tokenData.address;
@@ -206,32 +203,7 @@ async function syncTokenData(
     return;
   }
 
-  // Use database transaction for atomicity with increased timeout
-  await prisma.$transaction(
-    async (tx) => {
-      // Update the services to use the transaction client
-      const txTokenService = new TokenService(tx as any);
-      const txOhlcvService = new OHLCVService(tx as any, txTokenService);
-
-      // 1. Fetch and update basic token data
-      await txTokenService.fetchAndUpdateTokenData(contractAddress);
-
-      // 2. Generate cached data for ALL active timeframes
-      const allTimeframes = ['1m', '5m', '15m', '1h', '4h']; // Added minute timeframes
-
-      for (const timeframe of allTimeframes) {
-        await txOhlcvService.generateOHLCVCandles(contractAddress, timeframe);
-        console.log(`[CRON] Generated ${timeframe} candles for ${tokenData.symbol}`);
-      }
-
-      // 3. Update the token's lastSyncedAt timestamp
-      await tx.token.update({
-        where: { contractAddress: contractAddress.toLowerCase() },
-        data: { updatedAt: new Date() },
-      });
-    },
-    {
-      timeout: 90000, // 90 seconds timeout to handle all 5 timeframes
-    },
-  );
+  // Update basic token data (no more OHLCV caching - using live data from new chart endpoint)
+  await tokenService.fetchAndUpdateTokenData(contractAddress);
+  console.log(`[CRON] Updated token data for ${tokenData.symbol}`);
 }

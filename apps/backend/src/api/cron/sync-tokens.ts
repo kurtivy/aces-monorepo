@@ -1,6 +1,5 @@
 import { PrismaClient } from '@prisma/client';
 import { TokenService } from '../../services/token-service';
-import { OHLCVService } from '../../services/ohlcv-service';
 
 interface VercelRequest {
   method: string;
@@ -54,7 +53,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log(`[CRON] Starting sync for ${activeTokensFromSubgraph.length} active tokens`);
 
     const tokenService = new TokenService(prisma);
-    const ohlcvService = new OHLCVService(prisma, tokenService);
 
     // Track efficiency metrics
     let tokensWithActivity = 0;
@@ -64,7 +62,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Process each active token
     for (const tokenData of activeTokensFromSubgraph) {
       try {
-        const result = await syncTokenData(tokenData, tokenService, ohlcvService);
+        const result = await syncTokenData(tokenData, tokenService);
 
         if (result.processed) {
           results.processed++;
@@ -225,7 +223,6 @@ async function getRecentlyViewedTokens(): Promise<string[]> {
 async function syncTokenData(
   tokenData: any,
   tokenService: TokenService,
-  ohlcvService: OHLCVService,
 ): Promise<{ processed: boolean; reason: string }> {
   const contractAddress = tokenData.address;
 
@@ -238,35 +235,9 @@ async function syncTokenData(
     return { processed: false, reason: 'inactive' };
   }
 
-  // Use database transaction for atomicity
-  await prisma.$transaction(
-    async (tx) => {
-      // Update the services to use the transaction client
-      const txTokenService = new TokenService(tx as any);
-      const txOhlcvService = new OHLCVService(tx as any, txTokenService);
-
-      // 1. Update basic token data
-      await txTokenService.fetchAndUpdateTokenData(contractAddress);
-
-      // 2. Generate cached data for ALL active timeframes
-      const allTimeframes = ['1m', '5m', '15m', '1h', '4h']; // Added minute timeframes
-
-      for (const timeframe of allTimeframes) {
-        // Use enhanced service with smart caching - will only generate if cache is stale
-        await txOhlcvService.generateOHLCVCandles(contractAddress, timeframe);
-        console.log(`[CRON] Generated ${timeframe} candles for ${tokenData.symbol}`);
-      }
-
-      // 3. Update timestamp
-      await tx.token.update({
-        where: { contractAddress: contractAddress.toLowerCase() },
-        data: { updatedAt: new Date() },
-      });
-    },
-    {
-      timeout: 90000, // 90 seconds timeout to handle all 5 timeframes
-    },
-  );
+  // Update basic token data (no more OHLCV caching - using live data from new chart endpoint)
+  await tokenService.fetchAndUpdateTokenData(contractAddress);
+  console.log(`[CRON] Updated token data for ${tokenData.symbol}`);
 
   // Return success with reason
   const reason = hasRecentActivity ? 'active' : 'recently_viewed';
