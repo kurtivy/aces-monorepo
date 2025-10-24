@@ -75,10 +75,7 @@ export async function debugRoutes(fastify: FastifyInstance) {
         where: { contractAddress: tokenAddress.toLowerCase() },
       });
 
-      // Check if we have any OHLCV data
-      const ohlcvCount = await fastify.prisma.tokenOHLCV.count({
-        where: { contractAddress: tokenAddress.toLowerCase() },
-      });
+      // OHLCV data removed - using real-time aggregation from subgraph
 
       // Try to fetch from subgraph
       const subgraphQuery = `{
@@ -117,7 +114,6 @@ export async function debugRoutes(fastify: FastifyInstance) {
         database: {
           exists: !!token,
           token,
-          ohlcvRecords: ohlcvCount,
         },
         subgraph: subgraphData,
       });
