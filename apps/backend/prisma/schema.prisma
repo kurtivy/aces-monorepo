@@ -84,13 +84,13 @@ model Submission {
   story                  String?
   details                String?
   provenance             String?
-  value                  String?            // Stored as string for precision
-  reservePrice           String?            // Stored as string for precision
+  value                  String? // Stored as string for precision
+  reservePrice           String? // Stored as string for precision
   hypeSentence           String?
   assetType              AssetType
   imageGallery           String[]           @default([])
   location               String?
-  ownershipDocumentation Json?              // Array of {type, imageUrl, uploadedAt}
+  ownershipDocumentation Json? // Array of {type, imageUrl, uploadedAt}
   status                 SubmissionStatus   @default(PENDING)
   rejectionType          RejectionType?
   rejectionReason        String?
@@ -131,9 +131,9 @@ model Listing {
 
   // NEW: Bidding fields
   startingBidPrice String? // Minimum bid amount (USD)
-  
+
   // NEW: Asset story/info fields for V2 dashboard
-  hypePoints  String[]  @default([]) // Array of bullet points for hype section
+  hypePoints String[] @default([]) // Array of bullet points for hype section
 
   // NEW: Token creation workflow fields
   tokenCreationStatus String? @default("AWAITING_USER_DETAILS")
@@ -237,12 +237,12 @@ model Token {
   volume24h        String @default("0")
 
   // Basic metadata
-  chainId     Int               @default(8453)
-  phase       TokenPhase        @default(BONDING_CURVE)
-  priceSource TokenPriceSource  @default(BONDING_CURVE)
+  chainId     Int              @default(8453)
+  phase       TokenPhase       @default(BONDING_CURVE)
+  priceSource TokenPriceSource @default(BONDING_CURVE)
   dexLiveAt   DateTime?
-  poolAddress String?           @unique
-  isActive    Boolean           @default(true)
+  poolAddress String?          @unique
+  isActive    Boolean          @default(true)
 
   // Optional link to existing listings (non-breaking)
   listingId String?  @unique
@@ -258,96 +258,26 @@ model Token {
   @@map("tokens")
 }
 
-model TokenTrade {
-  id              String    @id @default(cuid())
-  contractAddress String // Direct reference, no foreign key initially
-  txHash          String    @unique
-  trader          String
-  tradeType       TradeType
-  tokenAmount     String
-  acesAmount      String
-  pricePerToken   String
-  timestamp       DateTime
-  source          String    @default("SUBGRAPH")
+// ========== ACES PRICE TRACKING ==========
+
+model AcesPriceSnapshot {
+  id           String  @id @default(cuid())
+  tradeId      String  @unique // Reference to Trade.id from subgraph
+  tokenAddress String // Token being traded (for indexing)
+  acesUsdPrice Decimal @db.Decimal(30, 18) // ACES price in USD at trade time
+  blockNumber  BigInt // Block number of trade
+  timestamp    BigInt // Unix timestamp (seconds)
+  source       String  @default("aerodrome") // 'aerodrome' | 'fallback'
 
   createdAt DateTime @default(now())
 
-  @@index([contractAddress, timestamp])
-  @@index([contractAddress, timestamp, tradeType])
-  @@index([timestamp])
-  @@map("token_trades")
+  @@index([tokenAddress, timestamp])
+  @@index([blockNumber])
+  @@index([tradeId])
+  @@map("aces_price_snapshots")
 }
 
-model TokenPriceSnapshot {
-  id              String   @id @default(cuid())
-  contractAddress String
-  price           String
-  volume          String?
-  timestamp       DateTime @default(now())
-
-  @@index([contractAddress, timestamp])
-  @@map("token_price_snapshots")
-}
-
-model TokenOHLCV {
-  id              String   @id @default(cuid())
-  contractAddress String
-  timeframe       String // '1m', '5m', '15m', '1h', '1d'
-  timestamp       DateTime // Start of the candle period
-  
-  // Prices in ACES (existing)
-  open            String // Opening price in ACES
-  high            String // Highest price in ACES
-  low             String // Lowest price in ACES
-  close           String // Closing price in ACES
-  volume          String // Volume in ACES tokens
-  
-  // USD prices
-  volumeUsd       String?  // Volume in USD
-  openUsd         String?  // Opening price in USD
-  highUsd         String?  // Highest price in USD
-  lowUsd          String?  // Lowest price in USD
-  closeUsd        String?  // Closing price in USD
-  
-  // NEW: Supply & Market Cap data
-  circulatingSupply String? // Current supply at this timestamp
-  totalSupply       String? // Total supply (bonding target or max supply)
-  marketCapAces     String? // Market cap in ACES
-  marketCapUsd      String? // Market cap in USD
-  
-  dataSource      String   @default("bonding_curve") // 'bonding_curve' or 'dex'
-  
-  trades          Int // Number of trades in this period
-  createdAt       DateTime @default(now())
-
-  @@unique([contractAddress, timeframe, timestamp, dataSource])
-  @@index([contractAddress, timeframe, timestamp])
-  @@index([contractAddress, timeframe])
-  @@index([contractAddress, dataSource]) // NEW: Filter by source
-  @@map("token_ohlcv")
-}
-
-// NEW: Token supply snapshots (for historical tracking)
-model TokenSupplySnapshot {
-  id              String   @id @default(cuid())
-  contractAddress String
-  timestamp       DateTime
-  
-  circulatingSupply String // Current supply
-  totalSupply       String // Max supply / bonding target
-  
-  // Context (optional but helpful)
-  tradeId         String?  // Associated trade that caused this supply change
-  blockNumber     Int?
-  
-  createdAt       DateTime @default(now())
-
-  @@unique([contractAddress, timestamp])
-  @@index([contractAddress, timestamp])
-  @@map("token_supply_snapshots")
-}
-
-// NEW: Enums
+// Enums for Token model
 enum TokenPhase {
   BONDING_CURVE
   DEX_TRADING
@@ -471,14 +401,4 @@ model UserNotification {
   @@index([userId, isRead])
   @@index([userId, createdAt])
   @@map("user_notifications")
-}
-
-model TokenPrice {
-  id        String   @id @default(cuid())
-  symbol    String   @unique
-  priceUSD  Decimal  @db.Decimal(20, 8)
-  updatedAt DateTime @updatedAt
-  createdAt DateTime @default(now())
-
-  @@map("token_prices")
 }
