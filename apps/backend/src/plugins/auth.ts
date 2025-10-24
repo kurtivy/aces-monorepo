@@ -58,6 +58,7 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
         '/api/v1/listings/symbol', // Public listing by symbol endpoint
         '/api/v1/prices', // Public price endpoints
         '/ws/chart', // WebSocket chart path (handshake)
+        '/api/webhooks/goldsky', // GoldSky webhooks (uses own x-goldsky-signature auth)
       ];
 
       // Check if this is a public path
@@ -78,6 +79,8 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
             return true;
           if (path === '/api/v1/prices' && request.url.startsWith('/api/v1/prices')) return true;
           if (path === '/ws/chart' && request.url.startsWith('/ws/chart')) return true;
+          if (path === '/api/webhooks/goldsky' && request.url.startsWith('/api/webhooks/goldsky'))
+            return true;
           return false;
         }) ||
         // Explicitly allow market cap endpoint

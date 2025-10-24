@@ -348,3 +348,4 @@ export class TradePriceAggregator {
 export const createTradePriceAggregator = (prisma: PrismaClient) => {
   return new TradePriceAggregator(prisma);
 };
+
