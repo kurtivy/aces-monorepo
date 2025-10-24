@@ -33,14 +33,11 @@ interface GoldSkyTradeWebhook {
 }
 
 export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
-  /**
-   * Webhook endpoint for Trade entity events
-   * This fires every time a new trade happens on the bonding curve
-   * GoldSky will POST to this endpoint with trade data
-   */
-  fastify.post<{ Body: GoldSkyTradeWebhook }>(
-    '/trade',
-    async (request: FastifyRequest<{ Body: GoldSkyTradeWebhook }>, reply: FastifyReply) => {
+  // Trade webhook handler (shared logic)
+  const handleTradeWebhook = async (
+    request: FastifyRequest<{ Body: GoldSkyTradeWebhook }>,
+    reply: FastifyReply,
+  ) => {
       const startTime = Date.now();
 
       // Log incoming request with clear visual separator
@@ -218,8 +215,16 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
           error: 'Internal server error',
         });
       }
-    },
-  );
+  };
+
+  /**
+   * Webhook endpoint for Trade entity events
+   * This fires every time a new trade happens on the bonding curve
+   * GoldSky will POST to this endpoint with trade data
+   * Supports both /trade and /trade/ (with/without trailing slash)
+   */
+  fastify.post<{ Body: GoldSkyTradeWebhook }>('/trade', handleTradeWebhook);
+  fastify.post<{ Body: GoldSkyTradeWebhook }>('/trade/', handleTradeWebhook);
 
   /**
    * Health check endpoint for webhook
