@@ -209,11 +209,7 @@ const formatMarketCapValue = (value: number): string => {
 
   const formatWithSuffix = (val: number, divisor: number, suffix: string) => {
     const scaled = val / divisor;
-    const precision = scaled >= 100
-      ? 0
-      : scaled >= 10
-        ? 1
-        : 2;
+    const precision = scaled >= 100 ? 0 : scaled >= 10 ? 1 : 2;
     const formatted = parseFloat(scaled.toFixed(precision));
     return `${formatted}${suffix}`;
   };
@@ -402,8 +398,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
         // Use token address + mode as the symbol for the datafeed
         // Format: "0x123...abc" for price mode, "0x123...abc_MCAP" for market cap mode
         const currentMode = chartModeRef.current;
-        const chartSymbol =
-          currentMode === 'price' ? tokenAddress : `${tokenAddress}_MCAP`;
+        const chartSymbol = currentMode === 'price' ? tokenAddress : `${tokenAddress}_MCAP`;
 
         widgetRef.current = new window.TradingView.widget({
           container: chartContainerRef.current,
@@ -553,6 +548,11 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
     ]);
 
     useEffect(() => {
+      console.log('[TradingView] chartMode state changed:', {
+        newMode: chartMode,
+        oldMode: chartModeRef.current,
+        currentSymbol: currentSymbolRef.current,
+      });
       chartModeRef.current = chartMode;
     }, [chartMode]);
 
@@ -564,6 +564,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
       const targetSymbol = chartMode === 'price' ? tokenAddress : `${tokenAddress}_MCAP`;
 
       if (currentSymbolRef.current === targetSymbol) {
+        console.log('[TradingView] Already at target symbol:', targetSymbol);
         setIsModeSwitching(false);
         return;
       }
@@ -573,22 +574,83 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
         typeof widget.activeChart === 'function' ? widget.activeChart : widget.chart;
       const chart = typeof getActiveChart === 'function' ? getActiveChart.call(widget) : null;
 
-      if (!chart || typeof chart.setSymbol !== 'function') {
+      if (!chart) {
+        console.warn('[TradingView] No chart instance available');
         setIsModeSwitching(false);
         return;
       }
 
-      setIsModeSwitching(true);
+      if (typeof chart.setSymbol !== 'function') {
+        console.warn('[TradingView] chart.setSymbol is not a function. Chart methods:', {
+          hasSetSymbol: 'setSymbol' in chart,
+          setSymbolType: typeof chart.setSymbol,
+          availableMethods: Object.keys(chart).filter((k) => typeof chart[k] === 'function'),
+        });
+        setIsModeSwitching(false);
+        return;
+      }
+
+      console.log(`[TradingView] Initiating symbol switch:`, {
+        from: currentSymbolRef.current,
+        to: targetSymbol,
+        mode: chartMode,
+        isModeSwitching,
+      });
+
+      // Ensure flag is set (may already be set by handleModeChange)
+      if (!isModeSwitching) {
+        setIsModeSwitching(true);
+      }
+
+      let callbackFired = false;
+
+      // Add timeout to prevent getting stuck in loading state
+      const timeoutId = setTimeout(() => {
+        if (!callbackFired) {
+          console.warn(
+            '[TradingView] Symbol switch timeout - callback never fired. Force updating refs.',
+          );
+          currentSymbolRef.current = targetSymbol;
+          chartModeRef.current = chartMode;
+        }
+        setIsModeSwitching(false);
+      }, 3000); // 3 second timeout
 
       try {
-        chart.setSymbol(targetSymbol, '15', () => {
+        // Get current resolution
+        let currentResolution = '15'; // Default
+        try {
+          if (typeof chart.resolution === 'function') {
+            currentResolution = chart.resolution();
+          } else if (chart.resolution) {
+            currentResolution = chart.resolution;
+          }
+        } catch (e) {
+          console.warn('[TradingView] Could not get current resolution, using default');
+        }
+
+        console.log('[TradingView] Calling chart.setSymbol with resolution:', currentResolution);
+
+        // Use setSymbol with callback
+        chart.setSymbol(targetSymbol, currentResolution, () => {
+          callbackFired = true;
+          clearTimeout(timeoutId);
+          console.log(`[TradingView] ✅ Symbol switched successfully to: ${targetSymbol}`);
           currentSymbolRef.current = targetSymbol;
+          chartModeRef.current = chartMode;
           setIsModeSwitching(false);
         });
       } catch (symbolError) {
-        console.error('[TradingView] Failed to switch symbol:', symbolError);
+        clearTimeout(timeoutId);
+        console.error('[TradingView] ❌ Failed to switch symbol:', symbolError);
+        // Reset to previous state on error
         setIsModeSwitching(false);
       }
+
+      // Cleanup: clear timeout if effect re-runs or component unmounts
+      return () => {
+        clearTimeout(timeoutId);
+      };
     }, [chartMode, tokenAddress, isLibraryLoaded, isReinitializing]);
 
     useEffect(() => {
@@ -605,14 +667,45 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
     }, [isReinitializing, isModeSwitching]);
 
     // Handle mode change by switching the active symbol
-    const handleModeChange = (newMode: 'price' | 'mcap') => {
-      if (!tokenAddress || newMode === chartModeRef.current || isReinitializing || isModeSwitching) {
-        return;
-      }
+    const handleModeChange = useCallback(
+      (newMode: 'price' | 'mcap') => {
+        console.log('[TradingView] handleModeChange called:', {
+          newMode,
+          currentModeState: chartMode,
+          currentModeRef: chartModeRef.current,
+          isReinitializing,
+          isModeSwitching,
+          tokenAddress: tokenAddress?.slice(0, 10),
+          currentSymbol: currentSymbolRef.current,
+        });
 
-      setIsModeSwitching(true);
-      setChartMode(newMode);
-    };
+        if (!tokenAddress) {
+          console.warn('[TradingView] No token address - blocking mode change');
+          return;
+        }
+
+        // Check against the STATE, not the ref, to avoid race conditions
+        if (newMode === chartMode) {
+          console.log('[TradingView] Already in requested mode (state check) - skipping');
+          return;
+        }
+
+        if (isReinitializing) {
+          console.warn('[TradingView] Chart is reinitializing - blocking mode change');
+          return;
+        }
+
+        if (isModeSwitching) {
+          console.warn('[TradingView] Already switching modes - blocking mode change');
+          return;
+        }
+
+        console.log(`[TradingView] ▶️  Starting mode change: ${chartMode} → ${newMode}`);
+        setIsModeSwitching(true);
+        setChartMode(newMode);
+      },
+      [chartMode, isReinitializing, isModeSwitching, tokenAddress],
+    );
 
     // Update button appearance
     const updateButtonAppearance = useCallback(() => {

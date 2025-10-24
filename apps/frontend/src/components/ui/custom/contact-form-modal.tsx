@@ -12,6 +12,23 @@ import {
 } from '../../../lib/utils/event-listener-utils';
 import { getBackdropFilterCSS } from '../../../lib/utils/browser-utils';
 
+// Helper function to resolve API base URL
+function getApiBaseUrl(): string {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+    return 'http://localhost:3002';
+  }
+  if (typeof window !== 'undefined') {
+    const href = window.location.href;
+    if (href.includes('git-dev') || window.location.hostname.includes('git-dev')) {
+      return 'https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app';
+    }
+  }
+  return 'https://acesbackend-production.up.railway.app';
+}
+
 interface ContactFormModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -174,8 +191,9 @@ export default function ContactFormModal({ isOpen, onClose }: ContactFormModalPr
     setSubmitError('');
 
     try {
-      // API call to backend (using local backend for testing)
-      const response = await fetch('http://localhost:3002/api/v1/contact', {
+      // API call to backend
+      const apiUrl = getApiBaseUrl();
+      const response = await fetch(`${apiUrl}/api/v1/contact`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
