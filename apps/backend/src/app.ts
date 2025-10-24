@@ -34,6 +34,9 @@ import { bondingDataRoutes } from './routes/v1/bonding-data';
 import { pricesRoutes } from './routes/v1/prices';
 import { chartUnifiedRoutes } from './routes/v1/chart-unified';
 
+// GoldSky webhook for historical price tracking
+import { goldskyWebhookRoutes } from './routes/webhooks/goldsky';
+
 // WebSocket services
 import { ChartDataWebSocket } from './websockets/chart-data-socket';
 import { BondingMonitorWebSocket } from './websockets/bonding-monitor-socket';
@@ -247,6 +250,9 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   // Register new unified chart route
   fastify.register(chartUnifiedRoutes);
   fastify.register(debugRoutes);
+
+  // Register GoldSky webhook routes (NO AUTH - uses webhook secret verification)
+  fastify.register(goldskyWebhookRoutes, { prefix: '/api/webhooks/goldsky' });
 
   // Register hooks
   fastify.addHook('onRequest', async (request) => {
