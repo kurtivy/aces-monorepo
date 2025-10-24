@@ -21,7 +21,6 @@ import { tokensRoutes } from './routes/v1/tokens';
 import { portfolioRoutes } from './routes/v1/portfolio';
 import { twitchRoutes } from './routes/v1/twitch';
 import { dexRoutes } from './routes/v1/dex';
-import gcsTestRoutes from './routes/v1/debug/gcs-test';
 
 import { cronRoutes } from './routes/v1/cron/trigger';
 
@@ -29,7 +28,6 @@ import { cronRoutes } from './routes/v1/cron/trigger';
 import { notificationRoutes } from './routes/v1/notifications';
 import { tokenCreationRoutes } from './routes/v1/token-creation';
 import productImagesRoutes from './routes/v1/product-images';
-import { testNotificationRoutes } from './routes/v1/test-notifications';
 import { adminTokenRoutes } from './routes/v1/admin/tokens';
 import { bondingRoutes } from './routes/v1/bonding';
 import { bondingDataRoutes } from './routes/v1/bonding-data';
@@ -238,14 +236,8 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   fastify.register(productImagesRoutes, { prefix: '/api/v1/product-images' });
   fastify.register(adminTokenRoutes); // No prefix, routes define their own paths
 
-  // Register debug routes
-  fastify.register(gcsTestRoutes, { prefix: '/api/v1' });
-  // fastify.register(portfolioTestRoutes, { prefix: '/api/v1/debug/portfolio-test' });
   // Register cron routes for manual testing
   fastify.register(cronRoutes);
-
-  // Register test notification routes (for development/testing)
-  fastify.register(testNotificationRoutes, { prefix: '/api/v1/notifications' });
 
   fastify.register(bondingRoutes, { prefix: '/api/v1/bonding' });
   fastify.register(bondingDataRoutes, { prefix: '/api/v1/bonding' });
