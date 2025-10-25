@@ -87,8 +87,13 @@ export function BondingDataProvider({ children }: BondingDataProviderProps) {
 
   const isActiveTrading = useCallback(() => {
     const isOnTokenPage = pathname?.includes('/rwa/');
-    const recentInteraction = Date.now() - lastInteraction.current < INTERACTION_TIMEOUT;
-    return isOnTokenPage && recentInteraction;
+
+    if (!isOnTokenPage) {
+      return false;
+    }
+
+    // Always treat token pages as active to keep bonding data in sync with charts/trades
+    return true;
   }, [pathname]);
 
   const notifySubscribers = useCallback((cacheKey: string) => {

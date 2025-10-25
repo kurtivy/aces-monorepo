@@ -316,6 +316,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     const tokenAddress = symbolInfo.ticker;
     const timeframe = this.resolutionToTimeframe(resolution);
     const subscriptionKey = `${tokenAddress}:${timeframe}:${listenerGuid}`;
+    const isMarketCapMode = Boolean(symbolInfo.ticker?.endsWith('_MCAP'));
 
     if (this.config.debug) {
       console.log('[UnifiedDatafeed] subscribeBars:', subscriptionKey);
@@ -341,7 +342,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
             type: 'subscribe',
             tokenAddress,
             timeframe,
-            chartType: 'price',
+            chartType: isMarketCapMode ? 'mcap' : 'price',
           }),
         );
       };
@@ -353,57 +354,80 @@ export class UnifiedDatafeed implements IBasicDataFeed {
           if (update.type === 'candle_update') {
             const ticker = symbolInfo.ticker ?? tokenAddress ?? '';
             const lastBar = this.lastBars.get(ticker);
-            const candleTime = update.candle.timestamp;
+            const rawTimestamp = update.candle?.timestamp;
+            const candleTime =
+              typeof rawTimestamp === 'number' ? rawTimestamp : Number(rawTimestamp);
 
-            // Prevent time violations - critical for TradingView
-            if (lastBar && candleTime <= lastBar.time) {
+            if (!Number.isFinite(candleTime)) {
               if (this.config.debug) {
-                console.warn('[UnifiedDatafeed] Skipping update - time violation', {
-                  candleTime,
-                  lastBarTime: lastBar.time,
+                console.warn('[UnifiedDatafeed] Ignoring update with invalid timestamp', {
+                  rawTimestamp,
                 });
               }
               return;
             }
 
+            // Prevent time violations - critical for TradingView
+            if (lastBar) {
+              if (candleTime < lastBar.time) {
+                if (this.config.debug) {
+                  console.warn('[UnifiedDatafeed] Skipping update - time regression', {
+                    candleTime,
+                    lastBarTime: lastBar.time,
+                  });
+                }
+                return;
+              }
+
+              if (candleTime === lastBar.time) {
+                const updatedBar: Bar = {
+                  time: lastBar.time,
+                  open: Number.isFinite(lastBar.open)
+                    ? lastBar.open
+                    : this.parseCandlePrice(update.candle, 'open', isMarketCapMode),
+                  high: this.parseCandlePrice(update.candle, 'high', isMarketCapMode),
+                  low: this.parseCandlePrice(update.candle, 'low', isMarketCapMode),
+                  close: this.parseCandlePrice(update.candle, 'close', isMarketCapMode),
+                  volume: parseFloat(update.candle.volume || '0'),
+                };
+
+                this.lastBars.set(ticker, updatedBar);
+                onTick(updatedBar);
+
+                if (!isMarketCapMode) {
+                  this.handleMarketCapEmission(
+                    tokenAddress,
+                    update.candle,
+                    updatedBar.close,
+                    candleTime,
+                  );
+                }
+
+                if (this.config.debug) {
+                  console.log('[UnifiedDatafeed] Updated existing bar via websocket:', updatedBar);
+                }
+                return;
+              }
+            }
+
             const bar: Bar = {
               time: candleTime,
-              open: parseFloat(update.candle.open),
-              high: parseFloat(update.candle.high),
-              low: parseFloat(update.candle.low),
-              close: parseFloat(update.candle.close),
+              open: this.parseCandlePrice(update.candle, 'open', isMarketCapMode),
+              high: this.parseCandlePrice(update.candle, 'high', isMarketCapMode),
+              low: this.parseCandlePrice(update.candle, 'low', isMarketCapMode),
+              close: this.parseCandlePrice(update.candle, 'close', isMarketCapMode),
               volume: parseFloat(update.candle.volume || '0'),
             };
 
             this.lastBars.set(ticker, bar);
             onTick(bar);
 
-            if (this.config.debug) {
-              console.log('[UnifiedDatafeed] Tick received:', bar);
+            if (!isMarketCapMode) {
+              this.handleMarketCapEmission(tokenAddress, update.candle, bar.close, candleTime);
             }
 
-            const normalizedToken = (tokenAddress ?? '').toLowerCase();
-            const supplyValue = this.latestSupply.get(normalizedToken);
-            const closePriceUsd =
-              typeof update.candle.closeUsd === 'string'
-                ? parseFloat(update.candle.closeUsd)
-                : Number(update.candle.closeUsd ?? 0);
-
-            if (
-              Number.isFinite(closePriceUsd) &&
-              closePriceUsd > 0 &&
-              Number.isFinite(supplyValue) &&
-              supplyValue !== undefined &&
-              supplyValue > 0
-            ) {
-              this.emitMarketCapIfChanged(
-                normalizedToken,
-                closePriceUsd * supplyValue,
-                closePriceUsd,
-                supplyValue,
-                candleTime,
-                'price',
-              );
+            if (this.config.debug) {
+              console.log('[UnifiedDatafeed] Tick received:', bar);
             }
           }
         } catch (error) {
@@ -446,6 +470,79 @@ export class UnifiedDatafeed implements IBasicDataFeed {
   }
 
   // Helper methods
+
+  private parseCandlePrice(
+    candle: Record<string, unknown>,
+    field: 'open' | 'high' | 'low' | 'close',
+    isMarketCapMode: boolean,
+  ): number {
+    if (!isMarketCapMode) {
+      const usdKey = `${field}Usd`;
+      const usdValue = candle[usdKey];
+      const parsedUsd =
+        typeof usdValue === 'string' ? parseFloat(usdValue) : Number(usdValue ?? NaN);
+      if (Number.isFinite(parsedUsd) && parsedUsd > 0) {
+        return parsedUsd;
+      }
+    }
+
+    const rawValue = candle[field];
+    const parsed =
+      typeof rawValue === 'string' ? parseFloat(rawValue) : Number(rawValue ?? NaN);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+
+    return 0;
+  }
+
+  private handleMarketCapEmission(
+    tokenAddress: string | null | undefined,
+    candle: any,
+    lastClose: number,
+    candleTime: number,
+  ) {
+    if (!tokenAddress) return;
+
+    const normalizedToken = tokenAddress.toLowerCase();
+    const supplyValue = this.latestSupply.get(normalizedToken);
+    const closePriceUsd =
+      typeof candle?.closeUsd === 'string'
+        ? parseFloat(candle.closeUsd)
+        : Number(candle?.closeUsd ?? 0);
+
+    if (
+      Number.isFinite(closePriceUsd) &&
+      closePriceUsd > 0 &&
+      Number.isFinite(supplyValue) &&
+      supplyValue !== undefined &&
+      supplyValue > 0
+    ) {
+      this.emitMarketCapIfChanged(
+        normalizedToken,
+        closePriceUsd * supplyValue,
+        closePriceUsd,
+        supplyValue,
+        candleTime,
+        'price',
+      );
+    } else if (
+      Number.isFinite(lastClose) &&
+      lastClose > 0 &&
+      Number.isFinite(supplyValue) &&
+      supplyValue !== undefined &&
+      supplyValue > 0
+    ) {
+      this.emitMarketCapIfChanged(
+        normalizedToken,
+        lastClose * supplyValue,
+        lastClose,
+        supplyValue,
+        candleTime,
+        'price',
+      );
+    }
+  }
 
   private resolutionToTimeframe(resolution: ResolutionString): string {
     const map: Record<string, string> = {

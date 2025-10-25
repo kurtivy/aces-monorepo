@@ -64,7 +64,8 @@ interface CachedData {
 }
 
 const cache = new Map<string, CachedData>();
-const CACHE_TTL = 10000; // 10 seconds (matches backend)
+// Keep cache in lockstep with frontend polling cadence so UI reflects fresh bonding data quickly
+const CACHE_TTL = 5000;
 
 function getCacheKey(tokenAddress: string, chainId: number, currency: 'usd' | 'aces'): string {
   return `${tokenAddress.toLowerCase()}-${chainId}-${currency}`;
