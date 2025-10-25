@@ -408,6 +408,11 @@ export async function tokensRoutes(fastify: FastifyInstance) {
   });
   */
 
+  // 🔥 NEW: Simple in-memory cache for metrics with adaptive TTL
+  const metricsCache = new Map<string, { data: any; timestamp: number }>();
+  // Short cache for local dev (5s), longer for production (60s)
+  const METRICS_CACHE_TTL = process.env.NODE_ENV === 'production' ? 60000 : 5000;
+
   // Get aggregated token metrics for listings display
   fastify.get(
     '/:address/metrics',
@@ -439,6 +444,20 @@ export async function tokensRoutes(fastify: FastifyInstance) {
       try {
         const { address } = request.params;
         const { chainId } = request.query;
+
+        // 🔥 OPTIMIZED: Check cache first
+        const cacheKey = `${address.toLowerCase()}-${chainId || 'default'}`;
+        const cached = metricsCache.get(cacheKey);
+        if (cached && Date.now() - cached.timestamp < METRICS_CACHE_TTL) {
+          fastify.log.info({ address, chainId, age: Math.floor((Date.now() - cached.timestamp) / 1000) }, '🎯 [Metrics] Cache hit');
+          return reply.send({
+            success: true,
+            data: cached.data,
+            cached: true,
+          });
+        }
+
+        fastify.log.info({ address, chainId }, '🔵 [Metrics] Fetching fresh data');
 
         // 1. Fetch token data (has volume24h, currentPriceACES, supply)
         // Try database first, but continue without it if unavailable
@@ -951,20 +970,30 @@ export async function tokensRoutes(fastify: FastifyInstance) {
         const totalFeesAces = parseFloat(fees.acesAmount);
         const totalFeesUsd = totalFeesAces * acesUsdPrice;
 
+        // 🔥 OPTIMIZED: Build response data
+        const responseData = {
+          contractAddress: address,
+          volume24hUsd,
+          volume24hAces: volume24hAces.toString(),
+          marketCapUsd,
+          tokenPriceUsd,
+          holderCount,
+          totalFeesUsd,
+          totalFeesAces: fees.acesAmount,
+          liquidityUsd,
+          liquiditySource,
+        };
+
+        // 🔥 OPTIMIZED: Cache the response
+        metricsCache.set(cacheKey, {
+          data: responseData,
+          timestamp: Date.now(),
+        });
+
         return reply.send({
           success: true,
-          data: {
-            contractAddress: address,
-            volume24hUsd,
-            volume24hAces: volume24hAces.toString(),
-            marketCapUsd,
-            tokenPriceUsd,
-            holderCount,
-            totalFeesUsd,
-            totalFeesAces: fees.acesAmount,
-            liquidityUsd,
-            liquiditySource,
-          },
+          data: responseData,
+          cached: false,
         });
       } catch (error) {
         fastify.log.error({ error }, 'Token metrics fetch error');
