@@ -15,3 +15,9 @@ node_modules
 
 # Hardhat Ignition default folder for deployments against a local node
 ignition/deployments/chain-31337
+
+# Build artifacts and deployment files
+AcesFactory.json
+AcesSwap.json
+factory/
+new-swap-contract/
