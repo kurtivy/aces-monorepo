@@ -2,6 +2,8 @@ import { PrismaClient } from '@prisma/client';
 import { BitQueryService } from './bitquery-service';
 import { AcesUsdPriceService } from './aces-usd-price-service';
 import { ACES_TOKEN_ADDRESS } from '../config/bitquery.config';
+import { TradePriceAggregator } from './trade-price-aggregator';
+import { acesPriceTracker } from './aces-price-tracker';
 
 // Types
 interface Trade {
@@ -123,8 +125,31 @@ export class ChartAggregationService {
 
     console.log(`[ChartAggregation] Fetched ${trades.length} trades`);
 
+    if (trades.length === 0) {
+      console.warn(
+        `[ChartAggregation] ⚠️ No trades found for ${tokenAddress}, returning empty candles`,
+      );
+      return {
+        candles: [],
+        graduationState,
+        acesUsdPrice: acesUsdPrice ? acesUsdPrice.toFixed(6) : null,
+      };
+    }
+
+    // Log first and last trade for debugging
+    console.log(`[ChartAggregation] First trade:`, {
+      timestamp: trades[0]?.timestamp,
+      priceInUsd: trades[0]?.priceInUsd,
+      amountToken: trades[0]?.amountToken,
+    });
+    console.log(`[ChartAggregation] Last trade:`, {
+      timestamp: trades[trades.length - 1]?.timestamp,
+      priceInUsd: trades[trades.length - 1]?.priceInUsd,
+      amountToken: trades[trades.length - 1]?.amountToken,
+    });
+
     // 4. Aggregate trades into candles WITH NO-GAP LOGIC
-    let candles = this.aggregateTradesToCandlesWithNoGaps(
+    const candles = this.aggregateTradesToCandlesWithNoGaps(
       trades,
       options.timeframe,
       options.from,
@@ -135,6 +160,29 @@ export class ChartAggregationService {
     );
 
     console.log(`[ChartAggregation] Generated ${candles.length} candles with no gaps`);
+
+    if (candles.length > 0) {
+      console.log(`[ChartAggregation] First candle:`, {
+        timestamp: candles[0].timestamp,
+        open: candles[0].open,
+        high: candles[0].high,
+        low: candles[0].low,
+        close: candles[0].close,
+        openUsd: candles[0].openUsd,
+        closeUsd: candles[0].closeUsd,
+        volume: candles[0].volume,
+      });
+      console.log(`[ChartAggregation] Last candle:`, {
+        timestamp: candles[candles.length - 1].timestamp,
+        open: candles[candles.length - 1].open,
+        high: candles[candles.length - 1].high,
+        low: candles[candles.length - 1].low,
+        close: candles[candles.length - 1].close,
+        openUsd: candles[candles.length - 1].openUsd,
+        closeUsd: candles[candles.length - 1].closeUsd,
+        volume: candles[candles.length - 1].volume,
+      });
+    }
 
     // 5. Add market cap to each candle
     const enrichedCandles = candles.map((candle) => {
@@ -174,59 +222,29 @@ export class ChartAggregationService {
   }
 
   /**
-   * Fetch bonding curve trades from SubGraph
+   * Fetch bonding curve trades from SubGraph with historical ACES prices
+   * NOW USES TradePriceAggregator for accurate historical pricing
    */
   private async fetchBondingTrades(tokenAddress: string, from: Date, to: Date): Promise<Trade[]> {
-    const subgraphUrl = process.env.GOLDSKY_SUBGRAPH_URL;
-    if (!subgraphUrl) {
-      throw new Error('GOLDSKY_SUBGRAPH_URL not configured');
-    }
-
     const fromTimestamp = Math.floor(from.getTime() / 1000);
     const toTimestamp = Math.floor(to.getTime() / 1000);
 
-    const query = `{
-      trades(
-        where: {
-          token: "${tokenAddress.toLowerCase()}",
-          createdAt_gte: ${fromTimestamp},
-          createdAt_lte: ${toTimestamp}
-        }
-        orderBy: createdAt
-        orderDirection: asc
-        first: 1000
-      ) {
-        id
-        createdAt
-        tokenAmount
-        acesTokenAmount
-        isBuy
-        supply
-      }
-    }`;
-
     try {
-      const response = await fetch(subgraphUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query }),
-        signal: AbortSignal.timeout(10000),
-      });
+      // Use TradePriceAggregator to get trades enriched with historical ACES prices
+      const aggregator = new TradePriceAggregator(this.prisma);
+      const tradesWithPrices = await aggregator.getTradesWithPrices(
+        tokenAddress,
+        1000, // Subgraph max limit is 1000
+        fromTimestamp,
+        toTimestamp,
+      );
 
-      if (!response.ok) {
-        throw new Error(`SubGraph request failed: ${response.status}`);
-      }
+      console.log(
+        `[ChartAggregation] Fetched ${tradesWithPrices.length} trades with historical ACES prices`,
+      );
 
-      const result = (await response.json()) as any;
-
-      if (result.errors) {
-        throw new Error(`SubGraph errors: ${JSON.stringify(result.errors)}`);
-      }
-
-      const subgraphTrades = result.data?.trades || [];
-
-      // Transform to Trade format
-      return subgraphTrades.map((trade: any) => {
+      // Transform to Trade format expected by the rest of the service
+      return tradesWithPrices.map((trade) => {
         const tokenAmount = parseFloat(trade.tokenAmount) / 1e18;
         const acesTokenAmount = parseFloat(trade.acesTokenAmount) / 1e18;
         const supply = parseFloat(trade.supply) / 1e18; // Circulating supply at this trade
@@ -234,13 +252,19 @@ export class ChartAggregationService {
         // Price = ACES per Token
         const priceInAces = tokenAmount > 0 ? acesTokenAmount / tokenAmount : 0;
 
+        // Calculate USD price using HISTORICAL ACES price
+        const priceInUsd = priceInAces * trade.acesUsdPriceAtExecution;
+
+        // Calculate volume in USD using historical ACES price
+        const volumeUsd = tokenAmount * priceInAces * trade.acesUsdPriceAtExecution;
+
         return {
           timestamp: new Date(parseInt(trade.createdAt) * 1000),
           priceInAces,
-          priceInUsd: 0, // Will be calculated with ACES/USD price later
+          priceInUsd, // Now using historical ACES price! ✅
           amountToken: tokenAmount,
-          volumeUsd: 0, // Will be calculated later
-          side: trade.isBuy ? 'buy' : 'sell',
+          volumeUsd, // Now accurate! ✅
+          side: (trade.isBuy ? 'buy' : 'sell') as 'buy' | 'sell',
           circulatingSupply: supply, // Actual circulating supply from SubGraph
         };
       });
@@ -326,6 +350,7 @@ export class ChartAggregationService {
           dataSource,
           supply,
           previousCandle,
+          intervalMs,
         );
       } else if (previousCandle) {
         // EMPTY CANDLE - Show ACES price movement
@@ -336,6 +361,7 @@ export class ChartAggregationService {
           dataSource,
           supply,
           isCurrent,
+          intervalMs,
         );
       } else {
         // Skip - no previous candle to connect to
@@ -347,7 +373,13 @@ export class ChartAggregationService {
       previousCandle = candle;
       currentTime += intervalMs;
     }
-
+    console.log('[ChartAggregation] 🕐 Time range:', {
+      from: new Date(from).toISOString(),
+      to: new Date(to).toISOString(),
+      currentCandleTimestamp: new Date(currentCandleTimestamp).toISOString(),
+      intervalMs,
+      willCreateCurrentCandle: currentCandleTimestamp <= to.getTime(),
+    });
     return candles;
   }
 
@@ -361,6 +393,7 @@ export class ChartAggregationService {
     dataSource: 'bonding_curve' | 'dex',
     supply: string,
     previousCandle: Candle | null,
+    intervalMs: number,
   ): Candle {
     // Sort trades by timestamp
     bucketTrades.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
@@ -387,7 +420,7 @@ export class ChartAggregationService {
     let openUsd: number, closeUsd: number, highUsd: number, lowUsd: number;
 
     if (dataSource === 'dex' && pricesInUsd.some((p) => p > 0)) {
-      // DEX: Use BitQuery USD prices
+      // DEX: Use BitQuery USD prices (already in USD from BitQuery)
       const firstTradeUsd = pricesInUsd[0];
       closeUsd = pricesInUsd[pricesInUsd.length - 1];
       highUsd = Math.max(...pricesInUsd);
@@ -395,18 +428,64 @@ export class ChartAggregationService {
 
       // Connect USD to previous candle
       openUsd = previousCandle ? parseFloat(previousCandle.closeUsd) : firstTradeUsd;
-    } else if (acesUsdPrice && acesUsdPrice > 0) {
-      // Bonding: Convert ACES to USD
-      openUsd = openAces * acesUsdPrice;
-      closeUsd = closeAces * acesUsdPrice;
-      highUsd = highAces * acesUsdPrice;
-      lowUsd = lowAces * acesUsdPrice;
     } else {
-      // No USD price available
-      openUsd = 0;
-      closeUsd = 0;
-      highUsd = 0;
-      lowUsd = 0;
+      // Bonding Curve: Combine token OHLC (in ACES) with ACES OHLC (in USD) from memory
+      const candleEndTime = timestamp + intervalMs;
+
+      // Try to get ACES OHLC from memory for this candle period
+      const acesOHLC = acesPriceTracker.getAcesOHLCForPeriod(timestamp, candleEndTime);
+
+      if (acesOHLC) {
+        // 🔥 ENHANCED MODE: Use ACES OHLC from memory for accurate wicks
+        console.log(
+          `[ChartAggregation] 📊 Using ACES OHLC from memory for ${new Date(timestamp).toISOString()}:`,
+          {
+            open: `$${acesOHLC.open.toFixed(6)}`,
+            high: `$${acesOHLC.high.toFixed(6)}`,
+            low: `$${acesOHLC.low.toFixed(6)}`,
+            close: `$${acesOHLC.close.toFixed(6)}`,
+          },
+        );
+
+        // Open/Close: Connect properly
+        openUsd = previousCandle ? parseFloat(previousCandle.closeUsd) : openAces * acesOHLC.open;
+        closeUsd = closeAces * acesOHLC.close;
+
+        // High/Low: Cartesian product to find true extremes
+        // When both token and ACES are volatile, we need to check all combinations
+        const usdPrices = [
+          openAces * acesOHLC.open, // Token open × ACES open
+          closeAces * acesOHLC.close, // Token close × ACES close
+          highAces * acesOHLC.high, // Token high × ACES high (best case)
+          highAces * acesOHLC.close, // Token high × ACES close
+          closeAces * acesOHLC.high, // Token close × ACES high
+          lowAces * acesOHLC.low, // Token low × ACES low (worst case)
+          lowAces * acesOHLC.close, // Token low × ACES close
+          closeAces * acesOHLC.low, // Token close × ACES low
+        ];
+
+        highUsd = Math.max(...usdPrices);
+        lowUsd = Math.min(...usdPrices);
+
+        console.log(
+          `[ChartAggregation] 💎 Combined OHLC: Open=$${openUsd.toFixed(8)}, High=$${highUsd.toFixed(8)}, Low=$${lowUsd.toFixed(8)}, Close=$${closeUsd.toFixed(8)}`,
+        );
+      } else if (acesUsdPrice && acesUsdPrice > 0) {
+        // Fallback: Use current ACES price (simple conversion)
+        console.log(
+          `[ChartAggregation] ⚠️ No ACES OHLC in memory, using current price: $${acesUsdPrice.toFixed(6)}`,
+        );
+        openUsd = openAces * acesUsdPrice;
+        closeUsd = closeAces * acesUsdPrice;
+        highUsd = highAces * acesUsdPrice;
+        lowUsd = lowAces * acesUsdPrice;
+      } else {
+        // No USD price available at all
+        openUsd = 0;
+        closeUsd = 0;
+        highUsd = 0;
+        lowUsd = 0;
+      }
     }
 
     // Volume
@@ -419,9 +498,9 @@ export class ChartAggregationService {
       // Use circulating supply from the last trade in this bucket
       const lastTrade = bucketTrades[bucketTrades.length - 1];
       actualSupply = lastTrade.circulatingSupply ? lastTrade.circulatingSupply.toString() : supply; // Fallback to passed supply
-      console.log(
-        `[ChartAggregation] 📊 Candle supply: ${(parseFloat(actualSupply) / 1e6).toFixed(2)}M (from trade)`,
-      );
+      // console.log(
+      //   `[ChartAggregation] 📊 Candle supply: ${(parseFloat(actualSupply) / 1e6).toFixed(2)}M (from trade)`,
+      // );
     } else {
       // DEX: Use fixed graduated supply
       actualSupply = supply;
@@ -431,30 +510,27 @@ export class ChartAggregationService {
 
     // Calculate Market Cap OHLC with NO-GAP logic
     let marketCapOpenUsd: number;
-    let marketCapCloseUsd: number;
-    let marketCapHighUsd: number;
-    let marketCapLowUsd: number;
 
     // CRITICAL: Market cap open connects to previous candle's market cap close (NO GAPS!)
     if (previousCandle && previousCandle.marketCapCloseUsd) {
       marketCapOpenUsd = parseFloat(previousCandle.marketCapCloseUsd);
-      console.log(
-        `[ChartAggregation] 🔗 Connecting market cap: open=$${marketCapOpenUsd.toFixed(2)} (previous close)`,
-      );
+      // console.log(
+      //   `[ChartAggregation] 🔗 Connecting market cap: open=$${marketCapOpenUsd.toFixed(2)} (previous close)`,
+      // );
     } else {
       // First candle: calculate from open price
       marketCapOpenUsd = openUsd * supplyNum;
     }
 
     // Close market cap: current price × current supply
-    marketCapCloseUsd = closeUsd * supplyNum;
+    const marketCapCloseUsd = closeUsd * supplyNum;
 
     // High/Low: Calculate from price high/low × supply, but also consider open/close
     const marketCapAtHigh = highUsd * supplyNum;
     const marketCapAtLow = lowUsd * supplyNum;
 
-    marketCapHighUsd = Math.max(marketCapOpenUsd, marketCapCloseUsd, marketCapAtHigh);
-    marketCapLowUsd = Math.min(marketCapOpenUsd, marketCapCloseUsd, marketCapAtLow);
+    const marketCapHighUsd = Math.max(marketCapOpenUsd, marketCapCloseUsd, marketCapAtHigh);
+    const marketCapLowUsd = Math.min(marketCapOpenUsd, marketCapCloseUsd, marketCapAtLow);
 
     return {
       timestamp: new Date(timestamp),
@@ -493,6 +569,7 @@ export class ChartAggregationService {
     dataSource: 'bonding_curve' | 'dex',
     supply: string,
     isCurrent: boolean,
+    intervalMs: number,
   ): Candle {
     // CRITICAL: Connect to previous candle (NO GAPS!)
     const openAces = parseFloat(previousCandle.close);
@@ -501,26 +578,59 @@ export class ChartAggregationService {
     // Open USD connects to previous candle
     const openUsd = parseFloat(previousCandle.closeUsd);
 
-    // Close USD reflects current ACES/USD rate (shows ACES movement!)
-    let closeUsd: number;
-    if (acesUsdPrice && acesUsdPrice > 0) {
-      closeUsd = closeAces * acesUsdPrice;
-    } else {
-      closeUsd = openUsd; // Frozen if no ACES/USD available
-    }
+    // Try to get ACES OHLC from memory for this period
+    const candleEndTime = timestamp + intervalMs;
+    const acesOHLC = acesPriceTracker.getAcesOHLCForPeriod(timestamp, candleEndTime);
 
-    // High/Low show range of ACES movement during this period
-    const highUsd = Math.max(openUsd, closeUsd);
-    const lowUsd = Math.min(openUsd, closeUsd);
+    let closeUsd: number, highUsd: number, lowUsd: number;
+
+    if (acesOHLC) {
+      // 🔥 ENHANCED MODE: Use ACES OHLC from memory for accurate wicks (even with no trades!)
+      console.log(
+        `[ChartAggregation] 📊 Empty candle using ACES OHLC from memory for ${new Date(timestamp).toISOString()}:`,
+        {
+          open: `$${acesOHLC.open.toFixed(6)}`,
+          high: `$${acesOHLC.high.toFixed(6)}`,
+          low: `$${acesOHLC.low.toFixed(6)}`,
+          close: `$${acesOHLC.close.toFixed(6)}`,
+        },
+      );
+
+      // Close: Token price (in ACES) × latest ACES price (in USD)
+      closeUsd = closeAces * acesOHLC.close;
+
+      // High/Low: ACES volatility affects USD value even without token trades
+      // Token price stays constant (in ACES), but USD value changes with ACES movement
+      const usdPrices = [
+        openAces * acesOHLC.open,
+        openAces * acesOHLC.high,
+        openAces * acesOHLC.low,
+        openAces * acesOHLC.close,
+      ];
+
+      highUsd = Math.max(...usdPrices);
+      lowUsd = Math.min(...usdPrices);
+
+      console.log(
+        `[ChartAggregation] 💎 Empty candle with wicks: Open=$${openUsd.toFixed(8)}, High=$${highUsd.toFixed(8)}, Low=$${lowUsd.toFixed(8)}, Close=$${closeUsd.toFixed(8)}`,
+      );
+    } else if (acesUsdPrice && acesUsdPrice > 0) {
+      // Fallback: Use current ACES price (simple range)
+      closeUsd = closeAces * acesUsdPrice;
+      highUsd = Math.max(openUsd, closeUsd);
+      lowUsd = Math.min(openUsd, closeUsd);
+    } else {
+      // No ACES price available - frozen
+      closeUsd = openUsd;
+      highUsd = openUsd;
+      lowUsd = openUsd;
+    }
 
     // Use supply from previous candle (no trades = no supply change)
     const supplyNum = parseFloat(previousCandle.circulatingSupply);
 
     // Calculate Market Cap OHLC with NO-GAP logic for empty candles
     let marketCapOpenUsd: number;
-    let marketCapCloseUsd: number;
-    let marketCapHighUsd: number;
-    let marketCapLowUsd: number;
 
     // CRITICAL: Market cap open connects to previous candle's market cap close (NO GAPS!)
     if (previousCandle.marketCapCloseUsd) {
@@ -531,18 +641,18 @@ export class ChartAggregationService {
     }
 
     // Close market cap: current price × current supply (supply unchanged for empty candle)
-    marketCapCloseUsd = closeUsd * supplyNum;
+    const marketCapCloseUsd = closeUsd * supplyNum;
 
     // High/Low: Range of ACES movement affects market cap
-    marketCapHighUsd = Math.max(marketCapOpenUsd, marketCapCloseUsd);
-    marketCapLowUsd = Math.min(marketCapOpenUsd, marketCapCloseUsd);
+    const marketCapHighUsd = Math.max(marketCapOpenUsd, marketCapCloseUsd);
+    const marketCapLowUsd = Math.min(marketCapOpenUsd, marketCapCloseUsd);
 
-    console.log(
-      `[ChartAggregation] 📊 Empty candle at ${new Date(timestamp).toISOString()}: ` +
-        `price: $${openUsd.toFixed(8)} → $${closeUsd.toFixed(8)} ` +
-        `mcap: $${marketCapOpenUsd.toFixed(2)} → $${marketCapCloseUsd.toFixed(2)} ` +
-        `(ACES movement: ${((closeUsd / openUsd - 1) * 100).toFixed(2)}%)`,
-    );
+    // console.log(
+    //   `[ChartAggregation] 📊 Empty candle at ${new Date(timestamp).toISOString()}: ` +
+    //     `price: $${openUsd.toFixed(8)} → $${closeUsd.toFixed(8)} ` +
+    //     `mcap: $${marketCapOpenUsd.toFixed(2)} → $${marketCapCloseUsd.toFixed(2)} ` +
+    //     `(ACES movement: ${((closeUsd / openUsd - 1) * 100).toFixed(2)}%)`,
+    // );
 
     return {
       timestamp: new Date(timestamp),

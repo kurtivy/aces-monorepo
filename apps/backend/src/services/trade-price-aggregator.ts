@@ -2,6 +2,7 @@
 import { PrismaClient } from '@prisma/client';
 import { goldskyClient, SubgraphTrade } from '../lib/goldsky-client';
 import { FastifyBaseLogger } from 'fastify';
+import { priceCacheService } from './price-cache-service';
 
 /**
  * Trade enriched with historical ACES USD price
@@ -52,11 +53,52 @@ export class TradePriceAggregator {
   constructor(private prisma: PrismaClient) {}
 
   /**
+   * Find the nearest price snapshot by timestamp when exact match not found
+   * Searches within ±5 minute window for the SAME token first
+   * NOTE: Database already stores tokenAddress for each snapshot, so we filter by it
+   */
+  private async findNearestPriceSnapshot(
+    tradeTimestamp: number,
+    tokenAddress: string,
+  ): Promise<{ price: number; source: string } | null> {
+    const SEARCH_WINDOW_SECONDS = 300; // ±5 minutes
+
+    // Search for price snapshot of the SAME token within time window
+    const nearestSnapshot = await this.prisma.acesPriceSnapshot.findFirst({
+      where: {
+        tokenAddress: tokenAddress.toLowerCase(), // Filter by specific token
+        timestamp: {
+          gte: BigInt(tradeTimestamp - SEARCH_WINDOW_SECONDS),
+          lte: BigInt(tradeTimestamp + SEARCH_WINDOW_SECONDS),
+        },
+      },
+      orderBy: {
+        // Find closest by timestamp
+        timestamp: 'asc',
+      },
+      select: {
+        acesUsdPrice: true,
+        source: true,
+        timestamp: true,
+      },
+    });
+
+    if (!nearestSnapshot) {
+      return null;
+    }
+
+    return {
+      price: parseFloat(nearestSnapshot.acesUsdPrice.toString()),
+      source: `nearest_${nearestSnapshot.source}`,
+    };
+  }
+
+  /**
    * Fetch trades and enrich with historical ACES prices
    */
   async getTradesWithPrices(
     tokenAddress: string,
-    limit: number = 5000,
+    limit: number = 1000,
     fromTimestamp?: number,
     toTimestamp?: number,
     logger?: FastifyBaseLogger,
@@ -123,6 +165,19 @@ export class TradePriceAggregator {
       ]),
     );
 
+    // NEW: Get current ACES price for fallback scenarios
+    const { acesUsd: currentAcesPrice } = await priceCacheService.getPrices();
+    const now = Date.now();
+
+    // NEW: Initialize monitoring stats
+    const stats = {
+      totalTrades: trades.length,
+      foundExact: 0,
+      raceCases: 0,
+      nearestUsed: 0,
+      fallbackUsed: 0,
+    };
+
     if (logger) {
       logger.debug({
         msg: '[Aggregator] Price snapshots fetched',
@@ -131,28 +186,110 @@ export class TradePriceAggregator {
       });
     }
 
-    // Step 4: Enrich trades with prices
-    const tradesWithPrices: TradeWithPrice[] = trades.map((trade) => {
-      const priceData = priceMap.get(trade.id);
+    // Step 4: Enrich trades with prices (ENHANCED WITH FALLBACK LOGIC)
+    const tradesWithPrices: TradeWithPrice[] = await Promise.all(
+      trades.map(async (trade) => {
+        const priceData = priceMap.get(trade.id);
 
-      if (!priceData) {
-        console.warn(`[Aggregator] Missing price snapshot for trade ${trade.id}`);
+        // CASE 1: Exact match found in database ✅
+        if (priceData) {
+          stats.foundExact++;
+          return {
+            ...trade,
+            acesUsdPriceAtExecution: priceData.price,
+            priceSource: priceData.source,
+          };
+        }
 
-        // Fallback: This shouldn't happen if webhook is working properly
-        // But we need a fallback to prevent crashes
+        // CASE 2: Missing price - determine why
+        const tradeTimestamp = parseInt(trade.createdAt); // Unix timestamp in seconds
+        const tradeTimestampMs = tradeTimestamp * 1000;
+        const tradeAge = now - tradeTimestampMs;
+
+        // CASE 2a: Race Condition - Trade is very recent (< 10 seconds)
+        // Webhook is probably still processing, use current price temporarily
+        if (tradeAge < 10000) {
+          stats.raceCases++;
+          if (logger) {
+            logger.debug({
+              msg: '[Aggregator] Trade is very recent, using current price',
+              tradeId: trade.id,
+              ageMs: tradeAge,
+            });
+          }
+          return {
+            ...trade,
+            acesUsdPriceAtExecution: currentAcesPrice,
+            priceSource: 'current_pending',
+          };
+        }
+
+        // CASE 2b: Missing Snapshot - Try to find nearest price
+        if (logger) {
+          logger.warn({
+            msg: '[Aggregator] Missing price snapshot, searching for nearest',
+            tradeId: trade.id,
+            ageMs: tradeAge,
+          });
+        }
+
+        const nearestPrice = await this.findNearestPriceSnapshot(tradeTimestamp, tokenAddress);
+
+        if (nearestPrice) {
+          stats.nearestUsed++;
+          if (logger) {
+            logger.debug({
+              msg: '[Aggregator] Found nearest price snapshot',
+              tradeId: trade.id,
+              source: nearestPrice.source,
+            });
+          }
+          return {
+            ...trade,
+            acesUsdPriceAtExecution: nearestPrice.price,
+            priceSource: nearestPrice.source,
+          };
+        }
+
+        // CASE 2c: Last Resort - Use current price as fallback
+        stats.fallbackUsed++;
+        console.warn(
+          `[Aggregator] No nearby price found for trade ${trade.id}, using current price fallback`,
+        );
         return {
           ...trade,
-          acesUsdPriceAtExecution: 0,
-          priceSource: 'missing',
+          acesUsdPriceAtExecution: currentAcesPrice,
+          priceSource: 'fallback_current',
         };
-      }
+      }),
+    );
 
-      return {
-        ...trade,
-        acesUsdPriceAtExecution: priceData.price,
-        priceSource: priceData.source,
-      };
+    // NEW: Log monitoring statistics
+    const missingRate = ((stats.totalTrades - stats.foundExact) / stats.totalTrades) * 100;
+
+    console.log('[PriceMonitoring]', {
+      tokenAddress,
+      ...stats,
+      missingRate: `${missingRate.toFixed(2)}%`,
+      timestamp: new Date().toISOString(),
     });
+
+    // Alert if concerning rate of missing snapshots
+    if (missingRate > 10) {
+      console.error('⚠️ HIGH MISSING SNAPSHOT RATE:', {
+        tokenAddress,
+        missingRate: `${missingRate.toFixed(2)}%`,
+        stats,
+      });
+    }
+
+    if (logger) {
+      logger.info({
+        msg: '[Aggregator] Price enrichment complete',
+        stats,
+        missingRate: `${missingRate.toFixed(2)}%`,
+      });
+    }
 
     return tradesWithPrices;
   }
@@ -170,7 +307,7 @@ export class TradePriceAggregator {
     // Fetch enriched trades
     const trades = await this.getTradesWithPrices(
       tokenAddress,
-      5000,
+      1000, // Subgraph max limit is 1000
       fromTimestamp,
       toTimestamp,
       logger,
