@@ -1,5 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { ChartAggregationService } from '../services/chart-aggregation-service';
+import { AcesPriceMonitor } from '../services/aces-price-monitor';
+import { acesPriceTracker } from '../services/aces-price-tracker';
 
 interface WebSocketClient {
   id: string;
@@ -27,6 +29,7 @@ export class ChartDataWebSocket {
     string,
     { poolReady: boolean; poolAddress: string | null }
   >();
+  private acesPriceMonitor: AcesPriceMonitor | null = null;
 
   constructor(
     private fastify: FastifyInstance,
@@ -83,6 +86,22 @@ export class ChartDataWebSocket {
     // Start heartbeat checker
     this.startHeartbeat();
 
+    // Initialize and start ACES price monitoring
+    const acesUsdPriceService = (this.fastify as any).acesUsdPriceService;
+    if (acesUsdPriceService) {
+      this.acesPriceMonitor = new AcesPriceMonitor(acesUsdPriceService, this.pollIntervalMs);
+      this.acesPriceMonitor.start();
+
+      // Listen for ACES price updates
+      this.acesPriceMonitor.on('price-update', (update) => {
+        this.handleAcesPriceUpdate(update);
+      });
+
+      console.log('✅ ACES price monitoring active');
+    } else {
+      console.warn('⚠️ AcesUsdPriceService not available, ACES monitoring disabled');
+    }
+
     console.log('✅ WebSocket server initialized on /ws/chart');
   }
 
@@ -90,8 +109,13 @@ export class ChartDataWebSocket {
    * Handle client messages (subscribe/unsubscribe)
    */
   private handleClientMessage(clientId: string, data: { type: string; [key: string]: unknown }) {
+    console.log(`[WebSocket] 📨 Received message from ${clientId}:`, JSON.stringify(data, null, 2));
+
     const client = this.clients.get(clientId);
-    if (!client) return;
+    if (!client) {
+      console.log(`[WebSocket] ⚠️ Client ${clientId} not found`);
+      return;
+    }
 
     switch (data.type) {
       case 'subscribe':
@@ -145,11 +169,17 @@ export class ChartDataWebSocket {
     }
     this.subscriptions.get(subscriptionKey)!.add(clientId);
 
-    console.log(`[WebSocket] Client ${clientId} subscribed to ${subscriptionKey}`);
+    console.log(`[WebSocket] ✅ Client ${clientId} subscribed to ${subscriptionKey}`);
+    console.log(
+      `[WebSocket] 📊 Total subscribers for ${subscriptionKey}: ${this.subscriptions.get(subscriptionKey)!.size}`,
+    );
 
     // Start polling if this is first subscriber
     if (this.subscriptions.get(subscriptionKey)!.size === 1) {
+      console.log(`[WebSocket] 🚀 Starting polling for ${subscriptionKey} (first subscriber)`);
       this.startPolling(tokenAddress.toLowerCase(), timeframe, chartType);
+    } else {
+      console.log(`[WebSocket] 📡 Already polling for ${subscriptionKey}, adding subscriber`);
     }
 
     // Send immediate update (async - don't await to avoid blocking)
@@ -226,7 +256,9 @@ export class ChartDataWebSocket {
 
     // Poll at configured interval – throttled to avoid exhausting BitQuery quota
     const interval = setInterval(async () => {
-      console.log(`⏰ [WebSocket] Interval tick for ${subscriptionKey}`);
+      console.log(
+        `⏰ [WebSocket] Polling tick for ${subscriptionKey} (interval: ${this.pollIntervalMs}ms)`,
+      );
       if (chartType === 'mcap') {
         await this.pollAndBroadcastMarketCap(tokenAddress, timeframe);
       } else {
@@ -292,8 +324,33 @@ export class ChartDataWebSocket {
         to: now,
         limit: 1,
       });
+
+      console.log(`[WebSocket] 📊 Retrieved chart data:`, {
+        tokenAddress,
+        timeframe,
+        candlesCount: chartData.candles.length,
+        hasCandles: chartData.candles.length > 0,
+      });
+
       const candle =
         chartData.candles.length > 0 ? chartData.candles[chartData.candles.length - 1] : null;
+
+      if (candle) {
+        console.log(`[WebSocket] 📈 Latest candle:`, {
+          timestamp: candle.timestamp,
+          open: candle.open,
+          high: candle.high,
+          low: candle.low,
+          close: candle.close,
+          openUsd: candle.openUsd,
+          closeUsd: candle.closeUsd,
+          volume: candle.volume,
+          trades: candle.trades,
+          dataSource: candle.dataSource,
+        });
+      } else {
+        console.warn(`[WebSocket] ⚠️ No candle data returned for ${tokenAddress}:${timeframe}`);
+      }
 
       if (!candle) {
         const cached = this.lastBroadcast.get(subscriptionKey);
@@ -377,6 +434,7 @@ export class ChartDataWebSocket {
         type: 'candle_update',
         tokenAddress,
         timeframe,
+        chartType: 'price',
         candle: {
           timestamp: candle.timestamp.getTime(),
           open: candle.open,
@@ -395,6 +453,16 @@ export class ChartDataWebSocket {
         graduationState: currentGraduationState,
         timestamp: Date.now(),
       };
+
+      console.log(`[WebSocket] 📤 Broadcasting candle_update for ${tokenAddress}:${timeframe}:`, {
+        timestamp: payload.candle.timestamp,
+        close: payload.candle.close,
+        closeUsd: payload.candle.closeUsd,
+        volume: payload.candle.volume,
+        trades: payload.candle.trades,
+        dataSource: payload.candle.dataSource,
+      });
+
       const message = JSON.stringify(payload);
 
       // Broadcast to all subscribers
@@ -420,6 +488,17 @@ export class ChartDataWebSocket {
       console.log(
         `📡 [WebSocket] Broadcast ${subscriptionKey} to ${sentCount}/${subscribers.size} clients`,
       );
+
+      if (sentCount === 0) {
+        console.log(`⚠️ [WebSocket] No clients received the broadcast for ${subscriptionKey}`);
+        console.log(
+          `🔍 [WebSocket] Client states:`,
+          Array.from(subscribers).map((clientId) => {
+            const client = this.clients.get(clientId);
+            return { clientId, readyState: client?.socket.readyState };
+          }),
+        );
+      }
 
       this.lastBroadcast.set(subscriptionKey, { payload });
 
@@ -616,6 +695,19 @@ export class ChartDataWebSocket {
       console.log(
         `📡 [WebSocket] Broadcast ${subscriptionKey} to ${sentCount}/${subscribers.size} clients`,
       );
+
+      if (sentCount === 0) {
+        console.log(
+          `⚠️ [WebSocket] No clients received the market cap broadcast for ${subscriptionKey}`,
+        );
+        console.log(
+          `🔍 [WebSocket] Client states:`,
+          Array.from(subscribers).map((clientId) => {
+            const client = this.clients.get(clientId);
+            return { clientId, readyState: client?.socket.readyState };
+          }),
+        );
+      }
     } catch (error) {
       console.error('❌ [WebSocket] Market cap poll error:', error);
       console.error('Stack trace:', error);
@@ -742,6 +834,7 @@ export class ChartDataWebSocket {
               type: 'candle_update',
               tokenAddress,
               timeframe,
+              chartType: 'price', // ✅ Added missing chartType field
               candle: {
                 timestamp: candleTimestamp,
                 open: lastPriceCandle.open,
@@ -835,6 +928,71 @@ export class ChartDataWebSocket {
     }
 
     console.log(`✅ [WebSocket] Graduation event sent to ${broadcastCount} clients`);
+  }
+
+  /**
+   * Handle ACES price changes and broadcast to all active chart subscriptions
+   */
+  private handleAcesPriceUpdate(update: {
+    price: number;
+    timestamp: number;
+    source: string;
+    changePercent: number;
+  }) {
+    console.log(
+      `[WebSocket] 💰 ACES price updated: $${update.price.toFixed(6)} (${update.source}, ${update.changePercent.toFixed(3)}%)`,
+    );
+
+    // Broadcast to ALL active subscriptions (both price and mcap charts)
+    for (const [subscriptionKey, subscribers] of this.subscriptions.entries()) {
+      if (subscribers.size === 0) continue;
+
+      const [tokenAddress, timeframe, chartType] = subscriptionKey.split(':');
+
+      // Get the last broadcast candle for this subscription
+      const lastBroadcast = this.lastBroadcast.get(subscriptionKey);
+      if (!lastBroadcast?.payload?.candle) {
+        // No candle to update yet
+        continue;
+      }
+
+      const message = JSON.stringify({
+        type: 'aces_price_update',
+        tokenAddress,
+        timeframe,
+        chartType,
+        acesPrice: update.price,
+        acesSource: update.source,
+        changePercent: update.changePercent,
+        timestamp: update.timestamp,
+      });
+
+      // Broadcast to all subscribers of this chart
+      let broadcastCount = 0;
+      for (const clientId of subscribers) {
+        const client = this.clients.get(clientId);
+        if (client && client.socket.readyState === 1) {
+          try {
+            client.socket.send(message);
+            broadcastCount++;
+          } catch (error) {
+            console.error(`[WebSocket] Failed to send ACES update to ${clientId}:`, error);
+          }
+        }
+      }
+
+      if (broadcastCount > 0) {
+        console.log(
+          `[WebSocket] 📤 Broadcasted ACES update to ${broadcastCount} clients on ${subscriptionKey}`,
+        );
+      }
+    }
+
+    // Log tracker statistics periodically
+    const stats = acesPriceTracker.getStats();
+    console.log(
+      `[AcesPriceTracker] 📊 Stats: ${stats.totalObservations} observations, ${stats.timeSpanHours.toFixed(1)}h span, ${stats.memoryEstimateKB.toFixed(2)}KB`,
+    );
   }
 
   /**
