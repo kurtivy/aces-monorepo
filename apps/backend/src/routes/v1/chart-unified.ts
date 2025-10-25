@@ -50,41 +50,50 @@ export async function chartUnifiedRoutes(fastify: FastifyInstance) {
         const { tokenAddress } = request.params;
         const { timeframe = '1h', from, to, limit } = request.query;
 
-        console.log(`[ChartUnified] Request for ${tokenAddress}`, {
+        const requestStart = Date.now();
+
+        console.log(`[ChartUnified] 📊 Request for ${tokenAddress}`, {
           timeframe,
           from,
           to,
-          limit,
+          limit: limit || 'default(200)',
         });
 
         // Calculate time range
         const toDate = to ? new Date(parseInt(to) * 1000) : new Date();
         const fromDate = from
           ? new Date(parseInt(from) * 1000)
-          : new Date(toDate.getTime() - 7 * 24 * 60 * 60 * 1000); // Default: 7 days
+          : new Date(toDate.getTime() - 2 * 24 * 60 * 60 * 1000); // Default: 2 days (reduced for faster loading)
 
-        // Create chart service
-        const chartService = new ChartAggregationService(
-          fastify.prisma,
-          (fastify as any).bitQueryService,
-          (fastify as any).acesUsdPriceService,
-        );
+        // 🔥 OPTIMIZED: Reuse the existing service instance (with caching!)
+        const chartService = (fastify as any).chartAggregationService;
+
+        if (!chartService) {
+          console.error('[ChartUnified] ❌ chartAggregationService not available');
+          return reply.code(503).send({
+            success: false,
+            error: 'Chart service not initialized',
+          });
+        }
 
         // Fetch chart data
         const chartData = await chartService.getChartData(tokenAddress, {
           timeframe,
           from: fromDate,
           to: toDate,
-          limit: limit ? parseInt(limit) : 1000,
+          limit: limit ? parseInt(limit) : 200, // 🔥 OPTIMIZED: Lower default limit
         });
 
-        console.log(`[ChartUnified] Returning ${chartData.candles.length} candles`);
+        const requestDuration = Date.now() - requestStart;
+        console.log(
+          `[ChartUnified] ⏱️ Returning ${chartData.candles.length} candles in ${requestDuration}ms`,
+        );
 
         // Format response for TradingView
         const response = {
           success: true,
           data: {
-            candles: chartData.candles.map((candle) => ({
+            candles: chartData.candles.map((candle: any) => ({
               timestamp: Math.floor(candle.timestamp.getTime() / 1000),
               price: {
                 open: candle.open,
@@ -160,6 +169,74 @@ export async function chartUnifiedRoutes(fastify: FastifyInstance) {
         success: allHealthy,
         checks,
         timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      return reply.code(500).send({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  /**
+   * 🔥 NEW: Cache statistics endpoint
+   */
+  fastify.get('/api/v1/cache/stats', async (request, reply) => {
+    try {
+      const tokenCache = (fastify as any).tokenMetadataCache;
+      const snapshotCache = (fastify as any).acesSnapshotCache;
+      const chartService = (fastify as any).chartAggregationService;
+
+      if (!tokenCache) {
+        return reply.code(503).send({
+          success: false,
+          error: 'Cache service not initialized',
+        });
+      }
+
+      const stats = {
+        tokenMetadataCache: tokenCache.getStats(),
+        acesSnapshotCache: snapshotCache ? snapshotCache.getStats() : null,
+        timestamp: new Date().toISOString(),
+      };
+
+      return reply.send({
+        success: true,
+        stats,
+      });
+    } catch (error) {
+      return reply.code(500).send({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  /**
+   * 🔥 NEW: Manual cache invalidation endpoint
+   */
+  fastify.post('/api/v1/cache/clear', async (request, reply) => {
+    try {
+      const tokenCache = (fastify as any).tokenMetadataCache;
+
+      if (!tokenCache) {
+        return reply.code(503).send({
+          success: false,
+          error: 'Cache service not initialized',
+        });
+      }
+
+      const { tokenAddress } = request.body as { tokenAddress?: string };
+      const snapshotCache = (fastify as any).acesSnapshotCache;
+
+      tokenCache.invalidate(tokenAddress);
+      if (snapshotCache) {
+        snapshotCache.invalidate(tokenAddress);
+      }
+
+      return reply.send({
+        success: true,
+        message: tokenAddress ? `Caches cleared for ${tokenAddress}` : 'All caches cleared',
       });
     } catch (error) {
       return reply.code(500).send({

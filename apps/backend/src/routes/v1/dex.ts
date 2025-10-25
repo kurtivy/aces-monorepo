@@ -234,19 +234,15 @@ export async function dexRoutes(fastify: FastifyInstance) {
           amountInRaw = ethers.parseUnits(amountStr, assetConfig.decimals);
         }
 
-        // Look up pool address from database
-        const prisma = getPrismaClient();
-        console.log(`🔍 Looking up token in DB: ${normalizedToken}`);
-        const token = await prisma.token.findUnique({
-          where: { contractAddress: normalizedToken },
-          select: { poolAddress: true },
-        });
+        // 🔥 OPTIMIZED: Use token metadata cache instead of direct query
+        const tokenCache = (fastify as any).tokenMetadataCache;
+        const tokenMetadata = await tokenCache.getTokenMetadata(normalizedToken);
 
         console.log(`📊 DEX Quote request for ${normalizedToken}`);
-        console.log(`🏊 Pool address from DB: ${token?.poolAddress || 'null'}`);
+        console.log(`🏊 Pool address from cache: ${tokenMetadata?.poolAddress || 'null'}`);
 
         // Store the known pool address for routing
-        const knownPoolAddress = token?.poolAddress ?? undefined;
+        const knownPoolAddress = tokenMetadata?.poolAddress ?? undefined;
 
         const tokenPool = await service.getPoolState(normalizedToken, knownPoolAddress);
 
@@ -1092,18 +1088,11 @@ export async function dexRoutes(fastify: FastifyInstance) {
         const { address } = request.params;
         const { limit = 100 } = request.query;
 
-        // First, check if token has bonded to DEX (has poolAddress)
-        const token = await fastify.prisma.token.findUnique({
-          where: { contractAddress: address.toLowerCase() },
-          select: {
-            poolAddress: true,
-            phase: true,
-            priceSource: true,
-            dexLiveAt: true,
-          },
-        });
+        // 🔥 OPTIMIZED: Use token metadata cache instead of direct query
+        const tokenCache = (fastify as any).tokenMetadataCache;
+        const tokenMetadata = await tokenCache.getTokenMetadata(address);
 
-        if (!token?.poolAddress || token.phase !== 'DEX_TRADING') {
+        if (!tokenMetadata?.poolAddress || tokenMetadata.phase !== 'DEX_TRADING') {
           return reply.send({
             success: true,
             data: [],
@@ -1117,6 +1106,9 @@ export async function dexRoutes(fastify: FastifyInstance) {
             },
           });
         }
+
+        // Use cached metadata
+        const { poolAddress, dexLiveAt } = tokenMetadata;
 
         // Use BitQuery DEXTradeByTokens to get trades with actual trader addresses
         const bitquery = new BitQueryService();
@@ -1140,12 +1132,12 @@ export async function dexRoutes(fastify: FastifyInstance) {
           return result;
         });
 
-        // Include graduation metadata
+        // Include graduation metadata (using cached data)
         const graduationMeta = {
           isDexLive: true,
-          poolAddress: token.poolAddress,
-          dexLiveAt: token.dexLiveAt?.toISOString() || null,
-          bondingCutoff: token.dexLiveAt?.toISOString() || null,
+          poolAddress: poolAddress,
+          dexLiveAt: dexLiveAt?.toISOString() || null,
+          bondingCutoff: dexLiveAt?.toISOString() || null,
         };
 
         return reply.send({
