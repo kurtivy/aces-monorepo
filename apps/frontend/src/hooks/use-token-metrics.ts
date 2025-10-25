@@ -23,15 +23,15 @@ interface UseTokenMetricsResult {
 
 /**
  * Hook to fetch and track token metrics with real-time polling
- * Polls backend API every 30 seconds for fresh data
+ * Polls backend API every 5 seconds for fresh data
  *
  * @param tokenAddress - The contract address of the token
- * @param refreshIntervalMs - Polling interval in milliseconds (default: 30000 = 30s)
+ * @param refreshIntervalMs - Polling interval in milliseconds (default: 5000 = 5s for near-real-time)
  * @returns Token metrics data, loading state, and error state
  */
 export function useTokenMetrics(
   tokenAddress: string | undefined,
-  refreshIntervalMs: number = 30000,
+  refreshIntervalMs: number = 5000, // 🔥 OPTIMIZED: 5s polling for near-real-time updates
 ): UseTokenMetricsResult {
   const [metrics, setMetrics] = useState<TokenMetrics | null>(null);
   const metricsRef = useRef<TokenMetrics | null>(null);

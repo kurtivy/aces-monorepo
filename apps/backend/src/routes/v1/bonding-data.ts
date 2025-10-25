@@ -272,10 +272,15 @@ export async function bondingDataRoutes(fastify: FastifyInstance) {
         const cacheKey = `${tokenAddress.toLowerCase()}-${chainId}`;
         const cached = cache.get(cacheKey);
         const cacheAge = cached ? Math.floor((Date.now() - cached.timestamp) / 1000) : null;
-        
+
         if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-          fastify.log.info({ tokenAddress, chainId, cacheAge, ttl: CACHE_TTL / 1000 }, '✅ [BondingData] Cache hit');
-          console.log(`[BondingData] 🎯 Cache hit for ${tokenAddress} (age: ${cacheAge}s, TTL: ${CACHE_TTL / 1000}s)`);
+          fastify.log.info(
+            { tokenAddress, chainId, cacheAge, ttl: CACHE_TTL / 1000 },
+            '✅ [BondingData] Cache hit',
+          );
+          console.log(
+            `[BondingData] 🎯 Cache hit for ${tokenAddress} (age: ${cacheAge}s, TTL: ${CACHE_TTL / 1000}s)`,
+          );
           return reply.send({
             success: true,
             data: cached.data,
@@ -283,8 +288,18 @@ export async function bondingDataRoutes(fastify: FastifyInstance) {
           });
         }
 
-        fastify.log.info({ tokenAddress, chainId, cacheAge, expired: cacheAge ? cacheAge > CACHE_TTL / 1000 : 'no cache' }, '🔵 [BondingData] Fetching from RPC');
-        console.log(`[BondingData] 🔍 Cache ${cacheAge ? `expired (age: ${cacheAge}s)` : 'miss'} - Fetching fresh data`);
+        fastify.log.info(
+          {
+            tokenAddress,
+            chainId,
+            cacheAge,
+            expired: cacheAge ? cacheAge > CACHE_TTL / 1000 : 'no cache',
+          },
+          '🔵 [BondingData] Fetching from RPC',
+        );
+        console.log(
+          `[BondingData] 🔍 Cache ${cacheAge ? `expired (age: ${cacheAge}s)` : 'miss'} - Fetching fresh data`,
+        );
 
         // Get network config and provider
         const networkConfig = getNetworkConfig(chainId as SupportedChainId);
