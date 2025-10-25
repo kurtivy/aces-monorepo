@@ -289,6 +289,8 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
     // Chart mode (USD-only)
     const [chartMode, setChartMode] = useState<'price' | 'mcap'>('price');
     const chartModeRef = useRef<'price' | 'mcap'>(chartMode);
+    const isReinitializingRef = useRef<boolean>(isReinitializing);
+    const isModeSwitchingRef = useRef<boolean>(isModeSwitching);
     const currency = 'usd' as const;
 
     // Stabilize tokenSymbol to prevent unnecessary re-renders
@@ -557,6 +559,14 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
     }, [chartMode]);
 
     useEffect(() => {
+      isReinitializingRef.current = isReinitializing;
+    }, [isReinitializing]);
+
+    useEffect(() => {
+      isModeSwitchingRef.current = isModeSwitching;
+    }, [isModeSwitching]);
+
+    useEffect(() => {
       if (!isLibraryLoaded || !widgetRef.current || !tokenAddress || isReinitializing) {
         return;
       }
@@ -669,12 +679,13 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
     // Handle mode change by switching the active symbol
     const handleModeChange = useCallback(
       (newMode: 'price' | 'mcap') => {
+        const currentMode = chartModeRef.current;
         console.log('[TradingView] handleModeChange called:', {
           newMode,
-          currentModeState: chartMode,
+          currentModeState: currentMode,
           currentModeRef: chartModeRef.current,
-          isReinitializing,
-          isModeSwitching,
+          isReinitializing: isReinitializingRef.current,
+          isModeSwitching: isModeSwitchingRef.current,
           tokenAddress: tokenAddress?.slice(0, 10),
           currentSymbol: currentSymbolRef.current,
         });
@@ -684,27 +695,28 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
           return;
         }
 
-        // Check against the STATE, not the ref, to avoid race conditions
-        if (newMode === chartMode) {
+        // Check against the latest mode via ref to avoid stale closures
+        if (newMode === currentMode) {
           console.log('[TradingView] Already in requested mode (state check) - skipping');
           return;
         }
 
-        if (isReinitializing) {
+        if (isReinitializingRef.current) {
           console.warn('[TradingView] Chart is reinitializing - blocking mode change');
           return;
         }
 
-        if (isModeSwitching) {
+        if (isModeSwitchingRef.current) {
           console.warn('[TradingView] Already switching modes - blocking mode change');
           return;
         }
 
-        console.log(`[TradingView] ▶️  Starting mode change: ${chartMode} → ${newMode}`);
+        console.log(`[TradingView] ▶️  Starting mode change: ${currentMode} → ${newMode}`);
         setIsModeSwitching(true);
+        chartModeRef.current = newMode;
         setChartMode(newMode);
       },
-      [chartMode, isReinitializing, isModeSwitching, tokenAddress],
+      [tokenAddress],
     );
 
     // Update button appearance
