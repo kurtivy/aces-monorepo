@@ -21,6 +21,13 @@ interface TokenMetricsSectionProps {
   } | null;
   liveTokenPrice?: number;
   marketCapLoading?: boolean;
+  volume24hAces?: string;
+  volume24hUsd?: number | null;
+  liquidityUsd?: number | null;
+  liquiditySource?: 'bonding_curve' | 'dex' | null;
+  metricsLoading?: boolean;
+  circulatingSupply?: number | null;
+  disableMetricsFetch?: boolean;
 }
 
 const TARGET_CHART_HEIGHT_PX = 560; // Keep in sync with TradingSection chart height.
@@ -45,6 +52,13 @@ export function TokenMetricsSection({
   dexMeta,
   liveTokenPrice,
   marketCapLoading,
+  volume24hAces,
+  volume24hUsd,
+  liquidityUsd,
+  liquiditySource,
+  metricsLoading,
+  circulatingSupply,
+  disableMetricsFetch = false,
 }: TokenMetricsSectionProps) {
   const hasHypePoints =
     Array.isArray(hypePoints) && hypePoints.some((point) => point && point.trim().length > 0);
@@ -67,27 +81,21 @@ export function TokenMetricsSection({
 
   // Fetch aggregated token metrics (includes volume in ACES + USD and price)
   const {
-    metrics,
-    loading: metricsLoading,
-    circulatingSupply,
-    currentPriceUsd,
-  } = useTokenMetrics(tokenAddress);
+    metrics: hookMetrics,
+    loading: hookLoading,
+    circulatingSupply: hookCirculatingSupply,
+  } = useTokenMetrics(disableMetricsFetch ? undefined : tokenAddress);
 
-  const volume24hAces = useMemo(() => {
-    return metrics?.volume24hAces ?? '0';
-  }, [metrics]);
-
-  const volume24hUsd = useMemo(() => {
-    return metrics?.volume24hUsd;
-  }, [metrics]);
-
-  const liquidityUsd = useMemo(() => {
-    return metrics?.liquidityUsd;
-  }, [metrics]);
-
-  const liquiditySource = useMemo(() => {
-    return metrics?.liquiditySource;
-  }, [metrics]);
+  const resolvedVolume24hAces = volume24hAces ?? hookMetrics?.volume24hAces ?? '0';
+  const resolvedVolume24hUsd =
+    volume24hUsd ?? (hookMetrics?.volume24hUsd ?? undefined);
+  const resolvedLiquidityUsd =
+    liquidityUsd ?? (hookMetrics?.liquidityUsd ?? undefined);
+  const resolvedLiquiditySource =
+    liquiditySource ?? (hookMetrics?.liquiditySource ?? null);
+  const resolvedMetricsLoading = metricsLoading ?? hookLoading;
+  const resolvedCirculatingSupply =
+    circulatingSupply ?? hookCirculatingSupply ?? null;
 
   return (
     <div className="bg-black overflow-hidden flex flex-col" style={{ minHeight: `${TARGET_CHART_HEIGHT_PX}px` }}>
@@ -108,12 +116,12 @@ export function TokenMetricsSection({
           marketCapLoading={marketCapLoading}
           dexMeta={dexMeta}
           liveTokenPrice={liveTokenPrice}
-          volume24hAces={volume24hAces}
-          volume24hUsd={volume24hUsd}
-          liquidityUsd={liquidityUsd}
-          liquiditySource={liquiditySource}
-          metricsLoading={metricsLoading}
-          circulatingSupply={circulatingSupply}
+          volume24hAces={resolvedVolume24hAces}
+          volume24hUsd={resolvedVolume24hUsd ?? undefined}
+          liquidityUsd={resolvedLiquidityUsd ?? undefined}
+          liquiditySource={resolvedLiquiditySource}
+          metricsLoading={resolvedMetricsLoading}
+          circulatingSupply={resolvedCirculatingSupply}
         />
 
         {/* STORY Section */}

@@ -24,8 +24,14 @@ export function LeftColumnNavigationV2({
   onChatToggle,
 }: LeftColumnNavigationV2Props) {
   // Use unified token metrics hook for all data (price, bonding, metrics)
-  const { metrics, currentPriceUsd, bondingData, circulatingSupply, marketCapUsd } =
-    useTokenMetrics(listing?.token?.contractAddress);
+  const {
+    metrics,
+    currentPriceUsd,
+    bondingData,
+    circulatingSupply,
+    marketCapUsd,
+    loading: metricsLoading,
+  } = useTokenMetrics(listing?.token?.contractAddress);
 
   const fallbackMarketCap = useMemo(() => {
     const supply = circulatingSupply ?? NaN;
@@ -131,6 +137,13 @@ export function LeftColumnNavigationV2({
             dexMeta={listing.dex || null}
             liveTokenPrice={liveTokenPrice}
             marketCapLoading={marketCapLoading}
+            volume24hAces={metrics?.volume24hAces}
+            volume24hUsd={metrics?.volume24hUsd ?? null}
+            liquidityUsd={metrics?.liquidityUsd ?? null}
+            liquiditySource={metrics?.liquiditySource ?? null}
+            metricsLoading={metricsLoading}
+            circulatingSupply={circulatingSupply}
+            disableMetricsFetch
           />
         </div>
 

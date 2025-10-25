@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { TokenMetrics } from '@/lib/api/tokens';
 import { fetchTokenHealth } from '@/lib/api/token-health';
 import { subscribeToMarketCapUpdates } from '@/lib/tradingview/market-cap-events';
@@ -34,6 +34,7 @@ export function useTokenMetrics(
   refreshIntervalMs: number = 30000,
 ): UseTokenMetricsResult {
   const [metrics, setMetrics] = useState<TokenMetrics | null>(null);
+  const metricsRef = useRef<TokenMetrics | null>(null);
   const [circulatingSupply, setCirculatingSupply] = useState<number | null>(null);
   const [currentPriceUsd, setCurrentPriceUsd] = useState<number>(0);
   const [bondingData, setBondingData] = useState<BondingDataSubset | null>(null);
@@ -50,6 +51,7 @@ export function useTokenMetrics(
     try {
       // Use unified health endpoint (automatically deduped)
       const healthData = await fetchTokenHealth(tokenAddress, 8453, 'usd');
+      const previousMetrics = metricsRef.current;
 
       if (healthData.metricsData) {
         // Preserve previous liquidity value if new value is null but we had a valid value before
@@ -65,32 +67,33 @@ export function useTokenMetrics(
           totalFeesAces: healthData.metricsData.totalFeesAces,
           liquidityUsd:
             healthData.metricsData.liquidityUsd === null &&
-            metrics?.liquidityUsd !== null &&
-            metrics?.liquidityUsd !== undefined
-              ? metrics.liquidityUsd
+            previousMetrics?.liquidityUsd !== null &&
+            previousMetrics?.liquidityUsd !== undefined
+              ? previousMetrics.liquidityUsd
               : healthData.metricsData.liquidityUsd,
           liquiditySource:
             healthData.metricsData.liquidityUsd === null &&
-            metrics?.liquiditySource !== null &&
-            metrics?.liquiditySource !== undefined
-              ? metrics.liquiditySource
+            previousMetrics?.liquiditySource !== null &&
+            previousMetrics?.liquiditySource !== undefined
+              ? previousMetrics.liquiditySource
               : healthData.metricsData.liquiditySource,
         };
 
         if (
           healthData.metricsData.liquidityUsd === null &&
-          metrics?.liquidityUsd !== null &&
-          metrics?.liquidityUsd !== undefined
+          previousMetrics?.liquidityUsd !== null &&
+          previousMetrics?.liquidityUsd !== undefined
         ) {
           console.log(
             '[useTokenMetrics] ⚠️ Preserving previous liquidity value:',
-            metrics.liquidityUsd,
+            previousMetrics.liquidityUsd,
             'source:',
-            metrics.liquiditySource,
+            previousMetrics.liquiditySource,
           );
         }
 
         setMetrics(updatedMetrics);
+        metricsRef.current = updatedMetrics;
 
         // Extract circulatingSupply from bondingData with safe parsing
         if (healthData.bondingData?.currentSupply) {
@@ -140,11 +143,12 @@ export function useTokenMetrics(
     } finally {
       setLoading(false);
     }
-  }, [tokenAddress, metrics]);
+  }, [tokenAddress]);
 
   useEffect(() => {
     if (!tokenAddress) {
       setMetrics(null);
+      metricsRef.current = null;
       setCirculatingSupply(null);
       setCurrentPriceUsd(0);
       setBondingData(null);
