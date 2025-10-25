@@ -206,12 +206,16 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     console.log('[UnifiedDatafeed] 🔄 Resubscribing to', this.subscriptions.size, 'subscriptions');
 
     for (const [subscriptionKey, subscriptionInfo] of this.subscriptions.entries()) {
-      const tokenAddress = subscriptionInfo.symbolInfo.ticker ?? '';
+      const rawTicker = subscriptionInfo.symbolInfo.ticker ?? '';
+      // Clean token address: remove _MCAP suffix if present
+      const tokenAddress = subscriptionInfo.isMarketCapMode
+        ? rawTicker.replace(/_MCAP$/, '')
+        : rawTicker;
       const timeframe = this.resolutionToTimeframe(subscriptionInfo.resolution);
 
       console.log('[UnifiedDatafeed] 📝 Sending subscription:', {
         type: 'subscribe',
-        tokenAddress,
+        cleanAddress: tokenAddress,
         timeframe,
         chartType: subscriptionInfo.isMarketCapMode ? 'mcap' : 'price',
         subscriptionKey,
@@ -220,7 +224,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       this.ws!.send(
         JSON.stringify({
           type: 'subscribe',
-          tokenAddress,
+          tokenAddress, // Now clean address without _MCAP
           timeframe,
           chartType: subscriptionInfo.isMarketCapMode ? 'mcap' : 'price',
         }),
@@ -582,11 +586,23 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     }
 
     try {
-      // Fetch from unified endpoint
-      const url = `${this.config.apiBaseUrl}/api/v1/chart/${tokenAddress}/unified?timeframe=${timeframe}&limit=5000`;
+      // 🔥 PHASE 2: Progressive candle loading
+      // Load only what's needed based on TradingView's request
+      const limit = periodParams.firstDataRequest
+        ? 150 // Initial load: Optimized for faster rendering (~50-75 visible + buffer)
+        : periodParams.countBack || 150; // Scroll load: fetch what TradingView requests
+
+      // Build URL with time range and limit for better control
+      const url = `${this.config.apiBaseUrl}/api/v1/chart/${tokenAddress}/unified?timeframe=${timeframe}&from=${periodParams.from}&to=${periodParams.to}&limit=${limit}`;
 
       if (this.config.debug) {
-        console.log('[UnifiedDatafeed] Fetching from:', url);
+        console.log('[UnifiedDatafeed] 🔥 Phase 2: Progressive loading:', {
+          firstDataRequest: periodParams.firstDataRequest,
+          limit,
+          countBack: periodParams.countBack,
+          from: new Date(periodParams.from * 1000).toISOString(),
+          to: new Date(periodParams.to * 1000).toISOString(),
+        });
       }
 
       const response = await fetch(url);
@@ -733,7 +749,15 @@ export class UnifiedDatafeed implements IBasicDataFeed {
         console.log('[UnifiedDatafeed] Last bar:', bars[bars.length - 1]);
       }
 
-      onResult(bars, { noData: false });
+      // 🔥 PHASE 2: Tell TradingView if there's more data available
+      // This enables smooth infinite scrolling
+      const noData = bars.length === 0;
+      const nextTime = bars.length > 0 ? bars[0].time / 1000 : undefined;
+
+      onResult(bars, {
+        noData,
+        nextTime, // Tells TradingView there's more data before this time
+      });
     } catch (error) {
       console.error('[UnifiedDatafeed] Error fetching bars:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -748,13 +772,21 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     listenerGuid: string,
     _onResetCacheNeededCallback: () => void,
   ): void {
-    const tokenAddress = symbolInfo.ticker;
+    const rawTicker = symbolInfo.ticker || '';
+    const isMarketCapMode = Boolean(rawTicker.endsWith('_MCAP'));
+
+    // Clean token address: remove _MCAP suffix if present
+    const tokenAddress = isMarketCapMode ? rawTicker.replace(/_MCAP$/, '') : rawTicker;
+
     const timeframe = this.resolutionToTimeframe(resolution);
-    const subscriptionKey = `${tokenAddress}:${timeframe}:${listenerGuid}`;
-    const isMarketCapMode = Boolean(symbolInfo.ticker?.endsWith('_MCAP'));
+    const subscriptionKey = `${rawTicker}:${timeframe}:${listenerGuid}`;
 
     if (this.config.debug) {
-      console.log('[UnifiedDatafeed] subscribeBars:', subscriptionKey);
+      console.log('[UnifiedDatafeed] subscribeBars:', {
+        subscriptionKey,
+        cleanAddress: tokenAddress,
+        chartType: isMarketCapMode ? 'mcap' : 'price',
+      });
     }
 
     // Store subscription info for the persistent WebSocket connection
@@ -778,7 +810,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       this.ws.send(
         JSON.stringify({
           type: 'subscribe',
-          tokenAddress,
+          tokenAddress, // Now clean address without _MCAP
           timeframe,
           chartType: isMarketCapMode ? 'mcap' : 'price',
         }),
@@ -800,17 +832,25 @@ export class UnifiedDatafeed implements IBasicDataFeed {
 
         // If WebSocket is open, send unsubscribe message
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-          const tokenAddress = subscriptionInfo.symbolInfo.ticker ?? '';
+          const rawTicker = subscriptionInfo.symbolInfo.ticker ?? '';
+          // Clean token address: remove _MCAP suffix if present
+          const tokenAddress = subscriptionInfo.isMarketCapMode
+            ? rawTicker.replace(/_MCAP$/, '')
+            : rawTicker;
           const timeframe = this.resolutionToTimeframe(subscriptionInfo.resolution);
 
           if (this.config.debug) {
-            console.log('[UnifiedDatafeed] Unsubscribing from:', subscriptionKey);
+            console.log('[UnifiedDatafeed] Unsubscribing from:', {
+              subscriptionKey,
+              cleanAddress: tokenAddress,
+              chartType: subscriptionInfo.isMarketCapMode ? 'mcap' : 'price',
+            });
           }
 
           this.ws.send(
             JSON.stringify({
               type: 'unsubscribe',
-              tokenAddress,
+              tokenAddress, // Now clean address without _MCAP
               timeframe,
               chartType: subscriptionInfo.isMarketCapMode ? 'mcap' : 'price',
             }),
