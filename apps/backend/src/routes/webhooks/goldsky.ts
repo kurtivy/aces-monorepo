@@ -1,6 +1,7 @@
 // src/routes/webhooks/goldsky.ts
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { priceCacheService } from '../../services/price-cache-service';
+import { clearBondingDataCache } from '../v1/bonding-data'; // 🔥 NEW: Cache invalidation
 
 /**
  * GoldSky webhook payload structure for Trade entity
@@ -99,9 +100,10 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
       const tokenAddress = data.token;
       const blockNumber = data.block_number;
       const timestamp = data.created_at;
+      const supplyWei = data.supply; // 🔥 NEW: Extract supply for WebSocket broadcast
 
       console.log(
-        `\n[GoldSky] 📥 Processing new trade - Token: ${tokenAddress} - Block: ${blockNumber}`,
+        `\n[GoldSky] 📥 Processing new trade - Token: ${tokenAddress} - Block: ${blockNumber} - Supply: ${supplyWei}`,
       );
       fastify.log.info(
         `[GoldSky] 📥 Processing new trade - Token: ${tokenAddress} - Block: ${blockNumber}`,
@@ -169,10 +171,32 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
 
         console.log('\n[GoldSky] ✅ SUCCESS - Price snapshot stored');
         console.log('  Duration:', duration, 'ms');
+
+        // 🔥 NEW: Invalidate bonding data cache for this token
+        const clearedCount = clearBondingDataCache(tokenAddress);
+        console.log(`  🗑️ Invalidated ${clearedCount} bonding cache entries for ${tokenAddress}`);
+
+        // 🔥 NEW: Notify bonding monitor WebSocket of supply change (REAL-TIME!)
+        const bondingMonitor = (fastify as any).bondingMonitor;
+        if (bondingMonitor && supplyWei) {
+          // Convert supply from Wei to decimal (divide by 1e18)
+          // Example: 422,698,367,000,000,000,000,000,000 wei = 422,698,367 tokens
+          const supplyDecimal = (BigInt(supplyWei) / BigInt(10 ** 18)).toString();
+
+          bondingMonitor.broadcastSupplyUpdate?.(tokenAddress, {
+            currentSupply: supplyDecimal,
+            supply: supplyWei, // Raw Wei value
+            timestamp: Date.now(),
+          });
+          console.log(
+            `  📡 Broadcasted supply update to WebSocket clients: ${supplyDecimal} tokens`,
+          );
+        }
+
         console.log('========================================\n');
 
         fastify.log.info(
-          `[GoldSky] ✅ Price snapshot stored for trade ${data.id} - $${acesUsdPrice.toFixed(6)} (${duration}ms)`,
+          `[GoldSky] ✅ Price snapshot stored for trade ${data.id} - $${acesUsdPrice.toFixed(6)} (${duration}ms) - Cleared ${clearedCount} cache entries`,
         );
 
         return reply.code(200).send({

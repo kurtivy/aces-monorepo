@@ -415,6 +415,40 @@ export class BondingMonitorWebSocket {
   }
 
   /**
+   * 🔥 NEW: Broadcast supply update to all connected clients (called from webhook)
+   * This enables real-time supply updates when trades happen!
+   */
+  public broadcastSupplyUpdate(
+    tokenAddress: string,
+    data: { currentSupply: string; supply: string; timestamp: number },
+  ) {
+    const message = JSON.stringify({
+      type: 'supply_update',
+      tokenAddress: tokenAddress.toLowerCase(),
+      currentSupply: data.currentSupply, // Decimal format (e.g., "422400000")
+      supplyWei: data.supply, // Raw Wei format
+      timestamp: data.timestamp,
+    });
+
+    let sentCount = 0;
+    for (const [clientId, client] of this.clients.entries()) {
+      if (client.socket.readyState === 1) {
+        // WebSocket.OPEN
+        try {
+          client.socket.send(message);
+          sentCount++;
+        } catch (error) {
+          console.error(`[BondingMonitor] Failed to send supply update to ${clientId}:`, error);
+        }
+      }
+    }
+
+    console.log(
+      `[BondingMonitor] 📡 Broadcast supply update for ${tokenAddress} to ${sentCount} clients (supply: ${data.currentSupply})`,
+    );
+  }
+
+  /**
    * Handle client disconnect
    */
   private handleClientDisconnect(clientId: string) {
