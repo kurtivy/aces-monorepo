@@ -305,11 +305,10 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
       if (datafeedRef.current) {
         console.log('[TradingView] 🧹 Cleaning up old datafeed');
 
-        // UnifiedDatafeed has unsubscribeBars method
-        if (typeof datafeedRef.current.unsubscribeBars === 'function') {
+        // Use the new destroy method to properly clean up all connections and subscriptions
+        if (typeof datafeedRef.current.destroy === 'function') {
           try {
-            // Call unsubscribe for any active subscriptions
-            datafeedRef.current.unsubscribeBars('all');
+            datafeedRef.current.destroy();
           } catch (error) {
             console.warn('[TradingView] Error during datafeed cleanup:', error);
           }
@@ -524,7 +523,6 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
             'volume.volume.transparency': 70,
           },
           time_frames: [
-            { text: '1m', resolution: '1', description: '1 Minute' },
             { text: '5m', resolution: '5', description: '5 Minutes' },
             { text: '15m', resolution: '15', description: '15 Minutes' },
             { text: '1h', resolution: '60', description: '1 Hour' },
