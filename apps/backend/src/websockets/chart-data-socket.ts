@@ -315,16 +315,18 @@ export class ChartDataWebSocket {
         `🔄 [WebSocket] Polling PRICE ${cleanTokenAddress} ${timeframe} (${subscribers.size} subscribers)...`,
       );
 
-      // Get latest candle - using new ChartAggregationService
-      // TODO: Implement getLatestCandle method in ChartAggregationService
-      // For now, get the full chart data and take the last candle
+      // 🔥 OPTIMIZED: Get latest candle efficiently (only fetch recent trades)
+      // Calculate lookback period based on timeframe (2x the interval for safety)
       const now = new Date();
-      const from = new Date(now.getTime() - 24 * 60 * 60 * 1000); // Last 24 hours
+      const intervalMs = this.getTimeframeMs(timeframe);
+      const lookbackMs = intervalMs * 2; // 2 periods back (ensures we get latest complete + current)
+      const from = new Date(now.getTime() - lookbackMs);
+
       const chartData = await this.chartService.getChartData(cleanTokenAddress, {
         timeframe,
         from,
         to: now,
-        limit: 1,
+        limit: 5, // Fetch last 5 candles (only need 1-2, but small buffer)
       });
 
       console.log(`[WebSocket] 📊 Retrieved chart data:`, {
@@ -581,14 +583,17 @@ export class ChartDataWebSocket {
         return;
       }
 
-      // Get latest candle and graduation state - using new ChartAggregationService
+      // 🔥 OPTIMIZED: Get latest candle efficiently (only fetch recent trades)
       const now = new Date();
-      const from = new Date(now.getTime() - 24 * 60 * 60 * 1000); // Last 24 hours
+      const intervalMs = this.getTimeframeMs(timeframe);
+      const lookbackMs = intervalMs * 2; // 2 periods back
+      const from = new Date(now.getTime() - lookbackMs);
+
       const chartData = await this.chartService.getChartData(cleanTokenAddress, {
         timeframe,
         from,
         to: now,
-        limit: 1,
+        limit: 5, // Fetch last 5 candles (only need 1-2, but small buffer)
       });
 
       const candle =
@@ -1034,6 +1039,20 @@ export class ChartDataWebSocket {
    */
   private generateClientId(): string {
     return `client_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * 🔥 NEW: Get timeframe in milliseconds
+   */
+  private getTimeframeMs(timeframe: string): number {
+    const intervals: Record<string, number> = {
+      '5m': 5 * 60 * 1000,
+      '15m': 15 * 60 * 1000,
+      '1h': 60 * 60 * 1000,
+      '4h': 4 * 60 * 60 * 1000,
+      '1d': 24 * 60 * 60 * 1000,
+    };
+    return intervals[timeframe] || 60 * 60 * 1000; // Default to 1h
   }
 
   /**

@@ -134,7 +134,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
     fastify.decorate('chartAggregationService', chartAggregationService);
 
     chartWebSocket = new ChartDataWebSocket(fastify, chartAggregationService, {
-      pollIntervalMs: 5000, // Poll every 5 seconds for real-time updates
+      pollIntervalMs: 3000, // 🔥 OPTIMIZED: Poll every 3s for faster trade display
     });
     await chartWebSocket.initialize();
     console.log('✅ Chart WebSocket enabled with ChartAggregationService');
