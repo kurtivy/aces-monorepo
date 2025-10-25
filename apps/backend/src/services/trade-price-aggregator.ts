@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { goldskyClient, SubgraphTrade } from '../lib/goldsky-client';
 import { FastifyBaseLogger } from 'fastify';
 import { priceCacheService } from './price-cache-service';
+import { AcesSnapshotCacheService } from './aces-snapshot-cache-service'; // 🔥 NEW
 
 /**
  * Trade enriched with historical ACES USD price
@@ -50,46 +51,86 @@ export interface Candle {
  * This service joins trades from GoldSky subgraph with price snapshots from database
  */
 export class TradePriceAggregator {
-  constructor(private prisma: PrismaClient) {}
+  constructor(
+    private prisma: PrismaClient,
+    private snapshotCache?: AcesSnapshotCacheService, // 🔥 NEW: Optional snapshot cache
+  ) {}
 
   /**
-   * Find the nearest price snapshot by timestamp when exact match not found
-   * Searches within ±5 minute window for the SAME token first
-   * NOTE: Database already stores tokenAddress for each snapshot, so we filter by it
+   * BATCH: Fetch all ACES price snapshots in a time range
+   * This is much faster than querying individually for each trade
+   * 🔥 OPTIMIZED: Now uses cache if available
    */
-  private async findNearestPriceSnapshot(
-    tradeTimestamp: number,
+  private async fetchSnapshotsInTimeRange(
     tokenAddress: string,
-  ): Promise<{ price: number; source: string } | null> {
-    const SEARCH_WINDOW_SECONDS = 300; // ±5 minutes
+    minTimestamp: number,
+    maxTimestamp: number,
+    bufferSeconds: number = 300, // ±5 minutes buffer
+  ): Promise<Array<{ timestamp: bigint; price: number; source: string }>> {
+    // 🔥 NEW: Use cache if available
+    if (this.snapshotCache) {
+      return this.snapshotCache.getSnapshotsInTimeRange(
+        tokenAddress,
+        minTimestamp,
+        maxTimestamp,
+        bufferSeconds,
+      );
+    }
 
-    // Search for price snapshot of the SAME token within time window
-    const nearestSnapshot = await this.prisma.acesPriceSnapshot.findFirst({
+    // Fallback: Direct database query (legacy behavior)
+    console.log('[TradePriceAggregator] ⚠️ No cache available, querying database directly');
+    const snapshots = await this.prisma.acesPriceSnapshot.findMany({
       where: {
-        tokenAddress: tokenAddress.toLowerCase(), // Filter by specific token
+        tokenAddress: tokenAddress.toLowerCase(),
         timestamp: {
-          gte: BigInt(tradeTimestamp - SEARCH_WINDOW_SECONDS),
-          lte: BigInt(tradeTimestamp + SEARCH_WINDOW_SECONDS),
+          gte: BigInt(minTimestamp - bufferSeconds),
+          lte: BigInt(maxTimestamp + bufferSeconds),
         },
       },
-      orderBy: {
-        // Find closest by timestamp
-        timestamp: 'asc',
-      },
       select: {
+        timestamp: true,
         acesUsdPrice: true,
         source: true,
-        timestamp: true,
+      },
+      orderBy: {
+        timestamp: 'asc',
       },
     });
 
-    if (!nearestSnapshot) {
-      return null;
+    return snapshots.map((s) => ({
+      timestamp: s.timestamp,
+      price: parseFloat(s.acesUsdPrice.toString()),
+      source: s.source,
+    }));
+  }
+
+  /**
+   * Find the nearest snapshot from a pre-fetched array (in-memory, very fast)
+   */
+  private findNearestInArray(
+    snapshots: Array<{ timestamp: bigint; price: number; source: string }>,
+    targetTimestamp: number,
+    maxDistanceSeconds: number = 300, // ±5 minutes
+  ): { price: number; source: string } | null {
+    if (snapshots.length === 0) return null;
+
+    let closest: { timestamp: bigint; price: number; source: string } | null = null;
+    let minDistance = Infinity;
+
+    for (const snapshot of snapshots) {
+      const distance = Math.abs(Number(snapshot.timestamp) - targetTimestamp);
+
+      if (distance <= maxDistanceSeconds && distance < minDistance) {
+        closest = snapshot;
+        minDistance = distance;
+      }
     }
 
+    if (!closest) return null;
+
     return {
-      price: parseFloat(nearestSnapshot.acesUsdPrice.toString()),
-      source: `nearest_${nearestSnapshot.source}`,
+      price: closest.price,
+      source: `nearest_${closest.source}`,
     };
   }
 
@@ -186,83 +227,77 @@ export class TradePriceAggregator {
       });
     }
 
-    // Step 4: Enrich trades with prices (ENHANCED WITH FALLBACK LOGIC)
-    const tradesWithPrices: TradeWithPrice[] = await Promise.all(
-      trades.map(async (trade) => {
-        const priceData = priceMap.get(trade.id);
+    // Step 3.5: BATCH OPTIMIZATION - Fetch all "nearest" snapshots at once
+    // Calculate time range for all trades
+    const tradeTimestamps = trades.map((t) => parseInt(t.createdAt));
+    const minTimestamp = Math.min(...tradeTimestamps);
+    const maxTimestamp = Math.max(...tradeTimestamps);
 
-        // CASE 1: Exact match found in database ✅
-        if (priceData) {
-          stats.foundExact++;
-          return {
-            ...trade,
-            acesUsdPriceAtExecution: priceData.price,
-            priceSource: priceData.source,
-          };
-        }
+    // Fetch all snapshots in this range at once (1 query instead of N queries!)
+    const nearbySnapshots = await this.fetchSnapshotsInTimeRange(
+      tokenAddress,
+      minTimestamp,
+      maxTimestamp,
+    );
 
-        // CASE 2: Missing price - determine why
-        const tradeTimestamp = parseInt(trade.createdAt); // Unix timestamp in seconds
-        const tradeTimestampMs = tradeTimestamp * 1000;
-        const tradeAge = now - tradeTimestampMs;
+    if (logger) {
+      logger.debug({
+        msg: '[Aggregator] Fetched nearby snapshots for time range',
+        count: nearbySnapshots.length,
+        timeRange: `${minTimestamp} - ${maxTimestamp}`,
+      });
+    }
 
-        // CASE 2a: Race Condition - Trade is very recent (< 10 seconds)
-        // Webhook is probably still processing, use current price temporarily
-        if (tradeAge < 10000) {
-          stats.raceCases++;
-          if (logger) {
-            logger.debug({
-              msg: '[Aggregator] Trade is very recent, using current price',
-              tradeId: trade.id,
-              ageMs: tradeAge,
-            });
-          }
-          return {
-            ...trade,
-            acesUsdPriceAtExecution: currentAcesPrice,
-            priceSource: 'current_pending',
-          };
-        }
+    // Step 4: Enrich trades with prices (OPTIMIZED - no more individual queries!)
+    const tradesWithPrices: TradeWithPrice[] = trades.map((trade) => {
+      const priceData = priceMap.get(trade.id);
 
-        // CASE 2b: Missing Snapshot - Try to find nearest price
-        if (logger) {
-          logger.warn({
-            msg: '[Aggregator] Missing price snapshot, searching for nearest',
-            tradeId: trade.id,
-            ageMs: tradeAge,
-          });
-        }
+      // CASE 1: Exact match found in database ✅
+      if (priceData) {
+        stats.foundExact++;
+        return {
+          ...trade,
+          acesUsdPriceAtExecution: priceData.price,
+          priceSource: priceData.source,
+        };
+      }
 
-        const nearestPrice = await this.findNearestPriceSnapshot(tradeTimestamp, tokenAddress);
+      // CASE 2: Missing price - determine why
+      const tradeTimestamp = parseInt(trade.createdAt); // Unix timestamp in seconds
+      const tradeTimestampMs = tradeTimestamp * 1000;
+      const tradeAge = now - tradeTimestampMs;
 
-        if (nearestPrice) {
-          stats.nearestUsed++;
-          if (logger) {
-            logger.debug({
-              msg: '[Aggregator] Found nearest price snapshot',
-              tradeId: trade.id,
-              source: nearestPrice.source,
-            });
-          }
-          return {
-            ...trade,
-            acesUsdPriceAtExecution: nearestPrice.price,
-            priceSource: nearestPrice.source,
-          };
-        }
-
-        // CASE 2c: Last Resort - Use current price as fallback
-        stats.fallbackUsed++;
-        console.warn(
-          `[Aggregator] No nearby price found for trade ${trade.id}, using current price fallback`,
-        );
+      // CASE 2a: Race Condition - Trade is very recent (< 10 seconds)
+      // Webhook is probably still processing, use current price temporarily
+      if (tradeAge < 10000) {
+        stats.raceCases++;
         return {
           ...trade,
           acesUsdPriceAtExecution: currentAcesPrice,
-          priceSource: 'fallback_current',
+          priceSource: 'current_pending',
         };
-      }),
-    );
+      }
+
+      // CASE 2b: Missing Snapshot - Find nearest price from pre-fetched array (FAST!)
+      const nearestPrice = this.findNearestInArray(nearbySnapshots, tradeTimestamp);
+
+      if (nearestPrice) {
+        stats.nearestUsed++;
+        return {
+          ...trade,
+          acesUsdPriceAtExecution: nearestPrice.price,
+          priceSource: nearestPrice.source,
+        };
+      }
+
+      // CASE 2c: Last Resort - Use current price as fallback
+      stats.fallbackUsed++;
+      return {
+        ...trade,
+        acesUsdPriceAtExecution: currentAcesPrice,
+        priceSource: 'fallback_current',
+      };
+    });
 
     // NEW: Log monitoring statistics
     const missingRate = ((stats.totalTrades - stats.foundExact) / stats.totalTrades) * 100;

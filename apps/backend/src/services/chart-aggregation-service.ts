@@ -4,6 +4,8 @@ import { AcesUsdPriceService } from './aces-usd-price-service';
 import { ACES_TOKEN_ADDRESS } from '../config/bitquery.config';
 import { TradePriceAggregator } from './trade-price-aggregator';
 import { acesPriceTracker } from './aces-price-tracker';
+import { TokenMetadataCacheService } from './token-metadata-cache-service'; // 🔥 NEW
+import { AcesSnapshotCacheService } from './aces-snapshot-cache-service'; // 🔥 NEW
 
 // Types
 interface Trade {
@@ -64,12 +66,17 @@ interface UnifiedChartResponse {
 export class ChartAggregationService {
   private readonly BONDING_SUPPLY = '800000000'; // 800M tokens for bonding curve
   private readonly GRADUATED_SUPPLY = '1000000000'; // 1B tokens after graduation
+  private tradePriceAggregator: TradePriceAggregator;
 
   constructor(
     private prisma: PrismaClient,
     private bitQueryService: BitQueryService,
     private acesUsdPriceService: AcesUsdPriceService,
-  ) {}
+    private tokenMetadataCache: TokenMetadataCacheService, // 🔥 NEW: Token metadata cache
+    private acesSnapshotCache: AcesSnapshotCacheService, // 🔥 NEW: ACES snapshot cache
+  ) {
+    this.tradePriceAggregator = new TradePriceAggregator(prisma, acesSnapshotCache);
+  }
 
   /**
    * Main method: Get unified chart data
@@ -109,6 +116,10 @@ export class ChartAggregationService {
     }
 
     // 3. Fetch trades based on graduation state
+    // 🔥 OPTIMIZED: Calculate smart trade limit based on desired candles
+    // Each candle can have multiple trades, so fetch ~2-3x the candle limit
+    const tradeLimit = Math.min((options.limit || 200) * 3, 2000);
+
     let trades: Trade[];
     if (graduationState.poolReady && graduationState.poolAddress) {
       console.log('[ChartAggregation] Token is graduated - fetching DEX trades');
@@ -117,10 +128,11 @@ export class ChartAggregationService {
         graduationState.poolAddress,
         options.from,
         options.to,
+        tradeLimit, // 🔥 Pass limit
       );
     } else {
       console.log('[ChartAggregation] Token is bonding - fetching SubGraph trades');
-      trades = await this.fetchBondingTrades(tokenAddress, options.from, options.to);
+      trades = await this.fetchBondingTrades(tokenAddress, options.from, options.to, tradeLimit); // 🔥 Pass limit
     }
 
     console.log(`[ChartAggregation] Fetched ${trades.length} trades`);
@@ -225,16 +237,20 @@ export class ChartAggregationService {
    * Fetch bonding curve trades from SubGraph with historical ACES prices
    * NOW USES TradePriceAggregator for accurate historical pricing
    */
-  private async fetchBondingTrades(tokenAddress: string, from: Date, to: Date): Promise<Trade[]> {
+  private async fetchBondingTrades(
+    tokenAddress: string,
+    from: Date,
+    to: Date,
+    limit: number = 1000,
+  ): Promise<Trade[]> {
     const fromTimestamp = Math.floor(from.getTime() / 1000);
     const toTimestamp = Math.floor(to.getTime() / 1000);
 
     try {
-      // Use TradePriceAggregator to get trades enriched with historical ACES prices
-      const aggregator = new TradePriceAggregator(this.prisma);
-      const tradesWithPrices = await aggregator.getTradesWithPrices(
+      // 🔥 OPTIMIZED: Reuse trade aggregator with snapshot cache
+      const tradesWithPrices = await this.tradePriceAggregator.getTradesWithPrices(
         tokenAddress,
-        1000, // Subgraph max limit is 1000
+        Math.min(limit, 1000), // 🔥 OPTIMIZED: Use passed limit (capped at subgraph max)
         fromTimestamp,
         toTimestamp,
       );
@@ -282,12 +298,13 @@ export class ChartAggregationService {
     poolAddress: string,
     from: Date,
     to: Date,
+    limit: number = 2000, // 🔥 OPTIMIZED: Sensible default instead of 5000
   ): Promise<Trade[]> {
     const bitQueryTrades = await this.bitQueryService.getDexTrades(tokenAddress, poolAddress, {
       from,
       to,
       counterTokenAddress: ACES_TOKEN_ADDRESS,
-      limit: 5000,
+      limit: Math.min(limit, 5000), // 🔥 OPTIMIZED: Use passed limit (capped at BitQuery max)
     });
 
     // Transform to Trade format
@@ -373,13 +390,6 @@ export class ChartAggregationService {
       previousCandle = candle;
       currentTime += intervalMs;
     }
-    console.log('[ChartAggregation] 🕐 Time range:', {
-      from: new Date(from).toISOString(),
-      to: new Date(to).toISOString(),
-      currentCandleTimestamp: new Date(currentCandleTimestamp).toISOString(),
-      intervalMs,
-      willCreateCurrentCandle: currentCandleTimestamp <= to.getTime(),
-    });
     return candles;
   }
 
@@ -411,9 +421,6 @@ export class ChartAggregationService {
     // CRITICAL: Connect to previous candle (NO GAPS!)
     if (previousCandle) {
       openAces = parseFloat(previousCandle.close);
-      console.log(
-        `[ChartAggregation] 🔗 Connecting candle at ${new Date(timestamp).toISOString()}: open=${openAces.toFixed(8)} (previous close)`,
-      );
     }
 
     // OHLC in USD
@@ -429,62 +436,54 @@ export class ChartAggregationService {
       // Connect USD to previous candle
       openUsd = previousCandle ? parseFloat(previousCandle.closeUsd) : firstTradeUsd;
     } else {
-      // Bonding Curve: Combine token OHLC (in ACES) with ACES OHLC (in USD) from memory
-      const candleEndTime = timestamp + intervalMs;
+      // Bonding Curve: Check if we should use memory (dynamic optimization)
+      const shouldCheckMemory = this.shouldCheckMemoryForCandle(timestamp);
 
-      // Try to get ACES OHLC from memory for this candle period
-      const acesOHLC = acesPriceTracker.getAcesOHLCForPeriod(timestamp, candleEndTime);
+      if (shouldCheckMemory) {
+        // Candle is within memory range - check for ACES OHLC
+        const candleEndTime = timestamp + intervalMs;
+        const acesOHLC = acesPriceTracker.getAcesOHLCForPeriod(timestamp, candleEndTime);
 
-      if (acesOHLC) {
-        // 🔥 ENHANCED MODE: Use ACES OHLC from memory for accurate wicks
-        console.log(
-          `[ChartAggregation] 📊 Using ACES OHLC from memory for ${new Date(timestamp).toISOString()}:`,
-          {
-            open: `$${acesOHLC.open.toFixed(6)}`,
-            high: `$${acesOHLC.high.toFixed(6)}`,
-            low: `$${acesOHLC.low.toFixed(6)}`,
-            close: `$${acesOHLC.close.toFixed(6)}`,
-          },
-        );
+        if (acesOHLC) {
+          // 🔥 ENHANCED MODE: Use ACES OHLC from memory for accurate wicks
+          // Open/Close: Connect properly
+          openUsd = previousCandle ? parseFloat(previousCandle.closeUsd) : openAces * acesOHLC.open;
+          closeUsd = closeAces * acesOHLC.close;
 
-        // Open/Close: Connect properly
-        openUsd = previousCandle ? parseFloat(previousCandle.closeUsd) : openAces * acesOHLC.open;
-        closeUsd = closeAces * acesOHLC.close;
+          // High/Low: Cartesian product to find true extremes
+          // When both token and ACES are volatile, we need to check all combinations
+          const calculatedHighUsd = Math.max(
+            highAces * acesOHLC.high, // Token high × ACES high (best case)
+            highAces * acesOHLC.close, // Token high × ACES close
+            closeAces * acesOHLC.high, // Token close × ACES high
+          );
 
-        // High/Low: Cartesian product to find true extremes
-        // When both token and ACES are volatile, we need to check all combinations
-        const usdPrices = [
-          openAces * acesOHLC.open, // Token open × ACES open
-          closeAces * acesOHLC.close, // Token close × ACES close
-          highAces * acesOHLC.high, // Token high × ACES high (best case)
-          highAces * acesOHLC.close, // Token high × ACES close
-          closeAces * acesOHLC.high, // Token close × ACES high
-          lowAces * acesOHLC.low, // Token low × ACES low (worst case)
-          lowAces * acesOHLC.close, // Token low × ACES close
-          closeAces * acesOHLC.low, // Token close × ACES low
-        ];
+          const calculatedLowUsd = Math.min(
+            lowAces * acesOHLC.low, // Token low × ACES low (worst case)
+            lowAces * acesOHLC.close, // Token low × ACES close
+            closeAces * acesOHLC.low, // Token close × ACES low
+          );
 
-        highUsd = Math.max(...usdPrices);
-        lowUsd = Math.min(...usdPrices);
-
-        console.log(
-          `[ChartAggregation] 💎 Combined OHLC: Open=$${openUsd.toFixed(8)}, High=$${highUsd.toFixed(8)}, Low=$${lowUsd.toFixed(8)}, Close=$${closeUsd.toFixed(8)}`,
-        );
-      } else if (acesUsdPrice && acesUsdPrice > 0) {
-        // Fallback: Use current ACES price (simple conversion)
-        console.log(
-          `[ChartAggregation] ⚠️ No ACES OHLC in memory, using current price: $${acesUsdPrice.toFixed(6)}`,
-        );
-        openUsd = openAces * acesUsdPrice;
-        closeUsd = closeAces * acesUsdPrice;
-        highUsd = highAces * acesUsdPrice;
-        lowUsd = lowAces * acesUsdPrice;
+          // CRITICAL: Ensure high/low respect open/close boundaries
+          highUsd = Math.max(openUsd, closeUsd, calculatedHighUsd);
+          lowUsd = Math.min(openUsd, closeUsd, calculatedLowUsd);
+        } else {
+          // No data in this specific period, use current ACES price
+          openUsd = previousCandle
+            ? parseFloat(previousCandle.closeUsd)
+            : openAces * (acesUsdPrice || 0);
+          closeUsd = closeAces * (acesUsdPrice || 0);
+          highUsd = highAces * (acesUsdPrice || 0);
+          lowUsd = lowAces * (acesUsdPrice || 0);
+        }
       } else {
-        // No USD price available at all
-        openUsd = 0;
-        closeUsd = 0;
-        highUsd = 0;
-        lowUsd = 0;
+        // Candle is outside memory range - use simple calculation (FAST!)
+        openUsd = previousCandle
+          ? parseFloat(previousCandle.closeUsd)
+          : openAces * (acesUsdPrice || 0);
+        closeUsd = closeAces * (acesUsdPrice || 0);
+        highUsd = highAces * (acesUsdPrice || 0);
+        lowUsd = lowAces * (acesUsdPrice || 0);
       }
     }
 
@@ -578,52 +577,41 @@ export class ChartAggregationService {
     // Open USD connects to previous candle
     const openUsd = parseFloat(previousCandle.closeUsd);
 
-    // Try to get ACES OHLC from memory for this period
-    const candleEndTime = timestamp + intervalMs;
-    const acesOHLC = acesPriceTracker.getAcesOHLCForPeriod(timestamp, candleEndTime);
-
     let closeUsd: number, highUsd: number, lowUsd: number;
 
-    if (acesOHLC) {
-      // 🔥 ENHANCED MODE: Use ACES OHLC from memory for accurate wicks (even with no trades!)
-      console.log(
-        `[ChartAggregation] 📊 Empty candle using ACES OHLC from memory for ${new Date(timestamp).toISOString()}:`,
-        {
-          open: `$${acesOHLC.open.toFixed(6)}`,
-          high: `$${acesOHLC.high.toFixed(6)}`,
-          low: `$${acesOHLC.low.toFixed(6)}`,
-          close: `$${acesOHLC.close.toFixed(6)}`,
-        },
-      );
+    // Check if we should use memory (dynamic optimization)
+    const shouldCheckMemory = this.shouldCheckMemoryForCandle(timestamp);
 
-      // Close: Token price (in ACES) × latest ACES price (in USD)
-      closeUsd = closeAces * acesOHLC.close;
+    if (shouldCheckMemory) {
+      // Candle is within memory range - check for ACES OHLC
+      const candleEndTime = timestamp + intervalMs;
+      const acesOHLC = acesPriceTracker.getAcesOHLCForPeriod(timestamp, candleEndTime);
 
-      // High/Low: ACES volatility affects USD value even without token trades
-      // Token price stays constant (in ACES), but USD value changes with ACES movement
-      const usdPrices = [
-        openAces * acesOHLC.open,
-        openAces * acesOHLC.high,
-        openAces * acesOHLC.low,
-        openAces * acesOHLC.close,
-      ];
+      if (acesOHLC) {
+        // 🔥 ENHANCED MODE: Use ACES OHLC from memory for accurate wicks (even with no trades!)
+        // Close: Token price (in ACES) × latest ACES price (in USD)
+        closeUsd = closeAces * acesOHLC.close;
 
-      highUsd = Math.max(...usdPrices);
-      lowUsd = Math.min(...usdPrices);
+        // High/Low: ACES volatility affects USD value even without token trades
+        // Token price stays constant (in ACES), but USD value changes with ACES movement
+        const calculatedHighUsd = Math.max(openAces * acesOHLC.high, openAces * acesOHLC.close);
 
-      console.log(
-        `[ChartAggregation] 💎 Empty candle with wicks: Open=$${openUsd.toFixed(8)}, High=$${highUsd.toFixed(8)}, Low=$${lowUsd.toFixed(8)}, Close=$${closeUsd.toFixed(8)}`,
-      );
-    } else if (acesUsdPrice && acesUsdPrice > 0) {
-      // Fallback: Use current ACES price (simple range)
-      closeUsd = closeAces * acesUsdPrice;
+        const calculatedLowUsd = Math.min(openAces * acesOHLC.low, openAces * acesOHLC.close);
+
+        // CRITICAL: Ensure high/low respect open/close boundaries
+        highUsd = Math.max(openUsd, closeUsd, calculatedHighUsd);
+        lowUsd = Math.min(openUsd, closeUsd, calculatedLowUsd);
+      } else {
+        // No data in this specific period, use current ACES price
+        closeUsd = closeAces * (acesUsdPrice || 0);
+        highUsd = Math.max(openUsd, closeUsd);
+        lowUsd = Math.min(openUsd, closeUsd);
+      }
+    } else {
+      // Candle is outside memory range - use simple calculation (FAST!)
+      closeUsd = closeAces * (acesUsdPrice || 0);
       highUsd = Math.max(openUsd, closeUsd);
       lowUsd = Math.min(openUsd, closeUsd);
-    } else {
-      // No ACES price available - frozen
-      closeUsd = openUsd;
-      highUsd = openUsd;
-      lowUsd = openUsd;
     }
 
     // Use supply from previous candle (no trades = no supply change)
@@ -681,27 +669,44 @@ export class ChartAggregationService {
 
   /**
    * Check if token is graduated
+   * 🔥 OPTIMIZED: Now uses token metadata cache (5-minute TTL)
    */
   private async checkGraduation(tokenAddress: string): Promise<GraduationState> {
     try {
-      const token = await this.prisma.token.findUnique({
-        where: { contractAddress: tokenAddress.toLowerCase() },
-        select: {
-          poolAddress: true,
-          dexLiveAt: true,
-          phase: true,
-        },
-      });
+      console.log('[ChartAggregation] Checking graduation state (using cache)');
 
-      if (token?.poolAddress && token?.dexLiveAt) {
+      // 🔥 NEW: Use cached token metadata instead of direct query
+      const tokenMetadata = await this.tokenMetadataCache.getTokenMetadata(
+        tokenAddress.toLowerCase(),
+      );
+
+      if (!tokenMetadata) {
+        console.log('[ChartAggregation] Token not found, assuming bonding curve');
         return {
-          isBonded: true,
-          poolAddress: token.poolAddress,
-          poolReady: true,
-          dexLiveAt: token.dexLiveAt,
+          isBonded: false,
+          poolAddress: null,
+          poolReady: false,
+          dexLiveAt: null,
         };
       }
 
+      // Check if token has graduated to DEX
+      const isGraduated =
+        tokenMetadata.phase === 'DEX_TRADING' &&
+        tokenMetadata.poolAddress !== null &&
+        tokenMetadata.dexLiveAt !== null;
+
+      if (isGraduated) {
+        console.log('[ChartAggregation] ✅ Token is graduated to DEX');
+        return {
+          isBonded: true,
+          poolAddress: tokenMetadata.poolAddress!,
+          poolReady: true,
+          dexLiveAt: tokenMetadata.dexLiveAt!,
+        };
+      }
+
+      console.log('[ChartAggregation] Token still on bonding curve');
       return {
         isBonded: false,
         poolAddress: null,
@@ -710,7 +715,7 @@ export class ChartAggregationService {
       };
     } catch (error) {
       console.warn('[ChartAggregation] Failed to check graduation state:', error);
-      // Assume bonding if DB query fails
+      // Assume bonding if query fails (safe fallback)
       return {
         isBonded: false,
         poolAddress: null,
@@ -718,6 +723,27 @@ export class ChartAggregationService {
         dexLiveAt: null,
       };
     }
+  }
+
+  /**
+   * Determine if we should check memory for this candle timestamp
+   * Uses dynamic cutoff based on actual data available in memory
+   */
+  private shouldCheckMemoryForCandle(candleTimestamp: number): boolean {
+    const stats = acesPriceTracker.getStats();
+
+    // If no memory data, skip all checks
+    if (stats.totalObservations === 0 || !stats.oldestTimestamp) {
+      return false;
+    }
+
+    // Only check memory if candle is within our memory span
+    // Add 5-minute buffer before oldest observation for edge cases
+    const BUFFER_MS = 5 * 60 * 1000;
+    const memoryStartTime = stats.oldestTimestamp - BUFFER_MS;
+    const isWithinMemoryRange = candleTimestamp >= memoryStartTime;
+
+    return isWithinMemoryRange;
   }
 
   /**
