@@ -298,6 +298,8 @@ export class ChartDataWebSocket {
    */
   private async pollAndBroadcast(tokenAddress: string, timeframe: string) {
     try {
+      // Clean token address (remove any suffix like _mcap)
+      const cleanTokenAddress = tokenAddress.split('_')[0];
       const subscriptionKey = `${tokenAddress}:${timeframe}:price`;
       const subscribers = this.subscriptions.get(subscriptionKey);
 
@@ -310,7 +312,7 @@ export class ChartDataWebSocket {
       }
 
       console.log(
-        `🔄 [WebSocket] Polling PRICE ${tokenAddress} ${timeframe} (${subscribers.size} subscribers)...`,
+        `🔄 [WebSocket] Polling PRICE ${cleanTokenAddress} ${timeframe} (${subscribers.size} subscribers)...`,
       );
 
       // Get latest candle - using new ChartAggregationService
@@ -318,7 +320,7 @@ export class ChartDataWebSocket {
       // For now, get the full chart data and take the last candle
       const now = new Date();
       const from = new Date(now.getTime() - 24 * 60 * 60 * 1000); // Last 24 hours
-      const chartData = await this.chartService.getChartData(tokenAddress, {
+      const chartData = await this.chartService.getChartData(cleanTokenAddress, {
         timeframe,
         from,
         to: now,
@@ -563,7 +565,10 @@ export class ChartDataWebSocket {
    */
   private async pollAndBroadcastMarketCap(tokenAddress: string, timeframe: string) {
     try {
-      console.log(`🔄 [WebSocket] Polling MARKET CAP ${tokenAddress} ${timeframe}...`);
+      // Clean token address (remove any suffix like _mcap)
+      const cleanTokenAddress = tokenAddress.split('_')[0];
+
+      console.log(`🔄 [WebSocket] Polling MARKET CAP ${cleanTokenAddress} ${timeframe}...`);
 
       const subscriptionKey = `${tokenAddress}:${timeframe}:mcap`;
       const subscribers = this.subscriptions.get(subscriptionKey);
@@ -579,7 +584,7 @@ export class ChartDataWebSocket {
       // Get latest candle and graduation state - using new ChartAggregationService
       const now = new Date();
       const from = new Date(now.getTime() - 24 * 60 * 60 * 1000); // Last 24 hours
-      const chartData = await this.chartService.getChartData(tokenAddress, {
+      const chartData = await this.chartService.getChartData(cleanTokenAddress, {
         timeframe,
         from,
         to: now,
@@ -723,6 +728,8 @@ export class ChartDataWebSocket {
     timeframe: string,
     chartType: 'price' | 'mcap' = 'price',
   ) {
+    // Clean token address (remove any suffix like _mcap)
+    const cleanTokenAddress = tokenAddress.split('_')[0];
     const client = this.clients.get(clientId);
     if (!client) {
       console.warn(`[WebSocket] ⚠️ Client ${clientId} not found when sending update`);
@@ -738,16 +745,21 @@ export class ChartDataWebSocket {
     }
 
     try {
-      console.log(`[WebSocket] 📤 Fetching initial chart data for ${clientId}...`);
+      console.log(
+        `[WebSocket] 📤 Fetching initial chart data for ${clientId} (token: ${cleanTokenAddress}, type: ${chartType})...`,
+      );
       const now = new Date();
-      const from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000); // Last 7 days for initial load
-      const chartData = await this.chartService.getChartData(tokenAddress, {
+      // Reduced from 7 days to 2 days for faster initial load
+      const from = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000); // Last 2 days for initial load
+      const chartData = await this.chartService.getChartData(cleanTokenAddress, {
         timeframe,
         from,
         to: now,
-        limit: 100, // Send last 100 candles on subscribe
+        limit: 300, // Reasonable limit for initial load
       });
-      console.log(`[WebSocket] ✅ Got ${chartData.candles.length} candles for ${clientId}`);
+      console.log(
+        `[WebSocket] ✅ Got ${chartData.candles.length} candles for ${clientId} (${chartType})`,
+      );
 
       if (chartType === 'mcap') {
         // Calculate market cap candles
