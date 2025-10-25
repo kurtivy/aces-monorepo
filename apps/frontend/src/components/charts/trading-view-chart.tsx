@@ -382,7 +382,31 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
         }
         // Create unified datafeed (handles both price and market cap)
         const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
-        const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3002/ws/chart';
+        const wsUrl = (() => {
+          if (process.env.NEXT_PUBLIC_WS_URL) {
+            return process.env.NEXT_PUBLIC_WS_URL;
+          }
+
+          try {
+            const apiUrl = new URL(apiBaseUrl);
+            const isSecure = apiUrl.protocol === 'https:';
+            const wsProtocol = isSecure ? 'wss:' : 'ws:';
+            return `${wsProtocol}//${apiUrl.host}/ws/chart`;
+          } catch (error) {
+            console.warn(
+              '[TradingView] Failed to derive WebSocket URL from NEXT_PUBLIC_API_URL, falling back to window.location',
+              error,
+            );
+
+            if (typeof window !== 'undefined') {
+              const isPageSecure = window.location.protocol === 'https:';
+              const wsProtocol = isPageSecure ? 'wss:' : 'ws:';
+              return `${wsProtocol}//${window.location.host}/ws/chart`;
+            }
+
+            return 'ws://localhost:3002/ws/chart';
+          }
+        })();
 
         const datafeed = new UnifiedDatafeed({
           apiBaseUrl,
