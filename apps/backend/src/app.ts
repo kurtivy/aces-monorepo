@@ -56,6 +56,16 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   const prisma = getPrismaClient();
   fastify.decorate('prisma', prisma);
 
+  // 🔥 NEW: Initialize token metadata cache (shared across all routes)
+  const { initTokenMetadataCache } = await import('./services/token-metadata-cache-service');
+  const tokenMetadataCache = initTokenMetadataCache(prisma);
+  fastify.decorate('tokenMetadataCache', tokenMetadataCache);
+
+  // 🔥 NEW: Initialize ACES snapshot cache (for historical price queries)
+  const { initAcesSnapshotCache } = await import('./services/aces-snapshot-cache-service');
+  const acesSnapshotCache = initAcesSnapshotCache(prisma);
+  fastify.decorate('acesSnapshotCache', acesSnapshotCache);
+
   // Initialize provider FIRST (needed by multiple services)
   // Use QuickNode (paid) first, fallback to Alchemy free tier
   const rpcUrl = process.env.QUICKNODE_BASE_URL || process.env.BASE_MAINNET_RPC_URL;
@@ -116,7 +126,12 @@ export const buildApp = async (): Promise<FastifyInstance> => {
       prisma,
       bitQueryService,
       acesUsdPriceService,
+      tokenMetadataCache, // 🔥 NEW: Pass token cache to chart service
+      acesSnapshotCache, // 🔥 NEW: Pass snapshot cache to chart service
     );
+
+    // 🔥 NEW: Decorate fastify so service can be reused across requests
+    fastify.decorate('chartAggregationService', chartAggregationService);
 
     chartWebSocket = new ChartDataWebSocket(fastify, chartAggregationService, {
       pollIntervalMs: 5000, // Poll every 5 seconds for real-time updates
