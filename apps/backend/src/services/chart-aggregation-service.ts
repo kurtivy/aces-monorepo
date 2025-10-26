@@ -1,9 +1,8 @@
 import { PrismaClient } from '@prisma/client';
 import { BitQueryService } from './bitquery-service';
 import { AcesUsdPriceService } from './aces-usd-price-service';
-import { ACES_TOKEN_ADDRESS } from '../config/bitquery.config';
+import { ACES_TOKEN_ADDRESS, DATA_SOURCE_CONFIG } from '../config/bitquery.config';
 import { TradePriceAggregator } from './trade-price-aggregator';
-import { acesPriceTracker } from './aces-price-tracker';
 import { TokenMetadataCacheService } from './token-metadata-cache-service'; // 🔥 NEW
 import { AcesSnapshotCacheService } from './aces-snapshot-cache-service'; // 🔥 NEW
 
@@ -115,63 +114,42 @@ export class ChartAggregationService {
       acesUsdPrice = null;
     }
 
-    // 3. Fetch trades based on graduation state
-    // 🔥 OPTIMIZED: Calculate smart trade limit based on desired candles
-    // Each candle can have multiple trades, so fetch ~2-3x the candle limit
-    const tradeLimit = Math.min((options.limit || 200) * 3, 2000);
+    // 3. Route to appropriate data source(s) using smart switching
+    let candles: Candle[];
 
-    let trades: Trade[];
-    if (graduationState.poolReady && graduationState.poolAddress) {
-      console.log('[ChartAggregation] Token is graduated - fetching DEX trades');
-      trades = await this.fetchDexTrades(
+    if (!graduationState.poolReady) {
+      // TOKEN IS STILL IN BONDING CURVE
+      console.log('[ChartAggregation] 📈 Token bonding - using SubGraph');
+      candles = await this.fetchBondingCurveData(
         tokenAddress,
-        graduationState.poolAddress,
-        options.from,
-        options.to,
-        tradeLimit, // 🔥 Pass limit
+        options,
+        acesUsdPrice,
+        currentCandleTimestamp,
+      );
+    } else if (graduationState.dexLiveAt) {
+      // TOKEN HAS GRADUATED - check if request spans bonding/DEX boundary
+      console.log('[ChartAggregation] 🏊 Token graduated - checking boundaries');
+      candles = await this.fetchGraduatedTokenData(
+        tokenAddress,
+        graduationState,
+        options,
+        acesUsdPrice,
+        currentCandleTimestamp,
       );
     } else {
-      console.log('[ChartAggregation] Token is bonding - fetching SubGraph trades');
-      trades = await this.fetchBondingTrades(tokenAddress, options.from, options.to, tradeLimit); // 🔥 Pass limit
-    }
-
-    console.log(`[ChartAggregation] Fetched ${trades.length} trades`);
-
-    if (trades.length === 0) {
+      // TOKEN ON DEX BUT NO GRADUATION DATE - use DEX switching only
       console.warn(
-        `[ChartAggregation] ⚠️ No trades found for ${tokenAddress}, returning empty candles`,
+        '[ChartAggregation] ⚠️ Pool ready but no graduation date - using DEX smart switching',
       );
-      return {
-        candles: [],
-        graduationState,
-        acesUsdPrice: acesUsdPrice ? acesUsdPrice.toFixed(6) : null,
-      };
+      candles = await this.fetchDexDataWithSmartSwitching(
+        tokenAddress,
+        graduationState.poolAddress!,
+        options,
+        currentCandleTimestamp,
+      );
     }
 
-    // Log first and last trade for debugging
-    console.log(`[ChartAggregation] First trade:`, {
-      timestamp: trades[0]?.timestamp,
-      priceInUsd: trades[0]?.priceInUsd,
-      amountToken: trades[0]?.amountToken,
-    });
-    console.log(`[ChartAggregation] Last trade:`, {
-      timestamp: trades[trades.length - 1]?.timestamp,
-      priceInUsd: trades[trades.length - 1]?.priceInUsd,
-      amountToken: trades[trades.length - 1]?.amountToken,
-    });
-
-    // 4. Aggregate trades into candles WITH NO-GAP LOGIC
-    const candles = this.aggregateTradesToCandlesWithNoGaps(
-      trades,
-      options.timeframe,
-      options.from,
-      options.to,
-      acesUsdPrice,
-      currentCandleTimestamp,
-      graduationState.poolReady ? 'dex' : 'bonding_curve',
-    );
-
-    console.log(`[ChartAggregation] Generated ${candles.length} candles with no gaps`);
+    console.log(`[ChartAggregation] ✅ Generated ${candles.length} candles`);
 
     if (candles.length > 0) {
       console.log(`[ChartAggregation] First candle:`, {
@@ -331,6 +309,7 @@ export class ChartAggregationService {
     acesUsdPrice: number | null,
     currentCandleTimestamp: number,
     dataSource: 'bonding_curve' | 'dex',
+    seedCandle?: Candle | null,
   ): Candle[] {
     const intervalMs = this.getIntervalMs(timeframe);
     const startTime = this.alignTimestamp(from, timeframe);
@@ -348,7 +327,7 @@ export class ChartAggregationService {
 
     // Generate all candles (with and without trades) with NO GAPS
     const candles: Candle[] = [];
-    let previousCandle: Candle | null = null;
+    let previousCandle: Candle | null = seedCandle ? { ...seedCandle } : null;
     let currentTime = startTime;
 
     while (currentTime <= endTime) {
@@ -436,55 +415,15 @@ export class ChartAggregationService {
       // Connect USD to previous candle
       openUsd = previousCandle ? parseFloat(previousCandle.closeUsd) : firstTradeUsd;
     } else {
-      // Bonding Curve: Check if we should use memory (dynamic optimization)
-      const shouldCheckMemory = this.shouldCheckMemoryForCandle(timestamp);
+      // Bonding Curve: Use snapshot USD prices (already in trades from TradePriceAggregator)
+      // The pricesInUsd array (line 391) contains USD values calculated using database snapshots
+      const firstTradeUsd = pricesInUsd[0];
+      closeUsd = pricesInUsd[pricesInUsd.length - 1];
+      highUsd = Math.max(...pricesInUsd);
+      lowUsd = Math.min(...pricesInUsd);
 
-      if (shouldCheckMemory) {
-        // Candle is within memory range - check for ACES OHLC
-        const candleEndTime = timestamp + intervalMs;
-        const acesOHLC = acesPriceTracker.getAcesOHLCForPeriod(timestamp, candleEndTime);
-
-        if (acesOHLC) {
-          // 🔥 ENHANCED MODE: Use ACES OHLC from memory for accurate wicks
-          // Open/Close: Connect properly
-          openUsd = previousCandle ? parseFloat(previousCandle.closeUsd) : openAces * acesOHLC.open;
-          closeUsd = closeAces * acesOHLC.close;
-
-          // High/Low: Cartesian product to find true extremes
-          // When both token and ACES are volatile, we need to check all combinations
-          const calculatedHighUsd = Math.max(
-            highAces * acesOHLC.high, // Token high × ACES high (best case)
-            highAces * acesOHLC.close, // Token high × ACES close
-            closeAces * acesOHLC.high, // Token close × ACES high
-          );
-
-          const calculatedLowUsd = Math.min(
-            lowAces * acesOHLC.low, // Token low × ACES low (worst case)
-            lowAces * acesOHLC.close, // Token low × ACES close
-            closeAces * acesOHLC.low, // Token close × ACES low
-          );
-
-          // CRITICAL: Ensure high/low respect open/close boundaries
-          highUsd = Math.max(openUsd, closeUsd, calculatedHighUsd);
-          lowUsd = Math.min(openUsd, closeUsd, calculatedLowUsd);
-        } else {
-          // No data in this specific period, use current ACES price
-          openUsd = previousCandle
-            ? parseFloat(previousCandle.closeUsd)
-            : openAces * (acesUsdPrice || 0);
-          closeUsd = closeAces * (acesUsdPrice || 0);
-          highUsd = highAces * (acesUsdPrice || 0);
-          lowUsd = lowAces * (acesUsdPrice || 0);
-        }
-      } else {
-        // Candle is outside memory range - use simple calculation (FAST!)
-        openUsd = previousCandle
-          ? parseFloat(previousCandle.closeUsd)
-          : openAces * (acesUsdPrice || 0);
-        closeUsd = closeAces * (acesUsdPrice || 0);
-        highUsd = highAces * (acesUsdPrice || 0);
-        lowUsd = lowAces * (acesUsdPrice || 0);
-      }
+      // Connect USD to previous candle (NO GAPS)
+      openUsd = previousCandle ? parseFloat(previousCandle.closeUsd) : firstTradeUsd;
     }
 
     // Volume
@@ -579,36 +518,14 @@ export class ChartAggregationService {
 
     let closeUsd: number, highUsd: number, lowUsd: number;
 
-    // Check if we should use memory (dynamic optimization)
-    const shouldCheckMemory = this.shouldCheckMemoryForCandle(timestamp);
-
-    if (shouldCheckMemory) {
-      // Candle is within memory range - check for ACES OHLC
-      const candleEndTime = timestamp + intervalMs;
-      const acesOHLC = acesPriceTracker.getAcesOHLCForPeriod(timestamp, candleEndTime);
-
-      if (acesOHLC) {
-        // 🔥 ENHANCED MODE: Use ACES OHLC from memory for accurate wicks (even with no trades!)
-        // Close: Token price (in ACES) × latest ACES price (in USD)
-        closeUsd = closeAces * acesOHLC.close;
-
-        // High/Low: ACES volatility affects USD value even without token trades
-        // Token price stays constant (in ACES), but USD value changes with ACES movement
-        const calculatedHighUsd = Math.max(openAces * acesOHLC.high, openAces * acesOHLC.close);
-
-        const calculatedLowUsd = Math.min(openAces * acesOHLC.low, openAces * acesOHLC.close);
-
-        // CRITICAL: Ensure high/low respect open/close boundaries
-        highUsd = Math.max(openUsd, closeUsd, calculatedHighUsd);
-        lowUsd = Math.min(openUsd, closeUsd, calculatedLowUsd);
-      } else {
-        // No data in this specific period, use current ACES price
-        closeUsd = closeAces * (acesUsdPrice || 0);
-        highUsd = Math.max(openUsd, closeUsd);
-        lowUsd = Math.min(openUsd, closeUsd);
-      }
+    // For bonding curve: Empty candle = flat line (no trades = no price movement)
+    if (dataSource === 'bonding_curve') {
+      // No trades means no price change - USD value stays exactly the same
+      closeUsd = openUsd; // Flat line
+      highUsd = openUsd; // No wicks
+      lowUsd = openUsd; // No movement
     } else {
-      // Candle is outside memory range - use simple calculation (FAST!)
+      // For DEX: Can optionally use current ACES price for minor adjustments
       closeUsd = closeAces * (acesUsdPrice || 0);
       highUsd = Math.max(openUsd, closeUsd);
       lowUsd = Math.min(openUsd, closeUsd);
@@ -668,6 +585,455 @@ export class ChartAggregationService {
   }
 
   /**
+   * Fetch bonding curve data from SubGraph and aggregate to candles
+   * Wrapper method for bonding curve data fetching
+   */
+  private async fetchBondingCurveData(
+    tokenAddress: string,
+    options: ChartOptions,
+    acesUsdPrice: number | null,
+    currentCandleTimestamp: number,
+  ): Promise<Candle[]> {
+    console.log('[ChartAggregation] 📈 Fetching bonding curve data from SubGraph');
+
+    const trades = await this.fetchBondingTrades(
+      tokenAddress,
+      options.from,
+      options.to,
+      (options.limit || 200) * 3,
+    );
+
+    console.log(`[ChartAggregation] ✅ Fetched ${trades.length} bonding trades`);
+
+    let seedCandle: Candle | null = null;
+    const alignedRangeStart = this.alignTimestamp(options.from, options.timeframe);
+    const firstTradeBucket =
+      trades.length > 0 ? this.alignTimestamp(trades[0].timestamp, options.timeframe) : null;
+
+    if (trades.length === 0 || (firstTradeBucket !== null && firstTradeBucket > alignedRangeStart)) {
+      seedCandle = await this.getBondingSeedCandle(
+        tokenAddress,
+        options.timeframe,
+        options.from,
+        acesUsdPrice,
+      );
+    }
+
+    return this.aggregateTradesToCandlesWithNoGaps(
+      trades,
+      options.timeframe,
+      options.from,
+      options.to,
+      acesUsdPrice,
+      currentCandleTimestamp,
+      'bonding_curve',
+      seedCandle,
+    );
+  }
+
+  /**
+   * Fetch historical pre-aggregated OHLCV from Trading.Tokens (BitQuery)
+   * Used for DEX data older than 7 days for better performance
+   * BitQuery returns USD prices directly - no conversion needed!
+   */
+  private async fetchHistoricalDexOHLCV(
+    tokenAddress: string,
+    options: ChartOptions,
+  ): Promise<Candle[]> {
+    console.log('[ChartAggregation] 📜 Fetching pre-aggregated OHLCV from Trading.Tokens');
+
+    const bitQueryCandles = await this.bitQueryService.getTradingTokensOHLC(
+      tokenAddress,
+      options.timeframe,
+      {
+        from: options.from,
+        to: options.to,
+      },
+    );
+
+    console.log(`[ChartAggregation] ✅ Received ${bitQueryCandles.length} pre-aggregated candles`);
+
+    if (bitQueryCandles.length === 0) {
+      return [];
+    }
+
+    // Convert BitQuery candles to our Candle format
+    const supply = this.GRADUATED_SUPPLY;
+    const supplyNum = parseFloat(supply);
+
+    return bitQueryCandles.map((bqCandle) => {
+      // Trading.Tokens gives us USD prices directly - perfect!
+      const openUsd = parseFloat(bqCandle.openUsd || bqCandle.open);
+      const highUsd = parseFloat(bqCandle.highUsd || bqCandle.high);
+      const lowUsd = parseFloat(bqCandle.lowUsd || bqCandle.low);
+      const closeUsd = parseFloat(bqCandle.closeUsd || bqCandle.close);
+      const volumeUsd = parseFloat(bqCandle.volumeUsd || bqCandle.volume);
+
+      // Market cap will be calculated in enrichment step
+      const marketCapCloseUsd = closeUsd * supplyNum;
+
+      return {
+        timestamp: bqCandle.timestamp,
+        // ACES prices (same as USD for now, enrichment will handle conversion if needed)
+        open: bqCandle.open,
+        high: bqCandle.high,
+        low: bqCandle.low,
+        close: bqCandle.close,
+        // USD prices (from BitQuery - already perfect!)
+        openUsd: bqCandle.openUsd || bqCandle.open,
+        highUsd: bqCandle.highUsd || bqCandle.high,
+        lowUsd: bqCandle.lowUsd || bqCandle.low,
+        closeUsd: bqCandle.closeUsd || bqCandle.close,
+        // Volume
+        volume: bqCandle.volume,
+        volumeUsd: volumeUsd.toFixed(2),
+        trades: bqCandle.trades || 0,
+        // Metadata
+        dataSource: 'dex' as const,
+        circulatingSupply: supply,
+        totalSupply: supply,
+        marketCapAces: '0', // Will be enriched later
+        marketCapUsd: marketCapCloseUsd.toFixed(2),
+        marketCapOpenUsd: (openUsd * supplyNum).toFixed(2),
+        marketCapHighUsd: (highUsd * supplyNum).toFixed(2),
+        marketCapLowUsd: (lowUsd * supplyNum).toFixed(2),
+        marketCapCloseUsd: marketCapCloseUsd.toFixed(2),
+      };
+    });
+  }
+
+  /**
+   * Fetch recent DEX trades and aggregate them into candles
+   * Used for DEX data less than 7 days old
+   */
+  private async fetchRecentDexTrades(
+    tokenAddress: string,
+    poolAddress: string,
+    options: ChartOptions,
+    currentCandleTimestamp: number,
+  ): Promise<Candle[]> {
+    const tradeLimit = Math.min((options.limit || 200) * 3, 5000);
+
+    console.log('[ChartAggregation] 🔥 Fetching recent DEX trades:', {
+      limit: tradeLimit,
+      from: options.from.toISOString(),
+      to: options.to.toISOString(),
+    });
+
+    const bitQueryTrades = await this.bitQueryService.getDexTrades(tokenAddress, poolAddress, {
+      from: options.from,
+      to: options.to,
+      counterTokenAddress: ACES_TOKEN_ADDRESS,
+      limit: tradeLimit,
+    });
+
+    console.log(`[ChartAggregation] ✅ Fetched ${bitQueryTrades.length} individual trades`);
+
+    // Convert to internal Trade format
+    const trades: Trade[] = bitQueryTrades.map((trade) => ({
+      timestamp: trade.blockTime,
+      priceInAces: parseFloat(trade.priceInAces),
+      priceInUsd: parseFloat(trade.priceInUsd),
+      amountToken: parseFloat(trade.amountToken),
+      volumeUsd: parseFloat(trade.volumeUsd),
+      side: trade.side,
+    }));
+
+    let seedCandle: Candle | null = null;
+    const alignedRangeStart = this.alignTimestamp(options.from, options.timeframe);
+    const firstTradeBucket =
+      trades.length > 0 ? this.alignTimestamp(trades[0].timestamp, options.timeframe) : null;
+
+    if (trades.length === 0 || (firstTradeBucket !== null && firstTradeBucket > alignedRangeStart)) {
+      seedCandle = await this.getDexSeedCandle(
+        tokenAddress,
+        poolAddress,
+        options.timeframe,
+        options.from,
+      );
+    }
+
+    // Aggregate trades into candles using existing method
+    return this.aggregateTradesToCandlesWithNoGaps(
+      trades,
+      options.timeframe,
+      options.from,
+      options.to,
+      null, // acesUsdPrice not needed - BitQuery trades already have USD prices
+      currentCandleTimestamp,
+      'dex',
+      seedCandle,
+    );
+  }
+
+  /**
+   * Smart switching between recent trades and historical OHLCV for DEX data
+   * Implements the 7-day boundary strategy for optimal performance
+   */
+  private async fetchDexDataWithSmartSwitching(
+    tokenAddress: string,
+    poolAddress: string,
+    options: ChartOptions,
+    currentCandleTimestamp: number,
+  ): Promise<Candle[]> {
+    const now = new Date();
+    const historicalBoundary = new Date(
+      now.getTime() - DATA_SOURCE_CONFIG.HISTORICAL_BOUNDARY_DAYS * 24 * 60 * 60 * 1000,
+    );
+
+    // Determine which strategy to use based on request time range
+    const isEntirelyRecent = options.from >= historicalBoundary;
+    const isEntirelyHistorical = options.to < historicalBoundary;
+
+    console.log('[ChartAggregation] 🔀 DEX data source decision:', {
+      from: options.from.toISOString(),
+      to: options.to.toISOString(),
+      boundary: historicalBoundary.toISOString(),
+      strategy: isEntirelyRecent ? 'TRADES' : isEntirelyHistorical ? 'OHLCV' : 'HYBRID',
+    });
+
+    // STRATEGY 1: Entirely recent (< 7 days) - use individual trades
+    if (isEntirelyRecent) {
+      console.log('[ChartAggregation] 🔥 Using individual trades (real-time accuracy)');
+      return this.fetchRecentDexTrades(tokenAddress, poolAddress, options, currentCandleTimestamp);
+    }
+
+    // STRATEGY 2: Entirely historical (≥ 7 days old) - use pre-aggregated OHLCV
+    if (isEntirelyHistorical) {
+      console.log('[ChartAggregation] 📜 Using pre-aggregated OHLCV (performance)');
+      return this.fetchHistoricalDexOHLCV(tokenAddress, options);
+    }
+
+    // STRATEGY 3: Hybrid - request spans the 7-day boundary
+    console.log('[ChartAggregation] 🔀 Using HYBRID (historical + recent)');
+
+    // Fetch historical part (7+ days ago)
+    const historicalCandles = await this.fetchHistoricalDexOHLCV(tokenAddress, {
+      ...options,
+      to: historicalBoundary,
+    });
+
+    // Fetch recent part (< 7 days)
+    const recentCandles = await this.fetchRecentDexTrades(
+      tokenAddress,
+      poolAddress,
+      { ...options, from: historicalBoundary },
+      currentCandleTimestamp,
+    );
+
+    console.log('[ChartAggregation] ✅ Merged 7-day boundary:', {
+      historical: historicalCandles.length,
+      recent: recentCandles.length,
+      total: historicalCandles.length + recentCandles.length,
+    });
+
+    return [...historicalCandles, ...recentCandles];
+  }
+
+  private async getBondingSeedCandle(
+    tokenAddress: string,
+    timeframe: string,
+    rangeStart: Date,
+    acesUsdPrice: number | null,
+  ): Promise<Candle | null> {
+    try {
+      const intervalMs = this.getIntervalMs(timeframe);
+      const alignedStart = this.alignTimestamp(rangeStart, timeframe);
+      const baselineEnd = new Date(alignedStart);
+      const baselineFrom = new Date(baselineEnd.getTime() - intervalMs * 12); // ~3 candles back
+
+      const seedTrades = await this.fetchBondingTrades(tokenAddress, baselineFrom, baselineEnd, 5);
+      if (seedTrades.length === 0) {
+        return null;
+      }
+
+      const lastTrade = seedTrades[seedTrades.length - 1];
+      const supplyValue =
+        typeof lastTrade.circulatingSupply === 'number' && lastTrade.circulatingSupply > 0
+          ? lastTrade.circulatingSupply
+          : parseFloat(this.BONDING_SUPPLY);
+
+      const usdPrice =
+        typeof lastTrade.priceInUsd === 'number' && lastTrade.priceInUsd > 0
+          ? lastTrade.priceInUsd
+          : acesUsdPrice
+          ? lastTrade.priceInAces * acesUsdPrice
+          : 0;
+
+      return this.buildSeedCandle(
+        timeframe,
+        alignedStart,
+        lastTrade.priceInAces,
+        usdPrice,
+        supplyValue,
+        'bonding_curve',
+      );
+    } catch (error) {
+      console.warn('[ChartAggregation] Failed to build bonding seed candle:', error);
+      return null;
+    }
+  }
+
+  private async getDexSeedCandle(
+    tokenAddress: string,
+    poolAddress: string,
+    timeframe: string,
+    rangeStart: Date,
+  ): Promise<Candle | null> {
+    try {
+      const intervalMs = this.getIntervalMs(timeframe);
+      const alignedStart = this.alignTimestamp(rangeStart, timeframe);
+      const baselineEnd = new Date(alignedStart);
+      const baselineFrom = new Date(baselineEnd.getTime() - intervalMs * 12);
+
+      const seedTrades = await this.bitQueryService.getDexTrades(tokenAddress, poolAddress, {
+        from: baselineFrom,
+        to: baselineEnd,
+        counterTokenAddress: ACES_TOKEN_ADDRESS,
+        limit: 25,
+      });
+
+      if (seedTrades.length === 0) {
+        return null;
+      }
+
+      const lastTrade = seedTrades[seedTrades.length - 1];
+      const priceInAces = parseFloat(lastTrade.priceInAces);
+      const priceInUsd = parseFloat(lastTrade.priceInUsd);
+      const supplyValue = parseFloat(this.GRADUATED_SUPPLY);
+
+      return this.buildSeedCandle(
+        timeframe,
+        alignedStart,
+        priceInAces,
+        priceInUsd,
+        supplyValue,
+        'dex',
+      );
+    } catch (error) {
+      console.warn('[ChartAggregation] Failed to build DEX seed candle:', error);
+      return null;
+    }
+  }
+
+  private buildSeedCandle(
+    timeframe: string,
+    alignedStartMs: number,
+    priceInAces: number,
+    priceInUsd: number,
+    supply: number,
+    dataSource: 'bonding_curve' | 'dex',
+  ): Candle {
+    const intervalMs = this.getIntervalMs(timeframe);
+    const seedTime = alignedStartMs - intervalMs;
+    const safeSupply = Number.isFinite(supply) && supply > 0 ? supply : parseFloat(this.BONDING_SUPPLY);
+    const closeAces = Number.isFinite(priceInAces) ? priceInAces : 0;
+    const closeUsd = Number.isFinite(priceInUsd) ? priceInUsd : 0;
+    const supplyStr = safeSupply.toString();
+    const marketCapAces = (closeAces * safeSupply).toFixed(2);
+    const marketCapUsd = (closeUsd * safeSupply).toFixed(2);
+
+    const closeAcesStr = closeAces.toFixed(18);
+    const closeUsdStr = closeUsd.toFixed(18);
+
+    return {
+      timestamp: new Date(seedTime),
+      open: closeAcesStr,
+      high: closeAcesStr,
+      low: closeAcesStr,
+      close: closeAcesStr,
+      openUsd: closeUsdStr,
+      highUsd: closeUsdStr,
+      lowUsd: closeUsdStr,
+      closeUsd: closeUsdStr,
+      volume: '0',
+      volumeUsd: '0',
+      trades: 0,
+      dataSource,
+      circulatingSupply: supplyStr,
+      totalSupply: supplyStr,
+      marketCapAces,
+      marketCapUsd,
+      marketCapOpenUsd: marketCapUsd,
+      marketCapHighUsd: marketCapUsd,
+      marketCapLowUsd: marketCapUsd,
+      marketCapCloseUsd: marketCapUsd,
+    };
+  }
+
+  /**
+   * Fetch data for graduated tokens - handles bonding→DEX graduation boundary
+   * This method determines if the request spans the graduation date and fetches from both sources if needed
+   */
+  private async fetchGraduatedTokenData(
+    tokenAddress: string,
+    graduationState: GraduationState,
+    options: ChartOptions,
+    acesUsdPrice: number | null,
+    currentCandleTimestamp: number,
+  ): Promise<Candle[]> {
+    const graduationDate = new Date(graduationState.dexLiveAt!);
+
+    console.log('[ChartAggregation] 🎓 Graduation boundary check:', {
+      graduationDate: graduationDate.toISOString(),
+      requestFrom: options.from.toISOString(),
+      requestTo: options.to.toISOString(),
+    });
+
+    // Check if request spans the graduation boundary
+    const requestSpansGraduation = options.from < graduationDate && options.to >= graduationDate;
+
+    // CASE 1: Request spans graduation - need data from both bonding and DEX
+    if (requestSpansGraduation) {
+      console.log('[ChartAggregation] 🔀 Request spans graduation - using HYBRID approach');
+
+      // Fetch bonding curve data (before graduation)
+      const bondingCandles = await this.fetchBondingCurveData(
+        tokenAddress,
+        { ...options, to: graduationDate },
+        acesUsdPrice,
+        currentCandleTimestamp,
+      );
+
+      // Fetch DEX data (after graduation) using 7-day smart switching
+      const dexCandles = await this.fetchDexDataWithSmartSwitching(
+        tokenAddress,
+        graduationState.poolAddress!,
+        { ...options, from: graduationDate },
+        currentCandleTimestamp,
+      );
+
+      console.log('[ChartAggregation] ✅ Merged graduation boundary:', {
+        bonding: bondingCandles.length,
+        dex: dexCandles.length,
+        total: bondingCandles.length + dexCandles.length,
+      });
+
+      return [...bondingCandles, ...dexCandles];
+    }
+
+    // CASE 2: Request is entirely before graduation
+    if (options.to < graduationDate) {
+      console.log('[ChartAggregation] 📈 Entire request pre-graduation (bonding curve)');
+      return this.fetchBondingCurveData(
+        tokenAddress,
+        options,
+        acesUsdPrice,
+        currentCandleTimestamp,
+      );
+    }
+
+    // CASE 3: Request is entirely after graduation
+    console.log('[ChartAggregation] 🏊 Entire request post-graduation (DEX)');
+    return this.fetchDexDataWithSmartSwitching(
+      tokenAddress,
+      graduationState.poolAddress!,
+      options,
+      currentCandleTimestamp,
+    );
+  }
+
+  /**
    * Check if token is graduated
    * 🔥 OPTIMIZED: Now uses token metadata cache (5-minute TTL)
    */
@@ -723,27 +1089,6 @@ export class ChartAggregationService {
         dexLiveAt: null,
       };
     }
-  }
-
-  /**
-   * Determine if we should check memory for this candle timestamp
-   * Uses dynamic cutoff based on actual data available in memory
-   */
-  private shouldCheckMemoryForCandle(candleTimestamp: number): boolean {
-    const stats = acesPriceTracker.getStats();
-
-    // If no memory data, skip all checks
-    if (stats.totalObservations === 0 || !stats.oldestTimestamp) {
-      return false;
-    }
-
-    // Only check memory if candle is within our memory span
-    // Add 5-minute buffer before oldest observation for edge cases
-    const BUFFER_MS = 5 * 60 * 1000;
-    const memoryStartTime = stats.oldestTimestamp - BUFFER_MS;
-    const isWithinMemoryRange = candleTimestamp >= memoryStartTime;
-
-    return isWithinMemoryRange;
   }
 
   /**

@@ -347,3 +347,19 @@ export const TIMEFRAME_TO_SECONDS: Record<string, number> = {
   '4h': 14400,
   '1d': 86400,
 };
+
+/**
+ * Data source switching configuration for smart routing
+ * Determines when to use individual trades vs pre-aggregated OHLCV
+ */
+export const DATA_SOURCE_CONFIG = {
+  // Use pre-aggregated OHLCV for requests older than this many days
+  HISTORICAL_BOUNDARY_DAYS: 7,
+
+  // Cache time-to-live by data source type
+  CACHE_TTL: {
+    HISTORICAL_OHLC: 3600000, // 1 hour (historical data never changes)
+    RECENT_TRADES: 1000, // 1 second (real-time updates)
+    BONDING_TRADES: 1000, // 1 second (real-time updates)
+  },
+};

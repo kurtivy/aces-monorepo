@@ -884,7 +884,19 @@ export async function bondingRoutes(fastify: FastifyInstance) {
           });
         }
 
-        const amountInRaw = ethers.parseUnits(amount, inputConfig.decimals);
+        let amountInRaw: bigint;
+        try {
+          amountInRaw = ethers.parseUnits(amount, inputConfig.decimals);
+        } catch (error) {
+          fastify.log.warn(
+            { amount, decimals: inputConfig.decimals, err: error },
+            '❌ [BondingQuote] Amount precision exceeds token decimals',
+          );
+          return reply.code(400).send({
+            success: false,
+            error: `Amount has more than ${inputConfig.decimals} decimal places`,
+          });
+        }
 
         // Apply slippage to input amount (reduce to ensure transaction success)
         const amountInWithSlippage = (amountInRaw * BigInt(10000 - slippage)) / BigInt(10000);

@@ -1,7 +1,5 @@
 import { FastifyInstance } from 'fastify';
 import { ChartAggregationService } from '../services/chart-aggregation-service';
-import { AcesPriceMonitor } from '../services/aces-price-monitor';
-import { acesPriceTracker } from '../services/aces-price-tracker';
 
 interface WebSocketClient {
   id: string;
@@ -29,7 +27,6 @@ export class ChartDataWebSocket {
     string,
     { poolReady: boolean; poolAddress: string | null }
   >();
-  private acesPriceMonitor: AcesPriceMonitor | null = null;
 
   constructor(
     private fastify: FastifyInstance,
@@ -85,22 +82,6 @@ export class ChartDataWebSocket {
 
     // Start heartbeat checker
     this.startHeartbeat();
-
-    // Initialize and start ACES price monitoring
-    const acesUsdPriceService = (this.fastify as any).acesUsdPriceService;
-    if (acesUsdPriceService) {
-      this.acesPriceMonitor = new AcesPriceMonitor(acesUsdPriceService, this.pollIntervalMs);
-      this.acesPriceMonitor.start();
-
-      // Listen for ACES price updates
-      this.acesPriceMonitor.on('price-update', (update) => {
-        this.handleAcesPriceUpdate(update);
-      });
-
-      console.log('✅ ACES price monitoring active');
-    } else {
-      console.warn('⚠️ AcesUsdPriceService not available, ACES monitoring disabled');
-    }
 
     console.log('✅ WebSocket server initialized on /ws/chart');
   }
@@ -315,18 +296,18 @@ export class ChartDataWebSocket {
         `🔄 [WebSocket] Polling PRICE ${cleanTokenAddress} ${timeframe} (${subscribers.size} subscribers)...`,
       );
 
-      // 🔥 OPTIMIZED: Get latest candle efficiently (only fetch recent trades)
-      // Calculate lookback period based on timeframe (2x the interval for safety)
+      // 🔁 Ensure we always fetch the previous completed candle
+      // Look back far enough so inactive markets still return continuity
       const now = new Date();
       const intervalMs = this.getTimeframeMs(timeframe);
-      const lookbackMs = intervalMs * 2; // 2 periods back (ensures we get latest complete + current)
+      const lookbackMs = intervalMs * 6; // ~1.5 hours on 15m; covers previous candle after long gaps
       const from = new Date(now.getTime() - lookbackMs);
 
       const chartData = await this.chartService.getChartData(cleanTokenAddress, {
         timeframe,
         from,
         to: now,
-        limit: 5, // Fetch last 5 candles (only need 1-2, but small buffer)
+        limit: 15, // Bigger buffer so aggregation can include the prior close for empty candles
       });
 
       console.log(`[WebSocket] 📊 Retrieved chart data:`, {
@@ -583,17 +564,17 @@ export class ChartDataWebSocket {
         return;
       }
 
-      // 🔥 OPTIMIZED: Get latest candle efficiently (only fetch recent trades)
+      // 🔁 Ensure we always fetch the previous completed candle
       const now = new Date();
       const intervalMs = this.getTimeframeMs(timeframe);
-      const lookbackMs = intervalMs * 2; // 2 periods back
+      const lookbackMs = intervalMs * 6; // Mirror price polling lookback
       const from = new Date(now.getTime() - lookbackMs);
 
       const chartData = await this.chartService.getChartData(cleanTokenAddress, {
         timeframe,
         from,
         to: now,
-        limit: 5, // Fetch last 5 candles (only need 1-2, but small buffer)
+        limit: 15, // Keep mcap buffer in sync with price polling
       });
 
       const candle =
@@ -945,71 +926,6 @@ export class ChartDataWebSocket {
     }
 
     console.log(`✅ [WebSocket] Graduation event sent to ${broadcastCount} clients`);
-  }
-
-  /**
-   * Handle ACES price changes and broadcast to all active chart subscriptions
-   */
-  private handleAcesPriceUpdate(update: {
-    price: number;
-    timestamp: number;
-    source: string;
-    changePercent: number;
-  }) {
-    console.log(
-      `[WebSocket] 💰 ACES price updated: $${update.price.toFixed(6)} (${update.source}, ${update.changePercent.toFixed(3)}%)`,
-    );
-
-    // Broadcast to ALL active subscriptions (both price and mcap charts)
-    for (const [subscriptionKey, subscribers] of this.subscriptions.entries()) {
-      if (subscribers.size === 0) continue;
-
-      const [tokenAddress, timeframe, chartType] = subscriptionKey.split(':');
-
-      // Get the last broadcast candle for this subscription
-      const lastBroadcast = this.lastBroadcast.get(subscriptionKey);
-      if (!lastBroadcast?.payload?.candle) {
-        // No candle to update yet
-        continue;
-      }
-
-      const message = JSON.stringify({
-        type: 'aces_price_update',
-        tokenAddress,
-        timeframe,
-        chartType,
-        acesPrice: update.price,
-        acesSource: update.source,
-        changePercent: update.changePercent,
-        timestamp: update.timestamp,
-      });
-
-      // Broadcast to all subscribers of this chart
-      let broadcastCount = 0;
-      for (const clientId of subscribers) {
-        const client = this.clients.get(clientId);
-        if (client && client.socket.readyState === 1) {
-          try {
-            client.socket.send(message);
-            broadcastCount++;
-          } catch (error) {
-            console.error(`[WebSocket] Failed to send ACES update to ${clientId}:`, error);
-          }
-        }
-      }
-
-      if (broadcastCount > 0) {
-        console.log(
-          `[WebSocket] 📤 Broadcasted ACES update to ${broadcastCount} clients on ${subscriptionKey}`,
-        );
-      }
-    }
-
-    // Log tracker statistics periodically
-    const stats = acesPriceTracker.getStats();
-    console.log(
-      `[AcesPriceTracker] 📊 Stats: ${stats.totalObservations} observations, ${stats.timeSpanHours.toFixed(1)}h span, ${stats.memoryEstimateKB.toFixed(2)}KB`,
-    );
   }
 
   /**
