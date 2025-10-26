@@ -30,6 +30,7 @@ import { TransactionSuccessModal } from './transaction-success-modal';
 // Import utilities
 import { formatAmountForDisplay, formatUsdValue } from '@/lib/swap/formatters';
 import type { PaymentAsset } from '@/lib/swap/types';
+import { clampAmountDecimals } from '@/lib/swap/amount-utils';
 
 import { PercentageSelector } from './percentage-selector';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
@@ -37,6 +38,7 @@ import RoyalTradeButton from './royal-trade-button';
 import GraffitiTradeButton from './graffiti-trade-button';
 
 const USE_GRAFFITI_TRADE_BUTTON = true;
+
 
 interface TokenSwapInterfaceProps {
   tokenSymbol?: string;
@@ -714,16 +716,21 @@ export default function TokenSwapInterface({
   // ========================================
   // HANDLERS
   // ========================================
-  const handleAmountChange = useCallback((rawValue: string) => {
-    const normalized = rawValue.replace(/,/g, '');
-    setAmount(normalized);
-  }, []);
+  const handleAmountChange = useCallback(
+    (rawValue: string) => {
+      const normalized = rawValue.replace(/,/g, '');
+      const clamped = clampAmountDecimals(normalized, sellBalanceInfo.decimals);
+      setAmount(clamped);
+    },
+    [sellBalanceInfo.decimals],
+  );
 
   const handlePercentageCalculated = useCallback(
     (calculatedAmount: string, _percentage: number | null) => {
-      setAmount(calculatedAmount);
+      const clamped = clampAmountDecimals(calculatedAmount, sellBalanceInfo.decimals);
+      setAmount(clamped);
     },
-    [],
+    [sellBalanceInfo.decimals],
   );
 
   const handleSlippagePreset = useCallback((bps: number) => {
@@ -741,6 +748,14 @@ export default function TokenSwapInterface({
   }, []);
 
   const percentageSelectorBalance = sellBalanceInfo.rawBalance;
+
+  useEffect(() => {
+    if (!amount) return;
+    const clamped = clampAmountDecimals(amount, sellBalanceInfo.decimals);
+    if (clamped !== amount) {
+      setAmount(clamped);
+    }
+  }, [amount, sellBalanceInfo.decimals]);
 
   const amountDigitCount = useMemo(() => {
     if (!amount) return 0;

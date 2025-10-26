@@ -3,6 +3,23 @@ import { ethers } from 'ethers';
 
 const ERC20_ABI = ['function allowance(address owner, address spender) view returns (uint256)'];
 
+/**
+ * Truncates a number string to a maximum number of decimal places
+ * This prevents "fractional component exceeds decimals" errors
+ */
+function truncateToDecimals(value: string, decimals: number): string {
+  if (!value.includes('.')) {
+    return value;
+  }
+
+  const [integer, fractional] = value.split('.');
+  if (fractional.length <= decimals) {
+    return value;
+  }
+
+  return `${integer}.${fractional.slice(0, decimals)}`;
+}
+
 interface UseTokenAllowanceProps {
   tokenAddress: string | null;
   ownerAddress: string | null;
@@ -66,7 +83,9 @@ export function useTokenAllowance({
       }
 
       try {
-        const requiredAmount = ethers.utils.parseUnits(amount, decimals);
+        // Truncate amount to match token decimals to avoid "fractional component exceeds decimals" error
+        const truncatedAmount = truncateToDecimals(amount, decimals);
+        const requiredAmount = ethers.utils.parseUnits(truncatedAmount, decimals);
         return allowance >= BigInt(requiredAmount.toString());
       } catch (err) {
         console.error('[useTokenAllowance] Error checking allowance:', err);

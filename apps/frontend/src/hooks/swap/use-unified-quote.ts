@@ -9,6 +9,7 @@ import {
   applyFeeToUsdValue,
   applySlippageToUsdValue,
 } from '@/lib/swap/fee-calculator';
+import { clampAmountDecimals } from '@/lib/swap/amount-utils';
 
 interface UseUnifiedQuoteProps {
   // Token info
@@ -70,6 +71,14 @@ export interface UnifiedQuoteResult {
 }
 
 type QuoteStrategy = 'bonding-direct' | 'bonding-multihop' | 'dex' | 'none';
+
+const PAYMENT_ASSET_DECIMALS: Record<PaymentAsset, number> = {
+  ACES: 18,
+  WETH: 18,
+  ETH: 18,
+  USDC: 6,
+  USDT: 6,
+};
 
 /**
  * Unified quote hook that intelligently routes to:
@@ -242,10 +251,12 @@ export function useUnifiedQuote({
 
       // Normalize ETH to WETH for backend API
       const apiAsset = sellToken === 'ETH' ? 'WETH' : sellToken;
+      const decimals = PAYMENT_ASSET_DECIMALS[apiAsset as PaymentAsset] ?? 18;
+      const safeAmount = clampAmountDecimals(amount, decimals);
 
       const result = await BondingApi.getMultiHopQuote(tokenAddress, {
         inputAsset: apiAsset as 'WETH' | 'USDC' | 'USDT',
-        amount,
+        amount: safeAmount,
         slippageBps,
       });
 
