@@ -4,6 +4,7 @@ import React from 'react';
 import { CheckCircle, Clock, AlertCircle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import Link from 'next/link';
 
 type VerificationStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
@@ -115,6 +116,20 @@ export function VerificationStatusDisplay({
                   minute: '2-digit',
                 })}
               </p>
+            )}
+
+            {/* Pending: allow users to proceed to listing while review is in progress */}
+            {status === 'PENDING' && (
+              <div className="bg-[#0f1511]/50 border border-[#E6E3D3]/10 rounded-xl p-4 space-y-3">
+                <p className="text-[#E6E3D3]/80 text-sm">
+                  While we review your documents, you can start your collectible submission now.
+                </p>
+                <Link href="/launch">
+                  <Button className="w-full bg-gradient-to-r from-[#D0B284] to-[#C9AE6A] hover:from-[#C9AE6A] hover:to-[#D0B284] text-black font-semibold py-3 px-6 rounded-xl transition-all duration-300">
+                    Submit your collectible
+                  </Button>
+                </Link>
+              </div>
             )}
 
             {/* Attempts information for rejected status */}

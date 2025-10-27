@@ -139,6 +139,7 @@ export function VerificationForm({ disabled = false }: VerificationFormProps) {
   const section1Ref = React.useRef<HTMLDivElement>(null);
   const section2Ref = React.useRef<HTMLDivElement>(null);
   const section3Ref = React.useRef<HTMLDivElement>(null);
+  const didMountRef = React.useRef(false);
 
   const {
     register,
@@ -168,15 +169,22 @@ export function VerificationForm({ disabled = false }: VerificationFormProps) {
     }
   }, [user]);
 
-  // Smooth scroll to section when currentStep changes
+  // Smooth scroll to anchored position when currentStep changes
   React.useEffect(() => {
-    const sectionRefs = [section1Ref, section2Ref, section3Ref];
-    const targetRef = sectionRefs[currentStep - 1];
-
-    if (targetRef?.current) {
-      targetRef.current.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start',
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return; // avoid conflicting with page-level initial scroll
+    }
+    const container = document.querySelector('[data-scroll-container]') as HTMLElement | null;
+    if (container) {
+      // Reset container scroll to top so the active section sits at the top of the panel
+      container.scrollTo({ top: 0, behavior: 'smooth' });
+      // Then align window so the title band remains visible
+      requestAnimationFrame(() => {
+        const rect = container.getBoundingClientRect();
+        const offset = 120; // keep title band visible
+        const targetY = Math.max(window.scrollY + rect.top - offset, 0);
+        window.scrollTo({ top: targetY, behavior: 'smooth' });
       });
     }
   }, [currentStep]);
