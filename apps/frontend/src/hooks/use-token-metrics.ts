@@ -96,19 +96,19 @@ export function useTokenMetrics(
         metricsRef.current = updatedMetrics;
 
         // Extract circulatingSupply from bondingData with safe parsing
+        // Sticky update: do not overwrite with null when missing/invalid
         if (healthData.bondingData?.currentSupply) {
           const parsed = parseFloat(healthData.bondingData.currentSupply);
-          setCirculatingSupply(Number.isFinite(parsed) ? parsed : null);
-        } else {
-          setCirculatingSupply(null);
+          setCirculatingSupply((prev) => (Number.isFinite(parsed) ? parsed : (prev ?? null)));
         }
 
         // Extract currentPriceUsd from marketCapData
+        // Sticky update: keep last good price on invalid/missing data
         if (healthData.marketCapData?.currentPriceUsd !== undefined) {
           const priceUsd = healthData.marketCapData.currentPriceUsd;
-          setCurrentPriceUsd(Number.isFinite(priceUsd) ? priceUsd : 0);
-        } else {
-          setCurrentPriceUsd(0);
+          setCurrentPriceUsd((prev) =>
+            Number.isFinite(priceUsd) && priceUsd > 0 ? priceUsd : prev,
+          );
         }
 
         // Extract latest market cap (USD)
