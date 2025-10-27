@@ -9,21 +9,18 @@ import PageBandSubtitle from '@/components/ui/custom/page-band-subtitle';
 import AcesHeader from '@/components/ui/custom/aces-header';
 import PageLoader from '@/components/loading/page-loader';
 import ListTokenForm from '@/components/forms/list-token-form';
-import { Dialog, DialogTitle, DialogContent, DialogHeader } from '@/components/ui/dialog';
-import { VerificationForm } from '@/components/forms/verification-form';
+// import { Dialog, DialogTitle, DialogContent, DialogHeader } from '@/components/ui/dialog';
+// import { VerificationForm } from '@/components/forms/verification-form';
 import { useAuth } from '@/lib/auth/auth-context';
+import ListingVerificationBanner from '@/components/ui/listing-verification-banner';
 
 export default function CreateTokenForm() {
   const [imageLoaded, setImageLoaded] = useState(false);
-  const [showVerificationModal, setShowVerificationModal] = useState(false);
+  // const [showVerificationModal, setShowVerificationModal] = useState(false);
 
   // Import useAuth to refresh user profile on page load
-  const { refreshUserProfile } = useAuth();
-
-  // Scroll to top on page load
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, []);
+  const { refreshUserProfile, isLoading } = useAuth();
+  const [profileReady, setProfileReady] = useState(false);
 
   // Refresh user profile when page loads to ensure latest verification status
   useEffect(() => {
@@ -34,13 +31,26 @@ export default function CreateTokenForm() {
       })
       .catch((error) => {
         console.error('❌ Error refreshing profile on launch page:', error);
+      })
+      .finally(() => {
+        setProfileReady(true);
       });
   }, [refreshUserProfile]);
 
-  if (!imageLoaded) {
+  // Scroll to top after content is loaded
+  useEffect(() => {
+    if (imageLoaded && profileReady && !isLoading) {
+      // Use requestAnimationFrame to ensure DOM has fully rendered
+      window.requestAnimationFrame(() => {
+        window.scrollTo({ top: 0, behavior: 'instant' });
+      });
+    }
+  }, [imageLoaded, profileReady, isLoading]);
+
+  if (!imageLoaded || !profileReady || isLoading) {
     return (
       <div className="min-h-screen bg-[#151c16]">
-        <PageLoader />
+        <PageLoader transparentBackground={false} />
         {/* Hidden image to trigger loading */}
         <div className="hidden">
           <Image
@@ -90,57 +100,17 @@ export default function CreateTokenForm() {
         offsetY={12}
       />
 
-      {/* Main Content - Fixed 1400px height for background images */}
+      {/* Main Content - Fixed 1400px height for background images (match verify page) */}
       <div className="relative z-20 h-[1400px]">
-        {/* Booster pack image and Coming Soon banner with grid-style background */}
         <div className="absolute top-[200px] left-1/2 -translate-x-1/2 w-full max-w-[1200px] px-4 sm:px-6 z-10">
-          {/* Main container with upcoming-grid styling */}
-          <div className="relative pointer-events-auto">
-            <div className="relative bg-[#151c16]/80 border border-dashed border-[#E6E3D3]/20 rounded-2xl p-4 sm:p-6 md:p-8 shadow-[0_10px_40px_rgba(215,191,117,0.06)]">
-              {/* Corner ticks */}
-              <span className="pointer-events-none absolute left-3 top-3 h-3 w-0.5 bg-[#C9AE6A]" />
-              <span className="pointer-events-none absolute left-3 top-3 w-3 h-0.5 bg-[#C9AE6A]" />
-              <span className="pointer-events-none absolute right-3 top-3 h-3 w-0.5 bg-[#C9AE6A]" />
-              <span className="pointer-events-none absolute right-3 top-3 w-3 h-0.5 bg-[#C9AE6A]" />
-              <span className="pointer-events-none absolute left-3 bottom-3 h-3 w-0.5 bg-[#C9AE6A]" />
-              <span className="pointer-events-none absolute left-3 bottom-3 w-3 h-0.5 bg-[#C9AE6A]" />
-              <span className="pointer-events-none absolute right-3 bottom-3 h-3 w-0.5 bg-[#C9AE6A]" />
-              <span className="pointer-events-none absolute right-3 bottom-3 w-3 h-0.5 bg-[#C9AE6A]" />
-
-              {/* Content within the styled container */}
-              <div className="space-y-6 sm:space-y-8">
-                {/* Booster Pack Image - responsive sizing, no cropping needed */}
-                <div className="relative flex justify-center">
-                  {/* <div className="relative w-full max-w-[500px] sm:w-[400px] md:w-[500px]">
-                    <Image
-                      src="/webp/aces-booster-pack.webp"
-                      alt="ACES Booster Pack"
-                      width={500}
-                      height={300}
-                      className="object-contain drop-shadow-lg w-full h-auto"
-                      priority
-                      sizes="(max-width: 640px) 100vw, (max-width: 768px) 400px, 500px"
-                    />
-                  </div> */}
-                </div>
-
-                {/* Coming Soon Banner - responsive text sizing */}
-                <div className="relative">
-                  {/* <div className="bg-[#0A120B] border border-[#D7BF75] py-4 sm:py-6 rounded-lg">
-                    <div className="text-center">
-                      <h2 className="text-[#D7BF75] text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-neue-world uppercase tracking-widest leading-tight">
-                        Coming Soon
-                      </h2>
-                    </div>
-                  </div> */}
-                </div>
-              </div>
-            </div>
-          </div>
+          <ListingVerificationBanner />
         </div>
-        {/* Commented out form for future use */}
 
-        <div className="absolute top-[200px] left-1/2 -translate-x-1/2 w-full max-w-[1200px] px-4 sm:px-6 z-10 h-[1200px] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        {/* Scrollable form container under the banner */}
+        <div
+          data-scroll-container
+          className="absolute top-[270px] left-1/2 -translate-x-1/2 w-full max-w-[1200px] px-4 sm:px-6 z-10 h-[1130px] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+        >
           <ListTokenForm />
           <div className="h-24" />
         </div>

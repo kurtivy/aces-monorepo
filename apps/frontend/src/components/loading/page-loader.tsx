@@ -6,9 +6,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 interface PageLoaderProps {
   className?: string;
+  transparentBackground?: boolean; // when false, use opaque background to avoid flash
 }
 
-const PageLoader: React.FC<PageLoaderProps> = ({ className = '' }) => {
+const PageLoader: React.FC<PageLoaderProps> = ({
+  className = '',
+  transparentBackground = true,
+}) => {
   const [showFontCycling, setShowFontCycling] = useState(false);
   const [currentFontIndex, setCurrentFontIndex] = useState(0);
 
@@ -60,7 +64,7 @@ const PageLoader: React.FC<PageLoaderProps> = ({ className = '' }) => {
   return (
     <div
       className={`fixed inset-0 flex items-center justify-center ${className}`}
-      style={{ backgroundColor: 'transparent' }}
+      style={{ backgroundColor: transparentBackground ? 'transparent' : '#151c16' }}
     >
       <div className="w-full max-w-5xl mx-auto text-center px-8">
         {/* Main Logo Text */}
