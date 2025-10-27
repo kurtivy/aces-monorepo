@@ -166,7 +166,7 @@ export function TransactionSuccessModal({
               )}
 
               <div className="mb-3">
-                <h2 className="text-lg font-bold text-[#D0B264] text-center">Congratualtions!</h2>
+                <h2 className="text-lg font-bold text-[#D0B264] text-center">Congratulations!</h2>
                 <h2 className="text-lg font-bold text-[#D0B264] text-center">
                   You just collected culture.
                 </h2>
@@ -198,6 +198,7 @@ export function TransactionSuccessModal({
               </div>
 
               <div className="mb-4 rounded-lg border border-[#D0B264]/20 bg-black/30 p-2">
+                <div className="text-xs text-[#D0B264]/60">Transaction Hash</div>
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-mono text-xs text-[#D0B264]/70">
                     {transactionHash.slice(0, 6)}...{transactionHash.slice(-4)}

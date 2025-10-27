@@ -74,6 +74,8 @@ const modalImageCache = new ModalImageCache();
 interface ImageDetailsModalProps {
   imageInfo: ImageInfo | null;
   onClose: () => void;
+  // Optional override from listings table to ensure indicator matches table state
+  isLiveOverride?: boolean;
 }
 
 // Lazy loading component for modal images
@@ -210,7 +212,11 @@ function LazyModalImage({
   );
 }
 
-export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsModalProps) {
+export default function ImageDetailsModal({
+  imageInfo,
+  onClose,
+  isLiveOverride,
+}: ImageDetailsModalProps) {
   // Phase 2 Step 3 Action 4: Stabilize onClose to prevent event listener re-registration
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -227,31 +233,37 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
   // Extract symbol from imageInfo metadata
   const symbol = imageInfo?.metadata?.symbol;
 
-  // Fetch listing data if symbol exists
-  const { listing, isLive } = useListingBySymbol(symbol || '');
+  // Fetch listing data if symbol exists (skip for DRVN static modal)
+  const isDrvn = imageInfo?.metadata?.id === 'drvn';
+  const { listing, isLive: hookIsLive } = useListingBySymbol(isDrvn ? '' : symbol || '');
+
+  // Effective live status: prefer override from listings table when provided
+  const isLive = isDrvn ? false : (isLiveOverride ?? hookIsLive);
 
   // Get token address from listing
-  const tokenAddress = listing?.token?.contractAddress;
+  const tokenAddress = isDrvn ? undefined : listing?.token?.contractAddress;
 
   // Fetch live market cap data
   const { marketCapUsd } = useTokenMarketCap(tokenAddress, 'usd');
 
   // Calculate live market cap
   const liveMarketCap = useMemo(() => {
+    if (isDrvn) return 0;
     return isFinite(marketCapUsd) && marketCapUsd > 0 ? marketCapUsd : 0;
-  }, [marketCapUsd]);
+  }, [marketCapUsd, isDrvn]);
 
   // Get RRP (Asset Sale Price) from metadata
-  const rrpValue = imageInfo?.metadata?.rrp as number | undefined;
+  const rrpValue = isDrvn ? undefined : (imageInfo?.metadata?.rrp as number | undefined);
   const assetSalePrice = useMemo(() => {
     return rrpValue !== undefined ? rrpValue : 0;
   }, [rrpValue]);
 
   // Calculate ACES Ratio: Market Cap / Asset Sale Price
   const acesRatio = useMemo(() => {
+    if (isDrvn) return 0;
     if (assetSalePrice <= 0 || liveMarketCap <= 0) return 0;
     return liveMarketCap / assetSalePrice;
-  }, [liveMarketCap, assetSalePrice]);
+  }, [liveMarketCap, assetSalePrice, isDrvn]);
 
   const [backdropStyles, setBackdropStyles] = useState<{
     backdropFilter?: string;
@@ -313,11 +325,12 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
   const safeMetadata = getImageMetadata(imageInfo);
 
   const handleTradeClick = useCallback(() => {
+    if (isDrvn) return; // disabled
     if (safeMetadata.id === '7') {
       stableOnClose();
       router.push('/rwa/apk');
     }
-  }, [router, safeMetadata.id, stableOnClose]);
+  }, [router, safeMetadata.id, stableOnClose, isDrvn]);
 
   // Enhanced null safety checks
   if (!imageInfo) {
@@ -472,109 +485,129 @@ export default function ImageDetailsModal({ imageInfo, onClose }: ImageDetailsMo
                     {/* Enhanced Description with Read More/Less functionality - More space allocated */}
                     <div className="prose prose-invert">
                       <div className="relative">
-                        <p
-                          className={`text-[#FFFFFF]/80 text-sm sm:text-base leading-relaxed font-spectral tracking-wide transition-all duration-300 ${
-                            isDescriptionExpanded ? '' : 'line-clamp-3'
-                          }`}
-                        >
-                          {safeMetadata.description}
-                        </p>
+                        {isDrvn ? (
+                          <p className="text-[#FFFFFF]/80 text-sm sm:text-base leading-relaxed font-spectral tracking-wide">
+                            Coming soon. DRVN isn’t live yet — check back soon.
+                          </p>
+                        ) : (
+                          <p
+                            className={`text-[#FFFFFF]/80 text-sm sm:text-base leading-relaxed font-spectral tracking-wide transition-all duration-300 ${
+                              isDescriptionExpanded ? '' : 'line-clamp-3'
+                            }`}
+                          >
+                            {safeMetadata.description}
+                          </p>
+                        )}
 
                         {/* Read More Button - Show if description is long enough to be truncated */}
-                        {safeMetadata.description && safeMetadata.description.length > 200 && (
-                          <div className="mt-3">
-                            <button
-                              onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
-                              className="text-[#D0B264] text-sm font-medium hover:text-[#D0B264]/80 transition-colors duration-150 flex items-center space-x-1"
-                            >
-                              <span>{isDescriptionExpanded ? 'Show Less' : 'Read More'}</span>
-                              <svg
-                                className={`w-4 h-4 transition-transform duration-200 ${
-                                  isDescriptionExpanded ? 'rotate-180' : ''
-                                }`}
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
+                        {!isDrvn &&
+                          safeMetadata.description &&
+                          safeMetadata.description.length > 200 && (
+                            <div className="mt-3">
+                              <button
+                                onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
+                                className="text-[#D0B264] text-sm font-medium hover:text-[#D0B264]/80 transition-colors duration-150 flex items-center space-x-1"
                               >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M19 9l-7 7-7-7"
-                                />
-                              </svg>
-                            </button>
-                          </div>
-                        )}
+                                <span>{isDescriptionExpanded ? 'Show Less' : 'Read More'}</span>
+                                <svg
+                                  className={`w-4 h-4 transition-transform duration-200 ${
+                                    isDescriptionExpanded ? 'rotate-180' : ''
+                                  }`}
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M19 9l-7 7-7-7"
+                                  />
+                                </svg>
+                              </button>
+                            </div>
+                          )}
                       </div>
                     </div>
 
                     {/* Asset Stats - More space allocated */}
-                    <div className="mt-6 sm:mt-8 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-4 sm:gap-y-6">
-                      {(() => {
-                        // Format numbers for display
-                        const formatNumber = (num: number): string => {
-                          if (num >= 1_000_000_000) return `${(num / 1_000_000_000).toFixed(2)}B`;
-                          if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(2)}M`;
-                          if (num >= 1_000) return `${(num / 1_000).toFixed(2)}K`;
-                          return num.toFixed(2);
-                        };
+                    {!isDrvn && (
+                      <div className="mt-6 sm:mt-8 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-4 sm:gap-y-6">
+                        {(() => {
+                          // Format numbers for display
+                          const formatNumber = (num: number): string => {
+                            if (num >= 1_000_000_000) return `${(num / 1_000_000_000).toFixed(2)}B`;
+                            if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(2)}M`;
+                            if (num >= 1_000) return `${(num / 1_000).toFixed(2)}K`;
+                            return num.toFixed(2);
+                          };
 
-                        // Format ACES Ratio
-                        const acesRatioDisplay = acesRatio > 0 ? `${acesRatio.toFixed(2)}x` : 'TBD';
+                          // Format ACES Ratio
+                          const acesRatioDisplay =
+                            acesRatio > 0 ? `${acesRatio.toFixed(2)}x` : 'TBD';
 
-                        // Format Asset Sale Price
-                        const assetSalePriceDisplay =
-                          assetSalePrice > 0
-                            ? `$${assetSalePrice.toLocaleString('en-US', {
-                                minimumFractionDigits: 0,
-                                maximumFractionDigits: 0,
-                              })}`
-                            : 'TBD';
+                          // Format Asset Sale Price
+                          const assetSalePriceDisplay =
+                            assetSalePrice > 0
+                              ? `$${assetSalePrice.toLocaleString('en-US', {
+                                  minimumFractionDigits: 0,
+                                  maximumFractionDigits: 0,
+                                })}`
+                              : 'TBD';
 
-                        // Format Market Cap
-                        const marketCapDisplay =
-                          liveMarketCap > 0 ? `$${formatNumber(liveMarketCap)}` : 'TBD';
+                          // Format Market Cap
+                          const marketCapDisplay =
+                            liveMarketCap > 0 ? `$${formatNumber(liveMarketCap)}` : 'TBD';
 
-                        const stats = [
-                          {
-                            label: 'Market Cap',
-                            value: marketCapDisplay,
-                          },
-                          {
-                            label: 'Real World Value',
-                            value: assetSalePriceDisplay,
-                          },
-                          {
-                            label: 'ACES Ratio',
-                            value: acesRatioDisplay,
-                          },
-                        ];
+                          const stats = [
+                            {
+                              label: 'Market Cap',
+                              value: marketCapDisplay,
+                            },
+                            {
+                              label: 'Real World Value',
+                              value: assetSalePriceDisplay,
+                            },
+                            {
+                              label: 'ACES Ratio',
+                              value: acesRatioDisplay,
+                            },
+                          ];
 
-                        return stats.map(({ label, value }) => (
-                          <div key={label} className="flex flex-col">
-                            <span className="text-[10px] xs:text-xs sm:text-xs md:text-sm text-[#FFFFFF]/60 tracking-wide font-jetbrains-mono uppercase">
-                              {label}
-                            </span>
-                            <span className="text-xs xs:text-sm sm:text-sm md:text-base font-neue-world font-bold text-[#D0B264] mt-1">
-                              {value}
-                            </span>
-                          </div>
-                        ));
-                      })()}
-                    </div>
+                          return stats.map(({ label, value }) => (
+                            <div key={label} className="flex flex-col">
+                              <span className="text-[10px] xs:text-xs sm:text-xs md:text-sm text-[#FFFFFF]/60 tracking-wide font-jetbrains-mono uppercase">
+                                {label}
+                              </span>
+                              <span className="text-xs xs:text-sm sm:text-sm md:text-base font-neue-world font-bold text-[#D0B264] mt-1">
+                                {value}
+                              </span>
+                            </div>
+                          ));
+                        })()}
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 {/* Fixed Button Area */}
                 <div className="flex-shrink-0 p-3 sm:p-6 lg:p-8 pt-0 bg-gradient-to-t from-black via-black/95 to-transparent">
                   <div className="flex gap-3">
-                    <button
-                      onClick={handleTradeClick}
-                      className="flex-1 bg-gradient-to-r from-[#D0B264] to-[#D0B264]/80 hover:from-[#D0B264]/90 hover:to-[#D0B264]/70 text-[#231F20] font-syne font-bold py-3 sm:py-4 px-4 sm:px-6 lg:px-8 rounded-lg sm:rounded-xl transition-all duration-150 transform active:scale-[0.98] shadow-goldGlow text-sm sm:text-base lg:text-lg md:hover:scale-[1.02] text-center"
-                    >
-                      TRADE
-                    </button>
+                    {isDrvn ? (
+                      <button
+                        disabled
+                        className="flex-1 bg-zinc-800/60 text-zinc-300 border border-zinc-700 font-syne font-bold py-3 sm:py-4 px-4 sm:px-6 lg:px-8 rounded-lg sm:rounded-xl text-sm sm:text-base lg:text-lg text-center cursor-not-allowed"
+                      >
+                        Coming Soon
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleTradeClick}
+                        className="flex-1 bg-gradient-to-r from-[#D0B264] to-[#D0B264]/80 hover:from-[#D0B264]/90 hover:to-[#D0B264]/70 text-[#231F20] font-syne font-bold py-3 sm:py-4 px-4 sm:px-6 lg:px-8 rounded-lg sm:rounded-xl transition-all duration-150 transform active:scale-[0.98] shadow-goldGlow text-sm sm:text-base lg:text-lg md:hover:scale-[1.02] text-center"
+                      >
+                        TRADE
+                      </button>
+                    )}
                     <button
                       onClick={() =>
                         isLive ? setIsPurchaseModalOpen(true) : setIsAuctionModalOpen(true)
