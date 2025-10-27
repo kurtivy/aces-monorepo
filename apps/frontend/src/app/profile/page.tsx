@@ -2,9 +2,7 @@
 
 import { useAuth } from '@/lib/auth/auth-context';
 import { HorizontalProfileHeader } from '@/components/profile/horizontal-profile-header';
-import { TokenListTab } from '@/components/profile/token-list-tab';
-import { BidsTab } from '@/components/profile/bids-tab';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+// Tabs removed in favor of a single "My Collectibles" view on this page
 import Footer from '@/components/ui/custom/footer';
 import { useState, useLayoutEffect } from 'react';
 import { AdminDashboardOverlay } from '@/components/profile/admin-dashboard-overlay';
@@ -12,14 +10,20 @@ import LuxuryAssetsBackground from '@/components/ui/custom/luxury-assets-backgro
 import AcesHeader from '@/components/ui/custom/aces-header';
 import PageBandTitle from '@/components/ui/custom/page-band-title';
 import PageLoader from '@/components/loading/page-loader';
+import ListingVerificationBanner from '@/components/ui/listing-verification-banner';
+import { UserSubmissionsTab } from '@/components/profile/user-submissions-tab';
+import { OffersTab } from '@/components/profile/offers-tab';
+import { Button } from '@/components/ui/button';
 
 export default function ProfilePage() {
-  const { user, isLoading, error, updateProfile, connectWallet } = useAuth();
+  const { user, isLoading, error, updateProfile, connectWallet, authReady, isAuthenticated } =
+    useAuth();
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
 
   // Align content start to the solid line below the band
   const BOTTOM_RULE_HEIGHT = 8;
-  const BAND_HEIGHT = 24;
+  const BAND_HEIGHT = 72;
+  const TITLE_CLEARANCE = 8; // tighter clearance under the title band
   const [contentTop, setContentTop] = useState<number>(0);
 
   useLayoutEffect(() => {
@@ -28,7 +32,10 @@ export default function ProfilePage() {
       const header = getHeader();
       if (header) {
         const rect = header.getBoundingClientRect();
-        setContentTop(Math.max(0, Math.round(rect.bottom + BOTTOM_RULE_HEIGHT + BAND_HEIGHT)));
+        // Reduce overlap by adding a bit of extra clearance under the title band
+        setContentTop(
+          Math.max(0, Math.round(rect.bottom + BOTTOM_RULE_HEIGHT + BAND_HEIGHT + TITLE_CLEARANCE)),
+        );
       }
     };
     measure();
@@ -49,7 +56,7 @@ export default function ProfilePage() {
     };
   }, []);
 
-  if (isLoading) {
+  if (!authReady || isLoading) {
     return (
       <div className="min-h-screen bg-[#151c16]">
         <PageLoader />
@@ -107,6 +114,9 @@ export default function ProfilePage() {
     sellerStatus: user?.sellerStatus || undefined,
   };
 
+  const shouldShowVerificationBanner = user?.sellerStatus === 'NOT_APPLIED';
+  const needsWalletConnection = !isAuthenticated || !user?.walletAddress;
+
   return (
     <div className="min-h-screen relative bg-[#151c16]">
       {/* Header */}
@@ -121,11 +131,11 @@ export default function ProfilePage() {
         showOnMobile={false}
         minHeight={1400}
         contentWidth={1200}
-        bandHeight={96}
+        bandHeight={72}
       />
 
       {/* Bands */}
-      <PageBandTitle title="Portfolio" contentWidth={1200} bandHeight={96} contentLineOffset={8} />
+      <PageBandTitle title="Portfolio" contentWidth={1200} bandHeight={72} contentLineOffset={8} />
       {/* Subtitle intentionally removed for profile */}
 
       {/* Main content */}
@@ -144,6 +154,33 @@ export default function ProfilePage() {
             </div>
           )}
 
+          {/* Connect wallet callout */}
+          {needsWalletConnection && (
+            <div className="mb-4 bg-gradient-to-br from-[#D7BF75]/15 to-[#C9AE6A]/10 border border-[#D7BF75]/40 rounded-xl p-5 flex items-start gap-4">
+              <div className="flex-1">
+                <h3 className="text-[#D7BF75] font-bold text-lg mb-1">Connect your wallet</h3>
+                <p className="text-[#DCDDCC]/85 text-sm">
+                  You must connect a wallet to view your portfolio, bids, listings, and offers.
+                </p>
+              </div>
+              <div className="shrink-0">
+                <Button
+                  onClick={connectWallet}
+                  className="bg-[#D7BF75] hover:bg-[#D7BF75]/80 text-black font-semibold px-4"
+                >
+                  Connect Wallet
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Optional verification banner */}
+          {!needsWalletConnection && shouldShowVerificationBanner && (
+            <div className="mb-4">
+              <ListingVerificationBanner />
+            </div>
+          )}
+
           {/* Profile header bar - outside the panel, full content width */}
           <HorizontalProfileHeader
             user={profileData}
@@ -151,32 +188,15 @@ export default function ProfilePage() {
             onConnectWallet={connectWallet}
           />
 
-          {/* Main panel below header - no gap */}
-          <div className="relative bg-[#151c16]/80 border border-dashed border-[#E6E3D3]/20 rounded-2xl p-8 shadow-[0_10px_40px_rgba(215,191,117,0.06)] space-y-8">
-            {/* Tabs */}
+          {/* Main panel below header - simplified to My Collectibles */}
+          <div className="relative bg-[#151c16]/80 border border-dashed border-[#E6E3D3]/20 rounded-2xl p-8 shadow-[0_10px_40px_rgba(215,191,117,0.06)] space-y-6">
             <div className="w-full">
-              <Tabs defaultValue="tokens" className="w-full">
-                <TabsList className="bg-transparent border-none p-0 h-auto space-x-8 mb-6">
-                  <TabsTrigger
-                    value="tokens"
-                    className="bg-transparent text-[#DCDDCC] text-lg font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-[#D7BF75]"
-                  >
-                    TOKENS
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="bids"
-                    className="bg-transparent text-[#DCDDCC] text-lg font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-[#D7BF75]"
-                  >
-                    BIDS
-                  </TabsTrigger>
-                </TabsList>
-                <TabsContent value="tokens" className="mt-0 w-full">
-                  <TokenListTab />
-                </TabsContent>
-                <TabsContent value="bids" className="mt-0 w-full">
-                  <BidsTab />
-                </TabsContent>
-              </Tabs>
+              <div className="mb-4">
+                <h2 className="text-[#D0B264] text-2xl font-semibold tracking-wider">
+                  My Collectibles
+                </h2>
+              </div>
+              <UserSubmissionsTab />
             </div>
           </div>
           <div className="h-24" />

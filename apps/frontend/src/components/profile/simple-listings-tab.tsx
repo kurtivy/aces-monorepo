@@ -36,6 +36,7 @@ import {
 import { useWalletClient } from 'wagmi';
 import { ethers } from 'ethers';
 import { useTokenMetrics } from '@/hooks/use-token-metrics';
+import { useRef } from 'react';
 
 // Type definitions
 interface AssetDetails {
@@ -414,6 +415,11 @@ export function SimpleListingsTab({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [mintingListingId, setMintingListingId] = useState<string | null>(null);
   const [showPendingListings, setShowPendingListings] = useState(defaultShowPending);
+  const [symbolCheck, setSymbolCheck] = useState<{
+    status: 'idle' | 'checking' | 'available' | 'taken' | 'error';
+    message?: string;
+  }>({ status: 'idle' });
+  const symbolCheckTimeout = useRef<number | null>(null);
 
   // Normalize potentially percent-encoded signed URLs coming from storage
   const normalizeImageUrl = useCallback((url: string | undefined) => {
@@ -528,6 +534,7 @@ export function SimpleListingsTab({
       startingBidPrice: listing.startingBidPrice || '',
       imageGallery: onlyProductImages(listing.imageGallery),
     });
+    setSymbolCheck({ status: 'idle' });
   };
 
   const handleSubmitDetails = async () => {
@@ -535,6 +542,11 @@ export function SimpleListingsTab({
 
     try {
       setIsSubmitting(true);
+      // Prevent submit if symbol taken
+      if (symbolCheck.status === 'taken') {
+        setError('Symbol is already in use. Please choose a unique ticker.');
+        return;
+      }
       const token = await getAccessToken();
       if (!token) return;
 
@@ -1078,7 +1090,7 @@ export function SimpleListingsTab({
       <div className="bg-[#0A120B] rounded-lg border border-dashed border-[#D7BF75]/25 relative h-full">
         <div className="p-6 text-center">
           <FileText className="w-12 h-12 text-[#DCDDCC]/50 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-white mb-2">No listings yet</h3>
+          <h3 className="text-lg font-medium text-white mb-2">No collectibles yet</h3>
           <p className="text-[#DCDDCC] mb-6">Create your first submission to get started.</p>
           <Button
             onClick={() => router.push('/launch')}
@@ -1235,14 +1247,78 @@ export function SimpleListingsTab({
                                               </span>
                                               <Input
                                                 value={formData.symbol}
-                                                onChange={(e) =>
+                                                onChange={(e) => {
+                                                  const next = e.target.value
+                                                    .replace(/[^A-Za-z0-9]/g, '')
+                                                    .toUpperCase();
                                                   setFormData((prev) => ({
                                                     ...prev,
-                                                    symbol: e.target.value,
-                                                  }))
-                                                }
+                                                    symbol: next,
+                                                  }));
+                                                  // Debounced uniqueness check
+                                                  if (symbolCheckTimeout.current) {
+                                                    window.clearTimeout(symbolCheckTimeout.current);
+                                                  }
+                                                  setSymbolCheck({ status: 'checking' });
+                                                  symbolCheckTimeout.current = window.setTimeout(
+                                                    async () => {
+                                                      try {
+                                                        if (!next) {
+                                                          setSymbolCheck({ status: 'idle' });
+                                                          return;
+                                                        }
+                                                        const res =
+                                                          await ListingsApi.getListingBySymbol(
+                                                            next,
+                                                          );
+                                                        if (
+                                                          (res as any).success &&
+                                                          (res as any).data
+                                                        ) {
+                                                          setSymbolCheck({
+                                                            status: 'taken',
+                                                            message: 'Symbol already exists',
+                                                          });
+                                                        } else {
+                                                          setSymbolCheck({
+                                                            status: 'available',
+                                                            message: 'Symbol available',
+                                                          });
+                                                        }
+                                                      } catch (err) {
+                                                        // If API returns 404 for not found, treat as available
+                                                        setSymbolCheck({ status: 'available' });
+                                                      }
+                                                    },
+                                                    400,
+                                                  );
+                                                }}
                                                 className="mt-1 bg-black/30 border-[#D0B284]/20 text-white font-mono pl-7"
                                               />
+                                              {symbolCheck.status !== 'idle' && (
+                                                <div className="mt-1 text-xs">
+                                                  {symbolCheck.status === 'checking' && (
+                                                    <span className="text-[#D0B284]">
+                                                      Checking availability…
+                                                    </span>
+                                                  )}
+                                                  {symbolCheck.status === 'available' && (
+                                                    <span className="text-green-400">
+                                                      Symbol available
+                                                    </span>
+                                                  )}
+                                                  {symbolCheck.status === 'taken' && (
+                                                    <span className="text-red-400">
+                                                      Symbol already in use
+                                                    </span>
+                                                  )}
+                                                  {symbolCheck.status === 'error' && (
+                                                    <span className="text-yellow-300">
+                                                      Could not verify symbol
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              )}
                                             </div>
                                           </div>
                                           <div>
@@ -1659,14 +1735,80 @@ export function SimpleListingsTab({
                                                 </span>
                                                 <Input
                                                   value={formData.symbol}
-                                                  onChange={(e) =>
+                                                  onChange={(e) => {
+                                                    const next = e.target.value
+                                                      .replace(/[^A-Za-z0-9]/g, '')
+                                                      .toUpperCase();
                                                     setFormData((prev) => ({
                                                       ...prev,
-                                                      symbol: e.target.value,
-                                                    }))
-                                                  }
+                                                      symbol: next,
+                                                    }));
+                                                    // Debounced uniqueness check
+                                                    if (symbolCheckTimeout.current) {
+                                                      window.clearTimeout(
+                                                        symbolCheckTimeout.current,
+                                                      );
+                                                    }
+                                                    setSymbolCheck({ status: 'checking' });
+                                                    symbolCheckTimeout.current = window.setTimeout(
+                                                      async () => {
+                                                        try {
+                                                          if (!next) {
+                                                            setSymbolCheck({ status: 'idle' });
+                                                            return;
+                                                          }
+                                                          const res =
+                                                            await ListingsApi.getListingBySymbol(
+                                                              next,
+                                                            );
+                                                          if (
+                                                            (res as any).success &&
+                                                            (res as any).data
+                                                          ) {
+                                                            setSymbolCheck({
+                                                              status: 'taken',
+                                                              message: 'Symbol already exists',
+                                                            });
+                                                          } else {
+                                                            setSymbolCheck({
+                                                              status: 'available',
+                                                              message: 'Symbol available',
+                                                            });
+                                                          }
+                                                        } catch (err) {
+                                                          // If API returns 404 for not found, treat as available
+                                                          setSymbolCheck({ status: 'available' });
+                                                        }
+                                                      },
+                                                      400,
+                                                    );
+                                                  }}
                                                   className="mt-1 bg-black/30 border-[#D0B284]/20 text-white font-mono pl-7"
                                                 />
+                                                {symbolCheck.status !== 'idle' && (
+                                                  <div className="mt-1 text-xs">
+                                                    {symbolCheck.status === 'checking' && (
+                                                      <span className="text-[#D0B284]">
+                                                        Checking availability…
+                                                      </span>
+                                                    )}
+                                                    {symbolCheck.status === 'available' && (
+                                                      <span className="text-green-400">
+                                                        Symbol available
+                                                      </span>
+                                                    )}
+                                                    {symbolCheck.status === 'taken' && (
+                                                      <span className="text-red-400">
+                                                        Symbol already in use
+                                                      </span>
+                                                    )}
+                                                    {symbolCheck.status === 'error' && (
+                                                      <span className="text-yellow-300">
+                                                        Could not verify symbol
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                )}
                                               </div>
                                             </div>
                                             <div>

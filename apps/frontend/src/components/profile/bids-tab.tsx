@@ -2,6 +2,7 @@
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { SellerDashboardOverlay } from './seller-dashboard-overlay';
 import Image from 'next/image';
 import { useEffect, useState, useCallback } from 'react';
@@ -12,7 +13,7 @@ import { ListingsApi, type ListingData } from '@/lib/api/listings';
 import Link from 'next/link';
 import { ExternalLink } from 'lucide-react';
 
-type BidStatusFilter = 'ALL' | 'ACTIVE' | 'REJECTED' | 'EXPIRED';
+// Removed status filter tabs in favor of a search input
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -52,9 +53,10 @@ export function BidsTab() {
   const [bids, setBids] = useState<Bid[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<BidStatusFilter>('ALL');
+  const [searchTerm, setSearchTerm] = useState('');
   const [isSellerDashboardOpen, setIsSellerDashboardOpen] = useState(false);
   const [verificationDetails, setVerificationDetails] = useState<VerificationDetails | null>(null);
+  const [verificationLoaded, setVerificationLoaded] = useState(false);
   const [listingDetails, setListingDetails] = useState<Record<string, ListingData>>({});
 
   // Debug logging
@@ -68,6 +70,7 @@ export function BidsTab() {
     const fetchVerificationDetails = async () => {
       if (!user) {
         setVerificationDetails(null);
+        setVerificationLoaded(true);
         return;
       }
 
@@ -82,6 +85,8 @@ export function BidsTab() {
       } catch (error) {
         console.error('Error fetching verification details:', error);
         // Silently fail - verification check will just not show
+      } finally {
+        setVerificationLoaded(true);
       }
     };
 
@@ -169,60 +174,33 @@ export function BidsTab() {
     fetchBids();
   }, [getAccessToken, fetchListingDetails]);
 
-  // Filter bids based on selected status
-  const filteredBids = bids.filter((bid) => {
-    const passesFilter = (() => {
-      switch (statusFilter) {
-        case 'ACTIVE':
-          return bid.status === 'PENDING' || bid.status === 'ACCEPTED' || bid.status === 'REJECTED';
-        case 'REJECTED':
-          return bid.status === 'REJECTED';
-        case 'EXPIRED':
-          return bid.status === 'EXPIRED';
-        case 'ALL':
-        default:
-          return true;
-      }
-    })();
+  // Order by most recent activity
+  const orderedBids = [...bids].sort((a, b) => {
+    const aTime = new Date(a.updatedAt || a.respondedAt || a.expiresAt || a.createdAt).getTime();
+    const bTime = new Date(b.updatedAt || b.respondedAt || b.expiresAt || b.createdAt).getTime();
+    return bTime - aTime;
+  });
 
-    console.log(
-      `BidsTab - Bid ${bid.id} (${bid.status}) passes ${statusFilter} filter:`,
-      passesFilter,
-    );
-    return passesFilter;
+  // Search filter by listing title or symbol (shows all statuses)
+  const filteredBids = orderedBids.filter((bid) => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return true;
+    const title = (bid.listing?.title || listingDetails[bid.listingId]?.title || '').toLowerCase();
+    const symbol = (
+      bid.listing?.symbol ||
+      listingDetails[bid.listingId]?.symbol ||
+      ''
+    ).toLowerCase();
+    return title.includes(q) || symbol.includes(q);
   });
 
   console.log('BidsTab - Total bids:', bids.length);
   console.log('BidsTab - Filtered bids:', filteredBids.length);
-  console.log('BidsTab - Current filter:', statusFilter);
+  console.log('BidsTab - Current filter:', searchTerm);
 
   const renderContent = () => {
-    // Check if user is verified for bidding using verificationDetails (same as notification panel)
-    // Only show verification required if user exists and verification status is not approved
-    if (user && verificationDetails && verificationDetails.status !== 'APPROVED') {
-      return (
-        <div className="text-center py-12">
-          <div className="space-y-4">
-            <h3 className="text-[#D7BF75] text-lg font-semibold uppercase tracking-wide">
-              Verification Required
-            </h3>
-            <p className="text-[#E6E3D3] font-jetbrains max-w-md mx-auto">
-              You need to be verified to place bids on assets. Complete the verification process to
-              start bidding.
-            </p>
-            <Button
-              onClick={() => setIsSellerDashboardOpen(true)}
-              className="bg-[#C9AE6A] hover:bg-[#C9AE6A]/80 text-black font-medium text-sm px-6 py-2"
-            >
-              Apply for Verification
-            </Button>
-          </div>
-        </div>
-      );
-    }
-
-    // If user or verification details are not loaded yet, show loading
-    if (!user || !verificationDetails) {
+    // Show loading until verification check completes or user loads
+    if (!user || !verificationLoaded) {
       return (
         <div className="animate-pulse space-y-4">
           {[...Array(3)].map((_, i) => (
@@ -252,23 +230,70 @@ export function BidsTab() {
 
     return (
       <>
-        {/* Status Filter */}
-        <div className="flex justify-center mb-6">
-          <div className="flex space-x-2 bg-[#0f1511] rounded-lg p-1 border border-[#D0B284]/20">
-            {(['ALL', 'ACTIVE', 'REJECTED', 'EXPIRED'] as BidStatusFilter[]).map((filter) => (
-              <button
-                key={filter}
-                onClick={() => setStatusFilter(filter)}
-                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors duration-200 ${
-                  statusFilter === filter
-                    ? 'bg-[#D0B284] text-black'
-                    : 'text-[#E6E3D3] hover:text-white hover:bg-[#D0B284]/20'
-                }`}
-              >
-                {filter}
-              </button>
-            ))}
+        {/* Non-blocking banner when no verification submission exists */}
+        {user && verificationLoaded && !verificationDetails && (
+          <div className="mb-6">
+            <div className="bg-gradient-to-br from-[#D7BF75]/15 to-[#C9AE6A]/10 border border-[#D7BF75]/40 rounded-xl p-5 flex items-start gap-4">
+              <div className="flex-1">
+                <h3 className="text-[#D7BF75] font-bold text-lg mb-1">
+                  Verification required to bid
+                </h3>
+                <p className="text-[#DCDDCC]/85 text-sm">
+                  You need to complete verification to place bids on items.
+                </p>
+              </div>
+              <div className="shrink-0">
+                <Link href="/verify">
+                  <Button className="bg-[#C9AE6A] hover:bg-[#C9AE6A]/80 text-black font-medium text-sm px-4">
+                    Start Verification
+                  </Button>
+                </Link>
+              </div>
+            </div>
           </div>
+        )}
+
+        {/* Pending verification banner */}
+        {user && verificationLoaded && verificationDetails?.status === 'PENDING' && (
+          <div className="mb-6">
+            <div className="bg-yellow-900/20 border border-yellow-600/50 rounded-xl p-5">
+              <h3 className="text-yellow-200 font-bold text-lg mb-1">Verification pending</h3>
+              <p className="text-[#DCDDCC]/85 text-sm">
+                Your verification is currently under review. You must be verified to submit bids.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Rejected or not approved banner */}
+        {user && verificationLoaded && verificationDetails?.status === 'REJECTED' && (
+          <div className="mb-6">
+            <div className="bg-red-900/20 border border-red-600/50 rounded-xl p-5 flex items-start gap-4">
+              <div className="flex-1">
+                <h3 className="text-red-300 font-bold text-lg mb-1">Verification not approved</h3>
+                <p className="text-[#DCDDCC]/85 text-sm">
+                  Your previous verification was not approved. You must be verified to submit bids.
+                </p>
+              </div>
+              <div className="shrink-0">
+                <Link href="/verify">
+                  <Button className="bg-[#C9AE6A] hover:bg-[#C9AE6A]/80 text-black font-medium text-sm px-4">
+                    Go to Verification
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Search */}
+        <div className="flex justify-end mb-6">
+          <Input
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search your bids..."
+            className="bg-[#151c16] border-[#D0B284]/20 text-white w-64"
+          />
         </div>
 
         {/* Table Header */}
@@ -295,9 +320,9 @@ export function BidsTab() {
           {filteredBids.length === 0 ? (
             <div className="text-center py-8">
               <p className="text-[#E6E3D3] font-jetbrains">
-                {statusFilter === 'ALL'
+                {searchTerm === ''
                   ? 'No active bids have been placed'
-                  : `No ${statusFilter.toLowerCase()} bids found`}
+                  : `No bids found matching "${searchTerm}"`}
               </p>
             </div>
           ) : (

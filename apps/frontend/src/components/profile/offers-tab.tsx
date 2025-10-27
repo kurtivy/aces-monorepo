@@ -2,11 +2,12 @@
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Check, X, MessageCircle, Clock, Search, Filter } from 'lucide-react';
+import { Check, X, MessageCircle, Clock } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useAuth } from '@/lib/auth/auth-context';
 import { OffersApi, OfferData } from '@/lib/api/offers';
+import { Input } from '@/components/ui/input';
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -79,8 +80,6 @@ export function OffersTab() {
   const [offers, setOffers] = useState<OfferData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [listingFilter, setListingFilter] = useState('ALL');
-  const [statusFilter, setStatusFilter] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
@@ -115,29 +114,21 @@ export function OffersTab() {
     }
   }, [getAccessToken, user]);
 
-  const activeOffers = offers.filter((offer) => offer.status === 'active');
+  // Order by most recent first
+  const orderedOffers = [...offers].sort((a, b) => {
+    const aTime = new Date(a.createdAt).getTime();
+    const bTime = new Date(b.createdAt).getTime();
+    return bTime - aTime;
+  });
 
-  // Get unique listings for filter dropdown
-  const uniqueListings = Array.from(new Set(offers.map((offer) => offer.itemName)));
-  const listingOptions = ['ALL', ...uniqueListings];
-
-  // Enhanced filtering function
-  const getFilteredOffers = (offersList: OfferData[]) => {
-    return offersList.filter((offer) => {
-      const matchesListing = listingFilter === 'ALL' || offer.itemName === listingFilter;
-      const matchesStatus = statusFilter === 'ALL' || offer.status === statusFilter;
-      const matchesSearch =
-        offer.itemName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        offer.fromAddress.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (offer.fromDisplayName &&
-          offer.fromDisplayName.toLowerCase().includes(searchTerm.toLowerCase()));
-
-      return matchesListing && matchesStatus && matchesSearch;
-    });
-  };
-
-  const filteredActiveOffers = getFilteredOffers(activeOffers);
-  const filteredAllOffers = getFilteredOffers(offers);
+  // Simple search like Bids tab
+  const filteredAllOffers = orderedOffers.filter((offer) => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return true;
+    const name = offer.itemName.toLowerCase();
+    const from = (offer.fromDisplayName || offer.fromAddress || '').toLowerCase();
+    return name.includes(q) || from.includes(q) || offer.ticker.toLowerCase().includes(q);
+  });
 
   // Handler functions for offer actions
   const handleAcceptOffer = async (offerId: string) => {
@@ -295,175 +286,98 @@ export function OffersTab() {
       <span className="pointer-events-none absolute right-3 bottom-3 w-3 h-0.5 bg-[#C9AE6A]" />
 
       <div className="p-6 space-y-6 h-full overflow-y-auto">
-        <div className="border border-dashed border-[#E6E3D3]/25 rounded-lg p-4">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-[#D7BF75] text-sm uppercase tracking-wide font-medium">
-              Filter Offers
-            </h3>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-[#E6E3D3]" />
-              <input
-                type="text"
-                placeholder="Search offers..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-black/30 border border-[#D0B284]/20 rounded-md text-[#E6E3D3] placeholder-[#E6E3D3]/50 focus:border-[#D0B284] focus:outline-none"
-              />
-            </div>
-
-            <select
-              value={listingFilter}
-              onChange={(e) => setListingFilter(e.target.value)}
-              className="px-3 py-2 bg-black/30 border border-[#D0B284]/20 rounded-md text-[#E6E3D3] focus:border-[#D0B284] focus:outline-none"
-            >
-              {listingOptions.map((listing) => (
-                <option key={listing} value={listing} className="bg-[#0f1511]">
-                  {listing === 'ALL' ? 'All Listings' : listing.split(' ').slice(0, 3).join(' ')}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-2 bg-black/30 border border-[#D0B284]/20 rounded-md text-[#E6E3D3] focus:border-[#D0B284] focus:outline-none"
-            >
-              <option value="ALL" className="bg-[#0f1511]">
-                All Status
-              </option>
-              <option value="active" className="bg-[#0f1511]">
-                Active
-              </option>
-              <option value="expired" className="bg-[#0f1511]">
-                Expired
-              </option>
-              <option value="accepted" className="bg-[#0f1511]">
-                Accepted
-              </option>
-              <option value="declined" className="bg-[#0f1511]">
-                Declined
-              </option>
-            </select>
-
-            <Button
-              variant="outline"
-              onClick={() => {
-                setListingFilter('ALL');
-                setStatusFilter('ALL');
-                setSearchTerm('');
-              }}
-              className="border-[#D0B284]/20 text-[#DCDDCC] hover:bg-[#D0B284]/10"
-            >
-              <Filter className="w-4 h-4 mr-2" />
-              Clear Filters
-            </Button>
-          </div>
-
-          {(listingFilter !== 'ALL' || statusFilter !== 'ALL' || searchTerm) && (
-            <div className="mt-4 flex items-center space-x-2 text-sm">
-              <span className="text-[#DCDDCC]">Active filters:</span>
-              {listingFilter !== 'ALL' && (
-                <Badge variant="secondary" className="bg-[#D0B284]/10 text-[#D0B284]">
-                  Listing: {listingFilter.split(' ').slice(0, 2).join(' ')}
-                </Badge>
-              )}
-              {statusFilter !== 'ALL' && (
-                <Badge variant="secondary" className="bg-[#D0B284]/10 text-[#D0B284]">
-                  Status: {statusFilter}
-                </Badge>
-              )}
-              {searchTerm && (
-                <Badge variant="secondary" className="bg-[#D0B284]/10 text-[#D0B284]">
-                  Search: &quot;{searchTerm}&quot;
-                </Badge>
-              )}
-            </div>
-          )}
+        {/* Simple search like Bids tab */}
+        <div className="flex justify-end mb-2">
+          <Input
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search offers..."
+            className="bg-[#151c16] border-[#D0B284]/20 text-white w-64"
+          />
         </div>
 
-        {filteredActiveOffers.length > 0 && (
+        {filteredAllOffers.some((o) => o.status === 'active') && (
           <div className="rounded-xl bg-[#151c16] border border-[#D0B284]/20 shadow-lg overflow-hidden">
             <div className="p-6">
               <h2 className="text-xl font-bold text-[#D0B284] mb-6 font-libre-caslon">
-                Active Offers ({filteredActiveOffers.length})
+                Active Offers ({filteredAllOffers.filter((o) => o.status === 'active').length})
               </h2>
 
               <div className="space-y-4">
-                {filteredActiveOffers.map((offer) => (
-                  <div
-                    key={offer.id}
-                    className="flex items-center justify-between p-4 bg-[#184D37]/10 border border-[#184D37]/20 rounded-lg hover:bg-[#184D37]/20 transition-colors duration-200"
-                  >
-                    <div className="flex items-center space-x-4">
-                      <Image
-                        src={offer.image || '/placeholder.svg'}
-                        alt={offer.itemName}
-                        className="w-12 h-12 rounded-full object-cover border border-[#D0B284]/20"
-                        width={40}
-                        height={40}
-                      />
-                      <div>
-                        <div className="flex items-center space-x-2 mb-1">
-                          <h3 className="text-white font-medium">
-                            {offer.itemName.split(' ').slice(0, 3).join(' ')}
-                          </h3>
-                          <span className="text-[#DCDDCC] font-jetbrains text-sm">
-                            {offer.ticker}
-                          </span>
-                        </div>
-                        <div className="flex items-center space-x-4 text-sm">
-                          <span className="text-[#D0B284] font-medium">{offer.offerAmount}</span>
-                          <span className="text-[#DCDDCC]">
-                            from{' '}
-                            {offer.fromDisplayName ||
-                              `${offer.fromAddress.slice(0, 6)}...${offer.fromAddress.slice(-4)}`}
-                          </span>
-                          <div className="flex items-center space-x-1 text-[#DCDDCC]">
-                            <Clock className="w-3 h-3" />
-                            <span>Expires {offer.expiration}</span>
+                {filteredAllOffers
+                  .filter((o) => o.status === 'active')
+                  .map((offer) => (
+                    <div
+                      key={offer.id}
+                      className="flex items-center justify-between p-4 bg-[#184D37]/10 border border-[#184D37]/20 rounded-lg hover:bg-[#184D37]/20 transition-colors duration-200"
+                    >
+                      <div className="flex items-center space-x-4">
+                        <Image
+                          src={offer.image || '/placeholder.svg'}
+                          alt={offer.itemName}
+                          className="w-12 h-12 rounded-full object-cover border border-[#D0B284]/20"
+                          width={40}
+                          height={40}
+                        />
+                        <div>
+                          <div className="flex items-center space-x-2 mb-1">
+                            <h3 className="text-white font-medium">
+                              {offer.itemName.split(' ').slice(0, 3).join(' ')}
+                            </h3>
+                            <span className="text-[#DCDDCC] font-jetbrains text-sm">
+                              {offer.ticker}
+                            </span>
+                          </div>
+                          <div className="flex items-center space-x-4 text-sm">
+                            <span className="text-[#D0B284] font-medium">{offer.offerAmount}</span>
+                            <span className="text-[#DCDDCC]">
+                              from{' '}
+                              {offer.fromDisplayName ||
+                                `${offer.fromAddress.slice(0, 6)}...${offer.fromAddress.slice(-4)}`}
+                            </span>
+                            <div className="flex items-center space-x-1 text-[#DCDDCC]">
+                              <Clock className="w-3 h-3" />
+                              <span>Expires {offer.expiration}</span>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="flex items-center space-x-2">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-[#DCDDCC] hover:bg-[#D0B284]/10 border border-[#DCDDCC]/20"
-                        onClick={() => {
-                          const counterAmount = prompt('Enter counter offer amount:');
-                          if (counterAmount && !isNaN(parseFloat(counterAmount))) {
-                            handleCounterOffer(offer.id, counterAmount);
-                          }
-                        }}
-                      >
-                        <MessageCircle className="w-4 h-4 mr-2" />
-                        Counter
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-red-400 hover:bg-red-400/10 border border-red-400/20"
-                        onClick={() => handleDeclineOffer(offer.id)}
-                      >
-                        <X className="w-4 h-4 mr-2" />
-                        Decline
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="bg-[#184D37] hover:bg-[#184D37]/80 text-white"
-                        onClick={() => handleAcceptOffer(offer.id)}
-                      >
-                        <Check className="w-4 h-4 mr-2" />
-                        Accept
-                      </Button>
+                      <div className="flex items-center space-x-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-[#DCDDCC] hover:bg-[#D0B284]/10 border border-[#DCDDCC]/20"
+                          onClick={() => {
+                            const counterAmount = prompt('Enter counter offer amount:');
+                            if (counterAmount && !isNaN(parseFloat(counterAmount))) {
+                              handleCounterOffer(offer.id, counterAmount);
+                            }
+                          }}
+                        >
+                          <MessageCircle className="w-4 h-4 mr-2" />
+                          Counter
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-400 hover:bg-red-400/10 border border-red-400/20"
+                          onClick={() => handleDeclineOffer(offer.id)}
+                        >
+                          <X className="w-4 h-4 mr-2" />
+                          Decline
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="bg-[#184D37] hover:bg-[#184D37]/80 text-white"
+                          onClick={() => handleAcceptOffer(offer.id)}
+                        >
+                          <Check className="w-4 h-4 mr-2" />
+                          Accept
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
               </div>
             </div>
           </div>
@@ -478,21 +392,15 @@ export function OffersTab() {
             {filteredAllOffers.length === 0 ? (
               <div className="text-center py-8">
                 <p className="text-[#DCDDCC] font-jetbrains">
-                  {listingFilter !== 'ALL' || statusFilter !== 'ALL' || searchTerm
-                    ? 'No offers match your current filters'
-                    : 'No offers found'}
+                  {searchTerm ? 'No offers match your current search' : 'No offers found'}
                 </p>
-                {(listingFilter !== 'ALL' || statusFilter !== 'ALL' || searchTerm) && (
+                {searchTerm && (
                   <Button
                     variant="ghost"
-                    onClick={() => {
-                      setListingFilter('ALL');
-                      setStatusFilter('ALL');
-                      setSearchTerm('');
-                    }}
+                    onClick={() => setSearchTerm('')}
                     className="text-[#D0B284] hover:bg-[#D0B284]/10 mt-2"
                   >
-                    Clear filters to see all offers
+                    Clear search
                   </Button>
                 )}
               </div>

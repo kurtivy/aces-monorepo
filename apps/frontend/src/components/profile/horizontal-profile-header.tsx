@@ -112,6 +112,9 @@ export function HorizontalProfileHeader({
         data-profile-header
         className="relative bg-[#0f1511] rounded-b-xl p-6 border-b border-dashed border-[#E6E3D3]/25"
       >
+        <div className="absolute top-4 right-4">
+          <NotificationBell />
+        </div>
         {/* Corner ticks */}
         {/* Top corner ticks removed to let the solid band line act as top border */}
         <span className="pointer-events-none absolute left-3 bottom-3 h-3 w-0.5 bg-[#C9AE6A]" />
@@ -119,8 +122,8 @@ export function HorizontalProfileHeader({
         <span className="pointer-events-none absolute right-3 bottom-3 h-3 w-0.5 bg-[#C9AE6A]" />
         <span className="pointer-events-none absolute right-3 bottom-3 w-3 h-0.5 bg-[#C9AE6A]" />
 
-        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-8">
-          <div className="flex-1 min-w-0 space-y-4">
+        <div className="flex flex-col md:flex-row md:items-start md:justify-center gap-8">
+          <div className="min-w-0 md:basis-[58%] space-y-4">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0 space-y-3">
                 <div className="flex items-center gap-3">
@@ -137,6 +140,17 @@ export function HorizontalProfileHeader({
                       >
                         {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                       </Button>
+                      {onUpdateAccount && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-[#D0B284] hover:bg-[#D0B284]/10"
+                          onClick={() => setIsAccountModalOpen(true)}
+                        >
+                          <Edit2 className="w-4 h-4 mr-2" />
+                          Edit
+                        </Button>
+                      )}
                     </>
                   ) : (
                     <motion.button
@@ -158,20 +172,7 @@ export function HorizontalProfileHeader({
                 )}
               </div>
 
-              <div className="flex items-center gap-3">
-                <NotificationBell />
-                {onUpdateAccount && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-[#D0B284] hover:bg-[#D0B284]/10"
-                    onClick={() => setIsAccountModalOpen(true)}
-                  >
-                    <Edit2 className="w-4 h-4 mr-2" />
-                    Edit
-                  </Button>
-                )}
-              </div>
+              <div className="flex items-center gap-3" />
             </div>
 
             <div className="space-y-2 text-sm text-[#D0B284]">
@@ -191,7 +192,7 @@ export function HorizontalProfileHeader({
             </div>
           </div>
 
-          <div className="w-full md:max-w-[420px]">
+          <div className="w-full md:max-w-[420px] pr-12">
             <div className="bg-black/30 border border-[#D0B284]/20 rounded-xl px-6 py-5 backdrop-blur-sm">
               {balancesLoading ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-pulse">
