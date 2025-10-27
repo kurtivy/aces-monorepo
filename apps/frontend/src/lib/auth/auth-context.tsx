@@ -29,6 +29,7 @@ interface AuthContextType {
   isVerifiedSeller: boolean;
   isAdmin: boolean;
   hasExternalWallet: boolean;
+  authReady: boolean;
 
   connectWallet: () => Promise<void>;
   disconnectWallet: () => void;
@@ -451,6 +452,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isVerifiedSeller:
       state.user?.sellerStatus === 'APPROVED' || state.user?.sellerStatus === 'PENDING',
     hasExternalWallet: hasExternalWalletConnected,
+    authReady: privyReady && !state.isLoading,
 
     connectWallet,
     disconnectWallet,

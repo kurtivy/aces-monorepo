@@ -159,6 +159,12 @@ export class ListingsApi {
     });
   }
 
+  static async getListingBySymbol(symbol: string): Promise<ApiResult<ListingData>> {
+    return this.request(`/symbol/${encodeURIComponent(symbol)}`, {
+      method: 'GET',
+    });
+  }
+
   static async updateMyListing(
     listingId: string,
     data: Partial<{

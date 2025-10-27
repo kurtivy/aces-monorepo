@@ -507,7 +507,7 @@ const nextConfig: NextConfig = {
       {
         protocol: 'https',
         hostname: 'storage.googleapis.com',
-        pathname: '/aces-product-images/**',
+        pathname: '/acesfun-product-images/**',
       },
       {
         protocol: 'https',
