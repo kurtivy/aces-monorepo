@@ -23,6 +23,7 @@ import AboutModal from '../ui/custom/about-modal';
 import TermsModal from '../ui/custom/terms-modal';
 import IntroAnimation from '../loading/intro-animation';
 import { EmailSignupModal } from '../ui/email-signup-modal';
+import DrvnImageModal from '../ui/custom/drvn-image-modal';
 import { useModal } from '../../lib/contexts/modal-context';
 import {
   mobileUtils,
@@ -56,6 +57,7 @@ const InfiniteCanvas = ({
   // Calendar icon modal state
   const [isEmailSignupModalOpen, setIsEmailSignupModalOpen] = useState(false);
   const [selectedProductTitle, setSelectedProductTitle] = useState('');
+  const [drvnImage, setDrvnImage] = useState<ImageInfo | null>(null);
 
   // Modal context for About and Terms modals
   const {
@@ -185,6 +187,7 @@ const InfiniteCanvas = ({
     // Modal callbacks for home area buttons
     onAboutClick: openAboutModal,
     onTermsClick: openTermsModal,
+    onDrvnClick: (image) => setDrvnImage(image),
   });
 
   const interactionsEnabled = loadingState === 'ready' && imagesLoaded;
@@ -451,6 +454,7 @@ const InfiniteCanvas = ({
         onClose={handleEmailSignupModalClose}
         productTitle={selectedProductTitle}
       />
+      <DrvnImageModal imageInfo={drvnImage} onClose={() => setDrvnImage(null)} />
       {isUIVisible && !selectedImage && (
         <>
           <motion.div

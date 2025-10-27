@@ -55,6 +55,8 @@ interface UseCanvasInteractionsProps {
     imageInfo: ImageInfo | null,
     placement?: { x: number; y: number; width: number; height: number },
   ) => void;
+  // DRVN: Optional click callback for DRVN tile
+  onDrvnClick?: (image: ImageInfo) => void;
 }
 
 // MOMENTUM RESTORATION: Export enhanced momentum settings for canvas renderer
@@ -129,6 +131,7 @@ export const useCanvasInteractions = ({
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   onAuctionIconClick: _onAuctionIconClick, // Auction icon click handler disabled
   onProductImageHover, // HOVER ENHANCEMENT: Add product image hover callback
+  onDrvnClick,
 }: UseCanvasInteractionsProps) => {
   const { capabilities } = useDeviceCapabilities();
   const [isPanning, setIsPanning] = useState(false);
@@ -489,7 +492,7 @@ export const useCanvasInteractions = ({
           return;
         }
         if (clickedImage.metadata.id === 'drvn') {
-          // No action yet
+          onDrvnClick?.(clickedImage);
           return;
         }
 
@@ -523,6 +526,7 @@ export const useCanvasInteractions = ({
       _onFeaturedImageClick,
       imagePlacementMap,
       setSelectedImage,
+      onDrvnClick,
     ],
   );
 
