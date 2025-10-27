@@ -58,16 +58,16 @@ export class TokenMetadataCacheService {
     // 1. Check cache first
     const cached = this.cache.get(cacheKey);
     if (cached && now - cached.timestamp < this.CACHE_TTL_MS) {
-      console.log(
-        `[TokenCache] 🎯 Cache hit for ${tokenAddress} (age: ${Math.floor((now - cached.timestamp) / 1000)}s)`,
-      );
+      // console.log(
+      //   `[TokenCache] 🎯 Cache hit for ${tokenAddress} (age: ${Math.floor((now - cached.timestamp) / 1000)}s)`,
+      // );
       return cached.data;
     }
 
     // 2. Check if there's already a pending request (deduplication)
     const pending = this.pendingRequests.get(cacheKey);
     if (pending && now - pending.timestamp < this.REQUEST_TIMEOUT_MS) {
-      console.log(`[TokenCache] 🔄 Waiting for pending request: ${tokenAddress}`);
+      // console.log(`[TokenCache] 🔄 Waiting for pending request: ${tokenAddress}`);
       return pending.promise;
     }
 
@@ -88,9 +88,9 @@ export class TokenMetadataCacheService {
           data: result,
           timestamp: now,
         });
-        console.log(`[TokenCache] ✅ Cached metadata for ${tokenAddress}`);
+        // console.log(`[TokenCache] ✅ Cached metadata for ${tokenAddress}`);
       } else {
-        console.log(`[TokenCache] ⚠️ Token not found in database: ${tokenAddress}`);
+        // console.log(`[TokenCache] ⚠️ Token not found in database: ${tokenAddress}`);
       }
 
       return result;
@@ -105,7 +105,7 @@ export class TokenMetadataCacheService {
    */
   private async _fetchTokenMetadata(tokenAddress: string): Promise<TokenMetadata | null> {
     try {
-      console.log(`[TokenCache] 🔍 Fetching from database: ${tokenAddress}`);
+      // console.log(`[TokenCache] 🔍 Fetching from database: ${tokenAddress}`);
       const startTime = Date.now();
 
       const token = await this.prisma.token.findUnique({
@@ -122,7 +122,7 @@ export class TokenMetadataCacheService {
       });
 
       const duration = Date.now() - startTime;
-      console.log(`[TokenCache] ⏱️ Query completed in ${duration}ms`);
+      // console.log(`[TokenCache] ⏱️ Query completed in ${duration}ms`);
 
       if (!token) {
         return null;
@@ -187,7 +187,7 @@ export class TokenMetadataCacheService {
     }
 
     if (cleanedCount > 0) {
-      console.log(`[TokenCache] 🧹 Cleaned up ${cleanedCount} expired cache entries`);
+      // console.log(`[TokenCache] 🧹 Cleaned up ${cleanedCount} expired cache entries`);
     }
   }
 
@@ -199,11 +199,11 @@ export class TokenMetadataCacheService {
       const key = tokenAddress.toLowerCase();
       this.cache.delete(key);
       this.pendingRequests.delete(key);
-      console.log(`[TokenCache] 🗑️ Cache invalidated for ${tokenAddress}`);
+      // console.log(`[TokenCache] 🗑️ Cache invalidated for ${tokenAddress}`);
     } else {
       this.cache.clear();
       this.pendingRequests.clear();
-      console.log('[TokenCache] 🗑️ All caches cleared');
+      // console.log('[TokenCache] 🗑️ All caches cleared');
     }
   }
 
@@ -227,7 +227,7 @@ export class TokenMetadataCacheService {
     }
     this.cache.clear();
     this.pendingRequests.clear();
-    console.log('[TokenCache] 🛑 Service shutdown');
+    // console.log('[TokenCache] 🛑 Service shutdown');
   }
 }
 
@@ -237,7 +237,7 @@ let instance: TokenMetadataCacheService | null = null;
 export function initTokenMetadataCache(prisma: PrismaClient): TokenMetadataCacheService {
   if (!instance) {
     instance = new TokenMetadataCacheService(prisma);
-    console.log('[TokenCache] ✅ Service initialized');
+    // console.log('[TokenCache] ✅ Service initialized');
   }
   return instance;
 }

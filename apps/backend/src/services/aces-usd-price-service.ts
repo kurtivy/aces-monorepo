@@ -48,10 +48,10 @@ export class AcesUsdPriceService {
 
     // Try Aerodrome first (on-chain, most direct)
     try {
-      console.log('[AcesUsdPrice] 🔍 Attempting to fetch from Aerodrome...');
+      // console.log('[AcesUsdPrice] 🔍 Attempting to fetch from Aerodrome...');
       const price = await this.getFromAerodrome();
       if (price) {
-        console.log('[AcesUsdPrice] ✅ Successfully fetched from Aerodrome:', price);
+        // console.log('[AcesUsdPrice] ✅ Successfully fetched from Aerodrome:', price);
         this.cachePrice(price);
         return {
           price,
@@ -113,10 +113,10 @@ export class AcesUsdPriceService {
     // ACES/WETH pool (V2-style; supports getReserves/priceInCounter in your existing service)
     const ACES_WETH_POOL = '0x2f97bbd562ba6c4d298b370929ea20291aff9ff5';
 
-    console.log('[AcesUsdPrice] 📍 Fetching ACES/WETH pool state...', {
-      acesTokenAddress: this.acesTokenAddress,
-      poolAddress: ACES_WETH_POOL,
-    });
+    // console.log('[AcesUsdPrice] 📍 Fetching ACES/WETH pool state...', {
+    //   acesTokenAddress: this.acesTokenAddress,
+    //   poolAddress: ACES_WETH_POOL,
+    // });
 
     // Get ACES price in WETH
     let acesPerWeth: number;
@@ -126,7 +126,7 @@ export class AcesUsdPriceService {
         ACES_WETH_POOL,
       );
 
-      console.log('[AcesUsdPrice] 🔍 ACES/WETH pool result:', acesWethPool);
+      // console.log('[AcesUsdPrice] 🔍 ACES/WETH pool result:', acesWethPool);
 
       if (!acesWethPool) {
         console.warn('[AcesUsdPrice] ⚠️ ACES/WETH pool returned null/undefined');
@@ -134,7 +134,7 @@ export class AcesUsdPriceService {
       }
 
       acesPerWeth = parseFloat(String(acesWethPool.priceInCounter));
-      console.log('[AcesUsdPrice] 📊 ACES per WETH:', acesPerWeth);
+      // console.log('[AcesUsdPrice] 📊 ACES per WETH:', acesPerWeth);
 
       if (!isFinite(acesPerWeth) || acesPerWeth <= 0) {
         console.warn('[AcesUsdPrice] ⚠️ Invalid ACES/WETH price:', acesPerWeth);
@@ -156,10 +156,10 @@ export class AcesUsdPriceService {
     ) // Default: Uniswap V3
       .toLowerCase();
 
-    console.log('[AcesUsdPrice] 📍 Fetching WETH/USDC pool...', {
-      poolAddress: WETH_USDC_POOL,
-      forceV3: process.env.FORCE_WETH_USDC_V3,
-    });
+    // console.log('[AcesUsdPrice] 📍 Fetching WETH/USDC pool...', {
+    //   poolAddress: WETH_USDC_POOL,
+    //   forceV3: process.env.FORCE_WETH_USDC_V3,
+    // });
 
     let wethUsdPrice: number | null = null;
 
@@ -189,7 +189,7 @@ export class AcesUsdPriceService {
       }
     }
 
-    console.log('[AcesUsdPrice] 📊 WETH/USD price:', wethUsdPrice);
+    // console.log('[AcesUsdPrice] 📊 WETH/USD price:', wethUsdPrice);
 
     if (wethUsdPrice && isFinite(wethUsdPrice) && wethUsdPrice > 0) {
       // Unit sanity:
@@ -205,13 +205,13 @@ export class AcesUsdPriceService {
       // Heuristic: prefer the division path when acesPerWeth >> 1.
       const chosen = acesPerWeth > 1 ? usdPerAces_divide : usdPerAces_multiply;
 
-      console.log('[AcesUsdPrice] ✅ Final ACES/USD price (sanity-checked):', {
-        acesPerWeth,
-        wethUsdPrice,
-        usdPerAces_divide: usdPerAces_divide.toFixed(10),
-        usdPerAces_multiply: usdPerAces_multiply.toFixed(10),
-        chosen: chosen.toFixed(10),
-      });
+      // console.log('[AcesUsdPrice] ✅ Final ACES/USD price (sanity-checked):', {
+      //   acesPerWeth,
+      //   wethUsdPrice,
+      //   usdPerAces_divide: usdPerAces_divide.toFixed(10),
+      //   usdPerAces_multiply: usdPerAces_multiply.toFixed(10),
+      //   chosen: chosen.toFixed(10),
+      // });
 
       return chosen.toFixed(6);
     }
@@ -228,11 +228,11 @@ export class AcesUsdPriceService {
    * Returns USDC per 1 WETH.
    */
   private async getWethUsdFromV3Pool(poolAddress: string): Promise<number | null> {
-    console.log('[AcesUsdPrice] 🔍 Reading V3 pool data...', poolAddress);
+    // console.log('[AcesUsdPrice] 🔍 Reading V3 pool data...', poolAddress);
 
     try {
       const provider = this.getProvider();
-      console.log('[AcesUsdPrice] ✅ Got provider:', !!provider);
+      // console.log('[AcesUsdPrice] ✅ Got provider:', !!provider);
 
       const pool = new ethers.Contract(poolAddress, V3_POOL_ABI, provider);
 
@@ -240,13 +240,13 @@ export class AcesUsdPriceService {
       const t0 = (token0 as string).toLowerCase();
       const t1 = (token1 as string).toLowerCase();
 
-      console.log('[AcesUsdPrice] 📊 V3 Pool tokens:', { token0: t0, token1: t1 });
+      // console.log('[AcesUsdPrice] 📊 V3 Pool tokens:', { token0: t0, token1: t1 });
 
       // Read sqrtPriceX96 from slot0
       const [sqrtPriceX96] = await pool.slot0();
       const sqrt = BigInt(sqrtPriceX96);
 
-      console.log('[AcesUsdPrice] 📊 V3 sqrtPriceX96:', sqrtPriceX96.toString());
+      // console.log('[AcesUsdPrice] 📊 V3 sqrtPriceX96:', sqrtPriceX96.toString());
 
       // For USDC/WETH we know the decimals (6 and 18), so we can avoid extra RPC calls.
       const d0 = t0 === BASE_USDC ? 6 : 18;

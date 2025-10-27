@@ -46,6 +46,8 @@ interface SingleTradeResponse {
  */
 export class GoldskyClient {
   private readonly endpoint: string;
+  private readonly defaultTimeout: number = 10000; // 10 seconds
+  private readonly maxRetries: number = 2;
 
   constructor(endpoint?: string) {
     // Use environment variable, following the pattern from existing services
@@ -54,6 +56,52 @@ export class GoldskyClient {
     if (!this.endpoint) {
       throw new Error('[GoldskyClient] GOLDSKY_SUBGRAPH_URL environment variable not set');
     }
+  }
+
+  /**
+   * Fetch with timeout and retry logic to handle ECONNRESET and network errors
+   */
+  private async fetchWithRetry(
+    query: string,
+    timeoutMs: number = this.defaultTimeout,
+  ): Promise<Response> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+        try {
+          const response = await fetch(this.endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ query }),
+            signal: controller.signal,
+          });
+
+          clearTimeout(timeout);
+          return response;
+        } finally {
+          clearTimeout(timeout);
+        }
+      } catch (error) {
+        lastError = error as Error;
+
+        if (attempt < this.maxRetries) {
+          const backoffMs = Math.min(1000 * Math.pow(2, attempt), 5000);
+          console.warn(
+            `[GoldskyClient] ⚠️ Fetch attempt ${attempt + 1} failed, retrying in ${backoffMs}ms...`,
+            error instanceof Error ? error.message : error,
+          );
+          await new Promise((resolve) => setTimeout(resolve, backoffMs));
+        }
+      }
+    }
+
+    throw lastError || new Error('Unknown error during fetch');
   }
 
   /**
@@ -123,13 +171,7 @@ export class GoldskyClient {
         });
       }
 
-      const response = await fetch(this.endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ query }),
-      });
+      const response = await this.fetchWithRetry(query);
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -188,13 +230,7 @@ export class GoldskyClient {
     }`;
 
     try {
-      const response = await fetch(this.endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ query }),
-      });
+      const response = await this.fetchWithRetry(query);
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);

@@ -277,41 +277,90 @@ export class ChartAggregationService {
       let steepness: string | null = null;
       let floor: string | null = null;
 
-      try {
-        const subgraphUrl = process.env.GOLDSKY_SUBGRAPH_URL || process.env.SUBGRAPH_URL || '';
-        const query = `{
-          tokens(where: {address: "${tokenAddress.toLowerCase()}"}) {
-            address
-            steepness
-            floor
-          }
-        }`;
+      const subgraphUrl = process.env.GOLDSKY_SUBGRAPH_URL || process.env.SUBGRAPH_URL;
 
-        const response = await fetch(subgraphUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query }),
-        });
-
-        if (response.ok) {
-          const result = (await response.json()) as {
-            data?: { tokens?: Array<{ steepness: string; floor: string }> };
-          };
-          const tokens = result?.data?.tokens;
-
-          if (tokens && tokens.length > 0) {
-            steepness = tokens[0].steepness;
-            floor = tokens[0].floor;
-            // console.log(
-            //   `[ChartAggregation] 📊 Token params: steepness=${steepness}, floor=${floor}`,
-            // );
-          }
-        }
-      } catch (error) {
+      if (!subgraphUrl) {
         console.warn(
-          `[ChartAggregation] ⚠️ Failed to fetch token parameters from SubGraph:`,
-          error,
+          `[ChartAggregation] ⚠️ SubGraph URL not configured (GOLDSKY_SUBGRAPH_URL or SUBGRAPH_URL missing)`,
         );
+      } else {
+        try {
+          const query = `{
+            tokens(where: {address: "${tokenAddress.toLowerCase()}"}) {
+              address
+              steepness
+              floor
+            }
+          }`;
+
+          // Add timeout and retry logic to handle ECONNRESET errors
+          const fetchWithTimeout = async (url: string, options: RequestInit, timeoutMs = 5000) => {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+            try {
+              const response = await fetch(url, {
+                ...options,
+                signal: controller.signal,
+              });
+              return response;
+            } finally {
+              clearTimeout(timeout);
+            }
+          };
+
+          const maxRetries = 2;
+          let lastError: Error | null = null;
+
+          for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+              const response = await fetchWithTimeout(
+                subgraphUrl,
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ query }),
+                },
+                5000, // 5 second timeout
+              );
+
+              if (response.ok) {
+                const result = (await response.json()) as {
+                  data?: { tokens?: Array<{ steepness: string; floor: string }> };
+                };
+                const tokens = result?.data?.tokens;
+
+                if (tokens && tokens.length > 0) {
+                  steepness = tokens[0].steepness;
+                  floor = tokens[0].floor;
+                  break; // Success, exit retry loop
+                }
+              } else {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+              }
+            } catch (error) {
+              lastError = error as Error;
+
+              if (attempt < maxRetries) {
+                const backoffMs = Math.min(1000 * Math.pow(2, attempt), 3000);
+                console.warn(
+                  `[ChartAggregation] ⚠️ SubGraph fetch attempt ${attempt + 1} failed, retrying in ${backoffMs}ms...`,
+                  error instanceof Error ? error.message : error,
+                );
+                await new Promise((resolve) => setTimeout(resolve, backoffMs));
+              }
+            }
+          }
+
+          if (lastError && !steepness && !floor) {
+            throw lastError;
+          }
+        } catch (error) {
+          console.error(
+            `[ChartAggregation] ❌ Failed to fetch token parameters from SubGraph after retries:`,
+            error instanceof Error ? error.message : error,
+          );
+        }
       }
 
       if (!steepness || !floor) {

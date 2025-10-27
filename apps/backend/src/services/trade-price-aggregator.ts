@@ -302,12 +302,12 @@ export class TradePriceAggregator {
     // NEW: Log monitoring statistics
     const missingRate = ((stats.totalTrades - stats.foundExact) / stats.totalTrades) * 100;
 
-    console.log('[PriceMonitoring]', {
-      tokenAddress,
-      ...stats,
-      missingRate: `${missingRate.toFixed(2)}%`,
-      timestamp: new Date().toISOString(),
-    });
+    // console.log('[PriceMonitoring]', {
+    //   tokenAddress,
+    //   ...stats,
+    //   missingRate: `${missingRate.toFixed(2)}%`,
+    //   timestamp: new Date().toISOString(),
+    // });
 
     // Alert if concerning rate of missing snapshots
     if (missingRate > 10) {

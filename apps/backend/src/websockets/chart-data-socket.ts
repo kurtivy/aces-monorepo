@@ -43,7 +43,7 @@ export class ChartDataWebSocket {
     // WebSocket route
     this.fastify.get('/ws/chart', { websocket: true } as any, (connection: any, req: any) => {
       const clientId = this.generateClientId();
-      console.log(`[WebSocket] Client connected: ${clientId}`);
+      // console.log(`[WebSocket] Client connected: ${clientId}`);
 
       const client: WebSocketClient = {
         id: clientId,
@@ -66,7 +66,7 @@ export class ChartDataWebSocket {
 
       // Handle disconnection
       connection.socket.on('close', () => {
-        console.log(`[WebSocket] Client disconnected: ${clientId}`);
+        // console.log(`[WebSocket] Client disconnected: ${clientId}`);
         this.handleClientDisconnect(clientId);
       });
 
@@ -83,18 +83,18 @@ export class ChartDataWebSocket {
     // Start heartbeat checker
     this.startHeartbeat();
 
-    console.log('✅ WebSocket server initialized on /ws/chart');
+    // console.log('✅ WebSocket server initialized on /ws/chart');
   }
 
   /**
    * Handle client messages (subscribe/unsubscribe)
    */
   private handleClientMessage(clientId: string, data: { type: string; [key: string]: unknown }) {
-    console.log(`[WebSocket] 📨 Received message from ${clientId}:`, JSON.stringify(data, null, 2));
+    // console.log(`[WebSocket] 📨 Received message from ${clientId}:`, JSON.stringify(data, null, 2));
 
     const client = this.clients.get(clientId);
     if (!client) {
-      console.log(`[WebSocket] ⚠️ Client ${clientId} not found`);
+      // console.log(`[WebSocket] ⚠️ Client ${clientId} not found`);
       return;
     }
 
@@ -150,17 +150,17 @@ export class ChartDataWebSocket {
     }
     this.subscriptions.get(subscriptionKey)!.add(clientId);
 
-    console.log(`[WebSocket] ✅ Client ${clientId} subscribed to ${subscriptionKey}`);
-    console.log(
-      `[WebSocket] 📊 Total subscribers for ${subscriptionKey}: ${this.subscriptions.get(subscriptionKey)!.size}`,
-    );
+    // console.log(`[WebSocket] ✅ Client ${clientId} subscribed to ${subscriptionKey}`);
+    // console.log(
+    //   `[WebSocket] 📊 Total subscribers for ${subscriptionKey}: ${this.subscriptions.get(subscriptionKey)!.size}`,
+    // );
 
     // Start polling if this is first subscriber
-    if (this.subscriptions.get(subscriptionKey)!.size === 1) {
+    if ((this.subscriptions.get(subscriptionKey) as Set<string>).size === 1) {
       console.log(`[WebSocket] 🚀 Starting polling for ${subscriptionKey} (first subscriber)`);
       this.startPolling(tokenAddress.toLowerCase(), timeframe, chartType);
     } else {
-      console.log(`[WebSocket] 📡 Already polling for ${subscriptionKey}, adding subscriber`);
+      // console.log(`[WebSocket] 📡 Already polling for ${subscriptionKey}, adding subscriber`);
     }
 
     // Send immediate update (async - don't await to avoid blocking)
@@ -186,7 +186,7 @@ export class ChartDataWebSocket {
     client.subscriptions.delete(subscriptionKey);
     this.subscriptions.get(subscriptionKey)?.delete(clientId);
 
-    console.log(`[WebSocket] Client ${clientId} unsubscribed from ${subscriptionKey}`);
+    // console.log(`[WebSocket] Client ${clientId} unsubscribed from ${subscriptionKey}`);
 
     // Stop polling if no more subscribers
     if (this.subscriptions.get(subscriptionKey)?.size === 0) {
@@ -227,19 +227,19 @@ export class ChartDataWebSocket {
     const subscriptionKey = `${tokenAddress}:${timeframe}:${chartType}`;
 
     if (this.pollingIntervals.has(subscriptionKey)) {
-      console.log(`⚠️ [WebSocket] Already polling ${subscriptionKey}`);
+      // console.log(`⚠️ [WebSocket] Already polling ${subscriptionKey}`);
       return; // Already polling
     }
 
-    console.log(
-      `🚀 [WebSocket] Starting polling for ${subscriptionKey} (every ${this.pollIntervalMs}ms)`,
-    );
+    // console.log(
+    //   `🚀 [WebSocket] Starting polling for ${subscriptionKey} (every ${this.pollIntervalMs}ms)`,
+    // );
 
     // Poll at configured interval – throttled to avoid exhausting BitQuery quota
     const interval = setInterval(async () => {
-      console.log(
-        `⏰ [WebSocket] Polling tick for ${subscriptionKey} (interval: ${this.pollIntervalMs}ms)`,
-      );
+      // console.log(
+      //   `⏰ [WebSocket] Polling tick for ${subscriptionKey} (interval: ${this.pollIntervalMs}ms)`,
+      // );
       if (chartType === 'mcap') {
         await this.pollAndBroadcastMarketCap(tokenAddress, timeframe);
       } else {
@@ -249,10 +249,10 @@ export class ChartDataWebSocket {
 
     this.pollingIntervals.set(subscriptionKey, interval);
     this.currentIntervalMs.set(subscriptionKey, this.pollIntervalMs); // Track initial interval
-    console.log(`✅ [WebSocket] Interval set, ID:`, interval);
+    // console.log(`✅ [WebSocket] Interval set, ID:`, interval);
 
     // Do initial poll immediately
-    console.log(`📍 [WebSocket] Doing initial poll for ${subscriptionKey}`);
+    // console.log(`📍 [WebSocket] Doing initial poll for ${subscriptionKey}`);
     if (chartType === 'mcap') {
       this.pollAndBroadcastMarketCap(tokenAddress, timeframe);
     } else {
@@ -270,7 +270,7 @@ export class ChartDataWebSocket {
       this.pollingIntervals.delete(subscriptionKey);
       this.currentIntervalMs.delete(subscriptionKey); // Clean up interval tracking
       this.lastBroadcast.delete(subscriptionKey);
-      console.log(`[WebSocket] Stopped polling for ${subscriptionKey}`);
+      // console.log(`[WebSocket] Stopped polling for ${subscriptionKey}`);
     }
   }
 
@@ -292,9 +292,9 @@ export class ChartDataWebSocket {
         return;
       }
 
-      console.log(
-        `🔄 [WebSocket] Polling PRICE ${cleanTokenAddress} ${timeframe} (${subscribers.size} subscribers)...`,
-      );
+      // console.log(
+      //   `🔄 [WebSocket] Polling PRICE ${cleanTokenAddress} ${timeframe} (${subscribers.size} subscribers)...`,
+      // );
 
       // 🔁 Ensure we always fetch the previous completed candle
       // Look back far enough so inactive markets still return continuity
@@ -351,9 +351,9 @@ export class ChartDataWebSocket {
               }
             }
           }
-          console.log(
-            `♻️ [WebSocket] Replayed last candle for ${subscriptionKey} to ${replayCount}/${subscribers.size} clients`,
-          );
+          // console.log(
+          //   `♻️ [WebSocket] Replayed last candle for ${subscriptionKey} to ${replayCount}/${subscribers.size} clients`,
+          // );
         } else {
           console.warn(`⚠️ [WebSocket] No candle returned for ${tokenAddress} ${timeframe}`);
         }
@@ -378,11 +378,11 @@ export class ChartDataWebSocket {
       // Get current graduation state from the chart data we just fetched
       const currentGraduationState = chartData.graduationState;
 
-      console.log(`🎓 [WebSocket] Graduation state:`, {
-        poolReady: currentGraduationState.poolReady,
-        poolAddress: currentGraduationState.poolAddress,
-        dexLiveAt: currentGraduationState.dexLiveAt,
-      });
+      // console.log(`🎓 [WebSocket] Graduation state:`, {
+      //   poolReady: currentGraduationState.poolReady,
+      //   poolAddress: currentGraduationState.poolAddress,
+      //   dexLiveAt: currentGraduationState.dexLiveAt,
+      // });
 
       // Check for graduation event
       const cachedState = this.graduationStateCache.get(tokenAddress);
@@ -393,10 +393,10 @@ export class ChartDataWebSocket {
         currentGraduationState.poolAddress;
 
       if (justGraduated) {
-        console.log(`🎓 [WebSocket] Token ${tokenAddress} just graduated to DEX!`, {
-          poolAddress: currentGraduationState.poolAddress,
-          dexLiveAt: currentGraduationState.dexLiveAt,
-        });
+        // console.log(`🎓 [WebSocket] Token ${tokenAddress} just graduated to DEX!`, {
+        //   poolAddress: currentGraduationState.poolAddress,
+        //   dexLiveAt: currentGraduationState.dexLiveAt,
+        // });
 
         // Broadcast graduation event to ALL subscribers of this token (all timeframes)
         this.broadcastGraduationEvent(tokenAddress, currentGraduationState);
@@ -463,19 +463,19 @@ export class ChartDataWebSocket {
         }
       }
 
-      console.log(
-        `📡 [WebSocket] Broadcast ${subscriptionKey} to ${sentCount}/${subscribers.size} clients`,
-      );
+      // console.log(
+      //   `📡 [WebSocket] Broadcast ${subscriptionKey} to ${sentCount}/${subscribers.size} clients`,
+      // );
 
       if (sentCount === 0) {
-        console.log(`⚠️ [WebSocket] No clients received the broadcast for ${subscriptionKey}`);
-        console.log(
-          `🔍 [WebSocket] Client states:`,
-          Array.from(subscribers).map((clientId) => {
-            const client = this.clients.get(clientId);
-            return { clientId, readyState: client?.socket.readyState };
-          }),
-        );
+        // console.log(`⚠️ [WebSocket] No clients received the broadcast for ${subscriptionKey}`);
+        // console.log(
+        //   `🔍 [WebSocket] Client states:`,
+        //   Array.from(subscribers).map((clientId) => {
+        //     const client = this.clients.get(clientId);
+        //     return { clientId, readyState: client?.socket.readyState };
+        //   }),
+        // );
       }
 
       this.lastBroadcast.set(subscriptionKey, { payload });
@@ -518,11 +518,11 @@ export class ChartDataWebSocket {
 
     // Only restart if interval changed significantly (avoid unnecessary restarts)
     if (!currentInterval || Math.abs(newInterval - this.pollIntervalMs) > 1000) {
-      console.log(`⏱️ [WebSocket] Adjusting polling interval for ${subscriptionKey}:`, {
-        candleAge: `${(candleAge / 1000).toFixed(1)}s`,
-        newInterval: `${newInterval}ms`,
-        oldInterval: this.pollIntervalMs,
-      });
+      // console.log(`⏱️ [WebSocket] Adjusting polling interval for ${subscriptionKey}:`, {
+      // candleAge: `${(candleAge / 1000).toFixed(1)}s`,
+      //   newInterval: `${newInterval}ms`,
+      //   oldInterval: this.pollIntervalMs,
+      // });
 
       // Stop current polling
       this.stopPolling(subscriptionKey);
@@ -544,7 +544,7 @@ export class ChartDataWebSocket {
       // Clean token address (remove any suffix like _mcap)
       const cleanTokenAddress = tokenAddress.split('_')[0];
 
-      console.log(`🔄 [WebSocket] Polling MARKET CAP ${cleanTokenAddress} ${timeframe}...`);
+      // console.log(`🔄 [WebSocket] Polling MARKET CAP ${cleanTokenAddress} ${timeframe}...`);
 
       const subscriptionKey = `${tokenAddress}:${timeframe}:mcap`;
       const subscribers = this.subscriptions.get(subscriptionKey);
@@ -589,10 +589,10 @@ export class ChartDataWebSocket {
         currentGraduationState.poolAddress;
 
       if (justGraduated) {
-        console.log(`🎓 [WebSocket] Token ${tokenAddress} just graduated to DEX!`, {
-          poolAddress: currentGraduationState.poolAddress,
-          dexLiveAt: currentGraduationState.dexLiveAt,
-        });
+        // console.log(`🎓 [WebSocket] Token ${tokenAddress} just graduated to DEX!`, {
+        //   poolAddress: currentGraduationState.poolAddress,
+        //   dexLiveAt: currentGraduationState.dexLiveAt,
+        // });
 
         // Broadcast graduation event to ALL subscribers of this token (all timeframes)
         this.broadcastGraduationEvent(tokenAddress, currentGraduationState);
@@ -634,17 +634,17 @@ export class ChartDataWebSocket {
         dataSource: candle.dataSource,
       };
 
-      console.log(`✅ [WebSocket] Got market cap candle for ${tokenAddress} ${timeframe}:`, {
-        timestamp: candle.timestamp,
-        supply,
-        supplySource: candle.circulatingSupply
-          ? 'circulating (from candle)'
-          : currentGraduationState?.poolReady
-            ? 'circulating (DEX)'
-            : 'fixed 800M (bonding)',
-        priceClose: closeUsd,
-        mcapClose: mcapCandle.close,
-      });
+      // console.log(`✅ [WebSocket] Got market cap candle for ${tokenAddress} ${timeframe}:`, {
+      //   timestamp: candle.timestamp,
+      //   supply,
+      //   supplySource: candle.circulatingSupply
+      //     ? 'circulating (from candle)'
+      //     : currentGraduationState?.poolReady
+      //       ? 'circulating (DEX)'
+      //       : 'fixed 800M (bonding)',
+      //   priceClose: closeUsd,
+      //   mcapClose: mcapCandle.close,
+      // });
 
       const message = JSON.stringify({
         type: 'candle_update',
@@ -676,21 +676,21 @@ export class ChartDataWebSocket {
         }
       }
 
-      console.log(
-        `📡 [WebSocket] Broadcast ${subscriptionKey} to ${sentCount}/${subscribers.size} clients`,
-      );
+      // console.log(
+      //   `📡 [WebSocket] Broadcast ${subscriptionKey} to ${sentCount}/${subscribers.size} clients`,
+      // );
 
       if (sentCount === 0) {
-        console.log(
-          `⚠️ [WebSocket] No clients received the market cap broadcast for ${subscriptionKey}`,
-        );
-        console.log(
-          `🔍 [WebSocket] Client states:`,
-          Array.from(subscribers).map((clientId) => {
-            const client = this.clients.get(clientId);
-            return { clientId, readyState: client?.socket.readyState };
-          }),
-        );
+        // console.log(
+        //   `⚠️ [WebSocket] No clients received the market cap broadcast for ${subscriptionKey}`,
+        // );
+        // console.log(
+        //   `🔍 [WebSocket] Client states:`,
+        //   Array.from(subscribers).map((clientId) => {
+        //     const client = this.clients.get(clientId);
+        //     return { clientId, readyState: client?.socket.readyState };
+        //   }),
+        // );
       }
     } catch (error) {
       console.error('❌ [WebSocket] Market cap poll error:', error);
@@ -724,9 +724,9 @@ export class ChartDataWebSocket {
     }
 
     try {
-      console.log(
-        `[WebSocket] 📤 Fetching initial chart data for ${clientId} (token: ${cleanTokenAddress}, type: ${chartType})...`,
-      );
+      // console.log(
+      //   `[WebSocket] 📤 Fetching initial chart data for ${clientId} (token: ${cleanTokenAddress}, type: ${chartType})...`,
+      // );
       const now = new Date();
       // Reduced from 7 days to 2 days for faster initial load
       const from = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000); // Last 2 days for initial load
@@ -736,9 +736,9 @@ export class ChartDataWebSocket {
         to: now,
         limit: 300, // Reasonable limit for initial load
       });
-      console.log(
-        `[WebSocket] ✅ Got ${chartData.candles.length} candles for ${clientId} (${chartType})`,
-      );
+      // console.log(
+      //   `[WebSocket] ✅ Got ${chartData.candles.length} candles for ${clientId} (${chartType})`,
+      // );
 
       if (chartType === 'mcap') {
         // Calculate market cap candles
@@ -811,9 +811,9 @@ export class ChartDataWebSocket {
         // Double-check socket is still open before sending
         if (client.socket.readyState === 1) {
           client.socket.send(message);
-          console.log(
-            `[WebSocket] 📨 Sent initial_data to ${clientId} (${chartData.candles.length} candles)`,
-          );
+          // console.log(
+          //   `[WebSocket] 📨 Sent initial_data to ${clientId} (${chartData.candles.length} candles)`,
+          // );
           const lastPriceCandle = chartData.candles[chartData.candles.length - 1];
           if (lastPriceCandle) {
             const candleTimestamp =
@@ -848,9 +848,9 @@ export class ChartDataWebSocket {
             try {
               client.socket.send(JSON.stringify(initialUpdatePayload));
               this.lastBroadcast.set(subscriptionKey, { payload: initialUpdatePayload });
-              console.log(
-                `[WebSocket] 📡 Sent immediate candle_update to ${clientId} to prime subscribers`,
-              );
+              // console.log(
+              //   `[WebSocket] 📡 Sent immediate candle_update to ${clientId} to prime subscribers`,
+              // );
             } catch (error) {
               console.error(
                 `[WebSocket] ❌ Failed to send immediate candle_update to ${clientId}:`,
@@ -887,7 +887,7 @@ export class ChartDataWebSocket {
       dexLiveAt: Date | null;
     },
   ) {
-    console.log(`📣 [WebSocket] Broadcasting graduation event for ${tokenAddress}`);
+    // console.log(`📣 [WebSocket] Broadcasting graduation event for ${tokenAddress}`);
 
     const message = JSON.stringify({
       type: 'graduation_event',
@@ -918,7 +918,7 @@ export class ChartDataWebSocket {
       }
     }
 
-    console.log(`✅ [WebSocket] Graduation event sent to ${broadcastCount} clients`);
+    // console.log(`✅ [WebSocket] Graduation event sent to ${broadcastCount} clients`);
   }
 
   /**
@@ -931,7 +931,7 @@ export class ChartDataWebSocket {
 
       for (const [clientId, client] of this.clients.entries()) {
         if (now - client.lastPing > timeout) {
-          console.log(`[WebSocket] Client ${clientId} timeout, disconnecting`);
+          // console.log(`[WebSocket] Client ${clientId} timeout, disconnecting`);
           try {
             client.socket.close();
           } catch (error) {

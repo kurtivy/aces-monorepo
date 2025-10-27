@@ -30,7 +30,7 @@ export class AcesSnapshotCacheService {
   constructor(private prisma: PrismaClient) {
     // Periodic cache cleanup every 15 minutes
     this.cleanupInterval = setInterval(() => this.cleanupExpiredCache(), 15 * 60 * 1000);
-    console.log('[SnapshotCache] ✅ Service initialized');
+    // console.log('[SnapshotCache] ✅ Service initialized');
   }
 
   /**
@@ -48,16 +48,16 @@ export class AcesSnapshotCacheService {
     // 1. Check cache first
     const cached = this.cache.get(cacheKey);
     if (cached && now - cached.timestamp < this.CACHE_TTL_MS) {
-      console.log(
-        `[SnapshotCache] 🎯 Cache hit for ${tokenAddress} (${minTimestamp}-${maxTimestamp}, age: ${Math.floor((now - cached.timestamp) / 1000)}s)`,
-      );
+      //  console.log(
+      //   `[SnapshotCache] 🎯 Cache hit for ${tokenAddress} (${minTimestamp}-${maxTimestamp}, age: ${Math.floor((now - cached.timestamp) / 1000)}s)`,
+      // );
       return cached.snapshots;
     }
 
     // 2. Check if there's already a pending request (deduplication)
     const pending = this.pendingRequests.get(cacheKey);
     if (pending) {
-      console.log(`[SnapshotCache] 🔄 Waiting for pending request: ${cacheKey}`);
+      // console.log(`[SnapshotCache] 🔄 Waiting for pending request: ${cacheKey}`);
       const result = await pending;
       return result.snapshots;
     }
@@ -77,9 +77,9 @@ export class AcesSnapshotCacheService {
 
       // Cache the result
       this.cache.set(cacheKey, result);
-      console.log(
-        `[SnapshotCache] ✅ Cached ${result.snapshots.length} snapshots for ${tokenAddress}`,
-      );
+      // console.log(
+      //   `[SnapshotCache] ✅ Cached ${result.snapshots.length} snapshots for ${tokenAddress}`,
+      // );
 
       return result.snapshots;
     } finally {
@@ -97,9 +97,9 @@ export class AcesSnapshotCacheService {
     maxTimestamp: number,
     bufferSeconds: number,
   ): Promise<SnapshotCacheEntry> {
-    console.log(
-      `[SnapshotCache] 🔍 Fetching snapshots from DB: ${tokenAddress} (${minTimestamp}-${maxTimestamp})`,
-    );
+    // console.log(
+    //   `[SnapshotCache] 🔍 Fetching snapshots from DB: ${tokenAddress} (${minTimestamp}-${maxTimestamp})`,
+    // );
     const startTime = Date.now();
 
     const snapshots = await this.prisma.acesPriceSnapshot.findMany({
@@ -121,7 +121,7 @@ export class AcesSnapshotCacheService {
     });
 
     const duration = Date.now() - startTime;
-    console.log(`[SnapshotCache] ⏱️ Fetched ${snapshots.length} snapshots in ${duration}ms`);
+    // console.log(`[SnapshotCache] ⏱️ Fetched ${snapshots.length} snapshots in ${duration}ms`);
 
     const mapped = snapshots.map((s) => ({
       timestamp: s.timestamp,
@@ -161,7 +161,7 @@ export class AcesSnapshotCacheService {
     }
 
     if (cleanedCount > 0) {
-      console.log(`[SnapshotCache] 🧹 Cleaned up ${cleanedCount} expired cache entries`);
+      // console.log(`[SnapshotCache] 🧹 Cleaned up ${cleanedCount} expired cache entries`);
     }
   }
 
@@ -180,13 +180,13 @@ export class AcesSnapshotCacheService {
         }
       }
 
-      console.log(
-        `[SnapshotCache] 🗑️ Invalidated ${deletedCount} cache entries for ${tokenAddress}`,
-      );
+      // console.log(
+      //   `[SnapshotCache] 🗑️ Invalidated ${deletedCount} cache entries for ${tokenAddress}`,
+      // );
     } else {
       this.cache.clear();
       this.pendingRequests.clear();
-      console.log('[SnapshotCache] 🗑️ All caches cleared');
+      // console.log('[SnapshotCache] 🗑️ All caches cleared');
     }
   }
 
@@ -210,7 +210,7 @@ export class AcesSnapshotCacheService {
     }
     this.cache.clear();
     this.pendingRequests.clear();
-    console.log('[SnapshotCache] 🛑 Service shutdown');
+    // console.log('[SnapshotCache] 🛑 Service shutdown');
   }
 }
 
