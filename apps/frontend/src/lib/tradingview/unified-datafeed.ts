@@ -68,6 +68,15 @@ interface UnifiedChartResponse {
       dexLiveAt: Date | null;
     };
     acesUsdPrice: string;
+    metadata?: {
+      timeframe: string;
+      from: string;
+      to: string;
+      candleCount: number;
+      hasRecentTrades?: boolean; // 🔥 NEW
+      lastTradeTime?: string; // 🔥 NEW
+      isRealTime?: boolean; // 🔥 NEW
+    };
   };
 }
 
@@ -81,6 +90,8 @@ interface SubscriptionInfo {
 
 export class UnifiedDatafeed implements IBasicDataFeed {
   private config: UnifiedDatafeedConfig;
+  private aggressivePollingIntervals: Map<string, NodeJS.Timeout> = new Map();
+  private lastUpdateCallbacks: Map<string, () => void> = new Map();
   private lastBars = new Map<string, Bar>();
   private subscriptions = new Map<string, SubscriptionInfo>();
   private ws: WebSocket | null = null;
@@ -607,6 +618,11 @@ export class UnifiedDatafeed implements IBasicDataFeed {
 
       const response = await fetch(url);
       const result: UnifiedChartResponse = await response.json();
+      
+      // 🔥 REAL-TIME ENHANCEMENT: Check if we need to start aggressive polling
+      if (result.success && result.data?.metadata?.isRealTime) {
+        this.startAggressivePolling(tokenAddress, result.data.metadata.lastTradeTime);
+      }
 
       if (!result.success) {
         throw new Error('Failed to fetch chart data');
@@ -1010,5 +1026,105 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       timestamp: timestamp ?? now,
       source,
     });
+  }
+
+  /**
+   * 🔥 REAL-TIME ENHANCEMENT: Start aggressive polling for active trading
+   */
+  private startAggressivePolling(tokenAddress: string, lastTradeTime?: string): void {
+    const key = tokenAddress;
+    
+    // Clear existing interval if any
+    if (this.aggressivePollingIntervals.has(key)) {
+      clearInterval(this.aggressivePollingIntervals.get(key)!);
+    }
+
+    if (this.config.debug) {
+      console.log('[UnifiedDatafeed] 🔥 Starting aggressive polling for', tokenAddress);
+    }
+
+    // Poll every 1-2 seconds during active trading
+    const interval = setInterval(async () => {
+      try {
+        // Get the current subscription for this token
+        const subscription = Array.from(this.subscriptions.values())
+          .find(sub => sub.symbolInfo.ticker === tokenAddress);
+        
+        if (!subscription) {
+          this.stopAggressivePolling(tokenAddress);
+          return;
+        }
+
+        // Fetch latest candle data
+        const now = Math.floor(Date.now() / 1000);
+        const oneHourAgo = now - 3600; // Last hour
+        
+        const url = `${this.config.apiBaseUrl}/api/v1/chart/${tokenAddress}/unified?timeframe=1m&from=${oneHourAgo}&to=${now}&limit=60`;
+        const response = await fetch(url);
+        const result: UnifiedChartResponse = await response.json();
+
+        if (result.success && result.data?.candles?.length > 0) {
+          const latestCandle = result.data.candles[result.data.candles.length - 1];
+          
+          // Convert to TradingView bar format
+          const bar: Bar = {
+            time: latestCandle.timestamp * 1000, // TradingView expects milliseconds
+            open: parseFloat(latestCandle.price.open),
+            high: parseFloat(latestCandle.price.high),
+            low: parseFloat(latestCandle.price.low),
+            close: parseFloat(latestCandle.price.close),
+            volume: parseFloat(latestCandle.price.volume),
+          };
+
+          // Check if this is a new/updated candle
+          const lastBar = this.lastBars.get(key);
+          if (!lastBar || 
+              lastBar.time !== bar.time || 
+              lastBar.close !== bar.close ||
+              lastBar.volume !== bar.volume) {
+            
+            // Update the chart with new data
+            subscription.onTick(bar);
+            this.lastBars.set(key, bar);
+            
+            if (this.config.debug) {
+              console.log('[UnifiedDatafeed] 🔥 Real-time update:', bar);
+            }
+          }
+
+          // If no recent trades, slow down polling
+          const isStillActive = result.data.metadata?.isRealTime;
+          if (!isStillActive) {
+            this.stopAggressivePolling(tokenAddress);
+          }
+        }
+      } catch (error) {
+        console.error('[UnifiedDatafeed] Aggressive polling error:', error);
+      }
+    }, 1500); // 1.5 second intervals
+
+    this.aggressivePollingIntervals.set(key, interval);
+
+    // Auto-stop after 5 minutes of aggressive polling
+    setTimeout(() => {
+      this.stopAggressivePolling(tokenAddress);
+    }, 5 * 60 * 1000);
+  }
+
+  /**
+   * Stop aggressive polling for a token
+   */
+  private stopAggressivePolling(tokenAddress: string): void {
+    const key = tokenAddress;
+    const interval = this.aggressivePollingIntervals.get(key);
+    
+    if (interval) {
+      clearInterval(interval);
+      this.aggressivePollingIntervals.delete(key);
+      
+      if (this.config.debug) {
+        console.log('[UnifiedDatafeed] 🔥 Stopped aggressive polling for', tokenAddress);
+      }
+    }
   }
 }

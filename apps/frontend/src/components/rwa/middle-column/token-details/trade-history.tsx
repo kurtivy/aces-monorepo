@@ -296,15 +296,23 @@ export default function TradeHistory({
                   const usdFromTrade = parseMaybeNumber(trade.totalUsd);
                   const usdVal = usdFromTrade ?? (acesUsd != null ? acesAmt * acesUsd : null);
 
+                  // 🔥 NEW: Priority 1 - Use marginal price from backend (most accurate for bonding curve)
+                  const marginalPriceAces = trade.marginalPriceInAces
+                    ? parseFloat(trade.marginalPriceInAces)
+                    : null;
+                  const marginalPriceUsd =
+                    marginalPriceAces != null && acesUsd != null ? marginalPriceAces * acesUsd : null;
+
                   const priceFromTradeUsd = parseMaybeNumber(trade.priceUsd);
                   const priceFromCounter =
                     trade.priceInCounter && Number.isFinite(trade.priceInCounter) && acesUsd != null
                       ? trade.priceInCounter * acesUsd
                       : null;
                   const unitPrice =
-                    priceFromTradeUsd ??
-                    (priceFromCounter && priceFromCounter > 0 ? priceFromCounter : null) ??
-                    (usdVal != null && tokenAmt > 0 ? usdVal / tokenAmt : null);
+                    marginalPriceUsd ?? // 🔥 Priority 1: Marginal price (bonding curve)
+                    priceFromTradeUsd ?? // Priority 2: DEX price in USD
+                    (priceFromCounter && priceFromCounter > 0 ? priceFromCounter : null) ?? // Priority 3: Price from counter
+                    (usdVal != null && tokenAmt > 0 ? usdVal / tokenAmt : null); // Priority 4: Fallback average price
 
                   return (
                     <tr

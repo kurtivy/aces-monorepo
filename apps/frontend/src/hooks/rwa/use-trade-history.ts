@@ -18,6 +18,7 @@ export interface TradeHistoryEntry {
   priceUsd?: string | number | null;
   totalUsd?: string | number | null;
   acesUsdAtExecution?: string | number | null;
+  marginalPriceInAces?: string; // 🔥 NEW: Marginal price per token (price for next token after trade)
 }
 
 interface TradeHistoryOptions {
@@ -85,6 +86,7 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
           timestamp: Number(trade.createdAt) * 1000,
           txHash: trade.id,
           trader: trade.trader?.id,
+          marginalPriceInAces: (trade as any).marginalPriceInAces, // 🔥 NEW: From backend
         }));
       } else if (bondingResult.error) {
         setError(bondingResult.error);

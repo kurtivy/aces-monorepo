@@ -31,7 +31,7 @@ export async function chartUnifiedRoutes(fastify: FastifyInstance) {
         ),
         querystring: zodToJsonSchema(
           z.object({
-            timeframe: z.enum(['5m', '15m', '1h', '4h', '1d']).default('1h'),
+            timeframe: z.enum(['1m', '5m', '15m', '1h', '4h', '1d']).default('1h'),
             from: z.string().optional(),
             to: z.string().optional(),
             limit: z.string().optional(),

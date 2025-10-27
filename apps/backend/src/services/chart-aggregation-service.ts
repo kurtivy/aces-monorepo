@@ -5,6 +5,14 @@ import { ACES_TOKEN_ADDRESS, DATA_SOURCE_CONFIG } from '../config/bitquery.confi
 import { TradePriceAggregator } from './trade-price-aggregator';
 import { TokenMetadataCacheService } from './token-metadata-cache-service'; // 🔥 NEW
 import { AcesSnapshotCacheService } from './aces-snapshot-cache-service'; // 🔥 NEW
+import { ethers } from 'ethers'; // 🔥 For smart contract calls
+import { getNetworkConfig, createProvider } from '../config/network.config'; // 🔥 RPC provider
+
+// 🔥 Factory ABI - only the functions we need
+const FACTORY_ABI = [
+  'function getBuyPriceAfterFee(address tokenAddress, uint256 amount) external view returns (uint256)',
+  'function getSellPriceAfterFee(address tokenAddress, uint256 amount) external view returns (uint256)',
+];
 
 // Types
 interface Trade {
@@ -212,6 +220,57 @@ export class ChartAggregationService {
   }
 
   /**
+   * 🔥 Calculate marginal buy price using bonding curve formula
+   * This uses the same quadratic formula as the frontend/smart contract
+   * Returns the cost to buy 1 token at a given supply level (in ACES)
+   */
+  private calculateMarginalBuyPrice(
+    supply: number, // Supply in tokens (not wei)
+    steepness: string, // From token metadata
+    floor: string, // From token metadata
+  ): number {
+    try {
+      // Convert to bigint wei (18 decimals)
+      const W = BigInt(10) ** BigInt(18);
+      const supplyWei = BigInt(Math.floor(supply)) * W;
+      const amountWei = W; // 1 token
+      const steepnessWei = BigInt(steepness);
+      const floorWei = BigInt(floor);
+
+      // Quadratic bonding curve formula (same as smart contract)
+      const sumSquares = (s: bigint): bigint => {
+        if (s === BigInt(0)) return BigInt(0);
+        const t1 = (s * (s + W)) / W;
+        const t2 = (t1 * (BigInt(2) * s + W)) / W;
+        return t2 / (BigInt(6) * W);
+      };
+
+      const startWei = supplyWei;
+      const endWei = supplyWei + amountWei - W;
+
+      const sumBefore = sumSquares(startWei - W);
+      const sumAfter = sumSquares(endWei);
+      const summation = sumAfter - sumBefore;
+
+      const curveComponent = (summation * W) / steepnessWei;
+      const linearComponent = (floorWei * amountWei) / W;
+      const basePrice = curveComponent + linearComponent;
+
+      // Add fees (assume 5% protocol + 5% subject = 10% total)
+      const feePercent = (BigInt(10) * W) / BigInt(100); // 10%
+      const priceWithFees = basePrice + (basePrice * feePercent) / W;
+
+      // Convert to ACES (from wei)
+      const priceInAces = parseFloat(ethers.formatEther(priceWithFees));
+
+      return priceInAces;
+    } catch (error) {
+      console.error('[ChartAggregation] Error calculating marginal price:', error);
+      return 0;
+    }
+  }
+
+  /**
    * Fetch bonding curve trades from SubGraph with historical ACES prices
    * NOW USES TradePriceAggregator for accurate historical pricing
    */
@@ -237,14 +296,100 @@ export class ChartAggregationService {
         `[ChartAggregation] Fetched ${tradesWithPrices.length} trades with historical ACES prices`,
       );
 
+      // 🔥 Fetch token parameters (steepness, floor) from SubGraph
+      let steepness: string | null = null;
+      let floor: string | null = null;
+
+      try {
+        const subgraphUrl = process.env.GOLDSKY_SUBGRAPH_URL || process.env.SUBGRAPH_URL || '';
+        const query = `{
+          tokens(where: {address: "${tokenAddress.toLowerCase()}"}) {
+            address
+            steepness
+            floor
+          }
+        }`;
+
+        const response = await fetch(subgraphUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query }),
+        });
+
+        if (response.ok) {
+          const result = (await response.json()) as {
+            data?: { tokens?: Array<{ steepness: string; floor: string }> };
+          };
+          const tokens = result?.data?.tokens;
+
+          if (tokens && tokens.length > 0) {
+            steepness = tokens[0].steepness;
+            floor = tokens[0].floor;
+            console.log(
+              `[ChartAggregation] 📊 Token params: steepness=${steepness}, floor=${floor}`,
+            );
+          }
+        }
+      } catch (error) {
+        console.warn(
+          `[ChartAggregation] ⚠️ Failed to fetch token parameters from SubGraph:`,
+          error,
+        );
+      }
+
+      if (!steepness || !floor) {
+        console.warn(
+          `[ChartAggregation] ⚠️ Missing token parameters for ${tokenAddress}, using fallback pricing`,
+        );
+      }
+
       // Transform to Trade format expected by the rest of the service
-      return tradesWithPrices.map((trade) => {
+      // 🔥 CRITICAL CHANGE: Use marginal buy price logic for display
+      const transformedTrades: Trade[] = [];
+
+      for (const trade of tradesWithPrices) {
         const tokenAmount = parseFloat(trade.tokenAmount) / 1e18;
         const acesTokenAmount = parseFloat(trade.acesTokenAmount) / 1e18;
-        const supply = parseFloat(trade.supply) / 1e18; // Circulating supply at this trade
+        const supply = parseFloat(trade.supply) / 1e18; // Circulating supply AFTER this trade
 
-        // Price = ACES per Token
-        const priceInAces = tokenAmount > 0 ? acesTokenAmount / tokenAmount : 0;
+        // 🔥 MARGINAL PRICE LOGIC (CORRECTED):
+        // SubGraph gives us supply AFTER the trade.
+        // We need to show the marginal buy price at the CORRECT supply level:
+        //
+        // For BUY trades:
+        // - User bought tokenAmount FROM curve
+        // - Supply BEFORE trade = supply + tokenAmount (higher)
+        // - Supply AFTER trade = supply (lower)
+        // - Show marginal price at supply AFTER = HIGHER price ✅
+        //
+        // For SELL trades:
+        // - User sold tokenAmount TO curve  
+        // - Supply BEFORE trade = supply - tokenAmount (lower)
+        // - Supply AFTER trade = supply (higher)
+        // - Show marginal price at supply AFTER = LOWER price ✅
+
+        let priceInAces: number;
+
+        if (steepness && floor) {
+          // For BOTH: Calculate marginal price at supply AFTER trade
+          // This automatically gives us the right relationship:
+          // - BUY: supply is lower → price is higher
+          // - SELL: supply is higher → price is lower
+          priceInAces = this.calculateMarginalBuyPrice(supply, steepness, floor);
+
+          console.log(
+            `[ChartAggregation] ${trade.isBuy ? 'BUY' : 'SELL'} trade ${trade.id.slice(0, 10)}: ` +
+              `Marginal price=${priceInAces.toFixed(8)} ACES/token (supply after: ${supply.toFixed(0)})`,
+          );
+        } else {
+          // Fallback: Use execution price
+          priceInAces = tokenAmount > 0 ? acesTokenAmount / tokenAmount : 0;
+
+          console.warn(
+            `[ChartAggregation] ${trade.isBuy ? 'BUY' : 'SELL'} trade ${trade.id.slice(0, 10)}: ` +
+              `Fallback price=${priceInAces.toFixed(8)} ACES/token`,
+          );
+        }
 
         // Calculate USD price using HISTORICAL ACES price
         const priceInUsd = priceInAces * trade.acesUsdPriceAtExecution;
@@ -252,7 +397,7 @@ export class ChartAggregationService {
         // Calculate volume in USD using historical ACES price
         const volumeUsd = tokenAmount * priceInAces * trade.acesUsdPriceAtExecution;
 
-        return {
+        transformedTrades.push({
           timestamp: new Date(parseInt(trade.createdAt) * 1000),
           priceInAces,
           priceInUsd, // Now using historical ACES price! ✅
@@ -260,8 +405,11 @@ export class ChartAggregationService {
           volumeUsd, // Now accurate! ✅
           side: (trade.isBuy ? 'buy' : 'sell') as 'buy' | 'sell',
           circulatingSupply: supply, // Actual circulating supply from SubGraph
-        };
-      });
+        });
+      }
+
+      console.log(`[ChartAggregation] ✅ Transformed ${transformedTrades.length} bonding trades`);
+      return transformedTrades;
     } catch (error) {
       console.error('[ChartAggregation] Failed to fetch bonding trades:', error);
       throw error;

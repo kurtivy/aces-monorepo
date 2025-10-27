@@ -333,9 +333,95 @@ export class TokenService {
     // No-op: trades are queried directly from subgraph when needed
   }
 
+  /**
+   * 🔥 Calculate marginal buy price using bonding curve formula
+   * This uses the same quadratic formula as the chart service
+   * Returns the cost to buy 1 token at a given supply level (in ACES)
+   */
+  private calculateMarginalBuyPrice(
+    supply: number, // Supply in tokens (not wei)
+    steepness: string, // From token metadata
+    floor: string, // From token metadata
+  ): number {
+    try {
+      // Convert to bigint wei (18 decimals)
+      const W = BigInt(10) ** BigInt(18);
+      const supplyWei = BigInt(Math.floor(supply)) * W;
+      const amountWei = W; // 1 token
+      const steepnessWei = BigInt(steepness);
+      const floorWei = BigInt(floor);
+
+      // Quadratic bonding curve formula (same as smart contract)
+      const sumSquares = (s: bigint): bigint => {
+        if (s === BigInt(0)) return BigInt(0);
+        const t1 = (s * (s + W)) / W;
+        const t2 = (t1 * (BigInt(2) * s + W)) / W;
+        return t2 / (BigInt(6) * W);
+      };
+
+      const startWei = supplyWei;
+      const endWei = supplyWei + amountWei - W;
+
+      const sumBefore = sumSquares(startWei - W);
+      const sumAfter = sumSquares(endWei);
+      const summation = sumAfter - sumBefore;
+
+      const curveComponent = (summation * W) / steepnessWei;
+      const linearComponent = (floorWei * amountWei) / W;
+      const basePrice = curveComponent + linearComponent;
+
+      // Add fees (assume 5% protocol + 5% subject = 10% total)
+      const feePercent = (BigInt(10) * W) / BigInt(100); // 10%
+      const priceWithFees = basePrice + (basePrice * feePercent) / W;
+
+      // Convert to ACES (from wei)
+      const priceInAces = Number(priceWithFees) / Number(W);
+
+      return priceInAces;
+    } catch (error) {
+      console.error('[TokenService] Error calculating marginal price:', error);
+      return 0;
+    }
+  }
+
   // New method to fetch fresh trades from subgraph for trade history component
+  // 🔥 NOW INCLUDES MARGINAL PRICE CALCULATION for accurate display
   async getRecentTradesForToken(contractAddress: string, limit = 50) {
     try {
+      // 🔥 First, fetch token parameters (steepness, floor) for marginal price calculation
+      const tokenQuery = `{
+        tokens(where: {address: "${contractAddress.toLowerCase()}"}) {
+          address
+          steepness
+          floor
+        }
+      }`;
+
+      const tokenResponse = await fetch(process.env.GOLDSKY_SUBGRAPH_URL!, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: tokenQuery }),
+      });
+
+      let steepness: string | null = null;
+      let floor: string | null = null;
+
+      if (tokenResponse.ok) {
+        const tokenResult = (await tokenResponse.json()) as {
+          data?: { tokens?: Array<{ steepness: string; floor: string }> };
+        };
+        const tokens = tokenResult?.data?.tokens;
+
+        if (tokens && tokens.length > 0) {
+          steepness = tokens[0].steepness;
+          floor = tokens[0].floor;
+          console.log(
+            `[TokenService] 📊 Token params for trades: steepness=${steepness}, floor=${floor}`,
+          );
+        }
+      }
+
+      // 🔥 Fetch trades WITH supply field for marginal price calculation
       const query = `{
         trades(
           where: { token: "${contractAddress.toLowerCase()}" }
@@ -348,6 +434,7 @@ export class TokenService {
           trader { id }
           tokenAmount
           acesTokenAmount
+          supply
           createdAt
           blockNumber
         }
@@ -372,6 +459,7 @@ export class TokenService {
             trader: { id: string };
             tokenAmount: string;
             acesTokenAmount: string;
+            supply: string;
             createdAt: string;
             blockNumber: string;
           }>;
@@ -379,7 +467,42 @@ export class TokenService {
       };
 
       const trades = result.data.trades || [];
-      return trades;
+
+      // 🔥 CRITICAL: Calculate marginal price for each trade (same logic as chart service)
+      const tradesWithMarginalPrice = trades.map((trade) => {
+        const supply = parseFloat(trade.supply) / 1e18; // Supply AFTER this trade
+
+        let marginalPriceInAces: number;
+
+        if (steepness && floor) {
+          // Calculate marginal buy price at supply AFTER trade
+          // This gives us the price for the NEXT token (the "current price" after this trade)
+          marginalPriceInAces = this.calculateMarginalBuyPrice(supply, steepness, floor);
+
+          console.log(
+            `[TokenService] ${trade.isBuy ? 'BUY' : 'SELL'} trade ${trade.id.slice(0, 10)}: ` +
+              `Marginal price=${marginalPriceInAces.toFixed(8)} ACES/token (supply after: ${supply.toFixed(0)})`,
+          );
+        } else {
+          // Fallback: Use execution price (average price)
+          const tokenAmount = parseFloat(trade.tokenAmount) / 1e18;
+          const acesAmount = parseFloat(trade.acesTokenAmount) / 1e18;
+          marginalPriceInAces = tokenAmount > 0 ? acesAmount / tokenAmount : 0;
+
+          console.warn(
+            `[TokenService] ${trade.isBuy ? 'BUY' : 'SELL'} trade ${trade.id.slice(0, 10)}: ` +
+              `Fallback price=${marginalPriceInAces.toFixed(8)} ACES/token`,
+          );
+        }
+
+        return {
+          ...trade,
+          marginalPriceInAces: marginalPriceInAces.toString(), // 🔥 NEW: Marginal price in ACES
+          supply: trade.supply, // 🔥 NEW: Include supply for reference
+        };
+      });
+
+      return tradesWithMarginalPrice;
     } catch (error) {
       console.error('[TokenService] Trade history fetch error:', error);
       return [];
