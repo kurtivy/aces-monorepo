@@ -310,32 +310,25 @@ export class ChartDataWebSocket {
         limit: 15, // Bigger buffer so aggregation can include the prior close for empty candles
       });
 
-      console.log(`[WebSocket] 📊 Retrieved chart data:`, {
-        tokenAddress,
-        timeframe,
-        candlesCount: chartData.candles.length,
-        hasCandles: chartData.candles.length > 0,
-      });
-
       const candle =
         chartData.candles.length > 0 ? chartData.candles[chartData.candles.length - 1] : null;
 
-      if (candle) {
-        console.log(`[WebSocket] 📈 Latest candle:`, {
-          timestamp: candle.timestamp,
-          open: candle.open,
-          high: candle.high,
-          low: candle.low,
-          close: candle.close,
-          openUsd: candle.openUsd,
-          closeUsd: candle.closeUsd,
-          volume: candle.volume,
-          trades: candle.trades,
-          dataSource: candle.dataSource,
-        });
-      } else {
-        console.warn(`[WebSocket] ⚠️ No candle data returned for ${tokenAddress}:${timeframe}`);
-      }
+      // if (candle) {
+      //   console.log(`[WebSocket] 📈 Latest candle:`, {
+      //     timestamp: candle.timestamp,
+      //     open: candle.open,
+      //     high: candle.high,
+      //     low: candle.low,
+      //     close: candle.close,
+      //     openUsd: candle.openUsd,
+      //     closeUsd: candle.closeUsd,
+      //     volume: candle.volume,
+      //     trades: candle.trades,
+      //     dataSource: candle.dataSource,
+      //   });
+      // } else {
+      //   console.warn(`[WebSocket] ⚠️ No candle data returned for ${tokenAddress}:${timeframe}`);
+      // }
 
       if (!candle) {
         const cached = this.lastBroadcast.get(subscriptionKey);
@@ -367,20 +360,20 @@ export class ChartDataWebSocket {
         return;
       }
 
-      console.log(`📊 [WebSocket] Latest candle:`, {
-        dataSource: candle.dataSource,
-        timestamp: candle.timestamp,
-        close: candle.close,
-        closeUsd: candle.closeUsd,
-        open: candle.open,
-        openUsd: candle.openUsd,
-        high: candle.high,
-        highUsd: candle.highUsd,
-        low: candle.low,
-        lowUsd: candle.lowUsd,
-        volume: candle.volume,
-        trades: candle.trades,
-      });
+      // console.log(`📊 [WebSocket] Latest candle:`, {
+      //   dataSource: candle.dataSource,
+      //   timestamp: candle.timestamp,
+      //   close: candle.close,
+      //   closeUsd: candle.closeUsd,
+      //   open: candle.open,
+      //   openUsd: candle.openUsd,
+      //   high: candle.high,
+      //   highUsd: candle.highUsd,
+      //   low: candle.low,
+      //   lowUsd: candle.lowUsd,
+      //   volume: candle.volume,
+      //   trades: candle.trades,
+      // });
 
       // Get current graduation state from the chart data we just fetched
       const currentGraduationState = chartData.graduationState;
