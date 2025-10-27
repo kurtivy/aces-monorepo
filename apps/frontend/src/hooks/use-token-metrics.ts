@@ -191,13 +191,9 @@ export function useTokenMetrics(
         setCurrentPriceUsd(update.currentPriceUsd);
       }
 
-      if (
-        update.circulatingSupply !== undefined &&
-        Number.isFinite(update.circulatingSupply) &&
-        update.circulatingSupply > 0
-      ) {
-        setCirculatingSupply(update.circulatingSupply);
-      }
+      // 🔥 FIX: Removed circulatingSupply update to prevent flickering
+      // Only use backend RPC polling (SOURCE 1) as single source of truth
+      // Chart datafeed events can have stale/inconsistent values causing oscillation
     });
 
     return unsubscribe;

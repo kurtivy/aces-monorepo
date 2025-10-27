@@ -90,11 +90,11 @@ export class ChartAggregationService {
    * NOW WITH NO-GAP LOGIC: candle[n].open = candle[n-1].close
    */
   async getChartData(tokenAddress: string, options: ChartOptions): Promise<UnifiedChartResponse> {
-    console.log(`[ChartAggregation] Fetching chart data for ${tokenAddress}`, {
-      timeframe: options.timeframe,
-      from: options.from.toISOString(),
-      to: options.to.toISOString(),
-    });
+    // console.log(`[ChartAggregation] Fetching chart data for ${tokenAddress}`, {
+    //   timeframe: options.timeframe,
+    //   from: options.from.toISOString(),
+    //   to: options.to.toISOString(),
+    // });
 
     const now = Date.now();
     const currentCandleTimestamp = this.alignTimestamp(new Date(now), options.timeframe);
@@ -112,7 +112,7 @@ export class ChartAggregationService {
         console.warn('[ChartAggregation] ⚠️ ACES/USD price invalid, will return ACES prices only');
         acesUsdPrice = null;
       } else {
-        console.log(`[ChartAggregation] ✅ ACES/USD price: $${acesUsdPrice.toFixed(6)}`);
+        // console.log('[ChartAggregation] ✅ ACES/USD price fetched:', acesUsdPrice);
       }
     } catch (error) {
       console.warn(
@@ -127,7 +127,7 @@ export class ChartAggregationService {
 
     if (!graduationState.poolReady) {
       // TOKEN IS STILL IN BONDING CURVE
-      console.log('[ChartAggregation] 📈 Token bonding - using SubGraph');
+      // console.log('[ChartAggregation] 📈 Token bonding - using SubGraph');
       candles = await this.fetchBondingCurveData(
         tokenAddress,
         options,
@@ -136,7 +136,7 @@ export class ChartAggregationService {
       );
     } else if (graduationState.dexLiveAt) {
       // TOKEN HAS GRADUATED - check if request spans bonding/DEX boundary
-      console.log('[ChartAggregation] 🏊 Token graduated - checking boundaries');
+      // console.log('[ChartAggregation] 🏊 Token graduated - checking boundaries');
       candles = await this.fetchGraduatedTokenData(
         tokenAddress,
         graduationState,
@@ -157,30 +157,7 @@ export class ChartAggregationService {
       );
     }
 
-    console.log(`[ChartAggregation] ✅ Generated ${candles.length} candles`);
-
-    if (candles.length > 0) {
-      console.log(`[ChartAggregation] First candle:`, {
-        timestamp: candles[0].timestamp,
-        open: candles[0].open,
-        high: candles[0].high,
-        low: candles[0].low,
-        close: candles[0].close,
-        openUsd: candles[0].openUsd,
-        closeUsd: candles[0].closeUsd,
-        volume: candles[0].volume,
-      });
-      console.log(`[ChartAggregation] Last candle:`, {
-        timestamp: candles[candles.length - 1].timestamp,
-        open: candles[candles.length - 1].open,
-        high: candles[candles.length - 1].high,
-        low: candles[candles.length - 1].low,
-        close: candles[candles.length - 1].close,
-        openUsd: candles[candles.length - 1].openUsd,
-        closeUsd: candles[candles.length - 1].closeUsd,
-        volume: candles[candles.length - 1].volume,
-      });
-    }
+    // console.log(`[ChartAggregation] ✅ Generated ${candles.length} candles`);
 
     // 5. Add market cap to each candle
     const enrichedCandles = candles.map((candle) => {
@@ -292,9 +269,9 @@ export class ChartAggregationService {
         toTimestamp,
       );
 
-      console.log(
-        `[ChartAggregation] Fetched ${tradesWithPrices.length} trades with historical ACES prices`,
-      );
+      // console.log(
+      //   `[ChartAggregation] Fetched ${tradesWithPrices.length} trades with historical ACES prices`,
+      // );
 
       // 🔥 Fetch token parameters (steepness, floor) from SubGraph
       let steepness: string | null = null;
@@ -325,9 +302,9 @@ export class ChartAggregationService {
           if (tokens && tokens.length > 0) {
             steepness = tokens[0].steepness;
             floor = tokens[0].floor;
-            console.log(
-              `[ChartAggregation] 📊 Token params: steepness=${steepness}, floor=${floor}`,
-            );
+            // console.log(
+            //   `[ChartAggregation] 📊 Token params: steepness=${steepness}, floor=${floor}`,
+            // );
           }
         }
       } catch (error) {
@@ -363,7 +340,7 @@ export class ChartAggregationService {
         // - Show marginal price at supply AFTER = HIGHER price ✅
         //
         // For SELL trades:
-        // - User sold tokenAmount TO curve  
+        // - User sold tokenAmount TO curve
         // - Supply BEFORE trade = supply - tokenAmount (lower)
         // - Supply AFTER trade = supply (higher)
         // - Show marginal price at supply AFTER = LOWER price ✅
@@ -377,18 +354,18 @@ export class ChartAggregationService {
           // - SELL: supply is higher → price is lower
           priceInAces = this.calculateMarginalBuyPrice(supply, steepness, floor);
 
-          console.log(
-            `[ChartAggregation] ${trade.isBuy ? 'BUY' : 'SELL'} trade ${trade.id.slice(0, 10)}: ` +
-              `Marginal price=${priceInAces.toFixed(8)} ACES/token (supply after: ${supply.toFixed(0)})`,
-          );
+          // console.log(
+          //   `[ChartAggregation] ${trade.isBuy ? 'BUY' : 'SELL'} trade ${trade.id.slice(0, 10)}: ` +
+          //     `Marginal price=${priceInAces.toFixed(8)} ACES/token (supply after: ${supply.toFixed(0)})`,
+          // );
         } else {
           // Fallback: Use execution price
           priceInAces = tokenAmount > 0 ? acesTokenAmount / tokenAmount : 0;
 
-          console.warn(
-            `[ChartAggregation] ${trade.isBuy ? 'BUY' : 'SELL'} trade ${trade.id.slice(0, 10)}: ` +
-              `Fallback price=${priceInAces.toFixed(8)} ACES/token`,
-          );
+          // console.warn(
+          //   `[ChartAggregation] ${trade.isBuy ? 'BUY' : 'SELL'} trade ${trade.id.slice(0, 10)}: ` +
+          //     `Fallback price=${priceInAces.toFixed(8)} ACES/token`,
+          // );
         }
 
         // Calculate USD price using HISTORICAL ACES price
@@ -408,7 +385,7 @@ export class ChartAggregationService {
         });
       }
 
-      console.log(`[ChartAggregation] ✅ Transformed ${transformedTrades.length} bonding trades`);
+      //  console.log(`[ChartAggregation] ✅ Transformed ${transformedTrades.length} bonding trades`);
       return transformedTrades;
     } catch (error) {
       console.error('[ChartAggregation] Failed to fetch bonding trades:', error);
@@ -742,7 +719,7 @@ export class ChartAggregationService {
     acesUsdPrice: number | null,
     currentCandleTimestamp: number,
   ): Promise<Candle[]> {
-    console.log('[ChartAggregation] 📈 Fetching bonding curve data from SubGraph');
+    // console.log('[ChartAggregation] 📈 Fetching bonding curve data from SubGraph');
 
     const trades = await this.fetchBondingTrades(
       tokenAddress,
@@ -751,14 +728,17 @@ export class ChartAggregationService {
       (options.limit || 200) * 3,
     );
 
-    console.log(`[ChartAggregation] ✅ Fetched ${trades.length} bonding trades`);
+    // console.log(`[ChartAggregation] ✅ Fetched ${trades.length} bonding trades`);
 
     let seedCandle: Candle | null = null;
     const alignedRangeStart = this.alignTimestamp(options.from, options.timeframe);
     const firstTradeBucket =
       trades.length > 0 ? this.alignTimestamp(trades[0].timestamp, options.timeframe) : null;
 
-    if (trades.length === 0 || (firstTradeBucket !== null && firstTradeBucket > alignedRangeStart)) {
+    if (
+      trades.length === 0 ||
+      (firstTradeBucket !== null && firstTradeBucket > alignedRangeStart)
+    ) {
       seedCandle = await this.getBondingSeedCandle(
         tokenAddress,
         options.timeframe,
@@ -788,7 +768,7 @@ export class ChartAggregationService {
     tokenAddress: string,
     options: ChartOptions,
   ): Promise<Candle[]> {
-    console.log('[ChartAggregation] 📜 Fetching pre-aggregated OHLCV from Trading.Tokens');
+    // console.log('[ChartAggregation] 📜 Fetching pre-aggregated OHLCV from Trading.Tokens');
 
     const bitQueryCandles = await this.bitQueryService.getTradingTokensOHLC(
       tokenAddress,
@@ -799,7 +779,7 @@ export class ChartAggregationService {
       },
     );
 
-    console.log(`[ChartAggregation] ✅ Received ${bitQueryCandles.length} pre-aggregated candles`);
+    // console.log(`[ChartAggregation] ✅ Received ${bitQueryCandles.length} pre-aggregated candles`);
 
     if (bitQueryCandles.length === 0) {
       return [];
@@ -862,11 +842,11 @@ export class ChartAggregationService {
   ): Promise<Candle[]> {
     const tradeLimit = Math.min((options.limit || 200) * 3, 5000);
 
-    console.log('[ChartAggregation] 🔥 Fetching recent DEX trades:', {
-      limit: tradeLimit,
-      from: options.from.toISOString(),
-      to: options.to.toISOString(),
-    });
+    // console.log('[ChartAggregation] 🔥 Fetching recent DEX trades:', {
+    //   limit: tradeLimit,
+    //   from: options.from.toISOString(),
+    //   to: options.to.toISOString(),
+    // });
 
     const bitQueryTrades = await this.bitQueryService.getDexTrades(tokenAddress, poolAddress, {
       from: options.from,
@@ -875,7 +855,7 @@ export class ChartAggregationService {
       limit: tradeLimit,
     });
 
-    console.log(`[ChartAggregation] ✅ Fetched ${bitQueryTrades.length} individual trades`);
+    // console.log(`[ChartAggregation] ✅ Fetched ${bitQueryTrades.length} individual trades`);
 
     // Convert to internal Trade format
     const trades: Trade[] = bitQueryTrades.map((trade) => ({
@@ -892,7 +872,10 @@ export class ChartAggregationService {
     const firstTradeBucket =
       trades.length > 0 ? this.alignTimestamp(trades[0].timestamp, options.timeframe) : null;
 
-    if (trades.length === 0 || (firstTradeBucket !== null && firstTradeBucket > alignedRangeStart)) {
+    if (
+      trades.length === 0 ||
+      (firstTradeBucket !== null && firstTradeBucket > alignedRangeStart)
+    ) {
       seedCandle = await this.getDexSeedCandle(
         tokenAddress,
         poolAddress,
@@ -933,27 +916,20 @@ export class ChartAggregationService {
     const isEntirelyRecent = options.from >= historicalBoundary;
     const isEntirelyHistorical = options.to < historicalBoundary;
 
-    console.log('[ChartAggregation] 🔀 DEX data source decision:', {
-      from: options.from.toISOString(),
-      to: options.to.toISOString(),
-      boundary: historicalBoundary.toISOString(),
-      strategy: isEntirelyRecent ? 'TRADES' : isEntirelyHistorical ? 'OHLCV' : 'HYBRID',
-    });
-
     // STRATEGY 1: Entirely recent (< 7 days) - use individual trades
     if (isEntirelyRecent) {
-      console.log('[ChartAggregation] 🔥 Using individual trades (real-time accuracy)');
+      // console.log('[ChartAggregation] 🔥 Using individual trades (real-time accuracy)');
       return this.fetchRecentDexTrades(tokenAddress, poolAddress, options, currentCandleTimestamp);
     }
 
     // STRATEGY 2: Entirely historical (≥ 7 days old) - use pre-aggregated OHLCV
     if (isEntirelyHistorical) {
-      console.log('[ChartAggregation] 📜 Using pre-aggregated OHLCV (performance)');
+      // console.log('[ChartAggregation] 📜 Using pre-aggregated OHLCV (performance)');
       return this.fetchHistoricalDexOHLCV(tokenAddress, options);
     }
 
     // STRATEGY 3: Hybrid - request spans the 7-day boundary
-    console.log('[ChartAggregation] 🔀 Using HYBRID (historical + recent)');
+    // console.log('[ChartAggregation] 🔀 Using HYBRID (historical + recent)');
 
     // Fetch historical part (7+ days ago)
     const historicalCandles = await this.fetchHistoricalDexOHLCV(tokenAddress, {
@@ -968,12 +944,6 @@ export class ChartAggregationService {
       { ...options, from: historicalBoundary },
       currentCandleTimestamp,
     );
-
-    console.log('[ChartAggregation] ✅ Merged 7-day boundary:', {
-      historical: historicalCandles.length,
-      recent: recentCandles.length,
-      total: historicalCandles.length + recentCandles.length,
-    });
 
     return [...historicalCandles, ...recentCandles];
   }
@@ -1005,8 +975,8 @@ export class ChartAggregationService {
         typeof lastTrade.priceInUsd === 'number' && lastTrade.priceInUsd > 0
           ? lastTrade.priceInUsd
           : acesUsdPrice
-          ? lastTrade.priceInAces * acesUsdPrice
-          : 0;
+            ? lastTrade.priceInAces * acesUsdPrice
+            : 0;
 
       return this.buildSeedCandle(
         timeframe,
@@ -1074,7 +1044,8 @@ export class ChartAggregationService {
   ): Candle {
     const intervalMs = this.getIntervalMs(timeframe);
     const seedTime = alignedStartMs - intervalMs;
-    const safeSupply = Number.isFinite(supply) && supply > 0 ? supply : parseFloat(this.BONDING_SUPPLY);
+    const safeSupply =
+      Number.isFinite(supply) && supply > 0 ? supply : parseFloat(this.BONDING_SUPPLY);
     const closeAces = Number.isFinite(priceInAces) ? priceInAces : 0;
     const closeUsd = Number.isFinite(priceInUsd) ? priceInUsd : 0;
     const supplyStr = safeSupply.toString();
@@ -1122,18 +1093,18 @@ export class ChartAggregationService {
   ): Promise<Candle[]> {
     const graduationDate = new Date(graduationState.dexLiveAt!);
 
-    console.log('[ChartAggregation] 🎓 Graduation boundary check:', {
-      graduationDate: graduationDate.toISOString(),
-      requestFrom: options.from.toISOString(),
-      requestTo: options.to.toISOString(),
-    });
+    // console.log('[ChartAggregation] 🎓 Graduation boundary check:', {
+    //   graduationDate: graduationDate.toISOString(),
+    //   requestFrom: options.from.toISOString(),
+    //   requestTo: options.to.toISOString(),
+    // });
 
     // Check if request spans the graduation boundary
     const requestSpansGraduation = options.from < graduationDate && options.to >= graduationDate;
 
     // CASE 1: Request spans graduation - need data from both bonding and DEX
     if (requestSpansGraduation) {
-      console.log('[ChartAggregation] 🔀 Request spans graduation - using HYBRID approach');
+      // console.log('[ChartAggregation] 🔀 Request spans graduation - using HYBRID approach');
 
       // Fetch bonding curve data (before graduation)
       const bondingCandles = await this.fetchBondingCurveData(
@@ -1151,18 +1122,18 @@ export class ChartAggregationService {
         currentCandleTimestamp,
       );
 
-      console.log('[ChartAggregation] ✅ Merged graduation boundary:', {
-        bonding: bondingCandles.length,
-        dex: dexCandles.length,
-        total: bondingCandles.length + dexCandles.length,
-      });
+      // console.log('[ChartAggregation] ✅ Merged graduation boundary:', {
+      //   bonding: bondingCandles.length,
+      //   dex: dexCandles.length,
+      //   total: bondingCandles.length + dexCandles.length,
+      // });
 
       return [...bondingCandles, ...dexCandles];
     }
 
     // CASE 2: Request is entirely before graduation
     if (options.to < graduationDate) {
-      console.log('[ChartAggregation] 📈 Entire request pre-graduation (bonding curve)');
+      // console.log('[ChartAggregation] 📈 Entire request pre-graduation (bonding curve)');
       return this.fetchBondingCurveData(
         tokenAddress,
         options,
@@ -1172,7 +1143,7 @@ export class ChartAggregationService {
     }
 
     // CASE 3: Request is entirely after graduation
-    console.log('[ChartAggregation] 🏊 Entire request post-graduation (DEX)');
+    // console.log('[ChartAggregation] 🏊 Entire request post-graduation (DEX)');
     return this.fetchDexDataWithSmartSwitching(
       tokenAddress,
       graduationState.poolAddress!,
@@ -1187,7 +1158,7 @@ export class ChartAggregationService {
    */
   private async checkGraduation(tokenAddress: string): Promise<GraduationState> {
     try {
-      console.log('[ChartAggregation] Checking graduation state (using cache)');
+      // console.log('[ChartAggregation] Checking graduation state (using cache)');
 
       // 🔥 NEW: Use cached token metadata instead of direct query
       const tokenMetadata = await this.tokenMetadataCache.getTokenMetadata(
@@ -1195,7 +1166,7 @@ export class ChartAggregationService {
       );
 
       if (!tokenMetadata) {
-        console.log('[ChartAggregation] Token not found, assuming bonding curve');
+        // console.log('[ChartAggregation] Token not found, assuming bonding curve');
         return {
           isBonded: false,
           poolAddress: null,
@@ -1211,7 +1182,7 @@ export class ChartAggregationService {
         tokenMetadata.dexLiveAt !== null;
 
       if (isGraduated) {
-        console.log('[ChartAggregation] ✅ Token is graduated to DEX');
+        // console.log('[ChartAggregation] ✅ Token is graduated to DEX');
         return {
           isBonded: true,
           poolAddress: tokenMetadata.poolAddress!,
@@ -1220,7 +1191,7 @@ export class ChartAggregationService {
         };
       }
 
-      console.log('[ChartAggregation] Token still on bonding curve');
+      //console.log('[ChartAggregation] Token still on bonding curve');
       return {
         isBonded: false,
         poolAddress: null,

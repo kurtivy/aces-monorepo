@@ -327,9 +327,9 @@ export class TokenService {
   // REMOVED: TokenTrade storage - all trade data now comes from subgraph directly
   // No need to cache trades in database as subgraph is the source of truth
   private async storeRecentTrades(contractAddress: string, trades: SubgraphTrade[]) {
-    console.log(
-      `[TokenService] Skipping trade storage for ${contractAddress} - using subgraph as source of truth`,
-    );
+    // console.log(
+    //   `[TokenService] Skipping trade storage for ${contractAddress} - using subgraph as source of truth`,
+    // );
     // No-op: trades are queried directly from subgraph when needed
   }
 
@@ -415,9 +415,9 @@ export class TokenService {
         if (tokens && tokens.length > 0) {
           steepness = tokens[0].steepness;
           floor = tokens[0].floor;
-          console.log(
-            `[TokenService] 📊 Token params for trades: steepness=${steepness}, floor=${floor}`,
-          );
+          // console.log(
+          //   `[TokenService] 📊 Token params for trades: steepness=${steepness}, floor=${floor}`,
+          // );
         }
       }
 
@@ -479,20 +479,20 @@ export class TokenService {
           // This gives us the price for the NEXT token (the "current price" after this trade)
           marginalPriceInAces = this.calculateMarginalBuyPrice(supply, steepness, floor);
 
-          console.log(
-            `[TokenService] ${trade.isBuy ? 'BUY' : 'SELL'} trade ${trade.id.slice(0, 10)}: ` +
-              `Marginal price=${marginalPriceInAces.toFixed(8)} ACES/token (supply after: ${supply.toFixed(0)})`,
-          );
+          // console.log(
+          //   `[TokenService] ${trade.isBuy ? 'BUY' : 'SELL'} trade ${trade.id.slice(0, 10)}: ` +
+          //     `Marginal price=${marginalPriceInAces.toFixed(8)} ACES/token (supply after: ${supply.toFixed(0)})`,
+          // );
         } else {
           // Fallback: Use execution price (average price)
           const tokenAmount = parseFloat(trade.tokenAmount) / 1e18;
           const acesAmount = parseFloat(trade.acesTokenAmount) / 1e18;
           marginalPriceInAces = tokenAmount > 0 ? acesAmount / tokenAmount : 0;
 
-          console.warn(
-            `[TokenService] ${trade.isBuy ? 'BUY' : 'SELL'} trade ${trade.id.slice(0, 10)}: ` +
-              `Fallback price=${marginalPriceInAces.toFixed(8)} ACES/token`,
-          );
+          // console.warn(
+          //   `[TokenService] ${trade.isBuy ? 'BUY' : 'SELL'} trade ${trade.id.slice(0, 10)}: ` +
+          //     `Fallback price=${marginalPriceInAces.toFixed(8)} ACES/token`,
+          // );
         }
 
         return {
