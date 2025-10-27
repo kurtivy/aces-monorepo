@@ -1021,7 +1021,7 @@ export default function TokenSwapInterface({
   // RENDER (UI UNCHANGED)
   // ========================================
   return (
-    <div className="h-full">
+    <div className="h-full overflow-x-hidden">
       <div
         className={cn(
           ' h-full flex flex-col relative',

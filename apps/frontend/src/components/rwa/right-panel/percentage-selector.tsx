@@ -63,16 +63,16 @@ export function PercentageSelector({
             transform: translate(0);
           }
           20% {
-            transform: translate(-2px, 2px);
+            transform: translate(-1px, 1px);
           }
           40% {
-            transform: translate(-2px, -2px);
+            transform: translate(-1px, -1px);
           }
           60% {
-            transform: translate(2px, 2px);
+            transform: translate(1px, 1px);
           }
           80% {
-            transform: translate(2px, -2px);
+            transform: translate(1px, -1px);
           }
         }
 
@@ -106,10 +106,11 @@ export function PercentageSelector({
           clip-path: polygon(0 0, 100% 0, 100% 45%, 0 45%);
           animation: glitchBlock 0.4s infinite;
           z-index: -1;
+          overflow: hidden;
         }
       `}</style>
 
-      <div className={`flex gap-0 border-b-2 border-[#222] ${className}`}>
+      <div className={`flex gap-0 border-b-2 border-[#222] overflow-hidden ${className}`}>
         {[25, 50, 75].map((percentage) => (
           <button
             key={percentage}
@@ -143,7 +144,7 @@ export function PercentageSelector({
           onClick={() => handlePercentageClick(100)}
           data-text="APE"
           className={`
-            flex-1 relative px-5 py-4
+            flex-1 relative px-5 py-4 overflow-hidden
             bg-transparent border-none
             text-[15px] font-bold
             cursor-pointer transition-all duration-300

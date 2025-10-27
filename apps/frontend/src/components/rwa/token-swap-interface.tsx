@@ -411,7 +411,19 @@ export default function TokenSwapInterface({
     if (!Number.isFinite(parsed)) {
       return '0.00';
     }
-    return parsed.toFixed(2);
+    
+    // Format large numbers with commas for better readability
+    if (parsed >= 1000000) {
+      return `${(parsed / 1000000).toFixed(2)}M`;
+    }
+    if (parsed >= 1000) {
+      return `${(parsed / 1000).toFixed(2)}K`;
+    }
+    
+    return parsed.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
   }, []);
 
   const paymentAssetDisplay = useMemo(() => {
@@ -1649,8 +1661,8 @@ export default function TokenSwapInterface({
                       <span className="text-xs uppercase tracking-[0.3em] text-[#D0B284]/60">
                         Expected output
                       </span>
-                      <div className="text-right">
-                        <div className="font-mono text-lg font-bold text-[#D0B284]">
+                      <div className="text-right min-w-0 flex-1 ml-2">
+                        <div className="font-mono text-lg font-bold text-[#D0B284] break-all overflow-hidden">
                           {formatDexAmount(dexQuote.expectedOutput)}
                         </div>
                         <div className="text-xs font-semibold tracking-widest text-[#D0B284]/80">
@@ -1662,7 +1674,7 @@ export default function TokenSwapInterface({
                       <div className="text-[#D0B284]/70">
                         Minimum received ({dexQuote.slippageBps / 100}% slippage)
                       </div>
-                      <div className="font-mono text-[#D0B284] mt-1">
+                      <div className="font-mono text-[#D0B284] mt-1 break-all overflow-hidden">
                         {formatDexAmount(dexQuote.minOutput)}{' '}
                         <span className="text-[11px] font-semibold tracking-widest text-[#D0B284]/80">
                           {activeTab === 'sell' ? paymentAssetDisplay : tokenSymbol}

@@ -82,13 +82,13 @@ export declare const CreateBidSchema: z.ZodObject<{
     currency: z.ZodEnum<["ETH", "ACES"]>;
     expiresAt: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    listingId: string;
     amount: string;
+    listingId: string;
     currency: "ETH" | "ACES";
     expiresAt?: string | undefined;
 }, {
-    listingId: string;
     amount: string;
+    listingId: string;
     currency: "ETH" | "ACES";
     expiresAt?: string | undefined;
 }>;
@@ -170,7 +170,7 @@ export declare const TokenParametersSchema: z.ZodObject<{
     floor: z.ZodString;
     tokensBondedAt: z.ZodString;
     salt: z.ZodString;
-    chainId: z.ZodEffects<z.ZodNumber, 8453 | 84532, number>;
+    chainId: z.ZodEffects<z.ZodNumber, 84532 | 8453, number>;
     name: z.ZodOptional<z.ZodString>;
     symbol: z.ZodOptional<z.ZodString>;
     predictedAddress: z.ZodOptional<z.ZodString>;
@@ -178,9 +178,9 @@ export declare const TokenParametersSchema: z.ZodObject<{
     curve: number;
     steepness: string;
     floor: string;
-    tokensBondedAt: string;
     salt: string;
-    chainId: 8453 | 84532;
+    tokensBondedAt: string;
+    chainId: 84532 | 8453;
     symbol?: string | undefined;
     name?: string | undefined;
     predictedAddress?: string | undefined;
@@ -188,8 +188,8 @@ export declare const TokenParametersSchema: z.ZodObject<{
     curve: number;
     steepness: string;
     floor: string;
-    tokensBondedAt: string;
     salt: string;
+    tokensBondedAt: string;
     chainId: number;
     symbol?: string | undefined;
     name?: string | undefined;
@@ -203,7 +203,7 @@ export declare const SaveTokenParametersSchema: z.ZodObject<{
         floor: z.ZodString;
         tokensBondedAt: z.ZodString;
         salt: z.ZodString;
-        chainId: z.ZodEffects<z.ZodNumber, 8453 | 84532, number>;
+        chainId: z.ZodEffects<z.ZodNumber, 84532 | 8453, number>;
         name: z.ZodOptional<z.ZodString>;
         symbol: z.ZodOptional<z.ZodString>;
         predictedAddress: z.ZodOptional<z.ZodString>;
@@ -211,9 +211,9 @@ export declare const SaveTokenParametersSchema: z.ZodObject<{
         curve: number;
         steepness: string;
         floor: string;
-        tokensBondedAt: string;
         salt: string;
-        chainId: 8453 | 84532;
+        tokensBondedAt: string;
+        chainId: 84532 | 8453;
         symbol?: string | undefined;
         name?: string | undefined;
         predictedAddress?: string | undefined;
@@ -221,8 +221,8 @@ export declare const SaveTokenParametersSchema: z.ZodObject<{
         curve: number;
         steepness: string;
         floor: string;
-        tokensBondedAt: string;
         salt: string;
+        tokensBondedAt: string;
         chainId: number;
         symbol?: string | undefined;
         name?: string | undefined;
@@ -234,9 +234,9 @@ export declare const SaveTokenParametersSchema: z.ZodObject<{
         curve: number;
         steepness: string;
         floor: string;
-        tokensBondedAt: string;
         salt: string;
-        chainId: 8453 | 84532;
+        tokensBondedAt: string;
+        chainId: 84532 | 8453;
         symbol?: string | undefined;
         name?: string | undefined;
         predictedAddress?: string | undefined;
@@ -247,8 +247,8 @@ export declare const SaveTokenParametersSchema: z.ZodObject<{
         curve: number;
         steepness: string;
         floor: string;
-        tokensBondedAt: string;
         salt: string;
+        tokensBondedAt: string;
         chainId: number;
         symbol?: string | undefined;
         name?: string | undefined;
