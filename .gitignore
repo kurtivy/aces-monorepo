@@ -2,6 +2,7 @@
 .cursor/
 build-guides/
 acestest/
+guides/
 
 # Dependencies
 node_modules/

@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useAuth } from '@/lib/auth/auth-context';
-import { Copy, Check, Loader2, ChevronDown, Settings } from 'lucide-react';
+import { Copy, Check, Loader2, ChevronDown, Settings, ArrowUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import { createImageErrorHandler, getValidImageSrc } from '@/lib/utils/image-error-handler';
@@ -38,7 +38,6 @@ import RoyalTradeButton from './royal-trade-button';
 import GraffitiTradeButton from './graffiti-trade-button';
 
 const USE_GRAFFITI_TRADE_BUTTON = true;
-
 
 interface TokenSwapInterfaceProps {
   tokenSymbol?: string;
@@ -260,23 +259,25 @@ export default function TokenSwapInterface({
   }, [slippagePopoverOpen]);
 
   const sellOptions = useMemo(() => {
-    // In bonding mode, support ETH/USDC/USDT/ACES for buys
+    // In bonding mode, support ETH/USDC/USDT/ACES for buys, and include dynamic RWA option last
     if (activeTab === 'buy' && !isDexMode) {
       return [
         { value: 'ETH', label: 'ETH' },
         { value: 'USDC', label: 'USDC' },
         // { value: 'USDT', label: 'USDT' },
         { value: 'ACES', label: 'ACES' },
+        ...(tokenSymbol ? [{ value: tokenSymbol, label: tokenSymbol }] : []),
       ];
     }
 
-    // In DEX mode, allow all payment options as before (including ETH)
+    // In DEX mode, allow all payment options as before (including ETH), and include dynamic RWA option last
     if (activeTab === 'buy' && isDexMode) {
       return [
         { value: 'ETH', label: 'ETH' },
         { value: 'USDC', label: 'USDC' },
         // { value: 'USDT', label: 'USDT' },
         { value: 'ACES', label: 'ACES' },
+        ...(tokenSymbol ? [{ value: tokenSymbol, label: tokenSymbol }] : []),
       ];
     }
 
@@ -319,11 +320,15 @@ export default function TokenSwapInterface({
   );
 
   const buyOptions = useMemo(() => {
+    // When selling RWA, only ACES should be available at the bottom
+    if (activeTab === 'sell') {
+      return ['ACES'];
+    }
     const rawOptions = [tokenSymbol, 'ACES'].filter(
       (option): option is string => typeof option === 'string' && option.length > 0,
     );
     return Array.from(new Set(rawOptions));
-  }, [tokenSymbol]);
+  }, [tokenSymbol, activeTab]);
 
   const selectedSellAsset = activeTab === 'sell' ? tokenSymbol : paymentAsset;
   const selectedBuyAsset = activeTab === 'sell' ? 'ACES' : tokenSymbol;
@@ -405,6 +410,13 @@ export default function TokenSwapInterface({
     () => getAssetBalanceInfo(selectedBuyAsset),
     [selectedBuyAsset, getAssetBalanceInfo],
   );
+
+  // Enforce integer-only input when selling the dynamic RWA token
+  const effectiveSellDecimals = useMemo(() => {
+    const isSellingRwa =
+      (selectedSellAsset || '').toUpperCase() === (tokenSymbol || '').toUpperCase();
+    return isSellingRwa ? 0 : sellBalanceInfo.decimals;
+  }, [selectedSellAsset, tokenSymbol, sellBalanceInfo.decimals]);
 
   const sellAssetLabel = useMemo(() => {
     const match = sellOptions.find((option) => option.value === selectedSellAsset);
@@ -719,18 +731,18 @@ export default function TokenSwapInterface({
   const handleAmountChange = useCallback(
     (rawValue: string) => {
       const normalized = rawValue.replace(/,/g, '');
-      const clamped = clampAmountDecimals(normalized, sellBalanceInfo.decimals);
+      const clamped = clampAmountDecimals(normalized, effectiveSellDecimals);
       setAmount(clamped);
     },
-    [sellBalanceInfo.decimals],
+    [effectiveSellDecimals],
   );
 
   const handlePercentageCalculated = useCallback(
     (calculatedAmount: string, _percentage: number | null) => {
-      const clamped = clampAmountDecimals(calculatedAmount, sellBalanceInfo.decimals);
+      const clamped = clampAmountDecimals(calculatedAmount, effectiveSellDecimals);
       setAmount(clamped);
     },
-    [sellBalanceInfo.decimals],
+    [effectiveSellDecimals],
   );
 
   const handleSlippagePreset = useCallback((bps: number) => {
@@ -751,11 +763,21 @@ export default function TokenSwapInterface({
 
   useEffect(() => {
     if (!amount) return;
-    const clamped = clampAmountDecimals(amount, sellBalanceInfo.decimals);
+    const clamped = clampAmountDecimals(amount, effectiveSellDecimals);
     if (clamped !== amount) {
       setAmount(clamped);
     }
-  }, [amount, sellBalanceInfo.decimals]);
+  }, [amount, effectiveSellDecimals]);
+
+  // Flip assets between Buy (sell ACES/etc -> buy RWA) and Sell (sell RWA -> buy ACES)
+  const handleFlipAssets = useCallback(() => {
+    if (activeTab === 'buy') {
+      setActiveTab('sell');
+    } else {
+      setActiveTab('buy');
+      setPaymentAsset('ACES');
+    }
+  }, [activeTab, setActiveTab, setPaymentAsset]);
 
   const amountDigitCount = useMemo(() => {
     if (!amount) return 0;
@@ -1184,7 +1206,7 @@ export default function TokenSwapInterface({
               currentAmount={amount}
             />
 
-            <div className="space-y-4">
+            <div className="space-y-4 relative">
               {/* Sell Section */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between px-1">
@@ -1351,7 +1373,7 @@ export default function TokenSwapInterface({
                         onChange={(e) => handleAmountChange(e.target.value)}
                         onBlur={() => quote.refreshQuote?.()}
                         placeholder="0"
-                        inputMode="decimal"
+                        inputMode={effectiveSellDecimals === 0 ? 'numeric' : 'decimal'}
                         className={cn(
                           'w-full border-none bg-transparent text-right font-semibold text-white outline-none focus:ring-0 placeholder:text-[#D0B284]/30',
                           amountDigitCount > 10 ? 'text-2xl' : 'text-3xl',
@@ -1370,6 +1392,16 @@ export default function TokenSwapInterface({
                   </div>
                 </div>
               </div>
+
+              {/* Flip button (centered between sections without layout shift) */}
+              <button
+                type="button"
+                onClick={handleFlipAssets}
+                aria-label="Flip sell and buy"
+                className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 h-10 w-10 rounded-full border border-[#D0B284]/30 bg-black/80 text-[#D0B284] hover:bg-black/60 shadow-md flex items-center justify-center"
+              >
+                <ArrowUpDown className="h-4 w-4" />
+              </button>
 
               {/* Buy Section */}
               <div className="space-y-2">
