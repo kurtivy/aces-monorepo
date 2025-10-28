@@ -30,7 +30,7 @@ export function TokenHeaderSection({
   tokenSymbol,
   tokenAddress,
   tokenImage,
-  marketCap = 0,
+  marketCap,
   marketCapLoading = false,
 }: TokenHeaderSectionProps) {
   const [copied, setCopied] = useState(false);
@@ -176,7 +176,10 @@ export function TokenHeaderSection({
           MARKET CAP
         </div>
         <div className="text-xl font-semibold text-white font-proxima-nova">
-          {marketCapLoading ? (
+          {marketCapLoading ||
+          marketCap === undefined ||
+          marketCap === null ||
+          !Number.isFinite(marketCap) ? (
             <LoadingDots className="text-xl font-semibold font-proxima-nova leading-none text-white" />
           ) : (
             formatMarketCap(marketCap)

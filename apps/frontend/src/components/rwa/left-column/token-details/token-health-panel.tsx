@@ -46,7 +46,8 @@ class ValueEquilibriumCalculator {
   }
 
   calculateVER(tokenPrice: number, rewardPerToken: number): number {
-    if (rewardPerToken <= 0) return Infinity;
+    // Return null for invalid calculations (will be displayed as --)
+    if (rewardPerToken <= 0 || tokenPrice <= 0) return NaN;
     return (rewardPerToken / tokenPrice) * 100;
   }
 
@@ -195,15 +196,15 @@ type LiquidityState =
 export default function TokenHealthPanel({
   tokenAddress,
   reservePrice,
-  chainId,
+  chainId: _chainId,
   marketCap: marketCapProp,
   marketCapLoading = false,
   dexMeta,
   liveTokenPrice,
-  volume24hAces,
+  volume24hAces: _volume24hAces,
   volume24hUsd: volume24hUsdProp,
   liquidityUsd: liquidityUsdProp,
-  liquiditySource,
+  liquiditySource: _liquiditySource,
   metricsLoading = false,
   circulatingSupply: circulatingSupplyProp,
 }: TokenHealthPanelProps) {
@@ -390,17 +391,21 @@ export default function TokenHealthPanel({
   const valueClass = 'text-base font-semibold font-proxima-nova leading-none text-white';
 
   // Progressive loading states for each metric
+  // Distinguish between "loading" (data not arrived) vs "zero" (data arrived but is 0)
   const acesRatioLoading =
     marketCapLoading ||
-    !assetSalePrice ||
+    reservePrice === undefined ||
+    reservePrice === null ||
     !tokenAddress ||
-    !Number.isFinite(marketCapForMetrics) ||
-    marketCapForMetrics <= 0;
+    marketCapForMetrics === undefined ||
+    marketCapForMetrics === null ||
+    !Number.isFinite(marketCapForMetrics);
 
   const tradeRewardLoading =
     circulatingSupply === undefined ||
     circulatingSupply === null ||
-    !assetSalePrice ||
+    reservePrice === undefined ||
+    reservePrice === null ||
     !tokenAddress;
 
   const rewardEarnedLoading =
@@ -460,6 +465,8 @@ export default function TokenHealthPanel({
         <span className={valueClass}>
           {tradeRewardLoading ? (
             <LoadingDots className={valueClass} />
+          ) : !Number.isFinite(metrics.valueEquilibriumRatio) ? (
+            '--%'
           ) : (
             `${metrics.valueEquilibriumRatio.toFixed(0)}%`
           )}
@@ -477,6 +484,8 @@ export default function TokenHealthPanel({
         />
         {rewardEarnedLoading ? (
           <LoadingDots className={valueClass} />
+        ) : totalRewardEarned === 0 && (circulatingSupply === 0 || userTokenHoldings === 0) ? (
+          <span className={valueClass}>--</span>
         ) : (
           <div className="flex items-baseline gap-0.5 text-white">
             <span className="text-sm font-proxima-nova leading-none text-white">
