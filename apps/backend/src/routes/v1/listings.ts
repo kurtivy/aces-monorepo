@@ -620,6 +620,18 @@ export async function listingRoutes(fastify: FastifyInstance) {
 
         const result = await listingService.completeMinting(id, contractAddress, userId);
 
+        // 🔥 NEW: Auto-add token to bonding monitor
+        if (result.token?.contractAddress && fastify.bondingMonitor) {
+          try {
+            fastify.bondingMonitor.addTokenToMonitor(result.token.contractAddress);
+            console.log(
+              `[Listings] ✅ Added ${result.token.symbol} to bonding monitor for auto-graduation`,
+            );
+          } catch (monitorError) {
+            console.warn('[Listings] Failed to add token to bonding monitor:', monitorError);
+          }
+        }
+
         return reply.send({
           success: true,
           data: result,

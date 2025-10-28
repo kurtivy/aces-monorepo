@@ -130,6 +130,18 @@ export async function tokenCreationRoutes(fastify: FastifyInstance) {
           tokenAddress,
         );
 
+        // 🔥 NEW: Auto-add token to bonding monitor for auto-graduation
+        if (fastify.bondingMonitor && tokenAddress) {
+          try {
+            fastify.bondingMonitor.addTokenToMonitor(tokenAddress);
+            console.log(
+              `[TokenCreation] ✅ Added token ${tokenAddress} to bonding monitor for auto-graduation`,
+            );
+          } catch (monitorError) {
+            console.warn('[TokenCreation] Failed to add token to bonding monitor:', monitorError);
+          }
+        }
+
         return reply.send({
           success: true,
           data: listing,

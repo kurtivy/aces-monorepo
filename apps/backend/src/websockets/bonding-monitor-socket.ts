@@ -69,6 +69,9 @@ export class BondingMonitorWebSocket {
       );
     });
 
+    // Auto-discover and monitor all bonding curve tokens
+    await this.autoDiscoverBondingTokens();
+
     // Start monitoring loop (every 10 seconds)
     this.startMonitoring();
 
@@ -103,9 +106,9 @@ export class BondingMonitorWebSocket {
   }
 
   /**
-   * Add token to monitoring list
+   * Add token to monitoring list (now public for external calls)
    */
-  private addTokenToMonitor(tokenAddress: string) {
+  public addTokenToMonitor(tokenAddress: string) {
     const normalized = tokenAddress.toLowerCase();
     if (!this.monitoredTokens.has(normalized)) {
       this.monitoredTokens.add(normalized);
@@ -125,6 +128,58 @@ export class BondingMonitorWebSocket {
   }
 
   /**
+   * Force re-check of a token (clears cache to trigger graduation logic)
+   * Useful for manually triggering graduation if monitor missed it
+   */
+  public async forceCheckToken(tokenAddress: string): Promise<void> {
+    const normalized = tokenAddress.toLowerCase();
+    console.log(`[BondingMonitor] 🔄 Force checking token: ${normalized}`);
+
+    // Clear cached status to force re-evaluation
+    this.bondingStatuses.delete(normalized);
+
+    // Add to monitoring if not already there
+    this.addTokenToMonitor(normalized);
+
+    // Trigger immediate check
+    await this.checkAllTokens();
+  }
+
+  /**
+   * Auto-discover all tokens in bonding curve phase and add them to monitoring
+   */
+  private async autoDiscoverBondingTokens() {
+    try {
+      console.log('[BondingMonitor] 🔍 Auto-discovering bonding curve tokens...');
+
+      const bondingTokens = await this.prisma.token.findMany({
+        where: {
+          phase: 'BONDING_CURVE',
+        },
+        select: {
+          contractAddress: true,
+          symbol: true,
+        },
+      });
+
+      console.log(`[BondingMonitor] Found ${bondingTokens.length} tokens in bonding curve phase`);
+
+      for (const token of bondingTokens) {
+        this.addTokenToMonitor(token.contractAddress);
+      }
+
+      if (bondingTokens.length > 0) {
+        console.log(
+          `[BondingMonitor] ✅ Auto-monitoring ${bondingTokens.length} tokens: ${bondingTokens.map((t) => t.symbol || t.contractAddress.slice(0, 8)).join(', ')}`,
+        );
+      }
+    } catch (error) {
+      console.error('[BondingMonitor] ❌ Failed to auto-discover bonding tokens:', error);
+      // Non-fatal error - continue with empty monitoring list
+    }
+  }
+
+  /**
    * Start monitoring loop
    */
   private startMonitoring() {
@@ -133,15 +188,15 @@ export class BondingMonitorWebSocket {
       return;
     }
 
-    console.log('[BondingMonitor] Starting monitoring loop (every 10 seconds)');
+    console.log('[BondingMonitor] Starting monitoring loop (every 5 seconds)');
 
     // Check immediately
     this.checkAllTokens();
 
-    // Then check every 10 seconds
+    // Then check every 5 seconds for faster graduation detection
     this.monitorInterval = setInterval(() => {
       this.checkAllTokens();
-    }, 10000); // 10 seconds
+    }, 5000); // 5 seconds
   }
 
   /**
@@ -174,25 +229,30 @@ export class BondingMonitorWebSocket {
       // Process each token
       for (const tokenAddress of tokens) {
         const subgraphStatus = bondedStatuses[tokenAddress];
-        const previousStatus = this.bondingStatuses.get(tokenAddress);
+        let currentStatus = this.bondingStatuses.get(tokenAddress);
 
         console.log(
-          `[BondingMonitor] ${tokenAddress}: bonded=${subgraphStatus?.bonded}, previous=${previousStatus?.bonded}`,
+          `[BondingMonitor] ${tokenAddress}: bonded=${subgraphStatus?.bonded}, previous=${currentStatus?.bonded}`,
         );
 
         // Check if token just bonded (transition from false/undefined to true)
-        if (subgraphStatus?.bonded && !previousStatus?.bonded) {
+        if (subgraphStatus?.bonded && !currentStatus?.bonded) {
           // Token just bonded! 🎉
           console.log(`[BondingMonitor] 🎉 TOKEN JUST BONDED: ${tokenAddress}`);
           await this.handleTokenBonded(tokenAddress);
+          currentStatus = this.bondingStatuses.get(tokenAddress) || currentStatus;
         }
 
-        // Update cached status
+        // Update cached status (poolAddress will be set when token bonds)
         if (subgraphStatus) {
+          const existingPoolAddress = currentStatus?.poolAddress || null;
+          const normalizedPool =
+            subgraphStatus.poolAddress?.toLowerCase?.() ?? existingPoolAddress ?? null;
+
           this.bondingStatuses.set(tokenAddress, {
             tokenAddress,
             bonded: subgraphStatus.bonded,
-            poolAddress: subgraphStatus.poolAddress || null,
+            poolAddress: normalizedPool,
             lastChecked: Date.now(),
           });
         }
@@ -209,30 +269,45 @@ export class BondingMonitorWebSocket {
     try {
       console.log(`[BondingMonitor] Processing bonded token: ${tokenAddress}`);
 
-      // Fetch pool address from Aerodrome
-      console.log('[BondingMonitor] Fetching pool address from Aerodrome...');
-      const poolState = await this.aerodromeService.getPoolState(tokenAddress);
+      // 🔥 NEW: Check if token already has predicted pool address in database
+      const existingToken = await this.prisma.token.findUnique({
+        where: { contractAddress: tokenAddress },
+        select: { poolAddress: true, phase: true },
+      });
 
-      if (!poolState || !poolState.poolAddress) {
-        console.error(`[BondingMonitor] ❌ Failed to get pool address for ${tokenAddress}`);
-        this.broadcastBondingEvent(tokenAddress, {
-          bonded: true,
-          poolAddress: null,
-          error: 'Pool address not found',
-        });
-        return;
+      let poolAddress: string | null = null;
+
+      if (existingToken?.poolAddress) {
+        // Use predicted pool address (most common case)
+        poolAddress = existingToken.poolAddress.toLowerCase();
+        console.log(`[BondingMonitor] ✅ Using predicted pool address: ${poolAddress}`);
+      } else {
+        // Fallback: Fetch pool address from Aerodrome if not predicted
+        console.log('[BondingMonitor] No predicted pool address, fetching from Aerodrome...');
+        const poolState = await this.aerodromeService.getPoolState(tokenAddress);
+
+        if (!poolState || !poolState.poolAddress) {
+          console.error(`[BondingMonitor] ❌ Failed to get pool address for ${tokenAddress}`);
+          this.broadcastBondingEvent(tokenAddress, {
+            bonded: true,
+            poolAddress: null,
+            error: 'Pool address not found',
+          });
+          return;
+        }
+
+        poolAddress = poolState.poolAddress.toLowerCase();
+        console.log(`[BondingMonitor] ✅ Fetched pool address from Aerodrome: ${poolAddress}`);
       }
 
-      console.log(`[BondingMonitor] ✅ Pool address: ${poolState.poolAddress}`);
-
-      // Update database
-      console.log('[BondingMonitor] Updating database...');
+      // Update database to DEX_TRADING phase
+      console.log('[BondingMonitor] Updating database to DEX_TRADING phase...');
       await this.prisma.token.update({
         where: { contractAddress: tokenAddress },
         data: {
           phase: TokenPhase.DEX_TRADING,
           priceSource: TokenPriceSource.DEX,
-          poolAddress: poolState.poolAddress.toLowerCase(),
+          poolAddress: poolAddress,
           dexLiveAt: new Date(),
         },
       });
@@ -243,14 +318,14 @@ export class BondingMonitorWebSocket {
       this.bondingStatuses.set(tokenAddress, {
         tokenAddress,
         bonded: true,
-        poolAddress: poolState.poolAddress.toLowerCase(),
+        poolAddress: poolAddress,
         lastChecked: Date.now(),
       });
 
       // Broadcast to all connected clients
       this.broadcastBondingEvent(tokenAddress, {
         bonded: true,
-        poolAddress: poolState.poolAddress.toLowerCase(),
+        poolAddress: poolAddress,
         dexLiveAt: new Date().toISOString(),
         phase: 'DEX_TRADING',
       });
@@ -288,7 +363,6 @@ export class BondingMonitorWebSocket {
           tokens(where: { address_in: $addresses }) {
             address
             bonded
-            poolAddress
           }
         }
       `;
@@ -313,7 +387,7 @@ export class BondingMonitorWebSocket {
       for (const token of tokens) {
         result[(token.address as string).toLowerCase()] = {
           bonded: token.bonded,
-          poolAddress: token.poolAddress,
+          // poolAddress fetched from Aerodrome when token bonds (not in subgraph)
         };
       }
     }

@@ -571,6 +571,108 @@ export async function adminTokenRoutes(fastify: FastifyInstance) {
   );
 
   /**
+   * POST /api/v1/admin/tokens/:address/force-graduate
+   * Manually force a token to graduate to DEX (useful if bonding monitor missed it)
+   */
+  fastify.post(
+    '/api/v1/admin/tokens/:address/force-graduate',
+    {
+      preHandler: [requireAdmin],
+      schema: {
+        params: zodToJsonSchema(
+          z.object({
+            address: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+          }),
+        ),
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { address } = request.params as { address: string };
+        const normalized = address.toLowerCase();
+
+        console.log(`[ADMIN] Manually graduating token: ${normalized}`);
+
+        // Check if token exists
+        const token = await fastify.prisma.token.findUnique({
+          where: { contractAddress: normalized },
+        });
+
+        if (!token) {
+          return reply.code(404).send({
+            success: false,
+            error: 'Token not found',
+          });
+        }
+
+        if (token.phase === 'DEX_TRADING') {
+          return reply.send({
+            success: true,
+            message: 'Token is already graduated',
+            data: token,
+          });
+        }
+
+        // If token already has a pool address (predicted), just update the phase directly
+        if (token.poolAddress) {
+          console.log(
+            `[ADMIN] Token has pool address ${token.poolAddress}, updating phase directly`,
+          );
+
+          const updated = await fastify.prisma.token.update({
+            where: { contractAddress: normalized },
+            data: {
+              phase: 'DEX_TRADING',
+              priceSource: 'DEX',
+              dexLiveAt: new Date(),
+            },
+          });
+
+          return reply.send({
+            success: true,
+            message: 'Token graduated successfully using existing pool address',
+            data: updated,
+          });
+        }
+
+        // Use bonding monitor's logic if available
+        const bondingMonitor = fastify.bondingMonitor;
+        if (bondingMonitor) {
+          console.log(`[ADMIN] Forcing bonding monitor to re-check ${normalized}`);
+
+          // Force immediate check (clears cache and triggers graduation logic)
+          await bondingMonitor.forceCheckToken(normalized);
+
+          // Get updated stats
+          const stats = bondingMonitor.getStats();
+          const tokenStatus = stats.bondingStatuses.find((s: any) => s.address === normalized);
+
+          return reply.send({
+            success: true,
+            message: tokenStatus?.bonded
+              ? 'Token is bonded. Graduation process triggered - check database in a few seconds.'
+              : 'Token checked but not yet bonded on-chain.',
+            tokenStatus,
+            monitorStats: stats,
+          });
+        }
+
+        return reply.code(503).send({
+          success: false,
+          error: 'Bonding monitor not available',
+        });
+      } catch (error) {
+        console.error('[ADMIN] Error forcing graduation:', error);
+        return reply.code(500).send({
+          success: false,
+          error: 'Failed to force graduation',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    },
+  );
+
+  /**
    * POST /api/v1/admin/listings/:id/prepare-mint
    * Prepare listing for minting (admin finalizes and notifies user)
    */
@@ -594,6 +696,18 @@ export async function adminTokenRoutes(fastify: FastifyInstance) {
 
         const listingService = new ListingService(fastify.prisma);
         const listing = await listingService.prepareForMinting(id);
+
+        // 🔥 NEW: Auto-add token to bonding monitor
+        if (listing.token?.contractAddress && fastify.bondingMonitor) {
+          try {
+            fastify.bondingMonitor.addTokenToMonitor(listing.token.contractAddress);
+            console.log(
+              `[ADMIN] ✅ Added ${listing.token.symbol} to bonding monitor for auto-graduation`,
+            );
+          } catch (monitorError) {
+            console.warn('[ADMIN] Failed to add token to bonding monitor:', monitorError);
+          }
+        }
 
         return reply.send({
           success: true,
