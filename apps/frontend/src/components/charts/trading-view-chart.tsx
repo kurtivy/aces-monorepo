@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { UnifiedDatafeed } from '@/lib/tradingview/unified-datafeed';
 
 const toolbarStylesId = 'aces-tradingview-toolbar-styles';
@@ -258,6 +258,9 @@ interface TradingViewChartProps {
     lastUpdated: string | null;
     bondingCutoff: string | null;
   } | null;
+  extraEnabledFeatures?: string[];
+  extraDisabledFeatures?: string[];
+  extraFeatureSets?: string[];
 }
 
 declare global {
@@ -274,6 +277,9 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
     heightPx,
     minHeightPx,
     hideNativeHeader = false,
+    extraEnabledFeatures,
+    extraDisabledFeatures,
+    extraFeatureSets,
   }) => {
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const widgetRef = useRef<any>(null);
@@ -295,6 +301,48 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
     const isReinitializingRef = useRef<boolean>(isReinitializing);
     const isModeSwitchingRef = useRef<boolean>(isModeSwitching);
     const currency = 'usd' as const;
+
+    const enabledFeatures = useMemo(() => {
+      const baseFeatures = [
+        'side_toolbar_in_fullscreen_mode',
+        'header_widget',
+        'header_widget_dom_node',
+        'timeframes_toolbar',
+        'volume_force_overlay',
+      ];
+
+      if (!extraEnabledFeatures?.length) {
+        return baseFeatures;
+      }
+
+      return Array.from(new Set([...baseFeatures, ...extraEnabledFeatures]));
+    }, [extraEnabledFeatures]);
+
+    const disabledFeatures = useMemo(() => {
+      const baseDisabled = [
+        'use_localstorage_for_settings',
+        'create_volume_indicator_by_default_once',
+        'header_saveload',
+        'study_templates',
+        'header_symbol_search',
+        'header_compare',
+        'header_indicators',
+      ];
+
+      if (!extraDisabledFeatures?.length) {
+        return baseDisabled;
+      }
+
+      return Array.from(new Set([...baseDisabled, ...extraDisabledFeatures]));
+    }, [extraDisabledFeatures]);
+
+    const featureSets = useMemo(() => {
+      if (!extraFeatureSets?.length) {
+        return undefined;
+      }
+
+      return Array.from(new Set(extraFeatureSets));
+    }, [extraFeatureSets]);
 
     // Stabilize tokenSymbol to prevent unnecessary re-renders
     const stableTokenSymbol = useRef(tokenSymbol);
@@ -432,22 +480,9 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
           container: chartContainerRef.current,
           library_path: '/charting_library/',
           locale: 'en',
-          disabled_features: [
-            'use_localstorage_for_settings',
-            'create_volume_indicator_by_default_once',
-            'header_saveload',
-            'study_templates', // Disable to prevent CORS errors with TradingView's save/load service
-            'header_symbol_search',
-            'header_compare',
-            'header_indicators',
-          ],
-          enabled_features: [
-            'side_toolbar_in_fullscreen_mode',
-            'header_widget',
-            'header_widget_dom_node',
-            'timeframes_toolbar',
-            'volume_force_overlay',
-          ],
+          disabled_features: disabledFeatures,
+          enabled_features: enabledFeatures,
+          ...(featureSets ? { featuresets: featureSets } : {}),
           // Removed charts_storage_url and related config to prevent CORS errors
           // Users can still draw on charts, but templates won't be saved
           fullscreen: false,
@@ -687,7 +722,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
       return () => {
         clearTimeout(timeoutId);
       };
-    }, [chartMode, tokenAddress, isLibraryLoaded, isReinitializing]);
+    }, [chartMode, tokenAddress, isLibraryLoaded, isReinitializing, enabledFeatures, disabledFeatures, featureSets]);
 
     useEffect(() => {
       const wrapper = modeWrapperRef.current;
@@ -959,7 +994,11 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
       prevProps.tokenAddress === nextProps.tokenAddress &&
       prevProps.heightPx === nextProps.heightPx &&
       prevProps.minHeightPx === nextProps.minHeightPx &&
-      prevProps.heightClass === nextProps.heightClass
+      prevProps.heightClass === nextProps.heightClass &&
+      prevProps.hideNativeHeader === nextProps.hideNativeHeader &&
+      prevProps.extraEnabledFeatures === nextProps.extraEnabledFeatures &&
+      prevProps.extraDisabledFeatures === nextProps.extraDisabledFeatures &&
+      prevProps.extraFeatureSets === nextProps.extraFeatureSets
     );
   },
 );

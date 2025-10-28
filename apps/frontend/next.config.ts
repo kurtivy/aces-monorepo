@@ -512,6 +512,11 @@ const nextConfig: NextConfig = {
       {
         protocol: 'https',
         hostname: 'storage.googleapis.com',
+        pathname: '/aces-product-images/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'storage.googleapis.com',
         pathname: '/aces-rwa-images/**',
       },
       {
