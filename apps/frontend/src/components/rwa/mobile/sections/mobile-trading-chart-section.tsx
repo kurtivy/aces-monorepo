@@ -13,7 +13,7 @@ interface MobileTradingChartSectionProps {
 
 const MobileTradingChartSection = forwardRef<HTMLDivElement, MobileTradingChartSectionProps>(
   ({ listing, isLive, isLaunched }, ref) => {
-    const mobileFeatureSets = useMemo(
+    const mobileEnabledFeatures = useMemo(
       () => [
         'show_zoom_and_move_buttons_on_touch',
         'pinch_scale',
@@ -55,7 +55,7 @@ const MobileTradingChartSection = forwardRef<HTMLDivElement, MobileTradingChartS
             tokenName={listing.token?.name ?? listing.title}
             heightClass="h-[420px] min-h-[360px]"
             hideNativeHeader
-            extraFeatureSets={mobileFeatureSets}
+            extraEnabledFeatures={mobileEnabledFeatures}
             dexMeta={listing.dex ?? null}
           />
         </div>

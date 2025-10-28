@@ -5,6 +5,34 @@ import { UnifiedDatafeed } from '@/lib/tradingview/unified-datafeed';
 
 const toolbarStylesId = 'aces-tradingview-toolbar-styles';
 
+const detectIsMobileDevice = () => {
+  if (typeof window === 'undefined') return false;
+
+  const userAgent = window.navigator.userAgent || window.navigator.vendor || (window as any).opera;
+  const mobileRegex =
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile Safari/i;
+
+  if (mobileRegex.test(userAgent)) {
+    return true;
+  }
+
+  if (typeof window.matchMedia === 'function') {
+    try {
+      if (window.matchMedia('(pointer: coarse)').matches) {
+        return true;
+      }
+
+      if (window.matchMedia('(max-width: 767px)').matches) {
+        return true;
+      }
+    } catch (error) {
+      console.warn('[TradingView] matchMedia failed during mobile detection', error);
+    }
+  }
+
+  return window.innerWidth < 768;
+};
+
 const ensureTradingViewToolbarStyles = () => {
   if (typeof document === 'undefined') return;
   if (document.getElementById(toolbarStylesId)) return;
@@ -260,7 +288,6 @@ interface TradingViewChartProps {
   } | null;
   extraEnabledFeatures?: string[];
   extraDisabledFeatures?: string[];
-  extraFeatureSets?: string[];
 }
 
 declare global {
@@ -279,7 +306,6 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
     hideNativeHeader = false,
     extraEnabledFeatures,
     extraDisabledFeatures,
-    extraFeatureSets,
   }) => {
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const widgetRef = useRef<any>(null);
@@ -294,6 +320,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
     const [isLoading, setIsLoading] = useState(true);
     const [isReinitializing, setIsReinitializing] = useState(false);
     const [isModeSwitching, setIsModeSwitching] = useState(false);
+    const [isMobile, setIsMobile] = useState(false);
 
     // Chart mode (USD-only)
     const [chartMode, setChartMode] = useState<'price' | 'mcap'>('price');
@@ -301,6 +328,11 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
     const isReinitializingRef = useRef<boolean>(isReinitializing);
     const isModeSwitchingRef = useRef<boolean>(isModeSwitching);
     const currency = 'usd' as const;
+
+    useEffect(() => {
+      const mobileDetected = detectIsMobileDevice();
+      setIsMobile(mobileDetected);
+    }, []);
 
     const enabledFeatures = useMemo(() => {
       const baseFeatures = [
@@ -329,20 +361,15 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
         'header_indicators',
       ];
 
+      const mobileDisabled = [...baseDisabled, 'left_toolbar', 'control_bar'];
+      const featuresToDisable = isMobile ? mobileDisabled : baseDisabled;
+
       if (!extraDisabledFeatures?.length) {
-        return baseDisabled;
+        return featuresToDisable;
       }
 
-      return Array.from(new Set([...baseDisabled, ...extraDisabledFeatures]));
-    }, [extraDisabledFeatures]);
-
-    const featureSets = useMemo(() => {
-      if (!extraFeatureSets?.length) {
-        return undefined;
-      }
-
-      return Array.from(new Set(extraFeatureSets));
-    }, [extraFeatureSets]);
+      return Array.from(new Set([...featuresToDisable, ...extraDisabledFeatures]));
+    }, [extraDisabledFeatures, isMobile]);
 
     // Stabilize tokenSymbol to prevent unnecessary re-renders
     const stableTokenSymbol = useRef(tokenSymbol);
@@ -410,204 +437,218 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
         return;
       }
 
-      if (widgetRef.current) {
-        try {
-          widgetRef.current.remove();
-        } catch (err) {
-          console.warn('[TradingView] Failed to remove existing widget');
-        }
-        widgetRef.current = null;
-      }
+      let isCancelled = false;
 
-      // Cleanup old datafeed
-      cleanupDatafeed();
-
-      setIsReinitializing(true);
-      setIsModeSwitching(false);
-      setError(null);
-
-      try {
-        if (chartContainerRef.current) {
-          chartContainerRef.current.classList.add('aces-tv-dark-skin');
-        }
-        // Create unified datafeed (handles both price and market cap)
-        const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
-        const wsUrl = (() => {
-          if (process.env.NEXT_PUBLIC_WS_URL) {
-            return process.env.NEXT_PUBLIC_WS_URL;
-          }
-
-          try {
-            const apiUrl = new URL(apiBaseUrl);
-            const isSecure = apiUrl.protocol === 'https:';
-            const wsProtocol = isSecure ? 'wss:' : 'ws:';
-            return `${wsProtocol}//${apiUrl.host}/ws/chart`;
-          } catch (error) {
-            console.warn(
-              '[TradingView] Failed to derive WebSocket URL from NEXT_PUBLIC_API_URL, falling back to window.location',
-              error,
-            );
-
-            if (typeof window !== 'undefined') {
-              const isPageSecure = window.location.protocol === 'https:';
-              const wsProtocol = isPageSecure ? 'wss:' : 'ws:';
-              return `${wsProtocol}//${window.location.host}/ws/chart`;
-            }
-
-            return 'ws://localhost:3002/ws/chart';
-          }
-        })();
-
-        const datafeed = new UnifiedDatafeed({
-          apiBaseUrl,
-          wsUrl, // Enabled for real-time updates
-          debug: process.env.NODE_ENV === 'development',
-        });
-
-        datafeedRef.current = datafeed;
-
-        // Expose datafeed to window for debugging
-        if (typeof window !== 'undefined') {
-          (window as any).__tradingViewDatafeed = datafeed;
-        }
-
-        // Use token address + mode as the symbol for the datafeed
-        // Format: "0x123...abc" for price mode, "0x123...abc_MCAP" for market cap mode
-        const currentMode = chartModeRef.current;
-        const chartSymbol = currentMode === 'price' ? tokenAddress : `${tokenAddress}_MCAP`;
-
-        widgetRef.current = new window.TradingView.widget({
-          container: chartContainerRef.current,
-          library_path: '/charting_library/',
-          locale: 'en',
-          disabled_features: disabledFeatures,
-          enabled_features: enabledFeatures,
-          ...(featureSets ? { featuresets: featureSets } : {}),
-          // Removed charts_storage_url and related config to prevent CORS errors
-          // Users can still draw on charts, but templates won't be saved
-          fullscreen: false,
-          autosize: true,
-          symbol: chartSymbol,
-          interval: '1', // Default to 1-minute candles for both price and market cap
-          datafeed: datafeed,
-          theme: 'dark',
-          style: '1', // Candlesticks for both - market cap now has proper OHLC
-          toolbar_bg: '#000000',
-          loading_screen: {
-            backgroundColor: '#000000',
-            foregroundColor: '#D0B284',
-          },
-          // Apply custom price formatter for zero-count notation (0.0₅487)
-          // This formatter displays tiny prices like 0.000001 as 0.0₅1 (subscript notation)
-          custom_formatters: {
-            priceFormatterFactory: () => {
-              return {
-                format: (price: number) => {
-                  try {
-                    const mode = chartModeRef.current;
-                    const formatter =
-                      mode === 'mcap' ? formatMarketCapValue : formatPriceWithZeroCount;
-
-                    return formatter(price);
-                  } catch (error) {
-                    console.error('[TradingView] Price formatter error:', error, { price });
-                    // Fallback to simple formatting
-                    const mode = chartModeRef.current;
-                    return mode === 'mcap' ? `$${price.toFixed(0)}` : `$${price.toFixed(8)}`;
-                  }
-                },
-              };
-            },
-          },
-          overrides: {
-            'paneProperties.background': '#000000',
-            'paneProperties.backgroundGradientStartColor': '#000000',
-            'paneProperties.backgroundGradientEndColor': '#000000',
-            'paneProperties.vertGridProperties.color': 'rgba(208, 178, 132, 0.1)',
-            'paneProperties.horzGridProperties.color': 'rgba(208, 178, 132, 0.1)',
-            'symbolWatermarkProperties.transparency': 90,
-            'scalesProperties.textColor': '#DCDDCC',
-            'mainSeriesProperties.candleStyle.upColor': '#00C896',
-            'mainSeriesProperties.candleStyle.downColor': '#FF5B5B',
-            'mainSeriesProperties.candleStyle.borderUpColor': '#00C896',
-            'mainSeriesProperties.candleStyle.borderDownColor': '#FF5B5B',
-            'mainSeriesProperties.candleStyle.wickUpColor': '#00C896',
-            'mainSeriesProperties.candleStyle.wickDownColor': '#FF5B5B',
-            'mainSeriesProperties.hollowCandleStyle.upColor': '#00C896',
-            'mainSeriesProperties.hollowCandleStyle.downColor': '#FF5B5B',
-            'mainSeriesProperties.hollowCandleStyle.borderUpColor': '#00C896',
-            'mainSeriesProperties.hollowCandleStyle.borderDownColor': '#FF5B5B',
-            'mainSeriesProperties.hollowCandleStyle.wickUpColor': '#00C896',
-            'mainSeriesProperties.hollowCandleStyle.wickDownColor': '#FF5B5B',
-            'scalesProperties.autoScale': true,
-            'scalesProperties.scaleMode': 0,
-            'scalesProperties.alignLabels': true,
-            'paneProperties.topMargin': 10,
-            'paneProperties.bottomMargin': 10,
-            // Removed extremely small minTick - let TradingView auto-calculate based on pricescale
-            'mainSeriesProperties.priceAxisProperties.percentage': false,
-            'mainSeriesProperties.priceAxisProperties.autoScale': true,
-            // Enable logarithmic scale to handle extreme price ranges (0.000000001 to 0.001)
-            // This makes small price movements visible even when prices vary by orders of magnitude
-
-            // Show last value but hide symbol labels from price axis
-            'scalesProperties.showSeriesLastValue': true,
-            'scalesProperties.showStudyLastValue': false,
-            'scalesProperties.showSymbolLabels': false,
-          },
-          studies_overrides: {
-            'volume.volume.color.0': '#FF5B5B',
-            'volume.volume.color.1': '#00C896',
-            'volume.volume.transparency': 70,
-          },
-          time_frames: [
-            { text: '1m', resolution: '1', description: '1 Minute' },
-            { text: '5m', resolution: '5', description: '5 Minutes' },
-            { text: '15m', resolution: '15', description: '15 Minutes' },
-            { text: '1h', resolution: '60', description: '1 Hour' },
-            { text: '4h', resolution: '240', description: '4 Hours' },
-            { text: '1d', resolution: '1D', description: '1 Day' },
-          ],
-        });
-        currentSymbolRef.current = chartSymbol;
-
-        widgetRef.current.onChartReady(() => {
-          setIsReinitializing(false);
-
-          // Create custom buttons using TradingView API
-          createCustomButtons();
-        });
-      } catch (err) {
-        console.error('[TradingView] Error initializing:', err);
-        setError('Failed to initialize chart');
-        setIsReinitializing(false);
-        setIsModeSwitching(false);
-      }
-
-      return () => {
+      const destroyExistingWidget = () => {
         if (widgetRef.current) {
           try {
             widgetRef.current.remove();
-          } catch (e) {
-            console.warn('[TradingView] Error removing widget');
+          } catch (err) {
+            console.warn('[TradingView] Failed to remove existing widget');
           }
           widgetRef.current = null;
         }
+      };
+
+      const instantiateWidget = () => {
+        if (isCancelled || !chartContainerRef.current) {
+          return;
+        }
+
+        destroyExistingWidget();
+        cleanupDatafeed();
+
+        setIsReinitializing(true);
+        setIsModeSwitching(false);
+        setError(null);
+
+        try {
+          chartContainerRef.current.classList.add('aces-tv-dark-skin');
+
+          const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+          const wsUrl = (() => {
+            if (process.env.NEXT_PUBLIC_WS_URL) {
+              return process.env.NEXT_PUBLIC_WS_URL;
+            }
+
+            try {
+              const apiUrl = new URL(apiBaseUrl);
+              const isSecure = apiUrl.protocol === 'https:';
+              const wsProtocol = isSecure ? 'wss:' : 'ws:';
+              return `${wsProtocol}//${apiUrl.host}/ws/chart`;
+            } catch (error) {
+              console.warn(
+                '[TradingView] Failed to derive WebSocket URL from NEXT_PUBLIC_API_URL, falling back to window.location',
+                error,
+              );
+
+              if (typeof window !== 'undefined') {
+                const isPageSecure = window.location.protocol === 'https:';
+                const wsProtocol = isPageSecure ? 'wss:' : 'ws:';
+                return `${wsProtocol}//${window.location.host}/ws/chart`;
+              }
+
+              return 'ws://localhost:3002/ws/chart';
+            }
+          })();
+
+          const datafeed = new UnifiedDatafeed({
+            apiBaseUrl,
+            wsUrl,
+            debug: process.env.NODE_ENV === 'development',
+          });
+
+          datafeedRef.current = datafeed;
+
+          if (typeof window !== 'undefined') {
+            (window as any).__tradingViewDatafeed = datafeed;
+          }
+
+          const currentMode = chartModeRef.current;
+          const chartSymbol = currentMode === 'price' ? tokenAddress : `${tokenAddress}_MCAP`;
+
+          const widgetOptions = {
+            container: chartContainerRef.current,
+            library_path: '/charting_library/',
+            locale: 'en',
+            disabled_features: disabledFeatures,
+            enabled_features: enabledFeatures,
+            fullscreen: false,
+            autosize: true,
+            symbol: chartSymbol,
+            interval: '1',
+            datafeed: datafeed,
+            theme: 'dark',
+            style: '1',
+            toolbar_bg: '#000000',
+            loading_screen: {
+              backgroundColor: '#000000',
+              foregroundColor: '#D0B284',
+            },
+            custom_formatters: {
+              priceFormatterFactory: () => {
+                return {
+                  format: (price: number) => {
+                    try {
+                      const mode = chartModeRef.current;
+                      const formatter =
+                        mode === 'mcap' ? formatMarketCapValue : formatPriceWithZeroCount;
+                      return formatter(price);
+                    } catch (error) {
+                      console.error('[TradingView] Price formatter error:', error, { price });
+                      const mode = chartModeRef.current;
+                      return mode === 'mcap' ? `$${price.toFixed(0)}` : `$${price.toFixed(8)}`;
+                    }
+                  },
+                };
+              },
+            },
+            overrides: {
+              'paneProperties.background': '#000000',
+              'paneProperties.backgroundGradientStartColor': '#000000',
+              'paneProperties.backgroundGradientEndColor': '#000000',
+              'paneProperties.vertGridProperties.color': 'rgba(208, 178, 132, 0.1)',
+              'paneProperties.horzGridProperties.color': 'rgba(208, 178, 132, 0.1)',
+              'symbolWatermarkProperties.transparency': 90,
+              'scalesProperties.textColor': '#DCDDCC',
+              'mainSeriesProperties.candleStyle.upColor': '#00C896',
+              'mainSeriesProperties.candleStyle.downColor': '#FF5B5B',
+              'mainSeriesProperties.candleStyle.borderUpColor': '#00C896',
+              'mainSeriesProperties.candleStyle.borderDownColor': '#FF5B5B',
+              'mainSeriesProperties.candleStyle.wickUpColor': '#00C896',
+              'mainSeriesProperties.candleStyle.wickDownColor': '#FF5B5B',
+              'mainSeriesProperties.hollowCandleStyle.upColor': '#00C896',
+              'mainSeriesProperties.hollowCandleStyle.downColor': '#FF5B5B',
+              'mainSeriesProperties.hollowCandleStyle.borderUpColor': '#00C896',
+              'mainSeriesProperties.hollowCandleStyle.borderDownColor': '#FF5B5B',
+              'mainSeriesProperties.hollowCandleStyle.wickUpColor': '#00C896',
+              'mainSeriesProperties.hollowCandleStyle.wickDownColor': '#FF5B5B',
+              'scalesProperties.autoScale': true,
+              'scalesProperties.scaleMode': 0,
+              'scalesProperties.alignLabels': true,
+              'paneProperties.topMargin': 10,
+              'paneProperties.bottomMargin': 10,
+              'mainSeriesProperties.priceAxisProperties.percentage': false,
+              'mainSeriesProperties.priceAxisProperties.autoScale': true,
+              'scalesProperties.showSeriesLastValue': true,
+              'scalesProperties.showStudyLastValue': false,
+              'scalesProperties.showSymbolLabels': false,
+            },
+            studies_overrides: {
+              'volume.volume.color.0': '#FF5B5B',
+              'volume.volume.color.1': '#00C896',
+              'volume.volume.transparency': 70,
+            },
+            time_frames: [
+              { text: '1m', resolution: '1', description: '1 Minute' },
+              { text: '5m', resolution: '5', description: '5 Minutes' },
+              { text: '15m', resolution: '15', description: '15 Minutes' },
+              { text: '1h', resolution: '60', description: '1 Hour' },
+              { text: '4h', resolution: '240', description: '4 Hours' },
+              { text: '1d', resolution: '1D', description: '1 Day' },
+            ],
+          } as Record<string, unknown>;
+
+          if (isMobile) {
+            widgetOptions.preset = 'mobile';
+          }
+
+          widgetRef.current = new window.TradingView.widget(widgetOptions);
+
+          currentSymbolRef.current = chartSymbol;
+
+          widgetRef.current.onChartReady(() => {
+            if (isCancelled) {
+              return;
+            }
+            setIsReinitializing(false);
+            createCustomButtons();
+          });
+        } catch (err) {
+          if (isCancelled) {
+            return;
+          }
+          console.error('[TradingView] Error initializing:', err);
+          setError('Failed to initialize chart');
+          setIsReinitializing(false);
+          setIsModeSwitching(false);
+        }
+      };
+
+      const maybeInstantiate = () => {
+        if (isCancelled) return;
+        const tv = typeof window !== 'undefined' ? window.TradingView : undefined;
+        if (tv && typeof tv.onready === 'function') {
+          tv.onready(() => {
+            if (!isCancelled) {
+              instantiateWidget();
+            }
+          });
+        } else {
+          instantiateWidget();
+        }
+      };
+
+      maybeInstantiate();
+
+      return () => {
+        isCancelled = true;
+        destroyExistingWidget();
         modeWrapperRef.current = null;
         modeButtonRef.current = null;
         priceOptionRef.current = null;
         mcapOptionRef.current = null;
-        // Cleanup datafeed on unmount
         cleanupDatafeed();
       };
     }, [
       isLibraryLoaded,
       tokenAddress,
-      // Removed tokenSymbol to prevent re-initialization when only the symbol changes
-      // The stableTokenSymbol ref will be used instead
       currency,
       hideNativeHeader,
-      cleanupDatafeed, // Include cleanup function in dependencies
+      cleanupDatafeed,
+      disabledFeatures,
+      enabledFeatures,
+      isMobile,
     ]);
 
     useEffect(() => {
@@ -722,7 +763,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
       return () => {
         clearTimeout(timeoutId);
       };
-    }, [chartMode, tokenAddress, isLibraryLoaded, isReinitializing, enabledFeatures, disabledFeatures, featureSets]);
+    }, [chartMode, tokenAddress, isLibraryLoaded, isReinitializing]);
 
     useEffect(() => {
       const wrapper = modeWrapperRef.current;
@@ -997,8 +1038,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
       prevProps.heightClass === nextProps.heightClass &&
       prevProps.hideNativeHeader === nextProps.hideNativeHeader &&
       prevProps.extraEnabledFeatures === nextProps.extraEnabledFeatures &&
-      prevProps.extraDisabledFeatures === nextProps.extraDisabledFeatures &&
-      prevProps.extraFeatureSets === nextProps.extraFeatureSets
+      prevProps.extraDisabledFeatures === nextProps.extraDisabledFeatures
     );
   },
 );
