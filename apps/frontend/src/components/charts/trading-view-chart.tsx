@@ -332,6 +332,11 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
     useEffect(() => {
       const mobileDetected = detectIsMobileDevice();
       setIsMobile(mobileDetected);
+      console.log('[TradingView] Mobile detection:', {
+        isMobile: mobileDetected,
+        userAgent: typeof window !== 'undefined' ? window.navigator.userAgent : 'N/A',
+        innerWidth: typeof window !== 'undefined' ? window.innerWidth : 'N/A',
+      });
     }, []);
 
     const enabledFeatures = useMemo(() => {
@@ -361,14 +366,20 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
         'header_indicators',
       ];
 
-      const mobileDisabled = [...baseDisabled, 'left_toolbar', 'control_bar'];
-      const featuresToDisable = isMobile ? mobileDisabled : baseDisabled;
-
-      if (!extraDisabledFeatures?.length) {
-        return featuresToDisable;
+      // When using mobile preset, let TradingView handle feature configuration
+      // Don't manually disable features as it conflicts with preset
+      if (isMobile) {
+        // Only merge with extra disabled features if provided
+        return extraDisabledFeatures?.length
+          ? Array.from(new Set([...baseDisabled, ...extraDisabledFeatures]))
+          : baseDisabled;
       }
 
-      return Array.from(new Set([...featuresToDisable, ...extraDisabledFeatures]));
+      if (!extraDisabledFeatures?.length) {
+        return baseDisabled;
+      }
+
+      return Array.from(new Set([...baseDisabled, ...extraDisabledFeatures]));
     }, [extraDisabledFeatures, isMobile]);
 
     // Stabilize tokenSymbol to prevent unnecessary re-renders
@@ -455,6 +466,30 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
           return;
         }
 
+        // Critical mobile fix: Ensure container has dimensions before creating widget
+        const containerRect = chartContainerRef.current.getBoundingClientRect();
+        if (containerRect.height === 0 || containerRect.width === 0) {
+          console.warn('[TradingView] Container has no dimensions yet, retrying...', {
+            width: containerRect.width,
+            height: containerRect.height,
+            clientWidth: chartContainerRef.current.clientWidth,
+            clientHeight: chartContainerRef.current.clientHeight,
+          });
+          
+          // Retry after a short delay to let layout settle
+          setTimeout(() => {
+            if (!isCancelled) {
+              instantiateWidget();
+            }
+          }, 100);
+          return;
+        }
+
+        console.log('[TradingView] Container dimensions OK:', {
+          width: containerRect.width,
+          height: containerRect.height,
+        });
+
         destroyExistingWidget();
         cleanupDatafeed();
 
@@ -506,6 +541,15 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
 
           const currentMode = chartModeRef.current;
           const chartSymbol = currentMode === 'price' ? tokenAddress : `${tokenAddress}_MCAP`;
+
+          console.log('[TradingView] Initializing widget with config:', {
+            isMobile,
+            chartSymbol,
+            containerWidth: chartContainerRef.current.clientWidth,
+            containerHeight: chartContainerRef.current.clientHeight,
+            enabledFeatures,
+            disabledFeatures,
+          });
 
           const widgetOptions = {
             container: chartContainerRef.current,
@@ -591,16 +635,20 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
 
           if (isMobile) {
             widgetOptions.preset = 'mobile';
+            console.log('[TradingView] Using mobile preset');
           }
 
+          console.log('[TradingView] Creating widget instance...');
           widgetRef.current = new window.TradingView.widget(widgetOptions);
 
           currentSymbolRef.current = chartSymbol;
 
           widgetRef.current.onChartReady(() => {
             if (isCancelled) {
+              console.log('[TradingView] Chart ready callback - cancelled');
               return;
             }
+            console.log('[TradingView] ✅ Chart ready! isMobile:', isMobile);
             setIsReinitializing(false);
             createCustomButtons();
           });
@@ -846,6 +894,13 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
     // Create custom buttons using TradingView API
     const createCustomButtons = async () => {
       if (!widgetRef.current) return;
+
+      // Skip custom buttons on mobile - mobile preset handles toolbar differently
+      // Custom DOM manipulation can break mobile chart rendering
+      if (isMobile) {
+        console.log('[TradingView] Skipping custom buttons on mobile device');
+        return;
+      }
 
       try {
         ensureTradingViewToolbarStyles();
