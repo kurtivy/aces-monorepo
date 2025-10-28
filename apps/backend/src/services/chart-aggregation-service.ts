@@ -1389,6 +1389,7 @@ export class ChartAggregationService {
    */
   private getIntervalMs(timeframe: string): number {
     const intervals: Record<string, number> = {
+      '1m': 60 * 1000,
       '5m': 5 * 60 * 1000,
       '15m': 15 * 60 * 1000,
       '1h': 60 * 60 * 1000,

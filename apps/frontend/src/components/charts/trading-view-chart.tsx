@@ -188,13 +188,16 @@ const formatPriceWithZeroCount = (price: number): string => {
       '9': '₉',
     };
 
-    if (zeros >= 4) {
+    if (zeros >= 3) {
       const subscriptZeros = zeros
         .toString()
         .split('')
         .map((d) => subscriptMap[d] || d)
         .join('');
       return `$0.0${subscriptZeros}${digits}`;
+    } else {
+      // For 1-2 zeros, use regular format with 3 significant digits
+      return `$0.${'0'.repeat(zeros)}${digits}`;
     }
   }
 
@@ -450,7 +453,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
           fullscreen: false,
           autosize: true,
           symbol: chartSymbol,
-          interval: '15', // Default to 15-minute candles for both price and market cap
+          interval: '1', // Default to 1-minute candles for both price and market cap
           datafeed: datafeed,
           theme: 'dark',
           style: '1', // Candlesticks for both - market cap now has proper OHLC
@@ -523,6 +526,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
             'volume.volume.transparency': 70,
           },
           time_frames: [
+            { text: '1m', resolution: '1', description: '1 Minute' },
             { text: '5m', resolution: '5', description: '5 Minutes' },
             { text: '15m', resolution: '15', description: '15 Minutes' },
             { text: '1h', resolution: '60', description: '1 Hour' },
@@ -650,7 +654,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
 
       try {
         // Get current resolution
-        let currentResolution = '15'; // Default
+        let currentResolution = '1'; // Default to 1-minute if chart does not expose resolution
         try {
           if (typeof chart.resolution === 'function') {
             currentResolution = chart.resolution();

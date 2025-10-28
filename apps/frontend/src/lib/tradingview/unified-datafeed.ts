@@ -570,7 +570,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
 
     setTimeout(() => {
       callback({
-        supported_resolutions: ['5', '15', '60', '240', '1D'] as ResolutionString[],
+        supported_resolutions: ['1', '5', '15', '60', '240', '1D'] as ResolutionString[],
         supports_marks: false,
         supports_timescale_marks: false,
         supports_time: true,
@@ -614,7 +614,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
         has_intraday: true,
         has_daily: true,
         has_weekly_and_monthly: false,
-        supported_resolutions: ['5', '15', '60', '240', '1D'] as ResolutionString[],
+        supported_resolutions: ['1', '5', '15', '60', '240', '1D'] as ResolutionString[],
         volume_precision: 2,
         data_status: 'streaming',
         format: 'price',
@@ -1021,6 +1021,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
 
   private resolutionToTimeframe(resolution: ResolutionString): string {
     const map: Record<string, string> = {
+      '1': '1m',
       '5': '5m',
       '15': '15m',
       '60': '1h',

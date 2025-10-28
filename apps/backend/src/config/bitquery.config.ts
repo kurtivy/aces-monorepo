@@ -341,6 +341,7 @@ export const WETH_USDC_POOL = wethUsdcPoolEnv ? wethUsdcPoolEnv.toLowerCase() : 
 
 // Timeframe to seconds mapping for Trading.Tokens query
 export const TIMEFRAME_TO_SECONDS: Record<string, number> = {
+  '1m': 60,
   '5m': 300,
   '15m': 900,
   '1h': 3600,

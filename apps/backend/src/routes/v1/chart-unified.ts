@@ -8,7 +8,7 @@ interface ChartParams {
 }
 
 interface ChartQuery {
-  timeframe?: '5m' | '15m' | '1h' | '4h' | '1d';
+  timeframe?: '1m' | '5m' | '15m' | '1h' | '4h' | '1d';
   from?: string;
   to?: string;
   limit?: string;

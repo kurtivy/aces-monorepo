@@ -1018,6 +1018,7 @@ export class BitQueryService {
    */
   private getTimeframeDuration(timeframe: string): number {
     const durations: Record<string, number> = {
+      '1m': 60 * 1000,
       '5m': 5 * 60 * 1000,
       '15m': 15 * 60 * 1000,
       '1h': 60 * 60 * 1000,
@@ -1032,6 +1033,7 @@ export class BitQueryService {
    */
   private getIntervalSeconds(timeframe: string): number {
     const intervals: Record<string, number> = {
+      '1m': 60,
       '5m': 300,
       '15m': 900,
       '1h': 3600,
@@ -1046,6 +1048,7 @@ export class BitQueryService {
    */
   private getIntervalMinutes(timeframe: string): number {
     const intervals: Record<string, number> = {
+      '1m': 1,
       '5m': 5,
       '15m': 15,
       '1h': 60,
