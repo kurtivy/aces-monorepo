@@ -495,6 +495,31 @@ export class AdminApi {
   }
 
   /**
+   * Force graduate a token to DEX (manually trigger graduation)
+   */
+  static async forceGraduateToken(
+    tokenAddress: string,
+    token: string,
+  ): Promise<{
+    success: boolean;
+    message: string;
+    data?: any;
+    tokenStatus?: any;
+  }> {
+    console.log('📡 AdminApi.forceGraduateToken called with:', {
+      tokenAddress,
+      endpoint: `/tokens/${tokenAddress}/force-graduate`,
+    });
+    return this.adminRequest(
+      `/tokens/${tokenAddress}/force-graduate`,
+      {
+        method: 'POST',
+      },
+      token,
+    );
+  }
+
+  /**
    * Prepare listing for minting (admin finalizes and notifies user)
    */
   static async prepareForMinting(

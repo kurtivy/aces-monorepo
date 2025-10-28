@@ -378,25 +378,23 @@ export class ChartDataWebSocket {
       // Get current graduation state from the chart data we just fetched
       const currentGraduationState = chartData.graduationState;
 
-      // console.log(`🎓 [WebSocket] Graduation state:`, {
-      //   poolReady: currentGraduationState.poolReady,
-      //   poolAddress: currentGraduationState.poolAddress,
-      //   dexLiveAt: currentGraduationState.dexLiveAt,
-      // });
-
       // Check for graduation event
       const cachedState = this.graduationStateCache.get(tokenAddress);
+
+      // 🔥 FIXED: Detect graduation in ALL scenarios (not just state transitions)
       const justGraduated =
-        cachedState &&
-        !cachedState.poolReady &&
         currentGraduationState.poolReady &&
-        currentGraduationState.poolAddress;
+        currentGraduationState.poolAddress &&
+        // Either: First poll of graduated token OR Transition from not-ready to ready
+        (!cachedState || !cachedState.poolReady);
 
       if (justGraduated) {
-        // console.log(`🎓 [WebSocket] Token ${tokenAddress} just graduated to DEX!`, {
-        //   poolAddress: currentGraduationState.poolAddress,
-        //   dexLiveAt: currentGraduationState.dexLiveAt,
-        // });
+        console.log(`🎓 [WebSocket] Token ${tokenAddress} graduated - broadcasting to frontend`, {
+          poolAddress: currentGraduationState.poolAddress,
+          dexLiveAt: currentGraduationState.dexLiveAt,
+          wasFirstPoll: !cachedState,
+          transition: cachedState ? `${cachedState.poolReady} → true` : 'undefined → true',
+        });
 
         // Broadcast graduation event to ALL subscribers of this token (all timeframes)
         this.broadcastGraduationEvent(tokenAddress, currentGraduationState);
@@ -582,17 +580,24 @@ export class ChartDataWebSocket {
 
       // Check for graduation event
       const cachedState = this.graduationStateCache.get(tokenAddress);
+
+      // 🔥 FIXED: Detect graduation in ALL scenarios (not just state transitions)
       const justGraduated =
-        cachedState &&
-        !cachedState.poolReady &&
         currentGraduationState.poolReady &&
-        currentGraduationState.poolAddress;
+        currentGraduationState.poolAddress &&
+        // Either: First poll of graduated token OR Transition from not-ready to ready
+        (!cachedState || !cachedState.poolReady);
 
       if (justGraduated) {
-        // console.log(`🎓 [WebSocket] Token ${tokenAddress} just graduated to DEX!`, {
-        //   poolAddress: currentGraduationState.poolAddress,
-        //   dexLiveAt: currentGraduationState.dexLiveAt,
-        // });
+        console.log(
+          `🎓 [WebSocket] Token ${tokenAddress} graduated - broadcasting to frontend (MCAP)`,
+          {
+            poolAddress: currentGraduationState.poolAddress,
+            dexLiveAt: currentGraduationState.dexLiveAt,
+            wasFirstPoll: !cachedState,
+            transition: cachedState ? `${cachedState.poolReady} → true` : 'undefined → true',
+          },
+        );
 
         // Broadcast graduation event to ALL subscribers of this token (all timeframes)
         this.broadcastGraduationEvent(tokenAddress, currentGraduationState);

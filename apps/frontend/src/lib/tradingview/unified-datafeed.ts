@@ -90,7 +90,7 @@ interface SubscriptionInfo {
 
 export class UnifiedDatafeed implements IBasicDataFeed {
   private config: UnifiedDatafeedConfig;
-  private aggressivePollingIntervals: Map<string, NodeJS.Timeout> = new Map();
+  private aggressivePollingIntervals: Map<string, ReturnType<typeof setInterval>> = new Map();
   private lastUpdateCallbacks: Map<string, () => void> = new Map();
   private lastBars = new Map<string, Bar>();
   private subscriptions = new Map<string, SubscriptionInfo>();
@@ -166,7 +166,17 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       this.ws.onmessage = (event) => {
         try {
           const update = JSON.parse(event.data);
-          console.log('[UnifiedDatafeed] 📨 Received WebSocket message:', update.type, update);
+          console.log('[UnifiedDatafeed] 📨 Received WebSocket message:', {
+            type: update.type,
+            tokenAddress: update.tokenAddress,
+            timeframe: update.timeframe,
+            chartType: update.chartType,
+            hasCandle: !!update.candle,
+            dataSource: update.candle?.dataSource,
+            candleTimestamp: update.candle?.timestamp
+              ? new Date(update.candle.timestamp).toISOString()
+              : null,
+          });
           this.handleWebSocketMessage(update);
         } catch (error) {
           console.error(
@@ -257,7 +267,53 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       close: number;
       volume: number;
     }>;
+    graduationState?: {
+      isBonded: boolean;
+      poolReady: boolean;
+      poolAddress: string | null;
+      dexLiveAt: Date | null;
+    };
   }): void {
+    // 🔥 NEW: Handle graduation event - triggers full chart refresh
+    if (update.type === 'graduation_event') {
+      console.log('[UnifiedDatafeed] 🎓 GRADUATION EVENT received:', {
+        tokenAddress: update.tokenAddress,
+        graduationState: update.graduationState,
+      });
+
+      // Clear last bars to force a fresh fetch
+      if (update.tokenAddress) {
+        const tokenLower = update.tokenAddress.toLowerCase();
+
+        // Clear cached bars for this token (both price and mcap)
+        this.lastBars.delete(tokenLower);
+        this.lastBars.delete(`${tokenLower}_MCAP`);
+
+        // Clear supply cache
+        this.latestSupply.delete(tokenLower);
+
+        console.log('[UnifiedDatafeed] 🔄 Cleared cached bars for graduated token');
+        console.log('[UnifiedDatafeed] 📊 Active subscriptions:', this.subscriptions.size);
+
+        // Log all active subscriptions for this token
+        for (const [key, sub] of this.subscriptions.entries()) {
+          if (sub.symbolInfo.ticker?.toLowerCase().includes(tokenLower)) {
+            console.log('[UnifiedDatafeed] 📌 Active subscription:', {
+              key,
+              ticker: sub.symbolInfo.ticker,
+              resolution: sub.resolution,
+              isMarketCap: sub.isMarketCapMode,
+            });
+          }
+        }
+
+        // Note: TradingView will automatically refetch data on the next update cycle
+        // The WebSocket will continue sending candle_update events with the new DEX data
+      }
+
+      return;
+    }
+
     if (update.type === 'candle_update') {
       // Find all subscriptions that match this update
       for (const [, subscriptionInfo] of this.subscriptions.entries()) {
@@ -554,7 +610,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
         timezone: 'Etc/UTC',
         exchange: '',
         minmov: 1,
-        pricescale: 1000000000000000000, // 18 decimals for precision
+        pricescale: 1000000000, // 9 decimals for micro-cap token precision (handles prices like $0.000305)
         has_intraday: true,
         has_daily: true,
         has_weekly_and_monthly: false,
@@ -618,7 +674,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
 
       const response = await fetch(url);
       const result: UnifiedChartResponse = await response.json();
-      
+
       // 🔥 REAL-TIME ENHANCEMENT: Check if we need to start aggressive polling
       if (result.success && result.data?.metadata?.isRealTime) {
         this.startAggressivePolling(tokenAddress, result.data.metadata.lastTradeTime);
@@ -1031,9 +1087,9 @@ export class UnifiedDatafeed implements IBasicDataFeed {
   /**
    * 🔥 REAL-TIME ENHANCEMENT: Start aggressive polling for active trading
    */
-  private startAggressivePolling(tokenAddress: string, lastTradeTime?: string): void {
+  private startAggressivePolling(tokenAddress: string, _lastTradeTime?: string): void {
     const key = tokenAddress;
-    
+
     // Clear existing interval if any
     if (this.aggressivePollingIntervals.has(key)) {
       clearInterval(this.aggressivePollingIntervals.get(key)!);
@@ -1047,9 +1103,10 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     const interval = setInterval(async () => {
       try {
         // Get the current subscription for this token
-        const subscription = Array.from(this.subscriptions.values())
-          .find(sub => sub.symbolInfo.ticker === tokenAddress);
-        
+        const subscription = Array.from(this.subscriptions.values()).find(
+          (sub) => sub.symbolInfo.ticker === tokenAddress,
+        );
+
         if (!subscription) {
           this.stopAggressivePolling(tokenAddress);
           return;
@@ -1058,14 +1115,14 @@ export class UnifiedDatafeed implements IBasicDataFeed {
         // Fetch latest candle data
         const now = Math.floor(Date.now() / 1000);
         const oneHourAgo = now - 3600; // Last hour
-        
+
         const url = `${this.config.apiBaseUrl}/api/v1/chart/${tokenAddress}/unified?timeframe=1m&from=${oneHourAgo}&to=${now}&limit=60`;
         const response = await fetch(url);
         const result: UnifiedChartResponse = await response.json();
 
         if (result.success && result.data?.candles?.length > 0) {
           const latestCandle = result.data.candles[result.data.candles.length - 1];
-          
+
           // Convert to TradingView bar format
           const bar: Bar = {
             time: latestCandle.timestamp * 1000, // TradingView expects milliseconds
@@ -1078,15 +1135,16 @@ export class UnifiedDatafeed implements IBasicDataFeed {
 
           // Check if this is a new/updated candle
           const lastBar = this.lastBars.get(key);
-          if (!lastBar || 
-              lastBar.time !== bar.time || 
-              lastBar.close !== bar.close ||
-              lastBar.volume !== bar.volume) {
-            
+          if (
+            !lastBar ||
+            lastBar.time !== bar.time ||
+            lastBar.close !== bar.close ||
+            lastBar.volume !== bar.volume
+          ) {
             // Update the chart with new data
             subscription.onTick(bar);
             this.lastBars.set(key, bar);
-            
+
             if (this.config.debug) {
               console.log('[UnifiedDatafeed] 🔥 Real-time update:', bar);
             }
@@ -1106,9 +1164,12 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     this.aggressivePollingIntervals.set(key, interval);
 
     // Auto-stop after 5 minutes of aggressive polling
-    setTimeout(() => {
-      this.stopAggressivePolling(tokenAddress);
-    }, 5 * 60 * 1000);
+    setTimeout(
+      () => {
+        this.stopAggressivePolling(tokenAddress);
+      },
+      5 * 60 * 1000,
+    );
   }
 
   /**
@@ -1117,11 +1178,11 @@ export class UnifiedDatafeed implements IBasicDataFeed {
   private stopAggressivePolling(tokenAddress: string): void {
     const key = tokenAddress;
     const interval = this.aggressivePollingIntervals.get(key);
-    
+
     if (interval) {
       clearInterval(interval);
       this.aggressivePollingIntervals.delete(key);
-      
+
       if (this.config.debug) {
         console.log('[UnifiedDatafeed] 🔥 Stopped aggressive polling for', tokenAddress);
       }
