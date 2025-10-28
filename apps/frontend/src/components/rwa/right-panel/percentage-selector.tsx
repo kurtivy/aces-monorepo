@@ -17,6 +17,7 @@ export function PercentageSelector({
 }: PercentageSelectorProps) {
   const [selectedPercentage, setSelectedPercentage] = useState<number | null>(null);
   const lastCalculatedAmount = useRef<string>('');
+  const lastBalance = useRef<string>(balance);
 
   // Reset selection when amount changes externally (manual input)
   useEffect(() => {
@@ -24,6 +25,15 @@ export function PercentageSelector({
       setSelectedPercentage(null);
     }
   }, [currentAmount, selectedPercentage]);
+
+  // Reset selection when balance changes (asset switch, mode change, etc.)
+  useEffect(() => {
+    if (balance !== lastBalance.current) {
+      lastBalance.current = balance;
+      setSelectedPercentage(null);
+      lastCalculatedAmount.current = '';
+    }
+  }, [balance]);
 
   const handlePercentageClick = (percentage: number) => {
     // Toggle off if clicking the same button

@@ -3,6 +3,7 @@
 import { useMemo, useEffect, useState } from 'react';
 import { useTokenBondingData } from '@/hooks/contracts/use-token-bonding-data';
 import { parseUnits, formatUnits } from 'viem';
+import { LoadingDots } from '../left-column/token-details/loading-dots';
 
 interface BondingProgressSectionProps {
   tokenAddress?: string;
@@ -198,10 +199,16 @@ export function BondingProgressSection({
   return (
     <div className="">
       {/* Remaining supply display */}
-      {(soldOutState || supplyMetrics.remainingDisplay) && (
-        <div className="text-sm text-[#D0B284]/80 text-center mb-2 font-proxima-nova font-semibold">
-          {soldOutState ? 'Sold out' : `${supplyMetrics.remainingDisplay} ${tokenSymbol} left`}
+      {loading && !soldOutState ? (
+        <div className="text-sm text-[#D0B284]/80 text-center mb-2 font-proxima-nova font-semibold flex items-center justify-center gap-1">
+          <LoadingDots className="text-sm text-[#D0B284]/80" />
         </div>
+      ) : (
+        (soldOutState || supplyMetrics.remainingDisplay) && (
+          <div className="text-sm text-[#D0B284]/80 text-center mb-2 font-proxima-nova font-semibold">
+            {soldOutState ? 'Sold out' : `${supplyMetrics.remainingDisplay} ${tokenSymbol} left`}
+          </div>
+        )
       )}
 
       <div className="relative w-full overflow-hidden px-2 py-1">
@@ -219,9 +226,7 @@ export function BondingProgressSection({
               </div>
 
               {loading && !soldOutState ? (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="text-xs text-[#D0B284]/60">...</div>
-                </div>
+                <div className="absolute inset-0 flex items-center justify-center"></div>
               ) : (
                 <>
                   <div

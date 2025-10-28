@@ -89,8 +89,8 @@ export function TokenHeaderSection({
     updateVars();
 
     const resizeObserver =
-      typeof ResizeObserver !== 'undefined'
-        ? new ResizeObserver(() => {
+      typeof window !== 'undefined' && window.ResizeObserver
+        ? new window.ResizeObserver(() => {
             updateVars();
           })
         : null;
@@ -127,34 +127,45 @@ export function TokenHeaderSection({
               <span className="text-[#D0B284] text-sm font-bold">{tokenSymbol.charAt(0)}</span>
             </div>
           )}
-          <h2 className="text-xl font-semibold text-[#D0B284] font-proxima-nova">${tokenSymbol}</h2>
-        </div>
-        {tokenAddress ? (
-          <div
-            className={`inline-flex items-center px-2 rounded-lg border shadow-sm w-fit space-x-2 ${
-              isLgUp ? 'border-[#D0B284]/30 bg-[#D0B284]/10' : 'border-[#D0B284]/30 bg-black'
-            }`}
-          >
-            <span
-              className={`text-xs font-mono ${isLgUp ? 'text-[#D0B284]' : 'text-[#D0B284]/70'}`}
+          <div className="flex items-center gap-3">
+            <h2
+              className={`${
+                tokenSymbol.length > 7
+                  ? 'text-sm'
+                  : tokenSymbol.length > 4
+                    ? 'text-base'
+                    : 'text-lg'
+              } font-semibold text-[#D0B284] font-proxima-nova`}
             >
-              {shortenAddress(tokenAddress)}
-            </span>
-            <button
-              onClick={handleCopyAddress}
-              className={`transition-colors ${
-                isLgUp
-                  ? 'text-[#D0B284]/80 hover:text-[#D0B284]'
-                  : 'text-[#D0B284]/60 hover:text-[#D0B284]'
-              }`}
-              title="Copy address"
-            >
-              {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-            </button>
+              ${tokenSymbol}
+            </h2>
+            {tokenAddress && (
+              <div
+                className={`inline-flex items-center px-2 py-1 rounded-lg border shadow-sm w-fit space-x-2 ${
+                  isLgUp ? 'border-[#D0B284]/30 bg-[#D0B284]/10' : 'border-[#D0B284]/30 bg-black'
+                }`}
+              >
+                <span
+                  className={`text-xs font-mono ${isLgUp ? 'text-[#D0B284]' : 'text-[#D0B284]/70'}`}
+                >
+                  {shortenAddress(tokenAddress)}
+                </span>
+                <button
+                  onClick={handleCopyAddress}
+                  className={`transition-colors ${
+                    isLgUp
+                      ? 'text-[#D0B284]/80 hover:text-[#D0B284]'
+                      : 'text-[#D0B284]/60 hover:text-[#D0B284]'
+                  }`}
+                  title="Copy address"
+                >
+                  {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                </button>
+              </div>
+            )}
           </div>
-        ) : (
-          <span />
-        )}
+        </div>
+        <span />
       </div>
 
       <div
