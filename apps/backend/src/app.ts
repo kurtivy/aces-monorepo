@@ -296,6 +296,10 @@ export const buildApp = async (): Promise<FastifyInstance> => {
       bondingMonitor: bondingMonitor ? 'enabled' : 'disabled',
     };
 
+    if (bondingMonitor) {
+      stats.bondingStats = bondingMonitor.getStats();
+    }
+
     if (chartWebSocket) {
       stats.chartWebSocket = 'enabled';
       stats.chartStats = chartWebSocket.getStats();

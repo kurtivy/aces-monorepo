@@ -30,5 +30,9 @@ declare module 'fastify' {
   interface FastifyInstance {
     prisma: PrismaClient;
     authenticate: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+    bondingMonitor?: import('../websockets/bonding-monitor-socket').BondingMonitorWebSocket | null;
+    chartAggregationService?: any;
+    tokenMetadataCache?: any;
+    acesSnapshotCache?: any;
   }
 }
