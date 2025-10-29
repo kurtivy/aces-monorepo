@@ -9,7 +9,7 @@ interface AcesPriceData {
 
 /**
  * Hook to fetch and track ACES/USD price
- * Polls CoinGecko API every 60 seconds for real-time price
+ * Polls CoinGecko API every 30 seconds for real-time price
  */
 export function useAcesPrice(): AcesPriceData {
   const [acesUsdPrice, setAcesUsdPrice] = useState<number>(0);
@@ -60,8 +60,8 @@ export function useAcesPrice(): AcesPriceData {
     // Initial fetch
     fetchAcesPrice();
 
-    // Poll every 60 seconds
-    const interval = setInterval(fetchAcesPrice, 60000);
+    // Poll every 30 seconds
+    const interval = setInterval(fetchAcesPrice, 30000);
 
     return () => clearInterval(interval);
   }, [fetchAcesPrice]);
