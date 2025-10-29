@@ -15,6 +15,7 @@ import { accountVerificationRoutes } from './routes/v1/verification';
 import { usersRoutes } from './routes/v1/users';
 import { listingRoutes } from './routes/v1/listings';
 import { contactRoutes } from './routes/v1/contact';
+import { conciergeRoutes } from './routes/v1/concierge';
 import { purchaseRoutes } from './routes/v1/purchase';
 import { commentsRoutes } from './routes/v1/comments';
 import { tokensRoutes } from './routes/v1/tokens';
@@ -243,6 +244,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   fastify.register(tokensRoutes, { prefix: '/api/v1/tokens' });
   fastify.register(portfolioRoutes, { prefix: '/api/v1/portfolio' });
   fastify.register(contactRoutes, { prefix: '/api/v1/contact' });
+  fastify.register(conciergeRoutes, { prefix: '/api/v1/concierge' });
   fastify.register(purchaseRoutes, { prefix: '/api/v1/purchase' });
   fastify.register(commentsRoutes, { prefix: '/api/v1/comments' });
   fastify.register(twitchRoutes, { prefix: '/api/v1/twitch' });

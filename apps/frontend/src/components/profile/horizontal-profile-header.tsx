@@ -1,15 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Edit2, Copy, Check, Wallet } from 'lucide-react';
+import { Copy, Check, Wallet, Headset } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { AccountEditModal } from './account-edit-modal';
 import { AdminButton } from './admin-button';
 import { NotificationBell } from '@/components/ui/custom/notification-bell';
 import { useAuth } from '@/lib/auth/auth-context';
 import { useSwapContracts } from '@/hooks/swap/use-swap-contracts';
 import { useTokenBalances } from '@/hooks/swap/use-token-balances';
+import { ConciergeServiceModal } from './concierge-service-modal';
 
 interface HorizontalProfileHeaderProps {
   user: {
@@ -19,18 +19,14 @@ interface HorizontalProfileHeaderProps {
     username?: string | null;
     sellerStatus?: 'NOT_APPLIED' | 'PENDING' | 'APPROVED' | 'REJECTED';
   };
-  onUpdateAccount?: (data: { email: string; username: string }) => Promise<void>;
   onConnectWallet?: () => Promise<void>;
+  onUpdateAccount?: (payload: { email: string; username: string }) => Promise<void>;
 }
 
-export function HorizontalProfileHeader({
-  user,
-  onUpdateAccount,
-  onConnectWallet,
-}: HorizontalProfileHeaderProps) {
-  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+export function HorizontalProfileHeader({ user, onConnectWallet }: HorizontalProfileHeaderProps) {
   const [copied, setCopied] = useState(false);
   const [acesUsdPrice, setAcesUsdPrice] = useState<number | null>(null);
+  const [isConciergeModalOpen, setIsConciergeModalOpen] = useState(false);
 
   // Get auth state and wallet info
   const { walletAddress, isAuthenticated } = useAuth();
@@ -104,7 +100,6 @@ export function HorizontalProfileHeader({
   const walletUsernameSeed = user.walletAddress ? user.walletAddress.slice(2, 9).toUpperCase() : '';
   const hasCustomUsername = Boolean(user.username && user.username.trim());
   const usernameValue = hasCustomUsername ? (user.username || '').trim() : walletUsernameSeed;
-  const usernameDisplay = usernameValue;
 
   return (
     <>
@@ -140,17 +135,15 @@ export function HorizontalProfileHeader({
                       >
                         {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                       </Button>
-                      {onUpdateAccount && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-[#D0B284] hover:bg-[#D0B284]/10"
-                          onClick={() => setIsAccountModalOpen(true)}
-                        >
-                          <Edit2 className="w-4 h-4 mr-2" />
-                          Edit
-                        </Button>
-                      )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setIsConciergeModalOpen(true)}
+                        className="bg-black/70 border-[#D0B284]/40 text-[#D0B284] hover:bg-black/50 hover:border-[#D0B284]/60 transition-colors font-mono"
+                      >
+                        <Headset className="w-4 h-4 mr-2" />
+                        Concierge Service
+                      </Button>
                     </>
                   ) : (
                     <motion.button
@@ -165,34 +158,21 @@ export function HorizontalProfileHeader({
                     </motion.button>
                   )}
                 </div>
-                {usernameDisplay && (
-                  <div className="inline-flex items-center rounded-full border border-[#E6E3D3]/20 bg-black/50 px-3 py-1 text-xs font-semibold tracking-[0.2em] text-[#E6E3D3]/80 uppercase">
-                    {usernameDisplay}
-                  </div>
-                )}
               </div>
 
               <div className="flex items-center gap-3" />
             </div>
 
-            <div className="space-y-2 text-sm text-[#D0B284]">
-              {user.walletAddress ? (
-                <>
-                  {user.email && <div className="truncate text-[#E6E3D3]/85">{user.email}</div>}
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3 text-[#E6E3D3]">
-                    <span className="font-mono uppercase tracking-[0.2em]">
-                      {getAccountStatus()}
-                    </span>
-                    <AdminButton />
-                  </div>
-                </>
-              ) : (
-                <div className="text-[#E6E3D3]/60">---</div>
+            <div className="pt-2">
+              {user.walletAddress && (
+                <div className="text-[#D0B284] text-sm font-mono">
+                  You are earning 0.5% fees per trade
+                </div>
               )}
             </div>
           </div>
 
-          <div className="w-full md:max-w-[420px] pr-12">
+          <div className="w-full md:max-w-[640px] pr-12">
             <div className="bg-black/30 border border-[#D0B284]/20 rounded-xl px-6 py-5 backdrop-blur-sm">
               {balancesLoading ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-pulse">
@@ -208,7 +188,7 @@ export function HorizontalProfileHeader({
                   Connect your wallet to view portfolio balance.
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                   <div className="space-y-1 text-center sm:text-left">
                     <div className="text-[#D7BF75] text-[11px] uppercase tracking-[0.3em]">
                       ACES Balance
@@ -224,20 +204,22 @@ export function HorizontalProfileHeader({
                     </div>
                     <div className="text-2xl font-semibold text-[#E6E3D3]">{formattedUsdValue}</div>
                   </div>
+
+                  <div className="space-y-1 text-center sm:text-left">
+                    <div className="text-[#D7BF75] text-[11px] uppercase tracking-[0.3em]">
+                      Fees Made
+                    </div>
+                    <div className="text-2xl font-semibold text-[#E6E3D3]">$0.00</div>
+                  </div>
                 </div>
               )}
             </div>
           </div>
         </div>
       </div>
-
-      {/* Account Edit Modal */}
-      <AccountEditModal
-        isOpen={isAccountModalOpen}
-        onClose={() => setIsAccountModalOpen(false)}
-        currentEmail={user.email || ''}
-        currentUsername={usernameValue}
-        onSave={onUpdateAccount}
+      <ConciergeServiceModal
+        isOpen={isConciergeModalOpen}
+        onClose={() => setIsConciergeModalOpen(false)}
       />
     </>
   );

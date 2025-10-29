@@ -8,6 +8,11 @@ export interface ContactFormData {
   email: string;
 }
 
+export interface ConciergeSupportData {
+  email: string;
+  message: string;
+}
+
 export interface PurchaseInquiryData {
   productTitle: string;
   productTicker: string;
@@ -373,6 +378,136 @@ Reply directly to this email to respond to the customer.
         success: false,
         error: 'Internal email service error',
       };
+    }
+  }
+
+  static async sendConciergeSupportEmail(
+    data: ConciergeSupportData,
+  ): Promise<EmailServiceResponse> {
+    try {
+      if (!process.env.RESEND_API_KEY) {
+        console.error('RESEND_API_KEY environment variable is not set');
+        return { success: false, error: 'Email service configuration error' };
+      }
+
+      const emailHtml = `
+        <!DOCTYPE html>
+        <html lang="en">
+          <head>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+            <title>New Concierge Support Request</title>
+            <style>
+              body {
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                background-color: #f8f9fa;
+                color: #1f2933;
+                margin: 0;
+                padding: 0;
+              }
+              .container {
+                max-width: 640px;
+                margin: 24px auto;
+                background: #ffffff;
+                border-radius: 12px;
+                box-shadow: 0 12px 30px rgba(15, 21, 17, 0.12);
+                overflow: hidden;
+              }
+              .header {
+                background: linear-gradient(135deg, #D0B264 0%, #231F20 100%);
+                padding: 28px 32px;
+                color: #ffffff;
+              }
+              .header h1 {
+                margin: 0;
+                font-size: 24px;
+                letter-spacing: 1px;
+              }
+              .content {
+                padding: 28px 32px;
+              }
+              .field {
+                margin-bottom: 18px;
+              }
+              .label {
+                font-weight: 600;
+                font-size: 14px;
+                color: #242b36;
+                margin-bottom: 6px;
+                display: block;
+              }
+              .value {
+                font-size: 16px;
+                line-height: 1.6;
+                color: #374151;
+                background: #f5f6f8;
+                border-radius: 8px;
+                padding: 14px;
+              }
+              .footer {
+                border-top: 1px solid rgba(208, 178, 100, 0.25);
+                margin-top: 24px;
+                padding-top: 20px;
+                font-size: 13px;
+                color: #6b7280;
+                text-align: center;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h1>ACES Concierge Request</h1>
+                <p style="margin-top: 8px; opacity: 0.85;">A member has requested assistance.</p>
+              </div>
+              <div class="content">
+                <div class="field">
+                  <span class="label">Member Email</span>
+                  <span class="value">${data.email}</span>
+                </div>
+                <div class="field">
+                  <span class="label">Message</span>
+                  <span class="value">${data.message.replace(/\n/g, '<br />')}</span>
+                </div>
+                <div class="footer">
+                  Reply directly to this email to reach the member at
+                  <strong>${data.email}</strong>.
+                </div>
+              </div>
+            </div>
+          </body>
+        </html>
+      `;
+
+      const emailText = `
+ACES Concierge Support Request
+
+Member Email: ${data.email}
+
+Message:
+${data.message}
+
+Reply directly to this email to reach the member.
+      `;
+
+      const result = await resend.emails.send({
+        from: 'ACES Concierge <noreply@aces.fun>',
+        to: ['eric@aces.fun'],
+        replyTo: data.email,
+        subject: 'New Concierge Support Request',
+        html: emailHtml,
+        text: emailText,
+      });
+
+      if (result.error) {
+        console.error('Resend API error:', result.error);
+        return { success: false, error: 'Failed to send email' };
+      }
+
+      return { success: true, messageId: result.data?.id };
+    } catch (error) {
+      console.error('sendConciergeSupportEmail error:', error);
+      return { success: false, error: 'Failed to send email' };
     }
   }
 
