@@ -785,6 +785,7 @@ export async function tokensRoutes(fastify: FastifyInstance) {
           liquiditySource = 'bonding_curve';
         }
 
+        // Calculate DEX liquidity by querying pool contract directly
         if (
           liquidityUsd === null &&
           isDexMode &&
@@ -792,108 +793,95 @@ export async function tokensRoutes(fastify: FastifyInstance) {
           poolAddress.length > 0
         ) {
           try {
-            const poolState = await bitQueryService.getPoolState(poolAddress);
+            const effectiveChainId = (chainId ?? BASE_MAINNET_CHAIN_ID) as SupportedChainId;
+            const networkConfig = getNetworkConfig(effectiveChainId);
 
-            if (poolState) {
-              const acesAddress = ACES_TOKEN_ADDRESS.toLowerCase();
-              const targetAddress = address.toLowerCase();
+            if (!networkConfig.rpcUrl) {
+              throw new Error(`No RPC URL configured for chainId ${effectiveChainId}`);
+            }
 
-              const normalizeReserve = (reserve: string, decimals: number): Decimal => {
-                try {
-                  const value = new Decimal(reserve || '0');
-                  const divisor = new Decimal(10).pow(decimals || 0);
-                  return divisor.eq(0) ? new Decimal(0) : value.div(divisor);
-                } catch (error) {
-                  fastify.log.error(
-                    { error, reserve, decimals },
-                    'Failed to normalize pool reserve',
-                  );
-                  return new Decimal(0);
-                }
-              };
+            const provider = new ethers.JsonRpcProvider(networkConfig.rpcUrl);
 
-              const token0Address = poolState.token0.address.toLowerCase();
-              const token1Address = poolState.token1.address.toLowerCase();
+            // Standard Uniswap V2 / Aerodrome Pool ABI
+            const POOL_ABI = [
+              'function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
+              'function token0() view returns (address)',
+              'function token1() view returns (address)',
+            ];
 
-              const token0Normalized = normalizeReserve(
-                poolState.token0.reserve,
-                poolState.token0.decimals ?? 18,
+            const poolContract = new ethers.Contract(poolAddress, POOL_ABI, provider);
+
+            // Fetch pool data in parallel
+            const [reserves, token0Address, token1Address] = await Promise.all([
+              poolContract.getReserves(),
+              poolContract.token0(),
+              poolContract.token1(),
+            ]);
+
+            // Identify which token is ACES
+            const acesAddress = ACES_TOKEN_ADDRESS.toLowerCase();
+            const isToken0Aces = token0Address.toLowerCase() === acesAddress;
+            const isToken1Aces = token1Address.toLowerCase() === acesAddress;
+
+            if (!isToken0Aces && !isToken1Aces) {
+              fastify.log.warn(
+                { address, poolAddress, token0: token0Address, token1: token1Address },
+                '⚠️ ACES token not found in pool',
               );
-              const token1Normalized = normalizeReserve(
-                poolState.token1.reserve,
-                poolState.token1.decimals ?? 18,
+              // Fallback to bonding liquidity
+              if (bondingLiquidityUsd) {
+                liquidityUsd = bondingLiquidityUsd;
+                liquiditySource = 'bonding_curve';
+              }
+            } else {
+              // Get ACES reserve (both tokens use 18 decimals)
+              const acesReserveRaw = isToken0Aces ? reserves[0] : reserves[1];
+              const acesReserve = new Decimal(acesReserveRaw.toString()).div(
+                new Decimal(10).pow(18),
               );
 
-              let acesReserve = new Decimal(0);
-              let rwaReserve = new Decimal(0);
-
-              if (token0Address === acesAddress) {
-                acesReserve = token0Normalized;
-              } else if (token1Address === acesAddress) {
-                acesReserve = token1Normalized;
-              }
-
-              if (token0Address === targetAddress) {
-                rwaReserve = token0Normalized;
-              } else if (token1Address === targetAddress) {
-                rwaReserve = token1Normalized;
-              }
-
+              // Calculate total liquidity: ACES reserve × ACES price × 2 (for 50/50 pool)
               const acesUsdDecimal = new Decimal(acesUsdPrice || 0);
               const acesReserveUsd = acesReserve.mul(acesUsdDecimal);
+              const totalLiquidityUsd = acesReserveUsd.mul(2); // Double for 50/50 pool
 
-              let effectiveTokenPriceUsd = new Decimal(tokenPriceUsd || 0);
-              if (
-                (!effectiveTokenPriceUsd.isFinite() || effectiveTokenPriceUsd.lte(0)) &&
-                rwaReserve.gt(0) &&
-                acesReserveUsd.gt(0)
-              ) {
-                effectiveTokenPriceUsd = acesReserveUsd.div(rwaReserve);
-              }
-
-              let liquidityValue = acesReserveUsd;
-              if (rwaReserve.gt(0) && effectiveTokenPriceUsd.gt(0)) {
-                liquidityValue = liquidityValue.add(rwaReserve.mul(effectiveTokenPriceUsd));
-              } else if (acesReserveUsd.gt(0)) {
-                liquidityValue = acesReserveUsd.mul(2);
-              }
-
-              const liquidityValueNumber = liquidityValue.isFinite()
-                ? liquidityValue.toNumber()
+              const liquidityValueNumber = totalLiquidityUsd.isFinite()
+                ? totalLiquidityUsd.toNumber()
                 : 0;
-              // Only set liquidityUsd if value is valid and > 0, otherwise keep as null
-              // This is consistent with bonding curve liquidity handling
+
               if (liquidityValueNumber > 0) {
                 liquidityUsd = liquidityValueNumber;
                 liquiditySource = 'dex';
-              }
 
-              fastify.log.info(
-                {
-                  address,
-                  poolAddress,
-                  liquidityUsd,
-                  acesReserve: acesReserve.toString(),
-                  rwaReserve: rwaReserve.toString(),
-                },
-                'Calculated DEX liquidity',
-              );
-
-              // Fallback to bonding liquidity if DEX liquidity is unavailable
-              if (liquidityUsd === null && bondingLiquidityUsd) {
-                liquidityUsd = bondingLiquidityUsd;
-                liquiditySource = 'bonding_curve';
                 fastify.log.info(
-                  { address, poolAddress, liquidityUsd },
-                  'DEX liquidity unavailable -> falling back to bonding liquidity',
+                  {
+                    address,
+                    poolAddress,
+                    acesReserve: acesReserve.toFixed(2),
+                    acesUsdPrice,
+                    liquidityUsd: liquidityUsd.toFixed(2),
+                    isToken0Aces,
+                  },
+                  '✅ Calculated DEX liquidity from pool reserves',
                 );
+              } else {
+                // Invalid calculation, fallback to bonding liquidity
+                if (bondingLiquidityUsd) {
+                  liquidityUsd = bondingLiquidityUsd;
+                  liquiditySource = 'bonding_curve';
+                }
               }
             }
           } catch (error) {
             fastify.log.error(
               { error, address, poolAddress },
-              'Failed to compute DEX liquidity via BitQuery',
+              '❌ Failed to query DEX pool reserves',
             );
+            // Fallback to bonding liquidity on error
+            if (bondingLiquidityUsd) {
+              liquidityUsd = bondingLiquidityUsd;
+              liquiditySource = 'bonding_curve';
+            }
           }
         }
 
