@@ -38,7 +38,7 @@ if (hasGoogleCloudCredentials) {
     },
   });
 
-  productBucketName = process.env.GOOGLE_CLOUD_BUCKET_NAME || 'aces-product-images';
+  productBucketName = process.env.GOOGLE_CLOUD_BUCKET_NAME || 'acesfun-product-images';
   productBucket = productStorage.bucket(productBucketName);
 } else {
   console.warn(
@@ -113,7 +113,7 @@ export class ProductStorageService {
       }
 
       if (!productBucket) {
-        productBucketName = process.env.GOOGLE_CLOUD_BUCKET_NAME || 'aces-product-images';
+        productBucketName = process.env.GOOGLE_CLOUD_BUCKET_NAME || 'acesfun-product-images';
         productBucket = productStorage.bucket(productBucketName);
       }
 
@@ -158,11 +158,23 @@ export class ProductStorageService {
       throw new Error('Product storage not configured');
     }
 
+    // Support both old and new bucket names for backward compatibility
+    const oldBucketPrefix = 'https://storage.googleapis.com/aces-product-images/';
     const bucketPrefix = `https://storage.googleapis.com/${productBucketName}/`;
-    if (!imageUrl.startsWith(bucketPrefix)) {
-      throw new Error(`Invalid product storage URL format. Expected prefix: ${bucketPrefix}`);
+
+    if (imageUrl.startsWith(oldBucketPrefix)) {
+      // Handle old bucket name
+      return imageUrl.replace(oldBucketPrefix, '');
     }
-    return imageUrl.replace(bucketPrefix, '');
+
+    if (imageUrl.startsWith(bucketPrefix)) {
+      // Handle current bucket name
+      return imageUrl.replace(bucketPrefix, '');
+    }
+
+    throw new Error(
+      `Invalid product storage URL format. Expected prefix: ${oldBucketPrefix} or ${bucketPrefix}`,
+    );
   }
 
   /**
@@ -175,8 +187,15 @@ export class ProductStorageService {
     const signedUrls = await Promise.all(
       imageUrls.map(async (url, index) => {
         try {
-          // Check if this is a GCS URL that needs conversion
-          if (url.includes('storage.googleapis.com') && url.includes('aces-product-images')) {
+          // Check if this is a GCS URL that needs conversion (support both old and new bucket names)
+          const isOldBucket =
+            url.includes('storage.googleapis.com') && url.includes('aces-product-images');
+          const isNewBucket =
+            productBucketName &&
+            url.includes('storage.googleapis.com') &&
+            url.includes(productBucketName);
+
+          if (isOldBucket || isNewBucket) {
             const fileName = this.extractFileName(url);
 
             const signedUrl = await this.getSignedProductUrl(fileName, expiresInMinutes);

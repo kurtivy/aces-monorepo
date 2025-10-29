@@ -167,6 +167,22 @@ export class ListingService {
     }
   }
 
+  private addSubmissionAlias<T extends { submissionId?: string; rwaSubmissionId?: string }>(
+    listing: T,
+  ): T & { rwaSubmissionId: string | null } {
+    if (!listing) {
+      return listing as T & { rwaSubmissionId: string | null };
+    }
+
+    const rwaSubmissionId =
+      (listing as any).rwaSubmissionId ?? listing.submissionId ?? null;
+
+    return {
+      ...listing,
+      rwaSubmissionId,
+    };
+  }
+
   /**
    * Create a listing from an approved submission
    */
@@ -246,7 +262,7 @@ export class ListingService {
         // Don't fail the listing creation if notification fails
       }
 
-      return listing;
+      return this.addSubmissionAlias(listing);
     } catch (error) {
       console.error('Error creating listing from submission:', error);
       throw error;
@@ -275,7 +291,7 @@ export class ListingService {
         },
       });
 
-      return listing;
+      return this.addSubmissionAlias(listing);
     } catch (error) {
       console.error('Error updating listing:', error);
       throw error;
@@ -318,7 +334,7 @@ export class ListingService {
         },
       });
 
-      return updated;
+      return this.addSubmissionAlias(updated);
     } catch (error) {
       console.error('Error updating listing by owner:', error);
       throw error;
@@ -347,7 +363,7 @@ export class ListingService {
         },
       });
 
-      return listing;
+      return this.addSubmissionAlias(listing);
     } catch (error) {
       console.error('Error updating listing live status:', error);
       throw error;
@@ -376,7 +392,7 @@ export class ListingService {
         },
       });
 
-      return listing;
+      return this.addSubmissionAlias(listing);
     } catch (error) {
       console.error('Error updating listing launch date:', error);
       throw error;
@@ -722,11 +738,11 @@ export class ListingService {
       imageGallery = listing.imageGallery || [];
     }
 
-    const safeListing = {
+    const safeListing = this.addSubmissionAlias({
       ...listing,
       commentCount,
       imageGallery,
-    };
+    });
 
     if ('_count' in safeListing) {
       delete (safeListing as { _count?: unknown })._count;
@@ -811,11 +827,9 @@ export class ListingService {
     // Check if listing is in correct status
     // Allow null status for backwards compatibility with existing listings
     if (listing.tokenCreationStatus && listing.tokenCreationStatus !== 'AWAITING_USER_DETAILS') {
-      throw {
-        statusCode: 400,
-        code: 'INVALID_STATUS',
-        message: `Listing is not awaiting user details. Current status: ${listing.tokenCreationStatus}`,
-      };
+      throw errors.validation(
+        `Listing is not awaiting user details. Current status: ${listing.tokenCreationStatus}`,
+      );
     }
 
     // Update status to PENDING_ADMIN_REVIEW
@@ -833,7 +847,7 @@ export class ListingService {
 
     console.log(`[ListingService] Listing ${listingId} finalized by user, pending admin review`);
 
-    return updatedListing;
+    return this.addSubmissionAlias(updatedListing);
   }
 
   /**
@@ -864,7 +878,7 @@ export class ListingService {
 
     console.log(`[ListingService] Token parameters saved for listing ${listingId}`);
 
-    return updatedListing;
+    return this.addSubmissionAlias(updatedListing);
   }
 
   /**
@@ -1015,7 +1029,7 @@ export class ListingService {
         `[ListingService] Listing ${listingId} prepared for minting with predicted addresses`,
       );
 
-      return updatedListing;
+      return this.addSubmissionAlias(updatedListing);
     } catch (error) {
       console.error('[ListingService] Error preparing for minting:', error);
       throw error;
