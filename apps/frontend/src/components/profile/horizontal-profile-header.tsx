@@ -118,49 +118,47 @@ export function HorizontalProfileHeader({ user, onConnectWallet }: HorizontalPro
         <span className="pointer-events-none absolute right-3 bottom-3 w-3 h-0.5 bg-[#C9AE6A]" />
 
         <div className="flex flex-col md:flex-row md:items-start md:justify-center gap-8">
-          <div className="min-w-0 md:basis-[58%] space-y-4">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0 space-y-3">
-                <div className="flex items-center gap-3">
-                  {user.walletAddress ? (
-                    <>
-                      <div className="text-[#E6E3D3] text-xl md:text-2xl font-semibold truncate">
+          <div className="min-w-0 space-y-4 md:basis-[58%]">
+            <div className="space-y-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+                {user.walletAddress ? (
+                  <>
+                    <div className="flex flex-wrap items-center gap-3 sm:flex-nowrap">
+                      <div className="text-[#E6E3D3] text-xl font-semibold truncate md:text-2xl">
                         {shortenAddress(user.walletAddress)}
                       </div>
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="text-[#D0B284] hover:bg-[#D0B284]/10 p-2"
+                        className="p-2 text-[#D0B284] hover:bg-[#D0B284]/10"
                         onClick={handleCopyAddress}
                       >
                         {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                       </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => setIsConciergeModalOpen(true)}
-                        className="bg-black/70 border-[#D0B284]/40 text-[#D0B284] hover:bg-black/50 hover:border-[#D0B284]/60 transition-colors font-mono"
-                      >
-                        <Headset className="w-4 h-4 mr-2" />
-                        Concierge Service
-                      </Button>
-                    </>
-                  ) : (
-                    <motion.button
-                      className="flex items-center justify-center text-[#D0B264] hover:text-[#D0B264] transition-colors duration-150 px-4 py-2 rounded-md bg-black/80 hover:bg-black/70 border border-[#D0B264]/30 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed font-mono whitespace-nowrap"
-                      onClick={onConnectWallet}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setIsConciergeModalOpen(true)}
+                      className="w-full bg-black/70 border-[#D0B284]/40 text-[#D0B284] transition-colors font-mono hover:bg-black/50 hover:border-[#D0B284]/60 sm:w-auto"
                     >
-                      <Wallet className="w-4 h-4 mr-2" />
-                      Connect Wallet
-                    </motion.button>
-                  )}
-                </div>
+                      <Headset className="w-4 h-4 mr-2" />
+                      Concierge Service
+                    </Button>
+                  </>
+                ) : (
+                  <motion.button
+                    className="flex w-full items-center justify-center rounded-md border border-[#D0B264]/30 bg-black/80 px-4 py-2 font-mono text-[#D0B264] transition-colors duration-150 hover:bg-black/70 hover:text-[#D0B264] sm:w-auto whitespace-nowrap"
+                    onClick={onConnectWallet}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                  >
+                    <Wallet className="w-4 h-4 mr-2" />
+                    Connect Wallet
+                  </motion.button>
+                )}
               </div>
-
-              <div className="flex items-center gap-3" />
             </div>
 
             <div className="pt-2">
@@ -172,7 +170,7 @@ export function HorizontalProfileHeader({ user, onConnectWallet }: HorizontalPro
             </div>
           </div>
 
-          <div className="w-full md:max-w-[640px] pr-12">
+          <div className="w-full md:max-w-[640px] md:pr-12">
             <div className="bg-black/30 border border-[#D0B284]/20 rounded-xl px-6 py-5 backdrop-blur-sm">
               {balancesLoading ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-pulse">
