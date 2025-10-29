@@ -85,7 +85,11 @@ export function VerificationStatusDisplay({
       <span className="pointer-events-none absolute right-3 bottom-3 w-3 h-0.5 bg-[#C9AE6A]" />
 
       <div
-        className={cn('relative border-2 rounded-2xl p-8 backdrop-blur-sm', bgColor, borderColor)}
+        className={cn(
+          'relative rounded-2xl border-2 p-6 backdrop-blur-sm sm:p-8',
+          bgColor,
+          borderColor,
+        )}
       >
         <div className="flex flex-col items-center text-center space-y-6">
           {/* Status Icon */}

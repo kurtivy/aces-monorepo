@@ -33,11 +33,13 @@ export function ListingVerificationBanner() {
 
   return (
     <div
-      className={`mb-2 bg-gradient-to-br ${containerClasses} border rounded-xl px-4 py-1.5 flex items-center justify-between`}
+      className={`mb-2 flex flex-col gap-3 rounded-xl border bg-gradient-to-br px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-3.5 ${containerClasses}`}
     >
-      <div className="flex items-center gap-2">
-        <Shield className={`w-5 h-5 ${iconColor}`} />
-        <p className="text-sm text-[#DCDDCC]/90">
+      <div className="flex items-start gap-3 sm:items-center">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[#D7BF75]/25 bg-black/40 sm:h-8 sm:w-8">
+          <Shield className={`h-5 w-5 ${iconColor}`} />
+        </div>
+        <p className="text-sm text-[#DCDDCC]/90 sm:text-base">
           {variant === 'connect' &&
             'Connect your wallet to start verification and submit your listing.'}
           {variant === 'required' && 'Verification required to submit assets.'}
