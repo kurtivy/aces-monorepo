@@ -397,11 +397,20 @@ export default function ImageDetailsModal({
 
   const handleTradeClick = useCallback(() => {
     if (isDrvn) return; // disabled
-    if (safeMetadata.id === '7') {
+
+    // Route based on the normalized symbol
+    if (normalizedSymbol === 'APK') {
+      stableOnClose();
+      router.push('/rwa/apk');
+    } else if (normalizedSymbol === 'APKAWS') {
       stableOnClose();
       router.push('/rwa/apkaws');
+    } else if (normalizedSymbol) {
+      // Generic route for any other trading symbols
+      stableOnClose();
+      router.push(`/rwa/${normalizedSymbol.toLowerCase()}`);
     }
-  }, [router, safeMetadata.id, stableOnClose, isDrvn]);
+  }, [router, normalizedSymbol, stableOnClose, isDrvn]);
 
   // Enhanced null safety checks
   if (!imageInfo) {
@@ -682,9 +691,17 @@ export default function ImageDetailsModal({
                       </button>
                     )}
                     <button
-                      onClick={() =>
-                        isLive ? setIsPurchaseModalOpen(true) : setIsAuctionModalOpen(true)
-                      }
+                      onClick={() => {
+                        // Navigate to RWA page with auction modal auto-open
+                        stableOnClose();
+                        if (normalizedSymbol === 'APK') {
+                          router.push('/rwa/apk?openAuction=true');
+                        } else if (normalizedSymbol === 'APKAWS') {
+                          router.push('/rwa/apkaws?openAuction=true');
+                        } else if (normalizedSymbol) {
+                          router.push(`/rwa/${normalizedSymbol.toLowerCase()}?openAuction=true`);
+                        }
+                      }}
                       className="flex-1 bg-gradient-to-r from-[#231F20] to-[#231F20]/90 hover:from-[#181515]/90 hover:to-[#363636]/80 text-[#D0B264] font-syne font-bold py-3 sm:py-4 px-4 sm:px-6 lg:px-8 rounded-lg sm:rounded-xl transition-all duration-150 transform active:scale-[0.98] shadow-goldGlow text-sm sm:text-base lg:text-lg md:hover:scale-[1.02] text-center border border-[#D0B264]/70"
                     >
                       AUCTION

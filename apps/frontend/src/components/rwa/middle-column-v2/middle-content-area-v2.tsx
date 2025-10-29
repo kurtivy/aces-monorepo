@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useMemo, type Dispatch, type SetStateAction } from 'react';
+import { useState, useMemo, useEffect, type Dispatch, type SetStateAction } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { ChartHeader } from './chart-header';
 import { TradingSection } from './trading-section';
 import { DetailsOverlay } from './details-overlay';
@@ -32,6 +33,7 @@ export function MiddleContentAreaV2({
   onChatClick,
 }: MiddleContentAreaV2Props) {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
   const [showDetailsOverlay, setShowDetailsOverlay] = useState(false);
 
   const handleLearnMoreClick = () => {
@@ -41,6 +43,14 @@ export function MiddleContentAreaV2({
   const handleCloseOverlay = () => {
     setShowDetailsOverlay(false);
   };
+
+  // Auto-open auction overlay if coming from image modal
+  useEffect(() => {
+    const openAuction = searchParams.get('openAuction');
+    if (openAuction === 'true') {
+      setShowDetailsOverlay(true);
+    }
+  }, [searchParams]);
 
   // Convert image gallery to ImageData format
   const images: ImageData[] = useMemo(() => {
