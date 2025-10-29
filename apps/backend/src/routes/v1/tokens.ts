@@ -449,7 +449,10 @@ export async function tokensRoutes(fastify: FastifyInstance) {
         const cacheKey = `${address.toLowerCase()}-${chainId || 'default'}`;
         const cached = metricsCache.get(cacheKey);
         if (cached && Date.now() - cached.timestamp < METRICS_CACHE_TTL) {
-          fastify.log.info({ address, chainId, age: Math.floor((Date.now() - cached.timestamp) / 1000) }, '🎯 [Metrics] Cache hit');
+          fastify.log.info(
+            { address, chainId, age: Math.floor((Date.now() - cached.timestamp) / 1000) },
+            '🎯 [Metrics] Cache hit',
+          );
           return reply.send({
             success: true,
             data: cached.data,
@@ -471,6 +474,44 @@ export async function tokensRoutes(fastify: FastifyInstance) {
           );
           tokenData = null;
         }
+
+        // 🔥 FIX: If tokenData doesn't have dexLiveAt but we're in DEX mode, fetch it directly
+        // This ensures we can combine bonding + DEX volumes even if fetchAndUpdateTokenData
+        // doesn't return the dexLiveAt field
+        if (tokenData && !tokenData.dexLiveAt) {
+          try {
+            const fullTokenData = await fastify.prisma.token.findUnique({
+              where: { contractAddress: address.toLowerCase() },
+              select: {
+                dexLiveAt: true,
+                poolAddress: true,
+                phase: true,
+                priceSource: true,
+              },
+            });
+            if (fullTokenData) {
+              // Merge the dexLiveAt and other DEX fields if not already present
+              if (!tokenData.dexLiveAt && fullTokenData.dexLiveAt) {
+                tokenData.dexLiveAt = fullTokenData.dexLiveAt;
+              }
+              if (!tokenData.poolAddress && fullTokenData.poolAddress) {
+                tokenData.poolAddress = fullTokenData.poolAddress;
+              }
+              if (!tokenData.phase && fullTokenData.phase) {
+                tokenData.phase = fullTokenData.phase;
+              }
+              if (!tokenData.priceSource && fullTokenData.priceSource) {
+                tokenData.priceSource = fullTokenData.priceSource;
+              }
+            }
+          } catch (directQueryError) {
+            fastify.log.warn(
+              { error: directQueryError, address },
+              'Failed to fetch dexLiveAt directly from database',
+            );
+          }
+        }
+
         const isDexMode =
           tokenData?.phase === 'DEX_TRADING' ||
           tokenData?.dexLiveAt !== null ||
@@ -611,14 +652,19 @@ export async function tokensRoutes(fastify: FastifyInstance) {
         const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
         const dexLiveAt = tokenData?.dexLiveAt ? new Date(tokenData.dexLiveAt) : null;
 
-        // Check if token graduated to DEX within the last 24 hours
-        const graduatedRecently =
+        // For graduated tokens, check if last 24h window spans both bonding curve and DEX periods
+        // This happens when graduation occurred after the 24h window started (even if days ago)
+        // i.e., when there could be bonding curve activity within the last 24h window
+        const last24hSpansGraduation =
           isDexMode && dexLiveAt && dexLiveAt > twentyFourHoursAgo && dexLiveAt <= now;
 
         if (isDexMode && typeof poolAddress === 'string' && poolAddress.length > 0) {
           try {
             // Determine time range for DEX trades
-            const dexTradeStart = graduatedRecently && dexLiveAt ? dexLiveAt : twentyFourHoursAgo;
+            // If graduation is within the 24h window, DEX trades start from graduation time
+            // Otherwise, fetch full 24h of DEX trades
+            const dexTradeStart =
+              last24hSpansGraduation && dexLiveAt ? dexLiveAt : twentyFourHoursAgo;
 
             const dexTrades = await bitQueryService.getDexTrades(address, poolAddress, {
               from: dexTradeStart,
@@ -630,7 +676,7 @@ export async function tokensRoutes(fastify: FastifyInstance) {
                 address,
                 poolAddress,
                 tradeCount: dexTrades.length,
-                graduatedRecently,
+                last24hSpansGraduation,
                 dexLiveAt: dexLiveAt?.toISOString(),
                 dexTradeStart: dexTradeStart.toISOString(),
               },
@@ -647,16 +693,18 @@ export async function tokensRoutes(fastify: FastifyInstance) {
               return Number.isFinite(aces) ? sum + aces : sum;
             }, 0);
 
-            // If graduated recently, also fetch bonding curve volume from before graduation
-            if (graduatedRecently && dexLiveAt) {
+            // If last 24h spans graduation, fetch bonding curve volume from before graduation
+            // This covers the period from 24h ago up to graduation time
+            if (last24hSpansGraduation && dexLiveAt) {
               fastify.log.info(
                 {
                   address,
                   dexLiveAt: dexLiveAt.toISOString(),
                   bondingCurveEnd: dexLiveAt.toISOString(),
                   bondingCurveStart: twentyFourHoursAgo.toISOString(),
+                  timeWindow: '24h spans graduation - will combine bonding + DEX volume',
                 },
-                'Token graduated within 24h, fetching bonding curve volume too',
+                '24h window spans graduation boundary, fetching bonding curve + DEX volume',
               );
 
               try {
@@ -664,78 +712,104 @@ export async function tokensRoutes(fastify: FastifyInstance) {
                 const startTimeSeconds = Math.floor(twentyFourHoursAgo.getTime() / 1000);
                 const endTimeSeconds = Math.floor(dexLiveAt.getTime() / 1000);
 
-                const query = `{
-                  trades(
-                    where: {
-                      token: "${address.toLowerCase()}"
-                      createdAt_gte: "${startTimeSeconds}"
-                      createdAt_lte: "${endTimeSeconds}"
+                // Fetch all bonding curve trades in the time window (handle pagination if needed)
+                const pageSize = 1000;
+                let skip = 0;
+                let allBondingTrades: Array<{ id: string; acesTokenAmount: string }> = [];
+                let hasMore = true;
+
+                while (hasMore) {
+                  const query = `{
+                    trades(
+                      where: {
+                        token: "${address.toLowerCase()}"
+                        createdAt_gte: "${startTimeSeconds}"
+                        createdAt_lte: "${endTimeSeconds}"
+                      }
+                      orderBy: createdAt
+                      orderDirection: asc
+                      first: ${pageSize}
+                      skip: ${skip}
+                    ) {
+                      id
+                      acesTokenAmount
                     }
-                    orderBy: createdAt
-                    orderDirection: asc
-                    first: 1000
-                  ) {
-                    id
-                    acesTokenAmount
+                  }`;
+
+                  const response = await fetch(process.env.GOLDSKY_SUBGRAPH_URL!, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query }),
+                    signal: AbortSignal.timeout(10000),
+                  });
+
+                  if (!response.ok) {
+                    throw new Error(
+                      `Subgraph request failed: ${response.status} ${response.statusText}`,
+                    );
                   }
-                }`;
 
-                const response = await fetch(process.env.GOLDSKY_SUBGRAPH_URL!, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ query }),
-                  signal: AbortSignal.timeout(10000),
-                });
-
-                if (response.ok) {
                   const result = (await response.json()) as {
-                    data: { trades: Array<{ id: string; acesTokenAmount: string }> };
+                    data?: { trades: Array<{ id: string; acesTokenAmount: string }> };
+                    errors?: Array<{ message: string }>;
                   };
-                  const bondingTrades = result.data.trades || [];
 
-                  const bondingVolumeAces = bondingTrades.reduce((sum, trade) => {
-                    const aces = parseFloat(trade.acesTokenAmount) / 1e18;
-                    return Number.isFinite(aces) ? sum + aces : sum;
-                  }, 0);
+                  if (result.errors?.length) {
+                    throw new Error(`Subgraph GraphQL errors: ${JSON.stringify(result.errors)}`);
+                  }
 
-                  const bondingVolumeUsd = bondingVolumeAces * acesUsdPrice;
+                  const trades = result.data?.trades || [];
+                  allBondingTrades = [...allBondingTrades, ...trades];
 
-                  fastify.log.info(
-                    {
-                      address,
-                      bondingTradeCount: bondingTrades.length,
-                      bondingVolumeAces,
-                      bondingVolumeUsd,
-                      dexVolumeAces,
-                      dexVolumeUsd,
-                    },
-                    'Bonding curve volume fetched, combining with DEX volume',
-                  );
+                  // If we got fewer trades than the page size, we've reached the end
+                  hasMore = trades.length === pageSize;
+                  skip += trades.length;
 
-                  // Combine both volumes
-                  volume24hAces = bondingVolumeAces + dexVolumeAces;
-                  volume24hUsd = bondingVolumeUsd + dexVolumeUsd;
-                  volumeSource = 'hybrid';
-
-                  fastify.log.info(
-                    {
-                      address,
-                      volume24hAces,
-                      volume24hUsd,
-                      bondingContribution: bondingVolumeUsd,
-                      dexContribution: dexVolumeUsd,
-                    },
-                    'Hybrid volume calculation complete (bonding + DEX)',
-                  );
-                } else {
-                  fastify.log.warn(
-                    { address, status: response.status },
-                    'Failed to fetch bonding curve trades, using DEX volume only',
-                  );
-                  volume24hAces = dexVolumeAces;
-                  volume24hUsd = dexVolumeUsd;
-                  volumeSource = 'dex';
+                  // Safety limit: prevent infinite loops (max 10,000 trades = 10 pages)
+                  if (skip >= 10000) {
+                    fastify.log.warn(
+                      { address, skip, tradeCount: allBondingTrades.length },
+                      'Reached max pagination limit for bonding curve volume, may be missing some trades',
+                    );
+                    break;
+                  }
                 }
+
+                const bondingVolumeAces = allBondingTrades.reduce((sum, trade) => {
+                  const aces = parseFloat(trade.acesTokenAmount) / 1e18;
+                  return Number.isFinite(aces) ? sum + aces : sum;
+                }, 0);
+
+                const bondingVolumeUsd = bondingVolumeAces * acesUsdPrice;
+
+                fastify.log.info(
+                  {
+                    address,
+                    bondingTradeCount: allBondingTrades.length,
+                    bondingVolumeAces,
+                    bondingVolumeUsd,
+                    dexVolumeAces,
+                    dexVolumeUsd,
+                    timeWindow: `${(endTimeSeconds - startTimeSeconds) / 3600}h`,
+                  },
+                  'Bonding curve volume fetched, combining with DEX volume',
+                );
+
+                // Combine both volumes
+                volume24hAces = bondingVolumeAces + dexVolumeAces;
+                volume24hUsd = bondingVolumeUsd + dexVolumeUsd;
+                volumeSource = 'hybrid';
+
+                fastify.log.info(
+                  {
+                    address,
+                    volume24hAces,
+                    volume24hUsd,
+                    bondingContribution: bondingVolumeUsd,
+                    dexContribution: dexVolumeUsd,
+                  },
+                  'Hybrid volume calculation complete (bonding + DEX)',
+                );
               } catch (bondingError) {
                 fastify.log.error(
                   { error: bondingError, address },
