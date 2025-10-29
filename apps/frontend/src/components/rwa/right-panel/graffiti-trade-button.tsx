@@ -27,19 +27,22 @@ const sizeConfig: Record<
   { container: string; outerLabelClass: string; innerLabelClass: string }
 > = {
   md: {
-    container: 'min-w-[180px] h-14',
-    outerLabelClass: 'text-[38px]',
-    innerLabelClass: 'text-[52px]',
+    container:
+      'min-w-[140px] h-11 md:min-w-[148px] md:h-[46px] lg:min-w-[170px] lg:h-[56px] xl:min-w-[180px] xl:h-14',
+    outerLabelClass: 'text-[26px] md:text-[30px] lg:text-[36px] xl:text-[38px]',
+    innerLabelClass: 'text-[36px] md:text-[42px] lg:text-[50px] xl:text-[52px]',
   },
   lg: {
-    container: 'min-w-[200px] h-16',
-    outerLabelClass: 'text-[42px]',
-    innerLabelClass: 'text-[60px]',
+    container:
+      'min-w-[156px] h-[48px] md:min-w-[170px] md:h-[56px] lg:min-w-[188px] lg:h-[62px] xl:min-w-[200px] xl:h-16',
+    outerLabelClass: 'text-[30px] md:text-[34px] lg:text-[40px] xl:text-[42px]',
+    innerLabelClass: 'text-[42px] md:text-[48px] lg:text-[56px] xl:text-[60px]',
   },
   xl: {
-    container: 'min-w-[224px] h-[72px]',
-    outerLabelClass: 'text-[48px]',
-    innerLabelClass: 'text-[68px]',
+    container:
+      'min-w-[180px] h-[54px] md:min-w-[190px] md:h-[60px] lg:min-w-[205px] lg:h-[68px] xl:min-w-[224px] xl:h-[72px]',
+    outerLabelClass: 'text-[34px] md:text-[38px] lg:text-[44px] xl:text-[48px]',
+    innerLabelClass: 'text-[48px] md:text-[56px] lg:text-[64px] xl:text-[68px]',
   },
 };
 

@@ -226,6 +226,11 @@ export default function TokenSwapInterface({
   const [slippagePopoverOpen, setSlippagePopoverOpen] = useState(false);
   const [customSlippageInput, setCustomSlippageInput] = useState('');
   const slippagePopoverRef = useRef<HTMLDivElement | null>(null);
+  const [isMdBreakpoint, setIsMdBreakpoint] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const width = window.innerWidth;
+    return width >= 768 && width < 1024;
+  });
 
   // Use external status if provided, otherwise fall back to local
   const transactionStatus = externalTransactionStatus ?? localTransactionStatus;
@@ -257,6 +262,35 @@ export default function TokenSwapInterface({
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [slippagePopoverOpen]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleResize = () => {
+      const width = window.innerWidth;
+      setIsMdBreakpoint(width >= 768 && width < 1024);
+    };
+
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const formatBalanceDisplay = useCallback(
+    (rawBalance: string | null | undefined, decimals: number) => {
+      const formatted = formatAmountForDisplay(rawBalance ?? '0', decimals);
+      if (isMdBreakpoint && formatted !== '0' && !formatted.startsWith('<')) {
+        const numeric = Number.parseFloat(formatted.replace(/,/g, ''));
+        if (Number.isFinite(numeric)) {
+          return numeric.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          });
+        }
+      }
+      return formatted;
+    },
+    [isMdBreakpoint],
+  );
 
   const sellOptions = useMemo(() => {
     // In bonding mode, support ETH/USDC/USDT/ACES for buys, and include dynamic RWA option last
@@ -1077,19 +1111,19 @@ export default function TokenSwapInterface({
                         unoptimized={true}
                       />
                     </div>
-                    <h2 className="text-[#D0B284] text-2xl font-mono font-bold leading-none">
+                    <h2 className="text-[#D0B284] text-xl md:text-2xl xl:text-3xl font-mono font-bold leading-none">
                       ${tokenSymbol}
                     </h2>
                   </div>
 
                   {tokenAddress && (
-                    <div className="flex items-center gap-2 rounded-md bg-black/20 px-3 py-1.5 border border-[#D0B284]/20 w-fit">
-                      <span className="text-xs text-[#D0B284] font-mono">
+                    <div className="flex items-center gap-1.5 md:gap-2 rounded-md bg-black/20 px-2 py-1 md:px-2.5 md:py-1.5 border border-[#D0B284]/20 w-fit">
+                      <span className="text-[11px] md:text-xs text-[#D0B284] font-mono">
                         {tokenAddress.slice(0, 6)}...{tokenAddress.slice(-4)}
                       </span>
                       <button
                         onClick={() => copyToClipboard(tokenAddress)}
-                        className="flex h-4 w-4 items-center justify-center rounded bg-[#D0B284]/10 hover:bg-[#D0B284]/20 transition-colors border border-[#D0B284]/20"
+                        className="flex h-3.5 w-3.5 md:h-4 md:w-4 items-center justify-center rounded bg-[#D0B284]/10 hover:bg-[#D0B284]/20 transition-colors border border-[#D0B284]/20"
                       >
                         {copied ? (
                           <Check className="h-2.5 w-2.5 text-[#D0B284]" />
@@ -1101,20 +1135,22 @@ export default function TokenSwapInterface({
                   )}
                 </div>
 
-                <div className="flex w-full sm:w-auto flex-col sm:items-end gap-1 px-3 py-2 backdrop-blur-sm rounded-lg border border-[#D0B284]/10 sm:border-transparent">
+                <div className="flex w-full sm:w-auto flex-col sm:items-end gap-0.5 md:gap-1 px-2.5 py-1.5 md:px-3 md:py-2 backdrop-blur-sm rounded-lg border border-[#D0B284]/10 sm:border-transparent">
                   <div className="flex items-start gap-2">
-                    <span className="text-[#D0B284]/60 text-xs leading-none">Balance</span>
+                    <span className="text-[#D0B284]/60 text-[11px] md:text-xs leading-none">
+                      Balance
+                    </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-[#D0B284]/60 text-xs">ACES:</span>
                     <span className="text-[#D0B284] font-mono text-xs">
-                      {formatAmountForDisplay(acesBalance, 18)}
+                      {formatBalanceDisplay(acesBalance, 18)}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-[#D0B284]/60 text-xs">{tokenSymbol}:</span>
                     <span className="text-[#D0B284] font-mono text-xs">
-                      {formatAmountForDisplay(tokenBalance, 18)}
+                      {formatBalanceDisplay(tokenBalance, 18)}
                     </span>
                   </div>
                 </div>
@@ -1196,22 +1232,23 @@ export default function TokenSwapInterface({
         )}
 
         {/* Swap interface */}
-        <div className={cn('flex-1 min-h-0 space-y-6 overflow-y-auto px-0 pb-6')}>
+        <div className={cn('flex-1 min-h-0 space-y-6 md:space-y-5 overflow-y-auto px-0 pb-6')}>
           {/* Unified interface - handles both bonding curve and DEX mode via unified hooks */}
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3 md:gap-4 xl:gap-5">
             {/* Percentage Selector */}
             <PercentageSelector
               balance={percentageSelectorBalance}
               onAmountCalculated={handlePercentageCalculated}
               currentAmount={amount}
+              className="md:[&>button]:px-3 md:[&>button]:py-3 md:[&>button]:text-sm md:[&>button]:text-[13px] md:[&>button]:tracking-[0.15em] xl:[&>button]:px-5 xl:[&>button]:py-4 xl:[&>button]:text-[15px]"
             />
 
-            <div className="space-y-4 relative">
+            <div className="space-y-3 md:space-y-2relative">
               {/* Sell Section */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between px-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-[#D0B284]">Sell</span>
+                    <span className="text-xs md:text-sm font-semibold text-[#D0B284]">Sell</span>
                     <div className="relative flex items-center" ref={slippagePopoverRef}>
                       <button
                         type="button"
@@ -1306,7 +1343,7 @@ export default function TokenSwapInterface({
                   </div>
                   <span className="text-xs text-[#D0B284]/70">
                     Balance{' '}
-                    {formatAmountForDisplay(sellBalanceInfo.rawBalance, sellBalanceInfo.decimals)}{' '}
+                    {formatBalanceDisplay(sellBalanceInfo.rawBalance, sellBalanceInfo.decimals)}{' '}
                     {sellAssetLabel}
                   </span>
                 </div>
@@ -1375,11 +1412,13 @@ export default function TokenSwapInterface({
                         placeholder="0"
                         inputMode={effectiveSellDecimals === 0 ? 'numeric' : 'decimal'}
                         className={cn(
-                          'w-full border-none bg-transparent text-right font-semibold text-white outline-none focus:ring-0 placeholder:text-[#D0B284]/30',
-                          amountDigitCount > 10 ? 'text-2xl' : 'text-3xl',
+                          'w-full border-none bg-transparent text-right font-semibold text-white outline-none focus:ring-0 placeholder:text-[#D0B284]/30 transition-all',
+                          amountDigitCount > 10
+                            ? 'text-lg md:text-xl xl:text-2xl'
+                            : 'text-2xl md:text-3xl xl:text-4xl',
                         )}
                       />
-                      <div className="flex items-center justify-end gap-2 text-sm text-[#D0B284]/60">
+                      <div className="flex items-center justify-end gap-2 text-xs md:text-sm text-[#D0B284]/60">
                         {isUsdQuoteLoading ? (
                           <Loader2 className="h-4 w-4 animate-spin text-[#D0B284]" />
                         ) : hasValidAmount && inputUsdDisplay ? (
@@ -1406,12 +1445,12 @@ export default function TokenSwapInterface({
               {/* Buy Section */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between px-1">
-                  <span className="text-sm font-semibold text-[#D0B284]">
+                  <span className="text-xs md:text-sm font-semibold text-[#D0B284]">
                     {activeTab === 'buy' ? 'Buy' : 'Receive'}
                   </span>
                   <span className="text-xs text-[#D0B284]/70">
                     Balance{' '}
-                    {formatAmountForDisplay(buyBalanceInfo.rawBalance, buyBalanceInfo.decimals)}{' '}
+                    {formatBalanceDisplay(buyBalanceInfo.rawBalance, buyBalanceInfo.decimals)}{' '}
                     {buyAssetLabel}
                   </span>
                 </div>
@@ -1473,13 +1512,13 @@ export default function TokenSwapInterface({
                     </div>
 
                     <div className="flex flex-1 flex-col items-end gap-1 text-right">
-                      <div className="min-h-[36px] flex items-center justify-end">
+                      <div className="min-h-[32px] md:min-h-[36px] flex items-center justify-end">
                         {isTokenQuoteLoading ? (
-                          <Loader2 className="h-5 w-5 animate-spin text-[#D0B284]" />
+                          <Loader2 className="h-4 w-4 md:h-5 md:w-5 animate-spin text-[#D0B284]" />
                         ) : (
                           <span
                             className={cn(
-                              'text-3xl font-semibold',
+                              'font-semibold transition-all text-2xl md:text-3xl xl:text-4xl',
                               hasValidAmount && quote.outputAmount
                                 ? 'text-white/90'
                                 : 'text-[#D0B284]/30',
@@ -1490,7 +1529,7 @@ export default function TokenSwapInterface({
                         )}
                       </div>
                       <div className="flex flex-col items-end gap-0.5">
-                        <div className="flex items-center justify-end gap-2 text-sm text-[#D0B284]/60">
+                        <div className="flex items-center justify-end gap-2 text-xs md:text-sm text-[#D0B284]/60">
                           {isUsdQuoteLoading ? (
                             <Loader2 className="h-4 w-4 animate-spin text-[#D0B284]" />
                           ) : hasValidAmount && outputUsdDisplay ? (
@@ -1518,11 +1557,10 @@ export default function TokenSwapInterface({
                 </div>
               </div>
             </div>
-
-            <div className="mt-4 flex justify-center">
+            <div className=" flex justify-center">
               {!isAuthenticated ? (
                 <TradeButtonComponent
-                  className="w-full max-w-[320px]"
+                  className="w-full max-w-[240px] md:max-w-[260px] xl:max-w-[320px]"
                   state="connect"
                   size="xl"
                   onClick={handleConnectWallet}
@@ -1533,7 +1571,7 @@ export default function TokenSwapInterface({
               ) : !provider || initializationError ? (
                 <>
                   <TradeButtonComponent
-                    className="w-full max-w-[320px]"
+                    className="w-full max-w-[240px] md:max-w-[260px] xl:max-w-[320px]"
                     state="connect"
                     size="lg"
                     disabled={!!initializationError}
@@ -1541,7 +1579,7 @@ export default function TokenSwapInterface({
                     fullWidth
                   />
                   {initializationError && (
-                    <div className="mt-2 text-center text-xs text-red-400/80 max-w-[320px]">
+                    <div className="mt-2 text-center text-xs text-red-400/80 max-w-[240px] md:max-w-[260px] xl:max-w-[320px]">
                       Wallet connection issue. Try refreshing or disabling extra wallet extensions.
                     </div>
                   )}
@@ -1556,7 +1594,7 @@ export default function TokenSwapInterface({
 
                   return needsApproval ? (
                     <TradeButtonComponent
-                      className="w-full max-w-[320px]"
+                      className="w-full max-w-[240px] md:max-w-[260px] xl:max-w-[320px]"
                       state="approve"
                       size="xl"
                       onClick={handleApproveToken}
@@ -1566,7 +1604,7 @@ export default function TokenSwapInterface({
                     />
                   ) : (
                     <TradeButtonComponent
-                      className="w-full max-w-[320px]"
+                      className="w-full max-w-[240px] md:max-w-[260px] xl:max-w-[320px]"
                       state="trade"
                       size="xl"
                       onClick={handleSwapClick}
@@ -1578,6 +1616,14 @@ export default function TokenSwapInterface({
                 })()
               )}
             </div>
+
+            {isDexMode && (
+              <div className="text-center">
+                <span className="text-xs font-mono text-[#D0B284]/60 uppercase">
+                  POWERED BY AERODROME
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Success modal for RWA buys */}

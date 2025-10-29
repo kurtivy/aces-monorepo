@@ -2,7 +2,6 @@
 
 import { useState, useEffect, type Dispatch, type SetStateAction } from 'react';
 import DynamicImageGallery from '../left-column/overview/dynamic-image-gallery';
-import BondingProgressSection from './bonding-progression-section';
 import SwapBox from './swap-box';
 import type { DatabaseListing } from '@/types/rwa/section.types';
 import { validateEthereumAddress } from '@/lib/validation/address';
@@ -52,7 +51,7 @@ export default function RightPanel({
     })) ?? [];
 
   return (
-    <div className="h-full w-full bg-[#151c16] flex flex-col gap-1 relative">
+    <div className="h-full w-full bg-[#151c16] flex flex-col gap-1 relative md:scale-[0.75] md:origin-top-right lg:scale-100 lg:origin-center">
       {/* Toast notifications at top of right panel */}
       <AnimatePresence>
         {transactionStatus && (
@@ -87,7 +86,7 @@ export default function RightPanel({
       </AnimatePresence>
 
       {/* Top: Progress */}
-      <div className="px-2">
+      <div className="px-2 md:px-1.5">
         {/* <BondingProgressSection
           tokenAddress={tokenAddress}
           chainId={chainId}
@@ -104,7 +103,7 @@ export default function RightPanel({
       </div>
 
       {/* Bottom: Swap */}
-      <div className="px-0.5">
+      <div className="px-0.5 md:px-0">
         <SwapBox
           tokenSymbol={tokenSymbol}
           tokenAddress={tokenAddress}
