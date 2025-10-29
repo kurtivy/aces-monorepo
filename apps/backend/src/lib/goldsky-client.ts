@@ -47,7 +47,7 @@ interface SingleTradeResponse {
 export class GoldskyClient {
   private readonly endpoint: string;
   private readonly defaultTimeout: number = 10000; // 10 seconds
-  private readonly maxRetries: number = 2;
+  private readonly maxRetries: number = 4;
 
   constructor(endpoint?: string) {
     // Use environment variable, following the pattern from existing services
@@ -82,8 +82,29 @@ export class GoldskyClient {
             signal: controller.signal,
           });
 
-          clearTimeout(timeout);
-          return response;
+          if (response.status === 429) {
+            lastError = new Error(`HTTP 429: ${response.statusText || 'Too Many Requests'}`);
+
+            if (attempt < this.maxRetries) {
+              const retryAfterHeader = response.headers.get('retry-after');
+              const retryAfterMs =
+                retryAfterHeader && !Number.isNaN(Number(retryAfterHeader))
+                  ? Number(retryAfterHeader) * 1000
+                  : undefined;
+              const backoffMs = Math.min(1000 * Math.pow(2, attempt), 5000);
+              const delay = retryAfterMs ? Math.max(retryAfterMs, backoffMs) : backoffMs;
+
+              console.warn(
+                `[GoldskyClient] ⚠️ Received 429 from subgraph, retrying in ${delay}ms (attempt ${
+                  attempt + 1
+                }/${this.maxRetries + 1})`,
+              );
+              await new Promise((resolve) => setTimeout(resolve, delay));
+              continue;
+            }
+          } else {
+            return response;
+          }
         } finally {
           clearTimeout(timeout);
         }
