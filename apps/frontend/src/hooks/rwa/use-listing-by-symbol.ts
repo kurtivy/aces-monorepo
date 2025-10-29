@@ -42,9 +42,15 @@ export function useListingBySymbol(symbol: string) {
       return;
     }
 
+    let isCancelled = false;
+    let isInitialLoad = true;
+
     async function fetchListingBySymbol() {
       try {
-        setLoading(true);
+        // Only show loading state on initial load, not on polls
+        if (isInitialLoad) {
+          setLoading(true);
+        }
         setError(null);
 
         const response = await fetch(
@@ -53,7 +59,7 @@ export function useListingBySymbol(symbol: string) {
 
         if (!response.ok) {
           if (response.status === 404) {
-            setListing(null);
+            if (!isCancelled) setListing(null);
             return;
           }
           throw new Error(`Failed to fetch listings: ${response.status} ${response.statusText}`);
@@ -62,37 +68,69 @@ export function useListingBySymbol(symbol: string) {
         const result = await response.json();
 
         if (result.success && result.data) {
-          const listing = result.data as DatabaseListing;
+          const newListing = result.data as DatabaseListing;
 
           // Validate and sanitize token address
-          if (listing.token?.contractAddress) {
+          if (newListing.token?.contractAddress) {
             const validatedAddress = validateAndWarnAddress(
-              listing.token.contractAddress,
+              newListing.token.contractAddress,
               'useListingBySymbol',
             );
 
             // Update the listing with validated address (keep original if validation fails)
             if (validatedAddress) {
-              listing.token = {
-                ...listing.token,
+              newListing.token = {
+                ...newListing.token,
                 contractAddress: validatedAddress,
               };
             }
           }
 
-          setListing(listing);
+          if (!isCancelled) {
+            // Check if DEX status changed (token graduated)
+            const oldDexStatus = listing?.dex?.isDexLive;
+            const newDexStatus = newListing.dex?.isDexLive;
+
+            if (oldDexStatus === false && newDexStatus === true) {
+              console.log('🎓 [useListingBySymbol] Token graduated to DEX!', {
+                symbol: newListing.symbol,
+                poolAddress: newListing.dex?.poolAddress,
+                dexLiveAt: newListing.dex?.dexLiveAt,
+              });
+            }
+
+            setListing(newListing);
+          }
         } else {
-          setListing(null);
+          if (!isCancelled) setListing(null);
         }
       } catch (err) {
-        console.error('Error fetching listing by symbol:', err);
-        setError(err instanceof Error ? err.message : 'Failed to fetch listing');
+        if (!isCancelled) {
+          console.error('Error fetching listing by symbol:', err);
+          setError(err instanceof Error ? err.message : 'Failed to fetch listing');
+        }
       } finally {
-        setLoading(false);
+        if (!isCancelled && isInitialLoad) {
+          setLoading(false);
+          isInitialLoad = false;
+        }
       }
     }
 
+    // Initial fetch
     fetchListingBySymbol();
+
+    // Poll every 10 seconds to detect DEX graduation and other updates
+    const pollInterval = setInterval(() => {
+      if (!isCancelled) {
+        fetchListingBySymbol();
+      }
+    }, 10000); // 10 second polling interval
+
+    return () => {
+      isCancelled = true;
+      clearInterval(pollInterval);
+    };
   }, [symbol]);
 
   const refetch = async () => {

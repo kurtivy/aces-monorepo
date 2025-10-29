@@ -475,7 +475,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
             clientWidth: chartContainerRef.current.clientWidth,
             clientHeight: chartContainerRef.current.clientHeight,
           });
-          
+
           // Retry after a short delay to let layout settle
           setTimeout(() => {
             if (!isCancelled) {

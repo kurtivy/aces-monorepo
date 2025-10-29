@@ -58,6 +58,7 @@ import {
 import { drawFeaturedSection, getAuctionIconBounds } from '../../lib/canvas/draw';
 import { drawCustomLogoBanner } from '@/lib/canvas/draw/draw-custom-logo-banner';
 import { getResponsiveMetrics } from '../../lib/utils/responsive-canvas-utils';
+import { isSymbolTradingLive, normalizeSymbol } from '@/constants/live-trading';
 
 interface UseCanvasRendererProps {
   images: ImageInfo[];
@@ -138,6 +139,40 @@ interface TilePriority {
   priority: number; // Lower = higher priority (center tiles first)
   distance: number; // Distance from viewport center
 }
+
+const getSymbolFromMetadata = (metadata: ImageInfo['metadata']): string | null => {
+  const fromSymbol = normalizeSymbol(metadata.symbol);
+  if (fromSymbol) {
+    return fromSymbol;
+  }
+
+  return normalizeSymbol(metadata.ticker);
+};
+
+const drawLiveBadge = (
+  ctx: CanvasRenderingContext2D,
+  screenX: number,
+  screenY: number,
+  width: number,
+  height: number,
+): void => {
+  if (width <= 0 || height <= 0) {
+    return;
+  }
+
+  const baseSize = Math.min(width, height);
+  const dotRadius = Math.max(2.4, Math.min(baseSize * 0.04, 7.2));
+  const offset = Math.max(dotRadius + 1.5, baseSize * 0.048);
+  const dotCenterX = screenX + offset;
+  const dotCenterY = screenY + offset;
+
+  ctx.save();
+  ctx.fillStyle = '#15803D';
+  ctx.beginPath();
+  ctx.arc(dotCenterX, dotCenterY, dotRadius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+};
 
 export const useCanvasRenderer = ({
   images,
@@ -1603,6 +1638,9 @@ export const useCanvasRenderer = ({
           hoverProgress = 1; // Full hover effect for exact match
         }
 
+        const metadataSymbol = getSymbolFromMetadata(element.original.image.metadata);
+        const showLiveBadge = metadataSymbol ? isSymbolTradingLive(metadataSymbol) : false;
+
         return {
           opacity: element.opacity,
           render: () => {
@@ -1615,6 +1653,10 @@ export const useCanvasRenderer = ({
               element.height,
               hoverProgress, // HOVER ENHANCEMENT: Pass hover progress
             );
+
+            if (showLiveBadge) {
+              drawLiveBadge(ctx, element.screenX, element.screenY, element.width, element.height);
+            }
           },
         };
       });
@@ -1681,6 +1723,9 @@ export const useCanvasRenderer = ({
             hoverProgress = 1; // Full hover effect for exact match
           }
 
+          const metadataSymbol = getSymbolFromMetadata(element.original.image.metadata);
+          const showLiveBadge = metadataSymbol ? isSymbolTradingLive(metadataSymbol) : false;
+
           return {
             opacity: 1, // Always fully visible
             render: () => {
@@ -1693,6 +1738,10 @@ export const useCanvasRenderer = ({
                 element.height,
                 hoverProgress, // HOVER ENHANCEMENT: Pass hover progress
               );
+
+              if (showLiveBadge) {
+                drawLiveBadge(ctx, element.screenX, element.screenY, element.width, element.height);
+              }
             },
           };
         });

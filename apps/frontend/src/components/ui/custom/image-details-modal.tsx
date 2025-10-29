@@ -12,6 +12,8 @@ import PurchaseInquiryModal from './purchase-inquiry-modal';
 import AuctionInterestModal from '@/components/ui/custom/auction-interest-modal';
 import { useListingBySymbol } from '../../../hooks/rwa/use-listing-by-symbol';
 import { useTokenMarketCap } from '../../../hooks/use-token-market-cap';
+import { TokensApi } from '@/lib/api/tokens';
+import { isSymbolTradingLive, normalizeSymbol } from '@/constants/live-trading';
 
 import {
   addWindowEventListenerSafe,
@@ -230,27 +232,101 @@ export default function ImageDetailsModal({
   // State for auction interest modal (when listing is not live)
   const [isAuctionModalOpen, setIsAuctionModalOpen] = useState(false);
 
-  // Extract symbol from imageInfo metadata
-  const symbol = imageInfo?.metadata?.symbol;
-
-  // Fetch listing data if symbol exists (skip for DRVN static modal)
   const isDrvn = imageInfo?.metadata?.id === 'drvn';
-  const { listing, isLive: hookIsLive } = useListingBySymbol(isDrvn ? '' : symbol || '');
+  const metadataSymbol = imageInfo?.metadata?.symbol;
+  const metadataTicker = imageInfo?.metadata?.ticker;
 
-  // Effective live status: prefer override from listings table when provided
-  const isLive = isDrvn ? false : (isLiveOverride ?? hookIsLive);
+  const normalizedSymbol = useMemo(() => {
+    if (isDrvn) return '';
+    return (
+      normalizeSymbol(metadataSymbol) ??
+      normalizeSymbol(metadataTicker) ??
+      ''
+    );
+  }, [isDrvn, metadataSymbol, metadataTicker]);
+
+  const shouldExposeTokenStats = normalizedSymbol === 'APK';
+
+  const { listing, isLive: hookIsLive } = useListingBySymbol(isDrvn ? '' : normalizedSymbol);
+
+  const [tokenMetrics, setTokenMetrics] = useState<{
+    marketCapUsd: number | null;
+    tokenPriceUsd: number | null;
+  }>({
+    marketCapUsd: null,
+    tokenPriceUsd: null,
+  });
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    const fetchTokenMetrics = async () => {
+      if (!listing?.token?.contractAddress || !shouldExposeTokenStats) {
+        if (!isCancelled) {
+          setTokenMetrics({
+            marketCapUsd: null,
+            tokenPriceUsd: null,
+          });
+        }
+        return;
+      }
+
+      try {
+        const response = await TokensApi.getTokenMetrics(listing.token.contractAddress);
+        if (isCancelled) return;
+
+        if (response.success) {
+          const marketCapUsd = Number(response.data.marketCapUsd || 0);
+          const tokenPriceUsd = Number(response.data.tokenPriceUsd || 0);
+          setTokenMetrics({
+            marketCapUsd: Number.isFinite(marketCapUsd) && marketCapUsd > 0 ? marketCapUsd : null,
+            tokenPriceUsd: Number.isFinite(tokenPriceUsd) && tokenPriceUsd > 0 ? tokenPriceUsd : null,
+          });
+        } else {
+          setTokenMetrics({
+            marketCapUsd: null,
+            tokenPriceUsd: null,
+          });
+        }
+      } catch (err) {
+        if (isCancelled) return;
+        setTokenMetrics({
+          marketCapUsd: null,
+          tokenPriceUsd: null,
+        });
+      }
+    };
+
+    fetchTokenMetrics();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [listing?.token?.contractAddress, shouldExposeTokenStats]);
+
+  const computedIsLive = useMemo(() => {
+    if (isDrvn) return false;
+    if (hookIsLive) return true;
+    return isSymbolTradingLive(normalizedSymbol);
+  }, [hookIsLive, isDrvn, normalizedSymbol]);
+
+  const isLive = isDrvn ? false : (isLiveOverride ?? computedIsLive);
 
   // Get token address from listing
   const tokenAddress = isDrvn ? undefined : listing?.token?.contractAddress;
 
   // Fetch live market cap data
-  const { marketCapUsd } = useTokenMarketCap(tokenAddress, 'usd');
+  const { marketCapUsd: fallbackMarketCapUsd } = useTokenMarketCap(tokenAddress, 'usd');
 
-  // Calculate live market cap
-  const liveMarketCap = useMemo(() => {
-    if (isDrvn) return 0;
-    return isFinite(marketCapUsd) && marketCapUsd > 0 ? marketCapUsd : 0;
-  }, [marketCapUsd, isDrvn]);
+  const resolvedMarketCapUsd = useMemo(() => {
+    if (isDrvn || !shouldExposeTokenStats) return 0;
+    if (tokenMetrics.marketCapUsd && tokenMetrics.marketCapUsd > 0) {
+      return tokenMetrics.marketCapUsd;
+    }
+    return isFinite(fallbackMarketCapUsd) && fallbackMarketCapUsd > 0
+      ? fallbackMarketCapUsd
+      : 0;
+  }, [fallbackMarketCapUsd, isDrvn, shouldExposeTokenStats, tokenMetrics.marketCapUsd]);
 
   // Get RRP (Asset Sale Price) from metadata
   const rrpValue = isDrvn ? undefined : (imageInfo?.metadata?.rrp as number | undefined);
@@ -261,9 +337,9 @@ export default function ImageDetailsModal({
   // Calculate ACES Ratio: Market Cap / Asset Sale Price
   const acesRatio = useMemo(() => {
     if (isDrvn) return 0;
-    if (assetSalePrice <= 0 || liveMarketCap <= 0) return 0;
-    return liveMarketCap / assetSalePrice;
-  }, [liveMarketCap, assetSalePrice, isDrvn]);
+    if (assetSalePrice <= 0 || resolvedMarketCapUsd <= 0) return 0;
+    return resolvedMarketCapUsd / assetSalePrice;
+  }, [resolvedMarketCapUsd, assetSalePrice, isDrvn]);
 
   const [backdropStyles, setBackdropStyles] = useState<{
     backdropFilter?: string;
@@ -557,7 +633,9 @@ export default function ImageDetailsModal({
 
                           // Format Market Cap
                           const marketCapDisplay =
-                            liveMarketCap > 0 ? `$${formatNumber(liveMarketCap)}` : 'TBD';
+                            resolvedMarketCapUsd > 0
+                              ? `$${formatNumber(resolvedMarketCapUsd)}`
+                              : 'TBD';
 
                           const stats = [
                             {
