@@ -4,7 +4,6 @@ import { motion } from 'framer-motion';
 import { Copy, Check } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
-import { LoadingDots } from '../left-column/token-details/loading-dots';
 
 interface TokenHeaderSectionProps {
   tokenSymbol: string;
@@ -43,7 +42,7 @@ export function TokenHeaderSection({
     : undefined;
   const bottomRowStyles = isLgUp
     ? {
-        backgroundColor: '#000000',
+        backgroundColor: '#0f0f0f',
         height: 'var(--tradingview-header-height, 38px)',
       }
     : undefined;
@@ -107,7 +106,7 @@ export function TokenHeaderSection({
 
   return (
     <motion.div
-      className="flex flex-col border-b border-[#D0B284]/20 bg-[#151c16] w-full"
+      className="flex flex-col bg-[#151c16] w-full"
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
@@ -180,7 +179,7 @@ export function TokenHeaderSection({
           marketCap === undefined ||
           marketCap === null ||
           !Number.isFinite(marketCap) ? (
-            <LoadingDots className="text-xl font-semibold font-proxima-nova leading-none text-white" />
+            <span className="text-white font-proxima-nova">N/A</span>
           ) : (
             formatMarketCap(marketCap)
           )}

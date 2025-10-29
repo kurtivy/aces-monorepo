@@ -30,7 +30,7 @@ interface TokenMetricsSectionProps {
   disableMetricsFetch?: boolean;
 }
 
-const TARGET_CHART_HEIGHT_PX = 560; // Keep in sync with TradingSection chart height.
+const TARGET_CHART_HEIGHT_PX = 562; // Keep in sync with TradingSection chart height.
 const COMMUNITY_REWARD_USD = 40_000;
 
 const formatPrice = (price: string | null | undefined): string => {
@@ -87,18 +87,17 @@ export function TokenMetricsSection({
   } = useTokenMetrics(disableMetricsFetch ? undefined : tokenAddress);
 
   const resolvedVolume24hAces = volume24hAces ?? hookMetrics?.volume24hAces ?? '0';
-  const resolvedVolume24hUsd =
-    volume24hUsd ?? (hookMetrics?.volume24hUsd ?? undefined);
-  const resolvedLiquidityUsd =
-    liquidityUsd ?? (hookMetrics?.liquidityUsd ?? undefined);
-  const resolvedLiquiditySource =
-    liquiditySource ?? (hookMetrics?.liquiditySource ?? null);
+  const resolvedVolume24hUsd = volume24hUsd ?? hookMetrics?.volume24hUsd ?? undefined;
+  const resolvedLiquidityUsd = liquidityUsd ?? hookMetrics?.liquidityUsd ?? undefined;
+  const resolvedLiquiditySource = liquiditySource ?? hookMetrics?.liquiditySource ?? null;
   const resolvedMetricsLoading = metricsLoading ?? hookLoading;
-  const resolvedCirculatingSupply =
-    circulatingSupply ?? hookCirculatingSupply ?? null;
+  const resolvedCirculatingSupply = circulatingSupply ?? hookCirculatingSupply ?? null;
 
   return (
-    <div className="bg-black overflow-hidden flex flex-col" style={{ minHeight: `${TARGET_CHART_HEIGHT_PX}px` }}>
+    <div
+      className="bg-black overflow-hidden flex flex-col"
+      style={{ minHeight: `${TARGET_CHART_HEIGHT_PX}px` }}
+    >
       {/* DATA Section Title */}
       <div className="py-1 border-b border-[#D0B284]/10">
         <h3 className="text-[#D0B284] text-base font-bold uppercase tracking-[0.3em] font-spray-letters text-center">

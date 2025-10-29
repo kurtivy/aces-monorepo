@@ -431,23 +431,22 @@ export default function TokenHealthPanel({
           tooltip="Market Cap divided by the asset's reserve price. Shows how much the token market values the asset compared to its physical value."
         />
         <div className="flex items-end gap-1 text-white">
-          {acesRatioLoading ? (
-            <LoadingDots className="text-lg font-semibold font-proxima-nova leading-none text-white" />
-          ) : ratioDisplay.numeric ? (
+          {acesRatioLoading ||
+          !ratioDisplay.numeric ||
+          !ratioDisplay.suffix ||
+          metrics.acesRatio === 0 ? (
+            <span className="text-lg font-semibold font-proxima-nova leading-none text-white">
+              0.00x
+            </span>
+          ) : (
             <>
               <span className="text-lg font-semibold font-proxima-nova leading-none text-white">
                 {ratioDisplay.numeric}
               </span>
-              {ratioDisplay.suffix ? (
-                <span className="text-lg font-semibold font-proxima-nova leading-tight text-white">
-                  {ratioDisplay.suffix}
-                </span>
-              ) : null}
+              <span className="text-lg font-semibold font-proxima-nova leading-none text-white">
+                {ratioDisplay.suffix}
+              </span>
             </>
-          ) : (
-            <span className="text-lg font-semibold font-proxima-nova leading-none text-white">
-              {ratioDisplay.suffix}
-            </span>
           )}
         </div>
       </motion.div>
@@ -462,15 +461,16 @@ export default function TokenHealthPanel({
           label="TRADE REWARD"
           tooltip="Reward multiplier from collectible sale commissions. Shows how much you'll receive per dollar spent when the item sells, distributed proportionally to your token holdings."
         />
-        <span className={valueClass}>
-          {tradeRewardLoading ? (
-            <LoadingDots className={valueClass} />
-          ) : !Number.isFinite(metrics.valueEquilibriumRatio) ? (
-            '--%'
+        <div className="flex items-baseline gap-0">
+          {tradeRewardLoading || !Number.isFinite(metrics.valueEquilibriumRatio) ? (
+            <span className={valueClass}>0%</span>
           ) : (
-            `${metrics.valueEquilibriumRatio.toFixed(0)}%`
+            <>
+              <span className={valueClass}>{metrics.valueEquilibriumRatio.toFixed(0)}</span>
+              <span className={`${valueClass} leading-none`}>%</span>
+            </>
           )}
-        </span>
+        </div>
       </motion.div>
       <motion.div
         className={rowClass}
