@@ -19,6 +19,7 @@ export default function VerifyPage() {
   const [verificationDetails, setVerificationDetails] = useState<VerificationDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [visualReady, setVisualReady] = useState(false);
 
   // Check user's verification status on page load
   useEffect(() => {
@@ -57,9 +58,21 @@ export default function VerifyPage() {
     checkVerificationStatus();
   }, [user, getAccessToken]);
 
-  // Scroll to top after content is loaded
+  // Add visual stability delay after loading is complete
   useEffect(() => {
     if (!loading) {
+      // Add a small delay to ensure visual elements are stable before showing content
+      const visualDelayTimer = setTimeout(() => {
+        setVisualReady(true);
+      }, 100); // 100ms delay for visual stability
+
+      return () => clearTimeout(visualDelayTimer);
+    }
+  }, [loading]);
+
+  // Scroll to top after content is loaded
+  useEffect(() => {
+    if (visualReady) {
       // Use window.requestAnimationFrame to ensure DOM has fully rendered
       window.requestAnimationFrame(() => {
         const container = document.querySelector('[data-scroll-container]') as HTMLElement | null;
@@ -73,7 +86,7 @@ export default function VerifyPage() {
         }
       });
     }
-  }, [loading]);
+  }, [visualReady]);
 
   const handleTryAgain = () => {
     setVerificationDetails(null);
@@ -88,13 +101,11 @@ export default function VerifyPage() {
   const isDisabled = !user; // Disable form when user is not logged in
 
   return (
-    <div className="min-h-screen relative bg-[#151c16]">
-      {/* Header Component */}
+    <div className="relative flex min-h-screen flex-col bg-[#151c16]">
       <div className="relative z-50">
         <AcesHeader />
       </div>
 
-      {/* ACES Background + Luxury Tiles */}
       <LuxuryAssetsBackground
         className="absolute inset-0 z-0"
         opacity={1}
@@ -105,7 +116,6 @@ export default function VerifyPage() {
         bandHeight={96}
       />
 
-      {/* Title band between header bottom and solid horizontal line */}
       <PageBandTitle
         title="Identity Verification"
         contentWidth={1200}
@@ -121,16 +131,14 @@ export default function VerifyPage() {
         offsetY={12}
       />
 
-      {/* Main Content - Fixed 1400px height for background images */}
-      <div className="relative z-20 h-[1400px]">
-        {/* Scrollable form container positioned underneath text */}
+      <main className="relative z-20 flex-1 px-4 pb-16 pt-44 sm:px-6 sm:pt-48 md:pt-52 lg:px-10 lg:pt-56">
         <div
           data-scroll-container
-          className="absolute top-[200px] left-1/2 -translate-x-1/2 w-full max-w-[1200px] px-4 sm:px-6 z-10 h-[1200px] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+          className="mx-auto w-full max-w-[960px] space-y-6 sm:max-w-[1100px] lg:max-w-[1200px]"
         >
-          {loading ? (
-            <div className="flex items-center justify-center py-20">
-              <div className="w-8 h-8 border-2 border-[#D0B284] border-t-transparent rounded-full animate-spin" />
+          {!visualReady ? (
+            <div className="flex items-center justify-center py-16 sm:py-20">
+              <div className="h-8 w-8 rounded-full border-2 border-[#D0B284] border-t-transparent animate-spin" />
             </div>
           ) : shouldShowStatus ? (
             <VerificationStatusDisplay
@@ -147,42 +155,39 @@ export default function VerifyPage() {
             />
           ) : shouldShowForm ? (
             <>
-              {/* Connect wallet banner (shown when unauthenticated) */}
               {!user && (
-                <div className="mb-6">
-                  <div className="bg-gradient-to-br from-[#D7BF75]/15 to-[#C9AE6A]/10 border border-[#D7BF75]/40 rounded-xl p-5 flex items-start gap-4">
-                    <div className="shrink-0">
-                      <Shield className="w-8 h-8 text-[#D7BF75]" />
+                <div className="rounded-2xl border border-[#D7BF75]/40 bg-gradient-to-br from-[#D7BF75]/15 to-[#C9AE6A]/10 p-5 shadow-[0_10px_30px_rgba(215,191,117,0.08)] sm:p-6">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex flex-1 items-start gap-4">
+                      <div className="shrink-0 rounded-xl border border-[#D7BF75]/40 bg-black/50 p-3">
+                        <Shield className="h-8 w-8 text-[#D7BF75]" />
+                      </div>
+                      <div className="space-y-2">
+                        <h3 className="text-lg font-bold text-[#D7BF75]">
+                          Connect wallet first to submit
+                        </h3>
+                        <p className="text-sm text-[#DCDDCC]/85">
+                          Connect your wallet to start verification and submit your listing.
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <h3 className="text-[#D7BF75] font-bold text-lg mb-1">
-                        Connect wallet first to submit
-                      </h3>
-                      <p className="text-[#DCDDCC]/85 text-sm">
-                        Connect your wallet to start verification and submit your listing.
-                      </p>
-                    </div>
-                    <div className="shrink-0">
-                      <Button
-                        onClick={connectWallet}
-                        className="bg-[#D7BF75] hover:bg-[#D7BF75]/80 text-black font-semibold px-4"
-                      >
-                        Connect Wallet
-                      </Button>
-                    </div>
+                    <Button
+                      onClick={connectWallet}
+                      className="w-full bg-[#D7BF75] px-4 font-semibold text-black hover:bg-[#D7BF75]/80 sm:w-auto"
+                    >
+                      Connect Wallet
+                    </Button>
                   </div>
                 </div>
               )}
-              <VerificationForm disabled={isDisabled} />
+              <div className="rounded-2xl border border-[#E6E3D3]/15 bg-black/60 p-4 shadow-[0_10px_40px_rgba(215,191,117,0.06)] sm:p-6 lg:p-8">
+                <VerificationForm disabled={isDisabled} />
+              </div>
             </>
           ) : null}
-
-          {/* Bottom padding to ensure footer clearance */}
-          <div className="h-24" />
         </div>
-      </div>
+      </main>
 
-      {/* Footer - Fixed at bottom */}
       <div className="relative z-50">
         <Footer />
       </div>

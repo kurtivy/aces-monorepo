@@ -21,6 +21,7 @@ export default function CreateTokenForm() {
   // Import useAuth to refresh user profile on page load
   const { refreshUserProfile, isLoading } = useAuth();
   const [profileReady, setProfileReady] = useState(false);
+  const [visualReady, setVisualReady] = useState(false);
 
   // Refresh user profile when page loads to ensure latest verification status
   useEffect(() => {
@@ -37,17 +38,29 @@ export default function CreateTokenForm() {
       });
   }, [refreshUserProfile]);
 
-  // Scroll to top after content is loaded
+  // Add visual stability delay after all loading conditions are met
   useEffect(() => {
     if (imageLoaded && profileReady && !isLoading) {
+      // Add a small delay to ensure visual elements are stable before showing content
+      const visualDelayTimer = setTimeout(() => {
+        setVisualReady(true);
+      }, 100); // 100ms delay for visual stability
+
+      return () => clearTimeout(visualDelayTimer);
+    }
+  }, [imageLoaded, profileReady, isLoading]);
+
+  // Scroll to top after content is loaded
+  useEffect(() => {
+    if (visualReady) {
       // Use requestAnimationFrame to ensure DOM has fully rendered
       window.requestAnimationFrame(() => {
         window.scrollTo({ top: 0, behavior: 'instant' });
       });
     }
-  }, [imageLoaded, profileReady, isLoading]);
+  }, [visualReady]);
 
-  if (!imageLoaded || !profileReady || isLoading) {
+  if (!visualReady) {
     return (
       <div className="min-h-screen bg-[#151c16]">
         <PageLoader transparentBackground={false} />
@@ -67,13 +80,11 @@ export default function CreateTokenForm() {
   }
 
   return (
-    <div className="min-h-screen relative bg-[#151c16]">
-      {/* Header Component */}
+    <div className="relative flex min-h-screen flex-col bg-[#151c16]">
       <div className="relative z-50">
         <AcesHeader />
       </div>
 
-      {/* ACES Background + Luxury Tiles */}
       <LuxuryAssetsBackground
         className="absolute inset-0 z-0"
         opacity={1}
@@ -84,7 +95,6 @@ export default function CreateTokenForm() {
         bandHeight={96}
       />
 
-      {/* Title band between header bottom and solid horizontal line */}
       <PageBandTitle
         title="Tokenize your RWA"
         contentWidth={1200}
@@ -100,23 +110,19 @@ export default function CreateTokenForm() {
         offsetY={12}
       />
 
-      {/* Main Content - Fixed 1400px height for background images (match verify page) */}
-      <div className="relative z-20 h-[1400px]">
-        <div className="absolute top-[200px] left-1/2 -translate-x-1/2 w-full max-w-[1200px] px-4 sm:px-6 z-10">
+      <main className="relative z-20 flex-1 px-4 pb-16 pt-44 sm:px-6 sm:pt-48 md:pt-52 lg:px-10 lg:pt-56">
+        <div className="mx-auto w-full max-w-[960px] space-y-6 sm:max-w-[1100px] lg:max-w-[1200px]">
           <ListingVerificationBanner />
-        </div>
 
-        {/* Scrollable form container under the banner */}
-        <div
-          data-scroll-container
-          className="absolute top-[270px] left-1/2 -translate-x-1/2 w-full max-w-[1200px] px-4 sm:px-6 z-10 h-[1130px] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
-        >
-          <ListTokenForm />
-          <div className="h-24" />
+          <div
+            data-scroll-container
+            className="rounded-2xl border border-[#E6E3D3]/15 bg-black/60 p-4 shadow-[0_10px_40px_rgba(215,191,117,0.06)] sm:p-6 lg:p-8"
+          >
+            <ListTokenForm />
+          </div>
         </div>
-      </div>
+      </main>
 
-      {/* Footer - Fixed at bottom */}
       <div className="relative z-50">
         <Footer />
       </div>

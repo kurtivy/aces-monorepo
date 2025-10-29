@@ -164,7 +164,7 @@ export default function RWAItemPage() {
                   <ColumnDivider variant="solid" />
 
                   {/* Middle Column V2 - Chart + Learn More */}
-                  <div className="flex-1 relative backdrop-blur-sm bg-[#151c16] h-full">
+                  <div className="flex-1 relative backdrop-blur-sm bg-[#151c16] h-full min-w-0">
                     <div className="h-full min-h-[750px]">
                       <MiddleContentAreaV2
                         listing={listing}
@@ -181,7 +181,7 @@ export default function RWAItemPage() {
                 <>
                   {/* Old Layout (V1) */}
                   {/* Left Column - Navigation System */}
-                  <div className="w-72 bg-[#151c16] overflow-hidden flex-shrink-0">
+                  <div className="bg-[#151c16] overflow-hidden flex-shrink-0 w-[18rem] lg:w-[21vw] lg:min-w-[230px] lg:max-w-[280px] xl:w-[18rem] 2xl:w-[20rem]">
                     <LeftColumnNavigation
                       sections={sections}
                       activeSection={navigation.activeSection}
@@ -199,7 +199,7 @@ export default function RWAItemPage() {
                   <ColumnDivider />
 
                   {/* Middle Column - Main Content with Internal Scrolling */}
-                  <div className="flex-1 relative backdrop-blur-sm bg-[#151c16]">
+                  <div className="flex-1 relative backdrop-blur-sm bg-[#151c16] min-w-0">
                     <div
                       className="h-full overflow-y-auto"
                       style={{
@@ -226,7 +226,7 @@ export default function RWAItemPage() {
               <ColumnDivider variant="solid" />
 
               {/* Right Column - Token Swap Interface with Progression */}
-              <div className="w-96 bg-[#151c16] flex-shrink-0 overflow-hidden backdrop-blur-sm">
+              <div className="w-96 bg-[#151c16] flex-shrink-0 overflow-hidden backdrop-blur-sm xl:w-96 2xl:w-[28rem]">
                 <div
                   className="h-full"
                   style={{

@@ -20,6 +20,7 @@ export default function ProfilePage() {
   const { user, isLoading, error, updateProfile, connectWallet, authReady, isAuthenticated } =
     useAuth();
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   // Align content start to the solid line below the band
   const BOTTOM_RULE_HEIGHT = 8;
@@ -38,6 +39,7 @@ export default function ProfilePage() {
           Math.max(0, Math.round(rect.bottom + BOTTOM_RULE_HEIGHT + BAND_HEIGHT + TITLE_CLEARANCE)),
         );
       }
+      setIsMobile(window.innerWidth <= 768);
     };
     measure();
     const ResizeObserverCtor = (window as unknown as { ResizeObserver?: unknown })
@@ -119,13 +121,11 @@ export default function ProfilePage() {
   const needsWalletConnection = !isAuthenticated || !user?.walletAddress;
 
   return (
-    <div className="min-h-screen relative bg-[#151c16]">
-      {/* Header */}
+    <div className="relative flex min-h-screen flex-col bg-[#151c16]">
       <div className="relative z-50">
         <AcesHeader />
       </div>
 
-      {/* Background + lines */}
       <LuxuryAssetsBackground
         className="absolute inset-0 z-0"
         opacity={0.9}
@@ -135,95 +135,78 @@ export default function ProfilePage() {
         bandHeight={72}
       />
 
-      {/* Bands */}
-      <PageBandTitle title="Portfolio" contentWidth={1200} bandHeight={72} contentLineOffset={8} />
-      {/* Subtitle intentionally removed for profile */}
+      <PageBandTitle title="Profile" contentWidth={1200} bandHeight={72} contentLineOffset={8} />
 
-      {/* Main content */}
-      <div className="relative z-20 h-[1400px]">
-        <div
-          className="absolute left-1/2 -translate-x-1/2 w-full max-w-[1200px] z-10 h-[1200px] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] px-2"
-          style={{ top: `${contentTop}px` }}
-        >
-          {/* Backend error warning banner */}
+      <main
+        className="relative z-20 flex-1 px-4 pb-16 pt-20 sm:px-6 sm:pt-24 lg:px-10"
+        style={!isMobile && contentTop > 0 ? { paddingTop: `${contentTop}px` } : undefined}
+      >
+        <div className="mx-auto flex w-full max-w-[960px] flex-col gap-6 sm:max-w-[1100px] lg:max-w-[1200px]">
           {hasBackendError && (
-            <div className="mb-4 bg-yellow-900/20 border border-yellow-600/50 rounded-lg p-3">
-              <p className="text-yellow-200 text-sm">
-                ⚠️ Connection to backend is limited. Some features may not be available. Your wallet
-                is connected and you can still trade.
-              </p>
+            <div className="rounded-xl border border-yellow-600/50 bg-yellow-900/20 p-3 text-sm text-yellow-200">
+              ⚠️ Connection to backend is limited. Some features may not be available. Your wallet
+              is connected and you can still trade.
             </div>
           )}
 
-          {/* Connect wallet callout */}
           {needsWalletConnection && (
-            <div className="mb-4 bg-gradient-to-br from-[#D7BF75]/15 to-[#C9AE6A]/10 border border-[#D7BF75]/40 rounded-xl p-5 flex items-start gap-4">
-              <div className="flex-1">
-                <h3 className="text-[#D7BF75] font-bold text-lg mb-1">Connect your wallet</h3>
-                <p className="text-[#DCDDCC]/85 text-sm">
-                  You must connect a wallet to view your portfolio, bids, listings, and offers.
-                </p>
+            <div className="flex flex-col gap-4 rounded-2xl border border-[#D7BF75]/40 bg-gradient-to-br from-[#D7BF75]/15 to-[#C9AE6A]/10 p-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-2 text-sm text-[#DCDDCC]/85 sm:pr-4">
+                <h3 className="text-lg font-bold text-[#D7BF75]">Connect your wallet</h3>
+                <p>You must connect a wallet to view your portfolio, bids, listings, and offers.</p>
               </div>
-              <div className="shrink-0">
-                <Button
-                  onClick={connectWallet}
-                  className="bg-[#D7BF75] hover:bg-[#D7BF75]/80 text-black font-semibold px-4"
-                >
-                  Connect Wallet
-                </Button>
-              </div>
+              <Button
+                onClick={connectWallet}
+                className="w-full bg-[#D7BF75] px-4 font-semibold text-black hover:bg-[#D7BF75]/80 sm:w-auto"
+              >
+                Connect Wallet
+              </Button>
             </div>
           )}
 
-          {/* Optional verification banner */}
           {!needsWalletConnection && shouldShowVerificationBanner && (
-            <div className="mb-4">
+            <div className="-mt-2">
               <ListingVerificationBanner />
             </div>
           )}
 
-          {/* Profile header bar - outside the panel, full content width */}
           <HorizontalProfileHeader
             user={profileData}
             onUpdateAccount={handleUpdateAccount}
             onConnectWallet={connectWallet}
           />
 
-          {/* Main panel below header - simplified to My Collectibles */}
-          <div className="relative bg-[#151c16]/80 border border-dashed border-[#E6E3D3]/20 rounded-2xl p-8 shadow-[0_10px_40px_rgba(215,191,117,0.06)] space-y-6">
-            <div className="w-full">
-              <div className="mb-4 flex items-center justify-between gap-4">
-                <h2 className="text-[#D0B264] text-2xl font-semibold tracking-wider">
-                  My Collectibles
-                </h2>
-                <Link href="/launch">
-                  <Button className="bg-[#D7BF75] text-black hover:bg-[#D7BF75]/80 text-sm px-4 py-2">
-                    Launch Collectible
-                  </Button>
-                </Link>
-              </div>
-              {!needsWalletConnection ? (
-                <UserSubmissionsTab />
-              ) : (
-                <div className="text-center py-12 text-[#DCDDCC]/70">
-                  <p className="mb-2">Connect your wallet to view your collectibles</p>
-                  <p className="text-sm">
-                    Your submissions, listings, and offers will appear here once connected.
-                  </p>
-                </div>
-              )}
+          <div className="space-y-6 rounded-2xl border border-dashed border-[#E6E3D3]/20 bg-[#151c16]/80 p-6 shadow-[0_10px_40px_rgba(215,191,117,0.06)] sm:p-8">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <h2 className="text-2xl font-semibold tracking-wider text-[#D0B264]">
+                My Collectibles
+              </h2>
+              <Link href="/launch" className="inline-flex">
+                <Button className="w-full bg-[#D7BF75] px-4 py-2 text-sm text-black hover:bg-[#D7BF75]/80 sm:w-auto">
+                  Launch Collectible
+                </Button>
+              </Link>
             </div>
+
+            {!needsWalletConnection ? (
+              <UserSubmissionsTab />
+            ) : (
+              <div className="space-y-2 py-12 text-center text-[#DCDDCC]/70">
+                <p className="mb-2">Connect your wallet to view your collectibles</p>
+                <p className="text-sm">
+                  Your submissions, listings, and offers will appear here once connected.
+                </p>
+              </div>
+            )}
           </div>
-          <div className="h-24" />
         </div>
-      </div>
-      {/* Overlays */}
+      </main>
+
       <AdminDashboardOverlay
         isOpen={isAdminDashboardOpen}
         onClose={() => setIsAdminDashboardOpen(false)}
       />
 
-      {/* Footer */}
       <div className="relative z-50">
         <Footer />
       </div>
