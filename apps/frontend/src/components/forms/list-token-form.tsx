@@ -1017,7 +1017,7 @@ export default function ListTokenForm() {
                 )}
 
                 {/* Terms and Conditions Acceptance */}
-                <div className="bg-[#D7BF75]/10 border border-[#D7BF75]/30 rounded-xl p-4">
+                <div className="bg-[#D7BF75]/10 border border-[#D7BF75]/30 rounded-xl p-4 space-y-4">
                   <div className="flex items-start gap-3">
                     <input
                       type="checkbox"
@@ -1040,6 +1040,33 @@ export default function ListTokenForm() {
                       </button>
                       .<span className="text-red-400 ml-1">*</span>
                     </label>
+                  </div>
+
+                  {/* Fee Information */}
+                  <div className="flex items-start gap-3 pl-7">
+                    <div className="mt-0.5">
+                      <svg
+                        className="w-3 h-3 text-[#D7BF75]"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-xs text-[#DCDDCC]/90 leading-relaxed">
+                        <span className="text-[#D7BF75] font-semibold">Fee Information:</span> As
+                        the token creator, you will earn{' '}
+                        <span className="text-[#D7BF75] font-medium">0.5%</span> of each trade on
+                        your token in fees.
+                      </p>
+                    </div>
                   </div>
                 </div>
 

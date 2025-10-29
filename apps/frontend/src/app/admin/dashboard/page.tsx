@@ -11,6 +11,7 @@ import { LaunchTab } from '@/components/profile/admin/launch-tab';
 import { SubmissionsTab } from '@/components/profile/admin/submissions-tab';
 import { VerificationsTab } from '@/components/profile/admin/verifications-tab';
 import { AdminListingsTab } from '@/components/profile/admin/admin-listings-tab';
+import { TokenManagementTab } from '@/components/profile/admin/token-management-tab';
 import { BidsTab } from '@/components/profile/admin/bids-tab';
 import { SellersTab } from '@/components/profile/admin/sellers-tab';
 
@@ -125,6 +126,12 @@ export default function AdminDashboardPage() {
                 Listings
               </TabsTrigger>
               <TabsTrigger
+                value="token-management"
+                className="bg-transparent text-[#DCDDCC] text-lg font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-purple-400"
+              >
+                Token Management
+              </TabsTrigger>
+              <TabsTrigger
                 value="bids"
                 className="bg-transparent text-[#DCDDCC] text-lg font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-purple-400"
               >
@@ -154,6 +161,9 @@ export default function AdminDashboardPage() {
             </TabsContent>
             <TabsContent value="listings" className="mt-6 w-full">
               <AdminListingsTab />
+            </TabsContent>
+            <TabsContent value="token-management" className="mt-6 w-full">
+              <TokenManagementTab />
             </TabsContent>
             <TabsContent value="bids" className="mt-6 w-full">
               <BidsTab />
