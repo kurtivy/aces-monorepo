@@ -481,7 +481,7 @@ export const useCanvasInteractions = ({
       if (clickedImage) {
         // Handle special interactive squares
         if (clickedImage.metadata.id === 'click-to-trade') {
-          window.location.href = '/rwa/apk';
+          window.location.href = '/rwa/apkaws';
           return;
         }
         if (clickedImage.metadata.id === 'pretty-rare-tv') {

@@ -120,7 +120,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     };
 
     if (this.config.debug) {
-      console.log('[UnifiedDatafeed] Initialized with config:', this.config);
+      // console.log('[UnifiedDatafeed] Initialized with config:', this.config);
     }
 
     // Cleanup on page unload
@@ -137,7 +137,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
    */
   public destroy(): void {
     if (this.config.debug) {
-      console.log('[UnifiedDatafeed] Destroying datafeed');
+      // console.log('[UnifiedDatafeed] Destroying datafeed');
     }
 
     this.subscriptions.clear();
@@ -153,8 +153,8 @@ export class UnifiedDatafeed implements IBasicDataFeed {
 
     this.isConnecting = true;
 
-    console.log('[UnifiedDatafeed] 🔌 Connecting to WebSocket:', this.config.wsUrl);
-    console.log('[UnifiedDatafeed] 📊 Active subscriptions:', this.subscriptions.size);
+    // console.log('[UnifiedDatafeed] 🔌 Connecting to WebSocket:', this.config.wsUrl);
+    // console.log('[UnifiedDatafeed] 📊 Active subscriptions:', this.subscriptions.size);
 
     try {
       this.ws = new WebSocket(this.config.wsUrl);
@@ -162,12 +162,12 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       this.ws.onopen = () => {
         this.isConnecting = false;
 
-        console.log('[UnifiedDatafeed] ✅ WebSocket connected successfully');
-        console.log(
-          '[UnifiedDatafeed] 🔄 Resubscribing to',
-          this.subscriptions.size,
-          'subscriptions',
-        );
+        // console.log('[UnifiedDatafeed] ✅ WebSocket connected successfully');
+        // console.log(
+        //   '[UnifiedDatafeed] 🔄 Resubscribing to',
+        //   this.subscriptions.size,
+        //   'subscriptions',
+        // );
 
         // Resubscribe to all existing subscriptions
         this.resubscribeAll();
@@ -176,17 +176,17 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       this.ws.onmessage = (event) => {
         try {
           const update = JSON.parse(event.data);
-          console.log('[UnifiedDatafeed] 📨 Received WebSocket message:', {
-            type: update.type,
-            tokenAddress: update.tokenAddress,
-            timeframe: update.timeframe,
-            chartType: update.chartType,
-            hasCandle: !!update.candle,
-            dataSource: update.candle?.dataSource,
-            candleTimestamp: update.candle?.timestamp
-              ? new Date(update.candle.timestamp).toISOString()
-              : null,
-          });
+          // console.log('[UnifiedDatafeed] 📨 Received WebSocket message:', {
+          //   type: update.type,
+          //   tokenAddress: update.tokenAddress,
+          //   timeframe: update.timeframe,
+          //   chartType: update.chartType,
+          //   hasCandle: !!update.candle,
+          //   dataSource: update.candle?.dataSource,
+          //   candleTimestamp: update.candle?.timestamp
+          //     ? new Date(update.candle.timestamp).toISOString()
+          //     : null,
+          // });
           this.handleWebSocketMessage(update);
         } catch (error) {
           console.error(
@@ -230,11 +230,11 @@ export class UnifiedDatafeed implements IBasicDataFeed {
 
   private resubscribeAll(): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      console.log('[UnifiedDatafeed] ⚠️ WebSocket not ready for resubscription');
+      // console.log('[UnifiedDatafeed] ⚠️ WebSocket not ready for resubscription');
       return;
     }
 
-    console.log('[UnifiedDatafeed] 🔄 Resubscribing to', this.subscriptions.size, 'subscriptions');
+    // console.log('[UnifiedDatafeed] 🔄 Resubscribing to', this.subscriptions.size, 'subscriptions');
 
     for (const [subscriptionKey, subscriptionInfo] of this.subscriptions.entries()) {
       const rawTicker = subscriptionInfo.symbolInfo.ticker ?? '';
@@ -244,13 +244,13 @@ export class UnifiedDatafeed implements IBasicDataFeed {
         : rawTicker;
       const timeframe = this.resolutionToTimeframe(subscriptionInfo.resolution);
 
-      console.log('[UnifiedDatafeed] 📝 Sending subscription:', {
-        type: 'subscribe',
-        cleanAddress: tokenAddress,
-        timeframe,
-        chartType: subscriptionInfo.isMarketCapMode ? 'mcap' : 'price',
-        subscriptionKey,
-      });
+      // console.log('[UnifiedDatafeed] 📝 Sending subscription:', {
+      //   type: 'subscribe',
+      //   cleanAddress: tokenAddress,
+      //   timeframe,
+      //   chartType: subscriptionInfo.isMarketCapMode ? 'mcap' : 'price',
+      //   subscriptionKey,
+      // });
 
       this.ws!.send(
         JSON.stringify({
@@ -286,10 +286,10 @@ export class UnifiedDatafeed implements IBasicDataFeed {
   }): void {
     // 🔥 NEW: Handle graduation event - triggers full chart refresh
     if (update.type === 'graduation_event') {
-      console.log('[UnifiedDatafeed] 🎓 GRADUATION EVENT received:', {
-        tokenAddress: update.tokenAddress,
-        graduationState: update.graduationState,
-      });
+      // console.log('[UnifiedDatafeed] 🎓 GRADUATION EVENT received:', {
+      //   tokenAddress: update.tokenAddress,
+      //   graduationState: update.graduationState,
+      // });
 
       // Clear last bars to force a fresh fetch
       if (update.tokenAddress) {
@@ -313,8 +313,8 @@ export class UnifiedDatafeed implements IBasicDataFeed {
           this.chartDataCache.delete(cacheKey);
         }
 
-        console.log('[UnifiedDatafeed] 🔄 Cleared cached bars for graduated token');
-        console.log('[UnifiedDatafeed] 📊 Active subscriptions:', this.subscriptions.size);
+        // console.log('[UnifiedDatafeed] 🔄 Cleared cached bars for graduated token');
+        // console.log('[UnifiedDatafeed] 📊 Active subscriptions:', this.subscriptions.size);
 
         // Log all active subscriptions for this token
         for (const [key, sub] of this.subscriptions.entries()) {
@@ -347,14 +347,14 @@ export class UnifiedDatafeed implements IBasicDataFeed {
           update.chartType === (subscriptionInfo.isMarketCapMode ? 'mcap' : 'price') &&
           update.candle
         ) {
-          console.log('[UnifiedDatafeed] ✅ Update matches subscription:', {
-            updateToken: update.tokenAddress,
-            subscriptionToken: tokenAddress,
-            updateTimeframe: update.timeframe,
-            subscriptionTimeframe: timeframe,
-            updateChartType: update.chartType,
-            subscriptionChartType: subscriptionInfo.isMarketCapMode ? 'mcap' : 'price',
-          });
+          // console.log('[UnifiedDatafeed] ✅ Update matches subscription:', {
+          //   updateToken: update.tokenAddress,
+          //   subscriptionToken: tokenAddress,
+          //   updateTimeframe: update.timeframe,
+          //   subscriptionTimeframe: timeframe,
+          //   updateChartType: update.chartType,
+          //   subscriptionChartType: subscriptionInfo.isMarketCapMode ? 'mcap' : 'price',
+          // });
           const ticker = subscriptionInfo.symbolInfo.ticker ?? tokenAddress ?? '';
           const lastBar = this.lastBars.get(ticker);
           const rawTimestamp = update.candle.timestamp;
@@ -427,24 +427,29 @@ export class UnifiedDatafeed implements IBasicDataFeed {
               this.lastBars.set(ticker, updatedBar);
 
               // 🔥 NEW: Update cache with latest bar
-              this.updateCacheWithNewBar(tokenAddress, timeframe, subscriptionInfo.isMarketCapMode, updatedBar);
-
-              console.log('[UnifiedDatafeed] 📊 Calling onTick with updated bar:', {
-                time: updatedBar.time,
-                open: updatedBar.open,
-                high: updatedBar.high,
-                low: updatedBar.low,
-                close: updatedBar.close,
-                volume: updatedBar.volume,
-                ticker,
+              this.updateCacheWithNewBar(
                 tokenAddress,
                 timeframe,
-                chartType: subscriptionInfo.isMarketCapMode ? 'mcap' : 'price',
-              });
+                subscriptionInfo.isMarketCapMode,
+                updatedBar,
+              );
+
+              // console.log('[UnifiedDatafeed] 📊 Calling onTick with updated bar:', {
+              //   time: updatedBar.time,
+              //   open: updatedBar.open,
+              //   high: updatedBar.high,
+              //   low: updatedBar.low,
+              //   close: updatedBar.close,
+              //   volume: updatedBar.volume,
+              //   ticker,
+              //   tokenAddress,
+              //   timeframe,
+              //   chartType: subscriptionInfo.isMarketCapMode ? 'mcap' : 'price',
+              // });
 
               try {
                 subscriptionInfo.onTick(updatedBar);
-                console.log('[UnifiedDatafeed] ✅ onTick called successfully');
+                // console.log('[UnifiedDatafeed] ✅ onTick called successfully');
               } catch (error) {
                 console.error('[UnifiedDatafeed] ❌ Error calling onTick:', error);
               }
@@ -459,7 +464,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
               }
 
               if (this.config.debug) {
-                console.log('[UnifiedDatafeed] Updated existing bar via websocket:', updatedBar);
+                // console.log('[UnifiedDatafeed] Updated existing bar via websocket:', updatedBar);
               }
               continue;
             }
@@ -506,20 +511,25 @@ export class UnifiedDatafeed implements IBasicDataFeed {
           this.lastBars.set(ticker, bar);
 
           // 🔥 NEW: Update cache with new bar
-          this.updateCacheWithNewBar(tokenAddress, timeframe, subscriptionInfo.isMarketCapMode, bar);
-
-          console.log('[UnifiedDatafeed] 📊 Calling onTick with new bar:', {
-            time: bar.time,
-            open: bar.open,
-            high: bar.high,
-            low: bar.low,
-            close: bar.close,
-            volume: bar.volume,
-            ticker,
+          this.updateCacheWithNewBar(
             tokenAddress,
             timeframe,
-            chartType: subscriptionInfo.isMarketCapMode ? 'mcap' : 'price',
-          });
+            subscriptionInfo.isMarketCapMode,
+            bar,
+          );
+
+          // console.log('[UnifiedDatafeed] 📊 Calling onTick with new bar:', {
+          //   time: bar.time,
+          //   open: bar.open,
+          //   high: bar.high,
+          //   low: bar.low,
+          //   close: bar.close,
+          //   volume: bar.volume,
+          //   ticker,
+          //   tokenAddress,
+          //   timeframe,
+          //   chartType: subscriptionInfo.isMarketCapMode ? 'mcap' : 'price',
+          // });
 
           try {
             subscriptionInfo.onTick(bar);
@@ -533,7 +543,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
           }
 
           if (this.config.debug) {
-            console.log('[UnifiedDatafeed] Tick received:', bar);
+            // console.log('[UnifiedDatafeed] Tick received:', bar);
           }
         } else {
           console.log('[UnifiedDatafeed] ❌ Update does not match subscription:', {
@@ -550,7 +560,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     } else if (update.type === 'initial_data') {
       // Handle initial data sent by the backend
       if (this.config.debug) {
-        console.log('[UnifiedDatafeed] Received initial data:', update.candles?.length, 'candles');
+        // console.log('[UnifiedDatafeed] Received initial data:', update.candles?.length, 'candles');
       }
 
       // Process initial candles if any
@@ -592,7 +602,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
 
   onReady(callback: OnReadyCallback): void {
     if (this.config.debug) {
-      console.log('[UnifiedDatafeed] onReady called');
+      // console.log('[UnifiedDatafeed] onReady called');
     }
 
     setTimeout(() => {
@@ -612,7 +622,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     onResult: SearchSymbolsCallback,
   ): void {
     if (this.config.debug) {
-      console.log('[UnifiedDatafeed] searchSymbols:', userInput);
+      // console.log('[UnifiedDatafeed] searchSymbols:', userInput);
     }
     // Not implementing search for now
     onResult([]);
@@ -624,7 +634,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     _onError: DatafeedErrorCallback,
   ): void {
     if (this.config.debug) {
-      console.log('[UnifiedDatafeed] resolveSymbol:', symbolName);
+      // console.log('[UnifiedDatafeed] resolveSymbol:', symbolName);
     }
 
     setTimeout(() => {
@@ -667,16 +677,16 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     const timeframe = this.resolutionToTimeframe(resolution);
 
     if (this.config.debug) {
-      console.log('[UnifiedDatafeed] getBars called:', {
-        symbol,
-        token: tokenAddress,
-        mode: isMarketCapMode ? 'mcap' : 'price',
-        resolution,
-        timeframe,
-        from: new Date(periodParams.from * 1000).toISOString(),
-        to: new Date(periodParams.to * 1000).toISOString(),
-        firstDataRequest: periodParams.firstDataRequest,
-      });
+      // console.log('[UnifiedDatafeed] getBars called:', {
+      //   symbol,
+      //   token: tokenAddress,
+      //   mode: isMarketCapMode ? 'mcap' : 'price',
+      //   resolution,
+      //   timeframe,
+      //   from: new Date(periodParams.from * 1000).toISOString(),
+      //   to: new Date(periodParams.to * 1000).toISOString(),
+      //   firstDataRequest: periodParams.firstDataRequest,
+      // });
     }
 
     // 🔥 NEW: Check cache first for instant loading
@@ -687,11 +697,11 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     if (cachedEntry && now - cachedEntry.timestamp < this.CACHE_TTL_MS) {
       // Cache hit! Return cached data instantly
       if (this.config.debug) {
-        console.log('[UnifiedDatafeed] ⚡ Cache HIT - returning instantly:', {
-          cacheKey,
-          age: `${Math.round((now - cachedEntry.timestamp) / 1000)}s`,
-          bars: cachedEntry.bars.length,
-        });
+        // console.log('[UnifiedDatafeed] ⚡ Cache HIT - returning instantly:', {
+        //   cacheKey,
+        //   age: `${Math.round((now - cachedEntry.timestamp) / 1000)}s`,
+        //   bars: cachedEntry.bars.length,
+        // });
       }
 
       // Filter cached bars to requested time range
@@ -712,11 +722,11 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     }
 
     if (this.config.debug && cachedEntry) {
-      console.log('[UnifiedDatafeed] 💨 Cache EXPIRED - fetching fresh data:', {
-        cacheKey,
-        age: `${Math.round((now - cachedEntry.timestamp) / 1000)}s`,
-        ttl: `${this.CACHE_TTL_MS / 1000}s`,
-      });
+      // console.log('[UnifiedDatafeed] 💨 Cache EXPIRED - fetching fresh data:', {
+      //   cacheKey,
+      //   age: `${Math.round((now - cachedEntry.timestamp) / 1000)}s`,
+      //   ttl: `${this.CACHE_TTL_MS / 1000}s`,
+      // });
     }
 
     try {
@@ -730,13 +740,13 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       const url = `${this.config.apiBaseUrl}/api/v1/chart/${tokenAddress}/unified?timeframe=${timeframe}&from=${periodParams.from}&to=${periodParams.to}&limit=${limit}`;
 
       if (this.config.debug) {
-        console.log('[UnifiedDatafeed] 🔥 Phase 2: Progressive loading:', {
-          firstDataRequest: periodParams.firstDataRequest,
-          limit,
-          countBack: periodParams.countBack,
-          from: new Date(periodParams.from * 1000).toISOString(),
-          to: new Date(periodParams.to * 1000).toISOString(),
-        });
+        // console.log('[UnifiedDatafeed] 🔥 Phase 2: Progressive loading:', {
+        //   firstDataRequest: periodParams.firstDataRequest,
+        //   limit,
+        //   countBack: periodParams.countBack,
+        //   from: new Date(periodParams.from * 1000).toISOString(),
+        //   to: new Date(periodParams.to * 1000).toISOString(),
+        // });
       }
 
       const response = await fetch(url);
@@ -755,7 +765,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
 
       if (!candles || candles.length === 0) {
         if (this.config.debug) {
-          console.log('[UnifiedDatafeed] No candles returned');
+          // console.log('[UnifiedDatafeed] No candles returned');
         }
         onResult([], { noData: true });
         return;
@@ -768,7 +778,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
 
       if (filteredCandles.length === 0) {
         if (this.config.debug) {
-          console.log('[UnifiedDatafeed] No candles in requested range');
+          // console.log('[UnifiedDatafeed] No candles in requested range');
         }
         onResult([], { noData: true });
         return;
@@ -825,7 +835,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
         });
 
         if (this.config.debug) {
-          console.log('[UnifiedDatafeed] 💾 Cached data for:', cacheKey, `(${bars.length} bars)`);
+          // console.log('[UnifiedDatafeed] 💾 Cached data for:', cacheKey, `(${bars.length} bars)`);
         }
       }
 
@@ -859,46 +869,46 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       }
 
       // 🔥 DEBUG LOGGING - Find specific candles to diagnose the issue
-      console.log('[UnifiedDatafeed] 📊 getBars returning:', {
-        tokenAddress,
-        from: new Date(periodParams.from * 1000).toISOString(),
-        to: new Date(periodParams.to * 1000).toISOString(),
-        totalBars: bars.length,
-        firstBar: bars[0]
-          ? {
-              time: new Date(bars[0].time).toISOString(),
-              volume: bars[0].volume,
-              close: bars[0].close,
-            }
-          : null,
-        lastBar: bars[bars.length - 1]
-          ? {
-              time: new Date(bars[bars.length - 1].time).toISOString(),
-              volume: bars[bars.length - 1].volume,
-              close: bars[bars.length - 1].close,
-            }
-          : null,
-        // Find candles around the trade time (05:15-05:20)
-        candlesAround0515: bars
-          .filter((b) => {
-            const time = new Date(b.time);
-            const hour = time.getUTCHours();
-            const minute = time.getUTCMinutes();
-            // Look for 05:00 to 05:30 range
-            return hour === 5 && minute >= 0 && minute <= 30;
-          })
-          .map((b) => ({
-            time: new Date(b.time).toISOString(),
-            volume: b.volume,
-            close: b.close,
-            trades: filteredCandles.find((c) => c.timestamp * 1000 === b.time)?.trades || 0,
-          })),
-      });
+      // console.log('[UnifiedDatafeed] 📊 getBars returning:', {
+      //   tokenAddress,
+      //   from: new Date(periodParams.from * 1000).toISOString(),
+      //   to: new Date(periodParams.to * 1000).toISOString(),
+      //   totalBars: bars.length,
+      //   firstBar: bars[0]
+      //     ? {
+      //         time: new Date(bars[0].time).toISOString(),
+      //         volume: bars[0].volume,
+      //         close: bars[0].close,
+      //       }
+      //     : null,
+      //   lastBar: bars[bars.length - 1]
+      //     ? {
+      //         time: new Date(bars[bars.length - 1].time).toISOString(),
+      //         volume: bars[bars.length - 1].volume,
+      //         close: bars[bars.length - 1].close,
+      //       }
+      //     : null,
+      //   // Find candles around the trade time (05:15-05:20)
+      //   candlesAround0515: bars
+      //     .filter((b) => {
+      //       const time = new Date(b.time);
+      //       const hour = time.getUTCHours();
+      //       const minute = time.getUTCMinutes();
+      //       // Look for 05:00 to 05:30 range
+      //       return hour === 5 && minute >= 0 && minute <= 30;
+      //     })
+      //     .map((b) => ({
+      //       time: new Date(b.time).toISOString(),
+      //       volume: b.volume,
+      //       close: b.close,
+      //       trades: filteredCandles.find((c) => c.timestamp * 1000 === b.time)?.trades || 0,
+      //     })),
+      // });
 
       if (this.config.debug) {
-        console.log('[UnifiedDatafeed] Returning', bars.length, 'bars');
-        console.log('[UnifiedDatafeed] First bar:', bars[0]);
-        console.log('[UnifiedDatafeed] Last bar:', bars[bars.length - 1]);
+        // console.log('[UnifiedDatafeed] Returning', bars.length, 'bars');
+        // console.log('[UnifiedDatafeed] First bar:', bars[0]);
+        // console.log('[UnifiedDatafeed] Last bar:', bars[bars.length - 1]);
       }
 
       // 🔥 PHASE 2: Tell TradingView if there's more data available
@@ -934,11 +944,11 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     const subscriptionKey = `${rawTicker}:${timeframe}:${listenerGuid}`;
 
     if (this.config.debug) {
-      console.log('[UnifiedDatafeed] subscribeBars:', {
-        subscriptionKey,
-        cleanAddress: tokenAddress,
-        chartType: isMarketCapMode ? 'mcap' : 'price',
-      });
+      // console.log('[UnifiedDatafeed] subscribeBars:', {
+      //   subscriptionKey,
+      //   cleanAddress: tokenAddress,
+      //   chartType: isMarketCapMode ? 'mcap' : 'price',
+      // });
     }
 
     // Store subscription info for the persistent WebSocket connection
@@ -956,7 +966,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     // If WebSocket is already open, subscribe immediately
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       if (this.config.debug) {
-        console.log('[UnifiedDatafeed] WebSocket already open, subscribing immediately');
+        // console.log('[UnifiedDatafeed] WebSocket already open, subscribing immediately');
       }
 
       this.ws.send(
@@ -972,7 +982,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
 
   unsubscribeBars(listenerGuid: string): void {
     if (this.config.debug) {
-      console.log('[UnifiedDatafeed] unsubscribeBars:', listenerGuid);
+      // console.log('[UnifiedDatafeed] unsubscribeBars:', listenerGuid);
     }
 
     // Find and remove subscriptions for this listener
@@ -992,11 +1002,11 @@ export class UnifiedDatafeed implements IBasicDataFeed {
           const timeframe = this.resolutionToTimeframe(subscriptionInfo.resolution);
 
           if (this.config.debug) {
-            console.log('[UnifiedDatafeed] Unsubscribing from:', {
-              subscriptionKey,
-              cleanAddress: tokenAddress,
-              chartType: subscriptionInfo.isMarketCapMode ? 'mcap' : 'price',
-            });
+            // console.log('[UnifiedDatafeed] Unsubscribing from:', {
+            //   subscriptionKey,
+            //   cleanAddress: tokenAddress,
+            //   chartType: subscriptionInfo.isMarketCapMode ? 'mcap' : 'price',
+            // });
           }
 
           this.ws.send(
@@ -1019,7 +1029,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     // If no subscriptions left, close WebSocket connection
     if (this.subscriptions.size === 0 && this.ws) {
       if (this.config.debug) {
-        console.log('[UnifiedDatafeed] No more subscriptions, closing WebSocket');
+        // console.log('[UnifiedDatafeed] No more subscriptions, closing WebSocket');
       }
       this.cleanup();
     }
@@ -1190,10 +1200,10 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       // Update existing bar
       cached.bars[existingBarIndex] = newBar;
       if (this.config.debug) {
-        console.log('[UnifiedDatafeed] 💾 Updated cached bar:', {
-          cacheKey,
-          barTime: new Date(newBar.time).toISOString(),
-        });
+        // console.log('[UnifiedDatafeed] 💾 Updated cached bar:', {
+        //   cacheKey,
+        //   barTime: new Date(newBar.time).toISOString(),
+        // });
       }
     } else {
       // Append new bar to cache
@@ -1201,11 +1211,11 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       // Keep cache sorted by time
       cached.bars.sort((a, b) => a.time - b.time);
       if (this.config.debug) {
-        console.log('[UnifiedDatafeed] 💾 Added new bar to cache:', {
-          cacheKey,
-          barTime: new Date(newBar.time).toISOString(),
-          totalBars: cached.bars.length,
-        });
+        // console.log('[UnifiedDatafeed] 💾 Added new bar to cache:', {
+        //   cacheKey,
+        //   barTime: new Date(newBar.time).toISOString(),
+        //   totalBars: cached.bars.length,
+        // });
       }
     }
 
@@ -1225,7 +1235,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     }
 
     if (this.config.debug) {
-      console.log('[UnifiedDatafeed] 🔥 Starting aggressive polling for', tokenAddress);
+      // console.log('[UnifiedDatafeed] 🔥 Starting aggressive polling for', tokenAddress);
     }
 
     // Poll every 1-2 seconds during active trading
@@ -1279,7 +1289,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
             this.updateCacheWithNewBar(tokenAddress, timeframe, subscription.isMarketCapMode, bar);
 
             if (this.config.debug) {
-              console.log('[UnifiedDatafeed] 🔥 Real-time update:', bar);
+              // console.log('[UnifiedDatafeed] 🔥 Real-time update:', bar);
             }
           }
 
@@ -1317,7 +1327,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       this.aggressivePollingIntervals.delete(key);
 
       if (this.config.debug) {
-        console.log('[UnifiedDatafeed] 🔥 Stopped aggressive polling for', tokenAddress);
+        // console.log('[UnifiedDatafeed] 🔥 Stopped aggressive polling for', tokenAddress);
       }
     }
   }

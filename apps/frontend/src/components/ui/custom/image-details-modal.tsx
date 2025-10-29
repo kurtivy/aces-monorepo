@@ -238,11 +238,7 @@ export default function ImageDetailsModal({
 
   const normalizedSymbol = useMemo(() => {
     if (isDrvn) return '';
-    return (
-      normalizeSymbol(metadataSymbol) ??
-      normalizeSymbol(metadataTicker) ??
-      ''
-    );
+    return normalizeSymbol(metadataSymbol) ?? normalizeSymbol(metadataTicker) ?? '';
   }, [isDrvn, metadataSymbol, metadataTicker]);
 
   const shouldExposeTokenStats = normalizedSymbol === 'APK';
@@ -280,7 +276,8 @@ export default function ImageDetailsModal({
           const tokenPriceUsd = Number(response.data.tokenPriceUsd || 0);
           setTokenMetrics({
             marketCapUsd: Number.isFinite(marketCapUsd) && marketCapUsd > 0 ? marketCapUsd : null,
-            tokenPriceUsd: Number.isFinite(tokenPriceUsd) && tokenPriceUsd > 0 ? tokenPriceUsd : null,
+            tokenPriceUsd:
+              Number.isFinite(tokenPriceUsd) && tokenPriceUsd > 0 ? tokenPriceUsd : null,
           });
         } else {
           setTokenMetrics({
@@ -323,9 +320,7 @@ export default function ImageDetailsModal({
     if (tokenMetrics.marketCapUsd && tokenMetrics.marketCapUsd > 0) {
       return tokenMetrics.marketCapUsd;
     }
-    return isFinite(fallbackMarketCapUsd) && fallbackMarketCapUsd > 0
-      ? fallbackMarketCapUsd
-      : 0;
+    return isFinite(fallbackMarketCapUsd) && fallbackMarketCapUsd > 0 ? fallbackMarketCapUsd : 0;
   }, [fallbackMarketCapUsd, isDrvn, shouldExposeTokenStats, tokenMetrics.marketCapUsd]);
 
   // Get RRP (Asset Sale Price) from metadata
@@ -404,7 +399,7 @@ export default function ImageDetailsModal({
     if (isDrvn) return; // disabled
     if (safeMetadata.id === '7') {
       stableOnClose();
-      router.push('/rwa/apk');
+      router.push('/rwa/apkaws');
     }
   }, [router, safeMetadata.id, stableOnClose, isDrvn]);
 
