@@ -5,6 +5,7 @@ import { HorizontalProfileHeader } from '@/components/profile/horizontal-profile
 // Tabs removed in favor of a single "My Collectibles" view on this page
 import Footer from '@/components/ui/custom/footer';
 import { useState, useLayoutEffect } from 'react';
+import Link from 'next/link';
 import { AdminDashboardOverlay } from '@/components/profile/admin-dashboard-overlay';
 import LuxuryAssetsBackground from '@/components/ui/custom/luxury-assets-background';
 import AcesHeader from '@/components/ui/custom/aces-header';
@@ -191,12 +192,26 @@ export default function ProfilePage() {
           {/* Main panel below header - simplified to My Collectibles */}
           <div className="relative bg-[#151c16]/80 border border-dashed border-[#E6E3D3]/20 rounded-2xl p-8 shadow-[0_10px_40px_rgba(215,191,117,0.06)] space-y-6">
             <div className="w-full">
-              <div className="mb-4">
+              <div className="mb-4 flex items-center justify-between gap-4">
                 <h2 className="text-[#D0B264] text-2xl font-semibold tracking-wider">
                   My Collectibles
                 </h2>
+                <Link href="/launch">
+                  <Button className="bg-[#D7BF75] text-black hover:bg-[#D7BF75]/80 text-sm px-4 py-2">
+                    Launch Collectible
+                  </Button>
+                </Link>
               </div>
-              <UserSubmissionsTab />
+              {!needsWalletConnection ? (
+                <UserSubmissionsTab />
+              ) : (
+                <div className="text-center py-12 text-[#DCDDCC]/70">
+                  <p className="mb-2">Connect your wallet to view your collectibles</p>
+                  <p className="text-sm">
+                    Your submissions, listings, and offers will appear here once connected.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
           <div className="h-24" />

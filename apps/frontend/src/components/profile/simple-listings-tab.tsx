@@ -14,7 +14,6 @@ import {
   Check,
   Coins,
   FileText,
-  Plus,
   X,
   Save,
   Loader2,
@@ -105,6 +104,28 @@ interface EnhancedListing {
 interface ImageGalleryEditorProps {
   value: string[];
   onChange: (gallery: string[]) => void;
+}
+
+type ExternalAction =
+  | {
+      type: 'open';
+      listingId: string;
+      mode: 'edit' | 'view';
+      scroll?: boolean;
+    }
+  | {
+      type: 'launch';
+      listingId: string;
+    };
+
+interface SimpleListingOpenEventDetail {
+  listingId: string;
+  mode?: 'edit' | 'view';
+  scroll?: boolean;
+}
+
+interface SimpleListingLaunchEventDetail {
+  listingId: string;
 }
 
 // Utility functions for formatting metrics
@@ -391,7 +412,7 @@ function useWagmiEthersSigner() {
 }
 
 export function SimpleListingsTab({
-  defaultShowPending = false,
+  defaultShowPending: _defaultShowPending = false,
 }: {
   defaultShowPending?: boolean;
 }) {
@@ -414,12 +435,17 @@ export function SimpleListingsTab({
   const [expandedOffers, setExpandedOffers] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [mintingListingId, setMintingListingId] = useState<string | null>(null);
-  const [showPendingListings, setShowPendingListings] = useState(defaultShowPending);
+  const [panelMode, setPanelMode] = useState<'edit' | 'view'>('edit');
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [symbolCheck, setSymbolCheck] = useState<{
     status: 'idle' | 'checking' | 'available' | 'taken' | 'error';
     message?: string;
   }>({ status: 'idle' });
   const symbolCheckTimeout = useRef<number | null>(null);
+  const [pendingExternalAction, setPendingExternalAction] = useState<ExternalAction | null>(null);
+  const hasInitializedRef = useRef(false);
+  const isReadOnly = panelMode === 'view';
+  const activeListing = expandedRow ? listings.find((l) => l.id === expandedRow) : null;
 
   // Normalize potentially percent-encoded signed URLs coming from storage
   const normalizeImageUrl = useCallback((url: string | undefined) => {
@@ -499,6 +525,16 @@ export function SimpleListingsTab({
       });
 
       setListings(enhanced);
+
+      if (typeof window !== 'undefined') {
+        if (hasInitializedRef.current) {
+          window.dispatchEvent(
+            new CustomEvent('aces:simple-listings:updated', { detail: { reason: 'refresh' } }),
+          );
+        } else {
+          hasInitializedRef.current = true;
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
@@ -511,31 +547,79 @@ export function SimpleListingsTab({
     // Intentionally do not depend on user?.id; access token gating happens in fetchListings
   }, [fetchListings]);
 
-  const handleExpandDetails = (listing: EnhancedListing) => {
-    setExpandedRow(listing.id);
-    setExpandedOffers(null);
+  const handleExpandDetails = useCallback(
+    (listing: EnhancedListing, mode: 'edit' | 'view' = 'edit') => {
+      setPanelMode(mode);
+      setExpandedRow(listing.id);
+      setExpandedOffers(null);
+      setIsDetailsModalOpen(true);
 
-    // Convert asset details to form format
-    const assetDetails: AssetDetails = (listing.assetDetails ?? {}) as AssetDetails;
+      // Convert asset details to form format
+      const assetDetails: AssetDetails = (listing.assetDetails ?? {}) as AssetDetails;
 
-    setFormData({
-      title: listing.title,
-      symbol: listing.symbol,
-      description: listing.details || listing.story || listing.description || '',
-      brand: listing.brand || undefined,
-      location: listing.location || undefined,
-      story: listing.story || undefined,
-      details: listing.details || undefined,
-      provenance: listing.provenance || undefined,
-      hypeSentence: listing.hypeSentence || undefined,
-      value: listing.value || undefined,
-      assetDetails,
-      reservePrice: listing.reservePrice || '',
-      startingBidPrice: listing.startingBidPrice || '',
-      imageGallery: onlyProductImages(listing.imageGallery),
-    });
+      setFormData({
+        title: listing.title,
+        symbol: listing.symbol,
+        description: listing.details || listing.story || listing.description || '',
+        brand: listing.brand || undefined,
+        location: listing.location || undefined,
+        story: listing.story || undefined,
+        details: listing.details || undefined,
+        provenance: listing.provenance || undefined,
+        hypeSentence: listing.hypeSentence || undefined,
+        value: listing.value || undefined,
+        assetDetails,
+        reservePrice: listing.reservePrice || '',
+        startingBidPrice: listing.startingBidPrice || '',
+        imageGallery: onlyProductImages(listing.imageGallery),
+      });
+      setSymbolCheck({ status: 'idle' });
+    },
+    [onlyProductImages],
+  );
+
+  const handleCloseDetails = useCallback(() => {
+    setIsDetailsModalOpen(false);
+    setExpandedRow(null);
+    setPanelMode('edit');
+    if (symbolCheckTimeout.current) {
+      window.clearTimeout(symbolCheckTimeout.current);
+      symbolCheckTimeout.current = null;
+    }
     setSymbolCheck({ status: 'idle' });
-  };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleOpen = (event: Event) => {
+      const detail = (event as CustomEvent<SimpleListingOpenEventDetail>).detail;
+      if (!detail?.listingId) return;
+      setPendingExternalAction({
+        type: 'open',
+        listingId: detail.listingId,
+        mode: detail.mode ?? 'edit',
+        scroll: detail.scroll,
+      });
+    };
+
+    const handleLaunch = (event: Event) => {
+      const detail = (event as CustomEvent<SimpleListingLaunchEventDetail>).detail;
+      if (!detail?.listingId) return;
+      setPendingExternalAction({
+        type: 'launch',
+        listingId: detail.listingId,
+      });
+    };
+
+    window.addEventListener('aces:simple-listings:open', handleOpen as EventListener);
+    window.addEventListener('aces:simple-listings:launch', handleLaunch as EventListener);
+
+    return () => {
+      window.removeEventListener('aces:simple-listings:open', handleOpen as EventListener);
+      window.removeEventListener('aces:simple-listings:launch', handleLaunch as EventListener);
+    };
+  }, []);
 
   const handleSubmitDetails = async () => {
     if (!expandedRow) return;
@@ -581,7 +665,7 @@ export function SimpleListingsTab({
 
       if (finalizeResult.success) {
         await fetchListings();
-        setExpandedRow(null);
+        handleCloseDetails();
         alert('Details finalized! Admin will review and prepare your token for minting.');
       } else {
         setError(finalizeResult.error || 'Failed to finalize details');
@@ -593,12 +677,13 @@ export function SimpleListingsTab({
     }
   };
 
-  const handleMintToken = async (listing: EnhancedListing) => {
-    try {
-      setMintingListingId(listing.id);
-      setError(null); // Clear any previous errors
+  const handleMintToken = useCallback(
+    async (listing: EnhancedListing) => {
+      try {
+        setMintingListingId(listing.id);
+        setError(null); // Clear any previous errors
 
-      const token = await getAccessToken();
+        const token = await getAccessToken();
       if (!token) {
         setError('Authentication required');
         setMintingListingId(null);
@@ -682,7 +767,28 @@ export function SimpleListingsTab({
     } finally {
       setMintingListingId(null);
     }
-  };
+    },
+    [createToken, fetchListings, getAccessToken],
+  );
+
+  useEffect(() => {
+    if (!pendingExternalAction) return;
+
+    const listing = listings.find((l) => l.id === pendingExternalAction.listingId);
+    if (!listing) return;
+
+    if (pendingExternalAction.type === 'open') {
+      handleExpandDetails(listing, pendingExternalAction.mode);
+      if (pendingExternalAction.scroll && typeof document !== 'undefined') {
+        const section = document.getElementById('simple-listings-section');
+        section?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    } else if (pendingExternalAction.type === 'launch') {
+      handleMintToken(listing);
+    }
+
+    setPendingExternalAction(null);
+  }, [handleExpandDetails, handleMintToken, listings, pendingExternalAction]);
 
   const getStatusBadge = (listing: EnhancedListing) => {
     if (listing.tokenMinted) {
@@ -1091,14 +1197,9 @@ export function SimpleListingsTab({
         <div className="p-6 text-center">
           <FileText className="w-12 h-12 text-[#DCDDCC]/50 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-white mb-2">No collectibles yet</h3>
-          <p className="text-[#DCDDCC] mb-6">Create your first submission to get started.</p>
-          <Button
-            onClick={() => router.push('/launch')}
-            className="bg-[#D7BF75] hover:bg-[#D7BF75]/80 text-black"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Create Submission
-          </Button>
+          <p className="text-[#DCDDCC] mb-6">
+            Use the Submit Collectible button above to share your first asset.
+          </p>
         </div>
       </div>
     );
@@ -1121,13 +1222,6 @@ export function SimpleListingsTab({
           <div className="text-[#D7BF75] text-sm uppercase tracking-wide font-medium">
             Your Listings
           </div>
-          <Button
-            onClick={() => router.push('/launch')}
-            className="bg-[#D7BF75] text-black hover:bg-[#D7BF75]/80 text-sm px-4 py-2"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            New Submission
-          </Button>
         </div>
 
         {/* Error Banner - Dismissible */}
@@ -1146,937 +1240,428 @@ export function SimpleListingsTab({
           </div>
         )}
 
-        {/* Separate listings into Live and Pending */}
+        {/* Live listings */}
         {(() => {
           const liveListings = listings.filter((l) => l.isLive || l.tokenMinted);
-          const pendingListings = listings.filter((l) => !l.isLive && !l.tokenMinted);
+
+          if (liveListings.length === 0) {
+            return null;
+          }
 
           return (
-            <>
-              {/* Live Listings Section */}
-              {liveListings.length > 0 && (
-                <div className="mb-6">
-                  <div className="flex items-center space-x-2 mb-4">
-                    <div className="h-2 w-2 rounded-full bg-green-400" />
-                    <h3 className="text-[#D7BF75] text-sm uppercase tracking-wide font-medium">
-                      Live Tokens ({liveListings.length})
-                    </h3>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b border-dashed border-[#D7BF75]/25">
-                          <th className="text-left text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
-                            RWA / Ticker
-                          </th>
-                          <th className="text-center text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
-                            Contract
-                          </th>
-                          <th className="text-center text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
-                            Volume
-                          </th>
-                          <th className="text-center text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
-                            Market Cap
-                          </th>
-                          <th className="text-center text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
-                            Token Price
-                          </th>
-                          <th className="text-center text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
-                            Holders
-                          </th>
-                          <th className="text-center text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
-                            Fees Made
-                          </th>
-                          <th className="text-right text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
-                            Actions
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {liveListings.map((listing) => (
-                          <React.Fragment key={listing.id}>
-                            {/* Main Row with Real-time Metrics */}
-                            <ListingRow
-                              listing={listing}
-                              onlyProductImages={onlyProductImages}
-                              getStatusBadge={getStatusBadge}
-                              getActionButton={getActionButton}
-                              router={router}
-                            />
+            <div className="mb-6">
+              <div className="flex items-center space-x-2 mb-4">
+                <div className="h-2 w-2 rounded-full bg-green-400" />
+                <h3 className="text-[#D7BF75] text-sm uppercase tracking-wide font-medium">
+                  Live Tokens ({liveListings.length})
+                </h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-dashed border-[#D7BF75]/25">
+                      <th className="text-left text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
+                        RWA / Ticker
+                      </th>
+                      <th className="text-center text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
+                        Contract
+                      </th>
+                      <th className="text-center text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
+                        Volume
+                      </th>
+                      <th className="text-center text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
+                        Market Cap
+                      </th>
+                      <th className="text-center text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
+                        Token Price
+                      </th>
+                      <th className="text-center text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
+                        Holders
+                      </th>
+                      <th className="text-center text-[#D7BF75] text-sm uppercase tracking-wide.font-medium py-4 px-2">
+                        Fees Made
+                      </th>
+                      <th className="text-right text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {liveListings.map((listing) => (
+                      <React.Fragment key={listing.id}>
+                        <ListingRow
+                          listing={listing}
+                          onlyProductImages={onlyProductImages}
+                          getStatusBadge={getStatusBadge}
+                          getActionButton={getActionButton}
+                          router={router}
+                        />
 
-                            {/* Expandable Details Form */}
-                            {expandedRow === listing.id && (
-                              <tr>
-                                <td colSpan={8} className="p-0">
-                                  <div className="bg-[#184D37]/10 border-t border-[#184D37]/20">
-                                    <div className="p-6">
-                                      <div className="flex items-center justify-between mb-6">
-                                        <h4 className="text-[#D0B284] font-medium text-lg">
-                                          Finalize Listing Details
-                                        </h4>
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={() => setExpandedRow(null)}
-                                          className="text-[#DCDDCC] hover:bg-[#D0B284]/10"
-                                        >
-                                          <X className="w-4 h-4" />
-                                        </Button>
-                                      </div>
-
-                                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                        <div className="space-y-4">
-                                          <div>
-                                            <Label className="text-[#D0B284]">Asset Title</Label>
-                                            <Input
-                                              value={formData.title}
-                                              onChange={(e) =>
-                                                setFormData((prev) => ({
-                                                  ...prev,
-                                                  title: e.target.value,
-                                                }))
-                                              }
-                                              className="mt-1 bg-black/30 border-[#D0B284]/20 text-white"
-                                            />
-                                          </div>
-                                          <div>
-                                            <Label className="text-[#D0B284]">Token Symbol</Label>
-                                            <div className="relative">
-                                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white font-mono">
-                                                $
-                                              </span>
-                                              <Input
-                                                value={formData.symbol}
-                                                onChange={(e) => {
-                                                  const next = e.target.value
-                                                    .replace(/[^A-Za-z0-9]/g, '')
-                                                    .toUpperCase();
-                                                  setFormData((prev) => ({
-                                                    ...prev,
-                                                    symbol: next,
-                                                  }));
-                                                  // Debounced uniqueness check
-                                                  if (symbolCheckTimeout.current) {
-                                                    window.clearTimeout(symbolCheckTimeout.current);
-                                                  }
-                                                  setSymbolCheck({ status: 'checking' });
-                                                  symbolCheckTimeout.current = window.setTimeout(
-                                                    async () => {
-                                                      try {
-                                                        if (!next) {
-                                                          setSymbolCheck({ status: 'idle' });
-                                                          return;
-                                                        }
-                                                        const res =
-                                                          await ListingsApi.getListingBySymbol(
-                                                            next,
-                                                          );
-                                                        if (
-                                                          (res as any).success &&
-                                                          (res as any).data
-                                                        ) {
-                                                          setSymbolCheck({
-                                                            status: 'taken',
-                                                            message: 'Symbol already exists',
-                                                          });
-                                                        } else {
-                                                          setSymbolCheck({
-                                                            status: 'available',
-                                                            message: 'Symbol available',
-                                                          });
-                                                        }
-                                                      } catch (err) {
-                                                        // If API returns 404 for not found, treat as available
-                                                        setSymbolCheck({ status: 'available' });
-                                                      }
-                                                    },
-                                                    400,
-                                                  );
-                                                }}
-                                                className="mt-1 bg-black/30 border-[#D0B284]/20 text-white font-mono pl-7"
-                                              />
-                                              {symbolCheck.status !== 'idle' && (
-                                                <div className="mt-1 text-xs">
-                                                  {symbolCheck.status === 'checking' && (
-                                                    <span className="text-[#D0B284]">
-                                                      Checking availability…
-                                                    </span>
-                                                  )}
-                                                  {symbolCheck.status === 'available' && (
-                                                    <span className="text-green-400">
-                                                      Symbol available
-                                                    </span>
-                                                  )}
-                                                  {symbolCheck.status === 'taken' && (
-                                                    <span className="text-red-400">
-                                                      Symbol already in use
-                                                    </span>
-                                                  )}
-                                                  {symbolCheck.status === 'error' && (
-                                                    <span className="text-yellow-300">
-                                                      Could not verify symbol
-                                                    </span>
-                                                  )}
-                                                </div>
-                                              )}
-                                            </div>
-                                          </div>
-                                          <div>
-                                            <Label className="text-[#D0B284]">Story</Label>
-                                            <Textarea
-                                              value={formData.story ?? ''}
-                                              onChange={(e) =>
-                                                setFormData((prev) => ({
-                                                  ...prev,
-                                                  story: e.target.value,
-                                                }))
-                                              }
-                                              className="mt-1 bg-black/30 border-[#D0B284]/20 text-white"
-                                              rows={4}
-                                            />
-                                          </div>
-                                          <div>
-                                            <Label className="text-[#D0B284]">Details</Label>
-                                            <Textarea
-                                              value={formData.details ?? ''}
-                                              onChange={(e) =>
-                                                setFormData((prev) => ({
-                                                  ...prev,
-                                                  details: e.target.value,
-                                                }))
-                                              }
-                                              className="mt-1 bg-black/30 border-[#D0B284]/20 text-white"
-                                              rows={4}
-                                            />
-                                          </div>
-                                          <div>
-                                            <Label className="text-[#D0B284]">Provenance</Label>
-                                            <Textarea
-                                              value={formData.provenance ?? ''}
-                                              onChange={(e) =>
-                                                setFormData((prev) => ({
-                                                  ...prev,
-                                                  provenance: e.target.value,
-                                                }))
-                                              }
-                                              className="mt-1 bg-black/30 border-[#D0B284]/20 text-white"
-                                              rows={3}
-                                            />
-                                          </div>
-                                        </div>
-
-                                        <div className="space-y-4">
-                                          <div>
-                                            <Label className="text-[#D0B284]">Hype Sentence</Label>
-                                            <Input
-                                              value={formData.hypeSentence ?? ''}
-                                              onChange={(e) =>
-                                                setFormData((prev) => ({
-                                                  ...prev,
-                                                  hypeSentence: e.target.value,
-                                                }))
-                                              }
-                                              className="mt-1 bg-black/30 border-[#D0B284]/20 text-white"
-                                            />
-                                          </div>
-                                          <div className="grid grid-cols-2 gap-4">
-                                            <div>
-                                              <Label className="text-[#D0B284]">
-                                                Starting Bid (USD)
-                                              </Label>
-                                              <div className="relative">
-                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white">
-                                                  $
-                                                </span>
-                                                <Input
-                                                  value={
-                                                    formData.startingBidPrice
-                                                      ? parseInt(
-                                                          formData.startingBidPrice,
-                                                        ).toLocaleString()
-                                                      : ''
-                                                  }
-                                                  onChange={(e) => {
-                                                    const value = e.target.value.replace(
-                                                      /[^0-9]/g,
-                                                      '',
-                                                    );
-                                                    setFormData((prev) => ({
-                                                      ...prev,
-                                                      startingBidPrice: value,
-                                                    }));
-                                                  }}
-                                                  className="mt-1 bg-black/30 border-[#D0B284]/20 text-white pl-7"
-                                                  placeholder="1,000"
-                                                />
-                                              </div>
-                                            </div>
-                                            <div>
-                                              <Label className="text-[#D0B284]">
-                                                Reserve Price (USD)
-                                              </Label>
-                                              <div className="relative">
-                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white">
-                                                  $
-                                                </span>
-                                                <Input
-                                                  value={
-                                                    formData.reservePrice
-                                                      ? parseInt(
-                                                          formData.reservePrice,
-                                                        ).toLocaleString()
-                                                      : ''
-                                                  }
-                                                  onChange={(e) => {
-                                                    const value = e.target.value.replace(
-                                                      /[^0-9]/g,
-                                                      '',
-                                                    );
-                                                    setFormData((prev) => ({
-                                                      ...prev,
-                                                      reservePrice: value,
-                                                    }));
-                                                  }}
-                                                  className="mt-1 bg-black/30 border-[#D0B284]/20 text-white pl-7"
-                                                  placeholder="5,000"
-                                                />
-                                              </div>
-                                            </div>
-                                          </div>
-                                          <div>
-                                            <Label className="text-[#D0B284]">
-                                              Declared Value (USD)
-                                            </Label>
-                                            <div className="relative">
-                                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white">
-                                                $
-                                              </span>
-                                              <Input
-                                                value={
-                                                  formData.value
-                                                    ? parseInt(formData.value).toLocaleString()
-                                                    : ''
-                                                }
-                                                onChange={(e) => {
-                                                  const value = e.target.value.replace(
-                                                    /[^0-9]/g,
-                                                    '',
-                                                  );
-                                                  setFormData((prev) => ({
-                                                    ...prev,
-                                                    value: value,
-                                                  }));
-                                                }}
-                                                className="mt-1 bg-black/30 border-[#D0B284]/20 text-white pl-7"
-                                                placeholder="15,000"
-                                              />
-                                            </div>
-                                          </div>
-
-                                          <ImageGalleryEditor
-                                            value={onlyProductImages(formData.imageGallery)}
-                                            onChange={(gallery: string[]) =>
-                                              setFormData((prev) => ({
-                                                ...prev,
-                                                imageGallery: onlyProductImages(gallery),
-                                              }))
-                                            }
-                                          />
-                                        </div>
-                                      </div>
-
-                                      <div className="flex justify-end space-x-4 mt-6 pt-4 border-t border-[#D0B284]/20">
-                                        <Button
-                                          variant="ghost"
-                                          onClick={() => setExpandedRow(null)}
-                                          className="text-[#DCDDCC] hover:bg-[#DCDDCC]/10"
-                                        >
-                                          Cancel
-                                        </Button>
-                                        <Button
-                                          onClick={async () => {
-                                            try {
-                                              setIsSubmitting(true);
-                                              const token = await getAccessToken();
-                                              if (!token || !expandedRow) return;
-                                              const saveOnly = await ListingsApi.updateMyListing(
-                                                expandedRow,
-                                                {
-                                                  title: formData.title,
-                                                  symbol: formData.symbol,
-                                                  details: formData.description,
-                                                  assetDetails: formData.assetDetails,
-                                                  reservePrice: formData.reservePrice || undefined,
-                                                  startingBidPrice:
-                                                    formData.startingBidPrice || undefined,
-                                                  imageGallery: formData.imageGallery,
-                                                },
-                                                token,
-                                              );
-                                              if (!saveOnly.success) {
-                                                setError(
-                                                  saveOnly.error || 'Failed to save listing',
-                                                );
-                                                return;
-                                              }
-                                              await fetchListings();
-                                            } finally {
-                                              setIsSubmitting(false);
-                                            }
-                                          }}
-                                          disabled={isSubmitting}
-                                          className="bg-[#231F20] hover:bg-[#231F20]/80 text-[#D0B284] border border-[#D0B284]/30"
-                                        >
-                                          {isSubmitting ? (
-                                            <>
-                                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                              Saving...
-                                            </>
-                                          ) : (
-                                            <>
-                                              <Save className="w-4 h-4 mr-2" />
-                                              Save
-                                            </>
-                                          )}
-                                        </Button>
-                                        <Button
-                                          onClick={handleSubmitDetails}
-                                          disabled={isSubmitting}
-                                          className="bg-[#D7BF75] hover:bg-[#D7BF75]/80 text-black"
-                                        >
-                                          {isSubmitting ? (
-                                            <>
-                                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                              Finalizing...
-                                            </>
-                                          ) : (
-                                            <>
-                                              <Save className="w-4 h-4 mr-2" />
-                                              Finalize Details
-                                            </>
-                                          )}
-                                        </Button>
-                                      </div>
-                                    </div>
+                        {expandedOffers === listing.id && listing.tokenMinted && (
+                          <tr>
+                            <td colSpan={8} className="p-0">
+                              <div className="bg-[#184D37]/10 border-t border-[#184D37]/20">
+                                <div className="p-6">
+                                  <div className="flex items-center justify-between mb-4">
+                                    <h4 className="text-[#D0B284] font-medium text-lg">
+                                      Offers ({listing.bids?.length || 0})
+                                    </h4>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => setExpandedOffers(null)}
+                                      className="text-[#DCDDCC] hover:bg-[#D0B284]/10"
+                                    >
+                                      <X className="w-4 h-4" />
+                                    </Button>
                                   </div>
-                                </td>
-                              </tr>
-                            )}
-
-                            {/* Expandable Offers - only for minted tokens */}
-                            {expandedOffers === listing.id && listing.tokenMinted && (
-                              <tr>
-                                <td colSpan={8} className="p-0">
-                                  <div className="bg-[#184D37]/10 border-t border-[#184D37]/20">
-                                    <div className="p-4">
-                                      <div className="flex items-center justify-between mb-4">
-                                        <h4 className="text-[#D0B284] font-medium text-sm">
-                                          Offers for {listing.title}
-                                        </h4>
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={() => setExpandedOffers(null)}
-                                          className="text-[#DCDDCC] hover:bg-[#D0B284]/10"
+                                  {listing.bids && listing.bids.length > 0 ? (
+                                    <div className="space-y-3">
+                                      {listing.bids.map((bid) => (
+                                        <div
+                                          key={bid.id}
+                                          className="flex items-center justify-between p-3 bg-[#231F20]/50 rounded-lg"
                                         >
-                                          <X className="w-4 h-4" />
-                                        </Button>
-                                      </div>
-                                      {!listing.bids || listing.bids.length === 0 ? (
-                                        <div className="text-center py-6">
-                                          <p className="text-[#DCDDCC] text-sm">No offers yet</p>
-                                        </div>
-                                      ) : (
-                                        <div className="space-y-3">
-                                          {listing.bids?.map((bid: Bid) => (
-                                            <div
-                                              key={bid.id}
-                                              className="flex items-center justify-between p-3 bg-[#231F20]/50 rounded-lg"
+                                          <div>
+                                            <span className="text-[#D0B284] font-medium">
+                                              ${bid.amount}
+                                            </span>
+                                            <p className="text-xs text-[#DCDDCC]">
+                                              from {bid.bidder?.id?.slice(0, 8)}...
+                                            </p>
+                                          </div>
+                                          <div className="flex space-x-2">
+                                            <Button
+                                              size="sm"
+                                              variant="ghost"
+                                              className="text-red-400 hover:bg-red-400/10 text-xs"
                                             >
-                                              <div>
-                                                <span className="text-[#D0B284] font-medium">
-                                                  ${bid.amount}
-                                                </span>
-                                                <p className="text-xs text-[#DCDDCC]">
-                                                  from {bid.bidder?.id?.slice(0, 8)}...
-                                                </p>
-                                              </div>
-                                              <div className="flex space-x-2">
-                                                <Button
-                                                  size="sm"
-                                                  variant="ghost"
-                                                  className="text-red-400 hover:bg-red-400/10 text-xs"
-                                                >
-                                                  Decline
-                                                </Button>
-                                                <Button
-                                                  size="sm"
-                                                  className="bg-[#184D37] hover:bg-[#184D37]/80 text-white text-xs"
-                                                >
-                                                  Accept
-                                                </Button>
-                                              </div>
-                                            </div>
-                                          ))}
+                                              Decline
+                                            </Button>
+                                            <Button
+                                              size="sm"
+                                              className="bg-[#184D37] hover:bg-[#184D37]/80 text-white text-xs"
+                                            >
+                                              Accept
+                                            </Button>
+                                          </div>
                                         </div>
-                                      )}
+                                      ))}
                                     </div>
-                                  </div>
-                                </td>
-                              </tr>
-                            )}
-                          </React.Fragment>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {/* Pending Listings Section (Collapsible) */}
-              {pendingListings.length > 0 && (
-                <div className="mb-6">
-                  <button
-                    onClick={() => setShowPendingListings(!showPendingListings)}
-                    className="flex items-center space-x-2 mb-4 w-full hover:opacity-80 transition-opacity"
-                  >
-                    <div className="h-2 w-2 rounded-full bg-yellow-400" />
-                    <h3 className="text-[#D7BF75] text-sm uppercase tracking-wide font-medium">
-                      Pending Tokens ({pendingListings.length})
-                    </h3>
-                    <span className="text-[#D7BF75] text-xs ml-auto">
-                      {showPendingListings ? '▼' : '▶'}
-                    </span>
-                  </button>
-
-                  {showPendingListings && (
-                    <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead>
-                          <tr className="border-b border-dashed border-[#D7BF75]/25">
-                            <th className="text-left text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
-                              RWA / Ticker
-                            </th>
-                            <th className="text-center text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
-                              Contract
-                            </th>
-                            <th className="text-center text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
-                              Volume
-                            </th>
-                            <th className="text-center text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
-                              Market Cap
-                            </th>
-                            <th className="text-center text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
-                              Token Price
-                            </th>
-                            <th className="text-center text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
-                              Holders
-                            </th>
-                            <th className="text-center text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
-                              Fees Made
-                            </th>
-                            <th className="text-right text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
-                              Actions
-                            </th>
+                                  ) : (
+                                    <div className="text-sm text-[#DCDDCC]/70">No offers yet.</div>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
                           </tr>
-                        </thead>
-                        <tbody>
-                          {pendingListings.map((listing) => (
-                            <React.Fragment key={listing.id}>
-                              {/* Main Row with Real-time Metrics */}
-                              <ListingRow
-                                listing={listing}
-                                onlyProductImages={onlyProductImages}
-                                getStatusBadge={getStatusBadge}
-                                getActionButton={getActionButton}
-                                router={router}
-                              />
-
-                              {/* Expandable Details Form */}
-                              {expandedRow === listing.id && (
-                                <tr>
-                                  <td colSpan={8} className="p-0">
-                                    <div className="bg-[#184D37]/10 border-t border-[#184D37]/20">
-                                      <div className="p-6">
-                                        <div className="flex items-center justify-between mb-6">
-                                          <h4 className="text-[#D0B284] font-medium text-lg">
-                                            Finalize Listing Details
-                                          </h4>
-                                          <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => setExpandedRow(null)}
-                                            className="text-[#DCDDCC] hover:bg-[#D0B284]/10"
-                                          >
-                                            <X className="w-4 h-4" />
-                                          </Button>
-                                        </div>
-
-                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                          <div className="space-y-4">
-                                            <div>
-                                              <Label className="text-[#D0B284]">Asset Title</Label>
-                                              <Input
-                                                value={formData.title}
-                                                onChange={(e) =>
-                                                  setFormData((prev) => ({
-                                                    ...prev,
-                                                    title: e.target.value,
-                                                  }))
-                                                }
-                                                className="mt-1 bg-black/30 border-[#D0B284]/20 text-white"
-                                              />
-                                            </div>
-                                            <div>
-                                              <Label className="text-[#D0B284]">Token Symbol</Label>
-                                              <div className="relative">
-                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white font-mono">
-                                                  $
-                                                </span>
-                                                <Input
-                                                  value={formData.symbol}
-                                                  onChange={(e) => {
-                                                    const next = e.target.value
-                                                      .replace(/[^A-Za-z0-9]/g, '')
-                                                      .toUpperCase();
-                                                    setFormData((prev) => ({
-                                                      ...prev,
-                                                      symbol: next,
-                                                    }));
-                                                    // Debounced uniqueness check
-                                                    if (symbolCheckTimeout.current) {
-                                                      window.clearTimeout(
-                                                        symbolCheckTimeout.current,
-                                                      );
-                                                    }
-                                                    setSymbolCheck({ status: 'checking' });
-                                                    symbolCheckTimeout.current = window.setTimeout(
-                                                      async () => {
-                                                        try {
-                                                          if (!next) {
-                                                            setSymbolCheck({ status: 'idle' });
-                                                            return;
-                                                          }
-                                                          const res =
-                                                            await ListingsApi.getListingBySymbol(
-                                                              next,
-                                                            );
-                                                          if (
-                                                            (res as any).success &&
-                                                            (res as any).data
-                                                          ) {
-                                                            setSymbolCheck({
-                                                              status: 'taken',
-                                                              message: 'Symbol already exists',
-                                                            });
-                                                          } else {
-                                                            setSymbolCheck({
-                                                              status: 'available',
-                                                              message: 'Symbol available',
-                                                            });
-                                                          }
-                                                        } catch (err) {
-                                                          // If API returns 404 for not found, treat as available
-                                                          setSymbolCheck({ status: 'available' });
-                                                        }
-                                                      },
-                                                      400,
-                                                    );
-                                                  }}
-                                                  className="mt-1 bg-black/30 border-[#D0B284]/20 text-white font-mono pl-7"
-                                                />
-                                                {symbolCheck.status !== 'idle' && (
-                                                  <div className="mt-1 text-xs">
-                                                    {symbolCheck.status === 'checking' && (
-                                                      <span className="text-[#D0B284]">
-                                                        Checking availability…
-                                                      </span>
-                                                    )}
-                                                    {symbolCheck.status === 'available' && (
-                                                      <span className="text-green-400">
-                                                        Symbol available
-                                                      </span>
-                                                    )}
-                                                    {symbolCheck.status === 'taken' && (
-                                                      <span className="text-red-400">
-                                                        Symbol already in use
-                                                      </span>
-                                                    )}
-                                                    {symbolCheck.status === 'error' && (
-                                                      <span className="text-yellow-300">
-                                                        Could not verify symbol
-                                                      </span>
-                                                    )}
-                                                  </div>
-                                                )}
-                                              </div>
-                                            </div>
-                                            <div>
-                                              <Label className="text-[#D0B284]">Story</Label>
-                                              <Textarea
-                                                value={formData.story ?? ''}
-                                                onChange={(e) =>
-                                                  setFormData((prev) => ({
-                                                    ...prev,
-                                                    story: e.target.value,
-                                                  }))
-                                                }
-                                                className="mt-1 bg-black/30 border-[#D0B284]/20 text-white"
-                                                rows={4}
-                                              />
-                                            </div>
-                                            <div>
-                                              <Label className="text-[#D0B284]">Details</Label>
-                                              <Textarea
-                                                value={formData.details ?? ''}
-                                                onChange={(e) =>
-                                                  setFormData((prev) => ({
-                                                    ...prev,
-                                                    details: e.target.value,
-                                                  }))
-                                                }
-                                                className="mt-1 bg-black/30 border-[#D0B284]/20 text-white"
-                                                rows={4}
-                                              />
-                                            </div>
-                                            <div>
-                                              <Label className="text-[#D0B284]">Provenance</Label>
-                                              <Textarea
-                                                value={formData.provenance ?? ''}
-                                                onChange={(e) =>
-                                                  setFormData((prev) => ({
-                                                    ...prev,
-                                                    provenance: e.target.value,
-                                                  }))
-                                                }
-                                                className="mt-1 bg-black/30 border-[#D0B284]/20 text-white"
-                                                rows={3}
-                                              />
-                                            </div>
-                                          </div>
-
-                                          <div className="space-y-4">
-                                            <div>
-                                              <Label className="text-[#D0B284]">
-                                                Hype Sentence
-                                              </Label>
-                                              <Input
-                                                value={formData.hypeSentence ?? ''}
-                                                onChange={(e) =>
-                                                  setFormData((prev) => ({
-                                                    ...prev,
-                                                    hypeSentence: e.target.value,
-                                                  }))
-                                                }
-                                                className="mt-1 bg-black/30 border-[#D0B284]/20 text-white"
-                                              />
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-4">
-                                              <div>
-                                                <Label className="text-[#D0B284]">
-                                                  Starting Bid (USD)
-                                                </Label>
-                                                <div className="relative">
-                                                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white">
-                                                    $
-                                                  </span>
-                                                  <Input
-                                                    value={
-                                                      formData.startingBidPrice
-                                                        ? parseInt(
-                                                            formData.startingBidPrice,
-                                                          ).toLocaleString()
-                                                        : ''
-                                                    }
-                                                    onChange={(e) => {
-                                                      const value = e.target.value.replace(
-                                                        /[^0-9]/g,
-                                                        '',
-                                                      );
-                                                      setFormData((prev) => ({
-                                                        ...prev,
-                                                        startingBidPrice: value,
-                                                      }));
-                                                    }}
-                                                    className="mt-1 bg-black/30 border-[#D0B284]/20 text-white pl-7"
-                                                    placeholder="1,000"
-                                                  />
-                                                </div>
-                                              </div>
-                                              <div>
-                                                <Label className="text-[#D0B284]">
-                                                  Reserve Price (USD)
-                                                </Label>
-                                                <div className="relative">
-                                                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white">
-                                                    $
-                                                  </span>
-                                                  <Input
-                                                    value={
-                                                      formData.reservePrice
-                                                        ? parseInt(
-                                                            formData.reservePrice,
-                                                          ).toLocaleString()
-                                                        : ''
-                                                    }
-                                                    onChange={(e) => {
-                                                      const value = e.target.value.replace(
-                                                        /[^0-9]/g,
-                                                        '',
-                                                      );
-                                                      setFormData((prev) => ({
-                                                        ...prev,
-                                                        reservePrice: value,
-                                                      }));
-                                                    }}
-                                                    className="mt-1 bg-black/30 border-[#D0B284]/20 text-white pl-7"
-                                                    placeholder="5,000"
-                                                  />
-                                                </div>
-                                              </div>
-                                            </div>
-                                            <div>
-                                              <Label className="text-[#D0B284]">
-                                                Declared Value (USD)
-                                              </Label>
-                                              <div className="relative">
-                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white">
-                                                  $
-                                                </span>
-                                                <Input
-                                                  value={
-                                                    formData.value
-                                                      ? parseInt(formData.value).toLocaleString()
-                                                      : ''
-                                                  }
-                                                  onChange={(e) => {
-                                                    const value = e.target.value.replace(
-                                                      /[^0-9]/g,
-                                                      '',
-                                                    );
-                                                    setFormData((prev) => ({
-                                                      ...prev,
-                                                      value: value,
-                                                    }));
-                                                  }}
-                                                  className="mt-1 bg-black/30 border-[#D0B284]/20 text-white pl-7"
-                                                  placeholder="15,000"
-                                                />
-                                              </div>
-                                            </div>
-
-                                            <ImageGalleryEditor
-                                              value={onlyProductImages(formData.imageGallery)}
-                                              onChange={(gallery: string[]) =>
-                                                setFormData((prev) => ({
-                                                  ...prev,
-                                                  imageGallery: onlyProductImages(gallery),
-                                                }))
-                                              }
-                                            />
-                                          </div>
-                                        </div>
-
-                                        <div className="flex justify-end space-x-4 mt-6 pt-4 border-t border-[#D0B284]/20">
-                                          <Button
-                                            variant="ghost"
-                                            onClick={() => setExpandedRow(null)}
-                                            className="text-[#DCDDCC] hover:bg-[#DCDDCC]/10"
-                                          >
-                                            Cancel
-                                          </Button>
-                                          <Button
-                                            onClick={async () => {
-                                              try {
-                                                setIsSubmitting(true);
-                                                const token = await getAccessToken();
-                                                if (!token || !expandedRow) return;
-                                                const saveOnly = await ListingsApi.updateMyListing(
-                                                  expandedRow,
-                                                  {
-                                                    title: formData.title,
-                                                    symbol: formData.symbol,
-                                                    details: formData.description,
-                                                    assetDetails: formData.assetDetails,
-                                                    reservePrice:
-                                                      formData.reservePrice || undefined,
-                                                    startingBidPrice:
-                                                      formData.startingBidPrice || undefined,
-                                                    imageGallery: formData.imageGallery,
-                                                  },
-                                                  token,
-                                                );
-                                                if (!saveOnly.success) {
-                                                  setError(
-                                                    saveOnly.error || 'Failed to save listing',
-                                                  );
-                                                  return;
-                                                }
-                                                await fetchListings();
-                                              } finally {
-                                                setIsSubmitting(false);
-                                              }
-                                            }}
-                                            disabled={isSubmitting}
-                                            className="bg-[#231F20] hover:bg-[#231F20]/80 text-[#D0B284] border border-[#D0B284]/30"
-                                          >
-                                            {isSubmitting ? (
-                                              <>
-                                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                                Saving...
-                                              </>
-                                            ) : (
-                                              <>
-                                                <Save className="w-4 h-4 mr-2" />
-                                                Save
-                                              </>
-                                            )}
-                                          </Button>
-                                          <Button
-                                            onClick={handleSubmitDetails}
-                                            disabled={isSubmitting}
-                                            className="bg-[#D7BF75] hover:bg-[#D7BF75]/80 text-black"
-                                          >
-                                            {isSubmitting ? (
-                                              <>
-                                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                                Finalizing...
-                                              </>
-                                            ) : (
-                                              <>
-                                                <Save className="w-4 h-4 mr-2" />
-                                                Finalize Details
-                                              </>
-                                            )}
-                                          </Button>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </td>
-                                </tr>
-                              )}
-
-                              {/* Expandable Offers */}
-                              {expandedOffers === listing.id && listing.tokenMinted && (
-                                <tr>
-                                  <td colSpan={8} className="p-0">
-                                    <div className="bg-[#184D37]/10 border-t border-[#184D37]/20">
-                                      {/* Same offers content as live section */}
-                                    </div>
-                                  </td>
-                                </tr>
-                              )}
-                            </React.Fragment>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              )}
-            </>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           );
         })()}
+      {isDetailsModalOpen && activeListing && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/80">
+          <div className="relative w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-2xl border border-[#D7BF75]/25 bg-[#0f1511] shadow-2xl">
+            <div className="flex items-center justify-between p-6 border-b border-[#D7BF75]/15">
+              <div>
+                <h4 className="text-[#D0B284] text-lg font-semibold">
+                  {isReadOnly ? 'Listing Details' : 'Finalize Listing Details'}
+                </h4>
+                <p className="text-xs text-[#DCDDCC]/70 mt-1">
+                  {activeListing.title} • {activeListing.symbol}
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleCloseDetails}
+                className="text-[#DCDDCC] hover:bg-[#D0B284]/10"
+                aria-label="Close details"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            <div className="p-6 space-y-6 overflow-y-auto max-h-[calc(90vh-96px)]">
+              <fieldset disabled={isReadOnly} className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <div>
+                    <Label className="text-[#D0B284]">Asset Title</Label>
+                    <Input
+                      value={formData.title}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          title: e.target.value,
+                        }))
+                      }
+                      className="mt-1 bg-black/30 border-[#D0B284]/20 text-white"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[#D0B284]">Token Symbol</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white font-mono">
+                        $
+                      </span>
+                      <Input
+                        value={formData.symbol}
+                        onChange={(e) => {
+                          const next = e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+                          setFormData((prev) => ({
+                            ...prev,
+                            symbol: next,
+                          }));
+                          if (symbolCheckTimeout.current) {
+                            window.clearTimeout(symbolCheckTimeout.current);
+                          }
+                          setSymbolCheck({ status: 'checking' });
+                          symbolCheckTimeout.current = window.setTimeout(async () => {
+                            try {
+                              if (!next) {
+                                setSymbolCheck({ status: 'idle' });
+                                return;
+                              }
+                              const res = await ListingsApi.getListingBySymbol(next);
+                              if ((res as any).success && (res as any).data) {
+                                setSymbolCheck({
+                                  status: 'taken',
+                                  message: 'Symbol already exists',
+                                });
+                              } else {
+                                setSymbolCheck({
+                                  status: 'available',
+                                  message: 'Symbol available',
+                                });
+                              }
+                            } catch (err) {
+                              setSymbolCheck({ status: 'available' });
+                            }
+                          }, 400);
+                        }}
+                        className="mt-1 bg-black/30 border-[#D0B284]/20 text-white font-mono pl-7"
+                      />
+                      {symbolCheck.status !== 'idle' && (
+                        <div className="mt-1 text-xs">
+                          {symbolCheck.status === 'checking' && (
+                            <span className="text-[#D0B284]">Checking availability…</span>
+                          )}
+                          {symbolCheck.status === 'available' && (
+                            <span className="text-green-400">Symbol available</span>
+                          )}
+                          {symbolCheck.status === 'taken' && (
+                            <span className="text-red-400">Symbol already in use</span>
+                          )}
+                          {symbolCheck.status === 'error' && (
+                            <span className="text-yellow-300">Could not verify symbol</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-[#D0B284]">Story</Label>
+                    <Textarea
+                      value={formData.story ?? ''}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          story: e.target.value,
+                        }))
+                      }
+                      className="mt-1 bg-black/30 border-[#D0B284]/20 text-white"
+                      rows={4}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[#D0B284]">Details</Label>
+                    <Textarea
+                      value={formData.details ?? ''}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          details: e.target.value,
+                        }))
+                      }
+                      className="mt-1 bg-black/30 border-[#D0B284]/20 text-white"
+                      rows={4}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[#D0B284]">Provenance</Label>
+                    <Textarea
+                      value={formData.provenance ?? ''}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          provenance: e.target.value,
+                        }))
+                      }
+                      className="mt-1 bg-black/30 border-[#D0B284]/20 text-white"
+                      rows={3}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <Label className="text-[#D0B284]">Hype Sentence</Label>
+                    <Input
+                      value={formData.hypeSentence ?? ''}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          hypeSentence: e.target.value,
+                        }))
+                      }
+                      className="mt-1 bg-black/30 border-[#D0B284]/20 text-white"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-[#D0B284]">Starting Bid (USD)</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white">$</span>
+                        <Input
+                          value={formData.startingBidPrice ? parseInt(formData.startingBidPrice).toLocaleString() : ''}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/[^0-9]/g, '');
+                            setFormData((prev) => ({
+                              ...prev,
+                              startingBidPrice: value,
+                            }));
+                          }}
+                          className="mt-1 bg-black/30 border-[#D0B284]/20 text-white pl-7"
+                          placeholder="1,000"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="text-[#D0B284]">Reserve Price (USD)</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white">$</span>
+                        <Input
+                          value={formData.reservePrice ? parseInt(formData.reservePrice).toLocaleString() : ''}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/[^0-9]/g, '');
+                            setFormData((prev) => ({
+                              ...prev,
+                              reservePrice: value,
+                            }));
+                          }}
+                          className="mt-1 bg-black/30 border-[#D0B284]/20 text-white pl-7"
+                          placeholder="5,000"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-[#D0B284]">Declared Value (USD)</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white">$</span>
+                      <Input
+                        value={formData.value ? parseInt(formData.value).toLocaleString() : ''}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/[^0-9]/g, '');
+                          setFormData((prev) => ({
+                            ...prev,
+                            value: value,
+                          }));
+                        }}
+                        className="mt-1 bg-black/30 border-[#D0B284]/20 text-white pl-7"
+                        placeholder="15,000"
+                      />
+                    </div>
+                  </div>
+                  <ImageGalleryEditor
+                    value={onlyProductImages(formData.imageGallery)}
+                    onChange={(gallery: string[]) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        imageGallery: onlyProductImages(gallery),
+                      }))
+                    }
+                  />
+                </div>
+              </fieldset>
+              {!isReadOnly && (
+                <div className="flex justify-end space-x-4 pt-4 border-t border-[#D0B284]/20">
+                  <Button
+                    variant="ghost"
+                    onClick={handleCloseDetails}
+                    className="text-[#DCDDCC] hover:bg-[#DCDDCC]/10"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={async () => {
+                      try {
+                        setIsSubmitting(true);
+                        const token = await getAccessToken();
+                        if (!token || !expandedRow) return;
+                        const saveOnly = await ListingsApi.updateMyListing(
+                          expandedRow,
+                          {
+                            title: formData.title,
+                            symbol: formData.symbol,
+                            details: formData.description,
+                            assetDetails: formData.assetDetails,
+                            reservePrice: formData.reservePrice || undefined,
+                            startingBidPrice: formData.startingBidPrice || undefined,
+                            imageGallery: onlyProductImages(formData.imageGallery),
+                          },
+                          token,
+                        );
+                        if (!saveOnly.success) {
+                          setError(saveOnly.error || 'Failed to save listing');
+                          return;
+                        }
+                        await fetchListings();
+                      } finally {
+                        setIsSubmitting(false);
+                      }
+                    }}
+                    disabled={isSubmitting}
+                    className="bg-[#231F20] hover:bg-[#231F20]/80 text-[#D0B284] border border-[#D0B284]/30"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4 mr-2" />
+                        Save
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    onClick={handleSubmitDetails}
+                    disabled={isSubmitting}
+                    className="bg-[#D7BF75] hover:bg-[#D7BF75]/80 text-black"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Finalizing...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4 mr-2" />
+                        Finalize Details
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );
