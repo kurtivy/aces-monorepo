@@ -1,6 +1,4 @@
 'use client';
-
-import { motion } from 'framer-motion';
 import TokenHealthPanel from '../left-column/token-details/token-health-panel';
 import { useTokenMetrics } from '@/hooks/use-token-metrics';
 import { useMemo } from 'react';
@@ -30,7 +28,6 @@ interface TokenMetricsSectionProps {
   disableMetricsFetch?: boolean;
 }
 
-const TARGET_CHART_HEIGHT_PX = 562; // Keep in sync with TradingSection chart height.
 const COMMUNITY_REWARD_USD = 40_000;
 
 const formatPrice = (price: string | null | undefined): string => {
@@ -94,13 +91,10 @@ export function TokenMetricsSection({
   const resolvedCirculatingSupply = circulatingSupply ?? hookCirculatingSupply ?? null;
 
   return (
-    <div
-      className="bg-black overflow-hidden flex flex-col"
-      style={{ minHeight: `${TARGET_CHART_HEIGHT_PX}px` }}
-    >
+    <div className="bg-black overflow-hidden flex flex-col min-h-[562px]">
       {/* DATA Section Title */}
-      <div className="py-1 border-b border-[#D0B284]/10">
-        <h3 className="text-[#D0B284] text-base font-bold uppercase tracking-[0.3em] font-spray-letters text-center">
+      <div className="py-0.5 border-b border-[#D0B284]/10">
+        <h3 className="text-[#D0B284] text-sm xl:text-base font-bold uppercase tracking-[0.24em] font-spray-letters text-center">
           DATA
         </h3>
       </div>
@@ -124,51 +118,53 @@ export function TokenMetricsSection({
         />
 
         {/* STORY Section */}
-        <div className="border-t border-[#D0B284]/10 mt-2 flex-1 flex flex-col">
+        <div className="border-t border-[#D0B284]/10 mt-1.5 flex-1 flex flex-col">
           {/* Section Title */}
-          <div className="py-1 border-b border-[#D0B284]/10 ">
-            <h3 className="text-[#D0B284] text-base font-bold uppercase tracking-[0.3em] font-spray-letters text-center">
+          <div className="py-0.5 border-b border-[#D0B284]/10 ">
+            <h3 className="text-[#D0B284] text-sm xl:text-base font-bold uppercase tracking-[0.24em] font-spray-letters text-center">
               STORY
             </h3>
           </div>
 
           {/* VALUE (RRP) Row */}
-          <div className="flex items-center justify-between px-5 py-2 border-b border-[#D0B284]/10">
-            <span className="text-xs tracking-[0.2em] uppercase text-[#D0B284] font-proxima-nova font-semibold">
+          <div className="flex items-center justify-between px-4 py-1.5 border-b border-[#D0B284]/10">
+            <span className="text-[11px] xl:text-xs tracking-[0.18em] uppercase text-[#D0B284] font-proxima-nova font-semibold">
               VALUE
             </span>
-            <span className="text-base font-semibold text-white font-proxima-nova">
+            <span className="text-sm xl:text-base font-semibold text-white font-proxima-nova">
               {formatPrice(rrp)}
             </span>
           </div>
 
-          <div className="flex items-center justify-between px-5 py-2 border-b border-[#D0B284]/10">
-            <span className="text-xs tracking-[0.2em] uppercase text-[#D0B284] font-proxima-nova font-semibold">
+          <div className="flex items-center justify-between px-4 py-1.5 border-b border-[#D0B284]/10">
+            <span className="text-[11px] xl:text-xs tracking-[0.18em] uppercase text-[#D0B284] font-proxima-nova font-semibold">
               COMMUNITY REWARD
             </span>
-            <span className="text-base font-semibold text-white font-proxima-nova">
+            <span className="text-sm xl:text-base font-semibold text-white font-proxima-nova">
               {formatPrice(COMMUNITY_REWARD_USD.toFixed(0))}
             </span>
           </div>
 
           {/* BRAND Row */}
-          <div className="flex items-center justify-between px-5 py-2 border-b border-[#D0B284]/10">
-            <span className="text-xs tracking-[0.2em] uppercase text-[#D0B284] font-proxima-nova font-semibold">
+          <div className="flex items-center justify-between px-4 py-1.5 border-b border-[#D0B284]/10">
+            <span className="text-[11px] xl:text-xs tracking-[0.18em] uppercase text-[#D0B284] font-proxima-nova font-semibold">
               BRAND
             </span>
-            <span className="text-base font-semibold text-white font-proxima-nova">
+            <span className="text-sm xl:text-base font-semibold text-white font-proxima-nova">
               {brand || 'N/A'}
             </span>
           </div>
 
           {/* HYPE Section */}
-          <div className="px-5 py-3 flex-1">
+          <div className="px-4 py-2 flex-1">
             <div className="mb-1">
-              <span className="text-xs tracking-[0.2em] uppercase text-[#D0B284] font-proxima-nova font-semibold">
+              <span className="text-[11px] xl:text-xs tracking-[0.18em] uppercase text-[#D0B284] font-proxima-nova font-semibold">
                 HYPE
               </span>
             </div>
-            <p className="text-xs font-proxima-nova text-white/90">{hypeDescription}</p>
+            <p className="text-[11px] xl:text-xs leading-relaxed font-proxima-nova text-white/90">
+              {hypeDescription}
+            </p>
           </div>
         </div>
       </div>

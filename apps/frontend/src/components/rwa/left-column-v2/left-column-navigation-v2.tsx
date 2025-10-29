@@ -99,7 +99,7 @@ export function LeftColumnNavigationV2({
 
   if (loading || !listing) {
     return (
-      <div className="w-72 bg-[#151c16] flex flex-col h-full overflow-hidden">
+      <div className="bg-[#151c16] flex flex-col h-full overflow-hidden flex-shrink-0 w-[18rem] lg:w-[21vw] lg:min-w-[230px] lg:max-w-[280px] xl:w-[18rem] 2xl:w-[20rem]">
         <div className="flex items-center justify-center h-full">
           <span className="text-[#D0B284] text-sm">Loading...</span>
         </div>
@@ -111,7 +111,7 @@ export function LeftColumnNavigationV2({
 
   return (
     <>
-      <div className="w-72 bg-[#151c16] flex flex-col overflow-hidden h-full min-h-[750px]">
+      <div className="bg-[#151c16] flex flex-col overflow-hidden h-full min-h-[700px] flex-shrink-0 w-[18rem] lg:w-[21vw] lg:min-w-[230px] lg:max-w-[280px] xl:w-[18rem] 2xl:w-[20rem]">
         {/* Section 1: Token Header - Fixed */}
         <div className="flex-shrink-0">
           <TokenHeaderSection
@@ -148,7 +148,7 @@ export function LeftColumnNavigationV2({
         </div>
 
         {/* Bonding Curve Progress */}
-        <div className="flex-shrink-0 border-t border-[#1E2B1E]/80 bg-[#151c16] px-6 py-2">
+        <div className="flex-shrink-0 border-t border-[#1E2B1E]/80 bg-[#151c16] px-5 py-1.5">
           <BondingProgressSection
             tokenAddress={listing?.token?.contractAddress}
             chainId={listing?.token?.chainId}

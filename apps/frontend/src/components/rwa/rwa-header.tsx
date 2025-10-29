@@ -4,6 +4,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import ConnectWalletNav from '../ui/custom/connect-wallet-nav';
+import { useAcesPrice } from '@/hooks/use-aces-price';
 
 interface RWAHeaderProps {
   className?: string;
@@ -14,6 +15,7 @@ export default function RWAHeader({ className = '', onProfileClick }: RWAHeaderP
   const router = useRouter();
   const [logoLoaded, setLogoLoaded] = useState(false);
   const [logoError, setLogoError] = useState(false);
+  const { acesUsdPrice, loading: priceLoading, error: priceError } = useAcesPrice();
 
   const handleLogoClick = () => {
     router.push('/');
@@ -28,6 +30,16 @@ export default function RWAHeader({ className = '', onProfileClick }: RWAHeaderP
     setLogoError(true);
     setLogoLoaded(false);
     console.error('Failed to load ACES logo');
+  };
+
+  const formatPrice = (price: number) => {
+    if (price >= 1) {
+      return `$${price.toFixed(2)}`;
+    } else if (price >= 0.01) {
+      return `$${price.toFixed(4)}`;
+    } else {
+      return `$${price.toFixed(6)}`;
+    }
   };
 
   return (
@@ -72,6 +84,21 @@ export default function RWAHeader({ className = '', onProfileClick }: RWAHeaderP
               <span className="text-lg sm:text-2xl font-bold ml-0.5 sm:ml-1 drop-shadow-lg font-spray-letters text-[#D7BF75] tracking-wider sm:tracking-widest">
                 FUN
               </span>
+            </div>
+
+            {/* ACES Price Display */}
+            <div className="hidden sm:flex items-center pl-30">
+              <div className="flex items-center gap-1">
+                {priceLoading ? (
+                  <div className="w-16 h-4 bg-[#D0B284]/20 rounded animate-pulse"></div>
+                ) : priceError ? (
+                  <span className="text-xs text-red-400">--</span>
+                ) : (
+                  <span className="text-sm font-medium text-[#D0B284] font-mono">
+                    {formatPrice(acesUsdPrice)}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 

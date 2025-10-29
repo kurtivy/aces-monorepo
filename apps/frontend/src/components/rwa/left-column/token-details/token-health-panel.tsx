@@ -142,14 +142,14 @@ const getSignalColor = (action: string) => {
 
 // Helper component for labels with tooltips
 const LabelWithTooltip = ({ label, tooltip }: { label: string; tooltip: string }) => (
-  <div className="flex items-center gap-1.5">
-    <span className="text-xs tracking-[0.2em] uppercase font-proxima-nova font-semibold text-[#D0B284]">
+  <div className="flex items-center gap-1">
+    <span className="text-[11px] xl:text-xs tracking-[0.18em] uppercase font-proxima-nova font-semibold text-[#D0B284]">
       {label}
     </span>
     <Tooltip>
       <TooltipTrigger asChild>
         <button className="inline-flex items-center justify-center text-[#D0B284]/60 hover:text-[#D0B284] transition-colors">
-          <Info className="w-3.5 h-3.5" />
+          <Info className="w-3 h-3" />
         </button>
       </TooltipTrigger>
       <TooltipContent
@@ -163,7 +163,7 @@ const LabelWithTooltip = ({ label, tooltip }: { label: string; tooltip: string }
 );
 
 const SectionLabel = ({ label }: { label: string }) => (
-  <span className="text-xs tracking-[0.2em] uppercase font-proxima-nova font-semibold text-[#D0B284]">
+  <span className="text-[11px] xl:text-xs tracking-[0.18em] uppercase font-proxima-nova font-semibold text-[#D0B284]">
     {label}
   </span>
 );
@@ -387,8 +387,8 @@ export default function TokenHealthPanel({
   }, [totalRewardEarned]);
 
   const rowClass =
-    'flex items-center justify-between gap-4 px-5 py-3 border-b border-[#D0B284]/15 last:border-b-0';
-  const valueClass = 'text-base font-semibold font-proxima-nova leading-none text-white';
+    'flex items-center justify-between gap-3 px-4 py-2 border-b border-[#D0B284]/15 last:border-b-0';
+  const valueClass = 'text-sm xl:text-base font-semibold font-proxima-nova leading-none text-white';
 
   // Progressive loading states for each metric
   // Distinguish between "loading" (data not arrived) vs "zero" (data arrived but is 0)
@@ -435,17 +435,11 @@ export default function TokenHealthPanel({
           !ratioDisplay.numeric ||
           !ratioDisplay.suffix ||
           metrics.acesRatio === 0 ? (
-            <span className="text-lg font-semibold font-proxima-nova leading-none text-white">
-              0.00x
-            </span>
+            <span className={valueClass}>0.00x</span>
           ) : (
             <>
-              <span className="text-lg font-semibold font-proxima-nova leading-none text-white">
-                {ratioDisplay.numeric}
-              </span>
-              <span className="text-lg font-semibold font-proxima-nova leading-none text-white">
-                {ratioDisplay.suffix}
-              </span>
+              <span className={valueClass}>{ratioDisplay.numeric}</span>
+              <span className={valueClass}>{ratioDisplay.suffix}</span>
             </>
           )}
         </div>
@@ -488,12 +482,10 @@ export default function TokenHealthPanel({
           <span className={valueClass}>--</span>
         ) : (
           <div className="flex items-baseline gap-0.5 text-white">
-            <span className="text-sm font-proxima-nova leading-none text-white">
+            <span className="text-xs xl:text-sm font-proxima-nova leading-none text-white">
               {rewardDisplay.prefix}
             </span>
-            <span className="text-lg font-semibold font-proxima-nova leading-none text-white">
-              {rewardDisplay.numeric}
-            </span>
+            <span className={valueClass}>{rewardDisplay.numeric}</span>
           </div>
         )}
       </motion.div>
@@ -510,15 +502,15 @@ export default function TokenHealthPanel({
         {liquidityState.status === 'loading' ? (
           <LoadingDots className={valueClass} />
         ) : liquidityState.status === 'unavailable' ? (
-          <span className="text-sm font-proxima-nova leading-none text-white/60">
+          <span className="text-xs xl:text-sm font-proxima-nova leading-none text-white/60">
             Data unavailable
           </span>
+        ) : liquidityState.value === 0 ? (
+          <span className={valueClass}>$ ---</span>
         ) : (
           <div className="flex items-baseline gap-0.5 text-white">
-            <span className="text-sm font-proxima-nova leading-none">$</span>
-            <span className="text-lg font-semibold font-proxima-nova leading-none text-white">
-              {formatNumber(liquidityState.value, 2)}
-            </span>
+            <span className="text-xs xl:text-sm font-proxima-nova leading-none">$</span>
+            <span className={valueClass}>{formatNumber(liquidityState.value, 2)}</span>
           </div>
         )}
       </motion.div>
@@ -534,10 +526,8 @@ export default function TokenHealthPanel({
           <LoadingDots className={valueClass} />
         ) : (
           <div className="flex items-baseline gap-0.5 text-white">
-            <span className="text-sm font-proxima-nova leading-none">$</span>
-            <span className="text-lg font-semibold font-proxima-nova leading-none text-white">
-              {formatNumber(volume24hUsd)}
-            </span>
+            <span className="text-xs xl:text-sm font-proxima-nova leading-none">$</span>
+            <span className={valueClass}>{formatNumber(volume24hUsd)}</span>
           </div>
         )}
       </motion.div>

@@ -113,27 +113,27 @@ export function TokenHeaderSection({
     >
       <div
         ref={topRowRef}
-        className="flex items-center justify-between border-b border-[#D0B284]/20 px-6 py-2.5 lg:py-1"
+        className="flex items-center justify-between border-b border-[#D0B284]/20 px-5 py-2 lg:py-1"
         style={topRowStyles}
       >
-        <div className="flex items-center gap-2.5 pb-1">
+        <div className="flex items-center gap-2 pb-1">
           {tokenImage ? (
-            <div className="relative w-10 h-10 rounded-lg overflow-hidden border border-[#D0B284]/30">
+            <div className="relative w-9 h-9 rounded-lg overflow-hidden border border-[#D0B284]/30">
               <Image src={tokenImage} alt={tokenSymbol} fill className="object-cover" />
             </div>
           ) : (
-            <div className="w-10 h-10 rounded-lg bg-[#D0B284]/10 border border-[#D0B284]/30 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-lg bg-[#D0B284]/10 border border-[#D0B284]/30 flex items-center justify-center">
               <span className="text-[#D0B284] text-sm font-bold">{tokenSymbol.charAt(0)}</span>
             </div>
           )}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             <h2
               className={`${
                 tokenSymbol.length > 7
-                  ? 'text-sm'
+                  ? 'text-xs'
                   : tokenSymbol.length > 4
-                    ? 'text-base'
-                    : 'text-lg'
+                    ? 'text-sm'
+                    : 'text-base'
               } font-semibold text-[#D0B284] font-proxima-nova`}
             >
               ${tokenSymbol}
@@ -168,13 +168,13 @@ export function TokenHeaderSection({
       </div>
 
       <div
-        className="flex items-center justify-between transition-colors px-6 lg:h-[54px] bg-black"
+        className="flex items-center justify-between transition-colors px-5 lg:h-[54px] bg-black"
         style={bottomRowStyles}
       >
-        <div className="text-base font-proxima-nova font-bold uppercase tracking-wide text-[#D0B284]">
+        <div className="text-sm font-proxima-nova font-bold uppercase tracking-wide text-[#D0B284]">
           MARKET CAP
         </div>
-        <div className="text-xl font-semibold text-white font-proxima-nova">
+        <div className="text-lg font-semibold text-white font-proxima-nova">
           {marketCapLoading ||
           marketCap === undefined ||
           marketCap === null ||

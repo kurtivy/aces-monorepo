@@ -63,7 +63,7 @@ export function ChartHeader({ title, onLearnMoreClick, onChatClick }: ChartHeade
       transition={{ duration: 0.5 }}
     >
       {/* Title */}
-      <h1 className="text-xl md:text-2xl font-bold text-[#D0B284] font-spray-letters tracking-widest uppercase py-3">
+      <h1 className="text-xs md:text-xs lg:text-xs xl:text-base font-bold text-[#D0B284] font-spray-letters tracking-[0.35em] md:tracking-[0.4em] uppercase leading-tight py-3">
         {title}
       </h1>
 
@@ -73,7 +73,7 @@ export function ChartHeader({ title, onLearnMoreClick, onChatClick }: ChartHeade
         <button
           onClick={handleStreamClick}
           disabled={!isLive}
-          className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-[#D0B284]/10 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center justify-center xl:w-8 xl:h-8 w-6 h-6 rounded-full hover:bg-[#D0B284]/10 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
           title={isLive ? 'Watch Live Stream' : 'Stream Offline'}
         >
           <TwitchIcon size={18} className={isLive ? 'text-[#4FFFB0]' : 'text-[#D54040]'} />
@@ -82,7 +82,7 @@ export function ChartHeader({ title, onLearnMoreClick, onChatClick }: ChartHeade
         {/* Chat Icon - Always visible */}
         <button
           onClick={onChatClick}
-          className="flex items-center justify-center w-8 h-8 rounded-full text-[#D0B284] hover:bg-[#D0B284]/10 transition-all duration-200"
+          className="flex items-center justify-center xl:w-8 xl:h-8 w-6 h-6 rounded-full text-[#D0B284] hover:bg-[#D0B284]/10 transition-all duration-200"
           title="Open Chat"
         >
           <MessageCircle className="w-5 h-5" />
@@ -93,7 +93,7 @@ export function ChartHeader({ title, onLearnMoreClick, onChatClick }: ChartHeade
           href="https://x.com/apkaws"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center justify-center w-8 h-8 rounded-full text-[#D0B284] hover:bg-[#D0B284]/10 transition-all duration-200"
+          className="flex items-center justify-center xl:w-8 xl:h-8 w-6 h-6 rounded-full text-[#D0B284] hover:bg-[#D0B284]/10 transition-all duration-200"
           title="Follow us on X"
         >
           <XIcon size={18} />
