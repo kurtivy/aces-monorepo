@@ -88,6 +88,13 @@ interface SubscriptionInfo {
   isMarketCapMode: boolean;
 }
 
+// 🔥 NEW: Cache entry for chart data
+interface CacheEntry {
+  data: UnifiedChartResponse;
+  timestamp: number;
+  bars: Bar[];
+}
+
 export class UnifiedDatafeed implements IBasicDataFeed {
   private config: UnifiedDatafeedConfig;
   private aggressivePollingIntervals: Map<string, ReturnType<typeof setInterval>> = new Map();
@@ -102,6 +109,9 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     string,
     { marketCapUsd: number; currentPriceUsd?: number; timestamp: number }
   >();
+  // 🔥 NEW: Client-side cache for chart data (keyed by tokenAddress:timeframe:mode)
+  private chartDataCache = new Map<string, CacheEntry>();
+  private readonly CACHE_TTL_MS = 30000; // 30 seconds - fresh enough for most use cases
 
   constructor(config: UnifiedDatafeedConfig) {
     this.config = {
@@ -292,6 +302,17 @@ export class UnifiedDatafeed implements IBasicDataFeed {
         // Clear supply cache
         this.latestSupply.delete(tokenLower);
 
+        // 🔥 NEW: Clear chart data cache for this token (all timeframes)
+        const cachesToClear: string[] = [];
+        for (const cacheKey of this.chartDataCache.keys()) {
+          if (cacheKey.startsWith(tokenLower + ':')) {
+            cachesToClear.push(cacheKey);
+          }
+        }
+        for (const cacheKey of cachesToClear) {
+          this.chartDataCache.delete(cacheKey);
+        }
+
         console.log('[UnifiedDatafeed] 🔄 Cleared cached bars for graduated token');
         console.log('[UnifiedDatafeed] 📊 Active subscriptions:', this.subscriptions.size);
 
@@ -405,6 +426,9 @@ export class UnifiedDatafeed implements IBasicDataFeed {
 
               this.lastBars.set(ticker, updatedBar);
 
+              // 🔥 NEW: Update cache with latest bar
+              this.updateCacheWithNewBar(tokenAddress, timeframe, subscriptionInfo.isMarketCapMode, updatedBar);
+
               console.log('[UnifiedDatafeed] 📊 Calling onTick with updated bar:', {
                 time: updatedBar.time,
                 open: updatedBar.open,
@@ -480,6 +504,9 @@ export class UnifiedDatafeed implements IBasicDataFeed {
           }
 
           this.lastBars.set(ticker, bar);
+
+          // 🔥 NEW: Update cache with new bar
+          this.updateCacheWithNewBar(tokenAddress, timeframe, subscriptionInfo.isMarketCapMode, bar);
 
           console.log('[UnifiedDatafeed] 📊 Calling onTick with new bar:', {
             time: bar.time,
@@ -652,6 +679,46 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       });
     }
 
+    // 🔥 NEW: Check cache first for instant loading
+    const cacheKey = `${tokenAddress.toLowerCase()}:${timeframe}:${isMarketCapMode ? 'mcap' : 'price'}`;
+    const cachedEntry = this.chartDataCache.get(cacheKey);
+    const now = Date.now();
+
+    if (cachedEntry && now - cachedEntry.timestamp < this.CACHE_TTL_MS) {
+      // Cache hit! Return cached data instantly
+      if (this.config.debug) {
+        console.log('[UnifiedDatafeed] ⚡ Cache HIT - returning instantly:', {
+          cacheKey,
+          age: `${Math.round((now - cachedEntry.timestamp) / 1000)}s`,
+          bars: cachedEntry.bars.length,
+        });
+      }
+
+      // Filter cached bars to requested time range
+      const filteredBars = cachedEntry.bars.filter(
+        (bar) => bar.time / 1000 >= periodParams.from && bar.time / 1000 <= periodParams.to,
+      );
+
+      // Store last bar for WebSocket updates
+      if (filteredBars.length > 0 && symbolInfo.ticker) {
+        this.lastBars.set(symbolInfo.ticker, filteredBars[filteredBars.length - 1]);
+      }
+
+      onResult(filteredBars, {
+        noData: filteredBars.length === 0,
+        nextTime: filteredBars.length > 0 ? filteredBars[0].time / 1000 : undefined,
+      });
+      return;
+    }
+
+    if (this.config.debug && cachedEntry) {
+      console.log('[UnifiedDatafeed] 💨 Cache EXPIRED - fetching fresh data:', {
+        cacheKey,
+        age: `${Math.round((now - cachedEntry.timestamp) / 1000)}s`,
+        ttl: `${this.CACHE_TTL_MS / 1000}s`,
+      });
+    }
+
     try {
       // 🔥 PHASE 2: Progressive candle loading
       // Load only what's needed based on TradingView's request
@@ -747,6 +814,19 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       // Store last bar for WebSocket updates
       if (bars.length > 0 && symbolInfo.ticker) {
         this.lastBars.set(symbolInfo.ticker, bars[bars.length - 1]);
+      }
+
+      // 🔥 NEW: Cache the bars for instant timeframe switching
+      if (bars.length > 0) {
+        this.chartDataCache.set(cacheKey, {
+          data: result,
+          timestamp: now,
+          bars: bars,
+        });
+
+        if (this.config.debug) {
+          console.log('[UnifiedDatafeed] 💾 Cached data for:', cacheKey, `(${bars.length} bars)`);
+        }
       }
 
       // Emit latest market cap update for downstream consumers
@@ -1086,6 +1166,54 @@ export class UnifiedDatafeed implements IBasicDataFeed {
   }
 
   /**
+   * 🔥 NEW: Update cache with real-time bar updates
+   * This ensures cached data stays fresh when switching timeframes
+   */
+  private updateCacheWithNewBar(
+    tokenAddress: string,
+    timeframe: string,
+    isMarketCapMode: boolean,
+    newBar: Bar,
+  ): void {
+    const cacheKey = `${tokenAddress.toLowerCase()}:${timeframe}:${isMarketCapMode ? 'mcap' : 'price'}`;
+    const cached = this.chartDataCache.get(cacheKey);
+
+    if (!cached) {
+      // No cache to update
+      return;
+    }
+
+    // Find if this bar already exists in cache
+    const existingBarIndex = cached.bars.findIndex((bar) => bar.time === newBar.time);
+
+    if (existingBarIndex >= 0) {
+      // Update existing bar
+      cached.bars[existingBarIndex] = newBar;
+      if (this.config.debug) {
+        console.log('[UnifiedDatafeed] 💾 Updated cached bar:', {
+          cacheKey,
+          barTime: new Date(newBar.time).toISOString(),
+        });
+      }
+    } else {
+      // Append new bar to cache
+      cached.bars.push(newBar);
+      // Keep cache sorted by time
+      cached.bars.sort((a, b) => a.time - b.time);
+      if (this.config.debug) {
+        console.log('[UnifiedDatafeed] 💾 Added new bar to cache:', {
+          cacheKey,
+          barTime: new Date(newBar.time).toISOString(),
+          totalBars: cached.bars.length,
+        });
+      }
+    }
+
+    // Keep cache timestamp fresh so it doesn't expire during active trading
+    cached.timestamp = Date.now();
+  }
+
+  /**
    * 🔥 REAL-TIME ENHANCEMENT: Start aggressive polling for active trading
    */
   private startAggressivePolling(tokenAddress: string, _lastTradeTime?: string): void {
@@ -1145,6 +1273,10 @@ export class UnifiedDatafeed implements IBasicDataFeed {
             // Update the chart with new data
             subscription.onTick(bar);
             this.lastBars.set(key, bar);
+
+            // 🔥 NEW: Update cache with polling data
+            const timeframe = this.resolutionToTimeframe(subscription.resolution);
+            this.updateCacheWithNewBar(tokenAddress, timeframe, subscription.isMarketCapMode, bar);
 
             if (this.config.debug) {
               console.log('[UnifiedDatafeed] 🔥 Real-time update:', bar);
