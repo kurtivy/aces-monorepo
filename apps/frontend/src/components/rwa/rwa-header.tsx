@@ -4,7 +4,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import ConnectWalletNav from '../ui/custom/connect-wallet-nav';
-import { useAcesPrice } from '@/hooks/use-aces-price';
+// import { useAcesPrice } from '@/hooks/use-aces-price';
 
 interface RWAHeaderProps {
   className?: string;
@@ -15,7 +15,7 @@ export default function RWAHeader({ className = '', onProfileClick }: RWAHeaderP
   const router = useRouter();
   const [logoLoaded, setLogoLoaded] = useState(false);
   const [logoError, setLogoError] = useState(false);
-  const { acesUsdPrice, loading: priceLoading, error: priceError } = useAcesPrice();
+  // const { acesUsdPrice, loading: priceLoading, error: priceError } = useAcesPrice();
 
   const handleLogoClick = () => {
     router.push('/');
@@ -88,7 +88,7 @@ export default function RWAHeader({ className = '', onProfileClick }: RWAHeaderP
 
             {/* ACES Price Display */}
             <div className="hidden sm:flex items-center pl-30">
-              <div className="flex items-center gap-1">
+              {/* <div className="flex items-center gap-1">
                 {priceLoading ? (
                   <div className="w-16 h-4 bg-[#D0B284]/20 rounded animate-pulse"></div>
                 ) : priceError ? (
@@ -98,7 +98,7 @@ export default function RWAHeader({ className = '', onProfileClick }: RWAHeaderP
                     {formatPrice(acesUsdPrice)}
                   </span>
                 )}
-              </div>
+              </div> */}
             </div>
           </div>
 
