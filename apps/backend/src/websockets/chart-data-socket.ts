@@ -396,6 +396,22 @@ export class ChartDataWebSocket {
           transition: cachedState ? `${cachedState.poolReady} → true` : 'undefined → true',
         });
 
+        // 🔥 PHASE 1: Invalidate token metadata cache immediately
+        try {
+          const tokenMetadataCache = (this.fastify as any).tokenMetadataCache;
+          if (tokenMetadataCache && typeof tokenMetadataCache.invalidate === 'function') {
+            tokenMetadataCache.invalidate(tokenAddress);
+            console.log(
+              `🔥 [WebSocket] Cache invalidated for ${tokenAddress} - next query will be fresh`,
+            );
+          } else {
+            console.warn(`⚠️ [WebSocket] Token metadata cache not available for invalidation`);
+          }
+        } catch (error) {
+          console.error(`❌ [WebSocket] Failed to invalidate cache:`, error);
+          // Don't throw - graduation event should still broadcast
+        }
+
         // Broadcast graduation event to ALL subscribers of this token (all timeframes)
         this.broadcastGraduationEvent(tokenAddress, currentGraduationState);
       }
@@ -598,6 +614,24 @@ export class ChartDataWebSocket {
             transition: cachedState ? `${cachedState.poolReady} → true` : 'undefined → true',
           },
         );
+
+        // 🔥 PHASE 1: Invalidate token metadata cache immediately (MCAP version)
+        try {
+          const tokenMetadataCache = (this.fastify as any).tokenMetadataCache;
+          if (tokenMetadataCache && typeof tokenMetadataCache.invalidate === 'function') {
+            tokenMetadataCache.invalidate(tokenAddress);
+            console.log(
+              `🔥 [WebSocket] Cache invalidated for ${tokenAddress} - next query will be fresh (MCAP)`,
+            );
+          } else {
+            console.warn(
+              `⚠️ [WebSocket] Token metadata cache not available for invalidation (MCAP)`,
+            );
+          }
+        } catch (error) {
+          console.error(`❌ [WebSocket] Failed to invalidate cache (MCAP):`, error);
+          // Don't throw - graduation event should still broadcast
+        }
 
         // Broadcast graduation event to ALL subscribers of this token (all timeframes)
         this.broadcastGraduationEvent(tokenAddress, currentGraduationState);

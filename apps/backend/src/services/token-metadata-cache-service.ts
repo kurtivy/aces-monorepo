@@ -39,7 +39,9 @@ export class TokenMetadataCacheService {
   private cache = new Map<string, CacheEntry>();
   private pendingRequests = new Map<string, PendingRequest>();
 
-  private readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+  // 🔥 PHASE 1: Dynamic cache TTL based on token state
+  private readonly GRADUATED_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes (stable)
+  private readonly BONDING_CACHE_TTL_MS = 30 * 1000; // 30 seconds (may graduate)
   private readonly REQUEST_TIMEOUT_MS = 30 * 1000; // 30 seconds
   private cleanupInterval: NodeJS.Timeout;
 
@@ -55,13 +57,21 @@ export class TokenMetadataCacheService {
     const now = Date.now();
     const cacheKey = tokenAddress.toLowerCase();
 
-    // 1. Check cache first
+    // 1. Check cache first with dynamic TTL
     const cached = this.cache.get(cacheKey);
-    if (cached && now - cached.timestamp < this.CACHE_TTL_MS) {
-      // console.log(
-      //   `[TokenCache] 🎯 Cache hit for ${tokenAddress} (age: ${Math.floor((now - cached.timestamp) / 1000)}s)`,
-      // );
-      return cached.data;
+    if (cached) {
+      // 🔥 PHASE 1: Use longer TTL for graduated tokens, shorter for bonding tokens
+      const ttl =
+        cached.data.phase === 'DEX_TRADING'
+          ? this.GRADUATED_CACHE_TTL_MS // 5 minutes (stable state)
+          : this.BONDING_CACHE_TTL_MS; // 30 seconds (may graduate)
+
+      if (now - cached.timestamp < ttl) {
+        // console.log(
+        //   `[TokenCache] 🎯 Cache hit for ${tokenAddress} (age: ${Math.floor((now - cached.timestamp) / 1000)}s, ttl: ${ttl/1000}s)`,
+        // );
+        return cached.data;
+      }
     }
 
     // 2. Check if there's already a pending request (deduplication)
@@ -171,9 +181,15 @@ export class TokenMetadataCacheService {
     const now = Date.now();
     let cleanedCount = 0;
 
-    // Clean metadata cache
+    // Clean metadata cache with dynamic TTL
     for (const [key, entry] of this.cache.entries()) {
-      if (now - entry.timestamp > this.CACHE_TTL_MS) {
+      // 🔥 PHASE 1: Use dynamic TTL for cleanup
+      const ttl =
+        entry.data.phase === 'DEX_TRADING'
+          ? this.GRADUATED_CACHE_TTL_MS
+          : this.BONDING_CACHE_TTL_MS;
+
+      if (now - entry.timestamp > ttl) {
         this.cache.delete(key);
         cleanedCount++;
       }
@@ -197,13 +213,20 @@ export class TokenMetadataCacheService {
   public invalidate(tokenAddress?: string): void {
     if (tokenAddress) {
       const key = tokenAddress.toLowerCase();
+      const hadCache = this.cache.has(key);
       this.cache.delete(key);
       this.pendingRequests.delete(key);
-      // console.log(`[TokenCache] 🗑️ Cache invalidated for ${tokenAddress}`);
+
+      // 🔥 PHASE 1: Enhanced logging for monitoring
+      console.log(`[TokenCache] 🗑️ Cache invalidated for ${tokenAddress}`, {
+        hadCachedData: hadCache,
+        timestamp: new Date().toISOString(),
+      });
     } else {
+      const cacheSize = this.cache.size;
       this.cache.clear();
       this.pendingRequests.clear();
-      // console.log('[TokenCache] 🗑️ All caches cleared');
+      console.log(`[TokenCache] 🗑️ All caches cleared (${cacheSize} entries)`);
     }
   }
 
@@ -211,10 +234,31 @@ export class TokenMetadataCacheService {
    * Get cache statistics
    */
   public getStats() {
+    // 🔥 PHASE 1: Enhanced stats for monitoring
+    const now = Date.now();
+    let bondingCount = 0;
+    let graduatedCount = 0;
+    let avgAge = 0;
+
+    for (const [, entry] of this.cache.entries()) {
+      if (entry.data.phase === 'DEX_TRADING') {
+        graduatedCount++;
+      } else {
+        bondingCount++;
+      }
+      avgAge += now - entry.timestamp;
+    }
+
+    avgAge = this.cache.size > 0 ? avgAge / this.cache.size : 0;
+
     return {
       cacheSize: this.cache.size,
+      bondingTokens: bondingCount,
+      graduatedTokens: graduatedCount,
       pendingRequests: this.pendingRequests.size,
-      cacheTtl: `${this.CACHE_TTL_MS / 1000}s`,
+      graduatedCacheTtl: `${this.GRADUATED_CACHE_TTL_MS / 1000}s`,
+      bondingCacheTtl: `${this.BONDING_CACHE_TTL_MS / 1000}s`,
+      avgCacheAge: `${Math.floor(avgAge / 1000)}s`,
     };
   }
 
