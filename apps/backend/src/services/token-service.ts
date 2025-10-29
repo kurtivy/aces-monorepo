@@ -105,12 +105,9 @@ export class TokenService {
           currentPrice = tokenAmt.isZero() ? '0' : acesAmt.div(tokenAmt).toString();
         }
 
-        // Calculate 24h volume from recent trades (BOTH buys AND sells)
-        const oneDayAgo = Date.now() / 1000 - 24 * 60 * 60; // 24 hours ago in Unix timestamp
-        const recentTrades = trades.filter((t: SubgraphTrade) => parseInt(t.createdAt) > oneDayAgo);
-
+        // Calculate 24h volume from trades (already filtered to last 24h in query)
         // Volume = sum of ALL trade amounts (buys + sells)
-        const volume24h = recentTrades
+        const volume24h = trades
           .reduce((sum: Decimal, trade: SubgraphTrade) => {
             const acesAmount = new Decimal(trade.acesTokenAmount || '0');
             return sum.add(acesAmount.abs());
@@ -241,6 +238,9 @@ export class TokenService {
 
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
+        // Calculate 24 hours ago timestamp for volume calculation
+        const oneDayAgo = Math.floor(Date.now() / 1000) - 24 * 60 * 60;
+
         const query = `{
           tokens(where: {address: "${contractAddress.toLowerCase()}"}) {
             id
@@ -269,10 +269,13 @@ export class TokenService {
             }
           }
           trades(
-            where: {token: "${contractAddress.toLowerCase()}"}
+            where: {
+              token: "${contractAddress.toLowerCase()}"
+              createdAt_gte: "${oneDayAgo}"
+            }
             orderBy: createdAt
             orderDirection: desc
-            first: 50
+            first: 1000
           ) {
             id
             isBuy
