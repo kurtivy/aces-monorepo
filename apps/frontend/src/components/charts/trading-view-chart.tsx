@@ -336,8 +336,11 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
         isMobile: mobileDetected,
         userAgent: typeof window !== 'undefined' ? window.navigator.userAgent : 'N/A',
         innerWidth: typeof window !== 'undefined' ? window.innerWidth : 'N/A',
+        heightPx,
+        minHeightPx,
+        heightClass,
       });
-    }, []);
+    }, [heightPx, minHeightPx, heightClass]);
 
     const enabledFeatures = useMemo(() => {
       const baseFeatures = [
@@ -410,20 +413,30 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
 
     // Load TradingView library
     useEffect(() => {
+      console.log('[TradingView] Library load effect triggered', {
+        hasTradingView: !!window.TradingView,
+        isLibraryLoaded,
+        isLoading,
+      });
+
       if (window.TradingView) {
+        console.log('[TradingView] TradingView already loaded');
         setIsLibraryLoaded(true);
         setIsLoading(false);
         return;
       }
 
+      console.log('[TradingView] Loading TradingView script...');
       const script = document.createElement('script');
       script.src = '/charting_library/charting_library.standalone.js';
       script.async = true;
       script.onload = () => {
+        console.log('[TradingView] ✅ TradingView script loaded successfully');
         setIsLibraryLoaded(true);
         setIsLoading(false);
       };
-      script.onerror = () => {
+      script.onerror = (event) => {
+        console.error('[TradingView] ❌ Failed to load TradingView script', event);
         setError('Failed to load TradingView library');
         setIsLoading(false);
       };
@@ -439,15 +452,35 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
 
     // Initialize chart
     useEffect(() => {
-      if (!isLibraryLoaded || !chartContainerRef.current || !tokenAddress) {
+      console.log('[TradingView] Chart initialization effect triggered', {
+        isLibraryLoaded,
+        hasContainer: !!chartContainerRef.current,
+        tokenAddress: tokenAddress?.slice(0, 10),
+        isMobile,
+      });
+
+      if (!isLibraryLoaded) {
+        console.log('[TradingView] Skipping initialization - library not loaded');
+        return;
+      }
+
+      if (!chartContainerRef.current) {
+        console.log('[TradingView] Skipping initialization - no container ref');
+        return;
+      }
+
+      if (!tokenAddress) {
+        console.log('[TradingView] Skipping initialization - no token address');
         return;
       }
 
       if (!tokenAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
+        console.error('[TradingView] Invalid token address format:', tokenAddress);
         setError('Invalid token address format');
         return;
       }
 
+      console.log('[TradingView] ✅ All conditions met, proceeding with chart initialization');
       let isCancelled = false;
 
       const destroyExistingWidget = () => {
@@ -468,12 +501,39 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
 
         // Critical mobile fix: Ensure container has dimensions before creating widget
         const containerRect = chartContainerRef.current.getBoundingClientRect();
+        const containerElement = chartContainerRef.current;
+
+        console.log('[TradingView] Checking container dimensions:', {
+          isMobile,
+          getBoundingClientRect: {
+            width: containerRect.width,
+            height: containerRect.height,
+            top: containerRect.top,
+            left: containerRect.left,
+          },
+          clientDimensions: {
+            clientWidth: containerElement.clientWidth,
+            clientHeight: containerElement.clientHeight,
+          },
+          offsetDimensions: {
+            offsetWidth: containerElement.offsetWidth,
+            offsetHeight: containerElement.offsetHeight,
+          },
+          computedStyle: {
+            display: window.getComputedStyle(containerElement).display,
+            visibility: window.getComputedStyle(containerElement).visibility,
+            position: window.getComputedStyle(containerElement).position,
+          },
+          parentElement: containerElement.parentElement?.tagName,
+          tokenAddress: tokenAddress?.slice(0, 10),
+        });
+
         if (containerRect.height === 0 || containerRect.width === 0) {
           console.warn('[TradingView] Container has no dimensions yet, retrying...', {
             width: containerRect.width,
             height: containerRect.height,
-            clientWidth: chartContainerRef.current.clientWidth,
-            clientHeight: chartContainerRef.current.clientHeight,
+            clientWidth: containerElement.clientWidth,
+            clientHeight: containerElement.clientHeight,
           });
 
           // Retry after a short delay to let layout settle
@@ -549,6 +609,10 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
             containerHeight: chartContainerRef.current.clientHeight,
             enabledFeatures,
             disabledFeatures,
+            heightPx,
+            minHeightPx,
+            heightClass,
+            preset: isMobile ? 'mobile' : 'desktop',
           });
 
           const widgetOptions = {
@@ -648,15 +712,32 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
               console.log('[TradingView] Chart ready callback - cancelled');
               return;
             }
-            console.log('[TradingView] ✅ Chart ready! isMobile:', isMobile);
+            console.log('[TradingView] ✅ Chart ready! isMobile:', isMobile, {
+              widgetExists: !!widgetRef.current,
+              chartSymbol,
+              heightPx,
+              minHeightPx,
+            });
             setIsReinitializing(false);
             createCustomButtons();
           });
         } catch (err) {
           if (isCancelled) {
+            console.log('[TradingView] Error caught but cancelled');
             return;
           }
-          console.error('[TradingView] Error initializing:', err);
+          console.error('[TradingView] ❌ Error initializing widget:', err, {
+            error: err,
+            isMobile,
+            tokenAddress: tokenAddress?.slice(0, 10),
+            containerExists: !!chartContainerRef.current,
+            containerDimensions: chartContainerRef.current
+              ? {
+                  width: chartContainerRef.current.clientWidth,
+                  height: chartContainerRef.current.clientHeight,
+                }
+              : null,
+          });
           setError('Failed to initialize chart');
           setIsReinitializing(false);
           setIsModeSwitching(false);
@@ -664,23 +745,54 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
       };
 
       const maybeInstantiate = () => {
-        if (isCancelled) return;
+        if (isCancelled) {
+          console.log('[TradingView] maybeInstantiate cancelled');
+          return;
+        }
+
         const tv = typeof window !== 'undefined' ? window.TradingView : undefined;
+        console.log('[TradingView] maybeInstantiate called', {
+          hasTradingView: !!tv,
+          hasOnready: tv && typeof tv.onready === 'function',
+          isCancelled,
+        });
+
         if (tv && typeof tv.onready === 'function') {
+          console.log('[TradingView] Waiting for TradingView.onready...');
           tv.onready(() => {
+            console.log('[TradingView] TradingView.onready callback fired');
             if (!isCancelled) {
               instantiateWidget();
+            } else {
+              console.log('[TradingView] onready callback - but cancelled');
             }
           });
         } else {
+          console.log('[TradingView] No TradingView.onready, instantiating immediately');
           instantiateWidget();
         }
       };
 
       maybeInstantiate();
 
+      // Add a timeout to detect if chart gets stuck in loading state
+      const loadingTimeout = setTimeout(() => {
+        if (!isCancelled && (isLoading || isReinitializing)) {
+          console.error('[TradingView] ❌ Loading timeout - chart stuck in loading state', {
+            isLoading,
+            isReinitializing,
+            isLibraryLoaded,
+            hasContainer: !!chartContainerRef.current,
+            tokenAddress: tokenAddress?.slice(0, 10),
+            isMobile,
+          });
+          setError('Chart loading timeout - please refresh the page');
+        }
+      }, 10000); // 10 second timeout
+
       return () => {
         isCancelled = true;
+        clearTimeout(loadingTimeout);
         destroyExistingWidget();
         modeWrapperRef.current = null;
         modeButtonRef.current = null;
