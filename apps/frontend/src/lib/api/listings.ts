@@ -103,21 +103,28 @@ export type ApiResult<T> = ApiSuccessResponse<T> | ApiErrorResponse;
 export class ListingsApi {
   private static async request<T = unknown>(
     endpoint: string,
-    options: RequestInit = {},
+    options: { method?: string; headers?: Record<string, string>; body?: string | null } = {},
   ): Promise<ApiResult<T>> {
     // For all listings-related endpoints (including admin), keep the listings base path
     const basePath = '/api/v1/listings';
     const url = `${API_BASE_URL}${basePath}${endpoint}`;
 
-    const finalHeaders = {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    };
+    // Only set Content-Type if there's a body (avoid Fastify error for empty body with Content-Type)
+    const hasBody = options.body !== undefined && options.body !== null && options.body !== '';
+
+    // Build headers object - only use plain Record<string, string>
+    const headersObj: Record<string, string> = { ...options.headers };
+
+    // Only add Content-Type if there's actually a body
+    if (hasBody && !headersObj['Content-Type']) {
+      headersObj['Content-Type'] = 'application/json';
+    }
 
     try {
       const response = await fetch(url, {
-        ...options,
-        headers: finalHeaders,
+        method: options.method,
+        headers: Object.keys(headersObj).length > 0 ? headersObj : undefined,
+        body: options.body || undefined,
       });
 
       const data = await response.json();
@@ -259,6 +266,7 @@ export class ListingsApi {
       headers: {
         Authorization: `Bearer ${authToken}`,
       },
+      // No body needed - request method will handle Content-Type correctly
     });
   }
 

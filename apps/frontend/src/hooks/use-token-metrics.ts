@@ -25,13 +25,17 @@ interface UseTokenMetricsResult {
  * Hook to fetch and track token metrics with real-time polling
  * Polls backend API every 5 seconds for fresh data
  *
+ * 🔥 PHASE 4: Optimized to 5s polling for real-time feel. Backend caches for 5s,
+ * so cache helps with concurrent users while maintaining freshness. Webhooks
+ * invalidate cache immediately on trades for instant updates.
+ *
  * @param tokenAddress - The contract address of the token
- * @param refreshIntervalMs - Polling interval in milliseconds (default: 5000 = 5s for near-real-time)
+ * @param refreshIntervalMs - Polling interval in milliseconds (default: 5000 = 5s for real-time)
  * @returns Token metrics data, loading state, and error state
  */
 export function useTokenMetrics(
   tokenAddress: string | undefined,
-  refreshIntervalMs: number = 5000, // 🔥 OPTIMIZED: 5s polling for near-real-time updates
+  refreshIntervalMs: number = 5000, // 🔥 PHASE 4: 5s polling for real-time feel (matches backend 5s cache)
 ): UseTokenMetricsResult {
   const [metrics, setMetrics] = useState<TokenMetrics | null>(null);
   const metricsRef = useRef<TokenMetrics | null>(null);

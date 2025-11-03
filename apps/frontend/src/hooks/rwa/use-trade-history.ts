@@ -27,7 +27,9 @@ interface TradeHistoryOptions {
 }
 
 export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptions = {}) => {
-  const { intervalMs = 3000, dexMeta } = options; // 3s for real-time updates - reduced from 750ms to prevent rate limiting
+  // 🔥 PHASE 4: 5s polling for real-time feel (matches backend 5s cache)
+  // Webhooks invalidate cache immediately on trades, so data stays fresh
+  const { intervalMs = 5000, dexMeta } = options;
 
   // Track graduation state dynamically - can change mid-session
   const [detectedGraduationState, setDetectedGraduationState] = useState<{

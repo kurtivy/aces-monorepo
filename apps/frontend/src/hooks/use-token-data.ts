@@ -17,7 +17,10 @@ interface UseTokenDataResult {
 
 /**
  * Hook to fetch token data including 24h volume
- * Polls API every 30 seconds for real-time updates
+ * Polls API every 30 seconds (optimized for backend caching)
+ *
+ * 🔥 PHASE 4: This endpoint has less critical data, so 30s polling is optimal.
+ * Backend caches token data, so responses are fast even at this interval.
  */
 export function useTokenData(tokenAddress?: string): UseTokenDataResult {
   const [tokenData, setTokenData] = useState<TokenData | null>(null);
