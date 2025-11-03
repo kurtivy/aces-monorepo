@@ -275,7 +275,49 @@ export class ChartDataWebSocket {
   }
 
   /**
+   * 🔥 PHASE 4: Broadcast candle update from memory (called by ChartDataStore)
+   */
+  public broadcastCandleUpdate(
+    tokenAddress: string,
+    timeframe: string,
+    chartType: 'price' | 'mcap',
+    payload: any,
+  ): void {
+    const subscriptionKey = `${tokenAddress.toLowerCase()}:${timeframe}:${chartType}`;
+    const subscribers = this.subscriptions.get(subscriptionKey);
+
+    if (!subscribers || subscribers.size === 0) {
+      return; // No subscribers
+    }
+
+    const message = JSON.stringify(payload);
+    let sentCount = 0;
+
+    for (const clientId of subscribers) {
+      const client = this.clients.get(clientId);
+      if (client && client.socket.readyState === 1) {
+        try {
+          client.socket.send(message);
+          sentCount++;
+        } catch (error) {
+          console.error(`❌ [WebSocket] Failed to send candle update to ${clientId}:`, error);
+        }
+      }
+    }
+
+    // Store last broadcast for replay
+    this.lastBroadcast.set(subscriptionKey, { payload });
+
+    if (sentCount > 0) {
+      console.log(
+        `[WebSocket] 📤 Broadcast candle_update from memory to ${sentCount}/${subscribers.size} clients for ${subscriptionKey}`,
+      );
+    }
+  }
+
+  /**
    * Poll data and broadcast to subscribers (PRICE chart)
+   * 🔥 PHASE 4: Now checks memory first, falls back to chart service
    */
   private async pollAndBroadcast(tokenAddress: string, timeframe: string) {
     try {
@@ -292,12 +334,50 @@ export class ChartDataWebSocket {
         return;
       }
 
-      // console.log(
-      //   `🔄 [WebSocket] Polling PRICE ${cleanTokenAddress} ${timeframe} (${subscribers.size} subscribers)...`,
-      // );
+      // 🔥 PHASE 4: Check memory first
+      const chartDataStore = (this.fastify as any).chartDataStore;
+      if (chartDataStore && chartDataStore.hasData(cleanTokenAddress, timeframe as any)) {
+        const latestCandle = chartDataStore.getLatestCandle(cleanTokenAddress, timeframe as any);
+        if (latestCandle) {
+          // Get graduation state
+          const chartData = await this.chartService.getChartData(cleanTokenAddress, {
+            timeframe,
+            from: new Date(Date.now() - 3600000),
+            to: new Date(),
+            limit: 1,
+          });
 
+          const payload = {
+            type: 'candle_update',
+            tokenAddress: cleanTokenAddress,
+            timeframe,
+            chartType: 'price',
+            candle: {
+              timestamp: latestCandle.timestamp.getTime(),
+              open: latestCandle.open,
+              high: latestCandle.high,
+              low: latestCandle.low,
+              close: latestCandle.close,
+              openUsd: latestCandle.openUsd,
+              highUsd: latestCandle.highUsd,
+              lowUsd: latestCandle.lowUsd,
+              closeUsd: latestCandle.closeUsd,
+              volume: latestCandle.volume,
+              volumeUsd: latestCandle.volumeUsd,
+              trades: latestCandle.trades,
+              dataSource: latestCandle.dataSource,
+            },
+            graduationState: chartData.graduationState,
+            timestamp: Date.now(),
+          };
+
+          this.broadcastCandleUpdate(cleanTokenAddress, timeframe, 'price', payload);
+          return; // Early return - memory hit!
+        }
+      }
+
+      // Fallback to chart service polling (original behavior)
       // 🔁 Ensure we always fetch the previous completed candle
-      // Look back far enough so inactive markets still return continuity
       const now = new Date();
       const intervalMs = this.getTimeframeMs(timeframe);
       const lookbackMs = intervalMs * 6; // ~1.5 hours on 15m; covers previous candle after long gaps

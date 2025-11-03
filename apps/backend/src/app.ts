@@ -8,6 +8,8 @@ import { getPrismaClient, checkDatabaseHealth, disconnectDatabase } from './lib/
 import { loggers } from './lib/logger';
 import { handleError } from './lib/errors';
 import { registerAuth } from './plugins/auth';
+import cachePlugin from './plugins/cache-plugin';
+import { providerManager } from './lib/provider-manager';
 import { submissionRoutes } from './routes/v1/submissions';
 import { adminRoutes } from './routes/v1/admin'; // Step 2: Enabled
 import { bidsRoutes } from './routes/v1/bids';
@@ -34,6 +36,7 @@ import { bondingRoutes } from './routes/v1/bonding';
 import { bondingDataRoutes } from './routes/v1/bonding-data';
 import { pricesRoutes } from './routes/v1/prices';
 import { chartUnifiedRoutes } from './routes/v1/chart-unified';
+import { chartDataStoreTestRoutes } from './routes/v1/chart-store-test';
 
 // GoldSky webhook for historical price tracking
 import { goldskyWebhookRoutes } from './routes/webhooks/goldsky';
@@ -45,6 +48,7 @@ import { BitQueryService } from './services/bitquery-service';
 import { TokenService } from './services/token-service';
 import { AcesUsdPriceService } from './services/aces-usd-price-service';
 import { AerodromeDataService } from './services/aerodrome-data-service';
+import { UnifiedGoldSkyDataService } from './services/unified-goldsky-data-service';
 import { ethers } from 'ethers';
 import { debugRoutes } from './api/debug';
 
@@ -66,6 +70,14 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   const { initAcesSnapshotCache } = await import('./services/aces-snapshot-cache-service');
   const acesSnapshotCache = initAcesSnapshotCache(prisma);
   fastify.decorate('acesSnapshotCache', acesSnapshotCache);
+
+  // 🔥 PHASE 1: Register cache plugin BEFORE routes (so cache is available globally)
+  await fastify.register(cachePlugin);
+  console.log('[App] ✅ Cache plugin registered');
+
+  // 🔥 PHASE 1: Initialize provider manager (singleton for shared RPC providers)
+  providerManager.initializeProviders();
+  console.log('[App] ✅ Provider manager initialized');
 
   // Initialize provider FIRST (needed by multiple services)
   // Use QuickNode (paid) first, fallback to Alchemy free tier
@@ -96,6 +108,11 @@ export const buildApp = async (): Promise<FastifyInstance> => {
     aerodromeService,
     process.env.ACES_TOKEN_ADDRESS || '0x55337650856299363c496065C836B9C6E9dE0367',
   );
+
+  // 🔥 UNIFIED GOLDSKY DATA SERVICE: Single query for all token data
+  const unifiedGoldSkyService = new UnifiedGoldSkyDataService(fastify);
+  fastify.decorate('unifiedGoldSkyService', unifiedGoldSkyService);
+  console.log('[App] ✅ Unified GoldSky data service registered');
 
   // Register services with Fastify instance
   fastify.decorate('bitQueryService', bitQueryService);
@@ -129,16 +146,27 @@ export const buildApp = async (): Promise<FastifyInstance> => {
       acesUsdPriceService,
       tokenMetadataCache, // 🔥 NEW: Pass token cache to chart service
       acesSnapshotCache, // 🔥 NEW: Pass snapshot cache to chart service
+      fastify, // 🔥 PHASE 3: Pass fastify instance for cache plugin
     );
 
     // 🔥 NEW: Decorate fastify so service can be reused across requests
     fastify.decorate('chartAggregationService', chartAggregationService);
+
+    // 🔥 PHASE 1: Initialize Chart Data Store (in-memory cache)
+    const { ChartDataStore } = await import('./services/chart-data-store');
+    const chartDataStore = new ChartDataStore(fastify);
+    chartDataStore.setChartService(chartAggregationService);
+    fastify.decorate('chartDataStore', chartDataStore);
+    console.log('[App] ✅ Chart Data Store initialized');
 
     chartWebSocket = new ChartDataWebSocket(fastify, chartAggregationService, {
       pollIntervalMs: 3000, // 🔥 OPTIMIZED: Poll every 3s for faster trade display
     });
     await chartWebSocket.initialize();
     console.log('✅ Chart WebSocket enabled with ChartAggregationService');
+
+    // 🔥 PHASE 4: Register chartWebSocket on Fastify for webhook access
+    fastify.decorate('chartWebSocket', chartWebSocket);
 
     // Initialize Bonding Monitor WebSocket
     bondingMonitor = new BondingMonitorWebSocket(fastify, prisma, aerodromeService);
@@ -266,6 +294,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
 
   // Register new unified chart route
   fastify.register(chartUnifiedRoutes);
+  fastify.register(chartDataStoreTestRoutes);
   fastify.register(debugRoutes);
 
   // Register GoldSky webhook routes (NO AUTH - uses webhook secret verification)

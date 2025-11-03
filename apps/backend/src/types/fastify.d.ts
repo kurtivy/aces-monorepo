@@ -32,7 +32,10 @@ declare module 'fastify' {
     authenticate: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
     bondingMonitor?: import('../websockets/bonding-monitor-socket').BondingMonitorWebSocket | null;
     chartAggregationService?: any;
+    chartDataStore?: import('../services/chart-data-store').ChartDataStore;
+    chartWebSocket?: import('../websockets/chart-data-socket').ChartDataWebSocket | null;
     tokenMetadataCache?: any;
     acesSnapshotCache?: any;
+    unifiedGoldSkyService?: import('../services/unified-goldsky-data-service').UnifiedGoldSkyDataService;
   }
 }
