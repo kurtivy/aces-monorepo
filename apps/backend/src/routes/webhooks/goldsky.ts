@@ -1,7 +1,6 @@
-// src/routes/webhooks/goldsky.ts
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { priceCacheService } from '../../services/price-cache-service';
-import { clearBondingDataCache } from '../v1/bonding-data'; // 🔥 NEW: Cache invalidation
+import type { SubgraphTrade } from '../../lib/goldsky-client';
 
 /**
  * GoldSky webhook payload structure for Trade entity
@@ -172,9 +171,67 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
         console.log('\n[GoldSky] ✅ SUCCESS - Price snapshot stored');
         console.log('  Duration:', duration, 'ms');
 
-        // 🔥 NEW: Invalidate bonding data cache for this token
-        const clearedCount = clearBondingDataCache(tokenAddress);
+        // 🔥 PHASE 2: Invalidate bonding data cache for this token using global cache
+        const clearedCount = fastify.cache.invalidateBondingData(tokenAddress);
         console.log(`  🗑️ Invalidated ${clearedCount} bonding cache entries for ${tokenAddress}`);
+
+        // 🔥 PHASE 3: Invalidate metrics cache (includes health endpoint cache)
+        const metricsClearedCount = fastify.cache.invalidateMetrics(tokenAddress);
+        console.log(
+          `  🗑️ Invalidated ${metricsClearedCount} metrics cache entries for ${tokenAddress}`,
+        );
+
+        // 🔥 PHASE 4: Invalidate quotes, chart, and trades caches
+        const quotesCleared = fastify.cache.invalidateToken(tokenAddress);
+        console.log(
+          `  🗑️ Invalidated ${quotesCleared} quotes/chart/trades cache entries for ${tokenAddress}`,
+        );
+
+        // 🔥 UNIFIED GOLDSKY: Invalidate unified data cache (this refreshes ALL data)
+        const unifiedService = (fastify as any).unifiedGoldSkyService;
+        if (unifiedService) {
+          unifiedService.invalidateToken(tokenAddress);
+          console.log(`  🗑️ Invalidated unified GoldSky cache for ${tokenAddress}`);
+        }
+
+        // 🔥 PHASE 1: Add trade to Chart Data Store (in-memory cache)
+        const chartDataStore = (fastify as any).chartDataStore;
+        const chartWebSocket = (fastify as any).chartWebSocket;
+        if (chartDataStore) {
+          try {
+            // Convert webhook data to SubgraphTrade format
+            const subgraphTrade: SubgraphTrade = {
+              id: tradeId,
+              isBuy: data.isBuy,
+              tokenAmount: data.tokenAmount,
+              acesTokenAmount: data.acesTokenAmount,
+              supply: supplyWei,
+              createdAt: timestamp,
+              blockNumber: blockNumber,
+              token: {
+                address: data.token.address,
+                name: data.token.name,
+                symbol: data.token.symbol,
+              },
+              trader: {
+                address: data.trader.address,
+              },
+              protocolFeeAmount: data.protocolFeeAmount,
+              subjectFeeAmount: data.subjectFeeAmount,
+            };
+
+            await chartDataStore.addTrade(
+              tokenAddress,
+              subgraphTrade,
+              acesUsdPrice,
+              chartWebSocket,
+            );
+            console.log(`  📊 Added trade to Chart Data Store: ${tradeId}`);
+          } catch (storeError) {
+            console.error(`  ❌ Failed to add trade to Chart Data Store:`, storeError);
+            // Don't fail the webhook - chart store is optional enhancement
+          }
+        }
 
         // 🔥 NEW: Notify bonding monitor WebSocket of supply change (REAL-TIME!)
         const bondingMonitor = (fastify as any).bondingMonitor;

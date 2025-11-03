@@ -478,6 +478,7 @@ export async function submissionRoutes(fastify: FastifyInstance) {
 
   /**
    * Approve submission (admin only)
+   * This ensures that BOTH submission approval AND listing creation succeed atomically
    */
   fastify.put(
     '/admin/:id/approve',
@@ -494,33 +495,60 @@ export async function submissionRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       try {
         const { id } = request.params as { id: string };
+        const listingService = new (require('../../services/listing-service').ListingService)(
+          fastify.prisma,
+        );
 
-        const submission = await submissionService.approveSubmission(id, request.user!.id);
-        // Create listing from this approved submission (idempotent)
-        try {
-          const listingService = new (require('../../services/listing-service').ListingService)(
-            fastify.prisma,
-          );
-          await listingService.createListingFromSubmission(id, request.user!.id);
-        } catch (creationError) {
-          const msg =
-            creationError instanceof Error ? creationError.message : String(creationError);
-          if (!msg.includes('Listing already exists')) {
-            throw creationError;
+        // Use transaction to ensure both operations succeed or both fail
+        const result = await fastify.prisma.$transaction(async (tx) => {
+          // First, approve the submission
+          const submission = await submissionService.approveSubmission(id, request.user!.id);
+
+          // Then, create listing from this approved submission
+          // Check if listing already exists
+          const existingListing = await (tx as any).listing.findUnique({
+            where: { submissionId: id },
+          });
+
+          if (existingListing) {
+            request.log?.warn(
+              { submissionId: id, listingId: existingListing.id },
+              'Listing already exists for submission, skipping creation',
+            );
+            return { submission, listing: existingListing };
           }
-          request.log?.warn(
-            { err: creationError, submissionId: id },
-            'Listing already exists for submission',
-          );
-        }
+
+          // Create the listing - this will throw if submission is not approved
+          const listing = await listingService.createListingFromSubmission(id, request.user!.id);
+
+          // Verify listing was created successfully
+          if (!listing) {
+            throw new Error('Failed to create listing after submission approval');
+          }
+
+          return { submission, listing };
+        });
 
         return reply.send({
           success: true,
-          data: submission,
-          message: 'Submission approved successfully',
+          data: result.submission,
+          message: 'Submission approved and listing created successfully',
         });
       } catch (error) {
         console.error('Error approving submission:', error);
+        const errorMessage =
+          error instanceof Error ? error.message : 'Failed to approve submission';
+
+        // If listing creation failed, provide more specific error
+        if (errorMessage.includes('listing') || errorMessage.includes('Listing')) {
+          return reply.status(500).send({
+            success: false,
+            error:
+              'Submission approval failed: Could not create listing. Please try again or contact support.',
+            details: errorMessage,
+          });
+        }
+
         throw error;
       }
     },

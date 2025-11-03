@@ -573,7 +573,11 @@ export async function listingRoutes(fastify: FastifyInstance) {
           throw errors.unauthorized();
         }
 
+        console.log(`[Listings Route] Finalizing user details for listing ${id}, user ${userId}`);
+
         const listing = await listingService.finalizeUserDetails(id, userId);
+
+        console.log(`[Listings Route] Successfully finalized listing ${id}`);
 
         return reply.send({
           success: true,
@@ -582,7 +586,16 @@ export async function listingRoutes(fastify: FastifyInstance) {
             'Listing details finalized! Admin will review and prepare your token for minting.',
         });
       } catch (error) {
-        console.error('Error finalizing user details:', error);
+        console.error('[Listings Route] Error finalizing user details:', error);
+        console.error('[Listings Route] Error details:', {
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          listingId: (request.params as { id: string }).id,
+          userId: request.user?.id,
+          errorType: error instanceof Error ? error.constructor.name : typeof error,
+        });
+
+        // Re-throw to let Fastify error handler process it
         throw error;
       }
     },
