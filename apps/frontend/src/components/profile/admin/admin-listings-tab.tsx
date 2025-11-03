@@ -1057,6 +1057,7 @@ export function AdminListingsTab() {
                             selectedListing.tokenCreationStatus || 'AWAITING_USER_DETAILS',
                           tokenParameters:
                             (selectedListing.tokenParameters as TokenParameters) ?? null,
+                          ownerWalletAddress: selectedListing.owner?.walletAddress || undefined,
                         }}
                         onSuccess={async () => {
                           // Refetch listings to get updated data
