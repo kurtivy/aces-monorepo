@@ -174,8 +174,7 @@ export class ListingService {
       return listing as T & { rwaSubmissionId: string | null };
     }
 
-    const rwaSubmissionId =
-      (listing as any).rwaSubmissionId ?? listing.submissionId ?? null;
+    const rwaSubmissionId = (listing as any).rwaSubmissionId ?? listing.submissionId ?? null;
 
     return {
       ...listing,
@@ -720,6 +719,67 @@ export class ListingService {
     }
   }
 
+  /**
+   * Serialize dates in listing object for JSON response
+   */
+  private serializeListingDates(listing: any): any {
+    if (!listing) return listing;
+
+    try {
+      const serialized = { ...listing };
+
+      // Convert Date objects to ISO strings
+      if (listing.createdAt instanceof Date) {
+        serialized.createdAt = listing.createdAt.toISOString();
+      } else if (typeof listing.createdAt === 'string') {
+        serialized.createdAt = listing.createdAt; // Already serialized
+      }
+
+      if (listing.updatedAt instanceof Date) {
+        serialized.updatedAt = listing.updatedAt.toISOString();
+      } else if (typeof listing.updatedAt === 'string') {
+        serialized.updatedAt = listing.updatedAt;
+      }
+
+      if (listing.launchDate instanceof Date) {
+        serialized.launchDate = listing.launchDate.toISOString();
+      } else if (listing.launchDate === null || listing.launchDate === undefined) {
+        serialized.launchDate = null;
+      }
+
+      // Handle nested objects
+      if (listing.submission) {
+        serialized.submission = { ...listing.submission };
+        if (listing.submission.createdAt instanceof Date) {
+          serialized.submission.createdAt = listing.submission.createdAt.toISOString();
+        }
+        if (listing.submission.approvedAt instanceof Date) {
+          serialized.submission.approvedAt = listing.submission.approvedAt.toISOString();
+        }
+      }
+
+      if (listing.owner) {
+        serialized.owner = { ...listing.owner };
+        if (listing.owner.createdAt instanceof Date) {
+          serialized.owner.createdAt = listing.owner.createdAt.toISOString();
+        }
+      }
+
+      if (listing.approvedByUser) {
+        serialized.approvedByUser = { ...listing.approvedByUser };
+        if (listing.approvedByUser.createdAt instanceof Date) {
+          serialized.approvedByUser.createdAt = listing.approvedByUser.createdAt.toISOString();
+        }
+      }
+
+      return serialized;
+    } catch (error) {
+      console.error('[ListingService] Error serializing listing dates:', error);
+      // Return original listing if serialization fails
+      return listing;
+    }
+  }
+
   private async prepareListingForResponse(listing: any, includeDex = false): Promise<any> {
     const commentCount = listing?._count?.comments ?? listing?.commentCount ?? null;
 
@@ -738,8 +798,12 @@ export class ListingService {
       imageGallery = listing.imageGallery || [];
     }
 
+    // Frontend expects 'description' field - derive from details, story, or use empty string
+    const description = listing.details || listing.story || listing.description || '';
+
     const safeListing = this.addSubmissionAlias({
       ...listing,
+      description, // Add description field for frontend compatibility
       commentCount,
       imageGallery,
     });
@@ -748,11 +812,14 @@ export class ListingService {
       delete (safeListing as { _count?: unknown })._count;
     }
 
+    // Serialize Date objects before returning
+    const serializedListing = this.serializeListingDates(safeListing);
+
     if (!includeDex) {
-      return safeListing;
+      return serializedListing;
     }
 
-    return this.attachDexState(safeListing);
+    return this.attachDexState(serializedListing);
   }
 
   private async attachDexState(listing: any): Promise<any> {
@@ -810,44 +877,73 @@ export class ListingService {
    * Finalize user details - User confirms listing ready for admin review
    */
   async finalizeUserDetails(listingId: string, userId: string) {
-    // Verify listing exists and user owns it
-    const listing = await this.prisma.listing.findUnique({
-      where: { id: listingId },
-      include: { owner: true },
-    });
+    try {
+      // Verify listing exists and user owns it
+      const listing = await this.prisma.listing.findUnique({
+        where: { id: listingId },
+        include: { owner: true },
+      });
 
-    if (!listing) {
-      throw errors.notFound('Listing');
+      if (!listing) {
+        throw errors.notFound('Listing');
+      }
+
+      if (listing.ownerId !== userId) {
+        throw errors.forbidden('You do not own this listing');
+      }
+
+      // Check if listing is in correct status
+      // Allow null status for backwards compatibility with existing listings
+      if (listing.tokenCreationStatus && listing.tokenCreationStatus !== 'AWAITING_USER_DETAILS') {
+        throw errors.validation(
+          `Listing is not awaiting user details. Current status: ${listing.tokenCreationStatus}`,
+        );
+      }
+
+      // Update status to PENDING_ADMIN_REVIEW
+      const updatedListing = await this.prisma.listing.update({
+        where: { id: listingId },
+        data: {
+          tokenCreationStatus: 'PENDING_ADMIN_REVIEW',
+          updatedAt: new Date(),
+        },
+        include: {
+          owner: true,
+          submission: true,
+          approvedByUser: true,
+        },
+      });
+
+      console.log(`[ListingService] Listing ${listingId} finalized by user, pending admin review`);
+
+      // Use prepareListingForResponse to format the response properly (adds description, signed URLs, etc.)
+      try {
+        const formattedListing = await this.prepareListingForResponse(updatedListing);
+        return formattedListing;
+      } catch (formatError) {
+        console.error('[ListingService] Error formatting listing response:', formatError);
+        console.error(
+          '[ListingService] Format error stack:',
+          formatError instanceof Error ? formatError.stack : 'N/A',
+        );
+        try {
+          console.error('[ListingService] Listing ID:', updatedListing?.id);
+          console.error('[ListingService] Listing title:', updatedListing?.title);
+        } catch (logError) {
+          console.error('[ListingService] Could not log listing details:', logError);
+        }
+        // If formatting fails, return a basic response without formatting
+        const basicResponse = this.addSubmissionAlias({
+          ...updatedListing,
+          description: updatedListing.details || updatedListing.story || '',
+        });
+        return this.serializeListingDates(basicResponse);
+      }
+    } catch (error) {
+      console.error('[ListingService] Error in finalizeUserDetails:', error);
+      console.error('[ListingService] Error stack:', error instanceof Error ? error.stack : 'N/A');
+      throw error;
     }
-
-    if (listing.ownerId !== userId) {
-      throw errors.forbidden('You do not own this listing');
-    }
-
-    // Check if listing is in correct status
-    // Allow null status for backwards compatibility with existing listings
-    if (listing.tokenCreationStatus && listing.tokenCreationStatus !== 'AWAITING_USER_DETAILS') {
-      throw errors.validation(
-        `Listing is not awaiting user details. Current status: ${listing.tokenCreationStatus}`,
-      );
-    }
-
-    // Update status to PENDING_ADMIN_REVIEW
-    const updatedListing = await this.prisma.listing.update({
-      where: { id: listingId },
-      data: {
-        tokenCreationStatus: 'PENDING_ADMIN_REVIEW',
-        updatedAt: new Date(),
-      },
-      include: {
-        owner: true,
-        submission: true,
-      },
-    });
-
-    console.log(`[ListingService] Listing ${listingId} finalized by user, pending admin review`);
-
-    return this.addSubmissionAlias(updatedListing);
   }
 
   /**

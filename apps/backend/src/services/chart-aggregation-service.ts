@@ -7,6 +7,9 @@ import { TokenMetadataCacheService } from './token-metadata-cache-service'; // �
 import { AcesSnapshotCacheService } from './aces-snapshot-cache-service'; // 🔥 NEW
 import { ethers } from 'ethers'; // 🔥 For smart contract calls
 import { getNetworkConfig, createProvider } from '../config/network.config'; // 🔥 RPC provider
+import type { FastifyInstance } from 'fastify'; // 🔥 PHASE 3: Fastify instance for cache plugin
+import type { UnifiedTokenData } from './unified-goldsky-data-service'; // 🔥 NEW: Unified data
+import type { SubgraphTrade } from '../lib/goldsky-client'; // 🔥 NEW: For trade conversion
 
 // 🔥 Factory ABI - only the functions we need
 const FACTORY_ABI = [
@@ -70,6 +73,8 @@ interface UnifiedChartResponse {
   acesUsdPrice: string | null;
 }
 
+export type { UnifiedChartResponse };
+
 export class ChartAggregationService {
   private readonly BONDING_SUPPLY = '800000000'; // 800M tokens for bonding curve
   private readonly GRADUATED_SUPPLY = '1000000000'; // 1B tokens after graduation
@@ -81,6 +86,7 @@ export class ChartAggregationService {
     private acesUsdPriceService: AcesUsdPriceService,
     private tokenMetadataCache: TokenMetadataCacheService, // 🔥 NEW: Token metadata cache
     private acesSnapshotCache: AcesSnapshotCacheService, // 🔥 NEW: ACES snapshot cache
+    private fastify?: FastifyInstance, // 🔥 PHASE 3: Fastify instance for cache plugin
   ) {
     this.tradePriceAggregator = new TradePriceAggregator(prisma, acesSnapshotCache);
   }
@@ -99,25 +105,35 @@ export class ChartAggregationService {
     const now = Date.now();
     const currentCandleTimestamp = this.alignTimestamp(new Date(now), options.timeframe);
 
+    // 🔥 OPTIMIZED: Fetch graduation state and ACES price in parallel
+    const [graduationState, acesPriceResult] = await Promise.allSettled([
+      this.checkGraduation(tokenAddress),
+      this.acesUsdPriceService.getAcesUsdPrice().catch(() => ({ price: null })),
+    ]);
+
     // 1. Check graduation state
-    const graduationState = await this.checkGraduation(tokenAddress);
+    const graduation: GraduationState =
+      graduationState.status === 'fulfilled'
+        ? graduationState.value
+        : {
+            isBonded: false,
+            poolReady: false,
+            dexLiveAt: null,
+            poolAddress: null,
+          };
 
     // 2. Fetch ACES/USD price ONCE (graceful failure handling)
     let acesUsdPrice: number | null = null;
-    try {
-      const priceResult = await this.acesUsdPriceService.getAcesUsdPrice();
-      acesUsdPrice = parseFloat(priceResult.price);
+    if (acesPriceResult.status === 'fulfilled' && acesPriceResult.value.price) {
+      acesUsdPrice = parseFloat(acesPriceResult.value.price);
 
       if (!acesUsdPrice || isNaN(acesUsdPrice) || acesUsdPrice <= 0) {
         console.warn('[ChartAggregation] ⚠️ ACES/USD price invalid, will return ACES prices only');
         acesUsdPrice = null;
-      } else {
-        // console.log('[ChartAggregation] ✅ ACES/USD price fetched:', acesUsdPrice);
       }
-    } catch (error) {
+    } else {
       console.warn(
-        '[ChartAggregation] ⚠️ Failed to fetch ACES/USD price, will return ACES prices only:',
-        error,
+        '[ChartAggregation] ⚠️ Failed to fetch ACES/USD price, will return ACES prices only',
       );
       acesUsdPrice = null;
     }
@@ -125,7 +141,7 @@ export class ChartAggregationService {
     // 3. Route to appropriate data source(s) using smart switching
     let candles: Candle[];
 
-    if (!graduationState.poolReady) {
+    if (!graduation.poolReady) {
       // TOKEN IS STILL IN BONDING CURVE
       // console.log('[ChartAggregation] 📈 Token bonding - using SubGraph');
       candles = await this.fetchBondingCurveData(
@@ -134,27 +150,108 @@ export class ChartAggregationService {
         acesUsdPrice,
         currentCandleTimestamp,
       );
-    } else if (graduationState.dexLiveAt) {
+    } else if (graduation.dexLiveAt) {
       // TOKEN HAS GRADUATED - check if request spans bonding/DEX boundary
       // console.log('[ChartAggregation] 🏊 Token graduated - checking boundaries');
       candles = await this.fetchGraduatedTokenData(
         tokenAddress,
-        graduationState,
+        graduation,
         options,
         acesUsdPrice,
         currentCandleTimestamp,
       );
     } else {
-      // TOKEN ON DEX BUT NO GRADUATION DATE - use DEX switching only
+      // TOKEN ON DEX BUT NO GRADUATION DATE - need to combine bonding + DEX trades
       console.warn(
-        '[ChartAggregation] ⚠️ Pool ready but no graduation date - using DEX smart switching',
+        '[ChartAggregation] ⚠️ Pool ready but no graduation date - combining bonding + DEX trades',
       );
-      candles = await this.fetchDexDataWithSmartSwitching(
-        tokenAddress,
-        graduationState.poolAddress!,
-        options,
-        currentCandleTimestamp,
-      );
+
+      // Try to find the first DEX trade to use as boundary
+      let estimatedGraduationDate: Date | null = null;
+      try {
+        // Get first DEX trade from BitQuery to estimate graduation date
+        const firstDexTrades = await this.bitQueryService.getDexTrades(
+          tokenAddress,
+          graduation.poolAddress!,
+          {
+            from: new Date(0), // Start from beginning
+            to: options.to,
+            limit: 1,
+          },
+        );
+
+        if (firstDexTrades.length > 0 && firstDexTrades[0].blockTime) {
+          estimatedGraduationDate = firstDexTrades[0].blockTime;
+          console.log(
+            `[ChartAggregation] 📅 Estimated graduation date from first DEX trade: ${estimatedGraduationDate.toISOString()}`,
+          );
+        }
+      } catch (error) {
+        console.warn('[ChartAggregation] Failed to find first DEX trade:', error);
+      }
+
+      // If we found a graduation date, fetch both bonding and DEX trades
+      if (estimatedGraduationDate) {
+        const requestSpansGraduation = options.from < estimatedGraduationDate;
+
+        if (requestSpansGraduation) {
+          // Request spans graduation - fetch both bonding and DEX
+          console.log('[ChartAggregation] 🔀 Combining bonding curve + DEX data');
+
+          // Fetch bonding curve data (before estimated graduation)
+          const bondingCandles = await this.fetchBondingCurveData(
+            tokenAddress,
+            { ...options, to: estimatedGraduationDate },
+            acesUsdPrice,
+            currentCandleTimestamp,
+          );
+
+          // Pass last bonding candle as seed to DEX candles
+          const lastBondingCandle =
+            bondingCandles.length > 0 ? bondingCandles[bondingCandles.length - 1] : null;
+
+          // Fetch DEX data (after estimated graduation)
+          const dexCandles = await this.fetchDexDataWithSmartSwitching(
+            tokenAddress,
+            graduation.poolAddress!,
+            { ...options, from: estimatedGraduationDate },
+            currentCandleTimestamp,
+            lastBondingCandle,
+          );
+
+          console.log('[ChartAggregation] ✅ Combined bonding + DEX:', {
+            bonding: bondingCandles.length,
+            dex: dexCandles.length,
+            total: bondingCandles.length + dexCandles.length,
+          });
+
+          candles = [...bondingCandles, ...dexCandles];
+        } else if (options.to < estimatedGraduationDate) {
+          // Entire request is before graduation - bonding curve only
+          candles = await this.fetchBondingCurveData(
+            tokenAddress,
+            options,
+            acesUsdPrice,
+            currentCandleTimestamp,
+          );
+        } else {
+          // Request is entirely after graduation - DEX only
+          candles = await this.fetchDexDataWithSmartSwitching(
+            tokenAddress,
+            graduation.poolAddress!,
+            options,
+            currentCandleTimestamp,
+          );
+        }
+      } else {
+        // Fallback: Only DEX data if we couldn't find graduation date
+        candles = await this.fetchDexDataWithSmartSwitching(
+          tokenAddress,
+          graduation.poolAddress!,
+          options,
+          currentCandleTimestamp,
+        );
+      }
     }
 
     // console.log(`[ChartAggregation] ✅ Generated ${candles.length} candles`);
@@ -191,7 +288,7 @@ export class ChartAggregationService {
 
     return {
       candles: enrichedCandles,
-      graduationState,
+      graduationState: graduation,
       acesUsdPrice: acesUsdPrice ? acesUsdPrice.toFixed(6) : null,
     };
   }
@@ -248,8 +345,8 @@ export class ChartAggregationService {
   }
 
   /**
-   * Fetch bonding curve trades from SubGraph with historical ACES prices
-   * NOW USES TradePriceAggregator for accurate historical pricing
+   * Fetch bonding curve trades from unified GoldSky data
+   * 🔥 UNIFIED GOLDSKY: Uses cached unified data instead of making separate GoldSky queries
    */
   private async fetchBondingTrades(
     tokenAddress: string,
@@ -261,6 +358,100 @@ export class ChartAggregationService {
     const toTimestamp = Math.floor(to.getTime() / 1000);
 
     try {
+      // 🔥 UNIFIED GOLDSKY: Get unified data (cached, no new GoldSky queries!)
+      const unifiedData =
+        this.fastify &&
+        (
+          this.fastify as {
+            unifiedGoldSkyService: {
+              getUnifiedTokenData: (address: string) => Promise<UnifiedTokenData | null>;
+            };
+          }
+        )?.unifiedGoldSkyService?.getUnifiedTokenData(tokenAddress);
+
+      let unifiedDataResult: UnifiedTokenData | null = null;
+      if (unifiedData) {
+        unifiedDataResult = await unifiedData;
+      }
+
+      // Use unified data if available, otherwise fallback to old method
+      if (unifiedDataResult && unifiedDataResult.trades && unifiedDataResult.trades.length > 0) {
+        // Filter trades by time range
+        const filteredTrades = unifiedDataResult.trades.filter((trade) => {
+          const tradeTimestamp = parseInt(trade.createdAt);
+          return tradeTimestamp >= fromTimestamp && tradeTimestamp <= toTimestamp;
+        });
+
+        // Limit trades
+        const limitedTrades = filteredTrades.slice(0, limit);
+
+        // Convert unified trades to SubgraphTrade format
+        const subgraphTrades: SubgraphTrade[] = limitedTrades.map((trade) => ({
+          id: trade.id,
+          isBuy: trade.isBuy,
+          tokenAmount: trade.tokenAmount,
+          acesTokenAmount: trade.acesTokenAmount,
+          supply: trade.supply,
+          createdAt: trade.createdAt,
+          blockNumber: trade.blockNumber,
+          protocolFeeAmount: trade.protocolFeeAmount,
+          subjectFeeAmount: trade.subjectFeeAmount,
+          token: {
+            address: unifiedDataResult!.address,
+            name: '',
+            symbol: '',
+          },
+          trader: {
+            address: trade.trader?.id || '',
+          },
+        }));
+
+        // Enrich trades with ACES prices using TradePriceAggregator
+        const tradesWithPrices =
+          await this.tradePriceAggregator.enrichTradesWithPrices(subgraphTrades);
+
+        // Get token parameters from unified data
+        const steepness = unifiedDataResult.steepness;
+        const floor = unifiedDataResult.floor;
+
+        // Transform to Trade format expected by the rest of the service
+        const transformedTrades: Trade[] = [];
+
+        for (const trade of tradesWithPrices) {
+          const tokenAmount = parseFloat(trade.tokenAmount) / 1e18;
+          const acesTokenAmount = parseFloat(trade.acesTokenAmount) / 1e18;
+          const supply = parseFloat(trade.supply) / 1e18; // Circulating supply AFTER this trade
+
+          let priceInAces: number;
+
+          if (steepness && floor) {
+            priceInAces = this.calculateMarginalBuyPrice(supply, steepness, floor);
+          } else {
+            // Fallback: Use execution price
+            priceInAces = tokenAmount > 0 ? acesTokenAmount / tokenAmount : 0;
+          }
+
+          // Calculate USD price using HISTORICAL ACES price
+          const priceInUsd = priceInAces * trade.acesUsdPriceAtExecution;
+
+          // Calculate volume in USD using historical ACES price
+          const volumeUsd = tokenAmount * priceInAces * trade.acesUsdPriceAtExecution;
+
+          transformedTrades.push({
+            timestamp: new Date(parseInt(trade.createdAt) * 1000),
+            priceInAces,
+            priceInUsd,
+            amountToken: tokenAmount,
+            volumeUsd,
+            side: (trade.isBuy ? 'buy' : 'sell') as 'buy' | 'sell',
+            circulatingSupply: supply,
+          });
+        }
+
+        return transformedTrades;
+      }
+
+      // 🔥 FALLBACK: Use old method if unified data not available
       // 🔥 OPTIMIZED: Reuse trade aggregator with snapshot cache
       const tradesWithPrices = await this.tradePriceAggregator.getTradesWithPrices(
         tokenAddress,
@@ -269,97 +460,106 @@ export class ChartAggregationService {
         toTimestamp,
       );
 
-      // console.log(
-      //   `[ChartAggregation] Fetched ${tradesWithPrices.length} trades with historical ACES prices`,
-      // );
-
-      // 🔥 Fetch token parameters (steepness, floor) from SubGraph
+      // 🔥 Fetch token parameters (steepness, floor) from SubGraph (fallback only)
       let steepness: string | null = null;
       let floor: string | null = null;
 
-      const subgraphUrl = process.env.GOLDSKY_SUBGRAPH_URL || process.env.SUBGRAPH_URL;
+      // Try unified data first even in fallback case
+      if (unifiedDataResult) {
+        steepness = unifiedDataResult.steepness;
+        floor = unifiedDataResult.floor;
+      }
 
-      if (!subgraphUrl) {
-        console.warn(
-          `[ChartAggregation] ⚠️ SubGraph URL not configured (GOLDSKY_SUBGRAPH_URL or SUBGRAPH_URL missing)`,
-        );
-      } else {
-        try {
-          const query = `{
-            tokens(where: {address: "${tokenAddress.toLowerCase()}"}) {
-              address
-              steepness
-              floor
-            }
-          }`;
+      // If unified data doesn't have params, fallback to direct GoldSky query
+      if (!steepness || !floor) {
+        const subgraphUrl = process.env.GOLDSKY_SUBGRAPH_URL || process.env.SUBGRAPH_URL;
 
-          // Add timeout and retry logic to handle ECONNRESET errors
-          const fetchWithTimeout = async (url: string, options: RequestInit, timeoutMs = 5000) => {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-            try {
-              const response = await fetch(url, {
-                ...options,
-                signal: controller.signal,
-              });
-              return response;
-            } finally {
-              clearTimeout(timeout);
-            }
-          };
-
-          const maxRetries = 2;
-          let lastError: Error | null = null;
-
-          for (let attempt = 0; attempt <= maxRetries; attempt++) {
-            try {
-              const response = await fetchWithTimeout(
-                subgraphUrl,
-                {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ query }),
-                },
-                5000, // 5 second timeout
-              );
-
-              if (response.ok) {
-                const result = (await response.json()) as {
-                  data?: { tokens?: Array<{ steepness: string; floor: string }> };
-                };
-                const tokens = result?.data?.tokens;
-
-                if (tokens && tokens.length > 0) {
-                  steepness = tokens[0].steepness;
-                  floor = tokens[0].floor;
-                  break; // Success, exit retry loop
-                }
-              } else {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-              }
-            } catch (error) {
-              lastError = error as Error;
-
-              if (attempt < maxRetries) {
-                const backoffMs = Math.min(1000 * Math.pow(2, attempt), 3000);
-                console.warn(
-                  `[ChartAggregation] ⚠️ SubGraph fetch attempt ${attempt + 1} failed, retrying in ${backoffMs}ms...`,
-                  error instanceof Error ? error.message : error,
-                );
-                await new Promise((resolve) => setTimeout(resolve, backoffMs));
-              }
-            }
-          }
-
-          if (lastError && !steepness && !floor) {
-            throw lastError;
-          }
-        } catch (error) {
-          console.error(
-            `[ChartAggregation] ❌ Failed to fetch token parameters from SubGraph after retries:`,
-            error instanceof Error ? error.message : error,
+        if (!subgraphUrl) {
+          console.warn(
+            `[ChartAggregation] ⚠️ SubGraph URL not configured (GOLDSKY_SUBGRAPH_URL or SUBGRAPH_URL missing)`,
           );
+        } else {
+          try {
+            const query = `{
+              tokens(where: {address: "${tokenAddress.toLowerCase()}"}) {
+                address
+                steepness
+                floor
+              }
+            }`;
+
+            // Add timeout and retry logic to handle ECONNRESET errors
+            const fetchWithTimeout = async (
+              url: string,
+              options: RequestInit,
+              timeoutMs = 5000,
+            ) => {
+              const controller = new AbortController();
+              const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+              try {
+                const response = await fetch(url, {
+                  ...options,
+                  signal: controller.signal,
+                });
+                return response;
+              } finally {
+                clearTimeout(timeout);
+              }
+            };
+
+            const maxRetries = 2;
+            let lastError: Error | null = null;
+
+            for (let attempt = 0; attempt <= maxRetries; attempt++) {
+              try {
+                const response = await fetchWithTimeout(
+                  subgraphUrl,
+                  {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query }),
+                  },
+                  5000, // 5 second timeout
+                );
+
+                if (response.ok) {
+                  const result = (await response.json()) as {
+                    data?: { tokens?: Array<{ steepness: string; floor: string }> };
+                  };
+                  const tokens = result?.data?.tokens;
+
+                  if (tokens && tokens.length > 0) {
+                    steepness = tokens[0].steepness;
+                    floor = tokens[0].floor;
+                    break; // Success, exit retry loop
+                  }
+                } else {
+                  throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+              } catch (error) {
+                lastError = error as Error;
+
+                if (attempt < maxRetries) {
+                  const backoffMs = Math.min(1000 * Math.pow(2, attempt), 3000);
+                  console.warn(
+                    `[ChartAggregation] ⚠️ SubGraph fetch attempt ${attempt + 1} failed, retrying in ${backoffMs}ms...`,
+                    error instanceof Error ? error.message : error,
+                  );
+                  await new Promise((resolve) => setTimeout(resolve, backoffMs));
+                }
+              }
+            }
+
+            if (lastError && !steepness && !floor) {
+              throw lastError;
+            }
+          } catch (error) {
+            console.error(
+              `[ChartAggregation] ❌ Failed to fetch token parameters from SubGraph after retries:`,
+              error instanceof Error ? error.message : error,
+            );
+          }
         }
       }
 
@@ -452,6 +652,16 @@ export class ChartAggregationService {
     to: Date,
     limit: number = 2000, // 🔥 OPTIMIZED: Sensible default instead of 5000
   ): Promise<Trade[]> {
+    // 🔥 PHASE 3: Use cache plugin for BitQuery responses (60s TTL for historical data)
+    const cacheKey = `bitquery-dex-trades:${tokenAddress.toLowerCase()}:${poolAddress.toLowerCase()}:${from.toISOString()}:${to.toISOString()}:${limit}`;
+
+    if (this.fastify?.cache) {
+      const cached = this.fastify.cache.get<Trade[]>('chartData', cacheKey);
+      if (cached) {
+        return cached;
+      }
+    }
+
     const bitQueryTrades = await this.bitQueryService.getDexTrades(tokenAddress, poolAddress, {
       from,
       to,
@@ -460,7 +670,7 @@ export class ChartAggregationService {
     });
 
     // Transform to Trade format
-    return bitQueryTrades.map((trade) => ({
+    const trades = bitQueryTrades.map((trade) => ({
       timestamp: trade.blockTime,
       priceInAces: parseFloat(trade.priceInAces),
       priceInUsd: parseFloat(trade.priceInUsd),
@@ -468,6 +678,13 @@ export class ChartAggregationService {
       volumeUsd: parseFloat(trade.volumeUsd),
       side: trade.side,
     }));
+
+    // 🔥 PHASE 3: Cache the result
+    if (this.fastify?.cache) {
+      this.fastify.cache.set('chartData', cacheKey, trades, 60 * 1000); // 60s TTL
+    }
+
+    return trades;
   }
 
   /**
@@ -690,13 +907,11 @@ export class ChartAggregationService {
     // Open USD connects to previous candle
     const openUsd = parseFloat(previousCandle.closeUsd);
 
-    let closeUsd: number, highUsd: number, lowUsd: number;
-
     // For both bonding curve AND DEX: Empty candle = flat line (no trades = no price movement)
     // No trades means no price change - USD value stays exactly the same
-    closeUsd = openUsd; // Flat line
-    highUsd = openUsd; // No wicks
-    lowUsd = openUsd; // No movement
+    const closeUsd = openUsd; // Flat line
+    const highUsd = openUsd; // No wicks
+    const lowUsd = openUsd; // No movement
 
     // Note: For DEX, Bitquery already provides USD prices, so we don't need ACES price conversion
     // Empty candles should maintain the last known price until new trades occur
@@ -815,6 +1030,16 @@ export class ChartAggregationService {
     seedCandle: Candle | null = null, // 🔥 NEW: Accept seed candle for graduation connection
   ): Promise<Candle[]> {
     // console.log('[ChartAggregation] 📜 Fetching pre-aggregated OHLCV from Trading.Tokens');
+
+    // 🔥 PHASE 3: Use cache plugin for BitQuery OHLC responses (60s TTL for historical data)
+    const cacheKey = `bitquery-ohlc:${tokenAddress.toLowerCase()}:${options.timeframe}:${options.from.toISOString()}:${options.to.toISOString()}`;
+
+    if (this.fastify?.cache) {
+      const cached = this.fastify.cache.get<Candle[]>('chartData', cacheKey);
+      if (cached) {
+        return cached;
+      }
+    }
 
     const bitQueryCandles = await this.bitQueryService.getTradingTokensOHLC(
       tokenAddress,
@@ -935,6 +1160,11 @@ export class ChartAggregationService {
       };
     });
 
+    // 🔥 PHASE 3: Cache the result
+    if (this.fastify?.cache) {
+      this.fastify.cache.set('chartData', cacheKey, candles, 60 * 1000); // 60s TTL
+    }
+
     return candles;
   }
 
@@ -958,24 +1188,46 @@ export class ChartAggregationService {
     //   hasProvidedSeed: !!providedSeedCandle,
     // });
 
-    const bitQueryTrades = await this.bitQueryService.getDexTrades(tokenAddress, poolAddress, {
-      from: options.from,
-      to: options.to,
-      counterTokenAddress: ACES_TOKEN_ADDRESS,
-      limit: tradeLimit,
-    });
+    // 🔥 PHASE 3: Use cache plugin for recent DEX trades (30s TTL for recent data)
+    const cacheKey = `bitquery-dex-trades-recent:${tokenAddress.toLowerCase()}:${poolAddress.toLowerCase()}:${options.from.toISOString()}:${options.to.toISOString()}:${tradeLimit}`;
 
-    console.log(`[ChartAggregation] ✅ Fetched ${bitQueryTrades.length} DEX trades from BitQuery`);
+    let trades: Trade[] = [];
+    if (this.fastify?.cache) {
+      const cached = this.fastify.cache.get<Trade[]>('chartData', cacheKey);
+      if (cached) {
+        trades = cached;
+      }
+    }
 
-    // Convert to internal Trade format
-    const trades: Trade[] = bitQueryTrades.map((trade) => ({
-      timestamp: trade.blockTime,
-      priceInAces: parseFloat(trade.priceInAces),
-      priceInUsd: parseFloat(trade.priceInUsd),
-      amountToken: parseFloat(trade.amountToken),
-      volumeUsd: parseFloat(trade.volumeUsd),
-      side: trade.side,
-    }));
+    if (trades.length === 0) {
+      const bitQueryTrades = await this.bitQueryService.getDexTrades(tokenAddress, poolAddress, {
+        from: options.from,
+        to: options.to,
+        counterTokenAddress: ACES_TOKEN_ADDRESS,
+        limit: tradeLimit,
+      });
+
+      console.log(
+        `[ChartAggregation] ✅ Fetched ${bitQueryTrades.length} DEX trades from BitQuery`,
+      );
+
+      // Convert to internal Trade format
+      trades = bitQueryTrades.map((trade) => ({
+        timestamp: trade.blockTime,
+        priceInAces: parseFloat(trade.priceInAces),
+        priceInUsd: parseFloat(trade.priceInUsd),
+        amountToken: parseFloat(trade.amountToken),
+        volumeUsd: parseFloat(trade.volumeUsd),
+        side: trade.side,
+      }));
+
+      // 🔥 PHASE 3: Cache the result
+      if (this.fastify?.cache) {
+        this.fastify.cache.set('chartData', cacheKey, trades, 30 * 1000); // 30s TTL for recent data
+      }
+    } else {
+      console.log(`[ChartAggregation] ✅ Using cached DEX trades (${trades.length} trades)`);
+    }
 
     if (trades.length > 0) {
       console.log('[ChartAggregation] 📊 Sample DEX trade for candle creation:', {
@@ -1353,6 +1605,20 @@ export class ChartAggregationService {
           poolAddress: tokenMetadata.poolAddress!,
           poolReady: true,
           dexLiveAt: tokenMetadata.dexLiveAt!,
+        };
+      }
+
+      // Check if token has a pool but no graduation date (e.g., pool created but dexLiveAt not set)
+      const hasPoolButNoGraduationDate =
+        tokenMetadata.poolAddress !== null && tokenMetadata.dexLiveAt === null;
+
+      if (hasPoolButNoGraduationDate) {
+        // console.log('[ChartAggregation] ⚠️ Token has pool but no graduation date');
+        return {
+          isBonded: false,
+          poolAddress: tokenMetadata.poolAddress!,
+          poolReady: true, // Pool exists, so it's ready
+          dexLiveAt: null, // No graduation date set
         };
       }
 
