@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import type { ReactNode } from 'react';
 import './globals.css';
 import ErrorBoundary from '../components/error-boundary';
 import { DeviceProvider } from '../contexts/device-provider';
@@ -52,7 +53,7 @@ export const metadata: Metadata = {
 export default function RootLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode;
+  children: ReactNode;
 }>) {
   return (
     <html lang="en">
@@ -95,6 +96,16 @@ export default function RootLayout({
             />
           </>
         )}
+
+        {/* Cloudflare Web Analytics */}
+        {process.env.NEXT_PUBLIC_CLOUDFLARE_ENABLED === 'true' &&
+          process.env.NEXT_PUBLIC_CLOUDFLARE_ANALYTICS_TOKEN && (
+            <script
+              defer
+              src="https://static.cloudflareinsights.com/beacon.min.js"
+              data-cf-beacon={process.env.NEXT_PUBLIC_CLOUDFLARE_ANALYTICS_TOKEN}
+            />
+          )}
       </head>
       <body className={`${fontVariables} font-body antialiased bg-black`}>
         <ErrorBoundary>

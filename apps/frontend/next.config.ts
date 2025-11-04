@@ -34,6 +34,9 @@ const backendWsOrigin = backendOrigin
   ? backendOrigin.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:')
   : null;
 
+// Check if Cloudflare is enabled
+const isCloudflareEnabled = process.env.NEXT_PUBLIC_CLOUDFLARE_ENABLED === 'true';
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   transpilePackages: ['three'],
@@ -87,6 +90,14 @@ const nextConfig: NextConfig = {
       'https://*.tradingview.com',
     ];
 
+    // Add Cloudflare domains if enabled
+    if (isCloudflareEnabled) {
+      // Cloudflare Analytics
+      connectSrc.push('https://static.cloudflareinsights.com');
+      // Cloudflare Images (if using in future)
+      connectSrc.push('https://imagedelivery.net');
+    }
+
     const addConnectSrc = (entry?: string | null) => {
       if (!entry) return;
       if (!connectSrc.includes(entry)) {
@@ -110,8 +121,8 @@ const nextConfig: NextConfig = {
       "default-src 'self'",
       "base-uri 'self'",
       "object-src 'none'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://challenges.cloudflare.com https://*.clarity.ms https://www.googletagmanager.com https://va.vercel-scripts.com https://vercel.live https://auth.privy.io https://embed.twitch.tv https://charting-library.tradingview-widget.com https://*.tradingview.com",
-      "script-src-elem 'self' 'unsafe-inline' blob: https://*.clarity.ms https://www.googletagmanager.com https://va.vercel-scripts.com https://vercel.live https://auth.privy.io https://embed.twitch.tv https://charting-library.tradingview-widget.com https://*.tradingview.com",
+      `script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://challenges.cloudflare.com${isCloudflareEnabled ? ' https://static.cloudflareinsights.com' : ''} https://*.clarity.ms https://www.googletagmanager.com https://va.vercel-scripts.com https://vercel.live https://auth.privy.io https://embed.twitch.tv https://charting-library.tradingview-widget.com https://*.tradingview.com`,
+      `script-src-elem 'self' 'unsafe-inline' blob:${isCloudflareEnabled ? ' https://static.cloudflareinsights.com' : ''} https://*.clarity.ms https://www.googletagmanager.com https://va.vercel-scripts.com https://vercel.live https://auth.privy.io https://embed.twitch.tv https://charting-library.tradingview-widget.com https://*.tradingview.com`,
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' data: https://fonts.gstatic.com",
       "img-src 'self' data: blob: https:",
@@ -136,6 +147,15 @@ const nextConfig: NextConfig = {
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           { key: 'Permissions-Policy', value: 'camera=(self), microphone=(self), geolocation=()' },
+          // Cloudflare debugging headers (only in development or when explicitly enabled)
+          ...(process.env.NODE_ENV === 'development' && isCloudflareEnabled
+            ? [
+                {
+                  key: 'X-Cloudflare-Enabled',
+                  value: 'true',
+                },
+              ]
+            : []),
         ],
       },
     ];
@@ -529,6 +549,16 @@ const nextConfig: NextConfig = {
         hostname: '*.public.blob.vercel-storage.com',
         pathname: '/**',
       },
+      // Cloudflare Images (if using in future)
+      ...(isCloudflareEnabled
+        ? [
+            {
+              protocol: 'https' as const,
+              hostname: 'imagedelivery.net',
+              pathname: '/**',
+            },
+          ]
+        : []),
     ],
 
     // Minimize layout shift
