@@ -51,6 +51,7 @@ import { AerodromeDataService } from './services/aerodrome-data-service';
 import { UnifiedGoldSkyDataService } from './services/unified-goldsky-data-service';
 import { ethers } from 'ethers';
 import { debugRoutes } from './api/debug';
+import { HealthCheckService } from './services/health-check-service';
 
 export const buildApp = async (): Promise<FastifyInstance> => {
   const fastify = Fastify({
@@ -117,6 +118,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   // Register services with Fastify instance
   fastify.decorate('bitQueryService', bitQueryService);
   fastify.decorate('acesUsdPriceService', acesUsdPriceService);
+  fastify.decorate('aerodromeDataService', aerodromeService);
 
   // Register plugins
   fastify.register(helmet);
@@ -297,6 +299,16 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   fastify.register(chartDataStoreTestRoutes);
   fastify.register(debugRoutes);
 
+  // 🔥 NEW: Initialize Health Check Service
+  const healthCheckService = new HealthCheckService(fastify);
+  fastify.decorate('healthCheckService', healthCheckService);
+  
+  // Start health checks after app is ready
+  fastify.addHook('onReady', async () => {
+    healthCheckService.start(); // Start periodic health checks
+    console.log('[App] ✅ Health Check Service started');
+  });
+
   // Register GoldSky webhook routes (NO AUTH - uses webhook secret verification)
   fastify.register(goldskyWebhookRoutes, { prefix: '/api/webhooks/goldsky' });
 
@@ -371,6 +383,10 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   });
 
   fastify.addHook('onClose', async () => {
+    // Stop health check service
+    if (fastify.healthCheckService) {
+      fastify.healthCheckService.stop();
+    }
     await disconnectDatabase();
   });
 

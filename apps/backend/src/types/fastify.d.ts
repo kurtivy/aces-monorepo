@@ -37,5 +37,6 @@ declare module 'fastify' {
     tokenMetadataCache?: any;
     acesSnapshotCache?: any;
     unifiedGoldSkyService?: import('../services/unified-goldsky-data-service').UnifiedGoldSkyDataService;
+    healthCheckService?: import('../services/health-check-service').HealthCheckService;
   }
 }
