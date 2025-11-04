@@ -30,7 +30,9 @@ declare module 'fastify' {
   interface FastifyInstance {
     prisma: PrismaClient;
     authenticate: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-    bondingMonitor?: import('../websockets/bonding-monitor-socket').BondingMonitorWebSocket | null;
+    // 🚀 Phase 1-3: WebSocket Gateway Architecture
+    adapterManager?: import('../services/websocket/adapter-manager').AdapterManager;
+    // Legacy services (kept for backward compatibility, but unused)
     chartAggregationService?: any;
     tokenMetadataCache?: any;
     acesSnapshotCache?: any;

@@ -38,15 +38,17 @@ import { chartUnifiedRoutes } from './routes/v1/chart-unified';
 // GoldSky webhook for historical price tracking
 import { goldskyWebhookRoutes } from './routes/webhooks/goldsky';
 
-// WebSocket services
-import { ChartDataWebSocket } from './websockets/chart-data-socket';
-import { BondingMonitorWebSocket } from './websockets/bonding-monitor-socket';
+// Services
 import { BitQueryService } from './services/bitquery-service';
 import { TokenService } from './services/token-service';
 import { AcesUsdPriceService } from './services/aces-usd-price-service';
 import { AerodromeDataService } from './services/aerodrome-data-service';
 import { ethers } from 'ethers';
 import { debugRoutes } from './api/debug';
+
+// 🚀 NEW: Phase 1 WebSocket Gateway
+import { WebSocketGateway } from './gateway/websocket-gateway';
+import { websocketStatsRoutes } from './routes/v1/websocket-stats';
 
 export const buildApp = async (): Promise<FastifyInstance> => {
   const fastify = Fastify({
@@ -102,7 +104,9 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   fastify.decorate('acesUsdPriceService', acesUsdPriceService);
 
   // Register plugins
-  fastify.register(helmet);
+  fastify.register(helmet, {
+    crossOriginResourcePolicy: { policy: 'cross-origin' }, // Allow CORS
+  });
   fastify.register(multipart, {
     limits: {
       fileSize: 5 * 1024 * 1024, // 5MB
@@ -112,42 +116,44 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   // Register WebSocket plugin and initialize WebSocket routes
   await fastify.register(fastifyWebSocket);
 
-  // Check if WebSocket polling should be disabled (useful for frontend development)
-  const disableWebSocketPolling = process.env.DISABLE_WEBSOCKET_POLLING === 'true';
+  // 🚀 Phase 1: Initialize WebSocket Gateway
+  const gateway = WebSocketGateway.getInstance(fastify);
+  await gateway.initialize();
+  console.log('✅ Phase 1 WebSocket Gateway initialized');
 
-  let chartWebSocket: ChartDataWebSocket | null = null;
-  let bondingMonitor: BondingMonitorWebSocket | null = null;
+  // 🚀 Phase 2: Initialize External Data Adapters
+  const { AdapterManager } = await import('./services/websocket/adapter-manager');
+  
+  const adapterManager = new AdapterManager({
+    quickNodeWsUrl: process.env.QUICKNODE_WS_URL,
+    goldskyWsUrl: process.env.GOLDSKY_WS_URL,
+    goldskyApiKey: process.env.GOLDSKY_API_KEY,
+    bitQueryWsUrl: process.env.BITQUERY_WS_URL,
+    bitQueryApiKey: process.env.BITQUERY_API_KEY,
+  });
 
-  if (disableWebSocketPolling) {
-    console.log('⏸️  WebSocket polling disabled via DISABLE_WEBSOCKET_POLLING=true');
-  } else {
-    // Initialize Chart WebSocket with new ChartAggregationService
-    const { ChartAggregationService } = await import('./services/chart-aggregation-service');
-    const chartAggregationService = new ChartAggregationService(
-      prisma,
-      bitQueryService,
-      acesUsdPriceService,
-      tokenMetadataCache, // 🔥 NEW: Pass token cache to chart service
-      acesSnapshotCache, // 🔥 NEW: Pass snapshot cache to chart service
-    );
-
-    // 🔥 NEW: Decorate fastify so service can be reused across requests
-    fastify.decorate('chartAggregationService', chartAggregationService);
-
-    chartWebSocket = new ChartDataWebSocket(fastify, chartAggregationService, {
-      pollIntervalMs: 3000, // 🔥 OPTIMIZED: Poll every 3s for faster trade display
-    });
-    await chartWebSocket.initialize();
-    console.log('✅ Chart WebSocket enabled with ChartAggregationService');
-
-    // Initialize Bonding Monitor WebSocket
-    bondingMonitor = new BondingMonitorWebSocket(fastify, prisma, aerodromeService);
-    await bondingMonitor.initialize();
-    console.log('✅ Bonding Monitor WebSocket enabled');
+  // Connect all adapters (QuickNode, Goldsky, BitQuery, Aerodrome)
+  try {
+    await adapterManager.connect();
+    console.log('✅ Phase 2 External Adapters connected');
+  } catch (error) {
+    console.error('⚠️  Phase 2 Adapters failed to connect:', error);
+    console.error('⚠️  WebSocket streaming disabled - falling back to REST APIs');
   }
 
-  // Decorate fastify with bonding monitor for access in routes (may be null)
-  fastify.decorate('bondingMonitor', bondingMonitor);
+  // Decorate fastify with adapter manager for route access
+  fastify.decorate('adapterManager', adapterManager);
+
+  // Chart Aggregation Service (will be enhanced with WebSocket streaming)
+  const { ChartAggregationService } = await import('./services/chart-aggregation-service');
+  const chartAggregationService = new ChartAggregationService(
+    prisma,
+    bitQueryService,
+    acesUsdPriceService,
+    tokenMetadataCache,
+    acesSnapshotCache,
+  );
+  fastify.decorate('chartAggregationService', chartAggregationService);
 
   // Register custom plugins
   fastify.register(registerAuth);
@@ -271,6 +277,23 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   // Register GoldSky webhook routes (NO AUTH - uses webhook secret verification)
   fastify.register(goldskyWebhookRoutes, { prefix: '/api/webhooks/goldsky' });
 
+  // 🚀 Phase 3: Register Real-Time WebSocket Routes
+  const { tradesWebSocketRoutes } = await import('./routes/v1/ws/trades');
+  const { bondingWebSocketRoutes } = await import('./routes/v1/ws/bonding');
+  const { poolsWebSocketRoutes } = await import('./routes/v1/ws/pools');
+  const { candlesWebSocketRoutes } = await import('./routes/v1/ws/candles');
+  const { chartCompatWebSocketRoutes } = await import('./routes/v1/ws/chart-compat');
+
+  fastify.register(tradesWebSocketRoutes, { prefix: '/api/v1/ws' });
+  fastify.register(bondingWebSocketRoutes, { prefix: '/api/v1/ws' });
+  fastify.register(poolsWebSocketRoutes, { prefix: '/api/v1/ws' });
+  fastify.register(candlesWebSocketRoutes, { prefix: '/api/v1/ws' });
+  fastify.register(chartCompatWebSocketRoutes, { prefix: '/ws' }); // Legacy TradingView endpoint
+  console.log('✅ Phase 3 WebSocket routes registered');
+
+  // 🚀 NEW: Register Phase 1 WebSocket stats routes
+  fastify.register(websocketStatsRoutes);
+
   // Register hooks
   fastify.addHook('onRequest', async (request) => {
     request.startTime = Date.now();
@@ -292,24 +315,24 @@ export const buildApp = async (): Promise<FastifyInstance> => {
     return { status: 'ready' };
   });
 
-  // WebSocket stats endpoint
-  fastify.get('/api/v1/ws/stats', async (request, reply) => {
-    const stats: Record<string, any> = {
-      bondingMonitor: bondingMonitor ? 'enabled' : 'disabled',
-    };
-
-    if (bondingMonitor) {
-      stats.bondingStats = bondingMonitor.getStats();
-    }
-
-    if (chartWebSocket) {
-      stats.chartWebSocket = 'enabled';
-      stats.chartStats = chartWebSocket.getStats();
-    } else {
-      stats.chartWebSocket = 'disabled';
-    }
-
-    return reply.send(stats);
+  // Legacy WebSocket stats endpoint - DEPRECATED
+  // Use /api/v1/ws/stats (from websocketStatsRoutes) instead
+  fastify.get('/api/v1/ws/legacy-stats', async (request, reply) => {
+    return reply.send({
+      deprecated: true,
+      message: 'This endpoint is deprecated. Use /api/v1/ws/stats instead',
+      legacy: {
+        bondingMonitor: 'DELETED - replaced by /api/v1/ws/bonding/:tokenAddress',
+        chartWebSocket: 'DELETED - replaced by /api/v1/ws/candles/:tokenAddress',
+      },
+      newEndpoints: {
+        stats: '/api/v1/ws/stats',
+        trades: '/api/v1/ws/trades/:tokenAddress',
+        bonding: '/api/v1/ws/bonding/:tokenAddress',
+        pools: '/api/v1/ws/pools/:poolAddress?token=0xTOKEN',
+        candles: '/api/v1/ws/candles/:tokenAddress?timeframe=1m',
+      },
+    });
   });
 
   // Global error handler
