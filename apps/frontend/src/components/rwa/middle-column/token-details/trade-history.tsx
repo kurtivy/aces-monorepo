@@ -3,7 +3,8 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { ExternalLink, ChevronUp, ChevronDown } from 'lucide-react';
 
-import { useTradeHistory, type TradeHistoryEntry } from '@/hooks/rwa/use-trade-history';
+// 🚀 PHASE 5: Migrated to WebSocket-powered hook
+import { useTradeHistory, type TradeHistoryEntry } from '@/hooks/rwa/use-trade-history-websocket';
 import { useAcesUsdPrice } from '@/hooks/use-aces-usd-price';
 import { cn } from '@/lib/utils';
 import type { DatabaseListing } from '@/types/rwa/section.types';
