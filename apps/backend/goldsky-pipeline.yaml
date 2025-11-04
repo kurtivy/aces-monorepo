@@ -1,0 +1,65 @@
+# goldsky-pipeline.yaml
+# Goldsky Mirror Pipeline Configuration for ACES Trading Platform
+# This sends real-time trades from your subgraph to your backend webhook
+
+name: aces-trading-stream
+version: 1
+
+# 📊 Source: Your DEX Subgraph
+sources:
+  - type: subgraph
+    name: aces-dex-subgraph  # Replace with your actual subgraph name
+    # Example: base-aces-dex-v1
+
+# 🔄 Transform: SQL to filter and format trades
+transforms:
+  - type: sql
+    sql: |
+      SELECT
+        id,
+        token_address,
+        trader,
+        is_buy,
+        token_amount,
+        aces_token_amount,
+        CAST(price AS FLOAT) as price,
+        CAST(supply AS FLOAT) as supply,
+        timestamp,
+        block_number,
+        transaction_hash
+      FROM swaps
+      WHERE timestamp > UNIX_TIMESTAMP() - 3600  -- Last hour only
+      ORDER BY timestamp DESC, block_number DESC
+
+# 🎯 Sink: Your Backend Webhook
+sinks:
+  - type: webhook
+    # 🔗 Your Backend URL (replace with your actual domain)
+    url: https://your-api.com/api/webhooks/goldsky/trades
+    
+    # 🔐 Authentication
+    secret_name: ACES_WEBHOOK_SECRET
+    
+    # ⚡ Performance Settings for High-Volume Trading
+    batch_size: 10            # Send 10 events at once
+    batch_interval: 1000      # Or every 1 second (whichever comes first)
+    
+    # 🔄 Retry Settings
+    max_retries: 5            # Retry up to 5 times
+    retry_backoff: exponential # 1s, 2s, 4s, 8s, 16s
+    
+    # 📊 Backpressure (prevents overwhelming your server)
+    max_concurrent: 10        # Max 10 concurrent requests
+    
+    # 🎯 Headers
+    headers:
+      Content-Type: application/json
+      X-Goldsky-Source: webhook-sink
+      X-Pipeline-Name: aces-trading-stream
+
+# 📝 Optional: Alerts and Monitoring
+monitoring:
+  enabled: true
+  alert_on_failure: true
+  slack_webhook: YOUR_SLACK_WEBHOOK_URL  # Optional
+
