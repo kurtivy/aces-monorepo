@@ -163,9 +163,50 @@ export async function dexRoutes(fastify: FastifyInstance) {
     },
     async (request: FastifyRequest<{ Params: AddressParams }>, reply) => {
       try {
+        const poolAddress = request.params.address;
+        const { token: tokenAddress } = request.query as { token?: string };
+
+        // Try WebSocket cached data first (real-time)
+        if (fastify.adapterManager && tokenAddress) {
+          const cachedPoolState = fastify.adapterManager.getCachedPoolState(poolAddress);
+          if (cachedPoolState) {
+            console.log('[DEX:Pool] ✅ Serving from WebSocket cache:', poolAddress);
+            return reply.send({
+              success: true,
+              data: {
+                poolAddress: cachedPoolState.poolAddress,
+                reserve0: cachedPoolState.reserve0,
+                reserve1: cachedPoolState.reserve1,
+                priceToken0: cachedPoolState.priceToken0,
+                priceToken1: cachedPoolState.priceToken1,
+                blockNumber: cachedPoolState.blockNumber,
+                timestamp: cachedPoolState.timestamp,
+                lastUpdated: Date.now(),
+                dataSource: 'websocket',
+              },
+            });
+          }
+
+          // No cache yet - start a background subscription to populate it
+          console.log('[DEX:Pool] 🚀 Starting background WebSocket subscription for:', poolAddress);
+          fastify.adapterManager.subscribeToPoolState(
+            poolAddress,
+            tokenAddress,
+            (poolState) => {
+              console.log('[DEX:Pool] 📊 Background pool update received:', poolAddress);
+              // Data is auto-cached in the adapter
+            }
+          ).catch(err => {
+            console.error('[DEX:Pool] ⚠️ Failed to start background subscription:', err);
+          });
+
+          console.log('[DEX:Pool] ⚠️ No WebSocket cache yet, falling back to RPC:', poolAddress);
+        }
+
+        // Fallback to old AerodromeDataService (RPC polling)
         const service = ensureService();
         const poolState: AerodromePoolState | null = await service.getPoolState(
-          request.params.address,
+          poolAddress,
         );
 
         if (!poolState) {
