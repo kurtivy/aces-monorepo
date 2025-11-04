@@ -67,13 +67,11 @@ interface GraduationState {
   dexLiveAt: Date | null;
 }
 
-interface UnifiedChartResponse {
+export interface UnifiedChartResponse {
   candles: Candle[];
   graduationState: GraduationState;
   acesUsdPrice: string | null;
 }
-
-export type { UnifiedChartResponse };
 
 export class ChartAggregationService {
   private readonly BONDING_SUPPLY = '800000000'; // 800M tokens for bonding curve
@@ -105,35 +103,25 @@ export class ChartAggregationService {
     const now = Date.now();
     const currentCandleTimestamp = this.alignTimestamp(new Date(now), options.timeframe);
 
-    // 🔥 OPTIMIZED: Fetch graduation state and ACES price in parallel
-    const [graduationState, acesPriceResult] = await Promise.allSettled([
-      this.checkGraduation(tokenAddress),
-      this.acesUsdPriceService.getAcesUsdPrice().catch(() => ({ price: null })),
-    ]);
-
     // 1. Check graduation state
-    const graduation: GraduationState =
-      graduationState.status === 'fulfilled'
-        ? graduationState.value
-        : {
-            isBonded: false,
-            poolReady: false,
-            dexLiveAt: null,
-            poolAddress: null,
-          };
+    const graduationState = await this.checkGraduation(tokenAddress);
 
     // 2. Fetch ACES/USD price ONCE (graceful failure handling)
     let acesUsdPrice: number | null = null;
-    if (acesPriceResult.status === 'fulfilled' && acesPriceResult.value.price) {
-      acesUsdPrice = parseFloat(acesPriceResult.value.price);
+    try {
+      const priceResult = await this.acesUsdPriceService.getAcesUsdPrice();
+      acesUsdPrice = parseFloat(priceResult.price);
 
       if (!acesUsdPrice || isNaN(acesUsdPrice) || acesUsdPrice <= 0) {
         console.warn('[ChartAggregation] ⚠️ ACES/USD price invalid, will return ACES prices only');
         acesUsdPrice = null;
+      } else {
+        // console.log('[ChartAggregation] ✅ ACES/USD price fetched:', acesUsdPrice);
       }
-    } else {
+    } catch (error) {
       console.warn(
-        '[ChartAggregation] ⚠️ Failed to fetch ACES/USD price, will return ACES prices only',
+        '[ChartAggregation] ⚠️ Failed to fetch ACES/USD price, will return ACES prices only:',
+        error,
       );
       acesUsdPrice = null;
     }
@@ -141,7 +129,7 @@ export class ChartAggregationService {
     // 3. Route to appropriate data source(s) using smart switching
     let candles: Candle[];
 
-    if (!graduation.poolReady) {
+    if (!graduationState.poolReady) {
       // TOKEN IS STILL IN BONDING CURVE
       // console.log('[ChartAggregation] 📈 Token bonding - using SubGraph');
       candles = await this.fetchBondingCurveData(
@@ -150,108 +138,27 @@ export class ChartAggregationService {
         acesUsdPrice,
         currentCandleTimestamp,
       );
-    } else if (graduation.dexLiveAt) {
+    } else if (graduationState.dexLiveAt) {
       // TOKEN HAS GRADUATED - check if request spans bonding/DEX boundary
       // console.log('[ChartAggregation] 🏊 Token graduated - checking boundaries');
       candles = await this.fetchGraduatedTokenData(
         tokenAddress,
-        graduation,
+        graduationState,
         options,
         acesUsdPrice,
         currentCandleTimestamp,
       );
     } else {
-      // TOKEN ON DEX BUT NO GRADUATION DATE - need to combine bonding + DEX trades
+      // TOKEN ON DEX BUT NO GRADUATION DATE - use DEX switching only
       console.warn(
-        '[ChartAggregation] ⚠️ Pool ready but no graduation date - combining bonding + DEX trades',
+        '[ChartAggregation] ⚠️ Pool ready but no graduation date - using DEX smart switching',
       );
-
-      // Try to find the first DEX trade to use as boundary
-      let estimatedGraduationDate: Date | null = null;
-      try {
-        // Get first DEX trade from BitQuery to estimate graduation date
-        const firstDexTrades = await this.bitQueryService.getDexTrades(
-          tokenAddress,
-          graduation.poolAddress!,
-          {
-            from: new Date(0), // Start from beginning
-            to: options.to,
-            limit: 1,
-          },
-        );
-
-        if (firstDexTrades.length > 0 && firstDexTrades[0].blockTime) {
-          estimatedGraduationDate = firstDexTrades[0].blockTime;
-          console.log(
-            `[ChartAggregation] 📅 Estimated graduation date from first DEX trade: ${estimatedGraduationDate.toISOString()}`,
-          );
-        }
-      } catch (error) {
-        console.warn('[ChartAggregation] Failed to find first DEX trade:', error);
-      }
-
-      // If we found a graduation date, fetch both bonding and DEX trades
-      if (estimatedGraduationDate) {
-        const requestSpansGraduation = options.from < estimatedGraduationDate;
-
-        if (requestSpansGraduation) {
-          // Request spans graduation - fetch both bonding and DEX
-          console.log('[ChartAggregation] 🔀 Combining bonding curve + DEX data');
-
-          // Fetch bonding curve data (before estimated graduation)
-          const bondingCandles = await this.fetchBondingCurveData(
-            tokenAddress,
-            { ...options, to: estimatedGraduationDate },
-            acesUsdPrice,
-            currentCandleTimestamp,
-          );
-
-          // Pass last bonding candle as seed to DEX candles
-          const lastBondingCandle =
-            bondingCandles.length > 0 ? bondingCandles[bondingCandles.length - 1] : null;
-
-          // Fetch DEX data (after estimated graduation)
-          const dexCandles = await this.fetchDexDataWithSmartSwitching(
-            tokenAddress,
-            graduation.poolAddress!,
-            { ...options, from: estimatedGraduationDate },
-            currentCandleTimestamp,
-            lastBondingCandle,
-          );
-
-          console.log('[ChartAggregation] ✅ Combined bonding + DEX:', {
-            bonding: bondingCandles.length,
-            dex: dexCandles.length,
-            total: bondingCandles.length + dexCandles.length,
-          });
-
-          candles = [...bondingCandles, ...dexCandles];
-        } else if (options.to < estimatedGraduationDate) {
-          // Entire request is before graduation - bonding curve only
-          candles = await this.fetchBondingCurveData(
-            tokenAddress,
-            options,
-            acesUsdPrice,
-            currentCandleTimestamp,
-          );
-        } else {
-          // Request is entirely after graduation - DEX only
-          candles = await this.fetchDexDataWithSmartSwitching(
-            tokenAddress,
-            graduation.poolAddress!,
-            options,
-            currentCandleTimestamp,
-          );
-        }
-      } else {
-        // Fallback: Only DEX data if we couldn't find graduation date
-        candles = await this.fetchDexDataWithSmartSwitching(
-          tokenAddress,
-          graduation.poolAddress!,
-          options,
-          currentCandleTimestamp,
-        );
-      }
+      candles = await this.fetchDexDataWithSmartSwitching(
+        tokenAddress,
+        graduationState.poolAddress!,
+        options,
+        currentCandleTimestamp,
+      );
     }
 
     // console.log(`[ChartAggregation] ✅ Generated ${candles.length} candles`);
@@ -288,7 +195,7 @@ export class ChartAggregationService {
 
     return {
       candles: enrichedCandles,
-      graduationState: graduation,
+      graduationState,
       acesUsdPrice: acesUsdPrice ? acesUsdPrice.toFixed(6) : null,
     };
   }
@@ -1605,20 +1512,6 @@ export class ChartAggregationService {
           poolAddress: tokenMetadata.poolAddress!,
           poolReady: true,
           dexLiveAt: tokenMetadata.dexLiveAt!,
-        };
-      }
-
-      // Check if token has a pool but no graduation date (e.g., pool created but dexLiveAt not set)
-      const hasPoolButNoGraduationDate =
-        tokenMetadata.poolAddress !== null && tokenMetadata.dexLiveAt === null;
-
-      if (hasPoolButNoGraduationDate) {
-        // console.log('[ChartAggregation] ⚠️ Token has pool but no graduation date');
-        return {
-          isBonded: false,
-          poolAddress: tokenMetadata.poolAddress!,
-          poolReady: true, // Pool exists, so it's ready
-          dexLiveAt: null, // No graduation date set
         };
       }
 

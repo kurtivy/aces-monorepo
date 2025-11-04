@@ -3,6 +3,31 @@ import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import type { UnifiedChartResponse } from '../../services/chart-aggregation-service';
 
+// Import Candle type - it's internal to chart-aggregation-service, so we'll define it here
+interface Candle {
+  timestamp: Date;
+  open: string;
+  high: string;
+  low: string;
+  close: string;
+  openUsd: string;
+  highUsd: string;
+  lowUsd: string;
+  closeUsd: string;
+  volume: string;
+  volumeUsd: string;
+  trades: number;
+  dataSource: 'bonding_curve' | 'dex';
+  circulatingSupply: string;
+  totalSupply: string;
+  marketCapAces: string;
+  marketCapUsd: string;
+  marketCapOpenUsd?: string;
+  marketCapHighUsd?: string;
+  marketCapLowUsd?: string;
+  marketCapCloseUsd?: string;
+}
+
 interface ChartParams {
   tokenAddress: string;
 }
@@ -295,7 +320,7 @@ export async function chartUnifiedRoutes(fastify: FastifyInstance) {
 
           // Format response for TradingView
           responseData = {
-            candles: chartData.candles.map((candle) => ({
+            candles: chartData.candles.map((candle: Candle) => ({
               timestamp: Math.floor(candle.timestamp.getTime() / 1000),
               price: {
                 open: candle.open,
