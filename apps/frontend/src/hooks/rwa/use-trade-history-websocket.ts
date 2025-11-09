@@ -1,6 +1,6 @@
 /**
  * Hybrid Trade History Hook
- * 
+ *
  * Uses WebSocket for real-time updates, with REST API fallback for historical data.
  * Drop-in replacement for use-trade-history.ts with backward compatibility.
  */
@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRealtimeTrades, type RealtimeTrade } from '@/hooks/websocket/use-realtime-trades';
 import type { DatabaseListing } from '@/types/rwa/section.types';
-import { TokensApi, type TradeData } from '@/lib/api/tokens';
+import { TokensApi } from '@/lib/api/tokens';
 import { DexApi } from '@/lib/api/dex';
 
 export type TradeSource = 'BONDING' | 'DEX';
@@ -36,11 +36,17 @@ interface TradeHistoryOptions {
 
 /**
  * Transform WebSocket RealtimeTrade to TradeHistoryEntry
+ * Maps source: 'goldsky' | 'bitquery' to TradeSource: 'BONDING' | 'DEX'
  */
 const transformTrade = (trade: RealtimeTrade): TradeHistoryEntry => {
+  // Map WebSocket sources to TradeSource
+  // - 'goldsky' → 'BONDING' (bonding curve trades)
+  // - 'bitquery' → 'DEX' (DEX trades from BitQuery)
+  const source: TradeSource = trade.source === 'goldsky' ? 'BONDING' : 'DEX';
+
   return {
     id: trade.id || trade.transactionHash,
-    source: 'BONDING', // Goldsky trades are from bonding curve
+    source,
     direction: trade.isBuy ? 'buy' : 'sell',
     tokenAmount: trade.tokenAmount || '0',
     counterAmount: trade.acesAmount || '0',
@@ -60,9 +66,13 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
   const [isLoadingHistorical, setIsLoadingHistorical] = useState(false);
   const [historicalError, setHistoricalError] = useState<string | null>(null);
 
+  // Determine if token is graduated to DEX
+  const isDexLive = dexMeta?.isDexLive ?? false;
+
   // Connect to WebSocket for real-time trades
+  // Backend subscribes to BOTH Goldsky (bonding) AND BitQuery (DEX) automatically
   const {
-    trades: realtimeTrades,
+    trades: allRealtimeTrades,
     isConnected,
     isConnecting,
     error: wsError,
@@ -72,53 +82,107 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
     debug: false,
   });
 
+  // 🔥 AUTO-DETECT: If we're receiving BitQuery trades, token is on DEX
+  const hasBitQueryTrades = useMemo(() => {
+    return allRealtimeTrades.some((trade) => trade.source === 'bitquery');
+  }, [allRealtimeTrades]);
+
+  // Use auto-detected graduation OR explicit dexMeta flag
+  const effectiveIsDexLive = isDexLive || hasBitQueryTrades;
+
+  // 🔥 NEW: Filter trades by source based on graduation state
+  const realtimeTrades = useMemo(() => {
+    if (effectiveIsDexLive) {
+      // Token graduated: Show BitQuery (DEX) trades only
+      // But keep recent Goldsky trades for transition period (last 5 minutes)
+      const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+      return allRealtimeTrades.filter((trade) => {
+        if (trade.source === 'bitquery') {
+          return true; // Always show DEX trades (BitQuery)
+        }
+        // Show Goldsky trades from last 5 minutes (transition period)
+        return trade.source === 'goldsky' && trade.timestamp > fiveMinutesAgo;
+      });
+    } else {
+      // Token bonding: Show Goldsky trades only
+      return allRealtimeTrades.filter((trade) => trade.source === 'goldsky');
+    }
+  }, [allRealtimeTrades, effectiveIsDexLive]);
+
   // Fetch historical trades from REST API when WebSocket is empty
   useEffect(() => {
     const fetchHistoricalTrades = async () => {
-      // Only fetch if WebSocket is connected but returned no trades
-      if (!isConnected || realtimeTrades.length > 0 || isConnecting) {
+      // Fetch historical trades if:
+      // 1. WebSocket is connected but has no trades, OR
+      // 2. WebSocket is not connected yet (initial load)
+      // But don't fetch if we already have real-time trades or are still connecting
+      if (isConnecting || (isConnected && realtimeTrades.length > 0)) {
         return;
       }
 
-      console.log('[TradeHistory] 📚 WebSocket empty, fetching historical trades from REST API...');
+      console.log('[TradeHistory] 📚 Fetching historical trades from REST API...', {
+        isConnected,
+        realtimeTradesCount: realtimeTrades.length,
+        isConnecting,
+      });
       setIsLoadingHistorical(true);
       setHistoricalError(null);
 
       try {
-        // Check if token is graduated
-        const isDexLive = dexMeta?.isDexLive;
-        
-        if (isDexLive) {
-          // Token is graduated - fetch DEX trades
-          console.log('[TradeHistory] Token graduated, fetching DEX trades...');
-          const dexResult = await DexApi.getTrades(tokenAddress, 100);
-          
+        // Check if token is graduated OR if we detected BitQuery trades (auto-graduation)
+        const shouldFetchDex = effectiveIsDexLive || hasBitQueryTrades;
+
+        if (shouldFetchDex) {
+          // Token is graduated or has DEX trades - fetch DEX trades
+          console.log('[TradeHistory] Fetching DEX trades (graduated or has BitQuery trades)...');
+          const dexResult = await DexApi.getTrades(tokenAddress, 80); // Updated to 80
+
           if (dexResult.success && dexResult.data) {
-            const dexTrades: TradeHistoryEntry[] = (dexResult.data as any[]).map((trade: any, index: number) => ({
-              id: `dex-${trade.id || trade.hash || trade.transactionHash || `${trade.timestamp}-${index}`}`,
+            // Handle both array format and nested data format
+            const tradesArray = Array.isArray(dexResult.data)
+              ? dexResult.data
+              : Array.isArray((dexResult.data as any)?.data)
+                ? (dexResult.data as any).data
+                : [];
+
+            const dexTrades: TradeHistoryEntry[] = tradesArray.map((trade: any, index: number) => ({
+              id: `dex-${trade.txHash || trade.transactionHash || `${trade.timestamp}-${index}`}`,
               source: 'DEX' as TradeSource,
-              direction: (trade.isBuy ? 'buy' : 'sell') as 'buy' | 'sell',
-              tokenAmount: trade.amount0 || trade.tokenAmount || '0',
-              counterAmount: trade.amount1 || trade.acesAmount || '0',
-              timestamp: trade.timestamp * 1000,
-              txHash: trade.hash || trade.transactionHash,
-              trader: trade.sender || trade.trader,
-              priceUsd: trade.priceUsd,
+              direction: trade.direction || (trade.isBuy ? 'buy' : 'sell'),
+              tokenAmount: trade.amountToken || trade.amount0 || '0',
+              counterAmount: trade.amountCounter || trade.amount1 || trade.acesAmount || '0',
+              timestamp:
+                typeof trade.timestamp === 'number' ? trade.timestamp : Number(trade.timestamp),
+              txHash: trade.txHash || trade.transactionHash || trade.hash,
+              trader: trade.trader || trade.sender,
+              priceInCounter: trade.priceInCounter,
+              priceUsd: trade.priceInUsd || trade.priceUsd,
               totalUsd: trade.totalUsd,
             }));
-            
+
             setHistoricalTrades(dexTrades);
-            console.log(`[TradeHistory] ✅ Loaded ${dexTrades.length} DEX trades from REST API`);
+            const buyCount = dexTrades.filter((t) => t.direction === 'buy').length;
+            const sellCount = dexTrades.filter((t) => t.direction === 'sell').length;
+            console.log(`[TradeHistory] ✅ Loaded ${dexTrades.length} DEX trades from REST API`, {
+              buys: buyCount,
+              sells: sellCount,
+            });
+          } else {
+            console.warn('[TradeHistory] DEX trades fetch failed or returned no data:', dexResult);
           }
         } else {
           // Token still bonding - fetch bonding curve trades
           console.log('[TradeHistory] Token bonding, fetching bonding curve trades...');
-          const bondingResult = await TokensApi.getTrades(tokenAddress, 100);
-          
+          const bondingResult = await TokensApi.getTrades(tokenAddress, 80); // Updated to 80
+
           if (bondingResult.success && bondingResult.data) {
             const payload = bondingResult.data as any;
-            const tradePayload = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
-            
+            const tradePayload = Array.isArray(payload?.data)
+              ? payload.data
+              : Array.isArray(payload)
+                ? payload
+                : [];
+
             const bondingTrades: TradeHistoryEntry[] = tradePayload.map((trade: any) => ({
               id: `bonding-${trade.id}`,
               source: 'BONDING' as TradeSource,
@@ -130,9 +194,14 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
               trader: trade.trader?.id,
               marginalPriceInAces: trade.marginalPriceInAces,
             }));
-            
+
             setHistoricalTrades(bondingTrades);
-            console.log(`[TradeHistory] ✅ Loaded ${bondingTrades.length} bonding trades from REST API`);
+            const buyCount = bondingTrades.filter((t) => t.direction === 'buy').length;
+            const sellCount = bondingTrades.filter((t) => t.direction === 'sell').length;
+            console.log(
+              `[TradeHistory] ✅ Loaded ${bondingTrades.length} bonding trades from REST API`,
+              { buys: buyCount, sells: sellCount },
+            );
           }
         }
       } catch (err) {
@@ -145,29 +214,73 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
     };
 
     fetchHistoricalTrades();
-  }, [tokenAddress, isConnected, isConnecting, realtimeTrades.length, dexMeta?.isDexLive]);
+  }, [
+    tokenAddress,
+    isConnected,
+    isConnecting,
+    realtimeTrades.length,
+    effectiveIsDexLive,
+    hasBitQueryTrades,
+  ]);
 
   // Combine WebSocket trades (transformed) with historical REST trades
   const trades = useMemo(() => {
+    let result: TradeHistoryEntry[];
+
     // If we have real-time trades from WebSocket, use those
     if (realtimeTrades.length > 0) {
-      return realtimeTrades.map(transformTrade);
+      result = realtimeTrades.map(transformTrade);
+    } else {
+      // Otherwise use historical trades from REST API
+      result = historicalTrades;
     }
-    
-    // Otherwise use historical trades from REST API
-    return historicalTrades;
+
+    // Log buy/sell distribution for debugging
+    if (result.length > 0) {
+      const buyCount = result.filter((t) => t.direction === 'buy').length;
+      const sellCount = result.filter((t) => t.direction === 'sell').length;
+      console.log(
+        `[TradeHistory] 📊 Trade distribution: ${buyCount} buys, ${sellCount} sells (total: ${result.length})`,
+      );
+    }
+
+    return result;
   }, [realtimeTrades, historicalTrades]);
 
-  // Log connection status changes
+  // Log connection status changes and data source filtering
   useEffect(() => {
     if (isConnected) {
-      console.log('[TradeHistory] ✅ WebSocket connected for', tokenAddress);
+      const goldskyCount = allRealtimeTrades.filter((t) => t.source === 'goldsky').length;
+      const bitqueryCount = allRealtimeTrades.filter((t) => t.source === 'bitquery').length;
+      console.log('[TradeHistory] ✅ WebSocket connected for', tokenAddress, {
+        isDexLive,
+        effectiveIsDexLive: effectiveIsDexLive,
+        autoDetected: hasBitQueryTrades && !isDexLive,
+        source: effectiveIsDexLive ? 'BitQuery (DEX)' : 'Goldsky (Bonding)',
+        goldskyTrades: goldskyCount,
+        bitqueryTrades: bitqueryCount,
+        filteredTrades: realtimeTrades.length,
+      });
+
+      // Log auto-detection if it happened
+      if (hasBitQueryTrades && !isDexLive) {
+        console.log('[TradeHistory] 🎓 Auto-detected DEX graduation: Receiving BitQuery trades');
+      }
     } else if (isConnecting) {
       console.log('[TradeHistory] 🔄 WebSocket connecting...', tokenAddress);
     } else {
       console.log('[TradeHistory] ❌ WebSocket disconnected for', tokenAddress);
     }
-  }, [isConnected, isConnecting, tokenAddress]);
+  }, [
+    isConnected,
+    isConnecting,
+    tokenAddress,
+    isDexLive,
+    effectiveIsDexLive,
+    hasBitQueryTrades,
+    allRealtimeTrades,
+    realtimeTrades,
+  ]);
 
   const isLoading = (isConnecting || isLoadingHistorical) && trades.length === 0;
   const error = wsError || historicalError;
@@ -184,7 +297,3 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
     },
   };
 };
-
-
-
-

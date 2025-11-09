@@ -602,16 +602,22 @@ export class UnifiedDatafeed implements IBasicDataFeed {
 
   onReady(callback: OnReadyCallback): void {
     if (this.config.debug) {
-      // console.log('[UnifiedDatafeed] onReady called');
+      console.log('[UnifiedDatafeed] onReady called - datafeed is initializing');
     }
 
     setTimeout(() => {
-      callback({
+      const config = {
         supported_resolutions: ['1', '5', '15', '60', '240', '1D'] as ResolutionString[],
         supports_marks: false,
         supports_timescale_marks: false,
         supports_time: true,
-      });
+      };
+      
+      if (this.config.debug) {
+        console.log('[UnifiedDatafeed] onReady completed with config:', config);
+      }
+      
+      callback(config);
     }, 0);
   }
 
@@ -634,7 +640,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     _onError: DatafeedErrorCallback,
   ): void {
     if (this.config.debug) {
-      // console.log('[UnifiedDatafeed] resolveSymbol:', symbolName);
+      console.log('[UnifiedDatafeed] resolveSymbol:', symbolName);
     }
 
     setTimeout(() => {
@@ -658,6 +664,10 @@ export class UnifiedDatafeed implements IBasicDataFeed {
         listed_exchange: '',
       };
 
+      if (this.config.debug) {
+        console.log('[UnifiedDatafeed] resolveSymbol resolved:', symbolInfo);
+      }
+
       onResolve(symbolInfo);
     }, 0);
   }
@@ -677,76 +687,57 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     const timeframe = this.resolutionToTimeframe(resolution);
 
     if (this.config.debug) {
-      // console.log('[UnifiedDatafeed] getBars called:', {
-      //   symbol,
-      //   token: tokenAddress,
-      //   mode: isMarketCapMode ? 'mcap' : 'price',
-      //   resolution,
-      //   timeframe,
-      //   from: new Date(periodParams.from * 1000).toISOString(),
-      //   to: new Date(periodParams.to * 1000).toISOString(),
-      //   firstDataRequest: periodParams.firstDataRequest,
-      // });
-    }
-
-    // 🔥 NEW: Check cache first for instant loading
-    const cacheKey = `${tokenAddress.toLowerCase()}:${timeframe}:${isMarketCapMode ? 'mcap' : 'price'}`;
-    const cachedEntry = this.chartDataCache.get(cacheKey);
-    const now = Date.now();
-
-    if (cachedEntry && now - cachedEntry.timestamp < this.CACHE_TTL_MS) {
-      // Cache hit! Return cached data instantly
-      if (this.config.debug) {
-        // console.log('[UnifiedDatafeed] ⚡ Cache HIT - returning instantly:', {
-        //   cacheKey,
-        //   age: `${Math.round((now - cachedEntry.timestamp) / 1000)}s`,
-        //   bars: cachedEntry.bars.length,
-        // });
-      }
-
-      // Filter cached bars to requested time range
-      const filteredBars = cachedEntry.bars.filter(
-        (bar) => bar.time / 1000 >= periodParams.from && bar.time / 1000 <= periodParams.to,
-      );
-
-      // Store last bar for WebSocket updates
-      if (filteredBars.length > 0 && symbolInfo.ticker) {
-        this.lastBars.set(symbolInfo.ticker, filteredBars[filteredBars.length - 1]);
-      }
-
-      onResult(filteredBars, {
-        noData: filteredBars.length === 0,
-        nextTime: filteredBars.length > 0 ? filteredBars[0].time / 1000 : undefined,
+      console.log('[UnifiedDatafeed] 📥 getBars called:', {
+        symbol,
+        token: tokenAddress,
+        mode: isMarketCapMode ? 'mcap' : 'price',
+        resolution,
+        timeframe,
+        from: new Date(periodParams.from * 1000).toISOString(),
+        to: new Date(periodParams.to * 1000).toISOString(),
+        firstDataRequest: periodParams.firstDataRequest,
+        countBack: periodParams.countBack,
+        isScrollingBack: !periodParams.firstDataRequest,
       });
-      return;
     }
 
-    if (this.config.debug && cachedEntry) {
-      // console.log('[UnifiedDatafeed] 💨 Cache EXPIRED - fetching fresh data:', {
-      //   cacheKey,
-      //   age: `${Math.round((now - cachedEntry.timestamp) / 1000)}s`,
-      //   ttl: `${this.CACHE_TTL_MS / 1000}s`,
-      // });
-    }
+    // 🔥 CACHE DISABLED FOR DEBUGGING - Re-enable after progressive loading works
+    // This ensures every scroll-back triggers a fresh API call so we can see what's happening
 
     try {
-      // 🔥 PHASE 2: Progressive candle loading
-      // Load only what's needed based on TradingView's request
+      // 🔥 UPDATED: Load more candles for lower timeframes + better scroll-back support
+      const getInitialLimit = (tf: string) => {
+        switch (tf) {
+          case '1m': return 300;  // 5 hours
+          case '5m': return 240;  // 20 hours
+          case '15m': return 192; // 48 hours (2 days)
+          case '1h': return 168;  // 7 days
+          case '4h': return 180;  // 30 days
+          case '1D': return 90;   // 3 months
+          default: return 150;
+        }
+      };
+
       const limit = periodParams.firstDataRequest
-        ? 150 // Initial load: Optimized for faster rendering (~50-75 visible + buffer)
-        : periodParams.countBack || 150; // Scroll load: fetch what TradingView requests
+        ? getInitialLimit(timeframe)
+        : periodParams.countBack || getInitialLimit(timeframe);
 
       // Build URL with time range and limit for better control
       const url = `${this.config.apiBaseUrl}/api/v1/chart/${tokenAddress}/unified?timeframe=${timeframe}&from=${periodParams.from}&to=${periodParams.to}&limit=${limit}`;
 
       if (this.config.debug) {
-        // console.log('[UnifiedDatafeed] 🔥 Phase 2: Progressive loading:', {
-        //   firstDataRequest: periodParams.firstDataRequest,
-        //   limit,
-        //   countBack: periodParams.countBack,
-        //   from: new Date(periodParams.from * 1000).toISOString(),
-        //   to: new Date(periodParams.to * 1000).toISOString(),
-        // });
+        console.log('[UnifiedDatafeed] 🔥 Fetching candles:', {
+          type: periodParams.firstDataRequest ? '📊 INITIAL LOAD' : '📜 SCROLL BACK',
+          timeframe,
+          limit,
+          countBack: periodParams.countBack,
+          timeRange: {
+            from: new Date(periodParams.from * 1000).toISOString(),
+            to: new Date(periodParams.to * 1000).toISOString(),
+            durationHours: Math.round((periodParams.to - periodParams.from) / 3600),
+          },
+          url,
+        });
       }
 
       const response = await fetch(url);
@@ -826,18 +817,18 @@ export class UnifiedDatafeed implements IBasicDataFeed {
         this.lastBars.set(symbolInfo.ticker, bars[bars.length - 1]);
       }
 
-      // 🔥 NEW: Cache the bars for instant timeframe switching
-      if (bars.length > 0) {
-        this.chartDataCache.set(cacheKey, {
-          data: result,
-          timestamp: now,
-          bars: bars,
-        });
+      // 🔥 CACHING DISABLED FOR DEBUGGING
+      // if (bars.length > 0) {
+      //   this.chartDataCache.set(cacheKey, {
+      //     data: result,
+      //     timestamp: now,
+      //     bars: bars,
+      //   });
 
-        if (this.config.debug) {
-          // console.log('[UnifiedDatafeed] 💾 Cached data for:', cacheKey, `(${bars.length} bars)`);
-        }
-      }
+      //   if (this.config.debug) {
+      //     console.log('[UnifiedDatafeed] 💾 Cached data for:', cacheKey, `(${bars.length} bars)`);
+      //   }
+      // }
 
       // Emit latest market cap update for downstream consumers
       const lastCandle = filteredCandles[filteredCandles.length - 1];
@@ -906,15 +897,36 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       // });
 
       if (this.config.debug) {
-        // console.log('[UnifiedDatafeed] Returning', bars.length, 'bars');
-        // console.log('[UnifiedDatafeed] First bar:', bars[0]);
-        // console.log('[UnifiedDatafeed] Last bar:', bars[bars.length - 1]);
+        console.log('[UnifiedDatafeed] ✅ Returning bars:', {
+          count: bars.length,
+          firstBar: bars[0] ? {
+            time: new Date(bars[0].time).toISOString(),
+            close: bars[0].close,
+          } : null,
+          lastBar: bars[bars.length - 1] ? {
+            time: new Date(bars[bars.length - 1].time).toISOString(),
+            close: bars[bars.length - 1].close,
+          } : null,
+        });
       }
 
-      // 🔥 PHASE 2: Tell TradingView if there's more data available
-      // This enables smooth infinite scrolling
+      // 🔥 CRITICAL: Tell TradingView if there's more data available
+      // nextTime should point to BEFORE the first bar (indicating more history exists)
       const noData = bars.length === 0;
       const nextTime = bars.length > 0 ? bars[0].time / 1000 : undefined;
+
+      if (this.config.debug) {
+        console.log('[UnifiedDatafeed] 📤 Response metadata:', {
+          noData,
+          nextTime: nextTime ? new Date(nextTime * 1000).toISOString() : 'none',
+          hasMoreData: !noData && nextTime !== undefined,
+          message: noData 
+            ? '⚠️ No data - scroll back disabled'
+            : nextTime 
+            ? '✅ More data available - scroll back enabled' 
+            : '⚠️ No nextTime - scroll back might fail',
+        });
+      }
 
       onResult(bars, {
         noData,

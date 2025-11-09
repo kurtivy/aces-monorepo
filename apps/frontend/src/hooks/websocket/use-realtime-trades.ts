@@ -1,6 +1,6 @@
 /**
  * useRealtimeTrades Hook
- * 
+ *
  * Real-time WebSocket connection for trade data streaming.
  * Replaces REST API polling with instant WebSocket updates.
  */
@@ -20,7 +20,7 @@ export interface RealtimeTrade {
   timestamp: number;
   blockNumber: number;
   transactionHash: string;
-  source: 'goldsky' | 'bitquery';
+  source: 'goldsky' | 'bitquery'; // WebSocket data source
   sequenceNumber?: number;
 }
 
@@ -47,7 +47,7 @@ interface UseRealtimeTradesResult {
 
 const WS_BASE_URL = (() => {
   if (typeof window === 'undefined') return 'ws://localhost:3002';
-  
+
   const apiUrl = process.env.NEXT_PUBLIC_API_URL;
   if (apiUrl) {
     try {
@@ -58,7 +58,7 @@ const WS_BASE_URL = (() => {
       // Fallback
     }
   }
-  
+
   // Derive from window.location
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${protocol}//${window.location.hostname}:3002`;
@@ -66,14 +66,9 @@ const WS_BASE_URL = (() => {
 
 export const useRealtimeTrades = (
   tokenAddress: string | undefined,
-  options: UseRealtimeTradesOptions = {}
+  options: UseRealtimeTradesOptions = {},
 ): UseRealtimeTradesResult => {
-  const {
-    maxTrades = 100,
-    autoReconnect = true,
-    reconnectDelay = 5000,
-    debug = false,
-  } = options;
+  const { maxTrades = 100, autoReconnect = true, reconnectDelay = 5000, debug = false } = options;
 
   const [trades, setTrades] = useState<RealtimeTrade[]>([]);
   const [isConnected, setIsConnected] = useState(false);
@@ -90,7 +85,7 @@ export const useRealtimeTrades = (
         console.log(`[useRealtimeTrades] ${message}`, data || '');
       }
     },
-    [debug]
+    [debug],
   );
 
   const clearTrades = useCallback(() => {
@@ -99,7 +94,7 @@ export const useRealtimeTrades = (
 
   const disconnect = useCallback(() => {
     log('Disconnecting...');
-    
+
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
@@ -182,13 +177,18 @@ export const useRealtimeTrades = (
 
       ws.onerror = (event) => {
         if (!mountedRef.current) return;
-        console.error('[useRealtimeTrades] WebSocket error:', event);
-        setError('WebSocket connection error');
+        console.error('[useRealtimeTrades] WebSocket error:', {
+          event,
+          readyState: ws.readyState,
+          url: wsUrl,
+          error: (event as any).error || 'Unknown error',
+        });
+        setError(`WebSocket connection error: ${(event as any).message || 'Failed to connect'}`);
       };
 
       ws.onclose = (event) => {
         if (!mountedRef.current) return;
-        
+
         log('Disconnected', { code: event.code, reason: event.reason });
         setIsConnected(false);
         setIsConnecting(false);
@@ -242,16 +242,3 @@ export const useRealtimeTrades = (
     clearTrades,
   };
 };
-
-
-
-
-
-
-
-
-
-
-
-
-

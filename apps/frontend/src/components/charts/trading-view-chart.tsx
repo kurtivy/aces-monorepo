@@ -587,6 +587,13 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
             }
           })();
 
+          console.log('[TradingView] Creating datafeed with config:', {
+            apiBaseUrl,
+            wsUrl,
+            debug: process.env.NODE_ENV === 'development',
+            nodeEnv: process.env.NODE_ENV,
+          });
+
           const datafeed = new UnifiedDatafeed({
             apiBaseUrl,
             wsUrl,
@@ -718,6 +725,10 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
               heightPx,
               minHeightPx,
             });
+            console.log('[TradingView] 🎯 Chart is now ready to receive data. If no data appears, check:');
+            console.log('[TradingView] 1. Network tab for /api/v1/chart/ requests');
+            console.log('[TradingView] 2. Console for [UnifiedDatafeed] getBars logs');
+            console.log('[TradingView] 3. Any 404 or 500 errors from the API');
             setIsReinitializing(false);
             createCustomButtons();
           });
