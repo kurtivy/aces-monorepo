@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { TokenMetrics } from '@/lib/api/tokens';
 import { fetchTokenHealth } from '@/lib/api/token-health';
 import { subscribeToMarketCapUpdates } from '@/lib/tradingview/market-cap-events';
+import { useRealtimeMetrics } from '@/hooks/websocket/use-realtime-metrics';
 
 interface BondingDataSubset {
   bondingPercentage: number;
@@ -22,16 +23,16 @@ interface UseTokenMetricsResult {
 }
 
 /**
- * Hook to fetch and track token metrics with real-time polling
- * Polls backend API every 5 seconds for fresh data
+ * Hook to fetch and track token metrics with real-time WebSocket updates
+ * Uses WebSocket for instant updates, falls back to REST API polling if WebSocket unavailable
  *
  * @param tokenAddress - The contract address of the token
- * @param refreshIntervalMs - Polling interval in milliseconds (default: 5000 = 5s for near-real-time)
+ * @param refreshIntervalMs - Polling interval in milliseconds for REST fallback (default: 30000 = 30s)
  * @returns Token metrics data, loading state, and error state
  */
 export function useTokenMetrics(
   tokenAddress: string | undefined,
-  refreshIntervalMs: number = 5000, // 🔥 OPTIMIZED: 5s polling for near-real-time updates
+  refreshIntervalMs: number = 30000, // 🔥 UPDATED: 30s polling for REST fallback only (WebSocket is primary)
 ): UseTokenMetricsResult {
   const [metrics, setMetrics] = useState<TokenMetrics | null>(null);
   const metricsRef = useRef<TokenMetrics | null>(null);
@@ -42,7 +43,64 @@ export function useTokenMetrics(
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // 🚀 NEW: Use WebSocket for real-time metrics updates
+  const {
+    metrics: wsMetrics,
+    isConnected: wsConnected,
+    error: wsError,
+  } = useRealtimeMetrics(tokenAddress, {
+    fallbackToPolling: true, // Fallback to REST if WebSocket fails
+    pollingInterval: refreshIntervalMs,
+    debug: false,
+  });
+
+  // Sync WebSocket metrics to state
+  useEffect(() => {
+    if (wsMetrics && wsConnected) {
+      // Update metrics from WebSocket
+      const updatedMetrics: TokenMetrics = {
+        contractAddress: wsMetrics.tokenAddress,
+        volume24hUsd: wsMetrics.volume24hUsd ?? metricsRef.current?.volume24hUsd ?? 0,
+        volume24hAces: wsMetrics.volume24hAces || metricsRef.current?.volume24hAces || '0',
+        marketCapUsd: wsMetrics.marketCapUsd ?? metricsRef.current?.marketCapUsd ?? 0,
+        tokenPriceUsd: wsMetrics.currentPriceUsd ?? metricsRef.current?.tokenPriceUsd ?? 0,
+        holderCount: metricsRef.current?.holderCount || 0,
+        totalFeesUsd: metricsRef.current?.totalFeesUsd || 0,
+        totalFeesAces: metricsRef.current?.totalFeesAces || '0',
+        liquidityUsd: wsMetrics.liquidityUsd ?? metricsRef.current?.liquidityUsd ?? null,
+        liquiditySource: wsMetrics.liquiditySource ?? metricsRef.current?.liquiditySource ?? null,
+      };
+
+      setMetrics(updatedMetrics);
+      metricsRef.current = updatedMetrics;
+
+      // Update individual state values
+      if (wsMetrics.currentPriceUsd !== undefined && wsMetrics.currentPriceUsd > 0) {
+        setCurrentPriceUsd(wsMetrics.currentPriceUsd);
+      }
+
+      if (wsMetrics.marketCapUsd !== undefined && wsMetrics.marketCapUsd > 0) {
+        setMarketCapUsd(wsMetrics.marketCapUsd);
+      }
+
+      if (wsMetrics.circulatingSupply !== undefined && wsMetrics.circulatingSupply !== null) {
+        setCirculatingSupply(wsMetrics.circulatingSupply);
+      }
+
+      setError(null);
+      setLoading(false);
+    } else if (wsError && !wsConnected) {
+      // Only set error if WebSocket failed and we're not connected
+      setError(wsError);
+    }
+  }, [wsMetrics, wsConnected, wsError]);
+
   const fetchMetrics = useCallback(async () => {
+    // Skip REST fetch if WebSocket is connected (WebSocket is primary source)
+    if (wsConnected) {
+      return;
+    }
+
     if (!tokenAddress) {
       setLoading(false);
       return;
@@ -143,7 +201,7 @@ export function useTokenMetrics(
     } finally {
       setLoading(false);
     }
-  }, [tokenAddress]);
+  }, [tokenAddress, wsConnected]);
 
   useEffect(() => {
     if (!tokenAddress) {
@@ -158,14 +216,17 @@ export function useTokenMetrics(
       return;
     }
 
-    // Initial fetch
-    fetchMetrics();
+    // Initial fetch only if WebSocket is not connected
+    // WebSocket hook handles its own initial fetch
+    if (!wsConnected) {
+      fetchMetrics();
 
-    // Poll every refreshIntervalMs
-    const interval = setInterval(fetchMetrics, refreshIntervalMs);
+      // Poll every refreshIntervalMs only if WebSocket is not connected
+      const interval = setInterval(fetchMetrics, refreshIntervalMs);
 
-    return () => clearInterval(interval);
-  }, [tokenAddress, refreshIntervalMs, fetchMetrics]);
+      return () => clearInterval(interval);
+    }
+  }, [tokenAddress, refreshIntervalMs, fetchMetrics, wsConnected]);
 
   useEffect(() => {
     if (!tokenAddress) {

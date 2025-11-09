@@ -298,12 +298,14 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   const { poolsWebSocketRoutes } = await import('./routes/v1/ws/pools');
   const { candlesWebSocketRoutes } = await import('./routes/v1/ws/candles');
   const { chartCompatWebSocketRoutes } = await import('./routes/v1/ws/chart-compat');
+  const { metricsWebSocketRoutes } = await import('./routes/v1/ws/metrics');
 
   fastify.register(tradesWebSocketRoutes, { prefix: '/api/v1/ws' });
   fastify.register(bondingWebSocketRoutes, { prefix: '/api/v1/ws' });
   fastify.register(poolsWebSocketRoutes, { prefix: '/api/v1/ws' });
   fastify.register(candlesWebSocketRoutes, { prefix: '/api/v1/ws' });
   fastify.register(chartCompatWebSocketRoutes, { prefix: '/ws' }); // Legacy TradingView endpoint
+  fastify.register(metricsWebSocketRoutes, { prefix: '/api/v1/ws' });
   console.log('✅ Phase 3 WebSocket routes registered');
 
   // 🚀 NEW: Register Phase 1 WebSocket stats routes
