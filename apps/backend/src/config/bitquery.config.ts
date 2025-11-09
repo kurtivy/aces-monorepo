@@ -29,6 +29,7 @@ export function getBitQueryConfig(): BitQueryConfig {
 // BitQuery GraphQL queries as constants
 export const BITQUERY_QUERIES = {
   // Get recent swaps for a specific token (NEW: DEXTradeByTokens)
+  // No date filtering - uses BitQuery's default timeframe (usually last 7-30 days)
   GET_TOKEN_TRADES: `
     query GetTokenTrades(
       $network: evm_network
@@ -38,6 +39,60 @@ export const BITQUERY_QUERIES = {
       EVM(network: $network) {
         DEXTradeByTokens(
           where: {
+            Trade: {
+              Currency: {
+                SmartContract: { is: $tokenAddress }
+              }
+              Price: { gt: 0 }
+            }
+          }
+          orderBy: { descending: Block_Time }
+          limit: { count: $limit }
+        ) {
+          Block {
+            Time
+            Number
+          }
+          Transaction {
+            Hash
+            From
+          }
+          Trade {
+            Amount
+            Price
+            Side {
+              Type
+              Amount
+              AmountInUSD
+              Currency {
+                Symbol
+                SmartContract
+                Name
+              }
+            }
+            Dex {
+              ProtocolName
+              ProtocolFamily
+            }
+          }
+        }
+      }
+    }
+  `,
+
+  // Get token trades with date filtering (for historical data)
+  GET_TOKEN_TRADES_WITH_DATES: `
+    query GetTokenTradesWithDates(
+      $network: evm_network
+      $tokenAddress: String!
+      $limit: Int
+      $from: DateTime!
+      $to: DateTime!
+    ) {
+      EVM(network: $network, dataset: archive) {
+        DEXTradeByTokens(
+          where: {
+            Block: { Time: { since: $from, till: $to } }
             Trade: {
               Currency: {
                 SmartContract: { is: $tokenAddress }

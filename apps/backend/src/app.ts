@@ -124,21 +124,36 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   // 🚀 Phase 2: Initialize External Data Adapters
   const { AdapterManager } = await import('./services/websocket/adapter-manager');
   
-  const adapterManager = new AdapterManager({
-    quickNodeWsUrl: process.env.QUICKNODE_WS_URL,
-    goldskyWsUrl: process.env.GOLDSKY_WS_URL,
-    goldskyApiKey: process.env.GOLDSKY_API_KEY,
-    bitQueryWsUrl: process.env.BITQUERY_WS_URL,
-    bitQueryApiKey: process.env.BITQUERY_API_KEY,
-  });
+  // Initialize adapter manager (non-blocking - BitQuery errors won't crash server)
+  let adapterManager: any = null;
+  try {
+    adapterManager = new AdapterManager({
+      quickNodeWsUrl: process.env.QUICKNODE_BASE_URL,
+      goldskyWsUrl: process.env.GOLDSKY_WS_URL,
+      goldskyApiKey: process.env.GOLDSKY_API_KEY,
+      bitQueryWsUrl: process.env.BITQUERY_WS_URL,
+      bitQueryApiKey: process.env.BITQUERY_API_KEY,
+    });
+    console.log('✅ AdapterManager initialized');
+  } catch (error: any) {
+    console.warn('⚠️  AdapterManager initialization failed (non-blocking):', error.message);
+    console.warn('⚠️  WebSocket adapters disabled - falling back to REST APIs');
+    // Create a minimal adapter manager stub
+    adapterManager = {
+      connect: async () => {},
+      isConnected: () => false,
+    };
+  }
 
   // Connect all adapters (QuickNode, Goldsky, BitQuery, Aerodrome)
-  try {
-    await adapterManager.connect();
-    console.log('✅ Phase 2 External Adapters connected');
-  } catch (error) {
-    console.error('⚠️  Phase 2 Adapters failed to connect:', error);
-    console.error('⚠️  WebSocket streaming disabled - falling back to REST APIs');
+  if (adapterManager && adapterManager.connect) {
+    try {
+      await adapterManager.connect();
+      console.log('✅ Phase 2 External Adapters connected');
+    } catch (error) {
+      console.error('⚠️  Phase 2 Adapters failed to connect:', error);
+      console.error('⚠️  WebSocket streaming disabled - falling back to REST APIs');
+    }
   }
 
   // Decorate fastify with adapter manager for route access

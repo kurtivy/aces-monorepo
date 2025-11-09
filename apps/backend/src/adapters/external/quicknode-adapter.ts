@@ -52,11 +52,11 @@ export class QuickNodeAdapter extends EventEmitter implements BaseAdapter {
 
   constructor(wsUrl?: string) {
     super();
-    this.wsUrl = wsUrl || process.env.QUICKNODE_WS_URL || '';
+    this.wsUrl = wsUrl || process.env.QUICKNODE_BASE_URL || '';
 
     if (!this.wsUrl) {
       throw new Error(
-        'QuickNode WebSocket URL required. Set QUICKNODE_WS_URL environment variable.',
+        'QuickNode WebSocket URL required. Set QUICKNODE_BASE_URL environment variable.',
       );
     }
 
@@ -79,7 +79,9 @@ export class QuickNodeAdapter extends EventEmitter implements BaseAdapter {
 
       // Test connection
       const network = await this.provider.getNetwork();
-      console.log(`[QuickNodeAdapter] ✅ Connected to network: ${network.name} (${network.chainId})`);
+      console.log(
+        `[QuickNodeAdapter] ✅ Connected to network: ${network.name} (${network.chainId})`,
+      );
 
       this.stats.connected = true;
       this.stats.connectedAt = Date.now();
@@ -140,10 +142,7 @@ export class QuickNodeAdapter extends EventEmitter implements BaseAdapter {
   /**
    * Subscribe to contract logs (events)
    */
-  async subscribeLogs(
-    filter: ethers.Filter,
-    callback: (log: ethers.Log) => void,
-  ): Promise<string> {
+  async subscribeLogs(filter: ethers.Filter, callback: (log: ethers.Log) => void): Promise<string> {
     if (!this.provider) {
       throw new Error('Not connected to QuickNode');
     }
@@ -292,9 +291,7 @@ export class QuickNodeAdapter extends EventEmitter implements BaseAdapter {
     // Handle network changes
     this.provider.on('network', (newNetwork, oldNetwork) => {
       if (oldNetwork) {
-        console.log(
-          `[QuickNodeAdapter] Network changed: ${oldNetwork.name} → ${newNetwork.name}`,
-        );
+        console.log(`[QuickNodeAdapter] Network changed: ${oldNetwork.name} → ${newNetwork.name}`);
       }
     });
 
@@ -396,4 +393,3 @@ export class QuickNodeAdapter extends EventEmitter implements BaseAdapter {
     this.stats.messagesEmitted++;
   }
 }
-

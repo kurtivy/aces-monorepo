@@ -134,6 +134,41 @@ export class ChartAggregationService {
         acesUsdPrice,
         currentCandleTimestamp,
       );
+
+      // 🔥 FALLBACK: If no bonding curve data but we have DEX trades, try DEX data
+      // This handles tokens that have graduated but aren't marked in the database yet
+      if (candles.length === 0) {
+        console.log(
+          '[ChartAggregation] ⚠️ No bonding curve data found, checking for DEX trades as fallback...',
+        );
+        
+        // Try to find pool address by checking if there are DEX trades
+        try {
+          const dexTrades = await this.bitQueryService.getDexTrades(tokenAddress, '', {
+            from: options.from,
+            to: options.to,
+            limit: 10, // Just check if any trades exist
+          });
+
+          if (dexTrades.length > 0) {
+            console.log(
+              `[ChartAggregation] ✅ Found ${dexTrades.length} DEX trades - using DEX data instead`,
+            );
+            
+            // Try to extract pool address from trades if available
+            // For now, use empty string - BitQuery can find trades by token address alone
+            // The pool address is mainly used for caching, not for querying
+            candles = await this.fetchDexDataWithSmartSwitching(
+              tokenAddress,
+              '', // Empty pool address - BitQuery will find the pool by token address
+              options,
+              currentCandleTimestamp,
+            );
+          }
+        } catch (error) {
+          console.warn('[ChartAggregation] Failed to check DEX fallback:', error);
+        }
+      }
     } else if (graduationState.dexLiveAt) {
       // TOKEN HAS GRADUATED - check if request spans bonding/DEX boundary
       // console.log('[ChartAggregation] 🏊 Token graduated - checking boundaries');
@@ -568,12 +603,20 @@ export class ChartAggregationService {
     // OHLC in ACES
     let openAces = pricesInAces[0];
     const closeAces = pricesInAces[pricesInAces.length - 1];
-    const highAces = Math.max(...pricesInAces);
-    const lowAces = Math.min(...pricesInAces);
+    let highAces = Math.max(...pricesInAces);
+    let lowAces = Math.min(...pricesInAces);
 
     // CRITICAL: Connect to previous candle (NO GAPS!)
     if (previousCandle) {
       openAces = parseFloat(previousCandle.close);
+      
+      // 🔥 FIX: When there's only 1 trade, show a wick based on price movement from previous candle
+      // This ensures candles look correct even with sparse trades
+      if (bucketTrades.length === 1) {
+        const previousCloseAces = parseFloat(previousCandle.close);
+        highAces = Math.max(previousCloseAces, closeAces);
+        lowAces = Math.min(previousCloseAces, closeAces);
+      }
     }
 
     // OHLC in USD
@@ -588,6 +631,13 @@ export class ChartAggregationService {
 
       // Connect USD to previous candle
       openUsd = previousCandle ? parseFloat(previousCandle.closeUsd) : firstTradeUsd;
+      
+      // 🔥 FIX: When there's only 1 trade, show a wick based on price movement from previous candle
+      if (previousCandle && bucketTrades.length === 1) {
+        const previousCloseUsd = parseFloat(previousCandle.closeUsd);
+        highUsd = Math.max(previousCloseUsd, closeUsd);
+        lowUsd = Math.min(previousCloseUsd, closeUsd);
+      }
     } else {
       // Bonding Curve: Use snapshot USD prices (already in trades from TradePriceAggregator)
       // The pricesInUsd array (line 391) contains USD values calculated using database snapshots
@@ -598,6 +648,13 @@ export class ChartAggregationService {
 
       // Connect USD to previous candle (NO GAPS)
       openUsd = previousCandle ? parseFloat(previousCandle.closeUsd) : firstTradeUsd;
+      
+      // 🔥 FIX: When there's only 1 trade, show a wick based on price movement from previous candle
+      if (previousCandle && bucketTrades.length === 1) {
+        const previousCloseUsd = parseFloat(previousCandle.closeUsd);
+        highUsd = Math.max(previousCloseUsd, closeUsd);
+        lowUsd = Math.min(previousCloseUsd, closeUsd);
+      }
     }
 
     // Volume
@@ -1160,15 +1217,29 @@ export class ChartAggregationService {
       const baselineEnd = new Date(alignedStart);
       const baselineFrom = new Date(baselineEnd.getTime() - intervalMs * 12);
 
-      const seedTrades = await this.bitQueryService.getDexTrades(tokenAddress, poolAddress, {
+      let seedTrades = await this.bitQueryService.getDexTrades(tokenAddress, poolAddress, {
         from: baselineFrom,
         to: baselineEnd,
         counterTokenAddress: ACES_TOKEN_ADDRESS,
         limit: 25,
       });
 
+      // 🔥 FIX: If no recent trades, look further back (up to 7 days) to find last known price
       if (seedTrades.length === 0) {
-        return null;
+        console.log('[ChartAggregation] 🔍 No recent seed trades, looking further back...');
+        const extendedBaselineFrom = new Date(baselineEnd.getTime() - 7 * 24 * 60 * 60 * 1000); // 7 days back
+        seedTrades = await this.bitQueryService.getDexTrades(tokenAddress, poolAddress, {
+          from: extendedBaselineFrom,
+          to: baselineEnd,
+          counterTokenAddress: ACES_TOKEN_ADDRESS,
+          limit: 1, // Just need the last trade
+        });
+        
+        if (seedTrades.length === 0) {
+          console.log('[ChartAggregation] ⚠️ No trades found in last 7 days, cannot create seed candle');
+          return null;
+        }
+        console.log('[ChartAggregation] ✅ Found seed trade from:', seedTrades[seedTrades.length - 1].blockTime.toISOString());
       }
 
       const lastTrade = seedTrades[seedTrades.length - 1];

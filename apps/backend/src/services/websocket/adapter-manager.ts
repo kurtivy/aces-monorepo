@@ -47,14 +47,26 @@ export class AdapterManager extends EventEmitter {
 
     // Initialize adapters
     this.quickNode = new QuickNodeAdapter(config.quickNodeWsUrl);
-    
+
     // 🚀 NEW: Use memory adapter (reads from webhook-populated in-memory store)
     this.goldsky = new GoldskyMemoryAdapter();
-    
-    this.bitQuery = new BitQueryAdapter({
-      wsUrl: config.bitQueryWsUrl,
-      apiKey: config.bitQueryApiKey,
-    });
+
+    // BitQuery adapter (optional - don't crash if API key is invalid)
+    try {
+      this.bitQuery = new BitQueryAdapter({
+        wsUrl: config.bitQueryWsUrl,
+        apiKey: config.bitQueryApiKey,
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.warn(
+        '[AdapterManager] ⚠️ BitQueryAdapter initialization failed (optional, continuing...):',
+        errorMessage,
+      );
+      // Set to null, will be checked before use
+      this.bitQuery = null as unknown as BitQueryAdapter;
+    }
+
     this.aerodrome = new AerodromeAdapter(this.quickNode);
 
     // Set up event forwarding
@@ -82,11 +94,30 @@ export class AdapterManager extends EventEmitter {
       console.log('[AdapterManager] ✅ Goldsky connected');
 
       // Try to connect BitQuery, but don't fail if it doesn't work
-      try {
-        await this.bitQuery.connect();
-        console.log('[AdapterManager] ✅ BitQuery connected');
-      } catch (bitQueryError) {
-        console.warn('[AdapterManager] ⚠️ BitQuery connection failed (optional, continuing...):', bitQueryError instanceof Error ? bitQueryError.message : bitQueryError);
+      if (this.bitQuery) {
+        try {
+          console.log('[AdapterManager] 🔌 Attempting to connect BitQuery...');
+          await this.bitQuery.connect();
+          const isConnected = this.bitQuery.isConnected();
+          if (isConnected) {
+            console.log('[AdapterManager] ✅ BitQuery connected and ready');
+          } else {
+            console.warn(
+              '[AdapterManager] ⚠️ BitQuery connect() completed but isConnected() returns false',
+            );
+          }
+        } catch (bitQueryError) {
+          console.error(
+            '[AdapterManager] ❌ BitQuery connection failed (optional, continuing...):',
+            bitQueryError instanceof Error ? bitQueryError.message : bitQueryError,
+          );
+          if (bitQueryError instanceof Error && bitQueryError.stack) {
+            console.error('[AdapterManager] BitQuery error stack:', bitQueryError.stack);
+          }
+        }
+      } else {
+        console.warn('[AdapterManager] ⚠️ BitQuery adapter not initialized (skipping)');
+        console.warn('[AdapterManager] ⚠️ DEX trades will not be available via WebSocket');
       }
 
       // Mark as connected once core adapters are ready
@@ -106,12 +137,14 @@ export class AdapterManager extends EventEmitter {
   async disconnect(): Promise<void> {
     console.log('[AdapterManager] Disconnecting all adapters...');
 
-    await Promise.all([
-      this.bitQuery.disconnect(),
-      this.goldsky.disconnect(),
-      this.aerodrome.disconnect(),
-      this.quickNode.disconnect(),
-    ]);
+    await Promise.all(
+      [
+        this.bitQuery?.disconnect(),
+        this.goldsky.disconnect(),
+        this.aerodrome.disconnect(),
+        this.quickNode.disconnect(),
+      ].filter(Boolean),
+    );
 
     this.connected = false;
     console.log('[AdapterManager] ✅ All adapters disconnected');
@@ -138,7 +171,7 @@ export class AdapterManager extends EventEmitter {
 
   /**
    * Subscribe to trades for a token
-   * Routes to Goldsky (required) and BitQuery (optional)
+   * Routes to Goldsky (required), BitQuery (optional)
    */
   async subscribeToTrades(
     tokenAddress: string,
@@ -146,18 +179,45 @@ export class AdapterManager extends EventEmitter {
   ): Promise<string[]> {
     const subscriptions: string[] = [];
 
-    // Subscribe to Goldsky (primary source)
+    // Subscribe to Goldsky (primary source for bonding curve)
     const goldskyId = await this.goldsky.subscribeToTrades(tokenAddress, callback);
     subscriptions.push(`goldsky:${goldskyId}`);
 
-    // Subscribe to BitQuery (secondary/fallback) - optional
-    if (this.bitQuery.isConnected()) {
-      try {
-        const bitQueryId = await this.bitQuery.subscribeToDexTrades(tokenAddress, callback);
-        subscriptions.push(`bitquery:${bitQueryId}`);
-      } catch (error) {
-        console.warn(`[AdapterManager] ⚠️ Failed to subscribe to BitQuery trades (optional):`, error instanceof Error ? error.message : error);
+    // Subscribe to BitQuery (secondary/fallback for DEX) - optional
+    if (this.bitQuery) {
+      const isBitQueryConnected = this.bitQuery.isConnected();
+      console.log(`[AdapterManager] BitQuery status for ${tokenAddress}:`, {
+        initialized: !!this.bitQuery,
+        connected: isBitQueryConnected,
+      });
+
+      if (isBitQueryConnected) {
+        try {
+          console.log(
+            `[AdapterManager] 📥 Subscribing to BitQuery DEX trades for ${tokenAddress}...`,
+          );
+          const bitQueryId = await this.bitQuery.subscribeToDexTrades(tokenAddress, callback);
+          subscriptions.push(`bitquery:${bitQueryId}`);
+          console.log(`[AdapterManager] ✅ BitQuery subscription active: ${bitQueryId}`);
+        } catch (error) {
+          console.error(
+            `[AdapterManager] ❌ Failed to subscribe to BitQuery trades for ${tokenAddress}:`,
+            error instanceof Error ? error.message : error,
+          );
+          if (error instanceof Error && error.stack) {
+            console.error('[AdapterManager] BitQuery subscription error stack:', error.stack);
+          }
+        }
+      } else {
+        console.warn(
+          `[AdapterManager] ⚠️ BitQuery not connected - skipping DEX trade subscription for ${tokenAddress}`,
+        );
+        console.warn(
+          `[AdapterManager] ⚠️ DEX trades will not be available via WebSocket for this token`,
+        );
       }
+    } else {
+      console.warn(`[AdapterManager] ⚠️ BitQuery adapter not initialized - DEX trades unavailable`);
     }
 
     return subscriptions;
@@ -184,11 +244,7 @@ export class AdapterManager extends EventEmitter {
     tokenAddress: string,
     callback: (poolState: PoolStateEvent) => void,
   ): Promise<string> {
-    const aerodromeId = await this.aerodrome.subscribeToPool(
-      poolAddress,
-      tokenAddress,
-      callback,
-    );
+    const aerodromeId = await this.aerodrome.subscribeToPool(poolAddress, tokenAddress, callback);
     return `aerodrome:${aerodromeId}`;
   }
 
@@ -201,11 +257,10 @@ export class AdapterManager extends EventEmitter {
     timeframe: string,
     callback: (candle: CandleData) => void,
   ): Promise<string> {
-    const bitQueryId = await this.bitQuery.subscribeToCandles(
-      tokenAddress,
-      timeframe,
-      callback,
-    );
+    if (!this.bitQuery) {
+      throw new Error('BitQuery adapter not initialized');
+    }
+    const bitQueryId = await this.bitQuery.subscribeToCandles(tokenAddress, timeframe, callback);
     return `bitquery:${bitQueryId}`;
   }
 
@@ -220,12 +275,15 @@ export class AdapterManager extends EventEmitter {
         await this.goldsky.unsubscribe(id);
         break;
       case 'bitquery':
-        await this.bitQuery.unsubscribe(id);
+        if (this.bitQuery) {
+          await this.bitQuery.unsubscribe(id);
+        }
         break;
-      case 'aerodrome':
+      case 'aerodrome': {
         const [poolAddress, tokenAddress] = id.split('_');
         await this.aerodrome.unsubscribeFromPool(poolAddress, tokenAddress);
         break;
+      }
       default:
         console.warn('[AdapterManager] Unknown adapter:', adapter);
     }
@@ -245,7 +303,7 @@ export class AdapterManager extends EventEmitter {
     return {
       quickNode: this.quickNode.getStats(),
       goldsky: this.goldsky.getStats(),
-      bitQuery: this.bitQuery.getStats(),
+      bitQuery: this.bitQuery?.getStats() || null,
       aerodrome: this.aerodrome.getStats(),
     };
   }
@@ -263,9 +321,13 @@ export class AdapterManager extends EventEmitter {
       this.emit('adapter_event', event);
     });
 
-    this.bitQuery.on('adapter_event', (event: AdapterEvent) => {
-      this.emit('adapter_event', event);
-    });
+    if (this.bitQuery) {
+      this.bitQuery.on('adapter_event', (event: AdapterEvent) => {
+        this.emit('adapter_event', event);
+      });
+      this.bitQuery.on('connected', () => this.emit('bitquery_connected'));
+      this.bitQuery.on('error', (error) => this.emit('bitquery_error', error));
+    }
 
     this.aerodrome.on('adapter_event', (event: AdapterEvent) => {
       this.emit('adapter_event', event);
@@ -274,13 +336,11 @@ export class AdapterManager extends EventEmitter {
     // Forward connection events
     this.quickNode.on('connected', () => this.emit('quicknode_connected'));
     this.goldsky.on('connected', () => this.emit('goldsky_connected'));
-    this.bitQuery.on('connected', () => this.emit('bitquery_connected'));
     this.aerodrome.on('connected', () => this.emit('aerodrome_connected'));
 
     // Forward errors
     this.quickNode.on('error', (error) => this.emit('quicknode_error', error));
     this.goldsky.on('error', (error) => this.emit('goldsky_error', error));
-    this.bitQuery.on('error', (error) => this.emit('bitquery_error', error));
   }
 
   /**
@@ -293,6 +353,9 @@ export class AdapterManager extends EventEmitter {
       case 'goldsky':
         return this.goldsky;
       case 'bitquery':
+        if (!this.bitQuery) {
+          throw new Error('BitQuery adapter not initialized');
+        }
         return this.bitQuery;
       case 'aerodrome':
         return this.aerodrome;
@@ -301,4 +364,3 @@ export class AdapterManager extends EventEmitter {
     }
   }
 }
-

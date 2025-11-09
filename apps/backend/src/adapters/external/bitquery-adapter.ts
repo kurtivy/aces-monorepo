@@ -43,6 +43,7 @@ export class BitQueryAdapter extends EventEmitter implements BaseAdapter {
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private isReconnecting = false;
   private pingInterval: NodeJS.Timeout | null = null;
+  private authFailed = false; // Track authentication failures
 
   // Stats
   private stats = {
@@ -68,12 +69,20 @@ export class BitQueryAdapter extends EventEmitter implements BaseAdapter {
     };
 
     if (!this.config.apiKey) {
-      throw new Error(
-        'BitQuery API key required. Set BITQUERY_API_KEY environment variable.',
-      );
+      throw new Error('BitQuery API key required. Set BITQUERY_API_KEY environment variable.');
     }
 
-    console.log('[BitQueryAdapter] Initialized');
+    // Note: BitQuery now uses OAuth tokens (starting with "ory_at") as of January 2025
+    // OAuth tokens should be passed in the URL query parameter, not headers
+
+    // Log masked API key for debugging (first 8 chars + last 4 chars)
+    const maskedKey =
+      this.config.apiKey.length > 12
+        ? `${this.config.apiKey.substring(0, 8)}...${this.config.apiKey.substring(
+            this.config.apiKey.length - 4,
+          )}`
+        : '***';
+    console.log(`[BitQueryAdapter] Initialized with API key: ${maskedKey}`);
   }
 
   /**
@@ -89,12 +98,24 @@ export class BitQueryAdapter extends EventEmitter implements BaseAdapter {
       try {
         console.log('[BitQueryAdapter] 🔌 Connecting to BitQuery...');
 
-        // Create WebSocket connection with auth header
-        this.ws = new WebSocket(this.config.wsUrl, {
-          headers: {
+        // BitQuery OAuth tokens (starting with "ory_") should be in URL query parameter
+        // Legacy API keys use headers
+        const isOAuthToken = this.config.apiKey.startsWith('ory_');
+        const wsUrl = isOAuthToken
+          ? `${this.config.wsUrl}?token=${this.config.apiKey}`
+          : this.config.wsUrl;
+
+        // Create WebSocket connection
+        // OAuth tokens: use URL query parameter, no headers
+        // Legacy keys: use X-API-KEY header
+        const wsOptions: any = {};
+        if (!isOAuthToken) {
+          wsOptions.headers = {
             'X-API-KEY': this.config.apiKey,
-          },
-        });
+          };
+        }
+
+        this.ws = new WebSocket(wsUrl, ['graphql-ws'], wsOptions);
 
         // Handle open
         this.ws.onopen = () => {
@@ -102,15 +123,21 @@ export class BitQueryAdapter extends EventEmitter implements BaseAdapter {
           this.stats.connected = true;
           this.stats.connectedAt = Date.now();
           this.reconnectAttempts = 0;
+          this.authFailed = false; // Reset auth failure flag on successful connection
 
           // Send connection init
+          // OAuth tokens don't need headers in connection_init
+          const isOAuthToken = this.config.apiKey.startsWith('ory_');
+          const initPayload: any = {};
+          if (!isOAuthToken) {
+            initPayload.headers = {
+              'X-API-KEY': this.config.apiKey,
+            };
+          }
+
           this.sendMessage({
             type: 'connection_init',
-            payload: {
-              headers: {
-                'X-API-KEY': this.config.apiKey,
-              },
-            },
+            payload: Object.keys(initPayload).length > 0 ? initPayload : undefined,
           });
 
           // Start ping interval
@@ -128,8 +155,69 @@ export class BitQueryAdapter extends EventEmitter implements BaseAdapter {
         };
 
         // Handle errors
-        this.ws.onerror = (error) => {
-          console.error('[BitQueryAdapter] WebSocket error:', error);
+        this.ws.onerror = (error: any) => {
+          // Extract error message from various error formats
+          // In Node.js ws library, errors can be Error objects or wrapped ErrorEvent-like objects
+          let errorMessage = '';
+
+          // Check for nested error property (common in ws library)
+          const actualError = error?.error || error;
+
+          if (actualError instanceof Error) {
+            errorMessage = actualError.message;
+          } else if (actualError?.message) {
+            errorMessage = actualError.message;
+          } else if (typeof actualError === 'string') {
+            errorMessage = actualError;
+          } else {
+            errorMessage = String(actualError);
+          }
+
+          console.error('[BitQueryAdapter] WebSocket error:', errorMessage);
+
+          // Check for 401 authentication errors
+          const isAuthError =
+            errorMessage.includes('401') ||
+            errorMessage.includes('Unauthorized') ||
+            errorMessage.includes('Unexpected server response: 401');
+
+          if (isAuthError) {
+            console.error(
+              '[BitQueryAdapter] ❌ Authentication failed (401). Invalid API key detected.',
+            );
+            console.error('[BitQueryAdapter] Please check BITQUERY_API_KEY environment variable.');
+
+            // Check if it's an OAuth token
+            if (this.config.apiKey.startsWith('ory_')) {
+              console.error(
+                '[BitQueryAdapter] ⚠️  OAuth token authentication failed. Please verify:',
+              );
+              console.error(
+                '[BitQueryAdapter]   1. Token is valid and not expired',
+                '[BitQueryAdapter]   2. Token has WebSocket streaming permissions',
+                '[BitQueryAdapter]   3. Account plan supports streaming subscriptions',
+              );
+            } else {
+              console.error(
+                '[BitQueryAdapter] ⚠️  API key format looks correct, but authentication failed.',
+              );
+              console.error('[BitQueryAdapter] Possible reasons:');
+              console.error('[BitQueryAdapter]   1. API key is invalid or expired');
+              console.error(
+                '[BitQueryAdapter]   2. Account needs activation (sign up at https://graphql.bitquery.io/ide)',
+              );
+              console.error('[BitQueryAdapter]   3. WebSocket streaming not enabled on your plan');
+              console.error(
+                '[BitQueryAdapter]   4. Free plan has limited streams (2 simultaneous max)',
+              );
+            }
+
+            // Don't retry on authentication errors
+            this.reconnectAttempts = this.maxReconnectAttempts;
+            this.authFailed = true;
+            this.emit('auth_failed');
+          }
+
           this.stats.errors++;
           this.emit('error', error);
           reject(error);
@@ -137,13 +225,40 @@ export class BitQueryAdapter extends EventEmitter implements BaseAdapter {
 
         // Handle close
         this.ws.onclose = (event) => {
-          console.warn(
-            `[BitQueryAdapter] WebSocket closed: ${event.code} ${event.reason}`,
-          );
+          // Check if we've already detected an auth error
+          if (this.authFailed) {
+            console.error('[BitQueryAdapter] ❌ Connection closed due to authentication failure.');
+            console.error(
+              '[BitQueryAdapter] Stopping reconnection attempts. Please fix BITQUERY_API_KEY.',
+            );
+            this.emit('disconnected', event);
+            return;
+          }
+
+          // Detect potential auth errors from close code 1006 (abnormal closure)
+          // which often happens with 401 errors during HTTP upgrade
+          const isPotentialAuthError = event.code === 1006 && this.reconnectAttempts > 0;
+
+          if (isPotentialAuthError) {
+            console.error(
+              '[BitQueryAdapter] ❌ Connection closed abnormally (code 1006). This may indicate authentication failure.',
+            );
+            console.error('[BitQueryAdapter] Please verify BITQUERY_API_KEY is set correctly.');
+            // Mark as auth failed to prevent retries
+            this.authFailed = true;
+            this.reconnectAttempts = this.maxReconnectAttempts;
+            this.emit('auth_failed');
+          } else {
+            console.warn(
+              `[BitQueryAdapter] WebSocket closed: ${event.code} ${event.reason || 'No reason provided'}`,
+            );
+          }
+
           this.stats.connected = false;
           this.stopPingInterval();
 
-          if (!event.wasClean) {
+          // Only retry if it wasn't a clean close and not an auth error
+          if (!event.wasClean && !this.authFailed) {
             this.scheduleReconnect();
           }
 
@@ -210,13 +325,17 @@ export class BitQueryAdapter extends EventEmitter implements BaseAdapter {
     const subscriptionId = this.getNextSubscriptionId();
 
     // BitQuery GraphQL subscription for DEX trades on Base
+    // Using DEXTradeByTokens which matches the working query structure
     const query = `
       subscription DexTrades($token: String!) {
         EVM(network: base) {
-          DEXTrades(
+          DEXTradeByTokens(
             where: {
               Trade: {
-                Currency: { SmartContract: { is: $token } }
+                Currency: {
+                  SmartContract: { is: $token }
+                }
+                Price: { gt: 0 }
               }
             }
           ) {
@@ -226,23 +345,24 @@ export class BitQueryAdapter extends EventEmitter implements BaseAdapter {
             }
             Transaction {
               Hash
+              From
             }
             Trade {
-              Buyer
-              Seller
-              Currency {
-                SmartContract
-                Symbol
-              }
               Amount
               Price
-              AmountInUSD
               Side {
+                Type
+                Amount
+                AmountInUSD
                 Currency {
                   SmartContract
                   Symbol
+                  Name
                 }
-                Amount
+              }
+              Dex {
+                ProtocolName
+                ProtocolFamily
               }
             }
           }
@@ -257,17 +377,39 @@ export class BitQueryAdapter extends EventEmitter implements BaseAdapter {
       query,
       variables: { token: tokenAddress.toLowerCase() },
       callback: (data) => {
-        if (data.EVM?.DEXTrades) {
-          for (const trade of data.EVM.DEXTrades) {
+        if (data.EVM?.DEXTradeByTokens) {
+          for (const trade of data.EVM.DEXTradeByTokens) {
+            const tradeData = trade.Trade;
+            const sideType = tradeData.Side.Type; // "buy" or "sell" (from ACES perspective)
+            
+            // DEXTradeByTokens logic:
+            // Trade.Side.Type = "sell" means ACES was sold (token was BOUGHT) → user BOUGHT token
+            // Trade.Side.Type = "buy" means ACES was bought (token was SOLD) → user SOLD token
+            const isBuy = sideType === 'sell';
+            
+            // Extract amounts
+            const amountToken = tradeData.Amount || '0';
+            const amountAces = tradeData.Side.Amount || '0';
+            
+            // Calculate price in USD
+            const acesAmountUSD = parseFloat(tradeData.Side.AmountInUSD || '0');
+            const tokenAmountNum = parseFloat(amountToken);
+            let priceUsd = '0';
+            
+            if (tokenAmountNum > 0 && acesAmountUSD > 0) {
+              // Price per token = Total USD spent / Token amount
+              priceUsd = (acesAmountUSD / tokenAmountNum).toString();
+            }
+            
             const tradeEvent: TradeEvent = {
               id: trade.Transaction.Hash,
-              tokenAddress: trade.Trade.Currency.SmartContract,
-              trader: trade.Trade.Buyer || trade.Trade.Seller,
-              isBuy: !!trade.Trade.Buyer,
-              tokenAmount: trade.Trade.Amount,
-              acesAmount: trade.Trade.Side.Amount,
-              pricePerToken: trade.Trade.Price.toString(),
-              priceUsd: trade.Trade.AmountInUSD?.toString(),
+              tokenAddress: tokenAddress.toLowerCase(),
+              trader: trade.Transaction.From,
+              isBuy: isBuy,
+              tokenAmount: amountToken,
+              acesAmount: amountAces,
+              pricePerToken: tradeData.Price?.toString() || '0',
+              priceUsd: priceUsd,
               supply: '0', // Not available in BitQuery
               timestamp: new Date(trade.Block.Time).getTime() / 1000,
               blockNumber: trade.Block.Number,
@@ -298,89 +440,20 @@ export class BitQueryAdapter extends EventEmitter implements BaseAdapter {
 
   /**
    * Subscribe to OHLCV candles for a specific token pair
+   * NOTE: BitQuery subscriptions don't support aggregations like queries do.
+   * This method is disabled - use REST API endpoints for candles instead.
+   * WebSocket subscriptions are better suited for individual trades.
    */
   async subscribeToCandles(
     tokenAddress: string,
     timeframe: string,
     callback: (candle: CandleData) => void,
   ): Promise<string> {
-    if (!this.isConnected()) {
-      throw new Error('Not connected to BitQuery');
-    }
-
-    const subscriptionId = this.getNextSubscriptionId();
-
-    // Convert timeframe to seconds for aggregation
-    const intervalSeconds = this.getTimeframeSeconds(timeframe);
-
-    const query = `
-      subscription OHLCVCandles($token: String!, $interval: Int!) {
-        EVM(network: base) {
-          DEXTradeByTokens(
-            where: {
-              Trade: {
-                Currency: { SmartContract: { is: $token } }
-              }
-            }
-            orderBy: { descending: Block_Time }
-            limit: { count: 1 }
-          ) {
-            Block {
-              Time(interval: { in: seconds, count: $interval })
-            }
-            Trade {
-              open: Price(minimum: Block_Number)
-              high: Price(maximum: Block_Number)
-              low: Price(minimum: Block_Number)
-              close: Price(maximum: Block_Number)
-              volume: Amount(sum: Block_Number)
-              trades: count
-            }
-          }
-        }
-      }
-    `;
-
-    console.log('[BitQueryAdapter] 📥 Subscribing to OHLCV candles:', tokenAddress, timeframe);
-
-    this.subscriptions.set(subscriptionId, {
-      id: subscriptionId,
-      query,
-      variables: { token: tokenAddress.toLowerCase(), interval: intervalSeconds },
-      callback: (data) => {
-        if (data.EVM?.DEXTradeByTokens) {
-          for (const candle of data.EVM.DEXTradeByTokens) {
-            const candleData: CandleData = {
-              timestamp: new Date(candle.Block.Time).getTime() / 1000,
-              timeframe,
-              open: candle.Trade.open?.toString() || '0',
-              high: candle.Trade.high?.toString() || '0',
-              low: candle.Trade.low?.toString() || '0',
-              close: candle.Trade.close?.toString() || '0',
-              volume: candle.Trade.volume?.toString() || '0',
-              trades: candle.Trade.trades || 0,
-              dataSource: 'bitquery',
-            };
-            callback(candleData);
-            this.emitAdapterEvent(AdapterEventType.CANDLE, candleData);
-          }
-        }
-      },
-    });
-
-    // Send subscription request
-    this.sendMessage({
-      id: subscriptionId,
-      type: 'start',
-      payload: {
-        query,
-        variables: { token: tokenAddress.toLowerCase(), interval: intervalSeconds },
-      },
-    });
-
-    console.log('[BitQueryAdapter] ✅ Candle subscription active:', subscriptionId);
-
-    return subscriptionId;
+    throw new Error(
+      'BitQuery WebSocket subscriptions do not support OHLCV aggregations. ' +
+        'Please use the REST API endpoint /api/v1/chart/:tokenAddress/unified for candles. ' +
+        'WebSocket subscriptions are available for individual trades via subscribeToDexTrades().',
+    );
   }
 
   /**
@@ -466,6 +539,10 @@ export class BitQueryAdapter extends EventEmitter implements BaseAdapter {
           // Keep-alive
           break;
 
+        case 'pong':
+          // Pong response to our ping
+          break;
+
         default:
           console.log('[BitQueryAdapter] Unknown message type:', message.type);
       }
@@ -525,6 +602,10 @@ export class BitQueryAdapter extends EventEmitter implements BaseAdapter {
    */
   private scheduleReconnect(): void {
     if (this.isReconnecting) return;
+    if (this.authFailed) {
+      console.error('[BitQueryAdapter] Skipping reconnection - authentication failed');
+      return;
+    }
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.error('[BitQueryAdapter] Max reconnection attempts reached');
       this.emit('reconnect_failed');
@@ -594,4 +675,3 @@ export class BitQueryAdapter extends EventEmitter implements BaseAdapter {
     this.stats.messagesEmitted++;
   }
 }
-

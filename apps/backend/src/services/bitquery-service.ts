@@ -21,6 +21,9 @@ import type {
   TradingTokensResponse,
   TradingTokensOHLC,
   LatestPriceResponse,
+  DEXTradeByTokensTrade,
+  AggregatedCandleData,
+  DEXTrade,
 } from '../types/bitquery.types';
 
 interface CacheEntry<T> {
@@ -119,19 +122,30 @@ export class BitQueryService {
 
   /**
    * Get token trades using DEXTradeByTokens (returns actual trader addresses)
+   * Now supports optional date range for historical data
    */
-  async getTokenTrades(tokenAddress: string, limit: number = 100): Promise<BitQuerySwap[]> {
+  async getTokenTrades(
+    tokenAddress: string,
+    limit: number = 100,
+    options?: { from?: Date; to?: Date },
+  ): Promise<BitQuerySwap[]> {
     if (this.disabled) {
       console.log('[BitQuery] ⏸️  Skipping getTokenTrades (service disabled)');
       return [];
     }
 
+    const { from, to } = options || {};
+    const useDateFilter = from || to;
+
     console.log('[BitQuery] Fetching token trades:', {
       tokenAddress,
       limit,
+      from: from?.toISOString(),
+      to: to?.toISOString(),
+      useDateFilter,
     });
 
-    const cacheKey = `token-trades:${tokenAddress}:${limit}`;
+    const cacheKey = `token-trades:${tokenAddress}:${limit}:${from?.getTime() || 'all'}:${to?.getTime() || 'all'}`;
     const cached = this.getFromCache<BitQuerySwap[]>(cacheKey);
     if (cached) {
       console.log(`[BitQuery] ✅ Returning ${cached.length} cached token trades`);
@@ -139,23 +153,38 @@ export class BitQueryService {
     }
 
     try {
-      const queryVariables = {
+      // Use date-filtered query if dates are provided, otherwise use default (recent trades)
+      const queryToUse = useDateFilter
+        ? BITQUERY_QUERIES.GET_TOKEN_TRADES_WITH_DATES
+        : BITQUERY_QUERIES.GET_TOKEN_TRADES;
+
+      const queryVariables: any = {
         network: BASE_NETWORK,
         tokenAddress: tokenAddress.toLowerCase(),
         limit,
       };
 
-      console.log('[BitQuery] Querying BitQuery API for token trades...');
-      const response = await this.queryBitQuery<any>(
-        BITQUERY_QUERIES.GET_TOKEN_TRADES,
-        queryVariables,
-      );
+      if (useDateFilter) {
+        queryVariables.from = (from || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)).toISOString(); // Default 30 days ago
+        queryVariables.to = (to || new Date()).toISOString();
+      }
+
+      console.log('[BitQuery] Querying BitQuery API for token trades...', {
+        query: useDateFilter ? 'with dates' : 'recent only',
+      });
+      const response = await this.queryBitQuery<any>(queryToUse, queryVariables);
 
       const trades = response.data.EVM.DEXTradeByTokens;
       console.log(`[BitQuery] ✅ Received ${trades?.length || 0} trades from BitQuery`);
 
       if (trades && trades.length > 0) {
         console.log('[BitQuery] Sample raw trade:', JSON.stringify(trades[0], null, 2));
+        const firstTradeTime = new Date(trades[0].Block.Time);
+        const lastTradeTime = new Date(trades[trades.length - 1].Block.Time);
+        console.log('[BitQuery] Trade date range:', {
+          first: firstTradeTime.toISOString(),
+          last: lastTradeTime.toISOString(),
+        });
       }
 
       const swaps = this.normalizeTokenTrades(trades || [], tokenAddress);
@@ -210,25 +239,47 @@ export class BitQueryService {
     }
 
     try {
-      // Use GET_TOKEN_TRADES (DEXTradeByTokens) for accurate price calculation
-      const response = await this.queryBitQuery<any>(BITQUERY_QUERIES.GET_TOKEN_TRADES, {
+      // Use GET_TOKEN_TRADES_WITH_DATES for date-filtered queries
+      // This ensures we get historical trades, not just recent ones
+      const useDateFilter = options.from || options.to;
+      const queryToUse = useDateFilter
+        ? BITQUERY_QUERIES.GET_TOKEN_TRADES_WITH_DATES
+        : BITQUERY_QUERIES.GET_TOKEN_TRADES;
+
+      const queryVariables: any = {
         network: BASE_NETWORK,
         tokenAddress: tokenAddress.toLowerCase(),
         limit,
+      };
+
+      if (useDateFilter) {
+        queryVariables.from = (options.from || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)).toISOString();
+        queryVariables.to = (options.to || new Date()).toISOString();
+      }
+
+      console.log('[BitQuery] Querying BitQuery API for DEX trades...', {
+        query: useDateFilter ? 'with dates' : 'recent only',
+        from: options.from?.toISOString(),
+        to: options.to?.toISOString(),
       });
+
+      const response = await this.queryBitQuery<any>(queryToUse, queryVariables);
 
       const rawTrades = response.data.EVM.DEXTradeByTokens;
       console.log(
         `[BitQuery] ✅ Received ${rawTrades?.length || 0} individual trades from BitQuery`,
       );
 
-      // Filter trades by date range (BitQuery doesn't support date filtering in DEXTradeByTokens query)
-      const filteredTrades = rawTrades.filter((trade: any) => {
-        const tradeTime = new Date(trade.Block.Time);
-        return tradeTime >= from && tradeTime <= to;
-      });
-
-      console.log(`[BitQuery] ✅ Filtered to ${filteredTrades.length} trades within date range`);
+      // If we used date filtering, trades are already filtered by BitQuery
+      // Otherwise, filter client-side for the old query
+      let filteredTrades = rawTrades;
+      if (!useDateFilter && (options.from || options.to)) {
+        filteredTrades = rawTrades.filter((trade: any) => {
+          const tradeTime = new Date(trade.Block.Time);
+          return (!options.from || tradeTime >= options.from) && (!options.to || tradeTime <= options.to);
+        });
+        console.log(`[BitQuery] ✅ Filtered to ${filteredTrades.length} trades within date range`);
+      }
 
       // Use normalizeTokenTrades which correctly calculates price from amounts
       const normalizedTrades = this.normalizeTokenTrades(
@@ -653,9 +704,10 @@ export class BitQueryService {
   /**
    * Normalize token trades from DEXTradeByTokens (NEW: Correct trader addresses)
    */
-  private normalizeTokenTrades(trades: any[], tokenAddress: string): BitQuerySwap[] {
-    const normalizedTokenAddress = tokenAddress.toLowerCase();
-
+  private normalizeTokenTrades(
+    trades: DEXTradeByTokensTrade[],
+    _tokenAddress: string,
+  ): BitQuerySwap[] {
     return trades.map((trade) => {
       const tradeData = trade.Trade;
       const sideType = tradeData.Side.Type; // "buy" or "sell" (from ACES perspective)
@@ -665,16 +717,16 @@ export class BitQueryService {
       // Trade.Side.Type = "buy" means ACES was bought (token was SOLD) → user SOLD token
       const side: 'buy' | 'sell' = sideType === 'sell' ? 'buy' : 'sell';
 
-      console.log('[BitQuery] TOKEN TRADE:', {
-        txHash: trade.Transaction.Hash,
-        trader: trade.Transaction.From,
-        sideType: sideType,
-        interpretedAs: side,
-        tokenAmount: tradeData.Amount,
-        acesAmount: tradeData.Side.Amount,
-        acesUSD: tradeData.Side.AmountInUSD,
-        tokenPrice: tradeData.Price,
-      });
+      // console.log('[BitQuery] TOKEN TRADE:', {
+      //   txHash: trade.Transaction.Hash,
+      //   trader: trade.Transaction.From,
+      //   sideType: sideType,
+      //   interpretedAs: side,
+      //   tokenAmount: tradeData.Amount,
+      //   acesAmount: tradeData.Side.Amount,
+      //   acesUSD: tradeData.Side.AmountInUSD,
+      //   tokenPrice: tradeData.Price,
+      // });
 
       // Extract amounts
       const amountToken = tradeData.Amount || '0';
@@ -743,7 +795,7 @@ export class BitQueryService {
   /**
    * Normalize pre-aggregated candle data from BitQuery DEXTradeByTokens
    */
-  private normalizeAggregatedCandles(candleData: any[]): BitQueryCandle[] {
+  private normalizeAggregatedCandles(candleData: AggregatedCandleData[]): BitQueryCandle[] {
     return candleData.map((item) => {
       const timestamp = new Date(item.Block.Time);
       const trade = item.Trade;
@@ -788,7 +840,7 @@ export class BitQueryService {
         closeUsd,
         volume,
         volumeUsd,
-        trades: parseInt(item.tradesCount || '0'),
+        trades: item.tradesCount ?? 0,
       };
     });
   }
@@ -797,14 +849,14 @@ export class BitQueryService {
    * LEGACY: Normalize candle data from BitQuery response (manual grouping - not used anymore)
    */
   private normalizeCandles(
-    trades: any[],
+    trades: DEXTrade[],
     timeframe: string,
     tokenAddress: string,
   ): BitQueryCandle[] {
     const normalizedTokenAddress = tokenAddress.toLowerCase();
 
     // Group trades by time interval
-    const candleMap = new Map<number, any[]>();
+    const candleMap = new Map<number, DEXTrade[]>();
 
     trades.forEach((trade) => {
       const timestamp = new Date(trade.Block.Time).getTime();

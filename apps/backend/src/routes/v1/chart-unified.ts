@@ -77,12 +77,15 @@ export async function chartUnifiedRoutes(fastify: FastifyInstance) {
         }
 
         // Fetch chart data
+        const requestedLimit = limit ? parseInt(limit) : 300; // 🔥 UPDATED: Higher default for better UX
         const chartData = await chartService.getChartData(tokenAddress, {
           timeframe,
           from: fromDate,
           to: toDate,
-          limit: limit ? parseInt(limit) : 200, // 🔥 OPTIMIZED: Lower default limit
+          limit: requestedLimit,
         });
+
+        console.log(`[ChartUnified] 📊 Requested ${requestedLimit} candles, returning ${chartData.candles.length}`);
 
         const requestDuration = Date.now() - requestStart;
         console.log(

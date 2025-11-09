@@ -114,9 +114,69 @@ export async function websocketStatsRoutes(fastify: FastifyInstance) {
   });
 
   /**
-   * GET /api/v1/ws/connections
-   * Get connected client information
+   * GET /api/v1/ws/adapter-status
+   * Get adapter connection status (QuickNode, Goldsky, BitQuery, Aerodrome)
    */
+  fastify.get('/api/v1/ws/adapter-status', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const adapterManager = (fastify as any).adapterManager;
+      
+      if (!adapterManager) {
+        return reply.code(503).send({
+          success: false,
+          error: 'AdapterManager not initialized',
+        });
+      }
+
+      const stats = adapterManager.getAllStats();
+
+      // Safely get BitQuery adapter
+      let bitQueryInitialized = false;
+      let bitQueryConnected = false;
+      try {
+        const bitQueryAdapter = adapterManager.getAdapter('bitquery');
+        bitQueryInitialized = !!bitQueryAdapter;
+        bitQueryConnected = bitQueryAdapter?.isConnected() || false;
+      } catch {
+        // BitQuery not initialized
+      }
+
+      return reply.send({
+        success: true,
+        data: {
+          adapters: {
+            quickNode: {
+              connected: adapterManager.getAdapter('quicknode').isConnected(),
+              stats: stats.quickNode,
+            },
+            goldsky: {
+              connected: adapterManager.getAdapter('goldsky').isConnected(),
+              stats: stats.goldsky,
+            },
+            bitQuery: {
+              initialized: bitQueryInitialized,
+              connected: bitQueryConnected,
+              stats: stats.bitQuery,
+            },
+            aerodrome: {
+              connected: adapterManager.getAdapter('aerodrome').isConnected(),
+              stats: stats.aerodrome,
+            },
+          },
+          overall: {
+            coreConnected: adapterManager.isConnected(),
+          },
+        },
+        timestamp: Date.now(),
+      });
+    } catch (error) {
+      console.error('[Adapter Status] Error:', error);
+      return reply.code(500).send({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to retrieve adapter status',
+      });
+    }
+  });
   fastify.get('/api/v1/ws/connections', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const gateway = WebSocketGateway.getInstance();

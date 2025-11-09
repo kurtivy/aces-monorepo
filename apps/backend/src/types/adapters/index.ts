@@ -139,4 +139,3 @@ export interface AdapterEvent<T = any> {
   timestamp: number;
   source: string; // Adapter name
 }
-

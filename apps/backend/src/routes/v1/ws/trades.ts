@@ -25,15 +25,33 @@ export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
 
       console.log(`[WS:Trades] Client connected for token: ${tokenAddress}`);
 
-      if (!adapterManager || !adapterManager.isConnected()) {
+      if (!adapterManager) {
         connection.socket.send(
           JSON.stringify({
             type: 'error',
-            message: 'WebSocket adapters not connected. Using fallback REST API.',
+            message: 'WebSocket adapters not initialized. Please try again.',
           }),
         );
         connection.socket.close();
         return;
+      }
+
+      // Check adapter connection status (but don't block - allow connection even if some adapters aren't ready)
+      const isConnected = adapterManager.isConnected();
+      if (!isConnected) {
+        console.warn(
+          `[WS:Trades] Adapters not fully connected, but allowing connection for ${tokenAddress}`,
+        );
+        // Still allow connection - adapters might connect later
+        // Send a warning message but keep the connection open
+        connection.socket.send(
+          JSON.stringify({
+            type: 'warning',
+            message:
+              'Some adapters are still connecting. Trades may be limited until fully connected.',
+            timestamp: Date.now(),
+          }),
+        );
       }
 
       try {

@@ -53,41 +53,61 @@ export const candlesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
         return;
       }
 
+      let subscriptionId: string | null = null;
+
       try {
         // Subscribe to candles from BitQuery
-        const subscriptionId = await adapterManager.subscribeToCandles(
-          tokenAddress,
-          timeframe,
-          (candle: CandleData) => {
-            // Send candle to client
-            if (connection.socket.readyState === 1) {
-              // OPEN
-              connection.socket.send(
-                JSON.stringify({
-                  type: 'candle',
-                  data: {
-                    timestamp: candle.timestamp,
-                    timeframe: candle.timeframe,
-                    open: candle.open,
-                    high: candle.high,
-                    low: candle.low,
-                    close: candle.close,
-                    volume: candle.volume,
-                    trades: candle.trades,
-                    openUsd: candle.openUsd,
-                    highUsd: candle.highUsd,
-                    lowUsd: candle.lowUsd,
-                    closeUsd: candle.closeUsd,
-                    volumeUsd: candle.volumeUsd,
-                  },
-                  timestamp: Date.now(),
-                }),
-              );
-            }
-          },
-        );
+        // NOTE: BitQuery subscriptions don't support aggregations, so this will fail
+        // Clients should use REST API for candles instead
+        try {
+          subscriptionId = await adapterManager.subscribeToCandles(
+            tokenAddress,
+            timeframe,
+            (candle: CandleData) => {
+              // Send candle to client
+              if (connection.socket.readyState === 1) {
+                // OPEN
+                connection.socket.send(
+                  JSON.stringify({
+                    type: 'candle',
+                    data: {
+                      timestamp: candle.timestamp,
+                      timeframe: candle.timeframe,
+                      open: candle.open,
+                      high: candle.high,
+                      low: candle.low,
+                      close: candle.close,
+                      volume: candle.volume,
+                      trades: candle.trades,
+                      openUsd: candle.openUsd,
+                      highUsd: candle.highUsd,
+                      lowUsd: candle.lowUsd,
+                      closeUsd: candle.closeUsd,
+                      volumeUsd: candle.volumeUsd,
+                    },
+                    timestamp: Date.now(),
+                  }),
+                );
+              }
+            },
+          );
 
-        console.log(`[WS:Candles] Subscribed to ${timeframe} candles for ${tokenAddress}`);
+          console.log(`[WS:Candles] Subscribed to ${timeframe} candles for ${tokenAddress}`);
+        } catch (candleError) {
+          const errorMessage =
+            candleError instanceof Error ? candleError.message : 'Candle subscription not available';
+          console.warn('[WS:Candles] Candle subscription failed:', errorMessage);
+          connection.socket.send(
+            JSON.stringify({
+              type: 'error',
+              message:
+                'Real-time candles not available via WebSocket. Please use REST API endpoint /api/v1/chart/:tokenAddress/unified for candles.',
+              error: errorMessage,
+              timestamp: Date.now(),
+            }),
+          );
+          // Don't close connection - client can still use it for trades
+        }
 
         // Send confirmation
         connection.socket.send(
@@ -106,10 +126,12 @@ export const candlesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
         connection.socket.on('close', async () => {
           console.log(`[WS:Candles] Client disconnected from ${tokenAddress} (${timeframe})`);
 
-          try {
-            await adapterManager.unsubscribe(subscriptionId);
-          } catch (error) {
-            console.error('[WS:Candles] Error unsubscribing:', error);
+          if (subscriptionId) {
+            try {
+              await adapterManager.unsubscribe(subscriptionId);
+            } catch (error) {
+              console.error('[WS:Candles] Error unsubscribing:', error);
+            }
           }
         });
 

@@ -81,56 +81,74 @@ export const chartCompatWebSocketRoutes: FastifyPluginAsync = async (fastify) =>
             }
 
             // Subscribe to candles
-            const subscriptionId = await adapterManager.subscribeToCandles(
-              tokenAddress,
-              timeframe,
-              (candle) => {
-                // Send candle data in old format for compatibility
-                if (connection.socket.readyState === 1) {
-                  connection.socket.send(
-                    JSON.stringify({
-                      type: 'candle',
-                      tokenAddress,
-                      timeframe,
-                      chartType,
-                      candle: {
-                        timestamp: candle.timestamp,
-                        open: candle.open,
-                        high: candle.high,
-                        low: candle.low,
-                        close: candle.close,
-                        volume: candle.volume,
-                        // Add USD values if available
-                        openUsd: candle.openUsd,
-                        highUsd: candle.highUsd,
-                        lowUsd: candle.lowUsd,
-                        closeUsd: candle.closeUsd,
-                        volumeUsd: candle.volumeUsd,
-                      },
-                      timestamp: Date.now(),
-                    }),
-                  );
-                }
-              },
-            );
-
-            subscriptions.set(key, subscriptionId);
-
-            // Send subscription confirmation
-            connection.socket.send(
-              JSON.stringify({
-                type: 'subscribed',
+            // NOTE: BitQuery subscriptions don't support aggregations, so this will fail
+            // Clients should use REST API for candles instead
+            try {
+              const subscriptionId = await adapterManager.subscribeToCandles(
                 tokenAddress,
                 timeframe,
-                chartType,
-                message: `Subscribed to ${timeframe} candles for ${tokenAddress}`,
-                timestamp: Date.now(),
-              }),
-            );
+                (candle) => {
+                  // Send candle data in old format for compatibility
+                  if (connection.socket.readyState === 1) {
+                    connection.socket.send(
+                      JSON.stringify({
+                        type: 'candle',
+                        tokenAddress,
+                        timeframe,
+                        chartType,
+                        candle: {
+                          timestamp: candle.timestamp,
+                          open: candle.open,
+                          high: candle.high,
+                          low: candle.low,
+                          close: candle.close,
+                          volume: candle.volume,
+                          // Add USD values if available
+                          openUsd: candle.openUsd,
+                          highUsd: candle.highUsd,
+                          lowUsd: candle.lowUsd,
+                          closeUsd: candle.closeUsd,
+                          volumeUsd: candle.volumeUsd,
+                        },
+                        timestamp: Date.now(),
+                      }),
+                    );
+                  }
+                },
+              );
 
-            console.log(
-              `[WS:ChartCompat] Subscribed: ${tokenAddress} ${timeframe} ${chartType}`,
-            );
+              subscriptions.set(key, subscriptionId);
+
+              // Send subscription confirmation
+              connection.socket.send(
+                JSON.stringify({
+                  type: 'subscribed',
+                  tokenAddress,
+                  timeframe,
+                  chartType,
+                  message: `Subscribed to ${timeframe} candles for ${tokenAddress}`,
+                  timestamp: Date.now(),
+                }),
+              );
+
+              console.log(
+                `[WS:ChartCompat] Subscribed: ${tokenAddress} ${timeframe} ${chartType}`,
+              );
+            } catch (candleError) {
+              const errorMessage =
+                candleError instanceof Error ? candleError.message : 'Candle subscription not available';
+              console.warn('[WS:ChartCompat] Candle subscription failed:', errorMessage);
+              connection.socket.send(
+                JSON.stringify({
+                  type: 'error',
+                  message:
+                    'Real-time candles not available via WebSocket. Please use REST API endpoint /api/v1/chart/:tokenAddress/unified for candles.',
+                  error: errorMessage,
+                  timestamp: Date.now(),
+                }),
+              );
+              // Don't close connection - client can still use it for other purposes
+            }
           } else if (message.type === 'unsubscribe') {
             const { tokenAddress, timeframe = '1m', chartType = 'price' } = message;
             const key = `${tokenAddress}:${timeframe}:${chartType}`;
