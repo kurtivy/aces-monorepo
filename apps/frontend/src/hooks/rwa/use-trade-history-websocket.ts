@@ -79,33 +79,63 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
   } = useRealtimeTrades(tokenAddress, {
     maxTrades: 100,
     autoReconnect: true,
-    debug: false,
+    debug: true, // 🔍 ENABLED: Debug logging to diagnose WebSocket issues
   });
 
   // 🔥 AUTO-DETECT: If we're receiving BitQuery trades, token is on DEX
   const hasBitQueryTrades = useMemo(() => {
-    return allRealtimeTrades.some((trade) => trade.source === 'bitquery');
+    const hasBitQuery = allRealtimeTrades.some((trade) => trade.source === 'bitquery');
+    console.log('[TradeHistory] 🔍 Checking for BitQuery trades:', {
+      totalTrades: allRealtimeTrades.length,
+      hasBitQuery,
+      sources: allRealtimeTrades.map((t) => t.source),
+    });
+    return hasBitQuery;
   }, [allRealtimeTrades]);
 
   // Use auto-detected graduation OR explicit dexMeta flag
   const effectiveIsDexLive = isDexLive || hasBitQueryTrades;
 
   // 🔥 NEW: Filter trades by source based on graduation state
+  // IMPORTANT: Always include BitQuery trades if they exist (auto-detection)
   const realtimeTrades = useMemo(() => {
-    if (effectiveIsDexLive) {
-      // Token graduated: Show BitQuery (DEX) trades only
+    // Check if we have ANY BitQuery trades (even if effectiveIsDexLive is false)
+    const hasAnyBitQueryTrades = allRealtimeTrades.some((t) => t.source === 'bitquery');
+
+    // If we have BitQuery trades OR token is graduated, show BitQuery trades
+    if (effectiveIsDexLive || hasAnyBitQueryTrades) {
+      // Token graduated OR has BitQuery trades: Show BitQuery (DEX) trades
       // But keep recent Goldsky trades for transition period (last 5 minutes)
       const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
-      return allRealtimeTrades.filter((trade) => {
+      const filtered = allRealtimeTrades.filter((trade) => {
         if (trade.source === 'bitquery') {
           return true; // Always show DEX trades (BitQuery)
         }
         // Show Goldsky trades from last 5 minutes (transition period)
         return trade.source === 'goldsky' && trade.timestamp > fiveMinutesAgo;
       });
+
+      console.log('[TradeHistory] 🔍 Filtering trades (DEX mode):', {
+        totalRealtimeTrades: allRealtimeTrades.length,
+        bitqueryTrades: allRealtimeTrades.filter((t) => t.source === 'bitquery').length,
+        goldskyTrades: allRealtimeTrades.filter((t) => t.source === 'goldsky').length,
+        filteredCount: filtered.length,
+        effectiveIsDexLive,
+        hasAnyBitQueryTrades,
+      });
+
+      return filtered;
     } else {
       // Token bonding: Show Goldsky trades only
-      return allRealtimeTrades.filter((trade) => trade.source === 'goldsky');
+      const filtered = allRealtimeTrades.filter((trade) => trade.source === 'goldsky');
+
+      console.log('[TradeHistory] 🔍 Filtering trades (Bonding mode):', {
+        totalRealtimeTrades: allRealtimeTrades.length,
+        goldskyTrades: filtered.length,
+        bitqueryTrades: allRealtimeTrades.filter((t) => t.source === 'bitquery').length,
+      });
+
+      return filtered;
     }
   }, [allRealtimeTrades, effectiveIsDexLive]);
 
@@ -225,22 +255,68 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
 
   // Combine WebSocket trades (transformed) with historical REST trades
   const trades = useMemo(() => {
-    let result: TradeHistoryEntry[];
+    // Transform WebSocket trades
+    const transformedRealtimeTrades = realtimeTrades.map(transformTrade);
 
-    // If we have real-time trades from WebSocket, use those
-    if (realtimeTrades.length > 0) {
-      result = realtimeTrades.map(transformTrade);
-    } else {
-      // Otherwise use historical trades from REST API
-      result = historicalTrades;
+    console.log('[TradeHistory] 🔄 Merging trades:', {
+      realtimeCount: realtimeTrades.length,
+      transformedRealtimeCount: transformedRealtimeTrades.length,
+      historicalCount: historicalTrades.length,
+      realtimeSources: realtimeTrades.map((t) => t.source),
+      historicalSources: historicalTrades.map((t) => t.source),
+    });
+
+    // Merge both arrays and deduplicate by trade ID (txHash or id)
+    const tradeMap = new Map<string, TradeHistoryEntry>();
+
+    // Add historical trades first (older data)
+    for (const trade of historicalTrades) {
+      const key = trade.txHash || trade.id;
+      if (key && !tradeMap.has(key)) {
+        tradeMap.set(key, trade);
+      }
     }
+
+    // Add real-time trades (newer data, will overwrite duplicates)
+    let addedCount = 0;
+    let duplicateCount = 0;
+    for (const trade of transformedRealtimeTrades) {
+      const key = trade.txHash || trade.id;
+      if (key) {
+        if (tradeMap.has(key)) {
+          duplicateCount++;
+          // Overwrite with newer real-time data
+          tradeMap.set(key, trade);
+        } else {
+          addedCount++;
+          tradeMap.set(key, trade);
+        }
+      } else {
+        console.warn('[TradeHistory] ⚠️ Trade missing txHash and id:', trade);
+      }
+    }
+
+    // Convert map to array, sort by timestamp (newest first), and limit
+    const result = Array.from(tradeMap.values())
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, 100); // Limit to 100 trades
 
     // Log buy/sell distribution for debugging
     if (result.length > 0) {
       const buyCount = result.filter((t) => t.direction === 'buy').length;
       const sellCount = result.filter((t) => t.direction === 'sell').length;
+      const dexCount = result.filter((t) => t.source === 'DEX').length;
+      const bondingCount = result.filter((t) => t.source === 'BONDING').length;
+
       console.log(
-        `[TradeHistory] 📊 Trade distribution: ${buyCount} buys, ${sellCount} sells (total: ${result.length})`,
+        `[TradeHistory] 📊 Final trade distribution: ${buyCount} buys, ${sellCount} sells (total: ${result.length})`,
+        {
+          realtime: transformedRealtimeTrades.length,
+          historical: historicalTrades.length,
+          added: addedCount,
+          duplicates: duplicateCount,
+          sources: { DEX: dexCount, BONDING: bondingCount },
+        },
       );
     }
 

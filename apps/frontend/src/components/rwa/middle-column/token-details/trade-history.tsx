@@ -88,6 +88,23 @@ export default function TradeHistory({
 
   const safeTrades: TradeHistoryEntry[] = Array.isArray(trades) ? trades : [];
 
+  // Debug: Log when trades update
+  useEffect(() => {
+    console.log('[TradeHistory Component] 📊 Trades updated:', {
+      count: safeTrades.length,
+      isLoading,
+      error,
+      firstTrade: safeTrades[0] ? {
+        id: safeTrades[0].id,
+        source: safeTrades[0].source,
+        direction: safeTrades[0].direction,
+        timestamp: safeTrades[0].timestamp,
+        timestampDate: new Date(safeTrades[0].timestamp).toISOString(),
+      } : null,
+      allTradeIds: safeTrades.slice(0, 5).map((t) => t.id),
+    });
+  }, [safeTrades.length, isLoading, error, safeTrades]);
+
   const normalizeAmount = (amount: string): number => {
     if (!amount) return 0;
     const hasDecimal = amount.includes('.') || amount.includes('e') || amount.includes('E');

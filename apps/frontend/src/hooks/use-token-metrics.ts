@@ -87,6 +87,16 @@ export function useTokenMetrics(
         setCirculatingSupply(wsMetrics.circulatingSupply);
       }
 
+      // 🔥 NEW: Extract bonding data from WebSocket metrics
+      if (wsMetrics.bondingData) {
+        setBondingData({
+          bondingPercentage: wsMetrics.bondingData.bondingPercentage,
+          isBonded: wsMetrics.bondingData.isBonded,
+          currentSupply: wsMetrics.bondingData.currentSupply,
+          tokensBondedAt: wsMetrics.bondingData.tokensBondedAt,
+        });
+      }
+
       setError(null);
       setLoading(false);
     } else if (wsError && !wsConnected) {

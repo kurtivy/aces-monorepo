@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useState, useRef, useCallback } from 'react';
+import { getReconnectDelay, shouldReconnect, formatReconnectDelay } from '@/lib/websocket/reconnection-utils';
 
 export interface RealtimeMetrics {
   tokenAddress: string;
@@ -17,6 +18,13 @@ export interface RealtimeMetrics {
   liquidityUsd?: number | null;
   liquiditySource?: 'bonding_curve' | 'dex' | null;
   circulatingSupply?: number | null;
+  // 🔥 NEW: Bonding data fields
+  bondingData?: {
+    isBonded: boolean;
+    bondingPercentage: number;
+    currentSupply: string;
+    tokensBondedAt: string;
+  };
   timestamp: number;
 }
 
@@ -80,6 +88,7 @@ export const useRealtimeMetrics = (
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectAttemptRef = useRef(0); // Track reconnection attempts for exponential backoff
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const mountedRef = useRef(true);
   const usePollingRef = useRef(false);
@@ -258,12 +267,20 @@ export const useRealtimeMetrics = (
         setIsConnecting(false);
         setError(null);
         usePollingRef.current = false;
+        reconnectAttemptRef.current = 0; // Reset reconnection counter on success
         stopPolling(); // Stop polling when WebSocket connects
       };
 
       ws.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
+
+          // 🔥 IMPROVEMENT: Handle heartbeat ping/pong
+          if (message.type === 'ping') {
+            // Respond to server ping with pong
+            ws.send(JSON.stringify({ type: 'pong' }));
+            return;
+          }
 
           if (message.type === 'metrics') {
             if (mountedRef.current) {
@@ -309,16 +326,21 @@ export const useRealtimeMetrics = (
         setIsConnecting(false);
 
         if (mountedRef.current) {
-          // Auto-reconnect if enabled and not a normal closure
-          if (autoReconnect && event.code !== 1000) {
-            log(`Reconnecting in ${reconnectDelay}ms...`);
+          // Auto-reconnect with exponential backoff if enabled and appropriate
+          if (autoReconnect && shouldReconnect(event.code)) {
+            const delay = getReconnectDelay(reconnectAttemptRef.current);
+            reconnectAttemptRef.current += 1;
+            
+            log(`Reconnecting in ${formatReconnectDelay(delay)} (attempt ${reconnectAttemptRef.current})...`);
+            
             reconnectTimeoutRef.current = setTimeout(() => {
               if (mountedRef.current) {
                 connect();
               }
-            }, reconnectDelay);
+            }, delay);
           } else if (fallbackToPolling && !usePollingRef.current) {
             // Fallback to polling if reconnect is disabled
+            log('Not reconnecting, falling back to polling');
             usePollingRef.current = true;
             startPolling();
           }
