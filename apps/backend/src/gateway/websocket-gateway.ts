@@ -26,6 +26,7 @@ import { SubscriptionManager } from '../services/websocket/subscription-manager'
 import { MessageRouter } from '../services/websocket/message-router';
 import { SubscriptionDeduplicator } from '../services/websocket/subscription-deduplicator';
 import { RateLimitMonitor } from '../services/websocket/rate-limit-monitor';
+import { RateLimitEnforcer } from '../services/websocket/rate-limit-enforcer';
 
 export class WebSocketGateway {
   private static instance: WebSocketGateway | null = null;
@@ -36,6 +37,7 @@ export class WebSocketGateway {
   private messageRouter: MessageRouter;
   private deduplicator: SubscriptionDeduplicator;
   private rateLimitMonitor: RateLimitMonitor;
+  private rateLimitEnforcer: RateLimitEnforcer;
 
   // Stats
   private startTime: number = Date.now();
@@ -49,6 +51,7 @@ export class WebSocketGateway {
     this.messageRouter = new MessageRouter();
     this.deduplicator = new SubscriptionDeduplicator();
     this.rateLimitMonitor = new RateLimitMonitor();
+    this.rateLimitEnforcer = new RateLimitEnforcer(this.rateLimitMonitor);
 
     // Wire up event handlers
     this.setupEventHandlers();
@@ -396,6 +399,7 @@ export class WebSocketGateway {
     const dedupStats = this.deduplicator.getDetailedStats();
     const rateLimitStats = this.rateLimitMonitor.getStats();
     const routerStats = this.messageRouter.getStats();
+    const enforcerStats = this.rateLimitEnforcer.getStats();
 
     return {
       connectedClients: connStats.totalClients,
@@ -406,6 +410,7 @@ export class WebSocketGateway {
       subscriptions: subStats.subscriptions,
       deduplication: dedupStats,
       rateLimits: rateLimitStats.usage,
+      enforcer: enforcerStats,
       router: routerStats,
       connection: connStats,
     };
@@ -449,6 +454,10 @@ export class WebSocketGateway {
 
   getRateLimitMonitor() {
     return this.rateLimitMonitor;
+  }
+
+  getRateLimitEnforcer() {
+    return this.rateLimitEnforcer;
   }
 
   getMessageRouter() {

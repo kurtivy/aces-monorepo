@@ -11,6 +11,7 @@
 
 import { EventEmitter } from 'events';
 import WebSocket from 'ws';
+import { PrismaClient } from '@prisma/client';
 import {
   BaseAdapter,
   AdapterStats,
@@ -44,6 +45,7 @@ export class BitQueryAdapter extends EventEmitter implements BaseAdapter {
   private isReconnecting = false;
   private pingInterval: NodeJS.Timeout | null = null;
   private authFailed = false; // Track authentication failures
+  private prisma: PrismaClient; // Database client for storing trades
 
   // Stats
   private stats = {
@@ -61,7 +63,7 @@ export class BitQueryAdapter extends EventEmitter implements BaseAdapter {
   private subscriptions = new Map<string, BitQuerySubscription>();
   private subscriptionIdCounter = 0;
 
-  constructor(config?: Partial<BitQueryConfig>) {
+  constructor(config?: Partial<BitQueryConfig>, prisma?: PrismaClient) {
     super();
     this.config = {
       wsUrl: config?.wsUrl || process.env.BITQUERY_WS_URL || 'wss://streaming.bitquery.io/graphql',
@@ -71,6 +73,9 @@ export class BitQueryAdapter extends EventEmitter implements BaseAdapter {
     if (!this.config.apiKey) {
       throw new Error('BitQuery API key required. Set BITQUERY_API_KEY environment variable.');
     }
+
+    // Initialize Prisma client (use provided or create new)
+    this.prisma = prisma || new PrismaClient();
 
     // Note: BitQuery now uses OAuth tokens (starting with "ory_at") as of January 2025
     // OAuth tokens should be passed in the URL query parameter, not headers
@@ -377,30 +382,53 @@ export class BitQueryAdapter extends EventEmitter implements BaseAdapter {
       query,
       variables: { token: tokenAddress.toLowerCase() },
       callback: (data) => {
+        console.log('[BitQueryAdapter] 🔔 Subscription callback invoked for:', tokenAddress);
+        console.log('[BitQueryAdapter] Data structure:', {
+          hasEVM: !!data.EVM,
+          hasDEXTradeByTokens: !!data.EVM?.DEXTradeByTokens,
+          tradeCount: data.EVM?.DEXTradeByTokens?.length || 0,
+          dataKeys: Object.keys(data),
+        });
+
         if (data.EVM?.DEXTradeByTokens) {
+          console.log(
+            `[BitQueryAdapter] 📊 Processing ${data.EVM.DEXTradeByTokens.length} trades from BitQuery`,
+          );
+
           for (const trade of data.EVM.DEXTradeByTokens) {
             const tradeData = trade.Trade;
             const sideType = tradeData.Side.Type; // "buy" or "sell" (from ACES perspective)
-            
+
+            console.log('[BitQueryAdapter] 🔍 Processing trade:', {
+              txHash: trade.Transaction.Hash,
+              sideType,
+              amountToken: tradeData.Amount,
+              amountAces: tradeData.Side.Amount,
+              blockNumber: trade.Block.Number,
+            });
+
             // DEXTradeByTokens logic:
             // Trade.Side.Type = "sell" means ACES was sold (token was BOUGHT) → user BOUGHT token
             // Trade.Side.Type = "buy" means ACES was bought (token was SOLD) → user SOLD token
             const isBuy = sideType === 'sell';
-            
+
             // Extract amounts
             const amountToken = tradeData.Amount || '0';
             const amountAces = tradeData.Side.Amount || '0';
-            
+
             // Calculate price in USD
             const acesAmountUSD = parseFloat(tradeData.Side.AmountInUSD || '0');
             const tokenAmountNum = parseFloat(amountToken);
             let priceUsd = '0';
-            
+
             if (tokenAmountNum > 0 && acesAmountUSD > 0) {
               // Price per token = Total USD spent / Token amount
               priceUsd = (acesAmountUSD / tokenAmountNum).toString();
             }
-            
+
+            // Convert timestamp to milliseconds (frontend expects milliseconds)
+            const timestampMs = new Date(trade.Block.Time).getTime();
+
             const tradeEvent: TradeEvent = {
               id: trade.Transaction.Hash,
               tokenAddress: tokenAddress.toLowerCase(),
@@ -411,14 +439,34 @@ export class BitQueryAdapter extends EventEmitter implements BaseAdapter {
               pricePerToken: tradeData.Price?.toString() || '0',
               priceUsd: priceUsd,
               supply: '0', // Not available in BitQuery
-              timestamp: new Date(trade.Block.Time).getTime() / 1000,
+              timestamp: timestampMs, // Milliseconds (frontend expects this)
               blockNumber: trade.Block.Number,
               transactionHash: trade.Transaction.Hash,
               dataSource: 'bitquery',
             };
+
+            console.log('[BitQueryAdapter] ✅ Emitting trade event:', {
+              id: tradeEvent.id,
+              tokenAddress: tradeEvent.tokenAddress,
+              isBuy: tradeEvent.isBuy,
+              tokenAmount: tradeEvent.tokenAmount,
+              acesAmount: tradeEvent.acesAmount,
+              timestamp: new Date(tradeEvent.timestamp).toISOString(),
+            });
+
+            // 🔥 NEW: Store trade in database (async, don't block)
+            this.storeTrade(tradeEvent).catch((error) => {
+              console.error('[BitQueryAdapter] ❌ Failed to store trade in database:', error);
+            });
+
             callback(tradeEvent);
             this.emitAdapterEvent(AdapterEventType.TRADE, tradeEvent);
           }
+        } else {
+          console.warn('[BitQueryAdapter] ⚠️ No DEXTradeByTokens in data:', {
+            dataKeys: Object.keys(data),
+            evmKeys: data.EVM ? Object.keys(data.EVM) : [],
+          });
         }
       },
     });
@@ -510,6 +558,13 @@ export class BitQueryAdapter extends EventEmitter implements BaseAdapter {
     try {
       const message = JSON.parse(data);
 
+      // Log all incoming messages for debugging
+      console.log('[BitQueryAdapter] 📨 Received message:', {
+        type: message.type,
+        id: message.id,
+        hasPayload: !!message.payload,
+      });
+
       switch (message.type) {
         case 'connection_ack':
           console.log('[BitQueryAdapter] Connection acknowledged');
@@ -517,11 +572,44 @@ export class BitQueryAdapter extends EventEmitter implements BaseAdapter {
 
         case 'data':
           // Handle subscription data
+          console.log('[BitQueryAdapter] 📥 Received data message:', {
+            id: message.id,
+            hasPayload: !!message.payload,
+            hasData: !!message.payload?.data,
+            dataKeys: message.payload?.data ? Object.keys(message.payload.data) : [],
+          });
+
           if (message.id && message.payload?.data) {
             const subscription = this.subscriptions.get(message.id);
             if (subscription) {
-              subscription.callback(message.payload.data);
+              const data = message.payload.data;
+              console.log('[BitQueryAdapter] 🔍 Processing subscription data:', {
+                subscriptionId: message.id,
+                dataType: subscription.query.includes('DEXTradeByTokens') ? 'DEX Trades' : 'Other',
+                hasEVM: !!data.EVM,
+                hasDEXTradeByTokens: !!data.EVM?.DEXTradeByTokens,
+                tradeCount: data.EVM?.DEXTradeByTokens?.length || 0,
+              });
+
+              // Log full trade data for debugging
+              if (data.EVM?.DEXTradeByTokens && data.EVM.DEXTradeByTokens.length > 0) {
+                console.log(
+                  '[BitQueryAdapter] 📊 Trade data received:',
+                  JSON.stringify(data.EVM.DEXTradeByTokens[0], null, 2),
+                );
+              }
+
+              subscription.callback(data);
+              console.log('[BitQueryAdapter] ✅ Callback invoked for subscription:', message.id);
+            } else {
+              console.warn('[BitQueryAdapter] ⚠️ No subscription found for ID:', message.id);
             }
+          } else {
+            console.warn('[BitQueryAdapter] ⚠️ Data message missing id or payload.data:', {
+              hasId: !!message.id,
+              hasPayload: !!message.payload,
+              hasData: !!message.payload?.data,
+            });
           }
           break;
 
@@ -673,5 +761,49 @@ export class BitQueryAdapter extends EventEmitter implements BaseAdapter {
 
     this.emit('adapter_event', event);
     this.stats.messagesEmitted++;
+  }
+
+  /**
+   * Store trade in database (upsert to prevent duplicates)
+   */
+  private async storeTrade(trade: TradeEvent): Promise<void> {
+    try {
+      // Calculate price in ACES
+      const acesAmount = parseFloat(trade.acesAmount);
+      const tokenAmount = parseFloat(trade.tokenAmount);
+      const priceInAces = tokenAmount > 0 ? acesAmount / tokenAmount : 0;
+
+      await this.prisma.dexTrade.upsert({
+        where: {
+          txHash_tokenAddress: {
+            txHash: trade.transactionHash,
+            tokenAddress: trade.tokenAddress.toLowerCase(),
+          },
+        },
+        update: {}, // Don't update if exists (already stored)
+        create: {
+          txHash: trade.transactionHash,
+          tokenAddress: trade.tokenAddress.toLowerCase(),
+          timestamp: BigInt(trade.timestamp),
+          blockNumber: trade.blockNumber.toString(),
+          isBuy: trade.isBuy,
+          tokenAmount: trade.tokenAmount,
+          acesAmount: trade.acesAmount,
+          priceInAces,
+          priceInUsd: trade.priceUsd ? parseFloat(trade.priceUsd) : null,
+          trader: trade.trader,
+          source: 'bitquery',
+        },
+      });
+
+      console.log('[BitQueryAdapter] 💾 Stored trade in database:', {
+        txHash: trade.transactionHash.substring(0, 10) + '...',
+        tokenAddress: trade.tokenAddress.substring(0, 10) + '...',
+        timestamp: new Date(trade.timestamp).toISOString(),
+      });
+    } catch (error) {
+      // Log error but don't throw (don't break the trade stream)
+      console.error('[BitQueryAdapter] ❌ Database storage error:', error);
+    }
   }
 }

@@ -1008,24 +1008,55 @@ export class ChartAggregationService {
   ): Promise<Candle[]> {
     const tradeLimit = Math.min((options.limit || 200) * 3, 5000);
 
-    // console.log('[ChartAggregation] 🔥 Fetching recent DEX trades:', {
-    //   limit: tradeLimit,
-    //   from: options.from.toISOString(),
-    //   to: options.to.toISOString(),
-    //   hasProvidedSeed: !!providedSeedCandle,
-    // });
+    // 🔥 NEW: For very recent trades (last 5 minutes), check database first
+    const now = Date.now();
+    const fiveMinutesAgo = now - 5 * 60 * 1000;
+    const isVeryRecentRequest = options.to.getTime() >= fiveMinutesAgo;
 
+    let dbTrades: any[] = [];
+    let combinedFromTime = options.from;
+
+    // Check database for very recent trades (last 5 minutes)
+    if (isVeryRecentRequest) {
+      try {
+        const dbStartTime = Math.max(options.from.getTime(), fiveMinutesAgo);
+        const dbRecords = await this.prisma.dexTrade.findMany({
+          where: {
+            tokenAddress: tokenAddress.toLowerCase(),
+            timestamp: {
+              gte: BigInt(dbStartTime),
+              lte: BigInt(options.to.getTime()),
+            },
+          },
+          orderBy: { timestamp: 'asc' },
+          take: tradeLimit,
+        });
+
+        dbTrades = dbRecords;
+        console.log(`[ChartAggregation] 💾 Fetched ${dbTrades.length} very recent trades from database`);
+
+        // Adjust BitQuery query to fetch only trades older than 5 minutes
+        if (dbTrades.length > 0 && options.from.getTime() < fiveMinutesAgo) {
+          combinedFromTime = new Date(Math.min(options.from.getTime(), fiveMinutesAgo));
+        }
+      } catch (error) {
+        console.error('[ChartAggregation] ❌ Failed to fetch trades from database:', error);
+        // Continue with BitQuery only
+      }
+    }
+
+    // Fetch from BitQuery (skipping very recent if we got them from DB)
     const bitQueryTrades = await this.bitQueryService.getDexTrades(tokenAddress, poolAddress, {
-      from: options.from,
-      to: options.to,
+      from: combinedFromTime,
+      to: isVeryRecentRequest ? new Date(fiveMinutesAgo) : options.to,
       counterTokenAddress: ACES_TOKEN_ADDRESS,
       limit: tradeLimit,
     });
 
-    console.log(`[ChartAggregation] ✅ Fetched ${bitQueryTrades.length} DEX trades from BitQuery`);
+    console.log(`[ChartAggregation] ✅ Fetched ${bitQueryTrades.length} DEX trades from BitQuery + ${dbTrades.length} from database`);
 
-    // Convert to internal Trade format
-    const trades: Trade[] = bitQueryTrades.map((trade) => ({
+    // Convert BitQuery trades to internal Trade format
+    const bitQueryTradesConverted: Trade[] = bitQueryTrades.map((trade) => ({
       timestamp: trade.blockTime,
       priceInAces: parseFloat(trade.priceInAces),
       priceInUsd: parseFloat(trade.priceInUsd),
@@ -1033,6 +1064,21 @@ export class ChartAggregationService {
       volumeUsd: parseFloat(trade.volumeUsd),
       side: trade.side,
     }));
+
+    // Convert database trades to internal Trade format
+    const dbTradesConverted: Trade[] = dbTrades.map((trade) => ({
+      timestamp: new Date(Number(trade.timestamp)),
+      priceInAces: trade.priceInAces,
+      priceInUsd: trade.priceInUsd || 0,
+      amountToken: parseFloat(trade.tokenAmount),
+      volumeUsd: trade.priceInUsd ? parseFloat(trade.tokenAmount) * trade.priceInUsd : 0,
+      side: trade.isBuy ? 'buy' : 'sell',
+    }));
+
+    // Combine and sort by timestamp
+    const trades: Trade[] = [...bitQueryTradesConverted, ...dbTradesConverted].sort(
+      (a, b) => a.timestamp.getTime() - b.timestamp.getTime(),
+    );
 
     if (trades.length > 0) {
       console.log('[ChartAggregation] 📊 Sample DEX trade for candle creation:', {

@@ -39,7 +39,7 @@ export interface TradeEvent {
   pricePerToken: string; // Calculated price
   priceUsd?: string; // USD price if available
   supply: string; // Total supply after trade
-  timestamp: number; // Unix timestamp (seconds)
+  timestamp: number; // Unix timestamp in milliseconds (for frontend Date compatibility)
   blockNumber: number;
   transactionHash: string;
   dataSource: 'goldsky' | 'bitquery';

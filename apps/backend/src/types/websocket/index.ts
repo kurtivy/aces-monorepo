@@ -204,6 +204,7 @@ export interface GatewayStats {
   subscriptions: SubscriptionStats[];
   deduplication?: any; // Optional dedup stats
   rateLimits?: any; // Optional rate limit stats
+  enforcer?: any; // Optional rate limit enforcer stats
   router?: any; // Optional router stats
   connection?: any; // Optional connection stats
 }

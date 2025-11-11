@@ -428,11 +428,11 @@ export class AerodromeDataService {
     const cacheKey =
       normalizedA < normalizedB ? `${normalizedA}-${normalizedB}` : `${normalizedB}-${normalizedA}`;
 
-    console.log(`[getGenericPoolState] Called with:`);
-    console.log(`  tokenA: ${normalizedA}`);
-    console.log(`  tokenB: ${normalizedB}`);
-    console.log(`  knownPoolAddress: ${knownPoolAddress || 'none'}`);
-    console.log(`  cacheKey: ${cacheKey}`);
+    // console.log(`[getGenericPoolState] Called with:`);
+    // console.log(`  tokenA: ${normalizedA}`);
+    // console.log(`  tokenB: ${normalizedB}`);
+    // console.log(`  knownPoolAddress: ${knownPoolAddress || 'none'}`);
+    // console.log(`  cacheKey: ${cacheKey}`);
 
     const cached = this.getCached(this.genericPoolCache, cacheKey);
     if (cached) {

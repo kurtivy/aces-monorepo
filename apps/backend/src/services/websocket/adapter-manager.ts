@@ -10,10 +10,12 @@
  */
 
 import { EventEmitter } from 'events';
+import { PrismaClient } from '@prisma/client';
 import { QuickNodeAdapter } from '../../adapters/external/quicknode-adapter';
 import { GoldskyMemoryAdapter } from '../../adapters/external/goldsky-memory-adapter'; // 🚀 NEW: Memory-based
 import { BitQueryAdapter } from '../../adapters/external/bitquery-adapter';
 import { AerodromeAdapter } from '../../adapters/external/aerodrome-adapter';
+import { RateLimitEnforcer } from '../websocket/rate-limit-enforcer';
 import {
   TradeEvent,
   PoolStateEvent,
@@ -29,6 +31,8 @@ export interface AdapterManagerConfig {
   goldskyApiKey?: string;
   bitQueryWsUrl?: string;
   bitQueryApiKey?: string;
+  rateLimitEnforcer?: RateLimitEnforcer; // Optional enforcer for rate limiting
+  prisma?: PrismaClient; // Optional Prisma client (for BitQuery trade storage)
 }
 
 /**
@@ -39,11 +43,15 @@ export class AdapterManager extends EventEmitter {
   private goldsky: GoldskyMemoryAdapter; // 🚀 NEW: Memory-based
   private bitQuery: BitQueryAdapter;
   private aerodrome: AerodromeAdapter;
+  private rateLimitEnforcer?: RateLimitEnforcer;
 
   private connected = false;
 
   constructor(config: AdapterManagerConfig = {}) {
     super();
+
+    // Store rate limit enforcer if provided
+    this.rateLimitEnforcer = config.rateLimitEnforcer;
 
     // Initialize adapters
     this.quickNode = new QuickNodeAdapter(config.quickNodeWsUrl);
@@ -56,7 +64,7 @@ export class AdapterManager extends EventEmitter {
       this.bitQuery = new BitQueryAdapter({
         wsUrl: config.bitQueryWsUrl,
         apiKey: config.bitQueryApiKey,
-      });
+      }, config.prisma); // Pass Prisma client for trade storage
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.warn(
@@ -72,7 +80,9 @@ export class AdapterManager extends EventEmitter {
     // Set up event forwarding
     this.setupEventForwarding();
 
-    console.log('[AdapterManager] Initialized');
+    console.log('[AdapterManager] Initialized', {
+      rateLimitEnforcement: !!this.rateLimitEnforcer ? 'enabled' : 'disabled',
+    });
   }
 
   /**
@@ -193,6 +203,20 @@ export class AdapterManager extends EventEmitter {
 
       if (isBitQueryConnected) {
         try {
+          // 🛡️ Rate limit enforcement: Check if we should allow this BitQuery subscription
+          let allowed = true;
+          if (this.rateLimitEnforcer) {
+            allowed = await this.rateLimitEnforcer.checkRateLimit('bitquery', 'normal', 30000);
+          }
+
+          if (!allowed) {
+            console.warn(
+              `[AdapterManager] ⚠️ BitQuery subscription for ${tokenAddress} rejected due to rate limits`,
+            );
+            // Don't throw - graceful degradation (Goldsky trades still work)
+            return subscriptions;
+          }
+
           console.log(
             `[AdapterManager] 📥 Subscribing to BitQuery DEX trades for ${tokenAddress}...`,
           );

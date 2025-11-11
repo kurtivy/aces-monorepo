@@ -145,11 +145,22 @@ export class BitQueryService {
       useDateFilter,
     });
 
+    // 🔥 FIX: Don't cache very recent trades (last 2 minutes) to ensure fresh data on refresh
+    const now = Date.now();
+    const twoMinutesAgo = now - 2 * 60 * 1000;
+    const isRecentRange = !to || to.getTime() >= twoMinutesAgo;
+
     const cacheKey = `token-trades:${tokenAddress}:${limit}:${from?.getTime() || 'all'}:${to?.getTime() || 'all'}`;
-    const cached = this.getFromCache<BitQuerySwap[]>(cacheKey);
-    if (cached) {
-      console.log(`[BitQuery] ✅ Returning ${cached.length} cached token trades`);
-      return cached;
+
+    // Skip cache for very recent time ranges to ensure fresh data
+    if (!isRecentRange) {
+      const cached = this.getFromCache<BitQuerySwap[]>(cacheKey);
+      if (cached) {
+        console.log(`[BitQuery] ✅ Returning ${cached.length} cached token trades`);
+        return cached;
+      }
+    } else {
+      console.log('[BitQuery] 🔥 Recent time range detected - bypassing cache for fresh data');
     }
 
     try {
@@ -165,7 +176,9 @@ export class BitQueryService {
       };
 
       if (useDateFilter) {
-        queryVariables.from = (from || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)).toISOString(); // Default 30 days ago
+        queryVariables.from = (
+          from || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+        ).toISOString(); // Default 30 days ago
         queryVariables.to = (to || new Date()).toISOString();
       }
 
@@ -190,7 +203,9 @@ export class BitQueryService {
       const swaps = this.normalizeTokenTrades(trades || [], tokenAddress);
       console.log(`[BitQuery] ✅ Normalized to ${swaps.length} swaps`);
 
-      this.setCache(cacheKey, swaps, 5000); // Cache for 5 seconds
+      // Cache for shorter time if recent range, longer if historical
+      const cacheTime = isRecentRange ? 2000 : 10000; // 2 seconds for recent, 10 seconds for historical
+      this.setCache(cacheKey, swaps, cacheTime);
       return swaps;
     } catch (error) {
       console.error('[BitQuery] ❌ Failed to fetch token trades:', error);
@@ -231,11 +246,22 @@ export class BitQueryService {
       limit,
     });
 
+    // 🔥 FIX: Don't cache very recent trades (last 2 minutes) to ensure fresh data on refresh
+    const now = Date.now();
+    const twoMinutesAgo = now - 2 * 60 * 1000;
+    const isRecentRange = to.getTime() >= twoMinutesAgo;
+
     const cacheKey = `dex-trades:${poolAddress}:${counterTokenAddress}:${from.getTime()}:${to.getTime()}:${limit}`;
-    const cached = this.getFromCache<BitQuerySwap[]>(cacheKey);
-    if (cached) {
-      console.log(`[BitQuery] ✅ Returning ${cached.length} cached DEX trades`);
-      return cached;
+
+    // Skip cache for very recent time ranges to ensure fresh data
+    if (!isRecentRange) {
+      const cached = this.getFromCache<BitQuerySwap[]>(cacheKey);
+      if (cached) {
+        console.log(`[BitQuery] ✅ Returning ${cached.length} cached DEX trades`);
+        return cached;
+      }
+    } else {
+      console.log('[BitQuery] 🔥 Recent time range detected - bypassing cache for fresh data');
     }
 
     try {
@@ -253,7 +279,9 @@ export class BitQueryService {
       };
 
       if (useDateFilter) {
-        queryVariables.from = (options.from || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)).toISOString();
+        queryVariables.from = (
+          options.from || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+        ).toISOString();
         queryVariables.to = (options.to || new Date()).toISOString();
       }
 
@@ -276,7 +304,9 @@ export class BitQueryService {
       if (!useDateFilter && (options.from || options.to)) {
         filteredTrades = rawTrades.filter((trade: any) => {
           const tradeTime = new Date(trade.Block.Time);
-          return (!options.from || tradeTime >= options.from) && (!options.to || tradeTime <= options.to);
+          return (
+            (!options.from || tradeTime >= options.from) && (!options.to || tradeTime <= options.to)
+          );
         });
         console.log(`[BitQuery] ✅ Filtered to ${filteredTrades.length} trades within date range`);
       }
@@ -305,7 +335,9 @@ export class BitQueryService {
         });
       }
 
-      this.setCache(cacheKey, normalizedTrades);
+      // Cache for shorter time if recent range, longer if historical
+      const cacheTime = isRecentRange ? 2000 : 10000; // 2 seconds for recent, 10 seconds for historical
+      this.setCache(cacheKey, normalizedTrades, cacheTime);
       return normalizedTrades;
     } catch (error) {
       console.error('[BitQuery] ❌ Failed to fetch DEX trades:', error);

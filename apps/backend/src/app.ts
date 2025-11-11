@@ -113,8 +113,59 @@ export const buildApp = async (): Promise<FastifyInstance> => {
     },
   });
 
-  // Register WebSocket plugin and initialize WebSocket routes
-  await fastify.register(fastifyWebSocket);
+  // Register WebSocket plugin with CORS origin validation
+  await fastify.register(fastifyWebSocket, {
+    options: {
+      // Verify origin for WebSocket connections
+      verifyClient: (info, callback) => {
+        const origin = info.origin || info.req.headers.origin;
+        const url = info.req.url;
+
+        console.log(`[WebSocket] 🔍 Handshake request:`, {
+          url,
+          origin,
+          host: info.req.headers.host,
+          allHeaders: Object.keys(info.req.headers),
+        });
+
+        // Allow localhost origins for development
+        const allowedOrigins = [
+          'http://localhost:3000',
+          'http://localhost:3001',
+          'http://localhost:3002',
+        ];
+
+        // Add production origins
+        if (process.env.FRONTEND_URL) {
+          allowedOrigins.push(process.env.FRONTEND_URL);
+        }
+        if (process.env.VERCEL_URL) {
+          allowedOrigins.push(`https://${process.env.VERCEL_URL}`);
+        }
+        allowedOrigins.push(
+          'https://www.aces.fun',
+          'https://aces.fun',
+          'https://aces-monorepo-git-dev-dan-aces-fun.vercel.app',
+          'https://aces-monorepo-git-main-dan-aces-fun.vercel.app',
+          'https://aces-monorepo-git-feat-ui-updates-dan-aces-fun.vercel.app',
+          'https://aces-monorepo-git-feat-rwa-page-upgrade-dan-aces-fun.vercel.app',
+        );
+
+        // Check if origin is allowed
+        const isAllowed =
+          origin && (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app'));
+
+        if (isAllowed || !origin) {
+          // Allow connection (no origin check in development, or origin is allowed)
+          console.log(`[WebSocket] ✅ Allowing connection from origin: ${origin || 'no-origin'}`);
+          callback(true);
+        } else {
+          console.warn(`[WebSocket] ❌ Rejected connection from origin: ${origin}`);
+          callback(false, 403, 'Forbidden');
+        }
+      },
+    },
+  });
 
   // 🚀 Phase 1: Initialize WebSocket Gateway
   const gateway = WebSocketGateway.getInstance(fastify);
@@ -123,7 +174,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
 
   // 🚀 Phase 2: Initialize External Data Adapters
   const { AdapterManager } = await import('./services/websocket/adapter-manager');
-  
+
   // Initialize adapter manager (non-blocking - BitQuery errors won't crash server)
   let adapterManager: any = null;
   try {
@@ -133,8 +184,10 @@ export const buildApp = async (): Promise<FastifyInstance> => {
       goldskyApiKey: process.env.GOLDSKY_API_KEY,
       bitQueryWsUrl: process.env.BITQUERY_WS_URL,
       bitQueryApiKey: process.env.BITQUERY_API_KEY,
+      rateLimitEnforcer: gateway.getRateLimitEnforcer(), // 🛡️ Enable rate limit enforcement
+      prisma, // 🔥 NEW: Pass Prisma client for BitQuery trade storage
     });
-    console.log('✅ AdapterManager initialized');
+    console.log('✅ AdapterManager initialized with rate limit enforcement');
   } catch (error: any) {
     console.warn('⚠️  AdapterManager initialization failed (non-blocking):', error.message);
     console.warn('⚠️  WebSocket adapters disabled - falling back to REST APIs');
