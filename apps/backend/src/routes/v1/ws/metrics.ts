@@ -10,6 +10,103 @@
 import { FastifyPluginAsync } from 'fastify';
 import { SocketStream } from '@fastify/websocket';
 import { TradeEvent, PoolStateEvent, BondingStatusEvent } from '../../../types/adapters';
+import { priceCacheService } from '../../../services/price-cache-service';
+import { TokenService } from '../../../services/token-service';
+import { Decimal } from 'decimal.js';
+import { ethers } from 'ethers';
+import { ACES_TOKEN_ADDRESS } from '../../../config/bitquery.config';
+import { getNetworkConfig } from '../../../config/network.config';
+
+/**
+ * 🔥 NEW: In-memory 24h rolling trade aggregator for real-time volume calculation
+ * Maintains a time-series buffer of trades and auto-prunes old entries
+ */
+interface StoredTrade {
+  timestamp: number;
+  acesAmount: number;
+  usdAmount: number;
+}
+
+class Trade24hAggregator {
+  private trades: StoredTrade[] = [];
+  private readonly WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+
+  /**
+   * Add a trade to the buffer and auto-prune old trades
+   * @param trade TradeEvent from adapter
+   * @param acesUsdPrice Current ACES/USD exchange rate (used as fallback if trade.priceUsd unavailable)
+   */
+  addTrade(trade: TradeEvent, acesUsdPrice: number): void {
+    // Extract USD value - prefer trade.priceUsd (calculated at trade time), fallback to current price
+    const tokenAmount = parseFloat(trade.tokenAmount);
+    const acesAmount = parseFloat(trade.acesAmount);
+
+    let usdAmount = 0;
+    if (trade.priceUsd) {
+      // Use price calculated at trade time (most accurate)
+      usdAmount = parseFloat(trade.priceUsd) * tokenAmount;
+    } else {
+      // Fallback: calculate from ACES amount
+      usdAmount = acesAmount * acesUsdPrice;
+    }
+
+    this.trades.push({
+      timestamp: trade.timestamp,
+      acesAmount,
+      usdAmount: Number.isFinite(usdAmount) ? usdAmount : 0,
+    });
+
+    // Prune trades older than 24h
+    this.pruneOldTrades();
+  }
+
+  /**
+   * Remove trades older than 24h
+   */
+  private pruneOldTrades(): void {
+    const cutoff = Date.now() - this.WINDOW_MS;
+    const before = this.trades.length;
+    this.trades = this.trades.filter((t) => t.timestamp > cutoff);
+    const after = this.trades.length;
+
+    if (before > after) {
+      console.log(
+        `[Trade24hAggregator] 🧹 Pruned ${before - after} old trades (older than 24h)`,
+      );
+    }
+  }
+
+  /**
+   * Calculate 24h volume from buffered trades
+   * Automatically prunes before calculation to ensure freshness
+   */
+  getVolume24h(): { acesVolume: number; usdVolume: number } {
+    this.pruneOldTrades(); // Ensure buffer is fresh
+
+    const acesVolume = this.trades.reduce((sum, t) => sum + t.acesAmount, 0);
+    const usdVolume = this.trades.reduce((sum, t) => sum + t.usdAmount, 0);
+
+    return {
+      acesVolume: Number.isFinite(acesVolume) ? acesVolume : 0,
+      usdVolume: Number.isFinite(usdVolume) ? usdVolume : 0,
+    };
+  }
+
+  /**
+   * Get trade count for debugging/monitoring
+   */
+  getTradeCount(): number {
+    this.pruneOldTrades();
+    return this.trades.length;
+  }
+
+  /**
+   * Clear all trades (used on cleanup)
+   */
+  clear(): void {
+    this.trades = [];
+  }
+}
 
 interface MetricsUpdate {
   tokenAddress: string;
@@ -74,6 +171,10 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
         tokenAddress: tokenAddress.toLowerCase(),
         timestamp: Date.now(),
       };
+
+      // 🔥 NEW: Initialize trade aggregator for real-time volume calculation
+      const tradeAggregator = new Trade24hAggregator();
+      let acesUsdPrice = 1; // Default fallback
 
       // Fetch initial metrics from REST API
       const fetchInitialMetrics = async () => {
@@ -214,6 +315,17 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
               }
             }
 
+            // 🔥 NEW: Extract ACES/USD price for volume calculations
+            // Fetch from price cache service (same source as REST endpoint)
+            try {
+              const priceData = await priceCacheService.getPrices();
+              if (priceData.acesUsd && Number.isFinite(priceData.acesUsd) && priceData.acesUsd > 0) {
+                acesUsdPrice = priceData.acesUsd;
+              }
+            } catch (error) {
+              console.warn('[WS:Metrics] Failed to fetch ACES price, using default 1.0');
+            }
+
             // Send initial metrics
             connection.socket.send(
               JSON.stringify({
@@ -306,11 +418,24 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
         const tradeSubscriptionIds = await adapterManager.subscribeToTrades(
           tokenAddress,
           (trade: TradeEvent) => {
-            // 🔥 IMPROVEMENT: Immediate volume updates on trades (bypass throttle)
-            // Update volume immediately when trades occur for real-time feel
-            // Note: Actual volume calculation happens in periodic REST refresh,
-            // but we trigger immediate update to show activity
+            // 🔥 NEW: Real-time volume calculation
+            // 1. Add trade to 24h rolling buffer
+            tradeAggregator.addTrade(trade, acesUsdPrice);
+
+            // 2. Recalculate volumes from buffer
+            const { acesVolume, usdVolume } = tradeAggregator.getVolume24h();
+
+            // 3. Update currentMetrics with fresh calculations
+            currentMetrics.volume24hAces = acesVolume.toString();
+            currentMetrics.volume24hUsd = usdVolume;
+
+            // 4. Send update via throttled sender (500ms)
             sendVolumeUpdate();
+
+            // Debug logging (can be disabled in production)
+            if (process.env.DEBUG_METRICS) {
+              console.log(`[WS:Metrics] 📊 Trade added - Volume: ${acesVolume.toFixed(2)} ACES / $${usdVolume.toFixed(2)} USD (${tradeAggregator.getTradeCount()} trades in buffer)`);
+            }
           },
         );
         subscriptions.push(...tradeSubscriptionIds);
@@ -319,8 +444,10 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
         try {
           const bondingSubscriptionId = await adapterManager.subscribeToBondingStatus(
             tokenAddress,
-            (status: BondingStatusEvent) => {
-              // 🔥 NEW: Extract full bonding data from WebSocket event
+            async (status: BondingStatusEvent) => {
+              // 🔥 NEW: Real-time liquidity + supply updates
+              
+              // 1. Update circulating supply immediately from bonding event
               if (status.supply) {
                 const supply = parseFloat(status.supply);
                 if (Number.isFinite(supply) && supply > 0) {
@@ -328,13 +455,30 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
                 }
               }
 
-              // 🔥 IMPROVEMENT: Trigger liquidity update for bonding curve mode
-              // Liquidity will be updated from periodic REST refresh, but we trigger
-              // immediate update to show activity when bonding status changes
-              // Note: Actual liquidity calculation happens in REST API health endpoint
-              sendLiquidityUpdate();
+              // 2. Recalculate bonding curve liquidity in real-time
+              try {
+                const tokenService = new TokenService(fastify.prisma);
+                const bonding = await tokenService.getBondingCurveLiquidity(tokenAddress);
+                
+                // Convert liquidity from Wei to proper units
+                const liquidityAces = bonding.netLiquidityWei.div(new Decimal(10).pow(18));
+                const liquidityUsd = liquidityAces.mul(new Decimal(acesUsdPrice));
 
-              // Update bonding data if we have tokensBondedAt from initial fetch
+                if (liquidityUsd.isFinite() && liquidityUsd.gt(0)) {
+                  currentMetrics.liquidityUsd = liquidityUsd.toNumber();
+                  currentMetrics.liquiditySource = 'bonding_curve';
+
+                  if (process.env.DEBUG_METRICS) {
+                    console.log(
+                      `[WS:Metrics] 💧 Bonding liquidity updated: $${liquidityUsd.toFixed(2)} USD (${liquidityAces.toFixed(2)} ACES)`,
+                    );
+                  }
+                }
+              } catch (error) {
+                console.warn('[WS:Metrics] Failed to recalculate bonding liquidity:', error);
+              }
+
+              // 3. Update bonding data if we have tokensBondedAt from initial fetch
               if (currentMetrics.bondingData) {
                 // Convert bondingProgress (0-1) to percentage (0-100)
                 const bondingPercentage = status.isBonded
@@ -348,17 +492,10 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
                   currentSupply: status.supply || currentMetrics.bondingData.currentSupply,
                   // tokensBondedAt doesn't change, keep existing value
                 };
-              } else {
-                // If we don't have tokensBondedAt yet, we'll get it on next REST refresh
-                // For now, just update what we can
-                const bondingPercentage = status.isBonded
-                  ? 100
-                  : Math.min(100, status.bondingProgress * 100);
-
-                // We'll need tokensBondedAt from REST API, so skip full update for now
-                // But update circulatingSupply which is used immediately
               }
 
+              // 4. Send updates via throttled sender (2s throttle for liquidity)
+              sendLiquidityUpdate();
               sendMetricsUpdate();
             },
           );
@@ -379,12 +516,71 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
             const poolSubscriptionId = await adapterManager.subscribeToPoolState(
               poolAddress,
               tokenAddress,
-              (poolState: PoolStateEvent) => {
-                // 🔥 IMPROVEMENT: Immediate liquidity updates for DEX mode
-                // Trigger immediate update when pool state changes
-                // Actual liquidity calculation happens in REST API health endpoint,
-                // but we trigger update immediately to show activity
-                currentMetrics.liquiditySource = 'dex';
+              async (poolState: PoolStateEvent) => {
+                // 🔥 NEW: Real-time DEX liquidity calculation
+                try {
+                  const networkConfig = getNetworkConfig(8453); // Base chain
+                  if (!networkConfig.rpcUrl) {
+                    throw new Error('No RPC URL configured for Base chain');
+                  }
+
+                  const provider = new ethers.JsonRpcProvider(networkConfig.rpcUrl);
+
+                  // Standard Uniswap V2 / Aerodrome Pool ABI
+                  const POOL_ABI = [
+                    'function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
+                    'function token0() view returns (address)',
+                    'function token1() view returns (address)',
+                  ];
+
+                  const poolContract = new ethers.Contract(poolAddress, POOL_ABI, provider);
+
+                  // Fetch pool reserves and token addresses
+                  const [reserves, token0Address, token1Address] = await Promise.all([
+                    poolContract.getReserves(),
+                    poolContract.token0(),
+                    poolContract.token1(),
+                  ]);
+
+                  // Identify which token is ACES and calculate liquidity
+                  const acesAddress = ACES_TOKEN_ADDRESS.toLowerCase();
+                  const isToken0Aces = token0Address.toLowerCase() === acesAddress;
+                  const isToken1Aces = token1Address.toLowerCase() === acesAddress;
+
+                  if (!isToken0Aces && !isToken1Aces) {
+                    console.warn(
+                      '[WS:Metrics] ⚠️ ACES token not found in pool reserves for liquidity calculation',
+                    );
+                    currentMetrics.liquiditySource = 'dex';
+                  } else {
+                    // Get ACES reserve (both tokens use 18 decimals)
+                    const acesReserveRaw = isToken0Aces ? reserves[0] : reserves[1];
+                    const acesReserve = new Decimal(acesReserveRaw.toString()).div(
+                      new Decimal(10).pow(18),
+                    );
+
+                    // Calculate total liquidity: ACES reserve × ACES price × 2 (for 50/50 pool)
+                    const acesUsdDecimal = new Decimal(acesUsdPrice || 0);
+                    const acesReserveUsd = acesReserve.mul(acesUsdDecimal);
+                    const totalLiquidityUsd = acesReserveUsd.mul(2);
+
+                    if (totalLiquidityUsd.isFinite() && totalLiquidityUsd.gt(0)) {
+                      currentMetrics.liquidityUsd = totalLiquidityUsd.toNumber();
+                      currentMetrics.liquiditySource = 'dex';
+
+                      if (process.env.DEBUG_METRICS) {
+                        console.log(
+                          `[WS:Metrics] 💧 DEX liquidity updated: $${totalLiquidityUsd.toFixed(2)} USD (${acesReserve.toFixed(2)} ACES)`,
+                        );
+                      }
+                    }
+                  }
+                } catch (error) {
+                  console.warn('[WS:Metrics] Failed to recalculate DEX liquidity:', error);
+                  // Keep previous liquidity value on error
+                }
+
+                // Send update via throttled sender (2s throttle)
                 sendLiquidityUpdate();
               },
             );
@@ -553,6 +749,10 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
           if (heartbeatInterval) {
             clearInterval(heartbeatInterval);
           }
+
+          // 🔥 NEW: Clear trade aggregator
+          tradeAggregator.clear();
+          console.log(`[WS:Metrics] ✅ Cleared trade aggregator for token: ${tokenAddress}`);
         });
       } catch (error) {
         console.error(`[WS:Metrics] Error setting up subscriptions for ${tokenAddress}:`, error);
