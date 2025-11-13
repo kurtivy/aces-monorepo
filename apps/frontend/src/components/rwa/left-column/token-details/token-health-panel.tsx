@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth/auth-context';
 import { ethers } from 'ethers';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { LoadingDots } from './loading-dots';
+import { useTransferEventListener } from '@/hooks/use-transfer-event-listener';
 
 // ERC20 ABI for balance checking
 const ERC20_ABI = ['function balanceOf(address) view returns (uint256)'];
@@ -301,10 +302,16 @@ export default function TokenHealthPanel({
 
   useEffect(() => {
     fetchUserBalance();
-    // Refresh balance every 30 seconds
+    // Refresh balance every 30 seconds (fallback)
     const interval = setInterval(fetchUserBalance, 30000);
     return () => clearInterval(interval);
   }, [fetchUserBalance]);
+
+  // 🔥 NEW: Real-time balance updates via Transfer event listening
+  // Instant updates when user receives or sends tokens
+  useTransferEventListener(tokenAddress, walletAddress, fetchUserBalance, {
+    debug: false,
+  });
 
   const userTokenHoldings = useMemo(() => {
     const parsed = parseFloat(userTokenBalance);
