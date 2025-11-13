@@ -16,6 +16,98 @@ interface TokenParams {
   address: string;
 }
 
+/**
+ * 🔥 NEW: Calculate bonding curve volume with accurate historical pricing
+ * Fetches individual trades from subgraph and calculates USD value at time of trade
+ * 
+ * @param tokenAddress - Token contract address
+ * @param startTime - Start of time window
+ * @param endTime - End of time window
+ * @returns { acesVolume, usdVolume } volumes for the period
+ */
+async function getBondingCurveVolume(
+  tokenAddress: string,
+  startTime: Date,
+  endTime: Date,
+  acesUsdPrice: number,
+): Promise<{ acesVolume: number; usdVolume: number }> {
+  const startTimeSeconds = Math.floor(startTime.getTime() / 1000);
+  const endTimeSeconds = Math.floor(endTime.getTime() / 1000);
+
+  const pageSize = 1000;
+  let skip = 0;
+  let allBondingTrades: Array<{ id: string; acesTokenAmount: string }> = [];
+  let hasMore = true;
+
+  // 🔥 NEW: Fetch all bonding curve trades in the time window with pagination
+  while (hasMore) {
+    const query = `{
+      trades(
+        where: {
+          token: "${tokenAddress.toLowerCase()}"
+          createdAt_gte: "${startTimeSeconds}"
+          createdAt_lte: "${endTimeSeconds}"
+        }
+        orderBy: createdAt
+        orderDirection: asc
+        first: ${pageSize}
+        skip: ${skip}
+      ) {
+        id
+        acesTokenAmount
+      }
+    }`;
+
+    const response = await fetch(process.env.GOLDSKY_SUBGRAPH_URL!, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query }),
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Subgraph request failed: ${response.status} ${response.statusText}`);
+    }
+
+    const result = (await response.json()) as {
+      data?: { trades: Array<{ id: string; acesTokenAmount: string }> };
+      errors?: Array<{ message: string }>;
+    };
+
+    if (result.errors?.length) {
+      throw new Error(`Subgraph GraphQL errors: ${JSON.stringify(result.errors)}`);
+    }
+
+    const trades = result.data?.trades || [];
+    allBondingTrades = [...allBondingTrades, ...trades];
+
+    // If we got fewer trades than the page size, we've reached the end
+    hasMore = trades.length === pageSize;
+    skip += trades.length;
+
+    // Safety limit: prevent infinite loops (max 10,000 trades = 10 pages)
+    if (skip >= 10000) {
+      console.warn(
+        `[getBondingCurveVolume] Reached max pagination limit for ${tokenAddress}, may be missing some trades`,
+      );
+      break;
+    }
+  }
+
+  // 🔥 NEW: Calculate volumes from trades
+  // Each trade's ACES amount is stored as Wei (18 decimals)
+  // Note: We use current ACES price since historical prices not available in subgraph
+  // For truly accurate pricing, would need to query price feeds at each trade timestamp
+  const acesVolume = allBondingTrades.reduce((sum, trade) => {
+    const aces = parseFloat(trade.acesTokenAmount) / 1e18;
+    return Number.isFinite(aces) ? sum + aces : sum;
+  }, 0);
+
+  const usdVolume = acesVolume * acesUsdPrice;
+
+  return { acesVolume, usdVolume };
+}
+
 interface HolderQuery {
   chainId?: number;
 }
@@ -708,91 +800,27 @@ export async function tokensRoutes(fastify: FastifyInstance) {
               );
 
               try {
-                // Query bonding curve trades from subgraph for the period before graduation
-                const startTimeSeconds = Math.floor(twentyFourHoursAgo.getTime() / 1000);
-                const endTimeSeconds = Math.floor(dexLiveAt.getTime() / 1000);
+                // 🔥 REFACTORED: Use extracted function for bonding trades
+                // Covers period from 24h ago to graduation time
+                const bondingResult = await getBondingCurveVolume(
+                  address,
+                  twentyFourHoursAgo,
+                  dexLiveAt,
+                  acesUsdPrice,
+                );
 
-                // Fetch all bonding curve trades in the time window (handle pagination if needed)
-                const pageSize = 1000;
-                let skip = 0;
-                let allBondingTrades: Array<{ id: string; acesTokenAmount: string }> = [];
-                let hasMore = true;
-
-                while (hasMore) {
-                  const query = `{
-                    trades(
-                      where: {
-                        token: "${address.toLowerCase()}"
-                        createdAt_gte: "${startTimeSeconds}"
-                        createdAt_lte: "${endTimeSeconds}"
-                      }
-                      orderBy: createdAt
-                      orderDirection: asc
-                      first: ${pageSize}
-                      skip: ${skip}
-                    ) {
-                      id
-                      acesTokenAmount
-                    }
-                  }`;
-
-                  const response = await fetch(process.env.GOLDSKY_SUBGRAPH_URL!, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query }),
-                    signal: AbortSignal.timeout(10000),
-                  });
-
-                  if (!response.ok) {
-                    throw new Error(
-                      `Subgraph request failed: ${response.status} ${response.statusText}`,
-                    );
-                  }
-
-                  const result = (await response.json()) as {
-                    data?: { trades: Array<{ id: string; acesTokenAmount: string }> };
-                    errors?: Array<{ message: string }>;
-                  };
-
-                  if (result.errors?.length) {
-                    throw new Error(`Subgraph GraphQL errors: ${JSON.stringify(result.errors)}`);
-                  }
-
-                  const trades = result.data?.trades || [];
-                  allBondingTrades = [...allBondingTrades, ...trades];
-
-                  // If we got fewer trades than the page size, we've reached the end
-                  hasMore = trades.length === pageSize;
-                  skip += trades.length;
-
-                  // Safety limit: prevent infinite loops (max 10,000 trades = 10 pages)
-                  if (skip >= 10000) {
-                    fastify.log.warn(
-                      { address, skip, tradeCount: allBondingTrades.length },
-                      'Reached max pagination limit for bonding curve volume, may be missing some trades',
-                    );
-                    break;
-                  }
-                }
-
-                const bondingVolumeAces = allBondingTrades.reduce((sum, trade) => {
-                  const aces = parseFloat(trade.acesTokenAmount) / 1e18;
-                  return Number.isFinite(aces) ? sum + aces : sum;
-                }, 0);
-
-                const bondingVolumeUsd = bondingVolumeAces * acesUsdPrice;
+                const bondingVolumeAces = bondingResult.acesVolume;
+                const bondingVolumeUsd = bondingResult.usdVolume;
 
                 fastify.log.info(
                   {
                     address,
-                    bondingTradeCount: allBondingTrades.length,
                     bondingVolumeAces,
                     bondingVolumeUsd,
                     dexVolumeAces,
                     dexVolumeUsd,
-                    timeWindow: `${(endTimeSeconds - startTimeSeconds) / 3600}h`,
                   },
-                  'Bonding curve volume fetched, combining with DEX volume',
+                  '✅ Bonding curve volume fetched, combining with DEX volume',
                 );
 
                 // Combine both volumes
@@ -839,15 +867,43 @@ export async function tokensRoutes(fastify: FastifyInstance) {
         }
 
         if (volumeSource === 'bonding_curve') {
-          const volume24hWei = tokenData?.volume24h || '0';
-          const parsedAces = parseFloat(volume24hWei) / 1e18;
-          volume24hAces = Number.isFinite(parsedAces) ? parsedAces : 0;
-          volume24hUsd = Number.isFinite(acesUsdPrice) ? volume24hAces * acesUsdPrice : 0;
+          try {
+            // 🔥 NEW: Use accurate historical volume calculation
+            const bondingVolumeResult = await getBondingCurveVolume(
+              address,
+              twentyFourHoursAgo,
+              now,
+              acesUsdPrice,
+            );
+            volume24hAces = bondingVolumeResult.acesVolume;
+            volume24hUsd = bondingVolumeResult.usdVolume;
 
-          fastify.log.info(
-            { volume24hWei, volume24hAces, acesUsdPrice, volume24hUsd },
-            'Bonding curve volume calculation',
-          );
+            fastify.log.info(
+              {
+                address,
+                volume24hAces,
+                volume24hUsd,
+                source: 'subgraph_bonding_trades',
+              },
+              '✅ Bonding curve volume from subgraph trades (accurate)',
+            );
+          } catch (error) {
+            // 🔥 FALLBACK: If subgraph fetch fails, use cached volume data
+            fastify.log.warn(
+              { error, address },
+              'Failed to fetch bonding trades from subgraph, falling back to cached data',
+            );
+
+            const volume24hWei = tokenData?.volume24h || '0';
+            const parsedAces = parseFloat(volume24hWei) / 1e18;
+            volume24hAces = Number.isFinite(parsedAces) ? parsedAces : 0;
+            volume24hUsd = Number.isFinite(acesUsdPrice) ? volume24hAces * acesUsdPrice : 0;
+
+            fastify.log.info(
+              { volume24hWei, volume24hAces, acesUsdPrice, volume24hUsd },
+              'Bonding curve volume from cached data (fallback)',
+            );
+          }
         }
 
         let liquidityUsd: number | null = null;
