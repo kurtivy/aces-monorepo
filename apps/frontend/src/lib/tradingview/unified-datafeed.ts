@@ -155,9 +155,6 @@ export class UnifiedDatafeed implements IBasicDataFeed {
    */
   public setWidget(widget: any): void {
     this.tradingViewWidget = widget;
-    if (this.config.debug) {
-      console.log('[UnifiedDatafeed] Widget reference set');
-    }
   }
 
   /**
@@ -194,7 +191,6 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       if (!methodSucceeded && typeof chart.executeActionById === 'function') {
         try {
           chart.executeActionById('chart_realtime');
-          console.log('[UnifiedDatafeed] ✅ Forced realtime mode via executeActionById');
           methodSucceeded = true;
         } catch (e) {
           if (this.config.debug) {
@@ -209,7 +205,6 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       if (!methodSucceeded && typeof chart.scrollToRealtime === 'function') {
         try {
           chart.scrollToRealtime();
-          console.log('[UnifiedDatafeed] ✅ Forced realtime mode via scrollToRealtime');
           methodSucceeded = true;
         } catch (e) {
           if (this.config.debug) {
@@ -226,7 +221,6 @@ export class UnifiedDatafeed implements IBasicDataFeed {
           const now = Date.now() / 1000;
           const oneHourAgo = now - 3600;
           chart.setVisibleRange({ from: oneHourAgo, to: now }, { percentRightMargin: 5 });
-          console.log('[UnifiedDatafeed] ✅ Forced realtime mode via setVisibleRange');
           methodSucceeded = true;
         } catch (e) {
           if (this.config.debug) {
@@ -236,9 +230,11 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       }
 
       if (!methodSucceeded) {
-        console.warn(
-          '[UnifiedDatafeed] ⚠️ Could not force realtime mode - no working method available',
-        );
+        if (this.config.debug) {
+          console.warn(
+            '[UnifiedDatafeed] ⚠️ Could not force realtime mode - no working method available',
+          );
+        }
       }
     } catch (error) {
       console.error('[UnifiedDatafeed] ❌ Unexpected error in forceRealtimeMode:', error);
@@ -294,13 +290,6 @@ export class UnifiedDatafeed implements IBasicDataFeed {
         this.isConnecting = false;
         this.reconnectAttempt = 0; // Reset reconnection counter on success
 
-        console.log('[UnifiedDatafeed] ✅ WebSocket connected successfully');
-        console.log(
-          '[UnifiedDatafeed] 🔄 Resubscribing to',
-          this.subscriptions.size,
-          'subscriptions',
-        );
-
         // Resubscribe to all existing subscriptions
         this.resubscribeAll();
       };
@@ -308,17 +297,6 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       this.ws.onmessage = (event) => {
         try {
           const update = JSON.parse(event.data);
-          console.log('[UnifiedDatafeed] 📨 Received WebSocket message:', {
-            type: update.type,
-            tokenAddress: update.tokenAddress,
-            timeframe: update.timeframe,
-            chartType: update.chartType,
-            hasCandle: !!update.candle,
-            dataSource: update.candle?.dataSource,
-            candleTimestamp: update.candle?.timestamp
-              ? new Date(update.candle.timestamp).toISOString()
-              : null,
-          });
           this.handleWebSocketMessage(update);
         } catch (error) {
           console.error(
@@ -686,7 +664,6 @@ export class UnifiedDatafeed implements IBasicDataFeed {
 
           try {
             subscriptionInfo.onTick(bar);
-            console.log('[UnifiedDatafeed] ✅ onTick called successfully for new bar');
           } catch (error) {
             console.error('[UnifiedDatafeed] ❌ Error calling onTick for new bar:', error);
           }
@@ -698,16 +675,6 @@ export class UnifiedDatafeed implements IBasicDataFeed {
           if (this.config.debug) {
             // console.log('[UnifiedDatafeed] Tick received:', bar);
           }
-        } else {
-          console.log('[UnifiedDatafeed] ❌ Update does not match subscription:', {
-            updateToken: update.tokenAddress,
-            subscriptionToken: tokenAddress,
-            updateTimeframe: update.timeframe,
-            subscriptionTimeframe: timeframe,
-            updateChartType: update.chartType,
-            subscriptionChartType: subscriptionInfo.isMarketCapMode ? 'mcap' : 'price',
-            hasCandle: !!update.candle,
-          });
         }
       }
     } else if (update.type === 'initial_data') {
@@ -1001,16 +968,6 @@ export class UnifiedDatafeed implements IBasicDataFeed {
             low: lastBar.low,
             close: lastBar.close,
             volume: lastBar.volume ?? 0,
-          });
-
-          console.log('[UnifiedDatafeed] 📌 Updated lastBars with newer bar:', {
-            time: new Date(lastBar.time as number).toISOString(),
-            close: lastBar.close,
-          });
-        } else {
-          console.log('[UnifiedDatafeed] ⏭️ Skipped older bar (from scroll-back):', {
-            newBarTime: new Date(lastBar.time as number).toISOString(),
-            existingBarTime: new Date(currentLastBar.time as number).toISOString(),
           });
         }
       }
@@ -1360,23 +1317,11 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       // 1. Updating existing candle if bar.time matches last bar.time
       // 2. Adding new candle if bar.time is after last bar.time
       try {
-        console.log('[UnifiedDatafeed] 📊 onTick sending bar:', {
-          time: new Date(bar.time as number).toISOString(),
-          type: isNewCandle ? 'NEW_CANDLE' : 'UPDATE',
-          open: bar.open,
-          high: bar.high,
-          low: bar.low,
-          close: bar.close,
-          volume: bar.volume,
-          isValid: Number.isFinite(bar.open) && Number.isFinite(bar.close),
-        });
-
         onTick(bar);
 
         // 🔥 CRITICAL FIX: Force chart into realtime mode when new candle arrives
         // This prevents the chart from getting stuck showing old candles
         if (isNewCandle) {
-          console.log('[UnifiedDatafeed] 🚀 New candle detected - forcing realtime mode');
           this.forceRealtimeMode();
         }
       } catch (error) {

@@ -77,13 +77,6 @@ export class RealtimeCandleBuilder {
   processTrade(trade: Trade): void {
     // Update all active timeframes
     for (const timeframe of this.callbacks.keys()) {
-      console.log(`[CandleBuilder] 🔄 processTrade for ${timeframe}:`, {
-        tradeTime: new Date(trade.timestamp).toISOString(),
-        activeTimeframes: Array.from(this.callbacks.keys()),
-        candlesCount: this.currentCandles.size,
-        hasLastClosePrices: this.lastClosePrices.has(timeframe),
-        lastClosePriceValue: this.lastClosePrices.get(timeframe),
-      });
       this.updateCandle(timeframe, trade);
     }
   }
@@ -177,9 +170,6 @@ export class RealtimeCandleBuilder {
       };
       this.currentCandles.set(key, candle);
 
-      console.log(
-        `[CandleBuilder] 🆕 New ${timeframe} candle at ${new Date(candleTime).toISOString()} | OHLCV: ${candle.open} / ${candle.high} / ${candle.low} / ${candle.close} / ${candle.volume} (open from ${previousClosePrice !== undefined ? 'prev close' : 'first trade'})`,
-      );
     } else if (isSynthetic) {
       // 🔥 NEW: Update synthetic candle with real trade data
       // Keep the open (which was set to previous close), but update OHLC with real prices
@@ -190,10 +180,6 @@ export class RealtimeCandleBuilder {
 
       // Mark as no longer synthetic
       this.syntheticCandles.delete(key);
-
-      console.log(
-        `[CandleBuilder] 🔄 Converted synthetic → real ${timeframe} candle at ${new Date(candleTime).toISOString()} | OHLCV: ${candle.open} / ${candle.high} / ${candle.low} / ${candle.close} / ${candle.volume}`,
-      );
     } else {
       // Update existing real candle
       candle.high = Math.max(candle.high, trade.price);
@@ -334,8 +320,6 @@ export class RealtimeCandleBuilder {
       clearInterval(this.timeframeTimers.get(timeframe)!);
     }
 
-    console.log(`[CandleBuilder] ▶️ Starting time-driven emission for ${timeframe}`);
-
     // Check every 1 second for bucket rollovers
     const timer = setInterval(() => {
       this.checkAndEmitSyntheticCandle(timeframe);
@@ -352,7 +336,6 @@ export class RealtimeCandleBuilder {
     if (timer) {
       clearInterval(timer);
       this.timeframeTimers.delete(timeframe);
-      console.log(`[CandleBuilder] ⏹️ Stopped time-driven emission for ${timeframe}`);
     }
   }
 
@@ -402,10 +385,6 @@ export class RealtimeCandleBuilder {
     this.currentCandles.set(key, syntheticCandle);
     this.syntheticCandles.add(key); // Mark as synthetic
     this.lastClosePrices.set(timeframe, previousClosePrice); // Carry forward close price
-
-    console.log(
-      `[CandleBuilder] 🔵 Synthetic ${timeframe} candle emitted at ${new Date(currentBucketTime).toISOString()} | price: ${previousClosePrice} (no trades in interval)`,
-    );
 
     // Notify subscribers
     const callbacks = this.callbacks.get(timeframe) || [];
