@@ -111,30 +111,41 @@ export class RealtimeCandleBuilder {
       }
     }
 
-    // 🔥 Allow trades within a reasonable time window from NOW
-    // This handles delays in BitQuery and other data feeds
-    // Accept trades from the last 15 minutes (900000ms) to current
+    // 🔥 UPDATED: Allow trades within a reasonable time window from NOW
+    // Increased from 15 to 30 minutes to handle BitQuery/Goldsky delays
     const now = Date.now();
-    const fifteenMinutesAgo = now - 15 * 60 * 1000; // 900 seconds
+    const thirtyMinutesAgo = now - 30 * 60 * 1000; // 1800 seconds
 
-    // Reject trades older than 15 minutes to prevent cascading stale data
-    if (trade.timestamp < fifteenMinutesAgo) {
-      if (this.debug) {
-        console.warn(
-          `[CandleBuilder] ⚠️ Skipped very old ${timeframe} trade (trade: ${new Date(trade.timestamp).toISOString()}, now: ${new Date(now).toISOString()})`,
-        );
-      }
+    // Reject trades older than 30 minutes to prevent cascading stale data
+    if (trade.timestamp < thirtyMinutesAgo) {
+      console.warn(
+        `[CandleBuilder] ❌ REJECTED: Very old ${timeframe} trade`,
+        {
+          tradeTime: new Date(trade.timestamp).toISOString(),
+          currentTime: new Date(now).toISOString(),
+          ageMinutes: Math.round((now - trade.timestamp) / 60000),
+          reason: 'TOO_OLD (>30min)',
+          price: trade.price,
+          volume: trade.volume,
+        },
+      );
       return;
     }
 
     // Also prevent trades far in the future (safeguard against bad data)
     if (trade.timestamp > now + 60000) {
       // 1 minute in the future
-      if (this.debug) {
-        console.warn(
-          `[CandleBuilder] ⚠️ Skipped future ${timeframe} trade (trade: ${new Date(trade.timestamp).toISOString()}, now: ${new Date(now).toISOString()})`,
-        );
-      }
+      console.warn(
+        `[CandleBuilder] ❌ REJECTED: Future ${timeframe} trade`,
+        {
+          tradeTime: new Date(trade.timestamp).toISOString(),
+          currentTime: new Date(now).toISOString(),
+          futureSeconds: Math.round((trade.timestamp - now) / 1000),
+          reason: 'FUTURE_TIMESTAMP',
+          price: trade.price,
+          volume: trade.volume,
+        },
+      );
       return;
     }
 
@@ -142,11 +153,17 @@ export class RealtimeCandleBuilder {
     // This allows 1 interval of latency but not more
     const oneIntervalAgo = mostRecentCandleTime - intervalMs;
     if (mostRecentCandleTime > 0 && candleTime < oneIntervalAgo) {
-      if (this.debug) {
-        console.warn(
-          `[CandleBuilder] ⚠️ Skipped out-of-order ${timeframe} trade (trade: ${new Date(candleTime).toISOString()}, recent: ${new Date(mostRecentCandleTime).toISOString()})`,
-        );
-      }
+      console.warn(
+        `[CandleBuilder] ❌ REJECTED: Out-of-order ${timeframe} trade`,
+        {
+          tradeTime: new Date(candleTime).toISOString(),
+          mostRecentCandleTime: new Date(mostRecentCandleTime).toISOString(),
+          intervalsBehind: Math.round((mostRecentCandleTime - candleTime) / intervalMs),
+          reason: 'OUT_OF_ORDER (>1 interval behind)',
+          price: trade.price,
+          volume: trade.volume,
+        },
+      );
       return;
     }
 
@@ -170,6 +187,17 @@ export class RealtimeCandleBuilder {
       };
       this.currentCandles.set(key, candle);
 
+      console.log(
+        `[CandleBuilder] ✅ NEW ${timeframe} candle created`,
+        {
+          candleTime: new Date(candleTime).toISOString(),
+          tradeTime: new Date(trade.timestamp).toISOString(),
+          open: openPrice.toFixed(8),
+          close: trade.price.toFixed(8),
+          volume: trade.volume.toFixed(4),
+          hasPreviousClose: previousClosePrice !== undefined,
+        },
+      );
     } else if (isSynthetic) {
       // 🔥 NEW: Update synthetic candle with real trade data
       // Keep the open (which was set to previous close), but update OHLC with real prices
@@ -180,16 +208,38 @@ export class RealtimeCandleBuilder {
 
       // Mark as no longer synthetic
       this.syntheticCandles.delete(key);
+
+      console.log(
+        `[CandleBuilder] ✅ SYNTHETIC→REAL ${timeframe} candle updated`,
+        {
+          candleTime: new Date(candleTime).toISOString(),
+          tradeTime: new Date(trade.timestamp).toISOString(),
+          open: candle.open.toFixed(8),
+          close: candle.close.toFixed(8),
+          volume: candle.volume.toFixed(4),
+        },
+      );
     } else {
       // Update existing real candle
+      const wasUpdated =
+        candle.high !== Math.max(candle.high, trade.price) ||
+        candle.low !== Math.min(candle.low, trade.price) ||
+        candle.close !== trade.price;
+
       candle.high = Math.max(candle.high, trade.price);
       candle.low = Math.min(candle.low, trade.price);
       candle.close = trade.price;
       candle.volume += trade.volume;
 
-      if (this.debug) {
+      if (this.debug || wasUpdated) {
         console.log(
-          `[CandleBuilder] 📈 Updated ${timeframe} candle | OHLCV: ${candle.open} / ${candle.high} / ${candle.low} / ${candle.close} / ${candle.volume}`,
+          `[CandleBuilder] ✅ UPDATED ${timeframe} candle`,
+          {
+            candleTime: new Date(candleTime).toISOString(),
+            tradeTime: new Date(trade.timestamp).toISOString(),
+            OHLCV: `${candle.open.toFixed(8)} / ${candle.high.toFixed(8)} / ${candle.low.toFixed(8)} / ${candle.close.toFixed(8)} / ${candle.volume.toFixed(4)}`,
+            priceChanged: wasUpdated,
+          },
         );
       }
     }

@@ -222,7 +222,7 @@ export default function TokenSwapInterface({
   const [activeTab, setActiveTab] = useState<'buy' | 'sell'>('buy');
   const [paymentAsset, setPaymentAsset] = useState<PaymentAsset>('ACES');
   const [amount, setAmount] = useState('');
-  const debouncedAmount = useDebouncedValue(amount, 300);
+  const debouncedAmount = useDebouncedValue(amount, 200); // Reduced from 300ms for faster quote updates
   const [loading, setLoading] = useState<string>('');
   const [localTransactionStatus, setLocalTransactionStatus] = useState<{
     type: 'success' | 'error';

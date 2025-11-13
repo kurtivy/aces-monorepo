@@ -1174,25 +1174,48 @@ export class UnifiedDatafeed implements IBasicDataFeed {
 
         const volumeTokens = Number.isFinite(tokenAmount) && tokenAmount > 0 ? tokenAmount : 0;
 
-        // 🔥 DEBUG: Check timestamp format (behind debug flag)
+        // 🔥 CRITICAL FIX: Detect and fix timestamp format issues
+        // Backend should send timestamps in milliseconds, but validate just in case
         const now = Date.now();
-        if (this.config.debug) {
-          console.log('[UnifiedDatafeed] 🔍 Trade timestamp check:', {
+        let normalizedTimestamp = trade.timestamp;
+
+        // Check if timestamp looks like seconds (before year 5138)
+        if (trade.timestamp < 100000000000) {
+          console.warn(
+            '[UnifiedDatafeed] ⚠️ Trade timestamp appears to be in SECONDS, converting to milliseconds:',
+            {
+              rawTimestamp: trade.timestamp,
+              rawTimestampISO: new Date(trade.timestamp * 1000).toISOString(),
+              source: trade.source,
+              tradeId: trade.id,
+            },
+          );
+          normalizedTimestamp = trade.timestamp * 1000; // Convert to milliseconds
+        }
+
+        // Validate timestamp is reasonable (not too old, not in future)
+        const tradeAge = now - normalizedTimestamp;
+        const isTooOld = tradeAge > 30 * 60 * 1000; // 30 minutes
+        const isFuture = normalizedTimestamp > now + 60000; // 1 minute in future
+
+        if (isTooOld || isFuture) {
+          console.error('[UnifiedDatafeed] ❌ Rejecting trade with invalid timestamp:', {
+            tradeId: trade.id,
+            source: trade.source,
             rawTimestamp: trade.timestamp,
-            rawTimestampISO: new Date(trade.timestamp).toISOString(),
+            normalizedTimestamp,
+            normalizedISO: new Date(normalizedTimestamp).toISOString(),
             currentTime: now,
             currentTimeISO: new Date(now).toISOString(),
-            timeDiffMs: now - trade.timestamp,
-            timeDiffSeconds: Math.round((now - trade.timestamp) / 1000),
-            // Check if timestamp looks like seconds instead of milliseconds
-            looksLikeSeconds: trade.timestamp < 100000000000, // Before year 5138
-            looksLikeMilliseconds: trade.timestamp > 100000000000,
+            tradeAge: Math.round(tradeAge / 1000) + 's',
+            reason: isTooOld ? 'TOO_OLD (>30min)' : 'FUTURE_TIMESTAMP',
           });
+          return; // Skip this trade - it won't build valid candles
         }
 
         // Convert to Trade format for candle builder
         const tradeData: Trade = {
-          timestamp: trade.timestamp,
+          timestamp: normalizedTimestamp, // Use normalized timestamp
           price: resolvedPriceUsd,
           volume: volumeTokens,
           isBuy: trade.isBuy,
@@ -1200,13 +1223,13 @@ export class UnifiedDatafeed implements IBasicDataFeed {
 
         this.lastKnownTokenPrice.set(normalizedAddress, resolvedPriceUsd);
 
-        // 🔥 DEBUG: Monitor trade timing to diagnose time violations
-        const tradeAge = now - trade.timestamp;
-        if (tradeAge > 60000) {
-          // Trade is more than 1 minute old - log warning
-          console.warn('[UnifiedDatafeed] ⚠️ Old trade received:', {
+        // Log trade acceptance (helpful for debugging)
+        if (tradeAge > 60000 && this.config.debug) {
+          // Trade is more than 1 minute old but still acceptable
+          console.warn('[UnifiedDatafeed] ⚠️ Processing delayed trade:', {
             ageSeconds: Math.round(tradeAge / 1000),
             source: trade.source,
+            tradeId: trade.id,
           });
         }
 

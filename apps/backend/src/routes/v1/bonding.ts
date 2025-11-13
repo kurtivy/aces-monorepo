@@ -5,6 +5,8 @@ import { ethers } from 'ethers';
 import { getNetworkConfig, createProvider } from '../../config/network.config';
 import { AerodromeDataService } from '../../services/aerodrome-data-service';
 import { priceCacheService } from '../../services/price-cache-service';
+import { bondingQuoteCache, multiHopQuoteCache } from '../../lib/quote-cache';
+import { getOptimizedQuote } from '../../lib/bonding-curve-math';
 
 const addressSchema = z.string().regex(/^0x[a-fA-F0-9]{40}$/);
 
@@ -105,15 +107,6 @@ export async function bondingRoutes(fastify: FastifyInstance) {
         const { tokenAddress } = request.params;
         const { inputAsset = 'ACES', amount, slippageBps = '100' } = request.query;
 
-        // SUPER LOUD LOG - YOU SHOULD SEE THIS
-        console.log('='.repeat(80));
-        console.log('🔵🔵🔵 DIRECT BONDING QUOTE REQUEST RECEIVED 🔵🔵🔵');
-        console.log('Token:', tokenAddress);
-        console.log('Amount:', amount);
-        console.log('InputAsset:', inputAsset);
-        console.log('Slippage:', slippageBps);
-        console.log('='.repeat(80));
-
         fastify.log.info(
           { tokenAddress, inputAsset, amount, slippageBps },
           '🔵 [DirectBondingQuote] Request received',
@@ -137,6 +130,21 @@ export async function bondingRoutes(fastify: FastifyInstance) {
         }
 
         const slippage = parseInt(slippageBps || '100');
+
+        // Check cache first
+        const cacheKey = { tokenAddress, inputAsset, amount, slippageBps: slippage };
+        const cachedQuote = bondingQuoteCache.get(cacheKey);
+        
+        if (cachedQuote) {
+          fastify.log.info(
+            { tokenAddress, inputAsset, amount },
+            '💰 [DirectBondingQuote] Cache hit',
+          );
+          return reply.send({
+            success: true,
+            data: cachedQuote,
+          });
+        }
 
         // Setup network and provider
         const networkConfig = getNetworkConfig(8453);
@@ -388,12 +396,10 @@ export async function bondingRoutes(fastify: FastifyInstance) {
 
         if (inputAsset === 'ACES') {
           // ACES → TOKEN (buy)
-          // User enters ACES amount, we calculate how many tokens they get
-          // We need to do binary search to find the token amount that costs <= ACES input
+          // Use optimized math-based calculation (NO binary search, NO RPC spam!)
           const acesInputWei = ethers.parseUnits(amount, 18); // ACES is 18 decimals
 
           // Apply slippage to input ACES (reduce input to ensure success even if price moves)
-          // This protects users who input their max balance
           const acesInputWithSlippage = (acesInputWei * BigInt(10000 - slippage)) / BigInt(10000);
 
           fastify.log.info(
@@ -403,183 +409,92 @@ export async function bondingRoutes(fastify: FastifyInstance) {
               amount,
               slippage,
             },
-            '🔄 [DirectBondingQuote] Calculating ACES → TOKEN via binary search with slippage',
+            '🔄 [DirectBondingQuote] Calculating ACES → TOKEN via optimized math (no RPC spam)',
           );
 
-          // Binary search for the maximum token amount we can buy with the given ACES (after slippage)
-          const oneToken = ethers.parseUnits('1', tokenDecimals);
-          let left = oneToken;
-          let right = ethers.parseUnits('1000000000', tokenDecimals); // Max 1B tokens to search (same as total supply)
-          let bestTokenAmount = 0n;
-
-          // Check if we can even afford 1 token
+          // Use optimized math-based calculation instead of binary search
+          // This reduces RPC calls from 50+ to just 1-2!
           try {
-            const costForOne = await factoryContract.getBuyPriceAfterFee(tokenAddress, oneToken);
+            const quoteResult = await getOptimizedQuote({
+              tokenAddress,
+              inputAsset: 'ACES',
+              amount: ethers.formatEther(acesInputWithSlippage),
+              tokenDecimals,
+              steepness: tokenParams.steepness,
+              floor: tokenParams.floor,
+              provider,
+            });
 
-            console.log('💰 COST CHECK FOR 1 TOKEN:');
-            console.log('  Cost for 1 token:', ethers.formatEther(costForOne), 'ACES');
-            console.log(
-              '  ACES after slippage:',
-              ethers.formatEther(acesInputWithSlippage),
-              'ACES',
-            );
-            console.log('  Original ACES input:', amount);
-            console.log('  Can afford?', costForOne <= acesInputWithSlippage);
+            expectedOutput = quoteResult.expectedOutput;
+            outputAsset = tokenAddress;
+
+            console.log('✅ OPTIMIZED QUOTE (Math-based, no RPC spam):');
+            console.log('  Token amount:', expectedOutput);
+            console.log('  ACES input:', amount);
+            console.log('  Supply used:', quoteResult.supplyUsed.toString());
 
             fastify.log.info(
               {
-                costForOne: ethers.formatEther(costForOne),
-                acesInputWithSlippage: ethers.formatEther(acesInputWithSlippage),
-                originalAces: amount,
-                canAfford: costForOne <= acesInputWithSlippage,
+                tokenAmount: expectedOutput,
+                acesInput: amount,
+                supplyUsed: quoteResult.supplyUsed.toString(),
               },
-              '💰 [DirectBondingQuote] Cost check for 1 token',
+              '✅ [DirectBondingQuote] Optimized quote calculated (1-2 RPC vs 50+)',
             );
-
-            if (costForOne > acesInputWithSlippage) {
-              return reply.code(400).send({
-                success: false,
-                error: `Insufficient ACES. Need at least ${ethers.formatEther(costForOne)} ACES to buy 1 token (after ${slippage / 100}% slippage)`,
-              });
-            }
           } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
-            console.error('❌ Contract error when getting price:', errorMsg);
-            fastify.log.error({ err: error }, '❌ Failed to get price for 1 token');
+            console.error('❌ Error calculating optimized quote:', errorMsg);
+            fastify.log.error({ err: error }, '❌ Failed to calculate optimized quote');
 
-            // Check for specific contract errors
             if (errorMsg.includes('DIVIDE_BY_ZERO') || errorMsg.includes('Panic')) {
               return reply.code(400).send({
                 success: false,
                 error:
-                  'This token has an invalid bonding curve configuration. The contract cannot calculate prices.',
-              });
-            }
-
-            if (errorMsg.includes('execution reverted')) {
-              return reply.code(400).send({
-                success: false,
-                error: 'Unable to calculate quote. The token may be in an invalid state.',
+                  'This token has an invalid bonding curve configuration',
               });
             }
 
             throw error;
           }
-
-          // Binary search
-          let iterations = 0;
-          console.log('🔎 STARTING BINARY SEARCH:');
-          console.log('  Initial left:', ethers.formatUnits(left, tokenDecimals));
-          console.log('  Initial right:', ethers.formatUnits(right, tokenDecimals));
-
-          while (left <= right && iterations < 50) {
-            iterations++;
-            // Calculate midpoint and round down to nearest whole token
-            const midRaw = (left + right) / 2n;
-            const mid = (midRaw / oneToken) * oneToken; // Ensure it's a multiple of oneToken
-
-            try {
-              const acesCost = await factoryContract.getBuyPriceAfterFee(tokenAddress, mid);
-
-              if (iterations <= 3 || iterations === 19) {
-                console.log(`  Iteration ${iterations}:`);
-                console.log(`    Mid: ${ethers.formatUnits(mid, tokenDecimals)} tokens`);
-                console.log(`    Cost: ${ethers.formatEther(acesCost)} ACES`);
-                console.log(`    Available: ${ethers.formatEther(acesInputWithSlippage)} ACES`);
-                console.log(`    Can afford: ${acesCost <= acesInputWithSlippage}`);
-              }
-
-              if (acesCost <= acesInputWithSlippage) {
-                // Can afford this amount, try larger
-                bestTokenAmount = mid;
-                left = mid + oneToken;
-                if (iterations <= 3)
-                  console.log(
-                    `    ✅ Can afford! Trying larger (new left: ${ethers.formatUnits(left, tokenDecimals)})`,
-                  );
-              } else {
-                // Too expensive, try smaller
-                right = mid - oneToken;
-                if (iterations <= 3)
-                  console.log(
-                    `    ❌ Too expensive! Trying smaller (new right: ${ethers.formatUnits(right, tokenDecimals)})`,
-                  );
-              }
-            } catch (error) {
-              console.log(
-                `  ❌ Iteration ${iterations} ERROR at ${ethers.formatUnits(mid, tokenDecimals)} tokens:`,
-              );
-              console.log(`    Error:`, error instanceof Error ? error.message : String(error));
-
-              fastify.log.warn(
-                { err: error, mid: ethers.formatUnits(mid, tokenDecimals) },
-                '⚠️ [DirectBondingQuote] Binary search error at mid',
-              );
-              // If we hit an error, the amount might be too large
-              right = mid - oneToken;
-            }
-          }
-
-          console.log('🔍 BINARY SEARCH COMPLETED:');
-          console.log('  Best token amount:', ethers.formatUnits(bestTokenAmount, tokenDecimals));
-          console.log('  Iterations:', iterations);
-          console.log('  ACES input:', amount);
-          console.log('  ACES after slippage:', ethers.formatEther(acesInputWithSlippage));
-
-          fastify.log.info(
-            {
-              bestTokenAmount: ethers.formatUnits(bestTokenAmount, tokenDecimals),
-              iterations,
-              acesInput: amount,
-              acesAfterSlippage: ethers.formatEther(acesInputWithSlippage),
-            },
-            '🔍 [DirectBondingQuote] Binary search completed',
-          );
-
-          if (bestTokenAmount === 0n) {
-            console.log('❌ ERROR: bestTokenAmount is 0! Returning error to frontend.');
-            return reply.code(400).send({
-              success: false,
-              error: `Unable to calculate token amount. Your ${amount} ACES (${ethers.formatEther(acesInputWithSlippage)} after ${slippage / 100}% slippage) may not be enough.`,
-            });
-          }
-
-          expectedOutput = ethers.formatUnits(bestTokenAmount, tokenDecimals);
-          outputAsset = tokenAddress;
-
-          fastify.log.info(
-            { input: `${amount} ACES`, output: `${expectedOutput} TOKEN` },
-            '✅ [DirectBondingQuote] ACES → TOKEN calculated',
-          );
         } else {
-          // TOKEN → ACES (sell)
-          const amountWei = ethers.parseUnits(amount, tokenDecimals);
-
+          // TOKEN → ACES (sell) - also use optimized math!
           fastify.log.info(
-            { amountWei: amountWei.toString(), amount, tokenDecimals },
-            '🔄 [DirectBondingQuote] Calculating TOKEN → ACES',
+            { amount, tokenDecimals },
+            '🔄 [DirectBondingQuote] Calculating TOKEN → ACES via optimized math',
           );
 
           try {
-            const acesWei = await factoryContract.getSellPriceAfterFee(tokenAddress, amountWei);
-            expectedOutput = ethers.formatEther(acesWei);
+            const quoteResult = await getOptimizedQuote({
+              tokenAddress,
+              inputAsset: 'TOKEN',
+              amount,
+              tokenDecimals,
+              steepness: tokenParams.steepness,
+              floor: tokenParams.floor,
+              provider,
+            });
+
+            expectedOutput = quoteResult.expectedOutput;
             outputAsset = acesAddress;
+
+            console.log('✅ OPTIMIZED SELL QUOTE (Math-based):');
+            console.log('  ACES received:', expectedOutput);
+            console.log('  Tokens sold:', amount);
 
             fastify.log.info(
               { input: `${amount} TOKEN`, output: `${expectedOutput} ACES` },
-              '✅ [DirectBondingQuote] TOKEN → ACES calculated',
+              '✅ [DirectBondingQuote] TOKEN → ACES calculated (optimized)',
             );
           } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
-            console.error('❌ Contract error when calculating sell price:', errorMsg);
+            console.error('❌ Error calculating optimized sell quote:', errorMsg);
             fastify.log.error({ err: error }, '❌ Failed to calculate TOKEN → ACES');
 
-            // Check for specific contract errors
             if (errorMsg.includes('DIVIDE_BY_ZERO') || errorMsg.includes('Panic')) {
               return reply.code(400).send({
                 success: false,
                 error:
-                  'This token has an invalid bonding curve configuration. The contract cannot calculate prices.',
+                  'This token has an invalid bonding curve configuration',
               });
             }
 
@@ -636,6 +551,14 @@ export async function bondingRoutes(fastify: FastifyInstance) {
             outputUsdValue: response.outputUsdValue,
           },
           '✅ [DirectBondingQuote] Final response',
+        );
+
+        // Store in cache for future requests
+        bondingQuoteCache.set(cacheKey, response);
+        
+        fastify.log.info(
+          { tokenAddress, inputAsset, amount },
+          '✅ [DirectBondingQuote] Quote computed and cached',
         );
 
         return reply.send({
@@ -708,20 +631,40 @@ export async function bondingRoutes(fastify: FastifyInstance) {
 
         const slippage = parseInt(slippageBps);
 
+        // Check cache first (before ACES check)
+        const cacheKey = { tokenAddress, inputAsset, amount, slippageBps: slippage };
+        const cachedQuote = multiHopQuoteCache.get(cacheKey);
+        
+        if (cachedQuote) {
+          fastify.log.info(
+            { tokenAddress, inputAsset, amount },
+            '💰 [BondingQuote] Cache hit',
+          );
+          return reply.send({
+            success: true,
+            data: cachedQuote,
+          });
+        }
+
         // If input is ACES, no multi-hop needed
         if (inputAsset === 'ACES') {
           fastify.log.info('✅ [BondingQuote] Direct ACES input - no multi-hop needed');
+          const response = {
+            inputAsset: 'ACES',
+            inputAmount: amount,
+            expectedAcesAmount: amount,
+            expectedRwaOutput: '0',
+            path: ['ACES', tokenAddress.toLowerCase()],
+            needsMultiHop: false,
+            slippageBps: slippage,
+          } as MultiHopQuoteResponse;
+          
+          // Cache the response
+          multiHopQuoteCache.set(cacheKey, response);
+          
           return reply.send({
             success: true,
-            data: {
-              inputAsset: 'ACES',
-              inputAmount: amount,
-              expectedAcesAmount: amount,
-              expectedRwaOutput: '0',
-              path: ['ACES', tokenAddress.toLowerCase()],
-              needsMultiHop: false,
-              slippageBps: slippage,
-            } as MultiHopQuoteResponse,
+            data: response,
           });
         }
 
@@ -1317,6 +1260,14 @@ export async function bondingRoutes(fastify: FastifyInstance) {
             intermediateSteps: response.intermediate,
           },
           '✅ [BondingQuote] Final response',
+        );
+
+        // Store in cache for future requests
+        multiHopQuoteCache.set(cacheKey, response);
+        
+        fastify.log.info(
+          { tokenAddress, inputAsset, amount },
+          '✅ [BondingQuote] Multi-hop quote computed and cached',
         );
 
         return reply.send({

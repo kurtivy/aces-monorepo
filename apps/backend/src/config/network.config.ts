@@ -13,8 +13,8 @@ interface NetworkConfig {
 
 const baseMainnet: NetworkConfig = {
   chainId: 8453,
-  // Accept either BASE_MAINNET_RPC_URL or QUICKNODE_BASE_URL
-  rpcUrl: process.env.BASE_MAINNET_RPC_URL || process.env.QUICKNODE_BASE_URL || '',
+  // Prioritize QuickNode for better rate limits
+  rpcUrl: process.env.QUICKNODE_BASE_URL || process.env.BASE_MAINNET_RPC_URL || '',
   aerodromeFactory: process.env.AERODROME_FACTORY_ADDRESS || '',
   aerodromeRouter: process.env.AERODROME_ROUTER_ADDRESS || '',
   acesToken: process.env.ACES_TOKEN_ADDRESS || '0x55337650856299363c496065C836B9C6E9dE0367',
@@ -55,10 +55,19 @@ export function createProvider(chainId: SupportedChainId): ethers.JsonRpcProvide
   }
 
   // Create a proper Network object to prevent network detection failures
-  // This tells ethers to use the provided network info instead of auto-detecting
   const network = new ethers.Network(chainId === 8453 ? 'base' : 'base-sepolia', chainId);
 
-  return new ethers.JsonRpcProvider(config.rpcUrl, network, {
+  // Create provider with optimized settings for high concurrency
+  const provider = new ethers.JsonRpcProvider(config.rpcUrl, network, {
     staticNetwork: true, // Skip network detection
+    batchMaxCount: 100, // Allow batching up to 100 requests
+    batchMaxSize: 1024 * 1024, // 1MB batch size
+    batchStallTime: 10, // Wait max 10ms to batch requests together
+    polling: false, // Don't poll for new blocks (we don't need it)
   });
+
+  // Set polling interval (only used if polling is enabled later)
+  provider.pollingInterval = 12000; // 12 seconds (Base block time)
+
+  return provider;
 }
