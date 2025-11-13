@@ -189,8 +189,7 @@ export default function TradeHistory({
     if (value == null || !Number.isFinite(value)) return '--';
     const abs = Math.abs(value);
     if (abs > 0 && abs < 0.01) return '< $0.01';
-    if (options?.isBuy) return `$${value.toFixed(2)}`;
-    return value < 10 ? `$${value.toFixed(6)}` : `$${value.toFixed(2)}`;
+    return `$${value.toFixed(2)}`;
   };
 
   const formatUnitPrice = (value: number | null | undefined) => {

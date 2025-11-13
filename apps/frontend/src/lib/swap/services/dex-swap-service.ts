@@ -44,11 +44,11 @@ export class DexSwapService {
     const { quote, paymentAsset, signer, onStatus } = params;
 
     try {
-      console.log('[DexSwapService] Starting swap...', {
-        paymentAsset,
-        inputAmount: quote.inputAmount,
-        expectedOutput: quote.expectedOutput,
-      });
+      // console.log('[DexSwapService] Starting swap...', {
+      //   paymentAsset,
+      //   inputAmount: quote.inputAmount,
+      //   expectedOutput: quote.expectedOutput,
+      // });
 
       // Validate quote
       if (!this.validateQuote(quote)) {
@@ -81,12 +81,12 @@ export class DexSwapService {
             factory: AERODROME_FACTORY,
           }));
 
-      console.log('[DexSwapService] Swap parameters:', {
-        path,
-        amountIn: ethers.utils.formatEther(amountIn),
-        amountOutMin: ethers.utils.formatEther(amountOutMin),
-        deadline: new Date(deadline * 1000).toISOString(),
-      });
+      // console.log('[DexSwapService] Swap parameters:', {
+      //   path,
+      //   amountIn: ethers.utils.formatEther(amountIn),
+      //   amountOutMin: ethers.utils.formatEther(amountOutMin),
+      //   deadline: new Date(deadline * 1000).toISOString(),
+      // });
 
       // Verify balance for token swaps
       if (paymentAsset !== 'ETH') {
@@ -94,11 +94,11 @@ export class DexSwapService {
         const erc20Contract = new ethers.Contract(inputTokenAddress, ERC20_ABI, signer);
         const userBalance = await erc20Contract.balanceOf(this.walletAddress);
 
-        console.log('[DexSwapService] Balance check:', {
-          token: inputTokenAddress,
-          userBalance: ethers.utils.formatEther(userBalance),
-          required: ethers.utils.formatEther(amountIn),
-        });
+        // console.log('[DexSwapService] Balance check:', {
+        //   token: inputTokenAddress,
+        //   userBalance: ethers.utils.formatEther(userBalance),
+        //   required: ethers.utils.formatEther(amountIn),
+        // });
 
         if (userBalance.lt(amountIn)) {
           return {
@@ -113,7 +113,7 @@ export class DexSwapService {
       // Handle ETH vs token swaps
       if (paymentAsset === 'ETH') {
         // ETH -> Token swap
-        console.log('[DexSwapService] Executing ETH -> Token swap');
+        // console.log('[DexSwapService] Executing ETH -> Token swap');
         onStatus?.('Confirming swap...');
 
         // Preflight simulate to catch clear revert message before sending
@@ -147,7 +147,7 @@ export class DexSwapService {
       } else {
         // Token -> Token swap (requires approval)
         const inputTokenAddress = (routesArg[0]?.from as string) || path[0];
-        console.log('[DexSwapService] Checking/requesting approval for token:', inputTokenAddress);
+        // console.log('[DexSwapService] Checking/requesting approval for token:', inputTokenAddress);
 
         const approvalGranted = await this.ensureAllowance({
           tokenAddress: inputTokenAddress,
@@ -158,7 +158,7 @@ export class DexSwapService {
         });
 
         if (approvalGranted) {
-          console.log('[DexSwapService] Approval granted, waiting for blockchain confirmation...');
+          // console.log('[DexSwapService] Approval granted, waiting for blockchain confirmation...');
           // Wait a moment for approval to propagate
           await new Promise((resolve) => setTimeout(resolve, 2000));
 
@@ -168,10 +168,10 @@ export class DexSwapService {
             this.walletAddress,
             this.routerContract.address,
           );
-          console.log(
-            '[DexSwapService] Final allowance after approval:',
-            ethers.utils.formatEther(finalAllowance),
-          );
+          // console.log(
+          //   '[DexSwapService] Final allowance after approval:',
+          //   ethers.utils.formatEther(finalAllowance),
+          // );
 
           if (finalAllowance.lt(amountIn)) {
             throw new Error('Approval failed - insufficient allowance after approval transaction');
@@ -179,7 +179,7 @@ export class DexSwapService {
         }
 
         onStatus?.('Preparing swap transaction...');
-        console.log('[DexSwapService] Executing Token -> Token swap');
+        // console.log('[DexSwapService] Executing Token -> Token swap');
 
         // Preflight simulate to catch revert reasons before estimating/sending
         try {
@@ -212,7 +212,7 @@ export class DexSwapService {
             this.walletAddress,
             deadline,
           );
-          console.log('[DexSwapService] Gas estimate:', estimatedGas.toString());
+          // console.log('[DexSwapService] Gas estimate:', estimatedGas.toString());
           // Add 20% buffer to gas estimate
           const gasLimit = estimatedGas.mul(120).div(100);
 
@@ -239,11 +239,11 @@ export class DexSwapService {
         }
       }
 
-      console.log('[DexSwapService] Swap transaction sent:', tx.hash);
+      // console.log('[DexSwapService] Swap transaction sent:', tx.hash);
       onStatus?.('Waiting for confirmation...');
 
       const receipt = await tx.wait();
-      console.log('[DexSwapService] ✅ Swap confirmed');
+      // console.log('[DexSwapService] ✅ Swap confirmed');
 
       onStatus?.('Swap confirmed!');
 
@@ -306,21 +306,21 @@ export class DexSwapService {
 
       const UNLIMITED_APPROVAL = ethers.constants.MaxUint256;
 
-      console.log('[DexSwapService] Checking allowance:', {
-        token: tokenAddress,
-        spender: spenderAddress,
-        currentAllowance: ethers.utils.formatEther(allowance),
-        requiredAmount: ethers.utils.formatEther(amount),
-        hasUnlimitedApproval: allowance.eq(UNLIMITED_APPROVAL),
-      });
+      // console.log('[DexSwapService] Checking allowance:', {
+      //   token: tokenAddress,
+      //   spender: spenderAddress,
+      //   currentAllowance: ethers.utils.formatEther(allowance),
+      //   requiredAmount: ethers.utils.formatEther(amount),
+      //   hasUnlimitedApproval: allowance.eq(UNLIMITED_APPROVAL),
+      // });
 
       // Check if current approval is sufficient
       if (allowance.gte(amount)) {
-        console.log('[DexSwapService] Sufficient allowance already exists');
+        // console.log('[DexSwapService] Sufficient allowance already exists');
         return false; // No approval needed
       }
 
-      console.log('[DexSwapService] Requesting UNLIMITED approval from user...');
+      // console.log('[DexSwapService] Requesting UNLIMITED approval from user...');
       onStatus?.('Approving unlimited token spending...');
 
       // Use unlimited approval (same as bonding curve)
@@ -328,7 +328,7 @@ export class DexSwapService {
       onStatus?.('Confirming approval...');
 
       await approveTx.wait();
-      console.log('[DexSwapService] ✅ Unlimited approval confirmed');
+      // console.log('[DexSwapService] ✅ Unlimited approval confirmed');
 
       return true; // Approval was granted
     } catch (error) {

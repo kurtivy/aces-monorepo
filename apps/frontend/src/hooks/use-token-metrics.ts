@@ -36,6 +36,7 @@ export function useTokenMetrics(
 ): UseTokenMetricsResult {
   const [metrics, setMetrics] = useState<TokenMetrics | null>(null);
   const metricsRef = useRef<TokenMetrics | null>(null);
+  const lastUpdateTimestampRef = useRef<number>(0); // Track last update timestamp
   const [circulatingSupply, setCirculatingSupply] = useState<number | null>(null);
   const [currentPriceUsd, setCurrentPriceUsd] = useState<number>(0);
   const [bondingData, setBondingData] = useState<BondingDataSubset | null>(null);
@@ -51,40 +52,108 @@ export function useTokenMetrics(
   } = useRealtimeMetrics(tokenAddress, {
     fallbackToPolling: true, // Fallback to REST if WebSocket fails
     pollingInterval: refreshIntervalMs,
-    debug: false,
+    debug: false, // Debug logging disabled (all phases verified)
   });
 
   // Sync WebSocket metrics to state
   useEffect(() => {
     if (wsMetrics && wsConnected) {
-      // Update metrics from WebSocket
+      // 🔥 FIX: Check if this is a new update by comparing timestamps
+      // This ensures we process every WebSocket message, even if values appear unchanged
+      const currentTimestamp = wsMetrics.timestamp || Date.now();
+      const isNewUpdate = currentTimestamp > lastUpdateTimestampRef.current;
+
+      if (!isNewUpdate && lastUpdateTimestampRef.current > 0) {
+        // Skip duplicate updates (same timestamp), but still process first update
+        return;
+      }
+
+      lastUpdateTimestampRef.current = currentTimestamp;
+
+      // 🔥 FIX: Always create new object reference to trigger React re-renders
+      // Use WebSocket values when available, otherwise preserve current values
+      // This ensures partial updates don't lose data while still triggering re-renders
+      const previousMetrics = metricsRef.current;
       const updatedMetrics: TokenMetrics = {
         contractAddress: wsMetrics.tokenAddress,
-        volume24hUsd: wsMetrics.volume24hUsd ?? metricsRef.current?.volume24hUsd ?? 0,
-        volume24hAces: wsMetrics.volume24hAces || metricsRef.current?.volume24hAces || '0',
-        marketCapUsd: wsMetrics.marketCapUsd ?? metricsRef.current?.marketCapUsd ?? 0,
-        tokenPriceUsd: wsMetrics.currentPriceUsd ?? metricsRef.current?.tokenPriceUsd ?? 0,
-        holderCount: metricsRef.current?.holderCount || 0,
-        totalFeesUsd: metricsRef.current?.totalFeesUsd || 0,
-        totalFeesAces: metricsRef.current?.totalFeesAces || '0',
-        liquidityUsd: wsMetrics.liquidityUsd ?? metricsRef.current?.liquidityUsd ?? null,
-        liquiditySource: wsMetrics.liquiditySource ?? metricsRef.current?.liquiditySource ?? null,
+        // Use WebSocket value if provided, otherwise keep previous value
+        volume24hUsd:
+          wsMetrics.volume24hUsd !== undefined
+            ? wsMetrics.volume24hUsd
+            : (previousMetrics?.volume24hUsd ?? 0),
+        volume24hAces:
+          wsMetrics.volume24hAces !== undefined && wsMetrics.volume24hAces !== null
+            ? wsMetrics.volume24hAces
+            : previousMetrics?.volume24hAces || '0',
+        marketCapUsd:
+          wsMetrics.marketCapUsd !== undefined
+            ? wsMetrics.marketCapUsd
+            : (previousMetrics?.marketCapUsd ?? 0),
+        tokenPriceUsd:
+          wsMetrics.currentPriceUsd !== undefined
+            ? wsMetrics.currentPriceUsd
+            : (previousMetrics?.tokenPriceUsd ?? 0),
+        holderCount: previousMetrics?.holderCount || 0,
+        totalFeesUsd: previousMetrics?.totalFeesUsd || 0,
+        totalFeesAces: previousMetrics?.totalFeesAces || '0',
+        // 🔥 FIX: Handle null explicitly for liquidity (null means no liquidity, undefined means no update)
+        liquidityUsd:
+          wsMetrics.liquidityUsd !== undefined
+            ? wsMetrics.liquidityUsd
+            : (previousMetrics?.liquidityUsd ?? null),
+        liquiditySource:
+          wsMetrics.liquiditySource !== undefined
+            ? wsMetrics.liquiditySource
+            : (previousMetrics?.liquiditySource ?? null),
       };
 
+      // 🔥 FIX: Always update state to trigger re-render
+      // This ensures React detects changes from WebSocket partial updates
       setMetrics(updatedMetrics);
       metricsRef.current = updatedMetrics;
 
-      // Update individual state values
-      if (wsMetrics.currentPriceUsd !== undefined && wsMetrics.currentPriceUsd > 0) {
-        setCurrentPriceUsd(wsMetrics.currentPriceUsd);
+      // 🔥 FIX: Update individual state values with sticky behavior
+      // Zero values treated as "no data" - keep last positive value until new positive arrives
+      if (wsMetrics.currentPriceUsd !== undefined) {
+        setCurrentPriceUsd((prev) => {
+          const newPrice = wsMetrics.currentPriceUsd!;
+          // Accept positive values only (0 means no transactions yet = no data)
+          if (newPrice > 0) {
+            // Update metricsRef to stay in sync
+            if (metricsRef.current) {
+              metricsRef.current.tokenPriceUsd = newPrice;
+            }
+            return newPrice;
+          }
+          // If we had a previous value and now get 0, keep previous (sticky)
+          // If we never had a value (prev === 0), stay at 0 (no data yet)
+          return prev > 0 ? prev : 0;
+        });
       }
 
-      if (wsMetrics.marketCapUsd !== undefined && wsMetrics.marketCapUsd > 0) {
-        setMarketCapUsd(wsMetrics.marketCapUsd);
+      if (wsMetrics.marketCapUsd !== undefined) {
+        setMarketCapUsd((prev) => {
+          const newMcap = wsMetrics.marketCapUsd!;
+          if (newMcap > 0) {
+            // Update metricsRef to stay in sync
+            if (metricsRef.current) {
+              metricsRef.current.marketCapUsd = newMcap;
+            }
+            return newMcap;
+          }
+          return prev > 0 ? prev : 0;
+        });
       }
 
-      if (wsMetrics.circulatingSupply !== undefined && wsMetrics.circulatingSupply !== null) {
-        setCirculatingSupply(wsMetrics.circulatingSupply);
+      if (wsMetrics.circulatingSupply !== undefined) {
+        setCirculatingSupply((prev) => {
+          const newSupply = wsMetrics.circulatingSupply;
+          if (newSupply !== null && newSupply !== undefined && newSupply > 0) {
+            return newSupply;
+          }
+          // Keep previous positive value, or null if never had one
+          return prev !== null && prev > 0 ? prev : null;
+        });
       }
 
       // 🔥 NEW: Extract bonding data from WebSocket metrics
@@ -214,28 +283,27 @@ export function useTokenMetrics(
   }, [tokenAddress, wsConnected]);
 
   useEffect(() => {
+    // 🔥 CRITICAL FIX: Clear state immediately on token switch
+    setMetrics(null);
+    metricsRef.current = null;
+    setCirculatingSupply(null);
+    setCurrentPriceUsd(0);
+    setBondingData(null);
+    setMarketCapUsd(0);
+    setLoading(true); // Show loading during transition
+    setError(null);
+
+    // 🔥 CRITICAL FIX: Reset timestamp ref so all updates are accepted
+    lastUpdateTimestampRef.current = 0;
+
     if (!tokenAddress) {
-      setMetrics(null);
-      metricsRef.current = null;
-      setCirculatingSupply(null);
-      setCurrentPriceUsd(0);
-      setBondingData(null);
-      setMarketCapUsd(0);
       setLoading(false);
-      setError(null);
       return;
     }
 
-    // Initial fetch only if WebSocket is not connected
-    // WebSocket hook handles its own initial fetch
-    if (!wsConnected) {
-      fetchMetrics();
-
-      // Poll every refreshIntervalMs only if WebSocket is not connected
-      const interval = setInterval(fetchMetrics, refreshIntervalMs);
-
-      return () => clearInterval(interval);
-    }
+    // 🔥 REMOVED: No more polling here
+    // useRealtimeMetrics hook handles all WebSocket + fallback polling exclusively
+    // Keeping fetchMetrics function available only for explicit manual refetch if needed
   }, [tokenAddress, refreshIntervalMs, fetchMetrics, wsConnected]);
 
   useEffect(() => {

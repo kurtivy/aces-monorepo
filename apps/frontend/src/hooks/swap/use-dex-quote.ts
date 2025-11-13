@@ -92,25 +92,25 @@ export function useDexQuote({
       setLoading(true);
       setError(null);
 
-      console.log('[useDexQuote] 🔄 Fetching quote...', {
-        tokenAddress,
-        amount,
-        paymentAsset,
-        activeTab,
-        slippageBps,
-      });
+      // console.log('[useDexQuote] 🔄 Fetching quote...', {
+      //   tokenAddress,
+      //   amount,
+      //   paymentAsset,
+      //   activeTab,
+      //   slippageBps,
+      // });
 
       // Determine input asset based on tab
       // On Sell tab: selling the token for ACES
       // On Buy tab: buying the token with ACES/USDC/USDT/wETH
       const inputAsset = activeTab === 'sell' ? 'TOKEN' : paymentAsset;
 
-      console.log('[useDexQuote] 📤 Calling DexApi.getQuote with:', {
-        tokenAddress,
-        inputAsset,
-        amount,
-        slippageBps,
-      });
+      // console.log('[useDexQuote] 📤 Calling DexApi.getQuote with:', {
+      //   tokenAddress,
+      //   inputAsset,
+      //   amount,
+      //   slippageBps,
+      // });
 
       const result = await DexApi.getQuote(tokenAddress!, {
         inputAsset,
@@ -118,24 +118,24 @@ export function useDexQuote({
         slippageBps,
       });
 
-      console.log('[useDexQuote] 📥 API Response:', result);
+      // console.log('[useDexQuote] 📥 API Response:', result);
 
       // Check if request was cancelled
       if (cancelledRef.current || myId !== requestIdRef.current) {
-        console.log('[useDexQuote] Request cancelled, ignoring result');
+        // console.log('[useDexQuote] Request cancelled, ignoring result');
         return;
       }
 
       if (result.success && result.data) {
         setQuote(result.data);
         setError(null);
-        console.log('[useDexQuote] ✅ Quote fetched successfully:', {
-          inputAsset,
-          expectedOutput: result.data.expectedOutput,
-          path: result.data.path,
-          routes: result.data.routes,
-          fullData: result.data,
-        });
+        // console.log('[useDexQuote] ✅ Quote fetched successfully:', {
+        //   inputAsset,
+        //   expectedOutput: result.data.expectedOutput,
+        //   path: result.data.path,
+        //   routes: result.data.routes,
+        //   fullData: result.data,
+        // });
       } else {
         setQuote(null);
         const errorMessage =
@@ -150,7 +150,7 @@ export function useDexQuote({
       }
     } catch (error) {
       if (cancelledRef.current) {
-        console.log('[useDexQuote] Request cancelled during error handling');
+        // console.log('[useDexQuote] Request cancelled during error handling');
         return;
       }
 

@@ -714,6 +714,12 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
 
           currentSymbolRef.current = chartSymbol;
 
+          // 🔥 CRITICAL FIX: Pass widget reference to datafeed so it can force realtime mode
+          if (datafeedRef.current && typeof datafeedRef.current.setWidget === 'function') {
+            datafeedRef.current.setWidget(widgetRef.current);
+            console.log('[TradingView] ✅ Widget reference passed to datafeed');
+          }
+
           widgetRef.current.onChartReady(() => {
             if (isCancelled) {
               console.log('[TradingView] Chart ready callback - cancelled');
@@ -725,12 +731,116 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
               heightPx,
               minHeightPx,
             });
-            console.log('[TradingView] 🎯 Chart is now ready to receive data. If no data appears, check:');
+            console.log(
+              '[TradingView] 🎯 Chart is now ready to receive data. If no data appears, check:',
+            );
             console.log('[TradingView] 1. Network tab for /api/v1/chart/ requests');
             console.log('[TradingView] 2. Console for [UnifiedDatafeed] getBars logs');
             console.log('[TradingView] 3. Any 404 or 500 errors from the API');
             setIsReinitializing(false);
             createCustomButtons();
+
+            // 🔍 Diagnostic hooks to understand realtime behavior directly from the widget
+            try {
+              const widgetInstance = widgetRef.current;
+              const getChart =
+                widgetInstance && typeof widgetInstance.activeChart === 'function'
+                  ? widgetInstance.activeChart
+                  : widgetInstance?.chart;
+              const chart =
+                widgetInstance && typeof getChart === 'function'
+                  ? getChart.call(widgetInstance)
+                  : null;
+
+              if (!chart) {
+                console.warn(
+                  '[TradingView] ⚠️ Unable to attach realtime diagnostics - chart missing',
+                );
+              } else {
+                if (typeof chart.dataReady === 'function') {
+                  chart.dataReady(() => {
+                    try {
+                      if (typeof chart.subscribe === 'function') {
+                        chart.subscribe('onRealtimeTick', () => {
+                          try {
+                            const visibleRange =
+                              typeof chart.getVisibleRange === 'function'
+                                ? chart.getVisibleRange()
+                                : null;
+                            console.log('[TradingView] 🛰️ Realtime tick received by widget', {
+                              isRealtimeEnabled:
+                                typeof chart.isRealtimeEnabled === 'function'
+                                  ? chart.isRealtimeEnabled()
+                                  : 'unknown',
+                              visibleRange,
+                            });
+                          } catch (realtimeError) {
+                            console.warn(
+                              '[TradingView] ⚠️ Realtime diagnostics (subscribe) failed:',
+                              realtimeError,
+                            );
+                          }
+                        });
+                      } else {
+                        const availableMethods = Object.keys(chart).filter(
+                          (key) => typeof (chart as any)[key] === 'function',
+                        );
+                        console.warn(
+                          '[TradingView] ⚠️ chart.subscribe unavailable for diagnostics',
+                          { availableMethods },
+                        );
+                        const widgetHasSubscribe = typeof widgetInstance?.subscribe === 'function';
+                        if (widgetHasSubscribe) {
+                          console.log(
+                            '[TradingView] 🛰️ Falling back to widget.subscribe diagnostics',
+                          );
+                          widgetInstance!.subscribe('onRealtimeTick', () => {
+                            try {
+                              const visibleRange =
+                                typeof chart.getVisibleRange === 'function'
+                                  ? chart.getVisibleRange()
+                                  : null;
+                              console.log('[TradingView] 🛰️ Realtime tick (widget fallback)', {
+                                isRealtimeEnabled:
+                                  typeof chart.isRealtimeEnabled === 'function'
+                                    ? chart.isRealtimeEnabled()
+                                    : 'unknown',
+                                visibleRange,
+                              });
+                            } catch (fallbackError) {
+                              console.warn(
+                                '[TradingView] ⚠️ Widget fallback diagnostics failed:',
+                                fallbackError,
+                              );
+                            }
+                          });
+                        }
+                      }
+
+                      if (typeof chart.onVisibleRangeChanged === 'function') {
+                        chart.onVisibleRangeChanged(
+                          null,
+                          (range: { from: number; to: number } | null) => {
+                            console.log('[TradingView] 👀 Visible range changed:', range);
+                          },
+                        );
+                      }
+                    } catch (diagError) {
+                      console.warn(
+                        '[TradingView] ⚠️ Realtime diagnostics setup failed:',
+                        diagError,
+                      );
+                    }
+                  });
+                } else {
+                  console.warn(
+                    '[TradingView] ⚠️ chart.dataReady unavailable, skipping diagnostics',
+                  );
+                }
+              }
+            } catch (diagError) {
+              console.warn('[TradingView] ⚠️ Failed to set up realtime diagnostics', diagError);
+            }
           });
         } catch (err) {
           if (isCancelled) {

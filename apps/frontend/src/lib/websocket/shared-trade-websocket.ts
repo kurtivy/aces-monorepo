@@ -90,17 +90,17 @@ class SharedTradeWebSocketManager {
       state.statusCallbacks.set(subscriberId, onStatusChange);
     }
 
-    console.log(
-      `[SharedTradeWS] ✅ Subscriber added for ${tokenAddress}: ${subscriberId} (total: ${state.subscribers.size}, tradeCallbacks: ${state.tradeCallbacks.size})`,
-      {
-        subscriberId,
-        tokenAddress,
-        hasTradeCallback: !!onTrade,
-        hasStatusCallback: !!onStatusChange,
-        totalSubscribers: state.subscribers.size,
-        totalTradeCallbacks: state.tradeCallbacks.size,
-      },
-    );
+    // console.log(
+    //   `[SharedTradeWS] ✅ Subscriber added for ${tokenAddress}: ${subscriberId} (total: ${state.subscribers.size}, tradeCallbacks: ${state.tradeCallbacks.size})`,
+    //   {
+    //     subscriberId,
+    //     tokenAddress,
+    //     hasTradeCallback: !!onTrade,
+    //     hasStatusCallback: !!onStatusChange,
+    //     totalSubscribers: state.subscribers.size,
+    //     totalTradeCallbacks: state.tradeCallbacks.size,
+    //   },
+    // );
 
     // Connect if not already connected
     if (!state.ws || state.ws.readyState === WebSocket.CLOSED) {
@@ -150,11 +150,11 @@ class SharedTradeWebSocketManager {
 
     const wsUrl = `${wsBaseUrl}/api/v1/ws/trades/${tokenAddress}`;
 
-    console.log(
-      `[SharedTradeWS] 🔌 Connecting to ${wsUrl} for ${state.subscribers.size} subscribers`,
-    );
-    console.log(`[SharedTradeWS] WebSocket base URL: ${wsBaseUrl}`);
-    console.log(`[SharedTradeWS] Token address: ${tokenAddress}`);
+    // console.log(
+    //   `[SharedTradeWS] 🔌 Connecting to ${wsUrl} for ${state.subscribers.size} subscribers`,
+    // );
+    // console.log(`[SharedTradeWS] WebSocket base URL: ${wsBaseUrl}`);
+    // console.log(`[SharedTradeWS] Token address: ${tokenAddress}`);
 
     // Notify subscribers we're connecting
     for (const callback of state.statusCallbacks.values()) {
@@ -166,7 +166,7 @@ class SharedTradeWebSocketManager {
       ws = new WebSocket(wsUrl);
       state.ws = ws;
 
-      console.log(`[SharedTradeWS] WebSocket instance created, readyState: ${ws.readyState}`);
+      // console.log(`[SharedTradeWS] WebSocket instance created, readyState: ${ws.readyState}`);
     } catch (error) {
       console.error(`[SharedTradeWS] ❌ Failed to create WebSocket:`, error);
       for (const callback of state.statusCallbacks.values()) {
@@ -180,7 +180,7 @@ class SharedTradeWebSocketManager {
     }
 
     ws.onopen = () => {
-      console.log(`[SharedTradeWS] ✅ WebSocket opened for ${tokenAddress}`);
+      // console.log(`[SharedTradeWS] ✅ WebSocket opened for ${tokenAddress}`);
       state.reconnectAttempt = 0;
       state.lastMessageTime = Date.now();
 
@@ -222,18 +222,18 @@ class SharedTradeWebSocketManager {
         // 🔥 PHASE 2: Handle heartbeat ping/pong
         state.lastMessageTime = Date.now();
 
-        console.log(`[SharedTradeWS] 📨 Received message for ${tokenAddress}:`, message.type);
+        // console.log(`[SharedTradeWS] 📨 Received message for ${tokenAddress}:`, message.type);
 
         // 🔥 PHASE 2: Handle server pings - respond with pong
         if (message.type === 'ping') {
-          console.log(`[SharedTradeWS] 💓 Received server ping for ${tokenAddress}`);
+          // console.log(`[SharedTradeWS] 💓 Received server ping for ${tokenAddress}`);
           state.totalPings++;
 
           try {
             ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
             state.lastPongTime = Date.now();
             state.missedPongs = 0; // Reset on successful pong
-            console.log(`[SharedTradeWS] 🏓 Responded with pong for ${tokenAddress}`);
+            // console.log(`[SharedTradeWS] 🏓 Responded with pong for ${tokenAddress}`);
           } catch (error) {
             console.error(`[SharedTradeWS] ❌ Failed to send pong for ${tokenAddress}:`, error);
           }
@@ -244,9 +244,9 @@ class SharedTradeWebSocketManager {
         // 🔥 PHASE 2: Acknowledge pong from server (if we sent client-initiated ping)
         if (message.type === 'pong') {
           const rtt = message.timestamp ? Date.now() - message.timestamp : 0;
-          console.log(
-            `[SharedTradeWS] 🏓 Received pong from server for ${tokenAddress} (RTT: ${rtt}ms)`,
-          );
+          // console.log(
+          //   `[SharedTradeWS] 🏓 Received pong from server for ${tokenAddress} (RTT: ${rtt}ms)`,
+          // );
           state.totalPongs++;
           state.lastPongTime = Date.now();
           state.missedPongs = 0;
@@ -255,15 +255,15 @@ class SharedTradeWebSocketManager {
 
         if (message.type === 'trade' && message.data) {
           // Broadcast trade to all subscribers
-          console.log(`[SharedTradeWS] 📊 Broadcasting trade for ${tokenAddress}:`, {
-            id: message.data.id,
-            source: message.data.source,
-            isBuy: message.data.isBuy,
-            tokenAmount: message.data.tokenAmount,
-            timestamp: message.data.timestamp,
-            subscriberCount: state.tradeCallbacks.size,
-            allSubscriberIds: Array.from(state.tradeCallbacks.keys()),
-          });
+          // console.log(`[SharedTradeWS] 📊 Broadcasting trade for ${tokenAddress}:`, {
+          //   id: message.data.id,
+          //   source: message.data.source,
+          //   isBuy: message.data.isBuy,
+          //   tokenAmount: message.data.tokenAmount,
+          //   timestamp: message.data.timestamp,
+          //   subscriberCount: state.tradeCallbacks.size,
+          //   allSubscriberIds: Array.from(state.tradeCallbacks.keys()),
+          // });
 
           if (state.tradeCallbacks.size === 0) {
             console.warn(`[SharedTradeWS] ⚠️ No subscribers to receive trade for ${tokenAddress}!`);
@@ -272,24 +272,24 @@ class SharedTradeWebSocketManager {
 
           let callbackIndex = 0;
           const callbacksArray = Array.from(state.tradeCallbacks.entries());
-          console.log(`[SharedTradeWS] 📋 Found ${callbacksArray.length} callbacks to execute`);
+          // console.log(`[SharedTradeWS] 📋 Found ${callbacksArray.length} callbacks to execute`);
 
           for (const [subscriberId, callback] of callbacksArray) {
             try {
-              console.log(
-                `[SharedTradeWS] 🔔 Calling callback ${callbackIndex + 1}/${callbacksArray.length} (subscriber: ${subscriberId.substring(0, 20)}...)`,
-              );
-              console.log(`[SharedTradeWS] Callback function:`, {
-                isFunction: typeof callback === 'function',
-                name: callback.name || 'anonymous',
-                toString: callback.toString().substring(0, 100),
-              });
+              // console.log(
+              //   `[SharedTradeWS] 🔔 Calling callback ${callbackIndex + 1}/${callbacksArray.length} (subscriber: ${subscriberId.substring(0, 20)}...)`,
+              // );
+              // console.log(`[SharedTradeWS] Callback function:`, {
+              //   isFunction: typeof callback === 'function',
+              //   name: callback.name || 'anonymous',
+              //   toString: callback.toString().substring(0, 100),
+              // });
 
               callback(message.data);
 
-              console.log(
-                `[SharedTradeWS] ✅ Callback ${callbackIndex + 1} executed successfully (subscriber: ${subscriberId.substring(0, 20)}...)`,
-              );
+              // console.log(
+              //   `[SharedTradeWS] ✅ Callback ${callbackIndex + 1} executed successfully (subscriber: ${subscriberId.substring(0, 20)}...)`,
+              // );
               callbackIndex++;
             } catch (error) {
               console.error(
@@ -304,10 +304,10 @@ class SharedTradeWebSocketManager {
             }
           }
 
-          console.log(`[SharedTradeWS] ✅ Finished broadcasting to ${callbackIndex} callbacks`);
+          // console.log(`[SharedTradeWS] ✅ Finished broadcasting to ${callbackIndex} callbacks`);
         } else if (message.type === 'subscribed') {
           // Backend confirmed subscriptions are active - connection is fully ready
-          console.log(`[SharedTradeWS] ✅ Subscribed confirmed for ${tokenAddress}:`, message.data);
+          // console.log(`[SharedTradeWS] ✅ Subscribed confirmed for ${tokenAddress}:`, message.data);
           for (const callback of state.statusCallbacks.values()) {
             callback({ isConnected: true, isConnecting: false, error: null });
           }
@@ -348,23 +348,23 @@ class SharedTradeWebSocketManager {
       const closeReason = event.reason || 'No reason provided';
       const wasClean = event.wasClean;
 
-      console.log(`[SharedTradeWS] 🔌 Closed for ${tokenAddress}:`, {
-        code: closeCode,
-        reason: closeReason,
-        wasClean,
-        subscribers: state.subscribers.size,
-        reconnectAttempt: state.reconnectAttempt,
-        // 🔥 PHASE 2: Connection health metrics
-        totalPings: state.totalPings,
-        totalPongs: state.totalPongs,
-        missedPongs: state.missedPongs,
-      });
+      // console.log(`[SharedTradeWS] 🔌 Closed for ${tokenAddress}:`, {
+      //   code: closeCode,
+      //   reason: closeReason,
+      //   wasClean,
+      //   subscribers: state.subscribers.size,
+      //   reconnectAttempt: state.reconnectAttempt,
+      //   // 🔥 PHASE 2: Connection health metrics
+      //   totalPings: state.totalPings,
+      //   totalPongs: state.totalPongs,
+      //   missedPongs: state.missedPongs,
+      // });
 
       // 🔥 PHASE 2: Clear pong monitoring interval
       if (state.pongCheckInterval) {
         clearInterval(state.pongCheckInterval);
         state.pongCheckInterval = null;
-        console.log(`[SharedTradeWS] ✅ Pong check interval cleared for ${tokenAddress}`);
+        // console.log(`[SharedTradeWS] ✅ Pong check interval cleared for ${tokenAddress}`);
       }
 
       // Clear the WebSocket reference
@@ -406,9 +406,9 @@ class SharedTradeWebSocketManager {
         const delay = Math.min(1000 * Math.pow(2, state.reconnectAttempt), 30000);
         state.reconnectAttempt++;
 
-        console.log(
-          `[SharedTradeWS] 🔄 Reconnecting in ${delay}ms (attempt ${state.reconnectAttempt}/${this.maxReconnectAttempts}) - ${state.subscribers.size} subscribers waiting`,
-        );
+        // console.log(
+        //   `[SharedTradeWS] 🔄 Reconnecting in ${delay}ms (attempt ${state.reconnectAttempt}/${this.maxReconnectAttempts}) - ${state.subscribers.size} subscribers waiting`,
+        // );
 
         state.reconnectTimeout = setTimeout(() => {
           // Double-check we still have subscribers before reconnecting
@@ -416,9 +416,9 @@ class SharedTradeWebSocketManager {
           if (currentState && currentState.subscribers.size > 0) {
             this.connect(tokenAddress);
           } else {
-            console.log(
-              `[SharedTradeWS] ⚠️ No subscribers remaining, skipping reconnect for ${tokenAddress}`,
-            );
+            // console.log(
+            //   `[SharedTradeWS] ⚠️ No subscribers remaining, skipping reconnect for ${tokenAddress}`,
+            // );
           }
         }, delay);
       } else if (state.subscribers.size === 0) {
@@ -439,7 +439,7 @@ class SharedTradeWebSocketManager {
           });
         }
       } else if (wasClean || closeCode === 1000 || closeCode === 1001) {
-        console.log(`[SharedTradeWS] ✅ Clean closure (code ${closeCode}), not reconnecting`);
+        // console.log(`[SharedTradeWS] ✅ Clean closure (code ${closeCode}), not reconnecting`);
       }
     };
   }
@@ -452,13 +452,13 @@ class SharedTradeWebSocketManager {
     state.tradeCallbacks.delete(subscriberId);
     state.statusCallbacks.delete(subscriberId);
 
-    console.log(
-      `[SharedTradeWS] Subscriber removed for ${tokenAddress}: ${subscriberId} (remaining: ${state.subscribers.size})`,
-    );
+    // console.log(
+    //   `[SharedTradeWS] Subscriber removed for ${tokenAddress}: ${subscriberId} (remaining: ${state.subscribers.size})`,
+    // );
 
     // If no more subscribers, close connection
     if (state.subscribers.size === 0) {
-      console.log(`[SharedTradeWS] No more subscribers for ${tokenAddress}, closing connection`);
+      // console.log(`[SharedTradeWS] No more subscribers for ${tokenAddress}, closing connection`);
 
       if (state.reconnectTimeout) {
         clearTimeout(state.reconnectTimeout);
@@ -495,9 +495,7 @@ class SharedTradeWebSocketManager {
   /**
    * 🔥 PHASE 2: Get connection health metrics for a token
    */
-  getHealthMetrics(
-    tokenAddress: string,
-  ): {
+  getHealthMetrics(tokenAddress: string): {
     isConnected: boolean;
     lastPongTime: number | null;
     missedPongs: number;

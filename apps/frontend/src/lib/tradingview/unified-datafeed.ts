@@ -126,6 +126,8 @@ export class UnifiedDatafeed implements IBasicDataFeed {
   private lastKnownAcesUsd: number | null = null;
   // Track last known token USD price by token address for fallbacks
   private lastKnownTokenPrice = new Map<string, number>();
+  // 🔥 NEW: Reference to TradingView widget for forcing realtime mode
+  private tradingViewWidget: any = null;
 
   constructor(config: UnifiedDatafeedConfig) {
     this.config = {
@@ -144,6 +146,102 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       window.addEventListener('beforeunload', () => {
         this.cleanup();
       });
+    }
+  }
+
+  /**
+   * Set the TradingView widget reference
+   * This allows the datafeed to force realtime mode when new candles arrive
+   */
+  public setWidget(widget: any): void {
+    this.tradingViewWidget = widget;
+    if (this.config.debug) {
+      console.log('[UnifiedDatafeed] Widget reference set');
+    }
+  }
+
+  /**
+   * Force the chart into realtime mode (auto-scroll to latest bar)
+   */
+  private forceRealtimeMode(): void {
+    if (!this.tradingViewWidget) {
+      if (this.config.debug) {
+        console.warn('[UnifiedDatafeed] ⚠️ Cannot force realtime mode - no widget reference');
+      }
+      return;
+    }
+
+    try {
+      // Get the active chart
+      const getChart =
+        typeof this.tradingViewWidget.activeChart === 'function'
+          ? this.tradingViewWidget.activeChart
+          : this.tradingViewWidget.chart;
+      const chart = typeof getChart === 'function' ? getChart.call(this.tradingViewWidget) : null;
+
+      if (!chart) {
+        if (this.config.debug) {
+          console.warn('[UnifiedDatafeed] ⚠️ Cannot force realtime mode - no chart instance');
+        }
+        return;
+      }
+
+      let methodSucceeded = false;
+
+      // Try multiple methods to force realtime mode (don't give up on first error)
+
+      // Method 1: executeActionById (standard approach)
+      if (!methodSucceeded && typeof chart.executeActionById === 'function') {
+        try {
+          chart.executeActionById('chart_realtime');
+          console.log('[UnifiedDatafeed] ✅ Forced realtime mode via executeActionById');
+          methodSucceeded = true;
+        } catch (e) {
+          if (this.config.debug) {
+            console.warn(
+              '[UnifiedDatafeed] Method 1 (executeActionById) failed, trying next method...',
+            );
+          }
+        }
+      }
+
+      // Method 2: Try scrollToRealtime if available
+      if (!methodSucceeded && typeof chart.scrollToRealtime === 'function') {
+        try {
+          chart.scrollToRealtime();
+          console.log('[UnifiedDatafeed] ✅ Forced realtime mode via scrollToRealtime');
+          methodSucceeded = true;
+        } catch (e) {
+          if (this.config.debug) {
+            console.warn(
+              '[UnifiedDatafeed] Method 2 (scrollToRealtime) failed, trying next method...',
+            );
+          }
+        }
+      }
+
+      // Method 3: Try setVisibleRange to force scroll to latest
+      if (!methodSucceeded && typeof chart.setVisibleRange === 'function') {
+        try {
+          const now = Date.now() / 1000;
+          const oneHourAgo = now - 3600;
+          chart.setVisibleRange({ from: oneHourAgo, to: now }, { percentRightMargin: 5 });
+          console.log('[UnifiedDatafeed] ✅ Forced realtime mode via setVisibleRange');
+          methodSucceeded = true;
+        } catch (e) {
+          if (this.config.debug) {
+            console.warn('[UnifiedDatafeed] Method 3 (setVisibleRange) failed:', e);
+          }
+        }
+      }
+
+      if (!methodSucceeded) {
+        console.warn(
+          '[UnifiedDatafeed] ⚠️ Could not force realtime mode - no working method available',
+        );
+      }
+    } catch (error) {
+      console.error('[UnifiedDatafeed] ❌ Unexpected error in forceRealtimeMode:', error);
     }
   }
 
@@ -172,6 +270,9 @@ export class UnifiedDatafeed implements IBasicDataFeed {
 
     // Clear candle builder
     this.candleBuilder.clear();
+
+    // Clear widget reference
+    this.tradingViewWidget = null;
   }
 
   // WebSocket connection management
@@ -879,23 +980,39 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       // Store last bar for WebSocket updates
       if (bars.length > 0 && symbolInfo.ticker) {
         const lastBar = bars[bars.length - 1];
-        this.lastBars.set(symbolInfo.ticker, lastBar);
 
-        const normalizedAddress = tokenAddress.toLowerCase();
-        if (Number.isFinite(lastBar.close) && (lastBar.close ?? 0) > 0) {
-          this.lastKnownTokenPrice.set(normalizedAddress, lastBar.close ?? 0);
+        // 🔥 CRITICAL FIX: Only update lastBars if this bar is NEWER than existing
+        // This prevents scroll-back historical data from overwriting the most recent bar
+        const currentLastBar = this.lastBars.get(symbolInfo.ticker);
+        if (!currentLastBar || lastBar.time >= currentLastBar.time) {
+          this.lastBars.set(symbolInfo.ticker, lastBar);
+
+          const normalizedAddress = tokenAddress.toLowerCase();
+          if (Number.isFinite(lastBar.close) && (lastBar.close ?? 0) > 0) {
+            this.lastKnownTokenPrice.set(normalizedAddress, lastBar.close ?? 0);
+          }
+
+          // 🔥 NEW: Seed candle builder with the latest candle
+          // This ensures continuity between REST API data and WebSocket updates
+          this.candleBuilder.seedCandle(timeframe, {
+            time: lastBar.time,
+            open: lastBar.open,
+            high: lastBar.high,
+            low: lastBar.low,
+            close: lastBar.close,
+            volume: lastBar.volume ?? 0,
+          });
+
+          console.log('[UnifiedDatafeed] 📌 Updated lastBars with newer bar:', {
+            time: new Date(lastBar.time as number).toISOString(),
+            close: lastBar.close,
+          });
+        } else {
+          console.log('[UnifiedDatafeed] ⏭️ Skipped older bar (from scroll-back):', {
+            newBarTime: new Date(lastBar.time as number).toISOString(),
+            existingBarTime: new Date(currentLastBar.time as number).toISOString(),
+          });
         }
-
-        // 🔥 NEW: Seed candle builder with the latest candle
-        // This ensures continuity between REST API data and WebSocket updates
-        this.candleBuilder.seedCandle(timeframe, {
-          time: lastBar.time,
-          open: lastBar.open,
-          high: lastBar.high,
-          low: lastBar.low,
-          close: lastBar.close,
-          volume: lastBar.volume ?? 0,
-        });
       }
 
       // 🔥 CACHING DISABLED FOR DEBUGGING
@@ -1100,6 +1217,22 @@ export class UnifiedDatafeed implements IBasicDataFeed {
 
         const volumeTokens = Number.isFinite(tokenAmount) && tokenAmount > 0 ? tokenAmount : 0;
 
+        // 🔥 DEBUG: Check timestamp format (behind debug flag)
+        const now = Date.now();
+        if (this.config.debug) {
+          console.log('[UnifiedDatafeed] 🔍 Trade timestamp check:', {
+            rawTimestamp: trade.timestamp,
+            rawTimestampISO: new Date(trade.timestamp).toISOString(),
+            currentTime: now,
+            currentTimeISO: new Date(now).toISOString(),
+            timeDiffMs: now - trade.timestamp,
+            timeDiffSeconds: Math.round((now - trade.timestamp) / 1000),
+            // Check if timestamp looks like seconds instead of milliseconds
+            looksLikeSeconds: trade.timestamp < 100000000000, // Before year 5138
+            looksLikeMilliseconds: trade.timestamp > 100000000000,
+          });
+        }
+
         // Convert to Trade format for candle builder
         const tradeData: Trade = {
           timestamp: trade.timestamp,
@@ -1110,14 +1243,25 @@ export class UnifiedDatafeed implements IBasicDataFeed {
 
         this.lastKnownTokenPrice.set(normalizedAddress, resolvedPriceUsd);
 
+        // 🔥 DEBUG: Monitor trade timing to diagnose time violations
+        const tradeAge = now - trade.timestamp;
+        if (tradeAge > 60000) {
+          // Trade is more than 1 minute old - log warning
+          console.warn('[UnifiedDatafeed] ⚠️ Old trade received:', {
+            ageSeconds: Math.round(tradeAge / 1000),
+            source: trade.source,
+          });
+        }
+
         // Process trade through candle builder
         this.candleBuilder.processTrade(tradeData);
 
         if (this.config.debug) {
-          console.log('[UnifiedDatafeed] 📊 Processed trade:', {
+          console.log('[UnifiedDatafeed] 📊 Trade processed:', {
             price: tradeData.price,
             volume: tradeData.volume,
             source: trade.source,
+            ageMs: tradeAge,
           });
         }
       },
@@ -1208,42 +1352,35 @@ export class UnifiedDatafeed implements IBasicDataFeed {
         });
       }
 
+      // Detect if this is a new candle (different time) vs update to existing candle
+      const isNewCandle = previousLastBar && previousLastBar.time !== bar.time;
+
       // Call TradingView's onTick callback
       // TradingView handles both:
       // 1. Updating existing candle if bar.time matches last bar.time
       // 2. Adding new candle if bar.time is after last bar.time
       try {
-        console.log('[UnifiedDatafeed] 📞 Calling onTick with bar:', {
-          time: bar.time,
-          timeISO: new Date(bar.time as number).toISOString(),
-          close: bar.close,
-          volume: bar.volume,
+        console.log('[UnifiedDatafeed] 📊 onTick sending bar:', {
+          time: new Date(bar.time as number).toISOString(),
+          type: isNewCandle ? 'NEW_CANDLE' : 'UPDATE',
           open: bar.open,
           high: bar.high,
           low: bar.low,
-          onTickType: typeof onTick,
-          updateType: previousLastBar?.time === bar.time ? 'UPDATE_EXISTING' : 'NEW_CANDLE',
+          close: bar.close,
+          volume: bar.volume,
+          isValid: Number.isFinite(bar.open) && Number.isFinite(bar.close),
         });
 
         onTick(bar);
 
-        if (this.config.debug) {
-          console.log('[UnifiedDatafeed] ✅ onTick called successfully');
-          console.log('[UnifiedDatafeed] 📈 Chart should update:', {
-            time: new Date(bar.time as number).toISOString(),
-            close: bar.close,
-            volume: bar.volume,
-            updateType:
-              previousLastBar?.time === bar.time ? 'Updated existing candle' : 'Added new candle',
-          });
+        // 🔥 CRITICAL FIX: Force chart into realtime mode when new candle arrives
+        // This prevents the chart from getting stuck showing old candles
+        if (isNewCandle) {
+          console.log('[UnifiedDatafeed] 🚀 New candle detected - forcing realtime mode');
+          this.forceRealtimeMode();
         }
       } catch (error) {
         console.error('[UnifiedDatafeed] ❌ Error calling onTick:', error);
-        console.error('[UnifiedDatafeed] Error details:', {
-          errorMessage: error instanceof Error ? error.message : String(error),
-          errorStack: error instanceof Error ? error.stack : 'No stack',
-          bar,
-        });
       }
     });
 
