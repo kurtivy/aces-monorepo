@@ -1,10 +1,10 @@
 /**
  * Rate Limit Enforcer
- * 
+ *
  * Proactively enforces rate limits by queuing or rejecting requests
  * when approaching external API limits. Works in conjunction with
  * RateLimitMonitor to prevent violations before they occur.
- * 
+ *
  * Key Features:
  * - Blocks requests at 90% capacity
  * - Queues requests with priority handling
@@ -36,7 +36,7 @@ export class RateLimitEnforcer extends EventEmitter {
   private monitor: RateLimitMonitor;
   private requestQueue: QueuedRequest[] = [];
   private processingInterval: NodeJS.Timeout | null = null;
-  
+
   // Stats
   private stats = {
     totalQueued: 0,
@@ -44,9 +44,9 @@ export class RateLimitEnforcer extends EventEmitter {
     totalRejected: 0,
     queueTimes: [] as number[],
   };
-  
+
   // Configuration
-  private readonly ENFORCEMENT_THRESHOLD = 0.90; // Start enforcing at 90%
+  private readonly ENFORCEMENT_THRESHOLD = 0.9; // Start enforcing at 90%
   private readonly QUEUE_PROCESS_INTERVAL_MS = 500; // Check queue every 500ms
   private readonly MAX_QUEUE_SIZE = 1000;
   private readonly DEFAULT_TIMEOUT_MS = 30000; // 30 seconds
@@ -59,7 +59,7 @@ export class RateLimitEnforcer extends EventEmitter {
 
   /**
    * Check if a request should be allowed
-   * 
+   *
    * @param service - Service name (bitquery, aerodrome, etc.)
    * @param priority - Request priority (default: 'normal')
    * @param timeoutMs - How long to wait in queue before rejecting (default: 30s)
@@ -68,27 +68,27 @@ export class RateLimitEnforcer extends EventEmitter {
   async checkRateLimit(
     service: string,
     priority: 'high' | 'normal' | 'low' = 'normal',
-    timeoutMs: number = this.DEFAULT_TIMEOUT_MS
+    timeoutMs: number = this.DEFAULT_TIMEOUT_MS,
   ): Promise<boolean> {
     const usage = this.monitor.getUsage(service);
-    
+
     // If service has no limit (e.g., Goldsky, QuickNode), always allow
     if (usage.limit === Infinity) {
       return true;
     }
-    
+
     const utilizationRatio = usage.current / usage.limit;
-    
+
     // Below enforcement threshold - allow immediately
     if (utilizationRatio < this.ENFORCEMENT_THRESHOLD) {
       return true;
     }
-    
+
     // At or above threshold - queue the request
     console.warn(
-      `[RateLimitEnforcer] Service ${service} at ${(utilizationRatio * 100).toFixed(1)}% capacity, queueing request (priority: ${priority})`
+      `[RateLimitEnforcer] Service ${service} at ${(utilizationRatio * 100).toFixed(1)}% capacity, queueing request (priority: ${priority})`,
     );
-    
+
     return this.queueRequest(service, priority, timeoutMs);
   }
 
@@ -98,7 +98,7 @@ export class RateLimitEnforcer extends EventEmitter {
   private queueRequest(
     service: string,
     priority: 'high' | 'normal' | 'low',
-    timeoutMs: number
+    timeoutMs: number,
   ): Promise<boolean> {
     return new Promise((resolve, reject) => {
       // Check queue size limit
@@ -106,7 +106,7 @@ export class RateLimitEnforcer extends EventEmitter {
         this.stats.totalRejected++;
         this.emit('queue_full', { service, queueSize: this.requestQueue.length });
         console.error(
-          `[RateLimitEnforcer] Queue full (${this.requestQueue.length}/${this.MAX_QUEUE_SIZE}), rejecting request for ${service}`
+          `[RateLimitEnforcer] Queue full (${this.requestQueue.length}/${this.MAX_QUEUE_SIZE}), rejecting request for ${service}`,
         );
         reject(new Error(`Rate limit queue full for ${service}`));
         return;
@@ -174,7 +174,7 @@ export class RateLimitEnforcer extends EventEmitter {
     // Process each service's queue
     for (const [service, requests] of requestsByService.entries()) {
       const usage = this.monitor.getUsage(service);
-      
+
       // Skip if no limit (unlimited services)
       if (usage.limit === Infinity) {
         continue;
@@ -184,20 +184,21 @@ export class RateLimitEnforcer extends EventEmitter {
 
       // If below threshold, process requests
       if (utilizationRatio < this.ENFORCEMENT_THRESHOLD) {
-        const availableCapacity = Math.floor(usage.limit * this.ENFORCEMENT_THRESHOLD) - usage.current;
+        const availableCapacity =
+          Math.floor(usage.limit * this.ENFORCEMENT_THRESHOLD) - usage.current;
         const toProcess = Math.min(availableCapacity, requests.length);
 
         for (let i = 0; i < toProcess; i++) {
           const request = requests[i];
           const queueTime = Date.now() - request.queuedAt;
-          
+
           this.stats.queueTimes.push(queueTime);
           if (this.stats.queueTimes.length > 100) {
             this.stats.queueTimes.shift(); // Keep last 100 measurements
           }
 
           this.stats.totalProcessed++;
-          
+
           // Remove from queue
           const index = this.requestQueue.indexOf(request);
           if (index !== -1) {
@@ -216,7 +217,7 @@ export class RateLimitEnforcer extends EventEmitter {
 
         if (toProcess > 0) {
           console.log(
-            `[RateLimitEnforcer] Processed ${toProcess} queued requests for ${service} (${this.requestQueue.length} remaining in queue)`
+            `[RateLimitEnforcer] Processed ${toProcess} queued requests for ${service} (${this.requestQueue.length} remaining in queue)`,
           );
         }
       }
@@ -317,8 +318,3 @@ export class RateLimitEnforcer extends EventEmitter {
     }));
   }
 }
-
-
-
-
-

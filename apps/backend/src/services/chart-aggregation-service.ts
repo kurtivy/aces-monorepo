@@ -600,6 +600,7 @@ export class ChartAggregationService {
     const pricesInAces = bucketTrades.map((t) => t.priceInAces);
     const pricesInUsd = bucketTrades.map((t) => t.priceInUsd);
 
+    // 🔥 CRITICAL: Log sell trades in candle buckets to diagnose missing candles
     // OHLC in ACES
     let openAces = pricesInAces[0];
     const closeAces = pricesInAces[pricesInAces.length - 1];
@@ -1079,15 +1080,6 @@ export class ChartAggregationService {
     const trades: Trade[] = [...bitQueryTradesConverted, ...dbTradesConverted].sort(
       (a, b) => a.timestamp.getTime() - b.timestamp.getTime(),
     );
-
-    if (trades.length > 0) {
-      console.log('[ChartAggregation] 📊 Sample DEX trade for candle creation:', {
-        timestamp: trades[0].timestamp.toISOString(),
-        priceInUsd: trades[0].priceInUsd,
-        priceInAces: trades[0].priceInAces,
-        amountToken: trades[0].amountToken,
-      });
-    }
 
     // 🔥 UPDATED: Use provided seed candle if available, otherwise fetch one
     let seedCandle: Candle | null = providedSeedCandle;
