@@ -61,6 +61,102 @@ export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
       let heartbeatInterval: NodeJS.Timeout | null = null;
       let lastMessageTime = Date.now();
 
+      // 🔥 NEW: Trade buffer for chronological ordering
+      // Buffers trades from multiple sources and sends them in timestamp order
+      interface BufferedTrade {
+        trade: TradeEvent;
+        receivedAt: number;
+        marketCap?: {
+          marketCapUsd: number;
+          currentPriceUsd: number | string;
+        };
+      }
+      const tradeBuffer: BufferedTrade[] = [];
+      const FLUSH_INTERVAL_MS = 100; // Flush buffer every 100ms
+      const MAX_BUFFER_AGE_MS = 500; // Max age before forcing flush (500ms)
+      let flushInterval: NodeJS.Timeout | null = null;
+      let lastFlushTime = Date.now();
+      let lastSentTimestamp = 0; // Track last sent trade timestamp for ordering
+
+      // Function to flush buffered trades in chronological order
+      const flushTradeBuffer = () => {
+        if (tradeBuffer.length === 0 || connection.socket.readyState !== 1) {
+          return;
+        }
+
+        // Sort by trade timestamp (chronological order)
+        tradeBuffer.sort((a, b) => a.trade.timestamp - b.trade.timestamp);
+
+        // Send trades that are in order (timestamp >= lastSentTimestamp)
+        const tradesToSend: BufferedTrade[] = [];
+        const tradesToKeep: BufferedTrade[] = [];
+
+        for (const bufferedTrade of tradeBuffer) {
+          if (bufferedTrade.trade.timestamp >= lastSentTimestamp) {
+            tradesToSend.push(bufferedTrade);
+            lastSentTimestamp = bufferedTrade.trade.timestamp;
+          } else {
+            // Trade is out of order - keep it for next flush (might be delayed)
+            const age = Date.now() - bufferedTrade.receivedAt;
+            if (age < MAX_BUFFER_AGE_MS) {
+              tradesToKeep.push(bufferedTrade);
+            } else {
+              // Too old, skip it (likely duplicate or very delayed)
+              console.warn(`[WS:Trades] ⚠️ Skipping out-of-order trade (too old):`, {
+                tradeId: bufferedTrade.trade.id,
+                tradeTimestamp: new Date(bufferedTrade.trade.timestamp).toISOString(),
+                lastSentTimestamp: new Date(lastSentTimestamp).toISOString(),
+                ageMs: age,
+              });
+            }
+          }
+        }
+
+        // Clear buffer and add back trades to keep
+        tradeBuffer.length = 0;
+        tradeBuffer.push(...tradesToKeep);
+
+        // Send trades in order
+        for (const bufferedTrade of tradesToSend) {
+          const message = JSON.stringify({
+            type: 'trade',
+            data: {
+              id: bufferedTrade.trade.id,
+              tokenAddress: bufferedTrade.trade.tokenAddress,
+              trader: bufferedTrade.trade.trader,
+              isBuy: bufferedTrade.trade.isBuy,
+              tokenAmount: bufferedTrade.trade.tokenAmount,
+              acesAmount: bufferedTrade.trade.acesAmount,
+              pricePerToken: bufferedTrade.trade.pricePerToken,
+              priceUsd: bufferedTrade.trade.priceUsd,
+              supply: bufferedTrade.trade.supply,
+              timestamp: bufferedTrade.trade.timestamp,
+              blockNumber: bufferedTrade.trade.blockNumber,
+              transactionHash: bufferedTrade.trade.transactionHash,
+              source: bufferedTrade.trade.dataSource,
+              // 🔥 NEW: Market cap data from single source of truth
+              marketCapUsd: bufferedTrade.marketCap?.marketCapUsd || 0,
+              currentPriceUsd: bufferedTrade.marketCap?.currentPriceUsd || bufferedTrade.trade.priceUsd || 0,
+            },
+            timestamp: Date.now(),
+          });
+
+          connection.socket.send(message);
+          lastMessageTime = Date.now();
+        }
+
+        if (tradesToSend.length > 0) {
+          console.log(
+            `[WS:Trades] ✅ Flushed ${tradesToSend.length} trades (chronological order), ${tradeBuffer.length} remaining in buffer`,
+          );
+        }
+
+        lastFlushTime = Date.now();
+      };
+
+      // Start periodic flush
+      flushInterval = setInterval(flushTradeBuffer, FLUSH_INTERVAL_MS);
+
       try {
         // 🔥 NEW: Send historical BitQuery trades from database (last 100)
         try {
@@ -76,27 +172,52 @@ export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
 
           for (const trade of historicalTrades) {
             if (connection.socket.readyState === 1) {
-              connection.socket.send(
-                JSON.stringify({
-                  type: 'trade',
-                  data: {
-                    id: trade.txHash,
-                    tokenAddress: trade.tokenAddress,
-                    trader: trade.trader,
-                    isBuy: trade.isBuy,
-                    tokenAmount: trade.tokenAmount,
-                    acesAmount: trade.acesAmount,
-                    pricePerToken: trade.priceInAces.toString(),
-                    priceUsd: trade.priceInUsd?.toString() || null,
-                    supply: '0', // Not stored in database
-                    timestamp: Number(trade.timestamp),
-                    blockNumber: trade.blockNumber,
-                    transactionHash: trade.txHash,
-                    source: 'bitquery',
-                  },
-                  timestamp: Date.now(),
-                }),
-              );
+              const tradeTimestamp = Number(trade.timestamp);
+              
+              // 🔥 NEW: Fetch market cap for historical trades
+              let marketCapUsd = 0;
+              let currentPriceUsd = parseFloat(trade.priceInUsd?.toString() || '0');
+              
+              try {
+                if (fastify.marketCapService) {
+                  const freshMarketCap = await fastify.marketCapService.getMarketCap(
+                    tokenAddress,
+                    8453,
+                  );
+                  marketCapUsd = freshMarketCap.marketCapUsd;
+                  currentPriceUsd = freshMarketCap.currentPriceUsd;
+                }
+              } catch (mcError) {
+                console.warn(`[WS:Trades] ⚠️ Failed to fetch market cap for historical trade:`, mcError);
+                // Use trade price as fallback
+                currentPriceUsd = parseFloat(trade.priceInUsd?.toString() || '0');
+              }
+              
+              const message = JSON.stringify({
+                type: 'trade',
+                data: {
+                  id: trade.txHash,
+                  tokenAddress: trade.tokenAddress,
+                  trader: trade.trader,
+                  isBuy: trade.isBuy,
+                  tokenAmount: trade.tokenAmount,
+                  acesAmount: trade.acesAmount,
+                  pricePerToken: trade.priceInAces.toString(),
+                  priceUsd: trade.priceInUsd?.toString() || null,
+                  supply: '0', // Not stored in database
+                  timestamp: tradeTimestamp,
+                  blockNumber: trade.blockNumber,
+                  transactionHash: trade.txHash,
+                  source: 'bitquery',
+                  // 🔥 NEW: Market cap data from single source of truth
+                  marketCapUsd,
+                  currentPriceUsd,
+                },
+                timestamp: Date.now(),
+              });
+
+              connection.socket.send(message);
+              lastSentTimestamp = Math.max(lastSentTimestamp, tradeTimestamp);
             }
           }
 
@@ -109,7 +230,7 @@ export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
         // Subscribe to trades from both Goldsky and BitQuery
         const subscriptionIds = await adapterManager.subscribeToTrades(
           tokenAddress,
-          (trade: TradeEvent) => {
+          async (trade: TradeEvent) => {
             // 🔍 DEBUG: Log incoming trade
             console.log(`[WS:Trades] 📥 Received trade for ${tokenAddress}:`, {
               id: trade.id,
@@ -119,36 +240,46 @@ export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
               timestamp: new Date(trade.timestamp).toISOString(),
             });
 
-            // Send trade to client
-            if (connection.socket.readyState === 1) {
-              // OPEN
-              const message = JSON.stringify({
-                type: 'trade',
-                data: {
-                  id: trade.id,
-                  tokenAddress: trade.tokenAddress,
-                  trader: trade.trader,
-                  isBuy: trade.isBuy,
-                  tokenAmount: trade.tokenAmount,
-                  acesAmount: trade.acesAmount,
-                  pricePerToken: trade.pricePerToken,
-                  priceUsd: trade.priceUsd,
-                  supply: trade.supply,
-                  timestamp: trade.timestamp,
-                  blockNumber: trade.blockNumber,
-                  transactionHash: trade.transactionHash,
-                  source: trade.dataSource,
-                },
-                timestamp: Date.now(),
-              });
+            // 🔥 NEW: Fetch current market cap data
+            // This provides real-time market cap updates alongside trades
+            let marketCapData = {
+              marketCapUsd: 0,
+              currentPriceUsd: trade.priceUsd || 0,
+            };
 
-              connection.socket.send(message);
-              lastMessageTime = Date.now(); // Update last message time
-              console.log(`[WS:Trades] ✅ Sent trade to client for ${tokenAddress}`);
-            } else {
+            try {
+              if (fastify.marketCapService) {
+                const freshMarketCap = await fastify.marketCapService.getMarketCap(
+                  tokenAddress,
+                  8453, // Base chain
+                );
+                marketCapData = {
+                  marketCapUsd: freshMarketCap.marketCapUsd,
+                  currentPriceUsd: freshMarketCap.currentPriceUsd,
+                };
+              }
+            } catch (mcError) {
               console.warn(
-                `[WS:Trades] ⚠️ Socket not open (state: ${connection.socket.readyState}), cannot send trade`,
+                `[WS:Trades] ⚠️ Failed to fetch market cap for ${tokenAddress}:`,
+                mcError,
               );
+              // Fallback to trade price if market cap service fails
+              marketCapData.currentPriceUsd = trade.priceUsd || 0;
+            }
+
+            // 🔥 NEW: Buffer trade instead of sending immediately
+            // This ensures chronological order across multiple sources
+            // Now includes market cap data
+            tradeBuffer.push({
+              trade,
+              receivedAt: Date.now(),
+              marketCap: marketCapData,
+            });
+
+            // Force flush if buffer is getting large or trade is very recent
+            const bufferAge = Date.now() - lastFlushTime;
+            if (tradeBuffer.length >= 10 || bufferAge >= MAX_BUFFER_AGE_MS) {
+              flushTradeBuffer();
             }
           },
         );
@@ -243,6 +374,21 @@ export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
             console.log(`[WS:Trades] ✅ Heartbeat interval cleared`);
           }
 
+          // 🔥 CLEANUP: Clear flush interval and flush remaining trades
+          if (flushInterval) {
+            clearInterval(flushInterval);
+            flushInterval = null;
+            console.log(`[WS:Trades] ✅ Flush interval cleared`);
+          }
+
+          // Flush any remaining buffered trades before disconnect
+          if (tradeBuffer.length > 0) {
+            flushTradeBuffer();
+            console.log(
+              `[WS:Trades] ✅ Flushed ${tradeBuffer.length} remaining trades before disconnect`,
+            );
+          }
+
           // Unsubscribe from all trade sources
           for (const subId of subscriptionIds) {
             try {
@@ -307,6 +453,12 @@ export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
         if (heartbeatInterval) {
           clearInterval(heartbeatInterval);
           heartbeatInterval = null;
+        }
+
+        // 🔥 CLEANUP: Clear flush interval on error
+        if (flushInterval) {
+          clearInterval(flushInterval);
+          flushInterval = null;
         }
 
         connection.socket.send(

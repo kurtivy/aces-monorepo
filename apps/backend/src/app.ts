@@ -34,6 +34,7 @@ import { bondingRoutes } from './routes/v1/bonding';
 import { bondingDataRoutes } from './routes/v1/bonding-data';
 import { pricesRoutes } from './routes/v1/prices';
 import { chartUnifiedRoutes } from './routes/v1/chart-unified';
+import { marketCapRoutes } from './routes/v1/market-cap';
 
 // GoldSky webhook for historical price tracking
 import { goldskyWebhookRoutes } from './routes/webhooks/goldsky';
@@ -223,6 +224,17 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   );
   fastify.decorate('chartAggregationService', chartAggregationService);
 
+  // Market Cap Service - Single Source of Truth
+  const { MarketCapService } = await import('./services/market-cap-service');
+  const marketCapService = new MarketCapService(
+    prisma,
+    bitQueryService,
+    acesUsdPriceService,
+    provider,
+  );
+  fastify.decorate('marketCapService', marketCapService);
+  console.log('✅ Market Cap Service initialized');
+
   // Register custom plugins
   fastify.register(registerAuth);
 
@@ -340,6 +352,10 @@ export const buildApp = async (): Promise<FastifyInstance> => {
 
   // Register new unified chart route
   fastify.register(chartUnifiedRoutes);
+  
+  // Register market cap routes (single source of truth)
+  fastify.register(marketCapRoutes);
+  
   fastify.register(debugRoutes);
 
   // Register GoldSky webhook routes (NO AUTH - uses webhook secret verification)

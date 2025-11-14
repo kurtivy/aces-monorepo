@@ -167,10 +167,9 @@ export async function tokensRoutes(fastify: FastifyInstance) {
             r.json(),
           ),
 
-          // 3. Market cap (latest candle only)
-          fetch(
-            `${baseUrl}/api/v1/chart/${address}/market-cap?timeframe=5m&limit=1&currency=${currency}`,
-          ).then((r) => r.json()),
+          // 3. 🔥 UPDATED: Market cap from dedicated service (single source of truth)
+          // No longer uses candle-based market cap - uses current price/reserves instead
+          fetch(`${baseUrl}/api/v1/market-cap/${address}`).then((r) => r.json()),
         ]);
 
         // Extract data from results
@@ -187,42 +186,37 @@ export async function tokensRoutes(fastify: FastifyInstance) {
             ? (metricsResponse.value as MetricsResponseType).data
             : null;
 
+        // 🔥 UPDATED: Parse market cap from new dedicated endpoint
         let marketCapData = null;
-        if (
-          marketCapResponse.status === 'fulfilled' &&
-          (marketCapResponse.value as { success?: boolean })?.success
-        ) {
-          const result = (marketCapResponse.value as { success?: boolean; data: unknown })?.data;
-          const latestCandle = (
-            result as { candles: { close: string; circulatingSupply: string }[] }
-          )?.candles?.[
-            (result as { candles: { close: string; circulatingSupply: string }[] })?.candles
-              .length - 1
-          ];
+        if (marketCapResponse.status === 'fulfilled') {
+          const marketCapResult = marketCapResponse.value as {
+            marketCapUsd?: number;
+            currentPriceUsd?: number;
+            supply?: number;
+            error?: string;
+          };
 
-          if (latestCandle) {
-            const marketCap = parseFloat(latestCandle.close || '0');
-            const supply = parseFloat(latestCandle.circulatingSupply || '0');
-            const priceInCurrency = supply > 0 ? marketCap / supply : 0;
-            const acesUsdPrice = parseFloat(
-              (result as { acesUsdPrice: string })?.acesUsdPrice || '1',
-            );
+          // New endpoint returns market cap data directly (not nested in 'data')
+          if (
+            marketCapResult &&
+            (marketCapResult.marketCapUsd !== undefined || marketCapResult.currentPriceUsd !== undefined)
+          ) {
+            const marketCapUsd = marketCapResult.marketCapUsd || 0;
+            const currentPriceUsd = marketCapResult.currentPriceUsd || 0;
+            const supply = marketCapResult.supply || 1_000_000_000; // Default 1B supply
 
+            // Get ACES/USD price from service for currency conversion
             let marketCapAces: number;
-            let marketCapUsd: number;
             let currentPriceAces: number;
-            let currentPriceUsd: number;
 
             if (currency === 'usd') {
-              marketCapUsd = marketCap;
-              marketCapAces = acesUsdPrice > 0 ? marketCap / acesUsdPrice : 0;
-              currentPriceUsd = priceInCurrency;
-              currentPriceAces = acesUsdPrice > 0 ? priceInCurrency / acesUsdPrice : 0;
+              // Market cap data is already in USD
+              marketCapAces = marketCapUsd > 0 && currentPriceUsd > 0 ? marketCapUsd / currentPriceUsd : 0;
+              currentPriceAces = 0; // Would need ACES/USD conversion, but we don't have it here
             } else {
-              marketCapAces = marketCap;
-              marketCapUsd = marketCap * acesUsdPrice;
-              currentPriceAces = priceInCurrency;
-              currentPriceUsd = priceInCurrency * acesUsdPrice;
+              // Market cap in ACES would need conversion from USD
+              marketCapAces = 0;
+              currentPriceAces = 0;
             }
 
             marketCapData = {

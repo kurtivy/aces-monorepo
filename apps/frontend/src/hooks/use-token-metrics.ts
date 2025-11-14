@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { TokenMetrics } from '@/lib/api/tokens';
 import { fetchTokenHealth } from '@/lib/api/token-health';
-import { subscribeToMarketCapUpdates } from '@/lib/tradingview/market-cap-events';
 import { useRealtimeMetrics } from '@/hooks/websocket/use-realtime-metrics';
 
 interface BondingDataSubset {
@@ -306,37 +305,10 @@ export function useTokenMetrics(
     // Keeping fetchMetrics function available only for explicit manual refetch if needed
   }, [tokenAddress, refreshIntervalMs, fetchMetrics, wsConnected]);
 
-  useEffect(() => {
-    if (!tokenAddress) {
-      return;
-    }
-
-    const normalizedAddress = tokenAddress.toLowerCase();
-
-    const unsubscribe = subscribeToMarketCapUpdates((update) => {
-      if (update.tokenAddress !== normalizedAddress) {
-        return;
-      }
-
-      if (Number.isFinite(update.marketCapUsd) && update.marketCapUsd > 0) {
-        setMarketCapUsd(update.marketCapUsd);
-      }
-
-      if (
-        update.currentPriceUsd !== undefined &&
-        Number.isFinite(update.currentPriceUsd) &&
-        update.currentPriceUsd > 0
-      ) {
-        setCurrentPriceUsd(update.currentPriceUsd);
-      }
-
-      // 🔥 FIX: Removed circulatingSupply update to prevent flickering
-      // Only use backend RPC polling (SOURCE 1) as single source of truth
-      // Chart datafeed events can have stale/inconsistent values causing oscillation
-    });
-
-    return unsubscribe;
-  }, [tokenAddress]);
+  // 🔥 REMOVED: Chart event subscription
+  // Previously subscribed to subscribeToMarketCapUpdates which caused fluctuation
+  // Now using only WebSocket metrics from useRealtimeMetrics + REST fallback
+  // Both already include market cap from dedicated MarketCapService (single source of truth)
 
   return {
     metrics,

@@ -32,7 +32,10 @@ declare module 'fastify' {
     authenticate: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
     // 🚀 Phase 1-3: WebSocket Gateway Architecture
     adapterManager?: import('../services/websocket/adapter-manager').AdapterManager;
-    // Legacy services (kept for backward compatibility, but unused)
+    // Services
+    bitQueryService?: import('../services/bitquery-service').BitQueryService;
+    acesUsdPriceService?: import('../services/aces-usd-price-service').AcesUsdPriceService;
+    marketCapService?: import('../services/market-cap-service').MarketCapService;
     chartAggregationService?: any;
     tokenMetadataCache?: any;
     acesSnapshotCache?: any;
