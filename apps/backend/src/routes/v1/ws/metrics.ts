@@ -70,9 +70,7 @@ class Trade24hAggregator {
     const after = this.trades.length;
 
     if (before > after) {
-      console.log(
-        `[Trade24hAggregator] 🧹 Pruned ${before - after} old trades (older than 24h)`,
-      );
+      console.log(`[Trade24hAggregator] 🧹 Pruned ${before - after} old trades (older than 24h)`);
     }
   }
 
@@ -98,6 +96,23 @@ class Trade24hAggregator {
   getTradeCount(): number {
     this.pruneOldTrades();
     return this.trades.length;
+  }
+
+  /**
+   * Seed aggregator with historical trades (for initialization)
+   * More efficient than calling addTrade() for each historical trade
+   */
+  seedHistoricalTrades(
+    trades: Array<{
+      timestamp: number;
+      acesAmount: number;
+      usdAmount: number;
+    }>,
+  ): void {
+    // Add all historical trades at once
+    this.trades.push(...trades);
+    // Prune any that are already older than 24h
+    this.pruneOldTrades();
   }
 
   /**
@@ -131,7 +146,8 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
   // 🔥 NEW: Shared initial fetch cache to prevent thundering herd
   // Key: tokenAddress, Value: Promise<HealthResult>
   const initialFetchCache = new Map<string, Promise<any>>();
-  const INITIAL_FETCH_CACHE_TTL = 5000; // 5 seconds - short cache for initial fetches
+  const INITIAL_FETCH_CACHE_TTL = 30000; // 🔥 OPTIMIZATION: 30 seconds cache to reduce BitQuery calls
+  // Extended from 5s to 30s to handle burst of WebSocket connections without hitting BitQuery API
 
   /**
    * WebSocket: Subscribe to real-time metrics for a specific token
@@ -175,11 +191,12 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
       // 🔥 NEW: Initialize trade aggregator for real-time volume calculation
       const tradeAggregator = new Trade24hAggregator();
       let acesUsdPrice = 1; // Default fallback
+      let useDbVolume = false; // Track if we're using DB volume to avoid BitQuery calls
 
       // Fetch initial metrics from REST API
       const fetchInitialMetrics = async () => {
         const cacheKey = tokenAddress.toLowerCase();
-        
+
         // 🔥 NEW: Check if another connection is already fetching for this token
         const existingFetch = initialFetchCache.get(cacheKey);
         if (existingFetch) {
@@ -280,11 +297,12 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
           if (healthResult.success && healthResult.data) {
             const { bondingData, metricsData, marketCapData } = healthResult.data;
 
-            // Extract metrics from health response
+            // Extract metrics from health response (volume will be set later after DB check)
             if (metricsData) {
               currentMetrics.marketCapUsd = metricsData.marketCapUsd;
-              currentMetrics.volume24hUsd = metricsData.volume24hUsd;
-              currentMetrics.volume24hAces = metricsData.volume24hAces;
+              // 🔥 OPTIMIZATION: Don't set volume here - will be set after DB volume check
+              // currentMetrics.volume24hUsd = metricsData.volume24hUsd;
+              // currentMetrics.volume24hAces = metricsData.volume24hAces;
               currentMetrics.liquidityUsd = metricsData.liquidityUsd;
               currentMetrics.liquiditySource = metricsData.liquiditySource;
             }
@@ -319,11 +337,140 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
             // Fetch from price cache service (same source as REST endpoint)
             try {
               const priceData = await priceCacheService.getPrices();
-              if (priceData.acesUsd && Number.isFinite(priceData.acesUsd) && priceData.acesUsd > 0) {
+              if (
+                priceData.acesUsd &&
+                Number.isFinite(priceData.acesUsd) &&
+                priceData.acesUsd > 0
+              ) {
                 acesUsdPrice = priceData.acesUsd;
               }
             } catch (error) {
               console.warn('[WS:Metrics] Failed to fetch ACES price, using default 1.0');
+            }
+
+            // 🔥 FIX: Seed Trade24hAggregator with historical trades from last 24h
+            // This prevents volume from dropping when new trades arrive (aggregator starts empty)
+            try {
+              const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000;
+              const historicalTrades = await fastify.prisma.dexTrade.findMany({
+                where: {
+                  tokenAddress: tokenAddress.toLowerCase(),
+                  timestamp: {
+                    gte: BigInt(twentyFourHoursAgo),
+                  },
+                },
+                orderBy: { timestamp: 'asc' },
+                take: 10000, // Reasonable limit to prevent memory issues
+              });
+
+              if (historicalTrades.length > 0) {
+                // Convert database trades to aggregator format
+                const seedTrades = historicalTrades
+                  .map((trade) => {
+                    const timestamp = Number(trade.timestamp);
+                    const acesAmount = parseFloat(trade.acesAmount || '0');
+                    const tokenAmount = parseFloat(trade.tokenAmount || '0');
+
+                    // Calculate USD amount - prefer priceInUsd from DB, fallback to ACES * current price
+                    let usdAmount = 0;
+                    if (
+                      trade.priceInUsd &&
+                      Number.isFinite(trade.priceInUsd) &&
+                      trade.priceInUsd > 0
+                    ) {
+                      // Use price at trade time (most accurate)
+                      usdAmount = trade.priceInUsd * tokenAmount;
+                    } else {
+                      // Fallback: calculate from ACES amount using current price
+                      usdAmount = acesAmount * acesUsdPrice;
+                    }
+
+                    return {
+                      timestamp,
+                      acesAmount: Number.isFinite(acesAmount) ? acesAmount : 0,
+                      usdAmount: Number.isFinite(usdAmount) ? usdAmount : 0,
+                    };
+                  })
+                  .filter((t) => t.timestamp > twentyFourHoursAgo); // Extra safety check
+
+                // Seed the aggregator with historical trades
+                tradeAggregator.seedHistoricalTrades(seedTrades);
+
+                // Recalculate volume from seeded aggregator
+                const { acesVolume, usdVolume } = tradeAggregator.getVolume24h();
+
+                // 🔥 OPTIMIZATION: Use database volume as baseline to avoid BitQuery API calls
+                // Only use REST volume if database volume is significantly incomplete (>10% difference)
+                // This prevents expensive BitQuery calls on every WebSocket connection
+                // With volumes in 10s-100s of thousands, 10% is still a significant threshold
+                const restVolumeUsd = metricsData?.volume24hUsd;
+                const restVolumeAces = metricsData?.volume24hAces;
+
+                if (restVolumeUsd !== undefined && restVolumeUsd > 0 && usdVolume > 0) {
+                  // Check if database volume is significantly incomplete
+                  const volumeDiff = Math.abs(usdVolume - restVolumeUsd);
+                  const volumeDiffPercent = (volumeDiff / restVolumeUsd) * 100;
+                  const THRESHOLD_PERCENT = 10; // Only use REST if DB is missing >10% of volume
+
+                  if (volumeDiffPercent > THRESHOLD_PERCENT) {
+                    // Database is significantly incomplete - use REST volume (BitQuery API)
+                    currentMetrics.volume24hUsd = restVolumeUsd;
+                    currentMetrics.volume24hAces = restVolumeAces || acesVolume.toString();
+
+                    console.log(
+                      `[WS:Metrics] ⚠️ DB volume incomplete (${volumeDiffPercent.toFixed(1)}% diff). ` +
+                        `Using REST volume: $${restVolumeUsd.toFixed(2)} USD (DB: $${usdVolume.toFixed(2)} USD)`,
+                    );
+                  } else {
+                    // Database volume is accurate enough - use it to avoid BitQuery calls
+                    currentMetrics.volume24hAces = acesVolume.toString();
+                    currentMetrics.volume24hUsd = usdVolume;
+                    useDbVolume = true; // Mark that we're using DB volume
+
+                    console.log(
+                      `[WS:Metrics] ✅ Using DB volume: $${usdVolume.toFixed(2)} USD ` +
+                        `(REST: $${restVolumeUsd.toFixed(2)} USD, ${volumeDiffPercent.toFixed(1)}% diff - within threshold)`,
+                    );
+                  }
+                } else if (usdVolume > 0) {
+                  // Use database volume if REST unavailable
+                  currentMetrics.volume24hAces = acesVolume.toString();
+                  currentMetrics.volume24hUsd = usdVolume;
+                  useDbVolume = true; // Mark that we're using DB volume
+
+                  console.log(
+                    `[WS:Metrics] ✅ Using DB volume: ${acesVolume.toFixed(2)} ACES / $${usdVolume.toFixed(2)} USD`,
+                  );
+                } else if (restVolumeUsd !== undefined && restVolumeUsd > 0) {
+                  // Fallback: use REST volume if database has no trades
+                  currentMetrics.volume24hUsd = restVolumeUsd;
+                  currentMetrics.volume24hAces = restVolumeAces || '0';
+
+                  console.log(
+                    `[WS:Metrics] ⚠️ No DB trades found, using REST volume: $${restVolumeUsd.toFixed(2)} USD`,
+                  );
+                }
+              } else {
+                // No historical trades in DB - use REST volume as fallback
+                if (metricsData?.volume24hUsd !== undefined && metricsData.volume24hUsd > 0) {
+                  currentMetrics.volume24hUsd = metricsData.volume24hUsd;
+                  currentMetrics.volume24hAces = metricsData.volume24hAces || '0';
+                  console.log(
+                    `[WS:Metrics] ℹ️ No DB trades found, using REST volume: $${metricsData.volume24hUsd.toFixed(2)} USD`,
+                  );
+                }
+                console.log(
+                  '[WS:Metrics] ℹ️ No historical trades found in last 24h to seed aggregator',
+                );
+              }
+            } catch (error) {
+              console.error('[WS:Metrics] ⚠️ Failed to seed historical trades:', error);
+              // Fallback: use REST volume if DB query failed
+              if (metricsData?.volume24hUsd !== undefined && metricsData.volume24hUsd > 0) {
+                currentMetrics.volume24hUsd = metricsData.volume24hUsd;
+                currentMetrics.volume24hAces = metricsData.volume24hAces || '0';
+              }
+              // Continue without seeding - aggregator will accumulate trades from now on
             }
 
             // Send initial metrics
@@ -434,7 +581,9 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
 
             // Debug logging (can be disabled in production)
             if (process.env.DEBUG_METRICS) {
-              console.log(`[WS:Metrics] 📊 Trade added - Volume: ${acesVolume.toFixed(2)} ACES / $${usdVolume.toFixed(2)} USD (${tradeAggregator.getTradeCount()} trades in buffer)`);
+              console.log(
+                `[WS:Metrics] 📊 Trade added - Volume: ${acesVolume.toFixed(2)} ACES / $${usdVolume.toFixed(2)} USD (${tradeAggregator.getTradeCount()} trades in buffer)`,
+              );
             }
           },
         );
@@ -446,7 +595,7 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
             tokenAddress,
             async (status: BondingStatusEvent) => {
               // 🔥 NEW: Real-time liquidity + supply updates
-              
+
               // 1. Update circulating supply immediately from bonding event
               if (status.supply) {
                 const supply = parseFloat(status.supply);
@@ -459,7 +608,7 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
               try {
                 const tokenService = new TokenService(fastify.prisma);
                 const bonding = await tokenService.getBondingCurveLiquidity(tokenAddress);
-                
+
                 // Convert liquidity from Wei to proper units
                 const liquidityAces = bonding.netLiquidityWei.div(new Decimal(10).pow(18));
                 const liquidityUsd = liquidityAces.mul(new Decimal(acesUsdPrice));
@@ -632,7 +781,11 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
                   currentMetrics.marketCapUsd = metricsData.marketCapUsd;
                   updated = true;
                 }
+                // 🔥 OPTIMIZATION: Skip volume updates in periodic refresh if using DB volume
+                // This prevents overwriting DB-based volume with REST volume (which triggers BitQuery)
+                // Volume is already being updated in real-time from the aggregator
                 if (
+                  !useDbVolume &&
                   metricsData.volume24hUsd !== undefined &&
                   metricsData.volume24hUsd !== currentMetrics.volume24hUsd
                 ) {
@@ -658,7 +811,11 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
 
               if (bondingData?.currentSupply) {
                 const supply = parseFloat(bondingData.currentSupply);
-                if (Number.isFinite(supply) && supply > 0 && supply !== currentMetrics.circulatingSupply) {
+                if (
+                  Number.isFinite(supply) &&
+                  supply > 0 &&
+                  supply !== currentMetrics.circulatingSupply
+                ) {
                   currentMetrics.circulatingSupply = supply;
                   updated = true;
                 }
@@ -768,4 +925,3 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 };
-
