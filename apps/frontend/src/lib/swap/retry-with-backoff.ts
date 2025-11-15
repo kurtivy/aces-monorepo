@@ -1,9 +1,9 @@
 /**
  * Exponential Backoff with Jitter
- * 
+ *
  * Retries failed requests with exponentially increasing delays plus random jitter.
  * This prevents thundering herd problems when rate limits are hit.
- * 
+ *
  * Key Features:
  * - Exponential backoff (delay doubles each retry)
  * - Random jitter (prevents synchronized retries)
@@ -38,20 +38,17 @@ interface RetryResult<T> {
 /**
  * Calculate delay with exponential backoff and jitter
  */
-function calculateDelay(
-  attempt: number,
-  config: RetryConfig,
-): number {
+function calculateDelay(attempt: number, config: RetryConfig): number {
   // Exponential backoff: delay = initialDelay * 2^attempt
   const exponentialDelay = config.initialDelayMs * Math.pow(2, attempt);
-  
+
   // Cap at max delay
   const cappedDelay = Math.min(exponentialDelay, config.maxDelayMs);
-  
+
   // Add jitter: random value between (1 - jitter) and (1 + jitter)
   const jitterRange = cappedDelay * config.jitterFactor;
   const jitter = (Math.random() * 2 - 1) * jitterRange;
-  
+
   return Math.max(0, cappedDelay + jitter);
 }
 
@@ -95,16 +92,16 @@ export async function retryWithBackoff<T>(
       if (attempt > 0) {
         const delay = calculateDelay(attempt - 1, finalConfig);
         totalDelay += delay;
-        
+
         console.log(
           `[RetryWithBackoff] Attempt ${attempt + 1}/${finalConfig.maxRetries + 1} after ${delay.toFixed(0)}ms delay`,
         );
-        
+
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
 
       const data = await requestFn();
-      
+
       if (attempt > 0) {
         console.log(
           `[RetryWithBackoff] ✅ Success after ${attempt} ${attempt === 1 ? 'retry' : 'retries'}`,
@@ -119,7 +116,7 @@ export async function retryWithBackoff<T>(
       };
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
-      
+
       // Check if we should retry
       const shouldRetry = isRetryableError(error, finalConfig);
       const hasRetriesLeft = attempt < finalConfig.maxRetries;
@@ -179,5 +176,3 @@ export const RetryPresets = {
     jitterFactor: 0.4,
   },
 };
-
-

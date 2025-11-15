@@ -1,10 +1,10 @@
 /**
  * Request Deduplicator
- * 
+ *
  * Prevents duplicate concurrent API requests by sharing the same Promise
  * for identical requests. This is critical when multiple users or components
  * request the same quote simultaneously.
- * 
+ *
  * Example: If 10 users are viewing the same token and typing amounts,
  * we only make 1 API request instead of 10.
  */
@@ -37,17 +37,14 @@ export class RequestDeduplicator<T> {
    * Execute request with deduplication
    * If an identical request is already in-flight, return that Promise instead
    */
-  async execute(
-    params: Record<string, any>,
-    requestFn: () => Promise<T>,
-  ): Promise<T> {
+  async execute(params: Record<string, any>, requestFn: () => Promise<T>): Promise<T> {
     const key = this.generateKey(params);
     const existing = this.pending.get(key);
 
     // Check if we have a pending request
     if (existing) {
       const age = Date.now() - existing.timestamp;
-      
+
       // If request is still fresh, reuse it
       if (age < this.maxAge) {
         existing.refCount++;
@@ -101,13 +98,13 @@ export class RequestDeduplicator<T> {
     avgRefsPerRequest: number;
   } {
     let totalRefs = 0;
-    
+
     for (const pending of this.pending.values()) {
       totalRefs += pending.refCount;
     }
 
     const pendingCount = this.pending.size;
-    
+
     return {
       pendingCount,
       totalRefs,
@@ -120,5 +117,3 @@ export class RequestDeduplicator<T> {
 export const bondingQuoteDeduplicator = new RequestDeduplicator();
 export const dexQuoteDeduplicator = new RequestDeduplicator();
 export const multiHopQuoteDeduplicator = new RequestDeduplicator();
-
-

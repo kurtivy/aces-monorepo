@@ -80,11 +80,11 @@ export function useTokenMetrics(
         // This is a safeguard in case aggregator wasn't seeded properly
         volume24hUsd:
           wsMetrics.volume24hUsd !== undefined
-            ? (previousMetrics?.volume24hUsd !== undefined &&
+            ? previousMetrics?.volume24hUsd !== undefined &&
               previousMetrics.volume24hUsd > 0 &&
               wsMetrics.volume24hUsd < previousMetrics.volume24hUsd * 0.99 // Allow <1% drop for pruning
-                ? previousMetrics.volume24hUsd // Keep previous if significant drop detected
-                : wsMetrics.volume24hUsd)
+              ? previousMetrics.volume24hUsd // Keep previous if significant drop detected
+              : wsMetrics.volume24hUsd
             : (previousMetrics?.volume24hUsd ?? 0),
         volume24hAces:
           wsMetrics.volume24hAces !== undefined && wsMetrics.volume24hAces !== null
