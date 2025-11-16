@@ -20,6 +20,11 @@ export interface Candle {
   low: number;
   close: number;
   volume: number;
+  // 🔥 NEW: Trade buffering for VWAP and chronological sorting
+  trades: Trade[]; // Store all trades for this candle
+  totalValue: number; // Σ(price × volume) for VWAP
+  isFinalized: boolean; // Whether candle is "closed" (no more late trades expected)
+  lastUpdateTime: number; // 🔥 NEW: When this candle was last updated (for emission buffering)
 }
 
 export type CandleUpdateCallback = (candle: Candle) => void;
@@ -29,11 +34,20 @@ export class RealtimeCandleBuilder {
   private callbacks = new Map<string, CandleUpdateCallback[]>();
   private lastClosePrices = new Map<string, number>(); // key = timeframe, value = last candle close price
   // 🔥 NEW: Time-driven emission - timers for each active timeframe
-  private timeframeTimers = new Map<string, NodeJS.Timeout>();
+  private timeframeTimers = new Map<string, ReturnType<typeof setInterval>>();
   // Track which candles are synthetic (no real trades yet)
   private syntheticCandles = new Set<string>(); // key = timeframe:candleTime
+  // 🔥 NEW: Track most recent candle time sent to avoid time violations
+  private mostRecentCandleTimeSent = new Map<string, number>(); // key = timeframe, value = candleTime
+  // 🔥 NEW: Emission buffer timer - checks for candles ready to emit
+  private emissionTimer: ReturnType<typeof setInterval> | null = null;
+  // 🔥 NEW: Emission buffer delay (5 seconds)
+  private readonly EMISSION_DELAY_MS = 5000;
 
-  constructor(private debug = false) {}
+  constructor(private debug = false) {
+    // Start the emission buffer timer
+    this.startEmissionTimer();
+  }
 
   /**
    * Subscribe to candle updates for a specific timeframe
@@ -77,7 +91,11 @@ export class RealtimeCandleBuilder {
   processTrade(trade: Trade): void {
     // Update all active timeframes
     for (const timeframe of this.callbacks.keys()) {
-      this.updateCandle(timeframe, trade);
+      try {
+        this.updateCandle(timeframe, trade);
+      } catch (error) {
+        console.error(`[CandleBuilder] ❌ Error updating ${timeframe}:`, error);
+      }
     }
   }
 
@@ -111,23 +129,13 @@ export class RealtimeCandleBuilder {
       }
     }
 
-    // 🔥 UPDATED: Allow trades within a reasonable time window from NOW
-    // Increased from 15 to 30 minutes to handle BitQuery/Goldsky delays
+    // Reject trades older than 15 minutes to prevent cascading stale data
     const now = Date.now();
-    const thirtyMinutesAgo = now - 30 * 60 * 1000; // 1800 seconds
+    const fifteenMinutesAgo = now - 15 * 60 * 1000;
 
-    // Reject trades older than 30 minutes to prevent cascading stale data
-    if (trade.timestamp < thirtyMinutesAgo) {
+    if (trade.timestamp < fifteenMinutesAgo) {
       console.warn(
-        `[CandleBuilder] ❌ REJECTED: Very old ${timeframe} trade`,
-        {
-          tradeTime: new Date(trade.timestamp).toISOString(),
-          currentTime: new Date(now).toISOString(),
-          ageMinutes: Math.round((now - trade.timestamp) / 60000),
-          reason: 'TOO_OLD (>30min)',
-          price: trade.price,
-          volume: trade.volume,
-        },
+        `[CandleBuilder] ⚠️ Skipped very old ${timeframe} trade (trade: ${new Date(trade.timestamp).toISOString()}, now: ${new Date(now).toISOString()})`,
       );
       return;
     }
@@ -136,36 +144,14 @@ export class RealtimeCandleBuilder {
     if (trade.timestamp > now + 60000) {
       // 1 minute in the future
       console.warn(
-        `[CandleBuilder] ❌ REJECTED: Future ${timeframe} trade`,
-        {
-          tradeTime: new Date(trade.timestamp).toISOString(),
-          currentTime: new Date(now).toISOString(),
-          futureSeconds: Math.round((trade.timestamp - now) / 1000),
-          reason: 'FUTURE_TIMESTAMP',
-          price: trade.price,
-          volume: trade.volume,
-        },
+        `[CandleBuilder] ⚠️ Skipped future ${timeframe} trade (trade: ${new Date(trade.timestamp).toISOString()}, now: ${new Date(now).toISOString()})`,
       );
       return;
     }
 
-    // Additional check: prevent trades that would create candles MUCH older than most recent
-    // This allows 1 interval of latency but not more
-    const oneIntervalAgo = mostRecentCandleTime - intervalMs;
-    if (mostRecentCandleTime > 0 && candleTime < oneIntervalAgo) {
-      console.warn(
-        `[CandleBuilder] ❌ REJECTED: Out-of-order ${timeframe} trade`,
-        {
-          tradeTime: new Date(candleTime).toISOString(),
-          mostRecentCandleTime: new Date(mostRecentCandleTime).toISOString(),
-          intervalsBehind: Math.round((mostRecentCandleTime - candleTime) / intervalMs),
-          reason: 'OUT_OF_ORDER (>1 interval behind)',
-          price: trade.price,
-          volume: trade.volume,
-        },
-      );
-      return;
-    }
+    // 🔥 REMOVED: The "1 interval latency" check was too aggressive
+    // With 5s emission buffer + Bitquery delays, trades can legitimately be 2+ intervals old
+    // The emission buffer's time violation check handles this properly
 
     const key = `${timeframe}:${candleTime}`;
     let candle = this.currentCandles.get(key);
@@ -176,89 +162,143 @@ export class RealtimeCandleBuilder {
       const previousClosePrice = this.lastClosePrices.get(timeframe);
       const openPrice = previousClosePrice !== undefined ? previousClosePrice : trade.price;
 
-      // New candle - create it with proper OHLC continuity
+      // 🔥 NEW: Initialize candle with trade buffer for VWAP
       candle = {
         time: candleTime,
         open: openPrice, // Use previous candle's close as new open
         high: trade.price,
         low: trade.price,
-        close: trade.price,
+        close: trade.price, // Will be recalculated as VWAP when more trades arrive
         volume: trade.volume,
+        // New fields for VWAP
+        trades: [trade],
+        totalValue: trade.price * trade.volume,
+        isFinalized: false,
+        lastUpdateTime: Date.now(), // 🔥 NEW: Track when candle was last updated
       };
       this.currentCandles.set(key, candle);
 
-      console.log(
-        `[CandleBuilder] ✅ NEW ${timeframe} candle created`,
-        {
-          candleTime: new Date(candleTime).toISOString(),
-          tradeTime: new Date(trade.timestamp).toISOString(),
-          open: openPrice.toFixed(8),
-          close: trade.price.toFixed(8),
-          volume: trade.volume.toFixed(4),
-          hasPreviousClose: previousClosePrice !== undefined,
-        },
-      );
+      console.log(`[CandleBuilder] ✅ NEW ${timeframe} candle created`, {
+        candleTime: new Date(candleTime).toISOString(),
+        tradeTime: new Date(trade.timestamp).toISOString(),
+        open: openPrice.toFixed(8),
+        close: trade.price.toFixed(8),
+        volume: trade.volume.toFixed(4),
+        hasPreviousClose: previousClosePrice !== undefined,
+      });
     } else if (isSynthetic) {
       // 🔥 NEW: Update synthetic candle with real trade data
       // Keep the open (which was set to previous close), but update OHLC with real prices
-      candle.high = Math.max(candle.open, trade.price);
-      candle.low = Math.min(candle.open, trade.price);
-      candle.close = trade.price;
-      candle.volume = trade.volume; // Replace 0 volume with real volume
+      candle.trades.push(trade);
+      candle.totalValue += trade.price * trade.volume;
+      candle.volume += trade.volume;
+
+      // Recalculate OHLC with sorted trades
+      const sortedPrices = candle.trades.map((t) => t.price);
+      candle.high = Math.max(candle.open, ...sortedPrices);
+      candle.low = Math.min(candle.open, ...sortedPrices);
+
+      // 🔥 VWAP for close price
+      candle.close = candle.volume > 0 ? candle.totalValue / candle.volume : candle.open;
 
       // Mark as no longer synthetic
       this.syntheticCandles.delete(key);
 
-      console.log(
-        `[CandleBuilder] ✅ SYNTHETIC→REAL ${timeframe} candle updated`,
-        {
-          candleTime: new Date(candleTime).toISOString(),
-          tradeTime: new Date(trade.timestamp).toISOString(),
-          open: candle.open.toFixed(8),
-          close: candle.close.toFixed(8),
-          volume: candle.volume.toFixed(4),
-        },
-      );
-    } else {
-      // Update existing real candle
-      const wasUpdated =
-        candle.high !== Math.max(candle.high, trade.price) ||
-        candle.low !== Math.min(candle.low, trade.price) ||
-        candle.close !== trade.price;
-
-      candle.high = Math.max(candle.high, trade.price);
-      candle.low = Math.min(candle.low, trade.price);
-      candle.close = trade.price;
-      candle.volume += trade.volume;
-
-      if (this.debug || wasUpdated) {
-        console.log(
-          `[CandleBuilder] ✅ UPDATED ${timeframe} candle`,
-          {
-            candleTime: new Date(candleTime).toISOString(),
-            tradeTime: new Date(trade.timestamp).toISOString(),
-            OHLCV: `${candle.open.toFixed(8)} / ${candle.high.toFixed(8)} / ${candle.low.toFixed(8)} / ${candle.close.toFixed(8)} / ${candle.volume.toFixed(4)}`,
-            priceChanged: wasUpdated,
-          },
-        );
+      if (this.debug) {
+        console.log(`[CandleBuilder] 🔄 Converted synthetic to real candle:`, {
+          trades: candle.trades.length,
+          vwapClose: candle.close,
+          candleTime: new Date(candle.time).toISOString(),
+        });
       }
+    } else {
+      // 🔥 CRITICAL FIX: Check if candle is finalized first
+      if (candle.isFinalized) {
+        console.error(`[CandleBuilder] ❌ TRADE REJECTED - Candle is finalized!`, {
+          candleTime: new Date(candle.time).toISOString(),
+          tradeTime: new Date(trade.timestamp).toISOString(),
+          tradeType: trade.isBuy ? 'BUY' : 'SELL',
+          price: trade.price,
+          volume: trade.volume,
+          timeframe,
+          ageMinutes: Math.round((Date.now() - candle.time) / 60000),
+        });
+        return;
+      }
+
+      // Update existing real candle with VWAP calculation
+      candle.trades.push(trade);
+
+      // Sort trades chronologically
+      candle.trades.sort((a, b) => a.timestamp - b.timestamp);
+
+      // Recalculate OHLC from sorted trades
+      const sortedPrices = candle.trades.map((t) => t.price);
+
+      // 🔥 CRITICAL: Open should NEVER change after initial creation
+      // Open was set when candle was created, don't recalculate it!
+      // (Keep existing candle.open value)
+
+      // High/Low from all trades
+      candle.high = Math.max(candle.open, ...sortedPrices);
+      candle.low = Math.min(candle.open, ...sortedPrices);
+
+      // 🔥 VWAP for close price
+      candle.totalValue = candle.trades.reduce((sum, t) => sum + t.price * t.volume, 0);
+      candle.volume = candle.trades.reduce((sum, t) => sum + t.volume, 0);
+      candle.close = candle.volume > 0 ? candle.totalValue / candle.volume : candle.open;
     }
 
     // Store this candle's close price for potential future use
     this.lastClosePrices.set(timeframe, candle.close);
 
-    // Notify subscribers
-    const callbacks = this.callbacks.get(timeframe) || [];
-    for (const callback of callbacks) {
-      try {
-        callback({ ...candle }); // Send a copy
-      } catch (error) {
-        console.error('[CandleBuilder] Error in callback:', error);
-      }
-    }
+    // 🔥 NEW: Update lastUpdateTime for emission buffering
+    candle.lastUpdateTime = Date.now();
+
+    // 🔥 NEW: Don't emit immediately - let the emission timer handle it
+    // This allows late trades to arrive and be included before emission
 
     // Clean up old candles (keep last 1000)
     this.cleanupOldCandles(timeframe, candleTime, 1000);
+
+    // 🔥 NOTE: Finalization is now handled by the emission timer
+    // Candles are finalized AFTER emission, not before
+  }
+
+  /**
+   * 🔥 NEW: Finalize old candles to prevent late-arriving trades from modifying them
+   * Also frees memory by clearing trade buffers
+   */
+  private finalizeOldCandles(timeframe: string): void {
+    const now = Date.now();
+    const finalizationDelay = 3 * 60 * 1000; // 3 minutes - reasonable buffer for Bitquery delays
+
+    const prefix = `${timeframe}:`;
+    let finalizedCount = 0;
+
+    for (const [key, candle] of this.currentCandles.entries()) {
+      if (!key.startsWith(prefix)) continue;
+
+      const candleAge = now - candle.time;
+
+      // Finalize candles older than 3 minutes
+      if (!candle.isFinalized && candleAge > finalizationDelay) {
+        candle.isFinalized = true;
+        candle.trades = []; // Free memory - we no longer need the trade list
+        finalizedCount++;
+
+        if (this.debug) {
+          console.log(`[CandleBuilder] 🔒 Finalized ${timeframe} candle:`, {
+            candleTime: new Date(candle.time).toISOString(),
+            ageMinutes: Math.round(candleAge / 60000),
+          });
+        }
+      }
+    }
+
+    if (finalizedCount > 0 && this.debug) {
+      console.log(`[CandleBuilder] Finalized ${finalizedCount} ${timeframe} candles`);
+    }
   }
 
   /**
@@ -326,7 +366,14 @@ export class RealtimeCandleBuilder {
    */
   seedCandle(timeframe: string, candle: Candle): void {
     const key = `${timeframe}:${candle.time}`;
-    this.currentCandles.set(key, { ...candle });
+    // 🔥 NEW: Ensure seeded candles have VWAP fields initialized
+    const seededCandle: Candle = {
+      ...candle,
+      trades: candle.trades || [],
+      totalValue: candle.totalValue || 0,
+      isFinalized: candle.isFinalized || false,
+    };
+    this.currentCandles.set(key, seededCandle);
 
     // 🔥 NEW: Store the close price for next candle continuity
     this.lastClosePrices.set(timeframe, candle.close);
@@ -339,12 +386,129 @@ export class RealtimeCandleBuilder {
   }
 
   /**
+   * 🔥 NEW: Start the emission buffer timer
+   * Checks every 500ms for candles that are ready to emit
+   */
+  private startEmissionTimer(): void {
+    this.emissionTimer = setInterval(() => {
+      this.checkAndEmitBufferedCandles();
+    }, 500); // Check twice per second for responsiveness
+  }
+
+  /**
+   * 🔥 NEW: Check all candles and emit those that have aged past the buffer delay
+   */
+  private checkAndEmitBufferedCandles(): void {
+    const now = Date.now();
+
+    // Group candles by timeframe
+    const candlesByTimeframe = new Map<string, Candle[]>();
+
+    for (const [key, candle] of this.currentCandles.entries()) {
+      const timeframe = key.split(':')[0];
+      if (!candlesByTimeframe.has(timeframe)) {
+        candlesByTimeframe.set(timeframe, []);
+      }
+      candlesByTimeframe.get(timeframe)!.push(candle);
+    }
+
+    // Process each timeframe
+    for (const [timeframe, candles] of candlesByTimeframe.entries()) {
+      // Sort by time (oldest first) - CRITICAL: Maintain chronological order to prevent time violations
+      const sortedCandles = candles.sort((a, b) => a.time - b.time);
+
+      // 🔥 CRITICAL FIX: Always process candles in chronological order
+      // The mostRecentSent check below will handle skipping old candles
+      for (const candle of sortedCandles) {
+        // Check if candle is old enough to emit
+        const timeSinceUpdate = now - candle.lastUpdateTime;
+        const candleAge = now - candle.time;
+
+        // Emit if either:
+        // 1. It's been EMISSION_DELAY_MS since last update (no new trades for 5s)
+        // 2. The candle is older than EMISSION_DELAY_MS (handles late trades within window)
+        const shouldEmit =
+          timeSinceUpdate >= this.EMISSION_DELAY_MS || candleAge >= this.EMISSION_DELAY_MS;
+
+        if (shouldEmit && !candle.isFinalized) {
+          // Check time violation before emitting
+          const mostRecentSent = this.mostRecentCandleTimeSent.get(timeframe) || 0;
+
+          // 🔥 CRITICAL: Allow re-emitting the SAME candle with updates (currentBucket)
+          // Only block candles OLDER than mostRecentSent
+          if (candle.time < mostRecentSent) {
+            // This is an OLD candle (from previous bucket), skip it
+            console.warn('[CandleBuilder] ⏮️ Buffered candle too old to emit:', {
+              timeframe,
+              candleTime: new Date(candle.time).toISOString(),
+              mostRecentSent: new Date(mostRecentSent).toISOString(),
+            });
+            continue;
+          }
+          // If candle.time === mostRecentSent, it's the current candle being updated - allow it!
+
+          // Calculate current bucket time for this timeframe
+          const intervalMs = this.getIntervalMs(timeframe);
+          const currentBucketTime = Math.floor(now / intervalMs) * intervalMs;
+
+          // 🔥 CRITICAL FIX: Only finalize candles from PREVIOUS time buckets
+          // This allows trades to continue updating the CURRENT candle
+          const isFromPreviousBucket = candle.time < currentBucketTime;
+
+          if (isFromPreviousBucket) {
+            // Mark as finalized - no more updates allowed
+            candle.isFinalized = true;
+          }
+          // else: Don't finalize yet - it's the current bucket, keep accepting trades
+
+          // 🔥 CRITICAL FIX: Always update mostRecentSent to maintain chronological order
+          // This prevents time violations by ensuring we never emit older candles after newer ones
+          this.mostRecentCandleTimeSent.set(timeframe, candle.time);
+
+          // Emit to subscribers
+          const callbacks = this.callbacks.get(timeframe) || [];
+
+          for (const callback of callbacks) {
+            try {
+              callback({ ...candle }); // Send a copy
+            } catch (error) {
+              console.error('[CandleBuilder] Error in callback:', error);
+            }
+          }
+        }
+      }
+    }
+
+    // 🔥 Clean up very old finalized candles to free memory
+    this.cleanupFinalizedCandles();
+  }
+
+  /**
+   * 🔥 NEW: Clean up finalized candles older than 10 minutes to free memory
+   */
+  private cleanupFinalizedCandles(): void {
+    const now = Date.now();
+    const cleanupThreshold = 10 * 60 * 1000; // 10 minutes
+
+    for (const [, candle] of this.currentCandles.entries()) {
+      if (candle.isFinalized) {
+        const candleAge = now - candle.time;
+        if (candleAge > cleanupThreshold) {
+          // Clear trades array to free memory
+          candle.trades = [];
+        }
+      }
+    }
+  }
+
+  /**
    * Clear all candles (useful when switching tokens)
    */
   clear(): void {
     this.currentCandles.clear();
     this.lastClosePrices.clear();
     this.syntheticCandles.clear();
+    this.mostRecentCandleTimeSent.clear(); // 🔥 NEW: Clear tracking on token switch
 
     // Stop all timers
     for (const [timeframe, timer] of this.timeframeTimers.entries()) {
@@ -354,6 +518,12 @@ export class RealtimeCandleBuilder {
       }
     }
     this.timeframeTimers.clear();
+
+    // Stop emission timer
+    if (this.emissionTimer) {
+      clearInterval(this.emissionTimer);
+      this.emissionTimer = null;
+    }
 
     if (this.debug) {
       console.log('[CandleBuilder] 🧹 Cleared all candles, close prices, and timers');
@@ -422,7 +592,7 @@ export class RealtimeCandleBuilder {
       return;
     }
 
-    // Create synthetic candle: open = high = low = close = previous close, volume = 0
+    // 🔥 NEW: Create synthetic candle with new fields for VWAP
     const syntheticCandle: Candle = {
       time: currentBucketTime,
       open: previousClosePrice,
@@ -430,21 +600,21 @@ export class RealtimeCandleBuilder {
       low: previousClosePrice,
       close: previousClosePrice,
       volume: 0,
+      // New fields for VWAP (empty for synthetic candles)
+      trades: [],
+      totalValue: 0,
+      isFinalized: false,
+      lastUpdateTime: Date.now(), // 🔥 NEW: Track when candle was last updated
     };
 
     this.currentCandles.set(key, syntheticCandle);
     this.syntheticCandles.add(key); // Mark as synthetic
     this.lastClosePrices.set(timeframe, previousClosePrice); // Carry forward close price
 
-    // Notify subscribers
-    const callbacks = this.callbacks.get(timeframe) || [];
-    for (const callback of callbacks) {
-      try {
-        callback({ ...syntheticCandle });
-      } catch (error) {
-        console.error('[CandleBuilder] Error in callback for synthetic candle:', error);
-      }
-    }
+    // 🔥 CRITICAL FIX: Don't emit synthetic candles immediately!
+    // Let the emission buffer system handle it to maintain chronological order
+    // and proper mostRecentSent tracking. The emission timer will pick it up
+    // within 500ms anyway.
 
     // Clean up old candles
     this.cleanupOldCandles(timeframe, currentBucketTime, 1000);

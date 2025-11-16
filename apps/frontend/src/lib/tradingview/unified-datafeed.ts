@@ -968,6 +968,11 @@ export class UnifiedDatafeed implements IBasicDataFeed {
             low: lastBar.low,
             close: lastBar.close,
             volume: lastBar.volume ?? 0,
+            // 🔥 NEW: VWAP fields
+            trades: [],
+            totalValue: 0,
+            isFinalized: false,
+            lastUpdateTime: Date.now(),
           });
         }
       }

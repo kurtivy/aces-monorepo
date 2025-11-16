@@ -63,6 +63,11 @@ class RealtimeCandleBuilderTester {
       low: 95,
       close: 102,
       volume: 1000,
+      // 🔥 NEW: VWAP fields
+      trades: [],
+      totalValue: 0,
+      isFinalized: false,
+      lastUpdateTime: Date.now(),
     });
 
     // Wait for 2 seconds - should emit at least one synthetic candle
@@ -113,6 +118,11 @@ class RealtimeCandleBuilderTester {
       low: 95,
       close: 102,
       volume: 1000,
+      // 🔥 NEW: VWAP fields
+      trades: [],
+      totalValue: 0,
+      isFinalized: false,
+      lastUpdateTime: Date.now(),
     });
 
     // Process a real trade
@@ -171,6 +181,11 @@ class RealtimeCandleBuilderTester {
       low: 95,
       close: 102,
       volume: 1000,
+      // 🔥 NEW: VWAP fields
+      trades: [],
+      totalValue: 0,
+      isFinalized: false,
+      lastUpdateTime: Date.now(),
     });
 
     // Wait for synthetic candle to be emitted
@@ -237,6 +252,11 @@ class RealtimeCandleBuilderTester {
       low: 95,
       close: 102, // This should become the next candle's open
       volume: 1000,
+      // 🔥 NEW: VWAP fields
+      trades: [],
+      totalValue: 0,
+      isFinalized: false,
+      lastUpdateTime: Date.now(),
     });
 
     // Wait for synthetic candle
@@ -284,6 +304,11 @@ class RealtimeCandleBuilderTester {
       low: 95,
       close: 102,
       volume: 1000,
+      // 🔥 NEW: VWAP fields
+      trades: [],
+      totalValue: 0,
+      isFinalized: false,
+      lastUpdateTime: Date.now(),
     });
 
     // Subscribe
@@ -343,6 +368,11 @@ class RealtimeCandleBuilderTester {
       low: 95,
       close: 102,
       volume: 1000,
+      // 🔥 NEW: VWAP fields
+      trades: [],
+      totalValue: 0,
+      isFinalized: false,
+      lastUpdateTime: Date.now(),
     });
     builder.seedCandle('5m', {
       time: Math.floor(oneMinuteAgo / 300000) * 300000,
@@ -351,6 +381,11 @@ class RealtimeCandleBuilderTester {
       low: 95,
       close: 102,
       volume: 5000,
+      // 🔥 NEW: VWAP fields
+      trades: [],
+      totalValue: 0,
+      isFinalized: false,
+      lastUpdateTime: Date.now(),
     });
 
     // Subscribe to both
