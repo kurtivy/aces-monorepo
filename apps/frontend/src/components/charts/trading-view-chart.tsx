@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { UnifiedDatafeed } from '@/lib/tradingview/unified-datafeed';
+import { sharedTradeWebSocket } from '@/lib/websocket/shared-trade-websocket';
 
 const toolbarStylesId = 'aces-tradingview-toolbar-styles';
 
@@ -603,6 +604,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
 
           if (typeof window !== 'undefined') {
             (window as any).__tradingViewDatafeed = datafeed;
+            (window as any).sharedTradeWebSocket = sharedTradeWebSocket;
           }
 
           const currentMode = chartModeRef.current;
@@ -678,8 +680,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
               'mainSeriesProperties.hollowCandleStyle.wickUpColor': '#00C896',
               'mainSeriesProperties.hollowCandleStyle.wickDownColor': '#FF5B5B',
               'scalesProperties.autoScale': true,
-              'scalesProperties.scaleMode': 0,
-              'scalesProperties.alignLabels': true,
+              // Removed deprecated properties: scaleMode, alignLabels (not supported in current TradingView version)
               'paneProperties.topMargin': 10,
               'paneProperties.bottomMargin': 10,
               'mainSeriesProperties.priceAxisProperties.percentage': false,

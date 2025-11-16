@@ -600,10 +600,26 @@ export class ChartAggregationService {
     const pricesInAces = bucketTrades.map((t) => t.priceInAces);
     const pricesInUsd = bucketTrades.map((t) => t.priceInUsd);
 
-    // 🔥 CRITICAL: Log sell trades in candle buckets to diagnose missing candles
+    // 🔥 NEW: Calculate VWAP for close price
+    // VWAP in ACES = Σ(priceInAces × volumeInAces) / Σ(volumeInAces)
+    const totalValueAces = bucketTrades.reduce(
+      (sum, t) => sum + t.priceInAces * t.amountToken,
+      0
+    );
+    const totalVolumeAces = bucketTrades.reduce((sum, t) => sum + t.amountToken, 0);
+    const vwapCloseAces = totalVolumeAces > 0 ? totalValueAces / totalVolumeAces : pricesInAces[0];
+
+    // VWAP in USD = Σ(priceInUsd × volumeInUsd) / Σ(volumeInUsd)
+    const totalValueUsd = bucketTrades.reduce(
+      (sum, t) => sum + t.priceInUsd * t.volumeUsd,
+      0
+    );
+    const totalVolumeUsd = bucketTrades.reduce((sum, t) => sum + t.volumeUsd, 0);
+    const vwapCloseUsd = totalVolumeUsd > 0 ? totalValueUsd / totalVolumeUsd : pricesInUsd[0];
+
     // OHLC in ACES
     let openAces = pricesInAces[0];
-    const closeAces = pricesInAces[pricesInAces.length - 1];
+    const closeAces = vwapCloseAces; // ✅ VWAP instead of last trade
     let highAces = Math.max(...pricesInAces);
     let lowAces = Math.min(...pricesInAces);
 
@@ -626,7 +642,7 @@ export class ChartAggregationService {
     if (dataSource === 'dex' && pricesInUsd.some((p) => p > 0)) {
       // DEX: Use BitQuery USD prices (already in USD from BitQuery)
       const firstTradeUsd = pricesInUsd[0];
-      closeUsd = pricesInUsd[pricesInUsd.length - 1];
+      closeUsd = vwapCloseUsd; // ✅ VWAP instead of last trade
       highUsd = Math.max(...pricesInUsd);
       lowUsd = Math.min(...pricesInUsd);
 
@@ -643,7 +659,7 @@ export class ChartAggregationService {
       // Bonding Curve: Use snapshot USD prices (already in trades from TradePriceAggregator)
       // The pricesInUsd array (line 391) contains USD values calculated using database snapshots
       const firstTradeUsd = pricesInUsd[0];
-      closeUsd = pricesInUsd[pricesInUsd.length - 1];
+      closeUsd = vwapCloseUsd; // ✅ VWAP instead of last trade
       highUsd = Math.max(...pricesInUsd);
       lowUsd = Math.min(...pricesInUsd);
 

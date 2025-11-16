@@ -424,14 +424,32 @@ export class TradePriceAggregator {
       });
 
       // OHLC in ACES
-      const openAces = pricesInAces[0];
-      const closeAces = pricesInAces[pricesInAces.length - 1];
+      const openAces = pricesInAces[0]; // First trade (open)
       const highAces = Math.max(...pricesInAces);
       const lowAces = Math.min(...pricesInAces);
+      
+      // 🔥 VWAP for close price in ACES (volume-weighted average)
+      const totalValueAces = trades.reduce((sum, trade) => {
+        const tokenAmount = parseFloat(trade.tokenAmount);
+        const acesAmount = parseFloat(trade.acesTokenAmount);
+        const priceInAces = tokenAmount > 0 ? acesAmount / tokenAmount : 0;
+        return sum + (priceInAces * tokenAmount);
+      }, 0);
+      const totalVolumeTokens = trades.reduce((sum, trade) => sum + parseFloat(trade.tokenAmount), 0);
+      const closeAces = totalVolumeTokens > 0 ? totalValueAces / totalVolumeTokens : openAces;
 
       // Calculate USD prices using HISTORICAL ACES prices
       const openUsd = openAces * trades[0].acesUsdPriceAtExecution;
-      const closeUsd = closeAces * trades[trades.length - 1].acesUsdPriceAtExecution;
+      
+      // 🔥 VWAP for close price in USD (volume-weighted average)
+      const totalValueUsd = trades.reduce((sum, trade) => {
+        const tokenAmount = parseFloat(trade.tokenAmount);
+        const acesAmount = parseFloat(trade.acesTokenAmount);
+        const priceInAces = tokenAmount > 0 ? acesAmount / tokenAmount : 0;
+        const priceInUsd = priceInAces * trade.acesUsdPriceAtExecution;
+        return sum + (priceInUsd * tokenAmount);
+      }, 0);
+      const closeUsd = totalVolumeTokens > 0 ? totalValueUsd / totalVolumeTokens : openUsd;
 
       // For high/low, use the ACES price at the time of that specific trade
       const pricesInUsd = trades.map((t, i) => pricesInAces[i] * t.acesUsdPriceAtExecution);

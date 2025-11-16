@@ -85,11 +85,11 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
   // 🔥 AUTO-DETECT: If we're receiving BitQuery trades, token is on DEX
   const hasBitQueryTrades = useMemo(() => {
     const hasBitQuery = allRealtimeTrades.some((trade) => trade.source === 'bitquery');
-    console.log('[TradeHistory] 🔍 Checking for BitQuery trades:', {
-      totalTrades: allRealtimeTrades.length,
-      hasBitQuery,
-      sources: allRealtimeTrades.map((t) => t.source),
-    });
+    // console.log('[TradeHistory] 🔍 Checking for BitQuery trades:', {
+    //   totalTrades: allRealtimeTrades.length,
+    //   hasBitQuery,
+    //   sources: allRealtimeTrades.map((t) => t.source),
+    // });
     return hasBitQuery;
   }, [allRealtimeTrades]);
 
@@ -115,25 +115,25 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
         return trade.source === 'goldsky' && trade.timestamp > fiveMinutesAgo;
       });
 
-      console.log('[TradeHistory] 🔍 Filtering trades (DEX mode):', {
-        totalRealtimeTrades: allRealtimeTrades.length,
-        bitqueryTrades: allRealtimeTrades.filter((t) => t.source === 'bitquery').length,
-        goldskyTrades: allRealtimeTrades.filter((t) => t.source === 'goldsky').length,
-        filteredCount: filtered.length,
-        effectiveIsDexLive,
-        hasAnyBitQueryTrades,
-      });
+      // console.log('[TradeHistory] 🔍 Filtering trades (DEX mode):', {
+      //   totalRealtimeTrades: allRealtimeTrades.length,
+      //   bitqueryTrades: allRealtimeTrades.filter((t) => t.source === 'bitquery').length,
+      //   goldskyTrades: allRealtimeTrades.filter((t) => t.source === 'goldsky').length,
+      //   filteredCount: filtered.length,
+      //   effectiveIsDexLive,
+      //   hasAnyBitQueryTrades,
+      // });
 
       return filtered;
     } else {
       // Token bonding: Show Goldsky trades only
       const filtered = allRealtimeTrades.filter((trade) => trade.source === 'goldsky');
 
-      console.log('[TradeHistory] 🔍 Filtering trades (Bonding mode):', {
-        totalRealtimeTrades: allRealtimeTrades.length,
-        goldskyTrades: filtered.length,
-        bitqueryTrades: allRealtimeTrades.filter((t) => t.source === 'bitquery').length,
-      });
+      // console.log('[TradeHistory] 🔍 Filtering trades (Bonding mode):', {
+      //   totalRealtimeTrades: allRealtimeTrades.length,
+      //   goldskyTrades: filtered.length,
+      //   bitqueryTrades: allRealtimeTrades.filter((t) => t.source === 'bitquery').length,
+      // });
 
       return filtered;
     }
@@ -150,11 +150,11 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
         return;
       }
 
-      console.log('[TradeHistory] 📚 Fetching historical trades from REST API...', {
-        isConnected,
-        realtimeTradesCount: realtimeTrades.length,
-        isConnecting,
-      });
+      // console.log('[TradeHistory] 📚 Fetching historical trades from REST API...', {
+      //   isConnected,
+      //   realtimeTradesCount: realtimeTrades.length,
+      //   isConnecting,
+      // });
       setIsLoadingHistorical(true);
       setHistoricalError(null);
 
@@ -164,7 +164,7 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
 
         if (shouldFetchDex) {
           // Token is graduated or has DEX trades - fetch DEX trades
-          console.log('[TradeHistory] Fetching DEX trades (graduated or has BitQuery trades)...');
+          // console.log('[TradeHistory] Fetching DEX trades (graduated or has BitQuery trades)...');
           const dexResult = await DexApi.getTrades(tokenAddress, 80); // Updated to 80
 
           if (dexResult.success && dexResult.data) {
@@ -193,16 +193,16 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
             setHistoricalTrades(dexTrades);
             const buyCount = dexTrades.filter((t) => t.direction === 'buy').length;
             const sellCount = dexTrades.filter((t) => t.direction === 'sell').length;
-            console.log(`[TradeHistory] ✅ Loaded ${dexTrades.length} DEX trades from REST API`, {
-              buys: buyCount,
-              sells: sellCount,
-            });
+            // console.log(`[TradeHistory] ✅ Loaded ${dexTrades.length} DEX trades from REST API`, {
+            //   buys: buyCount,
+            //   sells: sellCount,
+            // });
           } else {
             console.warn('[TradeHistory] DEX trades fetch failed or returned no data:', dexResult);
           }
         } else {
           // Token still bonding - fetch bonding curve trades
-          console.log('[TradeHistory] Token bonding, fetching bonding curve trades...');
+          // console.log('[TradeHistory] Token bonding, fetching bonding curve trades...');
           const bondingResult = await TokensApi.getTrades(tokenAddress, 80); // Updated to 80
 
           if (bondingResult.success && bondingResult.data) {
@@ -228,10 +228,10 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
             setHistoricalTrades(bondingTrades);
             const buyCount = bondingTrades.filter((t) => t.direction === 'buy').length;
             const sellCount = bondingTrades.filter((t) => t.direction === 'sell').length;
-            console.log(
-              `[TradeHistory] ✅ Loaded ${bondingTrades.length} bonding trades from REST API`,
-              { buys: buyCount, sells: sellCount },
-            );
+            // console.log(
+            //   `[TradeHistory] ✅ Loaded ${bondingTrades.length} bonding trades from REST API`,
+            //   { buys: buyCount, sells: sellCount },
+            // );
           }
         }
       } catch (err) {
@@ -258,13 +258,13 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
     // Transform WebSocket trades
     const transformedRealtimeTrades = realtimeTrades.map(transformTrade);
 
-    console.log('[TradeHistory] 🔄 Merging trades:', {
-      realtimeCount: realtimeTrades.length,
-      transformedRealtimeCount: transformedRealtimeTrades.length,
-      historicalCount: historicalTrades.length,
-      realtimeSources: realtimeTrades.map((t) => t.source),
-      historicalSources: historicalTrades.map((t) => t.source),
-    });
+    // console.log('[TradeHistory] 🔄 Merging trades:', {
+    //   realtimeCount: realtimeTrades.length,
+    //   transformedRealtimeCount: transformedRealtimeTrades.length,
+    //   historicalCount: historicalTrades.length,
+    //   realtimeSources: realtimeTrades.map((t) => t.source),
+    //   historicalSources: historicalTrades.map((t) => t.source),
+    // });
 
     // Merge both arrays and deduplicate by trade ID (txHash or id)
     const tradeMap = new Map<string, TradeHistoryEntry>();
@@ -308,16 +308,16 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
       const dexCount = result.filter((t) => t.source === 'DEX').length;
       const bondingCount = result.filter((t) => t.source === 'BONDING').length;
 
-      console.log(
-        `[TradeHistory] 📊 Final trade distribution: ${buyCount} buys, ${sellCount} sells (total: ${result.length})`,
-        {
-          realtime: transformedRealtimeTrades.length,
-          historical: historicalTrades.length,
-          added: addedCount,
-          duplicates: duplicateCount,
-          sources: { DEX: dexCount, BONDING: bondingCount },
-        },
-      );
+      // console.log(
+      //   `[TradeHistory] 📊 Final trade distribution: ${buyCount} buys, ${sellCount} sells (total: ${result.length})`,
+      //   {
+      //     realtime: transformedRealtimeTrades.length,
+      //     historical: historicalTrades.length,
+      //     added: addedCount,
+      //     duplicates: duplicateCount,
+      //     sources: { DEX: dexCount, BONDING: bondingCount },
+      //   },
+      // );
     }
 
     return result;
@@ -328,24 +328,24 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
     if (isConnected) {
       const goldskyCount = allRealtimeTrades.filter((t) => t.source === 'goldsky').length;
       const bitqueryCount = allRealtimeTrades.filter((t) => t.source === 'bitquery').length;
-      console.log('[TradeHistory] ✅ WebSocket connected for', tokenAddress, {
-        isDexLive,
-        effectiveIsDexLive: effectiveIsDexLive,
-        autoDetected: hasBitQueryTrades && !isDexLive,
-        source: effectiveIsDexLive ? 'BitQuery (DEX)' : 'Goldsky (Bonding)',
-        goldskyTrades: goldskyCount,
-        bitqueryTrades: bitqueryCount,
-        filteredTrades: realtimeTrades.length,
-      });
+      // console.log('[TradeHistory] ✅ WebSocket connected for', tokenAddress, {
+      //   isDexLive,
+      //   effectiveIsDexLive: effectiveIsDexLive,
+      //   autoDetected: hasBitQueryTrades && !isDexLive,
+      //   source: effectiveIsDexLive ? 'BitQuery (DEX)' : 'Goldsky (Bonding)',
+      //   goldskyTrades: goldskyCount,
+      //   bitqueryTrades: bitqueryCount,
+      //   filteredTrades: realtimeTrades.length,
+      // });
 
       // Log auto-detection if it happened
       if (hasBitQueryTrades && !isDexLive) {
-        console.log('[TradeHistory] 🎓 Auto-detected DEX graduation: Receiving BitQuery trades');
+        // console.log('[TradeHistory] 🎓 Auto-detected DEX graduation: Receiving BitQuery trades');
       }
     } else if (isConnecting) {
-      console.log('[TradeHistory] 🔄 WebSocket connecting...', tokenAddress);
+      // console.log('[TradeHistory] 🔄 WebSocket connecting...', tokenAddress);
     } else {
-      console.log('[TradeHistory] ❌ WebSocket disconnected for', tokenAddress);
+      // console.log('[TradeHistory] ❌ WebSocket disconnected for', tokenAddress);
     }
   }, [
     isConnected,

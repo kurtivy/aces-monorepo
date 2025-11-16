@@ -222,7 +222,8 @@ class SharedTradeWebSocketManager {
         // 🔥 PHASE 2: Handle heartbeat ping/pong
         state.lastMessageTime = Date.now();
 
-        // console.log(`[SharedTradeWS] 📨 Received message for ${tokenAddress}:`, message.type);
+        // 🔥 DEBUG: Log ALL messages to diagnose missing trades
+        console.log(`[SharedTradeWS] 📨 Received message for ${tokenAddress}:`, message.type, message);
 
         // 🔥 PHASE 2: Handle server pings - respond with pong
         if (message.type === 'ping') {
@@ -255,15 +256,15 @@ class SharedTradeWebSocketManager {
 
         if (message.type === 'trade' && message.data) {
           // Broadcast trade to all subscribers
-          // console.log(`[SharedTradeWS] 📊 Broadcasting trade for ${tokenAddress}:`, {
-          //   id: message.data.id,
-          //   source: message.data.source,
-          //   isBuy: message.data.isBuy,
-          //   tokenAmount: message.data.tokenAmount,
-          //   timestamp: message.data.timestamp,
-          //   subscriberCount: state.tradeCallbacks.size,
-          //   allSubscriberIds: Array.from(state.tradeCallbacks.keys()),
-          // });
+          console.log(`[SharedTradeWS] 📊 Broadcasting trade for ${tokenAddress}:`, {
+            id: message.data.id,
+            source: message.data.source,
+            isBuy: message.data.isBuy,
+            tokenAmount: message.data.tokenAmount,
+            timestamp: message.data.timestamp,
+            subscriberCount: state.tradeCallbacks.size,
+            allSubscriberIds: Array.from(state.tradeCallbacks.keys()),
+          });
 
           if (state.tradeCallbacks.size === 0) {
             console.warn(`[SharedTradeWS] ⚠️ No subscribers to receive trade for ${tokenAddress}!`);
@@ -272,24 +273,19 @@ class SharedTradeWebSocketManager {
 
           let callbackIndex = 0;
           const callbacksArray = Array.from(state.tradeCallbacks.entries());
-          // console.log(`[SharedTradeWS] 📋 Found ${callbacksArray.length} callbacks to execute`);
+          console.log(`[SharedTradeWS] 📋 Found ${callbacksArray.length} callbacks to execute`);
 
           for (const [subscriberId, callback] of callbacksArray) {
             try {
-              // console.log(
-              //   `[SharedTradeWS] 🔔 Calling callback ${callbackIndex + 1}/${callbacksArray.length} (subscriber: ${subscriberId.substring(0, 20)}...)`,
-              // );
-              // console.log(`[SharedTradeWS] Callback function:`, {
-              //   isFunction: typeof callback === 'function',
-              //   name: callback.name || 'anonymous',
-              //   toString: callback.toString().substring(0, 100),
-              // });
+              console.log(
+                `[SharedTradeWS] 🔔 Calling callback ${callbackIndex + 1}/${callbacksArray.length} (subscriber: ${subscriberId.substring(0, 20)}...)`,
+              );
 
               callback(message.data);
 
-              // console.log(
-              //   `[SharedTradeWS] ✅ Callback ${callbackIndex + 1} executed successfully (subscriber: ${subscriberId.substring(0, 20)}...)`,
-              // );
+              console.log(
+                `[SharedTradeWS] ✅ Callback ${callbackIndex + 1} executed successfully (subscriber: ${subscriberId.substring(0, 20)}...)`,
+              );
               callbackIndex++;
             } catch (error) {
               console.error(
@@ -304,7 +300,7 @@ class SharedTradeWebSocketManager {
             }
           }
 
-          // console.log(`[SharedTradeWS] ✅ Finished broadcasting to ${callbackIndex} callbacks`);
+          console.log(`[SharedTradeWS] ✅ Finished broadcasting to ${callbackIndex} callbacks`);
         } else if (message.type === 'subscribed') {
           // Backend confirmed subscriptions are active - connection is fully ready
           // console.log(`[SharedTradeWS] ✅ Subscribed confirmed for ${tokenAddress}:`, message.data);

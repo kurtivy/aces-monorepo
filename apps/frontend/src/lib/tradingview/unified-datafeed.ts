@@ -247,7 +247,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
    */
   public destroy(): void {
     if (this.config.debug) {
-      console.log('[UnifiedDatafeed] Destroying datafeed');
+      // console.log('[UnifiedDatafeed] Destroying datafeed');
     }
 
     this.subscriptions.clear();
@@ -258,7 +258,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       if (typeof unsubscribe === 'function') {
         unsubscribe();
         if (this.config.debug) {
-          console.log('[UnifiedDatafeed] Unsubscribed from trade WebSocket for', tokenAddress);
+          // console.log('[UnifiedDatafeed] Unsubscribed from trade WebSocket for', tokenAddress);
         }
       }
     }
@@ -450,12 +450,12 @@ export class UnifiedDatafeed implements IBasicDataFeed {
         // Log all active subscriptions for this token
         for (const [key, sub] of this.subscriptions.entries()) {
           if (sub.symbolInfo.ticker?.toLowerCase().includes(tokenLower)) {
-            console.log('[UnifiedDatafeed] 📌 Active subscription:', {
-              key,
-              ticker: sub.symbolInfo.ticker,
-              resolution: sub.resolution,
-              isMarketCap: sub.isMarketCapMode,
-            });
+            // console.log('[UnifiedDatafeed] 📌 Active subscription:', {
+            //   key,
+            //   ticker: sub.symbolInfo.ticker,
+            //   resolution: sub.resolution,
+            //   isMarketCap: sub.isMarketCapMode,
+            // });
           }
         }
 
@@ -722,7 +722,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
 
   onReady(callback: OnReadyCallback): void {
     if (this.config.debug) {
-      console.log('[UnifiedDatafeed] onReady called - datafeed is initializing');
+      // console.log('[UnifiedDatafeed] onReady called - datafeed is initializing');
     }
 
     setTimeout(() => {
@@ -734,7 +734,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       };
 
       if (this.config.debug) {
-        console.log('[UnifiedDatafeed] onReady completed with config:', config);
+        // console.log('[UnifiedDatafeed] onReady completed with config:', config);
       }
 
       callback(config);
@@ -760,7 +760,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     _onError: DatafeedErrorCallback,
   ): void {
     if (this.config.debug) {
-      console.log('[UnifiedDatafeed] resolveSymbol:', symbolName);
+      // console.log('[UnifiedDatafeed] resolveSymbol:', symbolName);
     }
 
     setTimeout(() => {
@@ -785,7 +785,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       };
 
       if (this.config.debug) {
-        console.log('[UnifiedDatafeed] resolveSymbol resolved:', symbolInfo);
+        // console.log('[UnifiedDatafeed] resolveSymbol resolved:', symbolInfo);
       }
 
       onResolve(symbolInfo);
@@ -807,18 +807,18 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     const timeframe = this.resolutionToTimeframe(resolution);
 
     if (this.config.debug) {
-      console.log('[UnifiedDatafeed] 📥 getBars called:', {
-        symbol,
-        token: tokenAddress,
-        mode: isMarketCapMode ? 'mcap' : 'price',
-        resolution,
-        timeframe,
-        from: new Date(periodParams.from * 1000).toISOString(),
-        to: new Date(periodParams.to * 1000).toISOString(),
-        firstDataRequest: periodParams.firstDataRequest,
-        countBack: periodParams.countBack,
-        isScrollingBack: !periodParams.firstDataRequest,
-      });
+      // console.log('[UnifiedDatafeed] 📥 getBars called:', {
+      //   symbol,
+      //   token: tokenAddress,
+      //   mode: isMarketCapMode ? 'mcap' : 'price',
+      //   resolution,
+      //   timeframe,
+      //   from: new Date(periodParams.from * 1000).toISOString(),
+      //   to: new Date(periodParams.to * 1000).toISOString(),
+      //   firstDataRequest: periodParams.firstDataRequest,
+      //   countBack: periodParams.countBack,
+      //   isScrollingBack: !periodParams.firstDataRequest,
+      // });
     }
 
     // 🔥 CACHE DISABLED FOR DEBUGGING - Re-enable after progressive loading works
@@ -853,18 +853,18 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       const url = `${this.config.apiBaseUrl}/api/v1/chart/${tokenAddress}/unified?timeframe=${timeframe}&from=${periodParams.from}&to=${periodParams.to}&limit=${limit}`;
 
       if (this.config.debug) {
-        console.log('[UnifiedDatafeed] 🔥 Fetching candles:', {
-          type: periodParams.firstDataRequest ? '📊 INITIAL LOAD' : '📜 SCROLL BACK',
-          timeframe,
-          limit,
-          countBack: periodParams.countBack,
-          timeRange: {
-            from: new Date(periodParams.from * 1000).toISOString(),
-            to: new Date(periodParams.to * 1000).toISOString(),
-            durationHours: Math.round((periodParams.to - periodParams.from) / 3600),
-          },
-          url,
-        });
+        // console.log('[UnifiedDatafeed] 🔥 Fetching candles:', {
+        //   type: periodParams.firstDataRequest ? '📊 INITIAL LOAD' : '📜 SCROLL BACK',
+        //   timeframe,
+        //   limit,
+        //   countBack: periodParams.countBack,
+        //   timeRange: {
+        //     from: new Date(periodParams.from * 1000).toISOString(),
+        //     to: new Date(periodParams.to * 1000).toISOString(),
+        //     durationHours: Math.round((periodParams.to - periodParams.from) / 3600),
+        //   },
+        //   url,
+        // });
       }
 
       const response = await fetch(url);
@@ -955,18 +955,27 @@ export class UnifiedDatafeed implements IBasicDataFeed {
           this.lastBars.set(symbolInfo.ticker, lastBar);
 
           const normalizedAddress = tokenAddress.toLowerCase();
-          if (Number.isFinite(lastBar.close) && (lastBar.close ?? 0) > 0) {
-            this.lastKnownTokenPrice.set(normalizedAddress, lastBar.close ?? 0);
+
+          // 🔥 MARKET CAP MODE: Convert market cap back to token price for storage
+          // lastKnownTokenPrice should always be the TOKEN PRICE, not market cap
+          const supply = this.latestSupply.get(normalizedAddress) || 0;
+          const divider = isMarketCapMode && supply > 0 ? supply : 1;
+          const tokenPrice = (lastBar.close ?? 0) / divider;
+
+          if (Number.isFinite(tokenPrice) && tokenPrice > 0) {
+            this.lastKnownTokenPrice.set(normalizedAddress, tokenPrice);
           }
 
           // 🔥 NEW: Seed candle builder with the latest candle
           // This ensures continuity between REST API data and WebSocket updates
+          // Candle builder always works with token prices
+
           this.candleBuilder.seedCandle(timeframe, {
             time: lastBar.time,
-            open: lastBar.open,
-            high: lastBar.high,
-            low: lastBar.low,
-            close: lastBar.close,
+            open: lastBar.open / divider,
+            high: lastBar.high / divider,
+            low: lastBar.low / divider,
+            close: lastBar.close / divider,
             volume: lastBar.volume ?? 0,
             // 🔥 NEW: VWAP fields
             trades: [],
@@ -1061,21 +1070,21 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       // });
 
       if (this.config.debug) {
-        console.log('[UnifiedDatafeed] ✅ Returning bars:', {
-          count: bars.length,
-          firstBar: bars[0]
-            ? {
-                time: new Date(bars[0].time).toISOString(),
-                close: bars[0].close,
-              }
-            : null,
-          lastBar: bars[bars.length - 1]
-            ? {
-                time: new Date(bars[bars.length - 1].time).toISOString(),
-                close: bars[bars.length - 1].close,
-              }
-            : null,
-        });
+        // console.log('[UnifiedDatafeed] ✅ Returning bars:', {
+        //   count: bars.length,
+        //   firstBar: bars[0]
+        //     ? {
+        //         time: new Date(bars[0].time).toISOString(),
+        //         close: bars[0].close,
+        //       }
+        //     : null,
+        //   lastBar: bars[bars.length - 1]
+        //     ? {
+        //         time: new Date(bars[bars.length - 1].time).toISOString(),
+        //         close: bars[bars.length - 1].close,
+        //       }
+        //     : null,
+        // });
       }
 
       // 🔥 CRITICAL: Tell TradingView if there's more data available
@@ -1084,16 +1093,16 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       const nextTime = bars.length > 0 ? bars[0].time / 1000 : undefined;
 
       if (this.config.debug) {
-        console.log('[UnifiedDatafeed] 📤 Response metadata:', {
-          noData,
-          nextTime: nextTime ? new Date(nextTime * 1000).toISOString() : 'none',
-          hasMoreData: !noData && nextTime !== undefined,
-          message: noData
-            ? '⚠️ No data - scroll back disabled'
-            : nextTime
-              ? '✅ More data available - scroll back enabled'
-              : '⚠️ No nextTime - scroll back might fail',
-        });
+        // console.log('[UnifiedDatafeed] 📤 Response metadata:', {
+        //   noData,
+        //   nextTime: nextTime ? new Date(nextTime * 1000).toISOString() : 'none',
+        //   hasMoreData: !noData && nextTime !== undefined,
+        //   message: noData
+        //     ? '⚠️ No data - scroll back disabled'
+        //     : nextTime
+        //       ? '✅ More data available - scroll back enabled'
+        //       : '⚠️ No nextTime - scroll back might fail',
+        // });
       }
 
       onResult(bars, {
@@ -1120,15 +1129,20 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       return;
     }
 
-    if (this.config.debug) {
-      console.log('[UnifiedDatafeed] 🔌 Subscribing to shared trade WebSocket for:', tokenAddress);
-    }
+    // console.log('[UnifiedDatafeed] 🔌 Subscribing to shared trade WebSocket for:', tokenAddress);
 
     // Subscribe to shared WebSocket manager
     const unsubscribe = sharedTradeWebSocket.subscribe(
       tokenAddress,
       // Trade callback
       (trade) => {
+        // console.log('[UnifiedDatafeed] 🔥 TRADE RECEIVED:', {
+        //   id: trade.id,
+        //   source: trade.source,
+        //   isBuy: trade.isBuy,
+        //   priceUsd: trade.priceUsd,
+        //   timestamp: trade.timestamp,
+        // });
         const normalizedAddress = tokenAddress.toLowerCase();
         const directPriceUsd = Number.parseFloat(trade.priceUsd);
         const pricePerTokenAces = Number.parseFloat(trade.pricePerToken);
@@ -1198,12 +1212,14 @@ export class UnifiedDatafeed implements IBasicDataFeed {
           normalizedTimestamp = trade.timestamp * 1000; // Convert to milliseconds
         }
 
-        // Validate timestamp is reasonable (not too old, not in future)
+        // Validate timestamp is reasonable (only reject VERY old or future timestamps)
         const tradeAge = now - normalizedTimestamp;
-        const isTooOld = tradeAge > 30 * 60 * 1000; // 30 minutes
+        const isVeryOld = tradeAge > 7 * 24 * 60 * 60 * 1000; // 7 days - catch data errors
         const isFuture = normalizedTimestamp > now + 60000; // 1 minute in future
 
-        if (isTooOld || isFuture) {
+        // Only reject trades that are REALLY old (7+ days) or in the future
+        // Historical trades from the last week are fine - TradingView handles them correctly
+        if (isVeryOld || isFuture) {
           console.error('[UnifiedDatafeed] ❌ Rejecting trade with invalid timestamp:', {
             tradeId: trade.id,
             source: trade.source,
@@ -1213,9 +1229,19 @@ export class UnifiedDatafeed implements IBasicDataFeed {
             currentTime: now,
             currentTimeISO: new Date(now).toISOString(),
             tradeAge: Math.round(tradeAge / 1000) + 's',
-            reason: isTooOld ? 'TOO_OLD (>30min)' : 'FUTURE_TIMESTAMP',
+            reason: isVeryOld ? 'TOO_OLD (>7days)' : 'FUTURE_TIMESTAMP',
           });
-          return; // Skip this trade - it won't build valid candles
+          return; // Skip this trade - it's clearly a data error
+        }
+
+        // Log warning for old-but-acceptable trades (older than 1 hour)
+        if (tradeAge > 60 * 60 * 1000 && this.config.debug) {
+          console.warn('[UnifiedDatafeed] ⚠️ Processing old trade (WebSocket backfill?):', {
+            tradeId: trade.id,
+            source: trade.source,
+            ageHours: Math.round(tradeAge / (60 * 60 * 1000)),
+            timestamp: new Date(normalizedTimestamp).toISOString(),
+          });
         }
 
         // Convert to Trade format for candle builder
@@ -1239,21 +1265,23 @@ export class UnifiedDatafeed implements IBasicDataFeed {
         }
 
         // Process trade through candle builder
+        // console.log('[UnifiedDatafeed] 📊 CANDLE BUILDER PROCESSING:', {
+        //   price: tradeData.price,
+        //   volume: tradeData.volume,
+        //   timestamp: tradeData.timestamp,
+        //   timestampISO: new Date(tradeData.timestamp).toISOString(),
+        //   source: trade.source,
+        //   ageMs: tradeAge,
+        // });
+
         this.candleBuilder.processTrade(tradeData);
 
-        if (this.config.debug) {
-          console.log('[UnifiedDatafeed] 📊 Trade processed:', {
-            price: tradeData.price,
-            volume: tradeData.volume,
-            source: trade.source,
-            ageMs: tradeAge,
-          });
-        }
+        // console.log('[UnifiedDatafeed] ✅ Trade sent to candle builder');
       },
       // Status callback
       (status) => {
         if (this.config.debug) {
-          console.log('[UnifiedDatafeed] Trade WebSocket status:', status);
+          // console.log('[UnifiedDatafeed] Trade WebSocket status:', status);
         }
       },
     );
@@ -1279,12 +1307,12 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     const subscriptionKey = `${rawTicker}:${timeframe}:${listenerGuid}`;
 
     if (this.config.debug) {
-      console.log('[UnifiedDatafeed] subscribeBars:', {
-        subscriptionKey,
-        cleanAddress: tokenAddress,
-        chartType: isMarketCapMode ? 'mcap' : 'price',
-        timeframe,
-      });
+      // console.log('[UnifiedDatafeed] subscribeBars:', {
+      //   subscriptionKey,
+      //   cleanAddress: tokenAddress,
+      //   chartType: isMarketCapMode ? 'mcap' : 'price',
+      //   timeframe,
+      // });
     }
 
     // Store subscription info
@@ -1300,14 +1328,29 @@ export class UnifiedDatafeed implements IBasicDataFeed {
 
     // 🔥 NEW: Subscribe to candle builder updates
     const unsubscribe = this.candleBuilder.subscribe(timeframe, (candle) => {
+      // 🔥 MARKET CAP MODE: Convert token prices to market cap
+      // Candle builder always processes token prices, but if chart is in market cap mode,
+      // we need to multiply by circulating supply to get market cap values
+      const supply = this.latestSupply.get(normalizedTokenAddress) || 0;
+      const shouldConvertToMarketCap = isMarketCapMode && supply > 0;
+      const multiplier = shouldConvertToMarketCap ? supply : 1;
+
+      if (this.config.debug && shouldConvertToMarketCap) {
+        // console.log('[UnifiedDatafeed] 🔄 Converting token price to market cap:', {
+        //   tokenPrice: candle.close,
+        //   supply,
+        //   marketCap: candle.close * supply,
+        // });
+      }
+
       // Convert candle to TradingView Bar format
       // Candle time is in milliseconds, TradingView expects milliseconds
       const bar: Bar = {
         time: candle.time as Bar['time'], // TradingView expects milliseconds
-        open: candle.open,
-        high: candle.high,
-        low: candle.low,
-        close: candle.close,
+        open: candle.open * multiplier,
+        high: candle.high * multiplier,
+        low: candle.low * multiplier,
+        close: candle.close * multiplier,
         volume: candle.volume,
       };
 
@@ -1322,23 +1365,152 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       }
 
       if (this.config.debug) {
-        console.log('[UnifiedDatafeed] 🔔 Candle builder callback fired:', {
-          timeframe,
-          candleTime: new Date(candle.time).toISOString(),
-          barTime: bar.time,
-          barTimeISO: new Date(bar.time as number).toISOString(),
-          close: bar.close,
-          volume: bar.volume,
-          previousLastBarTime: previousLastBar
-            ? new Date(previousLastBar.time as number).toISOString()
-            : 'none',
-          isUpdate: previousLastBar?.time === bar.time,
-          isNewCandle: previousLastBar && previousLastBar.time !== bar.time,
-        });
+        // console.log('[UnifiedDatafeed] 🔔 Candle builder callback fired:', {
+        //   timeframe,
+        //   candleTime: new Date(candle.time).toISOString(),
+        //   barTime: bar.time,
+        //   barTimeISO: new Date(bar.time as number).toISOString(),
+        //   close: bar.close,
+        //   volume: bar.volume,
+        //   previousLastBarTime: previousLastBar
+        //     ? new Date(previousLastBar.time as number).toISOString()
+        //     : 'none',
+        //   isUpdate: previousLastBar?.time === bar.time,
+        //   isNewCandle: previousLastBar && previousLastBar.time !== bar.time,
+        // });
       }
 
       // Detect if this is a new candle (different time) vs update to existing candle
       const isNewCandle = previousLastBar && previousLastBar.time !== bar.time;
+
+      // 🔥 CRITICAL FIX: Calculate current bucket time FIRST for all checks
+      const now = Date.now();
+      const intervalMs = this.getIntervalMs(timeframe);
+      const currentBucketTime = Math.floor(now / intervalMs) * intervalMs;
+
+      // 🔥 NEW CHECK: If bar is older than current bucket AND previousLastBar is in future,
+      // this means timer already emitted a future candle. Skip this older bar entirely.
+      if (previousLastBar && 
+          (bar.time as number) < currentBucketTime && 
+          (previousLastBar.time as number) >= currentBucketTime) {
+        console.warn(
+          '[UnifiedDatafeed] 🚫 BLOCKING older candle - Timer already emitted current/future bucket:',
+          {
+            timeframe,
+            rawTicker,
+            blockedBarTime: new Date(bar.time as number).toISOString(),
+            lastBarTime: new Date(previousLastBar.time as number).toISOString(),
+            currentBucketTime: new Date(currentBucketTime).toISOString(),
+            reason: 'Bar is from previous bucket but TradingView already has current/future bucket',
+            note: 'This prevents timer spam from repeatedly trying to emit skipped candles',
+          },
+        );
+        return; // Don't update lastBars - keep the future bar to block future attempts
+      }
+
+      // 🔥 CRITICAL FIX: TradingView requires chronological order, BUT allow current/previous bucket updates
+      // This handles the case where REST API seeded a future candle, but a delayed trade arrives
+      // for a previous bucket. We need to allow this to display the real trade data.
+      if (previousLastBar && (bar.time as number) < (previousLastBar.time as number)) {
+        
+        // 🔥 BUCKET BOUNDARY FIX: If previousLastBar is in the FUTURE relative to current bucket,
+        // it means the timer created a synthetic candle for the next bucket before this trade arrived.
+        // In this case, we MUST SKIP this older candle to avoid time violations.
+        const previousBarIsInFuture = (previousLastBar.time as number) > currentBucketTime;
+        
+        if (previousBarIsInFuture) {
+          console.warn(
+            '[UnifiedDatafeed] ⏮️ SKIPPING older candle - Timer already emitted future bucket:',
+            {
+              timeframe,
+              rawTicker,
+              skippedBarTime: new Date(bar.time as number).toISOString(),
+              lastBarTime: new Date(previousLastBar.time as number).toISOString(),
+              currentBucketTime: new Date(currentBucketTime).toISOString(),
+              timeDifferenceMs: (bar.time as number) - (previousLastBar.time as number),
+              reason: 'Previous bar is in FUTURE bucket - timer created it before this trade arrived',
+              note: 'This happens when trade arrives near bucket boundary (last 5 seconds)',
+              solution: 'Trade data is stored - will show after page refresh or in next bucket',
+            },
+          );
+          
+          // DON'T update lastBars - keep the future bar to block timer spam
+          // The new early check at line 1393 will block all future timer attempts
+          
+          return; // Skip - TradingView will reject this anyway
+        }
+        
+        // Allow updates to current OR previous bucket, even if lastBars is newer
+        // This handles delayed trades from BitQuery that arrive after REST API seeded a future candle
+        const isInCurrentOrPreviousBucket = (bar.time as number) >= currentBucketTime - intervalMs;
+        
+        if (isInCurrentOrPreviousBucket) {
+          // Allow this update - it's for current/previous bucket
+          console.log(
+            '[UnifiedDatafeed] ✅ ALLOWING older candle (current/previous bucket):',
+            {
+              timeframe,
+              rawTicker,
+              barTime: new Date(bar.time as number).toISOString(),
+              lastBarTime: new Date(previousLastBar.time as number).toISOString(),
+              currentBucketTime: new Date(currentBucketTime).toISOString(),
+              timeDifferenceMs: (bar.time as number) - (previousLastBar.time as number),
+              reason: 'Candle is in current or previous bucket - allowing delayed trade update',
+              note: 'This handles BitQuery delays where trades arrive after REST API seeded future candle',
+            },
+          );
+          // Continue to emit - don't return
+        } else {
+          // This is from 2+ intervals ago - reject it
+          console.warn(
+            '[UnifiedDatafeed] ⏮️ SKIPPING older candle - TradingView time violation prevention:',
+            {
+              timeframe,
+              rawTicker,
+              skippedBarTime: new Date(bar.time as number).toISOString(),
+              lastBarTime: new Date(previousLastBar.time as number).toISOString(),
+              currentBucketTime: new Date(currentBucketTime).toISOString(),
+              timeDifferenceMs: (bar.time as number) - (previousLastBar.time as number),
+              intervalsOld: Math.floor((currentBucketTime - (bar.time as number)) / intervalMs),
+              reason:
+                'Cannot send older candle after newer one - TradingView requires chronological order',
+              note: 'This candle is 2+ intervals old, not just delayed',
+            },
+          );
+          
+          // DON'T update lastBars - keep the newer bar to block timer spam
+          // The new early check at line 1393 will block all future timer attempts
+          
+          return; // Skip this candle - TradingView will reject it anyway
+        }
+      }
+
+      // 🔥 DEBUG: Log before calling onTick
+      console.log('[UnifiedDatafeed] 📤 CALLING onTick:', {
+        timeframe,
+        rawTicker,
+        bar: {
+          time: bar.time,
+          timeISO: new Date(bar.time as number).toISOString(),
+          open: bar.open,
+          high: bar.high,
+          low: bar.low,
+          close: bar.close,
+          volume: bar.volume,
+        },
+        previousLastBar: previousLastBar
+          ? {
+              time: previousLastBar.time,
+              timeISO: new Date(previousLastBar.time as number).toISOString(),
+              close: previousLastBar.close,
+            }
+          : null,
+        isNewCandle,
+        isUpdate: previousLastBar?.time === bar.time,
+        timeDifference: previousLastBar
+          ? (bar.time as number) - (previousLastBar.time as number)
+          : 'N/A',
+      });
 
       // Call TradingView's onTick callback
       // TradingView handles both:
@@ -1346,14 +1518,22 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       // 2. Adding new candle if bar.time is after last bar.time
       try {
         onTick(bar);
+        // console.log('[UnifiedDatafeed] ✅ onTick called successfully');
 
         // 🔥 CRITICAL FIX: Force chart into realtime mode when new candle arrives
         // This prevents the chart from getting stuck showing old candles
         if (isNewCandle) {
+          // console.log('[UnifiedDatafeed] 🔄 Forcing realtime mode (new candle detected)');
           this.forceRealtimeMode();
         }
       } catch (error) {
         console.error('[UnifiedDatafeed] ❌ Error calling onTick:', error);
+        console.error('[UnifiedDatafeed] Error details:', {
+          errorMessage: error instanceof Error ? error.message : String(error),
+          errorStack: error instanceof Error ? error.stack : 'No stack',
+          bar,
+          previousLastBar,
+        });
       }
     });
 
@@ -1369,7 +1549,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
 
   unsubscribeBars(listenerGuid: string): void {
     if (this.config.debug) {
-      console.log('[UnifiedDatafeed] unsubscribeBars:', listenerGuid);
+      // console.log('[UnifiedDatafeed] unsubscribeBars:', listenerGuid);
     }
 
     // Find and remove subscriptions for this listener
@@ -1395,11 +1575,11 @@ export class UnifiedDatafeed implements IBasicDataFeed {
           const timeframe = this.resolutionToTimeframe(subscriptionInfo.resolution);
 
           if (this.config.debug) {
-            console.log('[UnifiedDatafeed] Unsubscribing from:', {
-              subscriptionKey,
-              cleanAddress: tokenAddress,
-              chartType: subscriptionInfo.isMarketCapMode ? 'mcap' : 'price',
-            });
+            // console.log('[UnifiedDatafeed] Unsubscribing from:', {
+            //   subscriptionKey,
+            //   cleanAddress: tokenAddress,
+            //   chartType: subscriptionInfo.isMarketCapMode ? 'mcap' : 'price',
+            // });
           }
 
           this.ws.send(
@@ -1422,7 +1602,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     // If no subscriptions left, cleanup
     if (this.subscriptions.size === 0) {
       if (this.config.debug) {
-        console.log('[UnifiedDatafeed] No more subscriptions, cleaning up');
+        // console.log('[UnifiedDatafeed] No more subscriptions, cleaning up');
       }
       this.cleanup();
       // 🔥 PHASE 3: Stop health monitoring
@@ -1527,6 +1707,23 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     };
 
     return map[resolution] || '1h';
+  }
+
+  /**
+   * Convert timeframe string to milliseconds
+   */
+  private getIntervalMs(timeframe: string): number {
+    const map: Record<string, number> = {
+      '1m': 60 * 1000,
+      '5m': 5 * 60 * 1000,
+      '15m': 15 * 60 * 1000,
+      '1h': 60 * 60 * 1000,
+      '4h': 4 * 60 * 60 * 1000,
+      '1d': 24 * 60 * 60 * 1000,
+      '1D': 24 * 60 * 60 * 1000,
+    };
+
+    return map[timeframe] || 60 * 60 * 1000; // Default to 1 hour
   }
 
   private emitMarketCapIfChanged(
