@@ -76,13 +76,13 @@ export function useTokenMetrics(
       const updatedMetrics: TokenMetrics = {
         contractAddress: wsMetrics.tokenAddress,
         // Use WebSocket value if provided, otherwise keep previous value
-        // 🔥 FIX: Prevent volume from decreasing (should only increase or stay stable)
-        // This is a safeguard in case aggregator wasn't seeded properly
+        // 🔥 FIX: Prevent volume from decreasing significantly (should only increase or stay stable)
+        // This is a safeguard in case of edge cases (allows up to 5% drop for normal pruning of old trades)
         volume24hUsd:
           wsMetrics.volume24hUsd !== undefined
             ? previousMetrics?.volume24hUsd !== undefined &&
               previousMetrics.volume24hUsd > 0 &&
-              wsMetrics.volume24hUsd < previousMetrics.volume24hUsd * 0.99 // Allow <1% drop for pruning
+              wsMetrics.volume24hUsd < previousMetrics.volume24hUsd * 0.95 // Allow <5% drop for pruning
               ? previousMetrics.volume24hUsd // Keep previous if significant drop detected
               : wsMetrics.volume24hUsd
             : (previousMetrics?.volume24hUsd ?? 0),
