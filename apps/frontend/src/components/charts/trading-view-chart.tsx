@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { UnifiedDatafeed } from '@/lib/tradingview/unified-datafeed';
+import { sharedTradeWebSocket } from '@/lib/websocket/shared-trade-websocket';
 
 const toolbarStylesId = 'aces-tradingview-toolbar-styles';
 
@@ -587,16 +588,23 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
             }
           })();
 
-          const datafeed = new UnifiedDatafeed({
+          console.log('[TradingView] Creating datafeed with config:', {
             apiBaseUrl,
             wsUrl,
             debug: process.env.NODE_ENV === 'development',
+            nodeEnv: process.env.NODE_ENV,
+          });
+
+          const datafeed = new UnifiedDatafeed({
+            apiBaseUrl,
+            wsUrl,
           });
 
           datafeedRef.current = datafeed;
 
           if (typeof window !== 'undefined') {
             (window as any).__tradingViewDatafeed = datafeed;
+            (window as any).sharedTradeWebSocket = sharedTradeWebSocket;
           }
 
           const currentMode = chartModeRef.current;
@@ -672,8 +680,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
               'mainSeriesProperties.hollowCandleStyle.wickUpColor': '#00C896',
               'mainSeriesProperties.hollowCandleStyle.wickDownColor': '#FF5B5B',
               'scalesProperties.autoScale': true,
-              'scalesProperties.scaleMode': 0,
-              'scalesProperties.alignLabels': true,
+              // Removed deprecated properties: scaleMode, alignLabels (not supported in current TradingView version)
               'paneProperties.topMargin': 10,
               'paneProperties.bottomMargin': 10,
               'mainSeriesProperties.priceAxisProperties.percentage': false,
@@ -718,6 +725,25 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
               heightPx,
               minHeightPx,
             });
+            
+            // 🔥 CRITICAL FIX: Pass widget reference to datafeed AFTER chart is ready
+            // This ensures the widget is fully initialized before we try to call methods on it
+            if (datafeedRef.current && typeof datafeedRef.current.setWidget === 'function') {
+              console.log('[TradingView] 🔧 Setting widget reference on datafeed (in onChartReady)');
+              datafeedRef.current.setWidget(widgetRef.current);
+            } else {
+              console.error('[TradingView] ❌ Cannot set widget - datafeed not available!', {
+                hasDatafeed: !!datafeedRef.current,
+                hasSetWidget: datafeedRef.current ? typeof datafeedRef.current.setWidget === 'function' : false,
+              });
+            }
+            
+            console.log(
+              '[TradingView] 🎯 Chart is now ready to receive data. If no data appears, check:',
+            );
+            console.log('[TradingView] 1. Network tab for /api/v1/chart/ requests');
+            console.log('[TradingView] 2. Console for [UnifiedDatafeed] getBars logs');
+            console.log('[TradingView] 3. Any 404 or 500 errors from the API');
             setIsReinitializing(false);
             createCustomButtons();
           });

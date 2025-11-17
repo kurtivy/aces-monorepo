@@ -19,6 +19,25 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
     const startTime = Date.now();
 
     try {
+      // 🔥 SKIP AUTH FOR WEBSOCKET UPGRADE REQUESTS
+      // WebSocket upgrade requests have special headers and should bypass auth
+      const isWebSocketUpgrade =
+        request.headers.upgrade === 'websocket' ||
+        request.headers.connection?.toLowerCase().includes('upgrade') ||
+        request.url.startsWith('/api/v1/ws') ||
+        request.url.startsWith('/ws/');
+
+      if (isWebSocketUpgrade) {
+        console.log('🔌 WebSocket upgrade request detected, skipping auth:', request.url);
+        request.user = null;
+        request.auth = {
+          user: null,
+          isAuthenticated: false,
+          hasRole: () => false,
+        };
+        return;
+      }
+
       // Only log auth checks for non-public paths to reduce noise
       const isLikelyPublic =
         request.url.startsWith('/api/v1/tokens') ||
@@ -58,6 +77,7 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
         '/api/v1/listings/symbol', // Public listing by symbol endpoint
         '/api/v1/prices', // Public price endpoints
         '/ws/chart', // WebSocket chart path (handshake)
+        '/api/v1/ws', // 🔥 NEW: WebSocket routes for real-time data (trades, bonding, pools, candles)
         '/api/webhooks/goldsky', // GoldSky webhooks (uses own x-goldsky-signature auth)
       ];
 
@@ -79,6 +99,7 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
             return true;
           if (path === '/api/v1/prices' && request.url.startsWith('/api/v1/prices')) return true;
           if (path === '/ws/chart' && request.url.startsWith('/ws/chart')) return true;
+          if (path === '/api/v1/ws' && request.url.startsWith('/api/v1/ws')) return true; // 🔥 NEW: WebSocket routes
           if (path === '/api/webhooks/goldsky' && request.url.startsWith('/api/webhooks/goldsky'))
             return true;
           return false;

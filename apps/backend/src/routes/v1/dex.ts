@@ -11,6 +11,7 @@ import {
 import { BitQueryService } from '../../services/bitquery-service';
 import { createProvider, getNetworkConfig } from '../../config/network.config';
 import { getPrismaClient } from '../../lib/database';
+import { SubgraphTrade } from '../../lib/goldsky-client';
 
 const addressSchema = z.string().regex(/^0x[a-fA-F0-9]{40}$/);
 
@@ -165,10 +166,82 @@ export async function dexRoutes(fastify: FastifyInstance) {
     },
     async (request: FastifyRequest<{ Params: AddressParams }>, reply) => {
       try {
-        const service = ensureService();
-        const poolState: AerodromePoolState | null = await service.getPoolState(
-          request.params.address,
-        );
+        const poolAddress = request.params.address;
+        const { token: tokenAddress } = request.query as { token?: string };
+
+        // Try WebSocket cached data first (real-time)
+        if (fastify.adapterManager && tokenAddress) {
+          const cachedPoolState = fastify.adapterManager.getCachedPoolState(poolAddress);
+          if (cachedPoolState) {
+            console.log('[DEX:Pool] ✅ Serving from WebSocket cache:', poolAddress);
+            return reply.send({
+              success: true,
+              data: {
+                poolAddress: cachedPoolState.poolAddress,
+                reserve0: cachedPoolState.reserve0,
+                reserve1: cachedPoolState.reserve1,
+                priceToken0: cachedPoolState.priceToken0,
+                priceToken1: cachedPoolState.priceToken1,
+                blockNumber: cachedPoolState.blockNumber,
+                timestamp: cachedPoolState.timestamp,
+                lastUpdated: Date.now(),
+                dataSource: 'websocket',
+              },
+            });
+          }
+
+          // No cache yet - start a background subscription to populate it
+          console.log('[DEX:Pool] 🚀 Starting background WebSocket subscription for:', poolAddress);
+          fastify.adapterManager.subscribeToPoolState(
+            poolAddress,
+            tokenAddress,
+            (poolState) => {
+              console.log('[DEX:Pool] 📊 Background pool update received:', poolAddress);
+              // Data is auto-cached in the adapter
+            }
+          ).catch(err => {
+            console.error('[DEX:Pool] ⚠️ Failed to start background subscription:', err);
+          });
+
+          console.log('[DEX:Pool] ⚠️ No WebSocket cache yet, falling back to RPC:', poolAddress);
+        }
+
+        // Fallback to old AerodromeDataService (RPC polling)
+        if (!aerodromeService) {
+          console.error('[DEX:Pool] ❌ AerodromeDataService not initialized');
+          return reply.code(503).send({ 
+            success: false, 
+            error: 'Dex service unavailable - AerodromeDataService not initialized',
+            details: 'Check RPC configuration and environment variables'
+          });
+        }
+
+        let poolState: AerodromePoolState | null = null;
+        try {
+          poolState = await aerodromeService.getPoolState(
+            poolAddress,
+          );
+        } catch (rpcError: any) {
+          // Handle contract call errors gracefully
+          const errorMessage = rpcError?.message || 'Unknown RPC error';
+          const isCallException = errorMessage.includes('CALL_EXCEPTION') || 
+                                  errorMessage.includes('missing revert data') ||
+                                  rpcError?.code === 'CALL_EXCEPTION' ||
+                                  rpcError?.reason === 'missing revert data';
+          
+          if (isCallException) {
+            // Pool might not exist or contract call failed - return 404 instead of 503
+            console.warn(`[DEX:Pool] ⚠️ Pool contract call failed for ${poolAddress}:`, errorMessage);
+            return reply.code(404).send({ 
+              success: false, 
+              error: 'Pool not found or invalid',
+              details: 'The pool address may not exist or the contract call failed. This is normal for tokens that have not yet created a pool.'
+            });
+          }
+          
+          // Re-throw other errors to be caught by outer catch
+          throw rpcError;
+        }
 
         if (!poolState) {
           return reply.code(404).send({ success: false, error: 'Pool not found' });
@@ -176,8 +249,19 @@ export async function dexRoutes(fastify: FastifyInstance) {
 
         return reply.send({ success: true, data: poolState });
       } catch (error) {
+        console.error('[DEX:Pool] ❌ Error fetching pool state:', error);
         fastify.log.error({ err: error }, 'Failed to fetch pool state');
-        return reply.code(503).send({ success: false, error: 'Dex service unavailable' });
+        
+        // Check if it's already a handled error (404 response)
+        if (error && typeof error === 'object' && 'statusCode' in error) {
+          throw error; // Re-throw Fastify response objects
+        }
+        
+        return reply.code(503).send({ 
+          success: false, 
+          error: 'Dex service unavailable',
+          details: error instanceof Error ? error.message : 'Unknown error'
+        });
       }
     },
   );
@@ -1137,7 +1221,7 @@ export async function dexRoutes(fastify: FastifyInstance) {
               .string()
               .transform((value) => Number(value))
               .or(z.number())
-              .default('100'),
+              .default('80'), // Changed default to 80
           }),
         ),
       },
@@ -1151,63 +1235,120 @@ export async function dexRoutes(fastify: FastifyInstance) {
     ) => {
       try {
         const { address } = request.params;
-        const { limit = 100 } = request.query;
+        const { limit = 80 } = request.query; // Changed default to 80
 
         // 🔥 OPTIMIZED: Use token metadata cache instead of direct query
         const tokenCache = (fastify as any).tokenMetadataCache;
         const tokenMetadata = await tokenCache.getTokenMetadata(address);
 
-        if (!tokenMetadata?.poolAddress || tokenMetadata.phase !== 'DEX_TRADING') {
-          return reply.send({
-            success: true,
-            data: [],
-            meta: {
-              graduation: {
-                isDexLive: false,
-                poolAddress: null,
-                dexLiveAt: null,
-                bondingCutoff: null,
-              },
-            },
-          });
+        // Determine if token is graduated
+        const isGraduated = tokenMetadata?.poolAddress && tokenMetadata.phase === 'DEX_TRADING';
+        const dexLiveAt = tokenMetadata?.dexLiveAt;
+
+        // Fetch trades from both sources
+        const allTrades: Array<{
+          txHash: string;
+          timestamp: number;
+          blockNumber: string;
+          direction: 'buy' | 'sell';
+          amountToken: string;
+          amountCounter: string;
+          priceInCounter: number;
+          priceInUsd?: number;
+          trader?: string;
+          source: 'bonding' | 'dex';
+        }> = [];
+
+        // 1. Fetch DEX trades from BitQuery (if graduated)
+        if (isGraduated) {
+          try {
+            const bitquery = new BitQueryService();
+            const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+            const dexTrades = await bitquery.getTokenTrades(address, limit, {
+              from: thirtyDaysAgo,
+              to: new Date(),
+            });
+
+            const transformedDexTrades = dexTrades.map((trade) => ({
+              txHash: trade.txHash,
+              timestamp: new Date(trade.blockTime).getTime(),
+              blockNumber: trade.blockNumber.toString(), // Convert to string
+              direction: trade.side as 'buy' | 'sell',
+              amountToken: trade.amountToken,
+              amountCounter: trade.amountAces,
+              priceInCounter: parseFloat(trade.priceInAces),
+              priceInUsd: trade.priceInUsd ? parseFloat(trade.priceInUsd) : undefined,
+              trader: trade.sender,
+              source: 'dex' as const,
+            }));
+
+            allTrades.push(...transformedDexTrades);
+            console.log(`[DEX Trades] ✅ Fetched ${transformedDexTrades.length} DEX trades from BitQuery`);
+          } catch (err: any) {
+            console.warn('[DEX Trades] BitQuery fetch failed:', err);
+          }
         }
 
-        // Use cached metadata
-        const { poolAddress, dexLiveAt } = tokenMetadata;
+        // 2. Fetch bonding curve trades from Goldsky (if not graduated OR if we need more trades)
+        const remainingSlots = limit - allTrades.length;
+        if (remainingSlots > 0) {
+          try {
+            const goldskyClient = (fastify as any).goldskyClient;
+            if (goldskyClient) {
+              // If graduated, only fetch trades before graduation
+              const toTimestamp = dexLiveAt
+                ? Math.floor(dexLiveAt.getTime() / 1000)
+                : Math.floor(Date.now() / 1000);
+              const fromTimestamp = toTimestamp - 30 * 24 * 60 * 60; // 30 days ago
 
-        // Use BitQuery DEXTradeByTokens to get trades with actual trader addresses
-        const bitquery = new BitQueryService();
+              const bondingTrades = await goldskyClient.getTrades(
+                address,
+                remainingSlots,
+                fromTimestamp,
+                toTimestamp,
+                fastify.log,
+              );
 
-        const trades = await bitquery.getTokenTrades(address, Number(limit));
+              const transformedBondingTrades = bondingTrades.map((trade: SubgraphTrade) => ({
+                txHash: trade.id,
+                timestamp: parseInt(trade.createdAt) * 1000, // Parse string timestamp to number
+                blockNumber: trade.blockNumber?.toString() || '0',
+                direction: trade.isBuy ? ('buy' as const) : ('sell' as const),
+                amountToken: trade.tokenAmount || '0',
+                amountCounter: trade.acesTokenAmount || '0',
+                priceInCounter: 0, // Will be calculated from amounts
+                priceInUsd: undefined, // Bonding curve trades don't have USD prices
+                trader: trade.trader?.address,
+                source: 'bonding' as const,
+              }));
 
-        // Transform to frontend format
-        const transformedTrades = trades.map((trade, index) => {
-          const result = {
-            txHash: trade.txHash,
-            timestamp: new Date(trade.blockTime).getTime(),
-            blockNumber: trade.blockNumber,
-            direction: trade.side as 'buy' | 'sell',
-            amountToken: trade.amountToken,
-            amountCounter: trade.amountAces,
-            priceInCounter: parseFloat(trade.priceInAces),
-            priceInUsd: trade.priceInUsd ? parseFloat(trade.priceInUsd) : undefined,
-            trader: trade.sender, // Actual wallet address from Transaction.From
-          };
+              allTrades.push(...transformedBondingTrades);
+              console.log(
+                `[DEX Trades] ✅ Fetched ${transformedBondingTrades.length} bonding trades from Goldsky`,
+              );
+            }
+          } catch (err: any) {
+            console.warn('[DEX Trades] Goldsky fetch failed:', err);
+          }
+        }
 
-          return result;
-        });
+        // 3. Sort all trades by timestamp (newest first) and limit to requested amount
+        allTrades.sort((a, b) => b.timestamp - a.timestamp);
+        const finalTrades = allTrades.slice(0, limit);
+
+        console.log(`[DEX Trades] ✅ Combined ${finalTrades.length} trades (${finalTrades.filter((t) => t.source === 'dex').length} DEX + ${finalTrades.filter((t) => t.source === 'bonding').length} bonding)`);
 
         // Include graduation metadata (using cached data)
         const graduationMeta = {
-          isDexLive: true,
-          poolAddress: poolAddress,
+          isDexLive: isGraduated,
+          poolAddress: tokenMetadata?.poolAddress || null,
           dexLiveAt: dexLiveAt?.toISOString() || null,
           bondingCutoff: dexLiveAt?.toISOString() || null,
         };
 
         return reply.send({
           success: true,
-          data: transformedTrades,
+          data: finalTrades,
           meta: {
             graduation: graduationMeta,
           },

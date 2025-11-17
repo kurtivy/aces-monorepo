@@ -51,7 +51,7 @@ export function DetailsOverlay({ isOpen, onClose, listing, isLive, isOwner }: De
                     }
                     isLive={isLive}
                     isOwner={isOwner}
-                    onBidPlaced={(bid) => console.log('Bid placed:', bid)}
+                    onBidPlaced={() => {}}
                     onOpenTerms={() => setIsTermsOpen(true)}
                   />
                 </div>

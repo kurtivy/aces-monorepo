@@ -113,3 +113,91 @@ export interface LatestPriceResponse {
     }>;
   };
 }
+
+/**
+ * DEXTradeByTokens trade structure from BitQuery API
+ */
+export interface DEXTradeByTokensTrade {
+  Block: {
+    Time: string;
+    Number: number;
+  };
+  Transaction: {
+    Hash: string;
+    From: string;
+  };
+  Trade: {
+    Amount: string;
+    Price: string;
+    Side: {
+      Type: 'buy' | 'sell';
+      Amount: string;
+      AmountInUSD: string;
+      Currency: {
+        Symbol: string;
+        SmartContract: string;
+        Name: string;
+      };
+    };
+    Dex?: {
+      ProtocolName: string;
+      ProtocolFamily: string;
+    };
+  };
+}
+
+/**
+ * Aggregated candle data structure from BitQuery DEXTradeByTokens with PriceInUSD aggregations
+ */
+export interface AggregatedCandleData {
+  Block: {
+    Time: string;
+  };
+  Trade: {
+    open?: number;
+    close?: number;
+    high?: number;
+    low?: number;
+  };
+  volume?: number;
+  volumeUsd?: number;
+  tradesCount?: number;
+}
+
+/**
+ * Legacy DEXTrades structure (for normalizeCandles method)
+ */
+export interface DEXTrade {
+  Block: {
+    Time: string;
+    Number: number;
+  };
+  Transaction: {
+    Hash: string;
+    From: string;
+  };
+  Trade: {
+    Buy: {
+      Amount: string;
+      PriceInUSD: string;
+      Currency: {
+        SmartContract: string;
+        Symbol: string;
+        Decimals: number;
+      };
+    };
+    Sell: {
+      Amount: string;
+      PriceInUSD: string;
+      Currency: {
+        SmartContract: string;
+        Symbol: string;
+        Decimals: number;
+      };
+    };
+    Dex?: {
+      ProtocolName: string;
+      ProtocolFamily: string;
+    };
+  };
+}

@@ -453,11 +453,11 @@ export class AerodromeDataService {
         ? `${normalizedA}-${normalizedB}-${knownPoolAddress || 'unknown'}`
         : `${normalizedB}-${normalizedA}-${knownPoolAddress || 'unknown'}`;
 
-    console.log(`[getGenericPoolState] Called with:`);
-    console.log(`  tokenA: ${normalizedA}`);
-    console.log(`  tokenB: ${normalizedB}`);
-    console.log(`  knownPoolAddress: ${knownPoolAddress || 'none'}`);
-    console.log(`  cacheKey: ${cacheKey}`);
+    // console.log(`[getGenericPoolState] Called with:`);
+    // console.log(`  tokenA: ${normalizedA}`);
+    // console.log(`  tokenB: ${normalizedB}`);
+    // console.log(`  knownPoolAddress: ${knownPoolAddress || 'none'}`);
+    // console.log(`  cacheKey: ${cacheKey}`);
 
     // 🔥 PHASE 3: Use cache plugin if available
     if (this.fastify?.cache) {

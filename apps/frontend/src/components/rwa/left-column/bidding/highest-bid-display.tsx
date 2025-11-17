@@ -21,15 +21,12 @@ export function HighestBidDisplay({ listingId, className = '' }: HighestBidDispl
       setError(null);
 
       try {
-        console.log('🔍 Fetching highest bid for listing:', listingId);
         const result = await BidsApi.getHighestBid(listingId);
 
         if (result.success && result.data) {
           const bidAmount = parseFloat(result.data.amount);
-          console.log('✅ Highest bid found:', bidAmount);
           setHighestBid(bidAmount);
         } else {
-          console.log('ℹ️ No highest bid found');
           setHighestBid(null);
         }
       } catch (err) {

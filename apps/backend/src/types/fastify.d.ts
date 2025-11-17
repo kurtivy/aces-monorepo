@@ -30,7 +30,12 @@ declare module 'fastify' {
   interface FastifyInstance {
     prisma: PrismaClient;
     authenticate: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-    bondingMonitor?: import('../websockets/bonding-monitor-socket').BondingMonitorWebSocket | null;
+    // 🚀 Phase 1-3: WebSocket Gateway Architecture
+    adapterManager?: import('../services/websocket/adapter-manager').AdapterManager;
+    // Services
+    bitQueryService?: import('../services/bitquery-service').BitQueryService;
+    acesUsdPriceService?: import('../services/aces-usd-price-service').AcesUsdPriceService;
+    marketCapService?: import('../services/market-cap-service').MarketCapService;
     chartAggregationService?: any;
     chartDataStore?: import('../services/chart-data-store').ChartDataStore;
     chartWebSocket?: import('../websockets/chart-data-socket').ChartDataWebSocket | null;

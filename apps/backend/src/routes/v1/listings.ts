@@ -633,16 +633,12 @@ export async function listingRoutes(fastify: FastifyInstance) {
 
         const result = await listingService.completeMinting(id, contractAddress, userId);
 
-        // 🔥 NEW: Auto-add token to bonding monitor
-        if (result.token?.contractAddress && fastify.bondingMonitor) {
-          try {
-            fastify.bondingMonitor.addTokenToMonitor(result.token.contractAddress);
-            console.log(
-              `[Listings] ✅ Added ${result.token.symbol} to bonding monitor for auto-graduation`,
-            );
-          } catch (monitorError) {
-            console.warn('[Listings] Failed to add token to bonding monitor:', monitorError);
-          }
+        // 🚀 Phase 3: Real-time bonding monitoring via WebSocket adapters
+        // Bonding status available at: /api/v1/ws/bonding/:tokenAddress
+        if (result.token?.contractAddress) {
+          console.log(
+            `[Listings] ✅ ${result.token.symbol} ready for real-time WebSocket monitoring`,
+          );
         }
 
         return reply.send({

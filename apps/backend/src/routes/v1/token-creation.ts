@@ -130,17 +130,11 @@ export async function tokenCreationRoutes(fastify: FastifyInstance) {
           tokenAddress,
         );
 
-        // 🔥 NEW: Auto-add token to bonding monitor for auto-graduation
-        if (fastify.bondingMonitor && tokenAddress) {
-          try {
-            fastify.bondingMonitor.addTokenToMonitor(tokenAddress);
-            console.log(
-              `[TokenCreation] ✅ Added token ${tokenAddress} to bonding monitor for auto-graduation`,
-            );
-          } catch (monitorError) {
-            console.warn('[TokenCreation] Failed to add token to bonding monitor:', monitorError);
-          }
-        }
+        // 🚀 Phase 3: Token auto-monitoring is now handled by WebSocket adapters
+        // Real-time bonding status available at: /api/v1/ws/bonding/:tokenAddress
+        console.log(
+          `[TokenCreation] ✅ Token ${tokenAddress} created - real-time monitoring via WebSocket`,
+        );
 
         return reply.send({
           success: true,

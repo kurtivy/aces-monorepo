@@ -42,6 +42,14 @@ const AERODROME_ROUTER_ABI = [
 ];
 const SWAP_DEADLINE_BUFFER_SECONDS = 60 * 10;
 
+const ENABLE_SWAP_DEBUG_LOGS = process.env.NEXT_PUBLIC_ENABLE_SWAP_DEBUG === 'true';
+
+const debugLog = (...args: Parameters<typeof console.log>) => {
+  if (ENABLE_SWAP_DEBUG_LOGS) {
+    console.log(...args);
+  }
+};
+
 interface TokenSwapInterfaceProps {
   tokenSymbol?: string;
   tokenPrice?: number;
@@ -127,7 +135,7 @@ export default function TokenSwapInterface({
     const updateChainId = async () => {
       const chainId = await getCurrentChainId();
       if (chainId && chainId !== currentChainId) {
-        console.log(`Chain ID changed from ${currentChainId} to ${chainId}`);
+        debugLog(`Chain ID changed from ${currentChainId} to ${chainId}`);
         setCurrentChainId(chainId);
       }
     };
@@ -137,7 +145,7 @@ export default function TokenSwapInterface({
 
       // Listen for chain changes (if provider supports it)
       const handleChainChanged = () => {
-        console.log('Chain changed, updating...');
+        debugLog('Chain changed, updating...');
         updateChainId();
       };
 
@@ -534,7 +542,7 @@ export default function TokenSwapInterface({
         typeof error.message === 'string' &&
         error.message.includes('circuit breaker')
       ) {
-        console.log('Circuit breaker active - keeping existing balances, will retry later');
+        debugLog('Circuit breaker active - keeping existing balances, will retry later');
         return;
       }
 
@@ -544,7 +552,7 @@ export default function TokenSwapInterface({
         'code' in error &&
         (error.code === 'UNSUPPORTED_OPERATION' || error.code === 'CALL_EXCEPTION')
       ) {
-        console.log('Signer no longer valid, cleaning up...');
+        debugLog('Signer no longer valid, cleaning up...');
         setProvider(null);
         setSigner(null);
         setFactoryContract(null);
@@ -571,7 +579,7 @@ export default function TokenSwapInterface({
       );
       const requiredAmount = ethers.BigNumber.from(amountRaw);
 
-      console.log('Checking allowance:', {
+      debugLog('Checking allowance:', {
         token: tokenAddr,
         router: routerAddress,
         currentAllowance: ethers.utils.formatEther(allowance),
@@ -579,18 +587,18 @@ export default function TokenSwapInterface({
       });
 
       if (allowance.gte(requiredAmount)) {
-        console.log('Sufficient allowance already exists');
+        debugLog('Sufficient allowance already exists');
         return false; // No approval needed
       }
 
-      console.log('Requesting approval from user...');
+      debugLog('Requesting approval from user...');
       setLoading('Awaiting approval...');
 
       try {
         const approveTx = await erc20Contract.approve(routerAddress, requiredAmount);
         setLoading('Confirming approval...');
         await approveTx.wait();
-        console.log('Approval confirmed');
+        debugLog('Approval confirmed');
         return true; // Approval was granted
       } catch (error) {
         console.error('Approval failed:', error);
@@ -628,10 +636,10 @@ export default function TokenSwapInterface({
       setTransactionStatus(null);
       setLoading('');
 
-      console.log('=== DEX SWAP DEBUG ===');
-      console.log('Active tab:', activeTab);
-      console.log('Payment asset:', paymentAsset);
-      console.log('Quote:', dexQuote);
+      debugLog('=== DEX SWAP DEBUG ===');
+      debugLog('Active tab:', activeTab);
+      debugLog('Payment asset:', paymentAsset);
+      debugLog('Quote:', dexQuote);
 
       const routerContract = new ethers.Contract(routerAddress, AERODROME_ROUTER_ABI, signer);
       const path = dexQuote.path.map((addr) => ethers.utils.getAddress(addr));
@@ -645,7 +653,7 @@ export default function TokenSwapInterface({
         const erc20Contract = new ethers.Contract(inputTokenAddress, ERC20_ABI, signer);
         const userBalance = await erc20Contract.balanceOf(walletAddress);
 
-        console.log('Balance check:', {
+        debugLog('Balance check:', {
           token: inputTokenAddress,
           userBalance: ethers.utils.formatEther(userBalance),
           required: ethers.utils.formatEther(amountIn),
@@ -658,7 +666,7 @@ export default function TokenSwapInterface({
         }
       }
 
-      console.log('Swap parameters:', {
+      debugLog('Swap parameters:', {
         path,
         amountIn: ethers.utils.formatEther(amountIn),
         amountOutMin: ethers.utils.formatEther(amountOutMin),
@@ -668,7 +676,7 @@ export default function TokenSwapInterface({
       let tx;
 
       if (paymentAsset === 'ETH' && activeTab === 'buy') {
-        console.log('Executing ETH -> Token swap');
+        debugLog('Executing ETH -> Token swap');
         setLoading('Confirming swap...');
         tx = await routerContract.swapExactETHForTokens(
           amountOutMin,
@@ -682,7 +690,7 @@ export default function TokenSwapInterface({
       } else {
         // For token swaps, need approval first
         const inputTokenAddress = path[0];
-        console.log('Checking/requesting approval for token:', inputTokenAddress);
+        debugLog('Checking/requesting approval for token:', inputTokenAddress);
 
         const approvalGranted = await ensureDexAllowance(
           inputTokenAddress,
@@ -690,11 +698,11 @@ export default function TokenSwapInterface({
         );
 
         if (approvalGranted) {
-          console.log('Approval granted, proceeding with swap');
+          debugLog('Approval granted, proceeding with swap');
         }
 
         setLoading('Confirming swap...');
-        console.log('Executing Token -> Token swap');
+        debugLog('Executing Token -> Token swap');
         tx = await routerContract.swapExactTokensForTokens(
           amountIn,
           amountOutMin,
@@ -704,10 +712,10 @@ export default function TokenSwapInterface({
         );
       }
 
-      console.log('Swap transaction sent:', tx.hash);
+      debugLog('Swap transaction sent:', tx.hash);
       setLoading('Waiting for confirmation...');
       await tx.wait();
-      console.log('Swap confirmed');
+      debugLog('Swap confirmed');
 
       setTransactionStatus({
         type: 'success',
@@ -829,7 +837,7 @@ export default function TokenSwapInterface({
         typeof error.message === 'string' &&
         error.message.includes('circuit breaker')
       ) {
-        console.log('Circuit breaker active - keeping existing price quote');
+        debugLog('Circuit breaker active - keeping existing price quote');
         return; // Don't update price to '0'
       }
 
@@ -858,7 +866,7 @@ export default function TokenSwapInterface({
         typeof error.message === 'string' &&
         error.message.includes('circuit breaker')
       ) {
-        console.log('Circuit breaker active - keeping existing sell price quote');
+        debugLog('Circuit breaker active - keeping existing sell price quote');
         return; // Don't update price to '0'
       }
 
@@ -895,13 +903,13 @@ export default function TokenSwapInterface({
           // Check if wallet is actually connected
           const accounts = await window.ethereum.request({ method: 'eth_accounts' });
           if (!accounts || (Array.isArray(accounts) && accounts.length === 0)) {
-            console.log('No accounts connected, skipping initialization');
+            debugLog('No accounts connected, skipping initialization');
             return;
           }
 
           // Get the current chain ID first
           const chainId = await getCurrentChainId();
-          console.log('Current chain ID:', chainId);
+          debugLog('Current chain ID:', chainId);
 
           // Validate addresses for this network
           const addresses = getContractAddresses(chainId || 84532);
@@ -916,7 +924,7 @@ export default function TokenSwapInterface({
           }
 
           setUnsupportedNetwork(false);
-          console.log('Auto-initializing provider from auth...');
+          debugLog('Auto-initializing provider from auth...');
           const newProvider = new ethers.providers.Web3Provider(window.ethereum);
           const newSigner = newProvider.getSigner();
 
@@ -929,7 +937,7 @@ export default function TokenSwapInterface({
           const aces = new ethers.Contract(addresses.ACES_TOKEN, ERC20_ABI, newSigner);
           setAcesContract(aces);
 
-          console.log('Auto-initialization complete', {
+          debugLog('Auto-initialization complete', {
             chainId,
             factoryProxy: addresses.FACTORY_PROXY,
             acesToken: addresses.ACES_TOKEN,
@@ -942,7 +950,7 @@ export default function TokenSwapInterface({
         }
       } else if (!isAuthenticated || !walletAddress) {
         // Clean up when disconnected
-        console.log('User disconnected, cleaning up state...');
+        debugLog('User disconnected, cleaning up state...');
         setProvider(null);
         setSigner(null);
         setFactoryContract(null);
@@ -1062,10 +1070,10 @@ export default function TokenSwapInterface({
         return;
       }
 
-      console.log('=== BUY TOKENS DEBUG ===');
-      console.log('Token to buy:', tokenAddress);
-      console.log('Amount (tokens):', amount);
-      console.log('Price (ACES):', priceQuote);
+      debugLog('=== BUY TOKENS DEBUG ===');
+      debugLog('Token to buy:', tokenAddress);
+      debugLog('Amount (tokens):', amount);
+      debugLog('Price (ACES):', priceQuote);
 
       const address = await signer.getAddress();
       const currentAddresses = getCurrentContractAddresses();
@@ -1075,9 +1083,9 @@ export default function TokenSwapInterface({
       );
       const currentAcesBalance = await acesContract.balanceOf(address);
 
-      console.log('Current allowance:', ethers.utils.formatEther(currentAllowance));
-      console.log('Required amount:', ethers.utils.formatEther(priceWei));
-      console.log('Current ACES balance:', ethers.utils.formatEther(currentAcesBalance));
+      debugLog('Current allowance:', ethers.utils.formatEther(currentAllowance));
+      debugLog('Required amount:', ethers.utils.formatEther(priceWei));
+      debugLog('Current ACES balance:', ethers.utils.formatEther(currentAcesBalance));
 
       // Step 1: Approve ACES tokens
       setLoading('Approving ACES tokens...');
@@ -1124,16 +1132,16 @@ export default function TokenSwapInterface({
     try {
       const amountWei = amountValueWei;
 
-      console.log('=== SELL TOKENS DEBUG ===');
-      console.log('Token to sell:', tokenAddress);
-      console.log('Amount (tokens):', amount);
+      debugLog('=== SELL TOKENS DEBUG ===');
+      debugLog('Token to sell:', tokenAddress);
+      debugLog('Amount (tokens):', amount);
 
       const address = await signer.getAddress();
       const tokenContract = new ethers.Contract(tokenAddress, LAUNCHPAD_TOKEN_ABI, signer);
       const currentTokenBalance = await tokenContract.balanceOf(address);
 
-      console.log('Current token balance:', ethers.utils.formatEther(currentTokenBalance));
-      console.log('Estimated ACES received:', sellPriceQuote);
+      debugLog('Current token balance:', ethers.utils.formatEther(currentTokenBalance));
+      debugLog('Estimated ACES received:', sellPriceQuote);
 
       if (currentTokenBalance.lt(amountWei)) {
         throw new Error(

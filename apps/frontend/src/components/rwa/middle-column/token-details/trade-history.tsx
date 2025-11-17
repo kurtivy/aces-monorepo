@@ -3,7 +3,8 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { ExternalLink, ChevronUp, ChevronDown } from 'lucide-react';
 
-import { useTradeHistory, type TradeHistoryEntry } from '@/hooks/rwa/use-trade-history';
+// 🚀 PHASE 5: Migrated to WebSocket-powered hook
+import { useTradeHistory, type TradeHistoryEntry } from '@/hooks/rwa/use-trade-history-websocket';
 import { useAcesUsdPrice } from '@/hooks/use-aces-usd-price';
 import { cn } from '@/lib/utils';
 import type { DatabaseListing } from '@/types/rwa/section.types';
@@ -80,13 +81,14 @@ export default function TradeHistory({
     setIsClient(true);
   }, []);
 
-  const { trades, isLoading, error } = useTradeHistory(tokenAddress, { dexMeta });
+  const { trades, isLoading, error, hasFreshTrades } = useTradeHistory(tokenAddress, { dexMeta });
 
   const { acesUsdPrice } = useAcesUsdPrice({ enabled: true });
   const acesUsd = acesUsdPrice ? Number.parseFloat(acesUsdPrice) : null;
 
   const safeTrades: TradeHistoryEntry[] = Array.isArray(trades) ? trades : [];
 
+  // Debug: Log when trades update
   const normalizeAmount = (amount: string): number => {
     if (!amount) return 0;
     const hasDecimal = amount.includes('.') || amount.includes('e') || amount.includes('E');
@@ -171,8 +173,7 @@ export default function TradeHistory({
     if (value == null || !Number.isFinite(value)) return '--';
     const abs = Math.abs(value);
     if (abs > 0 && abs < 0.01) return '< $0.01';
-    if (options?.isBuy) return `$${value.toFixed(2)}`;
-    return value < 10 ? `$${value.toFixed(6)}` : `$${value.toFixed(2)}`;
+    return `$${value.toFixed(2)}`;
   };
 
   const formatUnitPrice = (value: number | null | undefined) => {
@@ -191,6 +192,7 @@ export default function TradeHistory({
       <div className="flex flex-1 items-center justify-center text-gray-400">Loading...</div>
     );
   } else if (isLoading && safeTrades.length === 0) {
+    // 🔥 No trades yet - show skeleton loader
     mainContent = (
       <div className="flex-1 space-y-2">
         {[...Array(5)].map((_, i) => (
@@ -208,6 +210,16 @@ export default function TradeHistory({
             <div className="h-4 w-16 rounded bg-gray-600" />
           </div>
         ))}
+      </div>
+    );
+  } else if (isLoading && !hasFreshTrades && safeTrades.length > 0) {
+    // 🔥 NEW: Have stale trades - show loading spinner overlay while fetching fresh data
+    mainContent = (
+      <div className="flex flex-1 items-center justify-center">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#D0B284] border-t-transparent" />
+          <div className="text-sm text-gray-400">Loading fresh trades...</div>
+        </div>
       </div>
     );
   } else if (error) {

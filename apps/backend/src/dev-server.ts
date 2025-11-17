@@ -2,6 +2,7 @@ import { config } from 'dotenv';
 import { join } from 'path';
 import { buildApp } from './app';
 import { existsSync } from 'fs';
+import { initSentryBackend } from './lib/sentry';
 
 // Load environment variables from .env file (for local development only)
 // In production (Railway, Vercel), environment variables are injected directly
@@ -28,6 +29,15 @@ console.log('  - DATABASE_URL:', process.env.DATABASE_URL ? '✓ set' : '✗ mis
 console.log('  - QUICKNODE_BASE_URL:', process.env.QUICKNODE_BASE_URL ? '✓ set' : '✗ missing');
 console.log('  - BASE_MAINNET_RPC_URL:', process.env.BASE_MAINNET_RPC_URL ? '✓ set' : '✗ missing');
 console.log('  - ACES_TOKEN_ADDRESS:', process.env.ACES_TOKEN_ADDRESS ? '✓ set' : '✗ missing');
+console.log('  - SENTRY_DSN:', process.env.SENTRY_DSN ? '✓ set' : '✗ missing');
+
+// 🔥 PHASE 5: Initialize Sentry for error tracking (must be before app starts)
+if (process.env.SENTRY_DSN) {
+  initSentryBackend();
+  console.log('✅ Sentry initialized for backend error tracking');
+} else {
+  console.log('ℹ️ Sentry DSN not set - error tracking disabled');
+}
 
 async function start() {
   try {

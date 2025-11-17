@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useBondingQuote } from './use-bonding-quote';
 import { useDexQuote } from './use-dex-quote';
 import { BondingApi } from '@/lib/bonding-curve/bonding';
@@ -10,6 +10,9 @@ import {
   applySlippageToUsdValue,
 } from '@/lib/swap/fee-calculator';
 import { clampAmountDecimals } from '@/lib/swap/amount-utils';
+import { multiHopQuoteCache } from '@/lib/swap/quote-cache';
+import { multiHopQuoteDeduplicator } from '@/lib/swap/request-deduplicator';
+import { retryWithBackoff, RetryPresets } from '@/lib/swap/retry-with-backoff';
 
 interface UseUnifiedQuoteProps {
   // Token info
@@ -99,6 +102,9 @@ export function useUnifiedQuote({
   const [multiHopQuote, setMultiHopQuote] = useState<MultiHopQuoteData | null>(null);
   const [multiHopLoading, setMultiHopLoading] = useState(false);
   const [multiHopError, setMultiHopError] = useState<string | null>(null);
+
+  // Track previous amount to detect significant changes for multi-hop quotes
+  const previousMultiHopAmountRef = useRef<string>('');
 
   // Lightweight client fallback for ACES input USD in DEX mode
   const [dexUsdFallback, setDexUsdFallback] = useState<{
@@ -230,7 +236,7 @@ export function useUnifiedQuote({
   }, [isDexMode, sellToken, enabled, amount, dexQuote.quote?.inputUsdValue]);
 
   /**
-   * Fetch multi-hop quote for WETH/USDC/USDT → RWA
+   * Fetch multi-hop quote for WETH/USDC/USDT → RWA with optimization layers
    * Backend calculates WETH/USDC/USDT → ACES via DEX pools
    * Then we calculate ACES → RWA via bonding curve
    */
@@ -254,22 +260,75 @@ export function useUnifiedQuote({
       const decimals = PAYMENT_ASSET_DECIMALS[apiAsset as PaymentAsset] ?? 18;
       const safeAmount = clampAmountDecimals(amount, decimals);
 
-      const result = await BondingApi.getMultiHopQuote(tokenAddress, {
-        inputAsset: apiAsset as 'WETH' | 'USDC' | 'USDT',
+      // Check cache first, but bypass if amount changed significantly
+      const cacheParams = { inputAsset: apiAsset, slippageBps };
+      const previousAmount = previousMultiHopAmountRef.current;
+      const cachedQuote = multiHopQuoteCache.get(
+        tokenAddress,
+        safeAmount,
+        cacheParams,
+        previousAmount,
+      );
+
+      if (cachedQuote) {
+        console.log('[useUnifiedQuote] 💰 Multi-hop cache hit!', {
+          tokenAddress,
+          amount: safeAmount,
+          inputAsset: apiAsset,
+        });
+        setMultiHopQuote(cachedQuote);
+        setMultiHopLoading(false);
+        // Update previous amount ref
+        previousMultiHopAmountRef.current = safeAmount;
+        return;
+      }
+
+      console.log('[useUnifiedQuote] 🔄 Fetching multi-hop quote with optimization layers...', {
+        tokenAddress,
         amount: safeAmount,
+        inputAsset: apiAsset,
         slippageBps,
       });
 
-      if (result.success && result.data) {
-        setMultiHopQuote(result.data as MultiHopQuoteData);
-      } else {
-        const errorMsg =
-          typeof result.error === 'string' ? result.error : 'Failed to fetch multi-hop quote';
-        setMultiHopError(errorMsg);
-        setMultiHopQuote(null);
-      }
+      // Use deduplicator and retry logic
+      const result = await multiHopQuoteDeduplicator.execute(
+        { tokenAddress, amount: safeAmount, inputAsset: apiAsset, slippageBps },
+        async () => {
+          const retryResult = await retryWithBackoff(async () => {
+            const apiResult = await BondingApi.getMultiHopQuote(tokenAddress, {
+              inputAsset: apiAsset as 'WETH' | 'USDC' | 'USDT',
+              amount: safeAmount,
+              slippageBps,
+            });
+
+            if (!apiResult.success || !apiResult.data) {
+              const errorMsg =
+                typeof apiResult.error === 'string'
+                  ? apiResult.error
+                  : 'Failed to fetch multi-hop quote';
+              throw new Error(errorMsg);
+            }
+
+            return apiResult.data;
+          }, RetryPresets.QUOTE_FAST);
+
+          if (!retryResult.success || !retryResult.data) {
+            throw retryResult.error || new Error('Failed to fetch multi-hop quote');
+          }
+
+          return retryResult.data;
+        },
+      );
+
+      // Store in cache
+      multiHopQuoteCache.set(tokenAddress, safeAmount, result, cacheParams);
+
+      setMultiHopQuote(result as MultiHopQuoteData);
+      // Update previous amount ref
+      previousMultiHopAmountRef.current = safeAmount;
+      console.log('[useUnifiedQuote] ✅ Multi-hop quote processed');
     } catch (error) {
-      // console.error('[useUnifiedQuote] Multi-hop quote failed:', error); // eslint-disable-line
+      console.error('[useUnifiedQuote] ❌ Multi-hop quote failed:', error);
       const errorMsg = error instanceof Error ? error.message : 'Failed to fetch quote';
       setMultiHopError(errorMsg);
       setMultiHopQuote(null);

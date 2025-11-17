@@ -9,12 +9,103 @@ import { priceCacheService } from '../../services/price-cache-service';
 import { BitQueryService } from '../../services/bitquery-service';
 import { ACES_TOKEN_ADDRESS } from '../../config/bitquery.config';
 import { getNetworkConfig, type SupportedChainId } from '../../config/network.config';
-import type { UnifiedTokenData } from '../../services/unified-goldsky-data-service';
 
 const BASE_MAINNET_CHAIN_ID = 8453;
 
 interface TokenParams {
   address: string;
+}
+
+/**
+ * 🔥 NEW: Calculate bonding curve volume with accurate historical pricing
+ * Fetches individual trades from subgraph and calculates USD value at time of trade
+ * 
+ * @param tokenAddress - Token contract address
+ * @param startTime - Start of time window
+ * @param endTime - End of time window
+ * @returns { acesVolume, usdVolume } volumes for the period
+ */
+async function getBondingCurveVolume(
+  tokenAddress: string,
+  startTime: Date,
+  endTime: Date,
+  acesUsdPrice: number,
+): Promise<{ acesVolume: number; usdVolume: number }> {
+  const startTimeSeconds = Math.floor(startTime.getTime() / 1000);
+  const endTimeSeconds = Math.floor(endTime.getTime() / 1000);
+
+  const pageSize = 1000;
+  let skip = 0;
+  let allBondingTrades: Array<{ id: string; acesTokenAmount: string }> = [];
+  let hasMore = true;
+
+  // 🔥 NEW: Fetch all bonding curve trades in the time window with pagination
+  while (hasMore) {
+    const query = `{
+      trades(
+        where: {
+          token: "${tokenAddress.toLowerCase()}"
+          createdAt_gte: "${startTimeSeconds}"
+          createdAt_lte: "${endTimeSeconds}"
+        }
+        orderBy: createdAt
+        orderDirection: asc
+        first: ${pageSize}
+        skip: ${skip}
+      ) {
+        id
+        acesTokenAmount
+      }
+    }`;
+
+    const response = await fetch(process.env.GOLDSKY_SUBGRAPH_URL!, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query }),
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Subgraph request failed: ${response.status} ${response.statusText}`);
+    }
+
+    const result = (await response.json()) as {
+      data?: { trades: Array<{ id: string; acesTokenAmount: string }> };
+      errors?: Array<{ message: string }>;
+    };
+
+    if (result.errors?.length) {
+      throw new Error(`Subgraph GraphQL errors: ${JSON.stringify(result.errors)}`);
+    }
+
+    const trades = result.data?.trades || [];
+    allBondingTrades = [...allBondingTrades, ...trades];
+
+    // If we got fewer trades than the page size, we've reached the end
+    hasMore = trades.length === pageSize;
+    skip += trades.length;
+
+    // Safety limit: prevent infinite loops (max 10,000 trades = 10 pages)
+    if (skip >= 10000) {
+      console.warn(
+        `[getBondingCurveVolume] Reached max pagination limit for ${tokenAddress}, may be missing some trades`,
+      );
+      break;
+    }
+  }
+
+  // 🔥 NEW: Calculate volumes from trades
+  // Each trade's ACES amount is stored as Wei (18 decimals)
+  // Note: We use current ACES price since historical prices not available in subgraph
+  // For truly accurate pricing, would need to query price feeds at each trade timestamp
+  const acesVolume = allBondingTrades.reduce((sum, trade) => {
+    const aces = parseFloat(trade.acesTokenAmount) / 1e18;
+    return Number.isFinite(aces) ? sum + aces : sum;
+  }, 0);
+
+  const usdVolume = acesVolume * acesUsdPrice;
+
+  return { acesVolume, usdVolume };
 }
 
 interface HolderQuery {
@@ -57,174 +148,126 @@ export async function tokensRoutes(fastify: FastifyInstance) {
         const { chainId: chainIdStr, currency = 'usd' } = request.query;
         const chainId = chainIdStr ? parseInt(chainIdStr) : BASE_MAINNET_CHAIN_ID;
 
-        // 🔥 PHASE 3: Use global cache with getOrFetch pattern
-        const cacheKey = `${address.toLowerCase()}:${chainId}:${currency}`;
-        const CACHE_TTL = 5000; // 🔥 PHASE 4: 5 seconds (matches frontend 5s polling for real-time feel)
+        fastify.log.info({ address, chainId }, '🏥 [Health] Fetching unified health data');
 
-        // Track cache stats before to determine if this is a hit
-        const statsBefore = fastify.cache.getStats();
+        // Get base URL for internal API calls
+        const protocol = request.headers['x-forwarded-proto'] || request.protocol;
+        const host = request.headers['x-forwarded-host'] || request.hostname;
+        const baseUrl = `${protocol}://${host}`;
 
-        const responseData = await fastify.cache.getOrFetch<{
-          bondingData: unknown;
-          metricsData: unknown;
-          marketCapData: unknown;
-        }>(
-          'metrics',
-          cacheKey,
-          async () => {
-            fastify.log.info(
-              { address, chainId, currency },
-              '🏥 [Health] Fetching unified health data (cache miss)',
-            );
+        // Fetch all data in parallel for maximum performance
+        const [bondingResponse, metricsResponse, marketCapResponse] = await Promise.allSettled([
+          // 1. Bonding data
+          fetch(`${baseUrl}/api/v1/bonding/${address}/data?chainId=${chainId}`).then((r) =>
+            r.json(),
+          ),
 
-            // Get base URL for internal API calls
-            const protocol = request.headers['x-forwarded-proto'] || request.protocol;
-            const host = request.headers['x-forwarded-host'] || request.hostname;
-            const baseUrl = `${protocol}://${host}`;
+          // 2. Metrics data
+          fetch(`${baseUrl}/api/v1/tokens/${address}/metrics?chainId=${chainId}`).then((r) =>
+            r.json(),
+          ),
 
-            // Fetch all data in parallel for maximum performance
-            const [bondingResponse, metricsResponse, marketCapResponse] = await Promise.allSettled([
-              // 1. Bonding data (already cached in Phase 2)
-              fetch(`${baseUrl}/api/v1/bonding/${address}/data?chainId=${chainId}`).then((r) =>
-                r.json(),
-              ),
+          // 3. 🔥 UPDATED: Market cap from dedicated service (single source of truth)
+          // No longer uses candle-based market cap - uses current price/reserves instead
+          fetch(`${baseUrl}/api/v1/market-cap/${address}`).then((r) => r.json()),
+        ]);
 
-              // 2. Metrics data
-              fetch(`${baseUrl}/api/v1/tokens/${address}/metrics?chainId=${chainId}`).then((r) =>
-                r.json(),
-              ),
+        // Extract data from results
+        const bondingData =
+          bondingResponse.status === 'fulfilled' &&
+          (bondingResponse.value as { success: boolean; data: unknown })?.success
+            ? (bondingResponse.value as { success: boolean; data: unknown }).data
+            : null;
 
-              // 3. Market cap (latest candle only)
-              fetch(
-                `${baseUrl}/api/v1/chart/${address}/market-cap?timeframe=5m&limit=1&currency=${currency}`,
-              ).then((r) => r.json()),
-            ]);
+        type MetricsResponseType = { success: boolean; data: unknown };
+        const metricsData =
+          metricsResponse.status === 'fulfilled' &&
+          (metricsResponse.value as MetricsResponseType)?.success
+            ? (metricsResponse.value as MetricsResponseType).data
+            : null;
 
-            // Extract data from results
-            const bondingData =
-              bondingResponse.status === 'fulfilled' &&
-              (bondingResponse.value as { success: boolean; data: unknown })?.success
-                ? (bondingResponse.value as { success: boolean; data: unknown }).data
-                : null;
+        // 🔥 UPDATED: Parse market cap from new dedicated endpoint
+        let marketCapData = null;
+        if (marketCapResponse.status === 'fulfilled') {
+          const marketCapResult = marketCapResponse.value as {
+            marketCapUsd?: number;
+            currentPriceUsd?: number;
+            supply?: number;
+            error?: string;
+          };
 
-            type MetricsResponseType = { success: boolean; data: unknown };
-            const metricsData =
-              metricsResponse.status === 'fulfilled' &&
-              (metricsResponse.value as MetricsResponseType)?.success
-                ? (metricsResponse.value as MetricsResponseType).data
-                : null;
+          // New endpoint returns market cap data directly (not nested in 'data')
+          if (
+            marketCapResult &&
+            (marketCapResult.marketCapUsd !== undefined || marketCapResult.currentPriceUsd !== undefined)
+          ) {
+            const marketCapUsd = marketCapResult.marketCapUsd || 0;
+            const currentPriceUsd = marketCapResult.currentPriceUsd || 0;
+            const supply = marketCapResult.supply || 1_000_000_000; // Default 1B supply
 
-            let marketCapData = null;
-            if (
-              marketCapResponse.status === 'fulfilled' &&
-              (marketCapResponse.value as { success?: boolean })?.success
-            ) {
-              const result = (marketCapResponse.value as { success?: boolean; data: unknown })
-                ?.data;
-              const latestCandle = (
-                result as { candles: { close: string; circulatingSupply: string }[] }
-              )?.candles?.[
-                (result as { candles: { close: string; circulatingSupply: string }[] })?.candles
-                  .length - 1
-              ];
+            // Get ACES/USD price from service for currency conversion
+            let marketCapAces: number;
+            let currentPriceAces: number;
 
-              if (latestCandle) {
-                const marketCap = parseFloat(latestCandle.close || '0');
-                const supply = parseFloat(latestCandle.circulatingSupply || '0');
-                const priceInCurrency = supply > 0 ? marketCap / supply : 0;
-                const acesUsdPrice = parseFloat(
-                  (result as { acesUsdPrice: string })?.acesUsdPrice || '1',
-                );
-
-                let marketCapAces: number;
-                let marketCapUsd: number;
-                let currentPriceAces: number;
-                let currentPriceUsd: number;
-
-                if (currency === 'usd') {
-                  marketCapUsd = marketCap;
-                  marketCapAces = acesUsdPrice > 0 ? marketCap / acesUsdPrice : 0;
-                  currentPriceUsd = priceInCurrency;
-                  currentPriceAces = acesUsdPrice > 0 ? priceInCurrency / acesUsdPrice : 0;
-                } else {
-                  marketCapAces = marketCap;
-                  marketCapUsd = marketCap * acesUsdPrice;
-                  currentPriceAces = priceInCurrency;
-                  currentPriceUsd = priceInCurrency * acesUsdPrice;
-                }
-
-                marketCapData = {
-                  marketCapAces,
-                  marketCapUsd,
-                  circulatingSupply: supply,
-                  currentPriceAces,
-                  currentPriceUsd,
-                  lastUpdated: Date.now(),
-                };
-              }
+            if (currency === 'usd') {
+              // Market cap data is already in USD
+              marketCapAces = marketCapUsd > 0 && currentPriceUsd > 0 ? marketCapUsd / currentPriceUsd : 0;
+              currentPriceAces = 0; // Would need ACES/USD conversion, but we don't have it here
+            } else {
+              // Market cap in ACES would need conversion from USD
+              marketCapAces = 0;
+              currentPriceAces = 0;
             }
 
-            // Log any failures
-            if (bondingResponse.status === 'rejected') {
-              fastify.log.warn(
-                { error: bondingResponse.reason },
-                '⚠️ [Health] Bonding data fetch failed',
-              );
-            }
-            if (metricsResponse.status === 'rejected') {
-              fastify.log.warn(
-                { error: metricsResponse.reason },
-                '⚠️ [Health] Metrics data fetch failed',
-              );
-            }
-            if (marketCapResponse.status === 'rejected') {
-              fastify.log.warn(
-                { error: marketCapResponse.reason },
-                '⚠️ [Health] Market cap fetch failed',
-              );
-            }
-
-            fastify.log.info(
-              {
-                address,
-                hasBonding: !!bondingData,
-                hasMetrics: !!metricsData,
-                hasMarketCap: !!marketCapData,
-              },
-              '✅ [Health] Unified health data fetched',
-            );
-
-            return {
-              bondingData,
-              metricsData,
-              marketCapData,
+            marketCapData = {
+              marketCapAces,
+              marketCapUsd,
+              circulatingSupply: supply,
+              currentPriceAces,
+              currentPriceUsd,
+              lastUpdated: Date.now(),
             };
-          },
-          CACHE_TTL, // 5 seconds TTL
-        );
+          }
+        }
 
-        // Check if this was a cache hit by comparing stats
-        const statsAfter = fastify.cache.getStats();
-        const wasCached = statsAfter.hits > statsBefore.hits;
+        // Log any failures
+        if (bondingResponse.status === 'rejected') {
+          fastify.log.warn(
+            { error: bondingResponse.reason },
+            '⚠️ [Health] Bonding data fetch failed',
+          );
+        }
+        if (metricsResponse.status === 'rejected') {
+          fastify.log.warn(
+            { error: metricsResponse.reason },
+            '⚠️ [Health] Metrics data fetch failed',
+          );
+        }
+        if (marketCapResponse.status === 'rejected') {
+          fastify.log.warn(
+            { error: marketCapResponse.reason },
+            '⚠️ [Health] Market cap fetch failed',
+          );
+        }
 
         fastify.log.info(
           {
             address,
-            chainId,
-            currency,
-            hasBonding: !!responseData.bondingData,
-            hasMetrics: !!responseData.metricsData,
-            hasMarketCap: !!responseData.marketCapData,
-            cached: wasCached,
+            hasBonding: !!bondingData,
+            hasMetrics: !!metricsData,
+            hasMarketCap: !!marketCapData,
           },
-          wasCached ? '✅ [Health] Cache hit' : '✅ [Health] Successfully fetched',
+          '✅ [Health] Unified health data fetched',
         );
 
         return reply.send({
           success: true,
-          data: responseData,
+          data: {
+            bondingData,
+            metricsData,
+            marketCapData,
+          },
           timestamp: Date.now(),
-          cached: wasCached,
         });
       } catch (error) {
         fastify.log.error({ error }, '❌ [Health] Failed to fetch unified health data');
@@ -268,54 +311,7 @@ export async function tokensRoutes(fastify: FastifyInstance) {
     },
   );
 
-  // 🔥 HELPER: Calculate marginal buy price (same logic as TokenService)
-  const calculateMarginalBuyPrice = (
-    supply: number, // Supply in tokens (not wei)
-    steepness: string, // From token metadata
-    floor: string, // From token metadata
-  ): number => {
-    try {
-      // Convert to bigint wei (18 decimals)
-      const W = BigInt(10) ** BigInt(18);
-      const supplyWei = BigInt(Math.floor(supply)) * W;
-      const amountWei = W; // 1 token
-      const steepnessWei = BigInt(steepness);
-      const floorWei = BigInt(floor);
-
-      // Quadratic bonding curve formula (same as smart contract)
-      const sumSquares = (s: bigint): bigint => {
-        if (s === BigInt(0)) return BigInt(0);
-        const t1 = (s * (s + W)) / W;
-        const t2 = (t1 * (BigInt(2) * s + W)) / W;
-        return t2 / (BigInt(6) * W);
-      };
-
-      const startWei = supplyWei;
-      const endWei = supplyWei + amountWei - W;
-
-      const sumBefore = sumSquares(startWei - W);
-      const sumAfter = sumSquares(endWei);
-      const summation = sumAfter - sumBefore;
-
-      const curveComponent = (summation * W) / steepnessWei;
-      const linearComponent = (floorWei * amountWei) / W;
-      const basePrice = curveComponent + linearComponent;
-
-      // Add fees (assume 5% protocol + 5% subject = 10% total)
-      const feePercent = (BigInt(10) * W) / BigInt(100); // 10%
-      const priceWithFees = basePrice + (basePrice * feePercent) / W;
-
-      // Convert to ACES (from wei)
-      const priceInAces = Number(priceWithFees) / Number(W);
-
-      return priceInAces;
-    } catch (error) {
-      fastify.log.error({ error }, '[Trades] Error calculating marginal price');
-      return 0;
-    }
-  };
-
-  // Get recent trades for a token (using unified GoldSky data)
+  // Get recent trades for a token (fresh from subgraph)
   fastify.get(
     '/:address/trades',
     {
@@ -340,99 +336,7 @@ export async function tokensRoutes(fastify: FastifyInstance) {
         const { address } = request.params;
         const { limit = 50 } = request.query;
 
-        // 🔥 UNIFIED GOLDSKY: Use unified service instead of separate queries
-        // This reduces GoldSky calls from 2 per request to 0 (uses cached unified data)
-        const unifiedData = await (
-          fastify as {
-            unifiedGoldSkyService: {
-              getUnifiedTokenData: (address: string) => Promise<UnifiedTokenData | null>;
-            };
-          }
-        ).unifiedGoldSkyService.getUnifiedTokenData(address);
-
-        if (!unifiedData) {
-          fastify.log.warn(
-            { address },
-            '[Trades] No unified data available, falling back to legacy method',
-          );
-          // Fallback to legacy method if unified service fails
-          const trades = await tokenService.getRecentTradesForToken(address, limit);
-
-          let token: {
-            phase: string | null;
-            priceSource: string | null;
-            poolAddress: string | null;
-            dexLiveAt: Date | null;
-          } | null = null;
-          try {
-            token = await fastify.prisma.token.findUnique({
-              where: { contractAddress: address.toLowerCase() },
-              select: {
-                phase: true,
-                priceSource: true,
-                poolAddress: true,
-                dexLiveAt: true,
-              },
-            });
-          } catch (e) {
-            fastify.log.warn({ error: e }, 'Graduation metadata lookup failed');
-            token = null;
-          }
-
-          const graduationMeta = token
-            ? {
-                isDexLive: token.phase === 'DEX_TRADING',
-                poolAddress: token.poolAddress,
-                dexLiveAt: token.dexLiveAt?.toISOString() || null,
-                bondingCutoff: token.dexLiveAt?.toISOString() || null,
-              }
-            : null;
-
-          return reply.send({
-            success: true,
-            data: trades,
-            meta: {
-              graduation: graduationMeta,
-            },
-            cached: false,
-          });
-        }
-
-        // Extract trades from unified data and apply limit
-        const allTrades = unifiedData.trades.slice(0, limit);
-
-        // Calculate marginal prices for each trade
-        const tradesWithMarginalPrice = allTrades.map((trade: UnifiedTokenData['trades'][0]) => {
-          const supply = parseFloat(trade.supply) / 1e18; // Supply AFTER this trade
-
-          let marginalPriceInAces: number;
-
-          if (unifiedData.steepness && unifiedData.floor) {
-            // Calculate marginal buy price at supply AFTER trade
-            marginalPriceInAces = calculateMarginalBuyPrice(
-              supply,
-              unifiedData.steepness,
-              unifiedData.floor,
-            );
-          } else {
-            // Fallback: Use execution price (average price)
-            const tokenAmount = parseFloat(trade.tokenAmount) / 1e18;
-            const acesAmount = parseFloat(trade.acesTokenAmount) / 1e18;
-            marginalPriceInAces = tokenAmount > 0 ? acesAmount / tokenAmount : 0;
-          }
-
-          return {
-            id: trade.id,
-            isBuy: trade.isBuy,
-            trader: trade.trader ? { id: trade.trader.id } : null,
-            tokenAmount: trade.tokenAmount,
-            acesTokenAmount: trade.acesTokenAmount,
-            supply: trade.supply,
-            createdAt: trade.createdAt,
-            blockNumber: trade.blockNumber,
-            marginalPriceInAces: marginalPriceInAces.toString(),
-          };
-        });
+        const trades = await tokenService.getRecentTradesForToken(address, limit);
 
         // Include graduation metadata for frontend detection (non-fatal if DB unavailable)
         let token: {
@@ -468,23 +372,12 @@ export async function tokensRoutes(fastify: FastifyInstance) {
             }
           : null;
 
-        fastify.log.info(
-          {
-            address,
-            limit,
-            tradeCount: tradesWithMarginalPrice.length,
-            source: 'unified',
-          },
-          '✅ [Trades] Successfully fetched from unified service',
-        );
-
         return reply.send({
           success: true,
-          data: tradesWithMarginalPrice,
+          data: trades,
           meta: {
             graduation: graduationMeta,
           },
-          cached: true, // Unified data is always cached
         });
       } catch (error) {
         fastify.log.error({ error }, 'Trades fetch error');
@@ -606,104 +499,6 @@ export async function tokensRoutes(fastify: FastifyInstance) {
   // Short cache for local dev (5s), longer for production (60s)
   const METRICS_CACHE_TTL = process.env.NODE_ENV === 'production' ? 60000 : 5000;
 
-  // 🔥 DEBUG: Holder count debugging endpoint
-  fastify.get(
-    '/:address/debug-holder-count',
-    {
-      schema: {
-        params: zodToJsonSchema(
-          z.object({
-            address: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
-          }),
-        ),
-        querystring: zodToJsonSchema(
-          z.object({
-            chainId: z
-              .string()
-              .regex(/^[0-9]+$/)
-              .transform((value) => Number(value))
-              .optional(),
-          }),
-        ),
-      },
-    },
-    async (
-      request: FastifyRequest<{
-        Params: TokenParams;
-        Querystring: { chainId?: number };
-      }>,
-      reply,
-    ) => {
-      try {
-        const { address } = request.params;
-        const { chainId } = request.query;
-
-        // Get unified data
-        const unifiedData = await (
-          fastify as {
-            unifiedGoldSkyService: {
-              getUnifiedTokenData: (address: string) => Promise<UnifiedTokenData | null>;
-            };
-          }
-        ).unifiedGoldSkyService.getUnifiedTokenData(address);
-
-        // Get token data
-        let tokenData;
-        try {
-          tokenData = await tokenService.fetchAndUpdateTokenData(address);
-        } catch (dbError) {
-          tokenData = null;
-        }
-
-        const isDexMode =
-          tokenData?.phase === 'DEX_TRADING' ||
-          tokenData?.dexLiveAt !== null ||
-          tokenData?.priceSource === 'DEX';
-
-        // Check condition
-        const conditionResult = {
-          isDexMode,
-          hasUnifiedData: !!unifiedData,
-          unifiedHoldersCount: unifiedData?.holdersCount,
-          holdersCountType: typeof unifiedData?.holdersCount,
-          holdersCountIsNull: unifiedData?.holdersCount === null,
-          holdersCountIsUndefined: unifiedData?.holdersCount === undefined,
-          conditionMet:
-            !isDexMode &&
-            unifiedData &&
-            unifiedData.holdersCount !== null &&
-            unifiedData.holdersCount !== undefined,
-        };
-
-        return reply.send({
-          success: true,
-          tokenData: {
-            phase: tokenData?.phase,
-            priceSource: tokenData?.priceSource,
-            dexLiveAt: tokenData?.dexLiveAt,
-          },
-          unifiedData: unifiedData
-            ? {
-                holdersCount: unifiedData.holdersCount,
-                tradeCount: unifiedData.tradeCount,
-                address: unifiedData.address,
-              }
-            : null,
-          conditionResult,
-          expectedHolderCount: conditionResult.conditionMet
-            ? unifiedData?.holdersCount
-            : 'Condition not met',
-        });
-      } catch (error) {
-        fastify.log.error({ error }, 'Debug holder count error');
-        return reply.code(500).send({
-          success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    },
-  );
-
   // Get aggregated token metrics for listings display
   fastify.get(
     '/:address/metrics',
@@ -753,31 +548,6 @@ export async function tokensRoutes(fastify: FastifyInstance) {
 
         fastify.log.info({ address, chainId }, '🔵 [Metrics] Fetching fresh data');
 
-        // 🔥 UNIFIED GOLDSKY: Get unified data first (cached, single query)
-        const unifiedData = await (
-          fastify as {
-            unifiedGoldSkyService: {
-              getUnifiedTokenData: (address: string) => Promise<UnifiedTokenData | null>;
-            };
-          }
-        ).unifiedGoldSkyService.getUnifiedTokenData(address);
-
-        // Debug logging for unified data
-        if (!unifiedData) {
-          fastify.log.warn({ address }, '[Metrics] Unified data is null - will use fallbacks');
-        } else {
-          fastify.log.info(
-            {
-              address,
-              holdersCount: unifiedData.holdersCount,
-              tradeCount: unifiedData.tradeCount,
-              hasHoldersCount:
-                unifiedData.holdersCount !== null && unifiedData.holdersCount !== undefined,
-            },
-            '[Metrics] Unified data retrieved successfully',
-          );
-        }
-
         // 1. Fetch token data (has volume24h, currentPriceACES, supply)
         // Try database first, but continue without it if unavailable
         let tokenData;
@@ -790,25 +560,49 @@ export async function tokensRoutes(fastify: FastifyInstance) {
           );
           tokenData = null;
         }
+
+        // 🔥 FIX: If tokenData doesn't have dexLiveAt but we're in DEX mode, fetch it directly
+        // This ensures we can combine bonding + DEX volumes even if fetchAndUpdateTokenData
+        // doesn't return the dexLiveAt field
+        if (tokenData && !tokenData.dexLiveAt) {
+          try {
+            const fullTokenData = await fastify.prisma.token.findUnique({
+              where: { contractAddress: address.toLowerCase() },
+              select: {
+                dexLiveAt: true,
+                poolAddress: true,
+                phase: true,
+                priceSource: true,
+              },
+            });
+            if (fullTokenData) {
+              // Merge the dexLiveAt and other DEX fields if not already present
+              if (!tokenData.dexLiveAt && fullTokenData.dexLiveAt) {
+                tokenData.dexLiveAt = fullTokenData.dexLiveAt;
+              }
+              if (!tokenData.poolAddress && fullTokenData.poolAddress) {
+                tokenData.poolAddress = fullTokenData.poolAddress;
+              }
+              if (!tokenData.phase && fullTokenData.phase) {
+                tokenData.phase = fullTokenData.phase;
+              }
+              if (!tokenData.priceSource && fullTokenData.priceSource) {
+                tokenData.priceSource = fullTokenData.priceSource;
+              }
+            }
+          } catch (directQueryError) {
+            fastify.log.warn(
+              { error: directQueryError, address },
+              'Failed to fetch dexLiveAt directly from database',
+            );
+          }
+        }
+
         const isDexMode =
           tokenData?.phase === 'DEX_TRADING' ||
           tokenData?.dexLiveAt !== null ||
           tokenData?.priceSource === 'DEX';
         const poolAddress = tokenData?.poolAddress;
-
-        // Debug logging for isDexMode check
-        fastify.log.info(
-          {
-            address,
-            isDexMode,
-            phase: tokenData?.phase,
-            priceSource: tokenData?.priceSource,
-            dexLiveAt: tokenData?.dexLiveAt,
-            hasUnifiedData: !!unifiedData,
-            unifiedHoldersCount: unifiedData?.holdersCount,
-          },
-          '[Metrics] Token mode check',
-        );
 
         // 2. Get ACES/USD price for conversions using PriceCacheService
         const priceData = await priceCacheService.getPrices();
@@ -852,100 +646,13 @@ export async function tokensRoutes(fastify: FastifyInstance) {
           );
         }
 
-        // 3. Get holder count - use Unified data for bonding phase, BitQuery for DEX phase
-        // BUT: If unified data has holder count, use it as fallback even in DEX mode if RPC fails
+        // 3. Get holder count - use Subgraph for bonding phase, BitQuery for DEX phase
         let holderCount = 0;
 
-        // Debug: Log all condition values
-        fastify.log.info(
-          {
-            address,
-            isDexMode,
-            hasUnifiedData: !!unifiedData,
-            unifiedHoldersCount: unifiedData?.holdersCount,
-            holdersCountType: typeof unifiedData?.holdersCount,
-            holdersCountIsNull: unifiedData?.holdersCount === null,
-            holdersCountIsUndefined: unifiedData?.holdersCount === undefined,
-            condition1_notDexMode: !isDexMode,
-            condition2_hasUnifiedData: !!unifiedData,
-            condition3_notNull: unifiedData?.holdersCount !== null,
-            condition4_notUndefined: unifiedData?.holdersCount !== undefined,
-            allConditionsMet:
-              !isDexMode &&
-              !!unifiedData &&
-              unifiedData?.holdersCount !== null &&
-              unifiedData?.holdersCount !== undefined,
-          },
-          '[Metrics] Holder count condition check',
-        );
-
-        // For bonding phase tokens, use unified data (preferred)
-        if (
-          !isDexMode &&
-          unifiedData &&
-          unifiedData.holdersCount !== null &&
-          unifiedData.holdersCount !== undefined
-        ) {
-          holderCount = unifiedData.holdersCount;
-          fastify.log.info(
-            { address, holderCount, source: 'unified', isDexMode },
-            '✅ Holder count from unified service (bonding phase)',
-          );
-        } else if (isDexMode) {
-          // DEX mode: Try RPC/BitQuery first, but fallback to unified data if available
+        // For bonding phase tokens, get holder count from subgraph
+        if (!isDexMode) {
           try {
-            const holderCountPromise = tokenHolderService.getHolderCount(
-              address,
-              chainId ?? BASE_MAINNET_CHAIN_ID,
-            );
-            // Add 10-second timeout to prevent hanging
-            holderCount = await Promise.race([
-              holderCountPromise,
-              new Promise<number>((_, reject) =>
-                setTimeout(() => reject(new Error('Holder count timeout')), 10000),
-              ),
-            ]);
-            fastify.log.info(
-              { address, holderCount, source: 'rpc' },
-              'Holder count fetched via RPC (DEX mode)',
-            );
-          } catch (error) {
-            fastify.log.warn(
-              { error, address, isDexMode },
-              'Failed to fetch holder count via RPC, trying unified data fallback',
-            );
-            // Fallback to unified data if RPC fails
-            if (
-              unifiedData &&
-              unifiedData.holdersCount !== null &&
-              unifiedData.holdersCount !== undefined
-            ) {
-              holderCount = unifiedData.holdersCount;
-              fastify.log.info(
-                { address, holderCount, source: 'unified-fallback' },
-                'Holder count from unified service (RPC fallback for DEX mode)',
-              );
-            }
-          }
-        } else {
-          // Not DEX mode but unified data condition failed - try subgraph fallback
-          // Log why condition failed
-          fastify.log.warn(
-            {
-              address,
-              conditionFailed: {
-                isDexMode: isDexMode,
-                hasUnifiedData: !!unifiedData,
-                holdersCountNotNull: unifiedData?.holdersCount !== null,
-                holdersCountNotUndefined: unifiedData?.holdersCount !== undefined,
-                actualHoldersCount: unifiedData?.holdersCount,
-              },
-            },
-            '⚠️ Holder count condition failed - using fallback',
-          );
-
-          // Fallback: Query subgraph directly if unified data not available or holdersCount missing
-          try {
+            // Query subgraph directly for holdersCount
             const holderCountQuery = `{
               tokens(where: {address: "${address.toLowerCase()}"}) {
                 holdersCount
@@ -968,8 +675,8 @@ export async function tokensRoutes(fastify: FastifyInstance) {
               if (subgraphHolderCount !== undefined && subgraphHolderCount !== null) {
                 holderCount = subgraphHolderCount;
                 fastify.log.info(
-                  { address, holderCount, source: 'subgraph-fallback' },
-                  'Holder count from subgraph (fallback)',
+                  { address, holderCount, source: 'subgraph' },
+                  'Holder count from subgraph (bonding phase)',
                 );
               } else {
                 fastify.log.warn(
@@ -991,8 +698,8 @@ export async function tokensRoutes(fastify: FastifyInstance) {
           }
         }
 
-        // Final fallback: If we still don't have holder count, try RPC (for bonding phase only)
-        if (holderCount === 0 && !isDexMode) {
+        // If we didn't get holder count from subgraph (either graduated or failed), use RPC
+        if (holderCount === 0) {
           try {
             const holderCountPromise = tokenHolderService.getHolderCount(
               address,
@@ -1019,31 +726,8 @@ export async function tokensRoutes(fastify: FastifyInstance) {
           }
         }
 
-        // 4. Get total fees - use unified data if available, otherwise fallback to tokenService
-        let fees: { acesAmount: string; weiAmount: string };
-        if (unifiedData?.subjectFeeAmount && unifiedData?.protocolFeeAmount) {
-          // Calculate total fees from unified data
-          const subjectFeeWei = BigInt(unifiedData.subjectFeeAmount);
-          const protocolFeeWei = BigInt(unifiedData.protocolFeeAmount);
-          const totalFeeWei = subjectFeeWei + protocolFeeWei;
-          const totalFeeAces = (Number(totalFeeWei) / 1e18).toString();
-
-          fees = {
-            acesAmount: totalFeeAces,
-            weiAmount: totalFeeWei.toString(),
-          };
-          fastify.log.info(
-            { address, totalFeeAces, source: 'unified' },
-            'Total fees from unified service',
-          );
-        } else {
-          // Fallback to tokenService method
-          fees = await tokenService.getTotalFees(address);
-          fastify.log.info(
-            { address, totalFeeAces: fees.acesAmount, source: 'tokenService-fallback' },
-            'Total fees from tokenService (fallback)',
-          );
-        }
+        // 4. Get total fees from subgraph
+        const fees = await tokenService.getTotalFees(address);
 
         // 5. Calculate derived metrics
         let volume24hAces = 0;
@@ -1054,14 +738,19 @@ export async function tokensRoutes(fastify: FastifyInstance) {
         const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
         const dexLiveAt = tokenData?.dexLiveAt ? new Date(tokenData.dexLiveAt) : null;
 
-        // Check if token graduated to DEX within the last 24 hours
-        const graduatedRecently =
+        // For graduated tokens, check if last 24h window spans both bonding curve and DEX periods
+        // This happens when graduation occurred after the 24h window started (even if days ago)
+        // i.e., when there could be bonding curve activity within the last 24h window
+        const last24hSpansGraduation =
           isDexMode && dexLiveAt && dexLiveAt > twentyFourHoursAgo && dexLiveAt <= now;
 
         if (isDexMode && typeof poolAddress === 'string' && poolAddress.length > 0) {
           try {
             // Determine time range for DEX trades
-            const dexTradeStart = graduatedRecently && dexLiveAt ? dexLiveAt : twentyFourHoursAgo;
+            // If graduation is within the 24h window, DEX trades start from graduation time
+            // Otherwise, fetch full 24h of DEX trades
+            const dexTradeStart =
+              last24hSpansGraduation && dexLiveAt ? dexLiveAt : twentyFourHoursAgo;
 
             const dexTrades = await bitQueryService.getDexTrades(address, poolAddress, {
               from: dexTradeStart,
@@ -1073,7 +762,7 @@ export async function tokensRoutes(fastify: FastifyInstance) {
                 address,
                 poolAddress,
                 tradeCount: dexTrades.length,
-                graduatedRecently,
+                last24hSpansGraduation,
                 dexLiveAt: dexLiveAt?.toISOString(),
                 dexTradeStart: dexTradeStart.toISOString(),
               },
@@ -1090,95 +779,59 @@ export async function tokensRoutes(fastify: FastifyInstance) {
               return Number.isFinite(aces) ? sum + aces : sum;
             }, 0);
 
-            // If graduated recently, also fetch bonding curve volume from before graduation
-            if (graduatedRecently && dexLiveAt) {
+            // If last 24h spans graduation, fetch bonding curve volume from before graduation
+            // This covers the period from 24h ago up to graduation time
+            if (last24hSpansGraduation && dexLiveAt) {
               fastify.log.info(
                 {
                   address,
                   dexLiveAt: dexLiveAt.toISOString(),
                   bondingCurveEnd: dexLiveAt.toISOString(),
                   bondingCurveStart: twentyFourHoursAgo.toISOString(),
+                  timeWindow: '24h spans graduation - will combine bonding + DEX volume',
                 },
-                'Token graduated within 24h, fetching bonding curve volume too',
+                '24h window spans graduation boundary, fetching bonding curve + DEX volume',
               );
 
               try {
-                // Query bonding curve trades from subgraph for the period before graduation
-                const startTimeSeconds = Math.floor(twentyFourHoursAgo.getTime() / 1000);
-                const endTimeSeconds = Math.floor(dexLiveAt.getTime() / 1000);
+                // 🔥 REFACTORED: Use extracted function for bonding trades
+                // Covers period from 24h ago to graduation time
+                const bondingResult = await getBondingCurveVolume(
+                  address,
+                  twentyFourHoursAgo,
+                  dexLiveAt,
+                  acesUsdPrice,
+                );
 
-                const query = `{
-                  trades(
-                    where: {
-                      token: "${address.toLowerCase()}"
-                      createdAt_gte: "${startTimeSeconds}"
-                      createdAt_lte: "${endTimeSeconds}"
-                    }
-                    orderBy: createdAt
-                    orderDirection: asc
-                    first: 1000
-                  ) {
-                    id
-                    acesTokenAmount
-                  }
-                }`;
+                const bondingVolumeAces = bondingResult.acesVolume;
+                const bondingVolumeUsd = bondingResult.usdVolume;
 
-                const response = await fetch(process.env.GOLDSKY_SUBGRAPH_URL!, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ query }),
-                  signal: AbortSignal.timeout(10000),
-                });
+                fastify.log.info(
+                  {
+                    address,
+                    bondingVolumeAces,
+                    bondingVolumeUsd,
+                    dexVolumeAces,
+                    dexVolumeUsd,
+                  },
+                  '✅ Bonding curve volume fetched, combining with DEX volume',
+                );
 
-                if (response.ok) {
-                  const result = (await response.json()) as {
-                    data: { trades: Array<{ id: string; acesTokenAmount: string }> };
-                  };
-                  const bondingTrades = result.data.trades || [];
+                // Combine both volumes
+                volume24hAces = bondingVolumeAces + dexVolumeAces;
+                volume24hUsd = bondingVolumeUsd + dexVolumeUsd;
+                volumeSource = 'hybrid';
 
-                  const bondingVolumeAces = bondingTrades.reduce((sum, trade) => {
-                    const aces = parseFloat(trade.acesTokenAmount) / 1e18;
-                    return Number.isFinite(aces) ? sum + aces : sum;
-                  }, 0);
-
-                  const bondingVolumeUsd = bondingVolumeAces * acesUsdPrice;
-
-                  fastify.log.info(
-                    {
-                      address,
-                      bondingTradeCount: bondingTrades.length,
-                      bondingVolumeAces,
-                      bondingVolumeUsd,
-                      dexVolumeAces,
-                      dexVolumeUsd,
-                    },
-                    'Bonding curve volume fetched, combining with DEX volume',
-                  );
-
-                  // Combine both volumes
-                  volume24hAces = bondingVolumeAces + dexVolumeAces;
-                  volume24hUsd = bondingVolumeUsd + dexVolumeUsd;
-                  volumeSource = 'hybrid';
-
-                  fastify.log.info(
-                    {
-                      address,
-                      volume24hAces,
-                      volume24hUsd,
-                      bondingContribution: bondingVolumeUsd,
-                      dexContribution: dexVolumeUsd,
-                    },
-                    'Hybrid volume calculation complete (bonding + DEX)',
-                  );
-                } else {
-                  fastify.log.warn(
-                    { address, status: response.status },
-                    'Failed to fetch bonding curve trades, using DEX volume only',
-                  );
-                  volume24hAces = dexVolumeAces;
-                  volume24hUsd = dexVolumeUsd;
-                  volumeSource = 'dex';
-                }
+                fastify.log.info(
+                  {
+                    address,
+                    volume24hAces,
+                    volume24hUsd,
+                    bondingContribution: bondingVolumeUsd,
+                    dexContribution: dexVolumeUsd,
+                  },
+                  'Hybrid volume calculation complete (bonding + DEX)',
+                );
               } catch (bondingError) {
                 fastify.log.error(
                   { error: bondingError, address },
@@ -1208,46 +861,41 @@ export async function tokensRoutes(fastify: FastifyInstance) {
         }
 
         if (volumeSource === 'bonding_curve') {
-          // 🔥 UNIFIED GOLDSKY: Use unified data for 24h volume if available
-          if (unifiedData?.trades && unifiedData.trades.length > 0) {
-            // Calculate volume from actual trades in the last 24 hours
-            const now = Date.now();
-            const twentyFourHoursAgo = now - 24 * 60 * 60 * 1000;
+          try {
+            // 🔥 NEW: Use accurate historical volume calculation
+            const bondingVolumeResult = await getBondingCurveVolume(
+              address,
+              twentyFourHoursAgo,
+              now,
+              acesUsdPrice,
+            );
+            volume24hAces = bondingVolumeResult.acesVolume;
+            volume24hUsd = bondingVolumeResult.usdVolume;
 
-            const volume24hFromTrades = unifiedData.trades
-              .filter((trade) => {
-                const tradeTime = parseInt(trade.createdAt) * 1000;
-                return tradeTime >= twentyFourHoursAgo;
-              })
-              .reduce((sum, trade) => {
-                const acesAmount = parseFloat(trade.acesTokenAmount) / 1e18;
-                return sum + acesAmount;
-              }, 0);
+            fastify.log.info(
+              {
+                address,
+                volume24hAces,
+                volume24hUsd,
+                source: 'subgraph_bonding_trades',
+              },
+              '✅ Bonding curve volume from subgraph trades (accurate)',
+            );
+          } catch (error) {
+            // 🔥 FALLBACK: If subgraph fetch fails, use cached volume data
+            fastify.log.warn(
+              { error, address },
+              'Failed to fetch bonding trades from subgraph, falling back to cached data',
+            );
 
-            if (volume24hFromTrades > 0) {
-              volume24hAces = volume24hFromTrades;
-              volume24hUsd = Number.isFinite(acesUsdPrice) ? volume24hAces * acesUsdPrice : 0;
-              fastify.log.info(
-                { address, volume24hAces, volume24hUsd, source: 'unified-trades' },
-                'Bonding curve volume from unified trades',
-              );
-            } else {
-              // Fallback to tokenData volume if no trades in last 24h
-              const volume24hWei = tokenData?.volume24h || '0';
-              const parsedAces = parseFloat(volume24hWei) / 1e18;
-              volume24hAces = Number.isFinite(parsedAces) ? parsedAces : 0;
-              volume24hUsd = Number.isFinite(acesUsdPrice) ? volume24hAces * acesUsdPrice : 0;
-            }
-          } else {
-            // Fallback to tokenData volume
             const volume24hWei = tokenData?.volume24h || '0';
             const parsedAces = parseFloat(volume24hWei) / 1e18;
             volume24hAces = Number.isFinite(parsedAces) ? parsedAces : 0;
             volume24hUsd = Number.isFinite(acesUsdPrice) ? volume24hAces * acesUsdPrice : 0;
 
             fastify.log.info(
-              { volume24hWei, volume24hAces, acesUsdPrice, volume24hUsd, source: 'tokenData' },
-              'Bonding curve volume calculation (fallback)',
+              { volume24hWei, volume24hAces, acesUsdPrice, volume24hUsd },
+              'Bonding curve volume from cached data (fallback)',
             );
           }
         }

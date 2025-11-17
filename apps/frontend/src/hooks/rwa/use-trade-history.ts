@@ -127,10 +127,10 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
 
           // Detect graduation: if we got DEX trades but weren't expecting them
           if (!detectedGraduationState.isDexLive && dexTrades.length > 0) {
-            console.log('[TradeHistory] 🎓 Token graduated! Detected DEX trades', {
-              dexTradeCount: dexTrades.length,
-              firstDexTrade: dexTrades[0],
-            });
+            // console.log('[TradeHistory] 🎓 Token graduated! Detected DEX trades', {
+            //   dexTradeCount: dexTrades.length,
+            //   firstDexTrade: dexTrades[0],
+            // });
 
             // Update graduation state - use the earliest DEX trade as bondingCutoff
             const earliestDexTimestamp = Math.min(...dexTrades.map((t) => t.timestamp));

@@ -183,10 +183,6 @@ export default function BondingCurveChart({ tokenAddress }: BondingCurveChartPro
     if (!bondingData.loading && tokenAddress) {
       const curveData = generateCurveData();
       setBondingCurveData(curveData);
-      console.log('📊 Curve data generated:', {
-        curve: curve === 0 ? 'quadratic' : 'linear',
-        dataPoints: curveData.length,
-      });
     }
   }, [bondingData.loading, tokenAddress, generateCurveData, curve]);
 

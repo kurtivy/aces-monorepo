@@ -33,6 +33,7 @@ export function LeftColumnNavigationV2({
     loading: metricsLoading,
   } = useTokenMetrics(listing?.token?.contractAddress);
 
+  // 🔥 FIX: Prioritize WebSocket marketCapUsd over calculated values for real-time updates
   const fallbackMarketCap = useMemo(() => {
     const supply = circulatingSupply ?? NaN;
     const price = currentPriceUsd;
@@ -43,9 +44,39 @@ export function LeftColumnNavigationV2({
     return Number.isFinite(mcap) && mcap > 0 ? mcap : undefined;
   }, [circulatingSupply, currentPriceUsd, metrics?.marketCapUsd]);
 
+  // 🔥 FIX: Use marketCapUsd from hook (WebSocket) as primary source, fallback to calculated
+  // This ensures real-time WebSocket updates take precedence
   const hasUnifiedMarketCap = Number.isFinite(marketCapUsd) && marketCapUsd > 0;
-  const marketCapUSD = hasUnifiedMarketCap ? marketCapUsd : fallbackMarketCap ?? 0;
-  const marketCapLoading = !hasUnifiedMarketCap;
+  const hasMetricsMarketCap =
+    metrics && Number.isFinite(metrics.marketCapUsd) && metrics.marketCapUsd > 0;
+
+  // Priority: WebSocket marketCapUsd > metrics.marketCapUsd > calculated fallback
+  const marketCapUSD = hasUnifiedMarketCap
+    ? marketCapUsd
+    : hasMetricsMarketCap && metrics
+      ? metrics.marketCapUsd
+      : (fallbackMarketCap ?? 0);
+
+  // 🔥 FIX: Only show loading when actually loading and no data available
+  const marketCapLoading = useMemo(() => {
+    // If we have unified or metrics market cap, not loading
+    if (hasUnifiedMarketCap || hasMetricsMarketCap) {
+      return false;
+    }
+
+    // If we have a valid fallback calculation, not loading
+    if (fallbackMarketCap && fallbackMarketCap > 0) {
+      return false;
+    }
+
+    // If metrics hook is loading, we're loading
+    if (metricsLoading) {
+      return true;
+    }
+
+    // Otherwise, not loading (showing N/A or 0)
+    return false;
+  }, [hasUnifiedMarketCap, hasMetricsMarketCap, fallbackMarketCap, metricsLoading]);
 
   const liveTokenPrice = useMemo(() => {
     return isFinite(currentPriceUsd) && currentPriceUsd > 0 ? currentPriceUsd : undefined;

@@ -1,4 +1,5 @@
 import type { NextConfig } from 'next';
+import { withSentryConfig } from '@sentry/nextjs';
 
 const DEFAULT_LOCAL_BACKEND = 'http://localhost:3002';
 
@@ -581,4 +582,13 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// 🔥 PHASE 5: Wrap with Sentry config for error tracking and performance monitoring
+export default withSentryConfig(nextConfig, {
+  org: 'aces-global-technology',
+  project: 'javascript-nextjs',
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  silent: false,
+  widenClientFileUpload: true,
+  tunnelRoute: '/monitoring',
+  // hideSourceMaps: true,
+});

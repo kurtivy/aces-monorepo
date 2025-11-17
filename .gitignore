@@ -3,7 +3,7 @@
 build-guides/
 acestest/
 guides/
-
+docs/
 # Dependencies
 node_modules/
 .pnpm-store/
