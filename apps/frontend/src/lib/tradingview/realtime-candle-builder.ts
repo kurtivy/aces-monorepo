@@ -6,6 +6,9 @@
  * without polling the REST API.
  */
 
+// 🔥 PHASE 2: Import server-synchronized time
+import { getNow } from '../websocket/shared-trade-websocket';
+
 export interface Trade {
   timestamp: number; // milliseconds
   price: number;
@@ -47,7 +50,20 @@ export class RealtimeCandleBuilder {
   private readonly FINALIZATION_CUTOFF_MS = 2000; // Don't update bars older than 2s (prevent visual glitches)
   // 🔥 PHASE 3: Track emission to prevent double-emission
   private lastEmissionTime = new Map<string, number>(); // key = "timeframe:candleTime"
-  private readonly MIN_EMISSION_INTERVAL_MS = 100; // Throttle to 10 updates/sec max
+  
+  /**
+   * Get throttle interval based on timeframe
+   * Shorter timeframes need more aggressive throttling to prevent spam
+   * Longer timeframes need less throttling to show every update
+   */
+  private getThrottleMs(timeframe: string): number {
+    const intervalMs = this.getIntervalMs(timeframe);
+    // For timeframes >= 5 minutes, allow more frequent updates
+    if (intervalMs >= 5 * 60 * 1000) {
+      return 50; // 50ms for 5m, 15m, 1h, etc. (20 updates/sec max)
+    }
+    return 100; // 100ms for 1m (10 updates/sec max)
+  }
   // 🔥 OPTION 1: Smart Timer - Track last trade time per timeframe for intelligent bucket rollover
   private lastTradeTime = new Map<string, number>(); // key = timeframe, value = timestamp
   private readonly TRADE_GRACE_PERIOD_MS = 3000; // Wait 3s after last trade before emitting synthetic candle
@@ -98,7 +114,7 @@ export class RealtimeCandleBuilder {
    * Process incoming trade and update relevant candles
    */
   processTrade(trade: Trade): void {
-    const now = Date.now();
+    const now = getNow();
 
     // 🔥 OPTION 1: Track trade arrival time for smart timer
     // This helps the timer know when to wait for late trades before emitting synthetic candles
@@ -122,11 +138,26 @@ export class RealtimeCandleBuilder {
    * Skips if not current bucket or if recently emitted
    */
   private emitCandleIfReady(timeframe: string, candle: Candle): void {
-    const now = Date.now();
+    const now = getNow();
     const intervalMs = this.getIntervalMs(timeframe);
     const currentBucketTime = Math.floor(now / intervalMs) * intervalMs;
     const isCurrentBucket = candle.time === currentBucketTime;
     const mostRecentSent = this.mostRecentCandleTimeSent.get(timeframe) || 0;
+
+    // 🔥 DEBUG: Log all emission attempts for long timeframes
+    if (intervalMs >= 60 * 60 * 1000) { // 1h or longer
+      console.log('[CandleBuilder] 📊 Emission attempt (long timeframe):', {
+        timeframe,
+        candleTime: new Date(candle.time).toISOString(),
+        currentBucketTime: new Date(currentBucketTime).toISOString(),
+        nowTime: new Date(now).toISOString(),
+        isCurrentBucket,
+        timeDifferenceMs: currentBucketTime - candle.time,
+        timeDifferenceMinutes: Math.round((currentBucketTime - candle.time) / 60000),
+        isPastBucket: candle.time < currentBucketTime,
+        isFutureBucket: candle.time > currentBucketTime,
+      });
+    }
 
     // Only emit current bucket immediately
     if (!isCurrentBucket) {
@@ -141,19 +172,22 @@ export class RealtimeCandleBuilder {
       return;
     }
 
-    // 🔥 PHASE 3: Throttle to prevent spamming
+    // 🔥 PHASE 3: Throttle to prevent spamming (timeframe-aware)
     const key = `${timeframe}:${candle.time}`;
     const lastEmit = this.lastEmissionTime.get(key) || 0;
     const timeSinceLastEmit = now - lastEmit;
+    const throttleMs = this.getThrottleMs(timeframe);
 
-    if (timeSinceLastEmit < this.MIN_EMISSION_INTERVAL_MS) {
-      console.warn('[CandleBuilder] 🚦 Throttling immediate emission:', {
-        timeframe,
-        candleTime: new Date(candle.time).toISOString(),
-        timeSinceLastEmit,
-        throttleMs: this.MIN_EMISSION_INTERVAL_MS,
-        lastEmitTime: lastEmit > 0 ? new Date(lastEmit).toISOString() : 'NEVER',
-      });
+    if (timeSinceLastEmit < throttleMs) {
+      if (this.debug) {
+        console.warn('[CandleBuilder] 🚦 Throttling immediate emission:', {
+          timeframe,
+          candleTime: new Date(candle.time).toISOString(),
+          timeSinceLastEmit,
+          throttleMs,
+          lastEmitTime: lastEmit > 0 ? new Date(lastEmit).toISOString() : 'NEVER',
+        });
+      }
       return; // Skip - throttled
     }
 
@@ -238,6 +272,25 @@ export class RealtimeCandleBuilder {
       });
     }
 
+    // 🔥 DEBUG: Log emission for long timeframes to see what TradingView receives
+    if (intervalMs >= 60 * 60 * 1000) {
+      console.log(`[CandleBuilder] 📤 EMITTING ${timeframe} candle to TradingView:`, {
+        timeframe,
+        candleTime: new Date(candle.time).toISOString(),
+        prices: {
+          open: candle.open.toFixed(8),
+          close: candle.close.toFixed(8),
+          high: candle.high.toFixed(8),
+          low: candle.low.toFixed(8),
+        },
+        volume: candle.volume,
+        tradesCount: candle.trades?.length || 0,
+        isFinalized: candle.isFinalized,
+        ageHours: Math.round((now - candle.time) / (60 * 60 * 1000)),
+        callbacksCount: callbacks.length,
+      });
+    }
+    
     for (let i = 0; i < callbacks.length; i++) {
       const callback = callbacks[i];
       try {
@@ -261,10 +314,14 @@ export class RealtimeCandleBuilder {
    * This prevents visual glitches where closed bars suddenly change
    */
   private updateCandle(timeframe: string, trade: Trade): void {
-    const now = Date.now(); // Single declaration for reuse
+    const now = getNow(); // Used only for age calculations and finalization logic
     const intervalMs = this.getIntervalMs(timeframe);
 
-    // 🔥 ROUNDING LOGIC EXPLANATION:
+    // 🔥 PHASE 3: Use trade.timestamp for ALL bucket calculations
+    // This eliminates bucket boundary race conditions where network latency
+    // could cause a trade to be bucketed incorrectly if we used getNow()
+    //
+    // ROUNDING LOGIC EXPLANATION:
     // Math.floor(trade.timestamp / intervalMs) * intervalMs
     //
     // Example for 5m timeframe (300000ms):
@@ -281,11 +338,30 @@ export class RealtimeCandleBuilder {
     // This rounds DOWN to the start of the time bucket
     const candleTime = Math.floor(trade.timestamp / intervalMs) * intervalMs;
 
-    // 🔥 NEW: Reject trades for bars that are too old (finalized)
-    const candleAge = now - candleTime;
+    // 🔥 CRITICAL: Use getNow() for currentBucketTime to determine ACTUAL current bucket
+    // Use trade.timestamp ONLY for candleTime (correct bucketing)
+    // This comparison tells us if the trade belongs to the current active bucket
     const currentBucketTime = Math.floor(now / intervalMs) * intervalMs;
     const isCurrentBucket = candleTime === currentBucketTime;
     const isPreviousBucket = candleTime === currentBucketTime - intervalMs;
+    
+    // 🔥 DEBUG: Log bucket calculations for long timeframes
+    if (intervalMs >= 60 * 60 * 1000) { // 1h or longer
+      console.log('[CandleBuilder] 🔧 Bucket calculation (long timeframe):', {
+        timeframe,
+        tradeTimestamp: new Date(trade.timestamp).toISOString(),
+        nowTime: new Date(now).toISOString(),
+        candleTime: new Date(candleTime).toISOString(),
+        currentBucketTime: new Date(currentBucketTime).toISOString(),
+        isCurrentBucket,
+        isPreviousBucket,
+        intervalMinutes: intervalMs / 60000,
+        timeDifferenceMinutes: Math.round((currentBucketTime - candleTime) / 60000),
+      });
+    }
+    
+    // 🔥 Use getNow() for age-based finalization logic (prevent stale updates)
+    const candleAge = now - candleTime;
 
     // 🔥 CRITICAL FIX: Allow updates to previous bucket within a grace period
     // This handles late-arriving trades that are still valid for the previous bucket
@@ -376,6 +452,25 @@ export class RealtimeCandleBuilder {
     let candle = this.currentCandles.get(key);
     const isSynthetic = this.syntheticCandles.has(key);
     const isFutureBucket = candleTime > currentBucketTime;
+    
+    // 🔥 DEBUG: Log candle lookup for long timeframes to diagnose seeding issue
+    if (intervalMs >= 60 * 60 * 1000) {
+      console.log(`[CandleBuilder] 🔍 Candle lookup for ${timeframe} trade:`, {
+        timeframe,
+        key,
+        candleFound: !!candle,
+        candleExists: this.currentCandles.has(key),
+        totalCandlesInMap: this.currentCandles.size,
+        allKeysForTimeframe: Array.from(this.currentCandles.keys()).filter(k => k.startsWith(timeframe + ':')),
+        existingCandleData: candle ? {
+          time: new Date(candle.time).toISOString(),
+          open: candle.open.toFixed(8),
+          close: candle.close.toFixed(8),
+          tradesCount: candle.trades?.length || 0,
+          isFinalized: candle.isFinalized,
+        } : 'NO CANDLE FOUND - Will create new one',
+      });
+    }
 
     // 🔥 DEBUG: Log rounding calculation to understand how candle time is determined
     const timeUntilNextBucket = intervalMs - ((now - currentBucketTime) % intervalMs);
@@ -464,7 +559,7 @@ export class RealtimeCandleBuilder {
         trades: [trade],
         totalValue: trade.price * trade.volume,
         isFinalized: false,
-        lastUpdateTime: Date.now(), // 🔥 NEW: Track when candle was last updated
+        lastUpdateTime: getNow(), // 🔥 NEW: Track when candle was last updated
       };
       this.currentCandles.set(key, candle);
     } else if (isSynthetic) {
@@ -499,11 +594,34 @@ export class RealtimeCandleBuilder {
     } else {
       // 🔥 CRITICAL FIX: Check if candle is finalized first
       // BUT allow un-finalizing if it's a previous bucket trade within grace period
-      const now = Date.now();
+      const now = getNow();
       const intervalMs = this.getIntervalMs(timeframe);
       const currentBucketTime = Math.floor(now / intervalMs) * intervalMs;
       const isPreviousBucket = candleTime === currentBucketTime - intervalMs;
       const candleAge = now - candleTime;
+      
+      // 🔥 DEBUG: Log trade updates for long timeframes
+      if (intervalMs >= 60 * 60 * 1000) {
+        console.log(`[CandleBuilder] 📥 Processing trade for ${timeframe} candle:`, {
+          timeframe,
+          candleTime: new Date(candle.time).toISOString(),
+          tradeTime: new Date(trade.timestamp).toISOString(),
+          tradePrice: trade.price.toFixed(8),
+          currentCandlePrices: {
+            open: candle.open.toFixed(8),
+            close: candle.close.toFixed(8),
+            high: candle.high.toFixed(8),
+            low: candle.low.toFixed(8),
+          },
+          candle: {
+            isFinalized: candle.isFinalized,
+            isCurrentBucket: candleTime === currentBucketTime,
+            isPreviousBucket,
+            ageHours: Math.round(candleAge / (60 * 60 * 1000)),
+            tradesCount: candle.trades?.length || 0,
+          },
+        });
+      }
 
       if (candle.isFinalized) {
         // Allow updating previous bucket even if finalized (BitQuery delays)
@@ -518,7 +636,7 @@ export class RealtimeCandleBuilder {
             price: trade.price,
             volume: trade.volume,
             timeframe,
-            ageMinutes: Math.round((Date.now() - candle.time) / 60000),
+            ageMinutes: Math.round((getNow() - candle.time) / 60000),
             isPreviousBucket,
             candleAge: Math.round(candleAge / 1000) + 's',
           });
@@ -555,7 +673,7 @@ export class RealtimeCandleBuilder {
     this.lastClosePrices.set(timeframe, candle.close);
 
     // 🔥 NEW: Update lastUpdateTime for emission buffering
-    candle.lastUpdateTime = Date.now();
+    candle.lastUpdateTime = getNow();
 
     // 🔥 PHASE 2: Emit immediately if this is the current bucket
     // This provides near-instant updates for active trading
@@ -573,7 +691,7 @@ export class RealtimeCandleBuilder {
    * Also frees memory by clearing trade buffers
    */
   private finalizeOldCandles(timeframe: string): void {
-    const now = Date.now();
+    const now = getNow();
     const finalizationDelay = 3 * 60 * 1000; // 3 minutes - reasonable buffer for Bitquery delays
 
     const prefix = `${timeframe}:`;
@@ -655,7 +773,7 @@ export class RealtimeCandleBuilder {
    * Get the current candle for a timeframe (if it exists)
    */
   getCurrentCandle(timeframe: string): Candle | null {
-    const now = Date.now();
+    const now = getNow();
     const intervalMs = this.getIntervalMs(timeframe);
     const candleTime = Math.floor(now / intervalMs) * intervalMs;
     const key = `${timeframe}:${candleTime}`;
@@ -669,10 +787,28 @@ export class RealtimeCandleBuilder {
    */
   seedCandle(timeframe: string, candle: Candle): void {
     const key = `${timeframe}:${candle.time}`;
-    const now = Date.now();
+    const now = getNow();
     const intervalMs = this.getIntervalMs(timeframe);
     const currentBucketTime = Math.floor(now / intervalMs) * intervalMs;
     const isFutureBucket = candle.time > currentBucketTime;
+    const isCurrentBucket = candle.time === currentBucketTime;
+
+    // 🔥 DEBUG: Log seeding of current bucket for long timeframes
+    if (isCurrentBucket && intervalMs >= 60 * 60 * 1000) {
+      console.log('[CandleBuilder] 🌱 Seeding CURRENT bucket (long timeframe):', {
+        timeframe,
+        candleTime: new Date(candle.time).toISOString(),
+        currentBucketTime: new Date(currentBucketTime).toISOString(),
+        prices: {
+          open: candle.open,
+          close: candle.close,
+          high: candle.high,
+          low: candle.low,
+        },
+        isFinalized: candle.isFinalized,
+        warning: candle.isFinalized ? '⚠️ Current bucket is finalized - will NOT update with new trades!' : '✅ Not finalized - will update with trades',
+      });
+    }
 
     // 🔥 NOTE: Seeded candles can legitimately be slightly in the future
     // This happens when REST API returns the "current" bucket, but by the time
@@ -721,7 +857,7 @@ export class RealtimeCandleBuilder {
    * Uses dual-speed delays: current bucket (500ms) vs previous buckets (5000ms)
    */
   private checkAndEmitBufferedCandles(): void {
-    const now = Date.now();
+    const now = getNow();
 
     // Group candles by timeframe
     const candlesByTimeframe = new Map<string, Candle[]>();
@@ -804,11 +940,18 @@ export class RealtimeCandleBuilder {
         // 2. The candle is older than emissionDelay (handles late trades within window)
         let shouldEmit = timeSinceUpdate >= emissionDelay || candleAge >= emissionDelay;
 
-        // 🔥 CRITICAL FIX: NEVER emit candles for the CURRENT bucket via timer
-        // This prevents race conditions where timer emits current bucket before late trades arrive
-        // Real trades will emit the current bucket immediately, timer should only fill past gaps
-        if (shouldEmit && !candle.isFinalized && isCurrentBucket) {
-          shouldEmit = false; // Never emit current bucket via timer
+        // 🔥 FIX: For long timeframes (>=5m), allow timer to emit current bucket
+        // Short timeframes rely on immediate emission, but long timeframes need timer backup
+        const shouldSkipCurrentBucket = isCurrentBucket && intervalMs < 5 * 60 * 1000; // Only skip for < 5m
+        if (shouldEmit && !candle.isFinalized && shouldSkipCurrentBucket) {
+          shouldEmit = false; // Skip current bucket for short timeframes only
+          if (this.debug) {
+            console.log('[CandleBuilder] ⏭️ Timer skipping current bucket (short timeframe):', {
+              timeframe,
+              candleTime: new Date(candle.time).toISOString(),
+              reason: 'Immediate emission handles current bucket for timeframes < 5m',
+            });
+          }
         }
 
         if (shouldEmit && !candle.isFinalized) {
@@ -816,58 +959,42 @@ export class RealtimeCandleBuilder {
           const key = `${timeframe}:${candle.time}`;
           const lastEmit = this.lastEmissionTime.get(key) || 0;
           const timeSinceLastEmit = now - lastEmit;
+          const throttleMs = this.getThrottleMs(timeframe);
 
-          if (timeSinceLastEmit < this.MIN_EMISSION_INTERVAL_MS) {
+          if (timeSinceLastEmit < throttleMs) {
             if (this.debug) {
               console.log('[CandleBuilder] ⏱️ Skipping timer emission (recently emitted):', {
                 timeframe,
                 candleTime: new Date(candle.time).toISOString(),
                 timeSinceLastEmit,
+                throttleMs,
               });
             }
             continue; // Skip - was just emitted
           }
 
-          // Check time violation before emitting
+          // 🔥 PHASE 3: STRICT chronological order check
+          // NEVER emit a candle older than the most recent sent candle
+          // This prevents time violations in TradingView
           const mostRecentSent = this.mostRecentCandleTimeSent.get(timeframe) || 0;
-          const intervalMs = this.getIntervalMs(timeframe);
 
-          // 🔥 Option 1 check: Block if mostRecentSent is future (REST API seeded future candle)
+          // STRICT: Block ANY candle that's older than mostRecentSent
+          // Exception: Allow if candleTime === mostRecentSent (re-emission/update of same candle)
+          const shouldBlock = candle.time < mostRecentSent;
 
-          // 🔥 CRITICAL FIX: Allow current/previous bucket candles even if mostRecentSent is newer
-          // This handles cases where trades arrive out of order or a future candle was emitted first
-          // Only block candles that are OLDER than mostRecentSent AND not in the current/previous bucket
-          const isInCurrentOrPreviousBucket = candle.time >= currentBucketTime - intervalMs;
-          const shouldBlock = candle.time < mostRecentSent && !isInCurrentOrPreviousBucket;
-
-          // 🔥 NEW: Also block if mostRecentSent is FUTURE (REST API seeded future candle)
-          const mostRecentIsFuture = mostRecentSent > currentBucketTime;
-          const candleIsOlderThanFuture = mostRecentIsFuture && candle.time < mostRecentSent;
-
-          if (shouldBlock || candleIsOlderThanFuture) {
+          if (shouldBlock) {
             // Mark as finalized to stop timer from retrying
             candle.isFinalized = true;
-            // This is an OLD candle (from previous bucket), skip it
-            console.error('[CandleBuilder] ⏮️ Buffered candle too old to emit:', {
+            // This candle arrived late and would violate chronological order
+            console.warn('[CandleBuilder] ⏮️ BLOCKED late candle (would violate time order):', {
               timeframe,
-              candleTime: candle.time,
-              candleTimeISO: new Date(candle.time).toISOString(),
-              mostRecentSent: mostRecentSent,
-              mostRecentSentISO: new Date(mostRecentSent).toISOString(),
-              timeDifferenceMs: candle.time - mostRecentSent,
-              timeDifferenceSeconds: Math.round((candle.time - mostRecentSent) / 1000),
-              candleAgeMs: now - candle.time,
-              mostRecentSentAgeMs: now - mostRecentSent,
-              currentBucketTime: currentBucketTime,
-              currentBucketTimeISO: new Date(currentBucketTime).toISOString(),
-              isCurrentBucket: candle.time === currentBucketTime,
-              isFromPreviousBucket: candle.time < currentBucketTime,
-              isInCurrentOrPreviousBucket,
-              source: 'checkAndEmitBufferedCandles',
+              candleTime: new Date(candle.time).toISOString(),
+              mostRecentSent: new Date(mostRecentSent).toISOString(),
+              lagSeconds: Math.round((mostRecentSent - candle.time) / 1000),
+              reason: 'STRICT_CHRONOLOGICAL_ORDER',
             });
             continue;
           }
-          // If candle.time === mostRecentSent or is in current/previous bucket, allow it!
 
           // 🔥 CRITICAL FIX: Only finalize candles from PREVIOUS time buckets
           // This allows trades to continue updating the CURRENT candle
@@ -920,7 +1047,7 @@ export class RealtimeCandleBuilder {
    * 🔥 NEW: Clean up finalized candles older than 10 minutes to free memory
    */
   private cleanupFinalizedCandles(): void {
-    const now = Date.now();
+    const now = getNow();
     const cleanupThreshold = 10 * 60 * 1000; // 10 minutes
 
     for (const [, candle] of this.currentCandles.entries()) {
@@ -1002,7 +1129,7 @@ export class RealtimeCandleBuilder {
    * get rejected because an empty synthetic candle already claimed that time bucket
    */
   private checkAndEmitSyntheticCandle(timeframe: string): void {
-    const now = Date.now();
+    const now = getNow();
     const intervalMs = this.getIntervalMs(timeframe);
     const currentBucketTime = Math.floor(now / intervalMs) * intervalMs;
 
@@ -1040,7 +1167,7 @@ export class RealtimeCandleBuilder {
             trades: [],
             totalValue: 0,
             isFinalized: false,
-            lastUpdateTime: Date.now(),
+            lastUpdateTime: getNow(),
           };
 
           this.currentCandles.set(key, syntheticCandle);

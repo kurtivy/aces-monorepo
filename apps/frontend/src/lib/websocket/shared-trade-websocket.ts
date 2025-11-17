@@ -5,6 +5,68 @@
  * Multiple components can subscribe to the same WebSocket connection.
  */
 
+// 🔥 PHASE 1: Server time synchronization
+// Track server time from WebSocket messages to eliminate client clock drift
+let lastServerTime = 0;
+let lastServerTimeReceivedAt = 0;
+const MAX_STALE_MS = 30 * 1000; // 30 seconds - match heartbeat interval
+
+/**
+ * Record server time from WebSocket message
+ * @internal
+ */
+function recordServerTime(serverTime: number): void {
+  lastServerTime = serverTime;
+  lastServerTimeReceivedAt = Date.now();
+}
+
+/**
+ * Get current time synchronized with server
+ * Falls back to Date.now() if server time is stale or unavailable
+ * 
+ * @returns Current time in milliseconds (Unix timestamp)
+ */
+export function getNow(): number {
+  if (!lastServerTime) {
+    return Date.now(); // No server time yet, use client time
+  }
+  
+  const clientNow = Date.now();
+  const age = clientNow - lastServerTimeReceivedAt;
+  
+  // Detect staleness or clock jumps
+  if (age > MAX_STALE_MS || age < 0) {
+    console.warn('[SharedTradeWS] Server time stale or clock jump, falling back to Date.now()', {
+      age,
+      ageSeconds: Math.round(age / 1000),
+      lastServerTime: new Date(lastServerTime).toISOString(),
+      lastServerTimeReceivedAt: new Date(lastServerTimeReceivedAt).toISOString(),
+      fallbackReason: age > MAX_STALE_MS ? 'STALE' : 'CLOCK_JUMP',
+    });
+    return clientNow;
+  }
+  
+  // Interpolate server time
+  const elapsed = clientNow - lastServerTimeReceivedAt;
+  return lastServerTime + elapsed;
+}
+
+/**
+ * Get current clock skew between client and server
+ * Returns null if no server time available yet
+ * 
+ * @returns Clock skew in milliseconds (positive = client ahead, negative = client behind)
+ */
+export function getClockSkew(): number | null {
+  if (!lastServerTime) {
+    return null; // No server time yet
+  }
+  
+  const serverNow = getNow();
+  const clientNow = Date.now();
+  return clientNow - serverNow;
+}
+
 export interface TradeData {
   id: string;
   tokenAddress: string;
@@ -150,11 +212,11 @@ class SharedTradeWebSocketManager {
 
     const wsUrl = `${wsBaseUrl}/api/v1/ws/trades/${tokenAddress}`;
 
-    // console.log(
-    //   `[SharedTradeWS] 🔌 Connecting to ${wsUrl} for ${state.subscribers.size} subscribers`,
-    // );
-    // console.log(`[SharedTradeWS] WebSocket base URL: ${wsBaseUrl}`);
-    // console.log(`[SharedTradeWS] Token address: ${tokenAddress}`);
+    console.log(
+      `[SharedTradeWS] 🔌 Connecting to ${wsUrl} for ${state.subscribers.size} subscribers`,
+    );
+    console.log(`[SharedTradeWS] WebSocket base URL: ${wsBaseUrl}`);
+    console.log(`[SharedTradeWS] Token address: ${tokenAddress}`);
 
     // Notify subscribers we're connecting
     for (const callback of state.statusCallbacks.values()) {
@@ -180,7 +242,7 @@ class SharedTradeWebSocketManager {
     }
 
     ws.onopen = () => {
-      // console.log(`[SharedTradeWS] ✅ WebSocket opened for ${tokenAddress}`);
+      console.log(`[SharedTradeWS] ✅ WebSocket opened for ${tokenAddress}`);
       state.reconnectAttempt = 0;
       state.lastMessageTime = Date.now();
 
@@ -227,6 +289,44 @@ class SharedTradeWebSocketManager {
           // console.log(`[SharedTradeWS] 💓 Received server ping for ${tokenAddress}`);
           state.totalPings++;
 
+          // 🔥 PHASE 1: Record server time from heartbeat
+          if (message.timestamp && typeof message.timestamp === 'number') {
+            recordServerTime(message.timestamp);
+            
+            // Log clock skew for diagnostics
+            const skew = getClockSkew();
+            if (skew !== null) {
+              const skewSeconds = Math.round(skew / 1000);
+              const absSkewSeconds = Math.abs(skewSeconds);
+              
+              // Log on first heartbeat or if skew is significant (>1 second)
+              if (state.totalPings === 1 || absSkewSeconds > 1) {
+                console.log(
+                  `[SharedTradeWS] 🕐 Clock skew for ${tokenAddress}: ${skewSeconds > 0 ? '+' : ''}${skewSeconds}s ` +
+                  `(client ${skewSeconds > 0 ? 'ahead' : 'behind'})`,
+                  {
+                    skewMs: skew,
+                    skewSeconds,
+                    serverTime: new Date(message.timestamp).toISOString(),
+                    clientTime: new Date(Date.now()).toISOString(),
+                    heartbeatNumber: state.totalPings,
+                  }
+                );
+              }
+              
+              // Warn if skew is excessive (>5 seconds)
+              if (absSkewSeconds > 5) {
+                console.warn(
+                  `[SharedTradeWS] ⚠️ EXCESSIVE CLOCK SKEW for ${tokenAddress}: ${absSkewSeconds}s`,
+                  {
+                    skewMs: skew,
+                    recommendation: 'User should sync their system clock',
+                  }
+                );
+              }
+            }
+          }
+
           try {
             ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
             state.lastPongTime = Date.now();
@@ -252,6 +352,11 @@ class SharedTradeWebSocketManager {
         }
 
         if (message.type === 'trade' && message.data) {
+          // 🔥 PHASE 1: Record server time from trade message
+          if (message.timestamp && typeof message.timestamp === 'number') {
+            recordServerTime(message.timestamp);
+          }
+
           // Broadcast trade to all subscribers
           if (state.tradeCallbacks.size === 0) {
             console.warn(`[SharedTradeWS] ⚠️ No subscribers to receive trade for ${tokenAddress}!`);
@@ -316,17 +421,17 @@ class SharedTradeWebSocketManager {
       const closeReason = event.reason || 'No reason provided';
       const wasClean = event.wasClean;
 
-      // console.log(`[SharedTradeWS] 🔌 Closed for ${tokenAddress}:`, {
-      //   code: closeCode,
-      //   reason: closeReason,
-      //   wasClean,
-      //   subscribers: state.subscribers.size,
-      //   reconnectAttempt: state.reconnectAttempt,
-      //   // 🔥 PHASE 2: Connection health metrics
-      //   totalPings: state.totalPings,
-      //   totalPongs: state.totalPongs,
-      //   missedPongs: state.missedPongs,
-      // });
+      console.log(`[SharedTradeWS] 🔌 Closed for ${tokenAddress}:`, {
+        code: closeCode,
+        reason: closeReason,
+        wasClean,
+        subscribers: state.subscribers.size,
+        reconnectAttempt: state.reconnectAttempt,
+        // 🔥 PHASE 2: Connection health metrics
+        totalPings: state.totalPings,
+        totalPongs: state.totalPongs,
+        missedPongs: state.missedPongs,
+      });
 
       // 🔥 PHASE 2: Clear pong monitoring interval
       if (state.pongCheckInterval) {
@@ -374,9 +479,9 @@ class SharedTradeWebSocketManager {
         const delay = Math.min(1000 * Math.pow(2, state.reconnectAttempt), 30000);
         state.reconnectAttempt++;
 
-        // console.log(
-        //   `[SharedTradeWS] 🔄 Reconnecting in ${delay}ms (attempt ${state.reconnectAttempt}/${this.maxReconnectAttempts}) - ${state.subscribers.size} subscribers waiting`,
-        // );
+        console.log(
+          `[SharedTradeWS] 🔄 Reconnecting in ${delay}ms (attempt ${state.reconnectAttempt}/${this.maxReconnectAttempts}) - ${state.subscribers.size} subscribers waiting`,
+        );
 
         state.reconnectTimeout = setTimeout(() => {
           // Double-check we still have subscribers before reconnecting

@@ -20,7 +20,8 @@ import {
 } from '../../../public/charting_library';
 import { emitMarketCapUpdate } from './market-cap-events';
 import { RealtimeCandleBuilder, type Trade } from './realtime-candle-builder';
-import { sharedTradeWebSocket } from '../websocket/shared-trade-websocket';
+// 🔥 PHASE 2: Import server-synchronized time
+import { sharedTradeWebSocket, getNow } from '../websocket/shared-trade-websocket';
 // 🔥 PHASE 3: Connection health monitoring
 import { connectionHealthMonitor } from '../websocket/connection-health-monitor';
 
@@ -216,7 +217,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       // Method 3: Try setVisibleRange to force scroll to latest
       if (!methodSucceeded && typeof chart.setVisibleRange === 'function') {
         try {
-          const now = Date.now() / 1000;
+          const now = getNow() / 1000;
           const oneHourAgo = now - 3600;
           chart.setVisibleRange({ from: oneHourAgo, to: now }, { percentRightMargin: 5 });
           methodSucceeded = true;
@@ -917,23 +918,82 @@ export class UnifiedDatafeed implements IBasicDataFeed {
             this.lastKnownTokenPrice.set(normalizedAddress, tokenPrice);
           }
 
-          // 🔥 NEW: Seed candle builder with the latest candle
-          // This ensures continuity between REST API data and WebSocket updates
-          // Candle builder always works with token prices
-
-          this.candleBuilder.seedCandle(timeframe, {
-            time: lastBar.time,
-            open: lastBar.open / divider,
-            high: lastBar.high / divider,
-            low: lastBar.low / divider,
-            close: lastBar.close / divider,
-            volume: lastBar.volume ?? 0,
-            // 🔥 NEW: VWAP fields
-            trades: [],
-            totalValue: 0,
-            isFinalized: false,
-            lastUpdateTime: Date.now(),
-          });
+          // 🔥 FIX: Seed ALL bars to populate lastClosePrices correctly
+          // This ensures proper open/close continuity across candles
+          const now = getNow();
+          
+          // Calculate interval for this timeframe to determine current bucket
+          const intervalMap: Record<string, number> = {
+            '1m': 60 * 1000,
+            '5m': 5 * 60 * 1000,
+            '15m': 15 * 60 * 1000,
+            '1h': 60 * 60 * 1000,
+            '4h': 4 * 60 * 60 * 1000,
+            '1d': 24 * 60 * 60 * 1000,
+            '1D': 24 * 60 * 60 * 1000,
+          };
+          const intervalMs = intervalMap[timeframe] || 60 * 1000;
+          const currentBucketTime = Math.floor(now / intervalMs) * intervalMs;
+          
+          let seededCount = 0;
+          let futureCount = 0;
+          let currentBucketCount = 0;
+          
+          for (const bar of bars) {
+            // 🔥 CRITICAL: Filter out future candles to prevent time violations
+            // Only seed bars that are in the past or current bucket
+            if (bar.time <= now) {
+              const isCurrentBucket = bar.time === currentBucketTime;
+              
+              // 🔥 CRITICAL FIX: Only finalize bars that are NOT the current bucket
+              // The "current bucket" for 1d started at midnight - it's old but still active!
+              // Example: At 12:23 PM, the 1d candle from 00:00:00 is 12+ hours old but NOT finalized
+              const shouldFinalize = !isCurrentBucket;
+              
+              // 🔥 DEBUG: Log current bucket seeding for long timeframes
+              if (isCurrentBucket && intervalMs >= 60 * 60 * 1000) {
+                console.log(`[UnifiedDatafeed] 🌱 Seeding CURRENT bucket from REST API:`, {
+                  timeframe,
+                  barTime: new Date(bar.time).toISOString(),
+                  currentBucketTime: new Date(currentBucketTime).toISOString(),
+                  nowTime: new Date(now).toISOString(),
+                  prices: {
+                    open: (bar.open / divider).toFixed(8),
+                    close: (bar.close / divider).toFixed(8),
+                    high: (bar.high / divider).toFixed(8),
+                    low: (bar.low / divider).toFixed(8),
+                  },
+                  volume: bar.volume,
+                  isFinalized: shouldFinalize,
+                  ageHours: Math.round((now - bar.time) / (60 * 60 * 1000)),
+                });
+              }
+              
+              this.candleBuilder.seedCandle(timeframe, {
+                time: bar.time,
+                open: bar.open / divider,
+                high: bar.high / divider,
+                low: bar.low / divider,
+                close: bar.close / divider,
+                volume: bar.volume ?? 0,
+                trades: [],
+                totalValue: 0,
+                isFinalized: shouldFinalize,
+                lastUpdateTime: bar.time,
+              });
+              seededCount++;
+              
+              if (isCurrentBucket) {
+                currentBucketCount++;
+              }
+            } else {
+              futureCount++;
+            }
+          }
+          
+          if (this.config.debug) {
+            console.log(`[UnifiedDatafeed] 🌱 Seeded ${seededCount} ${timeframe} candles (${currentBucketCount} current, skipped ${futureCount} future)`);
+          }
         }
       }
 
@@ -1108,7 +1168,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
 
         // 🔥 CRITICAL FIX: Detect and fix timestamp format issues
         // Backend should send timestamps in milliseconds, but validate just in case
-        const now = Date.now();
+        const now = getNow();
         let normalizedTimestamp = trade.timestamp;
 
         // Check if timestamp looks like seconds (before year 5138)
@@ -1253,7 +1313,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
         }
 
         // 🔥 CRITICAL FIX: Calculate current bucket time FIRST for all checks
-        const now = Date.now();
+        const now = getNow();
         const intervalMs = this.getIntervalMs(timeframe);
         const currentBucketTime = Math.floor(now / intervalMs) * intervalMs;
 
@@ -1551,7 +1611,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     }
 
     const normalized = tokenAddress.toLowerCase();
-    const now = Date.now();
+    const now = getNow();
     const last = this.lastEmittedMarketCap.get(normalized);
 
     const priceVal =
@@ -1635,7 +1695,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     }
 
     // Keep cache timestamp fresh so it doesn't expire during active trading
-    cached.timestamp = Date.now();
+    cached.timestamp = getNow();
   }
 
   /**
@@ -1667,7 +1727,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
         }
 
         // Fetch latest candle data
-        const now = Math.floor(Date.now() / 1000);
+        const now = Math.floor(getNow() / 1000);
         const oneHourAgo = now - 3600; // Last hour
 
         const url = `${this.config.apiBaseUrl}/api/v1/chart/${tokenAddress}/unified?timeframe=1m&from=${oneHourAgo}&to=${now}&limit=60`;
