@@ -158,16 +158,19 @@ export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
       flushInterval = setInterval(flushTradeBuffer, FLUSH_INTERVAL_MS);
 
       try {
-        // 🔥 NEW: Send historical BitQuery trades from database (last 100)
+        // 🔥 NEW: Send historical BitQuery trades from database (most recent 100)
         try {
           const historicalTrades = await fastify.prisma.dexTrade.findMany({
             where: { tokenAddress: tokenAddress.toLowerCase() },
-            orderBy: { timestamp: 'asc' }, // Oldest first (chronological order)
+            orderBy: { timestamp: 'desc' }, // 🔥 FIX: Most recent first, then reverse for chronological
             take: 100,
           });
 
+          // Reverse to send in chronological order (oldest to newest)
+          historicalTrades.reverse();
+
           console.log(
-            `[WS:Trades] 📚 Sending ${historicalTrades.length} historical DEX trades from database`,
+            `[WS:Trades] 📚 Sending ${historicalTrades.length} historical DEX trades from database (most recent 100)`,
           );
 
           for (const trade of historicalTrades) {

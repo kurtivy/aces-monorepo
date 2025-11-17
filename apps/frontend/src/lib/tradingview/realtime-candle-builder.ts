@@ -48,6 +48,10 @@ export class RealtimeCandleBuilder {
   // 🔥 PHASE 3: Track emission to prevent double-emission
   private lastEmissionTime = new Map<string, number>(); // key = "timeframe:candleTime"
   private readonly MIN_EMISSION_INTERVAL_MS = 100; // Throttle to 10 updates/sec max
+  // 🔥 OPTION 1: Smart Timer - Track last trade time per timeframe for intelligent bucket rollover
+  private lastTradeTime = new Map<string, number>(); // key = timeframe, value = timestamp
+  private readonly TRADE_GRACE_PERIOD_MS = 3000; // Wait 3s after last trade before emitting synthetic candle
+  private readonly ENABLE_SMART_TIMER = true; // Feature flag - can be disabled if issues arise
 
   constructor(private debug = false) {
     // Start the emission buffer timer
@@ -96,6 +100,13 @@ export class RealtimeCandleBuilder {
   processTrade(trade: Trade): void {
     const now = Date.now();
     const tradeAgeMs = now - trade.timestamp;
+
+    // 🔥 OPTION 1: Track trade arrival time for smart timer
+    // This helps the timer know when to wait for late trades before emitting synthetic candles
+    const timeframes = ['1m', '5m', '15m', '1h', '4h', '1d'];
+    for (const tf of timeframes) {
+      this.lastTradeTime.set(tf, now);
+    }
 
     console.log('[CandleBuilder] 🔥 PROCESSING TRADE:', {
       price: trade.price.toFixed(8),
@@ -622,21 +633,18 @@ export class RealtimeCandleBuilder {
       const currentBucketTime = Math.floor(now / intervalMs) * intervalMs;
       const isPreviousBucket = candleTime === currentBucketTime - intervalMs;
       const candleAge = now - candleTime;
-      
+
       if (candle.isFinalized) {
         // Allow updating previous bucket even if finalized (BitQuery delays)
         if (isPreviousBucket && candleAge < 2 * intervalMs) {
-          console.log(
-            '[CandleBuilder] 🔄 Un-finalizing previous bucket candle for late trade:',
-            {
-              timeframe,
-              candleTime: new Date(candle.time).toISOString(),
-              tradeTime: new Date(trade.timestamp).toISOString(),
-              tradeType: trade.isBuy ? 'BUY' : 'SELL',
-              candleAge: Math.round(candleAge / 1000) + 's',
-              reason: 'PREVIOUS BUCKET - Late BitQuery trade arrived',
-            },
-          );
+          console.log('[CandleBuilder] 🔄 Un-finalizing previous bucket candle for late trade:', {
+            timeframe,
+            candleTime: new Date(candle.time).toISOString(),
+            tradeTime: new Date(trade.timestamp).toISOString(),
+            tradeType: trade.isBuy ? 'BUY' : 'SELL',
+            candleAge: Math.round(candleAge / 1000) + 's',
+            reason: 'PREVIOUS BUCKET - Late BitQuery trade arrived',
+          });
           // Un-finalize to allow this update
           candle.isFinalized = false;
         } else {
@@ -927,7 +935,40 @@ export class RealtimeCandleBuilder {
         // Emit if either:
         // 1. It's been emissionDelay since last update (no new trades for delay period)
         // 2. The candle is older than emissionDelay (handles late trades within window)
-        const shouldEmit = timeSinceUpdate >= emissionDelay || candleAge >= emissionDelay;
+        let shouldEmit = timeSinceUpdate >= emissionDelay || candleAge >= emissionDelay;
+
+        // 🔥 OPTION 1: Smart Timer - Wait for late trades before emitting synthetic candles
+        // This captures trades that arrive in the last 5-10 seconds of a bucket
+        if (shouldEmit && this.ENABLE_SMART_TIMER && !candle.isFinalized) {
+          const isSyntheticCandle = candle.trades.length === 0 && candle.volume === 0;
+          const lastTradeTime = this.lastTradeTime.get(timeframe) || 0;
+          const timeSinceLastTrade = now - lastTradeTime;
+          const isWaitingForTrades = timeSinceLastTrade < this.TRADE_GRACE_PERIOD_MS;
+
+          // 🔥 CRITICAL: Also check if we just rolled over to a new bucket
+          // If we're in the first few seconds of a new bucket AND had recent trades,
+          // wait before emitting synthetic candle for the new bucket
+          const timeSinceBucketStart = now - candle.time;
+          const isNewBucket = isCurrentBucket && timeSinceBucketStart < this.TRADE_GRACE_PERIOD_MS;
+
+          // If this is a synthetic candle AND (we recently received trades OR just rolled over), wait
+          if (isSyntheticCandle && (isWaitingForTrades || isNewBucket) && isCurrentBucket) {
+            console.log(
+              '[CandleBuilder] ⏸️ Smart Timer: Delaying emission (waiting for late trades):',
+              {
+                timeframe,
+                candleTime: new Date(candle.time).toISOString(),
+                timeSinceLastTrade: `${Math.round(timeSinceLastTrade / 1000)}s`,
+                timeSinceBucketStart: `${Math.round(timeSinceBucketStart / 1000)}s`,
+                gracePeriod: `${this.TRADE_GRACE_PERIOD_MS / 1000}s`,
+                reason: isNewBucket
+                  ? 'Just rolled over to new bucket - waiting for late trades from previous bucket'
+                  : 'Recent trade activity detected - waiting for potential late trades',
+              },
+            );
+            shouldEmit = false; // Don't emit yet - wait for grace period to expire
+          }
+        }
 
         if (shouldEmit && !candle.isFinalized) {
           // 🔥 PHASE 3: Skip if we just emitted this via immediate path
@@ -950,13 +991,21 @@ export class RealtimeCandleBuilder {
           const mostRecentSent = this.mostRecentCandleTimeSent.get(timeframe) || 0;
           const intervalMs = this.getIntervalMs(timeframe);
 
+          // 🔥 Option 1 check: Block if mostRecentSent is future (REST API seeded future candle)
+
           // 🔥 CRITICAL FIX: Allow current/previous bucket candles even if mostRecentSent is newer
           // This handles cases where trades arrive out of order or a future candle was emitted first
           // Only block candles that are OLDER than mostRecentSent AND not in the current/previous bucket
           const isInCurrentOrPreviousBucket = candle.time >= currentBucketTime - intervalMs;
           const shouldBlock = candle.time < mostRecentSent && !isInCurrentOrPreviousBucket;
 
-          if (shouldBlock) {
+          // 🔥 NEW: Also block if mostRecentSent is FUTURE (REST API seeded future candle)
+          const mostRecentIsFuture = mostRecentSent > currentBucketTime;
+          const candleIsOlderThanFuture = mostRecentIsFuture && candle.time < mostRecentSent;
+
+          if (shouldBlock || candleIsOlderThanFuture) {
+            // Mark as finalized to stop timer from retrying
+            candle.isFinalized = true;
             // This is an OLD candle (from previous bucket), skip it
             console.error('[CandleBuilder] ⏮️ Buffered candle too old to emit:', {
               timeframe,

@@ -56,6 +56,8 @@ const eslintConfig = [
       '**/*.min.js',
       '**/public/charting_library/**',
       '**/tsconfig.tsbuildinfo',
+      'vitest.config.ts',
+      'vitest.setup.ts',
     ],
   },
 ];

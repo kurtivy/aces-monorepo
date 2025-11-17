@@ -65,6 +65,7 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
   const [historicalTrades, setHistoricalTrades] = useState<TradeHistoryEntry[]>([]);
   const [isLoadingHistorical, setIsLoadingHistorical] = useState(false);
   const [historicalError, setHistoricalError] = useState<string | null>(null);
+  const [hasFreshTrades, setHasFreshTrades] = useState(false); // 🔥 NEW: Track if we have recent trades
 
   // Determine if token is graduated to DEX
   const isDexLive = dexMeta?.isDexLive ?? false;
@@ -139,24 +140,54 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
     }
   }, [allRealtimeTrades, effectiveIsDexLive]);
 
-  // Fetch historical trades from REST API when WebSocket is empty
+  // 🔥 NEW: Check if WebSocket trades are fresh (< 5 minutes old)
+  const areTradesFresh = useMemo(() => {
+    if (realtimeTrades.length === 0) return false;
+    
+    const FRESHNESS_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+    const now = Date.now();
+    const mostRecentTrade = realtimeTrades[0]; // Trades are sorted newest first
+    
+    if (!mostRecentTrade || !mostRecentTrade.timestamp) return false;
+    
+    const tradeAge = now - mostRecentTrade.timestamp;
+    const isFresh = tradeAge < FRESHNESS_THRESHOLD_MS;
+    
+    console.log('[TradeHistory] 🕒 Trade freshness check:', {
+      mostRecentTimestamp: mostRecentTrade.timestamp,
+      tradeAge: Math.round(tradeAge / 1000) + 's',
+      isFresh,
+      threshold: '5 minutes',
+    });
+    
+    return isFresh;
+  }, [realtimeTrades]);
+
+  // Fetch historical trades from REST API when WebSocket is empty or has stale data
   useEffect(() => {
     const fetchHistoricalTrades = async () => {
-      // Fetch historical trades if:
-      // 1. WebSocket is connected but has no trades, OR
-      // 2. WebSocket is not connected yet (initial load)
-      // But don't fetch if we already have real-time trades or are still connecting
-      if (isConnecting || (isConnected && realtimeTrades.length > 0)) {
+      // 🔥 NEW: Fetch historical trades if:
+      // 1. WebSocket is not connecting AND (no trades OR trades are stale)
+      // 2. Don't fetch if we're still connecting (wait for WebSocket first)
+      const shouldFetch = !isConnecting && (!areTradesFresh || realtimeTrades.length === 0);
+      
+      if (!shouldFetch) {
+        // If we have fresh trades, mark as ready
+        if (areTradesFresh && realtimeTrades.length > 0) {
+          setHasFreshTrades(true);
+        }
         return;
       }
 
-      // console.log('[TradeHistory] 📚 Fetching historical trades from REST API...', {
-      //   isConnected,
-      //   realtimeTradesCount: realtimeTrades.length,
-      //   isConnecting,
-      // });
+      console.log('[TradeHistory] 📚 Fetching fresh trades from REST API...', {
+        reason: realtimeTrades.length === 0 ? 'no WebSocket trades' : 'stale WebSocket trades',
+        realtimeTradesCount: realtimeTrades.length,
+        areTradesFresh,
+        isConnecting,
+      });
       setIsLoadingHistorical(true);
       setHistoricalError(null);
+      setHasFreshTrades(false); // Reset until we get fresh data
 
       try {
         // Check if token is graduated OR if we detected BitQuery trades (auto-graduation)
@@ -164,7 +195,7 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
 
         if (shouldFetchDex) {
           // Token is graduated or has DEX trades - fetch DEX trades
-          // console.log('[TradeHistory] Fetching DEX trades (graduated or has BitQuery trades)...');
+          console.log('[TradeHistory] Fetching DEX trades (graduated or has BitQuery trades)...');
           const dexResult = await DexApi.getTrades(tokenAddress, 80); // Updated to 80
 
           if (dexResult.success && dexResult.data) {
@@ -191,18 +222,20 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
             }));
 
             setHistoricalTrades(dexTrades);
+            setHasFreshTrades(true); // ✅ Mark as fresh after successful fetch
             const buyCount = dexTrades.filter((t) => t.direction === 'buy').length;
             const sellCount = dexTrades.filter((t) => t.direction === 'sell').length;
-            // console.log(`[TradeHistory] ✅ Loaded ${dexTrades.length} DEX trades from REST API`, {
-            //   buys: buyCount,
-            //   sells: sellCount,
-            // });
+            console.log(`[TradeHistory] ✅ Loaded ${dexTrades.length} fresh DEX trades from REST API`, {
+              buys: buyCount,
+              sells: sellCount,
+            });
           } else {
             console.warn('[TradeHistory] DEX trades fetch failed or returned no data:', dexResult);
+            setHasFreshTrades(true); // Even on failure, don't block forever
           }
         } else {
           // Token still bonding - fetch bonding curve trades
-          // console.log('[TradeHistory] Token bonding, fetching bonding curve trades...');
+          console.log('[TradeHistory] Token bonding, fetching bonding curve trades...');
           const bondingResult = await TokensApi.getTrades(tokenAddress, 80); // Updated to 80
 
           if (bondingResult.success && bondingResult.data) {
@@ -226,18 +259,22 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
             }));
 
             setHistoricalTrades(bondingTrades);
+            setHasFreshTrades(true); // ✅ Mark as fresh after successful fetch
             const buyCount = bondingTrades.filter((t) => t.direction === 'buy').length;
             const sellCount = bondingTrades.filter((t) => t.direction === 'sell').length;
-            // console.log(
-            //   `[TradeHistory] ✅ Loaded ${bondingTrades.length} bonding trades from REST API`,
-            //   { buys: buyCount, sells: sellCount },
-            // );
+            console.log(
+              `[TradeHistory] ✅ Loaded ${bondingTrades.length} fresh bonding trades from REST API`,
+              { buys: buyCount, sells: sellCount },
+            );
+          } else {
+            setHasFreshTrades(true); // Even on failure, don't block forever
           }
         }
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : 'Failed to fetch historical trades';
         setHistoricalError(errorMsg);
         console.error('[TradeHistory] ❌ Error fetching historical trades:', err);
+        setHasFreshTrades(true); // Don't block forever on error
       } finally {
         setIsLoadingHistorical(false);
       }
@@ -251,6 +288,7 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
     realtimeTrades.length,
     effectiveIsDexLive,
     hasBitQueryTrades,
+    areTradesFresh, // 🔥 NEW: Re-fetch when freshness changes
   ]);
 
   // Combine WebSocket trades (transformed) with historical REST trades
@@ -358,7 +396,14 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
     realtimeTrades,
   ]);
 
-  const isLoading = (isConnecting || isLoadingHistorical) && trades.length === 0;
+  // 🔥 NEW: Loading state now considers trade freshness
+  // Show loading if:
+  // 1. We're connecting/loading AND have no trades, OR
+  // 2. We have trades but they're not fresh yet (still fetching fresh data)
+  const isLoading = 
+    ((isConnecting || isLoadingHistorical) && trades.length === 0) || 
+    (!hasFreshTrades && trades.length > 0);
+  
   const error = wsError || historicalError;
 
   return {
@@ -366,9 +411,11 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
     isLoading,
     error,
     isConnected,
+    hasFreshTrades, // 🔥 NEW: Export freshness state
     refresh: () => {
       console.log('[TradeHistory] Refreshing from REST API...');
       setHistoricalTrades([]);
+      setHasFreshTrades(false);
       // This will trigger the useEffect to re-fetch
     },
   };

@@ -714,11 +714,6 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
 
           currentSymbolRef.current = chartSymbol;
 
-          // 🔥 CRITICAL FIX: Pass widget reference to datafeed so it can force realtime mode
-          if (datafeedRef.current && typeof datafeedRef.current.setWidget === 'function') {
-            datafeedRef.current.setWidget(widgetRef.current);
-          }
-
           widgetRef.current.onChartReady(() => {
             if (isCancelled) {
               console.log('[TradingView] Chart ready callback - cancelled');
@@ -730,6 +725,19 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
               heightPx,
               minHeightPx,
             });
+            
+            // 🔥 CRITICAL FIX: Pass widget reference to datafeed AFTER chart is ready
+            // This ensures the widget is fully initialized before we try to call methods on it
+            if (datafeedRef.current && typeof datafeedRef.current.setWidget === 'function') {
+              console.log('[TradingView] 🔧 Setting widget reference on datafeed (in onChartReady)');
+              datafeedRef.current.setWidget(widgetRef.current);
+            } else {
+              console.error('[TradingView] ❌ Cannot set widget - datafeed not available!', {
+                hasDatafeed: !!datafeedRef.current,
+                hasSetWidget: datafeedRef.current ? typeof datafeedRef.current.setWidget === 'function' : false,
+              });
+            }
+            
             console.log(
               '[TradingView] 🎯 Chart is now ready to receive data. If no data appears, check:',
             );

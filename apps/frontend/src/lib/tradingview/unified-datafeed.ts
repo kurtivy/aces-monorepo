@@ -188,16 +188,15 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       // Try multiple methods to force realtime mode (don't give up on first error)
 
       // Method 1: executeActionById (standard approach)
+      // Note: This may log a harmless warning from TradingView library if action doesn't exist
       if (!methodSucceeded && typeof chart.executeActionById === 'function') {
         try {
           chart.executeActionById('chart_realtime');
           methodSucceeded = true;
+          console.log('[UnifiedDatafeed] ✅ Realtime mode activated via Method 1 (executeActionById)');
         } catch (e) {
-          if (this.config.debug) {
-            console.warn(
-              '[UnifiedDatafeed] Method 1 (executeActionById) failed, trying next method...',
-            );
-          }
+          // Silently fail - this is expected if the action ID doesn't exist in this TradingView version
+          // We'll try alternative methods below
         }
       }
 
@@ -206,6 +205,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
         try {
           chart.scrollToRealtime();
           methodSucceeded = true;
+          console.log('[UnifiedDatafeed] ✅ Realtime mode activated via Method 2 (scrollToRealtime)');
         } catch (e) {
           if (this.config.debug) {
             console.warn(
@@ -222,6 +222,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
           const oneHourAgo = now - 3600;
           chart.setVisibleRange({ from: oneHourAgo, to: now }, { percentRightMargin: 5 });
           methodSucceeded = true;
+          console.log('[UnifiedDatafeed] ✅ Realtime mode activated via Method 3 (setVisibleRange)');
         } catch (e) {
           if (this.config.debug) {
             console.warn('[UnifiedDatafeed] Method 3 (setVisibleRange) failed:', e);
@@ -230,11 +231,10 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       }
 
       if (!methodSucceeded) {
-        if (this.config.debug) {
-          console.warn(
-            '[UnifiedDatafeed] ⚠️ Could not force realtime mode - no working method available',
-          );
-        }
+        console.error(
+          '[UnifiedDatafeed] ❌ CRITICAL: Could not force realtime mode - NO working method available!',
+        );
+        console.error('[UnifiedDatafeed] Chart may be stuck in historical mode. User will need to manually click realtime button.');
       }
     } catch (error) {
       console.error('[UnifiedDatafeed] ❌ Unexpected error in forceRealtimeMode:', error);
@@ -806,20 +806,18 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     const tokenAddress = isMarketCapMode ? symbol.replace('_MCAP', '') : symbol;
     const timeframe = this.resolutionToTimeframe(resolution);
 
-    if (this.config.debug) {
-      // console.log('[UnifiedDatafeed] 📥 getBars called:', {
-      //   symbol,
-      //   token: tokenAddress,
-      //   mode: isMarketCapMode ? 'mcap' : 'price',
-      //   resolution,
-      //   timeframe,
-      //   from: new Date(periodParams.from * 1000).toISOString(),
-      //   to: new Date(periodParams.to * 1000).toISOString(),
-      //   firstDataRequest: periodParams.firstDataRequest,
-      //   countBack: periodParams.countBack,
-      //   isScrollingBack: !periodParams.firstDataRequest,
-      // });
-    }
+    console.log('[UnifiedDatafeed] 📥 getBars called:', {
+      symbol,
+      token: tokenAddress,
+      mode: isMarketCapMode ? 'mcap' : 'price',
+      resolution,
+      timeframe,
+      from: new Date(periodParams.from * 1000).toISOString(),
+      to: new Date(periodParams.to * 1000).toISOString(),
+      firstDataRequest: periodParams.firstDataRequest,
+      countBack: periodParams.countBack,
+      isScrollingBack: !periodParams.firstDataRequest,
+    });
 
     // 🔥 CACHE DISABLED FOR DEBUGGING - Re-enable after progressive loading works
     // This ensures every scroll-back triggers a fresh API call so we can see what's happening
@@ -1069,41 +1067,37 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       //     })),
       // });
 
-      if (this.config.debug) {
-        // console.log('[UnifiedDatafeed] ✅ Returning bars:', {
-        //   count: bars.length,
-        //   firstBar: bars[0]
-        //     ? {
-        //         time: new Date(bars[0].time).toISOString(),
-        //         close: bars[0].close,
-        //       }
-        //     : null,
-        //   lastBar: bars[bars.length - 1]
-        //     ? {
-        //         time: new Date(bars[bars.length - 1].time).toISOString(),
-        //         close: bars[bars.length - 1].close,
-        //       }
-        //     : null,
-        // });
-      }
+      console.log('[UnifiedDatafeed] ✅ Returning bars:', {
+        count: bars.length,
+        firstBar: bars[0]
+          ? {
+              time: new Date(bars[0].time).toISOString(),
+              close: bars[0].close,
+            }
+          : null,
+        lastBar: bars[bars.length - 1]
+          ? {
+              time: new Date(bars[bars.length - 1].time).toISOString(),
+              close: bars[bars.length - 1].close,
+            }
+          : null,
+      });
 
       // 🔥 CRITICAL: Tell TradingView if there's more data available
       // nextTime should point to BEFORE the first bar (indicating more history exists)
       const noData = bars.length === 0;
       const nextTime = bars.length > 0 ? bars[0].time / 1000 : undefined;
 
-      if (this.config.debug) {
-        // console.log('[UnifiedDatafeed] 📤 Response metadata:', {
-        //   noData,
-        //   nextTime: nextTime ? new Date(nextTime * 1000).toISOString() : 'none',
-        //   hasMoreData: !noData && nextTime !== undefined,
-        //   message: noData
-        //     ? '⚠️ No data - scroll back disabled'
-        //     : nextTime
-        //       ? '✅ More data available - scroll back enabled'
-        //       : '⚠️ No nextTime - scroll back might fail',
-        // });
-      }
+      console.log('[UnifiedDatafeed] 📤 Response metadata:', {
+        noData,
+        nextTime: nextTime ? new Date(nextTime * 1000).toISOString() : 'none',
+        hasMoreData: !noData && nextTime !== undefined,
+        message: noData
+          ? '⚠️ No data - scroll back disabled'
+          : nextTime
+            ? '✅ More data available - scroll back enabled'
+            : '⚠️ No nextTime - scroll back might fail',
+      });
 
       onResult(bars, {
         noData,
@@ -1518,12 +1512,19 @@ export class UnifiedDatafeed implements IBasicDataFeed {
       // 2. Adding new candle if bar.time is after last bar.time
       try {
         onTick(bar);
-        // console.log('[UnifiedDatafeed] ✅ onTick called successfully');
+        console.log('[UnifiedDatafeed] ✅ onTick called successfully', {
+          isNewCandle,
+          isUpdate: !isNewCandle,
+          barTime: new Date(bar.time as number).toISOString(),
+        });
 
         // 🔥 CRITICAL FIX: Force chart into realtime mode when new candle arrives
         // This prevents the chart from getting stuck showing old candles
-        if (isNewCandle) {
-          // console.log('[UnifiedDatafeed] 🔄 Forcing realtime mode (new candle detected)');
+        // Also force on updates if previousLastBar didn't exist (first bar scenario)
+        if (isNewCandle || !previousLastBar) {
+          console.log('[UnifiedDatafeed] 🔄 Forcing realtime mode', {
+            reason: isNewCandle ? 'new candle' : 'first bar',
+          });
           this.forceRealtimeMode();
         }
       } catch (error) {
@@ -1545,6 +1546,14 @@ export class UnifiedDatafeed implements IBasicDataFeed {
 
     // 🔥 PHASE 3: Start health monitoring for diagnostics
     connectionHealthMonitor.startMonitoring(tokenAddress, true);
+
+    // 🔥 CRITICAL FIX: Force realtime mode immediately when subscription starts
+    // Without this, the chart stays in "historical mode" and ignores onTick updates
+    // Wait 1 second to ensure chart is fully initialized before forcing realtime mode
+    setTimeout(() => {
+      console.log('[UnifiedDatafeed] 🚀 Forcing realtime mode on subscription start');
+      this.forceRealtimeMode();
+    }, 1000);
   }
 
   unsubscribeBars(listenerGuid: string): void {
