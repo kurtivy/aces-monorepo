@@ -253,7 +253,11 @@ export async function bondingDataRoutes(fastify: FastifyInstance) {
         const cacheKey = `${tokenAddress.toLowerCase()}:${chainId}`;
 
         // Track cache stats before to determine if this is a hit
-        const statsBefore = fastify.cache.getStats();
+        const statsBefore = fastify.cache?.getStats() || { hits: 0, misses: 0 };
+
+        if (!fastify.cache) {
+          throw new Error('Cache plugin not initialized');
+        }
 
         const responseData = await fastify.cache.getOrFetch<BondingDataResponse>(
           'bonding',
@@ -359,7 +363,7 @@ export async function bondingDataRoutes(fastify: FastifyInstance) {
         );
 
         // Check if this was a cache hit by comparing stats
-        const statsAfter = fastify.cache.getStats();
+        const statsAfter = fastify.cache?.getStats() || { hits: 0, misses: 0 };
         const wasCached = statsAfter.hits > statsBefore.hits;
 
         fastify.log.info(

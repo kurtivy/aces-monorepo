@@ -131,8 +131,20 @@ export function BondingDataProvider({ children }: BondingDataProviderProps) {
         // Use unified health endpoint (automatically deduped)
         const healthData = await fetchTokenHealth(tokenAddress, chainId, 'usd');
 
+        // Handle null bonding data gracefully (token might be DEX-only or not on bonding curve)
         if (!healthData.bondingData) {
-          throw new Error('No bonding data in response');
+          // Set data to null but don't treat as error - this is valid for DEX-only tokens
+          tokenDataMapRef.current.set(cacheKey, {
+            data: null,
+            loading: false,
+            error: null, // Don't treat null as error
+            lastFetch: Date.now(),
+          });
+          notifySubscribers(cacheKey);
+          // Reset failure counters - this is a successful response (just no bonding data)
+          failureCounters.current.set(cacheKey, 0);
+          backoffDelays.current.set(cacheKey, INITIAL_BACKOFF);
+          return; // Exit early without incrementing failure counter
         }
 
         // Update ref directly

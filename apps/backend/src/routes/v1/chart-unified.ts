@@ -181,71 +181,9 @@ export async function chartUnifiedRoutes(fastify: FastifyInstance) {
     }
   });
 
-  /**
-   * 🔥 NEW: Cache statistics endpoint
-   */
-  fastify.get('/api/v1/cache/stats', async (request, reply) => {
-    try {
-      const tokenCache = (fastify as any).tokenMetadataCache;
-      const snapshotCache = (fastify as any).acesSnapshotCache;
-      const chartService = (fastify as any).chartAggregationService;
-
-      if (!tokenCache) {
-        return reply.code(503).send({
-          success: false,
-          error: 'Cache service not initialized',
-        });
-      }
-
-      const stats = {
-        tokenMetadataCache: tokenCache.getStats(),
-        acesSnapshotCache: snapshotCache ? snapshotCache.getStats() : null,
-        timestamp: new Date().toISOString(),
-      };
-
-      return reply.send({
-        success: true,
-        stats,
-      });
-    } catch (error) {
-      return reply.code(500).send({
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  });
-
-  /**
-   * 🔥 NEW: Manual cache invalidation endpoint
-   */
-  fastify.post('/api/v1/cache/clear', async (request, reply) => {
-    try {
-      const tokenCache = (fastify as any).tokenMetadataCache;
-
-      if (!tokenCache) {
-        return reply.code(503).send({
-          success: false,
-          error: 'Cache service not initialized',
-        });
-      }
-
-      const { tokenAddress } = request.body as { tokenAddress?: string };
-      const snapshotCache = (fastify as any).acesSnapshotCache;
-
-      tokenCache.invalidate(tokenAddress);
-      if (snapshotCache) {
-        snapshotCache.invalidate(tokenAddress);
-      }
-
-      return reply.send({
-        success: true,
-        message: tokenAddress ? `Caches cleared for ${tokenAddress}` : 'All caches cleared',
-      });
-    } catch (error) {
-      return reply.code(500).send({
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  });
+  // Note: Cache stats and clear endpoints are now provided by the cache-plugin
+  // See apps/backend/src/plugins/cache-plugin.ts for:
+  // - GET  /api/v1/cache/stats
+  // - POST /api/v1/cache/clear
+  // - POST /api/v1/cache/invalidate
 }

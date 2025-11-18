@@ -8,6 +8,7 @@ import { getPrismaClient, checkDatabaseHealth, disconnectDatabase } from './lib/
 import { loggers } from './lib/logger';
 import { handleError } from './lib/errors';
 import { registerAuth } from './plugins/auth';
+import cachePlugin from './plugins/cache-plugin';
 import { submissionRoutes } from './routes/v1/submissions';
 import { adminRoutes } from './routes/v1/admin'; // Step 2: Enabled
 import { bidsRoutes } from './routes/v1/bids';
@@ -236,6 +237,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   console.log('✅ Market Cap Service initialized');
 
   // Register custom plugins
+  await fastify.register(cachePlugin); // 🔥 CRITICAL: Register cache plugin before routes
   fastify.register(registerAuth);
 
   // Dynamic CORS configuration

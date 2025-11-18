@@ -298,7 +298,11 @@ export async function dexRoutes(fastify: FastifyInstance) {
         const cacheKey = `${normalizedToken}:${inputAssetCode}:${amountStr}:${slippageBps}`;
 
         // Track cache stats before to determine if this is a hit
-        const statsBefore = fastify.cache.getStats();
+        const statsBefore = fastify.cache?.getStats() || { hits: 0, misses: 0 };
+
+        if (!fastify.cache) {
+          throw new Error('Cache plugin not initialized');
+        }
 
         const quote = await fastify.cache.getOrFetch<QuoteResponse>(
           'quotes',
@@ -1122,7 +1126,7 @@ export async function dexRoutes(fastify: FastifyInstance) {
         );
 
         // Check if this was a cache hit by comparing stats
-        const statsAfter = fastify.cache.getStats();
+        const statsAfter = fastify.cache?.getStats() || { hits: 0, misses: 0 };
         const wasCached = statsAfter.hits > statsBefore.hits;
 
         fastify.log.info(
