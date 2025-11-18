@@ -305,7 +305,7 @@ export default function TokenHealthPanel({
       const network = await provider.getNetwork();
       if (network.chainId !== 8453) {
         console.warn(
-          `[TokenHealthPanel] User is on wrong network (${network.chainId}), expected Base mainnet (8453)`
+          `[TokenHealthPanel] User is on wrong network (${network.chainId}), expected Base mainnet (8453)`,
         );
         setUserTokenBalance('0');
         return;
@@ -315,7 +315,7 @@ export default function TokenHealthPanel({
       const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
       const balance = await tokenContract.balanceOf(walletAddress);
       const formattedBalance = ethers.utils.formatEther(balance);
-      
+
       setUserTokenBalance(formattedBalance);
     } catch (error) {
       // Silently fail and set to 0 - this is non-critical for the UI

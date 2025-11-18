@@ -192,16 +192,14 @@ export async function dexRoutes(fastify: FastifyInstance) {
 
           // No cache yet - start a background subscription to populate it
           console.log('[DEX:Pool] 🚀 Starting background WebSocket subscription for:', poolAddress);
-          fastify.adapterManager.subscribeToPoolState(
-            poolAddress,
-            tokenAddress,
-            (poolState) => {
+          fastify.adapterManager
+            .subscribeToPoolState(poolAddress, tokenAddress, (poolState) => {
               console.log('[DEX:Pool] 📊 Background pool update received:', poolAddress);
               // Data is auto-cached in the adapter
-            }
-          ).catch(err => {
-            console.error('[DEX:Pool] ⚠️ Failed to start background subscription:', err);
-          });
+            })
+            .catch((err) => {
+              console.error('[DEX:Pool] ⚠️ Failed to start background subscription:', err);
+            });
 
           console.log('[DEX:Pool] ⚠️ No WebSocket cache yet, falling back to RPC:', poolAddress);
         }
@@ -209,36 +207,39 @@ export async function dexRoutes(fastify: FastifyInstance) {
         // Fallback to old AerodromeDataService (RPC polling)
         if (!aerodromeService) {
           console.error('[DEX:Pool] ❌ AerodromeDataService not initialized');
-          return reply.code(503).send({ 
-            success: false, 
+          return reply.code(503).send({
+            success: false,
             error: 'Dex service unavailable - AerodromeDataService not initialized',
-            details: 'Check RPC configuration and environment variables'
+            details: 'Check RPC configuration and environment variables',
           });
         }
 
         let poolState: AerodromePoolState | null = null;
         try {
-          poolState = await aerodromeService.getPoolState(
-            poolAddress,
-          );
+          poolState = await aerodromeService.getPoolState(poolAddress);
         } catch (rpcError: any) {
           // Handle contract call errors gracefully
           const errorMessage = rpcError?.message || 'Unknown RPC error';
-          const isCallException = errorMessage.includes('CALL_EXCEPTION') || 
-                                  errorMessage.includes('missing revert data') ||
-                                  rpcError?.code === 'CALL_EXCEPTION' ||
-                                  rpcError?.reason === 'missing revert data';
-          
+          const isCallException =
+            errorMessage.includes('CALL_EXCEPTION') ||
+            errorMessage.includes('missing revert data') ||
+            rpcError?.code === 'CALL_EXCEPTION' ||
+            rpcError?.reason === 'missing revert data';
+
           if (isCallException) {
             // Pool might not exist or contract call failed - return 404 instead of 503
-            console.warn(`[DEX:Pool] ⚠️ Pool contract call failed for ${poolAddress}:`, errorMessage);
-            return reply.code(404).send({ 
-              success: false, 
+            console.warn(
+              `[DEX:Pool] ⚠️ Pool contract call failed for ${poolAddress}:`,
+              errorMessage,
+            );
+            return reply.code(404).send({
+              success: false,
               error: 'Pool not found or invalid',
-              details: 'The pool address may not exist or the contract call failed. This is normal for tokens that have not yet created a pool.'
+              details:
+                'The pool address may not exist or the contract call failed. This is normal for tokens that have not yet created a pool.',
             });
           }
-          
+
           // Re-throw other errors to be caught by outer catch
           throw rpcError;
         }
@@ -251,16 +252,16 @@ export async function dexRoutes(fastify: FastifyInstance) {
       } catch (error) {
         console.error('[DEX:Pool] ❌ Error fetching pool state:', error);
         fastify.log.error({ err: error }, 'Failed to fetch pool state');
-        
+
         // Check if it's already a handled error (404 response)
         if (error && typeof error === 'object' && 'statusCode' in error) {
           throw error; // Re-throw Fastify response objects
         }
-        
-        return reply.code(503).send({ 
-          success: false, 
+
+        return reply.code(503).send({
+          success: false,
           error: 'Dex service unavailable',
-          details: error instanceof Error ? error.message : 'Unknown error'
+          details: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     },
@@ -1287,7 +1288,9 @@ export async function dexRoutes(fastify: FastifyInstance) {
             }));
 
             allTrades.push(...transformedDexTrades);
-            console.log(`[DEX Trades] ✅ Fetched ${transformedDexTrades.length} DEX trades from BitQuery`);
+            console.log(
+              `[DEX Trades] ✅ Fetched ${transformedDexTrades.length} DEX trades from BitQuery`,
+            );
           } catch (err: any) {
             console.warn('[DEX Trades] BitQuery fetch failed:', err);
           }
@@ -1340,7 +1343,9 @@ export async function dexRoutes(fastify: FastifyInstance) {
         allTrades.sort((a, b) => b.timestamp - a.timestamp);
         const finalTrades = allTrades.slice(0, limit);
 
-        console.log(`[DEX Trades] ✅ Combined ${finalTrades.length} trades (${finalTrades.filter((t) => t.source === 'dex').length} DEX + ${finalTrades.filter((t) => t.source === 'bonding').length} bonding)`);
+        console.log(
+          `[DEX Trades] ✅ Combined ${finalTrades.length} trades (${finalTrades.filter((t) => t.source === 'dex').length} DEX + ${finalTrades.filter((t) => t.source === 'bonding').length} bonding)`,
+        );
 
         // Include graduation metadata (using cached data)
         const graduationMeta = {
