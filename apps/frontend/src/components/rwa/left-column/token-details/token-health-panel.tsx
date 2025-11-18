@@ -8,6 +8,7 @@ import { ethers } from 'ethers';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { LoadingDots } from './loading-dots';
 import { useTransferEventListener } from '@/hooks/use-transfer-event-listener';
+import { useSwapContracts } from '@/hooks/swap/use-swap-contracts';
 
 // ERC20 ABI for balance checking
 const ERC20_ABI = ['function balanceOf(address) view returns (uint256)'];
@@ -209,8 +210,11 @@ export default function TokenHealthPanel({
   metricsLoading = false,
   circulatingSupply: circulatingSupplyProp,
 }: TokenHealthPanelProps) {
-  const { walletAddress } = useAuth();
+  const { walletAddress, isAuthenticated } = useAuth();
   const [userTokenBalance, setUserTokenBalance] = useState<string>('0');
+
+  // Use the same provider/signer as swap box to avoid MetaMask conflicts
+  const { provider } = useSwapContracts(walletAddress, isAuthenticated, tokenAddress);
 
   // Determine if token is in DEX mode
   const isDexMode = useMemo(() => {
@@ -284,21 +288,41 @@ export default function TokenHealthPanel({
 
   // Fetch user's token balance
   const fetchUserBalance = useCallback(async () => {
-    if (!tokenAddress || !walletAddress || !window.ethereum) {
+    if (!tokenAddress || !walletAddress || !provider) {
+      setUserTokenBalance('0');
+      return;
+    }
+
+    // Validate token address format
+    if (!ethers.utils.isAddress(tokenAddress)) {
+      console.warn('[TokenHealthPanel] Invalid token address format:', tokenAddress);
       setUserTokenBalance('0');
       return;
     }
 
     try {
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      // Check if user is on the correct network (Base mainnet = 8453)
+      const network = await provider.getNetwork();
+      if (network.chainId !== 8453) {
+        console.warn(
+          `[TokenHealthPanel] User is on wrong network (${network.chainId}), expected Base mainnet (8453)`
+        );
+        setUserTokenBalance('0');
+        return;
+      }
+
+      // Use the same provider as swap box to avoid MetaMask conflicts
       const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
       const balance = await tokenContract.balanceOf(walletAddress);
-      setUserTokenBalance(ethers.utils.formatEther(balance));
+      const formattedBalance = ethers.utils.formatEther(balance);
+      
+      setUserTokenBalance(formattedBalance);
     } catch (error) {
-      console.error('Failed to fetch user token balance:', error);
+      // Silently fail and set to 0 - this is non-critical for the UI
+      console.error('[TokenHealthPanel] Failed to fetch user token balance:', error);
       setUserTokenBalance('0');
     }
-  }, [tokenAddress, walletAddress]);
+  }, [tokenAddress, walletAddress, provider]);
 
   useEffect(() => {
     fetchUserBalance();
