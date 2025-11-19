@@ -141,7 +141,7 @@ export class ChartAggregationService {
         console.log(
           '[ChartAggregation] ⚠️ No bonding curve data found, checking for DEX trades as fallback...',
         );
-        
+
         // Try to find pool address by checking if there are DEX trades
         try {
           const dexTrades = await this.bitQueryService.getDexTrades(tokenAddress, '', {
@@ -154,7 +154,7 @@ export class ChartAggregationService {
             console.log(
               `[ChartAggregation] ✅ Found ${dexTrades.length} DEX trades - using DEX data instead`,
             );
-            
+
             // Try to extract pool address from trades if available
             // For now, use empty string - BitQuery can find trades by token address alone
             // The pool address is mainly used for caching, not for querying
@@ -522,7 +522,16 @@ export class ChartAggregationService {
   ): Candle[] {
     const intervalMs = this.getIntervalMs(timeframe);
     const startTime = this.alignTimestamp(from, timeframe);
-    const endTime = this.alignTimestamp(to, timeframe);
+    let endTime = this.alignTimestamp(to, timeframe);
+
+    // 🔥 CRITICAL FIX: Prevent future candle generation
+    // Only cap if endTime is beyond current bucket AND in the future
+    // This preserves historical data loading (scroll-back)
+    const now = Date.now();
+
+    if (endTime > currentCandleTimestamp && endTime > now) {
+      endTime = currentCandleTimestamp;
+    }
 
     // Group trades by aligned timestamp
     const tradeBuckets = new Map<number, Trade[]>();
@@ -578,6 +587,14 @@ export class ChartAggregationService {
       previousCandle = candle;
       currentTime += intervalMs;
     }
+    if (trades.length > 0) {
+      this.applyLivePriceToCurrentCandle(
+        candles,
+        trades[trades.length - 1],
+        currentCandleTimestamp,
+        dataSource,
+      );
+    }
     return candles;
   }
 
@@ -602,18 +619,12 @@ export class ChartAggregationService {
 
     // 🔥 NEW: Calculate VWAP for close price
     // VWAP in ACES = Σ(priceInAces × volumeInAces) / Σ(volumeInAces)
-    const totalValueAces = bucketTrades.reduce(
-      (sum, t) => sum + t.priceInAces * t.amountToken,
-      0
-    );
+    const totalValueAces = bucketTrades.reduce((sum, t) => sum + t.priceInAces * t.amountToken, 0);
     const totalVolumeAces = bucketTrades.reduce((sum, t) => sum + t.amountToken, 0);
     const vwapCloseAces = totalVolumeAces > 0 ? totalValueAces / totalVolumeAces : pricesInAces[0];
 
     // VWAP in USD = Σ(priceInUsd × volumeInUsd) / Σ(volumeInUsd)
-    const totalValueUsd = bucketTrades.reduce(
-      (sum, t) => sum + t.priceInUsd * t.volumeUsd,
-      0
-    );
+    const totalValueUsd = bucketTrades.reduce((sum, t) => sum + t.priceInUsd * t.volumeUsd, 0);
     const totalVolumeUsd = bucketTrades.reduce((sum, t) => sum + t.volumeUsd, 0);
     const vwapCloseUsd = totalVolumeUsd > 0 ? totalValueUsd / totalVolumeUsd : pricesInUsd[0];
 
@@ -626,7 +637,7 @@ export class ChartAggregationService {
     // CRITICAL: Connect to previous candle (NO GAPS!)
     if (previousCandle) {
       openAces = parseFloat(previousCandle.close);
-      
+
       // 🔥 FIX: When there's only 1 trade, show a wick based on price movement from previous candle
       // This ensures candles look correct even with sparse trades
       if (bucketTrades.length === 1) {
@@ -648,7 +659,7 @@ export class ChartAggregationService {
 
       // Connect USD to previous candle
       openUsd = previousCandle ? parseFloat(previousCandle.closeUsd) : firstTradeUsd;
-      
+
       // 🔥 FIX: When there's only 1 trade, show a wick based on price movement from previous candle
       if (previousCandle && bucketTrades.length === 1) {
         const previousCloseUsd = parseFloat(previousCandle.closeUsd);
@@ -665,7 +676,7 @@ export class ChartAggregationService {
 
       // Connect USD to previous candle (NO GAPS)
       openUsd = previousCandle ? parseFloat(previousCandle.closeUsd) : firstTradeUsd;
-      
+
       // 🔥 FIX: When there's only 1 trade, show a wick based on price movement from previous candle
       if (previousCandle && bucketTrades.length === 1) {
         const previousCloseUsd = parseFloat(previousCandle.closeUsd);
@@ -1012,6 +1023,75 @@ export class ChartAggregationService {
     return candles;
   }
 
+  private applyLivePriceToCurrentCandle(
+    candles: Candle[],
+    latestTrade: Trade,
+    currentCandleTimestamp: number,
+    dataSource: 'bonding_curve' | 'dex',
+  ): void {
+    if (candles.length === 0) {
+      return;
+    }
+
+    const current = candles[candles.length - 1];
+    if (current.timestamp.getTime() !== currentCandleTimestamp) {
+      return;
+    }
+
+    const livePriceAces = latestTrade.priceInAces;
+    const livePriceUsd = latestTrade.priceInUsd;
+
+    if (!Number.isFinite(livePriceUsd) || livePriceUsd <= 0) {
+      return;
+    }
+
+    const parse = (value: string | number | undefined | null): number => {
+      if (value === undefined || value === null) {
+        return 0;
+      }
+      const parsed = Number.parseFloat(String(value));
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+
+    const openAces = parse(current.open);
+    const openUsd = parse(current.openUsd);
+    const supply = parse(current.circulatingSupply ?? current.totalSupply ?? '0');
+
+    current.close = livePriceAces.toFixed(18);
+    current.closeUsd = livePriceUsd.toFixed(18);
+
+    const highAces = Math.max(parse(current.high), livePriceAces, openAces);
+    const lowAces = Math.min(parse(current.low), livePriceAces, openAces);
+    current.high = highAces.toFixed(18);
+    current.low = lowAces.toFixed(18);
+
+    const highUsd = Math.max(parse(current.highUsd), livePriceUsd, openUsd);
+    const lowUsd = Math.min(parse(current.lowUsd), livePriceUsd, openUsd);
+    current.highUsd = highUsd.toFixed(18);
+    current.lowUsd = lowUsd.toFixed(18);
+
+    if (Number.isFinite(supply) && supply > 0) {
+      const marketCapCloseAces = livePriceAces * supply;
+      const marketCapCloseUsd = livePriceUsd * supply;
+      current.marketCapAces = marketCapCloseAces.toFixed(2);
+      current.marketCapUsd = marketCapCloseUsd.toFixed(2);
+      current.marketCapCloseUsd = marketCapCloseUsd.toFixed(2);
+
+      const marketCapHighUsd = Math.max(parse(current.marketCapHighUsd), marketCapCloseUsd);
+      const marketCapLowUsd = Math.min(parse(current.marketCapLowUsd), marketCapCloseUsd);
+      current.marketCapHighUsd = marketCapHighUsd.toFixed(2);
+      current.marketCapLowUsd = marketCapLowUsd.toFixed(2);
+      if (!current.marketCapOpenUsd) {
+        current.marketCapOpenUsd = (openUsd * supply).toFixed(2);
+      }
+    }
+
+    if (dataSource === 'bonding_curve' && latestTrade.circulatingSupply) {
+      current.circulatingSupply = latestTrade.circulatingSupply.toString();
+      current.totalSupply = latestTrade.circulatingSupply.toString();
+    }
+  }
+
   /**
    * Fetch recent DEX trades and aggregate them into candles
    * Used for DEX data less than 7 days old
@@ -1050,7 +1130,9 @@ export class ChartAggregationService {
         });
 
         dbTrades = dbRecords;
-        console.log(`[ChartAggregation] 💾 Fetched ${dbTrades.length} very recent trades from database`);
+        console.log(
+          `[ChartAggregation] 💾 Fetched ${dbTrades.length} very recent trades from database`,
+        );
 
         // Adjust BitQuery query to fetch only trades older than 5 minutes
         if (dbTrades.length > 0 && options.from.getTime() < fiveMinutesAgo) {
@@ -1070,7 +1152,9 @@ export class ChartAggregationService {
       limit: tradeLimit,
     });
 
-    console.log(`[ChartAggregation] ✅ Fetched ${bitQueryTrades.length} DEX trades from BitQuery + ${dbTrades.length} from database`);
+    console.log(
+      `[ChartAggregation] ✅ Fetched ${bitQueryTrades.length} DEX trades from BitQuery + ${dbTrades.length} from database`,
+    );
 
     // Convert BitQuery trades to internal Trade format
     const bitQueryTradesConverted: Trade[] = bitQueryTrades.map((trade) => ({
@@ -1165,13 +1249,56 @@ export class ChartAggregationService {
       now.getTime() - DATA_SOURCE_CONFIG.HISTORICAL_BOUNDARY_DAYS * 24 * 60 * 60 * 1000,
     );
 
-    // Determine which strategy to use based on request time range
-    const isEntirelyRecent = options.from >= historicalBoundary;
-    const isEntirelyHistorical = options.to < historicalBoundary;
+    const needsHistoricalSlice = options.from < historicalBoundary;
+    const needsRecentSlice = options.to >= historicalBoundary;
 
-    // STRATEGY 1: Entirely recent (< 7 days) - use individual trades
-    if (isEntirelyRecent) {
-      // console.log('[ChartAggregation] 🔥 Using individual trades (real-time accuracy)');
+    const candles: Candle[] = [];
+    let connectionSeed = seedCandle;
+
+    // Always fetch the historical slice first (if requested range goes that far back)
+    if (needsHistoricalSlice) {
+      const historicalTo = needsRecentSlice ? historicalBoundary : options.to;
+      const historicalOptions: ChartOptions = {
+        ...options,
+        to: historicalTo,
+      };
+
+      const historicalCandles = await this.fetchHistoricalDexOHLCV(
+        tokenAddress,
+        historicalOptions,
+        connectionSeed,
+      );
+
+      if (historicalCandles.length > 0) {
+        candles.push(...historicalCandles);
+        connectionSeed = historicalCandles[historicalCandles.length - 1];
+      }
+    }
+
+    // Always stitch in the recent/live slice so the latest candle is built from raw trades
+    if (needsRecentSlice) {
+      const recentFromTime = Math.max(options.from.getTime(), historicalBoundary.getTime());
+      const recentOptions: ChartOptions = {
+        ...options,
+        from: new Date(recentFromTime),
+      };
+
+      const recentCandles = await this.fetchRecentDexTrades(
+        tokenAddress,
+        poolAddress,
+        recentOptions,
+        currentCandleTimestamp,
+        connectionSeed,
+      );
+
+      if (recentCandles.length > 0) {
+        candles.push(...recentCandles);
+      }
+    }
+
+    // Fallbacks: if range is entirely recent or entirely historical the above blocks handle it.
+    if (!needsHistoricalSlice && needsRecentSlice && candles.length === 0) {
+      // Entirely recent range but no trades - rely on existing method
       return this.fetchRecentDexTrades(
         tokenAddress,
         poolAddress,
@@ -1181,38 +1308,12 @@ export class ChartAggregationService {
       );
     }
 
-    // STRATEGY 2: Entirely historical (≥ 7 days old) - use pre-aggregated OHLCV
-    if (isEntirelyHistorical) {
-      // console.log('[ChartAggregation] 📜 Using pre-aggregated OHLCV (performance)');
+    if (needsHistoricalSlice && !needsRecentSlice && candles.length === 0) {
+      // Entirely historical range but no candles returned above
       return this.fetchHistoricalDexOHLCV(tokenAddress, options, seedCandle);
     }
 
-    // STRATEGY 3: Hybrid - request spans the 7-day boundary
-    // console.log('[ChartAggregation] 🔀 Using HYBRID (historical + recent)');
-
-    // Fetch historical part (7+ days ago)
-    const historicalCandles = await this.fetchHistoricalDexOHLCV(
-      tokenAddress,
-      {
-        ...options,
-        to: historicalBoundary,
-      },
-      seedCandle,
-    ); // 🔥 Pass seed to historical part
-
-    // Fetch recent part (< 7 days)
-    // Use last historical candle as seed for recent candles
-    const historicalSeed =
-      historicalCandles.length > 0 ? historicalCandles[historicalCandles.length - 1] : seedCandle;
-    const recentCandles = await this.fetchRecentDexTrades(
-      tokenAddress,
-      poolAddress,
-      { ...options, from: historicalBoundary },
-      currentCandleTimestamp,
-      historicalSeed, // 🔥 Pass seed for connection
-    );
-
-    return [...historicalCandles, ...recentCandles];
+    return candles;
   }
 
   private async getBondingSeedCandle(
@@ -1288,12 +1389,17 @@ export class ChartAggregationService {
           counterTokenAddress: ACES_TOKEN_ADDRESS,
           limit: 1, // Just need the last trade
         });
-        
+
         if (seedTrades.length === 0) {
-          console.log('[ChartAggregation] ⚠️ No trades found in last 7 days, cannot create seed candle');
+          console.log(
+            '[ChartAggregation] ⚠️ No trades found in last 7 days, cannot create seed candle',
+          );
           return null;
         }
-        console.log('[ChartAggregation] ✅ Found seed trade from:', seedTrades[seedTrades.length - 1].blockTime.toISOString());
+        console.log(
+          '[ChartAggregation] ✅ Found seed trade from:',
+          seedTrades[seedTrades.length - 1].blockTime.toISOString(),
+        );
       }
 
       const lastTrade = seedTrades[seedTrades.length - 1];
