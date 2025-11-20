@@ -179,7 +179,7 @@ function ListingRow({
   const [copiedAddress, setCopiedAddress] = useState(false);
 
   // Get contract address from the linked token (if it exists)
-  const contractAddress = listing.token?.contractAddress;
+  const contractAddress = listing.token?.contractAddress || listing.contractAddress;
 
   // Fetch real-time metrics for this listing's token
   const { metrics, loading: metricsLoading } = useTokenMetrics(
@@ -287,22 +287,6 @@ function ListingRow({
             <span className="text-[#D7BF75]/50">...</span>
           ) : metrics?.holderCount !== undefined ? (
             metrics.holderCount.toLocaleString()
-          ) : (
-            '-'
-          )}
-        </span>
-      </td>
-
-      {/* Fees Made - Real-time data */}
-      <td className="py-4 px-2 text-center">
-        <span className="text-[#E6E3D3] text-sm">
-          {metricsLoading ? (
-            <span className="text-[#D7BF75]/50">...</span>
-          ) : metrics?.totalFeesUsd ? (
-            <>
-              ${formatNumber(metrics.totalFeesUsd)} (
-              {formatNumber(parseFloat(metrics.totalFeesAces))} ACES)
-            </>
           ) : (
             '-'
           )}
@@ -1277,9 +1261,6 @@ export function SimpleListingsTab({
                       </th>
                       <th className="text-center text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
                         Holders
-                      </th>
-                      <th className="text-center text-[#D7BF75] text-sm uppercase tracking-wide.font-medium py-4 px-2">
-                        Fees Made
                       </th>
                       <th className="text-right text-[#D7BF75] text-sm uppercase tracking-wide font-medium py-4 px-2">
                         Actions
