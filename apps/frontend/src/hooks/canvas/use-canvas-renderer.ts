@@ -184,7 +184,7 @@ export const useCanvasRenderer = ({
   imagePlacementMap,
   canvasRef,
   updateViewState,
-  featuredImageId = undefined, // FEATURED SECTION: Default to KAWS watch
+  featuredImageId = undefined, // FEATURED SECTION: Default set by infinite-canvas.tsx (currently '26' for Richard Mille RM 67-01 Gold)
   onFeaturedImageClick,
   // HOVER ENHANCEMENT: Add hover ref
   hoveredProductImageRef,
@@ -200,10 +200,16 @@ export const useCanvasRenderer = ({
   useCoordinatedResize({ canvasRef: activeCanvasRef });
 
   // FEATURED SECTION: Find featured image by ID
+  // Only lookup after images are loaded to avoid empty array issues
   const featuredImage = useMemo(() => {
+    // Don't lookup if images array is empty (not loaded yet)
+    if (!imagesLoaded || images.length === 0) {
+      return null;
+    }
+
     const found = images.find((img) => img.metadata.id === featuredImageId) || null;
     return found;
-  }, [images, featuredImageId]);
+  }, [images, featuredImageId, imagesLoaded]);
 
   // Production Integration: Enhanced capability-based performance system
   const { browserPerf, deviceCapabilities, adaptiveQualityManager } = useMemo(() => {

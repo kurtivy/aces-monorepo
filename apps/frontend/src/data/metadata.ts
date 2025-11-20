@@ -423,4 +423,19 @@ As one of the pioneering NFT projects that defined the digital art and collectib
     marketCap: 0,
     tokenSupply: 0,
   },
+  {
+    id: '26',
+    title: 'Richard Mille RM 67-01 Gold',
+    description: `An ultra-sleek expression of modern haute horlogerie, the Richard Mille RM 67-01 in solid gold blends exceptional mechanical engineering with one of the thinnest automatic movements ever produced by the brand. Its distinctive tonneau-shaped case, sculpted from precious gold, frames a skeletonized dial that showcases Richard Mille’s signature technical artistry.
+  
+  Designed for everyday wear yet crafted with the precision of a racing machine, the RM 67-01 represents the intersection of luxury, innovation, and lightweight ergonomics. Its rarity, precious metal execution, and rising demand among global collectors make it a standout investment-grade timepiece.`,
+    date: '2024-03-22',
+    countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
+    ticker: '$RM67G',
+    image: '/canvas-images/Richard-Mille-RM67-Gold.webp',
+    rrp: 240000,
+    tokenPrice: 4.85,
+    marketCap: 485000,
+    tokenSupply: 100000,
+  },
 ];

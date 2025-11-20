@@ -171,10 +171,8 @@ export const getAuctionIconBounds = (
 
 // Days left utility function
 const calculateDaysLeft = (): { days: number; isExpired: boolean } => {
-  // Target date: September 24, 2025, 9:00 AM EDT (New York time)
-  // 2025-10-02 at 11:30 PM New York time (EDT, UTC-4)
-  // Saturday, October 4, 2025, 11:11 AM New York time (EDT, UTC-4)
-  const targetDate = new Date('2025-10-04T11:11:00-04:00');
+  // Target date: October 6, 2025, 1:00 PM UTC (9:00 AM EDT)
+  const targetDate = new Date('2025-10-06T13:00:00.000Z');
   const now = new Date();
   const timeDiff = targetDate.getTime() - now.getTime();
 
@@ -211,7 +209,7 @@ const drawDaysLeft = (
     ctx.textBaseline = 'bottom';
     const textX = x + width - (isMobile ? 15 : 20) * responsiveMetrics.paddingScale;
     const textY = y + height - (isMobile ? 15 : 20) * responsiveMetrics.paddingScale;
-    ctx.fillText('LIVE', textX, textY);
+    ctx.fillText('LIVE SOON', textX, textY);
     ctx.restore();
     return;
   }
@@ -361,10 +359,10 @@ export const drawArtGalleryCard = (
   const line3Font = `italic ${baseFontSize * responsiveMetrics.fontScale}px ${getCanvasFontStack('NeueWorld')}`;
   const line4Font = `${baseFontSize * 1.05 * responsiveMetrics.fontScale}px 'Courier New', 'Monaco', 'Menlo', 'Consolas', monospace`;
 
-  const line1Text = 'Audemars Piguet x KAWS (b.2015)';
+  const line1Text = 'Richard Mille RM 67-01 Gold';
   const line2Text = '"Tokenized"';
   const line3Text = isMobile ? 'v. Create token market.' : 'v. Create derivative token market.';
-  const line4Text = isMobile ? 'AP KAWS TOKEN SOON' : 'AP KAWS TOKEN COMING SOON';
+  const line4Text = isMobile ? 'RM67 TOKEN SOON' : 'RM67 TOKEN COMING SOON';
 
   // metrics
   const m1 = getTextMetrics(ctx, line1Text, line1Font);
@@ -476,11 +474,52 @@ export const drawFeaturedSection = (
   ctx.fill();
 
   // Draw featured image/video if available
+  // Enhanced check: image is ready if it has loaded dimensions OR is marked complete
   const isElementReady =
     featuredImage &&
     featuredImage.element &&
     (featuredImage.element instanceof HTMLVideoElement ||
-      (featuredImage.element instanceof HTMLImageElement && featuredImage.element.complete));
+      (featuredImage.element instanceof HTMLImageElement &&
+        // Image is ready if: complete flag is true OR has valid dimensions
+        (featuredImage.element.complete ||
+          (featuredImage.element.naturalWidth > 0 && featuredImage.element.naturalHeight > 0))));
+
+  // If image exists but isn't ready yet, ensure it's loading
+  if (
+    featuredImage &&
+    featuredImage.element &&
+    featuredImage.element instanceof HTMLImageElement &&
+    !isElementReady
+  ) {
+    const img = featuredImage.element;
+    // Ensure image src is set (might be missing if loaded from cache)
+    if (!img.src && featuredImage.metadata?.image) {
+      img.src = featuredImage.metadata.image;
+    }
+    // If image hasn't loaded yet, add load listener to trigger redraw when ready
+    if (!img.complete && img.naturalWidth === 0) {
+      // Set up one-time load handler to force canvas redraw
+      const handleImageLoad = () => {
+        // Image loaded - canvas will redraw on next frame
+        img.removeEventListener('load', handleImageLoad);
+        img.removeEventListener('error', handleImageError);
+      };
+      const handleImageError = () => {
+        console.error('[Featured Section] Image failed to load:', featuredImage.metadata?.id, {
+          src: img.src,
+          attemptedSrc: featuredImage.metadata?.image,
+        });
+        img.removeEventListener('load', handleImageLoad);
+        img.removeEventListener('error', handleImageError);
+      };
+      // Only add listeners if not already added
+      if (!(img as any).__featuredLoadListenerAdded) {
+        img.addEventListener('load', handleImageLoad, { once: true });
+        img.addEventListener('error', handleImageError, { once: true });
+        (img as any).__featuredLoadListenerAdded = true;
+      }
+    }
+  }
 
   if (isElementReady) {
     ctx.save();

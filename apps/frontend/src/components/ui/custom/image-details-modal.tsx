@@ -685,13 +685,19 @@ export default function ImageDetailsModal({
                     ) : (
                       <button
                         onClick={handleTradeClick}
-                        className="flex-1 bg-gradient-to-r from-[#D0B264] to-[#D0B264]/80 hover:from-[#D0B264]/90 hover:to-[#D0B264]/70 text-[#231F20] font-syne font-bold py-3 sm:py-4 px-4 sm:px-6 lg:px-8 rounded-lg sm:rounded-xl transition-all duration-150 transform active:scale-[0.98] shadow-goldGlow text-sm sm:text-base lg:text-lg md:hover:scale-[1.02] text-center"
+                        disabled={!isLive}
+                        className={`flex-1 font-syne font-bold py-3 sm:py-4 px-4 sm:px-6 lg:px-8 rounded-lg sm:rounded-xl text-sm sm:text-base lg:text-lg text-center transition-all duration-150 ${
+                          isLive
+                            ? 'bg-gradient-to-r from-[#D0B264] to-[#D0B264]/80 hover:from-[#D0B264]/90 hover:to-[#D0B264]/70 text-[#231F20] transform active:scale-[0.98] shadow-goldGlow md:hover:scale-[1.02] cursor-pointer'
+                            : 'bg-gradient-to-r from-[#D0B264]/20 to-[#D0B264]/15 text-[#D0B264]/50 border border-[#D0B264]/30 cursor-not-allowed opacity-60'
+                        }`}
                       >
                         TRADE
                       </button>
                     )}
                     <button
                       onClick={() => {
+                        if (!isLive) return; // Prevent navigation if not live
                         // Navigate to RWA page with auction modal auto-open
                         stableOnClose();
                         if (normalizedSymbol === 'APK') {
@@ -702,7 +708,12 @@ export default function ImageDetailsModal({
                           router.push(`/rwa/${normalizedSymbol.toLowerCase()}?openAuction=true`);
                         }
                       }}
-                      className="flex-1 bg-gradient-to-r from-[#231F20] to-[#231F20]/90 hover:from-[#181515]/90 hover:to-[#363636]/80 text-[#D0B264] font-syne font-bold py-3 sm:py-4 px-4 sm:px-6 lg:px-8 rounded-lg sm:rounded-xl transition-all duration-150 transform active:scale-[0.98] shadow-goldGlow text-sm sm:text-base lg:text-lg md:hover:scale-[1.02] text-center border border-[#D0B264]/70"
+                      disabled={!isLive}
+                      className={`flex-1 font-syne font-bold py-3 sm:py-4 px-4 sm:px-6 lg:px-8 rounded-lg sm:rounded-xl text-sm sm:text-base lg:text-lg text-center transition-all duration-150 ${
+                        isLive
+                          ? 'bg-gradient-to-r from-[#231F20] to-[#231F20]/90 hover:from-[#181515]/90 hover:to-[#363636]/80 text-[#D0B264] transform active:scale-[0.98] shadow-goldGlow md:hover:scale-[1.02] border border-[#D0B264]/70 cursor-pointer'
+                          : 'bg-gradient-to-r from-[#231F20]/60 to-[#231F20]/50 text-[#D0B264]/50 border border-[#D0B264]/30 cursor-not-allowed opacity-60'
+                      }`}
                     >
                       AUCTION
                     </button>
