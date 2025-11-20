@@ -191,11 +191,9 @@ export class RealtimeCandleBuilder {
       return; // Skip - throttled
     }
 
-    // 🔥 CRITICAL FIX: Allow current bucket candles even if mostRecentSent is newer
-    // This handles cases where trades arrive out of order or a future candle was emitted first
-    // Only block candles that are OLDER than mostRecentSent AND not in the current bucket
-    const isInCurrentOrPreviousBucket = candle.time >= currentBucketTime - intervalMs;
-    const shouldBlock = candle.time < mostRecentSent && !isInCurrentOrPreviousBucket;
+    // 🔥 STRICT ORDERING: Never emit candles older than the most recent one we sent
+    // TradingView rejects out-of-order ticks, so once we emit time T we can't emit T-1 anymore
+    const shouldBlock = candle.time < mostRecentSent;
 
     if (shouldBlock) {
       const timeDiffMs = candle.time - mostRecentSent;
@@ -203,7 +201,7 @@ export class RealtimeCandleBuilder {
 
       console.error('🚨 [CandleBuilder] ⏮️ TIME VIOLATION - Immediate emission BLOCKED:', {
         timeframe,
-        reason: 'CANDLE TIME IS OLDER THAN mostRecentSent AND NOT IN CURRENT/PREVIOUS BUCKET',
+        reason: 'CANDLE TIME IS OLDER THAN mostRecentSent - TradingView requires non-decreasing times',
         candleTime: candle.time,
         candleTimeISO: new Date(candle.time).toISOString(),
         mostRecentSent: mostRecentSent,
@@ -216,7 +214,6 @@ export class RealtimeCandleBuilder {
         currentBucketTime: currentBucketTime,
         currentBucketTimeISO: new Date(currentBucketTime).toISOString(),
         isCurrentBucket,
-        isInCurrentOrPreviousBucket,
         // 🔥 CRITICAL: Show what set mostRecentSent
         emissionHistory:
           'Look for "📝 UPDATING mostRecentCandleTimeSent" logs above to see when it was set',
@@ -228,20 +225,6 @@ export class RealtimeCandleBuilder {
       );
 
       return;
-    }
-
-    // 🔥 DEBUG: Log if we're allowing emission despite mostRecentSent being newer
-    if (candle.time < mostRecentSent && isInCurrentOrPreviousBucket) {
-      console.log(
-        `[CandleBuilder] ✅ ALLOWING emission despite mostRecentSent being newer (current/previous bucket):`,
-        {
-          timeframe,
-          candleTime: new Date(candle.time).toISOString(),
-          mostRecentSent: new Date(mostRecentSent).toISOString(),
-          currentBucketTime: new Date(currentBucketTime).toISOString(),
-          reason: 'CANDLE IS IN CURRENT OR PREVIOUS BUCKET - allowing out-of-order updates',
-        },
-      );
     }
 
     // Update tracking
