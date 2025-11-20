@@ -3,7 +3,12 @@
 build-guides/
 acestest/
 guides/
+# Documentation folders
 docs/
+apps/frontend/docs/
+apps/backend/docs/
+# Contracts
+packages/contracts/
 # Dependencies
 node_modules/
 .pnpm-store/

@@ -19,7 +19,7 @@ interface TokenParams {
 /**
  * 🔥 NEW: Calculate bonding curve volume with accurate historical pricing
  * Fetches individual trades from subgraph and calculates USD value at time of trade
- * 
+ *
  * @param tokenAddress - Token contract address
  * @param startTime - Start of time window
  * @param endTime - End of time window
@@ -199,7 +199,8 @@ export async function tokensRoutes(fastify: FastifyInstance) {
           // New endpoint returns market cap data directly (not nested in 'data')
           if (
             marketCapResult &&
-            (marketCapResult.marketCapUsd !== undefined || marketCapResult.currentPriceUsd !== undefined)
+            (marketCapResult.marketCapUsd !== undefined ||
+              marketCapResult.currentPriceUsd !== undefined)
           ) {
             const marketCapUsd = marketCapResult.marketCapUsd || 0;
             const currentPriceUsd = marketCapResult.currentPriceUsd || 0;
@@ -211,7 +212,8 @@ export async function tokensRoutes(fastify: FastifyInstance) {
 
             if (currency === 'usd') {
               // Market cap data is already in USD
-              marketCapAces = marketCapUsd > 0 && currentPriceUsd > 0 ? marketCapUsd / currentPriceUsd : 0;
+              marketCapAces =
+                marketCapUsd > 0 && currentPriceUsd > 0 ? marketCapUsd / currentPriceUsd : 0;
               currentPriceAces = 0; // Would need ACES/USD conversion, but we don't have it here
             } else {
               // Market cap in ACES would need conversion from USD
