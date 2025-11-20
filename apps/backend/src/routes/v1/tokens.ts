@@ -654,6 +654,86 @@ export async function tokensRoutes(fastify: FastifyInstance) {
   const metricsCache = new Map<string, { data: any; timestamp: number }>();
   // Short cache for local dev (5s), longer for production (60s)
   const METRICS_CACHE_TTL = process.env.NODE_ENV === 'production' ? 60000 : 5000;
+  // Small cache for lifetime DEX fee calculation (avoids repeated BitQuery hits when profiles refresh)
+  const dexFeeCache = new Map<
+    string,
+    { aces: string; usd: number; source: 'db' | 'bitquery'; timestamp: number }
+  >();
+  const DEX_FEE_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes is fine for rare profile visits
+
+  /**
+   * Calculate lifetime DEX creator fees (0.5% of ACES notional) since dexLiveAt
+   * 1) Use stored dex_trades rows (preferred)
+   * 2) If empty/missing, backfill from BitQuery for the date range
+   */
+  const calculateDexFees = async (
+    tokenAddress: string,
+    poolAddress: string | undefined,
+    dexLiveAt: Date,
+    acesUsdPrice: number,
+  ) => {
+    const cacheKey = `${tokenAddress.toLowerCase()}:${dexLiveAt.getTime()}`;
+    const cached = dexFeeCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < DEX_FEE_CACHE_TTL_MS) {
+      return cached;
+    }
+
+    const fromTimestampMs = BigInt(dexLiveAt.getTime());
+    let totalAces = new Decimal(0);
+    let source: 'db' | 'bitquery' = 'db';
+
+    try {
+      const dbTrades = await fastify.prisma.dexTrade.findMany({
+        where: {
+          tokenAddress: tokenAddress.toLowerCase(),
+          timestamp: { gte: fromTimestampMs },
+        },
+        select: { acesAmount: true },
+      });
+
+      totalAces = dbTrades.reduce((sum, trade) => {
+        return sum.add(new Decimal(trade.acesAmount || '0'));
+      }, new Decimal(0));
+    } catch (dbError) {
+      fastify.log.warn(
+        { dbError, tokenAddress, dexLiveAt: dexLiveAt.toISOString() },
+        '[Metrics] Failed to read dex_trades for fee calc; will fallback to BitQuery',
+      );
+    }
+
+    // If DB had nothing (or zero volume), try BitQuery directly
+    if (totalAces.eq(0) && poolAddress) {
+      try {
+        const dexTrades = await bitQueryService.getDexTrades(tokenAddress, poolAddress, {
+          from: dexLiveAt,
+          to: new Date(),
+        });
+
+        totalAces = dexTrades.reduce((sum, trade) => {
+          return sum.add(new Decimal(trade.amountAces || '0'));
+        }, new Decimal(0));
+        source = 'bitquery';
+      } catch (bqError) {
+        fastify.log.error(
+          { bqError, tokenAddress, poolAddress, dexLiveAt: dexLiveAt.toISOString() },
+          '[Metrics] Failed to backfill DEX fees via BitQuery',
+        );
+      }
+    }
+
+    const feeAces = totalAces.mul(0.005); // 0.5% creator fee
+    const feeUsd = acesUsdPrice && acesUsdPrice > 0 ? feeAces.mul(acesUsdPrice).toNumber() : 0;
+
+    const result = {
+      aces: feeAces.toString(),
+      usd: feeUsd,
+      source,
+      timestamp: Date.now(),
+    };
+
+    dexFeeCache.set(cacheKey, result);
+    return result;
+  };
 
   // Get aggregated token metrics for listings display
   fastify.get(
@@ -758,7 +838,7 @@ export async function tokensRoutes(fastify: FastifyInstance) {
           tokenData?.phase === 'DEX_TRADING' ||
           tokenData?.dexLiveAt !== null ||
           tokenData?.priceSource === 'DEX';
-        const poolAddress = tokenData?.poolAddress;
+        const poolAddress = tokenData?.poolAddress || undefined;
 
         // 2. Get ACES/USD price for conversions using PriceCacheService
         const priceData = await priceCacheService.getPrices();
@@ -882,8 +962,41 @@ export async function tokensRoutes(fastify: FastifyInstance) {
           }
         }
 
+        // 4. Get cached dexLiveAt for reuse (used by fees + volume logic)
+        const dexLiveAt = tokenData?.dexLiveAt ? new Date(tokenData.dexLiveAt) : null;
+
         // 4. Get total fees from subgraph
         const fees = await tokenService.getTotalFees(address);
+        const bondingFeesAces = parseFloat(fees.acesAmount);
+
+        // 4b. Get lifetime DEX fees (0.5% of ACES notional since dexLiveAt)
+        let dexFeesAces = 0;
+        let dexFeesUsd = 0;
+
+        if (isDexMode && dexLiveAt) {
+          try {
+            const dexFeeResult = await calculateDexFees(address, poolAddress, dexLiveAt, acesUsdPrice);
+            dexFeesAces = parseFloat(dexFeeResult.aces);
+            dexFeesUsd = dexFeeResult.usd;
+
+            fastify.log.info(
+              {
+                address,
+                poolAddress,
+                dexLiveAt: dexLiveAt.toISOString(),
+                dexFeesAces,
+                dexFeesUsd,
+                source: dexFeeResult.source,
+              },
+              '[Metrics] Calculated lifetime DEX creator fees',
+            );
+          } catch (dexFeeError) {
+            fastify.log.warn(
+              { dexFeeError, address, poolAddress },
+              '[Metrics] Failed to calculate DEX creator fees',
+            );
+          }
+        }
 
         // 5. Calculate derived metrics
         let volume24hAces = 0;
@@ -892,7 +1005,6 @@ export async function tokensRoutes(fastify: FastifyInstance) {
 
         const now = new Date();
         const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-        const dexLiveAt = tokenData?.dexLiveAt ? new Date(tokenData.dexLiveAt) : null;
 
         // For graduated tokens, check if last 24h window spans both bonding curve and DEX periods
         // This happens when graduation occurred after the 24h window started (even if days ago)
@@ -1235,8 +1347,12 @@ export async function tokensRoutes(fastify: FastifyInstance) {
         const supply = isDexMode ? 1_000_000_000 : 800_000_000;
         const marketCapUsd = tokenPriceUsd * supply;
 
-        const totalFeesAces = parseFloat(fees.acesAmount);
-        const totalFeesUsd = totalFeesAces * acesUsdPrice;
+        const totalFeesAces = bondingFeesAces + dexFeesAces;
+        const bondingFeesUsd = bondingFeesAces * acesUsdPrice;
+        const totalFeesUsd =
+          Number.isFinite(acesUsdPrice) && acesUsdPrice > 0
+            ? totalFeesAces * acesUsdPrice
+            : bondingFeesUsd + dexFeesUsd;
 
         // 🔥 OPTIMIZED: Build response data
         const responseData = {
@@ -1247,7 +1363,11 @@ export async function tokensRoutes(fastify: FastifyInstance) {
           tokenPriceUsd,
           holderCount,
           totalFeesUsd,
-          totalFeesAces: fees.acesAmount,
+          totalFeesAces: totalFeesAces.toString(),
+          dexFeesUsd,
+          dexFeesAces: dexFeesAces.toString(),
+          bondingFeesUsd,
+          bondingFeesAces: bondingFeesAces.toString(),
           liquidityUsd,
           liquiditySource,
         };
