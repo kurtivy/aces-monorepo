@@ -2,10 +2,10 @@
 nixPkgs = ["nodejs-20_x", "pnpm"]
 
 [phases.install]
-cmds = ["pnpm install --frozen-lockfile"]
+cmds = ["PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1 pnpm install --frozen-lockfile"]
 
 [phases.build]
-cmds = ["pnpm run build"]
+cmds = ["PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1 pnpm run build"]
 
 [start]
 cmd = "pnpm start"
