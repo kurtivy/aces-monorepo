@@ -40,10 +40,14 @@ interface BondingTradeData {
 const BONDING_CURVE_SUPPLY = 800_000_000; // 800M
 const DEX_SUPPLY = 1_000_000_000; // 1B
 const CACHE_TTL_MS = 5000; // 5 seconds
-const BONDING_CURVE_ADDRESS = process.env.BONDING_CURVE_ADDRESS || '0x0000000000000000000000000000000000000000';
+const BONDING_CURVE_ADDRESS =
+  process.env.BONDING_CURVE_ADDRESS || '0x0000000000000000000000000000000000000000';
 
 export class MarketCapService {
   private cache = new Map<string, { data: MarketCapData; expiresAt: number }>();
+  // 🔥 LOAD TEST FIX: Cache stats for monitoring
+  private cacheHits = 0;
+  private cacheMisses = 0;
 
   constructor(
     private prisma: PrismaClient,
@@ -63,8 +67,11 @@ export class MarketCapService {
       // Check cache first
       const cached = this.cache.get(normalizedAddress);
       if (cached && cached.expiresAt > Date.now()) {
+        this.cacheHits++; // 🔥 LOAD TEST FIX: Track cache hits
         return cached.data;
       }
+
+      this.cacheMisses++; // 🔥 LOAD TEST FIX: Track cache misses
 
       // Determine if token is in bonding curve or DEX phase
       const isBondingCurve = await this.isBondingCurveToken(normalizedAddress);
@@ -105,7 +112,10 @@ export class MarketCapService {
 
       // Get ACES/USD price
       const acesUsdPriceValue = await this.acesUsdPriceService.getAcesUsdPrice();
-      const acesUsdPrice = typeof acesUsdPriceValue === 'number' ? acesUsdPriceValue : parseFloat(String(acesUsdPriceValue));
+      const acesUsdPrice =
+        typeof acesUsdPriceValue === 'number'
+          ? acesUsdPriceValue
+          : parseFloat(String(acesUsdPriceValue));
 
       // Calculate market cap in USD
       const currentPriceUsd = tradeData.priceAces * acesUsdPrice;
@@ -120,7 +130,9 @@ export class MarketCapService {
       };
     } catch (error) {
       console.error('[MarketCapService] Bonding curve market cap error:', error);
-      throw new Error(`Failed to calculate bonding curve market cap: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `Failed to calculate bonding curve market cap: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
     }
   }
 
@@ -188,14 +200,19 @@ export class MarketCapService {
       try {
         const acesUsdPriceValue = await this.acesUsdPriceService.getAcesUsdPrice();
         console.log(`[MarketCapService] ACES price from service:`, acesUsdPriceValue);
-        
+
         if (acesUsdPriceValue === null || acesUsdPriceValue === undefined) {
-          console.warn('[MarketCapService] ACES price is null/undefined, cannot calculate market cap');
+          console.warn(
+            '[MarketCapService] ACES price is null/undefined, cannot calculate market cap',
+          );
           return null;
         }
-        
-        acesUsdPrice = typeof acesUsdPriceValue === 'number' ? acesUsdPriceValue : parseFloat(String(acesUsdPriceValue));
-        
+
+        acesUsdPrice =
+          typeof acesUsdPriceValue === 'number'
+            ? acesUsdPriceValue
+            : parseFloat(String(acesUsdPriceValue));
+
         if (!Number.isFinite(acesUsdPrice) || acesUsdPrice === 0) {
           console.warn('[MarketCapService] ACES price is not valid:', acesUsdPrice);
           return null;
@@ -280,11 +297,14 @@ export class MarketCapService {
         }
       }`;
 
-      const response = await fetch(process.env.SUBGRAPH_URL || 'https://api.studio.thegraph.com/query/your-subgraph', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query }),
-      });
+      const response = await fetch(
+        process.env.SUBGRAPH_URL || 'https://api.studio.thegraph.com/query/your-subgraph',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query }),
+        },
+      );
 
       const data = (await response.json()) as any;
       const trade = data?.data?.trades?.[0];
@@ -294,7 +314,9 @@ export class MarketCapService {
       }
 
       return {
-        priceAces: new Decimal(trade.acesTokenAmount).div(new Decimal(trade.tokenAmount)).toNumber(),
+        priceAces: new Decimal(trade.acesTokenAmount)
+          .div(new Decimal(trade.tokenAmount))
+          .toNumber(),
         supply: new Decimal(trade.supply).toNumber(),
         timestamp: parseInt(trade.createdAt) * 1000,
       };
@@ -350,7 +372,9 @@ export class MarketCapService {
   private async getPoolReserves(poolAddress: string): Promise<PoolReserves | null> {
     try {
       // Aerodrome pool ABI (Uniswap V2 compatible)
-      const poolAbi = ['function getReserves() public view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)'];
+      const poolAbi = [
+        'function getReserves() public view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
+      ];
 
       const poolContract = new ethers.Contract(poolAddress, poolAbi, this.provider);
       const [reserve0, reserve1] = await poolContract.getReserves();
@@ -416,12 +440,26 @@ export class MarketCapService {
 
   /**
    * Get cache stats (for debugging)
+   * 🔥 LOAD TEST FIX: Enhanced with hit/miss tracking
    */
-  getCacheStats(): { size: number; entries: string[] } {
+  getCacheStats(): {
+    size: number;
+    entries: string[];
+    hits: number;
+    misses: number;
+    hitRate: string;
+  } {
+    const hitRate =
+      this.cacheHits + this.cacheMisses > 0
+        ? ((this.cacheHits / (this.cacheHits + this.cacheMisses)) * 100).toFixed(2)
+        : '0.00';
+
     return {
       size: this.cache.size,
       entries: Array.from(this.cache.keys()),
+      hits: this.cacheHits,
+      misses: this.cacheMisses,
+      hitRate: `${hitRate}%`,
     };
   }
 }
-

@@ -1,7 +1,12 @@
 import { FastifyInstance } from 'fastify';
 
 export type HealthStatus = 'operational' | 'degraded' | 'partial_outage' | 'major_outage';
-export type ComponentStatus = 'operational' | 'degraded' | 'partial_outage' | 'major_outage' | 'maintenance';
+export type ComponentStatus =
+  | 'operational'
+  | 'degraded'
+  | 'partial_outage'
+  | 'major_outage'
+  | 'maintenance';
 
 export interface ComponentHealth {
   name: string;
@@ -61,64 +66,200 @@ export class HealthCheckService {
     requiresAuth?: boolean;
   }> = [
     // Core Infrastructure
-    { name: 'API Gateway', path: '/health/live', method: 'GET', expectedStatus: 200, category: 'Infrastructure' },
-    { name: 'Database', path: '/health/ready', method: 'GET', expectedStatus: 200, category: 'Infrastructure' },
-    { name: 'WebSocket Stats', path: '/api/v1/ws/stats', method: 'GET', expectedStatus: 200, category: 'Infrastructure' },
-    
+    {
+      name: 'API Gateway',
+      path: '/health/live',
+      method: 'GET',
+      expectedStatus: 200,
+      category: 'Infrastructure',
+    },
+    {
+      name: 'Database',
+      path: '/health/ready',
+      method: 'GET',
+      expectedStatus: 200,
+      category: 'Infrastructure',
+    },
+    {
+      name: 'WebSocket Stats',
+      path: '/api/v1/ws/stats',
+      method: 'GET',
+      expectedStatus: 200,
+      category: 'Infrastructure',
+    },
+
     // Prices API
-    { name: 'Prices - ACES/USD', path: '/api/v1/prices/aces-usd', method: 'GET', expectedStatus: 200, category: 'Prices' },
-    { name: 'Prices - WETH/USD', path: '/api/v1/prices/weth-usd', method: 'GET', expectedStatus: 200, category: 'Prices' },
-    
+    {
+      name: 'Prices - ACES/USD',
+      path: '/api/v1/prices/aces-usd',
+      method: 'GET',
+      expectedStatus: 200,
+      category: 'Prices',
+    },
+    {
+      name: 'Prices - WETH/USD',
+      path: '/api/v1/prices/weth-usd',
+      method: 'GET',
+      expectedStatus: 200,
+      category: 'Prices',
+    },
+
     // Tokens API
-    { name: 'Tokens - List', path: '/api/v1/tokens?limit=1', method: 'GET', expectedStatus: 200, category: 'Tokens' },
-    
+    {
+      name: 'Tokens - List',
+      path: '/api/v1/tokens?limit=1',
+      method: 'GET',
+      expectedStatus: 200,
+      category: 'Tokens',
+    },
+
     // Listings API
-    { name: 'Listings - List', path: '/api/v1/listings?limit=1', method: 'GET', expectedStatus: 200, category: 'Listings' },
-    
+    {
+      name: 'Listings - List',
+      path: '/api/v1/listings?limit=1',
+      method: 'GET',
+      expectedStatus: 200,
+      category: 'Listings',
+    },
+
     // Chart API
-    { name: 'Chart - Unified', path: '/api/v1/chart/unified?tokenAddress=0x0000000000000000000000000000000000000000&timeframe=1h&from=2024-01-01&to=2024-01-02', method: 'GET', expectedStatus: 200, timeout: 10000, category: 'Chart' },
-    
+    {
+      name: 'Chart - Unified',
+      path: '/api/v1/chart/unified?tokenAddress=0x0000000000000000000000000000000000000000&timeframe=1h&from=2024-01-01&to=2024-01-02',
+      method: 'GET',
+      expectedStatus: 200,
+      timeout: 10000,
+      category: 'Chart',
+    },
+
     // Bonding API
-    { name: 'Bonding - Data', path: '/api/v1/bonding/data?tokenAddress=0x0000000000000000000000000000000000000000', method: 'GET', expectedStatus: 200, category: 'Bonding' },
-    
+    {
+      name: 'Bonding - Data',
+      path: '/api/v1/bonding/data?tokenAddress=0x0000000000000000000000000000000000000000',
+      method: 'GET',
+      expectedStatus: 200,
+      category: 'Bonding',
+    },
+
     // DEX API
-    { name: 'DEX - Pool Info', path: '/api/v1/dex/pool?tokenAddress=0x0000000000000000000000000000000000000000', method: 'GET', expectedStatus: 200, category: 'DEX' },
-    
+    {
+      name: 'DEX - Pool Info',
+      path: '/api/v1/dex/pool?tokenAddress=0x0000000000000000000000000000000000000000',
+      method: 'GET',
+      expectedStatus: 200,
+      category: 'DEX',
+    },
+
     // Portfolio API
-    { name: 'Portfolio - List', path: '/api/v1/portfolio?limit=1', method: 'GET', expectedStatus: 200, category: 'Portfolio' },
-    
+    {
+      name: 'Portfolio - List',
+      path: '/api/v1/portfolio?limit=1',
+      method: 'GET',
+      expectedStatus: 200,
+      category: 'Portfolio',
+    },
+
     // Users API (401 is OK - means endpoint is working)
-    { name: 'Users - Profile', path: '/api/v1/users/me', method: 'GET', expectedStatus: [200, 401], requiresAuth: false, category: 'Users' },
-    
+    {
+      name: 'Users - Profile',
+      path: '/api/v1/users/me',
+      method: 'GET',
+      expectedStatus: [200, 401],
+      requiresAuth: false,
+      category: 'Users',
+    },
+
     // Submissions API
-    { name: 'Submissions - List', path: '/api/v1/submissions?limit=1', method: 'GET', expectedStatus: 200, category: 'Submissions' },
-    
+    {
+      name: 'Submissions - List',
+      path: '/api/v1/submissions?limit=1',
+      method: 'GET',
+      expectedStatus: 200,
+      category: 'Submissions',
+    },
+
     // Bids API
-    { name: 'Bids - List', path: '/api/v1/bids?limit=1', method: 'GET', expectedStatus: 200, category: 'Bids' },
-    
+    {
+      name: 'Bids - List',
+      path: '/api/v1/bids?limit=1',
+      method: 'GET',
+      expectedStatus: 200,
+      category: 'Bids',
+    },
+
     // Notifications API
-    { name: 'Notifications - List', path: '/api/v1/notifications?limit=1', method: 'GET', expectedStatus: [200, 401], requiresAuth: false, category: 'Notifications' },
-    
+    {
+      name: 'Notifications - List',
+      path: '/api/v1/notifications?limit=1',
+      method: 'GET',
+      expectedStatus: [200, 401],
+      requiresAuth: false,
+      category: 'Notifications',
+    },
+
     // Comments API
-    { name: 'Comments - List', path: '/api/v1/comments?limit=1', method: 'GET', expectedStatus: 200, category: 'Comments' },
-    
+    {
+      name: 'Comments - List',
+      path: '/api/v1/comments?limit=1',
+      method: 'GET',
+      expectedStatus: 200,
+      category: 'Comments',
+    },
+
     // Contact API
-    { name: 'Contact - Health', path: '/api/v1/contact', method: 'GET', expectedStatus: [200, 404, 405], category: 'Contact' },
-    
+    {
+      name: 'Contact - Health',
+      path: '/api/v1/contact',
+      method: 'GET',
+      expectedStatus: [200, 404, 405],
+      category: 'Contact',
+    },
+
     // Twitch API
-    { name: 'Twitch - Health', path: '/api/v1/twitch/health', method: 'GET', expectedStatus: [200, 404], category: 'Twitch' },
-    
+    {
+      name: 'Twitch - Health',
+      path: '/api/v1/twitch/health',
+      method: 'GET',
+      expectedStatus: [200, 404],
+      category: 'Twitch',
+    },
+
     // Product Images API
-    { name: 'Product Images - Health', path: '/api/v1/product-images', method: 'GET', expectedStatus: [200, 404, 405], category: 'Product Images' },
-    
+    {
+      name: 'Product Images - Health',
+      path: '/api/v1/product-images',
+      method: 'GET',
+      expectedStatus: [200, 404, 405],
+      category: 'Product Images',
+    },
+
     // Token Creation API
-    { name: 'Token Creation - Health', path: '/api/v1/token-creation', method: 'GET', expectedStatus: [200, 404, 405], category: 'Token Creation' },
-    
+    {
+      name: 'Token Creation - Health',
+      path: '/api/v1/token-creation',
+      method: 'GET',
+      expectedStatus: [200, 404, 405],
+      category: 'Token Creation',
+    },
+
     // Verification API
-    { name: 'Verification - Health', path: '/api/v1/verification', method: 'GET', expectedStatus: [200, 404, 405], category: 'Verification' },
-    
+    {
+      name: 'Verification - Health',
+      path: '/api/v1/verification',
+      method: 'GET',
+      expectedStatus: [200, 404, 405],
+      category: 'Verification',
+    },
+
     // Admin API (401 is OK - means endpoint is working)
-    { name: 'Admin - Dashboard', path: '/api/v1/admin/dashboard', method: 'GET', expectedStatus: [200, 401, 403], requiresAuth: false, category: 'Admin' },
+    {
+      name: 'Admin - Dashboard',
+      path: '/api/v1/admin/dashboard',
+      method: 'GET',
+      expectedStatus: [200, 401, 403],
+      requiresAuth: false,
+      category: 'Admin',
+    },
   ];
 
   constructor(fastify: FastifyInstance) {
@@ -170,7 +311,7 @@ export class HealthCheckService {
     const checkPromises = this.endpoints.map((endpoint) =>
       this.checkEndpoint(endpoint).then((result) => {
         components.set(endpoint.name, result);
-      })
+      }),
     );
 
     await Promise.allSettled(checkPromises);
@@ -226,7 +367,8 @@ export class HealthCheckService {
       // Parse response body for debugging
       let responseBody: string | undefined;
       try {
-        const bodyStr = typeof response.body === 'string' ? response.body : JSON.stringify(response.body);
+        const bodyStr =
+          typeof response.body === 'string' ? response.body : JSON.stringify(response.body);
         // Truncate to first 200 characters
         responseBody = bodyStr.length > 200 ? bodyStr.substring(0, 200) + '...' : bodyStr;
       } catch {
@@ -235,7 +377,13 @@ export class HealthCheckService {
 
       const isHealthy = expectedStatuses.includes(response.statusCode);
       let status: ComponentStatus;
-      let errorType: 'timeout' | 'http_error' | 'network_error' | 'parse_error' | 'unknown' | undefined;
+      let errorType:
+        | 'timeout'
+        | 'http_error'
+        | 'network_error'
+        | 'parse_error'
+        | 'unknown'
+        | undefined;
       let errorMessage: string | undefined;
 
       if (isHealthy) {
@@ -244,7 +392,7 @@ export class HealthCheckService {
         status = 'major_outage';
         errorType = 'http_error';
         errorMessage = `HTTP ${response.statusCode} - Expected ${expectedStatuses.join(' or ')}, got ${response.statusCode}`;
-        
+
         // Add response body snippet if available
         if (responseBody) {
           errorMessage += ` | Response: ${responseBody}`;
@@ -308,13 +456,13 @@ export class HealthCheckService {
     error?: string;
   }> {
     const cutoffTime = Date.now() - this.HISTORY_RETENTION_HOURS * 60 * 60 * 1000;
-    
+
     return this.history
       .filter((h) => h.timestamp.getTime() >= cutoffTime)
       .map((h) => {
         const component = h.components.get(componentName);
         if (!component) return null;
-        
+
         return {
           timestamp: h.timestamp,
           status: component.status,
@@ -345,7 +493,7 @@ export class HealthCheckService {
 
       const componentChecks = relevant.map((h) => h.components.get(componentName));
       const operational = componentChecks.filter(
-        (c) => c && (c.status === 'operational' || c.status === 'degraded')
+        (c) => c && (c.status === 'operational' || c.status === 'degraded'),
       ).length;
 
       return (operational / componentChecks.length) * 100;
