@@ -635,31 +635,17 @@ export async function adminTokenRoutes(fastify: FastifyInstance) {
           });
         }
 
-        // Use bonding monitor's logic if available
-        const bondingMonitor = fastify.bondingMonitor;
-        if (bondingMonitor) {
-          console.log(`[ADMIN] Forcing bonding monitor to re-check ${normalized}`);
-
-          // Force immediate check (clears cache and triggers graduation logic)
-          await bondingMonitor.forceCheckToken(normalized);
-
-          // Get updated stats
-          const stats = bondingMonitor.getStats();
-          const tokenStatus = stats.bondingStatuses.find((s: any) => s.address === normalized);
-
-          return reply.send({
-            success: true,
-            message: tokenStatus?.bonded
-              ? 'Token is bonded. Graduation process triggered - check database in a few seconds.'
-              : 'Token checked but not yet bonded on-chain.',
-            tokenStatus,
-            monitorStats: stats,
-          });
-        }
-
-        return reply.code(503).send({
-          success: false,
-          error: 'Bonding monitor not available',
+        // 🚀 Phase 3: Manual graduation is no longer needed
+        // Real-time bonding status is available via WebSocket: /api/v1/ws/bonding/:tokenAddress
+        // Graduation happens automatically via smart contract events
+        
+        return reply.code(200).send({
+          success: true,
+          message: 'Manual graduation has been replaced by automatic real-time monitoring. Check bonding status via WebSocket: /api/v1/ws/bonding/' + normalized,
+          info: {
+            realTimeEndpoint: `/api/v1/ws/bonding/${normalized}`,
+            note: 'Graduation now happens automatically when supply threshold is reached',
+          },
         });
       } catch (error) {
         console.error('[ADMIN] Error forcing graduation:', error);
@@ -697,16 +683,11 @@ export async function adminTokenRoutes(fastify: FastifyInstance) {
         const listingService = new ListingService(fastify.prisma);
         const listing = await listingService.prepareForMinting(id);
 
-        // 🔥 NEW: Auto-add token to bonding monitor
-        if (listing.token?.contractAddress && fastify.bondingMonitor) {
-          try {
-            fastify.bondingMonitor.addTokenToMonitor(listing.token.contractAddress);
-            console.log(
-              `[ADMIN] ✅ Added ${listing.token.symbol} to bonding monitor for auto-graduation`,
-            );
-          } catch (monitorError) {
-            console.warn('[ADMIN] Failed to add token to bonding monitor:', monitorError);
-          }
+        // 🚀 Phase 3: Real-time monitoring via WebSocket adapters
+        if (listing.token?.contractAddress) {
+          console.log(
+            `[ADMIN] ✅ ${listing.token.symbol} ready for real-time WebSocket monitoring at /api/v1/ws/bonding/${listing.token.contractAddress}`,
+          );
         }
 
         return reply.send({

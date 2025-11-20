@@ -403,3 +403,32 @@ model UserNotification {
   @@index([userId, createdAt])
   @@map("user_notifications")
 }
+
+// ========== DEX TRADES (BitQuery) ==========
+
+model DexTrade {
+  id           String   @id @default(cuid())
+  txHash       String // Transaction hash
+  tokenAddress String // Token contract address
+  timestamp    BigInt // Unix timestamp in milliseconds
+  blockNumber  String // Block number as string
+  
+  // Trade details
+  isBuy        Boolean // true = buy, false = sell
+  tokenAmount  String // Token amount (as string for precision)
+  acesAmount   String // ACES amount (as string for precision)
+  priceInAces  Float // Price in ACES
+  priceInUsd   Float? // Price in USD (optional)
+  
+  // Trader info
+  trader       String? // Trader wallet address
+  
+  // Metadata
+  source       String   @default("bitquery") // Data source
+  createdAt    DateTime @default(now()) // When stored in DB
+  
+  @@unique([txHash, tokenAddress]) // Prevent duplicates
+  @@index([tokenAddress, timestamp(sort: Desc)]) // Fast queries by token
+  @@index([timestamp]) // For cleanup queries
+  @@map("dex_trades")
+}

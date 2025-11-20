@@ -127,9 +127,9 @@ export const useCanvasInteractions = ({
   onTermsClick: _onTermsClick, // eslint-disable-line @typescript-eslint/no-unused-vars
   onMomentumUpdate,
   featuredImage, // FEATURED SECTION: Add featured image
-  onFeaturedImageClick: _onFeaturedImageClick, // FEATURED SECTION: Click-through disabled
+  onFeaturedImageClick, // FEATURED SECTION: Open image details modal
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  onAuctionIconClick: _onAuctionIconClick, // Auction icon click handler disabled
+  onAuctionIconClick, // Auction icon click handler - enabled
   onProductImageHover, // HOVER ENHANCEMENT: Add product image hover callback
   onDrvnClick,
 }: UseCanvasInteractionsProps) => {
@@ -378,12 +378,18 @@ export const useCanvasInteractions = ({
             screenY >= iconBounds.y &&
             screenY <= iconBounds.y + iconBounds.height
           ) {
+            // Auction icon clicked - trigger handler with symbol and title
+            const ticker = featuredImage.metadata.ticker;
+            const symbol = ticker ? ticker.trim().replace(/^\$/u, '') : undefined;
+            const title = featuredImage.metadata.title;
+
+            onAuctionIconClick?.({ symbol, title });
             return;
           }
         }
       }
 
-      // FEATURED SECTION: Check featured area (second priority)
+      // FEATURED SECTION: Check featured area (second priority) - Open image details modal
       if (
         featuredImage &&
         isFeaturedArea(
@@ -395,16 +401,8 @@ export const useCanvasInteractions = ({
           featuredAreaHeight,
         )
       ) {
-        // Navigate to RWA page using ticker (symbol)
-        const ticker = featuredImage.metadata.ticker;
-        if (ticker) {
-          // Strip the $ prefix from ticker to get the symbol (e.g., "$APK" -> "APK")
-          const symbol = ticker.trim().replace(/^\$/u, '');
-          window.location.href = `/rwa/${symbol}`;
-        } else {
-          _onFeaturedImageClick?.(featuredImage);
-        }
-
+        // Open image details modal for the featured image
+        onFeaturedImageClick?.(featuredImage);
         return;
       }
 
@@ -523,7 +521,7 @@ export const useCanvasInteractions = ({
       capabilities,
       unitSize,
       isMobileDevice,
-      _onFeaturedImageClick,
+      onFeaturedImageClick,
       imagePlacementMap,
       setSelectedImage,
       onDrvnClick,

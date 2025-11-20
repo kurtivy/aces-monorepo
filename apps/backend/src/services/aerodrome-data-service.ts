@@ -1,4 +1,6 @@
 import { ethers } from 'ethers';
+import type { FastifyInstance } from 'fastify';
+import { getProvider } from '../lib/provider-manager';
 
 type Resolution = '5m' | '15m' | '1h' | '4h' | '1d';
 
@@ -37,6 +39,7 @@ export interface AerodromeDataServiceOptions {
   mockData?: AerodromeMockData;
   provider?: ethers.JsonRpcProvider;
   fetchFn?: typeof fetch;
+  fastify?: FastifyInstance; // 🔥 PHASE 3: Add fastify instance for cache plugin access
 }
 
 export interface AerodromeMockData {
@@ -110,12 +113,12 @@ export class AerodromeDataService {
   private readonly mockEnabled: boolean;
   private readonly mockData: AerodromeMockData;
   private readonly fetchFn: typeof fetch;
+  private readonly fastify?: FastifyInstance; // 🔥 PHASE 3: Fastify instance for cache plugin
 
-  private readonly poolCache = new Map<string, CacheEntry<AerodromePoolState>>();
+  // 🔥 PHASE 3: Keep internal caches for trades/candles (not migrated yet)
   private readonly tradesCache = new Map<string, CacheEntry<AerodromeSwap[]>>();
   private readonly candleCache = new Map<string, CacheEntry<AerodromeCandle[]>>();
   private readonly decimalsCache = new Map<string, number>();
-  private readonly genericPoolCache = new Map<string, CacheEntry<AerodromeGenericPoolState>>();
 
   constructor(options: AerodromeDataServiceOptions) {
     this.acesTokenAddress = options.acesTokenAddress.toLowerCase();
@@ -127,15 +130,25 @@ export class AerodromeDataService {
     this.mockEnabled = options.mockEnabled ?? process.env.USE_DEX_MOCKS === 'true';
     this.mockData = options.mockData || { pools: {}, trades: {} };
     this.fetchFn = options.fetchFn ?? fetch;
+    this.fastify = options.fastify; // 🔥 PHASE 3: Store fastify instance
 
     if (!this.mockEnabled) {
-      if (!options.provider && !options.rpcUrl) {
-        throw new Error(
-          'AerodromeDataService: rpcUrl or provider is required when mock mode is disabled',
-        );
+      // 🔥 PHASE 3: Use shared provider from provider manager, fallback to provided or create new
+      if (options.provider) {
+        this.provider = options.provider;
+      } else if (options.rpcUrl) {
+        this.provider = new ethers.JsonRpcProvider(options.rpcUrl);
+      } else {
+        // Use shared provider from provider manager (Base Mainnet 8453)
+        try {
+          this.provider = getProvider(8453);
+        } catch (error) {
+          throw new Error(
+            `AerodromeDataService: Could not get provider. ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
       }
 
-      this.provider = options.provider ?? new ethers.JsonRpcProvider(options.rpcUrl);
       if (!this.factoryAddress) {
         throw new Error(
           'AerodromeDataService: factoryAddress is required when mock mode is disabled',
@@ -167,10 +180,14 @@ export class AerodromeDataService {
       return null;
     }
 
-    const cacheKey = normalizedToken;
-    const cached = this.getCached(this.poolCache, cacheKey);
-    if (cached) {
-      return cached;
+    // 🔥 PHASE 3: Use cache plugin if available, otherwise fallback to internal cache
+    const cacheKey = `${normalizedToken}-${knownPoolAddress || 'unknown'}`;
+
+    if (this.fastify?.cache) {
+      const cached = this.fastify.cache.get<AerodromePoolState>('poolReserves', cacheKey);
+      if (cached) {
+        return cached;
+      }
     }
 
     // Use known pool address if provided, otherwise resolve from factory
@@ -231,7 +248,11 @@ export class AerodromeDataService {
         totalSupply: totalSupply.toString(),
       };
 
-      this.setCached(this.poolCache, cacheKey, poolState);
+      // 🔥 PHASE 3: Use cache plugin if available
+      if (this.fastify?.cache) {
+        this.fastify.cache.set('poolReserves', cacheKey, poolState, 10 * 1000); // 10s TTL
+      }
+
       return poolState;
     } catch (error) {
       console.error(`❌ ERROR calling pool contract at ${poolAddress}:`, error);
@@ -299,10 +320,12 @@ export class AerodromeDataService {
   }
 
   clearCaches(): void {
-    this.poolCache.clear();
+    // 🔥 PHASE 3: Clear internal caches (trades/candles still use internal cache)
+    // Pool reserves and decimals are now in cache plugin, cleared via plugin methods
     this.tradesCache.clear();
     this.candleCache.clear();
-    this.genericPoolCache.clear();
+    // Keep decimalsCache for fallback when fastify not available
+    this.decimalsCache.clear();
   }
 
   async getPairReserves(
@@ -426,18 +449,23 @@ export class AerodromeDataService {
     const normalizedA = tokenA.toLowerCase();
     const normalizedB = tokenB.toLowerCase();
     const cacheKey =
-      normalizedA < normalizedB ? `${normalizedA}-${normalizedB}` : `${normalizedB}-${normalizedA}`;
+      normalizedA < normalizedB
+        ? `${normalizedA}-${normalizedB}-${knownPoolAddress || 'unknown'}`
+        : `${normalizedB}-${normalizedA}-${knownPoolAddress || 'unknown'}`;
 
-    console.log(`[getGenericPoolState] Called with:`);
-    console.log(`  tokenA: ${normalizedA}`);
-    console.log(`  tokenB: ${normalizedB}`);
-    console.log(`  knownPoolAddress: ${knownPoolAddress || 'none'}`);
-    console.log(`  cacheKey: ${cacheKey}`);
+    // console.log(`[getGenericPoolState] Called with:`);
+    // console.log(`  tokenA: ${normalizedA}`);
+    // console.log(`  tokenB: ${normalizedB}`);
+    // console.log(`  knownPoolAddress: ${knownPoolAddress || 'none'}`);
+    // console.log(`  cacheKey: ${cacheKey}`);
 
-    const cached = this.getCached(this.genericPoolCache, cacheKey);
-    if (cached) {
-      console.log(`  ✅ Returning cached pool state`);
-      return cached;
+    // 🔥 PHASE 3: Use cache plugin if available
+    if (this.fastify?.cache) {
+      const cached = this.fastify.cache.get<AerodromeGenericPoolState>('poolReserves', cacheKey);
+      if (cached) {
+        console.log(`  ✅ Returning cached pool state (from cache plugin)`);
+        return cached;
+      }
     }
 
     if (this.mockEnabled) {
@@ -491,7 +519,10 @@ export class AerodromeDataService {
       };
 
       console.log(`  ✅ Pool state created successfully, caching...`);
-      this.setCached(this.genericPoolCache, cacheKey, state);
+      // 🔥 PHASE 3: Use cache plugin if available
+      if (this.fastify?.cache) {
+        this.fastify.cache.set('poolReserves', cacheKey, state, 10 * 1000); // 10s TTL
+      }
       return state;
     } catch (error) {
       console.error(`❌ ERROR reading V2 pool state for ${pair.address}:`, error);
@@ -502,7 +533,10 @@ export class AerodromeDataService {
         const v3Result = await this.readSlipstreamPool(pair.address);
         if (v3Result) {
           console.log(`  ✅ Successfully read as Slipstream pool, caching...`);
-          this.setCached(this.genericPoolCache, cacheKey, v3Result);
+          // 🔥 PHASE 3: Use cache plugin if available
+          if (this.fastify?.cache) {
+            this.fastify.cache.set('poolReserves', cacheKey, v3Result, 10 * 1000); // 10s TTL
+          }
           return v3Result;
         }
       } catch (v3Error) {
@@ -576,13 +610,27 @@ export class AerodromeDataService {
 
   private async getTokenDecimals(address: string): Promise<number> {
     const normalized = address.toLowerCase();
-    if (this.decimalsCache.has(normalized)) {
-      return this.decimalsCache.get(normalized)!;
+
+    // 🔥 PHASE 3: Use cache plugin if available (tokenDecimals cache has 24h TTL)
+    if (this.fastify?.cache) {
+      const cached = this.fastify.cache.get<number>('tokenDecimals', normalized);
+      if (cached !== null) {
+        return cached;
+      }
+    } else {
+      // Fallback to internal cache
+      if (this.decimalsCache.has(normalized)) {
+        return this.decimalsCache.get(normalized)!;
+      }
     }
 
     if (this.mockEnabled) {
       const decimals = normalized === this.acesTokenAddress ? 18 : 18;
-      this.decimalsCache.set(normalized, decimals);
+      if (this.fastify?.cache) {
+        this.fastify.cache.set('tokenDecimals', normalized, decimals, 24 * 60 * 60 * 1000); // 24h TTL
+      } else {
+        this.decimalsCache.set(normalized, decimals);
+      }
       return decimals;
     }
 
@@ -592,8 +640,16 @@ export class AerodromeDataService {
 
     const erc20 = new ethers.Contract(normalized, ERC20_ABI, this.provider);
     const decimals = await erc20.decimals();
-    this.decimalsCache.set(normalized, Number(decimals));
-    return Number(decimals);
+    const decimalsNum = Number(decimals);
+
+    // 🔥 PHASE 3: Cache in plugin or internal cache
+    if (this.fastify?.cache) {
+      this.fastify.cache.set('tokenDecimals', normalized, decimalsNum, 24 * 60 * 60 * 1000); // 24h TTL
+    } else {
+      this.decimalsCache.set(normalized, decimalsNum);
+    }
+
+    return decimalsNum;
   }
 
   private async fetchTradesFromAerodromeApi(

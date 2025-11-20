@@ -207,7 +207,7 @@ export function MiddleContentArea({
               isLive={isLive}
               isOwner={user?.id === listing.ownerId}
               onBidPlaced={(bid) => {
-                console.log('New bid placed:', bid);
+                // Removed debug logging for production noise reduction
                 // You can add additional logic here like showing notifications
               }}
             />
@@ -244,7 +244,7 @@ export function MiddleContentArea({
                   isLive={true}
                   isOwner={false}
                   onBidPlaced={(bid) => {
-                    console.log('New bid placed:', bid);
+                    // Removed debug logging for production noise reduction
                   }}
                 />
               </div>,

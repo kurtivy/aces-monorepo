@@ -26,6 +26,8 @@ export default defineConfig({
     'sharp',
     'bcrypt',
     'pino-pretty',
+    'ws', // Node.js WebSocket library - must be external
+    '@fastify/websocket', // Fastify WebSocket plugin - must be external
     // Don't externalize @prisma/client so enums get bundled
   ],
   cjsInterop: true,

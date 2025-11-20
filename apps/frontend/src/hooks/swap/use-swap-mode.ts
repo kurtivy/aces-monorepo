@@ -82,6 +82,7 @@ export function useSwapMode({
       }
 
       // Step 1: Check for direct pool
+      // Note: 404 errors are expected for tokens without pools yet - handled silently
       const poolRes = await DexApi.getPool(tokenAddress);
       if (!cancelled && poolRes.success) {
         setDexReady(true);
@@ -89,6 +90,7 @@ export function useSwapMode({
       }
 
       // Step 2: Probe a tiny ACES -> TOKEN quote to see if multi-hop is viable
+      // (This handles tokens without direct pools but with viable multi-hop routes)
       const quoteRes = await DexApi.getQuote(tokenAddress, {
         inputAsset: 'ACES',
         amount: '1',

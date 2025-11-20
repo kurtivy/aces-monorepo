@@ -135,6 +135,136 @@ export class TradePriceAggregator {
   }
 
   /**
+   * Enrich trades with historical ACES prices (uses provided trades instead of fetching)
+   * 🔥 NEW: Used by unified GoldSky service to avoid duplicate GoldSky queries
+   */
+  async enrichTradesWithPrices(
+    trades: SubgraphTrade[],
+    logger?: FastifyBaseLogger,
+  ): Promise<TradeWithPrice[]> {
+    if (trades.length === 0) {
+      return [];
+    }
+
+    // Step 1: Fetch corresponding ACES price snapshots
+    const tradeIds = trades.map((t) => t.id);
+
+    if (logger) {
+      logger.debug({
+        msg: '[Aggregator] Enriching trades with price snapshots',
+        tradeCount: tradeIds.length,
+      });
+    }
+
+    const priceSnapshots = await this.prisma.acesPriceSnapshot.findMany({
+      where: {
+        tradeId: {
+          in: tradeIds,
+        },
+      },
+      select: {
+        tradeId: true,
+        acesUsdPrice: true,
+        source: true,
+      },
+    });
+
+    // Step 2: Create lookup map
+    const priceMap = new Map(
+      priceSnapshots.map((snap) => [
+        snap.tradeId,
+        {
+          price: parseFloat(snap.acesUsdPrice.toString()),
+          source: snap.source,
+        },
+      ]),
+    );
+
+    // Get current ACES price for fallback scenarios
+    const { acesUsd: currentAcesPrice } = await priceCacheService.getPrices();
+    const now = Date.now();
+
+    // Initialize monitoring stats
+    const stats = {
+      totalTrades: trades.length,
+      foundExact: 0,
+      raceCases: 0,
+      nearestUsed: 0,
+      fallbackUsed: 0,
+    };
+
+    // Batch optimization - Fetch all "nearest" snapshots at once
+    const tradeTimestamps = trades.map((t) => parseInt(t.createdAt));
+    const minTimestamp = Math.min(...tradeTimestamps);
+    const maxTimestamp = Math.max(...tradeTimestamps);
+
+    const nearbySnapshots = await this.fetchSnapshotsInTimeRange(
+      trades[0]?.token?.address || '',
+      minTimestamp,
+      maxTimestamp,
+    );
+
+    // Step 3: Enrich trades with prices
+    const tradesWithPrices: TradeWithPrice[] = trades.map((trade) => {
+      const priceData = priceMap.get(trade.id);
+
+      // CASE 1: Exact match found in database ✅
+      if (priceData) {
+        stats.foundExact++;
+        return {
+          ...trade,
+          acesUsdPriceAtExecution: priceData.price,
+          priceSource: priceData.source,
+        };
+      }
+
+      // CASE 2: Missing price - determine why
+      const tradeTimestamp = parseInt(trade.createdAt);
+      const tradeTimestampMs = tradeTimestamp * 1000;
+      const tradeAge = now - tradeTimestampMs;
+
+      // CASE 2a: Race Condition - Trade is very recent (< 10 seconds)
+      if (tradeAge < 10000) {
+        stats.raceCases++;
+        return {
+          ...trade,
+          acesUsdPriceAtExecution: currentAcesPrice,
+          priceSource: 'current_pending',
+        };
+      }
+
+      // CASE 2b: Missing Snapshot - Find nearest price
+      const nearestPrice = this.findNearestInArray(nearbySnapshots, tradeTimestamp);
+
+      if (nearestPrice) {
+        stats.nearestUsed++;
+        return {
+          ...trade,
+          acesUsdPriceAtExecution: nearestPrice.price,
+          priceSource: nearestPrice.source,
+        };
+      }
+
+      // CASE 2c: Last Resort - Use current price as fallback
+      stats.fallbackUsed++;
+      return {
+        ...trade,
+        acesUsdPriceAtExecution: currentAcesPrice,
+        priceSource: 'fallback_current',
+      };
+    });
+
+    if (logger) {
+      logger.debug({
+        msg: '[Aggregator] Price enrichment complete',
+        stats,
+      });
+    }
+
+    return tradesWithPrices;
+  }
+
+  /**
    * Fetch trades and enrich with historical ACES prices
    */
   async getTradesWithPrices(
@@ -424,14 +554,32 @@ export class TradePriceAggregator {
       });
 
       // OHLC in ACES
-      const openAces = pricesInAces[0];
-      const closeAces = pricesInAces[pricesInAces.length - 1];
+      const openAces = pricesInAces[0]; // First trade (open)
       const highAces = Math.max(...pricesInAces);
       const lowAces = Math.min(...pricesInAces);
+      
+      // 🔥 VWAP for close price in ACES (volume-weighted average)
+      const totalValueAces = trades.reduce((sum, trade) => {
+        const tokenAmount = parseFloat(trade.tokenAmount);
+        const acesAmount = parseFloat(trade.acesTokenAmount);
+        const priceInAces = tokenAmount > 0 ? acesAmount / tokenAmount : 0;
+        return sum + (priceInAces * tokenAmount);
+      }, 0);
+      const totalVolumeTokens = trades.reduce((sum, trade) => sum + parseFloat(trade.tokenAmount), 0);
+      const closeAces = totalVolumeTokens > 0 ? totalValueAces / totalVolumeTokens : openAces;
 
       // Calculate USD prices using HISTORICAL ACES prices
       const openUsd = openAces * trades[0].acesUsdPriceAtExecution;
-      const closeUsd = closeAces * trades[trades.length - 1].acesUsdPriceAtExecution;
+      
+      // 🔥 VWAP for close price in USD (volume-weighted average)
+      const totalValueUsd = trades.reduce((sum, trade) => {
+        const tokenAmount = parseFloat(trade.tokenAmount);
+        const acesAmount = parseFloat(trade.acesTokenAmount);
+        const priceInAces = tokenAmount > 0 ? acesAmount / tokenAmount : 0;
+        const priceInUsd = priceInAces * trade.acesUsdPriceAtExecution;
+        return sum + (priceInUsd * tokenAmount);
+      }, 0);
+      const closeUsd = totalVolumeTokens > 0 ? totalValueUsd / totalVolumeTokens : openUsd;
 
       // For high/low, use the ACES price at the time of that specific trade
       const pricesInUsd = trades.map((t, i) => pricesInAces[i] * t.acesUsdPriceAtExecution);

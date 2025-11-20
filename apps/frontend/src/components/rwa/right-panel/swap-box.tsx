@@ -38,6 +38,13 @@ import RoyalTradeButton from './royal-trade-button';
 import GraffitiTradeButton from './graffiti-trade-button';
 
 const USE_GRAFFITI_TRADE_BUTTON = true;
+const ENABLE_SWAP_DEBUG_LOGS = process.env.NEXT_PUBLIC_ENABLE_SWAP_DEBUG === 'true';
+
+const debugLog = (...args: Parameters<typeof console.log>) => {
+  if (ENABLE_SWAP_DEBUG_LOGS) {
+    console.log(...args);
+  }
+};
 
 interface TokenSwapInterfaceProps {
   tokenSymbol?: string;
@@ -215,7 +222,7 @@ export default function TokenSwapInterface({
   const [activeTab, setActiveTab] = useState<'buy' | 'sell'>('buy');
   const [paymentAsset, setPaymentAsset] = useState<PaymentAsset>('ACES');
   const [amount, setAmount] = useState('');
-  const debouncedAmount = useDebouncedValue(amount, 300);
+  const debouncedAmount = useDebouncedValue(amount, 200); // Reduced from 300ms for faster quote updates
   const [loading, setLoading] = useState<string>('');
   const [localTransactionStatus, setLocalTransactionStatus] = useState<{
     type: 'success' | 'error';
@@ -997,7 +1004,7 @@ export default function TokenSwapInterface({
 
       const UNLIMITED_APPROVAL = ethers.constants.MaxUint256;
 
-      console.log(`[SwapBox] Requesting unlimited ${selectedSellAsset} approval...`, {
+      debugLog(`[SwapBox] Requesting unlimited ${selectedSellAsset} approval...`, {
         tokenAddress,
         spender,
         isUSDT,

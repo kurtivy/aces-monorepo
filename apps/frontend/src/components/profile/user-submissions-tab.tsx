@@ -6,7 +6,13 @@ import { SubmissionsApi, type UserSubmission } from '@/lib/api/submissions';
 import type { CreateSubmissionRequest } from '@aces/utils';
 import { useAuth } from '@/lib/auth/auth-context';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -613,16 +619,18 @@ export function UserSubmissionsTab() {
         hasSubmission: !!submission,
       });
 
+      // Ensure listing is not a temp listing
+      if (listing.id.startsWith('temp-')) {
+        setError('Listing not found. Please refresh the page.');
+        return;
+      }
+
       setFinalizeMode(mode);
       setFinalizeListing(listing);
       setFinalizeFeedback({ status: 'idle', message: '' });
 
-      // For temporary listings, use submission images; otherwise keep the signed listing URLs so they render
-      const isTempListing = listing.id.startsWith('temp-');
-      const rawImageGallery =
-        isTempListing && submission?.imageGallery
-          ? submission.imageGallery
-          : listing.imageGallery || [];
+      // Use listing images directly (they should be signed URLs if needed)
+      const rawImageGallery = listing.imageGallery || [];
 
       setFinalizeForm({
         title: listing.title,
@@ -638,7 +646,6 @@ export function UserSubmissionsTab() {
         assetDetails: (listing.assetDetails ?? {}) as AssetDetails,
         reservePrice: listing.reservePrice || '',
         startingBidPrice: listing.startingBidPrice || '',
-        // Keep signed URLs for display; saving will sanitize before persisting
         imageGallery: rawImageGallery || [],
       });
       if (symbolCheckTimeout.current) {
@@ -698,38 +705,15 @@ export function UserSubmissionsTab() {
               },
             });
           } else {
-            // Create a temporary listing-like object from submission data
-            const tempListing: EnhancedListing = {
-              id: `temp-${submission.id}`,
-              rwaSubmissionId: submission.id,
-              title: submission.title || '',
-              symbol: submission.symbol || '',
-              brand: submission.brand ?? undefined,
-              description: submission.details || submission.story || '',
-              location: submission.location ?? undefined,
-              story: submission.story ?? undefined,
-              details: submission.details ?? undefined,
-              provenance: submission.provenance ?? undefined,
-              hypeSentence: submission.hypeSentence ?? undefined,
-              value: submission.value ?? undefined,
-              reservePrice: submission.reservePrice ?? undefined,
-              startingBidPrice: submission.startingBidPrice ?? undefined,
-              imageGallery: submission.imageGallery?.length ? submission.imageGallery : [],
-              assetDetails: submission.assetDetails ?? undefined,
-              tokenCreationStatus: null,
-              tokenMinted: false,
-              isLive: false,
-              createdAt: submission.createdAt,
-              updatedAt: submission.updatedAt ?? submission.createdAt,
-              ownerId: '',
-            };
-
+            // Listing should always exist after approval, but if it doesn't, show error
+            console.error('[ERROR] Submission approved but no listing found:', submission.id);
             actions.push({
-              label: 'Add Details & Submit',
-              icon: Edit,
+              label: 'Listing Missing - Contact Support',
+              icon: AlertTriangle,
               handler: () => {
-                console.log('[DEBUG] Add Details & Submit clicked for submission:', submission.id);
-                openFinalizeModal(tempListing, 'edit', submission);
+                setError(
+                  'Your submission was approved but the listing could not be found. Please contact support or try refreshing the page.',
+                );
               },
             });
           }
@@ -839,13 +823,16 @@ export function UserSubmissionsTab() {
     async (token: string) => {
       if (!finalizeListing) return false;
 
-      // Check if this is a temporary listing (no real listing exists yet)
-      const isTempListing = finalizeListing.id.startsWith('temp-');
+      // Ensure listing exists - temp listings should not exist anymore
+      if (finalizeListing.id.startsWith('temp-')) {
+        setError('Listing not found. Please refresh the page.');
+        return false;
+      }
 
-      if (isTempListing) {
-        // Update the submission directly
-        const submissionId = finalizeListing.id.replace('temp-', '');
-        const submissionPayload: Record<string, unknown> = {
+      // Update existing listing
+      const saveResult = await ListingsApi.updateMyListing(
+        finalizeListing.id,
+        {
           title: finalizeForm.title,
           symbol: finalizeForm.symbol,
           brand: finalizeForm.brand,
@@ -855,52 +842,17 @@ export function UserSubmissionsTab() {
           provenance: finalizeForm.provenance,
           hypeSentence: finalizeForm.hypeSentence,
           value: finalizeForm.value,
+          assetDetails: finalizeForm.assetDetails,
           reservePrice: finalizeForm.reservePrice || undefined,
           startingBidPrice: finalizeForm.startingBidPrice || undefined,
           imageGallery: onlyProductImages(finalizeForm.imageGallery),
-          assetDetails: finalizeForm.assetDetails,
-        };
+        },
+        token,
+      );
 
-        const updateResult = await SubmissionsApi.updateSubmission(
-          submissionId,
-          submissionPayload as Partial<CreateSubmissionRequest>,
-          token,
-        );
-
-        if (!updateResult.success) {
-          const message =
-            typeof updateResult.error === 'string'
-              ? updateResult.error
-              : updateResult.error?.message || 'Failed to save submission';
-          setError(message);
-          return false;
-        }
-      } else {
-        // Update existing listing
-        const saveResult = await ListingsApi.updateMyListing(
-          finalizeListing.id,
-          {
-            title: finalizeForm.title,
-            symbol: finalizeForm.symbol,
-            brand: finalizeForm.brand,
-            location: finalizeForm.location,
-            story: finalizeForm.story,
-            details: finalizeForm.details ?? finalizeForm.description,
-            provenance: finalizeForm.provenance,
-            hypeSentence: finalizeForm.hypeSentence,
-            value: finalizeForm.value,
-            assetDetails: finalizeForm.assetDetails,
-            reservePrice: finalizeForm.reservePrice || undefined,
-            startingBidPrice: finalizeForm.startingBidPrice || undefined,
-            imageGallery: onlyProductImages(finalizeForm.imageGallery),
-          },
-          token,
-        );
-
-        if (!saveResult.success) {
-          setError(saveResult.error || 'Failed to save listing');
-          return false;
-        }
+      if (!saveResult.success) {
+        setError(saveResult.error || 'Failed to save listing');
+        return false;
       }
 
       return true;
@@ -924,7 +876,7 @@ export function UserSubmissionsTab() {
       if (!saved) {
         setFinalizeFeedback({
           status: 'error',
-          message: 'We couldn’t save your changes. Please fix any errors and try again.',
+          message: "We couldn't save your changes. Please fix any errors and try again.",
         });
         return;
       }
@@ -957,33 +909,34 @@ export function UserSubmissionsTab() {
         return;
       }
 
-      const saved = await persistFinalizeUpdates(token);
-      if (!saved) {
+      // Ensure listing exists - it should always exist after admin approval
+      if (finalizeListing.id.startsWith('temp-')) {
         setFinalizeFeedback({
           status: 'error',
-          message: 'We couldn’t submit your details. Please fix any errors and try again.',
+          message:
+            'Listing not found. Your submission may still be processing. Please refresh the page or contact support.',
         });
         return;
       }
 
-      // Check if this is a temporary listing (no real listing exists yet)
-      const isTempListing = finalizeListing.id.startsWith('temp-');
+      const saved = await persistFinalizeUpdates(token);
+      if (!saved) {
+        setFinalizeFeedback({
+          status: 'error',
+          message: "We couldn't submit your details. Please fix any errors and try again.",
+        });
+        return;
+      }
 
-      if (isTempListing) {
-        // For temporary listings (no listing created yet), we've already saved the submission details
-        // The submission is now ready for admin review - they will create the listing when they review it
-        console.log('[DEBUG] Submission details saved, ready for admin review');
-      } else {
-        // For existing listings, finalize the details
-        const finalizeResult = await ListingsApi.finalizeUserDetails(finalizeListing.id, token);
-        if (!finalizeResult.success) {
-          setError(finalizeResult.error || 'Failed to finalize details');
-          setFinalizeFeedback({
-            status: 'error',
-            message: 'We couldn’t submit your details. Please try again.',
-          });
-          return;
-        }
+      // Finalize the listing details
+      const finalizeResult = await ListingsApi.finalizeUserDetails(finalizeListing.id, token);
+      if (!finalizeResult.success) {
+        setError(finalizeResult.error || 'Failed to finalize details');
+        setFinalizeFeedback({
+          status: 'error',
+          message: "We couldn't submit your details. Please try again.",
+        });
+        return;
       }
 
       await load();
@@ -993,20 +946,12 @@ export function UserSubmissionsTab() {
       setError(err instanceof Error ? err.message : 'Failed to finalize details');
       setFinalizeFeedback({
         status: 'error',
-        message: 'We couldn’t submit your details. Please try again.',
+        message: "We couldn't submit your details. Please try again.",
       });
     } finally {
       setIsFinalizeSubmitting(false);
     }
-  }, [
-    finalizeListing,
-    getAccessToken,
-    handleCloseFinalize,
-    load,
-    persistFinalizeUpdates,
-    finalizeForm,
-    onlyProductImages,
-  ]);
+  }, [finalizeListing, getAccessToken, handleCloseFinalize, load, persistFinalizeUpdates]);
 
   useEffect(() => {
     load();
@@ -1200,98 +1145,98 @@ export function UserSubmissionsTab() {
       {/* Read-only submission details */}
       {viewingSubmission ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/95 backdrop-blur-md">
-            <div className="bg-[#0f1511] rounded-2xl border border-[#D7BF75]/25 w-full max-w-3xl max-h-[85vh] overflow-hidden shadow-2xl">
-              <div className="flex items-center justify-between p-4 border-b border-[#D7BF75]/15">
-                <h3 className="text-[#D0B284] text-lg font-semibold">
-                  {viewingSubmission.submission.title || viewingSubmission.submission.symbol}
-                </h3>
-                <button
-                  onClick={closeSubmissionDetails}
-                  className="text-[#D0B284] hover:text-white hover:bg-[#D0B284]/10 rounded p-1"
-                  aria-label="Close submission details"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="p-6 overflow-y-auto max-h-[75vh] space-y-6">
-                {viewingSubmission.loading ? (
-                  <div className="space-y-3">
-                    {[...Array(5)].map((_, idx) => (
-                      <div key={idx} className="h-10 bg-[#D7BF75]/10 rounded" />
-                    ))}
-                  </div>
-                ) : viewingSubmission.error ? (
-                  <div className="text-red-400 text-sm">{viewingSubmission.error}</div>
-                ) : (
-                  (() => {
-                    const details = viewingSubmission.details || viewingSubmission.submission;
-                    const imageGallery: string[] = details.imageGallery || [];
-                    const infoPairs: Array<{ label: string; value?: string | null }> = [
-                      { label: 'Status', value: details.status },
-                      { label: 'Symbol', value: details.symbol },
-                      { label: 'Brand', value: details.brand },
-                      { label: 'Location', value: details.location },
-                      { label: 'Reserve Price', value: details.reservePrice },
-                      { label: 'Declared Value', value: details.value },
-                      { label: 'Story', value: details.story || details.details },
-                      { label: 'Provenance', value: details.provenance },
-                      { label: 'Hype Sentence', value: details.hypeSentence },
-                    ];
+          <div className="bg-[#0f1511] rounded-2xl border border-[#D7BF75]/25 w-full max-w-3xl max-h-[85vh] overflow-hidden shadow-2xl">
+            <div className="flex items-center justify-between p-4 border-b border-[#D7BF75]/15">
+              <h3 className="text-[#D0B284] text-lg font-semibold">
+                {viewingSubmission.submission.title || viewingSubmission.submission.symbol}
+              </h3>
+              <button
+                onClick={closeSubmissionDetails}
+                className="text-[#D0B284] hover:text-white hover:bg-[#D0B284]/10 rounded p-1"
+                aria-label="Close submission details"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto max-h-[75vh] space-y-6">
+              {viewingSubmission.loading ? (
+                <div className="space-y-3">
+                  {[...Array(5)].map((_, idx) => (
+                    <div key={idx} className="h-10 bg-[#D7BF75]/10 rounded" />
+                  ))}
+                </div>
+              ) : viewingSubmission.error ? (
+                <div className="text-red-400 text-sm">{viewingSubmission.error}</div>
+              ) : (
+                (() => {
+                  const details = viewingSubmission.details || viewingSubmission.submission;
+                  const imageGallery: string[] = details.imageGallery || [];
+                  const infoPairs: Array<{ label: string; value?: string | null }> = [
+                    { label: 'Status', value: details.status },
+                    { label: 'Symbol', value: details.symbol },
+                    { label: 'Brand', value: details.brand },
+                    { label: 'Location', value: details.location },
+                    { label: 'Reserve Price', value: details.reservePrice },
+                    { label: 'Declared Value', value: details.value },
+                    { label: 'Story', value: details.story || details.details },
+                    { label: 'Provenance', value: details.provenance },
+                    { label: 'Hype Sentence', value: details.hypeSentence },
+                  ];
 
-                    return (
-                      <>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {infoPairs
-                            .filter((pair) => pair.value)
-                            .map((pair) => (
-                              <div key={pair.label} className="space-y-1">
-                                <div className="text-[#D0B284] text-xs uppercase tracking-wide">
-                                  {pair.label}
-                                </div>
-                                <div className="text-[#E6E3D3] text-sm whitespace-pre-line">
-                                  {pair.value}
-                                </div>
+                  return (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {infoPairs
+                          .filter((pair) => pair.value)
+                          .map((pair) => (
+                            <div key={pair.label} className="space-y-1">
+                              <div className="text-[#D0B284] text-xs uppercase tracking-wide">
+                                {pair.label}
+                              </div>
+                              <div className="text-[#E6E3D3] text-sm whitespace-pre-line">
+                                {pair.value}
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+
+                      {imageGallery.length > 0 && (
+                        <div>
+                          <div className="text-[#D0B284] text-xs uppercase tracking-wide mb-3">
+                            Images
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            {imageGallery.map((url) => (
+                              <div
+                                key={url}
+                                className="relative aspect-square overflow-hidden rounded-lg border border-[#D7BF75]/20"
+                              >
+                                <Image
+                                  src={url}
+                                  alt={details.title || details.symbol}
+                                  fill
+                                  sizes="200px"
+                                  className="object-cover"
+                                />
                               </div>
                             ))}
-                        </div>
-
-                        {imageGallery.length > 0 && (
-                          <div>
-                            <div className="text-[#D0B284] text-xs uppercase tracking-wide mb-3">
-                              Images
-                            </div>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                              {imageGallery.map((url) => (
-                                <div
-                                  key={url}
-                                  className="relative aspect-square overflow-hidden rounded-lg border border-[#D7BF75]/20"
-                                >
-                                  <Image
-                                    src={url}
-                                    alt={details.title || details.symbol}
-                                    fill
-                                    sizes="200px"
-                                    className="object-cover"
-                                  />
-                                </div>
-                              ))}
-                            </div>
                           </div>
-                        )}
-                      </>
-                    );
-                  })()
-                )}
-              </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()
+              )}
             </div>
+          </div>
         </div>
       ) : null}
 
       {/* Editable finalize modal */}
       {isFinalizeOpen && finalizeListing ? (
-          <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md overflow-y-auto">
-            <div className="min-h-full flex justify-center px-4 py-10">
-              <div className="relative w-full max-w-6xl rounded-3xl border border-[#D7BF75]/25 bg-[#0f1511] shadow-2xl">
+        <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md overflow-y-auto">
+          <div className="min-h-full flex justify-center px-4 py-10">
+            <div className="relative w-full max-w-6xl rounded-3xl border border-[#D7BF75]/25 bg-[#0f1511] shadow-2xl">
               <div className="flex items-start justify-between p-6 border-b border-[#D7BF75]/15">
                 <div>
                   <h3 className="text-[#D0B284] text-xl font-semibold">

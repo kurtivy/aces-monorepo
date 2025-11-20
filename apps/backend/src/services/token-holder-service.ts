@@ -233,13 +233,13 @@ export class TokenHolderService {
     chainConfig: ChainConfig,
     rpcUrl: string,
   ): Promise<number> {
-    console.log(`[TokenHolderService] 🔗 Connecting to RPC: ${rpcUrl.substring(0, 50)}...`);
+    // console.log(`[TokenHolderService] 🔗 Connecting to RPC: ${rpcUrl.substring(0, 50)}...`);
     const provider = new ethers.JsonRpcProvider(rpcUrl, chainConfig.chainId);
     const tokenContract = new ethers.Contract(tokenAddress, LAUNCHPAD_TOKEN_ABI, provider);
 
     let startBlock = 0;
     if (chainConfig.factoryAddress) {
-      console.log(`[TokenHolderService] 🏭 Looking up token creation block...`);
+      // console.log(`[TokenHolderService] 🏭 Looking up token creation block...`);
       const factoryContract = new ethers.Contract(
         chainConfig.factoryAddress,
         ACES_FACTORY_EVENT_ABI,
@@ -248,38 +248,38 @@ export class TokenHolderService {
       const creationBlock = await this.resolveCreationBlock(factoryContract, tokenAddress);
       if (creationBlock) {
         startBlock = creationBlock;
-        console.log(`[TokenHolderService] ✅ Token created at block: ${startBlock}`);
+        // console.log(`[TokenHolderService] ✅ Token created at block: ${startBlock}`);
       } else {
-        console.log(`[TokenHolderService] ⚠️  Could not find creation block, starting from 0`);
+        // console.log(`[TokenHolderService] ⚠️  Could not find creation block, starting from 0`);
       }
     }
 
     const latestBlock = await provider.getBlockNumber();
     const blockRange = latestBlock - startBlock;
-    console.log(
-      `[TokenHolderService] 📊 Scanning blocks ${startBlock} to ${latestBlock} (${blockRange.toLocaleString()} blocks)`,
-    );
+    // console.log(
+    //   `[TokenHolderService] 📊 Scanning blocks ${startBlock} to ${latestBlock} (${blockRange.toLocaleString()} blocks)`,
+    // );
 
     // Safeguard: If token wasn't found in factory and block range is huge, fail fast
     // For newly minted tokens, this should never trigger
     const MAX_BLOCK_RANGE = 1_000_000; // ~20 days of blocks on Base (2-second blocks)
     if (startBlock === 0 && blockRange > MAX_BLOCK_RANGE) {
-      console.log(
-        `[TokenHolderService] ⚠️  Block range too large (${blockRange.toLocaleString()} blocks)`,
-      );
-      console.log(`[TokenHolderService] 💡 This token was not created via ACES factory`);
+      // console.log(
+      //   `[TokenHolderService] ⚠️  Block range too large (${blockRange.toLocaleString()} blocks)`,
+      // );
+      // console.log(`[TokenHolderService] 💡 This token was not created via ACES factory`);
       throw new Error(
         `Token not found in factory and block range too large. This service only supports ACES factory tokens.`,
       );
     }
 
-    console.log(`[TokenHolderService] 🔍 Fetching Transfer events...`);
+    // console.log(`[TokenHolderService] 🔍 Fetching Transfer events...`);
     const events = await this.collectTransferEvents(tokenContract, startBlock, latestBlock);
-    console.log(`[TokenHolderService] 📝 Found ${events.length.toLocaleString()} Transfer events`);
+    // console.log(`[TokenHolderService] 📝 Found ${events.length.toLocaleString()} Transfer events`);
 
     const balances = new Map<string, bigint>();
 
-    console.log(`[TokenHolderService] 🧮 Processing ${events.length.toLocaleString()} events...`);
+    // console.log(`[TokenHolderService] 🧮 Processing ${events.length.toLocaleString()} events...`);
     for (const event of events) {
       const eventArgs = event.args as any;
       if (!eventArgs) {
@@ -321,7 +321,7 @@ export class TokenHolderService {
       }
     }
 
-    console.log(`[TokenHolderService] ✅ Calculated holder count: ${holderCount}`);
+    // console.log(`[TokenHolderService] ✅ Calculated holder count: ${holderCount}`);
     return holderCount;
   }
 
@@ -379,14 +379,14 @@ export class TokenHolderService {
     const transferFilter = tokenContract.filters.Transfer();
 
     try {
-      console.log(
-        `[TokenHolderService] 📡 Attempting single query for blocks ${fromBlock}-${toBlock}...`,
-      );
+      // console.log(
+      //   `[TokenHolderService] 📡 Attempting single query for blocks ${fromBlock}-${toBlock}...`,
+      // );
       const events = await tokenContract.queryFilter(transferFilter, fromBlock, toBlock);
-      console.log(`[TokenHolderService] ✅ Single query successful, got ${events.length} events`);
+      // console.log(`[TokenHolderService] ✅ Single query successful, got ${events.length} events`);
       return events.map((event) => this.normalizeEvent(tokenContract, event));
     } catch (error) {
-      console.log(`[TokenHolderService] ⚠️  Single query failed, switching to chunked queries...`);
+      // console.log(`[TokenHolderService] ⚠️  Single query failed, switching to chunked queries...`);
       if (!shouldChunkQuery(error)) {
         throw error instanceof Error ? error : new Error('Failed to fetch transfer events');
       }
@@ -395,9 +395,9 @@ export class TokenHolderService {
       const chunkSize = ALCHEMY_MAX_BLOCK_RANGE;
       const events: TransferEvent[] = [];
       const totalChunks = Math.ceil((toBlock - fromBlock) / chunkSize);
-      console.log(
-        `[TokenHolderService] 📦 Will process ${totalChunks} chunks of ${chunkSize} blocks each`,
-      );
+      // console.log(
+      //   `[TokenHolderService] 📦 Will process ${totalChunks} chunks of ${chunkSize} blocks each`,
+      // );
 
       let currentFrom = fromBlock;
       let chunkNum = 0;
@@ -405,27 +405,27 @@ export class TokenHolderService {
         chunkNum++;
         const currentTo = Math.min(currentFrom + chunkSize, toBlock);
         const progress = ((chunkNum / totalChunks) * 100).toFixed(1);
-        console.log(
-          `[TokenHolderService] 🔄 Processing chunk ${chunkNum}/${totalChunks} (${progress}%) - blocks ${currentFrom}-${currentTo}`,
-        );
+        //     console.log(
+        //   `[TokenHolderService] 🔄 Processing chunk ${chunkNum}/${totalChunks} (${progress}%) - blocks ${currentFrom}-${currentTo}`,
+        // );
 
         try {
           const chunk = await tokenContract.queryFilter(transferFilter, currentFrom, currentTo);
-          console.log(
-            `[TokenHolderService]    ✅ Chunk ${chunkNum} complete: ${chunk.length} events`,
-          );
+          // console.log(
+          // `[TokenHolderService]    ✅ Chunk ${chunkNum} complete: ${chunk.length} events`,
+          // );
           events.push(...chunk.map((log) => this.normalizeEvent(tokenContract, log)));
         } catch (chunkError) {
-          console.log(
-            `[TokenHolderService]    ⚠️  Chunk ${chunkNum} failed, trying smaller chunks...`,
-          );
+          // console.log(
+          // `[TokenHolderService]    ⚠️  Chunk ${chunkNum} failed, trying smaller chunks...`,
+          // );
           // If even chunked query fails, try smaller chunks
           if (shouldChunkQuery(chunkError)) {
             const smallerChunkSize = Math.floor(chunkSize / 5);
             const subChunks = Math.ceil((currentTo - currentFrom) / smallerChunkSize);
-            console.log(
-              `[TokenHolderService]    📦 Breaking into ${subChunks} smaller chunks of ${smallerChunkSize} blocks`,
-            );
+            // console.log(
+            //   `[TokenHolderService]    📦 Breaking into ${subChunks} smaller chunks of ${smallerChunkSize} blocks`,
+            // );
             for (let i = currentFrom; i <= currentTo; i += smallerChunkSize) {
               const smallTo = Math.min(i + smallerChunkSize, currentTo);
               const smallChunk = await tokenContract.queryFilter(transferFilter, i, smallTo);
@@ -438,7 +438,7 @@ export class TokenHolderService {
         currentFrom = currentTo + 1;
       }
 
-      console.log(`[TokenHolderService] 🎉 All chunks processed, total events: ${events.length}`);
+      // console.log(`[TokenHolderService] 🎉 All chunks processed, total events: ${events.length}`);
       return events;
     }
   }

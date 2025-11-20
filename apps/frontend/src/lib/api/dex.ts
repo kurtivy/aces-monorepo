@@ -122,6 +122,22 @@ async function request<T>(endpoint: string): Promise<ApiResult<T>> {
         // ignore json parse errors
       }
 
+      // 🔥 FIX: Don't log 404 errors as errors - they're expected for resources that don't exist yet
+      // (e.g., pools that haven't been created, tokens without DEX pools)
+      if (response.status === 404) {
+        // Silently return 404 - this is expected behavior for tokens without pools
+        return {
+          success: false,
+          error: message,
+        };
+      }
+
+      // Log other errors (5xx, etc.) but not 404s
+      console.error(`[DexApi] Request failed for ${endpoint}:`, {
+        status: response.status,
+        message,
+      });
+
       return {
         success: false,
         error: message,
@@ -131,7 +147,7 @@ async function request<T>(endpoint: string): Promise<ApiResult<T>> {
     const payload = await response.json();
     return payload as ApiResult<T>;
   } catch (error) {
-    console.error(`[DexApi] request failed for ${endpoint}:`, error);
+    console.error(`[DexApi] Network error for ${endpoint}:`, error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Network error',

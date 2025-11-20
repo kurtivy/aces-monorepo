@@ -18,6 +18,7 @@ interface TokenCreationTabContentProps {
     symbol: string;
     tokenCreationStatus: string;
     tokenParameters: TokenParameters | null;
+    ownerWalletAddress?: string; // The wallet address of the listing owner who will mint the token
   };
   onSuccess?: () => void;
 }
@@ -79,11 +80,20 @@ export function TokenCreationTabContent({ listing, onSuccess }: TokenCreationTab
       setMiningProgress({ attempts: 0, timeElapsed: 0, predictedAddress: '' });
       setSaltMiningResult(null);
 
-      // We'll use a dummy deployer address - in production this should be the admin's wallet
-      const dummyDeployer = '0x0000000000000000000000000000000000000001';
+      // CRITICAL: Use the listing owner's wallet address for salt mining
+      // The factory contract uses msg.sender in the salt calculation, so the deployer address MUST match
+      // If we mine with one address but mint with another, the vanity address will be different!
+      const deployerAddress =
+        listing.ownerWalletAddress || '0x0000000000000000000000000000000000000001';
+
+      if (!listing.ownerWalletAddress) {
+        alert(
+          '⚠️ Warning: Listing owner wallet address not found. Vanity address prediction may be incorrect if minted by a different address.',
+        );
+      }
 
       const result = await mineVanitySaltWithTimeout(
-        dummyDeployer,
+        deployerAddress,
         tokenForm.name || listing.title,
         tokenForm.symbol || listing.symbol,
         FACTORY_PROXY,

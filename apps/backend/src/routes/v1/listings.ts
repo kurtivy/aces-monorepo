@@ -573,7 +573,11 @@ export async function listingRoutes(fastify: FastifyInstance) {
           throw errors.unauthorized();
         }
 
+        console.log(`[Listings Route] Finalizing user details for listing ${id}, user ${userId}`);
+
         const listing = await listingService.finalizeUserDetails(id, userId);
+
+        console.log(`[Listings Route] Successfully finalized listing ${id}`);
 
         return reply.send({
           success: true,
@@ -582,7 +586,16 @@ export async function listingRoutes(fastify: FastifyInstance) {
             'Listing details finalized! Admin will review and prepare your token for minting.',
         });
       } catch (error) {
-        console.error('Error finalizing user details:', error);
+        console.error('[Listings Route] Error finalizing user details:', error);
+        console.error('[Listings Route] Error details:', {
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          listingId: (request.params as { id: string }).id,
+          userId: request.user?.id,
+          errorType: error instanceof Error ? error.constructor.name : typeof error,
+        });
+
+        // Re-throw to let Fastify error handler process it
         throw error;
       }
     },
@@ -620,16 +633,12 @@ export async function listingRoutes(fastify: FastifyInstance) {
 
         const result = await listingService.completeMinting(id, contractAddress, userId);
 
-        // 🔥 NEW: Auto-add token to bonding monitor
-        if (result.token?.contractAddress && fastify.bondingMonitor) {
-          try {
-            fastify.bondingMonitor.addTokenToMonitor(result.token.contractAddress);
-            console.log(
-              `[Listings] ✅ Added ${result.token.symbol} to bonding monitor for auto-graduation`,
-            );
-          } catch (monitorError) {
-            console.warn('[Listings] Failed to add token to bonding monitor:', monitorError);
-          }
+        // 🚀 Phase 3: Real-time bonding monitoring via WebSocket adapters
+        // Bonding status available at: /api/v1/ws/bonding/:tokenAddress
+        if (result.token?.contractAddress) {
+          console.log(
+            `[Listings] ✅ ${result.token.symbol} ready for real-time WebSocket monitoring`,
+          );
         }
 
         return reply.send({

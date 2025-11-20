@@ -6,6 +6,8 @@ import { ListingService } from '../../services/listing-service';
 import { requireAdmin } from '../../lib/auth-middleware';
 import { getSignedSecureUrl } from '../../lib/secure-storage-utils';
 import { ProductStorageService } from '../../lib/product-storage-utils';
+import { SubmissionStatus } from '../../lib/prisma-enums';
+import { errors } from '../../lib/errors';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 
@@ -286,6 +288,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
   /**
    * Approve a submission (admin convenience endpoint to match frontend)
    * POST /api/v1/admin/approve/:id
+   * This ensures that BOTH submission approval AND listing creation succeed atomically
    */
   fastify.post(
     '/approve/:id',
@@ -302,28 +305,153 @@ export async function adminRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       try {
         const { id } = request.params as { id: string };
-        const submission = await submissionService.approveSubmission(id, request.user!.id);
-        // Create listing from this approved submission (idempotent)
-        try {
-          await listingService.createListingFromSubmission(id, request.user!.id);
-        } catch (creationError) {
-          const msg =
-            creationError instanceof Error ? creationError.message : String(creationError);
-          if (!msg.includes('Listing already exists')) {
-            throw creationError;
+
+        // Use transaction to ensure both operations succeed or both fail
+        const result = await fastify.prisma.$transaction(async (tx) => {
+          // Get submission first to verify it exists and is pending
+          const submission = await tx.submission.findUnique({
+            where: { id },
+            include: { owner: true },
+          });
+
+          if (!submission) {
+            throw errors.notFound('Submission not found');
           }
+
+          if (submission.status !== SubmissionStatus.PENDING) {
+            throw errors.validation(
+              `Cannot approve submission with status: ${submission.status}. Only PENDING submissions can be approved.`,
+            );
+          }
+
+          // Check if listing already exists
+          const existingListing = await tx.listing.findUnique({
+            where: { submissionId: id },
+          });
+
+          if (existingListing) {
+            request.log?.warn(
+              { submissionId: id, listingId: existingListing.id },
+              'Listing already exists for submission, proceeding with approval only',
+            );
+            // Just approve the submission
+            const approvedSubmission = await tx.submission.update({
+              where: { id },
+              data: {
+                status: SubmissionStatus.APPROVED,
+                approvedBy: request.user!.id,
+                approvedAt: new Date(),
+              },
+              include: { owner: true },
+            });
+            return { submission: approvedSubmission, listing: existingListing };
+          }
+
+          // Update submission status to APPROVED
+          const approvedSubmission = await tx.submission.update({
+            where: { id },
+            data: {
+              status: SubmissionStatus.APPROVED,
+              approvedBy: request.user!.id,
+              approvedAt: new Date(),
+            },
+            include: { owner: true },
+          });
+
+          // Create listing within the same transaction
+          const listing = await tx.listing.create({
+            data: {
+              title: approvedSubmission.title,
+              symbol: approvedSubmission.symbol,
+              brand: approvedSubmission.brand || null,
+              story: approvedSubmission.story || null,
+              details: approvedSubmission.details || null,
+              provenance: approvedSubmission.provenance || null,
+              value: approvedSubmission.value || null,
+              reservePrice: approvedSubmission.reservePrice || null,
+              hypeSentence: approvedSubmission.hypeSentence || null,
+              assetType: approvedSubmission.assetType,
+              imageGallery: approvedSubmission.imageGallery,
+              location: approvedSubmission.location,
+              isLive: false,
+              tokenCreationStatus: 'AWAITING_USER_DETAILS',
+              submissionId: approvedSubmission.id,
+              ownerId: approvedSubmission.ownerId,
+              approvedBy: request.user!.id,
+            },
+            include: {
+              owner: true,
+              submission: true,
+            },
+          });
+
+          // Verify listing was created successfully
+          if (!listing) {
+            throw new Error('Failed to create listing after submission approval');
+          }
+
+          return { submission: approvedSubmission, listing };
+        });
+
+        // Send notifications outside transaction (these can fail without affecting approval)
+        try {
+          const notificationService =
+            new (require('../../services/notification-service').NotificationService)(
+              fastify.prisma,
+            );
+          const {
+            NotificationTemplates,
+            NotificationType,
+          } = require('../../services/notification-service');
+
+          // Notification for submission approval
+          const approvalTemplate = NotificationTemplates[NotificationType.SUBMISSION_APPROVED];
+          await notificationService.createNotification({
+            userId: result.submission.ownerId,
+            submissionId: result.submission.id,
+            type: NotificationType.SUBMISSION_APPROVED,
+            title: approvalTemplate.title,
+            message: approvalTemplate.message,
+            actionUrl: approvalTemplate.getActionUrl(),
+          });
+
+          // Notification for listing creation
+          const listingTemplate = NotificationTemplates[NotificationType.LISTING_APPROVED];
+          await notificationService.createNotification({
+            userId: result.submission.ownerId,
+            listingId: result.listing.id,
+            type: NotificationType.LISTING_APPROVED,
+            title: listingTemplate.title,
+            message: listingTemplate.message,
+            actionUrl: listingTemplate.getActionUrl(result.listing.id),
+          });
+        } catch (notificationError) {
           request.log?.warn(
-            { err: creationError, submissionId: id },
-            'Listing already exists for submission',
+            { err: notificationError, submissionId: id },
+            'Failed to send notifications, but approval succeeded',
           );
         }
+
         return reply.send({
           success: true,
-          data: submission,
-          message: 'Submission approved successfully',
+          data: result.submission,
+          message: 'Submission approved and listing created successfully',
         });
       } catch (error) {
         console.error('Error approving submission (admin):', error);
+        const errorMessage =
+          error instanceof Error ? error.message : 'Failed to approve submission';
+
+        // If listing creation failed, provide more specific error
+        if (errorMessage.includes('listing') || errorMessage.includes('Listing')) {
+          return reply.status(500).send({
+            success: false,
+            error:
+              'Submission approval failed: Could not create listing. Please try again or contact support.',
+            details: errorMessage,
+          });
+        }
+
         throw error;
       }
     },

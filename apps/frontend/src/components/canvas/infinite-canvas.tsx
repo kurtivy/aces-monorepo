@@ -2,7 +2,6 @@
 
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { useRouter } from 'next/navigation';
 import type { ImageInfo } from '../../types/canvas';
 import { useImageLoader } from '../../hooks/canvas/use-image-loader';
 import { useViewState } from '../../hooks/canvas/use-view-state';
@@ -48,10 +47,9 @@ interface InfiniteCanvasProps {
 
 // FEATURED SECTION: Update component declaration to accept props
 const InfiniteCanvas = ({
-  featuredImageId = '7', // Default to KAWS watch (Audemars Piguet Royal Oak Concept KAWS)
+  featuredImageId = '26', // Default to Richard Mille RM 67-01 Gold
   onFeaturedImageClick,
 }: InfiniteCanvasProps = {}) => {
-  const router = useRouter();
   const [selectedImage, setSelectedImage] = useState<ImageInfo | null>(null);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   // Calendar icon modal state
@@ -139,19 +137,12 @@ const InfiniteCanvas = ({
   const imagesRef = useRef(images);
   imagesRef.current = images;
 
-  // Auction icon click handler - define before useCanvasInteractions
-  const handleAuctionIconClick = useCallback(
-    ({ symbol, title }: AuctionIconClickPayload) => {
-      if (symbol) {
-        router.push(`/rwa/${symbol}`);
-        return;
-      }
-
-      setSelectedProductTitle(title ?? '');
-      setIsEmailSignupModalOpen(true);
-    },
-    [router],
-  );
+  // Auction icon click handler - always open email signup modal for notifications
+  const handleAuctionIconClick = useCallback(({ title }: AuctionIconClickPayload) => {
+    // Always open email signup modal to allow users to sign up for notifications
+    setSelectedProductTitle(title ?? '');
+    setIsEmailSignupModalOpen(true);
+  }, []);
 
   const handleEmailSignupModalClose = () => {
     setIsEmailSignupModalOpen(false);

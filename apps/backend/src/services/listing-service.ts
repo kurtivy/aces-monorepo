@@ -162,7 +162,7 @@ export class ListingService {
         mockEnabled: shouldMock,
       });
     } catch (error) {
-      console.error('[ListingService] Failed to initialize AerodromeDataService:', error);
+      // console.error('[ListingService] Failed to initialize AerodromeDataService:', error);
       this.aerodromeDataService = undefined;
     }
   }
@@ -174,8 +174,7 @@ export class ListingService {
       return listing as T & { rwaSubmissionId: string | null };
     }
 
-    const rwaSubmissionId =
-      (listing as any).rwaSubmissionId ?? listing.submissionId ?? null;
+    const rwaSubmissionId = (listing as any).rwaSubmissionId ?? listing.submissionId ?? null;
 
     return {
       ...listing,
@@ -733,7 +732,7 @@ export class ListingService {
         ),
       ]);
     } catch (error) {
-      console.warn('[ListingService] Failed to convert image URLs, using originals:', error);
+      // console.warn('[ListingService] Failed to convert image URLs, using originals:', error);
       // Fallback to original URLs if signed URL generation fails or times out
       imageGallery = listing.imageGallery || [];
     }
@@ -767,10 +766,10 @@ export class ListingService {
           new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
         ]);
       } catch (error) {
-        console.warn(
-          `[ListingService] Failed to fetch pool state for ${token.contractAddress}:`,
-          error,
-        );
+        // console.warn(
+        //   `[ListingService] Failed to fetch pool state for ${token.contractAddress}:`,
+        //   error,
+        // );
       }
     }
 
@@ -845,7 +844,7 @@ export class ListingService {
       },
     });
 
-    console.log(`[ListingService] Listing ${listingId} finalized by user, pending admin review`);
+    // console.log(`[ListingService] Listing ${listingId} finalized by user, pending admin review`);
 
     return this.addSubmissionAlias(updatedListing);
   }
@@ -876,7 +875,7 @@ export class ListingService {
       },
     });
 
-    console.log(`[ListingService] Token parameters saved for listing ${listingId}`);
+    // console.log(`[ListingService] Token parameters saved for listing ${listingId}`);
 
     return this.addSubmissionAlias(updatedListing);
   }
@@ -913,17 +912,17 @@ export class ListingService {
       tokenParams.symbol = listing.symbol;
     }
 
-    console.log(`[ListingService] Preparing listing ${listingId} for minting...`);
-    console.log(`[ListingService] Token params:`, {
-      curve: tokenParams.curve,
-      steepness: tokenParams.steepness,
-      floor: tokenParams.floor,
-      name: tokenParams.name,
-      symbol: tokenParams.symbol,
-      salt: tokenParams.salt,
-      tokensBondedAt: tokenParams.tokensBondedAt,
-      chainId: tokenParams.chainId,
-    });
+    // console.log(`[ListingService] Preparing listing ${listingId} for minting...`);
+    // console.log(`[ListingService] Token params:`, {
+    //   curve: tokenParams.curve,
+    //   steepness: tokenParams.steepness,
+    //   floor: tokenParams.floor,
+    //   name: tokenParams.name,
+    //   symbol: tokenParams.symbol,
+    //   salt: tokenParams.salt,
+    //   tokensBondedAt: tokenParams.tokensBondedAt,
+    //   chainId: tokenParams.chainId,
+    // });
 
     try {
       // Step 1: Get the predicted token address
@@ -932,18 +931,18 @@ export class ListingService {
       let predictedTokenAddress: string;
 
       if (tokenParams.predictedAddress) {
-        console.log(`[ListingService] Using pre-computed predicted address from salt mining`);
+        // console.log(`[ListingService] Using pre-computed predicted address from salt mining`);
         predictedTokenAddress = tokenParams.predictedAddress;
       } else {
-        console.log(`[ListingService] Predicting token address using factory contract...`);
+        // console.log(`[ListingService] Predicting token address using factory contract...`);
         predictedTokenAddress = await this.predictTokenAddress(tokenParams);
       }
 
-      console.log(`[ListingService] Predicted token address: ${predictedTokenAddress}`);
+      // console.log(`[ListingService] Predicted token address: ${predictedTokenAddress}`);
 
       // Step 2: Predict the pool address (token paired with ACES)
       const predictedPoolAddress = await this.predictPoolAddress(predictedTokenAddress);
-      console.log(`[ListingService] Predicted pool address: ${predictedPoolAddress}`);
+      // console.log(`[ListingService] Predicted pool address: ${predictedPoolAddress}`);
 
       // Step 3: Add token to database with predicted addresses
       const tokenService = new TokenService(this.prisma);
@@ -971,7 +970,7 @@ export class ListingService {
             listingId: listingId, // Link to listing
           },
         });
-        console.log(`[ListingService] Token added to database: ${token.contractAddress}`);
+        // console.log(`[ListingService] Token added to database: ${token.contractAddress}`);
       } else {
         // Update existing token with pool address and listing link
         token = await this.prisma.token.update({
@@ -981,7 +980,7 @@ export class ListingService {
             listingId: listingId,
           },
         });
-        console.log(`[ListingService] Token updated in database: ${token.contractAddress}`);
+        // console.log(`[ListingService] Token updated in database: ${token.contractAddress}`);
       }
 
       // Step 4: Update listing status to READY_TO_MINT
@@ -1021,13 +1020,13 @@ export class ListingService {
           });
         }
       } catch (error) {
-        console.error('[ListingService] Failed to send notification/email:', error);
+        // console.error('[ListingService] Failed to send notification/email:', error);
         // Don't fail the operation if notification fails
       }
 
-      console.log(
-        `[ListingService] Listing ${listingId} prepared for minting with predicted addresses`,
-      );
+      // console.log(
+      //   `[ListingService] Listing ${listingId} prepared for minting with predicted addresses`,
+      // );
 
       return this.addSubmissionAlias(updatedListing);
     } catch (error) {
@@ -1071,7 +1070,7 @@ export class ListingService {
 
       return predictedAddress;
     } catch (error) {
-      console.error('[ListingService] Error predicting token address:', error);
+      // console.error('[ListingService] Error predicting token address:', error);
       throw new Error('Failed to predict token address');
     }
   }
@@ -1088,7 +1087,7 @@ export class ListingService {
       const provider = createProvider(8453);
 
       if (!provider) {
-        console.log('[ListingService] Failed to create provider for pool prediction');
+        // console.log('[ListingService] Failed to create provider for pool prediction');
         return null;
       }
 
@@ -1113,7 +1112,7 @@ export class ListingService {
       }
 
       // Pool doesn't exist yet - return null
-      console.log('[ListingService] Pool does not exist yet for', tokenAddress);
+      // console.log('[ListingService] Pool does not exist yet for', tokenAddress);
       return null;
     } catch (error) {
       console.error('[ListingService] Error predicting pool address:', error);
@@ -1198,13 +1197,13 @@ export class ListingService {
         });
       }
     } catch (error) {
-      console.error('[ListingService] Failed to send notification/email:', error);
+      // console.error('[ListingService] Failed to send notification/email:', error);
       // Don't fail the operation if notification fails
     }
 
-    console.log(
-      `[ListingService] Token ${contractAddress} minted for listing ${listingId}, now live`,
-    );
+    // console.log(
+    //   `[ListingService] Token ${contractAddress} minted for listing ${listingId}, now live`,
+    // );
 
     return {
       listing: updatedListing,

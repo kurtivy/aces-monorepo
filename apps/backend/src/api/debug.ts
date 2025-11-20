@@ -7,28 +7,46 @@ export async function debugRoutes(fastify: FastifyInstance) {
   //     return;
   //   }
 
-  // Bonding Monitor Stats
-  fastify.get('/api/v1/debug/bonding-monitor', async (request, reply) => {
-    try {
-      const bondingMonitor = (fastify as any).bondingMonitor;
-      if (!bondingMonitor) {
-        return reply.code(503).send({
-          success: false,
-          error: 'Bonding monitor not initialized',
-        });
-      }
+  // 🚀 NEW: WebSocket Gateway Stats (replaces old bonding monitor)
+  // Use /api/v1/ws/stats instead (this is just a redirect)
+  fastify.get('/api/v1/debug/websocket-stats', async (request, reply) => {
+    return reply.redirect('/api/v1/ws/stats');
+  });
 
-      const stats = bondingMonitor.getStats();
+  // 🔍 NEW: Check adapter connection status
+  fastify.get('/api/v1/debug/adapter-status', async (request, reply) => {
+    const adapterManager = fastify.adapterManager;
+    
+    if (!adapterManager) {
       return reply.send({
-        success: true,
-        ...stats,
-      });
-    } catch (error) {
-      return reply.code(500).send({
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: 'AdapterManager not initialized',
       });
     }
+
+    // Get individual adapter status
+    const status = {
+      isConnected: adapterManager.isConnected(),
+      quickNode: adapterManager['quickNode']?.isConnected() ?? false,
+      goldsky: adapterManager['goldsky']?.isConnected() ?? false,
+      bitQuery: adapterManager['bitQuery']?.isConnected() ?? false,
+      aerodrome: adapterManager['aerodrome']?.isConnected() ?? false,
+    };
+
+    return reply.send({
+      success: true,
+      data: status,
+    });
+  });
+
+  // 🔍 NEW: List all registered Fastify routes
+  fastify.get('/api/v1/debug/routes', async (request, reply) => {
+    const routes = fastify.printRoutes({ commonPrefix: false });
+    return reply.send({
+      success: true,
+      routes: routes,
+      routesList: fastify.printRoutes({ commonPrefix: false, includeHooks: false }),
+    });
   });
 
   // Test BitQuery Pool

@@ -138,16 +138,12 @@ export default function PlaceBidsInterface({
   const loadAllBids = async () => {
     setBidsLoading(true);
     try {
-      console.log('🔍 Loading all bids for listing:', listingId);
       const result = await BidsApi.getListingBids(listingId, { limit: 50 });
-      console.log('📊 API Response:', result);
 
       if (result.success && result.data) {
-        console.log('✅ Setting bids:', result.data);
         setAllBids((result.data as any) || []);
         setShowAllBids(true);
       } else {
-        console.log('❌ No bids found or API error');
         setAllBids([]);
         setShowAllBids(true);
       }

@@ -134,6 +134,41 @@ export class ChartAggregationService {
         acesUsdPrice,
         currentCandleTimestamp,
       );
+
+      // 🔥 FALLBACK: If no bonding curve data but we have DEX trades, try DEX data
+      // This handles tokens that have graduated but aren't marked in the database yet
+      if (candles.length === 0) {
+        console.log(
+          '[ChartAggregation] ⚠️ No bonding curve data found, checking for DEX trades as fallback...',
+        );
+        
+        // Try to find pool address by checking if there are DEX trades
+        try {
+          const dexTrades = await this.bitQueryService.getDexTrades(tokenAddress, '', {
+            from: options.from,
+            to: options.to,
+            limit: 10, // Just check if any trades exist
+          });
+
+          if (dexTrades.length > 0) {
+            console.log(
+              `[ChartAggregation] ✅ Found ${dexTrades.length} DEX trades - using DEX data instead`,
+            );
+            
+            // Try to extract pool address from trades if available
+            // For now, use empty string - BitQuery can find trades by token address alone
+            // The pool address is mainly used for caching, not for querying
+            candles = await this.fetchDexDataWithSmartSwitching(
+              tokenAddress,
+              '', // Empty pool address - BitQuery will find the pool by token address
+              options,
+              currentCandleTimestamp,
+            );
+          }
+        } catch (error) {
+          console.warn('[ChartAggregation] Failed to check DEX fallback:', error);
+        }
+      }
     } else if (graduationState.dexLiveAt) {
       // TOKEN HAS GRADUATED - check if request spans bonding/DEX boundary
       // console.log('[ChartAggregation] 🏊 Token graduated - checking boundaries');
@@ -565,15 +600,40 @@ export class ChartAggregationService {
     const pricesInAces = bucketTrades.map((t) => t.priceInAces);
     const pricesInUsd = bucketTrades.map((t) => t.priceInUsd);
 
+    // 🔥 NEW: Calculate VWAP for close price
+    // VWAP in ACES = Σ(priceInAces × volumeInAces) / Σ(volumeInAces)
+    const totalValueAces = bucketTrades.reduce(
+      (sum, t) => sum + t.priceInAces * t.amountToken,
+      0
+    );
+    const totalVolumeAces = bucketTrades.reduce((sum, t) => sum + t.amountToken, 0);
+    const vwapCloseAces = totalVolumeAces > 0 ? totalValueAces / totalVolumeAces : pricesInAces[0];
+
+    // VWAP in USD = Σ(priceInUsd × volumeInUsd) / Σ(volumeInUsd)
+    const totalValueUsd = bucketTrades.reduce(
+      (sum, t) => sum + t.priceInUsd * t.volumeUsd,
+      0
+    );
+    const totalVolumeUsd = bucketTrades.reduce((sum, t) => sum + t.volumeUsd, 0);
+    const vwapCloseUsd = totalVolumeUsd > 0 ? totalValueUsd / totalVolumeUsd : pricesInUsd[0];
+
     // OHLC in ACES
     let openAces = pricesInAces[0];
-    const closeAces = pricesInAces[pricesInAces.length - 1];
-    const highAces = Math.max(...pricesInAces);
-    const lowAces = Math.min(...pricesInAces);
+    const closeAces = vwapCloseAces; // ✅ VWAP instead of last trade
+    let highAces = Math.max(...pricesInAces);
+    let lowAces = Math.min(...pricesInAces);
 
     // CRITICAL: Connect to previous candle (NO GAPS!)
     if (previousCandle) {
       openAces = parseFloat(previousCandle.close);
+      
+      // 🔥 FIX: When there's only 1 trade, show a wick based on price movement from previous candle
+      // This ensures candles look correct even with sparse trades
+      if (bucketTrades.length === 1) {
+        const previousCloseAces = parseFloat(previousCandle.close);
+        highAces = Math.max(previousCloseAces, closeAces);
+        lowAces = Math.min(previousCloseAces, closeAces);
+      }
     }
 
     // OHLC in USD
@@ -582,22 +642,36 @@ export class ChartAggregationService {
     if (dataSource === 'dex' && pricesInUsd.some((p) => p > 0)) {
       // DEX: Use BitQuery USD prices (already in USD from BitQuery)
       const firstTradeUsd = pricesInUsd[0];
-      closeUsd = pricesInUsd[pricesInUsd.length - 1];
+      closeUsd = vwapCloseUsd; // ✅ VWAP instead of last trade
       highUsd = Math.max(...pricesInUsd);
       lowUsd = Math.min(...pricesInUsd);
 
       // Connect USD to previous candle
       openUsd = previousCandle ? parseFloat(previousCandle.closeUsd) : firstTradeUsd;
+      
+      // 🔥 FIX: When there's only 1 trade, show a wick based on price movement from previous candle
+      if (previousCandle && bucketTrades.length === 1) {
+        const previousCloseUsd = parseFloat(previousCandle.closeUsd);
+        highUsd = Math.max(previousCloseUsd, closeUsd);
+        lowUsd = Math.min(previousCloseUsd, closeUsd);
+      }
     } else {
       // Bonding Curve: Use snapshot USD prices (already in trades from TradePriceAggregator)
       // The pricesInUsd array (line 391) contains USD values calculated using database snapshots
       const firstTradeUsd = pricesInUsd[0];
-      closeUsd = pricesInUsd[pricesInUsd.length - 1];
+      closeUsd = vwapCloseUsd; // ✅ VWAP instead of last trade
       highUsd = Math.max(...pricesInUsd);
       lowUsd = Math.min(...pricesInUsd);
 
       // Connect USD to previous candle (NO GAPS)
       openUsd = previousCandle ? parseFloat(previousCandle.closeUsd) : firstTradeUsd;
+      
+      // 🔥 FIX: When there's only 1 trade, show a wick based on price movement from previous candle
+      if (previousCandle && bucketTrades.length === 1) {
+        const previousCloseUsd = parseFloat(previousCandle.closeUsd);
+        highUsd = Math.max(previousCloseUsd, closeUsd);
+        lowUsd = Math.min(previousCloseUsd, closeUsd);
+      }
     }
 
     // Volume
@@ -951,24 +1025,55 @@ export class ChartAggregationService {
   ): Promise<Candle[]> {
     const tradeLimit = Math.min((options.limit || 200) * 3, 5000);
 
-    // console.log('[ChartAggregation] 🔥 Fetching recent DEX trades:', {
-    //   limit: tradeLimit,
-    //   from: options.from.toISOString(),
-    //   to: options.to.toISOString(),
-    //   hasProvidedSeed: !!providedSeedCandle,
-    // });
+    // 🔥 NEW: For very recent trades (last 5 minutes), check database first
+    const now = Date.now();
+    const fiveMinutesAgo = now - 5 * 60 * 1000;
+    const isVeryRecentRequest = options.to.getTime() >= fiveMinutesAgo;
 
+    let dbTrades: any[] = [];
+    let combinedFromTime = options.from;
+
+    // Check database for very recent trades (last 5 minutes)
+    if (isVeryRecentRequest) {
+      try {
+        const dbStartTime = Math.max(options.from.getTime(), fiveMinutesAgo);
+        const dbRecords = await this.prisma.dexTrade.findMany({
+          where: {
+            tokenAddress: tokenAddress.toLowerCase(),
+            timestamp: {
+              gte: BigInt(dbStartTime),
+              lte: BigInt(options.to.getTime()),
+            },
+          },
+          orderBy: { timestamp: 'asc' },
+          take: tradeLimit,
+        });
+
+        dbTrades = dbRecords;
+        console.log(`[ChartAggregation] 💾 Fetched ${dbTrades.length} very recent trades from database`);
+
+        // Adjust BitQuery query to fetch only trades older than 5 minutes
+        if (dbTrades.length > 0 && options.from.getTime() < fiveMinutesAgo) {
+          combinedFromTime = new Date(Math.min(options.from.getTime(), fiveMinutesAgo));
+        }
+      } catch (error) {
+        console.error('[ChartAggregation] ❌ Failed to fetch trades from database:', error);
+        // Continue with BitQuery only
+      }
+    }
+
+    // Fetch from BitQuery (skipping very recent if we got them from DB)
     const bitQueryTrades = await this.bitQueryService.getDexTrades(tokenAddress, poolAddress, {
-      from: options.from,
-      to: options.to,
+      from: combinedFromTime,
+      to: isVeryRecentRequest ? new Date(fiveMinutesAgo) : options.to,
       counterTokenAddress: ACES_TOKEN_ADDRESS,
       limit: tradeLimit,
     });
 
-    console.log(`[ChartAggregation] ✅ Fetched ${bitQueryTrades.length} DEX trades from BitQuery`);
+    console.log(`[ChartAggregation] ✅ Fetched ${bitQueryTrades.length} DEX trades from BitQuery + ${dbTrades.length} from database`);
 
-    // Convert to internal Trade format
-    const trades: Trade[] = bitQueryTrades.map((trade) => ({
+    // Convert BitQuery trades to internal Trade format
+    const bitQueryTradesConverted: Trade[] = bitQueryTrades.map((trade) => ({
       timestamp: trade.blockTime,
       priceInAces: parseFloat(trade.priceInAces),
       priceInUsd: parseFloat(trade.priceInUsd),
@@ -977,14 +1082,20 @@ export class ChartAggregationService {
       side: trade.side,
     }));
 
-    if (trades.length > 0) {
-      console.log('[ChartAggregation] 📊 Sample DEX trade for candle creation:', {
-        timestamp: trades[0].timestamp.toISOString(),
-        priceInUsd: trades[0].priceInUsd,
-        priceInAces: trades[0].priceInAces,
-        amountToken: trades[0].amountToken,
-      });
-    }
+    // Convert database trades to internal Trade format
+    const dbTradesConverted: Trade[] = dbTrades.map((trade) => ({
+      timestamp: new Date(Number(trade.timestamp)),
+      priceInAces: trade.priceInAces,
+      priceInUsd: trade.priceInUsd || 0,
+      amountToken: parseFloat(trade.tokenAmount),
+      volumeUsd: trade.priceInUsd ? parseFloat(trade.tokenAmount) * trade.priceInUsd : 0,
+      side: trade.isBuy ? 'buy' : 'sell',
+    }));
+
+    // Combine and sort by timestamp
+    const trades: Trade[] = [...bitQueryTradesConverted, ...dbTradesConverted].sort(
+      (a, b) => a.timestamp.getTime() - b.timestamp.getTime(),
+    );
 
     // 🔥 UPDATED: Use provided seed candle if available, otherwise fetch one
     let seedCandle: Candle | null = providedSeedCandle;
@@ -1160,15 +1271,29 @@ export class ChartAggregationService {
       const baselineEnd = new Date(alignedStart);
       const baselineFrom = new Date(baselineEnd.getTime() - intervalMs * 12);
 
-      const seedTrades = await this.bitQueryService.getDexTrades(tokenAddress, poolAddress, {
+      let seedTrades = await this.bitQueryService.getDexTrades(tokenAddress, poolAddress, {
         from: baselineFrom,
         to: baselineEnd,
         counterTokenAddress: ACES_TOKEN_ADDRESS,
         limit: 25,
       });
 
+      // 🔥 FIX: If no recent trades, look further back (up to 7 days) to find last known price
       if (seedTrades.length === 0) {
-        return null;
+        console.log('[ChartAggregation] 🔍 No recent seed trades, looking further back...');
+        const extendedBaselineFrom = new Date(baselineEnd.getTime() - 7 * 24 * 60 * 60 * 1000); // 7 days back
+        seedTrades = await this.bitQueryService.getDexTrades(tokenAddress, poolAddress, {
+          from: extendedBaselineFrom,
+          to: baselineEnd,
+          counterTokenAddress: ACES_TOKEN_ADDRESS,
+          limit: 1, // Just need the last trade
+        });
+        
+        if (seedTrades.length === 0) {
+          console.log('[ChartAggregation] ⚠️ No trades found in last 7 days, cannot create seed candle');
+          return null;
+        }
+        console.log('[ChartAggregation] ✅ Found seed trade from:', seedTrades[seedTrades.length - 1].blockTime.toISOString());
       }
 
       const lastTrade = seedTrades[seedTrades.length - 1];
