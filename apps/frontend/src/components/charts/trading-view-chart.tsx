@@ -503,6 +503,10 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
         // Critical mobile fix: Ensure container has dimensions before creating widget
         const containerRect = chartContainerRef.current.getBoundingClientRect();
         const containerElement = chartContainerRef.current;
+        const computedStyle = window.getComputedStyle(containerElement);
+
+        // Check if container is actually visible in the viewport
+        const isInViewport = containerRect.top < window.innerHeight && containerRect.bottom > 0;
 
         console.log('[TradingView] Checking container dimensions:', {
           isMobile,
@@ -521,20 +525,32 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
             offsetHeight: containerElement.offsetHeight,
           },
           computedStyle: {
-            display: window.getComputedStyle(containerElement).display,
-            visibility: window.getComputedStyle(containerElement).visibility,
-            position: window.getComputedStyle(containerElement).position,
+            display: computedStyle.display,
+            visibility: computedStyle.visibility,
+            position: computedStyle.position,
+          },
+          viewport: {
+            innerHeight: window.innerHeight,
+            scrollY: window.scrollY,
           },
           parentElement: containerElement.parentElement?.tagName,
           tokenAddress: tokenAddress?.slice(0, 10),
         });
 
-        if (containerRect.height === 0 || containerRect.width === 0) {
+        if (
+          containerRect.height === 0 ||
+          containerRect.width === 0 ||
+          computedStyle.display === 'none' ||
+          computedStyle.visibility === 'hidden'
+        ) {
           console.warn('[TradingView] Container has no dimensions yet, retrying...', {
             width: containerRect.width,
             height: containerRect.height,
             clientWidth: containerElement.clientWidth,
             clientHeight: containerElement.clientHeight,
+            display: computedStyle.display,
+            visibility: computedStyle.visibility,
+            isInViewport,
           });
 
           // Retry after a short delay to let layout settle
@@ -802,6 +818,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
       maybeInstantiate();
 
       // Add a timeout to detect if chart gets stuck in loading state
+      const timeoutDuration = isMobile ? 15000 : 10000;
       const loadingTimeout = setTimeout(() => {
         if (!isCancelled && (isLoading || isReinitializing)) {
           console.error('[TradingView] ❌ Loading timeout - chart stuck in loading state', {
@@ -811,10 +828,15 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
             hasContainer: !!chartContainerRef.current,
             tokenAddress: tokenAddress?.slice(0, 10),
             isMobile,
+            timeoutDuration,
           });
-          setError('Chart loading timeout - please refresh the page');
+          setError(
+            isMobile
+              ? 'Chart is taking longer than expected. Try scrolling away and back, or refresh the page.'
+              : 'Chart loading timeout - please refresh the page',
+          );
         }
-      }, 10000); // 10 second timeout
+      }, timeoutDuration);
 
       return () => {
         isCancelled = true;
