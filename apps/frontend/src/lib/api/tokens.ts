@@ -74,6 +74,10 @@ export interface TokenMetrics {
   holderCount: number;
   totalFeesUsd: number;
   totalFeesAces: string;
+   dexFeesUsd?: number;
+   dexFeesAces?: string;
+   bondingFeesUsd?: number;
+   bondingFeesAces?: string;
   liquidityUsd: number | null;
   liquiditySource: 'bonding_curve' | 'dex' | null;
 }
