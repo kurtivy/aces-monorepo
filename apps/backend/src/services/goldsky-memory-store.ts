@@ -1,7 +1,7 @@
 /**
  * Goldsky In-Memory Event Store
  * Phase 3 - Store Goldsky webhook events in memory and broadcast via WebSocket
- * 
+ *
  * No database needed! Ultra-fast <1ms reads
  */
 
@@ -30,13 +30,13 @@ export class GoldskyMemoryStore extends EventEmitter {
   // In-memory storage (key = tokenAddress.toLowerCase())
   private trades = new Map<string, StoredTrade[]>();
   private bondingStatus = new Map<string, StoredBondingStatus>();
-  
+
   // Configuration
   private config: Required<MemoryStoreConfig>;
-  
+
   // Cleanup interval
   private cleanupInterval: NodeJS.Timeout | null = null;
-  
+
   // Stats
   private stats = {
     totalTradesStored: 0,
@@ -64,7 +64,7 @@ export class GoldskyMemoryStore extends EventEmitter {
    */
   storeTrade(trade: TradeEvent): void {
     const key = trade.tokenAddress.toLowerCase();
-    
+
     const storedTrade: StoredTrade = {
       ...trade,
       receivedAt: Date.now(),
@@ -76,12 +76,12 @@ export class GoldskyMemoryStore extends EventEmitter {
     }
 
     const trades = this.trades.get(key)!;
-    
+
     // 🎯 SEQUENTIAL ORDER: Insert trade in chronological position
     // This handles out-of-order webhooks and maintains time sequence
     const insertIndex = this.findInsertIndex(trades, storedTrade.timestamp);
     trades.splice(insertIndex, 0, storedTrade);
-    
+
     // Keep only the most recent trades (LRU)
     if (trades.length > this.config.maxTradesPerToken) {
       trades.shift(); // Remove oldest
@@ -94,7 +94,9 @@ export class GoldskyMemoryStore extends EventEmitter {
     this.emit('trade', trade);
     this.stats.totalBroadcasts++;
 
-    console.log(`[GoldskyMemoryStore] 📊 Stored trade for ${trade.tokenAddress} at position ${insertIndex} (${trades.length} total)`);
+    console.log(
+      `[GoldskyMemoryStore] 📊 Stored trade for ${trade.tokenAddress} at position ${insertIndex} (${trades.length} total)`,
+    );
   }
 
   /**
@@ -103,24 +105,24 @@ export class GoldskyMemoryStore extends EventEmitter {
    */
   private findInsertIndex(trades: StoredTrade[], timestamp: number): number {
     if (trades.length === 0) return 0;
-    
+
     // If new trade is newer than all existing, append to end
     if (timestamp >= trades[trades.length - 1].timestamp) {
       return trades.length;
     }
-    
+
     // If new trade is older than all existing, insert at start
     if (timestamp < trades[0].timestamp) {
       return 0;
     }
-    
+
     // Binary search to find insertion point
     let left = 0;
     let right = trades.length - 1;
-    
+
     while (left <= right) {
       const mid = Math.floor((left + right) / 2);
-      
+
       if (trades[mid].timestamp === timestamp) {
         return mid + 1; // Insert after same timestamp
       } else if (trades[mid].timestamp < timestamp) {
@@ -129,7 +131,7 @@ export class GoldskyMemoryStore extends EventEmitter {
         right = mid - 1;
       }
     }
-    
+
     return left;
   }
 
@@ -138,7 +140,7 @@ export class GoldskyMemoryStore extends EventEmitter {
    */
   storeBondingStatus(status: BondingStatusEvent): void {
     const key = status.tokenAddress.toLowerCase();
-    
+
     const storedStatus: StoredBondingStatus = {
       ...status,
       receivedAt: Date.now(),
@@ -146,7 +148,7 @@ export class GoldskyMemoryStore extends EventEmitter {
 
     // Store latest bonding status
     this.bondingStatus.set(key, storedStatus);
-    
+
     this.stats.totalBondingStatusStored++;
     this.stats.totalWebhooksReceived++;
 
@@ -163,7 +165,7 @@ export class GoldskyMemoryStore extends EventEmitter {
   getTrades(tokenAddress: string, limit: number = 100): StoredTrade[] {
     const key = tokenAddress.toLowerCase();
     const trades = this.trades.get(key) || [];
-    
+
     // Return most recent trades
     return trades.slice(-limit);
   }
@@ -182,7 +184,7 @@ export class GoldskyMemoryStore extends EventEmitter {
   getTrackedTokens(): string[] {
     const tradeTokens = Array.from(this.trades.keys());
     const bondingTokens = Array.from(this.bondingStatus.keys());
-    
+
     // Merge and deduplicate
     return [...new Set([...tradeTokens, ...bondingTokens])];
   }
@@ -194,7 +196,7 @@ export class GoldskyMemoryStore extends EventEmitter {
     const key = tokenAddress.toLowerCase();
     this.trades.delete(key);
     this.bondingStatus.delete(key);
-    
+
     console.log(`[GoldskyMemoryStore] 🗑️ Cleared data for ${tokenAddress}`);
   }
 
@@ -204,7 +206,7 @@ export class GoldskyMemoryStore extends EventEmitter {
   clearAll(): void {
     this.trades.clear();
     this.bondingStatus.clear();
-    
+
     console.log('[GoldskyMemoryStore] 🗑️ Cleared all data');
   }
 
@@ -214,7 +216,7 @@ export class GoldskyMemoryStore extends EventEmitter {
   getStats() {
     // Calculate approximate memory usage
     const memoryUsageBytes = this.calculateMemoryUsage();
-    
+
     return {
       ...this.stats,
       memoryUsageBytes,
@@ -256,23 +258,23 @@ export class GoldskyMemoryStore extends EventEmitter {
   private cleanup(): void {
     const now = Date.now();
     const maxAge = 24 * 60 * 60 * 1000; // 24 hours
-    
+
     let tradesRemoved = 0;
     let bondingRemoved = 0;
 
     // Remove old trades
     for (const [tokenAddress, trades] of this.trades.entries()) {
       const before = trades.length;
-      
+
       // Keep only trades from last 24 hours
       const filtered = trades.filter((trade) => now - trade.receivedAt < maxAge);
-      
+
       if (filtered.length === 0) {
         this.trades.delete(tokenAddress);
       } else if (filtered.length !== before) {
         this.trades.set(tokenAddress, filtered);
       }
-      
+
       tradesRemoved += before - filtered.length;
     }
 
@@ -314,7 +316,7 @@ export class GoldskyMemoryStore extends EventEmitter {
     this.stopCleanup();
     this.clearAll();
     this.removeAllListeners();
-    
+
     console.log('[GoldskyMemoryStore] 🛑 Shutdown complete');
   }
 }
@@ -328,4 +330,3 @@ export function getMemoryStore(): GoldskyMemoryStore {
   }
   return memoryStoreInstance;
 }
-
