@@ -33,19 +33,62 @@ export class AcesUsdPriceService {
     private acesTokenAddress: string,
   ) {}
 
+  // Request coalescing for price fetch
+  private pendingRequest: Promise<PriceResult> | null = null;
+
   /**
-   * Get ACES price (in USD) with caching and fallbacks
+   * Get ACES price (in USD) with caching, SWR, and coalescing
    */
   async getAcesUsdPrice(): Promise<PriceResult> {
-    // Check cache
-    if (this.cachedPrice && Date.now() < this.cachedPrice.expiresAt) {
-      return {
-        price: this.cachedPrice.price,
-        source: 'aerodrome',
-        timestamp: Date.now(),
-      };
+    // 1. Check cache
+    if (this.cachedPrice) {
+      const isFresh = Date.now() < this.cachedPrice.expiresAt;
+      const isStaleButUsable = Date.now() < this.cachedPrice.expiresAt + 60000; // 1 min grace period
+
+      if (isFresh) {
+        return {
+          price: this.cachedPrice.price,
+          source: 'aerodrome', // or whatever source was used
+          timestamp: Date.now(),
+        };
+      }
+
+      if (isStaleButUsable) {
+        // Return stale data immediately, refresh in background
+        this.refreshPriceInBackground();
+        return {
+          price: this.cachedPrice.price,
+          source: 'fallback',
+          timestamp: Date.now(),
+        };
+      }
     }
 
+    // 2. Coalescing: specific request in flight?
+    if (this.pendingRequest) {
+      return this.pendingRequest;
+    }
+
+    // 3. Fetch fresh
+    this.pendingRequest = this.fetchPrice();
+    try {
+      return await this.pendingRequest;
+    } finally {
+      this.pendingRequest = null;
+    }
+  }
+
+  private refreshPriceInBackground() {
+    if (this.pendingRequest) return;
+    this.pendingRequest = this.fetchPrice();
+    this.pendingRequest
+      .catch((err) => console.error('[AcesUsdPrice] Background refresh failed:', err))
+      .finally(() => {
+        this.pendingRequest = null;
+      });
+  }
+
+  private async fetchPrice(): Promise<PriceResult> {
     // Try Aerodrome first (on-chain, most direct)
     try {
       // console.log('[AcesUsdPrice] 🔍 Attempting to fetch from Aerodrome...');
@@ -80,9 +123,9 @@ export class AcesUsdPriceService {
       console.warn('[AcesUsdPrice] CoinGecko failed:', error);
     }
 
-    // Fallback: Use cached price if available
+    // Fallback: Use cached price if available (even if very old)
     if (this.cachedPrice) {
-      console.warn('[AcesUsdPrice] Using stale cached price');
+      console.warn('[AcesUsdPrice] Using stale cached price (expired > 1m ago)');
       return {
         price: this.cachedPrice.price,
         source: 'fallback',

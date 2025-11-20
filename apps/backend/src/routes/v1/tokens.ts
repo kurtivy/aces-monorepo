@@ -19,7 +19,7 @@ interface TokenParams {
 /**
  * 🔥 NEW: Calculate bonding curve volume with accurate historical pricing
  * Fetches individual trades from subgraph and calculates USD value at time of trade
- * 
+ *
  * @param tokenAddress - Token contract address
  * @param startTime - Start of time window
  * @param endTime - End of time window
@@ -112,10 +112,53 @@ interface HolderQuery {
   chainId?: number;
 }
 
+// 🔥 LOAD TEST FIX: Health endpoint cache
+interface HealthCacheEntry {
+  data: unknown;
+  timestamp: number;
+}
+
 export async function tokensRoutes(fastify: FastifyInstance) {
   const tokenService = new TokenService(fastify.prisma);
   const tokenHolderService = new TokenHolderService();
   const bitQueryService = new BitQueryService();
+
+  // 🔥 LOAD TEST FIX: In-memory cache for health endpoint (5s TTL)
+  const healthCache = new Map<string, HealthCacheEntry>();
+  const HEALTH_CACHE_TTL_MS = 5000; // 5 seconds - Fresh
+  const HEALTH_STALE_TTL_MS = 60000; // 1 minute - Stale but usable
+  let healthCacheHits = 0;
+  let healthCacheMisses = 0;
+
+  // Request coalescing map for health endpoint
+  const healthPendingRequests = new Map<string, Promise<any>>();
+
+  // 🔥 LOAD TEST FIX: Cache stats endpoint for observability
+  fastify.get('/_cache-stats', async (_request, reply) => {
+    const chartStats = (fastify as any).chartAggregationService?.getCacheStats() || null;
+    const marketCapStats = (fastify as any).marketCapService?.getCacheStats() || null;
+
+    const healthHitRate =
+      healthCacheHits + healthCacheMisses > 0
+        ? ((healthCacheHits / (healthCacheHits + healthCacheMisses)) * 100).toFixed(2)
+        : '0.00';
+
+    return reply.send({
+      success: true,
+      data: {
+        health: {
+          size: healthCache.size,
+          hits: healthCacheHits,
+          misses: healthCacheMisses,
+          hitRate: `${healthHitRate}%`,
+          ttlMs: HEALTH_CACHE_TTL_MS,
+        },
+        chart: chartStats,
+        marketCap: marketCapStats,
+      },
+      timestamp: Date.now(),
+    });
+  });
 
   // Unified health endpoint - combines bonding data, market cap, and metrics
   // MUST come before /:address route to avoid route conflicts
@@ -148,127 +191,197 @@ export async function tokensRoutes(fastify: FastifyInstance) {
         const { chainId: chainIdStr, currency = 'usd' } = request.query;
         const chainId = chainIdStr ? parseInt(chainIdStr) : BASE_MAINNET_CHAIN_ID;
 
-        fastify.log.info({ address, chainId }, '🏥 [Health] Fetching unified health data');
+        // 🔥 LOAD TEST FIX: Check cache first with Stale-While-Revalidate
+        const cacheKey = `${address.toLowerCase()}:${chainId}:${currency}`;
+        const cached = healthCache.get(cacheKey);
+        const now = Date.now();
 
-        // Get base URL for internal API calls
-        const protocol = request.headers['x-forwarded-proto'] || request.protocol;
-        const host = request.headers['x-forwarded-host'] || request.hostname;
-        const baseUrl = `${protocol}://${host}`;
+        // Helper to fetch and cache
+        const fetchAndCache = async () => {
+          try {
+            // Get base URL for internal API calls
+            const protocol = request.headers['x-forwarded-proto'] || request.protocol;
+            const host = request.headers['x-forwarded-host'] || request.hostname;
+            const baseUrl = `${protocol}://${host}`;
 
-        // Fetch all data in parallel for maximum performance
-        const [bondingResponse, metricsResponse, marketCapResponse] = await Promise.allSettled([
-          // 1. Bonding data
-          fetch(`${baseUrl}/api/v1/bonding/${address}/data?chainId=${chainId}`).then((r) =>
-            r.json(),
-          ),
+            // Fetch all data in parallel for maximum performance
+            const [bondingResponse, metricsResponse, marketCapResponse] = await Promise.allSettled([
+              // 1. Bonding data
+              fetch(`${baseUrl}/api/v1/bonding/${address}/data?chainId=${chainId}`).then((r) =>
+                r.json(),
+              ),
 
-          // 2. Metrics data
-          fetch(`${baseUrl}/api/v1/tokens/${address}/metrics?chainId=${chainId}`).then((r) =>
-            r.json(),
-          ),
+              // 2. Metrics data
+              fetch(`${baseUrl}/api/v1/tokens/${address}/metrics?chainId=${chainId}`).then((r) =>
+                r.json(),
+              ),
 
-          // 3. 🔥 UPDATED: Market cap from dedicated service (single source of truth)
-          // No longer uses candle-based market cap - uses current price/reserves instead
-          fetch(`${baseUrl}/api/v1/market-cap/${address}`).then((r) => r.json()),
-        ]);
+              // 3. 🔥 UPDATED: Market cap from dedicated service (single source of truth)
+              // No longer uses candle-based market cap - uses current price/reserves instead
+              fetch(`${baseUrl}/api/v1/market-cap/${address}`).then((r) => r.json()),
+            ]);
 
-        // Extract data from results
-        const bondingData =
-          bondingResponse.status === 'fulfilled' &&
-          (bondingResponse.value as { success: boolean; data: unknown })?.success
-            ? (bondingResponse.value as { success: boolean; data: unknown }).data
-            : null;
+            // Extract data from results
+            const bondingData =
+              bondingResponse.status === 'fulfilled' &&
+              (bondingResponse.value as { success: boolean; data: unknown })?.success
+                ? (bondingResponse.value as { success: boolean; data: unknown }).data
+                : null;
 
-        type MetricsResponseType = { success: boolean; data: unknown };
-        const metricsData =
-          metricsResponse.status === 'fulfilled' &&
-          (metricsResponse.value as MetricsResponseType)?.success
-            ? (metricsResponse.value as MetricsResponseType).data
-            : null;
+            type MetricsResponseType = { success: boolean; data: unknown };
+            const metricsData =
+              metricsResponse.status === 'fulfilled' &&
+              (metricsResponse.value as MetricsResponseType)?.success
+                ? (metricsResponse.value as MetricsResponseType).data
+                : null;
 
-        // 🔥 UPDATED: Parse market cap from new dedicated endpoint
-        let marketCapData = null;
-        if (marketCapResponse.status === 'fulfilled') {
-          const marketCapResult = marketCapResponse.value as {
-            marketCapUsd?: number;
-            currentPriceUsd?: number;
-            supply?: number;
-            error?: string;
-          };
+            // 🔥 UPDATED: Parse market cap from new dedicated endpoint
+            let marketCapData = null;
+            if (marketCapResponse.status === 'fulfilled') {
+              const marketCapResult = marketCapResponse.value as {
+                marketCapUsd?: number;
+                currentPriceUsd?: number;
+                supply?: number;
+                error?: string;
+              };
 
-          // New endpoint returns market cap data directly (not nested in 'data')
-          if (
-            marketCapResult &&
-            (marketCapResult.marketCapUsd !== undefined || marketCapResult.currentPriceUsd !== undefined)
-          ) {
-            const marketCapUsd = marketCapResult.marketCapUsd || 0;
-            const currentPriceUsd = marketCapResult.currentPriceUsd || 0;
-            const supply = marketCapResult.supply || 1_000_000_000; // Default 1B supply
+              // New endpoint returns market cap data directly (not nested in 'data')
+              if (
+                marketCapResult &&
+                (marketCapResult.marketCapUsd !== undefined ||
+                  marketCapResult.currentPriceUsd !== undefined)
+              ) {
+                const marketCapUsd = marketCapResult.marketCapUsd || 0;
+                const currentPriceUsd = marketCapResult.currentPriceUsd || 0;
+                const supply = marketCapResult.supply || 1_000_000_000; // Default 1B supply
 
-            // Get ACES/USD price from service for currency conversion
-            let marketCapAces: number;
-            let currentPriceAces: number;
+                // Get ACES/USD price from service for currency conversion
+                let marketCapAces: number;
+                let currentPriceAces: number;
 
-            if (currency === 'usd') {
-              // Market cap data is already in USD
-              marketCapAces = marketCapUsd > 0 && currentPriceUsd > 0 ? marketCapUsd / currentPriceUsd : 0;
-              currentPriceAces = 0; // Would need ACES/USD conversion, but we don't have it here
-            } else {
-              // Market cap in ACES would need conversion from USD
-              marketCapAces = 0;
-              currentPriceAces = 0;
+                if (currency === 'usd') {
+                  // Market cap data is already in USD
+                  marketCapAces =
+                    marketCapUsd > 0 && currentPriceUsd > 0 ? marketCapUsd / currentPriceUsd : 0;
+                  currentPriceAces = 0; // Would need ACES/USD conversion, but we don't have it here
+                } else {
+                  // Market cap in ACES would need conversion from USD
+                  marketCapAces = 0;
+                  currentPriceAces = 0;
+                }
+
+                marketCapData = {
+                  marketCapAces,
+                  marketCapUsd,
+                  circulatingSupply: supply,
+                  currentPriceAces,
+                  currentPriceUsd,
+                  lastUpdated: Date.now(),
+                };
+              }
             }
 
-            marketCapData = {
-              marketCapAces,
-              marketCapUsd,
-              circulatingSupply: supply,
-              currentPriceAces,
-              currentPriceUsd,
-              lastUpdated: Date.now(),
+            // Log any failures
+            if (bondingResponse.status === 'rejected') {
+              fastify.log.warn(
+                { error: bondingResponse.reason },
+                '⚠️ [Health] Bonding data fetch failed',
+              );
+            }
+            if (metricsResponse.status === 'rejected') {
+              fastify.log.warn(
+                { error: metricsResponse.reason },
+                '⚠️ [Health] Metrics data fetch failed',
+              );
+            }
+            if (marketCapResponse.status === 'rejected') {
+              fastify.log.warn(
+                { error: marketCapResponse.reason },
+                '⚠️ [Health] Market cap fetch failed',
+              );
+            }
+
+            fastify.log.info(
+              {
+                address,
+                hasBonding: !!bondingData,
+                hasMetrics: !!metricsData,
+                hasMarketCap: !!marketCapData,
+              },
+              '✅ [Health] Unified health data fetched',
+            );
+
+            const responseData = {
+              success: true,
+              data: {
+                bondingData,
+                metricsData,
+                marketCapData,
+              },
+              timestamp: Date.now(),
             };
+
+            // Update cache
+            healthCache.set(cacheKey, {
+              data: responseData,
+              timestamp: Date.now(),
+            });
+
+            return responseData;
+          } finally {
+            healthPendingRequests.delete(cacheKey);
+          }
+        };
+
+        // SWR Logic
+        if (cached) {
+          const age = now - cached.timestamp;
+
+          // Case A: Fresh Cache -> Return immediately
+          if (age < HEALTH_CACHE_TTL_MS) {
+            healthCacheHits++;
+            fastify.log.debug({ address, chainId }, '🎯 [Health] Cache hit');
+            return reply.send(cached.data);
+          }
+
+          // Case B: Stale Cache -> Return immediately, refresh in background
+          if (age < HEALTH_STALE_TTL_MS) {
+            healthCacheHits++;
+            fastify.log.debug(
+              { address, chainId },
+              '♻️ [Health] Stale cache hit, refreshing in background',
+            );
+
+            if (!healthPendingRequests.has(cacheKey)) {
+              const promise = fetchAndCache();
+              healthPendingRequests.set(cacheKey, promise);
+              // Handle background error
+              promise.catch((err) => {
+                fastify.log.error({ err, address }, '❌ [Health] Background refresh failed');
+              });
+            }
+
+            return reply.send(cached.data);
           }
         }
 
-        // Log any failures
-        if (bondingResponse.status === 'rejected') {
-          fastify.log.warn(
-            { error: bondingResponse.reason },
-            '⚠️ [Health] Bonding data fetch failed',
-          );
-        }
-        if (metricsResponse.status === 'rejected') {
-          fastify.log.warn(
-            { error: metricsResponse.reason },
-            '⚠️ [Health] Metrics data fetch failed',
-          );
-        }
-        if (marketCapResponse.status === 'rejected') {
-          fastify.log.warn(
-            { error: marketCapResponse.reason },
-            '⚠️ [Health] Market cap fetch failed',
-          );
+        // Case C: No Cache or Too Old -> Wait for fetch
+        healthCacheMisses++;
+
+        // Join pending request if exists
+        if (healthPendingRequests.has(cacheKey)) {
+          // console.log(`[Health] 🤝 Joining pending request for ${address}`);
+          const data = await healthPendingRequests.get(cacheKey);
+          return reply.send(data);
         }
 
-        fastify.log.info(
-          {
-            address,
-            hasBonding: !!bondingData,
-            hasMetrics: !!metricsData,
-            hasMarketCap: !!marketCapData,
-          },
-          '✅ [Health] Unified health data fetched',
-        );
+        // Start new request
+        fastify.log.info({ address, chainId }, '🏥 [Health] Fetching unified health data (cold)');
+        const promise = fetchAndCache();
+        healthPendingRequests.set(cacheKey, promise);
 
-        return reply.send({
-          success: true,
-          data: {
-            bondingData,
-            metricsData,
-            marketCapData,
-          },
-          timestamp: Date.now(),
-        });
+        const responseData = await promise;
+        return reply.send(responseData);
       } catch (error) {
         fastify.log.error({ error }, '❌ [Health] Failed to fetch unified health data');
         return reply.code(500).send({
