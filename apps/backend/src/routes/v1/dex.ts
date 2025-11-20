@@ -100,6 +100,11 @@ export async function dexRoutes(fastify: FastifyInstance) {
   ).toLowerCase();
   const wethDecimals = Number(process.env.AERODROME_WETH_DECIMALS || 18);
 
+  // 🔥 QUICK WIN #2: Request coalescing for trades endpoint
+  const dexTradesCache = new Map<string, { data: any; timestamp: number }>();
+  const dexTradesPendingRequests = new Map<string, Promise<any>>();
+  const DEX_TRADES_CACHE_TTL_MS = 180000; // 3 minutes (trades don't change much)
+
   const assetMetadata = {
     ACES: {
       symbol: 'ACES',
@@ -1385,27 +1390,49 @@ export async function dexRoutes(fastify: FastifyInstance) {
         const { address } = request.params;
         const { limit = 80 } = request.query; // Changed default to 80
 
-        // 🔥 OPTIMIZED: Use token metadata cache instead of direct query
-        const tokenCache = (fastify as any).tokenMetadataCache;
-        const tokenMetadata = await tokenCache.getTokenMetadata(address);
+        // 🔥 QUICK WIN #2: Cache + Request Coalescing
+        const cacheKey = `${address.toLowerCase()}:${limit}`;
+        const now = Date.now();
 
-        // Determine if token is graduated
-        const isGraduated = tokenMetadata?.poolAddress && tokenMetadata.phase === 'DEX_TRADING';
-        const dexLiveAt = tokenMetadata?.dexLiveAt;
+        // Check cache first
+        const cached = dexTradesCache.get(cacheKey);
+        if (cached && now - cached.timestamp < DEX_TRADES_CACHE_TTL_MS) {
+          fastify.log.info({ address, limit, age: now - cached.timestamp }, '🎯 DEX Trades cache hit');
+          return reply.send(cached.data);
+        }
 
-        // Fetch trades from both sources
-        const allTrades: Array<{
-          txHash: string;
-          timestamp: number;
-          blockNumber: string;
-          direction: 'buy' | 'sell';
-          amountToken: string;
-          amountCounter: string;
-          priceInCounter: number;
-          priceInUsd?: number;
-          trader?: string;
-          source: 'bonding' | 'dex';
-        }> = [];
+        // Check if request is already pending (coalescing)
+        const pending = dexTradesPendingRequests.get(cacheKey);
+        if (pending) {
+          fastify.log.info({ address, limit }, '🤝 Joining pending DEX trades request');
+          const result = await pending;
+          return reply.send(result);
+        }
+
+        // Start new request
+        const promise = (async () => {
+          try {
+            // 🔥 OPTIMIZED: Use token metadata cache instead of direct query
+            const tokenCache = (fastify as any).tokenMetadataCache;
+            const tokenMetadata = await tokenCache.getTokenMetadata(address);
+
+            // Determine if token is graduated
+            const isGraduated = tokenMetadata?.poolAddress && tokenMetadata.phase === 'DEX_TRADING';
+            const dexLiveAt = tokenMetadata?.dexLiveAt;
+
+            // Fetch trades from both sources
+            const allTrades: Array<{
+              txHash: string;
+              timestamp: number;
+              blockNumber: string;
+              direction: 'buy' | 'sell';
+              amountToken: string;
+              amountCounter: string;
+              priceInCounter: number;
+              priceInUsd?: number;
+              trader?: string;
+              source: 'bonding' | 'dex';
+            }> = [];
 
         // 1. Fetch DEX trades from BitQuery (if graduated)
         if (isGraduated) {
@@ -1490,21 +1517,37 @@ export async function dexRoutes(fastify: FastifyInstance) {
           `[DEX Trades] ✅ Combined ${finalTrades.length} trades (${finalTrades.filter((t) => t.source === 'dex').length} DEX + ${finalTrades.filter((t) => t.source === 'bonding').length} bonding)`,
         );
 
-        // Include graduation metadata (using cached data)
-        const graduationMeta = {
-          isDexLive: isGraduated,
-          poolAddress: tokenMetadata?.poolAddress || null,
-          dexLiveAt: dexLiveAt?.toISOString() || null,
-          bondingCutoff: dexLiveAt?.toISOString() || null,
-        };
+            // Include graduation metadata (using cached data)
+            const graduationMeta = {
+              isDexLive: isGraduated,
+              poolAddress: tokenMetadata?.poolAddress || null,
+              dexLiveAt: dexLiveAt?.toISOString() || null,
+              bondingCutoff: dexLiveAt?.toISOString() || null,
+            };
 
-        return reply.send({
-          success: true,
-          data: finalTrades,
-          meta: {
-            graduation: graduationMeta,
-          },
-        });
+            const response = {
+              success: true,
+              data: finalTrades,
+              meta: {
+                graduation: graduationMeta,
+              },
+            };
+
+            // Cache the response
+            dexTradesCache.set(cacheKey, { data: response, timestamp: Date.now() });
+            return response;
+          } finally {
+            // Clean up pending request
+            dexTradesPendingRequests.delete(cacheKey);
+          }
+        })();
+
+        // Store pending request for coalescing
+        dexTradesPendingRequests.set(cacheKey, promise);
+
+        // Wait for result
+        const result = await promise;
+        return reply.send(result);
       } catch (error) {
         console.error('[DEX Trades] ❌ ERROR in trades endpoint:', error);
         console.error(

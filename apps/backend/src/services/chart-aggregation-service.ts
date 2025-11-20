@@ -81,10 +81,10 @@ export class ChartAggregationService {
   private readonly GRADUATED_SUPPLY = '1000000000'; // 1B tokens after graduation
   private tradePriceAggregator: TradePriceAggregator;
 
-  // 🔥 LOAD TEST FIX: In-memory cache for chart data (30s TTL)
+  // 🔥 LOAD TEST FIX: In-memory cache for chart data (5min TTL)
   private chartCache = new Map<string, ChartCacheEntry>();
-  private readonly CACHE_TTL_MS = 30000; // 30 seconds - Fresh
-  private readonly STALE_TTL_MS = 300000; // 5 minutes - Stale but usable
+  private readonly CACHE_TTL_MS = 300000; // 5 minutes - Fresh (historical data doesn't change)
+  private readonly STALE_TTL_MS = 900000; // 15 minutes - Stale but usable
   private cacheHits = 0;
   private cacheMisses = 0;
 

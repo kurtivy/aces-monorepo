@@ -133,6 +133,11 @@ export async function tokensRoutes(fastify: FastifyInstance) {
   // Request coalescing map for health endpoint
   const healthPendingRequests = new Map<string, Promise<any>>();
 
+  // 🔥 QUICK WIN #1: Request coalescing for trades endpoint
+  const tradesCache = new Map<string, { data: any; timestamp: number }>();
+  const tradesPendingRequests = new Map<string, Promise<any>>();
+  const TRADES_CACHE_TTL_MS = 180000; // 3 minutes (trades don't change much)
+
   // 🔥 LOAD TEST FIX: Cache stats endpoint for observability
   fastify.get('/_cache-stats', async (_request, reply) => {
     const chartStats = (fastify as any).chartAggregationService?.getCacheStats() || null;
@@ -449,49 +454,87 @@ export async function tokensRoutes(fastify: FastifyInstance) {
         const { address } = request.params;
         const { limit = 50 } = request.query;
 
-        const trades = await tokenService.getRecentTradesForToken(address, limit);
+        // 🔥 QUICK WIN #1: Cache + Request Coalescing
+        const cacheKey = `${address.toLowerCase()}:${limit}`;
+        const now = Date.now();
 
-        // Include graduation metadata for frontend detection (non-fatal if DB unavailable)
-        let token: {
-          phase: string | null;
-          priceSource: string | null;
-          poolAddress: string | null;
-          dexLiveAt: Date | null;
-        } | null = null;
-        try {
-          token = await fastify.prisma.token.findUnique({
-            where: { contractAddress: address.toLowerCase() },
-            select: {
-              phase: true,
-              priceSource: true,
-              poolAddress: true,
-              dexLiveAt: true,
-            },
-          });
-        } catch (e) {
-          fastify.log.warn(
-            { error: e },
-            'Graduation metadata lookup failed — proceeding without meta',
-          );
-          token = null;
+        // Check cache first
+        const cached = tradesCache.get(cacheKey);
+        if (cached && now - cached.timestamp < TRADES_CACHE_TTL_MS) {
+          fastify.log.info({ address, limit, age: now - cached.timestamp }, '🎯 Trades cache hit');
+          return reply.send(cached.data);
         }
 
-        const graduationMeta = token
-          ? {
-              isDexLive: token.phase === 'DEX_TRADING',
-              poolAddress: token.poolAddress,
-              dexLiveAt: token.dexLiveAt?.toISOString() || null,
-              bondingCutoff: token.dexLiveAt?.toISOString() || null,
-            }
-          : null;
+        // Check if request is already pending (coalescing)
+        const pending = tradesPendingRequests.get(cacheKey);
+        if (pending) {
+          fastify.log.info({ address, limit }, '🤝 Joining pending trades request');
+          const result = await pending;
+          return reply.send(result);
+        }
 
-        return reply.send({
-          success: true,
-          data: trades,
-          meta: {
-            graduation: graduationMeta,
-          },
-        });
+        // Start new request
+        const promise = (async () => {
+          try {
+            const trades = await tokenService.getRecentTradesForToken(address, limit);
+
+            // Include graduation metadata for frontend detection (non-fatal if DB unavailable)
+            let token: {
+              phase: string | null;
+              priceSource: string | null;
+              poolAddress: string | null;
+              dexLiveAt: Date | null;
+            } | null = null;
+            try {
+              token = await fastify.prisma.token.findUnique({
+                where: { contractAddress: address.toLowerCase() },
+                select: {
+                  phase: true,
+                  priceSource: true,
+                  poolAddress: true,
+                  dexLiveAt: true,
+                },
+              });
+            } catch (e) {
+              fastify.log.warn(
+                { error: e },
+                'Graduation metadata lookup failed — proceeding without meta',
+              );
+              token = null;
+            }
+
+            const graduationMeta = token
+              ? {
+                  isDexLive: token.phase === 'DEX_TRADING',
+                  poolAddress: token.poolAddress,
+                  dexLiveAt: token.dexLiveAt?.toISOString() || null,
+                  bondingCutoff: token.dexLiveAt?.toISOString() || null,
+                }
+              : null;
+
+            const response = {
+              success: true,
+              data: trades,
+              meta: {
+                graduation: graduationMeta,
+              },
+            };
+
+            // Cache the response
+            tradesCache.set(cacheKey, { data: response, timestamp: Date.now() });
+            return response;
+          } finally {
+            // Clean up pending request
+            tradesPendingRequests.delete(cacheKey);
+          }
+        })();
+
+        // Store pending request for coalescing
+        tradesPendingRequests.set(cacheKey, promise);
+
+        // Wait for result
+        const result = await promise;
+        return reply.send(result);
       } catch (error) {
         fastify.log.error({ error }, 'Trades fetch error');
         return reply.code(500).send({
