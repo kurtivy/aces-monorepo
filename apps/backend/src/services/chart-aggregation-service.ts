@@ -390,103 +390,58 @@ export class ChartAggregationService {
     const toTimestamp = Math.floor(to.getTime() / 1000);
 
     try {
-      // 🔥 OPTIMIZED: Reuse trade aggregator with snapshot cache
-      const tradesWithPrices = await this.tradePriceAggregator.getTradesWithPrices(
-        tokenAddress,
-        Math.min(limit, 1000), // 🔥 OPTIMIZED: Use passed limit (capped at subgraph max)
-        fromTimestamp,
-        toTimestamp,
-      );
+      // 🔥 OPTION A + C: Parallelize trade fetching and metadata lookup
+      const [tradesWithPrices, tokenMetadata] = await Promise.all([
+        // Fetch trades with historical ACES prices
+        this.tradePriceAggregator.getTradesWithPrices(
+          tokenAddress,
+          Math.min(limit, 1000), // 🔥 OPTIMIZED: Use passed limit (capped at subgraph max)
+          fromTimestamp,
+          toTimestamp,
+        ),
+        // 🔥 OPTION A: Use cached metadata (includes steepness/floor from SubGraph)
+        this.tokenMetadataCache.getTokenMetadata(tokenAddress),
+      ]);
 
       // console.log(
       //   `[ChartAggregation] Fetched ${tradesWithPrices.length} trades with historical ACES prices`,
       // );
 
-      // 🔥 Fetch token parameters (steepness, floor) from SubGraph
-      let steepness: string | null = null;
-      let floor: string | null = null;
+      // 🔥 OPTION A: Get token parameters from cache (no SubGraph call needed if cached!)
+      let steepness: string | null = tokenMetadata?.steepness || null;
+      let floor: string | null = tokenMetadata?.floor || null;
 
-      const subgraphUrl = process.env.GOLDSKY_SUBGRAPH_URL || process.env.SUBGRAPH_URL;
-
-      if (!subgraphUrl) {
-        console.warn(
-          `[ChartAggregation] ⚠️ SubGraph URL not configured (GOLDSKY_SUBGRAPH_URL or SUBGRAPH_URL missing)`,
-        );
-      } else {
+      // Fallback: If cache doesn't have metadata, fetch directly from SubGraph (should be rare)
+      if ((!steepness || !floor) && (process.env.GOLDSKY_SUBGRAPH_URL || process.env.SUBGRAPH_URL)) {
         try {
           const query = `{
             tokens(where: {address: "${tokenAddress.toLowerCase()}"}) {
-              address
               steepness
               floor
             }
           }`;
 
-          // Add timeout and retry logic to handle ECONNRESET errors
-          const fetchWithTimeout = async (url: string, options: RequestInit, timeoutMs = 5000) => {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), timeoutMs);
+          const response = await fetch(process.env.GOLDSKY_SUBGRAPH_URL || process.env.SUBGRAPH_URL!, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query }),
+            signal: AbortSignal.timeout(3000), // 3s timeout
+          });
 
-            try {
-              const response = await fetch(url, {
-                ...options,
-                signal: controller.signal,
-              });
-              return response;
-            } finally {
-              clearTimeout(timeout);
+          if (response.ok) {
+            const result = (await response.json()) as {
+              data?: { tokens?: Array<{ steepness: string; floor: string }> };
+            };
+            const tokens = result?.data?.tokens;
+
+            if (tokens && tokens.length > 0) {
+              steepness = tokens[0].steepness;
+              floor = tokens[0].floor;
             }
-          };
-
-          const maxRetries = 2;
-          let lastError: Error | null = null;
-
-          for (let attempt = 0; attempt <= maxRetries; attempt++) {
-            try {
-              const response = await fetchWithTimeout(
-                subgraphUrl,
-                {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ query }),
-                },
-                5000, // 5 second timeout
-              );
-
-              if (response.ok) {
-                const result = (await response.json()) as {
-                  data?: { tokens?: Array<{ steepness: string; floor: string }> };
-                };
-                const tokens = result?.data?.tokens;
-
-                if (tokens && tokens.length > 0) {
-                  steepness = tokens[0].steepness;
-                  floor = tokens[0].floor;
-                  break; // Success, exit retry loop
-                }
-              } else {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-              }
-            } catch (error) {
-              lastError = error as Error;
-
-              if (attempt < maxRetries) {
-                const backoffMs = Math.min(1000 * Math.pow(2, attempt), 3000);
-                console.warn(
-                  `[ChartAggregation] ⚠️ SubGraph fetch attempt ${attempt + 1} failed, retrying in ${backoffMs}ms...`,
-                  error instanceof Error ? error.message : error,
-                );
-                await new Promise((resolve) => setTimeout(resolve, backoffMs));
-              }
-            }
-          }
-
-          if (lastError && !steepness && !floor) {
-            throw lastError;
           }
         } catch (error) {
-          console.error(
-            `[ChartAggregation] ❌ Failed to fetch token parameters from SubGraph after retries:`,
+          console.warn(
+            `[ChartAggregation] ⚠️ Fallback SubGraph fetch failed for ${tokenAddress}:`,
             error instanceof Error ? error.message : error,
           );
         }
