@@ -45,7 +45,8 @@ const MAX_BACKOFF = 30000;
 const MAX_FAILURES = 5;
 
 // Polling intervals
-const ACTIVE_TRADING_INTERVAL = 5000; // 5 seconds when actively trading
+// 🔥 LOAD TEST FIX: Increased from 5s to 15s to reduce backend load (WebSocket provides real-time trades)
+const ACTIVE_TRADING_INTERVAL = 15000; // 15 seconds when actively trading
 const BACKGROUND_INTERVAL = 30000; // 30 seconds when in background
 const INTERACTION_TIMEOUT = 30000; // Consider inactive after 30s of no interaction
 

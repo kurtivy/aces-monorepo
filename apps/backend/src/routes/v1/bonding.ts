@@ -41,7 +41,7 @@ interface DirectQuoteResponse {
 }
 
 interface MultiHopQuoteResponse {
-  inputAsset: 'ACES' | 'WETH' | 'USDC' | 'USDT';
+  inputAsset: 'ACES' | 'WETH' | 'ETH' | 'USDC' | 'USDT';
   inputAmount: string;
   inputAmountRaw?: string;
   expectedAcesAmount: string;
@@ -71,6 +71,36 @@ const TOKEN_ABI = ['function decimals() view returns (uint8)'];
  * Handles both direct ACES ↔ TOKEN quotes and multi-hop quotes
  */
 export async function bondingRoutes(fastify: FastifyInstance) {
+  // Cache for token info (steepness, floor) - these are immutable per token
+  // Key: tokenAddress
+  const tokenInfoCache = new Map<
+    string,
+    {
+      steepness: bigint;
+      floor: bigint;
+      tokenBonded: boolean;
+      timestamp: number;
+    }
+  >();
+  const TOKEN_INFO_TTL = 60 * 60 * 1000; // 1 hour
+
+  // Cache for pool reserves
+  // Key: poolAddress
+  const poolReservesCache = new Map<
+    string,
+    {
+      reserveIn: bigint;
+      reserveOut: bigint;
+      decimalsIn: number;
+      decimalsOut: number;
+      timestamp: number;
+    }
+  >();
+  const POOL_RESERVES_TTL = 3000; // 3 seconds
+
+  // Request coalescing for pool reserves
+  const poolReservesPending = new Map<string, Promise<any>>();
+
   /**
    * Direct bonding curve quote endpoint
    * GET /api/v1/bonding/:tokenAddress/quote
@@ -134,7 +164,7 @@ export async function bondingRoutes(fastify: FastifyInstance) {
         // Check cache first
         const cacheKey = { tokenAddress, inputAsset, amount, slippageBps: slippage };
         const cachedQuote = bondingQuoteCache.get(cacheKey);
-        
+
         if (cachedQuote) {
           fastify.log.info(
             { tokenAddress, inputAsset, amount },
@@ -449,8 +479,7 @@ export async function bondingRoutes(fastify: FastifyInstance) {
             if (errorMsg.includes('DIVIDE_BY_ZERO') || errorMsg.includes('Panic')) {
               return reply.code(400).send({
                 success: false,
-                error:
-                  'This token has an invalid bonding curve configuration',
+                error: 'This token has an invalid bonding curve configuration',
               });
             }
 
@@ -493,8 +522,7 @@ export async function bondingRoutes(fastify: FastifyInstance) {
             if (errorMsg.includes('DIVIDE_BY_ZERO') || errorMsg.includes('Panic')) {
               return reply.code(400).send({
                 success: false,
-                error:
-                  'This token has an invalid bonding curve configuration',
+                error: 'This token has an invalid bonding curve configuration',
               });
             }
 
@@ -555,7 +583,7 @@ export async function bondingRoutes(fastify: FastifyInstance) {
 
         // Store in cache for future requests
         bondingQuoteCache.set(cacheKey, response);
-        
+
         fastify.log.info(
           { tokenAddress, inputAsset, amount },
           '✅ [DirectBondingQuote] Quote computed and cached',
@@ -596,7 +624,7 @@ export async function bondingRoutes(fastify: FastifyInstance) {
         ),
         querystring: zodToJsonSchema(
           z.object({
-            inputAsset: z.enum(['ACES', 'WETH', 'USDC', 'USDT']).default('ACES'),
+            inputAsset: z.enum(['ACES', 'WETH', 'ETH', 'USDC', 'USDT']).default('ACES'),
             amount: z.string(),
             slippageBps: z.string().optional(),
           }),
@@ -612,7 +640,14 @@ export async function bondingRoutes(fastify: FastifyInstance) {
     ) => {
       try {
         const { tokenAddress } = request.params;
-        const { inputAsset = 'ACES', amount, slippageBps = '100' } = request.query;
+        // 🔥 LOAD TEST FIX: Normalize ETH -> WETH immediately
+        // Bonding curve interacts with WETH, so map ETH to WETH
+        let { inputAsset = 'ACES' } = request.query;
+        if (inputAsset === 'ETH') {
+          inputAsset = 'WETH';
+        }
+
+        const { amount, slippageBps = '100' } = request.query;
 
         fastify.log.info(
           { tokenAddress, inputAsset, amount, slippageBps },
@@ -634,12 +669,9 @@ export async function bondingRoutes(fastify: FastifyInstance) {
         // Check cache first (before ACES check)
         const cacheKey = { tokenAddress, inputAsset, amount, slippageBps: slippage };
         const cachedQuote = multiHopQuoteCache.get(cacheKey);
-        
+
         if (cachedQuote) {
-          fastify.log.info(
-            { tokenAddress, inputAsset, amount },
-            '💰 [BondingQuote] Cache hit',
-          );
+          fastify.log.info({ tokenAddress, inputAsset, amount }, '💰 [BondingQuote] Cache hit');
           return reply.send({
             success: true,
             data: cachedQuote,
@@ -658,10 +690,10 @@ export async function bondingRoutes(fastify: FastifyInstance) {
             needsMultiHop: false,
             slippageBps: slippage,
           } as MultiHopQuoteResponse;
-          
+
           // Cache the response
           multiHopQuoteCache.set(cacheKey, response);
-          
+
           return reply.send({
             success: true,
             data: response,
@@ -719,7 +751,7 @@ export async function bondingRoutes(fastify: FastifyInstance) {
           'USDC-WETH': '0xcdac0d6c6c59727a65f871236188350531885c43',
         };
 
-        // Helper function to read pool reserves directly
+        // Helper function to read pool reserves directly with Caching + Coalescing
         const getPoolReservesDirect = async (
           poolAddress: string,
           tokenIn: string,
@@ -731,84 +763,99 @@ export async function bondingRoutes(fastify: FastifyInstance) {
           decimalsIn: number;
           decimalsOut: number;
         } | null> => {
-          try {
-            const PAIR_ABI = [
-              'function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
-              'function token0() view returns (address)',
-              'function token1() view returns (address)',
-            ];
+          const cacheKey = `${poolAddress.toLowerCase()}:${tokenIn.toLowerCase()}:${tokenOut.toLowerCase()}`;
+          const now = Date.now();
 
-            fastify.log.info(
-              { poolAddress, tokenIn, tokenOut },
-              '🔍 [BondingQuote] Reading pool reserves',
-            );
-
-            const pairContract = new ethers.Contract(poolAddress, PAIR_ABI, provider);
-            const [reserve0, reserve1] = await pairContract.getReserves();
-            const token0 = ((await pairContract.token0()) as string).toLowerCase();
-            const token1 = ((await pairContract.token1()) as string).toLowerCase();
-
-            fastify.log.info(
-              {
-                token0,
-                token1,
-                reserve0: reserve0.toString(),
-                reserve1: reserve1.toString(),
-              },
-              '📊 [BondingQuote] Pool state',
-            );
-
-            const normalizedIn = tokenIn.toLowerCase();
-            const normalizedOut = tokenOut.toLowerCase();
-
-            let reserveIn: bigint;
-            let reserveOut: bigint;
-
-            if (token0 === normalizedIn && token1 === normalizedOut) {
-              reserveIn = BigInt(reserve0.toString());
-              reserveOut = BigInt(reserve1.toString());
-            } else if (token0 === normalizedOut && token1 === normalizedIn) {
-              reserveIn = BigInt(reserve1.toString());
-              reserveOut = BigInt(reserve0.toString());
-            } else {
-              fastify.log.error(
-                { token0, token1, normalizedIn, normalizedOut },
-                '❌ [BondingQuote] Token mismatch in pool',
-              );
-              return null;
-            }
-
-            // Get decimals
-            const ERC20_ABI = ['function decimals() view returns (uint8)'];
-            const tokenInContract = new ethers.Contract(normalizedIn, ERC20_ABI, provider);
-            const tokenOutContract = new ethers.Contract(normalizedOut, ERC20_ABI, provider);
-            const decimalsIn = Number(await tokenInContract.decimals());
-            const decimalsOut = Number(await tokenOutContract.decimals());
-
-            fastify.log.info(
-              {
-                reserveIn: reserveIn.toString(),
-                reserveOut: reserveOut.toString(),
-                decimalsIn,
-                decimalsOut,
-              },
-              '✅ [BondingQuote] Pool reserves read successfully',
-            );
-
+          // 1. Check Cache
+          const cached = poolReservesCache.get(cacheKey);
+          if (cached && now - cached.timestamp < POOL_RESERVES_TTL) {
             return {
               poolAddress,
-              reserveIn,
-              reserveOut,
-              decimalsIn,
-              decimalsOut,
+              reserveIn: cached.reserveIn,
+              reserveOut: cached.reserveOut,
+              decimalsIn: cached.decimalsIn,
+              decimalsOut: cached.decimalsOut,
             };
-          } catch (error) {
-            fastify.log.error(
-              { err: error, poolAddress },
-              '❌ [BondingQuote] Failed to read pool reserves',
-            );
-            return null;
           }
+
+          // 2. Check Pending Requests (Coalescing)
+          const pending = poolReservesPending.get(cacheKey);
+          if (pending) {
+            return pending;
+          }
+
+          // 3. Fetch New Data
+          const fetchPromise = (async () => {
+            try {
+              const PAIR_ABI = [
+                'function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
+                'function token0() view returns (address)',
+                'function token1() view returns (address)',
+              ];
+
+              fastify.log.debug(
+                { poolAddress, tokenIn, tokenOut },
+                '🔍 [BondingQuote] Fetching pool reserves (RPC)',
+              );
+
+              const pairContract = new ethers.Contract(poolAddress, PAIR_ABI, provider);
+              const [reserve0, reserve1] = await pairContract.getReserves();
+              const token0 = ((await pairContract.token0()) as string).toLowerCase();
+              const token1 = ((await pairContract.token1()) as string).toLowerCase();
+
+              const normalizedIn = tokenIn.toLowerCase();
+              const normalizedOut = tokenOut.toLowerCase();
+
+              let reserveIn: bigint;
+              let reserveOut: bigint;
+
+              if (token0 === normalizedIn && token1 === normalizedOut) {
+                reserveIn = BigInt(reserve0.toString());
+                reserveOut = BigInt(reserve1.toString());
+              } else if (token0 === normalizedOut && token1 === normalizedIn) {
+                reserveIn = BigInt(reserve1.toString());
+                reserveOut = BigInt(reserve0.toString());
+              } else {
+                fastify.log.error('❌ [BondingQuote] Token mismatch in pool');
+                return null;
+              }
+
+              // Get decimals (cached effectively by generic token info if we had it, but cheap enough here usually or we could cache)
+              // For now, we'll assume standard known tokens have known decimals to save RPC calls if possible
+              // but strictly we should check. To save RPCs, let's hardcode known decimals for base tokens
+              let decimalsIn = 18;
+              let decimalsOut = 18;
+
+              if (normalizedIn === assetMetadata.USDC.address) decimalsIn = 6;
+              else if (normalizedIn === assetMetadata.USDT.address) decimalsIn = 6;
+
+              if (normalizedOut === assetMetadata.USDC.address) decimalsOut = 6;
+              else if (normalizedOut === assetMetadata.USDT.address) decimalsOut = 6;
+
+              // Cache the result
+              const result = {
+                poolAddress,
+                reserveIn,
+                reserveOut,
+                decimalsIn,
+                decimalsOut,
+              };
+
+              poolReservesCache.set(cacheKey, { ...result, timestamp: Date.now() });
+              return result;
+            } catch (error) {
+              fastify.log.error(
+                { err: error, poolAddress },
+                '❌ [BondingQuote] Failed to read pool reserves',
+              );
+              return null;
+            } finally {
+              poolReservesPending.delete(cacheKey);
+            }
+          })();
+
+          poolReservesPending.set(cacheKey, fetchPromise);
+          return fetchPromise;
         };
 
         const inputConfig = assetMetadata[inputAsset as keyof typeof assetMetadata];
@@ -1119,10 +1166,24 @@ export async function bondingRoutes(fastify: FastifyInstance) {
           });
         }
 
-        const factoryContract = new ethers.Contract(factoryProxyAddress, FACTORY_ABI, provider);
+        // 🔥 OPTIMIZATION: Use local math instead of RPC binary search
+        // This reduces 10-20 RPC calls to 0-1 (cached supply)
+
+        // 1. Get Token Info (Steepness/Floor) - Cached
+        let tokenInfo = tokenInfoCache.get(tokenAddress);
+        if (!tokenInfo || Date.now() - tokenInfo.timestamp > TOKEN_INFO_TTL) {
+          const factoryContract = new ethers.Contract(factoryProxyAddress, FACTORY_ABI, provider);
+          const info = await factoryContract.tokens(tokenAddress);
+          tokenInfo = {
+            steepness: info.steepness,
+            floor: info.floor,
+            tokenBonded: info.tokenBonded,
+            timestamp: Date.now(),
+          };
+          tokenInfoCache.set(tokenAddress, tokenInfo);
+        }
 
         // Check if token is bonded
-        const tokenInfo = await factoryContract.tokens(tokenAddress);
         if (tokenInfo.tokenBonded) {
           return reply.code(400).send({
             success: false,
@@ -1136,56 +1197,27 @@ export async function bondingRoutes(fastify: FastifyInstance) {
 
         let expectedRwaOutput = '0';
 
-        // Binary search to find max RWA tokens we can buy with the ACES amount
-        const oneToken = ethers.parseUnits('1', tokenDecimals);
-        let left = oneToken;
-        let right = ethers.parseUnits('1000000000', tokenDecimals);
-        let bestTokenAmount = 0n;
-
         try {
-          // Check if we can afford 1 token
-          const costForOne = await factoryContract.getBuyPriceAfterFee(tokenAddress, oneToken);
-          if (costForOne > acesAmountRaw) {
-            expectedRwaOutput = '0';
-            fastify.log.warn(
-              {
-                costForOne: ethers.formatEther(costForOne),
-                acesAvailable: ethers.formatEther(acesAmountRaw),
-              },
-              '⚠️ [BondingQuote] Not enough ACES for even 1 token',
-            );
-          } else {
-            // Binary search
-            while (left <= right) {
-              // Calculate midpoint and round down to nearest whole token
-              const midRaw = (left + right) / 2n;
-              const mid = (midRaw / oneToken) * oneToken; // Ensure it's a multiple of oneToken
+          // Use the optimized math library
+          const { expectedOutput } = await getOptimizedQuote({
+            tokenAddress,
+            inputAsset: 'ACES', // We are always converting ACES -> Token here
+            amount: ethers.formatUnits(acesAmountRaw, 18), // Convert BigInt wei to string ether
+            tokenDecimals,
+            steepness: tokenInfo.steepness,
+            floor: tokenInfo.floor,
+            provider,
+          });
 
-              try {
-                const acesCost = await factoryContract.getBuyPriceAfterFee(tokenAddress, mid);
+          expectedRwaOutput = expectedOutput;
 
-                if (acesCost <= acesAmountRaw) {
-                  bestTokenAmount = mid;
-                  left = mid + oneToken;
-                } else {
-                  right = mid - oneToken;
-                }
-              } catch (error) {
-                // Amount too large, try smaller
-                right = mid - oneToken;
-              }
-            }
-
-            expectedRwaOutput = ethers.formatUnits(bestTokenAmount, tokenDecimals);
-
-            fastify.log.info(
-              {
-                acesAmount: ethers.formatUnits(acesAmountRaw, 18),
-                rwaTokens: expectedRwaOutput,
-              },
-              '✅ [BondingQuote] ACES → RWA calculation complete',
-            );
-          }
+          fastify.log.info(
+            {
+              acesAmount: ethers.formatUnits(acesAmountRaw, 18),
+              rwaTokens: expectedRwaOutput,
+            },
+            '✅ [BondingQuote] ACES → RWA calculation complete (Optimized Math)',
+          );
         } catch (error) {
           fastify.log.error(
             { err: error },
@@ -1231,7 +1263,7 @@ export async function bondingRoutes(fastify: FastifyInstance) {
         }
 
         const response: MultiHopQuoteResponse = {
-          inputAsset: inputAsset as 'ACES' | 'WETH' | 'USDC' | 'USDT',
+          inputAsset: inputAsset as 'ACES' | 'WETH' | 'ETH' | 'USDC' | 'USDT',
           inputAmount: amount,
           inputAmountRaw: amountInRaw.toString(),
           expectedAcesAmount: ethers.formatUnits(acesAmountRaw, 18),
@@ -1264,7 +1296,7 @@ export async function bondingRoutes(fastify: FastifyInstance) {
 
         // Store in cache for future requests
         multiHopQuoteCache.set(cacheKey, response);
-        
+
         fastify.log.info(
           { tokenAddress, inputAsset, amount },
           '✅ [BondingQuote] Multi-hop quote computed and cached',

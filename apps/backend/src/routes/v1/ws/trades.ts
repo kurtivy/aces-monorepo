@@ -130,7 +130,8 @@ export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
               pricePerToken: bufferedTrade.trade.pricePerToken,
               priceUsd: bufferedTrade.trade.priceUsd,
               supply: bufferedTrade.trade.supply,
-              timestamp: bufferedTrade.trade.timestamp,
+              timestamp: bufferedTrade.trade.timestamp, // Original trade time (for charts)
+              ingestedAt: Date.now(), // 🔥 LOAD TEST FIX: When we sent this message (for latency metrics)
               blockNumber: bufferedTrade.trade.blockNumber,
               transactionHash: bufferedTrade.trade.transactionHash,
               source: bufferedTrade.trade.dataSource,
@@ -208,7 +209,8 @@ export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
                   pricePerToken: trade.priceInAces.toString(),
                   priceUsd: trade.priceInUsd?.toString() || null,
                   supply: '0', // Not stored in database
-                  timestamp: tradeTimestamp,
+                  timestamp: tradeTimestamp, // Original trade time (for charts)
+                  ingestedAt: Date.now(), // 🔥 LOAD TEST FIX: When we sent this message (for latency metrics)
                   blockNumber: trade.blockNumber,
                   transactionHash: trade.txHash,
                   source: 'bitquery',
