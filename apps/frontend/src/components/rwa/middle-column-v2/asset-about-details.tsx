@@ -1,8 +1,19 @@
 'use client';
 
 import { useState } from 'react';
-import { MapPin, X, ChevronDown } from 'lucide-react';
-import type { DatabaseListing } from '@/types/rwa/section.types';
+import {
+  MapPin,
+  X,
+  ChevronDown,
+  ShieldCheck,
+  FileBadge2,
+  FileCheck2,
+  Stamp,
+  ScrollText,
+  FileText,
+  type LucideIcon,
+} from 'lucide-react';
+import type { DatabaseListing, OwnershipDocumentType } from '@/types/rwa/section.types';
 
 interface AssetAboutDetailsV2Props {
   title: string;
@@ -18,6 +29,45 @@ export function AssetAboutDetailsV2({
   listing,
 }: AssetAboutDetailsV2Props) {
   const [openSection, setOpenSection] = useState<'Story' | 'Details' | 'Provenance'>('Story');
+
+  const ownershipDocs = listing?.submission?.ownershipDocumentation;
+  const docTypeLookup: Record<OwnershipDocumentType, { label: string; icon: LucideIcon }> = {
+    BILL_OF_SALE: { label: 'Bill of Sale', icon: FileBadge2 },
+    CERTIFICATE_OF_AUTH: {
+      label: 'Certificate of Authenticity',
+      icon: Stamp,
+    },
+    INSURANCE_DOC: {
+      label: 'Insurance Documentation',
+      icon: ShieldCheck,
+    },
+    DEED_OR_TITLE: {
+      label: 'Deed or Title',
+      icon: ScrollText,
+    },
+    APPRAISAL_DOC: {
+      label: 'Appraisal Documentation',
+      icon: FileCheck2,
+    },
+    PROVENANCE_DOC: {
+      label: 'Provenance Documentation',
+      icon: FileText,
+    },
+  };
+
+  const verifiedDocTypes = Array.isArray(ownershipDocs)
+    ? Array.from(
+        new Set(
+          ownershipDocs
+            .map((doc) => doc?.type)
+            .filter(
+              (type): type is OwnershipDocumentType =>
+                Boolean(type && type in docTypeLookup),
+            ),
+        ),
+      )
+    : [];
+
   const parseContent = (content?: string | null) =>
     content
       ? content
@@ -48,7 +98,7 @@ export function AssetAboutDetailsV2({
   const location = listing?.location || 'Worldwide';
 
   return (
-    <div className="relative h-full flex flex-col gap-6 bg-[#151c16] p-6">
+    <div className="relative h-full flex flex-col gap-4 bg-[#151c16] p-6">
       {onClose ? (
         <button
           onClick={onClose}
@@ -81,15 +131,52 @@ export function AssetAboutDetailsV2({
         ) : null}
       </div>
 
+      {verifiedDocTypes.length > 0 ? (
+        <div className="rounded-lg border border-[#D0B284]/25 bg-black/30 p-3 shadow-[0_10px_20px_rgba(0,0,0,0.14)]">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-[#D0B284]" />
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.18em] text-[#D0B284] font-neue-world">
+                  Ownership Verification
+                </p>
+                <p className="text-[11px] text-[#DCDDCC]/80 font-proxima-nova">
+                  {verifiedDocTypes.length} verification document
+                  {verifiedDocTypes.length === 1 ? '' : 's'} confirmed
+                </p>
+              </div>
+            </div>
+            <span className="rounded-full border border-[#D0B284]/30 bg-[#D0B284]/10 px-2.5 py-0.5 text-[10px] uppercase tracking-[0.16em] text-[#D0B284] font-semibold">
+              Verified
+            </span>
+          </div>
+          <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {verifiedDocTypes.map((type) => {
+              const meta = docTypeLookup[type];
+              const Icon = meta.icon;
+              return (
+                <div
+                  key={type}
+                  className="inline-flex items-center gap-2 rounded-md border border-[#D0B284]/25 bg-[#D0B284]/10 px-3 py-2"
+                >
+                  <Icon className="h-4 w-4 text-[#D0B284]" />
+                  <div className="text-xs font-semibold text-white">{meta.label}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
       {hasAnyCardContent ? (
         <div className="flex flex-col">
-          <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-4">
             {cards.map((card) => {
               const isOpen = openSection === card.title;
               return (
                 <div
                   key={card.title}
-                  className="relative overflow-hidden rounded-xl border border-black/10  bg-black/40 p-5 shadow-[0_10px_25px_rgba(0,0,0,0.12)]"
+                  className="relative overflow-hidden rounded-xl border border-black/10 bg-black/40 p-4 shadow-[0_10px_20px_rgba(0,0,0,0.12)]"
                 >
                   <div className="pointer-events-none absolute inset-0">
                     <div className="absolute inset-5 rounded-lg bg-black/60 blur-2xl" />

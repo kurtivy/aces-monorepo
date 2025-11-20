@@ -62,6 +62,20 @@ export type AssetType =
   | 'ALCOHOL'
   | 'OTHER';
 
+export type OwnershipDocumentType =
+  | 'BILL_OF_SALE'
+  | 'CERTIFICATE_OF_AUTH'
+  | 'INSURANCE_DOC'
+  | 'DEED_OR_TITLE'
+  | 'APPRAISAL_DOC'
+  | 'PROVENANCE_DOC';
+
+export interface OwnershipDocumentMeta {
+  type: OwnershipDocumentType;
+  imageUrl: string;
+  uploadedAt: string;
+}
+
 // Navigation direction type
 export type NavigationDirection = 'up' | 'down';
 
@@ -126,6 +140,11 @@ export interface DatabaseListing {
     poolAddress?: string | null;
     dexLiveAt?: string | null;
   };
+  submission?: {
+    id?: string;
+    status?: string;
+    ownershipDocumentation?: OwnershipDocumentMeta[] | null;
+  } | null;
   dex?: {
     poolAddress: string | null;
     isDexLive: boolean;
