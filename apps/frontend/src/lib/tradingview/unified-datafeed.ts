@@ -891,6 +891,52 @@ export class UnifiedDatafeed implements IBasicDataFeed {
         }
       });
 
+      // Prefer live WebSocket candle for the latest bucket if it's fresher than REST data
+      const liveCandle = this.candleBuilder.getCurrentCandle(timeframe);
+      if (liveCandle) {
+        const nowMs = getNow();
+        const LIVE_FRESHNESS_THRESHOLD_MS = 10 * 1000; // 10 seconds
+        const isFresh = nowMs - liveCandle.lastUpdateTime <= LIVE_FRESHNESS_THRESHOLD_MS;
+
+        if (isFresh) {
+          const normalizedAddress = tokenAddress.toLowerCase();
+          const supply = this.latestSupply.get(normalizedAddress) || 0;
+          
+          // 🔥 GUARD: Skip live candle in market cap mode if supply isn't loaded yet
+          // This prevents zero prices from being emitted
+          if (isMarketCapMode && supply <= 0) {
+            if (this.config.debug) {
+              console.warn('[UnifiedDatafeed] Skipping live candle in MCAP mode - supply not loaded yet');
+            }
+          } else {
+            const convertPrice = (value: number) =>
+              isMarketCapMode && supply > 0 ? value * supply : value;
+
+            const liveBar: Bar = {
+              time: liveCandle.time,
+              open: convertPrice(liveCandle.open),
+              high: convertPrice(liveCandle.high),
+              low: convertPrice(liveCandle.low),
+              close: convertPrice(liveCandle.close),
+              volume: liveCandle.volume,
+            };
+
+            if (bars.length === 0) {
+              bars.push(liveBar);
+            } else {
+              const lastIndex = bars.length - 1;
+              const lastBar = bars[lastIndex];
+
+              if (liveBar.time > lastBar.time) {
+                bars.push(liveBar);
+              } else if (liveBar.time === lastBar.time) {
+                bars[lastIndex] = liveBar;
+              }
+            }
+          }
+        }
+      }
+
       // Store last bar for WebSocket updates
       if (bars.length > 0 && symbolInfo.ticker) {
         const lastBar = bars[bars.length - 1];

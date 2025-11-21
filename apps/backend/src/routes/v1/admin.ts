@@ -17,6 +17,40 @@ export async function adminRoutes(fastify: FastifyInstance) {
   const listingService = new ListingService(fastify.prisma);
 
   /**
+   * GoldSky cache + rate limit metrics
+   */
+  fastify.get(
+    '/goldsky/metrics',
+    {
+      preHandler: [requireAdmin],
+    },
+    async (_request, reply) => {
+      const service = fastify.unifiedGoldSkyService;
+
+      if (!service) {
+        return reply.send({
+          success: false,
+          error: 'Unified GoldSky service not configured',
+        });
+      }
+
+      const metrics = service.getMetrics();
+
+      return reply.send({
+        success: true,
+        data: {
+          ...metrics,
+          timestamp: Date.now(),
+          rateLimit: {
+            limitPerWindow: 50,
+            windowSeconds: 10,
+          },
+        },
+      });
+    },
+  );
+
+  /**
    * Admin dashboard stats
    */
   fastify.get(

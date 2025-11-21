@@ -327,9 +327,18 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
       const duration = Date.now() - startTime;
       console.log(`[GoldSky] ✅ Price snapshot stored (${duration}ms)`);
 
-      // 4. Invalidate bonding data cache for this token
+      // 4. Invalidate bonding data cache for this token (RPC-backed data)
       const clearedCount = clearBondingDataCache(tokenAddress);
-      console.log(`[GoldSky] 🗑️ Invalidated ${clearedCount} cache entries`);
+      console.log(`[GoldSky] 🗑️ Invalidated ${clearedCount} bonding cache entries`);
+
+      // 4b. Trigger unified GoldSky refresh without blowing cache away
+      const unifiedService = fastify.unifiedGoldSkyService;
+      if (unifiedService) {
+        unifiedService.refreshInBackground(tokenAddress);
+        console.log(`[GoldSky] 🔄 Triggered unified GoldSky refresh for ${tokenAddress}`);
+      } else {
+        console.log('[GoldSky] ⚠️ Unified GoldSky service not available, skipping refresh');
+      }
 
       // 5. 🚀 Store trade in memory for real-time WebSocket streaming
       const memoryStore = getMemoryStore();

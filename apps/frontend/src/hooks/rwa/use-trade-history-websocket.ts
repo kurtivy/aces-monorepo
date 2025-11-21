@@ -66,6 +66,9 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
   const [isLoadingHistorical, setIsLoadingHistorical] = useState(false);
   const [historicalError, setHistoricalError] = useState<string | null>(null);
   const [hasFreshTrades, setHasFreshTrades] = useState(false); // 🔥 NEW: Track if we have recent trades
+  const [restFallbackAllowed, setRestFallbackAllowed] = useState(false);
+
+  const WEBSOCKET_PRIORITY_TIMEOUT_MS = 5000;
 
   // Determine if token is graduated to DEX
   const isDexLive = dexMeta?.isDexLive ?? false;
@@ -143,19 +146,44 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
   // 🔥 NEW: Check if WebSocket trades are fresh (< 5 minutes old)
   const areTradesFresh = useMemo(() => {
     if (realtimeTrades.length === 0) return false;
-    
+
     const FRESHNESS_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
     const now = Date.now();
     const mostRecentTrade = realtimeTrades[0]; // Trades are sorted newest first
-    
+
     if (!mostRecentTrade || !mostRecentTrade.timestamp) return false;
-    
+
     const tradeAge = now - mostRecentTrade.timestamp;
     const isFresh = tradeAge < FRESHNESS_THRESHOLD_MS;
-    
-    
+
     return isFresh;
   }, [realtimeTrades]);
+
+  // Give WebSocket a head start before falling back to REST
+  useEffect(() => {
+    if (!tokenAddress) {
+      setRestFallbackAllowed(false);
+      return;
+    }
+
+    setRestFallbackAllowed(false);
+    const timer = setTimeout(() => {
+      setRestFallbackAllowed(true);
+    }, WEBSOCKET_PRIORITY_TIMEOUT_MS);
+
+    return () => clearTimeout(timer);
+  }, [tokenAddress]);
+
+  // If WebSocket errors, allow REST fallback immediately
+  // If WebSocket connects successfully with fresh data, reset the fallback flag
+  useEffect(() => {
+    if (wsError) {
+      setRestFallbackAllowed(true);
+    } else if (isConnected && areTradesFresh && realtimeTrades.length > 0) {
+      // WebSocket connected and has fresh data - disable REST fallback
+      setRestFallbackAllowed(false);
+    }
+  }, [wsError, isConnected, areTradesFresh, realtimeTrades.length]);
 
   // Fetch historical trades from REST API when WebSocket is empty or has stale data
   useEffect(() => {
@@ -163,8 +191,8 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
       // 🔥 NEW: Fetch historical trades if:
       // 1. WebSocket is not connecting AND (no trades OR trades are stale)
       // 2. Don't fetch if we're still connecting (wait for WebSocket first)
-      const shouldFetch = !isConnecting && (!areTradesFresh || realtimeTrades.length === 0);
-      
+      const shouldFetch = restFallbackAllowed && (!areTradesFresh || realtimeTrades.length === 0);
+
       if (!shouldFetch) {
         // If we have fresh trades, mark as ready
         if (areTradesFresh && realtimeTrades.length > 0) {
@@ -267,6 +295,7 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
     effectiveIsDexLive,
     hasBitQueryTrades,
     areTradesFresh, // 🔥 NEW: Re-fetch when freshness changes
+    restFallbackAllowed,
   ]);
 
   // Combine WebSocket trades (transformed) with historical REST trades
@@ -378,10 +407,10 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
   // Show loading if:
   // 1. We're connecting/loading AND have no trades, OR
   // 2. We have trades but they're not fresh yet (still fetching fresh data)
-  const isLoading = 
-    ((isConnecting || isLoadingHistorical) && trades.length === 0) || 
+  const isLoading =
+    ((isConnecting || isLoadingHistorical) && trades.length === 0) ||
     (!hasFreshTrades && trades.length > 0);
-  
+
   const error = wsError || historicalError;
 
   return {
