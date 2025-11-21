@@ -15,7 +15,7 @@ const truncateDescription = (description: string, maxLength: number = 150): stri
 };
 
 // Convert metadata to UpcomingAsset format
-const convertMetadataToUpcomingAsset = (metadata: any): UpcomingAsset => ({
+export const convertMetadataToUpcomingAsset = (metadata: any): UpcomingAsset => ({
   id: metadata.id,
   title: metadata.title,
   description: truncateDescription(metadata.description),
@@ -36,12 +36,13 @@ interface UpcomingGridProps {
 
 export default function UpcomingGrid({ assets }: UpcomingGridProps) {
   // Use provided assets or default to single upcoming asset, applying truncation to all descriptions
-  const displayAssets = assets
-    ? assets.map((asset) => ({
-        ...asset,
-        description: truncateDescription(asset.description),
-      }))
-    : [upcomingAsset];
+  const displayAssets =
+    assets && assets.length > 0
+      ? assets.map((asset) => ({
+          ...asset,
+          description: truncateDescription(asset.description),
+        }))
+      : [upcomingAsset];
   return (
     <div className="relative pointer-events-auto">
       {/* Main grid container matching the form styling */}
