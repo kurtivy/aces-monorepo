@@ -70,10 +70,26 @@ interface UnifiedChartResponse {
   acesUsdPrice: string | null;
 }
 
+// 🔥 LOAD TEST FIX: Cache interface for chart data
+interface ChartCacheEntry {
+  data: UnifiedChartResponse;
+  timestamp: number;
+}
+
 export class ChartAggregationService {
   private readonly BONDING_SUPPLY = '800000000'; // 800M tokens for bonding curve
   private readonly GRADUATED_SUPPLY = '1000000000'; // 1B tokens after graduation
   private tradePriceAggregator: TradePriceAggregator;
+
+  // 🔥 LOAD TEST FIX: In-memory cache for chart data (5min TTL)
+  private chartCache = new Map<string, ChartCacheEntry>();
+  private readonly CACHE_TTL_MS = 300000; // 5 minutes - Fresh (historical data doesn't change)
+  private readonly STALE_TTL_MS = 900000; // 15 minutes - Stale but usable
+  private cacheHits = 0;
+  private cacheMisses = 0;
+
+  // 🔥 LOAD TEST FIX: Request coalescing map to share in-flight promises
+  private pendingRequests = new Map<string, Promise<UnifiedChartResponse>>();
 
   constructor(
     private prisma: PrismaClient,
@@ -86,39 +102,115 @@ export class ChartAggregationService {
   }
 
   /**
-   * Main method: Get unified chart data
-   * NOW WITH NO-GAP LOGIC: candle[n].open = candle[n-1].close
+   * Main method: Get unified chart data with Caching + Request Coalescing + Stale-While-Revalidate
    */
   async getChartData(tokenAddress: string, options: ChartOptions): Promise<UnifiedChartResponse> {
-    // console.log(`[ChartAggregation] Fetching chart data for ${tokenAddress}`, {
-    //   timeframe: options.timeframe,
-    //   from: options.from.toISOString(),
-    //   to: options.to.toISOString(),
-    // });
+    // 🔥 LOAD TEST FIX: Normalize 'to' timestamp to ensure cache hits
+    // Even if client sends Date.now(), we round to the nearest candle interval
+    // e.g. 1m timeframe -> round to current minute
+    // This ensures all requests within the same minute share the same cache key
+    const alignedTo = this.alignTimestamp(options.to, options.timeframe);
+    const cacheKey = `${tokenAddress.toLowerCase()}:${options.timeframe}:${options.from.getTime()}:${alignedTo}`;
+    const now = Date.now();
 
+    // 1. Check Cache
+    const cached = this.chartCache.get(cacheKey);
+
+    if (cached) {
+      const age = now - cached.timestamp;
+
+      // Case A: Fresh Cache -> Return immediately
+      if (age < this.CACHE_TTL_MS) {
+        this.cacheHits++;
+        return cached.data;
+      }
+
+      // Case B: Stale Cache -> Return immediately, refresh in background
+      // Only return stale if it's within the acceptable stale window (e.g. 5 min)
+      if (age < this.STALE_TTL_MS) {
+        this.cacheHits++;
+        // Trigger background refresh if not already pending
+        if (!this.pendingRequests.has(cacheKey)) {
+          // console.log(`[ChartAggregation] ♻️ Serving stale cache for ${tokenAddress}, refreshing in background`);
+          this._refreshCacheInBackground(cacheKey, tokenAddress, options);
+        }
+        return cached.data;
+      }
+    }
+
+    // Case C: No Cache or Too Old -> Wait for fetch
+    // Check Pending Requests (Coalescing)
+    const pending = this.pendingRequests.get(cacheKey);
+    if (pending) {
+      // console.log(`[ChartAggregation] 🤝 Joining pending request for ${tokenAddress}`);
+      return pending;
+    }
+
+    this.cacheMisses++;
+
+    // Start New Request (wrapped in shared promise)
+    const promise = this._computeAndCache(cacheKey, tokenAddress, options);
+    this.pendingRequests.set(cacheKey, promise);
+    return promise;
+  }
+
+  /**
+   * Internal: Refresh cache in background without blocking response
+   */
+  private _refreshCacheInBackground(cacheKey: string, tokenAddress: string, options: ChartOptions) {
+    // We don't await this, it runs in background
+    const promise = this._computeAndCache(cacheKey, tokenAddress, options);
+    this.pendingRequests.set(cacheKey, promise);
+
+    // Handle errors so they don't crash the process
+    promise.catch((err) => {
+      console.error(`[ChartAggregation] ❌ Background refresh failed for ${tokenAddress}:`, err);
+    });
+  }
+
+  /**
+   * Internal: Compute data and store in cache
+   */
+  private async _computeAndCache(
+    cacheKey: string,
+    tokenAddress: string,
+    options: ChartOptions,
+  ): Promise<UnifiedChartResponse> {
+    try {
+      const result = await this._computeChartData(tokenAddress, options);
+      this.chartCache.set(cacheKey, {
+        data: result,
+        timestamp: Date.now(),
+      });
+      return result;
+    } finally {
+      this.pendingRequests.delete(cacheKey);
+    }
+  }
+
+  /**
+   * Internal method: The heavy lifting (Database + API calls)
+   */
+  private async _computeChartData(
+    tokenAddress: string,
+    options: ChartOptions,
+  ): Promise<UnifiedChartResponse> {
     const now = Date.now();
     const currentCandleTimestamp = this.alignTimestamp(new Date(now), options.timeframe);
 
-    // 1. Check graduation state
-    const graduationState = await this.checkGraduation(tokenAddress);
+    // 🔥 PARALLEL FETCHING: Fetch independent data concurrently
+    const [graduationState, acesUsdPriceResult] = await Promise.all([
+      this.checkGraduation(tokenAddress),
+      this.acesUsdPriceService.getAcesUsdPrice().catch((err) => {
+        console.warn('[ChartAggregation] ⚠️ Failed to fetch ACES/USD price:', err);
+        return { price: '0', source: 'fallback' };
+      }),
+    ]);
 
-    // 2. Fetch ACES/USD price ONCE (graceful failure handling)
-    let acesUsdPrice: number | null = null;
-    try {
-      const priceResult = await this.acesUsdPriceService.getAcesUsdPrice();
-      acesUsdPrice = parseFloat(priceResult.price);
-
-      if (!acesUsdPrice || isNaN(acesUsdPrice) || acesUsdPrice <= 0) {
-        console.warn('[ChartAggregation] ⚠️ ACES/USD price invalid, will return ACES prices only');
-        acesUsdPrice = null;
-      } else {
-        // console.log('[ChartAggregation] ✅ ACES/USD price fetched:', acesUsdPrice);
-      }
-    } catch (error) {
-      console.warn(
-        '[ChartAggregation] ⚠️ Failed to fetch ACES/USD price, will return ACES prices only:',
-        error,
-      );
+    // Process ACES/USD Price
+    let acesUsdPrice: number | null = parseFloat(acesUsdPriceResult.price);
+    if (!acesUsdPrice || isNaN(acesUsdPrice) || acesUsdPrice <= 0) {
+      console.warn('[ChartAggregation] ⚠️ ACES/USD price invalid, will return ACES prices only');
       acesUsdPrice = null;
     }
 
@@ -141,7 +233,7 @@ export class ChartAggregationService {
         console.log(
           '[ChartAggregation] ⚠️ No bonding curve data found, checking for DEX trades as fallback...',
         );
-        
+
         // Try to find pool address by checking if there are DEX trades
         try {
           const dexTrades = await this.bitQueryService.getDexTrades(tokenAddress, '', {
@@ -154,7 +246,7 @@ export class ChartAggregationService {
             console.log(
               `[ChartAggregation] ✅ Found ${dexTrades.length} DEX trades - using DEX data instead`,
             );
-            
+
             // Try to extract pool address from trades if available
             // For now, use empty string - BitQuery can find trades by token address alone
             // The pool address is mainly used for caching, not for querying
@@ -224,11 +316,13 @@ export class ChartAggregationService {
       };
     });
 
-    return {
+    const result = {
       candles: enrichedCandles,
       graduationState,
       acesUsdPrice: acesUsdPrice ? acesUsdPrice.toFixed(6) : null,
     };
+
+    return result;
   }
 
   /**
@@ -296,103 +390,58 @@ export class ChartAggregationService {
     const toTimestamp = Math.floor(to.getTime() / 1000);
 
     try {
-      // 🔥 OPTIMIZED: Reuse trade aggregator with snapshot cache
-      const tradesWithPrices = await this.tradePriceAggregator.getTradesWithPrices(
-        tokenAddress,
-        Math.min(limit, 1000), // 🔥 OPTIMIZED: Use passed limit (capped at subgraph max)
-        fromTimestamp,
-        toTimestamp,
-      );
+      // 🔥 OPTION A + C: Parallelize trade fetching and metadata lookup
+      const [tradesWithPrices, tokenMetadata] = await Promise.all([
+        // Fetch trades with historical ACES prices
+        this.tradePriceAggregator.getTradesWithPrices(
+          tokenAddress,
+          Math.min(limit, 1000), // 🔥 OPTIMIZED: Use passed limit (capped at subgraph max)
+          fromTimestamp,
+          toTimestamp,
+        ),
+        // 🔥 OPTION A: Use cached metadata (includes steepness/floor from SubGraph)
+        this.tokenMetadataCache.getTokenMetadata(tokenAddress),
+      ]);
 
       // console.log(
       //   `[ChartAggregation] Fetched ${tradesWithPrices.length} trades with historical ACES prices`,
       // );
 
-      // 🔥 Fetch token parameters (steepness, floor) from SubGraph
-      let steepness: string | null = null;
-      let floor: string | null = null;
+      // 🔥 OPTION A: Get token parameters from cache (no SubGraph call needed if cached!)
+      let steepness: string | null = tokenMetadata?.steepness || null;
+      let floor: string | null = tokenMetadata?.floor || null;
 
-      const subgraphUrl = process.env.GOLDSKY_SUBGRAPH_URL || process.env.SUBGRAPH_URL;
-
-      if (!subgraphUrl) {
-        console.warn(
-          `[ChartAggregation] ⚠️ SubGraph URL not configured (GOLDSKY_SUBGRAPH_URL or SUBGRAPH_URL missing)`,
-        );
-      } else {
+      // Fallback: If cache doesn't have metadata, fetch directly from SubGraph (should be rare)
+      if ((!steepness || !floor) && (process.env.GOLDSKY_SUBGRAPH_URL || process.env.SUBGRAPH_URL)) {
         try {
           const query = `{
             tokens(where: {address: "${tokenAddress.toLowerCase()}"}) {
-              address
               steepness
               floor
             }
           }`;
 
-          // Add timeout and retry logic to handle ECONNRESET errors
-          const fetchWithTimeout = async (url: string, options: RequestInit, timeoutMs = 5000) => {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), timeoutMs);
+          const response = await fetch(process.env.GOLDSKY_SUBGRAPH_URL || process.env.SUBGRAPH_URL!, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query }),
+            signal: AbortSignal.timeout(3000), // 3s timeout
+          });
 
-            try {
-              const response = await fetch(url, {
-                ...options,
-                signal: controller.signal,
-              });
-              return response;
-            } finally {
-              clearTimeout(timeout);
+          if (response.ok) {
+            const result = (await response.json()) as {
+              data?: { tokens?: Array<{ steepness: string; floor: string }> };
+            };
+            const tokens = result?.data?.tokens;
+
+            if (tokens && tokens.length > 0) {
+              steepness = tokens[0].steepness;
+              floor = tokens[0].floor;
             }
-          };
-
-          const maxRetries = 2;
-          let lastError: Error | null = null;
-
-          for (let attempt = 0; attempt <= maxRetries; attempt++) {
-            try {
-              const response = await fetchWithTimeout(
-                subgraphUrl,
-                {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ query }),
-                },
-                5000, // 5 second timeout
-              );
-
-              if (response.ok) {
-                const result = (await response.json()) as {
-                  data?: { tokens?: Array<{ steepness: string; floor: string }> };
-                };
-                const tokens = result?.data?.tokens;
-
-                if (tokens && tokens.length > 0) {
-                  steepness = tokens[0].steepness;
-                  floor = tokens[0].floor;
-                  break; // Success, exit retry loop
-                }
-              } else {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-              }
-            } catch (error) {
-              lastError = error as Error;
-
-              if (attempt < maxRetries) {
-                const backoffMs = Math.min(1000 * Math.pow(2, attempt), 3000);
-                console.warn(
-                  `[ChartAggregation] ⚠️ SubGraph fetch attempt ${attempt + 1} failed, retrying in ${backoffMs}ms...`,
-                  error instanceof Error ? error.message : error,
-                );
-                await new Promise((resolve) => setTimeout(resolve, backoffMs));
-              }
-            }
-          }
-
-          if (lastError && !steepness && !floor) {
-            throw lastError;
           }
         } catch (error) {
-          console.error(
-            `[ChartAggregation] ❌ Failed to fetch token parameters from SubGraph after retries:`,
+          console.warn(
+            `[ChartAggregation] ⚠️ Fallback SubGraph fetch failed for ${tokenAddress}:`,
             error instanceof Error ? error.message : error,
           );
         }
@@ -522,7 +571,16 @@ export class ChartAggregationService {
   ): Candle[] {
     const intervalMs = this.getIntervalMs(timeframe);
     const startTime = this.alignTimestamp(from, timeframe);
-    const endTime = this.alignTimestamp(to, timeframe);
+    let endTime = this.alignTimestamp(to, timeframe);
+
+    // 🔥 CRITICAL FIX: Prevent future candle generation
+    // Only cap if endTime is beyond current bucket AND in the future
+    // This preserves historical data loading (scroll-back)
+    const now = Date.now();
+
+    if (endTime > currentCandleTimestamp && endTime > now) {
+      endTime = currentCandleTimestamp;
+    }
 
     // Group trades by aligned timestamp
     const tradeBuckets = new Map<number, Trade[]>();
@@ -578,6 +636,14 @@ export class ChartAggregationService {
       previousCandle = candle;
       currentTime += intervalMs;
     }
+    if (trades.length > 0) {
+      this.applyLivePriceToCurrentCandle(
+        candles,
+        trades[trades.length - 1],
+        currentCandleTimestamp,
+        dataSource,
+      );
+    }
     return candles;
   }
 
@@ -602,18 +668,12 @@ export class ChartAggregationService {
 
     // 🔥 NEW: Calculate VWAP for close price
     // VWAP in ACES = Σ(priceInAces × volumeInAces) / Σ(volumeInAces)
-    const totalValueAces = bucketTrades.reduce(
-      (sum, t) => sum + t.priceInAces * t.amountToken,
-      0
-    );
+    const totalValueAces = bucketTrades.reduce((sum, t) => sum + t.priceInAces * t.amountToken, 0);
     const totalVolumeAces = bucketTrades.reduce((sum, t) => sum + t.amountToken, 0);
     const vwapCloseAces = totalVolumeAces > 0 ? totalValueAces / totalVolumeAces : pricesInAces[0];
 
     // VWAP in USD = Σ(priceInUsd × volumeInUsd) / Σ(volumeInUsd)
-    const totalValueUsd = bucketTrades.reduce(
-      (sum, t) => sum + t.priceInUsd * t.volumeUsd,
-      0
-    );
+    const totalValueUsd = bucketTrades.reduce((sum, t) => sum + t.priceInUsd * t.volumeUsd, 0);
     const totalVolumeUsd = bucketTrades.reduce((sum, t) => sum + t.volumeUsd, 0);
     const vwapCloseUsd = totalVolumeUsd > 0 ? totalValueUsd / totalVolumeUsd : pricesInUsd[0];
 
@@ -626,7 +686,7 @@ export class ChartAggregationService {
     // CRITICAL: Connect to previous candle (NO GAPS!)
     if (previousCandle) {
       openAces = parseFloat(previousCandle.close);
-      
+
       // 🔥 FIX: When there's only 1 trade, show a wick based on price movement from previous candle
       // This ensures candles look correct even with sparse trades
       if (bucketTrades.length === 1) {
@@ -648,7 +708,7 @@ export class ChartAggregationService {
 
       // Connect USD to previous candle
       openUsd = previousCandle ? parseFloat(previousCandle.closeUsd) : firstTradeUsd;
-      
+
       // 🔥 FIX: When there's only 1 trade, show a wick based on price movement from previous candle
       if (previousCandle && bucketTrades.length === 1) {
         const previousCloseUsd = parseFloat(previousCandle.closeUsd);
@@ -665,7 +725,7 @@ export class ChartAggregationService {
 
       // Connect USD to previous candle (NO GAPS)
       openUsd = previousCandle ? parseFloat(previousCandle.closeUsd) : firstTradeUsd;
-      
+
       // 🔥 FIX: When there's only 1 trade, show a wick based on price movement from previous candle
       if (previousCandle && bucketTrades.length === 1) {
         const previousCloseUsd = parseFloat(previousCandle.closeUsd);
@@ -764,13 +824,11 @@ export class ChartAggregationService {
     // Open USD connects to previous candle
     const openUsd = parseFloat(previousCandle.closeUsd);
 
-    let closeUsd: number, highUsd: number, lowUsd: number;
-
     // For both bonding curve AND DEX: Empty candle = flat line (no trades = no price movement)
     // No trades means no price change - USD value stays exactly the same
-    closeUsd = openUsd; // Flat line
-    highUsd = openUsd; // No wicks
-    lowUsd = openUsd; // No movement
+    const closeUsd = openUsd; // Flat line
+    const highUsd = openUsd; // No wicks
+    const lowUsd = openUsd; // No movement
 
     // Note: For DEX, Bitquery already provides USD prices, so we don't need ACES price conversion
     // Empty candles should maintain the last known price until new trades occur
@@ -1012,6 +1070,75 @@ export class ChartAggregationService {
     return candles;
   }
 
+  private applyLivePriceToCurrentCandle(
+    candles: Candle[],
+    latestTrade: Trade,
+    currentCandleTimestamp: number,
+    dataSource: 'bonding_curve' | 'dex',
+  ): void {
+    if (candles.length === 0) {
+      return;
+    }
+
+    const current = candles[candles.length - 1];
+    if (current.timestamp.getTime() !== currentCandleTimestamp) {
+      return;
+    }
+
+    const livePriceAces = latestTrade.priceInAces;
+    const livePriceUsd = latestTrade.priceInUsd;
+
+    if (!Number.isFinite(livePriceUsd) || livePriceUsd <= 0) {
+      return;
+    }
+
+    const parse = (value: string | number | undefined | null): number => {
+      if (value === undefined || value === null) {
+        return 0;
+      }
+      const parsed = Number.parseFloat(String(value));
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+
+    const openAces = parse(current.open);
+    const openUsd = parse(current.openUsd);
+    const supply = parse(current.circulatingSupply ?? current.totalSupply ?? '0');
+
+    current.close = livePriceAces.toFixed(18);
+    current.closeUsd = livePriceUsd.toFixed(18);
+
+    const highAces = Math.max(parse(current.high), livePriceAces, openAces);
+    const lowAces = Math.min(parse(current.low), livePriceAces, openAces);
+    current.high = highAces.toFixed(18);
+    current.low = lowAces.toFixed(18);
+
+    const highUsd = Math.max(parse(current.highUsd), livePriceUsd, openUsd);
+    const lowUsd = Math.min(parse(current.lowUsd), livePriceUsd, openUsd);
+    current.highUsd = highUsd.toFixed(18);
+    current.lowUsd = lowUsd.toFixed(18);
+
+    if (Number.isFinite(supply) && supply > 0) {
+      const marketCapCloseAces = livePriceAces * supply;
+      const marketCapCloseUsd = livePriceUsd * supply;
+      current.marketCapAces = marketCapCloseAces.toFixed(2);
+      current.marketCapUsd = marketCapCloseUsd.toFixed(2);
+      current.marketCapCloseUsd = marketCapCloseUsd.toFixed(2);
+
+      const marketCapHighUsd = Math.max(parse(current.marketCapHighUsd), marketCapCloseUsd);
+      const marketCapLowUsd = Math.min(parse(current.marketCapLowUsd), marketCapCloseUsd);
+      current.marketCapHighUsd = marketCapHighUsd.toFixed(2);
+      current.marketCapLowUsd = marketCapLowUsd.toFixed(2);
+      if (!current.marketCapOpenUsd) {
+        current.marketCapOpenUsd = (openUsd * supply).toFixed(2);
+      }
+    }
+
+    if (dataSource === 'bonding_curve' && latestTrade.circulatingSupply) {
+      current.circulatingSupply = latestTrade.circulatingSupply.toString();
+      current.totalSupply = latestTrade.circulatingSupply.toString();
+    }
+  }
+
   /**
    * Fetch recent DEX trades and aggregate them into candles
    * Used for DEX data less than 7 days old
@@ -1050,7 +1177,9 @@ export class ChartAggregationService {
         });
 
         dbTrades = dbRecords;
-        console.log(`[ChartAggregation] 💾 Fetched ${dbTrades.length} very recent trades from database`);
+        console.log(
+          `[ChartAggregation] 💾 Fetched ${dbTrades.length} very recent trades from database`,
+        );
 
         // Adjust BitQuery query to fetch only trades older than 5 minutes
         if (dbTrades.length > 0 && options.from.getTime() < fiveMinutesAgo) {
@@ -1070,7 +1199,9 @@ export class ChartAggregationService {
       limit: tradeLimit,
     });
 
-    console.log(`[ChartAggregation] ✅ Fetched ${bitQueryTrades.length} DEX trades from BitQuery + ${dbTrades.length} from database`);
+    console.log(
+      `[ChartAggregation] ✅ Fetched ${bitQueryTrades.length} DEX trades from BitQuery + ${dbTrades.length} from database`,
+    );
 
     // Convert BitQuery trades to internal Trade format
     const bitQueryTradesConverted: Trade[] = bitQueryTrades.map((trade) => ({
@@ -1165,13 +1296,56 @@ export class ChartAggregationService {
       now.getTime() - DATA_SOURCE_CONFIG.HISTORICAL_BOUNDARY_DAYS * 24 * 60 * 60 * 1000,
     );
 
-    // Determine which strategy to use based on request time range
-    const isEntirelyRecent = options.from >= historicalBoundary;
-    const isEntirelyHistorical = options.to < historicalBoundary;
+    const needsHistoricalSlice = options.from < historicalBoundary;
+    const needsRecentSlice = options.to >= historicalBoundary;
 
-    // STRATEGY 1: Entirely recent (< 7 days) - use individual trades
-    if (isEntirelyRecent) {
-      // console.log('[ChartAggregation] 🔥 Using individual trades (real-time accuracy)');
+    const candles: Candle[] = [];
+    let connectionSeed = seedCandle;
+
+    // Always fetch the historical slice first (if requested range goes that far back)
+    if (needsHistoricalSlice) {
+      const historicalTo = needsRecentSlice ? historicalBoundary : options.to;
+      const historicalOptions: ChartOptions = {
+        ...options,
+        to: historicalTo,
+      };
+
+      const historicalCandles = await this.fetchHistoricalDexOHLCV(
+        tokenAddress,
+        historicalOptions,
+        connectionSeed,
+      );
+
+      if (historicalCandles.length > 0) {
+        candles.push(...historicalCandles);
+        connectionSeed = historicalCandles[historicalCandles.length - 1];
+      }
+    }
+
+    // Always stitch in the recent/live slice so the latest candle is built from raw trades
+    if (needsRecentSlice) {
+      const recentFromTime = Math.max(options.from.getTime(), historicalBoundary.getTime());
+      const recentOptions: ChartOptions = {
+        ...options,
+        from: new Date(recentFromTime),
+      };
+
+      const recentCandles = await this.fetchRecentDexTrades(
+        tokenAddress,
+        poolAddress,
+        recentOptions,
+        currentCandleTimestamp,
+        connectionSeed,
+      );
+
+      if (recentCandles.length > 0) {
+        candles.push(...recentCandles);
+      }
+    }
+
+    // Fallbacks: if range is entirely recent or entirely historical the above blocks handle it.
+    if (!needsHistoricalSlice && needsRecentSlice && candles.length === 0) {
+      // Entirely recent range but no trades - rely on existing method
       return this.fetchRecentDexTrades(
         tokenAddress,
         poolAddress,
@@ -1181,38 +1355,12 @@ export class ChartAggregationService {
       );
     }
 
-    // STRATEGY 2: Entirely historical (≥ 7 days old) - use pre-aggregated OHLCV
-    if (isEntirelyHistorical) {
-      // console.log('[ChartAggregation] 📜 Using pre-aggregated OHLCV (performance)');
+    if (needsHistoricalSlice && !needsRecentSlice && candles.length === 0) {
+      // Entirely historical range but no candles returned above
       return this.fetchHistoricalDexOHLCV(tokenAddress, options, seedCandle);
     }
 
-    // STRATEGY 3: Hybrid - request spans the 7-day boundary
-    // console.log('[ChartAggregation] 🔀 Using HYBRID (historical + recent)');
-
-    // Fetch historical part (7+ days ago)
-    const historicalCandles = await this.fetchHistoricalDexOHLCV(
-      tokenAddress,
-      {
-        ...options,
-        to: historicalBoundary,
-      },
-      seedCandle,
-    ); // 🔥 Pass seed to historical part
-
-    // Fetch recent part (< 7 days)
-    // Use last historical candle as seed for recent candles
-    const historicalSeed =
-      historicalCandles.length > 0 ? historicalCandles[historicalCandles.length - 1] : seedCandle;
-    const recentCandles = await this.fetchRecentDexTrades(
-      tokenAddress,
-      poolAddress,
-      { ...options, from: historicalBoundary },
-      currentCandleTimestamp,
-      historicalSeed, // 🔥 Pass seed for connection
-    );
-
-    return [...historicalCandles, ...recentCandles];
+    return candles;
   }
 
   private async getBondingSeedCandle(
@@ -1288,12 +1436,17 @@ export class ChartAggregationService {
           counterTokenAddress: ACES_TOKEN_ADDRESS,
           limit: 1, // Just need the last trade
         });
-        
+
         if (seedTrades.length === 0) {
-          console.log('[ChartAggregation] ⚠️ No trades found in last 7 days, cannot create seed candle');
+          console.log(
+            '[ChartAggregation] ⚠️ No trades found in last 7 days, cannot create seed candle',
+          );
           return null;
         }
-        console.log('[ChartAggregation] ✅ Found seed trade from:', seedTrades[seedTrades.length - 1].blockTime.toISOString());
+        console.log(
+          '[ChartAggregation] ✅ Found seed trade from:',
+          seedTrades[seedTrades.length - 1].blockTime.toISOString(),
+        );
       }
 
       const lastTrade = seedTrades[seedTrades.length - 1];
@@ -1522,5 +1675,23 @@ export class ChartAggregationService {
       '1d': 24 * 60 * 60 * 1000,
     };
     return intervals[timeframe] || 60 * 60 * 1000; // Default to 1h
+  }
+
+  /**
+   * 🔥 LOAD TEST FIX: Get cache statistics for monitoring
+   */
+  getCacheStats() {
+    const hitRate =
+      this.cacheHits + this.cacheMisses > 0
+        ? ((this.cacheHits / (this.cacheHits + this.cacheMisses)) * 100).toFixed(2)
+        : '0.00';
+
+    return {
+      size: this.chartCache.size,
+      hits: this.cacheHits,
+      misses: this.cacheMisses,
+      hitRate: `${hitRate}%`,
+      ttlMs: this.CACHE_TTL_MS,
+    };
   }
 }

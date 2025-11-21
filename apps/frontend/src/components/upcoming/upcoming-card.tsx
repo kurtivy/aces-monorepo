@@ -13,6 +13,7 @@ export interface UpcomingAsset {
   symbol: string;
   startDate: string; // ISO date string
   category: string;
+  comingSoon?: boolean;
 }
 
 interface UpcomingCardProps {
@@ -24,11 +25,13 @@ export default function UpcomingCard({ asset }: UpcomingCardProps) {
 
   const normalizedSymbol = asset?.symbol ? asset.symbol.trim().replace(/^\$/u, '') : '';
   const hasSymbol = normalizedSymbol.length > 0;
+  const isComingSoon = asset?.comingSoon ?? false;
   const displaySymbol = asset?.symbol
     ? asset.symbol.startsWith('$')
       ? asset.symbol
       : `$${asset.symbol}`
     : '$TBD';
+  const canNavigate = hasSymbol && !isComingSoon;
 
   // Truncate description to specific character length
   const truncateDescription = (text: string, maxLength: number = 132): string => {
@@ -41,14 +44,14 @@ export default function UpcomingCard({ asset }: UpcomingCardProps) {
   };
 
   const handleViewAssetClick = () => {
-    if (!hasSymbol) return;
+    if (!canNavigate) return;
     router.push(`/rwa/${normalizedSymbol}`);
   };
 
   return (
     <div
-      className={`relative pointer-events-auto ${hasSymbol ? 'cursor-pointer' : 'cursor-default'}`}
-      onClick={hasSymbol ? handleViewAssetClick : undefined}
+      className={`relative pointer-events-auto ${canNavigate ? 'cursor-pointer' : 'cursor-default'}`}
+      onClick={canNavigate ? handleViewAssetClick : undefined}
     >
       {/* Card container matching the form/tokenize page styling */}
       <div className="relative bg-[#151c16]/80 border border-dashed border-[#E6E3D3]/20 rounded-2xl overflow-hidden shadow-[0_10px_40px_rgba(215,191,117,0.06)] hover:border-[#C9AE6A]/40 transition-all duration-300">
@@ -60,6 +63,11 @@ export default function UpcomingCard({ asset }: UpcomingCardProps) {
 
         {/* Asset Image - Full width, no padding */}
         <div className="relative w-full h-48 mb-4 overflow-hidden">
+          {isComingSoon && (
+            <span className="absolute z-10 top-3 left-3 rounded-full bg-[#184D37]/90 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-[#E6E3D3]">
+              Coming Soon
+            </span>
+          )}
           {asset?.imageUrl ? (
             <Image
               src={asset.imageUrl}
@@ -107,10 +115,10 @@ export default function UpcomingCard({ asset }: UpcomingCardProps) {
                 e.stopPropagation(); // Prevent card click when clicking button directly
                 handleViewAssetClick();
               }}
-              disabled={!hasSymbol}
+              disabled={!canNavigate}
               className="w-full flex items-center justify-center text-[#D0B264] hover:text-[#D0B264] transition-colors duration-150 px-4 py-2 rounded-md bg-black/80 hover:bg-black/70 border border-[#D0B264]/30 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed font-mono text-sm font-medium uppercase tracking-wide"
             >
-              {hasSymbol ? 'Trade now!' : 'Coming Soon'}
+              {isComingSoon || !hasSymbol ? 'Coming Soon' : 'Trade now!'}
             </button>
           </div>
         </div>

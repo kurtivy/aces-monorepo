@@ -76,15 +76,19 @@ export const useRealtimeTrades = (
     // Set mounted to true at the start of each effect (handles React Strict Mode double render)
     mountedRef.current = true;
 
-    // console.log('[useRealtimeTrades] 🔄 useEffect triggered:', {
-    //   tokenAddress,
-    //   mounted: mountedRef.current,
-    //   maxTrades,
-    //   debug,
-    // });
+    if (debug) {
+      console.log('[useRealtimeTrades] 🔄 useEffect triggered:', {
+        tokenAddress,
+        mounted: mountedRef.current,
+        maxTrades,
+        debug,
+      });
+    }
 
     if (!tokenAddress) {
-      // console.log('[useRealtimeTrades] ⚠️ No tokenAddress, clearing state');
+      if (debug) {
+        console.log('[useRealtimeTrades] ⚠️ No tokenAddress, clearing state');
+      }
       setIsConnected(false);
       setIsConnecting(false);
       setError(null);
@@ -92,19 +96,23 @@ export const useRealtimeTrades = (
       return;
     }
 
-    // console.log('[useRealtimeTrades] 📡 Subscribing to shared WebSocket...');
+    if (debug) {
+      console.log('[useRealtimeTrades] 📡 Subscribing to shared WebSocket...');
+    }
 
     // Subscribe to shared WebSocket
     const unsubscribe = sharedTradeWebSocket.subscribe(
       tokenAddress,
       // Trade callback
       (trade) => {
-        // console.log('[useRealtimeTrades] 🔔 Trade callback invoked:', {
-        //   mounted: mountedRef.current,
-        //   tradeId: trade?.id,
-        //   source: trade?.source,
-        //   hasTrade: !!trade,
-        // });
+        if (debug) {
+          console.log('[useRealtimeTrades] 🔔 Trade callback invoked:', {
+            mounted: mountedRef.current,
+            tradeId: trade?.id,
+            source: trade?.source,
+            hasTrade: !!trade,
+          });
+        }
 
         if (!mountedRef.current) {
           console.warn('[useRealtimeTrades] ⚠️ Component unmounted, ignoring trade');
@@ -116,28 +124,32 @@ export const useRealtimeTrades = (
           return;
         }
 
-        // console.log('[useRealtimeTrades] 📥 Received trade:', {
-        //   id: trade.id,
-        //   source: trade.source,
-        //   isBuy: trade.isBuy,
-        //   tokenAmount: trade.tokenAmount,
-        //   acesAmount: trade.acesAmount,
-        //   txHash: trade.transactionHash,
-        //   timestamp: trade.timestamp,
-        //   timestampDate: new Date(trade.timestamp).toISOString(),
-        // });
+        if (debug) {
+          console.log('[useRealtimeTrades] 📥 Received trade:', {
+            id: trade.id,
+            source: trade.source,
+            isBuy: trade.isBuy,
+            tokenAmount: trade.tokenAmount,
+            acesAmount: trade.acesAmount,
+            txHash: trade.transactionHash,
+            timestamp: trade.timestamp,
+            timestampDate: new Date(trade.timestamp).toISOString(),
+          });
+        }
 
         setTrades((prev) => {
           const newTrades = [trade as RealtimeTrade, ...prev].slice(0, maxTrades);
 
-          // console.log('[useRealtimeTrades] 📊 Updated trades array:', {
-          //   previousCount: prev.length,
-          //   newCount: newTrades.length,
-          //   source: trade.source,
-          //   bitqueryCount: newTrades.filter((t) => t.source === 'bitquery').length,
-          //   goldskyCount: newTrades.filter((t) => t.source === 'goldsky').length,
-          //   firstTradeId: newTrades[0]?.id,
-          // });
+          if (debug) {
+            console.log('[useRealtimeTrades] 📊 Updated trades array:', {
+              previousCount: prev.length,
+              newCount: newTrades.length,
+              source: trade.source,
+              bitqueryCount: newTrades.filter((t) => t.source === 'bitquery').length,
+              goldskyCount: newTrades.filter((t) => t.source === 'goldsky').length,
+              firstTradeId: newTrades[0]?.id,
+            });
+          }
 
           return newTrades;
         });
@@ -156,10 +168,14 @@ export const useRealtimeTrades = (
       },
     );
 
-    // console.log('[useRealtimeTrades] ✅ Subscription complete, unsubscribe function returned');
+    if (debug) {
+      console.log('[useRealtimeTrades] ✅ Subscription complete, unsubscribe function returned');
+    }
 
     return () => {
-      // console.log('[useRealtimeTrades] 🧹 Cleaning up subscription for:', tokenAddress);
+      if (debug) {
+        console.log('[useRealtimeTrades] 🧹 Cleaning up subscription for:', tokenAddress);
+      }
       mountedRef.current = false;
       unsubscribe();
     };

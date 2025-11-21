@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import MobileRWAHeader from '../../../components/rwa/mobile/headers/mobile-rwa-header';
 import MobileTokenHeader from '../../../components/rwa/mobile/headers/mobile-token-header';
 import MobileOverviewSection from '../../../components/rwa/mobile/sections/mobile-overview-section';
-// import MobileTradingChartSection from '../../../components/rwa/mobile/sections/mobile-trading-chart-section';
+import MobileTradingChartSection from '../../../components/rwa/mobile/sections/mobile-trading-chart-section';
 import MobileCommentsHistorySection from '../../../components/rwa/mobile/sections/mobile-comments-history-section';
 import MobilePlaceBidsSection from '../../../components/rwa/mobile/sections/mobile-place-bids-section';
 import MobileBottomNav from '../../../components/rwa/mobile/navigation/mobile-bottom-nav';
@@ -113,12 +113,12 @@ export default function MobileRWAItemPage({
             loading={loading}
             launchDate={launchDate}
           />
-          {/* <MobileTradingChartSection
+          <MobileTradingChartSection
             ref={chartRef}
             listing={listing}
             isLive={isLive}
             isLaunched={isLaunched}
-          /> */}
+          />
 
           <MobileCommentsHistorySection ref={commentsRef} listing={listing} isLive={isLive} />
           <MobilePlaceBidsSection

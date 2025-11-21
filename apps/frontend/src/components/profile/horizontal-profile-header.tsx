@@ -10,6 +10,8 @@ import { useAuth } from '@/lib/auth/auth-context';
 import { useSwapContracts } from '@/hooks/swap/use-swap-contracts';
 import { useTokenBalances } from '@/hooks/swap/use-token-balances';
 import { ConciergeServiceModal } from './concierge-service-modal';
+import { ListingsApi } from '@/lib/api/listings';
+import { TokensApi } from '@/lib/api/tokens';
 
 interface HorizontalProfileHeaderProps {
   user: {
@@ -27,9 +29,12 @@ export function HorizontalProfileHeader({ user, onConnectWallet }: HorizontalPro
   const [copied, setCopied] = useState(false);
   const [acesUsdPrice, setAcesUsdPrice] = useState<number | null>(null);
   const [isConciergeModalOpen, setIsConciergeModalOpen] = useState(false);
+  const [feesLoading, setFeesLoading] = useState(false);
+  const [totalFeesUsd, setTotalFeesUsd] = useState<number>(0);
+  const [totalFeesAces, setTotalFeesAces] = useState<number>(0);
 
   // Get auth state and wallet info
-  const { walletAddress, isAuthenticated } = useAuth();
+  const { walletAddress, isAuthenticated, getAccessToken } = useAuth();
 
   // Initialize contracts for balance fetching
   const contracts = useSwapContracts(walletAddress, isAuthenticated);
@@ -96,10 +101,97 @@ export function HorizontalProfileHeader({ user, onConnectWallet }: HorizontalPro
 
   const formattedAcesBalance = Math.floor(acesBalanceNum).toLocaleString('en-US');
   const formattedUsdValue = `$${usdValue.toFixed(2)}`;
+  const formattedFeesUsd = `$${totalFeesUsd.toFixed(2)}`;
+  const formattedFeesAces = `${totalFeesAces.toLocaleString('en-US', {
+    maximumFractionDigits: 2,
+  })} ACES`;
 
   const walletUsernameSeed = user.walletAddress ? user.walletAddress.slice(2, 9).toUpperCase() : '';
   const hasCustomUsername = Boolean(user.username && user.username.trim());
   const usernameValue = hasCustomUsername ? (user.username || '').trim() : walletUsernameSeed;
+
+  // Fetch total fees across all of the user's live tokens (bonding + DEX)
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchFees = async () => {
+      // Only attempt when authenticated with a connected wallet
+      if (!walletAddress || !isAuthenticated) {
+        setTotalFeesUsd(0);
+        setTotalFeesAces(0);
+        return;
+      }
+
+      setFeesLoading(true);
+      try {
+        const token = await getAccessToken();
+        if (!token) {
+          if (!cancelled) {
+            setTotalFeesUsd(0);
+            setTotalFeesAces(0);
+          }
+          return;
+        }
+
+        const listingsResp = await ListingsApi.getMyListings(token);
+        if (!listingsResp.success) {
+          throw new Error(listingsResp.error || 'Failed to fetch listings');
+        }
+
+        // Collect unique contract addresses for minted/live tokens
+        const addresses = Array.from(
+          new Set(
+            listingsResp.data
+              .map((listing) => listing?.contractAddress || listing?.token?.contractAddress)
+              .filter((addr): addr is string => typeof addr === 'string' && addr.length > 0),
+          ),
+        );
+
+        if (addresses.length === 0) {
+          if (!cancelled) {
+            setTotalFeesUsd(0);
+            setTotalFeesAces(0);
+          }
+          return;
+        }
+
+        const metricsResults = await Promise.all(
+          addresses.map(async (addr) => {
+            const resp = await TokensApi.getTokenMetrics(addr);
+            if (resp.success && resp.data) {
+              const aces = parseFloat(resp.data.totalFeesAces || '0');
+              const usd = Number.isFinite(resp.data.totalFeesUsd) ? resp.data.totalFeesUsd : 0;
+              return { aces, usd };
+            }
+            return { aces: 0, usd: 0 };
+          }),
+        );
+
+        const aggregateAces = metricsResults.reduce((sum, m) => sum + m.aces, 0);
+        const aggregateUsd = metricsResults.reduce((sum, m) => sum + (m.usd || 0), 0);
+
+        if (!cancelled) {
+          setTotalFeesAces(aggregateAces);
+          setTotalFeesUsd(aggregateUsd);
+        }
+      } catch (error) {
+        console.error('Failed to fetch total fees for profile header:', error);
+        if (!cancelled) {
+          setTotalFeesUsd(0);
+          setTotalFeesAces(0);
+        }
+      } finally {
+        if (!cancelled) {
+          setFeesLoading(false);
+        }
+      }
+    };
+
+    fetchFees();
+    return () => {
+      cancelled = true;
+    };
+  }, [walletAddress, getAccessToken]);
 
   return (
     <>
@@ -207,7 +299,12 @@ export function HorizontalProfileHeader({ user, onConnectWallet }: HorizontalPro
                     <div className="text-[#D7BF75] text-[11px] uppercase tracking-[0.3em]">
                       Fees Made
                     </div>
-                    <div className="text-2xl font-semibold text-[#E6E3D3]">$0.00</div>
+                    <div className="text-2xl font-semibold text-[#E6E3D3]">
+                      {feesLoading ? '...' : formattedFeesUsd}
+                    </div>
+                    {!feesLoading && totalFeesAces > 0 ? (
+                      <div className="text-xs text-[#DCDDCC]/70">{formattedFeesAces}</div>
+                    ) : null}
                   </div>
                 </div>
               )}

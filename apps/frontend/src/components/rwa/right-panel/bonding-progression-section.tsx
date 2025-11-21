@@ -47,7 +47,7 @@ export function BondingProgressSection({
       )`;
 
   // Single source of truth for default bonding target used during loading/unknown
-  const DEFAULT_BONDING_TARGET = 30000000; // 30M
+  const DEFAULT_BONDING_TARGET = 800000000; // 800M tokens (bonding curve supply)
 
   const supplyMetrics = useMemo(() => {
     // Check if we have valid data - currentSupply can be '0' which is valid

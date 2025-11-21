@@ -82,6 +82,7 @@ export interface TradeData {
   transactionHash: string;
   source: 'goldsky' | 'bitquery';
   sequenceNumber?: number;
+  isHistorical?: boolean;
 }
 
 type TradeCallback = (trade: TradeData) => void;

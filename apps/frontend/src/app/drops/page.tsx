@@ -1,17 +1,30 @@
 'use client';
 
 import type React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Footer from '@/components/ui/custom/footer';
 import LuxuryAssetsBackground from '@/components/ui/custom/luxury-assets-background';
 import PageBandTitle from '@/components/ui/custom/page-band-title';
 import PageBandSubtitle from '@/components/ui/custom/page-band-subtitle';
 import AcesHeader from '@/components/ui/custom/aces-header';
-import UpcomingGrid from '@/components/upcoming/upcoming-grid';
+import UpcomingGrid, { convertMetadataToUpcomingAsset } from '@/components/upcoming/upcoming-grid';
 import PageLoader from '@/components/loading/page-loader';
+import { SAMPLE_METADATA } from '@/data/metadata';
+import type { UpcomingAsset } from '@/components/upcoming/upcoming-card';
 
 export default function UpcomingPage() {
   const [isLoading, setIsLoading] = useState(true);
+  const upcomingAssets = useMemo<UpcomingAsset[]>(() => {
+    const featuredMetadata = SAMPLE_METADATA.find((item) => item.id === '26');
+    const apMetadata = SAMPLE_METADATA.find((item) => item.id === '7');
+
+    const featuredAsset = featuredMetadata
+      ? { ...convertMetadataToUpcomingAsset(featuredMetadata), comingSoon: true }
+      : undefined;
+    const apAsset = apMetadata ? convertMetadataToUpcomingAsset(apMetadata) : undefined;
+
+    return [featuredAsset, apAsset].filter(Boolean) as UpcomingAsset[];
+  }, []);
 
   useEffect(() => {
     // Simulate initial page load
@@ -66,7 +79,7 @@ export default function UpcomingPage() {
       <div className="relative z-20 h-[1400px]">
         {/* Scrollable grid container positioned underneath text */}
         <div className="absolute top-[200px] left-1/2 -translate-x-1/2 w-full max-w-[1200px] px-4 sm:px-6 z-10 h-[1200px] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-          <UpcomingGrid />
+          <UpcomingGrid assets={upcomingAssets} />
           {/* Bottom padding to ensure footer clearance */}
           <div className="h-24" />
         </div>

@@ -2,7 +2,7 @@
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "pnpm install --frozen-lockfile && pnpm -C apps/backend run build"
+    "buildCommand": "PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1 pnpm install --frozen-lockfile && PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1 pnpm -C apps/backend run build"
   },
   "deploy": {
     "startCommand": "pnpm -C apps/backend start",

@@ -11,6 +11,9 @@ export interface TokenMetadata {
   dexLiveAt: Date | null;
   symbol?: string;
   name?: string;
+  // 🔥 OPTION A: Cache bonding curve parameters (these NEVER change)
+  steepness?: string; // From bonding curve contract
+  floor?: string; // From bonding curve contract
 }
 
 interface CacheEntry {
@@ -131,11 +134,49 @@ export class TokenMetadataCacheService {
         },
       });
 
-      const duration = Date.now() - startTime;
-      // console.log(`[TokenCache] ⏱️ Query completed in ${duration}ms`);
+      // console.log(`[TokenCache] ⏱️ Query completed in ${Date.now() - startTime}ms`);
 
       if (!token) {
         return null;
+      }
+
+      // 🔥 OPTION A: Fetch bonding curve parameters from SubGraph (only for bonding curve tokens)
+      let steepness: string | undefined;
+      let floor: string | undefined;
+
+      if (token.phase === 'BONDING_CURVE' && process.env.GOLDSKY_SUBGRAPH_URL) {
+        try {
+          const query = `{
+            tokens(where: {address: "${tokenAddress.toLowerCase()}"}) {
+              steepness
+              floor
+            }
+          }`;
+
+          const response = await fetch(process.env.GOLDSKY_SUBGRAPH_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query }),
+            signal: AbortSignal.timeout(3000), // 3s timeout
+          });
+
+          if (response.ok) {
+            const result = (await response.json()) as {
+              data?: { tokens?: Array<{ steepness: string; floor: string }> };
+            };
+            const tokens = result?.data?.tokens;
+            if (tokens && tokens.length > 0) {
+              steepness = tokens[0].steepness;
+              floor = tokens[0].floor;
+            }
+          }
+        } catch (error) {
+          // Silently fail - steepness/floor are optional optimizations
+          console.warn(
+            `[TokenCache] Failed to fetch bonding curve params for ${tokenAddress}:`,
+            error instanceof Error ? error.message : error,
+          );
+        }
       }
 
       return {
@@ -146,6 +187,9 @@ export class TokenMetadataCacheService {
         dexLiveAt: token.dexLiveAt,
         symbol: token.symbol,
         name: token.name,
+        // 🔥 OPTION A: Include bonding curve parameters in cache (fetched from SubGraph)
+        steepness,
+        floor,
       };
     } catch (error) {
       console.error(`[TokenCache] ❌ Error fetching token metadata:`, error);

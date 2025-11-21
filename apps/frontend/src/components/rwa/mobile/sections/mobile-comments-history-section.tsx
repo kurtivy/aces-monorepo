@@ -124,12 +124,12 @@ const MobileCommentsHistorySection = forwardRef<HTMLDivElement, MobileCommentsHi
               )}
             </div>
           ) : activeTab === 'stats' ? (
-            <div className="">
+            <div className="pt-4">
               <TokenMetricsSection
                 tokenAddress={listing.token?.contractAddress}
                 reservePrice={listing.reservePrice}
                 chainId={tokenChainId}
-                rrp={listing.rrp || listing.reservePrice}
+                listingValue={listing.value}
                 brand={listing.brand}
                 hypePoints={listing.hypePoints}
                 hypeSentence={listing.hypeSentence}

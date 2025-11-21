@@ -3,6 +3,29 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { priceCacheService } from '../../services/price-cache-service';
 import { clearBondingDataCache } from '../v1/bonding-data'; // 🔥 NEW: Cache invalidation
 import { getMemoryStore } from '../../services/goldsky-memory-store'; // 🚀 NEW: In-memory store
+import Decimal from 'decimal.js';
+
+/**
+ * Helper function to convert scientific notation numbers to full decimal strings
+ * Goldsky sends large numbers like 1.208373e+24 which need to be converted to full integer strings
+ */
+function toFullDecimalString(value: any): string {
+  if (value === null || value === undefined || value === '') return '0';
+  
+  // If already a string without scientific notation, return as-is
+  if (typeof value === 'string' && !value.includes('e') && !value.includes('E')) {
+    return value;
+  }
+  
+  // Convert to number first, then to BigInt-compatible string
+  const num = typeof value === 'number' ? value : parseFloat(value);
+  
+  if (!Number.isFinite(num) || num === 0) return '0';
+  
+  // Use toLocaleString with fullwide to get full decimal representation
+  // This prevents scientific notation
+  return num.toLocaleString('fullwide', { useGrouping: false, maximumFractionDigits: 0 });
+}
 
 /**
  * GoldSky webhook payload structure for Trade entity
@@ -19,86 +42,128 @@ interface GoldSkyTradeWebhook {
       address: string;
       name: string;
       symbol: string;
-    };
+    } | string;
     trader: {
       address: string;
-    };
+    } | string;
     isBuy: boolean;
-    tokenAmount: string;
-    acesTokenAmount: string;
-    protocolFeeAmount: string;
-    subjectFeeAmount: string;
+    tokenAmount?: string;
+    acesTokenAmount?: string;
+    protocolFeeAmount?: string;
+    subjectFeeAmount?: string;
     supply: string;
-    createdAt: string; // Unix timestamp as string
-    blockNumber: string;
+    createdAt?: string; // Unix timestamp as string
+    blockNumber?: string;
+    // Flexible extra fields for pipeline payloads
+    token_address?: string;
+    token_amount?: string;
+    aces_token_amount?: string;
+    created_at?: string;
+    block_number?: string;
+    is_buy?: boolean;
+    timestamp?: number | string;
+    transaction_hash?: string;
   };
 }
 
 export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
-  // Trade webhook handler (shared logic) - Supports BATCHED requests
-  const handleTradeWebhook = async (
-    request: FastifyRequest<{ Body: GoldSkyTradeWebhook | GoldSkyTradeWebhook[] }>,
+  /**
+   * Normalize pipeline (SQL transform) payloads into the shape expected by processSingleTrade
+   */
+  const normalizePipelineTrade = (raw: any): GoldSkyTradeWebhook => {
+    const tokenAddress =
+      raw?.token_address ||
+      raw?.token ||
+      (raw?.token?.address as string | undefined) ||
+      raw?.tokenAddress ||
+      '';
+
+    const traderAddress =
+      raw?.trader?.address ||
+      raw?.trader ||
+      (typeof raw?.trader === 'string' ? raw.trader : undefined) ||
+      'unknown';
+
+    // Prefer explicit timestamp, fall back to created_at, then now (seconds)
+    const timestampSeconds = (() => {
+      if (raw?.timestamp != null) return Number(raw.timestamp);
+      if (raw?.created_at != null) return Number(raw.created_at);
+      if (raw?.createdAt != null) return Number(raw.createdAt);
+      return Math.floor(Date.now() / 1000);
+    })();
+
+    const blockNumber =
+      raw?.block_number ?? raw?.blockNumber ?? raw?.block_number ?? raw?.block_number ?? '0';
+
+    const id =
+      raw?.id ||
+      raw?.transaction_hash ||
+      raw?.transactionHash ||
+      `pipeline-${tokenAddress}-${Date.now()}`;
+
+    return {
+      op: 'INSERT',
+      data: {
+        id,
+        token: tokenAddress,
+        trader: traderAddress,
+        isBuy: Boolean(raw?.is_buy ?? raw?.isBuy),
+        // 🔥 FIX: Convert scientific notation to full decimal string
+        // Goldsky sends numbers like 1.208373e+24, need to convert to full integer string
+        tokenAmount: toFullDecimalString(raw?.token_amount ?? raw?.tokenAmount ?? '0'),
+        acesTokenAmount: toFullDecimalString(raw?.aces_token_amount ?? raw?.acesAmount ?? raw?.acesTokenAmount ?? '0'),
+        protocolFeeAmount: toFullDecimalString(raw?.protocol_fee_amount ?? raw?.protocolFeeAmount ?? '0'),
+        subjectFeeAmount: toFullDecimalString(raw?.subject_fee_amount ?? raw?.subjectFeeAmount ?? '0'),
+        supply: toFullDecimalString(raw?.supply ?? '0'),
+        createdAt: String(timestampSeconds),
+        blockNumber: String(blockNumber),
+        // Also expose snake_case fields for downstream compatibility
+        token_address: tokenAddress,
+        // 🔥 FIX: Convert scientific notation to full decimal string
+        token_amount: toFullDecimalString(raw?.token_amount ?? raw?.tokenAmount ?? '0'),
+        aces_token_amount: toFullDecimalString(raw?.aces_token_amount ?? raw?.acesAmount ?? raw?.acesTokenAmount ?? '0'),
+        created_at: String(timestampSeconds),
+        block_number: String(blockNumber),
+        is_buy: Boolean(raw?.is_buy ?? raw?.isBuy),
+        transaction_hash: raw?.transaction_hash ?? raw?.transactionHash ?? id,
+        timestamp: timestampSeconds,
+      },
+    };
+  };
+
+  /**
+   * Shared batch processor used by both the original webhook and the pipeline-compatible alias.
+   */
+  const processTradeBatch = async (
+    trades: GoldSkyTradeWebhook[],
     reply: FastifyReply,
+    sourceLabel: string,
   ) => {
     const startTime = Date.now();
-    
-    // Detect if this is a batched request and normalize to array
-    const trades: GoldSkyTradeWebhook[] = Array.isArray(request.body) 
-      ? request.body 
-      : [request.body];
-    const isBatched = Array.isArray(request.body);
+    const isBatched = trades.length > 1;
 
-    // Log incoming request with clear visual separator
     console.log('\n========================================');
     console.log(`[GoldSky Webhook] 🎯 INCOMING ${isBatched ? 'BATCHED' : 'SINGLE'} REQUEST`);
     console.log('========================================');
     console.log('Timestamp:', new Date().toISOString());
     console.log('Batch size:', trades.length);
-    console.log('Headers:', JSON.stringify(request.headers, null, 2));
+    console.log('Source:', sourceLabel);
+    console.log(
+      '[GoldSky Webhook] Tokens in batch:',
+      trades.map((t) => (t.data as any)?.token || (t.data as any)?.token_address || 'unknown'),
+    );
+
     if (!isBatched || trades.length <= 3) {
-      console.log('Body:', JSON.stringify(request.body, null, 2));
+      console.log('Body:', JSON.stringify(trades, null, 2));
     } else {
       console.log('Body (truncated):', `${trades.length} trades in batch`);
     }
 
     try {
-      // 1. VERIFY WEBHOOK SECRET
-      console.log('\n[GoldSky] 🔐 Checking webhook secret...');
-      // Goldsky Webhook Sink can use custom headers (x-webhook-secret or goldsky-webhook-secret)
-      const goldskySecret = 
-        (request.headers['x-webhook-secret'] as string) || 
-        (request.headers['goldsky-webhook-secret'] as string);
-      const expectedSecret = process.env.GOLDSKY_WEBHOOK_SECRET;
-      console.log('Expected secret set:', !!expectedSecret);
-      console.log('Received signature header:', goldskySecret ? 'PRESENT' : 'MISSING');
-
-      if (!expectedSecret) {
-        console.log('[GoldSky] ❌ GOLDSKY_WEBHOOK_SECRET not configured!');
-        fastify.log.error('[GoldSky] GOLDSKY_WEBHOOK_SECRET not configured!');
-        return reply.code(500).send({
-          success: false,
-          error: 'Server configuration error',
-        });
-      }
-
-      if (goldskySecret !== expectedSecret) {
-        console.log('[GoldSky] ❌ Invalid webhook signature');
-        fastify.log.warn(
-          `[GoldSky] Invalid webhook signature - received: ${goldskySecret ? 'present' : 'missing'}`,
-        );
-        return reply.code(401).send({
-          success: false,
-          error: 'Unauthorized',
-        });
-      }
-
-      console.log('[GoldSky] ✅ Webhook secret verified');
-      
-      // 2. PROCESS ALL TRADES IN BATCH
       let processed = 0;
       let skipped = 0;
       let errors = 0;
-      
+
       for (const webhookPayload of trades) {
         try {
           await processSingleTrade(webhookPayload, fastify);
@@ -108,7 +173,7 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
           console.error('[GoldSky] Error processing trade:', error);
         }
       }
-      
+
       const duration = Date.now() - startTime;
       console.log('\n========================================');
       console.log('[GoldSky] 📊 BATCH PROCESSING COMPLETE');
@@ -119,7 +184,7 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
       console.log('Errors:', errors);
       console.log('Duration:', duration + 'ms');
       console.log('Avg per trade:', Math.round(duration / trades.length) + 'ms');
-      
+
       return reply.code(200).send({
         success: true,
         processed,
@@ -127,7 +192,6 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
         errors,
         duration,
       });
-      
     } catch (error) {
       const duration = Date.now() - startTime;
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
@@ -139,6 +203,53 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
         duration,
       });
     }
+  };
+
+  // Trade webhook handler (shared logic) - Supports BATCHED requests
+  const handleTradeWebhook = async (
+    request: FastifyRequest<{ Body: GoldSkyTradeWebhook | GoldSkyTradeWebhook[] }>,
+    reply: FastifyReply,
+  ) => {
+    // Detect if this is a batched request and normalize to array
+    const trades: GoldSkyTradeWebhook[] = Array.isArray(request.body)
+      ? request.body
+      : [request.body];
+
+    // 1. VERIFY WEBHOOK SECRET (existing behavior)
+    console.log('\n[GoldSky] 🔐 Checking webhook secret...');
+    const goldskySecret =
+      (request.headers['x-webhook-secret'] as string) ||
+      (request.headers['goldsky-webhook-secret'] as string) ||
+      (request.headers['x-goldsky-signature'] as string) || // Goldsky default header
+      (request.headers['x-goldsky-webhook-signature'] as string) ||
+      (request.headers['x-goldsky-secret'] as string);
+    const expectedSecret = process.env.GOLDSKY_WEBHOOK_SECRET;
+    console.log('Expected secret set:', !!expectedSecret);
+    console.log('Received signature header:', goldskySecret ? 'PRESENT' : 'MISSING');
+
+    if (!expectedSecret) {
+      console.log('[GoldSky] ❌ GOLDSKY_WEBHOOK_SECRET not configured!');
+      fastify.log.error('[GoldSky] GOLDSKY_WEBHOOK_SECRET not configured!');
+      return reply.code(500).send({
+        success: false,
+        error: 'Server configuration error',
+      });
+    }
+
+    if (goldskySecret !== expectedSecret) {
+      console.log('[GoldSky] ❌ Invalid webhook signature');
+      fastify.log.warn(
+        `[GoldSky] Invalid webhook signature - received: ${goldskySecret ? 'present' : 'missing'}`,
+      );
+      return reply.code(401).send({
+        success: false,
+        error: 'Unauthorized',
+      });
+    }
+
+    console.log('[GoldSky] ✅ Webhook secret verified');
+
+    return processTradeBatch(trades, reply, 'goldsky-webhook');
   };
   
   // Process a single trade from the batch
@@ -165,6 +276,13 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
     const blockNumber = data.block_number;
     const timestamp = data.created_at;
     const supplyWei = data.supply;
+
+    // Validate token address to avoid polluting the memory store with empty keys
+    if (!tokenAddress || typeof tokenAddress !== 'string' || tokenAddress.trim() === '') {
+      const message = `[GoldSky] ❌ Missing token address in webhook payload, skipping trade ${tradeId}`;
+      console.error(message, { tradeId, tokenAddress, source: webhookPayload?.data_source || 'unknown' });
+      throw new Error('Missing token address in GoldSky webhook payload');
+    }
 
     console.log(
       `\n[GoldSky] 📥 Processing trade - Token: ${tokenAddress} - Block: ${blockNumber} - Supply: ${supplyWei}`,
@@ -209,22 +327,45 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
       const duration = Date.now() - startTime;
       console.log(`[GoldSky] ✅ Price snapshot stored (${duration}ms)`);
 
-      // 4. Invalidate bonding data cache for this token
+      // 4. Invalidate bonding data cache for this token (RPC-backed data)
       const clearedCount = clearBondingDataCache(tokenAddress);
-      console.log(`[GoldSky] 🗑️ Invalidated ${clearedCount} cache entries`);
+      console.log(`[GoldSky] 🗑️ Invalidated ${clearedCount} bonding cache entries`);
+
+      // 4b. Trigger unified GoldSky refresh without blowing cache away
+      const unifiedService = fastify.unifiedGoldSkyService;
+      if (unifiedService) {
+        unifiedService.refreshInBackground(tokenAddress);
+        console.log(`[GoldSky] 🔄 Triggered unified GoldSky refresh for ${tokenAddress}`);
+      } else {
+        console.log('[GoldSky] ⚠️ Unified GoldSky service not available, skipping refresh');
+      }
 
       // 5. 🚀 Store trade in memory for real-time WebSocket streaming
       const memoryStore = getMemoryStore();
+      // Use raw wei values to avoid double-scaling on the frontend (frontend already normalizes)
+      const tokenAmountWei = new Decimal(toFullDecimalString(data.token_amount || '0'));
+      const acesAmountWei = new Decimal(toFullDecimalString(data.aces_token_amount || '0'));
+      const supplyWeiDecimal = new Decimal(toFullDecimalString(supplyWei || '0'));
+
+      // Compute per-token price in ACES and USD (ratio is scale-invariant)
+      const pricePerTokenAces =
+        tokenAmountWei.gt(0) && acesAmountWei.gt(0)
+          ? acesAmountWei.div(tokenAmountWei)
+          : new Decimal(0);
+      const priceUsdAtTrade = pricePerTokenAces.mul(acesUsdPrice);
+
       memoryStore.storeTrade({
         id: tradeId,
         tokenAddress: tokenAddress,
         trader: data.trader || 'unknown',
         isBuy: data.is_buy || false,
-        tokenAmount: data.token_amount || '0',
-        acesAmount: data.aces_token_amount || '0',
-        pricePerToken: '0',
-        priceUsd: acesUsdPrice.toString(),
-        supply: supplyWei,
+        // Keep raw wei strings; frontend normalizes by dividing by 1e18
+        // Avoid scientific notation so the frontend normalizes correctly
+        tokenAmount: tokenAmountWei.toFixed(0),
+        acesAmount: acesAmountWei.toFixed(0),
+        pricePerToken: pricePerTokenAces.toFixed(18), // ACES per token
+        priceUsd: priceUsdAtTrade.toFixed(18), // USD per token
+        supply: supplyWeiDecimal.toFixed(0),
         timestamp: parseInt(timestamp) * 1000,
         blockNumber: parseInt(blockNumber),
         transactionHash: tradeId,
@@ -236,7 +377,8 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
       memoryStore.storeBondingStatus({
         tokenAddress: tokenAddress,
         isBonded: false,
-        supply: supplyWei,
+        // 🔥 FIX: Convert supply to full decimal string
+        supply: toFullDecimalString(supplyWei || '0'),
         bondingProgress: 0,
         poolAddress: undefined,
         graduatedAt: undefined,
@@ -270,6 +412,46 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
    */
   fastify.post<{ Body: GoldSkyTradeWebhook }>('/trade', handleTradeWebhook);
   fastify.post<{ Body: GoldSkyTradeWebhook }>('/trade/', handleTradeWebhook);
+
+  /**
+   * Pipeline-compatible alias (plural route) that accepts the SQL transform payload
+   * and normalizes it before handing off to the existing processor.
+   */
+  fastify.post<{ Body: Record<string, any> | Record<string, any>[] }>(
+    '/trades',
+    async (request, reply) => {
+      // Verify webhook secret (same as legacy route)
+      const goldskySecret =
+        (request.headers['x-webhook-secret'] as string) ||
+        (request.headers['goldsky-webhook-secret'] as string);
+      const expectedSecret = process.env.GOLDSKY_WEBHOOK_SECRET;
+
+      if (!expectedSecret) {
+        console.log('[GoldSky] ❌ GOLDSKY_WEBHOOK_SECRET not configured!');
+        fastify.log.error('[GoldSky] GOLDSKY_WEBHOOK_SECRET not configured!');
+        return reply.code(500).send({
+          success: false,
+          error: 'Server configuration error',
+        });
+      }
+
+      if (goldskySecret !== expectedSecret) {
+        console.log('[GoldSky] ❌ Invalid webhook signature (pipeline alias)');
+        fastify.log.warn(
+          `[GoldSky] Invalid webhook signature on /trades - received: ${goldskySecret ? 'present' : 'missing'}`,
+        );
+        return reply.code(401).send({
+          success: false,
+          error: 'Unauthorized',
+        });
+      }
+
+      const payloadArray = Array.isArray(request.body) ? request.body : [request.body];
+      const normalizedTrades = payloadArray.map(normalizePipelineTrade);
+
+      return processTradeBatch(normalizedTrades, reply, 'goldsky-pipeline-alias');
+    },
+  );
 
   /**
    * Health check endpoint for webhook

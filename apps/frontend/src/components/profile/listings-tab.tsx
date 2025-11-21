@@ -273,7 +273,7 @@ function ListingRow({
           <span className="text-[#E6E3D3] text-sm">
             {metricsLoading ? (
               <span className="text-[#D7BF75]/50">...</span>
-            ) : metrics?.totalFeesUsd ? (
+            ) : metrics?.totalFeesUsd !== undefined && metrics?.totalFeesUsd !== null ? (
               <>
                 ${formatNumber(metrics.totalFeesUsd)} (
                 {formatNumber(parseFloat(metrics.totalFeesAces))} ACES)
