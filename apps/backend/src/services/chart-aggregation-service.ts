@@ -412,7 +412,10 @@ export class ChartAggregationService {
       let floor: string | null = tokenMetadata?.floor || null;
 
       // Fallback: If cache doesn't have metadata, fetch directly from SubGraph (should be rare)
-      if ((!steepness || !floor) && (process.env.GOLDSKY_SUBGRAPH_URL || process.env.SUBGRAPH_URL)) {
+      if (
+        (!steepness || !floor) &&
+        (process.env.GOLDSKY_SUBGRAPH_URL || process.env.SUBGRAPH_URL)
+      ) {
         try {
           const query = `{
             tokens(where: {address: "${tokenAddress.toLowerCase()}"}) {
@@ -421,12 +424,15 @@ export class ChartAggregationService {
             }
           }`;
 
-          const response = await fetch(process.env.GOLDSKY_SUBGRAPH_URL || process.env.SUBGRAPH_URL!, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query }),
-            signal: AbortSignal.timeout(3000), // 3s timeout
-          });
+          const response = await fetch(
+            process.env.GOLDSKY_SUBGRAPH_URL || process.env.SUBGRAPH_URL!,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ query }),
+              signal: AbortSignal.timeout(3000), // 3s timeout
+            },
+          );
 
           if (response.ok) {
             const result = (await response.json()) as {
@@ -454,7 +460,8 @@ export class ChartAggregationService {
       }
 
       // Transform to Trade format expected by the rest of the service
-      // 🔥 CRITICAL CHANGE: Use marginal buy price logic for display
+      // 🔥 FIX: Use execution price for charts (actual price paid/received)
+      // Marginal price creates artificial spikes on large trades that don't reflect real market prices
       const transformedTrades: Trade[] = [];
 
       for (const trade of tradesWithPrices) {
@@ -462,44 +469,28 @@ export class ChartAggregationService {
         const acesTokenAmount = parseFloat(trade.acesTokenAmount) / 1e18;
         const supply = parseFloat(trade.supply) / 1e18; // Circulating supply AFTER this trade
 
-        // 🔥 MARGINAL PRICE LOGIC (CORRECTED):
-        // SubGraph gives us supply AFTER the trade.
-        // We need to show the marginal buy price at the CORRECT supply level:
+        // 🔥 EXECUTION PRICE LOGIC:
+        // Use the actual price paid/received in this trade (total ACES / total tokens)
+        // This represents what traders actually experienced, not theoretical marginal prices
         //
-        // For BUY trades:
-        // - User bought tokenAmount FROM curve
-        // - Supply BEFORE trade = supply + tokenAmount (higher)
-        // - Supply AFTER trade = supply (lower)
-        // - Show marginal price at supply AFTER = HIGHER price ✅
+        // Benefits:
+        // - Charts match trade history exactly
+        // - No artificial spikes from large trades
+        // - Accurate OHLC for technical analysis
+        // - Reflects real market execution prices
         //
-        // For SELL trades:
-        // - User sold tokenAmount TO curve
-        // - Supply BEFORE trade = supply - tokenAmount (lower)
-        // - Supply AFTER trade = supply (higher)
-        // - Show marginal price at supply AFTER = LOWER price ✅
+        // For both BUY and SELL trades:
+        // - Execution price = acesTokenAmount / tokenAmount (weighted average)
+        // - This is what the trader actually paid/received per token
 
-        let priceInAces: number;
+        // Always use execution price for chart data
+        // This prevents artificial spikes and matches the trade history UI
+        const priceInAces = tokenAmount > 0 ? acesTokenAmount / tokenAmount : 0;
 
-        if (steepness && floor) {
-          // For BOTH: Calculate marginal price at supply AFTER trade
-          // This automatically gives us the right relationship:
-          // - BUY: supply is lower → price is higher
-          // - SELL: supply is higher → price is lower
-          priceInAces = this.calculateMarginalBuyPrice(supply, steepness, floor);
-
-          // console.log(
-          //   `[ChartAggregation] ${trade.isBuy ? 'BUY' : 'SELL'} trade ${trade.id.slice(0, 10)}: ` +
-          //     `Marginal price=${priceInAces.toFixed(8)} ACES/token (supply after: ${supply.toFixed(0)})`,
-          // );
-        } else {
-          // Fallback: Use execution price
-          priceInAces = tokenAmount > 0 ? acesTokenAmount / tokenAmount : 0;
-
-          // console.warn(
-          //   `[ChartAggregation] ${trade.isBuy ? 'BUY' : 'SELL'} trade ${trade.id.slice(0, 10)}: ` +
-          //     `Fallback price=${priceInAces.toFixed(8)} ACES/token`,
-          // );
-        }
+        // console.log(
+        //   `[ChartAggregation] ${trade.isBuy ? 'BUY' : 'SELL'} trade ${trade.id.slice(0, 10)}: ` +
+        //     `Execution price=${priceInAces.toFixed(8)} ACES/token (${tokenAmount.toFixed(0)} tokens)`,
+        // );
 
         // Calculate USD price using HISTORICAL ACES price
         const priceInUsd = priceInAces * trade.acesUsdPriceAtExecution;
