@@ -12,7 +12,6 @@ import { useSwapContracts } from '@/hooks/swap/use-swap-contracts';
 
 // ERC20 ABI for balance checking
 const ERC20_ABI = ['function balanceOf(address) view returns (uint256)'];
-const COMMUNITY_REWARD_USD = 40_000;
 
 // Value Equilibrium Calculator (embedded)
 interface TokenMetrics {
@@ -188,6 +187,7 @@ interface TokenHealthPanelProps {
   liquiditySource?: 'bonding_curve' | 'dex' | null;
   metricsLoading?: boolean;
   circulatingSupply?: number | null; // Circulating supply from unified health endpoint
+  communityReward?: number; // Pre-calculated community reward (16.67% of listing value)
 }
 
 type LiquidityState =
@@ -209,6 +209,7 @@ export default function TokenHealthPanel({
   liquiditySource: _liquiditySource,
   metricsLoading = false,
   circulatingSupply: circulatingSupplyProp,
+  communityReward: communityRewardProp,
 }: TokenHealthPanelProps) {
   const { walletAddress, isAuthenticated } = useAuth();
   const [userTokenBalance, setUserTokenBalance] = useState<string>('0');
@@ -228,8 +229,8 @@ export default function TokenHealthPanel({
     return Number.isFinite(parsed) ? parsed : 0;
   }, [reservePrice]);
 
-  // Community reward pool is currently fixed at $40,000
-  const communityReward = COMMUNITY_REWARD_USD;
+  // Use the pre-calculated community reward from parent (16.67% of listing value)
+  const communityReward = communityRewardProp ?? 20_000;
 
   // Constants for market cap supply (fixed values)
   const BONDING_SUPPLY = 800_000_000; // 800M during bonding curve

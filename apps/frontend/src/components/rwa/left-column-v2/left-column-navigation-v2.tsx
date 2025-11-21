@@ -158,9 +158,9 @@ export function LeftColumnNavigationV2({
         <div className="flex-shrink-0">
           <TokenMetricsSection
             tokenAddress={listing.token?.contractAddress}
-            reservePrice={listing.reservePrice || listing.rrp}
+            reservePrice={listing.reservePrice}
             chainId={listing.token?.chainId}
-            rrp={listing.rrp || listing.reservePrice}
+            listingValue={listing.value}
             brand={listing.brand}
             hypePoints={listing.hypePoints}
             hypeSentence={listing.hypeSentence}

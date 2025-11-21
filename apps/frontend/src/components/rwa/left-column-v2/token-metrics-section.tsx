@@ -5,9 +5,9 @@ import { useMemo } from 'react';
 
 interface TokenMetricsSectionProps {
   tokenAddress?: string;
-  reservePrice?: string | null;
+  reservePrice?: string | null; // VALUE field - minimum/reserve price
   chainId?: number;
-  rrp?: string | null;
+  listingValue?: string | null; // COMMUNITY REWARD field - full value/RRP
   brand?: string | null;
   hypePoints?: string[] | null;
   hypeSentence?: string | null;
@@ -28,8 +28,6 @@ interface TokenMetricsSectionProps {
   disableMetricsFetch?: boolean;
 }
 
-const COMMUNITY_REWARD_USD = 40_000;
-
 const formatPrice = (price: string | null | undefined): string => {
   if (!price) return 'N/A';
   const numPrice = parseFloat(price);
@@ -41,7 +39,7 @@ export function TokenMetricsSection({
   tokenAddress,
   reservePrice,
   chainId,
-  rrp,
+  listingValue,
   brand,
   hypePoints,
   hypeSentence,
@@ -90,6 +88,14 @@ export function TokenMetricsSection({
   const resolvedMetricsLoading = metricsLoading ?? hookLoading;
   const resolvedCirculatingSupply = circulatingSupply ?? hookCirculatingSupply ?? null;
 
+  // Community reward is the listing value (listing.value from database)
+  const communityReward = useMemo(() => {
+    if (!listingValue) return 20_000;
+    const parsed = parseFloat(listingValue);
+    if (!Number.isFinite(parsed)) return 20_000;
+    return parsed;
+  }, [listingValue]);
+
   return (
     <div className="bg-black overflow-hidden flex flex-col min-h-[562px]">
       {/* DATA Section Title */}
@@ -115,6 +121,7 @@ export function TokenMetricsSection({
           liquiditySource={resolvedLiquiditySource}
           metricsLoading={resolvedMetricsLoading}
           circulatingSupply={resolvedCirculatingSupply}
+          communityReward={communityReward}
         />
 
         {/* STORY Section */}
@@ -126,22 +133,23 @@ export function TokenMetricsSection({
             </h3>
           </div>
 
-          {/* VALUE (RRP) Row */}
+          {/* VALUE Row - Reserve Price */}
           <div className="flex items-center justify-between px-4 py-1.5 border-b border-[#D0B284]/10">
             <span className="text-[11px] xl:text-xs tracking-[0.18em] uppercase text-[#D0B284] font-proxima-nova font-semibold">
               VALUE
             </span>
             <span className="text-sm xl:text-base font-semibold text-white font-proxima-nova">
-              {formatPrice(rrp)}
+              {formatPrice(reservePrice)}
             </span>
           </div>
 
+          {/* COMMUNITY REWARD Row - Listing Value */}
           <div className="flex items-center justify-between px-4 py-1.5 border-b border-[#D0B284]/10">
             <span className="text-[11px] xl:text-xs tracking-[0.18em] uppercase text-[#D0B284] font-proxima-nova font-semibold">
               COMMUNITY REWARD
             </span>
             <span className="text-sm xl:text-base font-semibold text-white font-proxima-nova">
-              {formatPrice(COMMUNITY_REWARD_USD.toFixed(0))}
+              {formatPrice(communityReward.toFixed(0))}
             </span>
           </div>
 
