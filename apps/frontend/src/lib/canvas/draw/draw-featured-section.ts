@@ -209,7 +209,7 @@ const drawDaysLeft = (
     ctx.textBaseline = 'bottom';
     const textX = x + width - (isMobile ? 15 : 20) * responsiveMetrics.paddingScale;
     const textY = y + height - (isMobile ? 15 : 20) * responsiveMetrics.paddingScale;
-    ctx.fillText('LIVE SOON', textX, textY);
+    ctx.fillText('LIVE', textX, textY);
     ctx.restore();
     return;
   }
@@ -362,7 +362,7 @@ export const drawArtGalleryCard = (
   const line1Text = 'Richard Mille RM 67-01 Gold';
   const line2Text = '"Tokenized"';
   const line3Text = isMobile ? 'v. Create token market.' : 'v. Create derivative token market.';
-  const line4Text = isMobile ? 'RM67 TOKEN SOON' : 'RM67 TOKEN COMING SOON';
+  const line4Text = isMobile ? 'RMILLE LIVE' : 'RMILLE TOKEN LIVE';
 
   // metrics
   const m1 = getTextMetrics(ctx, line1Text, line1Font);

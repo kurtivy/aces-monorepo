@@ -19,7 +19,7 @@ export default function UpcomingPage() {
     const apMetadata = SAMPLE_METADATA.find((item) => item.id === '7');
 
     const featuredAsset = featuredMetadata
-      ? { ...convertMetadataToUpcomingAsset(featuredMetadata), comingSoon: true }
+      ? convertMetadataToUpcomingAsset(featuredMetadata)
       : undefined;
     const apAsset = apMetadata ? convertMetadataToUpcomingAsset(apMetadata) : undefined;
 

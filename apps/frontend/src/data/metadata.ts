@@ -280,7 +280,7 @@ As a piece of tech history, sealed original iPhones have become incredibly valua
 The RM-88 showcases the brand's signature tonneau case, skeletonized movement, and exceptional attention to detail. Its limited production and the cultural significance of the Smiley design make it a standout piece for collectors of contemporary haute horlogerie.`,
     date: '2024-02-10',
     countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
-    ticker: '$RM88',
+    ticker: '$RMSMILEY',
     image: '/canvas-images/Richard-Mille-RM-88-Automatic-Tourbillon-Smiley.webp',
     rrp: 819200,
     tokenPrice: 10.815,
@@ -426,12 +426,12 @@ As one of the pioneering NFT projects that defined the digital art and collectib
   {
     id: '26',
     title: 'Richard Mille RM 67-01 Gold',
-    description: `An ultra-sleek expression of modern haute horlogerie, the Richard Mille RM 67-01 in solid gold blends exceptional mechanical engineering with one of the thinnest automatic movements ever produced by the brand. Its distinctive tonneau-shaped case, sculpted from precious gold, frames a skeletonized dial that showcases Richard Mille’s signature technical artistry.
+    description: `An ultra-sleek expression of modern haute horlogerie, the Richard Mille RM 67-01 in solid gold blends exceptional mechanical engineering with one of the thinnest automatic movements ever produced by the brand. Its distinctive tonneau-shaped case, sculpted from precious gold, frames a skeletonized dial that showcases Richard Mille's signature technical artistry.
   
   Designed for everyday wear yet crafted with the precision of a racing machine, the RM 67-01 represents the intersection of luxury, innovation, and lightweight ergonomics. Its rarity, precious metal execution, and rising demand among global collectors make it a standout investment-grade timepiece.`,
     date: '2024-03-22',
     countdownDate: '2025-10-06T13:00:00.000Z', // October 1, 2025 at 9AM EDT
-    ticker: '$RM67G',
+    ticker: '$RMILLE',
     image: '/canvas-images/Richard-Mille-RM67-Gold.webp',
     rrp: 240000,
     tokenPrice: 4.85,

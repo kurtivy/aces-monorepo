@@ -45,7 +45,7 @@ export default function UpcomingCard({ asset }: UpcomingCardProps) {
 
   const handleViewAssetClick = () => {
     if (!canNavigate) return;
-    router.push(`/rwa/${normalizedSymbol}`);
+    router.push(`/rwa/${normalizedSymbol.toLowerCase()}`);
   };
 
   return (
