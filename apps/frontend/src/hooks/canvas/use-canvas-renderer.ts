@@ -162,15 +162,43 @@ const drawLiveBadge = (
 
   const baseSize = Math.min(width, height);
   const dotRadius = Math.max(2.4, Math.min(baseSize * 0.04, 7.2));
-  const offset = Math.max(dotRadius + 1.5, baseSize * 0.048);
-  const dotCenterX = screenX + offset;
-  const dotCenterY = screenY + offset;
+  // Nudge badge further from top-left corner
+  const offsetBase = Math.max(dotRadius + 3, baseSize * 0.065);
+  const dotCenterX = screenX + offsetBase;
+  const dotCenterY = screenY + offsetBase;
+
+  // Subtle pulse animation (time-based, no extra state)
+  const now =
+    typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+  const pulse = 0.5 + 0.5 * Math.sin(now / 500); // 0..1 oscillation
+  const innerRadius = dotRadius * (0.55 + 0.1 * pulse);
+  const ringRadius = dotRadius;
+  const haloRadius = dotRadius + 3 + pulse * 2;
+  const liveGreen = '#008000';
 
   ctx.save();
-  ctx.fillStyle = '#15803D';
+
+  // Outer subtle halo
   ctx.beginPath();
-  ctx.arc(dotCenterX, dotCenterY, dotRadius, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(0, 128, 0, 0.22)';
+  ctx.lineWidth = Math.max(0.8, dotRadius * 0.18);
+  ctx.arc(dotCenterX, dotCenterY, haloRadius, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Outer ring
+  ctx.beginPath();
+  ctx.strokeStyle = liveGreen;
+  ctx.lineWidth = Math.max(1, dotRadius * 0.1);
+  ctx.arc(dotCenterX, dotCenterY, ringRadius, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Inner pulsing dot
+  ctx.beginPath();
+  ctx.fillStyle = liveGreen;
+  ctx.globalAlpha = 0.8 + 0.2 * pulse;
+  ctx.arc(dotCenterX, dotCenterY, innerRadius, 0, Math.PI * 2);
   ctx.fill();
+
   ctx.restore();
 };
 

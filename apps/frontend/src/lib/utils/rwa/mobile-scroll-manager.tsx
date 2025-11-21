@@ -14,7 +14,7 @@ interface ScrollManagerReturn {
 }
 
 // Offset to account for the fixed top header while still keeping section headers in view
-const MOBILE_HEADER_OFFSET = 48;
+const MOBILE_HEADER_OFFSET = 150;
 const SCROLL_THRESHOLD = 200;
 const THROTTLE_INTERVAL = 100;
 
