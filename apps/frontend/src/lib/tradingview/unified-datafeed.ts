@@ -134,6 +134,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
   private lastKnownOneMinutePrice = new Map<string, number>();
   // Track per-token trade age thresholds so higher timeframes can accept older trades
   private tradeAgeThresholdMs = new Map<string, number>();
+  private readonly GOLDSKY_MIN_TRADE_AGE_MS = 30 * 60 * 1000; // 30 minutes grace for bonding curve trades
   // 🔥 NEW: Reference to TradingView widget for forcing realtime mode
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private tradingViewWidget: any = null;
@@ -1217,6 +1218,8 @@ export class UnifiedDatafeed implements IBasicDataFeed {
         const pricePerTokenAces = Number.parseFloat(trade.pricePerToken);
         const tokenAmount = Number.parseFloat(trade.tokenAmount);
         const acesAmount = Number.parseFloat(trade.acesAmount);
+        const tradeSource = trade.source;
+        const isHistoricalTrade = Boolean(trade.isHistorical);
 
         let resolvedPriceUsd =
           Number.isFinite(directPriceUsd) && directPriceUsd > 0 ? directPriceUsd : null;
@@ -1300,6 +1303,8 @@ export class UnifiedDatafeed implements IBasicDataFeed {
           price: resolvedPriceUsd,
           volume: volumeTokens,
           isBuy: trade.isBuy,
+          source: tradeSource,
+          isHistorical: isHistoricalTrade,
         };
 
         this.lastKnownTokenPrice.set(normalizedAddress, resolvedPriceUsd);
@@ -1307,10 +1312,29 @@ export class UnifiedDatafeed implements IBasicDataFeed {
         // 🔥 CRITICAL FIX: Only process RECENT trades through candle builder
         // WebSocket backfill sends historical trades, but candle builder should only process live/recent trades
         // Historical data is already loaded via getBars() REST API
-        const ageThreshold =
-          this.tradeAgeThresholdMs.get(normalizedAddress) || this.getTradeAgeThresholdMs('1m');
+        const effectiveAgeThreshold = this.getEffectiveTradeAgeThresholdMs(
+          tokenAddress,
+          tradeSource,
+        );
 
-        if (tradeAge > ageThreshold) {
+        if (tradeAge > effectiveAgeThreshold) {
+          const shouldLogAgeSkip =
+            tradeSource === 'goldsky' || !isHistoricalTrade || this.config.debug;
+
+          if (shouldLogAgeSkip) {
+            const activeResolutions = this.getActiveResolutionsForToken(tokenAddress);
+            console.warn('[UnifiedDatafeed] ⏳ Skipping trade - exceeds age threshold', {
+              tradeId: trade.id,
+              tokenAddress,
+              tradeSource,
+              isHistorical: isHistoricalTrade,
+              tradeAgeMs: tradeAge,
+              ageThresholdMs: effectiveAgeThreshold,
+              activeResolutions,
+              timestampISO: new Date(normalizedTimestamp).toISOString(),
+              reason: isHistoricalTrade ? 'HISTORICAL_BACKFILL' : 'AGE_THRESHOLD_EXCEEDED',
+            });
+          }
           return; // Skip old trades - they're already in the chart from getBars()
         }
 
@@ -1331,7 +1355,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
    * Calculate acceptable trade age for a timeframe
    * Longer timeframes must accept older trades to build the current bucket.
    */
-  private getTradeAgeThresholdMs(timeframe: string): number {
+  private getBaseTradeAgeThresholdMs(timeframe: string): number {
     const minThreshold = 5 * 60 * 1000; // 5 minutes for very short timeframes
     const intervalMs = this.getIntervalMs(timeframe);
     return Math.max(minThreshold, intervalMs);
@@ -1342,11 +1366,49 @@ export class UnifiedDatafeed implements IBasicDataFeed {
    */
   private updateTradeAgeThreshold(tokenAddress: string, timeframe: string): void {
     const normalized = tokenAddress.toLowerCase();
-    const newThreshold = this.getTradeAgeThresholdMs(timeframe);
+    const newThreshold = this.getBaseTradeAgeThresholdMs(timeframe);
     const existing = this.tradeAgeThresholdMs.get(normalized);
     if (!existing || newThreshold > existing) {
       this.tradeAgeThresholdMs.set(normalized, newThreshold);
     }
+  }
+
+  /**
+   * Determine the effective trade age threshold for a token, accounting for its data source.
+   * Goldsky trades are allowed to be older due to webhook + memory buffering delays.
+   */
+  private getEffectiveTradeAgeThresholdMs(
+    tokenAddress: string,
+    tradeSource?: 'goldsky' | 'bitquery',
+  ): number {
+    const normalized = tokenAddress.toLowerCase();
+    const baseThreshold =
+      this.tradeAgeThresholdMs.get(normalized) ?? this.getBaseTradeAgeThresholdMs('1m');
+
+    if (tradeSource === 'goldsky') {
+      return Math.max(baseThreshold, this.GOLDSKY_MIN_TRADE_AGE_MS);
+    }
+
+    return baseThreshold;
+  }
+
+  /**
+   * Get all TradingView resolutions currently subscribed for a given token.
+   * Useful for logging when trades are filtered out.
+   */
+  private getActiveResolutionsForToken(tokenAddress: string): ResolutionString[] {
+    const normalized = tokenAddress.toLowerCase();
+    const resolutions = new Set<ResolutionString>();
+
+    for (const subscription of this.subscriptions.values()) {
+      const rawTicker = subscription.symbolInfo.ticker || '';
+      const normalizedTicker = rawTicker.replace(/_MCAP$/, '').toLowerCase();
+      if (normalizedTicker === normalized) {
+        resolutions.add(subscription.resolution);
+      }
+    }
+
+    return Array.from(resolutions);
   }
 
   subscribeBars(

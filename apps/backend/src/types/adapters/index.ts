@@ -43,6 +43,7 @@ export interface TradeEvent {
   blockNumber: number;
   transactionHash: string;
   dataSource: 'goldsky' | 'bitquery';
+  isHistorical?: boolean;
 }
 
 /**

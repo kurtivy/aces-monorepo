@@ -135,6 +135,7 @@ export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
               blockNumber: bufferedTrade.trade.blockNumber,
               transactionHash: bufferedTrade.trade.transactionHash,
               source: bufferedTrade.trade.dataSource,
+              isHistorical: false,
               // 🔥 NEW: Market cap data from single source of truth
               marketCapUsd: bufferedTrade.marketCap?.marketCapUsd || 0,
               currentPriceUsd: bufferedTrade.marketCap?.currentPriceUsd || bufferedTrade.trade.priceUsd || 0,
@@ -214,6 +215,7 @@ export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
                   blockNumber: trade.blockNumber,
                   transactionHash: trade.txHash,
                   source: 'bitquery',
+                  isHistorical: true,
                   // 🔥 NEW: Market cap data from single source of truth
                   marketCapUsd,
                   currentPriceUsd,
