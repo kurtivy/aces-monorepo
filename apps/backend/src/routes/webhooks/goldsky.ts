@@ -426,10 +426,13 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
   fastify.post<{ Body: Record<string, any> | Record<string, any>[] }>(
     '/trades',
     async (request, reply) => {
-      // Verify webhook secret (same as legacy route)
+      // Verify webhook secret (same headers as main webhook route)
       const goldskySecret =
         (request.headers['x-webhook-secret'] as string) ||
-        (request.headers['goldsky-webhook-secret'] as string);
+        (request.headers['goldsky-webhook-secret'] as string) ||
+        (request.headers['x-goldsky-signature'] as string) || // 🔥 FIX: Standard Goldsky header
+        (request.headers['x-goldsky-webhook-signature'] as string) ||
+        (request.headers['x-goldsky-secret'] as string);
       const expectedSecret = process.env.GOLDSKY_WEBHOOK_SECRET;
 
       if (!expectedSecret) {
@@ -443,14 +446,23 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
 
       if (goldskySecret !== expectedSecret) {
         console.log('[GoldSky] ❌ Invalid webhook signature (pipeline alias)');
+        console.log('[GoldSky] 🔍 Debug headers:', {
+          'x-webhook-secret': request.headers['x-webhook-secret'] ? 'present' : 'missing',
+          'goldsky-webhook-secret': request.headers['goldsky-webhook-secret'] ? 'present' : 'missing',
+          'x-goldsky-signature': request.headers['x-goldsky-signature'] ? 'present' : 'missing',
+          'x-goldsky-webhook-signature': request.headers['x-goldsky-webhook-signature'] ? 'present' : 'missing',
+          'x-goldsky-secret': request.headers['x-goldsky-secret'] ? 'present' : 'missing',
+        });
         fastify.log.warn(
-          `[GoldSky] Invalid webhook signature on /trades - received: ${goldskySecret ? 'present' : 'missing'}`,
+          `[GoldSky] Invalid webhook signature on /trades - received: ${goldskySecret ? 'present but wrong' : 'missing'}`,
         );
         return reply.code(401).send({
           success: false,
           error: 'Unauthorized',
         });
       }
+
+      console.log('[GoldSky] ✅ Webhook secret verified (pipeline alias)');
 
       const payloadArray = Array.isArray(request.body) ? request.body : [request.body];
       const normalizedTrades = payloadArray.map(normalizePipelineTrade);
