@@ -85,17 +85,19 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
         token: tokenAddress,
         trader: traderAddress,
         isBuy: Boolean(raw?.is_buy ?? raw?.isBuy),
-        tokenAmount: raw?.token_amount ?? raw?.tokenAmount ?? '0',
-        acesTokenAmount: raw?.aces_token_amount ?? raw?.acesAmount ?? raw?.acesTokenAmount ?? '0',
-        protocolFeeAmount: raw?.protocol_fee_amount ?? raw?.protocolFeeAmount ?? '0',
-        subjectFeeAmount: raw?.subject_fee_amount ?? raw?.subjectFeeAmount ?? '0',
-        supply: raw?.supply ?? '0',
+        // 🔥 FIX: Convert to string in case Goldsky sends numbers in scientific notation
+        tokenAmount: String(raw?.token_amount ?? raw?.tokenAmount ?? '0'),
+        acesTokenAmount: String(raw?.aces_token_amount ?? raw?.acesAmount ?? raw?.acesTokenAmount ?? '0'),
+        protocolFeeAmount: String(raw?.protocol_fee_amount ?? raw?.protocolFeeAmount ?? '0'),
+        subjectFeeAmount: String(raw?.subject_fee_amount ?? raw?.subjectFeeAmount ?? '0'),
+        supply: String(raw?.supply ?? '0'),
         createdAt: String(timestampSeconds),
         blockNumber: String(blockNumber),
         // Also expose snake_case fields for downstream compatibility
         token_address: tokenAddress,
-        token_amount: raw?.token_amount ?? raw?.tokenAmount ?? '0',
-        aces_token_amount: raw?.aces_token_amount ?? raw?.acesAmount ?? raw?.acesTokenAmount ?? '0',
+        // 🔥 FIX: Convert to string in case Goldsky sends numbers in scientific notation
+        token_amount: String(raw?.token_amount ?? raw?.tokenAmount ?? '0'),
+        aces_token_amount: String(raw?.aces_token_amount ?? raw?.acesAmount ?? raw?.acesTokenAmount ?? '0'),
         created_at: String(timestampSeconds),
         block_number: String(blockNumber),
         is_buy: Boolean(raw?.is_buy ?? raw?.isBuy),
@@ -309,11 +311,14 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
         tokenAddress: tokenAddress,
         trader: data.trader || 'unknown',
         isBuy: data.is_buy || false,
-        tokenAmount: data.token_amount || '0',
-        acesAmount: data.aces_token_amount || '0',
+        // 🔥 FIX: Goldsky sends numbers in scientific notation (1.175e+21)
+        // Convert to string to avoid frontend errors with .includes()
+        tokenAmount: String(data.token_amount || '0'),
+        acesAmount: String(data.aces_token_amount || '0'),
         pricePerToken: '0',
         priceUsd: acesUsdPrice.toString(),
-        supply: supplyWei,
+        // 🔥 FIX: Convert supply to string as well
+        supply: String(supplyWei || '0'),
         timestamp: parseInt(timestamp) * 1000,
         blockNumber: parseInt(blockNumber),
         transactionHash: tradeId,
@@ -325,7 +330,8 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
       memoryStore.storeBondingStatus({
         tokenAddress: tokenAddress,
         isBonded: false,
-        supply: supplyWei,
+        // 🔥 FIX: Convert supply to string
+        supply: String(supplyWei || '0'),
         bondingProgress: 0,
         poolAddress: undefined,
         graduatedAt: undefined,
