@@ -3,6 +3,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { priceCacheService } from '../../services/price-cache-service';
 import { clearBondingDataCache } from '../v1/bonding-data'; // 🔥 NEW: Cache invalidation
 import { getMemoryStore } from '../../services/goldsky-memory-store'; // 🚀 NEW: In-memory store
+import Decimal from 'decimal.js';
 
 /**
  * Helper function to convert scientific notation numbers to full decimal strings
@@ -332,19 +333,33 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
 
       // 5. 🚀 Store trade in memory for real-time WebSocket streaming
       const memoryStore = getMemoryStore();
+      // Normalize amounts out of wei to keep frontend math consistent
+      const tokenAmountWei = new Decimal(toFullDecimalString(data.token_amount || '0'));
+      const acesAmountWei = new Decimal(toFullDecimalString(data.aces_token_amount || '0'));
+      const supplyWei = new Decimal(toFullDecimalString(supplyWei || '0'));
+
+      const tokenAmount = tokenAmountWei.div(new Decimal('1e18'));
+      const acesAmount = acesAmountWei.div(new Decimal('1e18'));
+      const supply = supplyWei.div(new Decimal('1e18'));
+
+      // Compute per-token price in ACES and USD
+      const pricePerTokenAces =
+        tokenAmount.gt(0) && acesAmount.gt(0)
+          ? acesAmount.div(tokenAmount)
+          : new Decimal(0);
+      const priceUsdAtTrade = pricePerTokenAces.mul(acesUsdPrice);
+
       memoryStore.storeTrade({
         id: tradeId,
         tokenAddress: tokenAddress,
         trader: data.trader || 'unknown',
         isBuy: data.is_buy || false,
-        // 🔥 FIX: Goldsky sends numbers in scientific notation (1.175e+21)
-        // Convert to full decimal string to avoid frontend errors
-        tokenAmount: toFullDecimalString(data.token_amount || '0'),
-        acesAmount: toFullDecimalString(data.aces_token_amount || '0'),
-        pricePerToken: '0',
-        priceUsd: acesUsdPrice.toString(),
-        // 🔥 FIX: Convert supply to full decimal string
-        supply: toFullDecimalString(supplyWei || '0'),
+        tokenAmount: tokenAmount.toFixed(), // human-readable units
+        acesAmount: acesAmount.toFixed(),
+        pricePerToken: pricePerTokenAces.toFixed(),
+        priceUsd: priceUsdAtTrade.toFixed(),
+        // 🔥 FIX: Convert supply to human-readable units
+        supply: supply.toFixed(),
         timestamp: parseInt(timestamp) * 1000,
         blockNumber: parseInt(blockNumber),
         transactionHash: tradeId,

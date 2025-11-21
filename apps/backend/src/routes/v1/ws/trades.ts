@@ -247,6 +247,7 @@ export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
 
             // 🔥 NEW: Fetch current market cap data
             // This provides real-time market cap updates alongside trades
+            const MARKET_CAP_TIMEOUT_MS = 2000; // Do not block real-time delivery on slow market cap fetch
             let marketCapData = {
               marketCapUsd: 0,
               currentPriceUsd: trade.priceUsd || 0,
@@ -254,18 +255,26 @@ export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
 
             try {
               if (fastify.marketCapService) {
-                const freshMarketCap = await fastify.marketCapService.getMarketCap(
-                  tokenAddress,
-                  8453, // Base chain
-                );
-                marketCapData = {
-                  marketCapUsd: freshMarketCap.marketCapUsd,
-                  currentPriceUsd: freshMarketCap.currentPriceUsd,
-                };
+                const freshMarketCap = await Promise.race([
+                  fastify.marketCapService.getMarketCap(tokenAddress, 8453),
+                  new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('market_cap_timeout')), MARKET_CAP_TIMEOUT_MS),
+                  ),
+                ]);
+
+                if (freshMarketCap) {
+                  marketCapData = {
+                    marketCapUsd: (freshMarketCap as any).marketCapUsd ?? 0,
+                    currentPriceUsd:
+                      (freshMarketCap as any).currentPriceUsd ?? trade.priceUsd ?? 0,
+                  };
+                }
               }
             } catch (mcError) {
+              const isTimeout =
+                mcError instanceof Error && mcError.message === 'market_cap_timeout';
               console.warn(
-                `[WS:Trades] ⚠️ Failed to fetch market cap for ${tokenAddress}:`,
+                `[WS:Trades] ⚠️ ${isTimeout ? 'Market cap fetch timed out' : 'Failed to fetch market cap'} for ${tokenAddress}:`,
                 mcError,
               );
               // Fallback to trade price if market cap service fails
