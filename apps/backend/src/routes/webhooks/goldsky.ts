@@ -351,11 +351,12 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
         trader: data.trader || 'unknown',
         isBuy: data.is_buy || false,
         // Keep raw wei strings; frontend normalizes by dividing by 1e18
-        tokenAmount: tokenAmountWei.toString(),
-        acesAmount: acesAmountWei.toString(),
+        // Avoid scientific notation so the frontend normalizes correctly
+        tokenAmount: tokenAmountWei.toFixed(0),
+        acesAmount: acesAmountWei.toFixed(0),
         pricePerToken: pricePerTokenAces.toFixed(18), // ACES per token
         priceUsd: priceUsdAtTrade.toFixed(18), // USD per token
-        supply: supplyWeiDecimal.toString(),
+        supply: supplyWeiDecimal.toFixed(0),
         timestamp: parseInt(timestamp) * 1000,
         blockNumber: parseInt(blockNumber),
         transactionHash: tradeId,

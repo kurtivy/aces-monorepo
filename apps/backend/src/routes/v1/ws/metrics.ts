@@ -37,14 +37,23 @@ class Trade24hAggregator {
    * @param acesUsdPrice Current ACES/USD exchange rate (used as fallback if trade.priceUsd unavailable)
    */
   addTrade(trade: TradeEvent, acesUsdPrice: number): void {
-    // Extract USD value - prefer trade.priceUsd (calculated at trade time), fallback to current price
-    const tokenAmount = parseFloat(trade.tokenAmount);
-    const acesAmount = parseFloat(trade.acesAmount);
+    // Normalize raw on-chain amounts (wei) into human units when necessary
+    const normalizeAmount = (value: number) => {
+      if (!Number.isFinite(value)) return 0;
+      // Heuristic: if value is extremely large, treat it as wei and scale down
+      return value > 1e9 ? value / 1e18 : value;
+    };
+
+    const rawTokenAmount = parseFloat(trade.tokenAmount);
+    const rawAcesAmount = parseFloat(trade.acesAmount);
+    const tokenAmount = normalizeAmount(rawTokenAmount);
+    const acesAmount = normalizeAmount(rawAcesAmount);
 
     let usdAmount = 0;
-    if (trade.priceUsd) {
-      // Use price calculated at trade time (most accurate)
-      usdAmount = parseFloat(trade.priceUsd) * tokenAmount;
+    // Use trade price if it looks valid and non-zero; otherwise compute from ACES amount
+    const tradePriceUsd = trade.priceUsd ? parseFloat(trade.priceUsd) : 0;
+    if (Number.isFinite(tradePriceUsd) && tradePriceUsd > 0) {
+      usdAmount = tradePriceUsd * tokenAmount;
     } else {
       // Fallback: calculate from ACES amount
       usdAmount = acesAmount * acesUsdPrice;
@@ -210,9 +219,13 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
               const { bondingData, metricsData, marketCapData } = healthResult.data;
               // ... same processing logic ...
               if (metricsData) {
+                const normalizeVolume = (value: number) =>
+                  Number.isFinite(value) && value > 1e9 ? value / 1e18 : value;
                 currentMetrics.marketCapUsd = metricsData.marketCapUsd;
                 currentMetrics.volume24hUsd = metricsData.volume24hUsd;
-                currentMetrics.volume24hAces = metricsData.volume24hAces;
+                currentMetrics.volume24hAces = normalizeVolume(
+                  parseFloat(metricsData.volume24hAces || '0'),
+                ).toString();
                 currentMetrics.liquidityUsd = metricsData.liquidityUsd;
                 currentMetrics.liquiditySource = metricsData.liquiditySource;
               }
@@ -220,7 +233,9 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
                 currentMetrics.currentPriceUsd = marketCapData.currentPriceUsd;
               }
               if (bondingData) {
-                const supply = parseFloat(bondingData.currentSupply || '0');
+                const normalizeSupply = (value: number) =>
+                  Number.isFinite(value) && value > 1e9 ? value / 1e18 : value;
+                const supply = normalizeSupply(parseFloat(bondingData.currentSupply || '0'));
                 if (Number.isFinite(supply) && supply > 0) {
                   currentMetrics.circulatingSupply = supply;
                 }
@@ -233,7 +248,7 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
                   currentMetrics.bondingData = {
                     isBonded: bondingData.isBonded,
                     bondingPercentage: bondingData.bondingPercentage,
-                    currentSupply: bondingData.currentSupply,
+                    currentSupply: supply.toString(),
                     tokensBondedAt: bondingData.tokensBondedAt,
                   };
                 }
@@ -305,8 +320,12 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
               
               // 🔥 FIX: Seed aggregator with REST volume (accurate, includes all sources)
               // REST API queries BitQuery (DEX) + Subgraph (bonding) for complete 24h history
+              const normalizeVolume = (value: number) =>
+                Number.isFinite(value) && value > 1e9 ? value / 1e18 : value;
               const baselineVolumeUsd = metricsData.volume24hUsd || 0;
-              const baselineVolumeAces = parseFloat(metricsData.volume24hAces || '0');
+              const baselineVolumeAces = normalizeVolume(
+                parseFloat(metricsData.volume24hAces || '0'),
+              );
               
               if (baselineVolumeUsd > 0 || baselineVolumeAces > 0) {
                 // Seed aggregator with REST volume as a single "baseline" trade
@@ -340,7 +359,10 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
             }
 
             if (bondingData) {
-              const supply = parseFloat(bondingData.currentSupply || '0');
+              const normalizeSupply = (value: number) =>
+                Number.isFinite(value) && value > 1e9 ? value / 1e18 : value;
+              const rawSupply = parseFloat(bondingData.currentSupply || '0');
+              const supply = normalizeSupply(rawSupply);
               if (Number.isFinite(supply) && supply > 0) {
                 currentMetrics.circulatingSupply = supply;
               }
@@ -355,7 +377,7 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
                 currentMetrics.bondingData = {
                   isBonded: bondingData.isBonded,
                   bondingPercentage: bondingData.bondingPercentage,
-                  currentSupply: bondingData.currentSupply,
+                  currentSupply: supply.toString(),
                   tokensBondedAt: bondingData.tokensBondedAt,
                 };
               }
