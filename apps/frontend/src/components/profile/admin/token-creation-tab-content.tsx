@@ -31,7 +31,7 @@ export function TokenCreationTabContent({ listing, onSuccess }: TokenCreationTab
     curve: 0,
     steepness: '100000000',
     floor: '0',
-    tokensBondedAt: ethers.utils.parseEther('800000000').toString(),
+    tokensBondedAt: ethers.utils.parseEther('700000000').toString(),
     salt: '',
     chainId: 8453, // Base Mainnet
     name: listing.title,
@@ -465,11 +465,11 @@ export function TokenCreationTabContent({ listing, onSuccess }: TokenCreationTab
                     }
                   }}
                   className="bg-black border-purple-400/20 text-white"
-                  placeholder="800000000"
+                  placeholder="700000000"
                   disabled={isMining}
                 />
                 <p className="text-xs text-[#DCDDCC] mt-1">
-                  Tokens to sell before bonding completes (e.g., 800M)
+                  Tokens to sell before bonding completes (e.g., 700M)
                 </p>
               </div>
             </div>

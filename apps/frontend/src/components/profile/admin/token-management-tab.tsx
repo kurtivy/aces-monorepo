@@ -50,7 +50,7 @@ export function TokenManagementTab() {
   const [tokenParams, setTokenParams] = useState<TokenParameters>({
     steepness: '100000000',
     floor: '0',
-    tokensBondedAt: '800000000',
+    tokensBondedAt: '700000000',
     curve: 0,
     useVanityMining: false,
     vanityTarget: 'ace',
@@ -112,7 +112,7 @@ export function TokenManagementTab() {
         setTokenParams({
           steepness: '100000000',
           floor: '0',
-          tokensBondedAt: '800000000',
+          tokensBondedAt: '700000000',
           curve: 0,
           useVanityMining: false,
           vanityTarget: 'ace',
@@ -506,7 +506,7 @@ export function TokenManagementTab() {
                     setTokenParams((prev) => ({ ...prev, tokensBondedAt: e.target.value }))
                   }
                   className="bg-[#151c16]/40 border-purple-400/20 text-white mt-1"
-                  placeholder="800000000"
+                  placeholder="700000000"
                 />
                 <p className="text-xs text-[#DCDDCC] mt-1">Minimum: 1 token</p>
               </div>

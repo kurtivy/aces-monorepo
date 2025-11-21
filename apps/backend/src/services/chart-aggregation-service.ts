@@ -77,7 +77,7 @@ interface ChartCacheEntry {
 }
 
 export class ChartAggregationService {
-  private readonly BONDING_SUPPLY = '800000000'; // 800M tokens for bonding curve
+  private readonly BONDING_SUPPLY = '700000000'; // 700M tokens for bonding curve
   private readonly GRADUATED_SUPPLY = '1000000000'; // 1B tokens after graduation
   private tradePriceAggregator: TradePriceAggregator;
 

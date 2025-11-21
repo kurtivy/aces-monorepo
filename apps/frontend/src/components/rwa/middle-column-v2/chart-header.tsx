@@ -90,7 +90,7 @@ export function ChartHeader({ title, onLearnMoreClick, onChatClick }: ChartHeade
 
         {/* X (Twitter) Icon */}
         <a
-          href="https://x.com/apkaws"
+          href="https://x.com/EvanLuthra"
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center justify-center xl:w-8 xl:h-8 w-6 h-6 rounded-full text-[#D0B284] hover:bg-[#D0B284]/10 transition-all duration-200"

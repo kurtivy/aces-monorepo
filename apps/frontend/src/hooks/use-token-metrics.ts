@@ -290,7 +290,7 @@ export function useTokenMetrics(
             bondingPercentage: healthData.bondingData.bondingPercentage || 0,
             isBonded: healthData.bondingData.isBonded || false,
             currentSupply: healthData.bondingData.currentSupply || '0',
-            tokensBondedAt: healthData.bondingData.tokensBondedAt || '30000000',
+            tokensBondedAt: healthData.bondingData.tokensBondedAt || '700000000',
           });
         } else {
           setBondingData(null);

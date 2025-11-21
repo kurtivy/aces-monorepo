@@ -329,8 +329,8 @@ export async function bondingDataRoutes(fastify: FastifyInstance) {
                 );
               } else {
                 bondingTargetSource = 'default';
-                tokensBondedAt = '30000000';
-                tokensBondedAtNum = 30000000;
+                tokensBondedAt = '700000000';
+                tokensBondedAtNum = 700000000;
                 fastify.log.warn(
                   { tokenAddress, chainId },
                   '⚠️ [BondingData] Using default bonding target fallback',

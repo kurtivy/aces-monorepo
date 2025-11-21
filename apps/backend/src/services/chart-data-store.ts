@@ -268,7 +268,7 @@ export class ChartDataStore {
   ): Candle {
     const prices = trades.map((t) => t.priceInUsd);
     const volumes = trades.map((t) => t.volumeUsd);
-    const supplies = trades.map((t) => t.circulatingSupply || 800000000).filter((s) => s > 0);
+    const supplies = trades.map((t) => t.circulatingSupply || 700000000).filter((s) => s > 0);
 
     const open = previousCandle ? previousCandle.closeUsd : prices[0]?.toString() || '0';
     const high = Math.max(...prices).toString();
@@ -276,7 +276,7 @@ export class ChartDataStore {
     const close = prices[prices.length - 1]?.toString() || '0';
     const volume = volumes.reduce((sum, v) => sum + v, 0).toString();
     const volumeUsd = volume;
-    const supply = supplies.length > 0 ? supplies[supplies.length - 1] : 800000000;
+    const supply = supplies.length > 0 ? supplies[supplies.length - 1] : 700000000;
 
     const openAces = previousCandle ? previousCandle.close : prices[0]?.toString() || '0';
     const highAces = Math.max(...trades.map((t) => t.priceInAces)).toString();
@@ -304,7 +304,7 @@ export class ChartDataStore {
       trades: trades.length,
       dataSource: 'bonding_curve',
       circulatingSupply: supply.toString(),
-      totalSupply: '800000000',
+      totalSupply: '700000000',
       marketCapAces: (parseFloat(closeAces) * supply).toString(),
       marketCapUsd: marketCapCloseUsd,
       marketCapOpenUsd,

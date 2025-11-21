@@ -233,16 +233,16 @@ export default function TokenHealthPanel({
   const communityReward = communityRewardProp ?? 20_000;
 
   // Constants for market cap supply (fixed values)
-  const BONDING_SUPPLY = 800_000_000; // 800M during bonding curve
+  const BONDING_SUPPLY = 700_000_000; // 700M during bonding curve
   const DEX_SUPPLY = 1_000_000_000; // 1B after DEX graduation
 
-  // Market cap supply: Fixed 800M (bonding) or 1B (DEX)
+  // Market cap supply: Fixed 700M (bonding) or 1B (DEX)
   const marketCapSupply = useMemo(() => {
     return isDexMode ? DEX_SUPPLY : BONDING_SUPPLY;
   }, [isDexMode]);
 
   // Circulating supply: Actual tokens sold (used for reward calculations)
-  // This varies from 1 to 800M during bonding, then up to 1B in DEX mode
+  // This varies from 1 to 700M during bonding, then up to 1B in DEX mode
   const circulatingSupply = useMemo(() => {
     // Accept 0 as a valid value (early bonding state)
     if (circulatingSupplyProp !== undefined && circulatingSupplyProp !== null) {

@@ -8,7 +8,7 @@ interface BondingData {
   // Raw contract data
   curve: number;
   currentSupply: string; // In ether (e.g., "22320.83")
-  tokensBondedAt: string; // In ether (e.g., "30000000")
+  tokensBondedAt: string; // In ether (e.g., "700000000")
   acesBalance: string; // In ether
   floorWei: string;
   floorPriceACES: string;
@@ -32,7 +32,7 @@ interface BondingData {
 const EMPTY_BONDING_DATA: BondingData = {
   curve: 0,
   currentSupply: '0',
-  tokensBondedAt: '30000000', // Unified default to 30M tokens
+  tokensBondedAt: '700000000', // Unified default to 700M tokens
   acesBalance: '0',
   floorWei: '0',
   floorPriceACES: '0',
@@ -64,7 +64,7 @@ export function useTokenBondingData(
     return {
       curve: 0,
       currentSupply: '0',
-      tokensBondedAt: '30000000', // Unified default to 30M tokens
+      tokensBondedAt: '700000000', // Unified default to 700M tokens
       acesBalance: '0',
       floorWei: '0',
       floorPriceACES: '0',

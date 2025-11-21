@@ -37,7 +37,7 @@ interface BondingTradeData {
   timestamp: number;
 }
 
-const BONDING_CURVE_SUPPLY = 800_000_000; // 800M
+const BONDING_CURVE_SUPPLY = 700_000_000; // 700M
 const DEX_SUPPLY = 1_000_000_000; // 1B
 const CACHE_TTL_MS = 5000; // 5 seconds
 const BONDING_CURVE_ADDRESS =

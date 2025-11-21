@@ -40,7 +40,7 @@ export default function BondingCurveChart({ tokenAddress }: BondingCurveChartPro
   const bondingData = useTokenBondingData(tokenAddress);
 
   const currentTokensSold = parseFloat(bondingData.currentSupply) || 0;
-  const tokensBondedAt = parseFloat(bondingData.tokensBondedAt) || 30000000;
+  const tokensBondedAt = parseFloat(bondingData.tokensBondedAt) || 700000000;
   const clampedCurrentTokensSold = Math.min(currentTokensSold, tokensBondedAt || currentTokensSold);
   const isBonded = bondingData.isBonded;
   const curve = bondingData.curve; // 0 = quadratic, 1 = linear

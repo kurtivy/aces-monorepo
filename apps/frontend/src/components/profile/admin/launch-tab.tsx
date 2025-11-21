@@ -180,7 +180,7 @@ export function LaunchTab() {
     salt: '', // Empty by default - will be set manually or generated during mining
     steepness: '100000000',
     floor: '0',
-    tokensBondedAt: '800000000', // New field - 800M tokens (will be converted to wei)
+    tokensBondedAt: '700000000', // New field - 700M tokens (will be converted to wei)
     curve: 0,
   });
 
@@ -1534,12 +1534,12 @@ export function LaunchTab() {
                       setCreateForm((prev) => ({ ...prev, tokensBondedAt: e.target.value }))
                     }
                     className="bg-black border-purple-400/20 text-white"
-                    placeholder="800000000"
+                    placeholder="700000000"
                     disabled={isMining}
                   />
                   <p className="text-xs text-[#DCDDCC] mt-1">
                     Number of tokens that must be sold before bonding curve completes (default:
-                    800M). Enter in token units (e.g., 800000000 for 800M tokens).
+                    700M). Enter in token units (e.g., 700000000 for 700M tokens).
                   </p>
                 </div>
               </div>
