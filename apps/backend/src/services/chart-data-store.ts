@@ -378,6 +378,18 @@ export class ChartDataStore {
   }
 
   /**
+   * 🔥 PRICE FIX: Get recent trades for a token (for merging into REST response)
+   * Used by ChartAggregationService to include live trades that aren't in subgraph yet
+   */
+  getTrades(tokenAddress: string, limit: number = 100): StoredTrade[] {
+    const key = tokenAddress.toLowerCase();
+    const trades = this.trades.get(key) || [];
+
+    // Return most recent trades
+    return trades.slice(-limit);
+  }
+
+  /**
    * Get latest candle for a token/timeframe
    */
   getLatestCandle(tokenAddress: string, timeframe: Timeframe): Candle | null {

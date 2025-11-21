@@ -222,6 +222,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
     acesUsdPriceService,
     tokenMetadataCache,
     acesSnapshotCache,
+    fastify, // 🔥 PRICE FIX: Pass fastify for live trade merging
   );
   fastify.decorate('chartAggregationService', chartAggregationService);
 

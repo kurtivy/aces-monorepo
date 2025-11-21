@@ -5,14 +5,21 @@ import { ACES_TOKEN_ADDRESS, DATA_SOURCE_CONFIG } from '../config/bitquery.confi
 import { TradePriceAggregator } from './trade-price-aggregator';
 import { TokenMetadataCacheService } from './token-metadata-cache-service'; // 🔥 NEW
 import { AcesSnapshotCacheService } from './aces-snapshot-cache-service'; // 🔥 NEW
-import { ethers } from 'ethers'; // 🔥 For smart contract calls
-import { getNetworkConfig, createProvider } from '../config/network.config'; // 🔥 RPC provider
+import type { FastifyInstance } from 'fastify'; // 🔥 PRICE FIX: For fastify type
+import { ethers } from 'ethers'; // For calculateMarginalBuyPrice
 
-// 🔥 Factory ABI - only the functions we need
-const FACTORY_ABI = [
-  'function getBuyPriceAfterFee(address tokenAddress, uint256 amount) external view returns (uint256)',
-  'function getSellPriceAfterFee(address tokenAddress, uint256 amount) external view returns (uint256)',
-];
+// 🔥 PRICE FIX: Trade interface for memory store (matches ChartDataStore)
+interface StoredTrade {
+  id: string;
+  timestamp: Date;
+  priceInAces: number;
+  priceInUsd: number;
+  amountToken: number;
+  volumeUsd: number;
+  side: 'buy' | 'sell';
+  circulatingSupply?: number;
+  dataSource: 'bonding_curve' | 'dex';
+}
 
 // Types
 interface Trade {
@@ -101,6 +108,7 @@ export class ChartAggregationService {
     private acesUsdPriceService: AcesUsdPriceService,
     private tokenMetadataCache: TokenMetadataCacheService, // 🔥 NEW: Token metadata cache
     private acesSnapshotCache: AcesSnapshotCacheService, // 🔥 NEW: ACES snapshot cache
+    private fastify?: FastifyInstance, // 🔥 PRICE FIX: Access to chartDataStore for live trade merging
   ) {
     this.tradePriceAggregator = new TradePriceAggregator(prisma, acesSnapshotCache);
   }
@@ -160,6 +168,111 @@ export class ChartAggregationService {
     console.log(
       `[ChartAggregation] 🔄 Cache invalidated for ${normalizedAddress}: ${invalidated} entries cleared`,
     );
+  }
+
+  /**
+   * 🔥 PRICE FIX: Merge live trades from memory into the last candle
+   *
+   * This fixes the price snap-back issue by ensuring the REST response includes
+   * the latest live trades that might not be indexed in the subgraph yet.
+   *
+   * How it works:
+   * 1. Fetch recent trades from chartDataStore (in-memory, <1ms)
+   * 2. Filter trades newer than the last candle's timestamp
+   * 3. Update the last candle's close/high/low/volume with live trade data
+   *
+   * This ensures TradingView's getBars() doesn't overwrite WebSocket updates
+   * with stale subgraph data during the indexing lag window.
+   *
+   * @param tokenAddress - Token address
+   * @param candles - Array of candles (will be mutated if live trades found)
+   * @param timeframe - Timeframe for bucket alignment
+   * @param acesUsdPrice - ACES/USD price for USD calculations
+   */
+  private async mergeLiveTradesIntoCandles(
+    tokenAddress: string,
+    candles: Candle[],
+    timeframe: string,
+    acesUsdPrice: number | null,
+  ): Promise<void> {
+    // Guard: Skip if no candles or chartDataStore unavailable
+    if (candles.length === 0 || !this.fastify?.chartDataStore) {
+      return;
+    }
+
+    try {
+      const chartDataStore = this.fastify.chartDataStore;
+      const lastCandle = candles[candles.length - 1];
+      const lastCandleTime = lastCandle.timestamp.getTime();
+
+      // Fetch recent trades from memory (last 10 should be enough)
+      const recentTrades = chartDataStore.getTrades(tokenAddress, 10) as StoredTrade[];
+
+      if (!recentTrades || recentTrades.length === 0) {
+        return;
+      }
+
+      // Filter trades newer than the last candle
+      const newerTrades = recentTrades.filter((trade: StoredTrade) => {
+        const tradeTime = trade.timestamp.getTime();
+        return tradeTime > lastCandleTime;
+      });
+
+      if (newerTrades.length === 0) {
+        return;
+      }
+
+      console.log(
+        `[ChartAggregation] 🔄 Merging ${newerTrades.length} live trades into last candle for ${tokenAddress}`,
+      );
+
+      // Update the last candle with live trade data
+      // Note: We use execution price (priceInAces) from the trade, not bonding curve formula
+      const tradePricesAces = newerTrades.map((t: StoredTrade) => t.priceInAces);
+      const tradePricesUsd = newerTrades.map((t: StoredTrade) => t.priceInUsd);
+      const tradeVolumes = newerTrades.map((t: StoredTrade) => t.volumeUsd);
+
+      // Update OHLC in ACES
+      const currentHigh = Math.max(parseFloat(lastCandle.high), ...tradePricesAces);
+      const currentLow = Math.min(parseFloat(lastCandle.low), ...tradePricesAces);
+      const newClose = tradePricesAces[tradePricesAces.length - 1]; // Last trade price
+
+      lastCandle.high = currentHigh.toString();
+      lastCandle.low = currentLow.toString();
+      lastCandle.close = newClose.toString();
+
+      // Update OHLC in USD
+      if (acesUsdPrice && acesUsdPrice > 0) {
+        const currentHighUsd = Math.max(parseFloat(lastCandle.highUsd), ...tradePricesUsd);
+        const currentLowUsd = Math.min(parseFloat(lastCandle.lowUsd), ...tradePricesUsd);
+        const newCloseUsd = tradePricesUsd[tradePricesUsd.length - 1];
+
+        lastCandle.highUsd = currentHighUsd.toString();
+        lastCandle.lowUsd = currentLowUsd.toString();
+        lastCandle.closeUsd = newCloseUsd.toString();
+
+        // Update market cap based on new close price
+        const supply = parseFloat(lastCandle.circulatingSupply);
+        lastCandle.marketCapAces = (newClose * supply).toFixed(2);
+        lastCandle.marketCapUsd = (newCloseUsd * supply).toFixed(2);
+        lastCandle.marketCapCloseUsd = lastCandle.marketCapUsd;
+      }
+
+      // Update volume
+      const additionalVolume = tradeVolumes.reduce((sum: number, v: number) => sum + v, 0);
+      lastCandle.volumeUsd = (parseFloat(lastCandle.volumeUsd) + additionalVolume).toString();
+      lastCandle.volume = lastCandle.volumeUsd; // Assuming volume is same as volumeUsd
+
+      // Update trade count
+      lastCandle.trades += newerTrades.length;
+
+      console.log(
+        `[ChartAggregation] ✅ Updated last candle: close=${lastCandle.close} ACES (${lastCandle.closeUsd} USD), trades=${lastCandle.trades}`,
+      );
+    } catch (error) {
+      // Log but don't throw - merging live trades is an enhancement, not critical
+      console.warn('[ChartAggregation] ⚠️ Failed to merge live trades:', error);
+    }
   }
 
   /**
@@ -382,6 +495,15 @@ export class ChartAggregationService {
       graduationState,
       acesUsdPrice: acesUsdPrice ? acesUsdPrice.toFixed(6) : null,
     };
+
+    // 🔥 PRICE FIX: Merge live trades from memory into the last candle
+    // This ensures REST response matches WebSocket data even during subgraph lag
+    await this.mergeLiveTradesIntoCandles(
+      tokenAddress,
+      result.candles,
+      options.timeframe,
+      acesUsdPrice,
+    );
 
     return result;
   }
