@@ -336,11 +336,11 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
       // Normalize amounts out of wei to keep frontend math consistent
       const tokenAmountWei = new Decimal(toFullDecimalString(data.token_amount || '0'));
       const acesAmountWei = new Decimal(toFullDecimalString(data.aces_token_amount || '0'));
-      const supplyWei = new Decimal(toFullDecimalString(supplyWei || '0'));
+      const supplyWeiDecimal = new Decimal(toFullDecimalString(supplyWei || '0'));
 
       const tokenAmount = tokenAmountWei.div(new Decimal('1e18'));
       const acesAmount = acesAmountWei.div(new Decimal('1e18'));
-      const supply = supplyWei.div(new Decimal('1e18'));
+      const supply = supplyWeiDecimal.div(new Decimal('1e18'));
 
       // Compute per-token price in ACES and USD
       const pricePerTokenAces =
