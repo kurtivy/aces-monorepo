@@ -35,6 +35,7 @@ export function useTokenMetrics(
 ): UseTokenMetricsResult {
   const [metrics, setMetrics] = useState<TokenMetrics | null>(null);
   const metricsRef = useRef<TokenMetrics | null>(null);
+  const restFetchedRef = useRef<boolean>(false); // ensure one REST fetch per token to seed fee fields
   const lastUpdateTimestampRef = useRef<number>(0); // Track last update timestamp
   const [circulatingSupply, setCirculatingSupply] = useState<number | null>(null);
   const [currentPriceUsd, setCurrentPriceUsd] = useState<number>(0);
@@ -110,6 +111,23 @@ export function useTokenMetrics(
           wsMetrics.liquiditySource !== undefined
             ? wsMetrics.liquiditySource
             : (previousMetrics?.liquiditySource ?? null),
+        // DEX/Bonding fee breakdown (may not be present on WS messages yet)
+        dexFeesUsd:
+          wsMetrics.dexFeesUsd !== undefined
+            ? wsMetrics.dexFeesUsd
+            : previousMetrics?.dexFeesUsd ?? 0,
+        dexFeesAces:
+          wsMetrics.dexFeesAces !== undefined
+            ? wsMetrics.dexFeesAces
+            : previousMetrics?.dexFeesAces ?? '0',
+        bondingFeesUsd:
+          wsMetrics.bondingFeesUsd !== undefined
+            ? wsMetrics.bondingFeesUsd
+            : previousMetrics?.bondingFeesUsd ?? 0,
+        bondingFeesAces:
+          wsMetrics.bondingFeesAces !== undefined
+            ? wsMetrics.bondingFeesAces
+            : previousMetrics?.bondingFeesAces ?? '0',
       };
 
       // 🔥 FIX: Always update state to trigger re-render
@@ -180,8 +198,8 @@ export function useTokenMetrics(
   }, [wsMetrics, wsConnected, wsError]);
 
   const fetchMetrics = useCallback(async () => {
-    // Skip REST fetch if WebSocket is connected (WebSocket is primary source)
-    if (wsConnected) {
+    // Always perform one REST fetch per token to seed fields missing from WS (e.g., fees)
+    if (restFetchedRef.current) {
       return;
     }
 
@@ -207,6 +225,12 @@ export function useTokenMetrics(
           holderCount: healthData.metricsData.holderCount,
           totalFeesUsd: healthData.metricsData.totalFeesUsd,
           totalFeesAces: healthData.metricsData.totalFeesAces,
+          dexFeesUsd: healthData.metricsData.dexFeesUsd ?? metricsRef.current?.dexFeesUsd ?? 0,
+          dexFeesAces: healthData.metricsData.dexFeesAces ?? metricsRef.current?.dexFeesAces ?? '0',
+          bondingFeesUsd:
+            healthData.metricsData.bondingFeesUsd ?? metricsRef.current?.bondingFeesUsd ?? 0,
+          bondingFeesAces:
+            healthData.metricsData.bondingFeesAces ?? metricsRef.current?.bondingFeesAces ?? '0',
           liquidityUsd:
             healthData.metricsData.liquidityUsd === null &&
             previousMetrics?.liquidityUsd !== null &&
@@ -236,6 +260,7 @@ export function useTokenMetrics(
 
         setMetrics(updatedMetrics);
         metricsRef.current = updatedMetrics;
+        restFetchedRef.current = true;
 
         // Extract circulatingSupply from bondingData with safe parsing
         // Sticky update: do not overwrite with null when missing/invalid
@@ -291,6 +316,7 @@ export function useTokenMetrics(
     // 🔥 CRITICAL FIX: Clear state immediately on token switch
     setMetrics(null);
     metricsRef.current = null;
+    restFetchedRef.current = false;
     setCirculatingSupply(null);
     setCurrentPriceUsd(0);
     setBondingData(null);

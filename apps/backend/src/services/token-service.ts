@@ -518,32 +518,46 @@ export class TokenService {
    */
   async getTotalFees(tokenAddress: string): Promise<{ acesAmount: string; weiAmount: string }> {
     try {
-      const query = `{
-        trades(where: {token: "${tokenAddress.toLowerCase()}"}, first: 1000) {
-          subjectFeeAmount
+      const pageSize = 1000;
+      let skip = 0;
+      let totalFeesWei = new Decimal(0);
+
+      // Paginate through all trades to avoid truncating at 1000 records
+      // Safety limit of 20k trades to prevent runaway loops
+      while (true) {
+        const query = `{
+          trades(where: {token: "${tokenAddress.toLowerCase()}"}, first: ${pageSize}, skip: ${skip}) {
+            subjectFeeAmount
+          }
+        }`;
+
+        const response = await fetch(process.env.GOLDSKY_SUBGRAPH_URL!, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Subgraph request failed: ${response.status}`);
         }
-      }`;
 
-      const response = await fetch(process.env.GOLDSKY_SUBGRAPH_URL!, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query }),
-      });
+        const result = (await response.json()) as {
+          data: { trades: Array<{ subjectFeeAmount: string }> };
+        };
 
-      if (!response.ok) {
-        throw new Error(`Subgraph request failed: ${response.status}`);
+        const trades = result.data.trades || [];
+
+        // Sum this page's subjectFeeAmount values (in WEI)
+        totalFeesWei = trades.reduce((sum, trade) => {
+          return sum.add(new Decimal(trade.subjectFeeAmount || '0'));
+        }, totalFeesWei);
+
+        // End pagination if this page returned fewer than pageSize rows
+        skip += trades.length;
+        if (trades.length < pageSize || skip >= 20000) {
+          break;
+        }
       }
-
-      const result = (await response.json()) as {
-        data: { trades: Array<{ subjectFeeAmount: string }> };
-      };
-
-      const trades = result.data.trades || [];
-
-      // Sum all subjectFeeAmount values (in WEI)
-      const totalFeesWei = trades.reduce((sum, trade) => {
-        return sum.add(new Decimal(trade.subjectFeeAmount || '0'));
-      }, new Decimal(0));
 
       // Convert from WEI to ACES (divide by 10^18)
       const totalFeesAces = totalFeesWei.div(new Decimal(10).pow(18));

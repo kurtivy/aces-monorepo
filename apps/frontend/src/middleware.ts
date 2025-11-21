@@ -5,6 +5,11 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const host = request.headers.get('host') || '';
 
+  // Always allow static TradingView assets to bypass any protection
+  if (pathname.startsWith('/charting_library/')) {
+    return NextResponse.next();
+  }
+
   // Check if this is an admin domain request
   const isAdminDomain =
     host.includes('admin.aces.fun') ||
@@ -30,7 +35,8 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
+     * - charting_library (TradingView static assets)
      */
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico|charting_library).*)',
   ],
 };

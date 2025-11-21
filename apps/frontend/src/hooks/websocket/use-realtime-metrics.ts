@@ -18,6 +18,13 @@ export interface RealtimeMetrics {
   liquidityUsd?: number | null;
   liquiditySource?: 'bonding_curve' | 'dex' | null;
   circulatingSupply?: number | null;
+  // Fee breakdown (may not be present in all WS payloads)
+  totalFeesUsd?: number;
+  totalFeesAces?: string;
+  dexFeesUsd?: number;
+  dexFeesAces?: string;
+  bondingFeesUsd?: number;
+  bondingFeesAces?: string;
   // 🔥 NEW: Bonding data fields
   bondingData?: {
     isBonded: boolean;
@@ -466,4 +473,3 @@ export const useRealtimeMetrics = (
     disconnect,
   };
 };
-
