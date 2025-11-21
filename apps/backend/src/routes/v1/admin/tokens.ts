@@ -551,7 +551,7 @@ export async function adminTokenRoutes(fastify: FastifyInstance) {
 
         console.log(`[ADMIN] Saving token parameters for listing ${id}`);
 
-        const listingService = new ListingService(fastify.prisma);
+        const listingService = new ListingService(fastify.prisma, undefined, fastify);
         const listing = await listingService.saveTokenParameters(id, tokenParameters);
 
         return reply.send({
@@ -680,7 +680,7 @@ export async function adminTokenRoutes(fastify: FastifyInstance) {
 
         console.log(`[ADMIN] Preparing listing ${id} for minting`);
 
-        const listingService = new ListingService(fastify.prisma);
+        const listingService = new ListingService(fastify.prisma, undefined, fastify);
         const listing = await listingService.prepareForMinting(id);
 
         // 🚀 Phase 3: Real-time monitoring via WebSocket adapters

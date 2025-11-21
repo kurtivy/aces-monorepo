@@ -63,7 +63,7 @@ const SetListingLaunchDateSchema = z.object({
 });
 
 export async function listingRoutes(fastify: FastifyInstance) {
-  const listingService = new ListingService(fastify.prisma);
+  const listingService = new ListingService(fastify.prisma, undefined, fastify);
   const tokenHolderService = new TokenHolderService();
 
   /**

@@ -1,6 +1,7 @@
 // backend/src/services/listing-service.ts - V1 Clean Implementation
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { PrismaClient, Prisma, User } from '@prisma/client';
+import { PrismaClient, User } from '@prisma/client';
+import type { FastifyInstance } from 'fastify';
 import { AssetType, SubmissionStatus } from '../lib/prisma-enums';
 import { ProductStorageService } from '../lib/product-storage-utils';
 import { errors } from '../lib/errors';
@@ -139,6 +140,7 @@ export class ListingService {
   constructor(
     private prisma: PrismaClient,
     notificationService?: NotificationService,
+    private fastify?: FastifyInstance,
   ) {
     this.notificationService = notificationService || new NotificationService(prisma);
 
@@ -160,6 +162,7 @@ export class ListingService {
         apiKey: process.env.AERODROME_API_KEY,
         defaultStable: process.env.AERODROME_DEFAULT_STABLE === 'true',
         mockEnabled: shouldMock,
+        fastify: this.fastify,
       });
     } catch (error) {
       // console.error('[ListingService] Failed to initialize AerodromeDataService:', error);

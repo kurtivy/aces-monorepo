@@ -180,7 +180,6 @@ export class AerodromeDataService {
       return null;
     }
 
-    // 🔥 PHASE 3: Use cache plugin if available, otherwise fallback to internal cache
     const cacheKey = `${normalizedToken}-${knownPoolAddress || 'unknown'}`;
 
     if (this.fastify?.cache) {
@@ -190,65 +189,28 @@ export class AerodromeDataService {
       }
     }
 
-    // Use known pool address if provided, otherwise resolve from factory
-    let poolAddress: string | null;
+    let poolAddress: string | null = null;
+    let usedKnownAddress = false;
+
     if (knownPoolAddress) {
       console.log(`🔍 Using known pool address: ${knownPoolAddress}`);
       poolAddress = knownPoolAddress.toLowerCase();
+      usedKnownAddress = true;
     } else {
       console.log(`🔍 Resolving pool address from factory for token: ${normalizedToken}`);
       poolAddress = await this.resolvePoolAddress(normalizedToken);
     }
-
-    console.log(`📍 Pool address resolved to: ${poolAddress}`);
 
     if (!poolAddress || poolAddress === ethers.ZeroAddress) {
       console.log(`❌ Invalid pool address: ${poolAddress}`);
       return null;
     }
 
-    console.log(`🔄 Creating contract for pool: ${poolAddress}`);
-    const pairContract = new ethers.Contract(poolAddress, PAIR_ABI, this.provider);
+    console.log(`📍 Pool address resolved to: ${poolAddress}`);
 
-    console.log(`📞 Calling getReserves() on pool contract...`);
     try {
-      const [reserve0, reserve1] = await pairContract.getReserves();
-      console.log(`✅ Got reserves - reserve0: ${reserve0}, reserve1: ${reserve1}`);
+      const poolState = await this.readV2PoolState(poolAddress, normalizedToken);
 
-      const token0 = ((await pairContract.token0()) as string).toLowerCase();
-      const token1 = ((await pairContract.token1()) as string).toLowerCase();
-      const totalSupply = await pairContract.totalSupply();
-
-      const tokenDecimals = await this.getTokenDecimals(normalizedToken);
-      const counterDecimals = await this.getTokenDecimals(this.acesTokenAddress);
-
-      const tokenIsToken0 = token0 === normalizedToken;
-      const tokenReserveRaw = tokenIsToken0 ? reserve0 : reserve1;
-      const counterReserveRaw = tokenIsToken0 ? reserve1 : reserve0;
-
-      const tokenReserve = parseFloat(ethers.formatUnits(tokenReserveRaw, tokenDecimals));
-      const counterReserve = parseFloat(ethers.formatUnits(counterReserveRaw, counterDecimals));
-
-      const priceInCounter = tokenReserve === 0 ? 0 : counterReserve / tokenReserve;
-
-      const poolState: AerodromePoolState = {
-        poolAddress,
-        tokenAddress: normalizedToken,
-        counterToken: this.acesTokenAddress,
-        reserves: {
-          token: tokenReserve.toString(),
-          counter: counterReserve.toString(),
-        },
-        reserveRaw: {
-          token: tokenReserveRaw.toString(),
-          counter: counterReserveRaw.toString(),
-        },
-        priceInCounter,
-        lastUpdated: Date.now(),
-        totalSupply: totalSupply.toString(),
-      };
-
-      // 🔥 PHASE 3: Use cache plugin if available
       if (this.fastify?.cache) {
         this.fastify.cache.set('poolReserves', cacheKey, poolState, 10 * 1000); // 10s TTL
       }
@@ -256,6 +218,40 @@ export class AerodromeDataService {
       return poolState;
     } catch (error) {
       console.error(`❌ ERROR calling pool contract at ${poolAddress}:`, error);
+
+      const isInvalidPool = this.isInvalidPoolError(error);
+
+      if (isInvalidPool && usedKnownAddress) {
+        console.warn(
+          `[AerodromeDataService] Known pool ${poolAddress} failed. Retrying with factory resolution...`,
+        );
+
+        if (this.fastify?.cache) {
+          this.fastify.cache.invalidate('poolReserves', cacheKey);
+        }
+
+        const fallbackAddress = await this.resolvePoolAddress(normalizedToken);
+        if (
+          fallbackAddress &&
+          fallbackAddress !== poolAddress &&
+          fallbackAddress !== ethers.ZeroAddress
+        ) {
+          try {
+            const fallbackState = await this.readV2PoolState(fallbackAddress, normalizedToken);
+            const fallbackCacheKey = `${normalizedToken}-${fallbackAddress}`;
+            if (this.fastify?.cache) {
+              this.fastify.cache.set('poolReserves', fallbackCacheKey, fallbackState, 10 * 1000);
+            }
+            return fallbackState;
+          } catch (fallbackError) {
+            console.error(
+              `[AerodromeDataService] Fallback pool ${fallbackAddress} also failed:`,
+              fallbackError,
+            );
+          }
+        }
+      }
+
       return null;
     }
   }
@@ -479,6 +475,7 @@ export class AerodromeDataService {
     }
 
     let pair: { address: string; stable: boolean } | null = null;
+    const usedKnownAddress = Boolean(knownPoolAddress && knownPoolAddress !== ethers.ZeroAddress);
 
     // Use known pool address if provided
     if (knownPoolAddress && knownPoolAddress !== ethers.ZeroAddress) {
@@ -543,6 +540,16 @@ export class AerodromeDataService {
         console.error(`  ❌ Failed to read as Slipstream pool:`, v3Error);
       }
 
+      if (usedKnownAddress && this.isInvalidPoolError(error)) {
+        console.warn(
+          `  ⚠️ Known pool ${pair.address} failed validation, retrying with factory lookup...`,
+        );
+        if (this.fastify?.cache) {
+          this.fastify.cache.invalidate('poolReserves', cacheKey);
+        }
+        return this.getGenericPoolState(tokenA, tokenB);
+      }
+
       console.error(`   Error details:`, {
         message: error instanceof Error ? error.message : 'Unknown error',
         code: (error as any)?.code,
@@ -605,6 +612,55 @@ export class AerodromeDataService {
       reserve1: syntheticToken1Amount.toString(),
       stable: false, // V3 pools are volatile
       lastUpdated: Date.now(),
+    };
+  }
+
+  private async readV2PoolState(
+    poolAddress: string,
+    normalizedToken: string,
+  ): Promise<AerodromePoolState> {
+    if (!this.provider) {
+      throw new Error('Provider unavailable for pool state read');
+    }
+
+    console.log(`🔄 Creating contract for pool: ${poolAddress}`);
+    const pairContract = new ethers.Contract(poolAddress, PAIR_ABI, this.provider);
+
+    console.log(`📞 Calling getReserves() on pool contract...`);
+    const [reserve0, reserve1] = await pairContract.getReserves();
+    console.log(`✅ Got reserves - reserve0: ${reserve0}, reserve1: ${reserve1}`);
+
+    const token0 = ((await pairContract.token0()) as string).toLowerCase();
+    const token1 = ((await pairContract.token1()) as string).toLowerCase();
+    const totalSupply = await pairContract.totalSupply();
+
+    const tokenDecimals = await this.getTokenDecimals(normalizedToken);
+    const counterDecimals = await this.getTokenDecimals(this.acesTokenAddress);
+
+    const tokenIsToken0 = token0 === normalizedToken;
+    const tokenReserveRaw = tokenIsToken0 ? reserve0 : reserve1;
+    const counterReserveRaw = tokenIsToken0 ? reserve1 : reserve0;
+
+    const tokenReserve = parseFloat(ethers.formatUnits(tokenReserveRaw, tokenDecimals));
+    const counterReserve = parseFloat(ethers.formatUnits(counterReserveRaw, counterDecimals));
+
+    const priceInCounter = tokenReserve === 0 ? 0 : counterReserve / tokenReserve;
+
+    return {
+      poolAddress,
+      tokenAddress: normalizedToken,
+      counterToken: this.acesTokenAddress,
+      reserves: {
+        token: tokenReserve.toString(),
+        counter: counterReserve.toString(),
+      },
+      reserveRaw: {
+        token: tokenReserveRaw.toString(),
+        counter: counterReserveRaw.toString(),
+      },
+      priceInCounter,
+      lastUpdated: Date.now(),
+      totalSupply: totalSupply.toString(),
     };
   }
 
@@ -801,5 +857,24 @@ export class AerodromeDataService {
       data,
       expiresAt: Date.now() + this.cacheTtlMs,
     });
+  }
+
+  private isInvalidPoolError(error: any): boolean {
+    if (!error) {
+      return false;
+    }
+
+    const code = (error as any)?.code;
+    const message = (error as any)?.message?.toLowerCase?.() ?? '';
+    const data = (error as any)?.data;
+
+    return (
+      code === 'BAD_DATA' ||
+      code === 'CALL_EXCEPTION' ||
+      message.includes('could not decode result data') ||
+      message.includes('missing revert data') ||
+      message.includes('execution reverted') ||
+      data === '0x'
+    );
   }
 }

@@ -14,7 +14,7 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 export async function adminRoutes(fastify: FastifyInstance) {
   const verificationService = new AccountVerificationService(fastify.prisma);
   const submissionService = new SubmissionService(fastify.prisma);
-  const listingService = new ListingService(fastify.prisma);
+  const listingService = new ListingService(fastify.prisma, undefined, fastify);
 
   /**
    * GoldSky cache + rate limit metrics
