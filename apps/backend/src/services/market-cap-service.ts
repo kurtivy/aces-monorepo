@@ -297,14 +297,16 @@ export class MarketCapService {
         }
       }`;
 
-      const response = await fetch(
-        process.env.SUBGRAPH_URL || 'https://api.studio.thegraph.com/query/your-subgraph',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query }),
-        },
-      );
+      const subgraphUrl =
+        process.env.SUBGRAPH_URL ||
+        process.env.GOLDSKY_SUBGRAPH_URL ||
+        'https://api.studio.thegraph.com/query/your-subgraph';
+
+      const response = await fetch(subgraphUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query }),
+      });
 
       const data = (await response.json()) as any;
       const trade = data?.data?.trades?.[0];

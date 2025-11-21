@@ -218,7 +218,10 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
     console.log('\n[GoldSky] 🔐 Checking webhook secret...');
     const goldskySecret =
       (request.headers['x-webhook-secret'] as string) ||
-      (request.headers['goldsky-webhook-secret'] as string);
+      (request.headers['goldsky-webhook-secret'] as string) ||
+      (request.headers['x-goldsky-signature'] as string) || // Goldsky default header
+      (request.headers['x-goldsky-webhook-signature'] as string) ||
+      (request.headers['x-goldsky-secret'] as string);
     const expectedSecret = process.env.GOLDSKY_WEBHOOK_SECRET;
     console.log('Expected secret set:', !!expectedSecret);
     console.log('Received signature header:', goldskySecret ? 'PRESENT' : 'MISSING');
