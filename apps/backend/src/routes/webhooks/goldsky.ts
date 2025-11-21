@@ -5,6 +5,28 @@ import { clearBondingDataCache } from '../v1/bonding-data'; // 🔥 NEW: Cache i
 import { getMemoryStore } from '../../services/goldsky-memory-store'; // 🚀 NEW: In-memory store
 
 /**
+ * Helper function to convert scientific notation numbers to full decimal strings
+ * Goldsky sends large numbers like 1.208373e+24 which need to be converted to full integer strings
+ */
+function toFullDecimalString(value: any): string {
+  if (value === null || value === undefined || value === '') return '0';
+  
+  // If already a string without scientific notation, return as-is
+  if (typeof value === 'string' && !value.includes('e') && !value.includes('E')) {
+    return value;
+  }
+  
+  // Convert to number first, then to BigInt-compatible string
+  const num = typeof value === 'number' ? value : parseFloat(value);
+  
+  if (!Number.isFinite(num) || num === 0) return '0';
+  
+  // Use toLocaleString with fullwide to get full decimal representation
+  // This prevents scientific notation
+  return num.toLocaleString('fullwide', { useGrouping: false, maximumFractionDigits: 0 });
+}
+
+/**
  * GoldSky webhook payload structure for Trade entity
  * Matches the subgraph schema from goldsky-client.ts
  */
@@ -85,19 +107,20 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
         token: tokenAddress,
         trader: traderAddress,
         isBuy: Boolean(raw?.is_buy ?? raw?.isBuy),
-        // 🔥 FIX: Convert to string in case Goldsky sends numbers in scientific notation
-        tokenAmount: String(raw?.token_amount ?? raw?.tokenAmount ?? '0'),
-        acesTokenAmount: String(raw?.aces_token_amount ?? raw?.acesAmount ?? raw?.acesTokenAmount ?? '0'),
-        protocolFeeAmount: String(raw?.protocol_fee_amount ?? raw?.protocolFeeAmount ?? '0'),
-        subjectFeeAmount: String(raw?.subject_fee_amount ?? raw?.subjectFeeAmount ?? '0'),
-        supply: String(raw?.supply ?? '0'),
+        // 🔥 FIX: Convert scientific notation to full decimal string
+        // Goldsky sends numbers like 1.208373e+24, need to convert to full integer string
+        tokenAmount: toFullDecimalString(raw?.token_amount ?? raw?.tokenAmount ?? '0'),
+        acesTokenAmount: toFullDecimalString(raw?.aces_token_amount ?? raw?.acesAmount ?? raw?.acesTokenAmount ?? '0'),
+        protocolFeeAmount: toFullDecimalString(raw?.protocol_fee_amount ?? raw?.protocolFeeAmount ?? '0'),
+        subjectFeeAmount: toFullDecimalString(raw?.subject_fee_amount ?? raw?.subjectFeeAmount ?? '0'),
+        supply: toFullDecimalString(raw?.supply ?? '0'),
         createdAt: String(timestampSeconds),
         blockNumber: String(blockNumber),
         // Also expose snake_case fields for downstream compatibility
         token_address: tokenAddress,
-        // 🔥 FIX: Convert to string in case Goldsky sends numbers in scientific notation
-        token_amount: String(raw?.token_amount ?? raw?.tokenAmount ?? '0'),
-        aces_token_amount: String(raw?.aces_token_amount ?? raw?.acesAmount ?? raw?.acesTokenAmount ?? '0'),
+        // 🔥 FIX: Convert scientific notation to full decimal string
+        token_amount: toFullDecimalString(raw?.token_amount ?? raw?.tokenAmount ?? '0'),
+        aces_token_amount: toFullDecimalString(raw?.aces_token_amount ?? raw?.acesAmount ?? raw?.acesTokenAmount ?? '0'),
         created_at: String(timestampSeconds),
         block_number: String(blockNumber),
         is_buy: Boolean(raw?.is_buy ?? raw?.isBuy),
@@ -312,13 +335,13 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
         trader: data.trader || 'unknown',
         isBuy: data.is_buy || false,
         // 🔥 FIX: Goldsky sends numbers in scientific notation (1.175e+21)
-        // Convert to string to avoid frontend errors with .includes()
-        tokenAmount: String(data.token_amount || '0'),
-        acesAmount: String(data.aces_token_amount || '0'),
+        // Convert to full decimal string to avoid frontend errors
+        tokenAmount: toFullDecimalString(data.token_amount || '0'),
+        acesAmount: toFullDecimalString(data.aces_token_amount || '0'),
         pricePerToken: '0',
         priceUsd: acesUsdPrice.toString(),
-        // 🔥 FIX: Convert supply to string as well
-        supply: String(supplyWei || '0'),
+        // 🔥 FIX: Convert supply to full decimal string
+        supply: toFullDecimalString(supplyWei || '0'),
         timestamp: parseInt(timestamp) * 1000,
         blockNumber: parseInt(blockNumber),
         transactionHash: tradeId,
@@ -330,8 +353,8 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
       memoryStore.storeBondingStatus({
         tokenAddress: tokenAddress,
         isBonded: false,
-        // 🔥 FIX: Convert supply to string
-        supply: String(supplyWei || '0'),
+        // 🔥 FIX: Convert supply to full decimal string
+        supply: toFullDecimalString(supplyWei || '0'),
         bondingProgress: 0,
         poolAddress: undefined,
         graduatedAt: undefined,
