@@ -333,19 +333,15 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
 
       // 5. 🚀 Store trade in memory for real-time WebSocket streaming
       const memoryStore = getMemoryStore();
-      // Normalize amounts out of wei to keep frontend math consistent
+      // Use raw wei values to avoid double-scaling on the frontend (frontend already normalizes)
       const tokenAmountWei = new Decimal(toFullDecimalString(data.token_amount || '0'));
       const acesAmountWei = new Decimal(toFullDecimalString(data.aces_token_amount || '0'));
       const supplyWeiDecimal = new Decimal(toFullDecimalString(supplyWei || '0'));
 
-      const tokenAmount = tokenAmountWei.div(new Decimal('1e18'));
-      const acesAmount = acesAmountWei.div(new Decimal('1e18'));
-      const supply = supplyWeiDecimal.div(new Decimal('1e18'));
-
-      // Compute per-token price in ACES and USD
+      // Compute per-token price in ACES and USD (ratio is scale-invariant)
       const pricePerTokenAces =
-        tokenAmount.gt(0) && acesAmount.gt(0)
-          ? acesAmount.div(tokenAmount)
+        tokenAmountWei.gt(0) && acesAmountWei.gt(0)
+          ? acesAmountWei.div(tokenAmountWei)
           : new Decimal(0);
       const priceUsdAtTrade = pricePerTokenAces.mul(acesUsdPrice);
 
@@ -354,12 +350,12 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
         tokenAddress: tokenAddress,
         trader: data.trader || 'unknown',
         isBuy: data.is_buy || false,
-        tokenAmount: tokenAmount.toFixed(), // human-readable units
-        acesAmount: acesAmount.toFixed(),
-        pricePerToken: pricePerTokenAces.toFixed(),
-        priceUsd: priceUsdAtTrade.toFixed(),
-        // 🔥 FIX: Convert supply to human-readable units
-        supply: supply.toFixed(),
+        // Keep raw wei strings; frontend normalizes by dividing by 1e18
+        tokenAmount: tokenAmountWei.toString(),
+        acesAmount: acesAmountWei.toString(),
+        pricePerToken: pricePerTokenAces.toFixed(18), // ACES per token
+        priceUsd: priceUsdAtTrade.toFixed(18), // USD per token
+        supply: supplyWeiDecimal.toString(),
         timestamp: parseInt(timestamp) * 1000,
         blockNumber: parseInt(blockNumber),
         transactionHash: tradeId,

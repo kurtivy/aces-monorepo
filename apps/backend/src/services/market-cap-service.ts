@@ -315,11 +315,19 @@ export class MarketCapService {
         return null;
       }
 
+      // Normalize from wei -> human units to avoid gigantic supplies/price distortions
+      const tokenAmount = new Decimal(trade.tokenAmount).div(new Decimal('1e18'));
+      const acesTokenAmount = new Decimal(trade.acesTokenAmount).div(new Decimal('1e18'));
+      const supplyHuman = new Decimal(trade.supply).div(new Decimal('1e18'));
+
+      if (tokenAmount.isZero() || acesTokenAmount.isZero()) {
+        console.warn('[MarketCapService] Bonding trade has zero amounts, skipping price calc');
+        return null;
+      }
+
       return {
-        priceAces: new Decimal(trade.acesTokenAmount)
-          .div(new Decimal(trade.tokenAmount))
-          .toNumber(),
-        supply: new Decimal(trade.supply).toNumber(),
+        priceAces: acesTokenAmount.div(tokenAmount).toNumber(),
+        supply: supplyHuman.toNumber(),
         timestamp: parseInt(trade.createdAt) * 1000,
       };
     } catch (error) {
