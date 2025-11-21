@@ -519,6 +519,14 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
         subscriptions.push(...tradeSubscriptionIds);
 
         // Subscribe to bonding status for supply updates
+        // Helper: Normalize supply values that may be in wei (> 1e9) to human-readable units
+        const normalizeSupply = (value: string | number): number => {
+          const num = typeof value === 'string' ? parseFloat(value) : value;
+          if (!Number.isFinite(num) || num < 0) return 0;
+          // If value is extremely large (> 1 billion), assume it's in wei and convert to ether
+          return num > 1e9 ? num / 1e18 : num;
+        };
+
         try {
           const bondingSubscriptionId = await adapterManager.subscribeToBondingStatus(
             tokenAddress,
@@ -527,8 +535,8 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
 
               // 1. Update circulating supply immediately from bonding event
               if (status.supply) {
-                const supply = parseFloat(status.supply);
-                if (Number.isFinite(supply) && supply > 0) {
+                const supply = normalizeSupply(status.supply);
+                if (Number.isFinite(supply) && supply >= 0) {
                   currentMetrics.circulatingSupply = supply;
                 }
               }
@@ -563,11 +571,20 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
                   ? 100
                   : Math.min(100, status.bondingProgress * 100);
 
+                const updatedSupply = status.supply
+                  ? normalizeSupply(status.supply)
+                  : currentMetrics.bondingData.currentSupply
+                    ? parseFloat(currentMetrics.bondingData.currentSupply)
+                    : null;
+
                 currentMetrics.bondingData = {
                   ...currentMetrics.bondingData,
                   isBonded: status.isBonded,
                   bondingPercentage,
-                  currentSupply: status.supply || currentMetrics.bondingData.currentSupply,
+                  currentSupply:
+                    updatedSupply !== null
+                      ? updatedSupply.toString()
+                      : currentMetrics.bondingData.currentSupply,
                   // tokensBondedAt doesn't change, keep existing value
                 };
               }
