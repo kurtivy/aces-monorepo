@@ -91,6 +91,10 @@ export class ChartAggregationService {
   // 🔥 LOAD TEST FIX: Request coalescing map to share in-flight promises
   private pendingRequests = new Map<string, Promise<UnifiedChartResponse>>();
 
+  // 🔥 PRICE FIX: Cache invalidation for real-time trades
+  private pendingInvalidations = new Map<string, NodeJS.Timeout>();
+  private readonly INVALIDATION_DEBOUNCE_MS = 500; // 500ms debounce to prevent thrashing
+
   constructor(
     private prisma: PrismaClient,
     private bitQueryService: BitQueryService,
@@ -99,6 +103,63 @@ export class ChartAggregationService {
     private acesSnapshotCache: AcesSnapshotCacheService, // 🔥 NEW: ACES snapshot cache
   ) {
     this.tradePriceAggregator = new TradePriceAggregator(prisma, acesSnapshotCache);
+  }
+
+  /**
+   * 🔥 PRICE FIX: Invalidate chart cache for a token (debounced)
+   *
+   * Called when new trades arrive to ensure the next chart request includes fresh data.
+   * Uses 500ms debouncing to prevent cache thrashing during burst trading.
+   *
+   * This fixes the issue where:
+   * 1. New trade arrives with higher price
+   * 2. Chart briefly shows correct price
+   * 3. Chart cache still has old price (0.000987)
+   * 4. Frontend re-seeds from stale cache → price reverts back
+   *
+   * @param tokenAddress - Token address (will be normalized to lowercase)
+   */
+  public invalidateCacheForToken(tokenAddress: string): void {
+    const normalized = tokenAddress.toLowerCase();
+
+    // Clear existing debounce timer if another trade arrived
+    const existing = this.pendingInvalidations.get(normalized);
+    if (existing) {
+      clearTimeout(existing);
+    }
+
+    // Set new debounce timer - will fire 500ms after the LAST trade in a burst
+    const timer = setTimeout(() => {
+      this._invalidateCacheNow(normalized);
+      this.pendingInvalidations.delete(normalized);
+    }, this.INVALIDATION_DEBOUNCE_MS);
+
+    this.pendingInvalidations.set(normalized, timer);
+  }
+
+  /**
+   * 🔥 PRICE FIX: Immediately invalidate all cache entries for a token
+   *
+   * Clears cache for ALL timeframes (1m, 5m, 15m, 1h, 4h, 1d) because a single
+   * trade affects the current bucket across all timeframes.
+   *
+   * @param normalizedAddress - Token address in lowercase
+   */
+  private _invalidateCacheNow(normalizedAddress: string): void {
+    let invalidated = 0;
+    const prefix = `${normalizedAddress}:`;
+
+    // Delete all cache entries for this token (all timeframes)
+    for (const key of this.chartCache.keys()) {
+      if (key.startsWith(prefix)) {
+        this.chartCache.delete(key);
+        invalidated++;
+      }
+    }
+
+    console.log(
+      `[ChartAggregation] 🔄 Cache invalidated for ${normalizedAddress}: ${invalidated} entries cleared`,
+    );
   }
 
   /**

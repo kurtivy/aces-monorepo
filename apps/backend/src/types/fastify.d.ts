@@ -36,7 +36,7 @@ declare module 'fastify' {
     bitQueryService?: import('../services/bitquery-service').BitQueryService;
     acesUsdPriceService?: import('../services/aces-usd-price-service').AcesUsdPriceService;
     marketCapService?: import('../services/market-cap-service').MarketCapService;
-    chartAggregationService?: any;
+    chartAggregationService?: import('../services/chart-aggregation-service').ChartAggregationService;
     chartDataStore?: import('../services/chart-data-store').ChartDataStore;
     chartWebSocket?: import('../websockets/chart-data-socket').ChartDataWebSocket | null;
     tokenMetadataCache?: any;

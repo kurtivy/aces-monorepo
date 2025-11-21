@@ -384,6 +384,12 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
         graduatedAt: undefined,
       });
 
+      // 7. 🔥 PRICE FIX: Invalidate chart cache to ensure fresh data on next request
+      // This prevents the chart from reverting to stale cached prices
+      if (fastify.chartAggregationService) {
+        fastify.chartAggregationService.invalidateCacheForToken(tokenAddress);
+      }
+
       console.log(`[GoldSky] ✅ Trade processed successfully: ${tradeId}`);
       
     } catch (dbError: unknown) {
