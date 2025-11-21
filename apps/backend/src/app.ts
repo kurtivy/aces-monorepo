@@ -214,6 +214,11 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   // Decorate fastify with adapter manager for route access
   fastify.decorate('adapterManager', adapterManager);
 
+  // Chart data store for live trade merging
+  const { ChartDataStore } = await import('./services/chart-data-store');
+  const chartDataStore = new ChartDataStore(fastify);
+  fastify.decorate('chartDataStore', chartDataStore);
+
   // Chart Aggregation Service (will be enhanced with WebSocket streaming)
   const { ChartAggregationService } = await import('./services/chart-aggregation-service');
   const chartAggregationService = new ChartAggregationService(
@@ -225,6 +230,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
     fastify, // 🔥 PRICE FIX: Pass fastify for live trade merging
   );
   fastify.decorate('chartAggregationService', chartAggregationService);
+  chartDataStore.setChartService(chartAggregationService);
 
   // Market Cap Service - Single Source of Truth
   const { MarketCapService } = await import('./services/market-cap-service');

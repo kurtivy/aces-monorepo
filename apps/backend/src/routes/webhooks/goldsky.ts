@@ -3,6 +3,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { priceCacheService } from '../../services/price-cache-service';
 import { clearBondingDataCache } from '../v1/bonding-data'; // 🔥 NEW: Cache invalidation
 import { getMemoryStore } from '../../services/goldsky-memory-store'; // 🚀 NEW: In-memory store
+import type { SubgraphTrade } from '../../lib/goldsky-client';
 import Decimal from 'decimal.js';
 
 /**
@@ -308,11 +309,110 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
       throw new Error('Failed to fetch ACES price'); // Will be caught by batch handler
     }
 
-    // 3. STORE PRICE SNAPSHOT IN DATABASE
+    // 3. 🚀 STORE TRADE IN MEMORY + CHART DATA STORE (BEFORE DB WRITE)
+    const tokenAmountRaw = toFullDecimalString(data.token_amount ?? (data as any)?.tokenAmount ?? '0');
+    const acesAmountRaw = toFullDecimalString(
+      data.aces_token_amount ?? (data as any)?.acesAmount ?? (data as any)?.acesTokenAmount ?? '0',
+    );
+    const supplyRaw = toFullDecimalString(supplyWei || data.supply || '0');
+    const protocolFeeRaw = toFullDecimalString(
+      data.protocol_fee_amount ?? (data as any)?.protocolFeeAmount ?? '0',
+    );
+    const subjectFeeRaw = toFullDecimalString(
+      data.subject_fee_amount ?? (data as any)?.subjectFeeAmount ?? '0',
+    );
+
+    const tokenAmountWei = new Decimal(tokenAmountRaw);
+    const acesAmountWei = new Decimal(acesAmountRaw);
+    const supplyWeiDecimal = new Decimal(supplyRaw);
+
+    const pricePerTokenAces =
+      tokenAmountWei.gt(0) && acesAmountWei.gt(0)
+        ? acesAmountWei.div(tokenAmountWei)
+        : new Decimal(0);
+    const priceUsdAtTrade = pricePerTokenAces.mul(acesUsdPrice);
+    const traderAddress =
+      typeof data.trader === 'string' ? data.trader : data.trader?.address || 'unknown';
+    const isBuy = Boolean(data.is_buy ?? (data as any)?.isBuy);
+    const normalizedTimestamp = Number.parseInt(timestamp, 10);
+    const normalizedBlockNumber = Number.parseInt(blockNumber, 10);
+
+    const tradeEvent = {
+      id: tradeId,
+      tokenAddress,
+      trader: traderAddress,
+      isBuy,
+      tokenAmount: tokenAmountWei.toFixed(0),
+      acesAmount: acesAmountWei.toFixed(0),
+      pricePerToken: pricePerTokenAces.toFixed(18),
+      priceUsd: priceUsdAtTrade.toFixed(18),
+      supply: supplyWeiDecimal.toFixed(0),
+      timestamp: normalizedTimestamp * 1000,
+      blockNumber: normalizedBlockNumber,
+      transactionHash: tradeId,
+      dataSource: 'goldsky' as const,
+    };
+
+    const subgraphTrade: SubgraphTrade = {
+      id: tradeId,
+      isBuy,
+      tokenAmount: tokenAmountWei.toFixed(0),
+      acesTokenAmount: acesAmountWei.toFixed(0),
+      supply: supplyRaw,
+      createdAt: String(normalizedTimestamp),
+      blockNumber: String(normalizedBlockNumber),
+      token: {
+        address: tokenAddress,
+        name: '',
+        symbol: '',
+      },
+      trader: {
+        address: traderAddress,
+      },
+      protocolFeeAmount: protocolFeeRaw,
+      subjectFeeAmount: subjectFeeRaw,
+    };
+
+    const memoryStore = getMemoryStore();
+    try {
+      memoryStore.storeTrade(tradeEvent);
+      console.log('[GoldSky] 🧠 Stored trade in memory for WebSocket streaming');
+      memoryStore.storeBondingStatus({
+        tokenAddress,
+        isBonded: false,
+        supply: supplyRaw,
+        bondingProgress: 0,
+        poolAddress: undefined,
+        graduatedAt: undefined,
+      });
+      console.log('[GoldSky] 📈 Stored bonding status in memory');
+    } catch (memoryError) {
+      console.error('[GoldSky] ⚠️ Failed to store trade in memory:', memoryError);
+    }
+
+    const chartDataStore = fastify.chartDataStore;
+    if (chartDataStore) {
+      try {
+        await chartDataStore.addTrade(
+          tokenAddress,
+          subgraphTrade,
+          acesUsdPrice,
+          fastify.chartWebSocket,
+        );
+        console.log('[GoldSky] 📊 Stored trade in ChartDataStore for REST merging');
+      } catch (chartStoreError) {
+        console.error('[GoldSky] ⚠️ Failed to store trade in ChartDataStore:', chartStoreError);
+      }
+    }
+
+    if (fastify.chartAggregationService) {
+      fastify.chartAggregationService.invalidateCacheForToken(tokenAddress);
+    }
+
+    // 4. STORE PRICE SNAPSHOT IN DATABASE (best-effort)
     try {
       console.log('[GoldSky] 💾 Storing to database...');
 
-      // Access Prisma client from Fastify instance (following your pattern)
       await fastify.prisma.acesPriceSnapshot.create({
         data: {
           tradeId: tradeId,
@@ -327,11 +427,11 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
       const duration = Date.now() - startTime;
       console.log(`[GoldSky] ✅ Price snapshot stored (${duration}ms)`);
 
-      // 4. Invalidate bonding data cache for this token (RPC-backed data)
+      // 5. Invalidate bonding data cache for this token (RPC-backed data)
       const clearedCount = clearBondingDataCache(tokenAddress);
       console.log(`[GoldSky] 🗑️ Invalidated ${clearedCount} bonding cache entries`);
 
-      // 4b. Trigger unified GoldSky refresh without blowing cache away
+      // 5b. Trigger unified GoldSky refresh without blowing cache away
       const unifiedService = fastify.unifiedGoldSkyService;
       if (unifiedService) {
         unifiedService.refreshInBackground(tokenAddress);
@@ -340,58 +440,7 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
         console.log('[GoldSky] ⚠️ Unified GoldSky service not available, skipping refresh');
       }
 
-      // 5. 🚀 Store trade in memory for real-time WebSocket streaming
-      const memoryStore = getMemoryStore();
-      // Use raw wei values to avoid double-scaling on the frontend (frontend already normalizes)
-      const tokenAmountWei = new Decimal(toFullDecimalString(data.token_amount || '0'));
-      const acesAmountWei = new Decimal(toFullDecimalString(data.aces_token_amount || '0'));
-      const supplyWeiDecimal = new Decimal(toFullDecimalString(supplyWei || '0'));
-
-      // Compute per-token price in ACES and USD (ratio is scale-invariant)
-      const pricePerTokenAces =
-        tokenAmountWei.gt(0) && acesAmountWei.gt(0)
-          ? acesAmountWei.div(tokenAmountWei)
-          : new Decimal(0);
-      const priceUsdAtTrade = pricePerTokenAces.mul(acesUsdPrice);
-
-      memoryStore.storeTrade({
-        id: tradeId,
-        tokenAddress: tokenAddress,
-        trader: data.trader || 'unknown',
-        isBuy: data.is_buy || false,
-        // Keep raw wei strings; frontend normalizes by dividing by 1e18
-        // Avoid scientific notation so the frontend normalizes correctly
-        tokenAmount: tokenAmountWei.toFixed(0),
-        acesAmount: acesAmountWei.toFixed(0),
-        pricePerToken: pricePerTokenAces.toFixed(18), // ACES per token
-        priceUsd: priceUsdAtTrade.toFixed(18), // USD per token
-        supply: supplyWeiDecimal.toFixed(0),
-        timestamp: parseInt(timestamp) * 1000,
-        blockNumber: parseInt(blockNumber),
-        transactionHash: tradeId,
-        dataSource: 'goldsky' as const,
-      });
-      console.log('[GoldSky] 🧠 Stored in memory for WebSocket streaming');
-
-      // 6. Store bonding status in memory
-      memoryStore.storeBondingStatus({
-        tokenAddress: tokenAddress,
-        isBonded: false,
-        // 🔥 FIX: Convert supply to full decimal string
-        supply: toFullDecimalString(supplyWei || '0'),
-        bondingProgress: 0,
-        poolAddress: undefined,
-        graduatedAt: undefined,
-      });
-
-      // 7. 🔥 PRICE FIX: Invalidate chart cache to ensure fresh data on next request
-      // This prevents the chart from reverting to stale cached prices
-      if (fastify.chartAggregationService) {
-        fastify.chartAggregationService.invalidateCacheForToken(tokenAddress);
-      }
-
       console.log(`[GoldSky] ✅ Trade processed successfully: ${tradeId}`);
-      
     } catch (dbError: unknown) {
       // Handle duplicate trade ID (idempotency)
       if (
