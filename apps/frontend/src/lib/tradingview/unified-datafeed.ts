@@ -33,6 +33,7 @@ interface UnifiedDatafeedConfig {
   apiBaseUrl: string;
   wsUrl?: string;
   debug?: boolean;
+  minTradeUsd?: number;
 }
 
 interface UnifiedCandle {
@@ -135,6 +136,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
   // Track per-token trade age thresholds so higher timeframes can accept older trades
   private tradeAgeThresholdMs = new Map<string, number>();
   private readonly GOLDSKY_MIN_TRADE_AGE_MS = 30 * 60 * 1000; // 30 minutes grace for bonding curve trades
+  private readonly minTradeUsdValue: number;
   // 🔥 NEW: Reference to TradingView widget for forcing realtime mode
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private tradingViewWidget: any = null;
@@ -148,6 +150,10 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     };
 
     this.candleBuilder = new RealtimeCandleBuilder(this.config.debug);
+    this.minTradeUsdValue =
+      typeof config.minTradeUsd === 'number' && config.minTradeUsd > 0
+        ? config.minTradeUsd
+        : 0.01;
 
     if (this.config.debug) {
       // console.log('[UnifiedDatafeed] Initialized with config:', this.config);
@@ -855,6 +861,8 @@ export class UnifiedDatafeed implements IBasicDataFeed {
         return;
       }
 
+      let lastSignificantClose: number | null = null;
+
       // Convert to TradingView Bar format
       const bars: Bar[] = filteredCandles.map((candle) => {
         if (candle.supply?.circulating) {
@@ -890,6 +898,41 @@ export class UnifiedDatafeed implements IBasicDataFeed {
             volume: parseFloat(candle.price.volume),
           };
         }
+
+        const bar: Bar = {
+          time: candle.timestamp * 1000,
+          open: parseFloat(candle.price.openUsd),
+          high: parseFloat(candle.price.highUsd),
+          low: parseFloat(candle.price.lowUsd),
+          close: parseFloat(candle.price.closeUsd),
+          volume: parseFloat(candle.price.volume),
+        };
+
+        const volumeUsd = parseFloat(candle.price.volumeUsd || '0');
+        const shouldClampCandle =
+          Number.isFinite(volumeUsd) &&
+          volumeUsd > 0 &&
+          volumeUsd < this.minTradeUsdValue &&
+          lastSignificantClose !== null;
+
+        if (shouldClampCandle) {
+          const clampValue = lastSignificantClose!;
+          if (this.config.debug) {
+            console.warn('[UnifiedDatafeed] Clamping candle to previous close due to low USD volume', {
+              timestamp: new Date(candle.timestamp * 1000).toISOString(),
+              volumeUsd,
+              clampValue,
+            });
+          }
+          bar.open = clampValue;
+          bar.high = clampValue;
+          bar.low = clampValue;
+          bar.close = clampValue;
+        } else if (Number.isFinite(bar.close) && bar.close > 0) {
+          lastSignificantClose = bar.close;
+        }
+
+        return bar;
       });
 
       // Prefer live WebSocket candle for the latest bucket if it's fresher than REST data
@@ -1264,6 +1307,24 @@ export class UnifiedDatafeed implements IBasicDataFeed {
         }
 
         const volumeTokens = Number.isFinite(tokenAmount) && tokenAmount > 0 ? tokenAmount : 0;
+        const acesAmountValue = Number.isFinite(acesAmount) && acesAmount > 0 ? acesAmount : 0;
+        const tradeUsdValue =
+          volumeTokens > 0
+            ? resolvedPriceUsd * volumeTokens
+            : acesAmountValue > 0 && this.lastKnownAcesUsd
+              ? acesAmountValue * this.lastKnownAcesUsd
+              : resolvedPriceUsd;
+
+        if (this.isBelowTradeUsdThreshold(tradeUsdValue)) {
+          if (this.config.debug) {
+            console.warn('[UnifiedDatafeed] ⚠️ Skipping trade below USD threshold', {
+              tradeId: trade.id,
+              source: trade.source,
+              tradeUsdValue,
+            });
+          }
+          return;
+        }
 
         // 🔥 CRITICAL FIX: Detect and fix timestamp format issues
         // Backend should send timestamps in milliseconds, but validate just in case
@@ -1853,6 +1914,15 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     };
 
     return map[timeframe] || 60 * 60 * 1000; // Default to 1 hour
+  }
+
+  private isBelowTradeUsdThreshold(value: number | null | undefined): boolean {
+    return !!(
+      typeof value === 'number' &&
+      Number.isFinite(value) &&
+      value > 0 &&
+      value < this.minTradeUsdValue
+    );
   }
 
   private emitMarketCapIfChanged(

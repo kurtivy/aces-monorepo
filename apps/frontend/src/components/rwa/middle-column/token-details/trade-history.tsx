@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { ExternalLink, ChevronUp, ChevronDown } from 'lucide-react';
 
 // 🚀 PHASE 5: Migrated to WebSocket-powered hook
@@ -114,6 +114,41 @@ export default function TradeHistory({
     return value.toFixed(fractionDigits);
   };
 
+  const VISIBLE_TRADE_MIN_USD = 0.01;
+
+  const visibleTrades = useMemo(() => {
+    return safeTrades.filter((trade) => {
+      const usdFromTrade = parseMaybeNumber(trade.totalUsd);
+      if (usdFromTrade != null) {
+        return usdFromTrade >= VISIBLE_TRADE_MIN_USD;
+      }
+
+      if (acesUsd != null) {
+        const acesAmount = normalizeAmount(trade.counterAmount);
+        if (acesAmount > 0) {
+          const usdEstimate = acesAmount * acesUsd;
+          if (Number.isFinite(usdEstimate)) {
+            return usdEstimate >= VISIBLE_TRADE_MIN_USD;
+          }
+        }
+      }
+
+      const priceFromTradeUsd = parseMaybeNumber(trade.priceUsd);
+      if (priceFromTradeUsd != null) {
+        const tokenAmount = normalizeAmount(trade.tokenAmount);
+        if (tokenAmount > 0) {
+          const usdEstimate = priceFromTradeUsd * tokenAmount;
+          if (Number.isFinite(usdEstimate)) {
+            return usdEstimate >= VISIBLE_TRADE_MIN_USD;
+          }
+        }
+      }
+
+      // If we can't confidently determine USD value, keep the trade visible.
+      return true;
+    });
+  }, [safeTrades, acesUsd]);
+
   const formatAcesAmount = (amount: string) => {
     const value = normalizeAmount(amount);
     if (value > 0 && value < 0.01) return '< 0.01';
@@ -191,7 +226,7 @@ export default function TradeHistory({
     mainContent = (
       <div className="flex flex-1 items-center justify-center text-gray-400">Loading...</div>
     );
-  } else if (isLoading && safeTrades.length === 0) {
+  } else if (isLoading && visibleTrades.length === 0) {
     // 🔥 No trades yet - show skeleton loader
     mainContent = (
       <div className="flex-1 space-y-2">
@@ -212,7 +247,7 @@ export default function TradeHistory({
         ))}
       </div>
     );
-  } else if (isLoading && !hasFreshTrades && safeTrades.length > 0) {
+  } else if (isLoading && !hasFreshTrades && visibleTrades.length > 0) {
     // 🔥 NEW: Have stale trades - show loading spinner overlay while fetching fresh data
     mainContent = (
       <div className="flex flex-1 items-center justify-center">
@@ -229,7 +264,7 @@ export default function TradeHistory({
         <div className="text-sm text-gray-400">{String(error)}</div>
       </div>
     );
-  } else if (safeTrades.length === 0) {
+  } else if (visibleTrades.length === 0) {
     mainContent = (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
         <div className="text-[#D0B284] text-base font-semibold">No trades yet for this token</div>
@@ -288,7 +323,7 @@ export default function TradeHistory({
                 </tr>
               </thead>
               <tbody>
-                {safeTrades.map((trade, index) => {
+                {visibleTrades.map((trade, index) => {
                   const isBuy = trade.direction === 'buy';
                   const accent = isBuy ? 'text-[#37d488]' : 'text-[#f87171]';
                   const isHighlighted = index < 3;
@@ -308,23 +343,31 @@ export default function TradeHistory({
                   const usdFromTrade = parseMaybeNumber(trade.totalUsd);
                   const usdVal = usdFromTrade ?? (acesUsd != null ? acesAmt * acesUsd : null);
 
-                  // 🔥 NEW: Priority 1 - Use marginal price from backend (most accurate for bonding curve)
-                  const marginalPriceAces = trade.marginalPriceInAces
+                  // 🔥 Price calculation with CORRECTED priority order
+                  // Priority 1: Bonding curve execution price (marginalPriceInAces)
+                  const executionPriceAces = trade.marginalPriceInAces
                     ? parseFloat(trade.marginalPriceInAces)
                     : null;
-                  const marginalPriceUsd =
-                    marginalPriceAces != null && acesUsd != null ? marginalPriceAces * acesUsd : null;
+                  const executionPriceUsd =
+                    executionPriceAces != null && acesUsd != null ? executionPriceAces * acesUsd : null;
 
-                  const priceFromTradeUsd = parseMaybeNumber(trade.priceUsd);
+                  // Priority 2: Calculate from priceInCounter × ACES/USD (most reliable for DEX)
                   const priceFromCounter =
                     trade.priceInCounter && Number.isFinite(trade.priceInCounter) && acesUsd != null
                       ? trade.priceInCounter * acesUsd
                       : null;
+
+                  // Priority 3: Backend's priceUsd (now trustworthy after fix, but still fallback)
+                  const priceFromTradeUsd = parseMaybeNumber(trade.priceUsd);
+
+                  // Priority 4: Fallback - calculate from total USD / token amount
+                  const fallbackPrice = usdVal != null && tokenAmt > 0 ? usdVal / tokenAmt : null;
+
                   const unitPrice =
-                    marginalPriceUsd ?? // 🔥 Priority 1: Marginal price (bonding curve)
-                    priceFromTradeUsd ?? // Priority 2: DEX price in USD
-                    (priceFromCounter && priceFromCounter > 0 ? priceFromCounter : null) ?? // Priority 3: Price from counter
-                    (usdVal != null && tokenAmt > 0 ? usdVal / tokenAmt : null); // Priority 4: Fallback average price
+                    executionPriceUsd ?? // Priority 1: Bonding execution price
+                    (priceFromCounter && priceFromCounter > 0 ? priceFromCounter : null) ?? // Priority 2: Calculated (DEX)
+                    priceFromTradeUsd ?? // Priority 3: Backend value (after fix)
+                    fallbackPrice; // Priority 4: Last resort
 
                   return (
                     <tr
@@ -393,7 +436,7 @@ export default function TradeHistory({
 
         <div className="md:hidden">
           <div className="space-y-2 px-3 pb-3">
-            {safeTrades.map((trade, index) => {
+            {visibleTrades.map((trade, index) => {
               const isBuy = trade.direction === 'buy';
               const accent = isBuy ? 'text-[#37d488]' : 'text-[#f87171]';
               const isHighlighted = index < 3;
@@ -411,15 +454,18 @@ export default function TradeHistory({
               const usdFromTrade = parseMaybeNumber(trade.totalUsd);
               const usdVal = usdFromTrade ?? (acesUsd != null ? acesAmt * acesUsd : null);
 
-              const priceFromTradeUsd = parseMaybeNumber(trade.priceUsd);
+              // 🔥 MOBILE: Same corrected priority order as desktop
               const priceFromCounter =
                 trade.priceInCounter && Number.isFinite(trade.priceInCounter) && acesUsd != null
                   ? trade.priceInCounter * acesUsd
                   : null;
+              const priceFromTradeUsd = parseMaybeNumber(trade.priceUsd);
+              const fallbackPrice = usdVal != null && tokenAmt > 0 ? usdVal / tokenAmt : null;
+
               const unitPrice =
-                priceFromTradeUsd ??
-                (priceFromCounter && priceFromCounter > 0 ? priceFromCounter : null) ??
-                (usdVal != null && tokenAmt > 0 ? usdVal / tokenAmt : null);
+                (priceFromCounter && priceFromCounter > 0 ? priceFromCounter : null) ?? // Priority 1: Calculated
+                priceFromTradeUsd ?? // Priority 2: Backend
+                fallbackPrice; // Priority 3: Fallback
 
               return (
                 <div

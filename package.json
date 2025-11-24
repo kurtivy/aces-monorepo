@@ -59,6 +59,8 @@
   },
   "dependencies": {
     "@prisma/client": "5.10.2",
+    "dotenv": "^17.2.1",
+    "ethers": "^6.15.0",
     "prisma": "5.10.2"
   }
 }

@@ -5,6 +5,7 @@ import { UnifiedDatafeed } from '@/lib/tradingview/unified-datafeed';
 import { sharedTradeWebSocket } from '@/lib/websocket/shared-trade-websocket';
 
 const toolbarStylesId = 'aces-tradingview-toolbar-styles';
+const MIN_VISIBLE_USD = 0.01;
 
 const detectIsMobileDevice = () => {
   if (typeof window === 'undefined') return false;
@@ -614,6 +615,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
           const datafeed = new UnifiedDatafeed({
             apiBaseUrl,
             wsUrl,
+            minTradeUsd: MIN_VISIBLE_USD,
           });
 
           datafeedRef.current = datafeed;

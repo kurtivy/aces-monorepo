@@ -82,10 +82,6 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   console.log('[App] 🔗 Using RPC provider:', rpcUrl.substring(0, 40) + '...');
   const provider = new ethers.JsonRpcProvider(rpcUrl);
 
-  // Initialize services
-  const bitQueryService = new BitQueryService();
-  const tokenService = new TokenService(prisma);
-
   // Initialize AerodromeDataService for AcesUsdPriceService
   const aerodromeService = new AerodromeDataService({
     acesTokenAddress:
@@ -101,9 +97,13 @@ export const buildApp = async (): Promise<FastifyInstance> => {
     process.env.ACES_TOKEN_ADDRESS || '0x55337650856299363c496065C836B9C6E9dE0367',
   );
 
+  // Initialize services
+  const bitQueryService = new BitQueryService(acesUsdPriceService);
+  const tokenService = new TokenService(prisma);
+
   // Register services with Fastify instance
-  fastify.decorate('bitQueryService', bitQueryService);
   fastify.decorate('acesUsdPriceService', acesUsdPriceService);
+  fastify.decorate('bitQueryService', bitQueryService);
 
   // Register plugins
   fastify.register(helmet, {
@@ -186,6 +186,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
       goldskyApiKey: process.env.GOLDSKY_API_KEY,
       bitQueryWsUrl: process.env.BITQUERY_WS_URL,
       bitQueryApiKey: process.env.BITQUERY_API_KEY,
+      acesUsdPriceService,
       rateLimitEnforcer: gateway.getRateLimitEnforcer(), // 🛡️ Enable rate limit enforcement
       prisma, // 🔥 NEW: Pass Prisma client for BitQuery trade storage
     });

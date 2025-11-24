@@ -175,13 +175,42 @@ export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
             `[WS:Trades] 📚 Sending ${historicalTrades.length} historical DEX trades from database (most recent 100)`,
           );
 
+          const acesUsdPriceService = (fastify as any).acesUsdPriceService;
+          let batchAcesUsdPrice = 0;
+
+          if (acesUsdPriceService) {
+            try {
+              const result = await acesUsdPriceService.getAcesUsdPrice();
+              batchAcesUsdPrice = Number.parseFloat(result.price);
+              if (Number.isFinite(batchAcesUsdPrice) && batchAcesUsdPrice > 0) {
+                console.log(
+                  `[WS:Trades] ✅ Using batch ACES/USD price ${batchAcesUsdPrice} for historical trades`,
+                );
+              } else {
+                console.warn(
+                  '[WS:Trades] ⚠️ Invalid ACES/USD price for historical batch:',
+                  result.price,
+                );
+                batchAcesUsdPrice = 0;
+              }
+            } catch (error) {
+              console.warn('[WS:Trades] ⚠️ Failed to fetch ACES/USD price for historical batch:', error);
+              batchAcesUsdPrice = 0;
+            }
+          }
+
           for (const trade of historicalTrades) {
             if (connection.socket.readyState === 1) {
               const tradeTimestamp = Number(trade.timestamp);
               
               // 🔥 NEW: Fetch market cap for historical trades
               let marketCapUsd = 0;
-              let currentPriceUsd = parseFloat(trade.priceInUsd?.toString() || '0');
+              const priceInAces = parseFloat(trade.priceInAces?.toString() || '0');
+              const recomputedPriceUsd =
+                batchAcesUsdPrice > 0 && priceInAces > 0
+                  ? priceInAces * batchAcesUsdPrice
+                  : parseFloat(trade.priceInUsd?.toString() || '0');
+              let currentPriceUsd = recomputedPriceUsd;
               
               try {
                 if (fastify.marketCapService) {
@@ -195,7 +224,7 @@ export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
               } catch (mcError) {
                 console.warn(`[WS:Trades] ⚠️ Failed to fetch market cap for historical trade:`, mcError);
                 // Use trade price as fallback
-                currentPriceUsd = parseFloat(trade.priceInUsd?.toString() || '0');
+                currentPriceUsd = recomputedPriceUsd;
               }
               
               const message = JSON.stringify({
@@ -208,7 +237,7 @@ export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
                   tokenAmount: trade.tokenAmount,
                   acesAmount: trade.acesAmount,
                   pricePerToken: trade.priceInAces.toString(),
-                  priceUsd: trade.priceInUsd?.toString() || null,
+                  priceUsd: recomputedPriceUsd > 0 ? recomputedPriceUsd.toString() : null,
                   supply: '0', // Not stored in database
                   timestamp: tradeTimestamp, // Original trade time (for charts)
                   ingestedAt: Date.now(), // 🔥 LOAD TEST FIX: When we sent this message (for latency metrics)

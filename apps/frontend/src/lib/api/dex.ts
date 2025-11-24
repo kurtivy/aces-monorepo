@@ -67,6 +67,7 @@ export interface DexTradeResponse {
   amountCounter: string;
   priceInCounter: number;
   priceInUsd?: number;
+  totalUsd?: number;
   trader?: string;
 }
 

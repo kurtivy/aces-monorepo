@@ -16,6 +16,7 @@ import { GoldskyMemoryAdapter } from '../../adapters/external/goldsky-memory-ada
 import { BitQueryAdapter } from '../../adapters/external/bitquery-adapter';
 import { AerodromeAdapter } from '../../adapters/external/aerodrome-adapter';
 import { RateLimitEnforcer } from '../websocket/rate-limit-enforcer';
+import type { AcesUsdPriceService } from '../aces-usd-price-service';
 import {
   TradeEvent,
   PoolStateEvent,
@@ -31,6 +32,7 @@ export interface AdapterManagerConfig {
   goldskyApiKey?: string;
   bitQueryWsUrl?: string;
   bitQueryApiKey?: string;
+  acesUsdPriceService?: AcesUsdPriceService;
   rateLimitEnforcer?: RateLimitEnforcer; // Optional enforcer for rate limiting
   prisma?: PrismaClient; // Optional Prisma client (for BitQuery trade storage)
 }
@@ -61,10 +63,14 @@ export class AdapterManager extends EventEmitter {
 
     // BitQuery adapter (optional - don't crash if API key is invalid)
     try {
-      this.bitQuery = new BitQueryAdapter({
-        wsUrl: config.bitQueryWsUrl,
-        apiKey: config.bitQueryApiKey,
-      }, config.prisma); // Pass Prisma client for trade storage
+      this.bitQuery = new BitQueryAdapter(
+        {
+          wsUrl: config.bitQueryWsUrl,
+          apiKey: config.bitQueryApiKey,
+        },
+        config.prisma,
+        config.acesUsdPriceService,
+      ); // Pass Prisma client and ACES/USD service for trade storage
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.warn(

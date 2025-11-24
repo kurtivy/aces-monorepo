@@ -20,6 +20,8 @@ import {
   AdapterEventType,
   AdapterEvent,
 } from '../../types/adapters';
+import type { AcesUsdPriceService } from '../../services/aces-usd-price-service';
+import { MIN_VISIBLE_TRADE_USD } from '../../constants/trading';
 
 interface BitQueryConfig {
   wsUrl: string;
@@ -46,6 +48,8 @@ export class BitQueryAdapter extends EventEmitter implements BaseAdapter {
   private pingInterval: NodeJS.Timeout | null = null;
   private authFailed = false; // Track authentication failures
   private prisma: PrismaClient; // Database client for storing trades
+  private acesUsdPriceService?: AcesUsdPriceService;
+  private cachedAcesUsdPrice: { value: number; timestamp: number } | null = null;
 
   // Stats
   private stats = {
@@ -63,7 +67,11 @@ export class BitQueryAdapter extends EventEmitter implements BaseAdapter {
   private subscriptions = new Map<string, BitQuerySubscription>();
   private subscriptionIdCounter = 0;
 
-  constructor(config?: Partial<BitQueryConfig>, prisma?: PrismaClient) {
+  constructor(
+    config?: Partial<BitQueryConfig>,
+    prisma?: PrismaClient,
+    acesUsdPriceService?: AcesUsdPriceService,
+  ) {
     super();
     this.config = {
       wsUrl: config?.wsUrl || process.env.BITQUERY_WS_URL || 'wss://streaming.bitquery.io/graphql',
@@ -76,6 +84,7 @@ export class BitQueryAdapter extends EventEmitter implements BaseAdapter {
 
     // Initialize Prisma client (use provided or create new)
     this.prisma = prisma || new PrismaClient();
+    this.acesUsdPriceService = acesUsdPriceService;
 
     // Note: BitQuery now uses OAuth tokens (starting with "ory_at") as of January 2025
     // OAuth tokens should be passed in the URL query parameter, not headers
@@ -763,6 +772,40 @@ export class BitQueryAdapter extends EventEmitter implements BaseAdapter {
     this.stats.messagesEmitted++;
   }
 
+  private async getAcesUsdPrice(): Promise<number> {
+    if (!this.acesUsdPriceService) {
+      console.warn('[BitQueryAdapter] ⚠️ AcesUsdPriceService unavailable - cannot convert to USD');
+      return 0;
+    }
+
+    try {
+      const result = await this.acesUsdPriceService.getAcesUsdPrice();
+      const price = Number.parseFloat(result.price);
+      if (!Number.isFinite(price) || price <= 0) {
+        console.warn('[BitQueryAdapter] ⚠️ Invalid ACES/USD price from service:', result.price);
+        return 0;
+      }
+
+      return price;
+    } catch (error) {
+      console.warn('[BitQueryAdapter] ⚠️ Failed to fetch ACES/USD price:', error);
+      return 0;
+    }
+  }
+
+  private async getCachedAcesUsdPrice(): Promise<number> {
+    if (
+      this.cachedAcesUsdPrice &&
+      Date.now() - this.cachedAcesUsdPrice.timestamp < 30_000
+    ) {
+      return this.cachedAcesUsdPrice.value;
+    }
+
+    const value = await this.getAcesUsdPrice();
+    this.cachedAcesUsdPrice = { value, timestamp: Date.now() };
+    return value;
+  }
+
   /**
    * Store trade in database (upsert to prevent duplicates)
    */
@@ -772,6 +815,36 @@ export class BitQueryAdapter extends EventEmitter implements BaseAdapter {
       const acesAmount = parseFloat(trade.acesAmount);
       const tokenAmount = parseFloat(trade.tokenAmount);
       const priceInAces = tokenAmount > 0 ? acesAmount / tokenAmount : 0;
+
+      let priceInUsd: number | null = null;
+      if (priceInAces > 0) {
+        const acesUsdPrice = await this.getCachedAcesUsdPrice();
+        if (acesUsdPrice > 0) {
+          priceInUsd = priceInAces * acesUsdPrice;
+        }
+      }
+
+      if (priceInUsd === null && trade.priceUsd) {
+        const fallbackUsd = parseFloat(trade.priceUsd);
+        priceInUsd = Number.isFinite(fallbackUsd) ? fallbackUsd : null;
+      }
+
+      const totalTradeUsd =
+        priceInUsd !== null && Number.isFinite(tokenAmount) ? priceInUsd * tokenAmount : null;
+
+      if (
+        totalTradeUsd !== null &&
+        totalTradeUsd > 0 &&
+        totalTradeUsd < MIN_VISIBLE_TRADE_USD
+      ) {
+        console.log('[BitQueryAdapter] ⏭️ Skipping micro-trade ingestion', {
+          txHash: trade.transactionHash,
+          tokenAddress: trade.tokenAddress,
+          totalUsd: totalTradeUsd,
+          threshold: MIN_VISIBLE_TRADE_USD,
+        });
+        return;
+      }
 
       await this.prisma.dexTrade.upsert({
         where: {
@@ -790,7 +863,7 @@ export class BitQueryAdapter extends EventEmitter implements BaseAdapter {
           tokenAmount: trade.tokenAmount,
           acesAmount: trade.acesAmount,
           priceInAces,
-          priceInUsd: trade.priceUsd ? parseFloat(trade.priceUsd) : null,
+          priceInUsd,
           trader: trade.trader,
           source: 'bitquery',
         },

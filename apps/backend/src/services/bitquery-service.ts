@@ -5,6 +5,8 @@ import {
   ACES_TOKEN_ADDRESS,
   TIMEFRAME_TO_SECONDS,
 } from '../config/bitquery.config';
+import type { AcesUsdPriceService } from './aces-usd-price-service';
+import { MIN_VISIBLE_TRADE_USD } from '../constants/trading';
 export class BitQueryPaymentRequiredError extends Error {
   constructor(message: string = 'BitQuery payment required') {
     super(message);
@@ -35,8 +37,10 @@ export class BitQueryService {
   private config = getBitQueryConfig();
   private cache = new Map<string, CacheEntry<unknown>>();
   private readonly disabled: boolean;
+  private acesUsdPriceService: AcesUsdPriceService | null;
+  private cachedAcesUsdPrice: { value: number; timestamp: number } | null = null;
 
-  constructor() {
+  constructor(acesUsdPriceService?: AcesUsdPriceService) {
     console.log(
       '[BitQueryService Constructor] DISABLE_BITQUERY env var:',
       process.env.DISABLE_BITQUERY,
@@ -52,6 +56,46 @@ export class BitQueryService {
     } else {
       console.log('⚠️  BitQuery service is ENABLED');
     }
+    this.acesUsdPriceService = acesUsdPriceService || null;
+  }
+
+  /**
+   * Get current ACES/USD price for converting BitQuery trades
+   * Returns 0 if service unavailable (graceful degradation)
+   */
+  private async getAcesUsdPrice(): Promise<number> {
+    if (!this.acesUsdPriceService) {
+      console.warn('[BitQueryService] ⚠️ AcesUsdPriceService not available - cannot convert to USD');
+      return 0;
+    }
+
+    try {
+      const result = await this.acesUsdPriceService.getAcesUsdPrice();
+      const price = Number.parseFloat(result.price);
+
+      if (!Number.isFinite(price) || price <= 0) {
+        console.warn('[BitQueryService] ⚠️ Invalid ACES/USD price:', result.price);
+        return 0;
+      }
+
+      return price;
+    } catch (error) {
+      console.error('[BitQueryService] ❌ Failed to fetch ACES/USD price:', error);
+      return 0;
+    }
+  }
+
+  private async getCachedAcesUsdPrice(): Promise<number> {
+    if (
+      this.cachedAcesUsdPrice &&
+      Date.now() - this.cachedAcesUsdPrice.timestamp < 30_000
+    ) {
+      return this.cachedAcesUsdPrice.value;
+    }
+
+    const value = await this.getAcesUsdPrice();
+    this.cachedAcesUsdPrice = { value, timestamp: Date.now() };
+    return value;
   }
 
   /**
@@ -200,7 +244,8 @@ export class BitQueryService {
         });
       }
 
-      const swaps = this.normalizeTokenTrades(trades || [], tokenAddress);
+      const acesUsdPrice = await this.getCachedAcesUsdPrice();
+      const swaps = this.normalizeTokenTrades(trades || [], tokenAddress, acesUsdPrice);
       console.log(`[BitQuery] ✅ Normalized to ${swaps.length} swaps`);
 
       // Cache for shorter time if recent range, longer if historical
@@ -312,9 +357,11 @@ export class BitQueryService {
       }
 
       // Use normalizeTokenTrades which correctly calculates price from amounts
+      const acesUsdPrice = await this.getCachedAcesUsdPrice();
       const normalizedTrades = this.normalizeTokenTrades(
         filteredTrades,
         tokenAddress.toLowerCase(),
+        acesUsdPrice,
       );
 
       // Sort by timestamp ascending (oldest first) for candle aggregation
@@ -739,8 +786,10 @@ export class BitQueryService {
   private normalizeTokenTrades(
     trades: DEXTradeByTokensTrade[],
     _tokenAddress: string,
+    acesUsdPrice: number,
   ): BitQuerySwap[] {
-    return trades.map((trade) => {
+    return trades
+      .map((trade) => {
       const tradeData = trade.Trade;
       const sideType = tradeData.Side.Type; // "buy" or "sell" (from ACES perspective)
 
@@ -764,35 +813,55 @@ export class BitQueryService {
       const amountToken = tradeData.Amount || '0';
       const amountAces = tradeData.Side.Amount || '0';
 
-      // Calculate price in USD from the trade
-      const acesAmountUSD = parseFloat(tradeData.Side.AmountInUSD || '0');
+      const acesAmount = parseFloat(tradeData.Side.Amount || '0');
       const tokenAmountNum = parseFloat(amountToken);
-      let priceInUsd = '0';
-
-      if (tokenAmountNum > 0 && acesAmountUSD > 0) {
-        // Price per token = Total USD spent / Token amount
-        priceInUsd = (acesAmountUSD / tokenAmountNum).toString();
-      }
-
-      // Price in ACES (from BitQuery)
       const priceInAces = tradeData.Price || '0';
 
-      // Volume in USD
-      const volumeUsd = acesAmountUSD.toFixed(2);
+      let priceInUsd = '0';
+      let volumeUsd = '0';
 
-      return {
-        blockTime: new Date(trade.Block.Time),
-        blockNumber: trade.Block.Number,
-        txHash: trade.Transaction.Hash,
-        sender: trade.Transaction.From, // ACTUAL TRADER ADDRESS from Transaction.From!
-        priceInAces,
-        priceInUsd,
-        amountToken,
-        amountAces,
-        volumeUsd,
-        side,
-      };
-    });
+      if (tokenAmountNum > 0 && acesAmount > 0 && acesUsdPrice > 0) {
+        const realUsdAmount = acesAmount * acesUsdPrice;
+        priceInUsd = (realUsdAmount / tokenAmountNum).toString();
+        volumeUsd = realUsdAmount.toFixed(2);
+      } else {
+        console.warn('[BitQueryService] ⚠️ Unable to derive USD price from BitQuery trade', {
+          tokenAmountNum,
+          acesAmount,
+          acesUsdPrice,
+          txHash: trade.Transaction.Hash,
+        });
+      }
+
+        return {
+          blockTime: new Date(trade.Block.Time),
+          blockNumber: trade.Block.Number,
+          txHash: trade.Transaction.Hash,
+          sender: trade.Transaction.From, // ACTUAL TRADER ADDRESS from Transaction.From!
+          priceInAces,
+          priceInUsd,
+          amountToken,
+          amountAces,
+          volumeUsd,
+          side,
+        };
+      })
+      .filter((trade) => {
+        const volumeUsdValue = Number.parseFloat(trade.volumeUsd);
+        if (
+          Number.isFinite(volumeUsdValue) &&
+          volumeUsdValue > 0 &&
+          volumeUsdValue < MIN_VISIBLE_TRADE_USD
+        ) {
+          console.log('[BitQueryService] ⏭️ Skipping micro-trade from normalization', {
+            txHash: trade.txHash,
+            volumeUsd: volumeUsdValue,
+            threshold: MIN_VISIBLE_TRADE_USD,
+          });
+          return false;
+        }
+        return true;
+      });
   }
 
   /**

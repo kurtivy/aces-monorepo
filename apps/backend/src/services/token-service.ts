@@ -471,37 +471,25 @@ export class TokenService {
 
       const trades = result.data.trades || [];
 
-      // 🔥 CRITICAL: Calculate marginal price for each trade (same logic as chart service)
+      // 🔥 Calculate EXECUTION price for each trade (average price paid/received)
+      // This is different from marginal price - execution price shows actual price paid per token
       const tradesWithMarginalPrice = trades.map((trade) => {
-        const supply = parseFloat(trade.supply) / 1e18; // Supply AFTER this trade
+        const tokenAmount = parseFloat(trade.tokenAmount) / 1e18;
+        const acesAmount = parseFloat(trade.acesTokenAmount) / 1e18;
+        
+        // Calculate execution price (average price paid/received for this trade)
+        // This is what the trader actually paid per token, not the marginal price
+        const executionPriceInAces = tokenAmount > 0 ? acesAmount / tokenAmount : 0;
 
-        let marginalPriceInAces: number;
-
-        if (steepness && floor) {
-          // Calculate marginal buy price at supply AFTER trade
-          // This gives us the price for the NEXT token (the "current price" after this trade)
-          marginalPriceInAces = this.calculateMarginalBuyPrice(supply, steepness, floor);
-
-          // console.log(
-          //   `[TokenService] ${trade.isBuy ? 'BUY' : 'SELL'} trade ${trade.id.slice(0, 10)}: ` +
-          //     `Marginal price=${marginalPriceInAces.toFixed(8)} ACES/token (supply after: ${supply.toFixed(0)})`,
-          // );
-        } else {
-          // Fallback: Use execution price (average price)
-          const tokenAmount = parseFloat(trade.tokenAmount) / 1e18;
-          const acesAmount = parseFloat(trade.acesTokenAmount) / 1e18;
-          marginalPriceInAces = tokenAmount > 0 ? acesAmount / tokenAmount : 0;
-
-          // console.warn(
-          //   `[TokenService] ${trade.isBuy ? 'BUY' : 'SELL'} trade ${trade.id.slice(0, 10)}: ` +
-          //     `Fallback price=${marginalPriceInAces.toFixed(8)} ACES/token`,
-          // );
-        }
+        // console.log(
+        //   `[TokenService] ${trade.isBuy ? 'BUY' : 'SELL'} trade ${trade.id.slice(0, 10)}: ` +
+        //     `Execution price=${executionPriceInAces.toFixed(8)} ACES/token (${tokenAmount.toFixed(2)} tokens for ${acesAmount.toFixed(4)} ACES)`,
+        // );
 
         return {
           ...trade,
-          marginalPriceInAces: marginalPriceInAces.toString(), // 🔥 NEW: Marginal price in ACES
-          supply: trade.supply, // 🔥 NEW: Include supply for reference
+          marginalPriceInAces: executionPriceInAces.toString(), // Execution price (renamed for compatibility)
+          supply: trade.supply, // Include supply for reference
         };
       });
 

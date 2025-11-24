@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import { BitQueryService } from './bitquery-service';
 import { AcesUsdPriceService } from './aces-usd-price-service';
 import { ACES_TOKEN_ADDRESS, DATA_SOURCE_CONFIG } from '../config/bitquery.config';
+import { MIN_VISIBLE_TRADE_USD } from '../constants/trading';
 import { TradePriceAggregator } from './trade-price-aggregator';
 import { TokenMetadataCacheService } from './token-metadata-cache-service'; // 🔥 NEW
 import { AcesSnapshotCacheService } from './aces-snapshot-cache-service'; // 🔥 NEW
@@ -711,7 +712,21 @@ export class ChartAggregationService {
       }
 
       //  console.log(`[ChartAggregation] ✅ Transformed ${transformedTrades.length} bonding trades`);
-      return transformedTrades;
+
+      const filteredTrades = transformedTrades.filter(
+        (trade) => trade.volumeUsd >= MIN_VISIBLE_TRADE_USD,
+      );
+
+      const filteredCount = transformedTrades.length - filteredTrades.length;
+      if (filteredCount > 0) {
+        console.log('[ChartAggregation] ✂️ Filtered micro bonding trades', {
+          tokenAddress: tokenAddress.toLowerCase(),
+          removed: filteredCount,
+          thresholdUsd: MIN_VISIBLE_TRADE_USD,
+        });
+      }
+
+      return filteredTrades;
     } catch (error) {
       console.error('[ChartAggregation] Failed to fetch bonding trades:', error);
       throw error;
@@ -736,7 +751,7 @@ export class ChartAggregationService {
     });
 
     // Transform to Trade format
-    return bitQueryTrades.map((trade) => ({
+    const transformedTrades = bitQueryTrades.map((trade) => ({
       timestamp: trade.blockTime,
       priceInAces: parseFloat(trade.priceInAces),
       priceInUsd: parseFloat(trade.priceInUsd),
@@ -744,6 +759,22 @@ export class ChartAggregationService {
       volumeUsd: parseFloat(trade.volumeUsd),
       side: trade.side,
     }));
+
+    const filteredTrades = transformedTrades.filter(
+      (trade) => trade.volumeUsd >= MIN_VISIBLE_TRADE_USD,
+    );
+
+    const filteredCount = transformedTrades.length - filteredTrades.length;
+    if (filteredCount > 0) {
+      console.log('[ChartAggregation] ✂️ Filtered micro DEX trades (BitQuery)', {
+        tokenAddress: tokenAddress.toLowerCase(),
+        poolAddress: poolAddress || '(n/a)',
+        removed: filteredCount,
+        thresholdUsd: MIN_VISIBLE_TRADE_USD,
+      });
+    }
+
+    return filteredTrades;
   }
 
   /**
@@ -798,7 +829,7 @@ export class ChartAggregationService {
 
       if (bucketTrades.length > 0) {
         // CANDLE WITH TRADES
-        candle = this.createCandleWithTrades(
+        const { candle: builtCandle, totalVolumeUsd } = this.createCandleWithTrades(
           bucketTrades,
           currentTime,
           acesUsdPrice,
@@ -807,6 +838,7 @@ export class ChartAggregationService {
           previousCandle,
           intervalMs,
         );
+        candle = this.applyMicroCandleClamp(builtCandle, previousCandle, totalVolumeUsd);
       } else if (previousCandle) {
         // EMPTY CANDLE - Show ACES price movement
         candle = this.createEmptyCandle(
@@ -850,7 +882,7 @@ export class ChartAggregationService {
     supply: string,
     previousCandle: Candle | null,
     intervalMs: number,
-  ): Candle {
+  ): { candle: Candle; totalVolumeUsd: number } {
     // Sort trades by timestamp
     bucketTrades.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 
@@ -928,7 +960,7 @@ export class ChartAggregationService {
 
     // Volume
     const volume = bucketTrades.reduce((sum, t) => sum + t.amountToken, 0);
-    const volumeUsd = bucketTrades.reduce((sum, t) => sum + t.volumeUsd, 0);
+    const volumeUsd = totalVolumeUsd.toFixed(2);
 
     // Supply: Use actual circulating supply from last trade (bonding) or fixed supply (DEX)
     let actualSupply: string;
@@ -971,27 +1003,30 @@ export class ChartAggregationService {
     const marketCapLowUsd = Math.min(marketCapOpenUsd, marketCapCloseUsd, marketCapAtLow);
 
     return {
-      timestamp: new Date(timestamp),
-      open: openAces.toFixed(18),
-      high: highAces.toFixed(18),
-      low: lowAces.toFixed(18),
-      close: closeAces.toFixed(18),
-      openUsd: openUsd.toFixed(18),
-      highUsd: highUsd.toFixed(18),
-      lowUsd: lowUsd.toFixed(18),
-      closeUsd: closeUsd.toFixed(18),
-      volume: volume.toString(),
-      volumeUsd: volumeUsd.toFixed(2),
-      trades: bucketTrades.length,
-      dataSource,
-      circulatingSupply: actualSupply,
-      totalSupply: actualSupply,
-      marketCapAces: (closeAces * supplyNum).toFixed(2),
-      marketCapUsd: marketCapCloseUsd.toFixed(2),
-      marketCapOpenUsd: marketCapOpenUsd.toFixed(2),
-      marketCapHighUsd: marketCapHighUsd.toFixed(2),
-      marketCapLowUsd: marketCapLowUsd.toFixed(2),
-      marketCapCloseUsd: marketCapCloseUsd.toFixed(2),
+      candle: {
+        timestamp: new Date(timestamp),
+        open: openAces.toFixed(18),
+        high: highAces.toFixed(18),
+        low: lowAces.toFixed(18),
+        close: closeAces.toFixed(18),
+        openUsd: openUsd.toFixed(18),
+        highUsd: highUsd.toFixed(18),
+        lowUsd: lowUsd.toFixed(18),
+        closeUsd: closeUsd.toFixed(18),
+        volume: volume.toString(),
+        volumeUsd: totalVolumeUsd.toFixed(2),
+        trades: bucketTrades.length,
+        dataSource,
+        circulatingSupply: actualSupply,
+        totalSupply: actualSupply,
+        marketCapAces: (closeAces * supplyNum).toFixed(2),
+        marketCapUsd: marketCapCloseUsd.toFixed(2),
+        marketCapOpenUsd: marketCapOpenUsd.toFixed(2),
+        marketCapHighUsd: marketCapHighUsd.toFixed(2),
+        marketCapLowUsd: marketCapLowUsd.toFixed(2),
+        marketCapCloseUsd: marketCapCloseUsd.toFixed(2),
+      },
+      totalVolumeUsd,
     };
   }
 
@@ -1076,6 +1111,61 @@ export class ChartAggregationService {
       marketCapLowUsd: marketCapLowUsd.toFixed(2),
       marketCapCloseUsd: marketCapCloseUsd.toFixed(2),
     };
+  }
+
+  private applyMicroCandleClamp(
+    candle: Candle,
+    previousCandle: Candle | null,
+    totalVolumeUsd: number,
+  ): Candle {
+    if (
+      !previousCandle ||
+      !Number.isFinite(totalVolumeUsd) ||
+      totalVolumeUsd <= 0 ||
+      totalVolumeUsd >= MIN_VISIBLE_TRADE_USD
+    ) {
+      return candle;
+    }
+
+    console.log('[ChartAggregation] 🛡️ Clamping candle due to low USD volume', {
+      timestamp: candle.timestamp.toISOString(),
+      volumeUsd: totalVolumeUsd,
+      thresholdUsd: MIN_VISIBLE_TRADE_USD,
+      dataSource: candle.dataSource,
+    });
+
+    return this.copyPricesFromPrevious(candle, previousCandle);
+  }
+
+  private copyPricesFromPrevious(candle: Candle, previousCandle: Candle): Candle {
+    const prevClose = previousCandle.close;
+    const prevCloseUsd = previousCandle.closeUsd;
+    const prevMarketCap =
+      previousCandle.marketCapCloseUsd ||
+      previousCandle.marketCapUsd ||
+      previousCandle.marketCapOpenUsd ||
+      '0';
+
+    candle.open = prevClose;
+    candle.high = prevClose;
+    candle.low = prevClose;
+    candle.close = prevClose;
+
+    candle.openUsd = prevCloseUsd;
+    candle.highUsd = prevCloseUsd;
+    candle.lowUsd = prevCloseUsd;
+    candle.closeUsd = prevCloseUsd;
+
+    candle.marketCapAces = previousCandle.marketCapAces;
+    candle.marketCapUsd = prevMarketCap;
+    candle.marketCapOpenUsd = prevMarketCap;
+    candle.marketCapHighUsd = prevMarketCap;
+    candle.marketCapLowUsd = prevMarketCap;
+    candle.marketCapCloseUsd = prevMarketCap;
+    candle.circulatingSupply = previousCandle.circulatingSupply;
+    candle.totalSupply = previousCandle.totalSupply;
+
+    return candle;
   }
 
   /**
@@ -1189,7 +1279,10 @@ export class ChartAggregationService {
       };
     };
 
-    const candles = bitQueryCandles.map((bqCandle, index) => {
+    const candles: Candle[] = [];
+    let previousCandle: Candle | null = seedCandle ? { ...seedCandle } : null;
+
+    bitQueryCandles.forEach((bqCandle, index) => {
       // Trading.Tokens gives us USD prices directly - perfect!
       let openUsdStr = bqCandle.openUsd || bqCandle.open;
       let highUsdStr = bqCandle.highUsd || bqCandle.high;
@@ -1230,7 +1323,7 @@ export class ChartAggregationService {
       // Market cap will be calculated in enrichment step
       const marketCapCloseUsd = closeUsd * supplyNum;
 
-      return {
+      const candle: Candle = {
         timestamp: bqCandle.timestamp,
         // ACES prices (same as USD for now, enrichment will handle conversion if needed)
         open: openAcesStr,
@@ -1257,6 +1350,9 @@ export class ChartAggregationService {
         marketCapLowUsd: (lowUsd * supplyNum).toFixed(2),
         marketCapCloseUsd: marketCapCloseUsd.toFixed(2),
       };
+      const adjustedCandle = this.applyMicroCandleClamp(candle, previousCandle, volumeUsd);
+      candles.push(adjustedCandle);
+      previousCandle = adjustedCandle;
     });
 
     return candles;
@@ -1456,8 +1552,28 @@ export class ChartAggregationService {
       side: trade.isBuy ? 'buy' : 'sell',
     }));
 
+    const filteredBitQueryTrades = bitQueryTradesConverted.filter(
+      (trade) => trade.volumeUsd >= MIN_VISIBLE_TRADE_USD,
+    );
+    const filteredDbTrades = dbTradesConverted.filter(
+      (trade) => trade.volumeUsd >= MIN_VISIBLE_TRADE_USD,
+    );
+
+    const filteredBitQueryCount = bitQueryTradesConverted.length - filteredBitQueryTrades.length;
+    const filteredDbCount = dbTradesConverted.length - filteredDbTrades.length;
+
+    if (filteredBitQueryCount > 0 || filteredDbCount > 0) {
+      console.log('[ChartAggregation] ✂️ Filtered micro DEX trades (recent slice)', {
+        tokenAddress: tokenAddress.toLowerCase(),
+        poolAddress: poolAddress || '(n/a)',
+        removedBitQuery: filteredBitQueryCount,
+        removedDb: filteredDbCount,
+        thresholdUsd: MIN_VISIBLE_TRADE_USD,
+      });
+    }
+
     // Combine and sort by timestamp
-    const trades: Trade[] = [...bitQueryTradesConverted, ...dbTradesConverted].sort(
+    const trades: Trade[] = [...filteredBitQueryTrades, ...filteredDbTrades].sort(
       (a, b) => a.timestamp.getTime() - b.timestamp.getTime(),
     );
 

@@ -12,6 +12,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import type { SubgraphTrade } from '../lib/goldsky-client';
+import { MIN_VISIBLE_TRADE_USD } from '../constants/trading';
 
 // Trade interface matching what we store
 interface StoredTrade {
@@ -228,12 +229,13 @@ export class ChartDataStore {
 
       if (bucketTrades.length > 0) {
         // Create candle from trades
-        candle = this.createCandleFromTrades(
+        const { candle: builtCandle, totalVolumeUsd } = this.createCandleFromTrades(
           bucketTrades,
           currentTime,
           acesUsdPrice,
           previousCandle,
         );
+        candle = this.clampMicroCandle(builtCandle, previousCandle, totalVolumeUsd);
       } else if (existingCandle) {
         // Keep existing candle
         candle = existingCandle;
@@ -265,7 +267,7 @@ export class ChartDataStore {
     timestamp: number,
     acesUsdPrice: number,
     previousCandle: Candle | null,
-  ): Candle {
+  ): { candle: Candle; totalVolumeUsd: number } {
     const prices = trades.map((t) => t.priceInUsd);
     const volumes = trades.map((t) => t.volumeUsd);
     const supplies = trades.map((t) => t.circulatingSupply || 700000000).filter((s) => s > 0);
@@ -274,8 +276,9 @@ export class ChartDataStore {
     const high = Math.max(...prices).toString();
     const low = Math.min(...prices).toString();
     const close = prices[prices.length - 1]?.toString() || '0';
+    const totalVolumeUsd = volumes.reduce((sum, v) => sum + v, 0);
     const volume = volumes.reduce((sum, v) => sum + v, 0).toString();
-    const volumeUsd = volume;
+    const volumeUsd = totalVolumeUsd.toString();
     const supply = supplies.length > 0 ? supplies[supplies.length - 1] : 700000000;
 
     const openAces = previousCandle ? previousCandle.close : prices[0]?.toString() || '0';
@@ -290,28 +293,71 @@ export class ChartDataStore {
     const marketCapCloseUsd = marketCapUsd.toString();
 
     return {
-      timestamp: new Date(timestamp),
-      open: openAces,
-      high: highAces,
-      low: lowAces,
-      close: closeAces,
-      openUsd: open,
-      highUsd: high,
-      lowUsd: low,
-      closeUsd: close,
-      volume: volume,
-      volumeUsd: volumeUsd,
-      trades: trades.length,
-      dataSource: 'bonding_curve',
-      circulatingSupply: supply.toString(),
-      totalSupply: '700000000',
-      marketCapAces: (parseFloat(closeAces) * supply).toString(),
-      marketCapUsd: marketCapCloseUsd,
-      marketCapOpenUsd,
-      marketCapHighUsd: marketCapHighUsd.toString(),
-      marketCapLowUsd: marketCapLowUsd.toString(),
-      marketCapCloseUsd,
+      candle: {
+        timestamp: new Date(timestamp),
+        open: openAces,
+        high: highAces,
+        low: lowAces,
+        close: closeAces,
+        openUsd: open,
+        highUsd: high,
+        lowUsd: low,
+        closeUsd: close,
+        volume: volume,
+        volumeUsd: volumeUsd,
+        trades: trades.length,
+        dataSource: 'bonding_curve',
+        circulatingSupply: supply.toString(),
+        totalSupply: '700000000',
+        marketCapAces: (parseFloat(closeAces) * supply).toString(),
+        marketCapUsd: marketCapCloseUsd,
+        marketCapOpenUsd,
+        marketCapHighUsd: marketCapHighUsd.toString(),
+        marketCapLowUsd: marketCapLowUsd.toString(),
+        marketCapCloseUsd,
+      },
+      totalVolumeUsd,
     };
+  }
+  private clampMicroCandle(
+    candle: Candle,
+    previousCandle: Candle | null,
+    totalVolumeUsd: number,
+  ): Candle {
+    if (
+      !previousCandle ||
+      !Number.isFinite(totalVolumeUsd) ||
+      totalVolumeUsd <= 0 ||
+      totalVolumeUsd >= MIN_VISIBLE_TRADE_USD
+    ) {
+      return candle;
+    }
+
+    const prevClose = previousCandle.close;
+    const prevCloseUsd = previousCandle.closeUsd;
+    const prevMarketCapCloseUsd =
+      previousCandle.marketCapCloseUsd || previousCandle.marketCapUsd;
+
+    candle.open = prevClose;
+    candle.high = prevClose;
+    candle.low = prevClose;
+    candle.close = prevClose;
+
+    candle.openUsd = prevCloseUsd;
+    candle.highUsd = prevCloseUsd;
+    candle.lowUsd = prevCloseUsd;
+    candle.closeUsd = prevCloseUsd;
+
+    candle.marketCapAces = previousCandle.marketCapAces;
+    candle.marketCapUsd = prevMarketCapCloseUsd;
+    candle.marketCapOpenUsd = prevMarketCapCloseUsd;
+    candle.marketCapHighUsd = prevMarketCapCloseUsd;
+    candle.marketCapLowUsd = prevMarketCapCloseUsd;
+    candle.marketCapCloseUsd = prevMarketCapCloseUsd;
+    candle.circulatingSupply = previousCandle.circulatingSupply;
+    candle.totalSupply = previousCandle.totalSupply;
+
+    return candle;
   }
 
   /**
