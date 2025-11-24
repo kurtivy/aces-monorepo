@@ -381,6 +381,24 @@ export class ChartAggregationService {
       }),
     ]);
 
+    // 🔥 DEBUG: Log graduation state and request parameters
+    console.log('[ChartAggregation] 🔍 DEBUG - Graduation check:', {
+      tokenAddress: tokenAddress.toLowerCase(),
+      timeframe: options.timeframe,
+      from: options.from.toISOString(),
+      to: options.to.toISOString(),
+      fromTimestamp: options.from.getTime(),
+      toTimestamp: options.to.getTime(),
+      currentTime: new Date().toISOString(),
+      currentTimestamp: Date.now(),
+      graduationState: {
+        isBonded: graduationState.isBonded,
+        poolAddress: graduationState.poolAddress,
+        poolReady: graduationState.poolReady,
+        dexLiveAt: graduationState.dexLiveAt?.toISOString() || null,
+      },
+    });
+
     // Process ACES/USD Price
     let acesUsdPrice: number | null = parseFloat(acesUsdPriceResult.price);
     if (!acesUsdPrice || isNaN(acesUsdPrice) || acesUsdPrice <= 0) {
@@ -1324,7 +1342,15 @@ export class ChartAggregationService {
     currentCandleTimestamp: number,
     providedSeedCandle: Candle | null = null, // 🔥 NEW: Accept provided seed candle
   ): Promise<Candle[]> {
-    const tradeLimit = Math.min((options.limit || 200) * 3, 5000);
+    // 🔥 FIX: Calculate trade limit based on time range, not just candle limit
+    // For 1h candles over 48h, we need many more trades (could be 1000+ trades)
+    // BitQuery pricing is typically per API call, not per record, so higher limits don't increase cost
+    // However, we use caching to minimize API calls (5min TTL for recent data)
+    const timeRangeHours = (options.to.getTime() - options.from.getTime()) / (1000 * 60 * 60);
+    const estimatedTradesPerHour = 500; // Conservative estimate (we saw 324 trades/hour in practice)
+    const timeBasedLimit = Math.ceil(timeRangeHours * estimatedTradesPerHour);
+    // Cap at 5000 to balance completeness vs query performance (BitQuery default is 5000)
+    const tradeLimit = Math.min(Math.max((options.limit || 200) * 10, timeBasedLimit), 5000);
 
     // 🔥 NEW: For very recent trades (last 5 minutes), check database first
     const now = Date.now();
@@ -1356,6 +1382,7 @@ export class ChartAggregationService {
         );
 
         // Adjust BitQuery query to fetch only trades older than 5 minutes
+        // BUT: Always fetch up to options.to to ensure we don't miss trades
         if (dbTrades.length > 0 && options.from.getTime() < fiveMinutesAgo) {
           combinedFromTime = new Date(Math.min(options.from.getTime(), fiveMinutesAgo));
         }
@@ -1365,10 +1392,12 @@ export class ChartAggregationService {
       }
     }
 
-    // Fetch from BitQuery (skipping very recent if we got them from DB)
+    // 🔥 FIX: Always fetch BitQuery trades up to options.to, regardless of database check
+    // The database check is just for very recent trades (<5min), but we still need BitQuery
+    // for the full time range to ensure we don't miss any trades
     const bitQueryTrades = await this.bitQueryService.getDexTrades(tokenAddress, poolAddress, {
       from: combinedFromTime,
-      to: isVeryRecentRequest ? new Date(fiveMinutesAgo) : options.to,
+      to: options.to, // 🔥 FIX: Always fetch up to options.to, not fiveMinutesAgo
       counterTokenAddress: ACES_TOKEN_ADDRESS,
       limit: tradeLimit,
     });
@@ -1376,6 +1405,36 @@ export class ChartAggregationService {
     console.log(
       `[ChartAggregation] ✅ Fetched ${bitQueryTrades.length} DEX trades from BitQuery + ${dbTrades.length} from database`,
     );
+
+    // 🔥 DEBUG: Log trade details
+    const totalTrades = bitQueryTrades.length + dbTrades.length;
+    const summedVolume = bitQueryTrades.reduce((sum, t) => sum + parseFloat(t.volumeUsd || '0'), 0) +
+      dbTrades.reduce((sum, t) => sum + (t.priceInUsd ? parseFloat(t.tokenAmount) * t.priceInUsd : 0), 0);
+    const minTimestamp = totalTrades > 0 
+      ? Math.min(
+          ...bitQueryTrades.map(t => t.blockTime.getTime()),
+          ...dbTrades.map(t => Number(t.timestamp))
+        )
+      : null;
+    const maxTimestamp = totalTrades > 0
+      ? Math.max(
+          ...bitQueryTrades.map(t => t.blockTime.getTime()),
+          ...dbTrades.map(t => Number(t.timestamp))
+        )
+      : null;
+
+    console.log('[ChartAggregation] 🔍 DEBUG - fetchRecentDexTrades trade summary:', {
+      tokenAddress: tokenAddress.toLowerCase(),
+      poolAddress: poolAddress || '(empty)',
+      totalTrades,
+      bitQueryTrades: bitQueryTrades.length,
+      dbTrades: dbTrades.length,
+      summedVolumeUsd: summedVolume.toFixed(2),
+      minTimestamp: minTimestamp ? new Date(minTimestamp).toISOString() : null,
+      maxTimestamp: maxTimestamp ? new Date(maxTimestamp).toISOString() : null,
+      requestFrom: options.from.toISOString(),
+      requestTo: options.to.toISOString(),
+    });
 
     // Convert BitQuery trades to internal Trade format
     const bitQueryTradesConverted: Trade[] = bitQueryTrades.map((trade) => ({
@@ -1401,6 +1460,22 @@ export class ChartAggregationService {
     const trades: Trade[] = [...bitQueryTradesConverted, ...dbTradesConverted].sort(
       (a, b) => a.timestamp.getTime() - b.timestamp.getTime(),
     );
+
+    // 🔥 DEBUG: Log trade distribution by hour bucket
+    if (trades.length > 0) {
+      const buckets = new Map<number, number>();
+      trades.forEach(t => {
+        const bucket = Math.floor(t.timestamp.getTime() / (60 * 60 * 1000)) * (60 * 60 * 1000);
+        buckets.set(bucket, (buckets.get(bucket) || 0) + 1);
+      });
+      console.log('[ChartAggregation] 🔍 DEBUG - Trade distribution by hour:', {
+        totalTrades: trades.length,
+        buckets: Array.from(buckets.entries()).map(([bucket, count]) => ({
+          bucket: new Date(bucket).toISOString(),
+          count,
+        })),
+      });
+    }
 
     // 🔥 UPDATED: Use provided seed candle if available, otherwise fetch one
     let seedCandle: Candle | null = providedSeedCandle;
@@ -1447,7 +1522,23 @@ export class ChartAggregationService {
         lowUsd: lastCandle.lowUsd,
         closeUsd: lastCandle.closeUsd,
         trades: lastCandle.trades,
+        volume: lastCandle.volume,
+        volumeUsd: lastCandle.volumeUsd,
         dataSource: lastCandle.dataSource,
+      });
+      
+      // 🔥 DEBUG: Check if candles have trades
+      const candlesWithTrades = candles.filter(c => c.trades > 0);
+      const candlesWithVolume = candles.filter(c => parseFloat(c.volume || '0') > 0);
+      console.log('[ChartAggregation] 🔍 DEBUG - Candle stats:', {
+        totalCandles: candles.length,
+        candlesWithTrades: candlesWithTrades.length,
+        candlesWithVolume: candlesWithVolume.length,
+        sampleCandleWithTrades: candlesWithTrades[0] ? {
+          timestamp: candlesWithTrades[0].timestamp.toISOString(),
+          trades: candlesWithTrades[0].trades,
+          volume: candlesWithTrades[0].volume,
+        } : null,
       });
     }
 
@@ -1465,6 +1556,17 @@ export class ChartAggregationService {
     currentCandleTimestamp: number,
     seedCandle: Candle | null = null, // 🔥 NEW: Accept seed candle for graduation connection
   ): Promise<Candle[]> {
+    // 🔥 DEBUG: Log entry
+    console.log('[ChartAggregation] 🔍 DEBUG - fetchDexDataWithSmartSwitching ENTRY:', {
+      tokenAddress: tokenAddress.toLowerCase(),
+      poolAddress: poolAddress || '(empty)',
+      timeframe: options.timeframe,
+      from: options.from.toISOString(),
+      to: options.to.toISOString(),
+      currentCandleTimestamp: new Date(currentCandleTimestamp).toISOString(),
+      hasSeedCandle: !!seedCandle,
+    });
+
     const now = new Date();
     const historicalBoundary = new Date(
       now.getTime() - DATA_SOURCE_CONFIG.HISTORICAL_BOUNDARY_DAYS * 24 * 60 * 60 * 1000,
@@ -1533,6 +1635,23 @@ export class ChartAggregationService {
       // Entirely historical range but no candles returned above
       return this.fetchHistoricalDexOHLCV(tokenAddress, options, seedCandle);
     }
+
+    // 🔥 DEBUG: Log exit with results
+    const bondingCount = candles.filter((c) => c.dataSource === 'bonding_curve').length;
+    const dexCount = candles.filter((c) => c.dataSource === 'dex').length;
+    console.log('[ChartAggregation] 🔍 DEBUG - fetchDexDataWithSmartSwitching EXIT:', {
+      tokenAddress: tokenAddress.toLowerCase(),
+      totalCandles: candles.length,
+      bondingCount,
+      dexCount,
+      lastCandle: candles.length > 0 ? {
+        timestamp: candles[candles.length - 1].timestamp.toISOString(),
+        dataSource: candles[candles.length - 1].dataSource,
+        trades: candles[candles.length - 1].trades,
+        volume: candles[candles.length - 1].volume,
+        closeUsd: candles[candles.length - 1].closeUsd,
+      } : null,
+    });
 
     return candles;
   }

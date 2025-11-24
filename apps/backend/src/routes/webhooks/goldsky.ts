@@ -469,6 +469,132 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
   fastify.post<{ Body: GoldSkyTradeWebhook }>('/trade/', handleTradeWebhook);
 
   /**
+   * Bonding status webhook (pipeline: Token entity)
+   * Accepts updates for bonded state / bondingProgress and stores them in memory + DB
+   */
+  fastify.post<{ Body: Record<string, any> | Record<string, any>[] }>(
+    '/bonding',
+    async (request, reply) => {
+      const payloadArray = Array.isArray(request.body) ? request.body : [request.body];
+
+      // Secret verification (reuse trade headers)
+      const goldskySecret =
+        (request.headers['x-webhook-secret'] as string) ||
+        (request.headers['goldsky-webhook-secret'] as string) ||
+        (request.headers['x-goldsky-signature'] as string) ||
+        (request.headers['x-goldsky-webhook-signature'] as string) ||
+        (request.headers['x-goldsky-secret'] as string);
+      const expectedSecret = process.env.GOLDSKY_WEBHOOK_SECRET;
+
+      if (!expectedSecret) {
+        console.log('[GoldSky] ❌ GOLDSKY_WEBHOOK_SECRET not configured for bonding webhook!');
+        fastify.log.error('[GoldSky] GOLDSKY_WEBHOOK_SECRET not configured (bonding)');
+        return reply.code(500).send({ success: false, error: 'Server configuration error' });
+      }
+
+      if (goldskySecret !== expectedSecret) {
+        console.log('[GoldSky] ❌ Invalid webhook signature (bonding)');
+        return reply.code(401).send({ success: false, error: 'Unauthorized' });
+      }
+
+      let processed = 0;
+      let errors = 0;
+
+      for (const raw of payloadArray) {
+        try {
+          const tokenAddress =
+            raw?.address ||
+            raw?.token_address ||
+            raw?.tokenAddress ||
+            (raw?.token?.address as string | undefined);
+
+          if (!tokenAddress || typeof tokenAddress !== 'string') {
+            throw new Error('Missing token address in bonding payload');
+          }
+
+          const bondedRaw = raw?.bonded ?? raw?.isBonded ?? raw?.is_bonded;
+          const isBonded =
+            typeof bondedRaw === 'string'
+              ? bondedRaw.toLowerCase() === 'true'
+              : Boolean(bondedRaw);
+
+          const bondingProgressRaw =
+            raw?.bondingProgress ?? raw?.bonding_progress ?? raw?.bonding_progress ?? 0;
+          const bondingProgress = Number.parseFloat(bondingProgressRaw) || 0;
+
+          const supplyRaw = toFullDecimalString(raw?.supply ?? '0');
+          const poolAddress =
+            (raw?.poolAddress as string | undefined) ||
+            (raw?.pool_address as string | undefined) ||
+            null;
+
+          const blockNumber =
+            raw?.block_number ?? raw?.blockNumber ?? raw?.block ?? raw?.block_no ?? null;
+          const updatedAt = raw?.updated_at ?? raw?.updatedAt ?? null;
+          const graduatedAt =
+            typeof blockNumber === 'number'
+              ? blockNumber
+              : blockNumber
+                  ? Number.parseInt(blockNumber as string, 10)
+                  : updatedAt
+                    ? Number.parseInt(updatedAt as string, 10)
+                    : undefined;
+
+          const memoryStore = getMemoryStore();
+          const normalizedPool = poolAddress ? poolAddress.toLowerCase() : null;
+          memoryStore.storeBondingStatus({
+            tokenAddress,
+            isBonded,
+            bondingProgress,
+            supply: supplyRaw,
+            poolAddress: normalizedPool ?? undefined,
+            graduatedAt,
+          });
+
+          // Opportunistic DB update so DEX mode flips without waiting for cron
+          if (isBonded) {
+            try {
+              const updateData: Record<string, unknown> = {
+                phase: 'DEX_TRADING',
+                priceSource: 'DEX',
+                dexLiveAt: new Date(),
+              };
+
+              if (normalizedPool) {
+                updateData.poolAddress = normalizedPool;
+              }
+
+              await fastify.prisma.token.updateMany({
+                where: { contractAddress: tokenAddress.toLowerCase() },
+                data: updateData,
+              });
+            } catch (dbErr) {
+              fastify.log.warn(
+                { err: dbErr, tokenAddress },
+                '[GoldSky] Failed to persist bonded status (optional)',
+              );
+            }
+          }
+
+          processed += 1;
+        } catch (err) {
+          errors += 1;
+          fastify.log.error(
+            { err, raw },
+            '[GoldSky] Error processing bonding webhook payload',
+          );
+        }
+      }
+
+      return reply.code(200).send({
+        success: errors === 0,
+        processed,
+        errors,
+      });
+    },
+  );
+
+  /**
    * Pipeline-compatible alias (plural route) that accepts the SQL transform payload
    * and normalizes it before handing off to the existing processor.
    */
