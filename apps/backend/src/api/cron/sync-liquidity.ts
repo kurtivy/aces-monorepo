@@ -28,8 +28,6 @@ const aerodromeService = (() => {
       rpcUrl: provider ? undefined : mainnetConfig.rpcUrl,
       factoryAddress: mainnetConfig.aerodromeFactory,
       acesTokenAddress: mainnetConfig.acesToken,
-      apiBaseUrl: process.env.AERODROME_API_BASE_URL,
-      apiKey: process.env.AERODROME_API_KEY,
       defaultStable: process.env.AERODROME_DEFAULT_STABLE === 'true',
       mockEnabled:
         process.env.USE_DEX_MOCKS === 'true' ||

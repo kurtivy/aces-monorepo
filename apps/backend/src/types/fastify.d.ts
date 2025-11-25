@@ -43,5 +43,6 @@ declare module 'fastify' {
     acesSnapshotCache?: any;
     unifiedGoldSkyService?: import('../services/unified-goldsky-data-service').UnifiedGoldSkyDataService;
     healthCheckService?: import('../services/health-check-service').HealthCheckService;
+    rateLimitMonitor?: import('../services/websocket/rate-limit-monitor').RateLimitMonitor;
   }
 }

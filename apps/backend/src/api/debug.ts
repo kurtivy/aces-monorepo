@@ -55,7 +55,10 @@ export async function debugRoutes(fastify: FastifyInstance) {
       const { poolAddress } = request.params as { poolAddress: string };
       const { BitQueryService } = await import('../services/bitquery-service');
 
-      const bitquery = new BitQueryService((fastify as any).acesUsdPriceService);
+      const bitquery = new BitQueryService(
+        fastify.acesUsdPriceService,
+        fastify.rateLimitMonitor,
+      );
 
       console.log(`[Debug] Testing BitQuery for pool: ${poolAddress}`);
 

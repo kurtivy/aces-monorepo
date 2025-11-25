@@ -74,8 +74,6 @@ export async function dexRoutes(fastify: FastifyInstance) {
       rpcUrl: provider ? undefined : mainnetConfig.rpcUrl,
       factoryAddress: mainnetConfig.aerodromeFactory,
       acesTokenAddress: mainnetConfig.acesToken,
-      apiBaseUrl: process.env.AERODROME_API_BASE_URL,
-      apiKey: process.env.AERODROME_API_KEY,
       defaultStable: process.env.AERODROME_DEFAULT_STABLE === 'true',
       mockEnabled,
       fastify, // 🔥 PHASE 3: Pass fastify instance for cache plugin
@@ -1291,18 +1289,11 @@ export async function dexRoutes(fastify: FastifyInstance) {
         const fetchPromise = (async () => {
           const service = ensureService();
 
-          // 🔥 LOAD TEST FIX: Racing Pattern
-          // Race Aerodrome (RPC) vs BitQuery (API) - First successful response wins
-          // This drastically reduces tail latency (p95) because if RPC stalls, BitQuery saves us.
-
-          const fetchAerodrome = async () => {
-            return service
-              .getCandles(address, resolution as '5m' | '15m' | '1h' | '4h' | '1d', lookbackMinutes)
-              .then((candles) => ({ candles, source: 'aerodrome' }));
-          };
-
           const fetchBitQuery = async () => {
-            const bitQueryService = new BitQueryService((fastify as any).acesUsdPriceService);
+            const bitQueryService = new BitQueryService(
+              fastify.acesUsdPriceService,
+              fastify.rateLimitMonitor,
+            );
             const now = new Date();
             const from = new Date(now.getTime() - lookbackMinutes * 60 * 1000);
             return bitQueryService
@@ -1311,9 +1302,7 @@ export async function dexRoutes(fastify: FastifyInstance) {
           };
 
           try {
-            // Promise.any resolves as soon as the FIRST promise fulfills
-            // It only rejects if ALL promises reject
-            const result = await Promise.any([fetchAerodrome(), fetchBitQuery()]);
+            const result = await fetchBitQuery();
 
             const responseData = {
               resolution,
@@ -1458,7 +1447,10 @@ export async function dexRoutes(fastify: FastifyInstance) {
             // 1. Fetch DEX trades from BitQuery (if graduated)
             if (isGraduated) {
               try {
-                const bitquery = new BitQueryService((fastify as any).acesUsdPriceService);
+                const bitquery = new BitQueryService(
+                  fastify.acesUsdPriceService,
+                  fastify.rateLimitMonitor,
+                );
                 const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
                 const dexTrades = await bitquery.getTokenTrades(address, limit, {
                   from: thirtyDaysAgo,

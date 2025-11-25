@@ -121,7 +121,10 @@ interface HealthCacheEntry {
 export async function tokensRoutes(fastify: FastifyInstance) {
   const tokenService = new TokenService(fastify.prisma);
   const tokenHolderService = new TokenHolderService();
-  const bitQueryService = new BitQueryService((fastify as any).acesUsdPriceService);
+  const bitQueryService = new BitQueryService(
+    fastify.acesUsdPriceService,
+    fastify.rateLimitMonitor,
+  );
 
   // 🔥 LOAD TEST FIX: In-memory cache for health endpoint (5s TTL)
   const healthCache = new Map<string, HealthCacheEntry>();

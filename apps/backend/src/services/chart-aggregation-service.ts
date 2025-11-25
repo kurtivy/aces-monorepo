@@ -8,6 +8,17 @@ import { TokenMetadataCacheService } from './token-metadata-cache-service'; // �
 import { AcesSnapshotCacheService } from './aces-snapshot-cache-service'; // 🔥 NEW
 import type { FastifyInstance } from 'fastify'; // 🔥 PRICE FIX: For fastify type
 import { ethers } from 'ethers'; // For calculateMarginalBuyPrice
+import {
+  type CacheEntry as GenericCacheEntry,
+  coalesceRequest,
+  getCacheEntry as getCachedEntry,
+  getCacheKey,
+  getPendingRequestKey,
+  isCacheable,
+  setCacheEntry as setCachedEntry,
+  invalidateCacheForToken as invalidateCacheEntries,
+  bucketTimestamp,
+} from './cache/chart-cache-helpers';
 
 // 🔥 PRICE FIX: Trade interface for memory store (matches ChartDataStore)
 interface StoredTrade {
@@ -79,10 +90,7 @@ interface UnifiedChartResponse {
 }
 
 // 🔥 LOAD TEST FIX: Cache interface for chart data
-interface ChartCacheEntry {
-  data: UnifiedChartResponse;
-  timestamp: number;
-}
+type ChartCacheEntry = GenericCacheEntry<UnifiedChartResponse>;
 
 export class ChartAggregationService {
   private readonly BONDING_SUPPLY = '700000000'; // 700M tokens for bonding curve
@@ -93,8 +101,15 @@ export class ChartAggregationService {
   private chartCache = new Map<string, ChartCacheEntry>();
   private readonly CACHE_TTL_MS = 300000; // 5 minutes - Fresh (historical data doesn't change)
   private readonly STALE_TTL_MS = 900000; // 15 minutes - Stale but usable
+  private readonly CACHE_MAX_ENTRIES = 1000;
   private cacheHits = 0;
   private cacheMisses = 0;
+  private readonly CACHE_TELEMETRY_ENABLED =
+    process.env.CACHE_TELEMETRY_ENABLED === 'true';
+  private readonly CACHE_TELEMETRY_INTERVAL_MS = Number(
+    process.env.CACHE_TELEMETRY_INTERVAL_MS ?? '60000',
+  );
+  private lastTelemetryLoggedAt = 0;
 
   // 🔥 LOAD TEST FIX: Request coalescing map to share in-flight promises
   private pendingRequests = new Map<string, Promise<UnifiedChartResponse>>();
@@ -155,16 +170,10 @@ export class ChartAggregationService {
    * @param normalizedAddress - Token address in lowercase
    */
   private _invalidateCacheNow(normalizedAddress: string): void {
-    let invalidated = 0;
-    const prefix = `${normalizedAddress}:`;
-
-    // Delete all cache entries for this token (all timeframes)
-    for (const key of this.chartCache.keys()) {
-      if (key.startsWith(prefix)) {
-        this.chartCache.delete(key);
-        invalidated++;
-      }
-    }
+    const before = this.chartCache.size;
+    invalidateCacheEntries(normalizedAddress, this.chartCache);
+    const after = this.chartCache.size;
+    const invalidated = before - after;
 
     console.log(
       `[ChartAggregation] 🔄 Cache invalidated for ${normalizedAddress}: ${invalidated} entries cleared`,
@@ -280,86 +289,166 @@ export class ChartAggregationService {
    * Main method: Get unified chart data with Caching + Request Coalescing + Stale-While-Revalidate
    */
   async getChartData(tokenAddress: string, options: ChartOptions): Promise<UnifiedChartResponse> {
-    // 🔥 LOAD TEST FIX: Normalize 'to' timestamp to ensure cache hits
-    // Even if client sends Date.now(), we round to the nearest candle interval
-    // e.g. 1m timeframe -> round to current minute
-    // This ensures all requests within the same minute share the same cache key
-    const alignedTo = this.alignTimestamp(options.to, options.timeframe);
-    const cacheKey = `${tokenAddress.toLowerCase()}:${options.timeframe}:${options.from.getTime()}:${alignedTo}`;
+    const requestStart = Date.now();
+    const normalizedToken = tokenAddress.toLowerCase();
+    const alignedToMs = this.alignTimestamp(options.to, options.timeframe);
+    const alignedToDate = new Date(alignedToMs);
     const now = Date.now();
 
-    // 1. Check Cache
-    const cached = this.chartCache.get(cacheKey);
+    const cacheable = isCacheable(options.from, options.to, now);
+    const pendingKey = getPendingRequestKey({
+      tokenAddress: normalizedToken,
+      timeframe: options.timeframe,
+      from: options.from,
+      to: alignedToDate,
+    });
 
-    if (cached) {
-      const age = now - cached.timestamp;
+    if (cacheable) {
+      const cachedEntry = getCachedEntry(
+        this.chartCache,
+        normalizedToken,
+        options.timeframe,
+        options.from,
+        alignedToDate,
+      );
 
-      // Case A: Fresh Cache -> Return immediately
-      if (age < this.CACHE_TTL_MS) {
-        this.cacheHits++;
-        return cached.data;
-      }
-
-      // Case B: Stale Cache -> Return immediately, refresh in background
-      // Only return stale if it's within the acceptable stale window (e.g. 5 min)
-      if (age < this.STALE_TTL_MS) {
-        this.cacheHits++;
-        // Trigger background refresh if not already pending
-        if (!this.pendingRequests.has(cacheKey)) {
-          // console.log(`[ChartAggregation] ♻️ Serving stale cache for ${tokenAddress}, refreshing in background`);
-          this._refreshCacheInBackground(cacheKey, tokenAddress, options);
+      if (cachedEntry) {
+        const age = now - cachedEntry.timestamp;
+        if (age < this.CACHE_TTL_MS) {
+          this.cacheHits++;
+          this.logCacheTelemetry({
+            token: normalizedToken,
+            timeframe: options.timeframe,
+            source: 'cache',
+            durationMs: Date.now() - requestStart,
+            cacheHit: true,
+            cacheEligible: cacheable,
+          });
+          return cachedEntry.data;
         }
-        return cached.data;
-      }
-    }
 
-    // Case C: No Cache or Too Old -> Wait for fetch
-    // Check Pending Requests (Coalescing)
-    const pending = this.pendingRequests.get(cacheKey);
-    if (pending) {
-      // console.log(`[ChartAggregation] 🤝 Joining pending request for ${tokenAddress}`);
-      return pending;
+        if (age < this.STALE_TTL_MS) {
+          this.cacheHits++;
+          if (!this.pendingRequests.has(pendingKey)) {
+            coalesceRequest(this.pendingRequests, pendingKey, () =>
+              this.fetchAndMaybeCache({
+                tokenAddress,
+                normalizedToken,
+                options,
+                alignedToDate,
+                cacheable,
+              }),
+            ).catch((err) => {
+              console.error(
+                `[ChartAggregation] ❌ Background refresh failed for ${normalizedToken}`,
+                err,
+              );
+            });
+          }
+
+          this.logCacheTelemetry({
+            token: normalizedToken,
+            timeframe: options.timeframe,
+            source: 'cache-stale',
+            durationMs: Date.now() - requestStart,
+            cacheHit: true,
+            cacheEligible: cacheable,
+          });
+          return cachedEntry.data;
+        }
+      }
     }
 
     this.cacheMisses++;
 
-    // Start New Request (wrapped in shared promise)
-    const promise = this._computeAndCache(cacheKey, tokenAddress, options);
-    this.pendingRequests.set(cacheKey, promise);
-    return promise;
-  }
-
-  /**
-   * Internal: Refresh cache in background without blocking response
-   */
-  private _refreshCacheInBackground(cacheKey: string, tokenAddress: string, options: ChartOptions) {
-    // We don't await this, it runs in background
-    const promise = this._computeAndCache(cacheKey, tokenAddress, options);
-    this.pendingRequests.set(cacheKey, promise);
-
-    // Handle errors so they don't crash the process
-    promise.catch((err) => {
-      console.error(`[ChartAggregation] ❌ Background refresh failed for ${tokenAddress}:`, err);
+    return coalesceRequest(this.pendingRequests, pendingKey, () =>
+      this.fetchAndMaybeCache({
+        tokenAddress,
+        normalizedToken,
+        options,
+        alignedToDate,
+        cacheable,
+      }),
+    ).then((result) => {
+      this.logCacheTelemetry({
+        token: normalizedToken,
+        timeframe: options.timeframe,
+        source: cacheable ? 'backend-cache-fill' : 'backend',
+        durationMs: Date.now() - requestStart,
+        cacheHit: false,
+        cacheEligible: cacheable,
+      });
+      return result;
     });
   }
 
-  /**
-   * Internal: Compute data and store in cache
-   */
-  private async _computeAndCache(
-    cacheKey: string,
-    tokenAddress: string,
-    options: ChartOptions,
-  ): Promise<UnifiedChartResponse> {
-    try {
-      const result = await this._computeChartData(tokenAddress, options);
-      this.chartCache.set(cacheKey, {
-        data: result,
-        timestamp: Date.now(),
-      });
+  private fetchAndMaybeCache(params: {
+    tokenAddress: string;
+    normalizedToken: string;
+    options: ChartOptions;
+    alignedToDate: Date;
+    cacheable: boolean;
+  }): Promise<UnifiedChartResponse> {
+    const { tokenAddress, normalizedToken, options, alignedToDate, cacheable } = params;
+
+    return this._computeChartData(tokenAddress, options).then((result) => {
+      if (cacheable) {
+        setCachedEntry(
+          this.chartCache,
+          normalizedToken,
+          options.timeframe,
+          options.from,
+          alignedToDate,
+          {
+            data: result,
+            timestamp: Date.now(),
+          },
+          { maxSize: this.CACHE_MAX_ENTRIES },
+        );
+      }
       return result;
-    } finally {
-      this.pendingRequests.delete(cacheKey);
+    });
+  }
+
+  private logCacheTelemetry(context: {
+    token: string;
+    timeframe: string;
+    source: 'cache' | 'cache-stale' | 'backend' | 'backend-cache-fill';
+    durationMs: number;
+    cacheHit: boolean;
+    cacheEligible: boolean;
+  }): void {
+    if (!this.CACHE_TELEMETRY_ENABLED) {
+      return;
+    }
+
+    const now = Date.now();
+    if (now - this.lastTelemetryLoggedAt < this.CACHE_TELEMETRY_INTERVAL_MS) {
+      return;
+    }
+
+    this.lastTelemetryLoggedAt = now;
+
+    const total = this.cacheHits + this.cacheMisses;
+    const hitRate = total > 0 ? Number(((this.cacheHits / total) * 100).toFixed(2)) : 0;
+
+    const payload = {
+      token: context.token,
+      timeframe: context.timeframe,
+      source: context.source,
+      cacheHit: context.cacheHit,
+      cacheEligible: context.cacheEligible,
+      durationMs: context.durationMs,
+      cacheSize: this.chartCache.size,
+      pendingRequests: this.pendingRequests.size,
+      hitRate,
+    };
+
+    const logger = this.fastify?.log ?? console;
+    if (typeof (logger as any)?.info === 'function') {
+      (logger as any).info(payload, '[ChartAggregation] Cache telemetry');
+    } else {
+      console.log('[ChartAggregation] Cache telemetry', payload);
     }
   }
 
@@ -2066,9 +2155,7 @@ export class ChartAggregationService {
    * Align timestamp to timeframe boundary
    */
   private alignTimestamp(timestamp: Date, timeframe: string): number {
-    const ms = timestamp.getTime();
-    const intervalMs = this.getIntervalMs(timeframe);
-    return Math.floor(ms / intervalMs) * intervalMs;
+    return bucketTimestamp(timestamp, timeframe);
   }
 
   /**

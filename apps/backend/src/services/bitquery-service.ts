@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/node';
 import {
   getBitQueryConfig,
   BITQUERY_QUERIES,
@@ -7,6 +8,7 @@ import {
 } from '../config/bitquery.config';
 import type { AcesUsdPriceService } from './aces-usd-price-service';
 import { MIN_VISIBLE_TRADE_USD } from '../constants/trading';
+import type { RateLimitMonitor } from './websocket/rate-limit-monitor';
 export class BitQueryPaymentRequiredError extends Error {
   constructor(message: string = 'BitQuery payment required') {
     super(message);
@@ -39,8 +41,15 @@ export class BitQueryService {
   private readonly disabled: boolean;
   private acesUsdPriceService: AcesUsdPriceService | null;
   private cachedAcesUsdPrice: { value: number; timestamp: number } | null = null;
+  private rateLimitMonitor?: RateLimitMonitor;
+  private readonly enableSentryTelemetry: boolean;
+  private readonly sentryBreadcrumbThrottleMs: number;
+  private lastSentryBreadcrumbAt = 0;
 
-  constructor(acesUsdPriceService?: AcesUsdPriceService) {
+  constructor(
+    acesUsdPriceService?: AcesUsdPriceService,
+    rateLimitMonitor?: RateLimitMonitor,
+  ) {
     console.log(
       '[BitQueryService Constructor] DISABLE_BITQUERY env var:',
       process.env.DISABLE_BITQUERY,
@@ -57,6 +66,12 @@ export class BitQueryService {
       console.log('⚠️  BitQuery service is ENABLED');
     }
     this.acesUsdPriceService = acesUsdPriceService || null;
+    this.rateLimitMonitor = rateLimitMonitor;
+
+    const throttle = Number(process.env.BITQUERY_SENTRY_THROTTLE_MS ?? '300000');
+    this.sentryBreadcrumbThrottleMs = Number.isFinite(throttle) ? throttle : 300000;
+    this.enableSentryTelemetry =
+      process.env.BITQUERY_SENTRY_ENABLED === 'true' && Boolean(process.env.SENTRY_DSN);
   }
 
   /**
@@ -606,9 +621,13 @@ export class BitQueryService {
    */
   private async queryBitQuery<T>(query: string, variables: any): Promise<BitQueryResponse<T>> {
     let lastError: Error | null = null;
+    const operationName = this.extractOperationName(query);
 
     for (let attempt = 0; attempt < this.config.maxRetries; attempt++) {
+      const attemptStart = Date.now();
       try {
+        this.recordRateLimit('bitquery');
+
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), this.config.requestTimeoutMs);
 
@@ -638,10 +657,25 @@ export class BitQueryService {
           throw new Error(`BitQuery GraphQL errors: ${JSON.stringify(data.errors)}`);
         }
 
+        this.addSentryBreadcrumb({
+          operation: `bitquery:${operationName}`,
+          status: 'success',
+          durationMs: Date.now() - attemptStart,
+          attempt: attempt + 1,
+        });
+
         return data;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
         console.warn(`[BitQuery] Attempt ${attempt + 1} failed:`, lastError.message);
+
+        this.addSentryBreadcrumb({
+          operation: `bitquery:${operationName}`,
+          status: 'error',
+          durationMs: Date.now() - attemptStart,
+          attempt: attempt + 1,
+          message: lastError.message,
+        });
 
         if (attempt < this.config.maxRetries - 1) {
           await new Promise((resolve) =>
@@ -649,6 +683,13 @@ export class BitQueryService {
           );
         }
       }
+    }
+
+    if (lastError) {
+      this.captureSentryException(lastError, {
+        operation: operationName,
+        variables: Object.keys(variables || {}),
+      });
     }
 
     throw lastError || new Error('BitQuery request failed after retries');
@@ -662,9 +703,13 @@ export class BitQueryService {
     variables: any,
   ): Promise<BitQueryTradingResponse<T>> {
     let lastError: Error | null = null;
+    const operationName = this.extractOperationName(query);
 
     for (let attempt = 0; attempt < this.config.maxRetries; attempt++) {
+      const attemptStart = Date.now();
       try {
+        this.recordRateLimit('bitquery');
+
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), this.config.requestTimeoutMs);
 
@@ -693,10 +738,25 @@ export class BitQueryService {
           throw new Error(`BitQuery GraphQL errors: ${JSON.stringify(data.errors)}`);
         }
 
+        this.addSentryBreadcrumb({
+          operation: `bitqueryTrading:${operationName}`,
+          status: 'success',
+          durationMs: Date.now() - attemptStart,
+          attempt: attempt + 1,
+        });
+
         return data;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
         console.warn(`[BitQuery] Trading query attempt ${attempt + 1} failed:`, lastError.message);
+
+        this.addSentryBreadcrumb({
+          operation: `bitqueryTrading:${operationName}`,
+          status: 'error',
+          durationMs: Date.now() - attemptStart,
+          attempt: attempt + 1,
+          message: lastError.message,
+        });
 
         if (attempt < this.config.maxRetries - 1) {
           await new Promise((resolve) =>
@@ -704,6 +764,14 @@ export class BitQueryService {
           );
         }
       }
+    }
+
+    if (lastError) {
+      this.captureSentryException(lastError, {
+        operation: operationName,
+        type: 'trading',
+        variables: Object.keys(variables || {}),
+      });
     }
 
     throw lastError || new Error('BitQuery Trading request failed after retries');
@@ -1216,5 +1284,62 @@ export class BitQueryService {
    */
   clearCache(): void {
     this.cache.clear();
+  }
+
+  private recordRateLimit(service: string): void {
+    try {
+      this.rateLimitMonitor?.recordRequest(service);
+    } catch (error) {
+      // Swallow monitor errors to avoid impacting BitQuery calls
+      console.warn('[BitQueryService] Failed to record rate limit usage:', error);
+    }
+  }
+
+  private addSentryBreadcrumb(event: {
+    operation: string;
+    status: 'success' | 'error';
+    durationMs?: number;
+    attempt?: number;
+    message?: string;
+  }): void {
+    if (!this.enableSentryTelemetry) {
+      return;
+    }
+
+    const now = Date.now();
+    if (event.status !== 'error' && now - this.lastSentryBreadcrumbAt < this.sentryBreadcrumbThrottleMs) {
+      return;
+    }
+
+    if (event.status !== 'error') {
+      this.lastSentryBreadcrumbAt = now;
+    }
+
+    Sentry.addBreadcrumb({
+      category: 'bitquery',
+      level: event.status === 'error' ? 'error' : 'info',
+      message: `${event.operation} ${event.status}`,
+      data: {
+        durationMs: event.durationMs,
+        attempt: event.attempt,
+        detail: event.message,
+      },
+    });
+  }
+
+  private captureSentryException(error: Error, context?: Record<string, unknown>): void {
+    if (!this.enableSentryTelemetry) {
+      return;
+    }
+
+    Sentry.captureException(error, {
+      tags: { component: 'bitquery-service' },
+      extra: context,
+    });
+  }
+
+  private extractOperationName(query: string): string {
+    const match = query.match(/(query|mutation)\s+([A-Za-z0-9_]+)/);
+    return match?.[2] || 'anonymous';
   }
 }

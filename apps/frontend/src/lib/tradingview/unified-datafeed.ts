@@ -123,6 +123,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
   // 🔥 NEW: Client-side cache for chart data (keyed by tokenAddress:timeframe:mode)
   private chartDataCache = new Map<string, CacheEntry>();
   private readonly CACHE_TTL_MS = 30000; // 30 seconds - fresh enough for most use cases
+  private readonly RECENT_RANGE_THRESHOLD_MS = 60 * 1000; // 1 minute - skip cache near realtime
 
   // 🔥 NEW: Real-time candle builder for converting trades to candles
   private candleBuilder: RealtimeCandleBuilder;
@@ -774,6 +775,31 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     const isMarketCapMode = symbol.endsWith('_MCAP');
     const tokenAddress = isMarketCapMode ? symbol.replace('_MCAP', '') : symbol;
     const timeframe = this.resolutionToTimeframe(resolution);
+    const cacheKey = this.getCacheKey(tokenAddress, timeframe, isMarketCapMode);
+    const fromSeconds = periodParams.from ?? 0;
+    const toSeconds = periodParams.to ?? Math.floor(getNow() / 1000);
+    const fromMs = fromSeconds * 1000;
+    const toMs = toSeconds * 1000;
+    const cacheEligible = !this.isRecentRange(toMs);
+
+    if (cacheEligible) {
+      const cached = this.chartDataCache.get(cacheKey);
+      if (cached) {
+        if (this.isCacheFresh(cached)) {
+          const cachedBars = this.filterBarsForRange(cached.bars, fromMs, toMs);
+          if (cachedBars.length > 0) {
+            if (symbolInfo.ticker) {
+              const lastBar = cachedBars[cachedBars.length - 1];
+              this.lastBars.set(symbolInfo.ticker, lastBar);
+            }
+            onResult(cachedBars, { noData: false });
+            return;
+          }
+        } else {
+          this.chartDataCache.delete(cacheKey);
+        }
+      }
+    }
 
     // 🔥 CACHE DISABLED FOR DEBUGGING - Re-enable after progressive loading works
     // This ensures every scroll-back triggers a fresh API call so we can see what's happening
@@ -1137,18 +1163,17 @@ export class UnifiedDatafeed implements IBasicDataFeed {
         }
       }
 
-      // 🔥 CACHING DISABLED FOR DEBUGGING
-      // if (bars.length > 0) {
-      //   this.chartDataCache.set(cacheKey, {
-      //     data: result,
-      //     timestamp: now,
-      //     bars: bars,
-      //   });
+      if (cacheEligible && bars.length > 0) {
+        this.chartDataCache.set(cacheKey, {
+          data: result,
+          timestamp: getNow(),
+          bars: bars.slice(),
+        });
 
-      //   if (this.config.debug) {
-      //     console.log('[UnifiedDatafeed] 💾 Cached data for:', cacheKey, `(${bars.length} bars)`);
-      //   }
-      // }
+        if (this.config.debug) {
+          // console.log('[UnifiedDatafeed] 💾 Cached data for:', cacheKey, `(${bars.length} bars)`);
+        }
+      }
 
       // Emit latest market cap update for downstream consumers
       const lastCandle = filteredCandles[filteredCandles.length - 1];
@@ -2023,6 +2048,22 @@ export class UnifiedDatafeed implements IBasicDataFeed {
 
     // Keep cache timestamp fresh so it doesn't expire during active trading
     cached.timestamp = getNow();
+  }
+
+  private getCacheKey(tokenAddress: string, timeframe: string, isMarketCapMode: boolean): string {
+    return `${tokenAddress.toLowerCase()}:${timeframe}:${isMarketCapMode ? 'mcap' : 'price'}`;
+  }
+
+  private isCacheFresh(entry: CacheEntry): boolean {
+    return getNow() - entry.timestamp < this.CACHE_TTL_MS;
+  }
+
+  private isRecentRange(toMs: number): boolean {
+    return getNow() - toMs < this.RECENT_RANGE_THRESHOLD_MS;
+  }
+
+  private filterBarsForRange(bars: Bar[], fromMs: number, toMs: number): Bar[] {
+    return bars.filter((bar) => bar.time >= fromMs && bar.time <= toMs);
   }
 
   /**

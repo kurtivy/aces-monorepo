@@ -47,6 +47,7 @@ import { AcesUsdPriceService } from './services/aces-usd-price-service';
 import { AerodromeDataService } from './services/aerodrome-data-service';
 import { ethers } from 'ethers';
 import { debugRoutes } from './api/debug';
+import { RateLimitMonitor } from './services/websocket/rate-limit-monitor';
 
 // 🚀 NEW: Phase 1 WebSocket Gateway
 import { WebSocketGateway } from './gateway/websocket-gateway';
@@ -82,14 +83,16 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   console.log('[App] 🔗 Using RPC provider:', rpcUrl.substring(0, 40) + '...');
   const provider = new ethers.JsonRpcProvider(rpcUrl);
 
+  const rateLimitMonitor = new RateLimitMonitor();
+  fastify.decorate('rateLimitMonitor', rateLimitMonitor);
+
   // Initialize AerodromeDataService for AcesUsdPriceService
   const aerodromeService = new AerodromeDataService({
     acesTokenAddress:
       process.env.ACES_TOKEN_ADDRESS || '0x55337650856299363c496065C836B9C6E9dE0367',
     factoryAddress: '0x7e224ae4e6235bF18BBcb79cc2B5d04a7a6F8d1D',
-    apiBaseUrl: process.env.AERODROME_API_URL || 'https://base.api.aerodrome.finance/v1',
-    apiKey: process.env.AERODROME_API_KEY || '',
     provider: provider,
+    defaultStable: process.env.AERODROME_DEFAULT_STABLE === 'true',
   });
 
   const acesUsdPriceService = new AcesUsdPriceService(
@@ -98,7 +101,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   );
 
   // Initialize services
-  const bitQueryService = new BitQueryService(acesUsdPriceService);
+  const bitQueryService = new BitQueryService(acesUsdPriceService, rateLimitMonitor);
   const tokenService = new TokenService(prisma);
 
   // Register services with Fastify instance
