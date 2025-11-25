@@ -7,6 +7,7 @@
  * Data Sources: Aggregated from trades, pools, and bonding WebSocket streams
  */
 
+import { randomUUID } from 'crypto';
 import { FastifyPluginAsync } from 'fastify';
 import { SocketStream } from '@fastify/websocket';
 import { TradeEvent, PoolStateEvent, BondingStatusEvent } from '../../../types/adapters';
@@ -152,6 +153,68 @@ interface MetricsUpdate {
 }
 
 export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
+  const subscriptionDeduplicator = fastify.subscriptionDeduplicator;
+  const bitQueryDedupEnabled =
+    Boolean(process.env.ENABLE_BITQUERY_DEDUP === 'true' && subscriptionDeduplicator);
+  const dedupDebugLogging = process.env.DEBUG_BITQUERY_DEDUP === 'true';
+  const dedupClientHandlers = new Map<string, (trade: TradeEvent) => void>();
+
+  const logDedupClientCount = (reason: string) => {
+    console.log(
+      `[WS:Metrics] 📈 ${reason} | dedup client handlers: ${dedupClientHandlers.size}${
+        dedupClientHandlers.size === 0 ? ' (empty)' : ''
+      }`,
+    );
+  };
+
+  if (bitQueryDedupEnabled && subscriptionDeduplicator) {
+    const broadcastHandler = ({
+      topic,
+      dataSource,
+      clients,
+      data,
+    }: {
+      topic: string;
+      dataSource?: string;
+      clients: string[];
+      data: TradeEvent;
+    }) => {
+      if (topic !== 'trades') {
+        if (dedupDebugLogging) {
+          console.log(
+            `[WS:Metrics] 🔍 Dedup broadcast ignored (topic=${topic}, source=${dataSource ?? 'unknown'})`,
+          );
+        }
+        return;
+      }
+
+      if (dataSource !== 'bitquery') {
+        if (dedupDebugLogging) {
+          console.log(
+            `[WS:Metrics] 🔍 Dedup broadcast ignored for topic=trades from source=${dataSource ?? 'unknown'}`,
+          );
+        }
+        return;
+      }
+
+      for (const clientId of clients) {
+        const handler = dedupClientHandlers.get(clientId);
+        if (handler) {
+          handler(data);
+        } else if (dedupDebugLogging) {
+          console.log(
+            `[WS:Metrics] ⚠️ Dedup broadcast had no handler for client ${clientId}. Active handlers: ${dedupClientHandlers.size}`,
+          );
+        }
+      }
+    };
+
+    subscriptionDeduplicator.on('broadcast_to_clients', broadcastHandler);
+    fastify.addHook('onClose', async () => {
+      subscriptionDeduplicator.off('broadcast_to_clients', broadcastHandler);
+    });
+  }
+
   // 🔥 NEW: Shared initial fetch cache to prevent thundering herd
   // Key: tokenAddress, Value: Promise<HealthResult>
   const initialFetchCache = new Map<string, Promise<any>>();
@@ -170,6 +233,9 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
       const adapterManager = fastify.adapterManager;
 
       console.log(`[WS:Metrics] Client connected for token: ${tokenAddress}`);
+      const clientId = randomUUID();
+      const normalizedTokenAddress = tokenAddress.toLowerCase();
+      let dedupSubscribed = false;
 
       if (!adapterManager) {
         connection.socket.send(
@@ -489,32 +555,77 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
         }
       };
 
+      const handleTradeEvent = (trade: TradeEvent) => {
+        // 🔥 FIX: Add trade to aggregator (maintains rolling 24h window)
+        // 1. Add trade to 24h rolling buffer
+        tradeAggregator.addTrade(trade, acesUsdPrice);
+
+        // 2. Recalculate volumes from buffer (auto-prunes trades older than 24h)
+        const { acesVolume, usdVolume } = tradeAggregator.getVolume24h();
+
+        // 3. Update currentMetrics with fresh calculations
+        currentMetrics.volume24hAces = acesVolume.toString();
+        currentMetrics.volume24hUsd = usdVolume;
+
+        // 4. Send update via throttled sender (500ms)
+        sendVolumeUpdate();
+
+        // Debug logging (can be disabled in production)
+        if (process.env.DEBUG_METRICS) {
+          console.log(
+            `[WS:Metrics] 📊 Trade added - Volume: ${acesVolume.toFixed(2)} ACES / $${usdVolume.toFixed(2)} USD (${tradeAggregator.getTradeCount()} trades in buffer)`,
+          );
+        }
+      };
+
       try {
+        let allowBitQueryDedup = false;
+        if (bitQueryDedupEnabled && subscriptionDeduplicator) {
+          try {
+            allowBitQueryDedup = await adapterManager.canUseBitQuery(tokenAddress);
+          } catch (error) {
+            console.warn(
+              `[WS:Metrics] ⚠️ Failed to evaluate BitQuery eligibility for ${tokenAddress}:`,
+              error,
+            );
+          }
+        }
+
+        if (bitQueryDedupEnabled && allowBitQueryDedup && subscriptionDeduplicator) {
+          dedupClientHandlers.set(clientId, (trade: TradeEvent) => {
+            handleTradeEvent(trade);
+          });
+          logDedupClientCount(
+            `Registered dedup handler for ${normalizedTokenAddress} (${clientId})`,
+          );
+          try {
+            subscriptionDeduplicator.subscribe(
+              clientId,
+              'trades',
+              { tokenAddress: normalizedTokenAddress },
+              'bitquery',
+            );
+            dedupSubscribed = true;
+            console.log(
+              `[WS:Metrics] ♻️ Using shared BitQuery stream for ${normalizedTokenAddress} (${clientId})`,
+            );
+          } catch (dedupError) {
+            dedupClientHandlers.delete(clientId);
+            logDedupClientCount(
+              `Rolled back dedup handler for ${normalizedTokenAddress} (${clientId})`,
+            );
+            console.warn(
+              `[WS:Metrics] ⚠️ Failed to register dedup client ${clientId} for ${normalizedTokenAddress}:`,
+              dedupError,
+            );
+          }
+        }
+
         // Subscribe to trades for volume updates
         const tradeSubscriptionIds = await adapterManager.subscribeToTrades(
           tokenAddress,
-          (trade: TradeEvent) => {
-            // 🔥 FIX: Add trade to aggregator (maintains rolling 24h window)
-            // 1. Add trade to 24h rolling buffer
-            tradeAggregator.addTrade(trade, acesUsdPrice);
-
-            // 2. Recalculate volumes from buffer (auto-prunes trades older than 24h)
-            const { acesVolume, usdVolume } = tradeAggregator.getVolume24h();
-
-            // 3. Update currentMetrics with fresh calculations
-            currentMetrics.volume24hAces = acesVolume.toString();
-            currentMetrics.volume24hUsd = usdVolume;
-
-            // 4. Send update via throttled sender (500ms)
-            sendVolumeUpdate();
-
-            // Debug logging (can be disabled in production)
-            if (process.env.DEBUG_METRICS) {
-              console.log(
-                `[WS:Metrics] 📊 Trade added - Volume: ${acesVolume.toFixed(2)} ACES / $${usdVolume.toFixed(2)} USD (${tradeAggregator.getTradeCount()} trades in buffer)`,
-              );
-            }
-          },
+          handleTradeEvent,
+          { useBitQueryDedup: allowBitQueryDedup },
         );
         subscriptions.push(...tradeSubscriptionIds);
 
@@ -849,7 +960,7 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
             type: 'subscribed',
             data: {
               tokenAddress,
-              subscriptions: subscriptions.length,
+              subscriptions: subscriptions.length + (bitQueryDedupEnabled && allowBitQueryDedup ? 1 : 0),
               message: 'Streaming real-time metrics',
             },
             timestamp: Date.now(),
@@ -877,12 +988,53 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
             clearInterval(heartbeatInterval);
           }
 
+        if (dedupClientHandlers.delete(clientId)) {
+          logDedupClientCount(
+            `Removed dedup handler after disconnect for ${normalizedTokenAddress} (${clientId})`,
+          );
+        }
+
+        if (dedupSubscribed && bitQueryDedupEnabled && subscriptionDeduplicator) {
+          try {
+            subscriptionDeduplicator.unsubscribe(clientId, 'trades', {
+              tokenAddress: normalizedTokenAddress,
+            });
+            console.log(
+              `[WS:Metrics] ♻️ Removed dedup subscription for ${normalizedTokenAddress} (${clientId})`,
+            );
+          } catch (dedupError) {
+            console.warn(
+              `[WS:Metrics] ⚠️ Failed to unsubscribe dedup client ${clientId} for ${normalizedTokenAddress}:`,
+              dedupError,
+            );
+          }
+        }
+
           // 🔥 FIX: Clear trade aggregator
           tradeAggregator.clear();
           console.log(`[WS:Metrics] ✅ Cleared trade aggregator for token: ${tokenAddress}`);
         });
       } catch (error) {
         console.error(`[WS:Metrics] Error setting up subscriptions for ${tokenAddress}:`, error);
+
+        if (dedupClientHandlers.delete(clientId)) {
+          logDedupClientCount(
+            `Cleaned up dedup handler after subscription error for ${normalizedTokenAddress} (${clientId})`,
+          );
+        }
+        if (dedupSubscribed && bitQueryDedupEnabled && subscriptionDeduplicator) {
+          try {
+            subscriptionDeduplicator.unsubscribe(clientId, 'trades', {
+              tokenAddress: normalizedTokenAddress,
+            });
+          } catch (dedupError) {
+            console.warn(
+              `[WS:Metrics] ⚠️ Failed to cleanup dedup subscription after error for ${normalizedTokenAddress} (${clientId}):`,
+              dedupError,
+            );
+          }
+        }
+
         connection.socket.send(
           JSON.stringify({
             type: 'error',

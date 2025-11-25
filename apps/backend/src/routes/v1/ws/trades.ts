@@ -9,11 +9,74 @@
  */
 
 import * as Sentry from '@sentry/node';
+import { randomUUID } from 'crypto';
 import { FastifyPluginAsync } from 'fastify';
 import { SocketStream } from '@fastify/websocket';
 import { TradeEvent } from '../../../types/adapters';
 
 export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
+  const subscriptionDeduplicator = fastify.subscriptionDeduplicator;
+  const bitQueryDedupEnabled =
+    Boolean(process.env.ENABLE_BITQUERY_DEDUP === 'true' && subscriptionDeduplicator);
+  const dedupDebugLogging = process.env.DEBUG_BITQUERY_DEDUP === 'true';
+  const dedupClientHandlers = new Map<string, (trade: TradeEvent) => void>();
+
+  const logDedupClientCount = (reason: string) => {
+    console.log(
+      `[WS:Trades] 📈 ${reason} | dedup client handlers: ${dedupClientHandlers.size}${
+        dedupClientHandlers.size === 0 ? ' (empty)' : ''
+      }`,
+    );
+  };
+
+  if (bitQueryDedupEnabled && subscriptionDeduplicator) {
+    const broadcastHandler = ({
+      topic,
+      dataSource,
+      clients,
+      data,
+    }: {
+      topic: string;
+      dataSource?: string;
+      clients: string[];
+      data: TradeEvent;
+    }) => {
+      if (topic !== 'trades') {
+        if (dedupDebugLogging) {
+          console.log(
+            `[WS:Trades] 🔍 Dedup broadcast ignored (topic=${topic}, source=${dataSource ?? 'unknown'})`,
+          );
+        }
+        return;
+      }
+
+      if (dataSource !== 'bitquery') {
+        if (dedupDebugLogging) {
+          console.log(
+            `[WS:Trades] 🔍 Dedup broadcast ignored for topic=trades from source=${dataSource ?? 'unknown'}`,
+          );
+        }
+        return;
+      }
+
+      for (const clientId of clients) {
+        const handler = dedupClientHandlers.get(clientId);
+        if (handler) {
+          handler(data);
+        } else if (dedupDebugLogging) {
+          console.log(
+            `[WS:Trades] ⚠️ Dedup broadcast had no handler for client ${clientId}. Active handlers: ${dedupClientHandlers.size}`,
+          );
+        }
+      }
+    };
+
+    subscriptionDeduplicator.on('broadcast_to_clients', broadcastHandler);
+    fastify.addHook('onClose', async () => {
+      subscriptionDeduplicator.off('broadcast_to_clients', broadcastHandler);
+    });
+  }
+
   /**
    * WebSocket: Subscribe to real-time trades for a specific token
    * GET /api/v1/ws/trades/:tokenAddress
@@ -26,6 +89,9 @@ export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
       const adapterManager = fastify.adapterManager;
 
       console.log(`[WS:Trades] Client connected for token: ${tokenAddress}`);
+      const clientId = randomUUID();
+      const normalizedTokenAddress = tokenAddress.toLowerCase();
+      let dedupSubscribed = false;
 
       if (!adapterManager) {
         connection.socket.send(
@@ -159,6 +225,68 @@ export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
       // Start periodic flush
       flushInterval = setInterval(flushTradeBuffer, FLUSH_INTERVAL_MS);
 
+      const processIncomingTrade = async (trade: TradeEvent) => {
+        // 🔍 DEBUG: Log incoming trade
+        console.log(`[WS:Trades] 📥 Received trade for ${tokenAddress}:`, {
+          id: trade.id,
+          source: trade.dataSource,
+          isBuy: trade.isBuy,
+          tokenAmount: trade.tokenAmount,
+          timestamp: new Date(trade.timestamp).toISOString(),
+        });
+
+        // 🔥 NEW: Fetch current market cap data
+        // This provides real-time market cap updates alongside trades
+        const MARKET_CAP_TIMEOUT_MS = 2000; // Do not block real-time delivery on slow market cap fetch
+        let marketCapData = {
+          marketCapUsd: 0,
+          currentPriceUsd: trade.priceUsd || 0,
+        };
+
+        try {
+          if (fastify.marketCapService) {
+            const freshMarketCap = await Promise.race([
+              fastify.marketCapService.getMarketCap(tokenAddress, 8453),
+              new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('market_cap_timeout')), MARKET_CAP_TIMEOUT_MS),
+              ),
+            ]);
+
+            if (freshMarketCap) {
+              marketCapData = {
+                marketCapUsd: (freshMarketCap as any).marketCapUsd ?? 0,
+                currentPriceUsd: (freshMarketCap as any).currentPriceUsd ?? trade.priceUsd ?? 0,
+              };
+            }
+          }
+        } catch (mcError) {
+          const isTimeout = mcError instanceof Error && mcError.message === 'market_cap_timeout';
+          console.warn(
+            `[WS:Trades] ⚠️ ${
+              isTimeout ? 'Market cap fetch timed out' : 'Failed to fetch market cap'
+            } for ${tokenAddress}:`,
+            mcError,
+          );
+          // Fallback to trade price if market cap service fails
+          marketCapData.currentPriceUsd = trade.priceUsd || 0;
+        }
+
+        // 🔥 NEW: Buffer trade instead of sending immediately
+        // This ensures chronological order across multiple sources
+        // Now includes market cap data
+        tradeBuffer.push({
+          trade,
+          receivedAt: Date.now(),
+          marketCap: marketCapData,
+        });
+
+        // Force flush if buffer is getting large or trade is very recent
+        const bufferAge = Date.now() - lastFlushTime;
+        if (tradeBuffer.length >= 10 || bufferAge >= MAX_BUFFER_AGE_MS) {
+          flushTradeBuffer();
+        }
+      };
+
       try {
         // 🔥 NEW: Send historical BitQuery trades from database (most recent 100)
         try {
@@ -263,70 +391,54 @@ export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
           // Don't block - continue with real-time subscription
         }
 
-        // Subscribe to trades from both Goldsky and BitQuery
+        let allowBitQueryDedup = false;
+        if (bitQueryDedupEnabled && subscriptionDeduplicator) {
+          try {
+            allowBitQueryDedup = await adapterManager.canUseBitQuery(tokenAddress);
+          } catch (error) {
+            console.warn(
+              `[WS:Trades] ⚠️ Failed to evaluate BitQuery eligibility for ${tokenAddress}:`,
+              error,
+            );
+          }
+        }
+
+        if (bitQueryDedupEnabled && allowBitQueryDedup && subscriptionDeduplicator) {
+          dedupClientHandlers.set(clientId, (trade: TradeEvent) => {
+            void processIncomingTrade(trade);
+          });
+          logDedupClientCount(
+            `Registered dedup handler for ${normalizedTokenAddress} (${clientId})`,
+          );
+          try {
+            subscriptionDeduplicator.subscribe(
+              clientId,
+              'trades',
+              { tokenAddress: normalizedTokenAddress },
+              'bitquery',
+            );
+            dedupSubscribed = true;
+            console.log(
+              `[WS:Trades] ♻️ Using shared BitQuery stream for ${normalizedTokenAddress} (${clientId})`,
+            );
+          } catch (dedupError) {
+            dedupClientHandlers.delete(clientId);
+            logDedupClientCount(
+              `Rolled back dedup handler for ${normalizedTokenAddress} (${clientId})`,
+            );
+            console.warn(
+              `[WS:Trades] ⚠️ Failed to register dedup client ${clientId} for ${normalizedTokenAddress}:`,
+              dedupError,
+            );
+          }
+        }
+
         const subscriptionIds = await adapterManager.subscribeToTrades(
           tokenAddress,
-          async (trade: TradeEvent) => {
-            // 🔍 DEBUG: Log incoming trade
-            console.log(`[WS:Trades] 📥 Received trade for ${tokenAddress}:`, {
-              id: trade.id,
-              source: trade.dataSource,
-              isBuy: trade.isBuy,
-              tokenAmount: trade.tokenAmount,
-              timestamp: new Date(trade.timestamp).toISOString(),
-            });
-
-            // 🔥 NEW: Fetch current market cap data
-            // This provides real-time market cap updates alongside trades
-            const MARKET_CAP_TIMEOUT_MS = 2000; // Do not block real-time delivery on slow market cap fetch
-            let marketCapData = {
-              marketCapUsd: 0,
-              currentPriceUsd: trade.priceUsd || 0,
-            };
-
-            try {
-              if (fastify.marketCapService) {
-                const freshMarketCap = await Promise.race([
-                  fastify.marketCapService.getMarketCap(tokenAddress, 8453),
-                  new Promise((_, reject) =>
-                    setTimeout(() => reject(new Error('market_cap_timeout')), MARKET_CAP_TIMEOUT_MS),
-                  ),
-                ]);
-
-                if (freshMarketCap) {
-                  marketCapData = {
-                    marketCapUsd: (freshMarketCap as any).marketCapUsd ?? 0,
-                    currentPriceUsd:
-                      (freshMarketCap as any).currentPriceUsd ?? trade.priceUsd ?? 0,
-                  };
-                }
-              }
-            } catch (mcError) {
-              const isTimeout =
-                mcError instanceof Error && mcError.message === 'market_cap_timeout';
-              console.warn(
-                `[WS:Trades] ⚠️ ${isTimeout ? 'Market cap fetch timed out' : 'Failed to fetch market cap'} for ${tokenAddress}:`,
-                mcError,
-              );
-              // Fallback to trade price if market cap service fails
-              marketCapData.currentPriceUsd = trade.priceUsd || 0;
-            }
-
-            // 🔥 NEW: Buffer trade instead of sending immediately
-            // This ensures chronological order across multiple sources
-            // Now includes market cap data
-            tradeBuffer.push({
-              trade,
-              receivedAt: Date.now(),
-              marketCap: marketCapData,
-            });
-
-            // Force flush if buffer is getting large or trade is very recent
-            const bufferAge = Date.now() - lastFlushTime;
-            if (tradeBuffer.length >= 10 || bufferAge >= MAX_BUFFER_AGE_MS) {
-              flushTradeBuffer();
-            }
+          (trade: TradeEvent) => {
+            void processIncomingTrade(trade);
           },
+          { useBitQueryDedup: allowBitQueryDedup },
         );
 
         console.log(
@@ -339,7 +451,7 @@ export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
             type: 'subscribed',
             data: {
               tokenAddress,
-              sources: subscriptionIds.length,
+              sources: subscriptionIds.length + (bitQueryDedupEnabled && allowBitQueryDedup ? 1 : 0),
               message: 'Streaming real-time trades',
             },
             timestamp: Date.now(),
@@ -449,6 +561,28 @@ export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
                   subscriptionId: subId,
                 },
               });
+            }
+          }
+
+          if (dedupClientHandlers.delete(clientId)) {
+            logDedupClientCount(
+              `Removed dedup handler after disconnect for ${normalizedTokenAddress} (${clientId})`,
+            );
+          }
+
+          if (dedupSubscribed && bitQueryDedupEnabled && subscriptionDeduplicator) {
+            try {
+              subscriptionDeduplicator.unsubscribe(clientId, 'trades', {
+                tokenAddress: normalizedTokenAddress,
+              });
+              console.log(
+                `[WS:Trades] ♻️ Removed dedup subscription for ${normalizedTokenAddress} (${clientId})`,
+              );
+            } catch (dedupError) {
+              console.warn(
+                `[WS:Trades] ⚠️ Failed to unsubscribe dedup client ${clientId} for ${normalizedTokenAddress}:`,
+                dedupError,
+              );
             }
           }
         });

@@ -6,12 +6,41 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { WebSocketGateway } from '../../gateway/websocket-gateway';
 
+const getStatsToken = (fastify: FastifyInstance): string | null => {
+  const config = (fastify as any).config;
+  if (config && typeof config.WS_STATS_TOKEN === 'string') {
+    return config.WS_STATS_TOKEN;
+  }
+  if ((fastify as any).WS_STATS_TOKEN) {
+    return (fastify as any).WS_STATS_TOKEN;
+  }
+  if (process.env.WS_STATS_TOKEN) {
+    return process.env.WS_STATS_TOKEN;
+  }
+  return null;
+};
+
+const requireStatsToken =
+  (fastify: FastifyInstance) =>
+  async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    const token = getStatsToken(fastify);
+    if (!token) {
+      return;
+    }
+    const headerToken = request.headers['x-ws-stats-token'];
+    if (typeof headerToken !== 'string' || headerToken !== token) {
+      return reply.code(401).send({ success: false, error: 'Unauthorized' });
+    }
+  };
+
 export async function websocketStatsRoutes(fastify: FastifyInstance) {
+  const token = getStatsToken(fastify);
+  const statsGuard = token ? requireStatsToken(fastify) : undefined;
   /**
    * GET /api/v1/ws/stats
    * Get comprehensive WebSocket gateway statistics
    */
-  fastify.get('/api/v1/ws/stats', async (request: FastifyRequest, reply: FastifyReply) => {
+  fastify.get('/api/v1/ws/stats', { preHandler: statsGuard || undefined }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const gateway = WebSocketGateway.getInstance();
       const stats = gateway.getStats();
@@ -64,7 +93,7 @@ export async function websocketStatsRoutes(fastify: FastifyInstance) {
    * GET /api/v1/ws/dedup-stats
    * Get deduplication statistics (rate limit prevention)
    */
-  fastify.get('/api/v1/ws/dedup-stats', async (request: FastifyRequest, reply: FastifyReply) => {
+  fastify.get('/api/v1/ws/dedup-stats', { preHandler: statsGuard || undefined }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const gateway = WebSocketGateway.getInstance();
       const deduplicator = gateway.getDeduplicator();
@@ -89,7 +118,7 @@ export async function websocketStatsRoutes(fastify: FastifyInstance) {
    * GET /api/v1/ws/rate-limits
    * Get rate limit usage for all external services
    */
-  fastify.get('/api/v1/ws/rate-limits', async (request: FastifyRequest, reply: FastifyReply) => {
+  fastify.get('/api/v1/ws/rate-limits', { preHandler: statsGuard || undefined }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const gateway = WebSocketGateway.getInstance();
       const rateLimitMonitor = gateway.getRateLimitMonitor();
@@ -117,7 +146,7 @@ export async function websocketStatsRoutes(fastify: FastifyInstance) {
    * GET /api/v1/ws/adapter-status
    * Get adapter connection status (QuickNode, Goldsky, BitQuery, Aerodrome)
    */
-  fastify.get('/api/v1/ws/adapter-status', async (request: FastifyRequest, reply: FastifyReply) => {
+  fastify.get('/api/v1/ws/adapter-status', { preHandler: statsGuard || undefined }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const adapterManager = (fastify as any).adapterManager;
       
@@ -177,7 +206,7 @@ export async function websocketStatsRoutes(fastify: FastifyInstance) {
       });
     }
   });
-  fastify.get('/api/v1/ws/connections', async (request: FastifyRequest, reply: FastifyReply) => {
+  fastify.get('/api/v1/ws/connections', { preHandler: statsGuard || undefined }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const gateway = WebSocketGateway.getInstance();
       const connectionManager = gateway.getConnectionManager();

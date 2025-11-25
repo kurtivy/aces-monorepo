@@ -52,6 +52,7 @@ import { RateLimitMonitor } from './services/websocket/rate-limit-monitor';
 // 🚀 NEW: Phase 1 WebSocket Gateway
 import { WebSocketGateway } from './gateway/websocket-gateway';
 import { websocketStatsRoutes } from './routes/v1/websocket-stats';
+import { SubscriptionDeduplicator } from './services/websocket/subscription-deduplicator';
 
 export const buildApp = async (): Promise<FastifyInstance> => {
   const fastify = Fastify({
@@ -85,6 +86,55 @@ export const buildApp = async (): Promise<FastifyInstance> => {
 
   const rateLimitMonitor = new RateLimitMonitor();
   fastify.decorate('rateLimitMonitor', rateLimitMonitor);
+
+  // Initialize subscription deduplicator (Phase B - BitQuery)
+  const subscriptionDeduplicator = new SubscriptionDeduplicator();
+  fastify.decorate('subscriptionDeduplicator', subscriptionDeduplicator);
+  const enableBitQueryDedup = process.env.ENABLE_BITQUERY_DEDUP === 'true';
+  if (enableBitQueryDedup) {
+    console.log('[App] ✅ BitQuery WebSocket deduplication ENABLED');
+  } else {
+    console.log('[App] ⚠️ BitQuery WebSocket deduplication DISABLED');
+  }
+
+  const enableDedupTelemetryEnv = process.env.ENABLE_WS_DEDUP_TELEMETRY;
+  const enableDedupTelemetry =
+    enableDedupTelemetryEnv === 'true' ||
+    (enableDedupTelemetryEnv === undefined && enableBitQueryDedup);
+  const enableDedupTelemetrySentry = process.env.ENABLE_WS_DEDUP_SENTRY === 'true';
+  const dedupTelemetryIntervalMs = parseInt(
+    process.env.WS_DEDUP_TELEMETRY_INTERVAL_MS || '300000',
+    10,
+  );
+  const dedupTelemetryStaleThresholdMs = parseInt(
+    process.env.WS_DEDUP_STALE_THRESHOLD_MS || '45000',
+    10,
+  );
+  const dedupTelemetrySentryThrottleMs = parseInt(
+    process.env.WS_DEDUP_SENTRY_THROTTLE_MS || '300000',
+    10,
+  );
+  const dedupTelemetryMinHealthyRatio = parseFloat(
+    process.env.WS_DEDUP_MIN_HEALTHY_RATIO || '5',
+  );
+
+  if (enableDedupTelemetry) {
+    subscriptionDeduplicator.startTelemetry({
+      intervalMs: dedupTelemetryIntervalMs,
+      staleThresholdMs: dedupTelemetryStaleThresholdMs,
+      sentryEnabled: enableDedupTelemetrySentry,
+      sentryThrottleMs: dedupTelemetrySentryThrottleMs,
+      minHealthyRatio: Number.isFinite(dedupTelemetryMinHealthyRatio)
+        ? dedupTelemetryMinHealthyRatio
+        : 5,
+    });
+
+    fastify.addHook('onClose', async () => {
+      subscriptionDeduplicator.stopTelemetry();
+    });
+  } else {
+    console.log('[App] ℹ️ WS dedup telemetry disabled');
+  }
 
   // Initialize AerodromeDataService for AcesUsdPriceService
   const aerodromeService = new AerodromeDataService({
@@ -192,6 +242,8 @@ export const buildApp = async (): Promise<FastifyInstance> => {
       acesUsdPriceService,
       rateLimitEnforcer: gateway.getRateLimitEnforcer(), // 🛡️ Enable rate limit enforcement
       prisma, // 🔥 NEW: Pass Prisma client for BitQuery trade storage
+      subscriptionDeduplicator,
+      enableBitQueryDedup,
     });
     console.log('✅ AdapterManager initialized with rate limit enforcement');
   } catch (error: any) {

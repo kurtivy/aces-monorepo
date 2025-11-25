@@ -221,6 +221,10 @@ export class GoldskyMemoryAdapter extends EventEmitter implements BaseAdapter {
     };
   }
 
+  getLatestBondingStatus(tokenAddress: string): BondingStatusEvent | null {
+    return this.memoryStore.getBondingStatus(tokenAddress);
+  }
+
   /**
    * Check if connected
    */
