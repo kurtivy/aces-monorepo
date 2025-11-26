@@ -4,7 +4,7 @@ import {
   BITQUERY_QUERIES,
   BASE_NETWORK,
   ACES_TOKEN_ADDRESS,
-  TIMEFRAME_TO_SECONDS,
+  BITQUERY_OHLC_SETTINGS,
 } from '../config/bitquery.config';
 import type { AcesUsdPriceService } from './aces-usd-price-service';
 import { MIN_VISIBLE_TRADE_USD } from '../constants/trading';
@@ -22,8 +22,6 @@ import type {
   BitQueryPoolState,
   BitQueryResponse,
   BitQueryTradingResponse,
-  TradingTokensResponse,
-  TradingTokensOHLC,
   LatestPriceResponse,
   DEXTradeByTokensTrade,
   AggregatedCandleData,
@@ -46,10 +44,7 @@ export class BitQueryService {
   private readonly sentryBreadcrumbThrottleMs: number;
   private lastSentryBreadcrumbAt = 0;
 
-  constructor(
-    acesUsdPriceService?: AcesUsdPriceService,
-    rateLimitMonitor?: RateLimitMonitor,
-  ) {
+  constructor(acesUsdPriceService?: AcesUsdPriceService, rateLimitMonitor?: RateLimitMonitor) {
     console.log(
       '[BitQueryService Constructor] DISABLE_BITQUERY env var:',
       process.env.DISABLE_BITQUERY,
@@ -80,7 +75,9 @@ export class BitQueryService {
    */
   private async getAcesUsdPrice(): Promise<number> {
     if (!this.acesUsdPriceService) {
-      console.warn('[BitQueryService] ⚠️ AcesUsdPriceService not available - cannot convert to USD');
+      console.warn(
+        '[BitQueryService] ⚠️ AcesUsdPriceService not available - cannot convert to USD',
+      );
       return 0;
     }
 
@@ -101,10 +98,7 @@ export class BitQueryService {
   }
 
   private async getCachedAcesUsdPrice(): Promise<number> {
-    if (
-      this.cachedAcesUsdPrice &&
-      Date.now() - this.cachedAcesUsdPrice.timestamp < 30_000
-    ) {
+    if (this.cachedAcesUsdPrice && Date.now() - this.cachedAcesUsdPrice.timestamp < 30_000) {
       return this.cachedAcesUsdPrice.value;
     }
 
@@ -427,62 +421,134 @@ export class BitQueryService {
 
     const from = options.from || new Date(Date.now() - this.getTimeframeDuration(timeframe));
     const to = options.to || new Date();
-    const counterTokenAddress = (options.counterTokenAddress || ACES_TOKEN_ADDRESS).toLowerCase();
+    const normalizedToken = tokenAddress.toLowerCase();
+    const normalizedPool = poolAddress?.toLowerCase();
+    const normalizedCounter = (options.counterTokenAddress || ACES_TOKEN_ADDRESS).toLowerCase();
 
     console.log('[BitQuery] Fetching OHLC candles:', {
-      tokenAddress,
-      poolAddress,
+      tokenAddress: normalizedToken,
+      poolAddress: normalizedPool,
       timeframe,
       from: from.toISOString(),
       to: to.toISOString(),
-      counterTokenAddress,
+      counterTokenAddress: normalizedCounter,
     });
 
-    const cacheKey = `candles:${poolAddress}:${counterTokenAddress}:${timeframe}:${from.getTime()}:${to.getTime()}`;
-    const cached = this.getFromCache<BitQueryCandle[]>(cacheKey);
-    if (cached) {
-      console.log(`[BitQuery] ✅ Returning ${cached.length} cached candles`);
-      return cached;
+    const { count: intervalCount, unit: intervalUnit } = this.getIntervalParams(timeframe);
+
+    type AttemptConfig = {
+      id: string;
+      label: string;
+      query: string;
+      dataset: 'archive' | 'combined';
+      includePoolAndCounter: boolean;
+      maxPriceAsymmetry: number;
+    };
+
+    const attempts: AttemptConfig[] = [];
+
+    if (normalizedPool) {
+      attempts.push(
+        {
+          id: 'pool-counter-archive',
+          label: 'pool+counter (archive)',
+          query: BITQUERY_QUERIES.GET_OHLC_CANDLES_ARCHIVE,
+          dataset: BITQUERY_OHLC_SETTINGS.PRIMARY_DATASET,
+          includePoolAndCounter: true,
+          maxPriceAsymmetry: BITQUERY_OHLC_SETTINGS.DEFAULT_MAX_PRICE_ASYMMETRY,
+        },
+        {
+          id: 'pool-counter-combined',
+          label: 'pool+counter (combined)',
+          query: BITQUERY_QUERIES.GET_OHLC_CANDLES_COMBINED,
+          dataset: BITQUERY_OHLC_SETTINGS.FALLBACK_DATASET,
+          includePoolAndCounter: true,
+          maxPriceAsymmetry: BITQUERY_OHLC_SETTINGS.DEFAULT_MAX_PRICE_ASYMMETRY,
+        },
+      );
     }
 
-    try {
-      const intervalMinutes = this.getIntervalMinutes(timeframe);
+    attempts.push({
+      id: 'token-only-combined',
+      label: 'token-only (combined)',
+      query: BITQUERY_QUERIES.GET_OHLC_CANDLES_TOKEN_ONLY_COMBINED,
+      dataset: BITQUERY_OHLC_SETTINGS.FALLBACK_DATASET,
+      includePoolAndCounter: false,
+      maxPriceAsymmetry: BITQUERY_OHLC_SETTINGS.FALLBACK_MAX_PRICE_ASYMMETRY,
+    });
 
-      console.log('[BitQuery] Querying BitQuery API for OHLC data with DEXTradeByTokens...');
-      const response = await this.queryBitQuery<any>(BITQUERY_QUERIES.GET_OHLC_CANDLES, {
-        network: BASE_NETWORK,
-        poolAddress: poolAddress.toLowerCase(),
-        tokenAddress: tokenAddress.toLowerCase(),
-        counterToken: counterTokenAddress,
-        from: from.toISOString(),
-        to: to.toISOString(),
-        intervalCount: intervalMinutes,
-      });
+    for (const attempt of attempts) {
+      const cacheKey = [
+        'candles',
+        attempt.id,
+        normalizedToken,
+        normalizedPool,
+        normalizedCounter,
+        timeframe,
+        from.getTime(),
+        to.getTime(),
+      ]
+        .filter(Boolean)
+        .join(':');
 
-      const candleData = response.data.EVM.DEXTradeByTokens;
-      console.log(
-        `[BitQuery] ✅ Received ${candleData?.length || 0} pre-aggregated candles from BitQuery`,
-      );
-
-      const candles = this.normalizeAggregatedCandles(candleData || []);
-      console.log(`[BitQuery] ✅ Normalized to ${candles.length} candles`);
-
-      if (candles.length > 0) {
-        console.log('[BitQuery] First candle:', {
-          timestamp: candles[0].timestamp,
-          open: candles[0].open,
-          close: candles[0].close,
-          volume: candles[0].volume,
-          trades: candles[0].trades,
-        });
+      const cached = this.getFromCache<BitQueryCandle[]>(cacheKey);
+      if (cached) {
+        console.log(`[BitQuery] ✅ Returning ${cached.length} cached candles (${attempt.label})`);
+        return cached;
       }
 
-      this.setCache(cacheKey, candles);
-      return candles;
-    } catch (error) {
-      console.error('[BitQuery] ❌ Failed to fetch candles:', error);
-      throw error;
+      const variables: Record<string, unknown> = {
+        network: BASE_NETWORK,
+        tokenAddress: normalizedToken,
+        from: from.toISOString(),
+        to: to.toISOString(),
+        intervalCount,
+        intervalUnit,
+        priceAsymmetry: attempt.maxPriceAsymmetry,
+      };
+
+      if (attempt.includePoolAndCounter) {
+        if (!normalizedPool) {
+          continue;
+        }
+        variables.poolAddress = normalizedPool;
+        variables.counterToken = normalizedCounter;
+      }
+
+      try {
+        console.log('[BitQuery] 🔄 Querying Bitquery OHLC attempt:', {
+          label: attempt.label,
+          dataset: attempt.dataset,
+          includePoolAndCounter: attempt.includePoolAndCounter,
+          priceAsymmetry: attempt.maxPriceAsymmetry,
+        });
+
+        const response = await this.queryBitQuery<any>(attempt.query, variables);
+        const candleData = response.data.EVM.DEXTradeByTokens;
+        console.log(
+          `[BitQuery] ✅ Attempt ${attempt.label} returned ${candleData?.length || 0} candles`,
+        );
+
+        const candles = this.normalizeAggregatedCandles(candleData || []);
+        if (candles.length > 0) {
+          console.log('[BitQuery] ✅ Normalized candle sample:', {
+            timestamp: candles[0].timestamp,
+            open: candles[0].open,
+            close: candles[0].close,
+            volume: candles[0].volume,
+            trades: candles[0].trades,
+            attempt: attempt.label,
+          });
+          this.setCache(cacheKey, candles);
+          return candles;
+        }
+      } catch (error) {
+        console.warn(`[BitQuery] ⚠️ OHLC attempt ${attempt.label} failed:`, error);
+      }
     }
+
+    console.warn('[BitQuery] ⚠️ No OHLC candles found after all attempts');
+    return [];
   }
 
   /**
@@ -513,66 +579,6 @@ export class BitQueryService {
     } catch (error) {
       console.error('[BitQuery] Failed to fetch pool state:', error);
       return null;
-    }
-  }
-
-  /**
-   * Get OHLC candles using Trading.Tokens query (more accurate USD pricing)
-   */
-  async getTradingTokensOHLC(
-    tokenAddress: string,
-    timeframe: string,
-    options: {
-      from?: Date;
-      to?: Date;
-    } = {},
-  ): Promise<BitQueryCandle[]> {
-    if (this.disabled) {
-      console.log('[BitQuery] ⏸️  Skipping getTradingTokensOHLC (service disabled)');
-      return [];
-    }
-
-    const from = options.from || new Date(Date.now() - this.getTimeframeDuration(timeframe));
-    const to = options.to || new Date();
-    const intervalSeconds = TIMEFRAME_TO_SECONDS[timeframe] || this.getIntervalSeconds(timeframe);
-
-    console.log('[BitQuery] Fetching Trading.Tokens OHLC:', {
-      tokenAddress,
-      timeframe,
-      from: from.toISOString(),
-      to: to.toISOString(),
-      intervalSeconds,
-    });
-
-    const cacheKey = `trading-tokens:${tokenAddress}:${timeframe}:${from.getTime()}:${to.getTime()}`;
-    const cached = this.getFromCache<BitQueryCandle[]>(cacheKey);
-    if (cached) {
-      console.log(`[BitQuery] ✅ Returning ${cached.length} cached Trading.Tokens candles`);
-      return cached;
-    }
-
-    try {
-      const response = await this.queryBitQueryTrading<TradingTokensResponse>(
-        BITQUERY_QUERIES.GET_TRADING_TOKENS_OHLC,
-        {
-          tokenAddress: tokenAddress.toLowerCase(),
-          from: from.toISOString(),
-          to: to.toISOString(),
-          intervalSeconds,
-        },
-      );
-
-      const tokens = response.data.Trading.Tokens;
-      console.log(`[BitQuery] ✅ Received ${tokens?.length || 0} Trading.Tokens candles`);
-
-      const candles = this.normalizeTradingTokensCandles(tokens || []);
-      console.log(`[BitQuery] ✅ Normalized to ${candles.length} candles`);
-
-      this.setCache(cacheKey, candles);
-      return candles;
-    } catch (error) {
-      console.error('[BitQuery] ❌ Failed to fetch Trading.Tokens candles:', error);
-      throw error;
     }
   }
 
@@ -858,48 +864,48 @@ export class BitQueryService {
   ): BitQuerySwap[] {
     return trades
       .map((trade) => {
-      const tradeData = trade.Trade;
-      const sideType = tradeData.Side.Type; // "buy" or "sell" (from ACES perspective)
+        const tradeData = trade.Trade;
+        const sideType = tradeData.Side.Type; // "buy" or "sell" (from ACES perspective)
 
-      // DEXTradeByTokens logic:
-      // Trade.Side.Type = "sell" means ACES was sold (token was BOUGHT) → user BOUGHT token
-      // Trade.Side.Type = "buy" means ACES was bought (token was SOLD) → user SOLD token
-      const side: 'buy' | 'sell' = sideType === 'sell' ? 'buy' : 'sell';
+        // DEXTradeByTokens logic:
+        // Trade.Side.Type = "sell" means ACES was sold (token was BOUGHT) → user BOUGHT token
+        // Trade.Side.Type = "buy" means ACES was bought (token was SOLD) → user SOLD token
+        const side: 'buy' | 'sell' = sideType === 'sell' ? 'buy' : 'sell';
 
-      // console.log('[BitQuery] TOKEN TRADE:', {
-      //   txHash: trade.Transaction.Hash,
-      //   trader: trade.Transaction.From,
-      //   sideType: sideType,
-      //   interpretedAs: side,
-      //   tokenAmount: tradeData.Amount,
-      //   acesAmount: tradeData.Side.Amount,
-      //   acesUSD: tradeData.Side.AmountInUSD,
-      //   tokenPrice: tradeData.Price,
-      // });
+        // console.log('[BitQuery] TOKEN TRADE:', {
+        //   txHash: trade.Transaction.Hash,
+        //   trader: trade.Transaction.From,
+        //   sideType: sideType,
+        //   interpretedAs: side,
+        //   tokenAmount: tradeData.Amount,
+        //   acesAmount: tradeData.Side.Amount,
+        //   acesUSD: tradeData.Side.AmountInUSD,
+        //   tokenPrice: tradeData.Price,
+        // });
 
-      // Extract amounts
-      const amountToken = tradeData.Amount || '0';
-      const amountAces = tradeData.Side.Amount || '0';
+        // Extract amounts
+        const amountToken = tradeData.Amount || '0';
+        const amountAces = tradeData.Side.Amount || '0';
 
-      const acesAmount = parseFloat(tradeData.Side.Amount || '0');
-      const tokenAmountNum = parseFloat(amountToken);
-      const priceInAces = tradeData.Price || '0';
+        const acesAmount = parseFloat(tradeData.Side.Amount || '0');
+        const tokenAmountNum = parseFloat(amountToken);
+        const priceInAces = tradeData.Price || '0';
 
-      let priceInUsd = '0';
-      let volumeUsd = '0';
+        let priceInUsd = '0';
+        let volumeUsd = '0';
 
-      if (tokenAmountNum > 0 && acesAmount > 0 && acesUsdPrice > 0) {
-        const realUsdAmount = acesAmount * acesUsdPrice;
-        priceInUsd = (realUsdAmount / tokenAmountNum).toString();
-        volumeUsd = realUsdAmount.toFixed(2);
-      } else {
-        console.warn('[BitQueryService] ⚠️ Unable to derive USD price from BitQuery trade', {
-          tokenAmountNum,
-          acesAmount,
-          acesUsdPrice,
-          txHash: trade.Transaction.Hash,
-        });
-      }
+        if (tokenAmountNum > 0 && acesAmount > 0 && acesUsdPrice > 0) {
+          const realUsdAmount = acesAmount * acesUsdPrice;
+          priceInUsd = (realUsdAmount / tokenAmountNum).toString();
+          volumeUsd = realUsdAmount.toFixed(2);
+        } else {
+          console.warn('[BitQueryService] ⚠️ Unable to derive USD price from BitQuery trade', {
+            tokenAmountNum,
+            acesAmount,
+            acesUsdPrice,
+            txHash: trade.Transaction.Hash,
+          });
+        }
 
         return {
           blockTime: new Date(trade.Block.Time),
@@ -930,35 +936,6 @@ export class BitQueryService {
         }
         return true;
       });
-  }
-
-  /**
-   * Normalize Trading.Tokens candles to BitQueryCandle format
-   */
-  private normalizeTradingTokensCandles(tokens: TradingTokensOHLC[]): BitQueryCandle[] {
-    return tokens.map((item) => {
-      const timestamp = new Date(item.Block.Time);
-      const ohlc = item.Price.Ohlc;
-      const volume = item.Volume;
-
-      // BitQuery Trading.Tokens returns USD prices directly
-      // We populate both USD and non-USD fields with the same values
-      // since the frontend will use USD prices for DEX tokens (dataSource: 'dex')
-      return {
-        timestamp,
-        open: ohlc.Open.toString(), // Use USD price as base (for candle body calculation)
-        high: ohlc.High.toString(),
-        low: ohlc.Low.toString(),
-        close: ohlc.Close.toString(),
-        openUsd: ohlc.Open.toString(),
-        highUsd: ohlc.High.toString(),
-        lowUsd: ohlc.Low.toString(),
-        closeUsd: ohlc.Close.toString(),
-        volume: volume.Base.toString(),
-        volumeUsd: volume.Usd.toString(),
-        trades: 0, // Not provided by this query
-      };
-    });
   }
 
   /**
@@ -1280,6 +1257,25 @@ export class BitQueryService {
   }
 
   /**
+   * Utility: Map timeframe to BitQuery interval parameters (count + unit)
+   */
+  private getIntervalParams(timeframe: string): {
+    count: number;
+    unit: 'minutes' | 'hours' | 'days';
+  } {
+    const intervals: Record<string, { count: number; unit: 'minutes' | 'hours' | 'days' }> = {
+      '1m': { count: 1, unit: 'minutes' },
+      '5m': { count: 5, unit: 'minutes' },
+      '15m': { count: 15, unit: 'minutes' },
+      '1h': { count: 60, unit: 'minutes' },
+      '4h': { count: 4, unit: 'hours' },
+      '1d': { count: 1, unit: 'days' },
+    };
+
+    return intervals[timeframe] || { count: 60, unit: 'minutes' };
+  }
+
+  /**
    * Clear cache (useful for testing)
    */
   clearCache(): void {
@@ -1307,7 +1303,10 @@ export class BitQueryService {
     }
 
     const now = Date.now();
-    if (event.status !== 'error' && now - this.lastSentryBreadcrumbAt < this.sentryBreadcrumbThrottleMs) {
+    if (
+      event.status !== 'error' &&
+      now - this.lastSentryBreadcrumbAt < this.sentryBreadcrumbThrottleMs
+    ) {
       return;
     }
 

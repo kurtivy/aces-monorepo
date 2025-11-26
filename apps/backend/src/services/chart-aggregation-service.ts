@@ -104,8 +104,7 @@ export class ChartAggregationService {
   private readonly CACHE_MAX_ENTRIES = 1000;
   private cacheHits = 0;
   private cacheMisses = 0;
-  private readonly CACHE_TELEMETRY_ENABLED =
-    process.env.CACHE_TELEMETRY_ENABLED === 'true';
+  private readonly CACHE_TELEMETRY_ENABLED = process.env.CACHE_TELEMETRY_ENABLED === 'true';
   private readonly CACHE_TELEMETRY_INTERVAL_MS = Number(
     process.env.CACHE_TELEMETRY_INTERVAL_MS ?? '60000',
   );
@@ -563,6 +562,7 @@ export class ChartAggregationService {
         graduationState.poolAddress!,
         options,
         currentCandleTimestamp,
+        null,
       );
     }
 
@@ -679,30 +679,68 @@ export class ChartAggregationService {
   ): Promise<Trade[]> {
     const fromTimestamp = Math.floor(from.getTime() / 1000);
     const toTimestamp = Math.floor(to.getTime() / 1000);
+    const pageLimit = Math.min(limit, 1000);
 
     try {
-      // 🔥 OPTION A + C: Parallelize trade fetching and metadata lookup
-      const [tradesWithPrices, tokenMetadata] = await Promise.all([
-        // Fetch trades with historical ACES prices
+      const [firstPage, tokenMetadata] = await Promise.all([
         this.tradePriceAggregator.getTradesWithPrices(
           tokenAddress,
-          Math.min(limit, 1000), // 🔥 OPTIMIZED: Use passed limit (capped at subgraph max)
+          pageLimit,
           fromTimestamp,
           toTimestamp,
         ),
-        // 🔥 OPTION A: Use cached metadata (includes steepness/floor from SubGraph)
         this.tokenMetadataCache.getTokenMetadata(tokenAddress),
       ]);
 
-      // console.log(
-      //   `[ChartAggregation] Fetched ${tradesWithPrices.length} trades with historical ACES prices`,
-      // );
+      console.log('[ChartAggregation] 📊 Bonding trades page 1 fetched', {
+        tokenAddress: tokenAddress.toLowerCase(),
+        requestedFrom: from.toISOString(),
+        requestedTo: to.toISOString(),
+        tradesReceived: firstPage.length,
+        pageLimit,
+      });
 
-      // 🔥 OPTION A: Get token parameters from cache (no SubGraph call needed if cached!)
+      let tradesWithPrices = [...firstPage];
+
+      if (firstPage.length === pageLimit && firstPage.length > 0) {
+        const oldestTrade = firstPage[firstPage.length - 1];
+        const oldestTimestamp = parseInt(oldestTrade.createdAt);
+
+        if (oldestTimestamp > fromTimestamp) {
+          const gapSeconds = oldestTimestamp - fromTimestamp;
+          console.log('[ChartAggregation] 🔄 Bonding trades gap detected, fetching earlier range', {
+            tokenAddress: tokenAddress.toLowerCase(),
+            requestedFrom: from.toISOString(),
+            oldestFetched: new Date(oldestTimestamp * 1000).toISOString(),
+            gapDays: (gapSeconds / 86400).toFixed(2),
+          });
+
+          const secondPage = await this.tradePriceAggregator.getTradesWithPrices(
+            tokenAddress,
+            pageLimit,
+            fromTimestamp,
+            oldestTimestamp - 1,
+          );
+
+          console.log('[ChartAggregation] 📊 Bonding trades page 2 fetched', {
+            tokenAddress: tokenAddress.toLowerCase(),
+            tradesReceived: secondPage.length,
+          });
+
+          tradesWithPrices = tradesWithPrices.concat(secondPage);
+
+          if (secondPage.length === pageLimit) {
+            console.warn(
+              '[ChartAggregation] ⚠️ Bonding trades exceeded two pages (potential gaps remain)',
+              { tokenAddress: tokenAddress.toLowerCase(), totalFetched: tradesWithPrices.length },
+            );
+          }
+        }
+      }
+
       let steepness: string | null = tokenMetadata?.steepness || null;
       let floor: string | null = tokenMetadata?.floor || null;
 
-      // Fallback: If cache doesn't have metadata, fetch directly from SubGraph (should be rare)
       if (
         (!steepness || !floor) &&
         (process.env.GOLDSKY_SUBGRAPH_URL || process.env.SUBGRAPH_URL)
@@ -750,9 +788,6 @@ export class ChartAggregationService {
         );
       }
 
-      // Transform to Trade format expected by the rest of the service
-      // 🔥 FIX: Use execution price for charts (actual price paid/received)
-      // Marginal price creates artificial spikes on large trades that don't reflect real market prices
       const transformedTrades: Trade[] = [];
 
       for (const trade of tradesWithPrices) {
@@ -1269,12 +1304,7 @@ export class ChartAggregationService {
   ): Promise<Candle[]> {
     // console.log('[ChartAggregation] 📈 Fetching bonding curve data from SubGraph');
 
-    const trades = await this.fetchBondingTrades(
-      tokenAddress,
-      options.from,
-      options.to,
-      (options.limit || 200) * 3,
-    );
+    const trades = await this.fetchBondingTrades(tokenAddress, options.from, options.to, 1000);
 
     // console.log(`[ChartAggregation] ✅ Fetched ${trades.length} bonding trades`);
 
@@ -1314,17 +1344,20 @@ export class ChartAggregationService {
    */
   private async fetchHistoricalDexOHLCV(
     tokenAddress: string,
+    poolAddress: string,
     options: ChartOptions,
     seedCandle: Candle | null = null, // 🔥 NEW: Accept seed candle for graduation connection
   ): Promise<Candle[]> {
-    // console.log('[ChartAggregation] 📜 Fetching pre-aggregated OHLCV from Trading.Tokens');
+    // console.log('[ChartAggregation] 📜 Fetching pre-aggregated OHLCV from DEXTradeByTokens');
 
-    const bitQueryCandles = await this.bitQueryService.getTradingTokensOHLC(
+    const bitQueryCandles = await this.bitQueryService.getOHLCCandles(
       tokenAddress,
+      poolAddress,
       options.timeframe,
       {
         from: options.from,
         to: options.to,
+        counterTokenAddress: ACES_TOKEN_ADDRESS,
       },
     );
 
@@ -1333,6 +1366,16 @@ export class ChartAggregationService {
     if (bitQueryCandles.length === 0) {
       return [];
     }
+
+    // Build a quick lookup by bucket timestamp (ms)
+    const candleByBucket = new Map<number, (typeof bitQueryCandles)[number]>();
+    for (const c of bitQueryCandles) {
+      candleByBucket.set(c.timestamp.getTime(), c);
+    }
+
+    const intervalMs = this.getIntervalMs(options.timeframe);
+    const startTime = this.alignTimestamp(options.from, options.timeframe);
+    const endTime = this.alignTimestamp(options.to, options.timeframe);
 
     // Convert BitQuery candles to our Candle format
     const supply = this.GRADUATED_SUPPLY;
@@ -1370,79 +1413,115 @@ export class ChartAggregationService {
 
     const candles: Candle[] = [];
     let previousCandle: Candle | null = seedCandle ? { ...seedCandle } : null;
+    let missingBuckets = 0;
 
-    bitQueryCandles.forEach((bqCandle, index) => {
-      // Trading.Tokens gives us USD prices directly - perfect!
-      let openUsdStr = bqCandle.openUsd || bqCandle.open;
-      let highUsdStr = bqCandle.highUsd || bqCandle.high;
-      let lowUsdStr = bqCandle.lowUsd || bqCandle.low;
-      const closeUsdStr = bqCandle.closeUsd || bqCandle.close;
-      const volumeUsd = safeParse(bqCandle.volumeUsd || bqCandle.volume);
+    for (let currentTime = startTime; currentTime <= endTime; currentTime += intervalMs) {
+      const bqCandle = candleByBucket.get(currentTime);
 
-      // 🔥 GRADUATION CONNECTION: First candle should connect to seed
-      if (index === 0 && seedCandle) {
-        openUsdStr = seedCandle.closeUsd;
-        const adjusted = adjustRangeForOpen(openUsdStr, highUsdStr, lowUsdStr);
-        highUsdStr = adjusted.high;
-        lowUsdStr = adjusted.low;
-        console.log('[ChartAggregation] 🔗 Connected first DEX candle to bonding curve:', {
-          bondingClose: seedCandle.closeUsd,
-          dexOpen: openUsdStr,
-          originalDexOpen: bqCandle.openUsd || bqCandle.open,
-        });
+      if (bqCandle) {
+        // Trading.Tokens gives us USD prices directly - perfect!
+        let openUsdStr = bqCandle.openUsd || bqCandle.open;
+        let highUsdStr = bqCandle.highUsd || bqCandle.high;
+        let lowUsdStr = bqCandle.lowUsd || bqCandle.low;
+        const closeUsdStr = bqCandle.closeUsd || bqCandle.close;
+        const volumeUsd = safeParse(bqCandle.volumeUsd || bqCandle.volume);
+
+        // Always connect to previous candle if present (not just the first)
+        if (previousCandle) {
+          openUsdStr = previousCandle.closeUsd;
+          const adjusted = adjustRangeForOpen(openUsdStr, highUsdStr, lowUsdStr);
+          highUsdStr = adjusted.high;
+          lowUsdStr = adjusted.low;
+        } else if (seedCandle) {
+          // Explicit log for graduation connection
+          console.log('[ChartAggregation] 🔗 Connected first DEX candle to bonding curve:', {
+            bondingClose: seedCandle.closeUsd,
+            dexOpen: openUsdStr,
+            originalDexOpen: bqCandle.openUsd || bqCandle.open,
+          });
+        }
+
+        let openAcesStr = bqCandle.open;
+        let highAcesStr = bqCandle.high;
+        let lowAcesStr = bqCandle.low;
+        const closeAcesStr = bqCandle.close;
+
+        if (previousCandle) {
+          openAcesStr = previousCandle.close;
+          const adjustedAces = adjustRangeForOpen(openAcesStr, highAcesStr, lowAcesStr);
+          highAcesStr = adjustedAces.high;
+          lowAcesStr = adjustedAces.low;
+        }
+
+        const openUsd = safeParse(openUsdStr);
+        const highUsd = safeParse(highUsdStr);
+        const lowUsd = safeParse(lowUsdStr);
+        const closeUsd = safeParse(closeUsdStr);
+
+        // Market cap will be calculated in enrichment step
+        const marketCapCloseUsd = closeUsd * supplyNum;
+
+        const candle: Candle = {
+          timestamp: new Date(currentTime),
+          // ACES prices (same as USD for now, enrichment will handle conversion if needed)
+          open: openAcesStr,
+          high: highAcesStr,
+          low: lowAcesStr,
+          close: closeAcesStr,
+          // USD prices (from BitQuery - already perfect!)
+          openUsd: openUsdStr,
+          highUsd: highUsdStr,
+          lowUsd: lowUsdStr,
+          closeUsd: closeUsdStr,
+          // Volume
+          volume: bqCandle.volume,
+          volumeUsd: volumeUsd.toFixed(2),
+          trades: bqCandle.trades || 0,
+          // Metadata
+          dataSource: 'dex' as const,
+          circulatingSupply: supply,
+          totalSupply: supply,
+          marketCapAces: '0', // Will be enriched later
+          marketCapUsd: marketCapCloseUsd.toFixed(2),
+          marketCapOpenUsd: (openUsd * supplyNum).toFixed(2),
+          marketCapHighUsd: (highUsd * supplyNum).toFixed(2),
+          marketCapLowUsd: (lowUsd * supplyNum).toFixed(2),
+          marketCapCloseUsd: marketCapCloseUsd.toFixed(2),
+        };
+
+        const adjustedCandle = this.applyMicroCandleClamp(candle, previousCandle, volumeUsd);
+        candles.push(adjustedCandle);
+        previousCandle = adjustedCandle;
+        continue;
       }
 
-      let openAcesStr = bqCandle.open;
-      let highAcesStr = bqCandle.high;
-      let lowAcesStr = bqCandle.low;
-      const closeAcesStr = bqCandle.close;
-
-      if (index === 0 && seedCandle) {
-        openAcesStr = seedCandle.close;
-        const adjustedAces = adjustRangeForOpen(openAcesStr, highAcesStr, lowAcesStr);
-        highAcesStr = adjustedAces.high;
-        lowAcesStr = adjustedAces.low;
+      // No Bitquery candle for this bucket; if we have history, synthesize a flat candle to keep continuity.
+      if (previousCandle) {
+        const empty = this.createEmptyCandle(
+          currentTime,
+          previousCandle,
+          null,
+          'dex',
+          this.GRADUATED_SUPPLY,
+          false,
+          intervalMs,
+        );
+        candles.push(empty);
+        previousCandle = empty;
+        missingBuckets += 1;
       }
+    }
 
-      const openUsd = safeParse(openUsdStr);
-      const highUsd = safeParse(highUsdStr);
-      const lowUsd = safeParse(lowUsdStr);
-      const closeUsd = safeParse(closeUsdStr);
-
-      // Market cap will be calculated in enrichment step
-      const marketCapCloseUsd = closeUsd * supplyNum;
-
-      const candle: Candle = {
-        timestamp: bqCandle.timestamp,
-        // ACES prices (same as USD for now, enrichment will handle conversion if needed)
-        open: openAcesStr,
-        high: highAcesStr,
-        low: lowAcesStr,
-        close: closeAcesStr,
-        // USD prices (from BitQuery - already perfect!)
-        openUsd: openUsdStr,
-        highUsd: highUsdStr,
-        lowUsd: lowUsdStr,
-        closeUsd: closeUsdStr,
-        // Volume
-        volume: bqCandle.volume,
-        volumeUsd: volumeUsd.toFixed(2),
-        trades: bqCandle.trades || 0,
-        // Metadata
-        dataSource: 'dex' as const,
-        circulatingSupply: supply,
-        totalSupply: supply,
-        marketCapAces: '0', // Will be enriched later
-        marketCapUsd: marketCapCloseUsd.toFixed(2),
-        marketCapOpenUsd: (openUsd * supplyNum).toFixed(2),
-        marketCapHighUsd: (highUsd * supplyNum).toFixed(2),
-        marketCapLowUsd: (lowUsd * supplyNum).toFixed(2),
-        marketCapCloseUsd: marketCapCloseUsd.toFixed(2),
-      };
-      const adjustedCandle = this.applyMicroCandleClamp(candle, previousCandle, volumeUsd);
-      candles.push(adjustedCandle);
-      previousCandle = adjustedCandle;
-    });
+    if (missingBuckets > 0) {
+      console.log('[ChartAggregation] 🔍 Filled missing Bitquery buckets in historical slice', {
+        timeframe: options.timeframe,
+        missingBuckets,
+        totalBuckets: Math.round((endTime - startTime) / intervalMs) + 1,
+        bitqueryBuckets: bitQueryCandles.length,
+        from: new Date(startTime).toISOString(),
+        to: new Date(endTime).toISOString(),
+      });
+    }
 
     return candles;
   }
@@ -1593,20 +1672,26 @@ export class ChartAggregationService {
 
     // 🔥 DEBUG: Log trade details
     const totalTrades = bitQueryTrades.length + dbTrades.length;
-    const summedVolume = bitQueryTrades.reduce((sum, t) => sum + parseFloat(t.volumeUsd || '0'), 0) +
-      dbTrades.reduce((sum, t) => sum + (t.priceInUsd ? parseFloat(t.tokenAmount) * t.priceInUsd : 0), 0);
-    const minTimestamp = totalTrades > 0 
-      ? Math.min(
-          ...bitQueryTrades.map(t => t.blockTime.getTime()),
-          ...dbTrades.map(t => Number(t.timestamp))
-        )
-      : null;
-    const maxTimestamp = totalTrades > 0
-      ? Math.max(
-          ...bitQueryTrades.map(t => t.blockTime.getTime()),
-          ...dbTrades.map(t => Number(t.timestamp))
-        )
-      : null;
+    const summedVolume =
+      bitQueryTrades.reduce((sum, t) => sum + parseFloat(t.volumeUsd || '0'), 0) +
+      dbTrades.reduce(
+        (sum, t) => sum + (t.priceInUsd ? parseFloat(t.tokenAmount) * t.priceInUsd : 0),
+        0,
+      );
+    const minTimestamp =
+      totalTrades > 0
+        ? Math.min(
+            ...bitQueryTrades.map((t) => t.blockTime.getTime()),
+            ...dbTrades.map((t) => Number(t.timestamp)),
+          )
+        : null;
+    const maxTimestamp =
+      totalTrades > 0
+        ? Math.max(
+            ...bitQueryTrades.map((t) => t.blockTime.getTime()),
+            ...dbTrades.map((t) => Number(t.timestamp)),
+          )
+        : null;
 
     console.log('[ChartAggregation] 🔍 DEBUG - fetchRecentDexTrades trade summary:', {
       tokenAddress: tokenAddress.toLowerCase(),
@@ -1669,7 +1754,7 @@ export class ChartAggregationService {
     // 🔥 DEBUG: Log trade distribution by hour bucket
     if (trades.length > 0) {
       const buckets = new Map<number, number>();
-      trades.forEach(t => {
+      trades.forEach((t) => {
         const bucket = Math.floor(t.timestamp.getTime() / (60 * 60 * 1000)) * (60 * 60 * 1000);
         buckets.set(bucket, (buckets.get(bucket) || 0) + 1);
       });
@@ -1731,19 +1816,21 @@ export class ChartAggregationService {
         volumeUsd: lastCandle.volumeUsd,
         dataSource: lastCandle.dataSource,
       });
-      
+
       // 🔥 DEBUG: Check if candles have trades
-      const candlesWithTrades = candles.filter(c => c.trades > 0);
-      const candlesWithVolume = candles.filter(c => parseFloat(c.volume || '0') > 0);
+      const candlesWithTrades = candles.filter((c) => c.trades > 0);
+      const candlesWithVolume = candles.filter((c) => parseFloat(c.volume || '0') > 0);
       console.log('[ChartAggregation] 🔍 DEBUG - Candle stats:', {
         totalCandles: candles.length,
         candlesWithTrades: candlesWithTrades.length,
         candlesWithVolume: candlesWithVolume.length,
-        sampleCandleWithTrades: candlesWithTrades[0] ? {
-          timestamp: candlesWithTrades[0].timestamp.toISOString(),
-          trades: candlesWithTrades[0].trades,
-          volume: candlesWithTrades[0].volume,
-        } : null,
+        sampleCandleWithTrades: candlesWithTrades[0]
+          ? {
+              timestamp: candlesWithTrades[0].timestamp.toISOString(),
+              trades: candlesWithTrades[0].trades,
+              volume: candlesWithTrades[0].volume,
+            }
+          : null,
       });
     }
 
@@ -1760,6 +1847,7 @@ export class ChartAggregationService {
     options: ChartOptions,
     currentCandleTimestamp: number,
     seedCandle: Candle | null = null, // 🔥 NEW: Accept seed candle for graduation connection
+    dexStartDate?: Date,
   ): Promise<Candle[]> {
     // 🔥 DEBUG: Log entry
     console.log('[ChartAggregation] 🔍 DEBUG - fetchDexDataWithSmartSwitching ENTRY:', {
@@ -1773,6 +1861,17 @@ export class ChartAggregationService {
     });
 
     const now = new Date();
+
+    if (dexStartDate && options.to <= dexStartDate) {
+      console.log('[ChartAggregation] ⏭️ Skipping DEX fetch - range is before dexLiveAt', {
+        tokenAddress: tokenAddress.toLowerCase(),
+        timeframe: options.timeframe,
+        from: options.from.toISOString(),
+        to: options.to.toISOString(),
+        dexLiveAt: dexStartDate.toISOString(),
+      });
+      return [];
+    }
     const historicalBoundary = new Date(
       now.getTime() - DATA_SOURCE_CONFIG.HISTORICAL_BOUNDARY_DAYS * 24 * 60 * 60 * 1000,
     );
@@ -1793,6 +1892,7 @@ export class ChartAggregationService {
 
       const historicalCandles = await this.fetchHistoricalDexOHLCV(
         tokenAddress,
+        poolAddress,
         historicalOptions,
         connectionSeed,
       );
@@ -1838,7 +1938,7 @@ export class ChartAggregationService {
 
     if (needsHistoricalSlice && !needsRecentSlice && candles.length === 0) {
       // Entirely historical range but no candles returned above
-      return this.fetchHistoricalDexOHLCV(tokenAddress, options, seedCandle);
+      return this.fetchHistoricalDexOHLCV(tokenAddress, poolAddress, options, seedCandle);
     }
 
     // 🔥 DEBUG: Log exit with results
@@ -1849,13 +1949,16 @@ export class ChartAggregationService {
       totalCandles: candles.length,
       bondingCount,
       dexCount,
-      lastCandle: candles.length > 0 ? {
-        timestamp: candles[candles.length - 1].timestamp.toISOString(),
-        dataSource: candles[candles.length - 1].dataSource,
-        trades: candles[candles.length - 1].trades,
-        volume: candles[candles.length - 1].volume,
-        closeUsd: candles[candles.length - 1].closeUsd,
-      } : null,
+      lastCandle:
+        candles.length > 0
+          ? {
+              timestamp: candles[candles.length - 1].timestamp.toISOString(),
+              dataSource: candles[candles.length - 1].dataSource,
+              trades: candles[candles.length - 1].trades,
+              volume: candles[candles.length - 1].volume,
+              closeUsd: candles[candles.length - 1].closeUsd,
+            }
+          : null,
     });
 
     return candles;
@@ -2025,6 +2128,18 @@ export class ChartAggregationService {
   ): Promise<Candle[]> {
     const graduationDate = new Date(graduationState.dexLiveAt!);
 
+    const rangeCase =
+      options.to < graduationDate ? 'pre' : options.from >= graduationDate ? 'post' : 'spanning';
+
+    console.log('[ChartAggregation] 🎓 Graduation routing decision:', {
+      tokenAddress: tokenAddress.toLowerCase(),
+      timeframe: options.timeframe,
+      from: options.from.toISOString(),
+      to: options.to.toISOString(),
+      dexLiveAt: graduationDate.toISOString(),
+      case: rangeCase,
+    });
+
     // console.log('[ChartAggregation] 🎓 Graduation boundary check:', {
     //   graduationDate: graduationDate.toISOString(),
     //   requestFrom: options.from.toISOString(),
@@ -2057,6 +2172,7 @@ export class ChartAggregationService {
         { ...options, from: graduationDate },
         currentCandleTimestamp,
         lastBondingCandle, // 🔥 Pass seed candle for connection
+        graduationDate,
       );
 
       console.log('[ChartAggregation] ✅ Merged graduation boundary:', {
@@ -2074,7 +2190,9 @@ export class ChartAggregationService {
 
     // CASE 2: Request is entirely before graduation
     if (options.to < graduationDate) {
-      // console.log('[ChartAggregation] 📈 Entire request pre-graduation (bonding curve)');
+      console.log(
+        '[ChartAggregation] 📈 Entire range is pre-graduation - using bonding curve data',
+      );
       return this.fetchBondingCurveData(
         tokenAddress,
         options,
@@ -2090,6 +2208,8 @@ export class ChartAggregationService {
       graduationState.poolAddress!,
       options,
       currentCandleTimestamp,
+      null,
+      graduationDate,
     );
   }
 

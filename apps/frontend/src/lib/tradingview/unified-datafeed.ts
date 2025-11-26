@@ -805,29 +805,57 @@ export class UnifiedDatafeed implements IBasicDataFeed {
     // This ensures every scroll-back triggers a fresh API call so we can see what's happening
 
     try {
-      // 🔥 UPDATED: Load more candles for lower timeframes + better scroll-back support
+      // 🔥 UPDATED: Progressive loading – size requests by visible range so scroll-back keeps pulling history
       const getInitialLimit = (tf: string) => {
         switch (tf) {
           case '1m':
-            return 300; // 5 hours
+            return 300; // ~5 hours
           case '5m':
-            return 240; // 20 hours
+            return 240; // ~20 hours
           case '15m':
-            return 192; // 48 hours (2 days)
+            return 192; // ~2 days
           case '1h':
-            return 168; // 7 days
+            return 168; // ~7 days (baseline only; see dynamic sizing below)
           case '4h':
-            return 180; // 30 days
+            return 180; // ~30 days
           case '1D':
-            return 90; // 3 months
+            return 90; // ~3 months
           default:
             return 150;
         }
       };
 
-      const limit = periodParams.firstDataRequest
-        ? getInitialLimit(timeframe)
-        : periodParams.countBack || getInitialLimit(timeframe);
+      const getIntervalMs = (tf: string) => {
+        switch (tf) {
+          case '1m':
+            return 60 * 1000;
+          case '5m':
+            return 5 * 60 * 1000;
+          case '15m':
+            return 15 * 60 * 1000;
+          case '1h':
+            return 60 * 60 * 1000;
+          case '4h':
+            return 4 * 60 * 60 * 1000;
+          case '1D':
+            return 24 * 60 * 60 * 1000;
+          default:
+            return 60 * 60 * 1000;
+        }
+      };
+
+      const intervalMs = getIntervalMs(timeframe);
+      const requestedRangeMs = Math.max(0, toMs - fromMs);
+      const bucketsInRange = Math.ceil(requestedRangeMs / intervalMs);
+
+      // Let TradingView countBack expand the request, otherwise size to visible buckets with a small buffer.
+      const dynamicLimit = Math.max(
+        getInitialLimit(timeframe),
+        periodParams.countBack ?? 0,
+        bucketsInRange + 20, // buffer to avoid off-by-one gaps
+      );
+
+      const limit = Math.min(dynamicLimit, 5000); // Bitquery max guardrail
 
       // Build URL with time range and limit for better control
       const url = `${this.config.apiBaseUrl}/api/v1/chart/${tokenAddress}/unified?timeframe=${timeframe}&from=${periodParams.from}&to=${periodParams.to}&limit=${limit}`;
@@ -874,9 +902,9 @@ export class UnifiedDatafeed implements IBasicDataFeed {
         return;
       }
 
-      // Filter candles to requested time range
+      // Filter candles to requested time range (respect fallback bounds when TradingView omits from/to)
       const filteredCandles = candles.filter(
-        (c) => c.timestamp >= periodParams.from && c.timestamp <= periodParams.to,
+        (c) => c.timestamp >= fromSeconds && c.timestamp <= toSeconds,
       );
 
       if (filteredCandles.length === 0) {

@@ -257,34 +257,124 @@ export const BITQUERY_QUERIES = {
   `,
 
   // Get OHLC data (aggregated candles) using DEXTradeByTokens
-  GET_OHLC_CANDLES: `
-    query GetOHLCCandles(
+  GET_OHLC_CANDLES_ARCHIVE: `
+    query GetOHLCCandlesArchive(
       $network: evm_network
-      $poolAddress: String!
+      $poolAddress: String
       $tokenAddress: String!
-      $counterToken: String!
+      $counterToken: String
       $from: DateTime!
       $to: DateTime!
       $intervalCount: Int!
+      $intervalUnit: OLAP_DateTimeIntervalUnits!
+      $priceAsymmetry: Float!
     ) {
       EVM(dataset: archive, network: $network) {
         DEXTradeByTokens(
           where: {
             Block: { Time: { since: $from, till: $to } }
             Trade: {
-              Dex: { SmartContract: { is: $poolAddress } }
-              Currency: { SmartContract: { is: $tokenAddress } }
-              Side: { 
-                Amount: { gt: "0" }
-                Currency: { SmartContract: { is: $counterToken } } 
+              Dex: {
+                SmartContract: { is: $poolAddress }
               }
-              PriceAsymmetry: { lt: 0.5 }
+              Currency: { SmartContract: { is: $tokenAddress } }
+              Side: {
+                Amount: { gt: "0" }
+                Currency: { SmartContract: { is: $counterToken } }
+              }
+              PriceAsymmetry: { lt: $priceAsymmetry }
             }
           }
           orderBy: { ascendingByField: "Block_Time" }
         ) {
           Block {
-            Time(interval: { in: minutes, count: $intervalCount })
+            Time(interval: { in: $intervalUnit, count: $intervalCount })
+          }
+          Trade {
+            open: PriceInUSD(minimum: Block_Number)
+            close: PriceInUSD(maximum: Block_Number)
+            high: PriceInUSD(maximum: Trade_PriceInUSD)
+            low: PriceInUSD(minimum: Trade_PriceInUSD)
+          }
+          volume: sum(of: Trade_Side_Amount)
+          volumeUsd: sum(of: Trade_Side_AmountInUSD)
+          tradesCount: count
+        }
+      }
+    }
+  `,
+
+  GET_OHLC_CANDLES_COMBINED: `
+    query GetOHLCCandlesCombined(
+      $network: evm_network
+      $poolAddress: String
+      $tokenAddress: String!
+      $counterToken: String
+      $from: DateTime!
+      $to: DateTime!
+      $intervalCount: Int!
+      $intervalUnit: OLAP_DateTimeIntervalUnits!
+      $priceAsymmetry: Float!
+    ) {
+      EVM(dataset: combined, network: $network) {
+        DEXTradeByTokens(
+          where: {
+            Block: { Time: { since: $from, till: $to } }
+            Trade: {
+              Dex: {
+                SmartContract: { is: $poolAddress }
+              }
+              Currency: { SmartContract: { is: $tokenAddress } }
+              Side: {
+                Amount: { gt: "0" }
+                Currency: { SmartContract: { is: $counterToken } }
+              }
+              PriceAsymmetry: { lt: $priceAsymmetry }
+            }
+          }
+          orderBy: { ascendingByField: "Block_Time" }
+        ) {
+          Block {
+            Time(interval: { in: $intervalUnit, count: $intervalCount })
+          }
+          Trade {
+            open: PriceInUSD(minimum: Block_Number)
+            close: PriceInUSD(maximum: Block_Number)
+            high: PriceInUSD(maximum: Trade_PriceInUSD)
+            low: PriceInUSD(minimum: Trade_PriceInUSD)
+          }
+          volume: sum(of: Trade_Side_Amount)
+          volumeUsd: sum(of: Trade_Side_AmountInUSD)
+          tradesCount: count
+        }
+      }
+    }
+  `,
+
+  GET_OHLC_CANDLES_TOKEN_ONLY_COMBINED: `
+    query GetOHLCCandlesTokenOnlyCombined(
+      $network: evm_network
+      $tokenAddress: String!
+      $from: DateTime!
+      $to: DateTime!
+      $intervalCount: Int!
+      $intervalUnit: OLAP_DateTimeIntervalUnits!
+      $priceAsymmetry: Float!
+    ) {
+      EVM(dataset: combined, network: $network) {
+        DEXTradeByTokens(
+          where: {
+            Block: { Time: { since: $from, till: $to } }
+            Trade: {
+              Currency: { SmartContract: { is: $tokenAddress } }
+              PriceAsymmetry: { lt: $priceAsymmetry }
+              Price: { gt: 0 }
+            }
+          }
+          orderBy: { ascendingByField: "Block_Time" }
+        ) {
+          Block {
+            Time(interval: { in: $intervalUnit, count: $intervalCount })
           }
           Trade {
             open: PriceInUSD(minimum: Block_Number)
@@ -332,37 +422,6 @@ export const BITQUERY_QUERIES = {
       }
     }
   `,
-
-  // Get OHLC data using Trading.Tokens query (accurate USD pricing)
-  GET_TRADING_TOKENS_OHLC: `
-    query GetTradingTokensOHLC(
-      $tokenAddress: String!
-      $from: DateTime!
-      $to: DateTime!
-      $intervalSeconds: Int!
-    ) {
-      Trading {
-        Tokens(
-          where: {
-            Volume: { Usd: { gt: 0 } }
-            Token: { Address: { is: $tokenAddress } }
-            Interval: { Time: { Duration: { eq: $intervalSeconds } } }
-            Block: { Time: { since: $from, till: $to } }
-          }
-        ) {
-          Block { Time Timestamp }
-          Interval { Time { Start End Duration } }
-          Price {
-            IsQuotedInUsd
-            Ohlc { Open High Low Close }
-          }
-          Volume { Base Quote Usd }
-          Token { Address Symbol Name }
-        }
-      }
-    }
-  `,
-
   // Get latest price for market cap calculation
   GET_LATEST_PRICE_USD: `
     query GetLatestPriceUSD($tokenAddress: String!) {
@@ -394,23 +453,13 @@ const wethUsdcPoolEnv = process.env.WETH_USDC_POOL || process.env.BITQUERY_WETH_
 export const AERODROME_ACES_WETH_POOL = acesWethPoolEnv ? acesWethPoolEnv.toLowerCase() : '';
 export const WETH_USDC_POOL = wethUsdcPoolEnv ? wethUsdcPoolEnv.toLowerCase() : '';
 
-// Timeframe to seconds mapping for Trading.Tokens query
-export const TIMEFRAME_TO_SECONDS: Record<string, number> = {
-  '1m': 60,
-  '5m': 300,
-  '15m': 900,
-  '1h': 3600,
-  '4h': 14400,
-  '1d': 86400,
-};
-
 /**
  * Data source switching configuration for smart routing
  * Determines when to use individual trades vs pre-aggregated OHLCV
  */
 export const DATA_SOURCE_CONFIG = {
   // Use pre-aggregated OHLCV for requests older than this many days
-  HISTORICAL_BOUNDARY_DAYS: 7,
+  HISTORICAL_BOUNDARY_DAYS: 5,
 
   // Cache time-to-live by data source type
   CACHE_TTL: {
@@ -418,4 +467,11 @@ export const DATA_SOURCE_CONFIG = {
     RECENT_TRADES: 1000, // 1 second (real-time updates)
     BONDING_TRADES: 1000, // 1 second (real-time updates)
   },
+};
+
+export const BITQUERY_OHLC_SETTINGS = {
+  PRIMARY_DATASET: 'archive' as const,
+  FALLBACK_DATASET: 'combined' as const,
+  DEFAULT_MAX_PRICE_ASYMMETRY: 0.5,
+  FALLBACK_MAX_PRICE_ASYMMETRY: 1.0,
 };
