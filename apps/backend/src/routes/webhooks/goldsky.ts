@@ -32,6 +32,8 @@ function toFullDecimalString(value: any): string {
  * GoldSky webhook payload structure for Trade entity
  * Matches the subgraph schema from goldsky-client.ts
  */
+type JsonRecord = Record<string, any>;
+
 interface GoldSkyTradeWebhook {
   op: 'INSERT' | 'UPDATE' | 'DELETE';
   data_source?: string;
@@ -68,6 +70,42 @@ interface GoldSkyTradeWebhook {
 }
 
 export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
+  const buildScopeChain = (raw: JsonRecord): JsonRecord[] => {
+    const scopes: JsonRecord[] = [];
+    const pushScope = (scope: unknown) => {
+      if (scope && typeof scope === 'object' && !scopes.includes(scope as JsonRecord)) {
+        scopes.push(scope as JsonRecord);
+      }
+    };
+
+    pushScope(raw);
+    pushScope(raw.data);
+    pushScope(raw.data?.token);
+    pushScope(raw.data?.new);
+    pushScope(raw.data?.new?.token);
+    pushScope(raw.payload);
+    pushScope(raw.payload?.token);
+    pushScope(raw.payload?.data);
+    pushScope(raw.token);
+    pushScope(raw.token?.data);
+
+    return scopes;
+  };
+
+  const getValueFromScopes = <T>(scopes: JsonRecord[], keys: string[]): T | undefined => {
+    for (const scope of scopes) {
+      for (const key of keys) {
+        if (scope && Object.prototype.hasOwnProperty.call(scope, key)) {
+          const value = scope[key];
+          if (value !== undefined && value !== null) {
+            return value as T;
+          }
+        }
+      }
+    }
+    return undefined;
+  };
+
   /**
    * Normalize pipeline (SQL transform) payloads into the shape expected by processSingleTrade
    */
@@ -475,7 +513,9 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
   fastify.post<{ Body: Record<string, any> | Record<string, any>[] }>(
     '/bonding',
     async (request, reply) => {
-      const payloadArray = Array.isArray(request.body) ? request.body : [request.body];
+      const payloadArray = (
+        Array.isArray(request.body) ? request.body : [request.body]
+      ) as JsonRecord[];
 
       // Secret verification (reuse trade headers)
       const goldskySecret =
@@ -502,43 +542,74 @@ export async function goldskyWebhookRoutes(fastify: FastifyInstance) {
 
       for (const raw of payloadArray) {
         try {
+          const scopeChain = buildScopeChain(raw);
+          const tokenAddressValue = getValueFromScopes<string>(scopeChain, [
+            'token_address',
+            'tokenAddress',
+            'address',
+          ]);
           const tokenAddress =
-            raw?.address ||
-            raw?.token_address ||
-            raw?.tokenAddress ||
-            (raw?.token?.address as string | undefined);
+            typeof tokenAddressValue === 'string' ? tokenAddressValue.trim() : undefined;
 
-          if (!tokenAddress || typeof tokenAddress !== 'string') {
+          if (!tokenAddress) {
             throw new Error('Missing token address in bonding payload');
           }
 
-          const bondedRaw = raw?.bonded ?? raw?.isBonded ?? raw?.is_bonded;
+          const bondedRaw = getValueFromScopes<string | boolean>(scopeChain, [
+            'bonded',
+            'isBonded',
+            'is_bonded',
+          ]);
           const isBonded =
             typeof bondedRaw === 'string'
               ? bondedRaw.toLowerCase() === 'true'
               : Boolean(bondedRaw);
 
           const bondingProgressRaw =
-            raw?.bondingProgress ?? raw?.bonding_progress ?? raw?.bonding_progress ?? 0;
-          const bondingProgress = Number.parseFloat(bondingProgressRaw) || 0;
+            getValueFromScopes<string | number>(scopeChain, [
+              'bondingProgress',
+              'bonding_progress',
+              'bonding_progress_percentage',
+            ]) ?? 0;
+          const bondingProgress =
+            typeof bondingProgressRaw === 'number'
+              ? bondingProgressRaw
+              : Number.parseFloat(bondingProgressRaw) || 0;
 
-          const supplyRaw = toFullDecimalString(raw?.supply ?? '0');
-          const poolAddress =
-            (raw?.poolAddress as string | undefined) ||
-            (raw?.pool_address as string | undefined) ||
-            null;
+          const supplyRaw = toFullDecimalString(
+            getValueFromScopes<unknown>(scopeChain, ['supply', 'total_supply']) ?? '0',
+          );
+          const poolAddressValue = getValueFromScopes<string>(scopeChain, [
+            'poolAddress',
+            'pool_address',
+          ]);
+          const poolAddress = poolAddressValue?.trim() || null;
 
           const blockNumber =
-            raw?.block_number ?? raw?.blockNumber ?? raw?.block ?? raw?.block_no ?? null;
-          const updatedAt = raw?.updated_at ?? raw?.updatedAt ?? null;
-          const graduatedAt =
-            typeof blockNumber === 'number'
-              ? blockNumber
-              : blockNumber
-                  ? Number.parseInt(blockNumber as string, 10)
-                  : updatedAt
-                    ? Number.parseInt(updatedAt as string, 10)
-                    : undefined;
+            getValueFromScopes<string | number>(scopeChain, [
+              'block_number',
+              'blockNumber',
+              'block',
+              'block_no',
+            ]) ?? null;
+          const updatedAt =
+            getValueFromScopes<string | number>(scopeChain, ['updated_at', 'updatedAt']) ??
+            null;
+          const graduatedAt = (() => {
+            if (typeof blockNumber === 'number') return blockNumber;
+            if (typeof blockNumber === 'string' && blockNumber.trim() !== '') {
+              const parsedBlock = Number.parseInt(blockNumber, 10);
+              if (!Number.isNaN(parsedBlock)) return parsedBlock;
+            }
+
+            if (typeof updatedAt === 'number') return updatedAt;
+            if (typeof updatedAt === 'string' && updatedAt.trim() !== '') {
+              const parsedUpdated = Number.parseInt(updatedAt, 10);
+              if (!Number.isNaN(parsedUpdated)) return parsedUpdated;
+            }
+
+            return undefined;
+          })();
 
           const memoryStore = getMemoryStore();
           const normalizedPool = poolAddress ? poolAddress.toLowerCase() : null;
