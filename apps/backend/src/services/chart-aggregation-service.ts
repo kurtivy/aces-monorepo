@@ -1014,35 +1014,34 @@ export class ChartAggregationService {
     const pricesInAces = bucketTrades.map((t) => t.priceInAces);
     const pricesInUsd = bucketTrades.map((t) => t.priceInUsd);
 
-    // 🔥 NEW: Calculate VWAP for close price
-    // VWAP in ACES = Σ(priceInAces × volumeInAces) / Σ(volumeInAces)
-    const totalValueAces = bucketTrades.reduce((sum, t) => sum + t.priceInAces * t.amountToken, 0);
-    const totalVolumeAces = bucketTrades.reduce((sum, t) => sum + t.amountToken, 0);
-    const vwapCloseAces = totalVolumeAces > 0 ? totalValueAces / totalVolumeAces : pricesInAces[0];
+    // 🔥 INDUSTRY STANDARD: Use last trade price for close (matches DEXScreener, Binance, TradingView)
+    // VWAP is typically shown as a separate indicator, not used for candlestick close price.
+    // Using last trade eliminates phantom wicks when price moves monotonically.
+    //
+    // 📝 VWAP calculations commented out for potential future use as indicator:
+    // const totalValueAces = bucketTrades.reduce((sum, t) => sum + t.priceInAces * t.amountToken, 0);
+    // const totalVolumeAces = bucketTrades.reduce((sum, t) => sum + t.amountToken, 0);
+    // const vwapCloseAces = totalVolumeAces > 0 ? totalValueAces / totalVolumeAces : pricesInAces[0];
+    // const totalValueUsd = bucketTrades.reduce((sum, t) => sum + t.priceInUsd * t.volumeUsd, 0);
+    // const vwapCloseUsd = totalVolumeUsd > 0 ? totalValueUsd / totalVolumeUsd : pricesInUsd[0];
 
-    // VWAP in USD = Σ(priceInUsd × volumeInUsd) / Σ(volumeInUsd)
-    const totalValueUsd = bucketTrades.reduce((sum, t) => sum + t.priceInUsd * t.volumeUsd, 0);
     const totalVolumeUsd = bucketTrades.reduce((sum, t) => sum + t.volumeUsd, 0);
-    const vwapCloseUsd = totalVolumeUsd > 0 ? totalValueUsd / totalVolumeUsd : pricesInUsd[0];
 
-    // OHLC in ACES
+    // OHLC in ACES - Close is the last trade price (industry standard)
     let openAces = pricesInAces[0];
-    const closeAces = vwapCloseAces; // ✅ VWAP instead of last trade
-    let highAces = Math.max(...pricesInAces);
-    let lowAces = Math.min(...pricesInAces);
+    const closeAces = pricesInAces[pricesInAces.length - 1]; // ✅ Last trade price (industry standard)
 
     // CRITICAL: Connect to previous candle (NO GAPS!)
     if (previousCandle) {
       openAces = parseFloat(previousCandle.close);
-
-      // 🔥 FIX: When there's only 1 trade, show a wick based on price movement from previous candle
-      // This ensures candles look correct even with sparse trades
-      if (bucketTrades.length === 1) {
-        const previousCloseAces = parseFloat(previousCandle.close);
-        highAces = Math.max(previousCloseAces, closeAces);
-        lowAces = Math.min(previousCloseAces, closeAces);
-      }
     }
+
+    // 🔥 FIX: High/Low MUST include open price to create valid candlesticks
+    // Without this, when open (from previous close) differs from trade prices,
+    // we get invalid candles where low > min(open, close) or high < max(open, close)
+    // This fixes phantom wicks when price moves monotonically in one direction
+    const highAces = Math.max(openAces, closeAces, ...pricesInAces);
+    const lowAces = Math.min(openAces, closeAces, ...pricesInAces);
 
     // OHLC in USD
     let openUsd: number, closeUsd: number, highUsd: number, lowUsd: number;
@@ -1050,36 +1049,28 @@ export class ChartAggregationService {
     if (dataSource === 'dex' && pricesInUsd.some((p) => p > 0)) {
       // DEX: Use BitQuery USD prices (already in USD from BitQuery)
       const firstTradeUsd = pricesInUsd[0];
-      closeUsd = vwapCloseUsd; // ✅ VWAP instead of last trade
-      highUsd = Math.max(...pricesInUsd);
-      lowUsd = Math.min(...pricesInUsd);
+      closeUsd = pricesInUsd[pricesInUsd.length - 1]; // ✅ Last trade price (industry standard)
 
       // Connect USD to previous candle
       openUsd = previousCandle ? parseFloat(previousCandle.closeUsd) : firstTradeUsd;
 
-      // 🔥 FIX: When there's only 1 trade, show a wick based on price movement from previous candle
-      if (previousCandle && bucketTrades.length === 1) {
-        const previousCloseUsd = parseFloat(previousCandle.closeUsd);
-        highUsd = Math.max(previousCloseUsd, closeUsd);
-        lowUsd = Math.min(previousCloseUsd, closeUsd);
-      }
+      // 🔥 FIX: High/Low MUST include open and close prices for valid candlesticks
+      // This ensures no phantom wicks when price moves monotonically
+      highUsd = Math.max(openUsd, closeUsd, ...pricesInUsd);
+      lowUsd = Math.min(openUsd, closeUsd, ...pricesInUsd);
     } else {
       // Bonding Curve: Use snapshot USD prices (already in trades from TradePriceAggregator)
       // The pricesInUsd array (line 391) contains USD values calculated using database snapshots
       const firstTradeUsd = pricesInUsd[0];
-      closeUsd = vwapCloseUsd; // ✅ VWAP instead of last trade
-      highUsd = Math.max(...pricesInUsd);
-      lowUsd = Math.min(...pricesInUsd);
+      closeUsd = pricesInUsd[pricesInUsd.length - 1]; // ✅ Last trade price (industry standard)
 
       // Connect USD to previous candle (NO GAPS)
       openUsd = previousCandle ? parseFloat(previousCandle.closeUsd) : firstTradeUsd;
 
-      // 🔥 FIX: When there's only 1 trade, show a wick based on price movement from previous candle
-      if (previousCandle && bucketTrades.length === 1) {
-        const previousCloseUsd = parseFloat(previousCandle.closeUsd);
-        highUsd = Math.max(previousCloseUsd, closeUsd);
-        lowUsd = Math.min(previousCloseUsd, closeUsd);
-      }
+      // 🔥 FIX: High/Low MUST include open and close prices for valid candlesticks
+      // This ensures no phantom wicks when price moves monotonically
+      highUsd = Math.max(openUsd, closeUsd, ...pricesInUsd);
+      lowUsd = Math.min(openUsd, closeUsd, ...pricesInUsd);
     }
 
     // Volume
@@ -1981,23 +1972,43 @@ export class ChartAggregationService {
         return null;
       }
 
-      const lastTrade = seedTrades[seedTrades.length - 1];
+      // 🔥 CRITICAL FIX: Always use the MOST RECENT trade for seed candle price
+      // Previously used [length-1] which got the OLDEST trade = floor price from bonding curve start!
+      // This caused big red candles on page refresh as seed used floor price instead of current price.
+      //
+      // DEFENSIVE: Sort by timestamp descending to guarantee most recent is first,
+      // regardless of API ordering changes. This makes the code order-agnostic.
+      const sortedTrades = [...seedTrades].sort(
+        (a, b) => b.timestamp.getTime() - a.timestamp.getTime(),
+      );
+      const mostRecentTrade = sortedTrades[0];
+      const tradeSupply = mostRecentTrade.circulatingSupply;
       const supplyValue =
-        typeof lastTrade.circulatingSupply === 'number' && lastTrade.circulatingSupply > 0
-          ? lastTrade.circulatingSupply
+        typeof tradeSupply === 'number' && tradeSupply > 0
+          ? tradeSupply
           : parseFloat(this.BONDING_SUPPLY);
 
       const usdPrice =
-        typeof lastTrade.priceInUsd === 'number' && lastTrade.priceInUsd > 0
-          ? lastTrade.priceInUsd
+        typeof mostRecentTrade.priceInUsd === 'number' && mostRecentTrade.priceInUsd > 0
+          ? mostRecentTrade.priceInUsd
           : acesUsdPrice
-            ? lastTrade.priceInAces * acesUsdPrice
+            ? mostRecentTrade.priceInAces * acesUsdPrice
             : 0;
+
+      console.log('[ChartAggregation] 🌱 Bonding seed candle price:', {
+        tokenAddress: tokenAddress.slice(0, 10),
+        timeframe,
+        tradesFound: seedTrades.length,
+        usingTradeIndex: 0,
+        tradeTime: mostRecentTrade.timestamp.toISOString(),
+        priceInAces: mostRecentTrade.priceInAces,
+        priceInUsd: usdPrice,
+      });
 
       return this.buildSeedCandle(
         timeframe,
         alignedStart,
-        lastTrade.priceInAces,
+        mostRecentTrade.priceInAces,
         usdPrice,
         supplyValue,
         'bonding_curve',
@@ -2045,14 +2056,33 @@ export class ChartAggregationService {
           return null;
         }
         console.log(
-          '[ChartAggregation] ✅ Found seed trade from:',
-          seedTrades[seedTrades.length - 1].blockTime.toISOString(),
+          '[ChartAggregation] ✅ Found seed trade from extended lookback:',
+          seedTrades[0]?.blockTime?.toISOString() ?? 'unknown',
         );
       }
 
-      const lastTrade = seedTrades[seedTrades.length - 1];
-      const priceInAces = parseFloat(lastTrade.priceInAces);
-      const priceInUsd = parseFloat(lastTrade.priceInUsd);
+      // 🔥 CRITICAL FIX: Always use the MOST RECENT trade for seed candle price
+      // Previously used [length-1] which got the OLDEST trade = floor price from bonding curve start!
+      // This caused big red candles on page refresh as seed used floor price instead of current price.
+      //
+      // DEFENSIVE: Sort by blockTime descending to guarantee most recent is first,
+      // regardless of API ordering changes. This makes the code order-agnostic.
+      const sortedTrades = [...seedTrades].sort(
+        (a, b) => b.blockTime.getTime() - a.blockTime.getTime(),
+      );
+      const mostRecentTrade = sortedTrades[0];
+      const priceInAces = parseFloat(mostRecentTrade.priceInAces);
+      const priceInUsd = parseFloat(mostRecentTrade.priceInUsd);
+
+      console.log('[ChartAggregation] 🌱 DEX seed candle price:', {
+        tokenAddress: tokenAddress.slice(0, 10),
+        timeframe,
+        tradesFound: seedTrades.length,
+        usingTradeIndex: 0,
+        tradeTime: mostRecentTrade.blockTime.toISOString(),
+        priceInAces,
+        priceInUsd,
+      });
       const supplyValue = parseFloat(this.GRADUATED_SUPPLY);
 
       return this.buildSeedCandle(

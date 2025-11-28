@@ -63,6 +63,7 @@ const transformTrade = (trade: RealtimeTrade): TradeHistoryEntry => {
 export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptions = {}) => {
   const { dexMeta } = options;
   const [historicalTrades, setHistoricalTrades] = useState<TradeHistoryEntry[]>([]);
+  const [bondingTrades, setBondingTrades] = useState<TradeHistoryEntry[]>([]); // 🔥 Preserve bonding trades after graduation
   const [isLoadingHistorical, setIsLoadingHistorical] = useState(false);
   const [historicalError, setHistoricalError] = useState<string | null>(null);
   const [hasFreshTrades, setHasFreshTrades] = useState(false); // 🔥 NEW: Track if we have recent trades
@@ -100,46 +101,20 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
   // Use auto-detected graduation OR explicit dexMeta flag
   const effectiveIsDexLive = isDexLive || hasBitQueryTrades;
 
-  // 🔥 NEW: Filter trades by source based on graduation state
-  // IMPORTANT: Always include BitQuery trades if they exist (auto-detection)
+  // 🔥 SIMPLIFIED: Include ALL WebSocket trades from both sources
+  // Deduplication and limiting happens in the final merge step
   const realtimeTrades = useMemo(() => {
     // Check if we have ANY BitQuery trades (even if effectiveIsDexLive is false)
     const hasAnyBitQueryTrades = allRealtimeTrades.some((t) => t.source === 'bitquery');
 
-    // If we have BitQuery trades OR token is graduated, show BitQuery trades
     if (effectiveIsDexLive || hasAnyBitQueryTrades) {
-      // Token graduated OR has BitQuery trades: Show BitQuery (DEX) trades
-      // But keep recent Goldsky trades for transition period (last 5 minutes)
-      const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
-      const filtered = allRealtimeTrades.filter((trade) => {
-        if (trade.source === 'bitquery') {
-          return true; // Always show DEX trades (BitQuery)
-        }
-        // Show Goldsky trades from last 5 minutes (transition period)
-        return trade.source === 'goldsky' && trade.timestamp > fiveMinutesAgo;
-      });
-
-      // console.log('[TradeHistory] 🔍 Filtering trades (DEX mode):', {
-      //   totalRealtimeTrades: allRealtimeTrades.length,
-      //   bitqueryTrades: allRealtimeTrades.filter((t) => t.source === 'bitquery').length,
-      //   goldskyTrades: allRealtimeTrades.filter((t) => t.source === 'goldsky').length,
-      //   filteredCount: filtered.length,
-      //   effectiveIsDexLive,
-      //   hasAnyBitQueryTrades,
-      // });
-
-      return filtered;
+      // Token graduated: Include ALL trades from both sources
+      // The merge step will sort by timestamp and limit to 100
+      // This ensures seamless trade history continuity
+      return allRealtimeTrades;
     } else {
-      // Token bonding: Show Goldsky trades only
-      const filtered = allRealtimeTrades.filter((trade) => trade.source === 'goldsky');
-
-      // console.log('[TradeHistory] 🔍 Filtering trades (Bonding mode):', {
-      //   totalRealtimeTrades: allRealtimeTrades.length,
-      //   goldskyTrades: filtered.length,
-      //   bitqueryTrades: allRealtimeTrades.filter((t) => t.source === 'bitquery').length,
-      // });
-
-      return filtered;
+      // Token bonding: Show Goldsky trades only (no DEX trades expected)
+      return allRealtimeTrades.filter((trade) => trade.source === 'goldsky');
     }
   }, [allRealtimeTrades, effectiveIsDexLive]);
 
@@ -158,6 +133,17 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
 
     return isFresh;
   }, [realtimeTrades]);
+
+  // 🔥 Clear stale data when token address changes to prevent flash of old trades
+  useEffect(() => {
+    if (!tokenAddress) return;
+
+    // Clear previous token's data immediately
+    setHistoricalTrades([]);
+    setBondingTrades([]);
+    setHasFreshTrades(false);
+    setHistoricalError(null);
+  }, [tokenAddress]);
 
   // Give WebSocket a head start before falling back to REST
   useEffect(() => {
@@ -210,18 +196,23 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
         const shouldFetchDex = effectiveIsDexLive || hasBitQueryTrades;
 
         if (shouldFetchDex) {
-          // Token is graduated or has DEX trades - fetch DEX trades
-          const dexResult = await DexApi.getTrades(tokenAddress, 80); // Updated to 80
+          // 🔥 Token graduated: Fetch BOTH DEX trades AND bonding curve trades
+          // This ensures seamless trade history continuity after graduation
+          const [dexResult, bondingResult] = await Promise.all([
+            DexApi.getTrades(tokenAddress, 80),
+            TokensApi.getTrades(tokenAddress, 80), // Also fetch bonding trades!
+          ]);
 
+          // Process DEX trades
+          let dexTrades: TradeHistoryEntry[] = [];
           if (dexResult.success && dexResult.data) {
-            // Handle both array format and nested data format
             const tradesArray = Array.isArray(dexResult.data)
               ? dexResult.data
               : Array.isArray((dexResult.data as any)?.data)
                 ? (dexResult.data as any).data
                 : [];
 
-            const dexTrades: TradeHistoryEntry[] = tradesArray.map((trade: any, index: number) => ({
+            dexTrades = tradesArray.map((trade: any, index: number) => ({
               id: `dex-${trade.txHash || trade.transactionHash || `${trade.timestamp}-${index}`}`,
               source: 'DEX' as TradeSource,
               direction: trade.direction || (trade.isBuy ? 'buy' : 'sell'),
@@ -235,18 +226,45 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
               priceUsd: trade.priceInUsd || trade.priceUsd,
               totalUsd: trade.totalUsd,
             }));
-
-            setHistoricalTrades(dexTrades);
-            setHasFreshTrades(true); // ✅ Mark as fresh after successful fetch
-            const buyCount = dexTrades.filter((t) => t.direction === 'buy').length;
-            const sellCount = dexTrades.filter((t) => t.direction === 'sell').length;
-          } else {
-            console.warn('[TradeHistory] DEX trades fetch failed or returned no data:', dexResult);
-            setHasFreshTrades(true); // Even on failure, don't block forever
           }
+
+          // Process bonding trades (preserve history from before graduation)
+          let fetchedBondingTrades: TradeHistoryEntry[] = [];
+          if (bondingResult.success && bondingResult.data) {
+            const payload = bondingResult.data as any;
+            const tradePayload = Array.isArray(payload?.data)
+              ? payload.data
+              : Array.isArray(payload)
+                ? payload
+                : [];
+
+            fetchedBondingTrades = tradePayload.map((trade: any) => ({
+              id: `bonding-${trade.id}`,
+              source: 'BONDING' as TradeSource,
+              direction: (trade.isBuy ? 'buy' : 'sell') as 'buy' | 'sell',
+              tokenAmount: trade.tokenAmount || '0',
+              counterAmount: trade.acesTokenAmount || '0',
+              timestamp: Number(trade.createdAt) * 1000,
+              txHash: trade.id,
+              trader: trade.trader?.id,
+              marginalPriceInAces: trade.marginalPriceInAces,
+            }));
+          }
+
+          // Store both - DEX in historicalTrades, bonding preserved separately
+          setHistoricalTrades(dexTrades);
+          setBondingTrades(fetchedBondingTrades);
+          setHasFreshTrades(true);
+
+          // Debug logging (uncomment for troubleshooting)
+          // console.log('[TradeHistory] 📊 DEX mode: Fetched both sources', {
+          //   dexTrades: dexTrades.length,
+          //   bondingTrades: fetchedBondingTrades.length,
+          //   total: dexTrades.length + fetchedBondingTrades.length,
+          // });
         } else {
-          // Token still bonding - fetch bonding curve trades
-          const bondingResult = await TokensApi.getTrades(tokenAddress, 80); // Updated to 80
+          // Token still bonding - fetch bonding curve trades only
+          const bondingResult = await TokensApi.getTrades(tokenAddress, 80);
 
           if (bondingResult.success && bondingResult.data) {
             const payload = bondingResult.data as any;
@@ -256,7 +274,7 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
                 ? payload
                 : [];
 
-            const bondingTrades: TradeHistoryEntry[] = tradePayload.map((trade: any) => ({
+            const fetchedBondingTrades: TradeHistoryEntry[] = tradePayload.map((trade: any) => ({
               id: `bonding-${trade.id}`,
               source: 'BONDING' as TradeSource,
               direction: (trade.isBuy ? 'buy' : 'sell') as 'buy' | 'sell',
@@ -268,10 +286,10 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
               marginalPriceInAces: trade.marginalPriceInAces,
             }));
 
-            setHistoricalTrades(bondingTrades);
-            setHasFreshTrades(true); // ✅ Mark as fresh after successful fetch
-            const buyCount = bondingTrades.filter((t) => t.direction === 'buy').length;
-            const sellCount = bondingTrades.filter((t) => t.direction === 'sell').length;
+            // Store in both places for consistency
+            setHistoricalTrades(fetchedBondingTrades);
+            setBondingTrades(fetchedBondingTrades);
+            setHasFreshTrades(true);
           } else {
             setHasFreshTrades(true); // Even on failure, don't block forever
           }
@@ -298,23 +316,24 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
     restFallbackAllowed,
   ]);
 
-  // Combine WebSocket trades (transformed) with historical REST trades
+  // Combine WebSocket trades (transformed) with historical REST trades + preserved bonding trades
   const trades = useMemo(() => {
     // Transform WebSocket trades
     const transformedRealtimeTrades = realtimeTrades.map(transformTrade);
 
-    // console.log('[TradeHistory] 🔄 Merging trades:', {
-    //   realtimeCount: realtimeTrades.length,
-    //   transformedRealtimeCount: transformedRealtimeTrades.length,
-    //   historicalCount: historicalTrades.length,
-    //   realtimeSources: realtimeTrades.map((t) => t.source),
-    //   historicalSources: historicalTrades.map((t) => t.source),
-    // });
-
-    // Merge both arrays and deduplicate by trade ID (txHash or id)
+    // Merge all arrays and deduplicate by trade ID (txHash or id)
     const tradeMap = new Map<string, TradeHistoryEntry>();
 
-    // Add historical trades first (older data)
+    // 🔥 Add preserved bonding trades FIRST (oldest data, from before graduation)
+    // These will be overwritten by newer data if duplicates exist
+    for (const trade of bondingTrades) {
+      const key = trade.txHash || trade.id;
+      if (key && !tradeMap.has(key)) {
+        tradeMap.set(key, trade);
+      }
+    }
+
+    // Add historical trades (DEX trades when graduated, or bonding when not)
     for (const trade of historicalTrades) {
       const key = trade.txHash || trade.id;
       if (key && !tradeMap.has(key)) {
@@ -322,86 +341,44 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
       }
     }
 
-    // Add real-time trades (newer data, will overwrite duplicates)
-    let addedCount = 0;
-    let duplicateCount = 0;
+    // Add real-time trades (newest data, will overwrite duplicates)
     for (const trade of transformedRealtimeTrades) {
       const key = trade.txHash || trade.id;
       if (key) {
-        if (tradeMap.has(key)) {
-          duplicateCount++;
-          // Overwrite with newer real-time data
-          tradeMap.set(key, trade);
-        } else {
-          addedCount++;
-          tradeMap.set(key, trade);
-        }
-      } else {
-        console.warn('[TradeHistory] ⚠️ Trade missing txHash and id:', trade);
+        // Always overwrite with real-time data (most up-to-date)
+        tradeMap.set(key, trade);
       }
     }
 
-    // Convert map to array, sort by timestamp (newest first), and limit
+    // Convert map to array, sort by timestamp (newest first), and limit to 100
+    // 🔥 This naturally phases out old bonding trades as DEX trades accumulate
     const result = Array.from(tradeMap.values())
       .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, 100); // Limit to 100 trades
+      .slice(0, 100);
 
-    // Log buy/sell distribution for debugging
-    if (result.length > 0) {
-      const buyCount = result.filter((t) => t.direction === 'buy').length;
-      const sellCount = result.filter((t) => t.direction === 'sell').length;
-      const dexCount = result.filter((t) => t.source === 'DEX').length;
-      const bondingCount = result.filter((t) => t.source === 'BONDING').length;
-
-      // console.log(
-      //   `[TradeHistory] 📊 Final trade distribution: ${buyCount} buys, ${sellCount} sells (total: ${result.length})`,
-      //   {
-      //     realtime: transformedRealtimeTrades.length,
-      //     historical: historicalTrades.length,
-      //     added: addedCount,
-      //     duplicates: duplicateCount,
-      //     sources: { DEX: dexCount, BONDING: bondingCount },
-      //   },
-      // );
-    }
+    // Debug logging (uncomment for troubleshooting)
+    // if (result.length > 0) {
+    //   const dexCount = result.filter((t) => t.source === 'DEX').length;
+    //   const bondingCount = result.filter((t) => t.source === 'BONDING').length;
+    //   console.log('[TradeHistory] 📊 Trade distribution:', {
+    //     total: result.length,
+    //     dex: dexCount,
+    //     bonding: bondingCount,
+    //     realtimeCount: transformedRealtimeTrades.length,
+    //   });
+    // }
 
     return result;
-  }, [realtimeTrades, historicalTrades]);
+  }, [realtimeTrades, historicalTrades, bondingTrades]);
 
-  // Log connection status changes and data source filtering
-  useEffect(() => {
-    if (isConnected) {
-      const goldskyCount = allRealtimeTrades.filter((t) => t.source === 'goldsky').length;
-      const bitqueryCount = allRealtimeTrades.filter((t) => t.source === 'bitquery').length;
-      // console.log('[TradeHistory] ✅ WebSocket connected for', tokenAddress, {
-      //   isDexLive,
-      //   effectiveIsDexLive: effectiveIsDexLive,
-      //   autoDetected: hasBitQueryTrades && !isDexLive,
-      //   source: effectiveIsDexLive ? 'BitQuery (DEX)' : 'Goldsky (Bonding)',
-      //   goldskyTrades: goldskyCount,
-      //   bitqueryTrades: bitqueryCount,
-      //   filteredTrades: realtimeTrades.length,
-      // });
-
-      // Log auto-detection if it happened
-      if (hasBitQueryTrades && !isDexLive) {
-        // console.log('[TradeHistory] 🎓 Auto-detected DEX graduation: Receiving BitQuery trades');
-      }
-    } else if (isConnecting) {
-      // console.log('[TradeHistory] 🔄 WebSocket connecting...', tokenAddress);
-    } else {
-      // console.log('[TradeHistory] ❌ WebSocket disconnected for', tokenAddress);
-    }
-  }, [
-    isConnected,
-    isConnecting,
-    tokenAddress,
-    isDexLive,
-    effectiveIsDexLive,
-    hasBitQueryTrades,
-    allRealtimeTrades,
-    realtimeTrades,
-  ]);
+  // Log connection status changes (uncomment for debugging)
+  // useEffect(() => {
+  //   if (isConnected) {
+  //     console.log('[TradeHistory] ✅ WebSocket connected for', tokenAddress);
+  //   } else if (isConnecting) {
+  //     console.log('[TradeHistory] 🔄 WebSocket connecting...', tokenAddress);
+  //   }
+  // }, [isConnected, isConnecting, tokenAddress]);
 
   // 🔥 NEW: Loading state now considers trade freshness
   // Show loading if:
@@ -421,6 +398,7 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
     hasFreshTrades, // 🔥 NEW: Export freshness state
     refresh: () => {
       setHistoricalTrades([]);
+      setBondingTrades([]);
       setHasFreshTrades(false);
       // This will trigger the useEffect to re-fetch
     },

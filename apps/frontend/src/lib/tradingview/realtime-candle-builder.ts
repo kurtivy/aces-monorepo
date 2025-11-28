@@ -23,13 +23,13 @@ export interface Candle {
   open: number;
   high: number;
   low: number;
-  close: number; // VWAP close price
+  close: number; // Last trade close price (industry standard - matches DEXScreener, Binance, TradingView)
   volume: number;
-  // 🔥 NEW: Trade buffering for VWAP and chronological sorting
+  // Trade buffering for chronological sorting and last trade price
   trades: Trade[]; // Store all trades for this candle
-  totalValue: number; // Σ(price × volume) for VWAP calculation
+  totalValue: number; // Σ(price × volume) - kept for potential VWAP indicator
   isFinalized: boolean; // Whether candle is "closed" (no more late trades expected)
-  lastUpdateTime: number; // 🔥 NEW: When this candle was last updated (for emission buffering)
+  lastUpdateTime: number; // When this candle was last updated (for emission buffering)
 }
 
 export type CandleUpdateCallback = (candle: Candle) => void;
@@ -54,7 +54,7 @@ export class RealtimeCandleBuilder {
   private readonly GOLDSKY_LATE_BUCKET_GRACE_MULTIPLIER = 3; // Extended grace for Goldsky bonding curve trades
   // 🔥 PHASE 3: Track emission to prevent double-emission
   private lastEmissionTime = new Map<string, number>(); // key = "timeframe:candleTime"
-  
+
   /**
    * Get throttle interval based on timeframe
    * Shorter timeframes need more aggressive throttling to prevent spam
@@ -163,7 +163,8 @@ export class RealtimeCandleBuilder {
     const mostRecentSent = this.mostRecentCandleTimeSent.get(timeframe) || 0;
 
     // 🔥 DEBUG: Log all emission attempts for long timeframes
-    if (intervalMs >= 60 * 60 * 1000) { // 1h or longer
+    if (intervalMs >= 60 * 60 * 1000) {
+      // 1h or longer
       console.log('[CandleBuilder] 📊 Emission attempt (long timeframe):', {
         timeframe,
         candleTime: new Date(candle.time).toISOString(),
@@ -219,7 +220,8 @@ export class RealtimeCandleBuilder {
 
       console.error('🚨 [CandleBuilder] ⏮️ TIME VIOLATION - Immediate emission BLOCKED:', {
         timeframe,
-        reason: 'CANDLE TIME IS OLDER THAN mostRecentSent - TradingView requires non-decreasing times',
+        reason:
+          'CANDLE TIME IS OLDER THAN mostRecentSent - TradingView requires non-decreasing times',
         candleTime: candle.time,
         candleTimeISO: new Date(candle.time).toISOString(),
         mostRecentSent: mostRecentSent,
@@ -291,7 +293,7 @@ export class RealtimeCandleBuilder {
         callbacksCount: callbacks.length,
       });
     }
-    
+
     for (let i = 0; i < callbacks.length; i++) {
       const callback = callbacks[i];
       try {
@@ -345,9 +347,10 @@ export class RealtimeCandleBuilder {
     const currentBucketTime = Math.floor(now / intervalMs) * intervalMs;
     const isCurrentBucket = candleTime === currentBucketTime;
     const isPreviousBucket = candleTime === currentBucketTime - intervalMs;
-    
+
     // 🔥 DEBUG: Log bucket calculations for long timeframes
-    if (intervalMs >= 60 * 60 * 1000) { // 1h or longer
+    if (intervalMs >= 60 * 60 * 1000) {
+      // 1h or longer
       console.log('[CandleBuilder] 🔧 Bucket calculation (long timeframe):', {
         timeframe,
         tradeTimestamp: new Date(trade.timestamp).toISOString(),
@@ -360,7 +363,7 @@ export class RealtimeCandleBuilder {
         timeDifferenceMinutes: Math.round((currentBucketTime - candleTime) / 60000),
       });
     }
-    
+
     // 🔥 Use getNow() for age-based finalization logic (prevent stale updates)
     const candleAge = now - candleTime;
 
@@ -457,7 +460,7 @@ export class RealtimeCandleBuilder {
     let candle = this.currentCandles.get(key);
     const isSynthetic = this.syntheticCandles.has(key);
     const isFutureBucket = candleTime > currentBucketTime;
-    
+
     // 🔥 DEBUG: Log candle lookup for long timeframes to diagnose seeding issue
     if (intervalMs >= 60 * 60 * 1000) {
       console.log(`[CandleBuilder] 🔍 Candle lookup for ${timeframe} trade:`, {
@@ -466,14 +469,18 @@ export class RealtimeCandleBuilder {
         candleFound: !!candle,
         candleExists: this.currentCandles.has(key),
         totalCandlesInMap: this.currentCandles.size,
-        allKeysForTimeframe: Array.from(this.currentCandles.keys()).filter(k => k.startsWith(timeframe + ':')),
-        existingCandleData: candle ? {
-          time: new Date(candle.time).toISOString(),
-          open: candle.open.toFixed(8),
-          close: candle.close.toFixed(8),
-          tradesCount: candle.trades?.length || 0,
-          isFinalized: candle.isFinalized,
-        } : 'NO CANDLE FOUND - Will create new one',
+        allKeysForTimeframe: Array.from(this.currentCandles.keys()).filter((k) =>
+          k.startsWith(timeframe + ':'),
+        ),
+        existingCandleData: candle
+          ? {
+              time: new Date(candle.time).toISOString(),
+              open: candle.open.toFixed(8),
+              close: candle.close.toFixed(8),
+              tradesCount: candle.trades?.length || 0,
+              isFinalized: candle.isFinalized,
+            }
+          : 'NO CANDLE FOUND - Will create new one',
       });
     }
 
@@ -558,13 +565,13 @@ export class RealtimeCandleBuilder {
         open: openPrice, // Use previous candle's close as new open
         high: Math.max(openPrice, trade.price), // ✅ high must be >= open
         low: Math.min(openPrice, trade.price), // ✅ low must be <= open
-        close: trade.price, // Will be recalculated as VWAP when more trades arrive
+        close: trade.price, // Last trade price (industry standard - matches DEXScreener, Binance)
         volume: trade.volume,
-        // New fields for VWAP
+        // Trade buffering for chronological sorting
         trades: [trade],
-        totalValue: trade.price * trade.volume,
+        totalValue: trade.price * trade.volume, // Kept for potential VWAP indicator
         isFinalized: false,
-        lastUpdateTime: getNow(), // 🔥 NEW: Track when candle was last updated
+        lastUpdateTime: getNow(), // Track when candle was last updated
       };
       this.currentCandles.set(key, candle);
     } else if (isSynthetic) {
@@ -583,8 +590,10 @@ export class RealtimeCandleBuilder {
       candle.high = sortedPrices.length > 0 ? Math.max(candle.open, ...sortedPrices) : candle.open;
       candle.low = sortedPrices.length > 0 ? Math.min(candle.open, ...sortedPrices) : candle.open;
 
-      // 🔥 VWAP for close price
-      candle.close = candle.volume > 0 ? candle.totalValue / candle.volume : candle.open;
+      // 🔥 INDUSTRY STANDARD: Use last trade price for close (matches DEXScreener, Binance, TradingView)
+      // Trades are sorted chronologically, so last element is the most recent trade
+      candle.close =
+        candle.trades.length > 0 ? candle.trades[candle.trades.length - 1].price : candle.open;
 
       // Mark as no longer synthetic
       this.syntheticCandles.delete(key);
@@ -592,7 +601,7 @@ export class RealtimeCandleBuilder {
       if (this.debug) {
         console.log(`[CandleBuilder] 🔄 Converted synthetic to real candle:`, {
           trades: candle.trades.length,
-          vwapClose: candle.close,
+          lastTradeClose: candle.close,
           candleTime: new Date(candle.time).toISOString(),
         });
       }
@@ -604,7 +613,7 @@ export class RealtimeCandleBuilder {
       const currentBucketTime = Math.floor(now / intervalMs) * intervalMs;
       const isPreviousBucket = candleTime === currentBucketTime - intervalMs;
       const candleAge = now - candleTime;
-      
+
       // 🔥 DEBUG: Log trade updates for long timeframes
       if (intervalMs >= 60 * 60 * 1000) {
         console.log(`[CandleBuilder] 📥 Processing trade for ${timeframe} candle:`, {
@@ -685,10 +694,12 @@ export class RealtimeCandleBuilder {
       candle.high = sortedPrices.length > 0 ? Math.max(candle.open, ...sortedPrices) : candle.open;
       candle.low = sortedPrices.length > 0 ? Math.min(candle.open, ...sortedPrices) : candle.open;
 
-      // 🔥 VWAP for close price
-      candle.totalValue = candle.trades.reduce((sum, t) => sum + t.price * t.volume, 0);
+      // 🔥 INDUSTRY STANDARD: Use last trade price for close (matches DEXScreener, Binance, TradingView)
+      // Trades are sorted chronologically (line 673), so last element is the most recent trade
+      candle.totalValue = candle.trades.reduce((sum, t) => sum + t.price * t.volume, 0); // Kept for potential VWAP indicator
       candle.volume = candle.trades.reduce((sum, t) => sum + t.volume, 0);
-      candle.close = candle.volume > 0 ? candle.totalValue / candle.volume : candle.open;
+      candle.close =
+        candle.trades.length > 0 ? candle.trades[candle.trades.length - 1].price : candle.open;
     }
 
     // Store this candle's close price for potential future use
@@ -828,7 +839,9 @@ export class RealtimeCandleBuilder {
           low: candle.low,
         },
         isFinalized: candle.isFinalized,
-        warning: candle.isFinalized ? '⚠️ Current bucket is finalized - will NOT update with new trades!' : '✅ Not finalized - will update with trades',
+        warning: candle.isFinalized
+          ? '⚠️ Current bucket is finalized - will NOT update with new trades!'
+          : '✅ Not finalized - will update with trades',
       });
     }
 
