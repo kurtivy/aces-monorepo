@@ -1,4 +1,4 @@
-export const LIVE_TRADING_SYMBOLS = new Set(['APKAWS']);
+export const LIVE_TRADING_SYMBOLS = new Set(['APKAWS', 'RMILLE']);
 
 export const normalizeSymbol = (input?: string | null): string | null => {
   if (!input) {
