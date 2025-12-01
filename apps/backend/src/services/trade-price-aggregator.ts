@@ -601,8 +601,7 @@ export class TradePriceAggregator {
         return sum + tokenAmount * priceInAces * trade.acesUsdPriceAtExecution;
       }, 0);
 
-      // Get supply from last trade in bucket
-      const lastTrade = trades[trades.length - 1];
+      // Get supply from last trade in bucket (reuse lastTrade from above)
       const circulatingSupply = lastTrade.supply;
 
       // Calculate market cap
