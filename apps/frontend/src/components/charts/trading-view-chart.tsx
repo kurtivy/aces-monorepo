@@ -350,7 +350,10 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
         'header_widget',
         'header_widget_dom_node',
         'timeframes_toolbar',
-        'volume_force_overlay',
+        // 🔥 DEBUG: Temporarily removed 'volume_force_overlay' to test if it's causing disappearing volume bars
+        // Original issue: Historical volume bars disappear when new trades come in
+        // Hypothesis: volume_force_overlay might have rendering issues with real-time updates
+        // 'volume_force_overlay',
       ];
 
       if (!extraEnabledFeatures?.length) {
@@ -363,7 +366,9 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
     const disabledFeatures = useMemo(() => {
       const baseDisabled = [
         'use_localstorage_for_settings',
-        'create_volume_indicator_by_default_once',
+        // 🔥 DEBUG: Temporarily removed to allow TradingView to create default volume indicator
+        // This is to test if the issue is with volume_force_overlay
+        // 'create_volume_indicator_by_default_once',
         'header_saveload',
         'study_templates',
         'header_symbol_search',

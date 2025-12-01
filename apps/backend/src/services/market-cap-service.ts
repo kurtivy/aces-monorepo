@@ -29,6 +29,8 @@ interface MarketCapData {
 interface PoolReserves {
   reserve0: string;
   reserve1: string;
+  token0: string; // Address of token0 in the pool
+  token1: string; // Address of token1 in the pool
   blockNumber: number;
 }
 
@@ -236,8 +238,12 @@ export class MarketCapService {
       const marketCapUsd = currentPriceUsd * DEX_SUPPLY;
 
       // Calculate reward supply: Total supply minus tokens locked in LP
-      // reserve1 = token reserve in the pool (in wei)
-      const tokenReserveWei = new Decimal(reserves.reserve1);
+      // Determine which reserve is the Fun token (not ACES)
+      const acesAddress = (
+        process.env.ACES_TOKEN_ADDRESS || '0x55337650856299363c496065C836B9C6E9dE0367'
+      ).toLowerCase();
+      const isToken0Aces = reserves.token0.toLowerCase() === acesAddress;
+      const tokenReserveWei = new Decimal(isToken0Aces ? reserves.reserve1 : reserves.reserve0);
       const tokenReserveHuman = tokenReserveWei.div(new Decimal('1e18')).toNumber();
       const rewardSupply = Math.max(0, DEX_SUPPLY - tokenReserveHuman);
 
@@ -247,6 +253,7 @@ export class MarketCapService {
         supply: DEX_SUPPLY,
         rewardSupply,
         tokensInLP: tokenReserveHuman,
+        isToken0Aces,
       });
 
       return {
@@ -287,7 +294,14 @@ export class MarketCapService {
         if (poolAddress) {
           const reserves = await this.getPoolReserves(poolAddress);
           if (reserves) {
-            const tokenReserveWei = new Decimal(reserves.reserve1);
+            // Determine which reserve is the Fun token (not ACES)
+            const acesAddress = (
+              process.env.ACES_TOKEN_ADDRESS || '0x55337650856299363c496065C836B9C6E9dE0367'
+            ).toLowerCase();
+            const isToken0Aces = reserves.token0.toLowerCase() === acesAddress;
+            const tokenReserveWei = new Decimal(
+              isToken0Aces ? reserves.reserve1 : reserves.reserve0,
+            );
             const tokenReserveHuman = tokenReserveWei.div(new Decimal('1e18')).toNumber();
             rewardSupply = Math.max(0, DEX_SUPPLY - tokenReserveHuman);
           }
@@ -420,16 +434,27 @@ export class MarketCapService {
       // Aerodrome pool ABI (Uniswap V2 compatible)
       const poolAbi = [
         'function getReserves() public view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
+        'function token0() view returns (address)',
+        'function token1() view returns (address)',
       ];
 
       const poolContract = new ethers.Contract(poolAddress, poolAbi, this.provider);
-      const [reserve0, reserve1] = await poolContract.getReserves();
 
-      const blockNumber = await this.provider.getBlockNumber();
+      // Fetch reserves, token addresses, and block number in parallel
+      const [reserves, token0Address, token1Address, blockNumber] = await Promise.all([
+        poolContract.getReserves(),
+        poolContract.token0(),
+        poolContract.token1(),
+        this.provider.getBlockNumber(),
+      ]);
+
+      const [reserve0, reserve1] = reserves;
 
       return {
         reserve0: reserve0.toString(),
         reserve1: reserve1.toString(),
+        token0: token0Address,
+        token1: token1Address,
         blockNumber,
       };
     } catch (error) {
@@ -440,29 +465,42 @@ export class MarketCapService {
 
   /**
    * Calculate price from pool reserves
-   * Assumes reserve0 = ACES, reserve1 = token
-   * Price = reserve0 / reserve1 (ACES per token)
+   * Determines token order dynamically (doesn't assume ACES position)
+   * Price = ACES reserve / Token reserve (ACES per token)
    */
   private calculatePriceFromReserves(reserves: PoolReserves): number {
     try {
       const reserve0 = new Decimal(reserves.reserve0);
       const reserve1 = new Decimal(reserves.reserve1);
 
-      console.log('[MarketCapService] Reserve calculations:', {
-        reserve0: reserve0.toString(),
-        reserve1: reserve1.toString(),
-        reserve0_isZero: reserve0.isZero(),
-        reserve1_isZero: reserve1.isZero(),
-      });
-
       if (reserve0.isZero() || reserve1.isZero()) {
         console.warn('[MarketCapService] One or both reserves are zero, cannot calculate price');
         return 0;
       }
 
-      // Price in ACES per token
-      const priceAces = reserve0.div(reserve1).toNumber();
-      console.log('[MarketCapService] Calculated price:', priceAces);
+      // Determine which token is ACES (don't assume position)
+      const acesAddress = (
+        process.env.ACES_TOKEN_ADDRESS || '0x55337650856299363c496065C836B9C6E9dE0367'
+      ).toLowerCase();
+      const isToken0Aces = reserves.token0.toLowerCase() === acesAddress;
+
+      // Calculate price: ACES reserve / Token reserve
+      const acesReserve = isToken0Aces ? reserve0 : reserve1;
+      const tokenReserve = isToken0Aces ? reserve1 : reserve0;
+
+      const priceAces = acesReserve.div(tokenReserve).toNumber();
+
+      console.log('[MarketCapService] Reserve calculations:', {
+        token0: reserves.token0,
+        token1: reserves.token1,
+        isToken0Aces,
+        reserve0: reserve0.toString(),
+        reserve1: reserve1.toString(),
+        acesReserve: acesReserve.toString(),
+        tokenReserve: tokenReserve.toString(),
+        priceAces,
+      });
+
       return priceAces;
     } catch (error) {
       console.error('[MarketCapService] Error calculating price from reserves:', error);
