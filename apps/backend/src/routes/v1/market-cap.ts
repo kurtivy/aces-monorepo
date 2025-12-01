@@ -12,6 +12,7 @@ interface MarketCapResponse {
   marketCapUsd: number;
   currentPriceUsd: number;
   supply: number;
+  rewardSupply: number; // Actual circulating supply for reward calculations (excludes LP tokens)
   source: 'bonding_curve' | 'dex_pool' | 'dex_bitquery' | 'cached';
   calculatedAt: number;
   error?: string;
@@ -33,6 +34,7 @@ export const marketCapRoutes = async (fastify: FastifyInstance) => {
    *   "marketCapUsd": 1500000,
    *   "currentPriceUsd": 0.0015,
    *   "supply": 1000000000,
+   *   "rewardSupply": 700000000,
    *   "source": "dex_pool",
    *   "calculatedAt": 1699564800000
    * }
@@ -68,14 +70,13 @@ export const marketCapRoutes = async (fastify: FastifyInstance) => {
           marketCapUsd: marketCapData.marketCapUsd,
           currentPriceUsd: marketCapData.currentPriceUsd,
           supply: marketCapData.supply,
+          rewardSupply: marketCapData.rewardSupply,
           source: marketCapData.source,
           calculatedAt: marketCapData.calculatedAt,
         };
 
         // Cache for 5 seconds (same as service cache)
-        return reply
-          .header('Cache-Control', 'public, max-age=5')
-          .send(response);
+        return reply.header('Cache-Control', 'public, max-age=5').send(response);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         console.error('[MarketCapRoute] Error:', errorMessage);
@@ -125,16 +126,14 @@ export const marketCapRoutes = async (fastify: FastifyInstance) => {
         // Fetch market cap for all tokens in parallel
         const results = await Promise.allSettled(
           tokenAddresses.map(async (address) => {
-            const marketCapData = await fastify.marketCapService!.getMarketCap(
-              address,
-              8453,
-            );
+            const marketCapData = await fastify.marketCapService!.getMarketCap(address, 8453);
 
             return {
               tokenAddress: address.toLowerCase(),
               marketCapUsd: marketCapData.marketCapUsd,
               currentPriceUsd: marketCapData.currentPriceUsd,
               supply: marketCapData.supply,
+              rewardSupply: marketCapData.rewardSupply,
               source: marketCapData.source,
               calculatedAt: marketCapData.calculatedAt,
             };
@@ -156,15 +155,13 @@ export const marketCapRoutes = async (fastify: FastifyInstance) => {
           }
         });
 
-        return reply
-          .header('Cache-Control', 'public, max-age=5')
-          .send({
-            data,
-            errors,
-            totalRequested: tokenAddresses.length,
-            totalSuccessful: data.length,
-            totalFailed: errors.length,
-          });
+        return reply.header('Cache-Control', 'public, max-age=5').send({
+          data,
+          errors,
+          totalRequested: tokenAddresses.length,
+          totalSuccessful: data.length,
+          totalFailed: errors.length,
+        });
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         console.error('[MarketCapBatchRoute] Error:', errorMessage);
@@ -218,4 +215,3 @@ export const marketCapRoutes = async (fastify: FastifyInstance) => {
     }
   });
 };
-

@@ -7,7 +7,11 @@
  */
 
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { getReconnectDelay, shouldReconnect, formatReconnectDelay } from '@/lib/websocket/reconnection-utils';
+import {
+  getReconnectDelay,
+  shouldReconnect,
+  formatReconnectDelay,
+} from '@/lib/websocket/reconnection-utils';
 
 export interface RealtimeMetrics {
   tokenAddress: string;
@@ -18,6 +22,7 @@ export interface RealtimeMetrics {
   liquidityUsd?: number | null;
   liquiditySource?: 'bonding_curve' | 'dex' | null;
   circulatingSupply?: number | null;
+  rewardSupply?: number | null; // Actual circulating for reward calculations (excludes LP tokens)
   // Fee breakdown (may not be present in all WS payloads)
   totalFeesUsd?: number;
   totalFeesAces?: string;
@@ -146,6 +151,13 @@ export const useRealtimeMetrics = (
 
           if (data.marketCapData) {
             metricsUpdate.currentPriceUsd = data.marketCapData.currentPriceUsd;
+            // 🔥 NEW: Extract rewardSupply for reward calculations
+            if (
+              data.marketCapData.rewardSupply !== undefined &&
+              data.marketCapData.rewardSupply !== null
+            ) {
+              metricsUpdate.rewardSupply = data.marketCapData.rewardSupply;
+            }
           }
 
           if (data.bondingData?.currentSupply) {
@@ -258,6 +270,13 @@ export const useRealtimeMetrics = (
 
         if (data.marketCapData) {
           initialMetrics.currentPriceUsd = data.marketCapData.currentPriceUsd;
+          // 🔥 NEW: Extract rewardSupply for reward calculations
+          if (
+            data.marketCapData.rewardSupply !== undefined &&
+            data.marketCapData.rewardSupply !== null
+          ) {
+            initialMetrics.rewardSupply = data.marketCapData.rewardSupply;
+          }
         }
 
         if (data.bondingData?.currentSupply) {
@@ -408,9 +427,11 @@ export const useRealtimeMetrics = (
           if (autoReconnect && shouldReconnect(event.code)) {
             const delay = getReconnectDelay(reconnectAttemptRef.current);
             reconnectAttemptRef.current += 1;
-            
-            log(`Reconnecting in ${formatReconnectDelay(delay)} (attempt ${reconnectAttemptRef.current})...`);
-            
+
+            log(
+              `Reconnecting in ${formatReconnectDelay(delay)} (attempt ${reconnectAttemptRef.current})...`,
+            );
+
             reconnectTimeoutRef.current = setTimeout(() => {
               if (mountedRef.current) {
                 connect();
@@ -436,7 +457,15 @@ export const useRealtimeMetrics = (
         startPolling();
       }
     }
-  }, [tokenAddress, autoReconnect, reconnectDelay, fallbackToPolling, log, startPolling, stopPolling]);
+  }, [
+    tokenAddress,
+    autoReconnect,
+    reconnectDelay,
+    fallbackToPolling,
+    log,
+    startPolling,
+    stopPolling,
+  ]);
 
   useEffect(() => {
     mountedRef.current = true;

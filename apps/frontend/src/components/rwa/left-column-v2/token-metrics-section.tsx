@@ -25,6 +25,7 @@ interface TokenMetricsSectionProps {
   liquiditySource?: 'bonding_curve' | 'dex' | null;
   metricsLoading?: boolean;
   circulatingSupply?: number | null;
+  rewardSupply?: number | null;
   disableMetricsFetch?: boolean;
 }
 
@@ -53,6 +54,7 @@ export function TokenMetricsSection({
   liquiditySource,
   metricsLoading,
   circulatingSupply,
+  rewardSupply,
   disableMetricsFetch = false,
 }: TokenMetricsSectionProps) {
   const hasHypePoints =
@@ -79,6 +81,7 @@ export function TokenMetricsSection({
     metrics: hookMetrics,
     loading: hookLoading,
     circulatingSupply: hookCirculatingSupply,
+    rewardSupply: hookRewardSupply,
   } = useTokenMetrics(disableMetricsFetch ? undefined : tokenAddress);
 
   const resolvedVolume24hAces = volume24hAces ?? hookMetrics?.volume24hAces ?? '0';
@@ -87,6 +90,7 @@ export function TokenMetricsSection({
   const resolvedLiquiditySource = liquiditySource ?? hookMetrics?.liquiditySource ?? null;
   const resolvedMetricsLoading = metricsLoading ?? hookLoading;
   const resolvedCirculatingSupply = circulatingSupply ?? hookCirculatingSupply ?? null;
+  const resolvedRewardSupply = rewardSupply ?? hookRewardSupply ?? null;
 
   // Community reward is the listing value (listing.value from database)
   const communityReward = useMemo(() => {
@@ -121,6 +125,7 @@ export function TokenMetricsSection({
           liquiditySource={resolvedLiquiditySource}
           metricsLoading={resolvedMetricsLoading}
           circulatingSupply={resolvedCirculatingSupply}
+          rewardSupply={resolvedRewardSupply}
           communityReward={communityReward}
         />
 

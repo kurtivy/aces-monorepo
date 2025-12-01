@@ -21,6 +21,7 @@ interface MarketCapData {
   marketCapUsd: number;
   currentPriceUsd: number;
   supply: number;
+  rewardSupply: number; // Actual circulating supply for reward calculations (excludes LP tokens)
   source: 'bonding_curve' | 'dex_pool' | 'dex_bitquery' | 'cached';
   calculatedAt: number;
 }
@@ -111,11 +112,14 @@ export class MarketCapService {
       }
 
       // Get ACES/USD price
-      const acesUsdPriceValue = await this.acesUsdPriceService.getAcesUsdPrice();
+      const acesUsdPriceResult = await this.acesUsdPriceService.getAcesUsdPrice();
+      // Extract price from result object - service returns { price: string, source: string, timestamp: number }
+      const priceValue =
+        typeof acesUsdPriceResult === 'object' && 'price' in acesUsdPriceResult
+          ? acesUsdPriceResult.price
+          : acesUsdPriceResult;
       const acesUsdPrice =
-        typeof acesUsdPriceValue === 'number'
-          ? acesUsdPriceValue
-          : parseFloat(String(acesUsdPriceValue));
+        typeof priceValue === 'number' ? priceValue : parseFloat(String(priceValue));
 
       // Calculate market cap in USD
       const currentPriceUsd = tradeData.priceAces * acesUsdPrice;
@@ -125,6 +129,7 @@ export class MarketCapService {
         marketCapUsd,
         currentPriceUsd,
         supply: tradeData.supply,
+        rewardSupply: tradeData.supply, // For bonding curve, reward supply = actual supply sold
         source: 'bonding_curve',
         calculatedAt: Date.now(),
       };
@@ -198,20 +203,23 @@ export class MarketCapService {
       // Get ACES/USD price
       let acesUsdPrice = 0;
       try {
-        const acesUsdPriceValue = await this.acesUsdPriceService.getAcesUsdPrice();
-        console.log(`[MarketCapService] ACES price from service:`, acesUsdPriceValue);
+        const acesUsdPriceResult = await this.acesUsdPriceService.getAcesUsdPrice();
+        console.log(`[MarketCapService] ACES price from service:`, acesUsdPriceResult);
 
-        if (acesUsdPriceValue === null || acesUsdPriceValue === undefined) {
+        if (acesUsdPriceResult === null || acesUsdPriceResult === undefined) {
           console.warn(
             '[MarketCapService] ACES price is null/undefined, cannot calculate market cap',
           );
           return null;
         }
 
-        acesUsdPrice =
-          typeof acesUsdPriceValue === 'number'
-            ? acesUsdPriceValue
-            : parseFloat(String(acesUsdPriceValue));
+        // Extract price from result object - service returns { price: string, source: string, timestamp: number }
+        const priceValue =
+          typeof acesUsdPriceResult === 'object' && 'price' in acesUsdPriceResult
+            ? acesUsdPriceResult.price
+            : acesUsdPriceResult;
+
+        acesUsdPrice = typeof priceValue === 'number' ? priceValue : parseFloat(String(priceValue));
 
         if (!Number.isFinite(acesUsdPrice) || acesUsdPrice === 0) {
           console.warn('[MarketCapService] ACES price is not valid:', acesUsdPrice);
@@ -227,16 +235,25 @@ export class MarketCapService {
       const currentPriceUsd = priceAces * acesUsdPrice;
       const marketCapUsd = currentPriceUsd * DEX_SUPPLY;
 
+      // Calculate reward supply: Total supply minus tokens locked in LP
+      // reserve1 = token reserve in the pool (in wei)
+      const tokenReserveWei = new Decimal(reserves.reserve1);
+      const tokenReserveHuman = tokenReserveWei.div(new Decimal('1e18')).toNumber();
+      const rewardSupply = Math.max(0, DEX_SUPPLY - tokenReserveHuman);
+
       console.log(`[MarketCapService] Calculated market cap:`, {
         currentPriceUsd,
         marketCapUsd,
         supply: DEX_SUPPLY,
+        rewardSupply,
+        tokensInLP: tokenReserveHuman,
       });
 
       return {
         marketCapUsd,
         currentPriceUsd,
         supply: DEX_SUPPLY,
+        rewardSupply, // Actual circulating = 1B - LP tokens
         source: 'dex_pool',
         calculatedAt: Date.now(),
       };
@@ -263,10 +280,29 @@ export class MarketCapService {
       // Calculate market cap (assuming price is already in USD)
       const marketCapUsd = latestPrice * DEX_SUPPLY;
 
+      // Try to get reward supply from pool reserves (fallback to DEX_SUPPLY if unavailable)
+      let rewardSupply = DEX_SUPPLY;
+      try {
+        const poolAddress = await this.getTokenPoolAddress(tokenAddress);
+        if (poolAddress) {
+          const reserves = await this.getPoolReserves(poolAddress);
+          if (reserves) {
+            const tokenReserveWei = new Decimal(reserves.reserve1);
+            const tokenReserveHuman = tokenReserveWei.div(new Decimal('1e18')).toNumber();
+            rewardSupply = Math.max(0, DEX_SUPPLY - tokenReserveHuman);
+          }
+        }
+      } catch (reserveError) {
+        console.warn(
+          '[MarketCapService] Could not fetch pool reserves for rewardSupply, using DEX_SUPPLY',
+        );
+      }
+
       return {
         marketCapUsd,
         currentPriceUsd: latestPrice,
         supply: DEX_SUPPLY,
+        rewardSupply,
         source: 'dex_bitquery',
         calculatedAt: Date.now(),
       };

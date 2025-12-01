@@ -16,6 +16,7 @@ interface UseTokenMetricsResult {
   error: string | null;
   refetch: () => void;
   circulatingSupply: number | null;
+  rewardSupply: number | null; // Actual circulating for reward calculations (excludes LP tokens)
   currentPriceUsd: number;
   bondingData: BondingDataSubset | null;
   marketCapUsd: number;
@@ -38,6 +39,7 @@ export function useTokenMetrics(
   const restFetchedRef = useRef<boolean>(false); // ensure one REST fetch per token to seed fee fields
   const lastUpdateTimestampRef = useRef<number>(0); // Track last update timestamp
   const [circulatingSupply, setCirculatingSupply] = useState<number | null>(null);
+  const [rewardSupply, setRewardSupply] = useState<number | null>(null); // For reward calculations
   const [currentPriceUsd, setCurrentPriceUsd] = useState<number>(0);
   const [bondingData, setBondingData] = useState<BondingDataSubset | null>(null);
   const [marketCapUsd, setMarketCapUsd] = useState<number>(0);
@@ -115,19 +117,19 @@ export function useTokenMetrics(
         dexFeesUsd:
           wsMetrics.dexFeesUsd !== undefined
             ? wsMetrics.dexFeesUsd
-            : previousMetrics?.dexFeesUsd ?? 0,
+            : (previousMetrics?.dexFeesUsd ?? 0),
         dexFeesAces:
           wsMetrics.dexFeesAces !== undefined
             ? wsMetrics.dexFeesAces
-            : previousMetrics?.dexFeesAces ?? '0',
+            : (previousMetrics?.dexFeesAces ?? '0'),
         bondingFeesUsd:
           wsMetrics.bondingFeesUsd !== undefined
             ? wsMetrics.bondingFeesUsd
-            : previousMetrics?.bondingFeesUsd ?? 0,
+            : (previousMetrics?.bondingFeesUsd ?? 0),
         bondingFeesAces:
           wsMetrics.bondingFeesAces !== undefined
             ? wsMetrics.bondingFeesAces
-            : previousMetrics?.bondingFeesAces ?? '0',
+            : (previousMetrics?.bondingFeesAces ?? '0'),
       };
 
       // 🔥 FIX: Always update state to trigger re-render
@@ -171,6 +173,18 @@ export function useTokenMetrics(
       if (wsMetrics.circulatingSupply !== undefined) {
         setCirculatingSupply((prev) => {
           const newSupply = wsMetrics.circulatingSupply;
+          if (newSupply !== null && newSupply !== undefined && newSupply > 0) {
+            return newSupply;
+          }
+          // Keep previous positive value, or null if never had one
+          return prev !== null && prev > 0 ? prev : null;
+        });
+      }
+
+      // 🔥 NEW: Extract rewardSupply for reward calculations (excludes LP tokens)
+      if (wsMetrics.rewardSupply !== undefined) {
+        setRewardSupply((prev) => {
+          const newSupply = wsMetrics.rewardSupply;
           if (newSupply !== null && newSupply !== undefined && newSupply > 0) {
             return newSupply;
           }
@@ -284,6 +298,16 @@ export function useTokenMetrics(
           setMarketCapUsd(Number.isFinite(latestMarketCapUsd) ? latestMarketCapUsd : 0);
         }
 
+        // 🔥 NEW: Extract rewardSupply for reward calculations (excludes LP tokens)
+        if (healthData.marketCapData?.rewardSupply !== undefined) {
+          const rewardSupplyValue = healthData.marketCapData.rewardSupply;
+          setRewardSupply((prev) =>
+            Number.isFinite(rewardSupplyValue) && rewardSupplyValue > 0
+              ? rewardSupplyValue
+              : (prev ?? null),
+          );
+        }
+
         // Extract bonding data for progression components
         if (healthData.bondingData) {
           setBondingData({
@@ -318,6 +342,7 @@ export function useTokenMetrics(
     metricsRef.current = null;
     restFetchedRef.current = false;
     setCirculatingSupply(null);
+    setRewardSupply(null);
     setCurrentPriceUsd(0);
     setBondingData(null);
     setMarketCapUsd(0);
@@ -348,6 +373,7 @@ export function useTokenMetrics(
     error,
     refetch: fetchMetrics,
     circulatingSupply,
+    rewardSupply,
     currentPriceUsd,
     bondingData,
     marketCapUsd,
