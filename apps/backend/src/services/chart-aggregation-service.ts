@@ -985,9 +985,14 @@ export class ChartAggregationService {
       currentTime += intervalMs;
     }
     if (trades.length > 0) {
+      // 🔥 CRITICAL FIX: Trades are in DESC order (newest first from Goldsky)
+      // trades[0] = newest trade (current price)
+      // trades[length-1] = oldest trade (floor price from bonding curve start)
+      // Previously used trades[length-1] which caused big red candles on page refresh
+      // by applying the floor price instead of the current price to the current candle
       this.applyLivePriceToCurrentCandle(
         candles,
-        trades[trades.length - 1],
+        trades[0], // ✅ Use newest trade (correct current price)
         currentCandleTimestamp,
         dataSource,
       );
