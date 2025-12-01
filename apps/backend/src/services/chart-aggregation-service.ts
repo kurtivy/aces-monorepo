@@ -985,17 +985,13 @@ export class ChartAggregationService {
       currentTime += intervalMs;
     }
     if (trades.length > 0) {
-      // 🔥 CRITICAL FIX: Trades are in DESC order (newest first from Goldsky)
-      // trades[0] = newest trade (current price)
-      // trades[length-1] = oldest trade (floor price from bonding curve start)
-      // Previously used trades[length-1] which caused big red candles on page refresh
-      // by applying the floor price instead of the current price to the current candle
-      this.applyLivePriceToCurrentCandle(
-        candles,
-        trades[0], // ✅ Use newest trade (correct current price)
-        currentCandleTimestamp,
-        dataSource,
-      );
+      // 🔥 CRITICAL FIX: Trade ordering differs by data source
+      // - Goldsky (bonding_curve): DESC order (newest first) → trades[0] = newest
+      // - BitQuery (dex): ASC order (oldest first) → trades[length-1] = newest
+      // Using wrong index causes big red candles on page refresh (shows floor/first price)
+      const newestTrade = dataSource === 'bonding_curve' ? trades[0] : trades[trades.length - 1];
+
+      this.applyLivePriceToCurrentCandle(candles, newestTrade, currentCandleTimestamp, dataSource);
     }
     return candles;
   }
