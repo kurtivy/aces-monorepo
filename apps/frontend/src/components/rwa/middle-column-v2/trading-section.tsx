@@ -253,6 +253,7 @@ export function TradingSection({
             heightClass=""
             heightPx={Math.max(effectiveChartHeight, 0)}
             minHeightPx={isTableExpanded ? 0 : MIN_CHART_HEIGHT}
+            dexMeta={dexMeta}
           />
         </div>
       </div>

@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { Decimal } from 'decimal.js';
+import { ethers } from 'ethers';
 
 interface SubgraphTrade {
   id: string;
@@ -96,13 +97,41 @@ export class TokenService {
         const tokenData = subgraphData.data.tokens[0];
         const trades = subgraphData.data.trades || [];
 
-        // Calculate current price from most recent trade (with division by zero protection)
+        // Calculate current price - use pool reserves for DEX tokens, subgraph for bonding curve
         let currentPrice = '0';
-        if (trades.length > 0) {
-          const latestTrade = trades[0];
-          const tokenAmt = new Decimal(latestTrade.tokenAmount);
-          const acesAmt = new Decimal(latestTrade.acesTokenAmount);
-          currentPrice = tokenAmt.isZero() ? '0' : acesAmt.div(tokenAmt).toString();
+
+        // 🔥 FIX: For DEX tokens, fetch price from pool reserves (accurate, real-time)
+        // For bonding curve tokens, use subgraph trades (existing logic)
+        const isDexMode = token.priceSource === 'DEX' || token.phase === 'DEX_TRADING';
+
+        if (isDexMode && token.poolAddress) {
+          // Try to get price from pool reserves
+          const poolPrice = await this.fetchPriceFromPool(token.poolAddress);
+          if (poolPrice !== null) {
+            currentPrice = poolPrice.toString();
+            console.log(
+              `[TokenService] DEX price from pool for ${contractAddress}: ${currentPrice}`,
+            );
+          } else {
+            // Fallback to subgraph if pool fetch fails
+            console.warn(
+              `[TokenService] Pool fetch failed for ${contractAddress}, using subgraph fallback`,
+            );
+            if (trades.length > 0) {
+              const latestTrade = trades[0];
+              const tokenAmt = new Decimal(latestTrade.tokenAmount);
+              const acesAmt = new Decimal(latestTrade.acesTokenAmount);
+              currentPrice = tokenAmt.isZero() ? '0' : acesAmt.div(tokenAmt).toString();
+            }
+          }
+        } else {
+          // Bonding curve mode - use subgraph trades (existing logic, unchanged)
+          if (trades.length > 0) {
+            const latestTrade = trades[0];
+            const tokenAmt = new Decimal(latestTrade.tokenAmount);
+            const acesAmt = new Decimal(latestTrade.acesTokenAmount);
+            currentPrice = tokenAmt.isZero() ? '0' : acesAmt.div(tokenAmt).toString();
+          }
         }
 
         // Calculate 24h volume from trades (already filtered to last 24h in query)
@@ -134,6 +163,74 @@ export class TokenService {
     } catch (error) {
       console.error('Error updating token data:', error);
       return await this.getOrCreateToken(contractAddress);
+    }
+  }
+
+  /**
+   * Fetch current price from DEX pool reserves
+   * Returns price in ACES per token, or null if fetch fails
+   */
+  private async fetchPriceFromPool(poolAddress: string): Promise<number | null> {
+    try {
+      const rpcUrl =
+        process.env.QUICKNODE_BASE_URL ||
+        process.env.BASE_MAINNET_RPC_URL ||
+        'https://mainnet.base.org';
+
+      const provider = new ethers.JsonRpcProvider(rpcUrl);
+
+      // Aerodrome pool ABI (Uniswap V2 compatible)
+      const poolAbi = [
+        'function getReserves() public view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
+        'function token0() view returns (address)',
+        'function token1() view returns (address)',
+      ];
+
+      const poolContract = new ethers.Contract(poolAddress, poolAbi, provider);
+
+      // Fetch reserves and token addresses in parallel
+      const [reserves, token0Address, token1Address] = await Promise.all([
+        poolContract.getReserves(),
+        poolContract.token0(),
+        poolContract.token1(),
+      ]);
+
+      const [reserve0, reserve1] = reserves;
+      const reserve0Dec = new Decimal(reserve0.toString());
+      const reserve1Dec = new Decimal(reserve1.toString());
+
+      if (reserve0Dec.isZero() || reserve1Dec.isZero()) {
+        console.warn(`[TokenService] Pool reserves are zero for ${poolAddress}`);
+        return null;
+      }
+
+      // Determine which token is ACES (don't assume position)
+      const acesAddress = (
+        process.env.ACES_TOKEN_ADDRESS || '0x55337650856299363c496065C836B9C6E9dE0367'
+      ).toLowerCase();
+      const isToken0Aces = token0Address.toLowerCase() === acesAddress;
+
+      // Calculate price: ACES reserve / Token reserve
+      const acesReserve = isToken0Aces ? reserve0Dec : reserve1Dec;
+      const tokenReserve = isToken0Aces ? reserve1Dec : reserve0Dec;
+
+      const priceAces = acesReserve.div(tokenReserve).toNumber();
+
+      if (process.env.DEBUG_PRICE) {
+        console.log(`[TokenService] Pool price for ${poolAddress}:`, {
+          token0: token0Address,
+          token1: token1Address,
+          isToken0Aces,
+          acesReserve: acesReserve.toString(),
+          tokenReserve: tokenReserve.toString(),
+          priceAces,
+        });
+      }
+
+      return priceAces;
+    } catch (error) {
+      console.error(`[TokenService] Error fetching pool price for ${poolAddress}:`, error);
+      return null;
     }
   }
 
@@ -476,7 +573,7 @@ export class TokenService {
       const tradesWithMarginalPrice = trades.map((trade) => {
         const tokenAmount = parseFloat(trade.tokenAmount) / 1e18;
         const acesAmount = parseFloat(trade.acesTokenAmount) / 1e18;
-        
+
         // Calculate execution price (average price paid/received for this trade)
         // This is what the trader actually paid per token, not the marginal price
         const executionPriceInAces = tokenAmount > 0 ? acesAmount / tokenAmount : 0;

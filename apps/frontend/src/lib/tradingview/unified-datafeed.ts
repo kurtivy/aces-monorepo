@@ -152,9 +152,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
 
     this.candleBuilder = new RealtimeCandleBuilder(this.config.debug);
     this.minTradeUsdValue =
-      typeof config.minTradeUsd === 'number' && config.minTradeUsd > 0
-        ? config.minTradeUsd
-        : 0.01;
+      typeof config.minTradeUsd === 'number' && config.minTradeUsd > 0 ? config.minTradeUsd : 0.01;
 
     if (this.config.debug) {
       // console.log('[UnifiedDatafeed] Initialized with config:', this.config);
@@ -926,6 +924,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
           }
         }
 
+        let bar: Bar;
         if (isMarketCapMode) {
           // Market cap mode: Use pre-calculated market cap OHLC (with smooth connections!)
           const marketCapOpenUsd = parseFloat(candle.marketCap.marketCapOpenUsd || '0');
@@ -933,7 +932,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
           const marketCapLowUsd = parseFloat(candle.marketCap.marketCapLowUsd || '0');
           const marketCapCloseUsd = parseFloat(candle.marketCap.marketCapCloseUsd || '0');
 
-          return {
+          bar = {
             time: candle.timestamp * 1000,
             open: marketCapOpenUsd,
             high: marketCapHighUsd,
@@ -943,7 +942,7 @@ export class UnifiedDatafeed implements IBasicDataFeed {
           };
         } else {
           // Price mode: use USD prices
-          return {
+          bar = {
             time: candle.timestamp * 1000,
             open: parseFloat(candle.price.openUsd),
             high: parseFloat(candle.price.highUsd),
@@ -952,15 +951,6 @@ export class UnifiedDatafeed implements IBasicDataFeed {
             volume: parseFloat(candle.price.volume),
           };
         }
-
-        const bar: Bar = {
-          time: candle.timestamp * 1000,
-          open: parseFloat(candle.price.openUsd),
-          high: parseFloat(candle.price.highUsd),
-          low: parseFloat(candle.price.lowUsd),
-          close: parseFloat(candle.price.closeUsd),
-          volume: parseFloat(candle.price.volume),
-        };
 
         const volumeUsd = parseFloat(candle.price.volumeUsd || '0');
         const shouldClampCandle =
@@ -972,11 +962,14 @@ export class UnifiedDatafeed implements IBasicDataFeed {
         if (shouldClampCandle) {
           const clampValue = lastSignificantClose!;
           if (this.config.debug) {
-            console.warn('[UnifiedDatafeed] Clamping candle to previous close due to low USD volume', {
-              timestamp: new Date(candle.timestamp * 1000).toISOString(),
-              volumeUsd,
-              clampValue,
-            });
+            console.warn(
+              '[UnifiedDatafeed] Clamping candle to previous close due to low USD volume',
+              {
+                timestamp: new Date(candle.timestamp * 1000).toISOString(),
+                volumeUsd,
+                clampValue,
+              },
+            );
           }
           bar.open = clampValue;
           bar.high = clampValue;
@@ -999,12 +992,14 @@ export class UnifiedDatafeed implements IBasicDataFeed {
         if (isFresh) {
           const normalizedAddress = tokenAddress.toLowerCase();
           const supply = this.latestSupply.get(normalizedAddress) || 0;
-          
+
           // 🔥 GUARD: Skip live candle in market cap mode if supply isn't loaded yet
           // This prevents zero prices from being emitted
           if (isMarketCapMode && supply <= 0) {
             if (this.config.debug) {
-              console.warn('[UnifiedDatafeed] Skipping live candle in MCAP mode - supply not loaded yet');
+              console.warn(
+                '[UnifiedDatafeed] Skipping live candle in MCAP mode - supply not loaded yet',
+              );
             }
           } else {
             const convertPrice = (value: number) =>

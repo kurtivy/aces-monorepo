@@ -187,6 +187,7 @@ interface TokenHealthPanelProps {
   liquiditySource?: 'bonding_curve' | 'dex' | null;
   metricsLoading?: boolean;
   circulatingSupply?: number | null; // Circulating supply from unified health endpoint
+  rewardSupply?: number | null; // Actual circulating for reward calculations (excludes LP tokens)
   communityReward?: number; // Pre-calculated community reward (16.67% of listing value)
 }
 
@@ -209,6 +210,7 @@ export default function TokenHealthPanel({
   liquiditySource: _liquiditySource,
   metricsLoading = false,
   circulatingSupply: circulatingSupplyProp,
+  rewardSupply: rewardSupplyProp,
   communityReward: communityRewardProp,
 }: TokenHealthPanelProps) {
   const { walletAddress, isAuthenticated } = useAuth();
@@ -241,7 +243,7 @@ export default function TokenHealthPanel({
     return isDexMode ? DEX_SUPPLY : BONDING_SUPPLY;
   }, [isDexMode]);
 
-  // Circulating supply: Actual tokens sold (used for reward calculations)
+  // Circulating supply: Actual tokens sold (used for market cap fallback calculations)
   // This varies from 1 to 700M during bonding, then up to 1B in DEX mode
   const circulatingSupply = useMemo(() => {
     // Accept 0 as a valid value (early bonding state)
@@ -250,6 +252,21 @@ export default function TokenHealthPanel({
     }
     return null; // Return null instead of 0 for truly missing data
   }, [circulatingSupplyProp]);
+
+  // 🔥 NEW: Reward supply for reward calculations (excludes LP tokens for DEX)
+  // Falls back to circulatingSupply if rewardSupply is not provided
+  const rewardSupply = useMemo(() => {
+    // Prefer rewardSupply if available (accurate for DEX mode)
+    if (
+      rewardSupplyProp !== undefined &&
+      rewardSupplyProp !== null &&
+      Number.isFinite(rewardSupplyProp)
+    ) {
+      return rewardSupplyProp;
+    }
+    // Fallback to circulating supply (still correct for bonding curve mode)
+    return circulatingSupply;
+  }, [rewardSupplyProp, circulatingSupply]);
 
   // Use live token price if available, otherwise calculate from market cap
   const tokenPrice = useMemo(() => {
@@ -370,33 +387,28 @@ export default function TokenHealthPanel({
   const calculator = useMemo(() => new ValueEquilibriumCalculator(), []);
 
   const metrics = useMemo(() => {
-    // Ensure circulatingSupply is at least 1 to avoid division by zero
-    const safeCirculatingSupply = Math.max(circulatingSupply ?? 1, 1);
+    // 🔥 FIX: Use rewardSupply for reward calculations (excludes LP tokens for DEX)
+    // Falls back to circulatingSupply if rewardSupply not available
+    const safeRewardSupply = Math.max(rewardSupply ?? 1, 1);
 
-    // Use actual circulating supply for reward calculations
+    // Use actual reward supply for reward calculations
     // Use calculated market cap for ACES ratio
     return calculator.getMetrics(
-      safeCirculatingSupply,
+      safeRewardSupply,
       tokenPrice,
       communityReward,
       assetSalePrice,
       marketCapForMetrics,
     );
-  }, [
-    calculator,
-    circulatingSupply,
-    tokenPrice,
-    communityReward,
-    assetSalePrice,
-    marketCapForMetrics,
-  ]);
+  }, [calculator, rewardSupply, tokenPrice, communityReward, assetSalePrice, marketCapForMetrics]);
 
-  // Calculate total reward earned: (user holdings / circulating supply) × community reward (10% of asset price)
+  // Calculate total reward earned: (user holdings / reward supply) × community reward
+  // 🔥 FIX: Use rewardSupply instead of circulatingSupply (excludes LP tokens for DEX)
   const totalRewardEarned = useMemo(() => {
-    if (circulatingSupply === null || circulatingSupply <= 0 || userTokenHoldings <= 0) return 0;
-    const userShareOfSupply = userTokenHoldings / circulatingSupply;
+    if (rewardSupply === null || rewardSupply <= 0 || userTokenHoldings <= 0) return 0;
+    const userShareOfSupply = userTokenHoldings / rewardSupply;
     return userShareOfSupply * communityReward;
-  }, [userTokenHoldings, circulatingSupply, communityReward]);
+  }, [userTokenHoldings, rewardSupply, communityReward]);
 
   const ratioDisplay = useMemo(() => {
     const safeRatio = Number.isFinite(metrics.acesRatio) ? metrics.acesRatio : 0;
@@ -433,15 +445,15 @@ export default function TokenHealthPanel({
     marketCapForMetrics === null ||
     !Number.isFinite(marketCapForMetrics);
 
+  // 🔥 FIX: Use rewardSupply for loading checks (falls back to circulatingSupply)
   const tradeRewardLoading =
-    circulatingSupply === undefined ||
-    circulatingSupply === null ||
+    rewardSupply === undefined ||
+    rewardSupply === null ||
     reservePrice === undefined ||
     reservePrice === null ||
     !tokenAddress;
 
-  const rewardEarnedLoading =
-    circulatingSupply === undefined || circulatingSupply === null || !tokenAddress;
+  const rewardEarnedLoading = rewardSupply === undefined || rewardSupply === null || !tokenAddress;
 
   const volumeLoading = metricsLoading || !tokenAddress;
 
@@ -506,11 +518,11 @@ export default function TokenHealthPanel({
       >
         <LabelWithTooltip
           label="REWARD EARNED"
-          tooltip="Your proportional share of the community reward pool. Calculated as: (Your Holdings ÷ Circulating Supply) × Community Reward."
+          tooltip="Your proportional share of the community reward pool. Calculated as: (Your Holdings ÷ Reward Supply) × Community Reward. Reward Supply excludes tokens locked in liquidity pools."
         />
         {rewardEarnedLoading ? (
           <LoadingDots className={valueClass} />
-        ) : totalRewardEarned === 0 && (circulatingSupply === 0 || userTokenHoldings === 0) ? (
+        ) : totalRewardEarned === 0 && (rewardSupply === 0 || userTokenHoldings === 0) ? (
           <span className={valueClass}>--</span>
         ) : (
           <div className="flex items-baseline gap-0.5 text-white">

@@ -269,22 +269,33 @@ export class ChartDataStore {
     previousCandle: Candle | null,
   ): { candle: Candle; totalVolumeUsd: number } {
     const prices = trades.map((t) => t.priceInUsd);
+    const pricesAces = trades.map((t) => t.priceInAces);
     const volumes = trades.map((t) => t.volumeUsd);
     const supplies = trades.map((t) => t.circulatingSupply || 700000000).filter((s) => s > 0);
 
-    const open = previousCandle ? previousCandle.closeUsd : prices[0]?.toString() || '0';
-    const high = Math.max(...prices).toString();
-    const low = Math.min(...prices).toString();
-    const close = prices[prices.length - 1]?.toString() || '0';
+    // USD OHLC
+    const openNum = previousCandle ? parseFloat(previousCandle.closeUsd) : prices[0] || 0;
+    const closeNum = prices[prices.length - 1] || 0;
+    const open = openNum.toString();
+    const close = closeNum.toString();
+    // 🔥 FIX: High/Low MUST include open and close prices for valid candlesticks
+    // This ensures no phantom wicks when price moves monotonically
+    const high = Math.max(openNum, closeNum, ...prices).toString();
+    const low = Math.min(openNum, closeNum, ...prices).toString();
+
     const totalVolumeUsd = volumes.reduce((sum, v) => sum + v, 0);
     const volume = volumes.reduce((sum, v) => sum + v, 0).toString();
     const volumeUsd = totalVolumeUsd.toString();
     const supply = supplies.length > 0 ? supplies[supplies.length - 1] : 700000000;
 
-    const openAces = previousCandle ? previousCandle.close : prices[0]?.toString() || '0';
-    const highAces = Math.max(...trades.map((t) => t.priceInAces)).toString();
-    const lowAces = Math.min(...trades.map((t) => t.priceInAces)).toString();
-    const closeAces = trades[trades.length - 1]?.priceInAces.toString() || '0';
+    // ACES OHLC
+    const openAcesNum = previousCandle ? parseFloat(previousCandle.close) : pricesAces[0] || 0;
+    const closeAcesNum = pricesAces[pricesAces.length - 1] || 0;
+    const openAces = openAcesNum.toString();
+    const closeAces = closeAcesNum.toString();
+    // 🔥 FIX: High/Low MUST include open and close prices for valid candlesticks
+    const highAces = Math.max(openAcesNum, closeAcesNum, ...pricesAces).toString();
+    const lowAces = Math.min(openAcesNum, closeAcesNum, ...pricesAces).toString();
 
     const marketCapUsd = parseFloat(close) * supply;
     const marketCapOpenUsd = previousCandle?.marketCapCloseUsd || marketCapUsd.toString();
@@ -335,8 +346,7 @@ export class ChartDataStore {
 
     const prevClose = previousCandle.close;
     const prevCloseUsd = previousCandle.closeUsd;
-    const prevMarketCapCloseUsd =
-      previousCandle.marketCapCloseUsd || previousCandle.marketCapUsd;
+    const prevMarketCapCloseUsd = previousCandle.marketCapCloseUsd || previousCandle.marketCapUsd;
 
     candle.open = prevClose;
     candle.high = prevClose;
