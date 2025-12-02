@@ -209,7 +209,7 @@ const drawDaysLeft = (
     ctx.textBaseline = 'bottom';
     const textX = x + width - (isMobile ? 15 : 20) * responsiveMetrics.paddingScale;
     const textY = y + height - (isMobile ? 15 : 20) * responsiveMetrics.paddingScale;
-    ctx.fillText('LIVE SOON', textX, textY);
+    ctx.fillText('LIVE', textX, textY);
     ctx.restore();
     return;
   }
@@ -362,7 +362,7 @@ export const drawArtGalleryCard = (
   const line1Text = 'Banksy – The Illicit Collaboration';
   const line2Text = '"Illicit Collaboration"';
   const line3Text = isMobile ? 'v. Banksy x Chimp drop.' : 'v. Banksy x Chimp drop.';
-  const line4Text = 'BANKSY TOKEN LIVE SOON';
+  const line4Text = '$ILLICIT TOKEN LIVE';
 
   // metrics
   const m1 = getTextMetrics(ctx, line1Text, line1Font);

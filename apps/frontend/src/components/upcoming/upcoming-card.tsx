@@ -93,7 +93,7 @@ export default function UpcomingCard({ asset }: UpcomingCardProps) {
             <div className="flex items-center justify-between">
               <span className="text-[#C9AE6A] font-mono text-sm font-medium">{displaySymbol}</span>
               {asset?.category && (
-                <span className="text-[#E6E3D3]/60 text-xs uppercase tracking-wide">JEWELRY</span>
+                <span className="text-[#E6E3D3]/60 text-xs uppercase tracking-wide">{asset.category}</span>
               )}
             </div>
           </div>

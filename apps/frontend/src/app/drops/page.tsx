@@ -25,7 +25,9 @@ export default function UpcomingPage() {
     const banksyAsset = banksyMetadata
       ? {
           ...convertMetadataToUpcomingAsset(banksyMetadata),
-          comingSoon: true,
+          symbol: 'ILLICIT', // Override with proper symbol for routing
+          comingSoon: false, // Changed to false - ILLICIT is now live!
+          category: 'ART', // Override category to show ART instead of default
         }
       : undefined;
     const apAsset = apMetadata ? convertMetadataToUpcomingAsset(apMetadata) : undefined;
