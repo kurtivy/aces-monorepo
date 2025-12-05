@@ -553,36 +553,37 @@ export class TradePriceAggregator {
         return acesAmount / tokenAmount; // Price of 1 token in ACES
       });
 
-      // OHLC in ACES
+      // OHLC in ACES - Using last trade price for close (industry standard)
+      // This matches DEXScreener, Binance, TradingView behavior
       const openAces = pricesInAces[0]; // First trade (open)
-      const highAces = Math.max(...pricesInAces);
-      const lowAces = Math.min(...pricesInAces);
+      const closeAces = pricesInAces[pricesInAces.length - 1]; // Last trade (close) - industry standard
+      const highAces = Math.max(openAces, closeAces, ...pricesInAces);
+      const lowAces = Math.min(openAces, closeAces, ...pricesInAces);
 
-      // 🔥 VWAP for close price in ACES (volume-weighted average)
-      const totalValueAces = trades.reduce((sum, trade) => {
-        const tokenAmount = parseFloat(trade.tokenAmount);
-        const acesAmount = parseFloat(trade.acesTokenAmount);
-        const priceInAces = tokenAmount > 0 ? acesAmount / tokenAmount : 0;
-        return sum + priceInAces * tokenAmount;
-      }, 0);
-      const totalVolumeTokens = trades.reduce(
-        (sum, trade) => sum + parseFloat(trade.tokenAmount),
-        0,
-      );
-      const closeAces = totalVolumeTokens > 0 ? totalValueAces / totalVolumeTokens : openAces;
+      // 📝 VWAP calculations commented out for potential future use as indicator:
+      // const totalValueAces = trades.reduce((sum, trade) => {
+      //   const tokenAmount = parseFloat(trade.tokenAmount);
+      //   const acesAmount = parseFloat(trade.acesTokenAmount);
+      //   const priceInAces = tokenAmount > 0 ? acesAmount / tokenAmount : 0;
+      //   return sum + priceInAces * tokenAmount;
+      // }, 0);
+      // const totalVolumeTokens = trades.reduce((sum, trade) => sum + parseFloat(trade.tokenAmount), 0);
+      // const vwapCloseAces = totalVolumeTokens > 0 ? totalValueAces / totalVolumeTokens : openAces;
 
       // Calculate USD prices using HISTORICAL ACES prices
       const openUsd = openAces * trades[0].acesUsdPriceAtExecution;
+      const lastTrade = trades[trades.length - 1];
+      const closeUsd = closeAces * lastTrade.acesUsdPriceAtExecution; // Last trade price in USD
 
-      // 🔥 VWAP for close price in USD (volume-weighted average)
-      const totalValueUsd = trades.reduce((sum, trade) => {
-        const tokenAmount = parseFloat(trade.tokenAmount);
-        const acesAmount = parseFloat(trade.acesTokenAmount);
-        const priceInAces = tokenAmount > 0 ? acesAmount / tokenAmount : 0;
-        const priceInUsd = priceInAces * trade.acesUsdPriceAtExecution;
-        return sum + priceInUsd * tokenAmount;
-      }, 0);
-      const closeUsd = totalVolumeTokens > 0 ? totalValueUsd / totalVolumeTokens : openUsd;
+      // 📝 VWAP USD calculations commented out for potential future use:
+      // const totalValueUsd = trades.reduce((sum, trade) => {
+      //   const tokenAmount = parseFloat(trade.tokenAmount);
+      //   const acesAmount = parseFloat(trade.acesTokenAmount);
+      //   const priceInAces = tokenAmount > 0 ? acesAmount / tokenAmount : 0;
+      //   const priceInUsd = priceInAces * trade.acesUsdPriceAtExecution;
+      //   return sum + priceInUsd * tokenAmount;
+      // }, 0);
+      // const vwapCloseUsd = totalVolumeTokens > 0 ? totalValueUsd / totalVolumeTokens : openUsd;
 
       // For high/low, use the ACES price at the time of that specific trade
       const pricesInUsd = trades.map((t, i) => pricesInAces[i] * t.acesUsdPriceAtExecution);
@@ -600,8 +601,7 @@ export class TradePriceAggregator {
         return sum + tokenAmount * priceInAces * trade.acesUsdPriceAtExecution;
       }, 0);
 
-      // Get supply from last trade in bucket
-      const lastTrade = trades[trades.length - 1];
+      // Get supply from last trade in bucket (reuse lastTrade from above)
       const circulatingSupply = lastTrade.supply;
 
       // Calculate market cap

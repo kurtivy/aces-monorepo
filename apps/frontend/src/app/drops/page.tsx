@@ -16,14 +16,23 @@ export default function UpcomingPage() {
   const [isLoading, setIsLoading] = useState(true);
   const upcomingAssets = useMemo<UpcomingAsset[]>(() => {
     const featuredMetadata = SAMPLE_METADATA.find((item) => item.id === '26');
+    const banksyMetadata = SAMPLE_METADATA.find((item) => item.id === '27');
     const apMetadata = SAMPLE_METADATA.find((item) => item.id === '7');
 
     const featuredAsset = featuredMetadata
       ? convertMetadataToUpcomingAsset(featuredMetadata)
       : undefined;
+    const banksyAsset = banksyMetadata
+      ? {
+          ...convertMetadataToUpcomingAsset(banksyMetadata),
+          symbol: 'ILLICIT', // Override with proper symbol for routing
+          comingSoon: false, // Changed to false - ILLICIT is now live!
+          category: 'ART', // Override category to show ART instead of default
+        }
+      : undefined;
     const apAsset = apMetadata ? convertMetadataToUpcomingAsset(apMetadata) : undefined;
 
-    return [featuredAsset, apAsset].filter(Boolean) as UpcomingAsset[];
+    return [banksyAsset, featuredAsset, apAsset].filter(Boolean) as UpcomingAsset[];
   }, []);
 
   useEffect(() => {

@@ -359,10 +359,10 @@ export const drawArtGalleryCard = (
   const line3Font = `italic ${baseFontSize * responsiveMetrics.fontScale}px ${getCanvasFontStack('NeueWorld')}`;
   const line4Font = `${baseFontSize * 1.05 * responsiveMetrics.fontScale}px 'Courier New', 'Monaco', 'Menlo', 'Consolas', monospace`;
 
-  const line1Text = 'Richard Mille RM 67-01 Gold';
-  const line2Text = '"Tokenized"';
-  const line3Text = isMobile ? 'v. Create token market.' : 'v. Create derivative token market.';
-  const line4Text = isMobile ? 'RMILLE LIVE' : 'RMILLE TOKEN LIVE';
+  const line1Text = 'Banksy – The Illicit Collaboration';
+  const line2Text = '"Illicit Collaboration"';
+  const line3Text = isMobile ? 'v. Banksy x Chimp drop.' : 'v. Banksy x Chimp drop.';
+  const line4Text = '$ILLICIT TOKEN LIVE';
 
   // metrics
   const m1 = getTextMetrics(ctx, line1Text, line1Font);

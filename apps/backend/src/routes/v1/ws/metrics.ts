@@ -142,6 +142,7 @@ interface MetricsUpdate {
   liquidityUsd?: number | null;
   liquiditySource?: 'bonding_curve' | 'dex' | null;
   circulatingSupply?: number | null;
+  rewardSupply?: number | null; // Actual circulating for reward calculations (excludes LP tokens)
   // 🔥 NEW: Bonding data fields
   bondingData?: {
     isBonded: boolean;
@@ -154,8 +155,9 @@ interface MetricsUpdate {
 
 export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
   const subscriptionDeduplicator = fastify.subscriptionDeduplicator;
-  const bitQueryDedupEnabled =
-    Boolean(process.env.ENABLE_BITQUERY_DEDUP === 'true' && subscriptionDeduplicator);
+  const bitQueryDedupEnabled = Boolean(
+    process.env.ENABLE_BITQUERY_DEDUP === 'true' && subscriptionDeduplicator,
+  );
   const dedupDebugLogging = process.env.DEBUG_BITQUERY_DEDUP === 'true';
   const dedupClientHandlers = new Map<string, (trade: TradeEvent) => void>();
 
@@ -266,7 +268,8 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
       // 🔥 FIX: Use Trade24hAggregator with proper REST API seeding
       // This maintains proper rolling 24h window with auto-pruning
       const tradeAggregator = new Trade24hAggregator();
-      let acesUsdPrice = 1; // Default fallback
+      let acesUsdPrice = 1; // Default fallback for volume calculations
+      let hasRealAcesPrice = false; // 🔥 FIX: Track if we have real price (for liquidity only)
       let lastSeedRefresh = 0; // Track when we last refreshed the seed
       const SEED_REFRESH_INTERVAL = 10 * 60 * 1000; // Refresh seed every 10 minutes
 
@@ -297,6 +300,22 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
               }
               if (marketCapData) {
                 currentMetrics.currentPriceUsd = marketCapData.currentPriceUsd;
+                // 🔥 FIX: Prefer marketCapData.marketCapUsd (from pool reserves, accurate)
+                const mcapFromService = marketCapData.marketCapUsd;
+                if (
+                  typeof mcapFromService === 'number' &&
+                  Number.isFinite(mcapFromService) &&
+                  mcapFromService > 0
+                ) {
+                  currentMetrics.marketCapUsd = mcapFromService;
+                }
+                // 🔥 NEW: Extract rewardSupply for reward calculations (excludes LP tokens)
+                if (
+                  marketCapData.rewardSupply !== undefined &&
+                  marketCapData.rewardSupply !== null
+                ) {
+                  currentMetrics.rewardSupply = marketCapData.rewardSupply;
+                }
               }
               if (bondingData) {
                 const normalizeSupply = (value: number) =>
@@ -358,6 +377,8 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
                 };
                 marketCapData?: {
                   currentPriceUsd?: number;
+                  marketCapUsd?: number;
+                  rewardSupply?: number; // Actual circulating for reward calculations
                 };
               };
             };
@@ -383,7 +404,7 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
             // Extract metrics from health response
             if (metricsData) {
               currentMetrics.marketCapUsd = metricsData.marketCapUsd;
-              
+
               // 🔥 FIX: Seed aggregator with REST volume (accurate, includes all sources)
               // REST API queries BitQuery (DEX) + Subgraph (bonding) for complete 24h history
               const normalizeVolume = (value: number) =>
@@ -392,7 +413,7 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
               const baselineVolumeAces = normalizeVolume(
                 parseFloat(metricsData.volume24hAces || '0'),
               );
-              
+
               if (baselineVolumeUsd > 0 || baselineVolumeAces > 0) {
                 // Seed aggregator with REST volume as a single "baseline" trade
                 // This trade will auto-prune after 24h (maintaining rolling window)
@@ -403,25 +424,40 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
                     usdAmount: baselineVolumeUsd,
                   },
                 ]);
-                
+
                 lastSeedRefresh = Date.now();
-                
+
                 console.log(
                   `[WS:Metrics] ✅ Seeded aggregator with REST volume: ${baselineVolumeAces.toFixed(2)} ACES / $${baselineVolumeUsd.toFixed(2)} USD`,
                 );
               }
-              
+
               // Set initial volume from aggregator
               const { acesVolume, usdVolume } = tradeAggregator.getVolume24h();
               currentMetrics.volume24hUsd = usdVolume;
               currentMetrics.volume24hAces = acesVolume.toString();
-              
+
               currentMetrics.liquidityUsd = metricsData.liquidityUsd;
               currentMetrics.liquiditySource = metricsData.liquiditySource;
             }
 
             if (marketCapData) {
               currentMetrics.currentPriceUsd = marketCapData.currentPriceUsd;
+              // 🔥 FIX: Prefer marketCapData.marketCapUsd over metricsData.marketCapUsd
+              // marketCapData comes from dedicated market cap service (pool reserves/accurate)
+              // metricsData uses database currentPriceACES which can be stale/wrong
+              const mcapFromService = marketCapData.marketCapUsd;
+              if (
+                typeof mcapFromService === 'number' &&
+                Number.isFinite(mcapFromService) &&
+                mcapFromService > 0
+              ) {
+                currentMetrics.marketCapUsd = mcapFromService;
+              }
+              // 🔥 NEW: Extract rewardSupply for reward calculations (excludes LP tokens)
+              if (marketCapData.rewardSupply !== undefined && marketCapData.rewardSupply !== null) {
+                currentMetrics.rewardSupply = marketCapData.rewardSupply;
+              }
             }
 
             if (bondingData) {
@@ -449,19 +485,25 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
               }
             }
 
-            // 🔥 NEW: Extract ACES/USD price for volume calculations
-            // Fetch from price cache service (same source as REST endpoint)
-            try {
-              const priceData = await priceCacheService.getPrices();
-              if (
-                priceData.acesUsd &&
-                Number.isFinite(priceData.acesUsd) &&
-                priceData.acesUsd > 0
-              ) {
-                acesUsdPrice = priceData.acesUsd;
+            // 🔥 ACES/USD price already fetched early (before subscriptions)
+            // This is a fallback refresh in case price wasn't available earlier
+            if (!hasRealAcesPrice) {
+              try {
+                const priceData = await priceCacheService.getPrices();
+                if (
+                  priceData.acesUsd &&
+                  Number.isFinite(priceData.acesUsd) &&
+                  priceData.acesUsd > 0
+                ) {
+                  acesUsdPrice = priceData.acesUsd;
+                  hasRealAcesPrice = true;
+                  console.log(
+                    `[WS:Metrics] 💰 ACES price fetched (fallback): $${acesUsdPrice.toFixed(6)}`,
+                  );
+                }
+              } catch (error) {
+                console.warn('[WS:Metrics] ⚠️ Failed to fetch ACES price in fetchInitialMetrics');
               }
-            } catch (error) {
-              console.warn('[WS:Metrics] Failed to fetch ACES price, using default 1.0');
             }
 
             // 🔥 FIX: Aggregator seeded above from REST API
@@ -556,8 +598,7 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
       };
 
       const handleTradeEvent = (trade: TradeEvent) => {
-        // 🔥 FIX: Add trade to aggregator (maintains rolling 24h window)
-        // 1. Add trade to 24h rolling buffer
+        // 1. Add trade to 24h rolling buffer (uses acesUsdPrice for USD calculation)
         tradeAggregator.addTrade(trade, acesUsdPrice);
 
         // 2. Recalculate volumes from buffer (auto-prunes trades older than 24h)
@@ -579,6 +620,19 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
       };
 
       try {
+        // 🔥 FIX: Fetch ACES price FIRST before any subscriptions
+        // This ensures liquidity calculations use real price, not the $1 default
+        try {
+          const priceData = await priceCacheService.getPrices();
+          if (priceData.acesUsd && Number.isFinite(priceData.acesUsd) && priceData.acesUsd > 0) {
+            acesUsdPrice = priceData.acesUsd;
+            hasRealAcesPrice = true; // 🔥 FIX: Mark that we have real price for liquidity
+            console.log(`[WS:Metrics] 💰 ACES price fetched: $${acesUsdPrice.toFixed(6)}`);
+          }
+        } catch (error) {
+          console.warn('[WS:Metrics] ⚠️ Failed to fetch early ACES price:', error);
+        }
+
         let allowBitQueryDedup = false;
         if (bitQueryDedupEnabled && subscriptionDeduplicator) {
           try {
@@ -653,26 +707,35 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
               }
 
               // 2. Recalculate bonding curve liquidity in real-time
-              try {
-                const tokenService = new TokenService(fastify.prisma);
-                const bonding = await tokenService.getBondingCurveLiquidity(tokenAddress);
-
-                // Convert liquidity from Wei to proper units
-                const liquidityAces = bonding.netLiquidityWei.div(new Decimal(10).pow(18));
-                const liquidityUsd = liquidityAces.mul(new Decimal(acesUsdPrice));
-
-                if (liquidityUsd.isFinite() && liquidityUsd.gt(0)) {
-                  currentMetrics.liquidityUsd = liquidityUsd.toNumber();
-                  currentMetrics.liquiditySource = 'bonding_curve';
-
-                  if (process.env.DEBUG_METRICS) {
-                    console.log(
-                      `[WS:Metrics] 💧 Bonding liquidity updated: $${liquidityUsd.toFixed(2)} USD (${liquidityAces.toFixed(2)} ACES)`,
-                    );
-                  }
+              // 🔥 FIX: Only calculate if we have REAL ACES price (not $1 default)
+              if (!hasRealAcesPrice) {
+                if (process.env.DEBUG_METRICS) {
+                  console.log(
+                    '[WS:Metrics] ⚠️ Skipping liquidity calculation - waiting for real ACES price',
+                  );
                 }
-              } catch (error) {
-                console.warn('[WS:Metrics] Failed to recalculate bonding liquidity:', error);
+              } else {
+                try {
+                  const tokenService = new TokenService(fastify.prisma);
+                  const bonding = await tokenService.getBondingCurveLiquidity(tokenAddress);
+
+                  // Convert liquidity from Wei to proper units
+                  const liquidityAces = bonding.netLiquidityWei.div(new Decimal(10).pow(18));
+                  const liquidityUsd = liquidityAces.mul(new Decimal(acesUsdPrice));
+
+                  if (liquidityUsd.isFinite() && liquidityUsd.gt(0)) {
+                    currentMetrics.liquidityUsd = liquidityUsd.toNumber();
+                    currentMetrics.liquiditySource = 'bonding_curve';
+
+                    if (process.env.DEBUG_METRICS) {
+                      console.log(
+                        `[WS:Metrics] 💧 Bonding liquidity updated: $${liquidityUsd.toFixed(2)} USD (${liquidityAces.toFixed(2)} ACES)`,
+                      );
+                    }
+                  }
+                } catch (error) {
+                  console.warn('[WS:Metrics] Failed to recalculate bonding liquidity:', error);
+                }
               }
 
               // 3. Update bonding data if we have tokensBondedAt from initial fetch
@@ -758,6 +821,13 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
                       '[WS:Metrics] ⚠️ ACES token not found in pool reserves for liquidity calculation',
                     );
                     currentMetrics.liquiditySource = 'dex';
+                  } else if (!hasRealAcesPrice) {
+                    // 🔥 FIX: Don't calculate DEX liquidity without real ACES price
+                    if (process.env.DEBUG_METRICS) {
+                      console.log(
+                        '[WS:Metrics] ⚠️ Skipping DEX liquidity calculation - waiting for real ACES price',
+                      );
+                    }
                   } else {
                     // Get ACES reserve (both tokens use 18 decimals)
                     const acesReserveRaw = isToken0Aces ? reserves[0] : reserves[1];
@@ -822,6 +892,8 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
                 };
                 marketCapData?: {
                   currentPriceUsd?: number;
+                  marketCapUsd?: number;
+                  rewardSupply?: number; // Actual circulating for reward calculations
                 };
               };
             };
@@ -830,12 +902,22 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
               const { bondingData, metricsData, marketCapData } = healthResult.data;
               let updated = false;
 
+              // 🔥 FIX: Prefer marketCapData.marketCapUsd (from pool reserves, accurate)
+              // over metricsData.marketCapUsd (uses stale database currentPriceACES)
+              const mcapFromService = marketCapData?.marketCapUsd;
+              const preferredMarketCap =
+                typeof mcapFromService === 'number' &&
+                Number.isFinite(mcapFromService) &&
+                mcapFromService > 0
+                  ? mcapFromService
+                  : metricsData?.marketCapUsd;
+
               if (metricsData) {
                 if (
-                  metricsData.marketCapUsd !== undefined &&
-                  metricsData.marketCapUsd !== currentMetrics.marketCapUsd
+                  preferredMarketCap !== undefined &&
+                  preferredMarketCap !== currentMetrics.marketCapUsd
                 ) {
-                  currentMetrics.marketCapUsd = metricsData.marketCapUsd;
+                  currentMetrics.marketCapUsd = preferredMarketCap;
                   updated = true;
                 }
                 // 🔥 FIX: Periodically refresh aggregator seed to stay accurate
@@ -886,6 +968,17 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
               if (marketCapData?.currentPriceUsd !== undefined) {
                 if (marketCapData.currentPriceUsd !== currentMetrics.currentPriceUsd) {
                   currentMetrics.currentPriceUsd = marketCapData.currentPriceUsd;
+                  updated = true;
+                }
+              }
+
+              // 🔥 NEW: Update rewardSupply for reward calculations (excludes LP tokens)
+              if (
+                marketCapData?.rewardSupply !== undefined &&
+                marketCapData?.rewardSupply !== null
+              ) {
+                if (marketCapData.rewardSupply !== currentMetrics.rewardSupply) {
+                  currentMetrics.rewardSupply = marketCapData.rewardSupply;
                   updated = true;
                 }
               }
@@ -960,7 +1053,8 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
             type: 'subscribed',
             data: {
               tokenAddress,
-              subscriptions: subscriptions.length + (bitQueryDedupEnabled && allowBitQueryDedup ? 1 : 0),
+              subscriptions:
+                subscriptions.length + (bitQueryDedupEnabled && allowBitQueryDedup ? 1 : 0),
               message: 'Streaming real-time metrics',
             },
             timestamp: Date.now(),
@@ -988,27 +1082,27 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
             clearInterval(heartbeatInterval);
           }
 
-        if (dedupClientHandlers.delete(clientId)) {
-          logDedupClientCount(
-            `Removed dedup handler after disconnect for ${normalizedTokenAddress} (${clientId})`,
-          );
-        }
-
-        if (dedupSubscribed && bitQueryDedupEnabled && subscriptionDeduplicator) {
-          try {
-            subscriptionDeduplicator.unsubscribe(clientId, 'trades', {
-              tokenAddress: normalizedTokenAddress,
-            });
-            console.log(
-              `[WS:Metrics] ♻️ Removed dedup subscription for ${normalizedTokenAddress} (${clientId})`,
-            );
-          } catch (dedupError) {
-            console.warn(
-              `[WS:Metrics] ⚠️ Failed to unsubscribe dedup client ${clientId} for ${normalizedTokenAddress}:`,
-              dedupError,
+          if (dedupClientHandlers.delete(clientId)) {
+            logDedupClientCount(
+              `Removed dedup handler after disconnect for ${normalizedTokenAddress} (${clientId})`,
             );
           }
-        }
+
+          if (dedupSubscribed && bitQueryDedupEnabled && subscriptionDeduplicator) {
+            try {
+              subscriptionDeduplicator.unsubscribe(clientId, 'trades', {
+                tokenAddress: normalizedTokenAddress,
+              });
+              console.log(
+                `[WS:Metrics] ♻️ Removed dedup subscription for ${normalizedTokenAddress} (${clientId})`,
+              );
+            } catch (dedupError) {
+              console.warn(
+                `[WS:Metrics] ⚠️ Failed to unsubscribe dedup client ${clientId} for ${normalizedTokenAddress}:`,
+                dedupError,
+              );
+            }
+          }
 
           // 🔥 FIX: Clear trade aggregator
           tradeAggregator.clear();

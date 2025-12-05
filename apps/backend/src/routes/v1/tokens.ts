@@ -250,6 +250,7 @@ export async function tokensRoutes(fastify: FastifyInstance) {
                 marketCapUsd?: number;
                 currentPriceUsd?: number;
                 supply?: number;
+                rewardSupply?: number; // Actual circulating supply for reward calculations
                 error?: string;
               };
 
@@ -262,6 +263,9 @@ export async function tokensRoutes(fastify: FastifyInstance) {
                 const marketCapUsd = marketCapResult.marketCapUsd || 0;
                 const currentPriceUsd = marketCapResult.currentPriceUsd || 0;
                 const supply = marketCapResult.supply || 1_000_000_000; // Default 1B supply
+                // rewardSupply: actual circulating tokens for reward calculations (excludes LP tokens)
+                // Falls back to supply if not provided (bonding curve or old API response)
+                const rewardSupply = marketCapResult.rewardSupply ?? supply;
 
                 // Get ACES/USD price from service for currency conversion
                 let marketCapAces: number;
@@ -282,6 +286,7 @@ export async function tokensRoutes(fastify: FastifyInstance) {
                   marketCapAces,
                   marketCapUsd,
                   circulatingSupply: supply,
+                  rewardSupply, // 🔥 NEW: Actual circulating for reward calculations
                   currentPriceAces,
                   currentPriceUsd,
                   lastUpdated: Date.now(),
@@ -978,7 +983,12 @@ export async function tokensRoutes(fastify: FastifyInstance) {
 
         if (isDexMode && dexLiveAt) {
           try {
-            const dexFeeResult = await calculateDexFees(address, poolAddress, dexLiveAt, acesUsdPrice);
+            const dexFeeResult = await calculateDexFees(
+              address,
+              poolAddress,
+              dexLiveAt,
+              acesUsdPrice,
+            );
             dexFeesAces = parseFloat(dexFeeResult.aces);
             dexFeesUsd = dexFeeResult.usd;
 

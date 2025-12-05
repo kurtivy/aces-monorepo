@@ -47,7 +47,7 @@ interface InfiniteCanvasProps {
 
 // FEATURED SECTION: Update component declaration to accept props
 const InfiniteCanvas = ({
-  featuredImageId = '26', // Default to Richard Mille RM 67-01 Gold
+  featuredImageId = '27', // Default to Banksy – The Illicit Collaboration
   onFeaturedImageClick,
 }: InfiniteCanvasProps = {}) => {
   const [selectedImage, setSelectedImage] = useState<ImageInfo | null>(null);

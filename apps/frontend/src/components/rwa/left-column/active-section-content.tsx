@@ -64,6 +64,7 @@ export function ActiveSectionContent({
     metrics: tokenMetrics,
     loading: tokenMetricsLoading,
     circulatingSupply,
+    rewardSupply,
     currentPriceUsd,
   } = useTokenMetrics(listingTokenAddress);
 
@@ -198,6 +199,7 @@ export function ActiveSectionContent({
           liquiditySource={liquiditySource}
           metricsLoading={tokenMetricsLoading}
           circulatingSupply={circulatingSupply}
+          rewardSupply={rewardSupply}
         />
       </div>
     </div>,

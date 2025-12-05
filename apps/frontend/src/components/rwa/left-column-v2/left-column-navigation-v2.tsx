@@ -29,6 +29,7 @@ export function LeftColumnNavigationV2({
     currentPriceUsd,
     bondingData,
     circulatingSupply,
+    rewardSupply,
     marketCapUsd,
     loading: metricsLoading,
   } = useTokenMetrics(listing?.token?.contractAddress);
@@ -174,6 +175,7 @@ export function LeftColumnNavigationV2({
             liquiditySource={metrics?.liquiditySource ?? null}
             metricsLoading={metricsLoading}
             circulatingSupply={circulatingSupply}
+            rewardSupply={rewardSupply}
             disableMetricsFetch
           />
         </div>

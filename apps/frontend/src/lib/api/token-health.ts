@@ -48,6 +48,7 @@ export interface TokenHealthData {
     marketCapAces: number;
     marketCapUsd: number;
     circulatingSupply: number;
+    rewardSupply?: number; // Actual circulating for reward calculations (excludes LP tokens)
     currentPriceAces: number;
     currentPriceUsd: number;
     lastUpdated: number;

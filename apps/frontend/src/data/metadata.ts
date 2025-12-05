@@ -438,4 +438,26 @@ As one of the pioneering NFT projects that defined the digital art and collectib
     marketCap: 485000,
     tokenSupply: 100000,
   },
+  {
+    id: '27',
+    title: 'Banksy – The Illicit Collaboration',
+    description: `A one-of-one historic street art artifact born out of Banksy's early-2000s East London pop-up era. Originally created as part of the "London. New York. Bristol. Monkey" canvas series, Edition 02/10, this piece began as a khaki-green Banksy monkey surfing a bomb — a raw, anti-establishment icon from the Rivington Street guerrilla gallery days.
+
+Rather than entering a gallery, the canvas was given as payment to the crew who built those underground shows. In 2001, it passed to skater-artist Dave The Chimp with one instruction: "Be inspired." Instead of preserving it, he did the unthinkable — painting a second monkey mid-flight, two fingers raised not just to the world, but to the original Banksy itself.
+
+The result: a true 1/1 illicit collaboration. A Banksy monkey met a Chimp monkey in a moment of punk rebellion, transforming a numbered edition into a singular, historically-charged artwork. It is part homage, part violation, entirely irreproducible.
+
+Spray, acrylic, and pencil on canvas  
+Size: 61 × 61 cm
+
+A rare double-monkey mic drop from two eras of graffiti culture — the monkey that said "f**k off" twice.`,
+    date: '2024-03-30',
+    countdownDate: '2025-10-06T13:00:00.000Z',
+    ticker: '$ILLICIT',
+    image: '/canvas-images/banksy-x-chimp.webp',
+    rrp: 150000, // Real-world valuation in USD
+    tokenPrice: 0,
+    marketCap: 0,
+    tokenSupply: 0,
+  },
 ];
