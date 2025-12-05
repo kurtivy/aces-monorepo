@@ -6,12 +6,11 @@
  *
  * Key Features:
  * - Bonding curve: Latest trade from Subgraph + circulating supply
- * - DEX: Pool reserves from QuickNode (primary) or latest trade price from BitQuery (fallback)
+ * - DEX: Pool reserves from QuickNode
  * - In-memory caching (5s TTL) to reduce API calls
  * - Proper error handling with fallback chain
  */
 
-import { BitQueryService } from './bitquery-service';
 import { AcesUsdPriceService } from './aces-usd-price-service';
 import { PrismaClient } from '@prisma/client';
 import { ethers } from 'ethers';
@@ -22,7 +21,7 @@ interface MarketCapData {
   currentPriceUsd: number;
   supply: number;
   rewardSupply: number; // Actual circulating supply for reward calculations (excludes LP tokens)
-  source: 'bonding_curve' | 'dex_pool' | 'dex_bitquery' | 'cached';
+  source: 'bonding_curve' | 'dex_pool' | 'cached';
   calculatedAt: number;
 }
 
@@ -54,7 +53,6 @@ export class MarketCapService {
 
   constructor(
     private prisma: PrismaClient,
-    private bitQueryService: BitQueryService,
     private acesUsdPriceService: AcesUsdPriceService,
     private provider: ethers.JsonRpcProvider,
   ) {}
@@ -145,31 +143,20 @@ export class MarketCapService {
 
   /**
    * Get market cap for DEX token
-   * Primary: QuickNode pool reserves
-   * Fallback: BitQuery latest trade
+   * Uses QuickNode pool reserves
    */
-  private async getDexMarketCap(tokenAddress: string, chainId: number): Promise<MarketCapData> {
+  private async getDexMarketCap(tokenAddress: string, _chainId: number): Promise<MarketCapData> {
     try {
-      // Try QuickNode pool reserves first (most accurate)
+      // Get market cap from pool reserves
       const poolData = await this.getDexFromPoolReserves(tokenAddress);
       if (poolData) {
         return poolData;
       }
     } catch (poolError) {
-      console.warn('[MarketCapService] Pool reserves fetch failed, trying BitQuery:', poolError);
+      console.warn('[MarketCapService] Pool reserves fetch failed:', poolError);
     }
 
-    try {
-      // Fallback to BitQuery latest trade
-      const bitqueryData = await this.getDexFromBitQuery(tokenAddress);
-      if (bitqueryData) {
-        return bitqueryData;
-      }
-    } catch (bitqueryError) {
-      console.error('[MarketCapService] BitQuery fallback also failed:', bitqueryError);
-    }
-
-    throw new Error('Failed to fetch DEX market cap from all available sources');
+    throw new Error('Failed to fetch DEX market cap from pool reserves');
   }
 
   /**
@@ -266,62 +253,6 @@ export class MarketCapService {
       };
     } catch (error) {
       console.error('[MarketCapService] Pool reserves market cap error:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Get market cap from BitQuery (fallback)
-   */
-  private async getDexFromBitQuery(tokenAddress: string): Promise<MarketCapData | null> {
-    try {
-      // Get latest trade price from BitQuery
-      const latestPrice = await this.bitQueryService.getLatestPriceUSD(tokenAddress);
-      if (latestPrice === null) {
-        return null;
-      }
-
-      // Get ACES/USD price for reference
-      const acesUsdPrice = await this.acesUsdPriceService.getAcesUsdPrice();
-
-      // Calculate market cap (assuming price is already in USD)
-      const marketCapUsd = latestPrice * DEX_SUPPLY;
-
-      // Try to get reward supply from pool reserves (fallback to DEX_SUPPLY if unavailable)
-      let rewardSupply = DEX_SUPPLY;
-      try {
-        const poolAddress = await this.getTokenPoolAddress(tokenAddress);
-        if (poolAddress) {
-          const reserves = await this.getPoolReserves(poolAddress);
-          if (reserves) {
-            // Determine which reserve is the Fun token (not ACES)
-            const acesAddress = (
-              process.env.ACES_TOKEN_ADDRESS || '0x55337650856299363c496065C836B9C6E9dE0367'
-            ).toLowerCase();
-            const isToken0Aces = reserves.token0.toLowerCase() === acesAddress;
-            const tokenReserveWei = new Decimal(
-              isToken0Aces ? reserves.reserve1 : reserves.reserve0,
-            );
-            const tokenReserveHuman = tokenReserveWei.div(new Decimal('1e18')).toNumber();
-            rewardSupply = Math.max(0, DEX_SUPPLY - tokenReserveHuman);
-          }
-        }
-      } catch (reserveError) {
-        console.warn(
-          '[MarketCapService] Could not fetch pool reserves for rewardSupply, using DEX_SUPPLY',
-        );
-      }
-
-      return {
-        marketCapUsd,
-        currentPriceUsd: latestPrice,
-        supply: DEX_SUPPLY,
-        rewardSupply,
-        source: 'dex_bitquery',
-        calculatedAt: Date.now(),
-      };
-    } catch (error) {
-      console.error('[MarketCapService] BitQuery market cap error:', error);
       return null;
     }
   }

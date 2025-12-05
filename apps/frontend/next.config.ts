@@ -129,8 +129,8 @@ const nextConfig: NextConfig = {
       "img-src 'self' data: blob: https:",
       "form-action 'self'",
       "frame-ancestors 'self' https://acesbackend-production.up.railway.app https://aces-monorepo-backend-git-dev-dan-aces-fun.vercel.app https://aces.fun https://auth.privy.io",
-      'child-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org blob: data: https://*.tradingview.com',
-      'frame-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org https://challenges.cloudflare.com https://*.clarity.ms https://www.twitch.tv https://player.twitch.tv https://embed.twitch.tv blob: data: https://*.tradingview.com https://charting-library.tradingview-widget.com',
+      'child-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org blob: data: https://*.tradingview.com https://dexscreener.com https://*.dexscreener.com',
+      'frame-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org https://challenges.cloudflare.com https://*.clarity.ms https://www.twitch.tv https://player.twitch.tv https://embed.twitch.tv blob: data: https://*.tradingview.com https://charting-library.tradingview-widget.com https://dexscreener.com https://*.dexscreener.com',
       `connect-src ${connectSrc.join(' ')}`,
       "worker-src 'self' blob:",
       "manifest-src 'self'",
@@ -570,13 +570,28 @@ const nextConfig: NextConfig = {
     contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
   },
 
-  webpack: (config) => {
+  webpack: (config, { isServer }) => {
     // Shader file support
     config.module.rules.push({
       test: /\.(glsl|vs|fs|vert|frag)$/,
       exclude: /node_modules/,
       use: ['raw-loader'],
     });
+
+    // 🔥 FIX: Handle React Native modules that MetaMask SDK tries to import
+    // These modules don't exist in web environment and should be stubbed
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        '@react-native-async-storage/async-storage': false,
+      };
+    }
+
+    // Stub out React Native async storage for SSR/prerendering
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@react-native-async-storage/async-storage': false,
+    };
 
     return config;
   },

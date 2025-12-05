@@ -11,6 +11,7 @@ import {
   type SetStateAction,
 } from 'react';
 import TradingViewChart from '@/components/charts/trading-view-chart';
+import DexScreenerChart from '@/components/charts/dexscreener-chart';
 import TradeHistory from '../middle-column/token-details/trade-history';
 import { DatabaseListing } from '@/types/rwa/section.types';
 import { ChevronDown, ChevronUp } from 'lucide-react';
@@ -54,6 +55,28 @@ export function TradingSection({
   const [isTableExpanded, setIsTableExpanded] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const resolvedTokenSymbol = tokenSymbol || 'RWA';
+
+  // 🔥 DEX MODE: Use full DexScreener iframe (chart + transactions + holders)
+  // This bypasses our custom TradeHistory and uses DexScreener's built-in UI
+  const isDexMode =
+    Boolean(dexMeta?.priceSource === 'DEX') && Boolean(dexMeta?.poolAddress?.length);
+
+  // In DEX mode, render full DexScreener experience without splitter/TradeHistory
+  // showTransactions=true shows the bottom panel (Transactions, Top Traders, Holders tabs)
+  // showTokenInfo=false hides the right sidebar (market cap, liquidity details)
+  if (isDexMode && dexMeta?.poolAddress) {
+    return (
+      <div className="flex flex-col flex-1">
+        <DexScreenerChart
+          poolAddress={dexMeta.poolAddress}
+          tokenSymbol={resolvedTokenSymbol}
+          showTransactions={true}
+          showTokenInfo={false}
+          fullHeight={true}
+        />
+      </div>
+    );
+  }
 
   const splitterRef = useRef<HTMLDivElement | null>(null);
   const activePointerIdRef = useRef<number | null>(null);

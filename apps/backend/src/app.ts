@@ -41,7 +41,6 @@ import { marketCapRoutes } from './routes/v1/market-cap';
 import { goldskyWebhookRoutes } from './routes/webhooks/goldsky';
 
 // Services
-import { BitQueryService } from './services/bitquery-service';
 import { TokenService } from './services/token-service';
 import { AcesUsdPriceService } from './services/aces-usd-price-service';
 import { AerodromeDataService } from './services/aerodrome-data-service';
@@ -87,54 +86,9 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   const rateLimitMonitor = new RateLimitMonitor();
   fastify.decorate('rateLimitMonitor', rateLimitMonitor);
 
-  // Initialize subscription deduplicator (Phase B - BitQuery)
+  // Initialize subscription deduplicator
   const subscriptionDeduplicator = new SubscriptionDeduplicator();
   fastify.decorate('subscriptionDeduplicator', subscriptionDeduplicator);
-  const enableBitQueryDedup = process.env.ENABLE_BITQUERY_DEDUP === 'true';
-  if (enableBitQueryDedup) {
-    console.log('[App] ✅ BitQuery WebSocket deduplication ENABLED');
-  } else {
-    console.log('[App] ⚠️ BitQuery WebSocket deduplication DISABLED');
-  }
-
-  const enableDedupTelemetryEnv = process.env.ENABLE_WS_DEDUP_TELEMETRY;
-  const enableDedupTelemetry =
-    enableDedupTelemetryEnv === 'true' ||
-    (enableDedupTelemetryEnv === undefined && enableBitQueryDedup);
-  const enableDedupTelemetrySentry = process.env.ENABLE_WS_DEDUP_SENTRY === 'true';
-  const dedupTelemetryIntervalMs = parseInt(
-    process.env.WS_DEDUP_TELEMETRY_INTERVAL_MS || '300000',
-    10,
-  );
-  const dedupTelemetryStaleThresholdMs = parseInt(
-    process.env.WS_DEDUP_STALE_THRESHOLD_MS || '45000',
-    10,
-  );
-  const dedupTelemetrySentryThrottleMs = parseInt(
-    process.env.WS_DEDUP_SENTRY_THROTTLE_MS || '300000',
-    10,
-  );
-  const dedupTelemetryMinHealthyRatio = parseFloat(
-    process.env.WS_DEDUP_MIN_HEALTHY_RATIO || '5',
-  );
-
-  if (enableDedupTelemetry) {
-    subscriptionDeduplicator.startTelemetry({
-      intervalMs: dedupTelemetryIntervalMs,
-      staleThresholdMs: dedupTelemetryStaleThresholdMs,
-      sentryEnabled: enableDedupTelemetrySentry,
-      sentryThrottleMs: dedupTelemetrySentryThrottleMs,
-      minHealthyRatio: Number.isFinite(dedupTelemetryMinHealthyRatio)
-        ? dedupTelemetryMinHealthyRatio
-        : 5,
-    });
-
-    fastify.addHook('onClose', async () => {
-      subscriptionDeduplicator.stopTelemetry();
-    });
-  } else {
-    console.log('[App] ℹ️ WS dedup telemetry disabled');
-  }
 
   // Initialize AerodromeDataService for AcesUsdPriceService
   const aerodromeService = new AerodromeDataService({
@@ -151,12 +105,10 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   );
 
   // Initialize services
-  const bitQueryService = new BitQueryService(acesUsdPriceService, rateLimitMonitor);
   const tokenService = new TokenService(prisma);
 
   // Register services with Fastify instance
   fastify.decorate('acesUsdPriceService', acesUsdPriceService);
-  fastify.decorate('bitQueryService', bitQueryService);
 
   // Register plugins
   fastify.register(helmet, {
@@ -230,20 +182,17 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   // 🚀 Phase 2: Initialize External Data Adapters
   const { AdapterManager } = await import('./services/websocket/adapter-manager');
 
-  // Initialize adapter manager (non-blocking - BitQuery errors won't crash server)
+  // Initialize adapter manager (non-blocking - DEX adapter errors won't crash server)
   let adapterManager: any = null;
   try {
     adapterManager = new AdapterManager({
       quickNodeWsUrl: process.env.QUICKNODE_BASE_URL,
       goldskyWsUrl: process.env.GOLDSKY_WS_URL,
       goldskyApiKey: process.env.GOLDSKY_API_KEY,
-      bitQueryWsUrl: process.env.BITQUERY_WS_URL,
-      bitQueryApiKey: process.env.BITQUERY_API_KEY,
       acesUsdPriceService,
-      rateLimitEnforcer: gateway.getRateLimitEnforcer(), // 🛡️ Enable rate limit enforcement
-      prisma, // 🔥 NEW: Pass Prisma client for BitQuery trade storage
+      rateLimitEnforcer: gateway.getRateLimitEnforcer(),
+      prisma,
       subscriptionDeduplicator,
-      enableBitQueryDedup,
     });
     console.log('✅ AdapterManager initialized with rate limit enforcement');
   } catch (error: any) {
@@ -256,7 +205,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
     };
   }
 
-  // Connect all adapters (QuickNode, Goldsky, BitQuery, Aerodrome)
+  // Connect all adapters (QuickNode, Goldsky, Aerodrome)
   if (adapterManager && adapterManager.connect) {
     try {
       await adapterManager.connect();
@@ -279,7 +228,6 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   const { ChartAggregationService } = await import('./services/chart-aggregation-service');
   const chartAggregationService = new ChartAggregationService(
     prisma,
-    bitQueryService,
     acesUsdPriceService,
     tokenMetadataCache,
     acesSnapshotCache,
@@ -290,9 +238,9 @@ export const buildApp = async (): Promise<FastifyInstance> => {
 
   // Market Cap Service - Single Source of Truth
   const { MarketCapService } = await import('./services/market-cap-service');
+
   const marketCapService = new MarketCapService(
     prisma,
-    bitQueryService,
     acesUsdPriceService,
     provider,
   );

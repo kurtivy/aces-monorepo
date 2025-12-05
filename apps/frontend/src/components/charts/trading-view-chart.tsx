@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { UnifiedDatafeed } from '@/lib/tradingview/unified-datafeed';
 import { sharedTradeWebSocket } from '@/lib/websocket/shared-trade-websocket';
+import DexScreenerChart from '@/components/charts/dexscreener-chart';
 
 const toolbarStylesId = 'aces-tradingview-toolbar-styles';
 const MIN_VISIBLE_USD = 0.01;
@@ -306,9 +307,25 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
     heightPx,
     minHeightPx,
     hideNativeHeader = false,
+    dexMeta,
     extraEnabledFeatures,
     extraDisabledFeatures,
   }) => {
+    const isDexMode =
+      Boolean(dexMeta?.priceSource === 'DEX') && Boolean(dexMeta?.poolAddress?.length);
+
+    if (isDexMode && dexMeta?.poolAddress) {
+      return (
+        <DexScreenerChart
+          poolAddress={dexMeta.poolAddress}
+          tokenSymbol={tokenSymbol}
+          heightClass={heightClass}
+          heightPx={heightPx}
+          minHeightPx={minHeightPx}
+        />
+      );
+    }
+
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const widgetRef = useRef<any>(null);
     const datafeedRef = useRef<any>(null);
@@ -748,19 +765,23 @@ const TradingViewChart: React.FC<TradingViewChartProps> = React.memo(
               heightPx,
               minHeightPx,
             });
-            
+
             // 🔥 CRITICAL FIX: Pass widget reference to datafeed AFTER chart is ready
             // This ensures the widget is fully initialized before we try to call methods on it
             if (datafeedRef.current && typeof datafeedRef.current.setWidget === 'function') {
-              console.log('[TradingView] 🔧 Setting widget reference on datafeed (in onChartReady)');
+              console.log(
+                '[TradingView] 🔧 Setting widget reference on datafeed (in onChartReady)',
+              );
               datafeedRef.current.setWidget(widgetRef.current);
             } else {
               console.error('[TradingView] ❌ Cannot set widget - datafeed not available!', {
                 hasDatafeed: !!datafeedRef.current,
-                hasSetWidget: datafeedRef.current ? typeof datafeedRef.current.setWidget === 'function' : false,
+                hasSetWidget: datafeedRef.current
+                  ? typeof datafeedRef.current.setWidget === 'function'
+                  : false,
               });
             }
-            
+
             console.log(
               '[TradingView] 🎯 Chart is now ready to receive data. If no data appears, check:',
             );

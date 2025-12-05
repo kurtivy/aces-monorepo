@@ -13,7 +13,7 @@ interface MarketCapResponse {
   currentPriceUsd: number;
   supply: number;
   rewardSupply: number; // Actual circulating supply for reward calculations (excludes LP tokens)
-  source: 'bonding_curve' | 'dex_pool' | 'dex_bitquery' | 'cached';
+  source: 'bonding_curve' | 'dex_pool' | 'cached';
   calculatedAt: number;
   error?: string;
 }

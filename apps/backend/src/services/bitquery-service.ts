@@ -45,21 +45,25 @@ export class BitQueryService {
   private lastSentryBreadcrumbAt = 0;
 
   constructor(acesUsdPriceService?: AcesUsdPriceService, rateLimitMonitor?: RateLimitMonitor) {
-    console.log(
-      '[BitQueryService Constructor] DISABLE_BITQUERY env var:',
-      process.env.DISABLE_BITQUERY,
-    );
-    console.log('[BitQueryService Constructor] Type:', typeof process.env.DISABLE_BITQUERY);
-    console.log(
-      '[BitQueryService Constructor] Comparison result:',
-      process.env.DISABLE_BITQUERY === 'true',
-    );
-    this.disabled = process.env.DISABLE_BITQUERY === 'true';
-    if (this.disabled) {
+    // 🔥 ALCHEMY MIGRATION: Disable if no API key available OR explicitly disabled
+    const noApiKey = !this.config.isAvailable;
+    const explicitlyDisabled = process.env.DISABLE_BITQUERY === 'true';
+    const usingAlchemy = process.env.USE_ALCHEMY_FOR_DEX === 'true';
+
+    this.disabled = explicitlyDisabled || (noApiKey && usingAlchemy);
+
+    if (explicitlyDisabled) {
       console.log('🚫 BitQuery service DISABLED via DISABLE_BITQUERY=true');
+    } else if (noApiKey && usingAlchemy) {
+      console.log('🚫 BitQuery service DISABLED (no API key, using Alchemy as primary)');
+    } else if (noApiKey) {
+      console.warn('⚠️ BitQuery service has no API key - will fail on API calls');
+    } else if (usingAlchemy) {
+      console.log('✅ BitQuery service available as FALLBACK (Alchemy is primary)');
     } else {
-      console.log('⚠️  BitQuery service is ENABLED');
+      console.log('✅ BitQuery service is ENABLED (primary data source)');
     }
+
     this.acesUsdPriceService = acesUsdPriceService || null;
     this.rateLimitMonitor = rateLimitMonitor;
 

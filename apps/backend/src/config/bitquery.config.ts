@@ -1,27 +1,53 @@
 import { z } from 'zod';
 
+// 🔥 ALCHEMY MIGRATION: Make API key optional when using Alchemy
+const useAlchemyForDex = process.env.USE_ALCHEMY_FOR_DEX === 'true';
+
 const BitQueryConfigSchema = z.object({
-  apiKey: z.string().min(1, 'BITQUERY_API_KEY is required'),
+  // API key is optional when using Alchemy (BitQuery becomes fallback only)
+  apiKey: useAlchemyForDex 
+    ? z.string().optional().default('')
+    : z.string().min(1, 'BITQUERY_API_KEY is required'),
   endpoint: z.string().url().default('https://streaming.bitquery.io/graphql'),
   pollIntervalMs: z.number().default(2500),
   cacheTtlMs: z.number().default(5000),
   requestTimeoutMs: z.number().default(10000),
   maxRetries: z.number().default(3),
   retryDelayMs: z.number().default(1000),
+  // 🔥 NEW: Track if BitQuery is available (has valid API key)
+  isAvailable: z.boolean().default(false),
 });
 
 export type BitQueryConfig = z.infer<typeof BitQueryConfigSchema>;
 
+/**
+ * Check if BitQuery API key is configured
+ */
+export function isBitQueryAvailable(): boolean {
+  const apiKey = process.env.BITQUERY_API_KEY;
+  return typeof apiKey === 'string' && apiKey.length > 0;
+}
+
 export function getBitQueryConfig(): BitQueryConfig {
+  const apiKey = process.env.BITQUERY_API_KEY || '';
+  const isAvailable = apiKey.length > 0;
+
   const config = BitQueryConfigSchema.parse({
-    apiKey: process.env.BITQUERY_API_KEY,
+    apiKey,
     endpoint: process.env.BITQUERY_ENDPOINT,
     pollIntervalMs: parseInt(process.env.BITQUERY_POLL_INTERVAL_MS || '2500'),
     cacheTtlMs: parseInt(process.env.BITQUERY_CACHE_TTL_MS || '5000'),
     requestTimeoutMs: parseInt(process.env.BITQUERY_REQUEST_TIMEOUT_MS || '10000'),
     maxRetries: parseInt(process.env.BITQUERY_MAX_RETRIES || '3'),
     retryDelayMs: parseInt(process.env.BITQUERY_RETRY_DELAY_MS || '1000'),
+    isAvailable,
   });
+
+  if (!isAvailable && useAlchemyForDex) {
+    console.log('[BitQueryConfig] ⚠️ No BITQUERY_API_KEY configured (Alchemy is primary, BitQuery fallback disabled)');
+  } else if (!isAvailable) {
+    console.warn('[BitQueryConfig] ⚠️ No BITQUERY_API_KEY configured - BitQuery features will be unavailable');
+  }
 
   return config;
 }

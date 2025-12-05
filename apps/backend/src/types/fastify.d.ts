@@ -33,7 +33,6 @@ declare module 'fastify' {
     // 🚀 Phase 1-3: WebSocket Gateway Architecture
     adapterManager?: import('../services/websocket/adapter-manager').AdapterManager;
     // Services
-    bitQueryService?: import('../services/bitquery-service').BitQueryService;
     acesUsdPriceService?: import('../services/aces-usd-price-service').AcesUsdPriceService;
     marketCapService?: import('../services/market-cap-service').MarketCapService;
     chartAggregationService?: import('../services/chart-aggregation-service').ChartAggregationService;

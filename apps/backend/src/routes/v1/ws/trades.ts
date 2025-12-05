@@ -5,7 +5,7 @@
  *
  * Endpoint: /api/v1/ws/trades/:tokenAddress
  * Protocol: WebSocket
- * Data Sources: Goldsky (primary) + BitQuery (secondary)
+ * Data Source: Goldsky
  */
 
 import * as Sentry from '@sentry/node';
@@ -15,68 +15,6 @@ import { SocketStream } from '@fastify/websocket';
 import { TradeEvent } from '../../../types/adapters';
 
 export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
-  const subscriptionDeduplicator = fastify.subscriptionDeduplicator;
-  const bitQueryDedupEnabled =
-    Boolean(process.env.ENABLE_BITQUERY_DEDUP === 'true' && subscriptionDeduplicator);
-  const dedupDebugLogging = process.env.DEBUG_BITQUERY_DEDUP === 'true';
-  const dedupClientHandlers = new Map<string, (trade: TradeEvent) => void>();
-
-  const logDedupClientCount = (reason: string) => {
-    console.log(
-      `[WS:Trades] 📈 ${reason} | dedup client handlers: ${dedupClientHandlers.size}${
-        dedupClientHandlers.size === 0 ? ' (empty)' : ''
-      }`,
-    );
-  };
-
-  if (bitQueryDedupEnabled && subscriptionDeduplicator) {
-    const broadcastHandler = ({
-      topic,
-      dataSource,
-      clients,
-      data,
-    }: {
-      topic: string;
-      dataSource?: string;
-      clients: string[];
-      data: TradeEvent;
-    }) => {
-      if (topic !== 'trades') {
-        if (dedupDebugLogging) {
-          console.log(
-            `[WS:Trades] 🔍 Dedup broadcast ignored (topic=${topic}, source=${dataSource ?? 'unknown'})`,
-          );
-        }
-        return;
-      }
-
-      if (dataSource !== 'bitquery') {
-        if (dedupDebugLogging) {
-          console.log(
-            `[WS:Trades] 🔍 Dedup broadcast ignored for topic=trades from source=${dataSource ?? 'unknown'}`,
-          );
-        }
-        return;
-      }
-
-      for (const clientId of clients) {
-        const handler = dedupClientHandlers.get(clientId);
-        if (handler) {
-          handler(data);
-        } else if (dedupDebugLogging) {
-          console.log(
-            `[WS:Trades] ⚠️ Dedup broadcast had no handler for client ${clientId}. Active handlers: ${dedupClientHandlers.size}`,
-          );
-        }
-      }
-    };
-
-    subscriptionDeduplicator.on('broadcast_to_clients', broadcastHandler);
-    fastify.addHook('onClose', async () => {
-      subscriptionDeduplicator.off('broadcast_to_clients', broadcastHandler);
-    });
-  }
-
   /**
    * WebSocket: Subscribe to real-time trades for a specific token
    * GET /api/v1/ws/trades/:tokenAddress
@@ -91,7 +29,6 @@ export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
       console.log(`[WS:Trades] Client connected for token: ${tokenAddress}`);
       const clientId = randomUUID();
       const normalizedTokenAddress = tokenAddress.toLowerCase();
-      let dedupSubscribed = false;
 
       if (!adapterManager) {
         connection.socket.send(
@@ -204,9 +141,19 @@ export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
               isHistorical: false,
               // 🔥 NEW: Market cap data from single source of truth
               marketCapUsd: bufferedTrade.marketCap?.marketCapUsd || 0,
-              currentPriceUsd: bufferedTrade.marketCap?.currentPriceUsd || bufferedTrade.trade.priceUsd || 0,
+              currentPriceUsd:
+                bufferedTrade.marketCap?.currentPriceUsd || bufferedTrade.trade.priceUsd || 0,
             },
             timestamp: Date.now(),
+          });
+
+          // 🔍 DEBUG: Log real-time trade being sent
+          console.log(`[WS:Trades] 📤 Sending real-time trade to client:`, {
+            id: bufferedTrade.trade.id,
+            source: bufferedTrade.trade.dataSource,
+            isBuy: bufferedTrade.trade.isBuy,
+            tokenAmount: bufferedTrade.trade.tokenAmount,
+            socketState: connection.socket.readyState,
           });
 
           connection.socket.send(message);
@@ -230,9 +177,11 @@ export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
         console.log(`[WS:Trades] 📥 Received trade for ${tokenAddress}:`, {
           id: trade.id,
           source: trade.dataSource,
+          dataSource: trade.dataSource, // Explicitly log dataSource
           isBuy: trade.isBuy,
           tokenAmount: trade.tokenAmount,
           timestamp: new Date(trade.timestamp).toISOString(),
+          isHistorical: trade.isHistorical,
         });
 
         // 🔥 NEW: Fetch current market cap data
@@ -288,148 +237,114 @@ export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
       };
 
       try {
-        // 🔥 NEW: Send historical BitQuery trades from database (most recent 100)
-        try {
-          const historicalTrades = await fastify.prisma.dexTrade.findMany({
-            where: { tokenAddress: tokenAddress.toLowerCase() },
-            orderBy: { timestamp: 'desc' }, // 🔥 FIX: Most recent first, then reverse for chronological
-            take: 100,
-          });
+        // 🔥 NEW: Send historical DEX trades from database (most recent 100)
+        {
+          try {
+            const historicalTrades = await fastify.prisma.dexTrade.findMany({
+              where: { tokenAddress: tokenAddress.toLowerCase() },
+              orderBy: { timestamp: 'desc' }, // 🔥 FIX: Most recent first, then reverse for chronological
+              take: 100,
+            });
 
-          // Reverse to send in chronological order (oldest to newest)
-          historicalTrades.reverse();
+            // Reverse to send in chronological order (oldest to newest)
+            historicalTrades.reverse();
 
-          console.log(
-            `[WS:Trades] 📚 Sending ${historicalTrades.length} historical DEX trades from database (most recent 100)`,
-          );
+            console.log(
+              `[WS:Trades] 📚 Sending ${historicalTrades.length} historical DEX trades from database (most recent 100)`,
+            );
 
-          const acesUsdPriceService = (fastify as any).acesUsdPriceService;
-          let batchAcesUsdPrice = 0;
+            const acesUsdPriceService = (fastify as any).acesUsdPriceService;
+            let batchAcesUsdPrice = 0;
 
-          if (acesUsdPriceService) {
-            try {
-              const result = await acesUsdPriceService.getAcesUsdPrice();
-              batchAcesUsdPrice = Number.parseFloat(result.price);
-              if (Number.isFinite(batchAcesUsdPrice) && batchAcesUsdPrice > 0) {
-                console.log(
-                  `[WS:Trades] ✅ Using batch ACES/USD price ${batchAcesUsdPrice} for historical trades`,
-                );
-              } else {
+            if (acesUsdPriceService) {
+              try {
+                const result = await acesUsdPriceService.getAcesUsdPrice();
+                batchAcesUsdPrice = Number.parseFloat(result.price);
+                if (Number.isFinite(batchAcesUsdPrice) && batchAcesUsdPrice > 0) {
+                  console.log(
+                    `[WS:Trades] ✅ Using batch ACES/USD price ${batchAcesUsdPrice} for historical trades`,
+                  );
+                } else {
+                  console.warn(
+                    '[WS:Trades] ⚠️ Invalid ACES/USD price for historical batch:',
+                    result.price,
+                  );
+                  batchAcesUsdPrice = 0;
+                }
+              } catch (error) {
                 console.warn(
-                  '[WS:Trades] ⚠️ Invalid ACES/USD price for historical batch:',
-                  result.price,
+                  '[WS:Trades] ⚠️ Failed to fetch ACES/USD price for historical batch:',
+                  error,
                 );
                 batchAcesUsdPrice = 0;
               }
-            } catch (error) {
-              console.warn('[WS:Trades] ⚠️ Failed to fetch ACES/USD price for historical batch:', error);
-              batchAcesUsdPrice = 0;
             }
-          }
 
-          for (const trade of historicalTrades) {
-            if (connection.socket.readyState === 1) {
-              const tradeTimestamp = Number(trade.timestamp);
-              
-              // 🔥 NEW: Fetch market cap for historical trades
-              let marketCapUsd = 0;
-              const priceInAces = parseFloat(trade.priceInAces?.toString() || '0');
-              const recomputedPriceUsd =
-                batchAcesUsdPrice > 0 && priceInAces > 0
-                  ? priceInAces * batchAcesUsdPrice
-                  : parseFloat(trade.priceInUsd?.toString() || '0');
-              let currentPriceUsd = recomputedPriceUsd;
-              
-              try {
-                if (fastify.marketCapService) {
-                  const freshMarketCap = await fastify.marketCapService.getMarketCap(
-                    tokenAddress,
-                    8453,
+            for (const trade of historicalTrades) {
+              if (connection.socket.readyState === 1) {
+                const tradeTimestamp = Number(trade.timestamp);
+
+                // 🔥 NEW: Fetch market cap for historical trades
+                let marketCapUsd = 0;
+                const priceInAces = parseFloat(trade.priceInAces?.toString() || '0');
+                const recomputedPriceUsd =
+                  batchAcesUsdPrice > 0 && priceInAces > 0
+                    ? priceInAces * batchAcesUsdPrice
+                    : parseFloat(trade.priceInUsd?.toString() || '0');
+                let currentPriceUsd = recomputedPriceUsd;
+
+                try {
+                  if (fastify.marketCapService) {
+                    const freshMarketCap = await fastify.marketCapService.getMarketCap(
+                      tokenAddress,
+                      8453,
+                    );
+                    marketCapUsd = freshMarketCap.marketCapUsd;
+                    currentPriceUsd = freshMarketCap.currentPriceUsd;
+                  }
+                } catch (mcError) {
+                  console.warn(
+                    `[WS:Trades] ⚠️ Failed to fetch market cap for historical trade:`,
+                    mcError,
                   );
-                  marketCapUsd = freshMarketCap.marketCapUsd;
-                  currentPriceUsd = freshMarketCap.currentPriceUsd;
+                  // Use trade price as fallback
+                  currentPriceUsd = recomputedPriceUsd;
                 }
-              } catch (mcError) {
-                console.warn(`[WS:Trades] ⚠️ Failed to fetch market cap for historical trade:`, mcError);
-                // Use trade price as fallback
-                currentPriceUsd = recomputedPriceUsd;
+
+                const message = JSON.stringify({
+                  type: 'trade',
+                  data: {
+                    id: trade.txHash,
+                    tokenAddress: trade.tokenAddress,
+                    trader: trade.trader,
+                    isBuy: trade.isBuy,
+                    tokenAmount: trade.tokenAmount,
+                    acesAmount: trade.acesAmount,
+                    pricePerToken: trade.priceInAces.toString(),
+                    priceUsd: recomputedPriceUsd > 0 ? recomputedPriceUsd.toString() : null,
+                    supply: '0', // Not stored in database
+                    timestamp: tradeTimestamp, // Original trade time (for charts)
+                    ingestedAt: Date.now(), // 🔥 LOAD TEST FIX: When we sent this message (for latency metrics)
+                    blockNumber: trade.blockNumber,
+                    transactionHash: trade.txHash,
+                    source: 'bitquery',
+                    isHistorical: true,
+                    // 🔥 NEW: Market cap data from single source of truth
+                    marketCapUsd,
+                    currentPriceUsd,
+                  },
+                  timestamp: Date.now(),
+                });
+
+                connection.socket.send(message);
+                lastSentTimestamp = Math.max(lastSentTimestamp, tradeTimestamp);
               }
-              
-              const message = JSON.stringify({
-                type: 'trade',
-                data: {
-                  id: trade.txHash,
-                  tokenAddress: trade.tokenAddress,
-                  trader: trade.trader,
-                  isBuy: trade.isBuy,
-                  tokenAmount: trade.tokenAmount,
-                  acesAmount: trade.acesAmount,
-                  pricePerToken: trade.priceInAces.toString(),
-                  priceUsd: recomputedPriceUsd > 0 ? recomputedPriceUsd.toString() : null,
-                  supply: '0', // Not stored in database
-                  timestamp: tradeTimestamp, // Original trade time (for charts)
-                  ingestedAt: Date.now(), // 🔥 LOAD TEST FIX: When we sent this message (for latency metrics)
-                  blockNumber: trade.blockNumber,
-                  transactionHash: trade.txHash,
-                  source: 'bitquery',
-                  isHistorical: true,
-                  // 🔥 NEW: Market cap data from single source of truth
-                  marketCapUsd,
-                  currentPriceUsd,
-                },
-                timestamp: Date.now(),
-              });
-
-              connection.socket.send(message);
-              lastSentTimestamp = Math.max(lastSentTimestamp, tradeTimestamp);
             }
-          }
 
-          console.log(`[WS:Trades] ✅ Sent ${historicalTrades.length} historical trades`);
-        } catch (error) {
-          console.error('[WS:Trades] ❌ Failed to fetch historical trades:', error);
-          // Don't block - continue with real-time subscription
-        }
-
-        let allowBitQueryDedup = false;
-        if (bitQueryDedupEnabled && subscriptionDeduplicator) {
-          try {
-            allowBitQueryDedup = await adapterManager.canUseBitQuery(tokenAddress);
+            console.log(`[WS:Trades] ✅ Sent ${historicalTrades.length} historical trades`);
           } catch (error) {
-            console.warn(
-              `[WS:Trades] ⚠️ Failed to evaluate BitQuery eligibility for ${tokenAddress}:`,
-              error,
-            );
-          }
-        }
-
-        if (bitQueryDedupEnabled && allowBitQueryDedup && subscriptionDeduplicator) {
-          dedupClientHandlers.set(clientId, (trade: TradeEvent) => {
-            void processIncomingTrade(trade);
-          });
-          logDedupClientCount(
-            `Registered dedup handler for ${normalizedTokenAddress} (${clientId})`,
-          );
-          try {
-            subscriptionDeduplicator.subscribe(
-              clientId,
-              'trades',
-              { tokenAddress: normalizedTokenAddress },
-              'bitquery',
-            );
-            dedupSubscribed = true;
-            console.log(
-              `[WS:Trades] ♻️ Using shared BitQuery stream for ${normalizedTokenAddress} (${clientId})`,
-            );
-          } catch (dedupError) {
-            dedupClientHandlers.delete(clientId);
-            logDedupClientCount(
-              `Rolled back dedup handler for ${normalizedTokenAddress} (${clientId})`,
-            );
-            console.warn(
-              `[WS:Trades] ⚠️ Failed to register dedup client ${clientId} for ${normalizedTokenAddress}:`,
-              dedupError,
-            );
+            console.error('[WS:Trades] ❌ Failed to fetch historical trades:', error);
+            // Don't block - continue with real-time subscription
           }
         }
 
@@ -438,7 +353,6 @@ export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
           (trade: TradeEvent) => {
             void processIncomingTrade(trade);
           },
-          { useBitQueryDedup: allowBitQueryDedup },
         );
 
         console.log(
@@ -451,7 +365,7 @@ export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
             type: 'subscribed',
             data: {
               tokenAddress,
-              sources: subscriptionIds.length + (bitQueryDedupEnabled && allowBitQueryDedup ? 1 : 0),
+              sources: subscriptionIds.length,
               message: 'Streaming real-time trades',
             },
             timestamp: Date.now(),
@@ -564,27 +478,6 @@ export const tradesWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
             }
           }
 
-          if (dedupClientHandlers.delete(clientId)) {
-            logDedupClientCount(
-              `Removed dedup handler after disconnect for ${normalizedTokenAddress} (${clientId})`,
-            );
-          }
-
-          if (dedupSubscribed && bitQueryDedupEnabled && subscriptionDeduplicator) {
-            try {
-              subscriptionDeduplicator.unsubscribe(clientId, 'trades', {
-                tokenAddress: normalizedTokenAddress,
-              });
-              console.log(
-                `[WS:Trades] ♻️ Removed dedup subscription for ${normalizedTokenAddress} (${clientId})`,
-              );
-            } catch (dedupError) {
-              console.warn(
-                `[WS:Trades] ⚠️ Failed to unsubscribe dedup client ${clientId} for ${normalizedTokenAddress}:`,
-                dedupError,
-              );
-            }
-          }
         });
 
         // Handle ping/pong for keep-alive

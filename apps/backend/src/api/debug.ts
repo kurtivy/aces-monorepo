@@ -27,10 +27,9 @@ export async function debugRoutes(fastify: FastifyInstance) {
     // Get individual adapter status
     const status = {
       isConnected: adapterManager.isConnected(),
-      quickNode: adapterManager['quickNode']?.isConnected() ?? false,
-      goldsky: adapterManager['goldsky']?.isConnected() ?? false,
-      bitQuery: adapterManager['bitQuery']?.isConnected() ?? false,
-      aerodrome: adapterManager['aerodrome']?.isConnected() ?? false,
+      quickNode: (adapterManager as any)['quickNode']?.isConnected() ?? false,
+      goldsky: (adapterManager as any)['goldsky']?.isConnected() ?? false,
+      aerodrome: (adapterManager as any)['aerodrome']?.isConnected() ?? false,
     };
 
     return reply.send({
@@ -47,44 +46,6 @@ export async function debugRoutes(fastify: FastifyInstance) {
       routes: routes,
       routesList: fastify.printRoutes({ commonPrefix: false, includeHooks: false }),
     });
-  });
-
-  // Test BitQuery Pool
-  fastify.get('/api/v1/debug/bitquery/pool/:poolAddress', async (request, reply) => {
-    try {
-      const { poolAddress } = request.params as { poolAddress: string };
-      const { BitQueryService } = await import('../services/bitquery-service');
-
-      const bitquery = new BitQueryService(
-        fastify.acesUsdPriceService,
-        fastify.rateLimitMonitor,
-      );
-
-      console.log(`[Debug] Testing BitQuery for pool: ${poolAddress}`);
-
-      // Try to get recent swaps
-      const swaps = await bitquery.getRecentSwaps(
-        '0x0806a12b64fc2f7373a699fb25932a19fd35b557', // token address
-        poolAddress,
-        { limit: 10 },
-      );
-
-      console.log(`[Debug] Found ${swaps.length} swaps`);
-
-      return reply.send({
-        success: true,
-        poolAddress,
-        tradesFound: swaps.length,
-        trades: swaps,
-      });
-    } catch (error) {
-      console.error('[Debug] BitQuery test error:', error);
-      return reply.code(500).send({
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack : undefined,
-      });
-    }
   });
 
   fastify.get('/api/v1/debug/token/:tokenAddress', async (request, reply) => {
