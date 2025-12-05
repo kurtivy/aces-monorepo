@@ -8,6 +8,12 @@ interface DexScreenerChartProps {
   heightClass?: string;
   heightPx?: number;
   minHeightPx?: number;
+  /** When true, shows transactions panel at bottom (trades=1) */
+  showTransactions?: boolean;
+  /** When true, shows the right sidebar with token info (info=1). Default false to hide it. */
+  showTokenInfo?: boolean;
+  /** When true, uses full viewport height minus header */
+  fullHeight?: boolean;
 }
 
 const FALLBACK_MESSAGE = 'DEXScreener chart is taking longer than expected.';
@@ -18,6 +24,9 @@ const DexScreenerChart: React.FC<DexScreenerChartProps> = ({
   heightClass = 'h-[600px] min-h-[400px]',
   heightPx,
   minHeightPx,
+  showTransactions = false,
+  showTokenInfo = false,
+  fullHeight = false,
 }) => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,8 +35,14 @@ const DexScreenerChart: React.FC<DexScreenerChartProps> = ({
 
   const iframeUrl = useMemo(() => {
     const normalizedPool = poolAddress.trim().toLowerCase();
-    return `https://dexscreener.com/base/${normalizedPool}?embed=1&theme=dark&info=0&trades=0`;
-  }, [poolAddress]);
+    // info=0 hides the right sidebar (token info panel with market cap, liquidity, etc.)
+    // info=1 shows it
+    // trades=0 hides the bottom transactions panel
+    // trades=1 shows it (with Transactions, Top Traders, Holders, Liquidity Providers, BubbleMaps tabs)
+    const infoParam = showTokenInfo ? '1' : '0';
+    const tradesParam = showTransactions ? '1' : '0';
+    return `https://dexscreener.com/base/${normalizedPool}?embed=1&theme=dark&info=${infoParam}&trades=${tradesParam}`;
+  }, [poolAddress, showTokenInfo, showTransactions]);
 
   useEffect(() => {
     setIsLoaded(false);
@@ -50,11 +65,17 @@ const DexScreenerChart: React.FC<DexScreenerChartProps> = ({
   }, [iframeUrl, retryKey]);
 
   const containerStyle: React.CSSProperties = {};
-  if (typeof heightPx === 'number') containerStyle.height = `${heightPx}px`;
-  if (typeof minHeightPx === 'number') containerStyle.minHeight = `${minHeightPx}px`;
+  if (fullHeight) {
+    // Full viewport height minus approximate header height (50px for ChartHeader)
+    containerStyle.height = 'calc(100vh - 50px)';
+    containerStyle.minHeight = '600px';
+  } else {
+    if (typeof heightPx === 'number') containerStyle.height = `${heightPx}px`;
+    if (typeof minHeightPx === 'number') containerStyle.minHeight = `${minHeightPx}px`;
+  }
 
   const containerClass =
-    typeof heightPx === 'number'
+    fullHeight || typeof heightPx === 'number'
       ? 'flex flex-col w-full bg-black overflow-hidden'
       : `flex flex-col ${heightClass} w-full bg-black overflow-hidden`;
 

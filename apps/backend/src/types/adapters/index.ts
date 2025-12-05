@@ -27,7 +27,7 @@ export interface AdapterStats {
 }
 
 /**
- * Trade event from Goldsky/BitQuery
+ * Trade event from Goldsky (or BitQuery for legacy/future use)
  */
 export interface TradeEvent {
   id: string; // Transaction hash or unique ID
@@ -42,7 +42,7 @@ export interface TradeEvent {
   timestamp: number; // Unix timestamp in milliseconds (for frontend Date compatibility)
   blockNumber: number;
   transactionHash: string;
-  dataSource: 'goldsky' | 'bitquery';
+  dataSource: 'goldsky' | 'bitquery'; // bitquery kept for future use
   isHistorical?: boolean;
 }
 
@@ -101,7 +101,7 @@ export interface CandleData {
   lowUsd?: string;
   closeUsd?: string;
   volumeUsd?: string;
-  dataSource: 'bitquery' | 'goldsky' | 'aggregated';
+  dataSource: 'goldsky' | 'aggregated';
 }
 
 /**

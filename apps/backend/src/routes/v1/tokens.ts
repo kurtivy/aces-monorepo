@@ -6,7 +6,6 @@ import { ethers } from 'ethers';
 import { TokenService } from '../../services/token-service';
 import { TokenHolderService } from '../../services/token-holder-service';
 import { priceCacheService } from '../../services/price-cache-service';
-import { BitQueryService } from '../../services/bitquery-service';
 import { ACES_TOKEN_ADDRESS } from '../../config/bitquery.config';
 import { getNetworkConfig, type SupportedChainId } from '../../config/network.config';
 
@@ -121,10 +120,6 @@ interface HealthCacheEntry {
 export async function tokensRoutes(fastify: FastifyInstance) {
   const tokenService = new TokenService(fastify.prisma);
   const tokenHolderService = new TokenHolderService();
-  const bitQueryService = new BitQueryService(
-    fastify.acesUsdPriceService,
-    fastify.rateLimitMonitor,
-  );
 
   // 🔥 LOAD TEST FIX: In-memory cache for health endpoint (5s TTL)
   const healthCache = new Map<string, HealthCacheEntry>();
@@ -662,7 +657,7 @@ export async function tokensRoutes(fastify: FastifyInstance) {
   const metricsCache = new Map<string, { data: any; timestamp: number }>();
   // Short cache for local dev (5s), longer for production (60s)
   const METRICS_CACHE_TTL = process.env.NODE_ENV === 'production' ? 60000 : 5000;
-  // Small cache for lifetime DEX fee calculation (avoids repeated BitQuery hits when profiles refresh)
+  // Small cache for lifetime DEX fee calculation (avoids repeated BitQuery/Alchemy hits when profiles refresh)
   const dexFeeCache = new Map<
     string,
     { aces: string; usd: number; source: 'db' | 'bitquery'; timestamp: number }
@@ -705,29 +700,12 @@ export async function tokensRoutes(fastify: FastifyInstance) {
     } catch (dbError) {
       fastify.log.warn(
         { dbError, tokenAddress, dexLiveAt: dexLiveAt.toISOString() },
-        '[Metrics] Failed to read dex_trades for fee calc; will fallback to BitQuery',
+        '[Metrics] Failed to read dex_trades for fee calc',
       );
     }
 
-    // If DB had nothing (or zero volume), try BitQuery directly
-    if (totalAces.eq(0) && poolAddress) {
-      try {
-        const dexTrades = await bitQueryService.getDexTrades(tokenAddress, poolAddress, {
-          from: dexLiveAt,
-          to: new Date(),
-        });
-
-        totalAces = dexTrades.reduce((sum, trade) => {
-          return sum.add(new Decimal(trade.amountAces || '0'));
-        }, new Decimal(0));
-        source = 'bitquery';
-      } catch (bqError) {
-        fastify.log.error(
-          { bqError, tokenAddress, poolAddress, dexLiveAt: dexLiveAt.toISOString() },
-          '[Metrics] Failed to backfill DEX fees via BitQuery',
-        );
-      }
-    }
+    // Note: DEX data comes from database only. If DB has no trades, fee is 0.
+    // DEX trading UI is handled by DexScreener iframe on frontend.
 
     const feeAces = totalAces.mul(0.005); // 0.5% creator fee
     const feeUsd = acesUsdPrice && acesUsdPrice > 0 ? feeAces.mul(acesUsdPrice).toNumber() : 0;
@@ -1033,32 +1011,44 @@ export async function tokensRoutes(fastify: FastifyInstance) {
             const dexTradeStart =
               last24hSpansGraduation && dexLiveAt ? dexLiveAt : twentyFourHoursAgo;
 
-            const dexTrades = await bitQueryService.getDexTrades(address, poolAddress, {
-              from: dexTradeStart,
-              to: now,
+            // Fetch DEX trades from database (dex_trade table)
+            const dbDexTrades = await fastify.prisma.dexTrade.findMany({
+              where: {
+                tokenAddress: address.toLowerCase(),
+                timestamp: {
+                  gte: BigInt(dexTradeStart.getTime()),
+                  lte: BigInt(now.getTime()),
+                },
+              },
             });
 
             fastify.log.info(
               {
                 address,
                 poolAddress,
-                tradeCount: dexTrades.length,
+                tradeCount: dbDexTrades.length,
                 last24hSpansGraduation,
                 dexLiveAt: dexLiveAt?.toISOString(),
                 dexTradeStart: dexTradeStart.toISOString(),
+                source: 'database',
               },
-              'Fetched DEX trades for 24h volume',
+              'Fetched DEX trades for 24h volume from database',
             );
 
-            const dexVolumeUsd = dexTrades.reduce((sum, trade) => {
-              const usd = parseFloat(trade.volumeUsd || '0');
-              return Number.isFinite(usd) ? sum + usd : sum;
-            }, 0);
+            // Calculate DEX volume from database trades
+            let dexVolumeUsd = 0;
+            let dexVolumeAces = 0;
 
-            const dexVolumeAces = dexTrades.reduce((sum, trade) => {
-              const aces = parseFloat(trade.amountAces || '0');
-              return Number.isFinite(aces) ? sum + aces : sum;
-            }, 0);
+            for (const trade of dbDexTrades) {
+              const tokenAmount = parseFloat(trade.tokenAmount);
+              const priceUsd = trade.priceInUsd ?? 0;
+              const priceAces = trade.priceInAces ?? 0;
+
+              if (Number.isFinite(tokenAmount)) {
+                dexVolumeUsd += tokenAmount * priceUsd;
+                dexVolumeAces += tokenAmount * priceAces;
+              }
+            }
 
             // If last 24h spans graduation, fetch bonding curve volume from before graduation
             // This covers the period from 24h ago up to graduation time
@@ -1075,9 +1065,6 @@ export async function tokensRoutes(fastify: FastifyInstance) {
               );
 
               try {
-                // 🔥 REFACTORED: Use extracted function for bonding trades
-                // Covers period from 24h ago to graduation time
-                // 🔥 REFACTORED: Use extracted function for bonding trades
                 // Covers period from 24h ago to graduation time
                 const bondingResult = await getBondingCurveVolume(
                   address,
@@ -1137,7 +1124,7 @@ export async function tokensRoutes(fastify: FastifyInstance) {
           } catch (dexError) {
             fastify.log.error(
               { error: dexError, address, poolAddress },
-              'Failed to fetch DEX trades, falling back to bonding curve volume',
+              'Failed to fetch DEX trades from database, falling back to bonding curve volume',
             );
           }
         }

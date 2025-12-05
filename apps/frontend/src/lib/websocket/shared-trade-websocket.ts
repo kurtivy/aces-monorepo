@@ -23,17 +23,17 @@ function recordServerTime(serverTime: number): void {
 /**
  * Get current time synchronized with server
  * Falls back to Date.now() if server time is stale or unavailable
- * 
+ *
  * @returns Current time in milliseconds (Unix timestamp)
  */
 export function getNow(): number {
   if (!lastServerTime) {
     return Date.now(); // No server time yet, use client time
   }
-  
+
   const clientNow = Date.now();
   const age = clientNow - lastServerTimeReceivedAt;
-  
+
   // Detect staleness or clock jumps
   if (age > MAX_STALE_MS || age < 0) {
     console.warn('[SharedTradeWS] Server time stale or clock jump, falling back to Date.now()', {
@@ -45,7 +45,7 @@ export function getNow(): number {
     });
     return clientNow;
   }
-  
+
   // Interpolate server time
   const elapsed = clientNow - lastServerTimeReceivedAt;
   return lastServerTime + elapsed;
@@ -54,14 +54,14 @@ export function getNow(): number {
 /**
  * Get current clock skew between client and server
  * Returns null if no server time available yet
- * 
+ *
  * @returns Clock skew in milliseconds (positive = client ahead, negative = client behind)
  */
 export function getClockSkew(): number | null {
   if (!lastServerTime) {
     return null; // No server time yet
   }
-  
+
   const serverNow = getNow();
   const clientNow = Date.now();
   return clientNow - serverNow;
@@ -106,6 +106,8 @@ interface ConnectionState {
   totalPings: number;
   totalPongs: number;
   pongCheckInterval: NodeJS.Timeout | null;
+  // 🔥 FIX: Debounce close for React StrictMode
+  closeDebounceTimeout: ReturnType<typeof setTimeout> | null;
 }
 
 class SharedTradeWebSocketManager {
@@ -142,8 +144,17 @@ class SharedTradeWebSocketManager {
         totalPings: 0,
         totalPongs: 0,
         pongCheckInterval: null,
+        // 🔥 FIX: React StrictMode debounce
+        closeDebounceTimeout: null,
       };
       this.connections.set(normalizedAddress, state);
+    }
+
+    // 🔥 FIX: Cancel pending close if we're subscribing again (handles React StrictMode remount)
+    if (state.closeDebounceTimeout) {
+      clearTimeout(state.closeDebounceTimeout);
+      state.closeDebounceTimeout = null;
+      console.log(`[SharedTradeWS] ♻️ Cancelled pending close for ${tokenAddress} (resubscribed)`);
     }
 
     // Add this subscriber
@@ -293,28 +304,28 @@ class SharedTradeWebSocketManager {
           // 🔥 PHASE 1: Record server time from heartbeat
           if (message.timestamp && typeof message.timestamp === 'number') {
             recordServerTime(message.timestamp);
-            
+
             // Log clock skew for diagnostics
             const skew = getClockSkew();
             if (skew !== null) {
               const skewSeconds = Math.round(skew / 1000);
               const absSkewSeconds = Math.abs(skewSeconds);
-              
+
               // Log on first heartbeat or if skew is significant (>1 second)
               if (state.totalPings === 1 || absSkewSeconds > 1) {
                 console.log(
                   `[SharedTradeWS] 🕐 Clock skew for ${tokenAddress}: ${skewSeconds > 0 ? '+' : ''}${skewSeconds}s ` +
-                  `(client ${skewSeconds > 0 ? 'ahead' : 'behind'})`,
+                    `(client ${skewSeconds > 0 ? 'ahead' : 'behind'})`,
                   {
                     skewMs: skew,
                     skewSeconds,
                     serverTime: new Date(message.timestamp).toISOString(),
                     clientTime: new Date(Date.now()).toISOString(),
                     heartbeatNumber: state.totalPings,
-                  }
+                  },
                 );
               }
-              
+
               // Warn if skew is excessive (>5 seconds)
               if (absSkewSeconds > 5) {
                 console.warn(
@@ -322,7 +333,7 @@ class SharedTradeWebSocketManager {
                   {
                     skewMs: skew,
                     recommendation: 'User should sync their system clock',
-                  }
+                  },
                 );
               }
             }
@@ -358,12 +369,23 @@ class SharedTradeWebSocketManager {
             recordServerTime(message.timestamp);
           }
 
+          // 🔥 DEBUG: Log trade receipt
+          console.log(`[SharedTradeWS] 📥 Received trade for ${tokenAddress}:`, {
+            id: message.data.id,
+            source: message.data.source,
+            isBuy: message.data.isBuy,
+            tokenAmount: message.data.tokenAmount?.substring?.(0, 10) || message.data.tokenAmount,
+          });
+
           // Broadcast trade to all subscribers
           if (state.tradeCallbacks.size === 0) {
             console.warn(`[SharedTradeWS] ⚠️ No subscribers to receive trade for ${tokenAddress}!`);
             return;
           }
 
+          console.log(
+            `[SharedTradeWS] 📤 Broadcasting trade to ${state.tradeCallbacks.size} subscribers`,
+          );
           const callbacksArray = Array.from(state.tradeCallbacks.entries());
           for (const [subscriberId, callback] of callbacksArray) {
             try {
@@ -381,7 +403,7 @@ class SharedTradeWebSocketManager {
           }
         } else if (message.type === 'subscribed') {
           // Backend confirmed subscriptions are active - connection is fully ready
-          // console.log(`[SharedTradeWS] ✅ Subscribed confirmed for ${tokenAddress}:`, message.data);
+          console.log(`[SharedTradeWS] ✅ Subscribed confirmed for ${tokenAddress}:`, message.data);
           for (const callback of state.statusCallbacks.values()) {
             callback({ isConnected: true, isConnecting: false, error: null });
           }
@@ -523,31 +545,57 @@ class SharedTradeWebSocketManager {
     state.tradeCallbacks.delete(subscriberId);
     state.statusCallbacks.delete(subscriberId);
 
-    // console.log(
-    //   `[SharedTradeWS] Subscriber removed for ${tokenAddress}: ${subscriberId} (remaining: ${state.subscribers.size})`,
-    // );
+    console.log(
+      `[SharedTradeWS] Subscriber removed for ${tokenAddress}: ${subscriberId} (remaining: ${state.subscribers.size})`,
+    );
 
-    // If no more subscribers, close connection
+    // If no more subscribers, close connection with debounce (handles React StrictMode)
     if (state.subscribers.size === 0) {
-      // console.log(`[SharedTradeWS] No more subscribers for ${tokenAddress}, closing connection`);
+      // 🔥 FIX: Debounce close to handle React StrictMode double mount/unmount
+      // Wait 100ms before actually closing - if component remounts, it will resubscribe
+      // and cancel this pending close
+      const CLOSE_DEBOUNCE_MS = 100;
 
-      if (state.reconnectTimeout) {
-        clearTimeout(state.reconnectTimeout);
-        state.reconnectTimeout = null;
+      console.log(
+        `[SharedTradeWS] No more subscribers for ${tokenAddress}, scheduling close in ${CLOSE_DEBOUNCE_MS}ms`,
+      );
+
+      // Clear any existing debounce timeout
+      if (state.closeDebounceTimeout) {
+        clearTimeout(state.closeDebounceTimeout);
       }
 
-      // 🔥 PHASE 2: Clear pong monitoring interval
-      if (state.pongCheckInterval) {
-        clearInterval(state.pongCheckInterval);
-        state.pongCheckInterval = null;
-      }
+      state.closeDebounceTimeout = setTimeout(() => {
+        // Double-check we still have no subscribers
+        const currentState = this.connections.get(tokenAddress);
+        if (!currentState || currentState.subscribers.size > 0) {
+          console.log(
+            `[SharedTradeWS] ♻️ Close cancelled for ${tokenAddress} (${currentState?.subscribers.size || 0} subscribers now)`,
+          );
+          return;
+        }
 
-      if (state.ws) {
-        state.ws.close();
-        state.ws = null;
-      }
+        console.log(`[SharedTradeWS] 🔌 Closing connection for ${tokenAddress} (no subscribers)`);
 
-      this.connections.delete(tokenAddress);
+        if (currentState.reconnectTimeout) {
+          clearTimeout(currentState.reconnectTimeout);
+          currentState.reconnectTimeout = null;
+        }
+
+        // 🔥 PHASE 2: Clear pong monitoring interval
+        if (currentState.pongCheckInterval) {
+          clearInterval(currentState.pongCheckInterval);
+          currentState.pongCheckInterval = null;
+        }
+
+        if (currentState.ws) {
+          currentState.ws.close();
+          currentState.ws = null;
+        }
+
+        currentState.closeDebounceTimeout = null;
+        this.connections.delete(tokenAddress);
+      }, CLOSE_DEBOUNCE_MS);
     }
   }
 

@@ -156,11 +156,9 @@ export async function chartUnifiedRoutes(fastify: FastifyInstance) {
   fastify.get('/api/v1/chart/health', async (request, reply) => {
     try {
       // Check if required services are available
-      const bitQueryService = (fastify as any).bitQueryService;
       const acesUsdPriceService = (fastify as any).acesUsdPriceService;
 
       const checks = {
-        bitQueryService: !!bitQueryService,
         acesUsdPriceService: !!acesUsdPriceService,
         prisma: !!fastify.prisma,
         subgraphUrl: !!process.env.GOLDSKY_SUBGRAPH_URL,

@@ -8,7 +8,6 @@ import {
   AerodromePoolState,
   // AerodromeSwap,
 } from '../../services/aerodrome-data-service';
-import { BitQueryService } from '../../services/bitquery-service';
 import { createProvider, getNetworkConfig } from '../../config/network.config';
 import { getPrismaClient } from '../../lib/database';
 import { SubgraphTrade } from '../../lib/goldsky-client';
@@ -1287,45 +1286,23 @@ export async function dexRoutes(fastify: FastifyInstance) {
 
         // Create the fetch promise
         const fetchPromise = (async () => {
-          const service = ensureService();
-
-          const fetchBitQuery = async () => {
-            const bitQueryService = new BitQueryService(
-              fastify.acesUsdPriceService,
-              fastify.rateLimitMonitor,
-            );
-            const now = new Date();
-            const from = new Date(now.getTime() - lookbackMinutes * 60 * 1000);
-            return bitQueryService
-              .getOHLCCandles(address, '', resolution, { from, to: now })
-              .then((candles) => ({ candles, source: 'bitquery' }));
+          // DEX candle data is now handled by DexScreener iframe on frontend
+          // Return empty candles array
+          const responseData = {
+            resolution,
+            candles: [],
           };
 
-          try {
-            const result = await fetchBitQuery();
+          // Cache the result
+          candleCache.set(cacheKey, {
+            data: responseData,
+            timestamp: Date.now(),
+          });
 
-            const responseData = {
-              resolution,
-              candles: result.candles,
-            };
+          // Cleanup coalescing map
+          candleRequestMap.delete(cacheKey);
 
-            // Cache the successful result
-            candleCache.set(cacheKey, {
-              data: responseData,
-              timestamp: Date.now(),
-            });
-
-            return responseData;
-          } catch (aggregateError) {
-            fastify.log.error(
-              { err: aggregateError, tokenAddress: address },
-              'Both Aerodrome and BitQuery candles failed',
-            );
-            throw new Error('Dex service unavailable - all data sources failed');
-          } finally {
-            // Cleanup coalescing map
-            candleRequestMap.delete(cacheKey);
-          }
+          return responseData;
         })();
 
         // Store promise in map for coalescing
@@ -1404,11 +1381,18 @@ export async function dexRoutes(fastify: FastifyInstance) {
         // Start new request
         const promise = (async () => {
           try {
-            // 🔥 CRITICAL: Fetch ACES/USD price for accurate USD conversions
+            const tokenCache = (fastify as any).tokenMetadataCache;
+            const tokenMetadata = await tokenCache.getTokenMetadata(address);
+            const isGraduated = tokenMetadata?.poolAddress && tokenMetadata.phase === 'DEX_TRADING';
+            const poolAddress = tokenMetadata?.poolAddress ?? null;
+            const dexLiveAt = tokenMetadata?.dexLiveAt;
+
+
             const acesUsdPriceService = (fastify as any).acesUsdPriceService;
             let acesUsdPrice: number | null = null;
 
-            if (acesUsdPriceService) {
+            const hydrateAcesUsdPrice = async () => {
+              if (acesUsdPrice !== null || !acesUsdPriceService) return;
               try {
                 const priceResult = await acesUsdPriceService.getAcesUsdPrice();
                 acesUsdPrice = Number.parseFloat(priceResult.price);
@@ -1419,17 +1403,8 @@ export async function dexRoutes(fastify: FastifyInstance) {
               } catch (err) {
                 fastify.log.warn({ err }, '⚠️ Failed to fetch ACES/USD price for trades');
               }
-            }
+            };
 
-            // 🔥 OPTIMIZED: Use token metadata cache instead of direct query
-            const tokenCache = (fastify as any).tokenMetadataCache;
-            const tokenMetadata = await tokenCache.getTokenMetadata(address);
-
-            // Determine if token is graduated
-            const isGraduated = tokenMetadata?.poolAddress && tokenMetadata.phase === 'DEX_TRADING';
-            const dexLiveAt = tokenMetadata?.dexLiveAt;
-
-            // Fetch trades from both sources
             const allTrades: Array<{
               txHash: string;
               timestamp: number;
@@ -1444,66 +1419,25 @@ export async function dexRoutes(fastify: FastifyInstance) {
               source: 'bonding' | 'dex';
             }> = [];
 
-            // 1. Fetch DEX trades from BitQuery (if graduated)
-            if (isGraduated) {
-              try {
-                const bitquery = new BitQueryService(
-                  fastify.acesUsdPriceService,
-                  fastify.rateLimitMonitor,
-                );
-                const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-                const dexTrades = await bitquery.getTokenTrades(address, limit, {
-                  from: thirtyDaysAgo,
-                  to: new Date(),
-                });
+            // DEX trades are now handled by DexScreener iframe on frontend
+            // Only bonding curve trades are fetched from backend
 
-                const transformedDexTrades = dexTrades.map((trade) => {
-                  const priceInCounter = parseFloat(trade.priceInAces);
-                  const amountCounter = parseFloat(trade.amountAces);
-
-                  // 🔥 FIX: Don't trust BitQuery's priceInUsd - it's actually ACES price, not USD
-                  // Recalculate ourselves using real ACES/USD conversion
-                  const priceInUsd =
-                    acesUsdPrice && priceInCounter ? priceInCounter * acesUsdPrice : undefined;
-
-                  const totalUsd =
-                    acesUsdPrice && amountCounter ? amountCounter * acesUsdPrice : undefined;
-
-                  return {
-                    txHash: trade.txHash,
-                    timestamp: new Date(trade.blockTime).getTime(),
-                    blockNumber: trade.blockNumber.toString(),
-                    direction: trade.side as 'buy' | 'sell',
-                    amountToken: trade.amountToken,
-                    amountCounter: trade.amountAces,
-                    priceInCounter,
-                    priceInUsd, // ← Now correctly calculated
-                    totalUsd, // ← New field for total trade value in USD
-                    trader: trade.sender,
-                    source: 'dex' as const,
-                  };
-                });
-
-                allTrades.push(...transformedDexTrades);
-                console.log(
-                  `[DEX Trades] ✅ Fetched ${transformedDexTrades.length} DEX trades from BitQuery`,
-                );
-              } catch (err: any) {
-                console.warn('[DEX Trades] BitQuery fetch failed:', err);
-              }
+            if (isGraduated && !poolAddress) {
+              fastify.log.warn(
+                { address },
+                '[DEX Trades] ⚠️ Token marked DEX live but missing pool address',
+              );
             }
 
-            // 2. Fetch bonding curve trades from Goldsky (if not graduated OR if we need more trades)
             const remainingSlots = limit - allTrades.length;
             if (remainingSlots > 0) {
               try {
                 const goldskyClient = (fastify as any).goldskyClient;
                 if (goldskyClient) {
-                  // If graduated, only fetch trades before graduation
                   const toTimestamp = dexLiveAt
                     ? Math.floor(dexLiveAt.getTime() / 1000)
                     : Math.floor(Date.now() / 1000);
-                  const fromTimestamp = toTimestamp - 30 * 24 * 60 * 60; // 30 days ago
+                  const fromTimestamp = toTimestamp - 30 * 24 * 60 * 60;
 
                   const bondingTrades = await goldskyClient.getTrades(
                     address,
@@ -1515,20 +1449,21 @@ export async function dexRoutes(fastify: FastifyInstance) {
 
                   const transformedBondingTrades = bondingTrades.map((trade: SubgraphTrade) => ({
                     txHash: trade.id,
-                    timestamp: parseInt(trade.createdAt) * 1000, // Parse string timestamp to number
+                    timestamp: parseInt(trade.createdAt) * 1000,
                     blockNumber: trade.blockNumber?.toString() || '0',
                     direction: trade.isBuy ? ('buy' as const) : ('sell' as const),
                     amountToken: trade.tokenAmount || '0',
                     amountCounter: trade.acesTokenAmount || '0',
-                    priceInCounter: 0, // Will be calculated from amounts
-                    priceInUsd: undefined, // Bonding curve trades don't have USD prices
+                    priceInCounter: 0,
+                    priceInUsd: undefined,
                     trader: trade.trader?.address,
                     source: 'bonding' as const,
                   }));
 
                   allTrades.push(...transformedBondingTrades);
-                  console.log(
-                    `[DEX Trades] ✅ Fetched ${transformedBondingTrades.length} bonding trades from Goldsky`,
+                  fastify.log.info(
+                    { address, count: transformedBondingTrades.length },
+                    '[DEX Trades] ✅ Loaded bonding trades from Goldsky',
                   );
                 }
               } catch (err: any) {
@@ -1536,17 +1471,21 @@ export async function dexRoutes(fastify: FastifyInstance) {
               }
             }
 
-            // 3. Sort all trades by timestamp (newest first) and limit to requested amount
             allTrades.sort((a, b) => b.timestamp - a.timestamp);
             const finalTrades = allTrades.slice(0, limit);
 
-            console.log(
-              `[DEX Trades] ✅ Combined ${finalTrades.length} trades (${finalTrades.filter((t) => t.source === 'dex').length} DEX + ${finalTrades.filter((t) => t.source === 'bonding').length} bonding)`,
+            fastify.log.info(
+              {
+                address,
+                total: finalTrades.length,
+                dex: finalTrades.filter((t) => t.source === 'dex').length,
+                bonding: finalTrades.filter((t) => t.source === 'bonding').length,
+              },
+              '[DEX Trades] ✅ Combined trade payload ready',
             );
 
-            // Include graduation metadata (using cached data)
             const graduationMeta = {
-              isDexLive: isGraduated,
+              isDexLive: Boolean(isGraduated),
               poolAddress: tokenMetadata?.poolAddress || null,
               dexLiveAt: dexLiveAt?.toISOString() || null,
               bondingCutoff: dexLiveAt?.toISOString() || null,
@@ -1560,11 +1499,9 @@ export async function dexRoutes(fastify: FastifyInstance) {
               },
             };
 
-            // Cache the response
             dexTradesCache.set(cacheKey, { data: response, timestamp: Date.now() });
             return response;
           } finally {
-            // Clean up pending request
             dexTradesPendingRequests.delete(cacheKey);
           }
         })();

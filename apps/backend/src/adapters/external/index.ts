@@ -5,6 +5,4 @@
 
 export { QuickNodeAdapter } from './quicknode-adapter';
 export { GoldskyAdapter } from './goldsky-adapter';
-export { BitQueryAdapter } from './bitquery-adapter';
 export { AerodromeAdapter } from './aerodrome-adapter';
-
