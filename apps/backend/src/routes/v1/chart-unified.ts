@@ -85,7 +85,9 @@ export async function chartUnifiedRoutes(fastify: FastifyInstance) {
           limit: requestedLimit,
         });
 
-        console.log(`[ChartUnified] 📊 Requested ${requestedLimit} candles, returning ${chartData.candles.length}`);
+        console.log(
+          `[ChartUnified] 📊 Requested ${requestedLimit} candles, returning ${chartData.candles.length}`,
+        );
 
         const requestDuration = Date.now() - requestStart;
         console.log(

@@ -5,6 +5,22 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const host = request.headers.get('host') || '';
 
+  // 🔒 CVE-2025-55182 Protection: Block malicious RSC headers
+  const dangerousHeaders = ['rsc-action-id', 'next-action'];
+  for (const header of dangerousHeaders) {
+    if (request.headers.has(header)) {
+      console.warn(`[SECURITY] Blocked request with suspicious header: ${header}`);
+      return new NextResponse('Forbidden', { status: 403 });
+    }
+  }
+
+  // Block suspicious content-type headers
+  const contentType = request.headers.get('content-type') || '';
+  if (contentType.includes('text/x-component')) {
+    console.warn('[SECURITY] Blocked request with suspicious content-type: text/x-component');
+    return new NextResponse('Forbidden', { status: 403 });
+  }
+
   // Always allow static TradingView assets to bypass any protection
   if (pathname.startsWith('/charting_library/')) {
     return NextResponse.next();
