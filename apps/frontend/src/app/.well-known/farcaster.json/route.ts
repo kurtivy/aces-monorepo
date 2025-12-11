@@ -35,6 +35,7 @@ export async function GET() {
       ogTitle: 'ACES.fun',
       ogDescription: 'Trade Tokenized Collectibles on Base',
       ogImageUrl: `${baseUrl}/aces-preview-logo.png`,
+      noindex: false,
     },
   };
 
