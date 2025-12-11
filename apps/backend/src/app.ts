@@ -40,6 +40,9 @@ import { marketCapRoutes } from './routes/v1/market-cap';
 // GoldSky webhook for historical price tracking
 import { goldskyWebhookRoutes } from './routes/webhooks/goldsky';
 
+// Farcaster/Base mini app webhook
+import { farcasterWebhookRoutes } from './routes/v1/farcaster/webhook';
+
 // Services
 import { TokenService } from './services/token-service';
 import { AcesUsdPriceService } from './services/aces-usd-price-service';
@@ -239,11 +242,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   // Market Cap Service - Single Source of Truth
   const { MarketCapService } = await import('./services/market-cap-service');
 
-  const marketCapService = new MarketCapService(
-    prisma,
-    acesUsdPriceService,
-    provider,
-  );
+  const marketCapService = new MarketCapService(prisma, acesUsdPriceService, provider);
   fastify.decorate('marketCapService', marketCapService);
   console.log('✅ Market Cap Service initialized');
 
@@ -373,6 +372,9 @@ export const buildApp = async (): Promise<FastifyInstance> => {
 
   // Register GoldSky webhook routes (NO AUTH - uses webhook secret verification)
   fastify.register(goldskyWebhookRoutes, { prefix: '/api/webhooks/goldsky' });
+
+  // Register Farcaster/Base mini app webhook routes (NO AUTH - external webhook)
+  fastify.register(farcasterWebhookRoutes, { prefix: '/api/v1/farcaster' });
 
   // 🚀 Phase 3: Register Real-Time WebSocket Routes
   const { tradesWebSocketRoutes } = await import('./routes/v1/ws/trades');

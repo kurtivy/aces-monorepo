@@ -48,6 +48,23 @@ export const metadata: Metadata = {
     shortcut: '/aces-preview-logo.png',
     apple: '/aces-preview-logo.png',
   },
+  other: {
+    'base:app_id': '693a1924e6be54f5ed71d56f',
+    'fc:miniapp': JSON.stringify({
+      version: 'next',
+      imageUrl: 'https://aces.fun/aces-preview-logo.png',
+      button: {
+        title: 'Trade Now',
+        action: {
+          type: 'launch_miniapp',
+          name: 'ACES.fun',
+          url: 'https://aces.fun',
+          splashImageUrl: 'https://aces.fun/aces-preview-logo.png',
+          splashBackgroundColor: '#000000',
+        },
+      },
+    }),
+  },
 };
 
 export default function RootLayout({

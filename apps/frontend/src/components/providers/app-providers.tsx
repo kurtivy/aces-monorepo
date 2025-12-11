@@ -14,6 +14,7 @@ import { initCanvasFonts } from '../../lib/utils/font-loader';
 import { PriceProvider } from '../../contexts/price-context';
 import { BondingDataProvider } from '../../contexts/bonding-data-context';
 import { MarketCapProvider } from '../../contexts/market-cap-context';
+import { MiniAppProvider } from './miniapp-provider';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -146,62 +147,64 @@ export default function AppProviders({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <PriceProvider>
-        <BondingDataProvider>
-          <MarketCapProvider>
-            <PrivyProvider
-              appId={privyAppId}
-              config={{
-                loginMethods: ['wallet', 'email'],
-                appearance: {
-                  theme: 'dark',
-                  accentColor: '#D0B264',
-                  logo: '/aces-logo.png',
-                  loginMessage: 'Connect your wallet to ACES',
-                  showWalletLoginFirst: true,
-                  walletList: [
-                    'coinbase_wallet',
-                    'phantom',
-                    'metamask',
-                    'rabby_wallet',
-                    'wallet_connect',
-                  ],
-                },
-                embeddedWallets: {
-                  createOnLogin: 'all-users',
-                  requireUserPasswordOnCreate: false,
-                  showWalletUIs: true,
-                },
-                defaultChain: base,
-                supportedChains: [base, baseSepolia],
-                externalWallets: {
-                  coinbaseWallet: {
-                    connectionOptions: 'smartWalletOnly',
+      <MiniAppProvider>
+        <PriceProvider>
+          <BondingDataProvider>
+            <MarketCapProvider>
+              <PrivyProvider
+                appId={privyAppId}
+                config={{
+                  loginMethods: ['wallet', 'email'],
+                  appearance: {
+                    theme: 'dark',
+                    accentColor: '#D0B264',
+                    logo: '/aces-logo.png',
+                    loginMessage: 'Connect your wallet to ACES',
+                    showWalletLoginFirst: true,
+                    walletList: [
+                      'coinbase_wallet',
+                      'phantom',
+                      'metamask',
+                      'rabby_wallet',
+                      'wallet_connect',
+                    ],
                   },
-                  // Remove the phantom config - it's not a valid option here
-                },
-                legal: {
-                  termsAndConditionsUrl: 'https://aces.fun/terms',
-                  privacyPolicyUrl: 'https://aces.fun/privacy',
-                },
-              }}
-            >
-              <WagmiProvider
-                config={wagmiConfig}
-                setActiveWalletForWagmi={selectActiveWalletForWagmi}
+                  embeddedWallets: {
+                    createOnLogin: 'all-users',
+                    requireUserPasswordOnCreate: false,
+                    showWalletUIs: true,
+                  },
+                  defaultChain: base,
+                  supportedChains: [base, baseSepolia],
+                  externalWallets: {
+                    coinbaseWallet: {
+                      connectionOptions: 'smartWalletOnly',
+                    },
+                    // Remove the phantom config - it's not a valid option here
+                  },
+                  legal: {
+                    termsAndConditionsUrl: 'https://aces.fun/terms',
+                    privacyPolicyUrl: 'https://aces.fun/privacy',
+                  },
+                }}
               >
-                <AuthProvider>
-                  <ModalProvider>
-                    <NetworkBanner />
-                    {children}
-                    <GlobalModals />
-                  </ModalProvider>
-                </AuthProvider>
-              </WagmiProvider>
-            </PrivyProvider>
-          </MarketCapProvider>
-        </BondingDataProvider>
-      </PriceProvider>
+                <WagmiProvider
+                  config={wagmiConfig}
+                  setActiveWalletForWagmi={selectActiveWalletForWagmi}
+                >
+                  <AuthProvider>
+                    <ModalProvider>
+                      <NetworkBanner />
+                      {children}
+                      <GlobalModals />
+                    </ModalProvider>
+                  </AuthProvider>
+                </WagmiProvider>
+              </PrivyProvider>
+            </MarketCapProvider>
+          </BondingDataProvider>
+        </PriceProvider>
+      </MiniAppProvider>
     </QueryClientProvider>
   );
 }
