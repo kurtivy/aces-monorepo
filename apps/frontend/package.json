@@ -14,6 +14,7 @@
   "dependencies": {
     "@aces/utils": "workspace:*",
     "@coinbase/onchainkit": "^1.0.2",
+    "@farcaster/miniapp-sdk": "^0.2.1",
     "@google-cloud/storage": "^7.16.0",
     "@hookform/resolvers": "^5.1.1",
     "@privy-io/react-auth": "^2.20.0",
