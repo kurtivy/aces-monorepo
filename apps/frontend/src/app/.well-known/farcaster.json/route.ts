@@ -24,7 +24,9 @@ export async function GET() {
       description:
         'Trade tokenized real-world collectibles on Base. Buy, sell, and trade unique tokenized assets.',
       screenshotUrls: [
-        // TODO: Add 3 screenshot URLs after deployment
+        'https://aces.fun/screenshots/shot-1.webp',
+        'https://aces.fun/screenshots/shot-2.webp',
+        'https://aces.fun/screenshots/shot-3.webp',
       ],
       primaryCategory: 'social',
       tags: ['collectibles', 'trading', 'base', 'rwa', 'tokenization'],
