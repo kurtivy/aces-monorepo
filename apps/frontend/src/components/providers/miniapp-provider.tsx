@@ -7,11 +7,12 @@ export function MiniAppProvider({ children }: { children: ReactNode }) {
   const { context, isMiniAppReady, setMiniAppReady } = useMiniKit();
 
   useEffect(() => {
-    if (isMiniAppReady || !context) {
+    if (isMiniAppReady) {
       return;
     }
 
     let cancelled = false;
+    const fallbackDelayMs = 1500;
 
     async function signalReady() {
       try {
@@ -24,12 +25,23 @@ export function MiniAppProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    void signalReady();
+    if (context) {
+      void signalReady();
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const fallbackTimer = window.setTimeout(() => {
+      console.warn('[MiniApp] Context missing; sending ready() fallback.');
+      void signalReady();
+    }, fallbackDelayMs);
 
     return () => {
       cancelled = true;
+      window.clearTimeout(fallbackTimer);
     };
-  }, [isMiniAppReady, setMiniAppReady]);
+  }, [context, isMiniAppReady, setMiniAppReady]);
 
   return <>{children}</>;
 }
