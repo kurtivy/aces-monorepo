@@ -4,10 +4,10 @@ import { useEffect, type ReactNode } from 'react';
 import { useMiniKit } from '@coinbase/onchainkit/minikit';
 
 export function MiniAppProvider({ children }: { children: ReactNode }) {
-  const { isMiniAppReady, setMiniAppReady } = useMiniKit();
+  const { context, isMiniAppReady, setMiniAppReady } = useMiniKit();
 
   useEffect(() => {
-    if (isMiniAppReady) {
+    if (isMiniAppReady || !context) {
       return;
     }
 
