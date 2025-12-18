@@ -5,8 +5,24 @@ import { sdk } from '@farcaster/miniapp-sdk';
 
 export function MiniAppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
-    // Signal to the Base app that the mini app is ready to be displayed
-    sdk.actions.ready();
+    let cancelled = false;
+
+    async function signalReady() {
+      try {
+        await sdk.actions.ready();
+        if (!cancelled) {
+          console.info('[MiniApp] Ready signal acknowledged');
+        }
+      } catch (error) {
+        console.error('[MiniApp] Failed to signal ready()', error);
+      }
+    }
+
+    void signalReady();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return <>{children}</>;
