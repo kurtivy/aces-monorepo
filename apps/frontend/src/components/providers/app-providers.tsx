@@ -15,6 +15,7 @@ import { PriceProvider } from '../../contexts/price-context';
 import { BondingDataProvider } from '../../contexts/bonding-data-context';
 import { MarketCapProvider } from '../../contexts/market-cap-context';
 import { MiniAppProvider } from './miniapp-provider';
+import { OnchainKitProvider } from '@coinbase/onchainkit';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -118,6 +119,8 @@ export default function AppProviders({ children }: { children: ReactNode }) {
   }, []);
 
   const privyAppId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
+  const onchainKitApiKey = process.env.NEXT_PUBLIC_ONCHAINKIT_API_KEY;
+  const onchainKitProjectName = process.env.NEXT_PUBLIC_ONCHAINKIT_PROJECT_NAME;
 
   if (typeof window !== 'undefined') {
     if (!privyAppId) {
@@ -133,78 +136,104 @@ export default function AppProviders({ children }: { children: ReactNode }) {
 
   if (!privyAppId) {
     console.error('Cannot initialize Privy without app ID');
+    const missingPrivy = (
+      <div className="flex items-center justify-center min-h-screen bg-black text-red-400">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold mb-4">Configuration Error</h2>
+          <p>Privy App ID is missing. Please check environment variables.</p>
+        </div>
+      </div>
+    );
+
     return (
       <QueryClientProvider client={queryClient}>
-        <div className="flex items-center justify-center min-h-screen bg-black text-red-400">
-          <div className="text-center">
-            <h2 className="text-2xl font-bold mb-4">Configuration Error</h2>
-            <p>Privy App ID is missing. Please check environment variables.</p>
-          </div>
-        </div>
+        <OnchainKitProvider
+          apiKey={onchainKitApiKey}
+          chain={base}
+          config={{
+            appearance: {
+              name: onchainKitProjectName || 'ACES.fun',
+            },
+          }}
+          miniKit={{ enabled: true }}
+        >
+          <MiniAppProvider>{missingPrivy}</MiniAppProvider>
+        </OnchainKitProvider>
       </QueryClientProvider>
     );
   }
 
   return (
     <QueryClientProvider client={queryClient}>
-      <MiniAppProvider>
-        <PriceProvider>
-          <BondingDataProvider>
-            <MarketCapProvider>
-              <PrivyProvider
-                appId={privyAppId}
-                config={{
-                  loginMethods: ['wallet', 'email'],
-                  appearance: {
-                    theme: 'dark',
-                    accentColor: '#D0B264',
-                    logo: '/aces-logo.png',
-                    loginMessage: 'Connect your wallet to ACES',
-                    showWalletLoginFirst: true,
-                    walletList: [
-                      'coinbase_wallet',
-                      'phantom',
-                      'metamask',
-                      'rabby_wallet',
-                      'wallet_connect',
-                    ],
-                  },
-                  embeddedWallets: {
-                    createOnLogin: 'all-users',
-                    requireUserPasswordOnCreate: false,
-                    showWalletUIs: true,
-                  },
-                  defaultChain: base,
-                  supportedChains: [base, baseSepolia],
-                  externalWallets: {
-                    coinbaseWallet: {
-                      connectionOptions: 'smartWalletOnly',
+      <OnchainKitProvider
+        apiKey={onchainKitApiKey}
+        chain={base}
+        config={{
+          appearance: {
+            name: onchainKitProjectName || 'ACES.fun',
+          },
+        }}
+        miniKit={{ enabled: true }}
+      >
+        <MiniAppProvider>
+          <PriceProvider>
+            <BondingDataProvider>
+              <MarketCapProvider>
+                <PrivyProvider
+                  appId={privyAppId}
+                  config={{
+                    loginMethods: ['wallet', 'email'],
+                    appearance: {
+                      theme: 'dark',
+                      accentColor: '#D0B264',
+                      logo: '/aces-logo.png',
+                      loginMessage: 'Connect your wallet to ACES',
+                      showWalletLoginFirst: true,
+                      walletList: [
+                        'coinbase_wallet',
+                        'phantom',
+                        'metamask',
+                        'rabby_wallet',
+                        'wallet_connect',
+                      ],
                     },
-                    // Remove the phantom config - it's not a valid option here
-                  },
-                  legal: {
-                    termsAndConditionsUrl: 'https://aces.fun/terms',
-                    privacyPolicyUrl: 'https://aces.fun/privacy',
-                  },
-                }}
-              >
-                <WagmiProvider
-                  config={wagmiConfig}
-                  setActiveWalletForWagmi={selectActiveWalletForWagmi}
+                    embeddedWallets: {
+                      createOnLogin: 'all-users',
+                      requireUserPasswordOnCreate: false,
+                      showWalletUIs: true,
+                    },
+                    defaultChain: base,
+                    supportedChains: [base, baseSepolia],
+                    externalWallets: {
+                      coinbaseWallet: {
+                        connectionOptions: 'smartWalletOnly',
+                      },
+                      // Remove the phantom config - it's not a valid option here
+                    },
+                    legal: {
+                      termsAndConditionsUrl: 'https://aces.fun/terms',
+                      privacyPolicyUrl: 'https://aces.fun/privacy',
+                    },
+                  }}
                 >
-                  <AuthProvider>
-                    <ModalProvider>
-                      <NetworkBanner />
-                      {children}
-                      <GlobalModals />
-                    </ModalProvider>
-                  </AuthProvider>
-                </WagmiProvider>
-              </PrivyProvider>
-            </MarketCapProvider>
-          </BondingDataProvider>
-        </PriceProvider>
-      </MiniAppProvider>
+                  <WagmiProvider
+                    config={wagmiConfig}
+                    setActiveWalletForWagmi={selectActiveWalletForWagmi}
+                  >
+                    <AuthProvider>
+                      <ModalProvider>
+                        <NetworkBanner />
+                        {children}
+                        <GlobalModals />
+                      </ModalProvider>
+                    </AuthProvider>
+                  </WagmiProvider>
+                </PrivyProvider>
+              </MarketCapProvider>
+            </BondingDataProvider>
+          </PriceProvider>
+        </MiniAppProvider>
+      </OnchainKitProvider>
     </QueryClientProvider>
   );
 }

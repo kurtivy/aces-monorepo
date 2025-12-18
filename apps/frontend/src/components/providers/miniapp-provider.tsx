@@ -1,15 +1,21 @@
 'use client';
 
 import { useEffect, type ReactNode } from 'react';
-import { sdk } from '@farcaster/miniapp-sdk';
+import { useMiniKit } from '@coinbase/onchainkit/minikit';
 
 export function MiniAppProvider({ children }: { children: ReactNode }) {
+  const { isMiniAppReady, setMiniAppReady } = useMiniKit();
+
   useEffect(() => {
+    if (isMiniAppReady) {
+      return;
+    }
+
     let cancelled = false;
 
     async function signalReady() {
       try {
-        await sdk.actions.ready();
+        await setMiniAppReady();
         if (!cancelled) {
           console.info('[MiniApp] Ready signal acknowledged');
         }
@@ -23,7 +29,7 @@ export function MiniAppProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isMiniAppReady, setMiniAppReady]);
 
   return <>{children}</>;
 }
