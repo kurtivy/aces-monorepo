@@ -89,6 +89,7 @@ const nextConfig: NextConfig = {
       'https://pronews.tradingview.com',
       'https://charting-library.tradingview-widget.com',
       'https://*.tradingview.com',
+      'https://cca-lite.coinbase.com',
     ];
 
     // Add Cloudflare domains if enabled
