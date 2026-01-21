@@ -6,13 +6,11 @@ import { errors } from './errors';
 // Simplified User type for Step 1
 export interface SimpleUser {
   id: string;
-  privyDid: string | null; // Nullable for Farcaster-only users
-  farcasterFid?: string | null; // Optional Farcaster ID
+  privyDid: string;
   walletAddress: string | null;
   email: string | null;
   role: UserRole;
   isActive: boolean;
-  sellerStatus?: string; // Optional seller status
   createdAt: Date;
   updatedAt: Date;
 }

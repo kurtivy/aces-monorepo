@@ -84,9 +84,6 @@ importers:
       '@faker-js/faker':
         specifier: ^9.3.1
         version: 9.9.0
-      '@farcaster/quick-auth':
-        specifier: ^0.0.8
-        version: 0.0.8(typescript@5.9.3)
       '@fastify/cors':
         specifier: ^8.4.2
         version: 8.5.0
@@ -1739,16 +1736,6 @@ packages:
 
   /@farcaster/quick-auth@0.0.6(typescript@5.9.3):
     resolution: {integrity: sha512-tiZndhpfDtEhaKlkmS5cVDuS+A/tafqZT3y9I44rC69m3beJok6e8dIH2JhxVy3EvOWTyTBnrmNn6GOOh+qK6A==}
-    peerDependencies:
-      typescript: 5.8.3
-    dependencies:
-      jose: 5.10.0
-      typescript: 5.9.3
-      zod: 3.25.76
-    dev: false
-
-  /@farcaster/quick-auth@0.0.8(typescript@5.9.3):
-    resolution: {integrity: sha512-NRIq1BcbcQCC6xBF5owfckkY00xKQVpqhpLNl5rICVpl0xeDsiVbkenIrHaUuyjtCK2W28YVc2ZCFRyz9ERHKg==}
     peerDependencies:
       typescript: 5.8.3
     dependencies:

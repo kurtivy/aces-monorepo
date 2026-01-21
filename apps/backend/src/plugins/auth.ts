@@ -1,12 +1,8 @@
 import { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 import jwt from 'jsonwebtoken';
-import { createClient } from '@farcaster/quick-auth';
 import { getPrismaClient } from '../lib/database';
 import { requireAuth } from '../lib/auth-middleware';
-
-// Initialize Farcaster Quick Auth client
-const farcasterClient = createClient();
 
 const registerAuthPlugin = async (fastify: FastifyInstance) => {
   console.log('🔧 Registering simplified auth plugin...');
@@ -166,14 +162,21 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
           console.log('✅ Database connection successful in', slowQueryTime, 'ms');
         }
 
-        // Verify JWT token (Privy or Farcaster)
+        // Verify Privy JWT token
+        console.log('🔍 Verifying Privy JWT token...');
         const token = authHeader.replace('Bearer ', '');
 
         try {
-          // Decode JWT to determine issuer
+          // Get Privy App ID from environment
+          const privyAppId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
+          if (!privyAppId) {
+            console.error('❌ NEXT_PUBLIC_PRIVY_APP_ID not set');
+            throw new Error('Privy App ID not configured');
+          }
+
+          // Decode JWT without verification to get user info
           const decoded = jwt.decode(token) as {
             sub: string;
-            iss?: string;
             wallet_address?: string;
             email?: string;
           } | null;
@@ -183,30 +186,45 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
             throw new Error('Invalid token');
           }
 
-          // Detect token type by issuer
-          const isFarcasterToken = decoded.iss === 'https://auth.farcaster.xyz';
+          const privyDid = decoded.sub;
+          console.log('🔍 Privy DID from token:', privyDid);
 
-          // Declare user variable at function scope
-          let user;
+          // Look up user in database - SIMPLIFIED FIELDS ONLY
+          let user = await prisma.user.findUnique({
+            where: { privyDid },
+            select: {
+              id: true,
+              privyDid: true,
+              walletAddress: true,
+              email: true,
+              role: true,
+              isActive: true,
+              sellerStatus: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+          });
 
-          if (isFarcasterToken) {
-            console.log('🔍 Verifying Farcaster Quick Auth token...');
+          if (!user) {
+            console.log('🆕 Creating new user for Privy DID:', privyDid);
 
-            // Verify Farcaster JWT
-            const domain =
-              process.env.FARCASTER_APP_DOMAIN || process.env.NEXT_PUBLIC_URL || 'aces.fun';
-            const payload = await farcasterClient.verifyJwt({ token, domain });
+            // Extract info from token
+            const walletAddress = decoded.wallet_address || null;
+            const email = decoded.email || null;
 
-            const farcasterFid = payload.sub.toString();
-            console.log('🔍 Farcaster FID from token:', farcasterFid);
-
-            // Look up user by Farcaster FID
-            user = await prisma.user.findUnique({
-              where: { farcasterFid },
+            // SIMPLIFIED USER CREATION
+            user = await prisma.user.create({
+              data: {
+                privyDid,
+                walletAddress,
+                email,
+                role: 'TRADER', // Using string literal to match enum
+                isActive: true,
+                sellerStatus: 'NOT_APPLIED', // Default seller status
+              },
               select: {
                 id: true,
                 privyDid: true,
-                farcasterFid: true,
                 walletAddress: true,
                 email: true,
                 role: true,
@@ -217,88 +235,45 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
               },
             });
 
-            if (!user) {
-              console.log('🆕 Creating new user for Farcaster FID:', farcasterFid);
-
-              // Create user with Farcaster FID
-              user = await prisma.user.create({
-                data: {
-                  farcasterFid,
-                  role: 'TRADER',
-                  isActive: true,
-                  sellerStatus: 'NOT_APPLIED',
-                },
-                select: {
-                  id: true,
-                  privyDid: true,
-                  farcasterFid: true,
-                  walletAddress: true,
-                  email: true,
-                  role: true,
-                  isActive: true,
-                  sellerStatus: true,
-                  createdAt: true,
-                  updatedAt: true,
-                },
-              });
-
-              if (user) {
-                console.log('✅ Farcaster user created successfully:', user.id);
-              }
-            } else {
-              console.log('✅ Existing Farcaster user found:', user.id);
+            if (user) {
+              console.log('✅ User created successfully:', user.id);
             }
           } else {
-            // Privy token flow
-            console.log('🔍 Verifying Privy JWT token...');
+            console.log('✅ Existing user found:', user.id);
 
-            const privyAppId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
-            if (!privyAppId) {
-              console.error('❌ NEXT_PUBLIC_PRIVY_APP_ID not set');
-              throw new Error('Privy App ID not configured');
-            }
+            // Check if we need to update any fields
+            const walletAddress = decoded.wallet_address || null;
+            const email = decoded.email || null;
 
-            const privyDid = decoded.sub;
-            console.log('🔍 Privy DID from token:', privyDid);
+            const needsUpdate =
+              (walletAddress && user.walletAddress !== walletAddress) ||
+              (email && user.email !== email && !user.email);
 
-            // Look up user in database - SIMPLIFIED FIELDS ONLY
-            user = await prisma.user.findUnique({
-              where: { privyDid },
-              select: {
-                id: true,
-                privyDid: true,
-                farcasterFid: true,
-                walletAddress: true,
-                email: true,
-                role: true,
-                isActive: true,
-                sellerStatus: true,
-                createdAt: true,
-                updatedAt: true,
-              },
-            });
+            if (needsUpdate) {
+              console.log('🔄 Updating user info...');
 
-            if (!user) {
-              console.log('🆕 Creating new user for Privy DID:', privyDid);
+              const updateData: {
+                walletAddress?: string | null;
+                email?: string | null;
+                updatedAt?: Date;
+              } = {};
 
-              // Extract info from token
-              const walletAddress = decoded.wallet_address || null;
-              const email = decoded.email || null;
+              if (walletAddress && user.walletAddress !== walletAddress) {
+                updateData.walletAddress = walletAddress;
+              }
 
-              // SIMPLIFIED USER CREATION
-              user = await prisma.user.create({
-                data: {
-                  privyDid,
-                  walletAddress,
-                  email,
-                  role: 'TRADER', // Using string literal to match enum
-                  isActive: true,
-                  sellerStatus: 'NOT_APPLIED', // Default seller status
-                },
+              if (email && !user.email) {
+                updateData.email = email;
+              }
+
+              updateData.updatedAt = new Date();
+
+              user = await prisma.user.update({
+                where: { id: user.id },
+                data: updateData,
                 select: {
                   id: true,
                   privyDid: true,
-                  farcasterFid: true,
                   walletAddress: true,
                   email: true,
                   role: true,
@@ -310,58 +285,7 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
               });
 
               if (user) {
-                console.log('✅ User created successfully:', user.id);
-              }
-            } else {
-              console.log('✅ Existing user found:', user.id);
-
-              // Check if we need to update any fields
-              const walletAddress = decoded.wallet_address || null;
-              const email = decoded.email || null;
-
-              const needsUpdate =
-                (walletAddress && user.walletAddress !== walletAddress) ||
-                (email && user.email !== email && !user.email);
-
-              if (needsUpdate) {
-                console.log('🔄 Updating user info...');
-
-                const updateData: {
-                  walletAddress?: string | null;
-                  email?: string | null;
-                  updatedAt?: Date;
-                } = {};
-
-                if (walletAddress && user.walletAddress !== walletAddress) {
-                  updateData.walletAddress = walletAddress;
-                }
-
-                if (email && !user.email) {
-                  updateData.email = email;
-                }
-
-                updateData.updatedAt = new Date();
-
-                user = await prisma.user.update({
-                  where: { id: user.id },
-                  data: updateData,
-                  select: {
-                    id: true,
-                    privyDid: true,
-                    farcasterFid: true,
-                    walletAddress: true,
-                    email: true,
-                    role: true,
-                    isActive: true,
-                    sellerStatus: true,
-                    createdAt: true,
-                    updatedAt: true,
-                  },
-                });
-
-                if (user) {
-                  console.log('✅ User updated successfully:', user.id);
-                }
+                console.log('✅ User updated successfully:', user.id);
               }
             }
           }
