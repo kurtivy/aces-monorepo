@@ -29,7 +29,7 @@ export async function GET() {
         'https://aces.fun/screenshots/shot-3.webp',
       ],
       primaryCategory: 'finance',
-      tags: ['collectibles', 'trading', 'base', 'rwa', 'tokenization', 'shopping'],
+      tags: ['collectibles', 'trading', 'rwa', 'tokenization', 'shopping'],
       heroImageUrl: `${baseUrl}/aces-preview-logo.png`,
       tagline: 'Trade Tokenized Collectibles',
       ogTitle: 'ACES.fun',
