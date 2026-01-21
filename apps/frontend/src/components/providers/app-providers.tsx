@@ -5,7 +5,7 @@ import { WagmiProvider, type SetActiveWalletForWagmiType } from '@privy-io/wagmi
 import { createConfig, http, fallback } from 'wagmi';
 import { baseSepolia, base } from 'wagmi/chains';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { AuthProvider } from '../../lib/auth/auth-context';
+import { UnifiedAuthProvider } from '../../lib/auth/unified-auth-context';
 import { ModalProvider } from '../../lib/contexts/modal-context';
 import GlobalModals from '../ui/custom/global-modals';
 import NetworkBanner from '../ui/custom/network-banner';
@@ -16,6 +16,7 @@ import { BondingDataProvider } from '../../contexts/bonding-data-context';
 import { MarketCapProvider } from '../../contexts/market-cap-context';
 import { MiniAppProvider } from './miniapp-provider';
 import { OnchainKitProvider } from '@coinbase/onchainkit';
+import { useMiniKit } from '@coinbase/onchainkit/minikit';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -179,61 +180,82 @@ export default function AppProviders({ children }: { children: ReactNode }) {
           <PriceProvider>
             <BondingDataProvider>
               <MarketCapProvider>
-                <PrivyProvider
-                  appId={privyAppId}
-                  config={{
-                    loginMethods: ['wallet', 'email'],
-                    appearance: {
-                      theme: 'dark',
-                      accentColor: '#D0B264',
-                      logo: '/aces-logo.png',
-                      loginMessage: 'Connect your wallet to ACES',
-                      showWalletLoginFirst: true,
-                      walletList: [
-                        'coinbase_wallet',
-                        'phantom',
-                        'metamask',
-                        'rabby_wallet',
-                        'wallet_connect',
-                      ],
-                    },
-                    embeddedWallets: {
-                      createOnLogin: 'all-users',
-                      requireUserPasswordOnCreate: false,
-                      showWalletUIs: true,
-                    },
-                    defaultChain: base,
-                    supportedChains: [base, baseSepolia],
-                    externalWallets: {
-                      coinbaseWallet: {
-                        connectionOptions: 'smartWalletOnly',
-                      },
-                      // Remove the phantom config - it's not a valid option here
-                    },
-                    legal: {
-                      termsAndConditionsUrl: 'https://aces.fun/terms',
-                      privacyPolicyUrl: 'https://aces.fun/privacy',
-                    },
-                  }}
-                >
-                  <WagmiProvider
-                    config={wagmiConfig}
-                    setActiveWalletForWagmi={selectActiveWalletForWagmi}
-                  >
-                    <AuthProvider>
-                      <ModalProvider>
-                        <NetworkBanner />
-                        {children}
-                        <GlobalModals />
-                      </ModalProvider>
-                    </AuthProvider>
-                  </WagmiProvider>
-                </PrivyProvider>
+                <ConditionalAuthProvider privyAppId={privyAppId}>
+                  {children}
+                </ConditionalAuthProvider>
               </MarketCapProvider>
             </BondingDataProvider>
           </PriceProvider>
         </MiniAppProvider>
       </OnchainKitProvider>
     </QueryClientProvider>
+  );
+}
+
+// Conditional auth provider that renders Privy+Wagmi for web, or just UnifiedAuth for MiniApp
+function ConditionalAuthProvider({
+  children,
+  privyAppId,
+}: {
+  children: ReactNode;
+  privyAppId: string;
+}) {
+  const { context } = useMiniKit();
+  const isMiniApp = !!context;
+
+  // In MiniApp: Skip Privy entirely, use UnifiedAuth (which will use MiniAppAuth)
+  if (isMiniApp) {
+    return (
+      <UnifiedAuthProvider>
+        <ModalProvider>
+          {children}
+          <GlobalModals />
+        </ModalProvider>
+      </UnifiedAuthProvider>
+    );
+  }
+
+  // In Web: Use Privy + Wagmi + UnifiedAuth (which will use WebAuth)
+  return (
+    <PrivyProvider
+      appId={privyAppId}
+      config={{
+        loginMethods: ['wallet', 'email'],
+        appearance: {
+          theme: 'dark',
+          accentColor: '#D0B264',
+          logo: '/aces-logo.png',
+          loginMessage: 'Connect your wallet to ACES',
+          showWalletLoginFirst: true,
+          walletList: ['coinbase_wallet', 'phantom', 'metamask', 'rabby_wallet', 'wallet_connect'],
+        },
+        embeddedWallets: {
+          createOnLogin: 'all-users',
+          requireUserPasswordOnCreate: false,
+          showWalletUIs: true,
+        },
+        defaultChain: base,
+        supportedChains: [base, baseSepolia],
+        externalWallets: {
+          coinbaseWallet: {
+            connectionOptions: 'smartWalletOnly',
+          },
+        },
+        legal: {
+          termsAndConditionsUrl: 'https://aces.fun/terms',
+          privacyPolicyUrl: 'https://aces.fun/privacy',
+        },
+      }}
+    >
+      <WagmiProvider config={wagmiConfig} setActiveWalletForWagmi={selectActiveWalletForWagmi}>
+        <UnifiedAuthProvider>
+          <ModalProvider>
+            <NetworkBanner />
+            {children}
+            <GlobalModals />
+          </ModalProvider>
+        </UnifiedAuthProvider>
+      </WagmiProvider>
+    </PrivyProvider>
   );
 }

@@ -1,8 +1,12 @@
 import { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 import jwt from 'jsonwebtoken';
+import { createClient } from '@farcaster/quick-auth';
 import { getPrismaClient } from '../lib/database';
 import { requireAuth } from '../lib/auth-middleware';
+
+// Initialize Farcaster Quick Auth client
+const farcasterClient = createClient();
 
 const registerAuthPlugin = async (fastify: FastifyInstance) => {
   console.log('🔧 Registering simplified auth plugin...');
@@ -162,21 +166,14 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
           console.log('✅ Database connection successful in', slowQueryTime, 'ms');
         }
 
-        // Verify Privy JWT token
-        console.log('🔍 Verifying Privy JWT token...');
+        // Verify JWT token (Privy or Farcaster)
         const token = authHeader.replace('Bearer ', '');
 
         try {
-          // Get Privy App ID from environment
-          const privyAppId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
-          if (!privyAppId) {
-            console.error('❌ NEXT_PUBLIC_PRIVY_APP_ID not set');
-            throw new Error('Privy App ID not configured');
-          }
-
-          // Decode JWT without verification to get user info
+          // Decode JWT to determine issuer
           const decoded = jwt.decode(token) as {
             sub: string;
+            iss?: string;
             wallet_address?: string;
             email?: string;
           } | null;
@@ -186,45 +183,30 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
             throw new Error('Invalid token');
           }
 
-          const privyDid = decoded.sub;
-          console.log('🔍 Privy DID from token:', privyDid);
+          // Detect token type by issuer
+          const isFarcasterToken = decoded.iss === 'https://auth.farcaster.xyz';
 
-          // Look up user in database - SIMPLIFIED FIELDS ONLY
-          let user = await prisma.user.findUnique({
-            where: { privyDid },
-            select: {
-              id: true,
-              privyDid: true,
-              walletAddress: true,
-              email: true,
-              role: true,
-              isActive: true,
-              sellerStatus: true,
-              createdAt: true,
-              updatedAt: true,
-            },
-          });
+          // Declare user variable at function scope
+          let user;
 
-          if (!user) {
-            console.log('🆕 Creating new user for Privy DID:', privyDid);
+          if (isFarcasterToken) {
+            console.log('🔍 Verifying Farcaster Quick Auth token...');
 
-            // Extract info from token
-            const walletAddress = decoded.wallet_address || null;
-            const email = decoded.email || null;
+            // Verify Farcaster JWT
+            const domain =
+              process.env.FARCASTER_APP_DOMAIN || process.env.NEXT_PUBLIC_URL || 'aces.fun';
+            const payload = await farcasterClient.verifyJwt({ token, domain });
 
-            // SIMPLIFIED USER CREATION
-            user = await prisma.user.create({
-              data: {
-                privyDid,
-                walletAddress,
-                email,
-                role: 'TRADER', // Using string literal to match enum
-                isActive: true,
-                sellerStatus: 'NOT_APPLIED', // Default seller status
-              },
+            const farcasterFid = payload.sub.toString();
+            console.log('🔍 Farcaster FID from token:', farcasterFid);
+
+            // Look up user by Farcaster FID
+            user = await prisma.user.findUnique({
+              where: { farcasterFid },
               select: {
                 id: true,
                 privyDid: true,
+                farcasterFid: true,
                 walletAddress: true,
                 email: true,
                 role: true,
@@ -235,45 +217,21 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
               },
             });
 
-            if (user) {
-              console.log('✅ User created successfully:', user.id);
-            }
-          } else {
-            console.log('✅ Existing user found:', user.id);
+            if (!user) {
+              console.log('🆕 Creating new user for Farcaster FID:', farcasterFid);
 
-            // Check if we need to update any fields
-            const walletAddress = decoded.wallet_address || null;
-            const email = decoded.email || null;
-
-            const needsUpdate =
-              (walletAddress && user.walletAddress !== walletAddress) ||
-              (email && user.email !== email && !user.email);
-
-            if (needsUpdate) {
-              console.log('🔄 Updating user info...');
-
-              const updateData: {
-                walletAddress?: string | null;
-                email?: string | null;
-                updatedAt?: Date;
-              } = {};
-
-              if (walletAddress && user.walletAddress !== walletAddress) {
-                updateData.walletAddress = walletAddress;
-              }
-
-              if (email && !user.email) {
-                updateData.email = email;
-              }
-
-              updateData.updatedAt = new Date();
-
-              user = await prisma.user.update({
-                where: { id: user.id },
-                data: updateData,
+              // Create user with Farcaster FID
+              user = await prisma.user.create({
+                data: {
+                  farcasterFid,
+                  role: 'TRADER',
+                  isActive: true,
+                  sellerStatus: 'NOT_APPLIED',
+                },
                 select: {
                   id: true,
                   privyDid: true,
+                  farcasterFid: true,
                   walletAddress: true,
                   email: true,
                   role: true,
@@ -285,7 +243,125 @@ const registerAuthPlugin = async (fastify: FastifyInstance) => {
               });
 
               if (user) {
-                console.log('✅ User updated successfully:', user.id);
+                console.log('✅ Farcaster user created successfully:', user.id);
+              }
+            } else {
+              console.log('✅ Existing Farcaster user found:', user.id);
+            }
+          } else {
+            // Privy token flow
+            console.log('🔍 Verifying Privy JWT token...');
+
+            const privyAppId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
+            if (!privyAppId) {
+              console.error('❌ NEXT_PUBLIC_PRIVY_APP_ID not set');
+              throw new Error('Privy App ID not configured');
+            }
+
+            const privyDid = decoded.sub;
+            console.log('🔍 Privy DID from token:', privyDid);
+
+            // Look up user in database - SIMPLIFIED FIELDS ONLY
+            user = await prisma.user.findUnique({
+              where: { privyDid },
+              select: {
+                id: true,
+                privyDid: true,
+                farcasterFid: true,
+                walletAddress: true,
+                email: true,
+                role: true,
+                isActive: true,
+                sellerStatus: true,
+                createdAt: true,
+                updatedAt: true,
+              },
+            });
+
+            if (!user) {
+              console.log('🆕 Creating new user for Privy DID:', privyDid);
+
+              // Extract info from token
+              const walletAddress = decoded.wallet_address || null;
+              const email = decoded.email || null;
+
+              // SIMPLIFIED USER CREATION
+              user = await prisma.user.create({
+                data: {
+                  privyDid,
+                  walletAddress,
+                  email,
+                  role: 'TRADER', // Using string literal to match enum
+                  isActive: true,
+                  sellerStatus: 'NOT_APPLIED', // Default seller status
+                },
+                select: {
+                  id: true,
+                  privyDid: true,
+                  farcasterFid: true,
+                  walletAddress: true,
+                  email: true,
+                  role: true,
+                  isActive: true,
+                  sellerStatus: true,
+                  createdAt: true,
+                  updatedAt: true,
+                },
+              });
+
+              if (user) {
+                console.log('✅ User created successfully:', user.id);
+              }
+            } else {
+              console.log('✅ Existing user found:', user.id);
+
+              // Check if we need to update any fields
+              const walletAddress = decoded.wallet_address || null;
+              const email = decoded.email || null;
+
+              const needsUpdate =
+                (walletAddress && user.walletAddress !== walletAddress) ||
+                (email && user.email !== email && !user.email);
+
+              if (needsUpdate) {
+                console.log('🔄 Updating user info...');
+
+                const updateData: {
+                  walletAddress?: string | null;
+                  email?: string | null;
+                  updatedAt?: Date;
+                } = {};
+
+                if (walletAddress && user.walletAddress !== walletAddress) {
+                  updateData.walletAddress = walletAddress;
+                }
+
+                if (email && !user.email) {
+                  updateData.email = email;
+                }
+
+                updateData.updatedAt = new Date();
+
+                user = await prisma.user.update({
+                  where: { id: user.id },
+                  data: updateData,
+                  select: {
+                    id: true,
+                    privyDid: true,
+                    farcasterFid: true,
+                    walletAddress: true,
+                    email: true,
+                    role: true,
+                    isActive: true,
+                    sellerStatus: true,
+                    createdAt: true,
+                    updatedAt: true,
+                  },
+                });
+
+                if (user) {
+                  console.log('✅ User updated successfully:', user.id);
+                }
               }
             }
           }

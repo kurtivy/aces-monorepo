@@ -4,11 +4,13 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 // Step 1: Simplified User interface (matches your new User model)
 export interface SimpleUser {
   id: string;
-  privyDid: string;
+  privyDid: string | null; // Nullable for Farcaster-only users
+  farcasterFid?: string | null; // Optional Farcaster ID
   walletAddress: string | null;
   email: string | null;
   role: UserRole;
   isActive: boolean;
+  sellerStatus?: string; // Optional seller status
   createdAt: Date;
   updatedAt: Date;
 }

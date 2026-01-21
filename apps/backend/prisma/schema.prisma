@@ -11,7 +11,8 @@ datasource db {
 
 model User {
   id                    String                @id @default(cuid())
-  privyDid              String                @unique
+  privyDid              String?               @unique // Nullable for Farcaster-only users
+  farcasterFid          String?               @unique // Farcaster ID for Quick Auth users
   walletAddress         String?               @unique
   email                 String?               @unique
   username              String?               @unique // NEW: Optional username (defaults to walletAddress)
