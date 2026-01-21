@@ -69,18 +69,27 @@ export function MiniAppContextProvider({ children }: { children: ReactNode }) {
     async function loadContext() {
       setLoadState('loading');
       setError(null);
+      console.log('[MiniAppContext] Starting context load...');
 
       try {
         const inMiniApp = await sdk.isInMiniApp();
         if (cancelled) return;
         setIsInMiniApp(inMiniApp);
+        console.log('[MiniAppContext] isInMiniApp:', inMiniApp);
 
         if (inMiniApp) {
           const nextContext = (await sdk.context) as MiniAppContext;
           if (cancelled) return;
           setContext(nextContext);
+          console.log('[MiniAppContext] Context loaded:', {
+            user: nextContext.user,
+            platform: nextContext.client.platformType,
+            safeAreaInsets: nextContext.client.safeAreaInsets,
+            location: nextContext.location?.type,
+          });
         } else {
           setContext(null);
+          console.log('[MiniAppContext] Not in mini app, context set to null');
         }
 
         if (!cancelled) {
@@ -88,11 +97,14 @@ export function MiniAppContextProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         if (!cancelled) {
-          setError(error instanceof Error ? error.message : 'Failed to load mini app context');
+          const errorMessage = error instanceof Error ? error.message : 'Failed to load mini app context';
+          setError(errorMessage);
           setLoadState('error');
+          console.error('[MiniAppContext] Error loading context:', error);
         }
       } finally {
         await signalMiniAppReadyOnce(() => sdk.actions.ready(), 'sdk.actions.ready');
+        console.log('[MiniAppContext] Ready signal sent');
       }
     }
 
