@@ -2,6 +2,7 @@
 
 import { useEffect, type ReactNode } from 'react';
 import { useMiniKit } from '@coinbase/onchainkit/minikit';
+import { signalMiniAppReadyOnce } from '../../lib/miniapp/ready';
 
 export function MiniAppProvider({ children }: { children: ReactNode }) {
   const { context, isMiniAppReady, setMiniAppReady } = useMiniKit();
@@ -16,7 +17,7 @@ export function MiniAppProvider({ children }: { children: ReactNode }) {
 
     async function signalReady() {
       try {
-        await setMiniAppReady();
+        await signalMiniAppReadyOnce(() => setMiniAppReady(), 'minikit.setMiniAppReady');
         if (!cancelled) {
           console.info('[MiniApp] Ready signal acknowledged');
         }
