@@ -11,6 +11,7 @@ import {
   removeWindowEventListenerSafe,
 } from '../../../lib/utils/event-listener-utils';
 import { getBackdropFilterCSS } from '../../../lib/utils/browser-utils';
+import { useMiniKit } from '@coinbase/onchainkit/minikit';
 
 // Helper function to resolve API base URL
 function getApiBaseUrl(): string {
@@ -87,6 +88,10 @@ const FormField = ({
 );
 
 export default function ContactFormModal({ isOpen, onClose }: ContactFormModalProps) {
+  // Detect Base mini-app environment
+  const { context } = useMiniKit();
+  const isInBaseMiniApp = !!context;
+
   const [formData, setFormData] = useState<FormData>({
     category: '',
     itemName: '',
@@ -256,7 +261,12 @@ export default function ContactFormModal({ isOpen, onClose }: ContactFormModalPr
             duration: 0.15,
             ease: 'easeOut',
             scale: {
-              duration: typeof window !== 'undefined' && window.innerWidth < 768 ? 0 : 0.15,
+              // Disable scale animation on mobile browsers OR when in Base mini-app
+              duration:
+                typeof window !== 'undefined' &&
+                (window.innerWidth < 768 || isInBaseMiniApp)
+                  ? 0
+                  : 0.15,
             },
           }}
           className="bg-black rounded-2xl sm:rounded-3xl overflow-hidden max-w-full sm:max-w-md w-full shadow-goldGlow border border-[#D0B264]/40 max-h-[95vh]"
