@@ -2,6 +2,7 @@
 
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import TradingViewChart from '@/components/charts/trading-view-chart';
+import DexScreenerChart from '@/components/charts/dexscreener-chart';
 import MobileMarketCapHeader from '@/components/rwa/mobile/mobile-market-cap-header';
 import type { DatabaseListing } from '@/types/rwa/section.types';
 
@@ -106,6 +107,10 @@ const MobileTradingChartSection = forwardRef<HTMLDivElement, MobileTradingChartS
       );
     }
 
+    const hasDexPool = Boolean(listing.dex?.poolAddress);
+    const poolAddress = listing.dex?.poolAddress;
+    const tokenSymbol = listing.token?.symbol ?? listing.symbol;
+
     return (
       <section
         ref={setSectionRef}
@@ -114,31 +119,46 @@ const MobileTradingChartSection = forwardRef<HTMLDivElement, MobileTradingChartS
       >
         <div className="overflow-hidden border border-[#D0B284]/15 rounded-b-lg">
           <MobileMarketCapHeader tokenAddress={listing.token?.contractAddress ?? null} />
-          {/* Mobile chart: Use explicit pixel height for reliable TradingView rendering */}
-          <div className="w-full" style={{ height: '420px', minHeight: '360px' }}>
-            {shouldLoadChart ? (
-              <TradingViewChart
-                tokenAddress={listing.token?.contractAddress ?? ''}
-                tokenSymbol={listing.token?.symbol ?? listing.symbol}
-                tokenName={listing.token?.name ?? listing.title}
-                heightPx={420}
-                minHeightPx={360}
-                hideNativeHeader
-                extraEnabledFeatures={mobileEnabledFeatures}
-                dexMeta={listing.dex ?? null}
+          
+          {/* DexScreener iframe with chart + transactions */}
+          {hasDexPool && poolAddress ? (
+            <div className="w-full" style={{ height: '500px', minHeight: '400px' }}>
+              <DexScreenerChart
+                poolAddress={poolAddress}
+                tokenSymbol={tokenSymbol}
+                heightPx={500}
+                minHeightPx={400}
+                showTransactions={true}
+                showTokenInfo={false}
               />
-            ) : (
-              <div className="w-full h-full bg-black flex flex-col items-center justify-center gap-4">
-                <div className="flex flex-col items-center gap-3">
-                  <div className="relative">
-                    <div className="w-12 h-12 border-4 border-[#D0B284]/20 border-t-[#D0B284] rounded-full animate-spin" />
+            </div>
+          ) : (
+            /* Fallback to TradingView Chart if no DEX pool */
+            <div className="w-full" style={{ height: '420px', minHeight: '360px' }}>
+              {shouldLoadChart ? (
+                <TradingViewChart
+                  tokenAddress={listing.token?.contractAddress ?? ''}
+                  tokenSymbol={tokenSymbol}
+                  tokenName={listing.token?.name ?? listing.title}
+                  heightPx={420}
+                  minHeightPx={360}
+                  hideNativeHeader
+                  extraEnabledFeatures={mobileEnabledFeatures}
+                  dexMeta={listing.dex ?? null}
+                />
+              ) : (
+                <div className="w-full h-full bg-black flex flex-col items-center justify-center gap-4">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="relative">
+                      <div className="w-12 h-12 border-4 border-[#D0B284]/20 border-t-[#D0B284] rounded-full animate-spin" />
+                    </div>
+                    <div className="text-[#DCDDCC] text-sm font-medium">Preparing chart...</div>
+                    <div className="text-gray-500 text-xs">Chart will load when visible</div>
                   </div>
-                  <div className="text-[#DCDDCC] text-sm font-medium">Preparing chart...</div>
-                  <div className="text-gray-500 text-xs">Chart will load when visible</div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
       </section>
     );

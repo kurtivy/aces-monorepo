@@ -637,7 +637,7 @@ export default function RWAForumReal({
   if (fetching && comments.length === 0) {
     if (isMobileVariant) {
       return (
-        <div className="bg-black rounded-lg border border-[#D0B284]/20 p-6 text-center text-[#D0B284] text-sm">
+        <div className=" rounded-lg border border-[#D0B284]/20 p-6 text-center text-[#D0B284] text-sm">
           Loading comments...
         </div>
       );
