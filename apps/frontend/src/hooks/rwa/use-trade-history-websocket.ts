@@ -36,12 +36,12 @@ interface TradeHistoryOptions {
 
 /**
  * Transform WebSocket RealtimeTrade to TradeHistoryEntry
- * Maps source: 'goldsky' | 'bitquery' to TradeSource: 'BONDING' | 'DEX'
+ * Maps source: 'goldsky' | 'alchemy' | 'dex' to TradeSource: 'BONDING' | 'DEX'
  */
 const transformTrade = (trade: RealtimeTrade): TradeHistoryEntry => {
   // Map WebSocket sources to TradeSource
   // - 'goldsky' → 'BONDING' (bonding curve trades)
-  // - 'bitquery' → 'DEX' (DEX trades from BitQuery)
+  // - 'alchemy' | 'dex' → 'DEX' (DEX trades from Alchemy RPC)
   const source: TradeSource = trade.source === 'goldsky' ? 'BONDING' : 'DEX';
 
   return {
@@ -75,7 +75,7 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
   const isDexLive = dexMeta?.isDexLive ?? false;
 
   // Connect to WebSocket for real-time trades
-  // Backend subscribes to BOTH Goldsky (bonding) AND BitQuery (DEX) automatically
+  // Backend subscribes to BOTH Goldsky (bonding) AND Alchemy (DEX) automatically
   const {
     trades: allRealtimeTrades,
     isConnected,
@@ -87,9 +87,9 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
     debug: true, // 🔍 ENABLED: Debug logging to diagnose WebSocket issues
   });
 
-  // 🔥 AUTO-DETECT: If we're receiving DEX trades (BitQuery or Alchemy), token is on DEX
+  // 🔥 AUTO-DETECT: If we're receiving DEX trades (Alchemy), token is on DEX
   const hasDexTrades = useMemo(() => {
-    const hasDex = allRealtimeTrades.some((trade) => trade.source === 'bitquery');
+    const hasDex = allRealtimeTrades.some((trade) => trade.source === 'alchemy' || trade.source === 'dex');
     // console.log('[TradeHistory] 🔍 Checking for DEX trades:', {
     //   totalTrades: allRealtimeTrades.length,
     //   hasDex,
@@ -102,18 +102,18 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
   const effectiveIsDexLive = isDexLive || hasDexTrades;
 
   // 🔥 NEW: Filter trades by source based on graduation state
-  // IMPORTANT: Always include DEX trades (BitQuery or Alchemy) if they exist
+  // IMPORTANT: Always include DEX trades (Alchemy) if they exist
   const realtimeTrades = useMemo(() => {
     // Check if we have ANY DEX trades (even if effectiveIsDexLive is false)
-    const hasAnyDexTrades = allRealtimeTrades.some((t) => t.source === 'bitquery');
+    const hasAnyDexTrades = allRealtimeTrades.some((t) => t.source === 'alchemy' || t.source === 'dex');
 
     // If we have DEX trades OR token is graduated, show DEX trades
     if (effectiveIsDexLive || hasAnyDexTrades) {
-      // Token graduated OR has DEX trades: Show DEX trades (BitQuery/Alchemy)
+      // Token graduated OR has DEX trades: Show DEX trades (Alchemy)
       // But keep recent Goldsky trades for transition period (last 5 minutes)
       const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
       const filtered = allRealtimeTrades.filter((trade) => {
-        if (trade.source === 'bitquery') {
+        if (trade.source === 'alchemy' || trade.source === 'dex') {
           return true; // Always show DEX trades
         }
         // Show Goldsky trades from last 5 minutes (transition period)
@@ -210,7 +210,7 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
       setHasFreshTrades(false); // Reset until we get fresh data
 
       try {
-        // Check if token is graduated OR if we detected BitQuery trades (auto-graduation)
+        // Check if token is graduated OR if we detected DEX trades (auto-graduation)
         const shouldFetchDex = effectiveIsDexLive || hasDexTrades;
 
         if (shouldFetchDex) {
@@ -393,20 +393,20 @@ export const useTradeHistory = (tokenAddress: string, options: TradeHistoryOptio
   useEffect(() => {
     if (isConnected) {
       const goldskyCount = allRealtimeTrades.filter((t) => t.source === 'goldsky').length;
-      const bitqueryCount = allRealtimeTrades.filter((t) => t.source === 'bitquery').length;
+      const dexCount = allRealtimeTrades.filter((t) => t.source === 'alchemy' || t.source === 'dex').length;
       // console.log('[TradeHistory] ✅ WebSocket connected for', tokenAddress, {
       //   isDexLive,
       //   effectiveIsDexLive: effectiveIsDexLive,
       //   autoDetected: hasDexTrades && !isDexLive,
-      //   source: effectiveIsDexLive ? 'BitQuery (DEX)' : 'Goldsky (Bonding)',
+      //   source: effectiveIsDexLive ? 'Alchemy (DEX)' : 'Goldsky (Bonding)',
       //   goldskyTrades: goldskyCount,
-      //   bitqueryTrades: bitqueryCount,
+      //   dexTrades: dexCount,
       //   filteredTrades: realtimeTrades.length,
       // });
 
       // Log auto-detection if it happened
       if (hasDexTrades && !isDexLive) {
-        // console.log('[TradeHistory] 🎓 Auto-detected DEX graduation: Receiving BitQuery trades');
+        // console.log('[TradeHistory] 🎓 Auto-detected DEX graduation: Receiving DEX trades');
       }
     } else if (isConnecting) {
       // console.log('[TradeHistory] 🔄 WebSocket connecting...', tokenAddress);

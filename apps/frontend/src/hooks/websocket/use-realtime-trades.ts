@@ -21,7 +21,7 @@ export interface RealtimeTrade {
   timestamp: number;
   blockNumber: number;
   transactionHash: string;
-  source: 'goldsky' | 'bitquery'; // WebSocket data source
+  source: 'goldsky' | 'alchemy' | 'dex'; // WebSocket data source
   sequenceNumber?: number;
 }
 
@@ -145,7 +145,7 @@ export const useRealtimeTrades = (
               previousCount: prev.length,
               newCount: newTrades.length,
               source: trade.source,
-              bitqueryCount: newTrades.filter((t) => t.source === 'bitquery').length,
+              dexCount: newTrades.filter((t) => t.source === 'alchemy' || t.source === 'dex').length,
               goldskyCount: newTrades.filter((t) => t.source === 'goldsky').length,
               firstTradeId: newTrades[0]?.id,
             });

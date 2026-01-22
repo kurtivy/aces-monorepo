@@ -58,17 +58,6 @@ export interface ListingData {
     username: string | null;
     avatar: string | null;
     walletAddress: string | null;
-    accountVerification?: {
-      firstName: string | null;
-      lastName: string | null;
-      status: string;
-    } | null;
-  };
-  rwaSubmissionId: string;
-  rwaSubmission?: {
-    id: string;
-    status: string;
-    createdAt: string;
   };
   bids?: Array<{
     id: string;
@@ -221,19 +210,6 @@ export class ListingsApi {
       headers: {
         Authorization: `Bearer ${authToken}`,
       },
-    });
-  }
-
-  static async createListingFromSubmission(
-    submissionId: string,
-    authToken: string,
-  ): Promise<ApiResult<ListingData>> {
-    return this.request('/admin/create-from-submission', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${authToken}`,
-      },
-      body: JSON.stringify({ submissionId }),
     });
   }
 

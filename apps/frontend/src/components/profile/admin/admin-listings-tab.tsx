@@ -74,15 +74,12 @@ const formatListingForAdminDisplay = (listing: ListingData): AdminListingData =>
   const status = getListingStatus(listing);
   const imageUrl = fixImageUrl(listing.imageGallery?.[0] || '/placeholder.svg');
 
-  // Get seller name from account verification first, then fallback to displayName
+  // Get seller name from username or wallet address
   let sellerName = 'Unknown';
-  if (
-    listing.owner?.accountVerification?.firstName &&
-    listing.owner?.accountVerification?.lastName
-  ) {
-    sellerName = `${listing.owner.accountVerification.firstName} ${listing.owner.accountVerification.lastName}`;
-  } else if (listing.owner?.username) {
+  if (listing.owner?.username) {
     sellerName = listing.owner.username;
+  } else if (listing.owner?.walletAddress) {
+    sellerName = `${listing.owner.walletAddress.slice(0, 6)}...${listing.owner.walletAddress.slice(-4)}`;
   }
 
   const sellerAddress = listing.owner?.walletAddress || '0x0000...0000';
@@ -958,28 +955,6 @@ export function AdminListingsTab() {
                                 {selectedListing.owner?.username || 'N/A'}
                               </p>
                             </div>
-                            {selectedListing.owner?.accountVerification && (
-                              <>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                  <div>
-                                    <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
-                                      First Name
-                                    </label>
-                                    <p className="text-white mt-1 bg-black/30 p-2 rounded border border-[#D0B284]/10">
-                                      {selectedListing.owner.accountVerification.firstName || 'N/A'}
-                                    </p>
-                                  </div>
-                                  <div>
-                                    <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
-                                      Last Name
-                                    </label>
-                                    <p className="text-white mt-1 bg-black/30 p-2 rounded border border-[#D0B284]/10">
-                                      {selectedListing.owner.accountVerification.lastName || 'N/A'}
-                                    </p>
-                                  </div>
-                                </div>
-                              </>
-                            )}
                             <div>
                               <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
                                 Email Address
@@ -1000,46 +975,6 @@ export function AdminListingsTab() {
                         </div>
                       </div>
 
-                      {/* Verification Information */}
-                      <div className="space-y-6">
-                        <div>
-                          <h3 className="text-lg font-medium text-[#D0B284] mb-4">
-                            Verification Status
-                          </h3>
-                          <div className="space-y-4">
-                            {selectedListing.owner?.accountVerification ? (
-                              <>
-                                <div>
-                                  <label className="text-[#DCDDCC] text-sm font-jetbrains uppercase">
-                                    Status
-                                  </label>
-                                  <div className="mt-1">
-                                    <Badge
-                                      className={`${
-                                        selectedListing.owner.accountVerification.status ===
-                                        'VERIFIED'
-                                          ? 'text-[#184D37] bg-[#184D37]/10'
-                                          : 'text-[#D7BF75] bg-[#D7BF75]/10'
-                                      } border-none`}
-                                    >
-                                      {selectedListing.owner.accountVerification.status}
-                                    </Badge>
-                                  </div>
-                                </div>
-                              </>
-                            ) : (
-                              <div className="text-center py-8">
-                                <p className="text-[#DCDDCC]">
-                                  No verification information found for this user.
-                                </p>
-                                <p className="text-[#DCDDCC]/60 text-sm mt-2">
-                                  The user may not have submitted account verification yet.
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
                     </div>
                   </div>
                 </TabsContent>
