@@ -413,9 +413,9 @@ export const useCanvasInteractions = ({
         // Home area button handling (simplified to 2 buttons)
         const buttonWidth = homeAreaWidth / 2;
 
-        // CREATE button (left half)
+        // CREATE button (left half) - Launch page removed, redirect to drops
         if (worldX >= homeAreaWorldX && worldX < homeAreaWorldX + buttonWidth) {
-          window.location.href = '/launch';
+          window.location.href = '/drops';
           return;
         }
 
@@ -469,7 +469,7 @@ export const useCanvasInteractions = ({
               worldY >= tokenPos.worldY &&
               worldY <= tokenPos.worldY + unitSize
             ) {
-              window.location.href = '/launch';
+              window.location.href = '/drops';
               return;
             }
           }

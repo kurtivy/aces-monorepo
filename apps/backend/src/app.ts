@@ -9,7 +9,6 @@ import { loggers } from './lib/logger';
 import { handleError } from './lib/errors';
 import { registerAuth } from './plugins/auth';
 import cachePlugin from './plugins/cache-plugin';
-import { submissionRoutes } from './routes/v1/submissions';
 import { adminRoutes } from './routes/v1/admin'; // Step 2: Enabled
 import { bidsRoutes } from './routes/v1/bids';
 import { usersRoutes } from './routes/v1/users';
@@ -331,7 +330,6 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   });
 
   // Register v1 routes with proper API prefixes
-  fastify.register(submissionRoutes, { prefix: '/api/v1/submissions' }); // Step 4: Enabled
   fastify.register(adminRoutes, { prefix: '/api/v1/admin' }); // Step 2: Enabled
   fastify.register(bidsRoutes, { prefix: '/api/v1/bids' }); // NEW: Bidding system
   fastify.register(usersRoutes, { prefix: '/api/v1/users' });

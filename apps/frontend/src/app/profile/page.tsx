@@ -11,7 +11,6 @@ import LuxuryAssetsBackground from '@/components/ui/custom/luxury-assets-backgro
 import AcesHeader from '@/components/ui/custom/aces-header';
 import PageBandTitle from '@/components/ui/custom/page-band-title';
 import PageLoader from '@/components/loading/page-loader';
-import { UserSubmissionsTab } from '@/components/profile/user-submissions-tab';
 import { OffersTab } from '@/components/profile/offers-tab';
 import { Button } from '@/components/ui/button';
 
@@ -171,22 +170,22 @@ export default function ProfilePage() {
           <div className="space-y-6 rounded-2xl border border-dashed border-[#E6E3D3]/20 bg-[#151c16]/80 p-6 shadow-[0_10px_40px_rgba(215,191,117,0.06)] sm:p-8">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="text-2xl font-semibold tracking-wider text-[#D0B264]">
-                My Collectibles
+                Token Holdings
               </h2>
-              <Link href="/launch" className="inline-flex">
-                <Button className="w-full bg-[#D7BF75] px-4 py-2 text-sm text-black hover:bg-[#D7BF75]/80 sm:w-auto">
-                  Launch Collectible
-                </Button>
-              </Link>
             </div>
 
             {!needsWalletConnection ? (
-              <UserSubmissionsTab />
+              <div className="space-y-2 py-12 text-center text-[#DCDDCC]/70">
+                <p className="mb-2">Your token holdings will appear here</p>
+                <p className="text-sm">
+                  Token holdings and offers will appear here once available.
+                </p>
+              </div>
             ) : (
               <div className="space-y-2 py-12 text-center text-[#DCDDCC]/70">
-                <p className="mb-2">Connect your wallet to view your collectibles</p>
+                <p className="mb-2">Connect your wallet to view your token holdings</p>
                 <p className="text-sm">
-                  Your submissions, listings, and offers will appear here once connected.
+                  Your token holdings and offers will appear here once connected.
                 </p>
               </div>
             )}

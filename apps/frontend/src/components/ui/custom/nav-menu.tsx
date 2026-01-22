@@ -12,8 +12,7 @@ import { useModal } from '@/lib/contexts/modal-context';
 // Main navigation items
 // Main navigation items
 const mainNavItems = [
-  // { href: '/launch', label: 'ICO Launch', external: false, action: 'navigate' },
-  { href: '/launch', label: 'Launch', external: false, action: 'navigate' },
+  // Launch page removed - admin creates tokens directly
   // { href: '/verify', label: 'Verify', external: false, action: 'navigate' },
   { href: '/drops', label: 'Drops', external: false, action: 'navigate' },
   { href: '/about', label: 'About', external: false, action: 'modal' },
