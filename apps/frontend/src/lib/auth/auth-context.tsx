@@ -15,7 +15,6 @@ import {
   ProfileApi,
   UserProfile,
   ProfileUpdateRequest,
-  UserVerificationRequest,
 } from '@/lib/api/profile';
 
 export type { UserProfile, ProfileUpdateRequest };
@@ -142,14 +141,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error('No access token available');
       }
 
-      const userVerificationRequest: UserVerificationRequest = {
-        privyDid: privyUser?.id || '',
-        walletAddress: primaryWalletAddress || undefined,
-        email: privyUser?.email?.address || undefined,
-        username: privyUser?.email?.address?.split('@')[0] || undefined,
-      };
-
-      const result = await ProfileApi.verifyOrCreateUser(userVerificationRequest, token);
+      const result = await ProfileApi.verifyOrCreateUser(
+        {
+          privyDid: privyUser?.id || '',
+          walletAddress: primaryWalletAddress || undefined,
+          email: privyUser?.email?.address || undefined,
+          username: privyUser?.email?.address?.split('@')[0] || undefined,
+        },
+        token,
+      );
 
       if (!result.success) {
         console.error('❌ Backend verification failed:', result.error);

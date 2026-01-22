@@ -262,12 +262,7 @@ export async function tokenCreationRoutes(fastify: FastifyInstance) {
                 walletAddress: true,
               },
             },
-            submission: {
-              select: {
-                id: true,
-                assetType: true,
-              },
-            },
+            // Submission relation removed - listings are created directly by admins
           },
           orderBy: {
             updatedAt: 'desc',

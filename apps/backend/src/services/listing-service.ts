@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { PrismaClient, User } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
-import { AssetType, SubmissionStatus } from '../lib/prisma-enums';
+import { AssetType } from '../lib/prisma-enums';
 import { ProductStorageService } from '../lib/product-storage-utils';
 import { errors } from '../lib/errors';
 import {
@@ -29,13 +29,11 @@ type ListingWithRelations = {
   email: string | null;
   isLive: boolean;
   launchDate: Date | null;
-  submissionId: string;
   ownerId: string;
   approvedBy: string | null;
   createdAt: Date;
   updatedAt: Date;
   owner: User;
-  submission: any; // Will be properly typed when language server updates
   approvedByUser?: User | null;
   token?: {
     id: string;
@@ -63,8 +61,8 @@ type ListingWithRelations = {
   commentCount?: number | null;
 };
 
-// Type for listings with minimal submission data
-type ListingWithMinimalSubmission = {
+// Type for listings with minimal data (submission removed)
+type ListingWithMinimalData = {
   id: string;
   title: string;
   symbol: string;
@@ -75,7 +73,6 @@ type ListingWithMinimalSubmission = {
   email: string | null;
   isLive: boolean;
   launchDate: Date | null;
-  submissionId: string;
   ownerId: string;
   approvedBy: string | null;
   createdAt: Date;
@@ -86,11 +83,6 @@ type ListingWithMinimalSubmission = {
     walletAddress: string | null;
     email: string | null;
   };
-  submission: {
-    id: string;
-    status: keyof typeof SubmissionStatus;
-    createdAt: Date;
-  };
   approvedByUser?: {
     id: string;
     privyDid: string;
@@ -99,11 +91,6 @@ type ListingWithMinimalSubmission = {
   dex?: ListingWithRelations['dex'];
   commentCount?: number | null;
 };
-
-export interface CreateListingFromSubmissionRequest {
-  submissionId: string;
-  adminId: string;
-}
 
 export interface UpdateListingRequest {
   title?: string;
@@ -168,106 +155,7 @@ export class ListingService {
     }
   }
 
-  private addSubmissionAlias<T extends { submissionId?: string; rwaSubmissionId?: string }>(
-    listing: T,
-  ): T & { rwaSubmissionId: string | null } {
-    if (!listing) {
-      return listing as T & { rwaSubmissionId: string | null };
-    }
-
-    const rwaSubmissionId = (listing as any).rwaSubmissionId ?? listing.submissionId ?? null;
-
-    return {
-      ...listing,
-      rwaSubmissionId,
-    };
-  }
-
-  /**
-   * Create a listing from an approved submission
-   */
-  async createListingFromSubmission(
-    submissionId: string,
-    adminId: string,
-  ): Promise<ListingWithRelations> {
-    try {
-      // Get the approved submission with all necessary data
-      const submission = await this.prisma.submission.findUnique({
-        where: { id: submissionId },
-        include: {
-          owner: true,
-        },
-      });
-
-      if (!submission) {
-        throw errors.notFound('Submission not found');
-      }
-
-      if (submission.status !== SubmissionStatus.APPROVED) {
-        throw errors.validation(
-          `Cannot create listing from submission with status: ${submission.status}. Submission must be approved first.`,
-        );
-      }
-
-      // Check if listing already exists for this submission
-      const existingListing = await (this.prisma as any).listing.findUnique({
-        where: { submissionId: submissionId },
-      });
-
-      if (existingListing) {
-        throw errors.validation('Listing already exists for this submission');
-      }
-
-      // Create the listing with data from the approved submission
-      const listing = await (this.prisma as any).listing.create({
-        data: {
-          title: submission.title,
-          symbol: submission.symbol,
-          brand: submission.brand || null,
-          story: submission.story || null,
-          details: submission.details || null,
-          provenance: submission.provenance || null,
-          value: submission.value || null,
-          reservePrice: submission.reservePrice || null,
-          hypeSentence: submission.hypeSentence || null,
-          assetType: submission.assetType,
-          imageGallery: submission.imageGallery,
-          location: submission.location,
-          isLive: false, // Always start as not live
-          tokenCreationStatus: 'AWAITING_USER_DETAILS', // Set initial token creation status
-          submissionId: submission.id,
-          ownerId: submission.ownerId,
-          approvedBy: adminId,
-        },
-        include: {
-          owner: true,
-          submission: true,
-          approvedByUser: true,
-        },
-      });
-
-      // Create notification for user about listing approval
-      try {
-        const template = NotificationTemplates[NotificationType.LISTING_APPROVED];
-        await this.notificationService.createNotification({
-          userId: submission.ownerId,
-          listingId: listing.id,
-          type: NotificationType.LISTING_APPROVED,
-          title: template.title,
-          message: template.message,
-          actionUrl: template.getActionUrl(listing.id),
-        });
-      } catch (notificationError) {
-        console.error('Error creating listing approved notification:', notificationError);
-        // Don't fail the listing creation if notification fails
-      }
-
-      return this.addSubmissionAlias(listing);
-    } catch (error) {
-      console.error('Error creating listing from submission:', error);
-      throw error;
-    }
-  }
+  // Submission-related methods removed - listings are created directly by admins
 
   /**
    * Update listing details (admin only)
@@ -286,12 +174,12 @@ export class ListingService {
         },
         include: {
           owner: true,
-          submission: true,
+          // Submission relation removed
           approvedByUser: true,
         },
       });
 
-      return this.addSubmissionAlias(listing);
+      return listing;
     } catch (error) {
       console.error('Error updating listing:', error);
       throw error;
@@ -329,12 +217,12 @@ export class ListingService {
         },
         include: {
           owner: true,
-          submission: true,
+          // Submission relation removed
           approvedByUser: true,
         },
       });
 
-      return this.addSubmissionAlias(updated);
+      return updated;
     } catch (error) {
       console.error('Error updating listing by owner:', error);
       throw error;
@@ -358,12 +246,12 @@ export class ListingService {
         },
         include: {
           owner: true,
-          submission: true,
+          // Submission relation removed
           approvedByUser: true,
         },
       });
 
-      return this.addSubmissionAlias(listing);
+      return listing;
     } catch (error) {
       console.error('Error updating listing live status:', error);
       throw error;
@@ -387,12 +275,12 @@ export class ListingService {
         },
         include: {
           owner: true,
-          submission: true,
+          // Submission relation removed
           approvedByUser: true,
         },
       });
 
-      return this.addSubmissionAlias(listing);
+      return listing;
     } catch (error) {
       console.error('Error updating listing launch date:', error);
       throw error;
@@ -404,7 +292,7 @@ export class ListingService {
    */
   async getLiveListings(
     options: { limit?: number; cursor?: string } = {},
-  ): Promise<{ data: ListingWithMinimalSubmission[]; nextCursor?: string; hasMore: boolean }> {
+  ): Promise<{ data: ListingWithMinimalData[]; nextCursor?: string; hasMore: boolean }> {
     try {
       const limit = Math.min(options.limit || 20, 100);
       const where: any = { isLive: true };
@@ -498,7 +386,7 @@ export class ListingService {
         where,
         include: {
           owner: true,
-          submission: true,
+          // Submission relation removed
           approvedByUser: true,
           token: true,
         },
@@ -540,7 +428,7 @@ export class ListingService {
         include: {
           owner: true,
           token: true,
-          submission: true,
+          // Submission relation removed
           approvedByUser: true,
         },
         orderBy: { createdAt: 'desc' },
@@ -571,7 +459,7 @@ export class ListingService {
         where: { id: listingId },
         include: {
           owner: true,
-          submission: true,
+          // Submission relation removed
           approvedByUser: true,
           token: true,
           _count: {
@@ -607,7 +495,7 @@ export class ListingService {
         },
         include: {
           owner: true,
-          submission: true,
+          // Submission relation removed
           approvedByUser: true,
           token: true, // Token includes dexLiveAt, poolAddress, etc.
           _count: {
@@ -635,7 +523,7 @@ export class ListingService {
   async getListingsByOwner(
     ownerId: string,
     options: { limit?: number; cursor?: string } = {},
-  ): Promise<{ data: ListingWithMinimalSubmission[]; nextCursor?: string; hasMore: boolean }> {
+  ): Promise<{ data: ListingWithMinimalData[]; nextCursor?: string; hasMore: boolean }> {
     try {
       const limit = Math.min(options.limit || 20, 100);
       const where: any = { ownerId };
@@ -648,13 +536,7 @@ export class ListingService {
         where,
         include: {
           owner: true,
-          submission: {
-            select: {
-              id: true,
-              status: true,
-              createdAt: true,
-            },
-          },
+          // Submission relation removed
           approvedByUser: true,
           token: true,
         },
@@ -703,7 +585,7 @@ export class ListingService {
               accountVerification: true,
             },
           },
-          submission: true,
+          // Submission relation removed
           approvedByUser: true,
         },
         orderBy: { createdAt: 'desc' },
@@ -738,11 +620,11 @@ export class ListingService {
       imageGallery = listing.imageGallery || [];
     }
 
-    const safeListing = this.addSubmissionAlias({
+    const safeListing = {
       ...listing,
       commentCount,
       imageGallery,
-    });
+    };
 
     if ('_count' in safeListing) {
       delete (safeListing as { _count?: unknown })._count;
@@ -847,7 +729,7 @@ export class ListingService {
 
     // console.log(`[ListingService] Listing ${listingId} finalized by user, pending admin review`);
 
-    return this.addSubmissionAlias(updatedListing);
+    return updatedListing;
   }
 
   /**
@@ -878,7 +760,7 @@ export class ListingService {
 
     // console.log(`[ListingService] Token parameters saved for listing ${listingId}`);
 
-    return this.addSubmissionAlias(updatedListing);
+    return updatedListing;
   }
 
   /**
@@ -993,7 +875,7 @@ export class ListingService {
         },
         include: {
           owner: true,
-          submission: true,
+          // Submission relation removed
           token: true,
         },
       });
@@ -1029,7 +911,7 @@ export class ListingService {
       //   `[ListingService] Listing ${listingId} prepared for minting with predicted addresses`,
       // );
 
-      return this.addSubmissionAlias(updatedListing);
+      return updatedListing;
     } catch (error) {
       console.error('[ListingService] Error preparing for minting:', error);
       throw error;

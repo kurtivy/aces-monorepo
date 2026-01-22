@@ -6,7 +6,7 @@ type UserNotification = {
   id: string;
   userId: string;
   listingId: string | null;
-  submissionId: string | null;
+  // submissionId removed
   type: string;
   title: string;
   message: string;
@@ -19,7 +19,7 @@ type UserNotification = {
 export interface CreateNotificationData {
   userId: string;
   listingId?: string;
-  submissionId?: string;
+  // submissionId removed
   type: NotificationType;
   title: string;
   message: string;
@@ -36,14 +36,7 @@ export enum NotificationType {
   ADMIN_MESSAGE = 'ADMIN_MESSAGE',
   SYSTEM_ALERT = 'SYSTEM_ALERT',
 
-  // Verification notifications
-  VERIFICATION_PENDING = 'VERIFICATION_PENDING',
-  VERIFICATION_APPROVED = 'VERIFICATION_APPROVED',
-  VERIFICATION_REJECTED = 'VERIFICATION_REJECTED',
-
-  // Submission notifications
-  SUBMISSION_APPROVED = 'SUBMISSION_APPROVED',
-  SUBMISSION_REJECTED = 'SUBMISSION_REJECTED',
+  // Verification/submission notifications removed
 
   // Token creation notifications
   TOKEN_PARAMETERS_SUBMITTED = 'TOKEN_PARAMETERS_SUBMITTED',
@@ -54,9 +47,7 @@ export enum NotificationType {
   BID_REJECTED = 'BID_REJECTED',
   BID_OUTBID = 'BID_OUTBID',
 
-  // Admin notifications
-  ADMIN_NEW_SUBMISSION = 'ADMIN_NEW_SUBMISSION',
-  ADMIN_NEW_VERIFICATION = 'ADMIN_NEW_VERIFICATION',
+  // Admin notifications (submission/verification removed)
   ADMIN_TOKEN_REVIEW_NEEDED = 'ADMIN_TOKEN_REVIEW_NEEDED',
 }
 
@@ -64,7 +55,7 @@ export interface NotificationWithRelations {
   id: string;
   userId: string;
   listingId: string | null;
-  submissionId: string | null;
+  // submissionId removed
   type: string;
   title: string;
   message: string;
@@ -82,14 +73,7 @@ export interface NotificationWithRelations {
     title: string;
     symbol: string;
   } | null;
-  submission?: {
-    id: string;
-    title: string;
-    symbol: string;
-    status: string;
-    rejectionReason: string | null;
-    imageGallery: string[];
-  } | null;
+  // Submission relation removed
 }
 
 /**
@@ -123,22 +107,13 @@ export class NotificationService {
         }
       }
 
-      // Validate submission exists if provided
-      if (data.submissionId) {
-        const submission = await this.prisma.submission.findUnique({
-          where: { id: data.submissionId },
-        });
-
-        if (!submission) {
-          throw errors.notFound('Submission not found');
-        }
-      }
+      // Submission validation removed
 
       const notification = await (this.prisma as any).userNotification.create({
         data: {
           userId: data.userId,
           listingId: data.listingId,
-          submissionId: data.submissionId,
+          // submissionId removed
           type: data.type,
           title: data.title,
           message: data.message,
@@ -192,16 +167,7 @@ export class NotificationService {
               symbol: true,
             },
           },
-          submission: {
-            select: {
-              id: true,
-              title: true,
-              symbol: true,
-              status: true,
-              rejectionReason: true,
-              imageGallery: true,
-            },
-          },
+          // Submission relation removed
         },
         orderBy: { createdAt: 'desc' },
         take: limit,
@@ -382,37 +348,7 @@ export const NotificationTemplates: Record<NotificationType, NotificationTemplat
     getActionUrl: () => '/profile',
   },
 
-  // Verification notifications
-  [NotificationType.VERIFICATION_PENDING]: {
-    title: 'Verification Under Review',
-    message:
-      "Your verification requires manual review by our team. You can still submit assets while we review your application. We'll notify you once the review is complete.",
-    getActionUrl: () => '/profile',
-  },
-  [NotificationType.VERIFICATION_APPROVED]: {
-    title: 'Identity Verified',
-    message:
-      'Your identity has been successfully verified! You can now submit luxury assets for tokenization and place bids.',
-    getActionUrl: () => '/launch',
-  },
-  [NotificationType.VERIFICATION_REJECTED]: {
-    title: 'Verification Rejected',
-    message:
-      'Your verification was rejected. Please review the requirements and resubmit with correct information.',
-    getActionUrl: () => '/verify',
-  },
-
-  // Submission notifications
-  [NotificationType.SUBMISSION_APPROVED]: {
-    title: 'Submission Approved!',
-    message: 'Great news! Your asset submission has been approved.',
-    getActionUrl: () => '/profile',
-  },
-  [NotificationType.SUBMISSION_REJECTED]: {
-    title: 'Submission Rejected',
-    message: 'Your asset submission has been reviewed and rejected.',
-    getActionUrl: () => '/profile',
-  },
+  // Verification/submission notification templates removed
 
   // Bidding notifications
   [NotificationType.NEW_BID_RECEIVED]: {
@@ -438,17 +374,7 @@ export const NotificationTemplates: Record<NotificationType, NotificationTemplat
     getActionUrl: () => '/profile?tab=bids',
   },
 
-  // Admin notifications
-  [NotificationType.ADMIN_NEW_SUBMISSION]: {
-    title: 'New Asset Submission',
-    message: 'A new asset has been submitted for review and approval.',
-    getActionUrl: () => '/admin/submissions',
-  },
-  [NotificationType.ADMIN_NEW_VERIFICATION]: {
-    title: 'New Verification Request',
-    message: 'A user has submitted identity verification documents for review.',
-    getActionUrl: () => '/admin/verifications',
-  },
+  // Admin notifications (submission/verification removed)
   [NotificationType.ADMIN_TOKEN_REVIEW_NEEDED]: {
     title: 'Token Parameters Need Review',
     message: 'A user has completed token creation details and requires admin approval.',

@@ -9,9 +9,7 @@ import { requireAuth, requireAdmin } from '../../lib/auth-middleware';
 import { errors } from '../../lib/errors';
 
 // Validation schemas
-const CreateListingFromSubmissionSchema = z.object({
-  submissionId: z.string(),
-});
+// CreateListingFromSubmissionSchema removed - listings created directly by admins
 
 const UpdateListingSchema = z.object({
   title: z.string().min(1).max(200).optional(),
@@ -295,37 +293,8 @@ export async function listingRoutes(fastify: FastifyInstance) {
 
   // Admin routes
 
-  /**
-   * Create listing from approved submission (admin only)
-   */
-  fastify.post(
-    '/admin/create-from-submission',
-    {
-      preHandler: [requireAdmin],
-      schema: {
-        body: zodToJsonSchema(CreateListingFromSubmissionSchema),
-      },
-    },
-    async (request, reply) => {
-      try {
-        const { submissionId } = request.body as { submissionId: string };
-
-        const listing = await listingService.createListingFromSubmission(
-          submissionId,
-          request.user!.id,
-        );
-
-        return reply.status(201).send({
-          success: true,
-          data: listing,
-          message: 'Listing created successfully from submission',
-        });
-      } catch (error) {
-        console.error('Error creating listing from submission:', error);
-        throw error;
-      }
-    },
-  );
+  // Endpoint removed: /admin/create-from-submission
+  // Listings are now created directly by admins (no submission workflow)
 
   /**
    * Get all listings (admin only)

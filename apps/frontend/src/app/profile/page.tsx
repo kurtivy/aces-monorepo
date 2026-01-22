@@ -2,7 +2,7 @@
 
 import { useAuth } from '@/lib/auth/auth-context';
 import { HorizontalProfileHeader } from '@/components/profile/horizontal-profile-header';
-// Tabs removed in favor of a single "My Collectibles" view on this page
+// Profile simplified to show only token holdings (verification/submissions removed)
 import Footer from '@/components/ui/custom/footer';
 import { useState, useLayoutEffect } from 'react';
 import Link from 'next/link';
@@ -11,7 +11,7 @@ import LuxuryAssetsBackground from '@/components/ui/custom/luxury-assets-backgro
 import AcesHeader from '@/components/ui/custom/aces-header';
 import PageBandTitle from '@/components/ui/custom/page-band-title';
 import PageLoader from '@/components/loading/page-loader';
-import { OffersTab } from '@/components/profile/offers-tab';
+// OffersTab removed - not used in simplified profile
 import { Button } from '@/components/ui/button';
 
 export default function ProfilePage() {

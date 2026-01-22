@@ -4,7 +4,7 @@ import { UserRole } from '../lib/prisma-enums';
 import { errors } from '../lib/errors';
 import { loggers } from '../lib/logger';
 
-// Step 1: Simple user profile response (matches current User model)
+// Simple user profile response (verification/submission removed)
 export interface SimpleUserProfile {
   id: string;
   privyDid: string;
@@ -13,7 +13,6 @@ export interface SimpleUserProfile {
   username: string | null;
   role: keyof typeof UserRole;
   isActive: boolean;
-  sellerStatus: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -36,7 +35,6 @@ export class UsersService {
           username: true,
           role: true,
           isActive: true,
-          sellerStatus: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -78,7 +76,6 @@ export class UsersService {
           username: true,
           role: true,
           isActive: true,
-          sellerStatus: true,
           createdAt: true,
           updatedAt: true,
         },

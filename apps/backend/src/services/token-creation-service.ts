@@ -61,7 +61,6 @@ export interface ListingWithTokenStatus {
   tokenCreationStatus: string | null;
   userProvidedDetails: UserProvidedDetails | null;
   tokenParameters: TokenParameters | null;
-  submissionId: string;
   ownerId: string;
   approvedBy: string | null;
   createdAt: Date;
@@ -121,7 +120,7 @@ export class TokenCreationService {
         },
       });
 
-      // Create notification for user about submission received
+      // Create notification for user about token parameters submitted
       try {
         const userTemplate = NotificationTemplates[NotificationType.TOKEN_PARAMETERS_SUBMITTED];
         await this.notificationService.createNotification({
@@ -133,8 +132,8 @@ export class TokenCreationService {
           actionUrl: userTemplate.getActionUrl(),
         });
       } catch (notificationError) {
-        console.error('Error creating user token submission notification:', notificationError);
-        // Don't fail the submission if notification fails
+        console.error('Error creating user token parameters notification:', notificationError);
+        // Don't fail the operation if notification fails
       }
 
       // Create notification for admins about token review needed
@@ -157,7 +156,7 @@ export class TokenCreationService {
         }
       } catch (notificationError) {
         console.error('Error creating admin token review notification:', notificationError);
-        // Don't fail the submission if notification fails
+        // Don't fail the operation if notification fails
       }
 
       return updatedListing as ListingWithTokenStatus;
@@ -366,12 +365,7 @@ export class TokenCreationService {
               walletAddress: true,
             },
           },
-          submission: {
-            select: {
-              id: true,
-              assetType: true,
-            },
-          },
+          // Submission relation removed - listings are created directly by admins
         },
         orderBy: {
           updatedAt: 'desc',
