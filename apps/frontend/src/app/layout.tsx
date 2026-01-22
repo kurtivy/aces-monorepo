@@ -19,7 +19,7 @@ export const metadata: Metadata = {
     siteName: 'ACES.fun',
     images: [
       {
-        url: '/aces-preview-logo.png',
+        url: '/aces-logo.png',
         width: 800,
         height: 800,
         alt: 'ACES.fun Logo',
@@ -34,7 +34,7 @@ export const metadata: Metadata = {
     description: 'Trade Tokenized Collectibles',
     images: [
       {
-        url: '/aces-preview-logo.png',
+        url: '/aces-logo.png',
         width: 800,
         height: 800,
         alt: 'ACES.fun Logo',
@@ -45,21 +45,21 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: '/favicon.ico',
-    shortcut: '/aces-preview-logo.png',
-    apple: '/aces-preview-logo.png',
+    shortcut: '/aces-logo.png',
+    apple: '/aces-logo.png',
   },
   other: {
     'base:app_id': '693a1924e6be54f5ed71d56f',
     'fc:miniapp': JSON.stringify({
       version: '1',
-      imageUrl: 'https://aces.fun/aces-preview-logo.png',
+      imageUrl: 'https://aces.fun/aces-logo.png',
       button: {
           title: `Launch ACES.fun`,
           action: {
                 type: 'launch_miniapp',
                 name: 'ACES.fun',
                  url: 'https://aces.fun',
-              splashImageUrl: 'https://aces.fun/aces-preview-logo.png',
+              splashImageUrl: 'https://aces.fun/aces-logo.png',
               splashBackgroundColor: '#D0B264',
           },
       },
