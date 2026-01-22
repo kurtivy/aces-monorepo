@@ -8,6 +8,7 @@ import React, {
   useCallback,
   ReactNode,
   useMemo,
+  useRef,
 } from 'react';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import {
@@ -100,6 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     getAccessToken: privyGetAccessToken,
   } = usePrivy();
   const { wallets } = useWallets();
+  const privyAuthRef = useRef(privyAuthenticated);
 
   const [state, setState] = useState<AuthState>({
     user: null,
@@ -214,6 +216,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [privyUser, privyGetAccessToken, primaryWalletAddress]);
 
   useEffect(() => {
+    privyAuthRef.current = privyAuthenticated;
+  }, [privyAuthenticated]);
+
+  useEffect(() => {
     if (privyAuthenticated && privyUser) {
       initializeAuth();
     } else {
@@ -245,8 +251,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!privyAuthenticated) {
         // Use login() for initial authentication (embedded wallet will be created)
         await privyLogin();
-        // Don't clear loading state here - let the useEffect handle it
-        // The useEffect will trigger initializeAuth when privyAuthenticated becomes true
+        // If the user closes the Privy modal without authenticating, clear loading.
+        if (!privyAuthRef.current) {
+          setState((prev) => ({ ...prev, isLoading: false }));
+        }
+        // Otherwise, let the useEffect handle initializing the user profile.
         return;
       } else {
         // Use linkWallet() to add additional wallets when already authenticated
