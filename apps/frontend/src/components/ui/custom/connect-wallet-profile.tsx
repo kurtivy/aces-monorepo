@@ -176,10 +176,9 @@ export default function ConnectWalletProfile({
     }
   };
 
-  // Get avatar variant based on user role and status
+  // Get avatar variant based on user role
   const getAvatarVariant = () => {
     if (user?.role === 'ADMIN') return 'dramatic-contrast';
-    if (user?.role === 'SELLER' && user?.sellerStatus === 'APPROVED') return 'brand-fusion';
     if (user?.role === 'SELLER') return 'golden-luxury';
     return 'golden-flow'; // Default for traders and others
   };

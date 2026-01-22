@@ -19,7 +19,6 @@ interface HorizontalProfileHeaderProps {
     walletAddress: string | undefined;
     role?: string;
     username?: string | null;
-    sellerStatus?: 'NOT_APPLIED' | 'PENDING' | 'APPROVED' | 'REJECTED';
   };
   onConnectWallet?: () => Promise<void>;
   onUpdateAccount?: (payload: { email: string; username: string }) => Promise<void>;
@@ -50,11 +49,8 @@ export function HorizontalProfileHeader({ user, onConnectWallet }: HorizontalPro
 
   const { acesBalance, loading: balancesLoading } = balances;
 
-  // Determine account status: show "VERIFIED" if seller is approved, otherwise show role
+  // Determine account status: show role
   const getAccountStatus = () => {
-    if (user.sellerStatus === 'APPROVED') {
-      return 'VERIFIED';
-    }
     return user.role || 'TRADER';
   };
 

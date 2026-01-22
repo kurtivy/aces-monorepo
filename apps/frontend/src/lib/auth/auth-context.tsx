@@ -17,7 +17,6 @@ import {
   ProfileUpdateRequest,
   UserVerificationRequest,
 } from '@/lib/api/profile';
-import { VerificationApi, VerificationStatus } from '@/lib/api/verification';
 
 export type { UserProfile, ProfileUpdateRequest };
 
@@ -27,7 +26,6 @@ interface AuthContextType {
   user: UserProfile | null;
   walletAddress: string | null;
   error: string | null;
-  isVerifiedSeller: boolean;
   isAdmin: boolean;
   hasExternalWallet: boolean;
   authReady: boolean;
@@ -36,8 +34,6 @@ interface AuthContextType {
   disconnectWallet: () => void;
   refreshUserProfile: () => Promise<void>;
   updateProfile: (data: Partial<UserProfile>) => Promise<{ success: boolean; error?: string }>;
-  applyForSeller: (formData: any) => Promise<boolean>;
-  getVerificationStatus: () => Promise<VerificationStatus | null>;
   getAccessToken: () => Promise<string | null>;
 
   hasRole: (role: string | string[]) => boolean;
@@ -161,7 +157,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       console.log('👤 User profile loaded:', {
-        sellerStatus: result.data.profile.sellerStatus,
         role: result.data.profile.role,
         email: result.data.profile.email,
       });
@@ -195,11 +190,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         bio: null,
         website: null,
         twitterHandle: null,
-        sellerStatus: 'NOT_APPLIED',
-        appliedAt: null,
-        verifiedAt: null,
-        rejectedAt: null,
-        rejectionReason: null,
         notifications: true,
         newsletter: true,
         darkMode: false,
@@ -372,60 +362,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const applyForSeller = async (applicationData: any): Promise<boolean> => {
-    if (!privyAuthenticated || !privyUser) {
-      throw new Error('User not authenticated');
-    }
-
-    try {
-      setState((prev) => ({ ...prev, isLoading: true, error: null }));
-
-      const token = await privyGetAccessToken();
-      if (!token) throw new Error('No auth token available');
-
-      const walletAddressForProfile = primaryWalletAddress || privyUser?.wallet?.address || '';
-
-      const response = await fetch(`${API_BASE_URL}/api/v1/account-verification/submit`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'x-wallet-address': walletAddressForProfile,
-        },
-        body: applicationData,
-      });
-
-      if (response.ok) {
-        await refreshUserProfile();
-        return true;
-      } else {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to submit verification');
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to submit verification';
-      setState((prev) => ({ ...prev, error: errorMessage }));
-      throw error;
-    } finally {
-      setState((prev) => ({ ...prev, isLoading: false }));
-    }
-  };
-
-  const getVerificationStatus = async (): Promise<VerificationStatus | null> => {
-    if (!privyAuthenticated || !privyUser) {
-      return null;
-    }
-
-    try {
-      const token = await privyGetAccessToken();
-      if (!token) return null;
-
-      const result = await VerificationApi.getVerificationStatus(token);
-      return result.success ? result.data : null;
-    } catch (error) {
-      console.error('Error getting verification status:', error);
-      return null;
-    }
-  };
 
   const getAccessToken = async (): Promise<string | null> => {
     if (!privyAuthenticated || !privyUser) {
@@ -458,8 +394,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isLoading: state.isLoading,
     user: state.user,
     walletAddress: primaryWalletAddress,
-    isVerifiedSeller:
-      state.user?.sellerStatus === 'APPROVED' || state.user?.sellerStatus === 'PENDING',
     hasExternalWallet: hasExternalWalletConnected,
     authReady: privyReady && !state.isLoading,
 
@@ -467,8 +401,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     disconnectWallet,
     refreshUserProfile,
     updateProfile,
-    applyForSeller,
-    getVerificationStatus,
     getAccessToken,
 
     hasRole,

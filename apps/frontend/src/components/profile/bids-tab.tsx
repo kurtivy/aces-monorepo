@@ -8,7 +8,6 @@ import Image from 'next/image';
 import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/lib/auth/auth-context';
 import { BidsApi, Bid } from '@/lib/api/bids';
-import { VerificationApi, type VerificationDetails } from '@/lib/api/verification';
 import { ListingsApi, type ListingData } from '@/lib/api/listings';
 import Link from 'next/link';
 import { ExternalLink } from 'lucide-react';
@@ -55,43 +54,7 @@ export function BidsTab() {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isSellerDashboardOpen, setIsSellerDashboardOpen] = useState(false);
-  const [verificationDetails, setVerificationDetails] = useState<VerificationDetails | null>(null);
-  const [verificationLoaded, setVerificationLoaded] = useState(false);
   const [listingDetails, setListingDetails] = useState<Record<string, ListingData>>({});
-
-  // Debug logging
-  console.log('BidsTab - User object:', user);
-  console.log('BidsTab - Verification Details:', verificationDetails);
-  console.log('BidsTab - Verification Status:', verificationDetails?.status);
-  console.log('BidsTab - Is Approved:', verificationDetails?.status === 'APPROVED');
-
-  // Fetch verification details when user is available
-  useEffect(() => {
-    const fetchVerificationDetails = async () => {
-      if (!user) {
-        setVerificationDetails(null);
-        setVerificationLoaded(true);
-        return;
-      }
-
-      try {
-        const authToken = await getAccessToken();
-        if (!authToken) return;
-
-        const response = await VerificationApi.getVerificationDetails(authToken);
-        if (response.success && response.data) {
-          setVerificationDetails(response.data);
-        }
-      } catch (error) {
-        console.error('Error fetching verification details:', error);
-        // Silently fail - verification check will just not show
-      } finally {
-        setVerificationLoaded(true);
-      }
-    };
-
-    fetchVerificationDetails();
-  }, [user, getAccessToken]);
 
   // Function to fetch listing details for bids
   const fetchListingDetails = useCallback(
@@ -199,17 +162,6 @@ export function BidsTab() {
   console.log('BidsTab - Current filter:', searchTerm);
 
   const renderContent = () => {
-    // Show loading until verification check completes or user loads
-    if (!user || !verificationLoaded) {
-      return (
-        <div className="animate-pulse space-y-4">
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-16 bg-[#D0B284]/10 rounded-lg" />
-          ))}
-        </div>
-      );
-    }
-
     if (isLoading) {
       return (
         <div className="animate-pulse space-y-4">
@@ -230,62 +182,6 @@ export function BidsTab() {
 
     return (
       <>
-        {/* Non-blocking banner when no verification submission exists */}
-        {user && verificationLoaded && !verificationDetails && (
-          <div className="mb-6">
-            <div className="bg-gradient-to-br from-[#D7BF75]/15 to-[#C9AE6A]/10 border border-[#D7BF75]/40 rounded-xl p-5 flex items-start gap-4">
-              <div className="flex-1">
-                <h3 className="text-[#D7BF75] font-bold text-lg mb-1">
-                  Verification required to bid
-                </h3>
-                <p className="text-[#DCDDCC]/85 text-sm">
-                  You need to complete verification to place bids on items.
-                </p>
-              </div>
-              <div className="shrink-0">
-                <Link href="/verify">
-                  <Button className="bg-[#C9AE6A] hover:bg-[#C9AE6A]/80 text-black font-medium text-sm px-4">
-                    Start Verification
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Pending verification banner */}
-        {user && verificationLoaded && verificationDetails?.status === 'PENDING' && (
-          <div className="mb-6">
-            <div className="bg-yellow-900/20 border border-yellow-600/50 rounded-xl p-5">
-              <h3 className="text-yellow-200 font-bold text-lg mb-1">Verification pending</h3>
-              <p className="text-[#DCDDCC]/85 text-sm">
-                Your verification is currently under review. You must be verified to submit bids.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Rejected or not approved banner */}
-        {user && verificationLoaded && verificationDetails?.status === 'REJECTED' && (
-          <div className="mb-6">
-            <div className="bg-red-900/20 border border-red-600/50 rounded-xl p-5 flex items-start gap-4">
-              <div className="flex-1">
-                <h3 className="text-red-300 font-bold text-lg mb-1">Verification not approved</h3>
-                <p className="text-[#DCDDCC]/85 text-sm">
-                  Your previous verification was not approved. You must be verified to submit bids.
-                </p>
-              </div>
-              <div className="shrink-0">
-                <Link href="/verify">
-                  <Button className="bg-[#C9AE6A] hover:bg-[#C9AE6A]/80 text-black font-medium text-sm px-4">
-                    Go to Verification
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Search */}
         <div className="flex justify-end mb-6">
           <Input
@@ -434,17 +330,6 @@ export function BidsTab() {
 
           {/* Table Content */}
           <div className="p-6">
-            {/* Seller Dashboard Button (visible only if verified) */}
-            {user?.sellerStatus === 'APPROVED' && (
-              <div className="flex justify-end items-center mb-6">
-                <Button
-                  onClick={() => setIsSellerDashboardOpen(true)}
-                  className="bg-[#C9AE6A] hover:bg-[#C9AE6A]/80 text-black font-medium text-sm px-4 py-2"
-                >
-                  SELLER DASHBOARD
-                </Button>
-              </div>
-            )}
 
             {/* Bids Content */}
             {renderContent()}

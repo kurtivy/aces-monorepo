@@ -44,11 +44,6 @@ export interface UserProfile {
   bio: string | null;
   website: string | null;
   twitterHandle: string | null;
-  sellerStatus: 'NOT_APPLIED' | 'PENDING' | 'APPROVED' | 'REJECTED';
-  appliedAt: string | null;
-  verifiedAt: string | null;
-  rejectedAt: string | null;
-  rejectionReason: string | null;
   notifications: boolean;
   newsletter: boolean;
   darkMode: boolean;

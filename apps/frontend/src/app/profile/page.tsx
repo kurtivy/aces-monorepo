@@ -11,7 +11,6 @@ import LuxuryAssetsBackground from '@/components/ui/custom/luxury-assets-backgro
 import AcesHeader from '@/components/ui/custom/aces-header';
 import PageBandTitle from '@/components/ui/custom/page-band-title';
 import PageLoader from '@/components/loading/page-loader';
-import ListingVerificationBanner from '@/components/ui/listing-verification-banner';
 import { UserSubmissionsTab } from '@/components/profile/user-submissions-tab';
 import { OffersTab } from '@/components/profile/offers-tab';
 import { Button } from '@/components/ui/button';
@@ -114,10 +113,8 @@ export default function ProfilePage() {
     walletAddress: user?.walletAddress || undefined, // Using database wallet address directly
     role: user?.role || undefined,
     username: user?.username || undefined,
-    sellerStatus: user?.sellerStatus || undefined,
   };
 
-  const shouldShowVerificationBanner = user?.sellerStatus === 'NOT_APPLIED';
   const needsWalletConnection = !isAuthenticated || !user?.walletAddress;
 
   return (
@@ -164,11 +161,6 @@ export default function ProfilePage() {
             </div>
           )}
 
-          {!needsWalletConnection && shouldShowVerificationBanner && (
-            <div className="-mt-2">
-              <ListingVerificationBanner />
-            </div>
-          )}
 
           <HorizontalProfileHeader
             user={profileData}

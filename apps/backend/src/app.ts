@@ -12,7 +12,6 @@ import cachePlugin from './plugins/cache-plugin';
 import { submissionRoutes } from './routes/v1/submissions';
 import { adminRoutes } from './routes/v1/admin'; // Step 2: Enabled
 import { bidsRoutes } from './routes/v1/bids';
-import { accountVerificationRoutes } from './routes/v1/verification';
 import { usersRoutes } from './routes/v1/users';
 import { listingRoutes } from './routes/v1/listings';
 import { contactRoutes } from './routes/v1/contact';
@@ -335,7 +334,6 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   fastify.register(submissionRoutes, { prefix: '/api/v1/submissions' }); // Step 4: Enabled
   fastify.register(adminRoutes, { prefix: '/api/v1/admin' }); // Step 2: Enabled
   fastify.register(bidsRoutes, { prefix: '/api/v1/bids' }); // NEW: Bidding system
-  fastify.register(accountVerificationRoutes, { prefix: '/api/v1/verification' }); // Step 2: Enabled
   fastify.register(usersRoutes, { prefix: '/api/v1/users' });
   // import { webhooksRoutes } from './routes/v1/webhooks';
   fastify.register(listingRoutes, { prefix: '/api/v1/listings' }); // Step 5: Enabled

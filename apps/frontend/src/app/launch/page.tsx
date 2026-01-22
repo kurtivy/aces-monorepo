@@ -12,7 +12,6 @@ import ListTokenForm from '@/components/forms/list-token-form';
 // import { Dialog, DialogTitle, DialogContent, DialogHeader } from '@/components/ui/dialog';
 // import { VerificationForm } from '@/components/forms/verification-form';
 import { useAuth } from '@/lib/auth/auth-context';
-import ListingVerificationBanner from '@/components/ui/listing-verification-banner';
 
 export default function CreateTokenForm() {
   const [imageLoaded, setImageLoaded] = useState(false);
@@ -112,8 +111,6 @@ export default function CreateTokenForm() {
 
       <main className="relative z-20 flex-1 px-4 pb-16 pt-44 sm:px-6 sm:pt-48 md:pt-52 lg:px-10 lg:pt-56">
         <div className="mx-auto w-full max-w-[960px] space-y-6 sm:max-w-[1100px] lg:max-w-[1200px]">
-          <ListingVerificationBanner />
-
           <div
             data-scroll-container
             className="rounded-2xl border border-[#E6E3D3]/15 bg-black/60 p-4 shadow-[0_10px_40px_rgba(215,191,117,0.06)] sm:p-6 lg:p-8"

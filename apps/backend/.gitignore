@@ -18,7 +18,6 @@ pnpm-debug.log*
 
 # Testing
 coverage/
-
 # IDE
 .idea/
 .vscode/
@@ -34,3 +33,10 @@ prisma/*.db
 prisma/migrations/ 
 
 pnpm-lock.yaml
+
+backups/
+*.sql
+*.sql.gz
+*.json.gz
+backup_*.sql
+backup_*.json

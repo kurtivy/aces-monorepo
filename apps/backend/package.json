@@ -41,6 +41,8 @@
     "db:seed": "npx prisma db seed",
     "db:studio": "npx prisma studio",
     "db:generate": "npx prisma generate",
+    "backup:db": "tsx scripts/backup-database.ts",
+    "backup:db:shell": "./scripts/backup-database.sh",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
     "type-check": "tsc --noEmit",

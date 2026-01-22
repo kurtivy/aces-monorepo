@@ -30,7 +30,6 @@ import {
 } from 'lucide-react';
 import { CountrySelect } from '@/components/ui/country-select';
 import { AssetSubmissionModal } from '@/components/ui/asset-submission-modal';
-import { VerificationAccordionSection } from '@/components/ui/verification-accordion-section';
 import { useModal } from '@/lib/contexts/modal-context';
 
 // Helper to get error message as string
@@ -73,14 +72,12 @@ function Field({
 }
 
 export default function ListTokenForm() {
-  const { getAccessToken, isVerifiedSeller, isAuthenticated, user, connectWallet } = useAuth();
+  const { getAccessToken, isAuthenticated, user, connectWallet } = useAuth();
   const { openTermsModal } = useModal();
 
-  // Debug logging to see verification status
+  // Debug logging to see user status
   console.log('📋 ListTokenForm - User status:', {
     isAuthenticated,
-    isVerifiedSeller,
-    sellerStatus: user?.sellerStatus,
     user,
   });
 
@@ -263,11 +260,11 @@ export default function ListTokenForm() {
       console.log('📸 Image previews:', imagePreviews.length);
       console.log('📄 Ownership docs:', Object.keys(ownershipDocs).length);
 
-      // Prevent submission if user hasn't submitted verification
-      if (!isVerifiedSeller) {
+      // Allow all authenticated users to submit
+      if (!isAuthenticated) {
         setSubmitStatus('error');
         setSubmitMessage(
-          'Please submit identity verification before listing assets. You can submit assets immediately after submitting your verification.',
+          'Please connect your wallet to submit assets.',
         );
         setSubmitErrorDetails([]);
         setIsSubmissionModalOpen(true);
@@ -468,14 +465,11 @@ export default function ListTokenForm() {
         <form onSubmit={onSubmit} className="space-y-10">
           {/* Section 1 */}
           <div ref={section1Ref} className="scroll-mt-24">
-            <VerificationAccordionSection
-              icon={Info}
-              title="Asset Information"
-              description="Tell us about your luxury asset and create its digital identity"
-              isCompleted={isSection1Complete}
-              isActive={isVerifiedSeller && currentStep === 1}
-              stepNumber={1}
-            >
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-xl font-semibold text-[#C9AE6A] mb-2">Asset Information</h3>
+                <p className="text-[#E6E3D3]/70 text-sm mb-6">Tell us about your luxury asset and create its digital identity</p>
+              </div>
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <Field
                   label="Token Symbol"
@@ -739,20 +733,17 @@ export default function ListTokenForm() {
                   <ChevronRight className="w-5 h-5 ml-2" />
                 </Button>
               </div>
-            </VerificationAccordionSection>
+            </div>
           </div>
 
           {/* Section 2: Asset Story & Details */}
           {currentStep >= 2 && (
             <div ref={section2Ref} className="scroll-mt-24">
-              <VerificationAccordionSection
-                icon={Info}
-                title="Asset Story & Details"
-                description="Add descriptive details to help buyers understand the asset’s background and appeal"
-                isCompleted={isSection2Complete}
-                isActive={isVerifiedSeller && currentStep === 2}
-                stepNumber={2}
-              >
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-xl font-semibold text-[#C9AE6A] mb-2">Asset Story & Details</h3>
+                  <p className="text-[#E6E3D3]/70 text-sm mb-6">Add descriptive details to help buyers understand the asset's background and appeal</p>
+                </div>
                 <Field label="Story" required error={getErrorMessage(errors.story)}>
                   <div className="space-y-1">
                     <Textarea
@@ -824,21 +815,18 @@ export default function ListTokenForm() {
                     <ChevronRight className="w-5 h-5 ml-2" />
                   </Button>
                 </div>
-              </VerificationAccordionSection>
+              </div>
             </div>
           )}
 
           {/* Section 3 */}
           {currentStep >= 3 && (
             <div ref={section3Ref} className="scroll-mt-32">
-              <VerificationAccordionSection
-                icon={Shield}
-                title="Proof of Ownership & Verification"
-                description="Upload at least 3 of the following ownership documents to verify your asset"
-                isCompleted={isSection3Complete}
-                isActive={isVerifiedSeller && currentStep === 3}
-                stepNumber={3}
-              >
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-xl font-semibold text-[#C9AE6A] mb-2">Proof of Ownership & Verification</h3>
+                  <p className="text-[#E6E3D3]/70 text-sm mb-6">Upload at least 3 of the following ownership documents to verify your asset</p>
+                </div>
                 {/* Info box about minimum requirement */}
                 <div className="bg-[#D7BF75]/10 border border-[#D7BF75]/30 rounded-xl p-4">
                   <div className="flex items-center gap-2 mb-2">
@@ -1097,12 +1085,12 @@ export default function ListTokenForm() {
                         <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
                         Submitting...
                       </div>
-                    ) : (
+                      ) : (
                       <div className="flex items-center gap-3">Submit for Approval</div>
                     )}
                   </Button>
                 </div>
-              </VerificationAccordionSection>
+              </div>
             </div>
           )}
         </form>

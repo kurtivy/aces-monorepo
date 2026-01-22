@@ -3,12 +3,7 @@
 import { X, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AnalyticsTab } from './admin/analytics-tab';
-import { SubmissionsTab } from './admin/submissions-tab';
-import { VerificationsTab } from './admin/verifications-tab';
-import { AdminListingsTab } from './admin/admin-listings-tab';
-import { BidsTab } from './admin/bids-tab';
-import { SellersTab } from './admin/sellers-tab';
+import { LaunchTab } from './admin/launch-tab';
 import { TokenManagementTab } from './admin/token-management-tab';
 
 interface AdminDashboardOverlayProps {
@@ -55,82 +50,26 @@ export function AdminDashboardOverlay({ isOpen, onClose }: AdminDashboardOverlay
 
           {/* Content */}
           <div className="flex-1 p-6 overflow-y-auto">
-            <Tabs defaultValue="analytics" className="w-full">
+            <Tabs defaultValue="launch" className="w-full">
               <TabsList className="bg-transparent border-none p-0 h-auto space-x-6 mb-6 flex-wrap">
                 <TabsTrigger
-                  value="analytics"
+                  value="launch"
                   className="bg-transparent text-[#DCDDCC] text-lg font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-purple-400"
                 >
-                  Analytics
+                  Token Launch
                 </TabsTrigger>
                 <TabsTrigger
-                  value="sellers"
+                  value="token-management"
                   className="bg-transparent text-[#DCDDCC] text-lg font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-purple-400"
                 >
-                  Sellers
-                </TabsTrigger>
-                <TabsTrigger
-                  value="submissions"
-                  className="bg-transparent text-[#DCDDCC] text-lg font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-purple-400"
-                >
-                  Submissions
-                </TabsTrigger>
-                <TabsTrigger
-                  value="verifications"
-                  className="bg-transparent text-[#DCDDCC] text-lg font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-purple-400"
-                >
-                  Verifications
-                </TabsTrigger>
-                <TabsTrigger
-                  value="listings"
-                  className="bg-transparent text-[#DCDDCC] text-lg font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-purple-400"
-                >
-                  Listings
-                </TabsTrigger>
-                <TabsTrigger
-                  value="bids"
-                  className="bg-transparent text-[#DCDDCC] text-lg font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-purple-400"
-                >
-                  Bids
-                </TabsTrigger>
-                <TabsTrigger
-                  value="tokens"
-                  className="bg-transparent text-[#DCDDCC] text-lg font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-purple-400"
-                >
-                  Token Creation
-                </TabsTrigger>
-                <TabsTrigger
-                  value="escrow"
-                  className="bg-transparent text-[#DCDDCC] text-lg font-medium data-[state=active]:text-white data-[state=active]:bg-transparent data-[state=active]:shadow-none relative pb-2 px-0 hover:text-white transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-purple-400"
-                >
-                  Escrow
+                  Token Management
                 </TabsTrigger>
               </TabsList>
-              <TabsContent value="analytics" className="mt-6 w-full">
-                <AnalyticsTab />
+              <TabsContent value="launch" className="mt-6 w-full">
+                <LaunchTab />
               </TabsContent>
-              <TabsContent value="sellers" className="mt-6 w-full">
-                <SellersTab />
-              </TabsContent>
-              <TabsContent value="submissions" className="mt-6 w-full">
-                <SubmissionsTab />
-              </TabsContent>
-              <TabsContent value="verifications" className="mt-6 w-full">
-                <VerificationsTab />
-              </TabsContent>
-              <TabsContent value="listings" className="mt-6 w-full">
-                <AdminListingsTab />
-              </TabsContent>
-              <TabsContent value="bids" className="mt-6 w-full">
-                <BidsTab />
-              </TabsContent>
-              <TabsContent value="tokens" className="mt-6 w-full">
+              <TabsContent value="token-management" className="mt-6 w-full">
                 <TokenManagementTab />
-              </TabsContent>
-              <TabsContent value="escrow" className="mt-6 w-full">
-                <div className="text-center py-16">
-                  <p className="text-[#DCDDCC] font-jetbrains">Escrow management coming soon...</p>
-                </div>
               </TabsContent>
             </Tabs>
           </div>

@@ -54,23 +54,15 @@ export class BidService {
   }
 
   /**
-   * Check if user is verified and can place bids
+   * Check if user can place bids (all authenticated users can bid)
    */
   async checkUserBiddingEligibility(userId: string): Promise<boolean> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: {
-        accountVerification: true,
-      },
     });
 
-    if (!user) return false;
-
-    // Check both seller status and account verification
-    const hasSellerApproval = user.sellerStatus === 'APPROVED';
-    const hasAccountVerification = user.accountVerification?.status === 'APPROVED';
-
-    return hasSellerApproval && hasAccountVerification;
+    // All authenticated users can place bids (verification no longer required)
+    return !!user;
   }
 
   /**
@@ -126,10 +118,10 @@ export class BidService {
    */
   async createBid(userId: string, data: CreateBidRequest): Promise<BidWithRelations> {
     try {
-      // Check user eligibility
+      // Check user eligibility (all authenticated users can bid)
       const isEligible = await this.checkUserBiddingEligibility(userId);
       if (!isEligible) {
-        throw errors.forbidden('Account verification required to place bids');
+        throw errors.forbidden('User not found');
       }
 
       // Get listing and validate
