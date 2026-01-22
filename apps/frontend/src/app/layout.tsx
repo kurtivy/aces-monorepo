@@ -8,85 +8,66 @@ import { fontVariables } from '@/lib/fonts';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 
-// export const metadata: Metadata = {
-//   title: 'ACES.fun',
-//   description: 'Trade Tokenized Collectibles',
-//   metadataBase: new URL('https://aces.fun'),
-//   openGraph: {
-//     title: 'ACES.fun',
-//     description: 'Trade Tokenized Collectibles',
-//     url: '/',
-//     siteName: 'ACES.fun',
-//     images: [
-//       {
-//         url: '/aces-preview-logo.png',
-//         width: 800,
-//         height: 800,
-//         alt: 'ACES.fun Logo',
-//       },
-//     ],
-//     locale: 'en_US',
-//     type: 'website',
-//   },
-//   twitter: {
-//     card: 'summary_large_image',
-//     title: 'ACES.fun',
-//     description: 'Trade Tokenized Collectibles',
-//     images: [
-//       {
-//         url: '/aces-preview-logo.png',
-//         width: 800,
-//         height: 800,
-//         alt: 'ACES.fun Logo',
-//       },
-//     ],
-//     creator: '@acesdotfun',
-//     site: '@acesdotfun',
-//   },
-//   icons: {
-//     icon: '/favicon.ico',
-//     shortcut: '/aces-preview-logo.png',
-//     apple: '/aces-preview-logo.png',
-//   },
-//   other: {
-//     'base:app_id': '693a1924e6be54f5ed71d56f',
-//     'fc:miniapp': JSON.stringify({
-//       version: 'next',
-//       imageUrl: 'https://aces.fun/aces-preview-logo.png',
-//       button: {
-//         title: 'Trade Now',
-//         action: {
-//           type: 'launch_miniapp',
-//           name: 'ACES.fun',
-//           url: 'https://aces.fun',
-//           splashImageUrl: 'https://aces.fun/aces-preview-logo.png',
-//           splashBackgroundColor: '#000000',
-//         },
-//       },
-//     }),
-//   },
-// };
-
-export async function generateMetadata(): Promise<Metadata> {
-  return {
-      other: {
-      'fc:miniapp': JSON.stringify({
-          version: '1',
-          imageUrl: 'https://aces.fun/aces-preview-logo.png',
-          button: {
-              title: `Launch ACES.fun`,
-              action: {
-                    type: 'launch_miniapp',
-                    name: 'ACES.fun',
-                     url: 'https://aces.fun',
-                  splashImageUrl: 'https://aces.fun/aces-preview-logo.png',
-                  splashBackgroundColor: '#D0B264',
-              },
-          },
-      }),
+export const metadata: Metadata = {
+  title: 'ACES.fun',
+  description: 'Trade Tokenized Collectibles',
+  metadataBase: new URL('https://aces.fun'),
+  openGraph: {
+    title: 'ACES.fun',
+    description: 'Trade Tokenized Collectibles',
+    url: '/',
+    siteName: 'ACES.fun',
+    images: [
+      {
+        url: '/aces-preview-logo.png',
+        width: 800,
+        height: 800,
+        alt: 'ACES.fun Logo',
       },
-  };
-  }
+    ],
+    locale: 'en_US',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'ACES.fun',
+    description: 'Trade Tokenized Collectibles',
+    images: [
+      {
+        url: '/aces-preview-logo.png',
+        width: 800,
+        height: 800,
+        alt: 'ACES.fun Logo',
+      },
+    ],
+    creator: '@acesdotfun',
+    site: '@acesdotfun',
+  },
+  icons: {
+    icon: '/favicon.ico',
+    shortcut: '/aces-preview-logo.png',
+    apple: '/aces-preview-logo.png',
+  },
+  other: {
+    'base:app_id': '693a1924e6be54f5ed71d56f',
+    'fc:miniapp': JSON.stringify({
+      version: '1',
+      imageUrl: 'https://aces.fun/aces-preview-logo.png',
+      button: {
+          title: `Launch ACES.fun`,
+          action: {
+                type: 'launch_miniapp',
+                name: 'ACES.fun',
+                 url: 'https://aces.fun',
+              splashImageUrl: 'https://aces.fun/aces-preview-logo.png',
+              splashBackgroundColor: '#D0B264',
+          },
+      },
+  }),
+  },
+};
+
+//  
 
 export default function RootLayout({
   children,
