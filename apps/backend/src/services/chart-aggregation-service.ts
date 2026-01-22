@@ -1,13 +1,12 @@
 import { PrismaClient } from '@prisma/client';
 import { AcesUsdPriceService } from './aces-usd-price-service';
-import { ACES_TOKEN_ADDRESS, DATA_SOURCE_CONFIG } from '../config/bitquery.config';
 import { MIN_VISIBLE_TRADE_USD } from '../constants/trading';
 import { TradePriceAggregator } from './trade-price-aggregator';
 import { TokenMetadataCacheService } from './token-metadata-cache-service';
 import { AcesSnapshotCacheService } from './aces-snapshot-cache-service';
 import type { FastifyInstance } from 'fastify';
-import type { BitQuerySwap } from '../types/bitquery.types';
-import { ethers } from 'ethers'; // For calculateMarginalBuyPrice
+import { ethers } from 'ethers';
+import { getNetworkConfig, type SupportedChainId } from '../config/network.config';
 import {
   type CacheEntry as GenericCacheEntry,
   coalesceRequest,
@@ -128,21 +127,30 @@ export class ChartAggregationService {
   }
 
   /**
-   * DEX trades stub - returns empty array
-   * DEX chart data is now handled by DexScreener iframe on frontend
+   * Fetch DEX trades from Aerodrome pool Swap events via Alchemy RPC
+   * Note: Trades are not stored/displayed (DexScreener iframe handles display)
+   * This is used for volume calculations only
    */
   private async getDexTradesFromProvider(
-    _tokenAddress: string,
-    _poolAddress: string,
-    _options: {
+    tokenAddress: string,
+    poolAddress: string,
+    options: {
       from?: Date;
       to?: Date;
       counterTokenAddress?: string;
       limit?: number;
     } = {},
-  ): Promise<BitQuerySwap[]> {
-    // DEX trades handled by DexScreener iframe on frontend
-    // Return empty array - bonding curve data comes from Goldsky
+  ): Promise<Array<{
+    blockTime: Date;
+    priceInAces: string;
+    priceInUsd: string;
+    amountToken: string;
+    volumeUsd: string;
+    side: 'buy' | 'sell';
+  }>> {
+    // TODO: Implement Alchemy RPC query for Aerodrome pool Swap events
+    // For now, return empty array - volume will be calculated from pool state if needed
+    // DexScreener iframe handles trade display on frontend
     return [];
   }
 
@@ -849,7 +857,9 @@ export class ChartAggregationService {
   }
 
   /**
-   * Fetch DEX trades from BitQuery
+   * Fetch DEX trades from Aerodrome pool Swap events via Alchemy RPC
+   * Note: Bonding curve removed - all tokens are DEX-only
+   * Trades are not stored/displayed (DexScreener iframe handles display)
    */
   private async fetchDexTrades(
     tokenAddress: string,
@@ -857,12 +867,17 @@ export class ChartAggregationService {
     from: Date,
     to: Date,
     limit: number = 2000,
+    chainId: SupportedChainId = 8453,
   ): Promise<Trade[]> {
-    // 🔥 ALCHEMY MIGRATION: Use routing method
+    // Get ACES token address from network config
+    const networkConfig = getNetworkConfig(chainId);
+    const acesTokenAddress = networkConfig.acesToken;
+
+    // Fetch DEX trades via Alchemy RPC (for volume calculation)
     const dexTrades = await this.getDexTradesFromProvider(tokenAddress, poolAddress, {
       from,
       to,
-      counterTokenAddress: ACES_TOKEN_ADDRESS,
+      counterTokenAddress: acesTokenAddress,
       limit: Math.min(limit, 5000),
     });
 
@@ -887,7 +902,7 @@ export class ChartAggregationService {
         poolAddress: poolAddress || '(n/a)',
         removed: filteredCount,
         thresholdUsd: MIN_VISIBLE_TRADE_USD,
-        source: 'bitquery',
+        source: 'alchemy',
       });
     }
 

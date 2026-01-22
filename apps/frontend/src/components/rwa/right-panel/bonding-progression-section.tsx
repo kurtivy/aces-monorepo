@@ -28,15 +28,16 @@ export function BondingProgressSection({
   tokenSymbol = 'RWA',
   bondingDataFromParent,
 }: BondingProgressSectionProps) {
-  // Fetch bonding data only if not provided by parent
+  // Bonding curve removed - always show 100% sold out
+  // Keep hook call for backwards compatibility but don't use the data
   const hookData = useTokenBondingData(tokenAddress, bondingDataFromParent ? undefined : chainId);
 
-  // Use parent data if available, otherwise use hook data
-  const bondingPercentage = bondingDataFromParent?.bondingPercentage ?? hookData.bondingPercentage;
-  const isBonded = bondingDataFromParent?.isBonded ?? hookData.isBonded;
+  // Always show 100% sold out (bonding curve removed)
+  const bondingPercentage = 100;
+  const isBonded = true;
   const currentSupply = bondingDataFromParent?.currentSupply ?? hookData.currentSupply;
   const tokensBondedAt = bondingDataFromParent?.tokensBondedAt ?? hookData.tokensBondedAt;
-  const loading = bondingDataFromParent ? false : hookData.loading;
+  const loading = false; // No loading state needed - always 100%
 
   const barGradient = `linear-gradient(90deg,
         #184D37 0%,
@@ -149,52 +150,16 @@ export function BondingProgressSection({
     };
   }, [currentSupply, tokensBondedAt]);
 
-  const combinedPercentage = useMemo(() => {
-    const bonding = Number.isFinite(bondingPercentage) ? bondingPercentage : Number.NaN;
-    const sold = Number.isFinite(supplyMetrics.soldPercentage ?? Number.NaN)
-      ? (supplyMetrics.soldPercentage as number)
-      : Number.NaN;
-    const override = Number.isFinite(percentageOverride ?? Number.NaN)
-      ? (percentageOverride as number)
-      : Number.NaN;
-
-    const candidatePercentages = [sold, bonding, override].filter((value) =>
-      Number.isFinite(value),
-    ) as number[];
-
-    if (candidatePercentages.length === 0) {
-      return 0;
-    }
-
-    return Math.min(100, Math.max(...candidatePercentages));
-  }, [bondingPercentage, percentageOverride, supplyMetrics.soldPercentage]);
+  // Bonding curve removed - always 100%
+  const combinedPercentage = 100;
 
   // useEffect(() => {}, [tokenAddress, chainId, currentSupply, tokensBondedAt, supplyMetrics]);
 
-  // Parse tokensBondedAt to number for comparison; do not default to a large number here
-  const bondingTargetNum = Number.parseFloat(tokensBondedAt || '');
-  const isSoldOut =
-    supplyMetrics.totalSupplyValue !== null &&
-    Number.isFinite(bondingTargetNum) &&
-    bondingTargetNum > 0 &&
-    supplyMetrics.totalSupplyValue >= bondingTargetNum;
-
-  const [hasSoldOut, setHasSoldOut] = useState(false);
-
-  useEffect(() => {
-    if (isSoldOut) {
-      setHasSoldOut(true);
-    }
-  }, [isSoldOut]);
-
-  const soldOutState = hasSoldOut;
-  const combinedIsBonded = isBondedOverride || isBonded || soldOutState;
-  const cappedPercentage = soldOutState ? 100 : Math.min(combinedPercentage, 99.9);
-  const percentageLabel = soldOutState
-    ? '100.0'
-    : combinedPercentage >= 99.9
-      ? '99.9'
-      : cappedPercentage.toFixed(1);
+  // Bonding curve removed - always show as sold out
+  const soldOutState = true;
+  const combinedIsBonded = true;
+  const cappedPercentage = 100;
+  const percentageLabel = '100.0';
 
   return (
     <div className="">

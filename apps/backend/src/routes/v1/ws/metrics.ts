@@ -15,8 +15,7 @@ import { priceCacheService } from '../../../services/price-cache-service';
 import { TokenService } from '../../../services/token-service';
 import { Decimal } from 'decimal.js';
 import { ethers } from 'ethers';
-import { ACES_TOKEN_ADDRESS } from '../../../config/bitquery.config';
-import { getNetworkConfig } from '../../../config/network.config';
+import { getNetworkConfig, type SupportedChainId } from '../../../config/network.config';
 
 /**
  * 🔥 NEW: In-memory 24h rolling trade aggregator for real-time volume calculation
@@ -704,7 +703,7 @@ export const metricsWebSocketRoutes: FastifyPluginAsync = async (fastify) => {
                   ]);
 
                   // Identify which token is ACES and calculate liquidity
-                  const acesAddress = ACES_TOKEN_ADDRESS.toLowerCase();
+                  const acesAddress = networkConfig.acesToken.toLowerCase();
                   const isToken0Aces = token0Address.toLowerCase() === acesAddress;
                   const isToken1Aces = token1Address.toLowerCase() === acesAddress;
 

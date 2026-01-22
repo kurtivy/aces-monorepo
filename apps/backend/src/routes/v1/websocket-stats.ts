@@ -159,17 +159,6 @@ export async function websocketStatsRoutes(fastify: FastifyInstance) {
 
       const stats = adapterManager.getAllStats();
 
-      // Safely get BitQuery adapter
-      let bitQueryInitialized = false;
-      let bitQueryConnected = false;
-      try {
-        const bitQueryAdapter = adapterManager.getAdapter('bitquery');
-        bitQueryInitialized = !!bitQueryAdapter;
-        bitQueryConnected = bitQueryAdapter?.isConnected() || false;
-      } catch {
-        // BitQuery not initialized
-      }
-
       return reply.send({
         success: true,
         data: {
@@ -181,11 +170,6 @@ export async function websocketStatsRoutes(fastify: FastifyInstance) {
             goldsky: {
               connected: adapterManager.getAdapter('goldsky').isConnected(),
               stats: stats.goldsky,
-            },
-            bitQuery: {
-              initialized: bitQueryInitialized,
-              connected: bitQueryConnected,
-              stats: stats.bitQuery,
             },
             aerodrome: {
               connected: adapterManager.getAdapter('aerodrome').isConnected(),
