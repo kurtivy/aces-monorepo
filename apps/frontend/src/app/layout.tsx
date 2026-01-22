@@ -51,12 +51,12 @@ export const metadata: Metadata = {
   other: {
     'base:app_id': '693a1924e6be54f5ed71d56f',
     'fc:miniapp': JSON.stringify({
-      version: '1.0.1',
+      version: 'next',
       imageUrl: 'https://aces.fun/aces-logo.png',
       button: {
           title: `Launch ACES.fun`,
           action: {
-                type: 'launch_miniapp',
+                type: 'launch_frame',
                 name: 'ACES.fun',
                  url: 'https://aces.fun',
               splashImageUrl: 'https://aces.fun/aces-logo.png',
